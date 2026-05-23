@@ -1,6 +1,8 @@
 import { useEffect, useState, useCallback } from "react"
 import { useParams, useNavigate } from "react-router-dom"
-import { supabase, type Client, type Transaction } from "@/lib/supabase"
+import { useAuth } from "@clerk/clerk-react"
+import { apiGet, apiPost, apiPatch, apiDelete } from "@/lib/api"
+import type { Client, Transaction } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -29,6 +31,7 @@ const formatDate = (dateStr: string) => new Date(dateStr).toLocaleDateString("en
 export function ClientDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const { getToken } = useAuth()
   const [client, setClient] = useState<Client | null>(null)
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [loading, setLoading] = useState(true)
@@ -46,15 +49,17 @@ export function ClientDetailPage() {
 
   const loadData = useCallback(async () => {
     if (!id) return
-    const [clientRes, txRes] = await Promise.all([
-      supabase.from("clients").select("*").eq("id", id).maybeSingle(),
-      supabase.from("transactions").select("*").eq("client_id", id).order("date", { ascending: false }),
+    const token = await getToken()
+    if (!token) return
+    const [clientData, txData] = await Promise.all([
+      apiGet<Client>(`/api/clients/${id}`, token),
+      apiGet<Transaction[]>(`/api/transactions?clientId=${id}`, token),
     ])
-    if (!clientRes.data) { navigate("/clients"); return }
-    setClient(clientRes.data)
-    setTransactions(txRes.data ?? [])
+    if (!clientData) { navigate("/clients"); return }
+    setClient(clientData)
+    setTransactions(txData)
     setLoading(false)
-  }, [id, navigate])
+  }, [id, navigate, getToken])
 
   useEffect(() => { loadData() }, [loadData])
 
@@ -71,48 +76,72 @@ export function ClientDetailPage() {
   const handleAddTransaction = async () => {
     if (!txForm.amount || isNaN(parseFloat(txForm.amount))) { toast.error("Valid amount is required"); return }
     setSaving(true)
-    const { error } = await supabase.from("transactions").insert([{ client_id: id, type: txForm.type, amount: parseFloat(txForm.amount), description: txForm.description, category: txForm.category, date: txForm.date }])
-    setSaving(false)
-    if (error) { toast.error("Failed to add transaction"); return }
-    toast.success(`${txForm.type === "incoming" ? "Income" : "Expense"} added`)
-    setTxDialogOpen(false)
-    setTxForm(defaultTxForm)
-    loadData()
+    try {
+      const token = await getToken()
+      if (!token) throw new Error("Not authenticated")
+      await apiPost<Transaction>("/api/transactions", token, { client_id: id, type: txForm.type, amount: parseFloat(txForm.amount), description: txForm.description, category: txForm.category, date: txForm.date })
+      toast.success(`${txForm.type === "incoming" ? "Income" : "Expense"} added`)
+      setTxDialogOpen(false)
+      setTxForm(defaultTxForm)
+      loadData()
+    } catch {
+      toast.error("Failed to add transaction")
+    } finally {
+      setSaving(false)
+    }
   }
 
   const handleEditTransaction = async () => {
     if (!editTxForm || !editTxForm.amount || isNaN(parseFloat(editTxForm.amount))) { toast.error("Valid amount is required"); return }
     setSaving(true)
-    const { error } = await supabase.from("transactions").update({ type: editTxForm.type, amount: parseFloat(editTxForm.amount), description: editTxForm.description, category: editTxForm.category, date: editTxForm.date }).eq("id", editTxForm.id)
-    setSaving(false)
-    if (error) { toast.error("Failed to update transaction"); return }
-    toast.success("Transaction updated")
-    setEditTxDialogOpen(false)
-    setEditTxForm(null)
-    loadData()
+    try {
+      const token = await getToken()
+      if (!token) throw new Error("Not authenticated")
+      await apiPatch<Transaction>(`/api/transactions/${editTxForm.id}`, token, { type: editTxForm.type, amount: parseFloat(editTxForm.amount), description: editTxForm.description, category: editTxForm.category, date: editTxForm.date })
+      toast.success("Transaction updated")
+      setEditTxDialogOpen(false)
+      setEditTxForm(null)
+      loadData()
+    } catch {
+      toast.error("Failed to update transaction")
+    } finally {
+      setSaving(false)
+    }
   }
 
   const handleEditClient = async () => {
     if (!clientForm || !client) return
     setSaving(true)
-    const { error } = await supabase.from("clients").update(clientForm).eq("id", client.id)
-    setSaving(false)
-    if (error) { toast.error("Failed to update client"); return }
-    toast.success("Client updated")
-    setEditClientDialogOpen(false)
-    setClient({ ...client, ...clientForm })
+    try {
+      const token = await getToken()
+      if (!token) throw new Error("Not authenticated")
+      await apiPatch<Client>(`/api/clients/${client.id}`, token, clientForm)
+      toast.success("Client updated")
+      setEditClientDialogOpen(false)
+      setClient({ ...client, ...clientForm })
+    } catch {
+      toast.error("Failed to update client")
+    } finally {
+      setSaving(false)
+    }
   }
 
   const handleDelete = async () => {
     if (!deleteId || !deleteType) return
-    if (deleteType === "transaction") {
-      await supabase.from("transactions").delete().eq("id", deleteId)
-      toast.success("Transaction deleted")
-    } else {
-      await supabase.from("clients").delete().eq("id", client?.id)
-      toast.success("Client deleted")
-      navigate("/clients")
-      return
+    try {
+      const token = await getToken()
+      if (!token) throw new Error("Not authenticated")
+      if (deleteType === "transaction") {
+        await apiDelete(`/api/transactions/${deleteId}`, token)
+        toast.success("Transaction deleted")
+      } else {
+        await apiDelete(`/api/clients/${client?.id}`, token)
+        toast.success("Client deleted")
+        navigate("/clients")
+        return
+      }
+    } catch {
+      toast.error("Failed to delete")
     }
     setDeleteId(null)
     setDeleteType(null)
