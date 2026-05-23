@@ -14,9 +14,9 @@ export function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Auth Routes */}
-        <Route path="login" element={<LoginPage />} />
-        <Route path="signup" element={<SignupPage />} />
+        {/* Auth Routes — /* glob required for Clerk's multi-step routing */}
+        <Route path="login/*" element={<LoginPage />} />
+        <Route path="signup/*" element={<SignupPage />} />
         <Route path="forgot-password" element={<ForgotPasswordPage />} />
         <Route path="reset-password" element={<ResetPasswordPage />} />
 
