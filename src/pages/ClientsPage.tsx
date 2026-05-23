@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { apiGet, apiPost } from "@/lib/api"
 import type { Client, Transaction } from "@/lib/types"
+import { useCurrency } from "@/lib/currency-context"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -51,18 +52,12 @@ const defaultForm: NewClient = {
   notes: "",
 }
 
-function formatCurrency(amount: number) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(amount)
-}
-
 export function ClientsPage() {
   const navigate = useNavigate()
   const { getToken } = useAuth()
+  const { currency } = useCurrency()
+  const formatCurrency = (amount: number) =>
+    new Intl.NumberFormat("en-US", { style: "currency", currency, minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(amount)
   const [clientsWithStats, setClientsWithStats] = useState<ClientWithStats[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")

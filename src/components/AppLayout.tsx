@@ -26,6 +26,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { ModeToggle } from "@/components/mode-toggle"
+import { CurrencyProvider } from "@/lib/currency-context"
 import { LayoutDashboard, Users, TrendingUp, User, LogOut } from "lucide-react"
 
 const navItems = [
@@ -134,7 +135,9 @@ export function AppLayout() {
         </header>
 
         <div className="flex-1 overflow-auto">
-          <Outlet />
+          <CurrencyProvider>
+            <Outlet />
+          </CurrencyProvider>
         </div>
       </SidebarInset>
     </SidebarProvider>
