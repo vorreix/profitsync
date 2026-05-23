@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { verifyToken } from "@clerk/backend"
 import { db, serialize } from "../src/lib/db"
 import { clients, transactions } from "../src/lib/db/schema"
-import { and, eq, desc } from "drizzle-orm"
+import { and, eq, desc, isNull } from "drizzle-orm"
 
 async function getAuth(req: VercelRequest): Promise<string | null> {
   const token = req.headers.authorization?.replace("Bearer ", "")
@@ -23,17 +23,50 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const { clientId } = req.query as { clientId?: string }
 
     if (clientId) {
+      // Verify the client belongs to this user
       const [client] = await db
         .select({ id: clients.id })
         .from(clients)
-        .where(and(eq(clients.id, clientId), eq(clients.userId, userId)))
+        .where(and(eq(clients.id, clientId), eq(clients.userId, userId), isNull(clients.deletedAt)))
       if (!client) return res.status(403).json({ error: "Forbidden" })
+
+      const rows = await db
+        .select({
+          id: transactions.id,
+          clientId: transactions.clientId,
+          clientName: clients.name,
+          type: transactions.type,
+          amount: transactions.amount,
+          description: transactions.description,
+          category: transactions.category,
+          date: transactions.date,
+          createdAt: transactions.createdAt,
+          updatedAt: transactions.updatedAt,
+        })
+        .from(transactions)
+        .innerJoin(clients, eq(transactions.clientId, clients.id))
+        .where(eq(transactions.clientId, clientId))
+        .orderBy(desc(transactions.date))
+      return res.json(rows.map(serialize))
     }
 
+    // No clientId — fetch all transactions for this user's clients only
     const rows = await db
-      .select()
+      .select({
+        id: transactions.id,
+        clientId: transactions.clientId,
+        clientName: clients.name,
+        type: transactions.type,
+        amount: transactions.amount,
+        description: transactions.description,
+        category: transactions.category,
+        date: transactions.date,
+        createdAt: transactions.createdAt,
+        updatedAt: transactions.updatedAt,
+      })
       .from(transactions)
-      .where(clientId ? eq(transactions.clientId, clientId) : undefined)
+      .innerJoin(clients, eq(transactions.clientId, clients.id))
+      .where(and(eq(clients.userId, userId), isNull(clients.deletedAt)))
       .orderBy(desc(transactions.date))
     return res.json(rows.map(serialize))
   }
@@ -44,14 +77,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       description?: string; category?: string; date?: string
     }
 
+    if (!client_id) return res.status(400).json({ error: "client_id is required" })
+    if (!amount || isNaN(Number(amount))) return res.status(400).json({ error: "amount is required" })
+    if (!["incoming", "outgoing"].includes(type)) return res.status(400).json({ error: "type must be incoming or outgoing" })
+
     const [client] = await db
       .select({ id: clients.id })
       .from(clients)
-      .where(and(eq(clients.id, client_id), eq(clients.userId, userId)))
+      .where(and(eq(clients.id, client_id), eq(clients.userId, userId), isNull(clients.deletedAt)))
     if (!client) return res.status(403).json({ error: "Forbidden" })
-
-    if (!amount || isNaN(Number(amount))) return res.status(400).json({ error: "amount is required" })
-    if (!["incoming", "outgoing"].includes(type)) return res.status(400).json({ error: "type must be incoming or outgoing" })
 
     const today = new Date().toISOString().split("T")[0]
     const [row] = await db
