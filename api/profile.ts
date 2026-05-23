@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { createClerkClient } from "@clerk/backend"
+import { createClerkClient, verifyToken } from "@clerk/backend"
 import { db, serialize } from "../src/lib/db"
 import { userProfiles } from "../src/lib/db/schema"
 import { eq } from "drizzle-orm"
@@ -10,7 +10,7 @@ async function getAuth(req: VercelRequest): Promise<string | null> {
   const token = req.headers.authorization?.replace("Bearer ", "")
   if (!token) return null
   try {
-    const payload = await clerk.verifyToken(token)
+    const payload = await verifyToken(token, { secretKey: process.env.CLERK_SECRET_KEY! })
     return payload.sub
   } catch {
     return null

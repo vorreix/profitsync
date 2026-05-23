@@ -3,12 +3,12 @@ import { useNavigate } from "react-router-dom"
 import { useAuth, useClerk } from "@clerk/clerk-react"
 import { apiGet, apiPatch } from "@/lib/api"
 import type { UserProfile } from "@/lib/types"
-import { CURRENCIES } from "@/lib/types"
+import { useCurrency } from "@/lib/currency-context"
+import { CurrencyCombobox } from "@/components/CurrencyCombobox"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { toast } from "sonner"
 import { ArrowLeft, Loader as Loader2, LogOut } from "lucide-react"
@@ -17,6 +17,7 @@ export function ProfilePage() {
   const navigate = useNavigate()
   const { getToken } = useAuth()
   const { signOut } = useClerk()
+  const { setCurrency: setGlobalCurrency } = useCurrency()
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -50,6 +51,7 @@ export function ProfilePage() {
       if (!token) throw new Error("Not authenticated")
       const updated = await apiPatch<UserProfile>("/api/profile", token, { full_name: fullName, currency })
       setProfile(updated)
+      setGlobalCurrency(currency)
       toast.success("Profile updated successfully")
     } catch {
       toast.error("Failed to save profile")
@@ -108,20 +110,9 @@ export function ProfilePage() {
 
           {/* Currency Selection */}
           <div className="space-y-2">
-            <Label htmlFor="currency">Default Currency</Label>
+            <Label>Default Currency</Label>
             <p className="text-xs text-muted-foreground">This currency will be used for all transactions and dashboards</p>
-            <Select value={currency} onValueChange={setCurrency} disabled={saving}>
-              <SelectTrigger id="currency">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {CURRENCIES.map((curr) => (
-                  <SelectItem key={curr} value={curr}>
-                    {curr}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <CurrencyCombobox value={currency} onValueChange={setCurrency} disabled={saving} />
           </div>
 
           {/* Save Button */}
