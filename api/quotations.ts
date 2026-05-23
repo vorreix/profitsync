@@ -1,10 +1,10 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { verifyToken } from "@clerk/backend"
 import { db, serialize } from "../src/lib/db"
-import { clients } from "../src/lib/db/schema"
+import { quotations } from "../src/lib/db/schema"
 import { and, eq, desc, isNull } from "drizzle-orm"
 
-const VALID_STATUSES = ["active", "inactive", "archived"]
+const VALID_STATUSES = ["draft", "sent", "accepted", "rejected"]
 
 async function getAuth(req: VercelRequest): Promise<string | null> {
   const token = req.headers.authorization?.replace("Bearer ", "")
@@ -24,30 +24,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === "GET") {
     const rows = await db
       .select()
-      .from(clients)
-      .where(and(eq(clients.userId, userId), isNull(clients.deletedAt)))
-      .orderBy(desc(clients.createdAt))
+      .from(quotations)
+      .where(and(eq(quotations.userId, userId), isNull(quotations.deletedAt)))
+      .orderBy(desc(quotations.createdAt))
     return res.json(rows.map(serialize))
   }
 
   if (req.method === "POST") {
-    const { name, company, email, phone, status, notes } = req.body as {
-      name: string; company?: string; email?: string
-      phone?: string; status?: string; notes?: string
+    const { title, prospect_name, company, email, phone, amount, status, notes } = req.body as {
+      title: string; prospect_name: string; company?: string; email?: string
+      phone?: string; amount?: number; status?: string; notes?: string
     }
-    if (!name?.trim()) return res.status(400).json({ error: "name is required" })
-    const normalizedStatus = status ?? "active"
+    if (!title?.trim()) return res.status(400).json({ error: "title is required" })
+    if (!prospect_name?.trim()) return res.status(400).json({ error: "prospect_name is required" })
+    const normalizedStatus = status ?? "draft"
     if (!VALID_STATUSES.includes(normalizedStatus)) {
-      return res.status(400).json({ error: "status must be active, inactive, or archived" })
+      return res.status(400).json({ error: "status must be draft, sent, accepted, or rejected" })
     }
     const [row] = await db
-      .insert(clients)
+      .insert(quotations)
       .values({
         userId,
-        name: name.trim(),
+        title: title.trim(),
+        prospectName: prospect_name.trim(),
         company: company ?? "",
         email: email ?? "",
         phone: phone ?? "",
+        amount: amount != null ? String(amount) : "0",
         status: normalizedStatus,
         notes: notes ?? "",
       })

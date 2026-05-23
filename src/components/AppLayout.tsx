@@ -27,11 +27,14 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { ModeToggle } from "@/components/mode-toggle"
 import { CurrencyProvider } from "@/lib/currency-context"
-import { LayoutDashboard, Users, TrendingUp, User, LogOut } from "lucide-react"
+import { LayoutDashboard, Users, TrendingUp, User, LogOut, ArrowLeftRight, FileText, Trash2 } from "lucide-react"
 
 const navItems = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { label: "Clients", href: "/clients", icon: Users },
+  { label: "Transactions", href: "/transactions", icon: ArrowLeftRight },
+  { label: "Quotations", href: "/quotations", icon: FileText },
+  { label: "Trash", href: "/trash", icon: Trash2 },
 ]
 
 export function AppLayout() {

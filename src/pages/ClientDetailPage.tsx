@@ -138,7 +138,7 @@ export function ClientDetailPage() {
         toast.success("Transaction deleted")
       } else {
         await apiDelete(`/api/clients/${client?.id}`, token)
-        toast.success("Client deleted")
+        toast.success("Client moved to trash")
         navigate("/clients")
         return
       }
@@ -179,6 +179,7 @@ export function ClientDetailPage() {
         </div>
         <div className="flex gap-2 shrink-0">
           <Button variant="outline" size="icon" onClick={() => { setClientForm(client); setEditClientDialogOpen(true) }}><Edit className="size-4" /></Button>
+          <Button variant="outline" size="icon" className="text-muted-foreground hover:text-destructive" onClick={() => { setDeleteId(client.id); setDeleteType("client") }}><Trash2 className="size-4" /></Button>
           <Button onClick={() => { setTxForm(defaultTxForm); setTxDialogOpen(true) }}><Plus className="size-4" />Add Transaction</Button>
         </div>
       </div>
@@ -397,14 +398,16 @@ export function ClientDetailPage() {
       <AlertDialog open={deleteId !== null} onOpenChange={(open) => { if (!open) { setDeleteId(null); setDeleteType(null) } }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete {deleteType === "transaction" ? "Transaction" : "Client"}?</AlertDialogTitle>
+            <AlertDialogTitle>{deleteType === "client" ? "Move Client to Trash?" : "Delete Transaction?"}</AlertDialogTitle>
             <AlertDialogDescription>
-              {deleteType === "transaction" ? "This transaction will be permanently deleted. This action cannot be undone." : "This client and all associated transactions will be deleted. This action cannot be undone."}
+              {deleteType === "transaction" ? "This transaction will be permanently deleted. This action cannot be undone." : "This client will be moved to trash. You can restore it from the Trash page."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Delete</AlertDialogAction>
+            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              {deleteType === "client" ? "Move to Trash" : "Delete"}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
