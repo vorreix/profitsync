@@ -17,10 +17,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "sonner"
-import { ArrowLeft, Plus, Trash2, TrendingUp, TrendingDown, DollarSign, Building2, Mail, Phone, FileText, ArrowUpRight, ArrowDownRight, CreditCard as Edit, Search } from "lucide-react"
+import { ArrowLeft, Plus, Trash2, TrendingUp, TrendingDown, DollarSign, Building2, Mail, Phone, FileText, ArrowUpRight, ArrowDownRight, Pencil, Search, Calendar } from "lucide-react"
 
 type NewTransaction = { type: "incoming" | "outgoing"; amount: string; description: string; category: string; date: string }
-type NewClient = { name: string; company: string; email: string; phone: string; status: "active" | "inactive" | "archived"; notes: string }
+type NewClient = { name: string; company: string; email: string; phone: string; status: "active" | "inactive" | "archived"; notes: string; onboard_date?: string | null }
 
 const defaultTxForm: NewTransaction = { type: "incoming", amount: "", description: "", category: "", date: new Date().toISOString().split("T")[0] }
 const CATEGORIES_IN = ["Payment", "Retainer", "Project Fee", "Consultation", "Other"]
@@ -174,11 +174,13 @@ export function ClientDetailPage() {
             {client.company && <span className="flex items-center gap-1.5 text-sm text-muted-foreground"><Building2 className="size-3.5" />{client.company}</span>}
             {client.email && <span className="flex items-center gap-1.5 text-sm text-muted-foreground"><Mail className="size-3.5" />{client.email}</span>}
             {client.phone && <span className="flex items-center gap-1.5 text-sm text-muted-foreground"><Phone className="size-3.5" />{client.phone}</span>}
+            {client.onboard_date && <span className="flex items-center gap-1.5 text-sm text-muted-foreground"><Calendar className="size-3.5" />Onboarded {formatDate(client.onboard_date)}</span>}
+            <span className="flex items-center gap-1.5 text-sm text-muted-foreground"><Calendar className="size-3.5" />Client since {formatDate(client.created_at)}</span>
           </div>
           {client.notes && <p className="text-sm text-muted-foreground mt-1.5 flex items-start gap-1.5"><FileText className="size-3.5 mt-0.5 shrink-0" />{client.notes}</p>}
         </div>
         <div className="flex gap-2 shrink-0">
-          <Button variant="outline" size="icon" onClick={() => { setClientForm(client); setEditClientDialogOpen(true) }}><Edit className="size-4" /></Button>
+          <Button variant="outline" size="icon" onClick={() => { setClientForm(client); setEditClientDialogOpen(true) }}><Pencil className="size-4" /></Button>
           <Button variant="outline" size="icon" className="text-muted-foreground hover:text-destructive" onClick={() => { setDeleteId(client.id); setDeleteType("client") }}><Trash2 className="size-4" /></Button>
           <Button onClick={() => { setTxForm(defaultTxForm); setTxDialogOpen(true) }}><Plus className="size-4" />Add Transaction</Button>
         </div>
@@ -265,7 +267,7 @@ export function ClientDetailPage() {
                         </p>
                       </div>
                       <div className="flex gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <Button variant="ghost" size="icon-sm" onClick={() => { setEditTxForm({ ...tx, amount: tx.amount.toString() }); setEditTxDialogOpen(true) }}><Edit className="size-3.5" /></Button>
+                        <Button variant="ghost" size="icon-sm" onClick={() => { setEditTxForm({ ...tx, amount: tx.amount.toString() }); setEditTxDialogOpen(true) }}><Pencil className="size-3.5" /></Button>
                         <Button variant="ghost" size="icon-sm" className="text-muted-foreground hover:text-destructive" onClick={() => { setDeleteId(tx.id); setDeleteType("transaction") }}><Trash2 className="size-3.5" /></Button>
                       </div>
                     </div>
@@ -384,6 +386,7 @@ export function ClientDetailPage() {
                   </SelectContent>
                 </Select>
               </div>
+              <div className="space-y-1.5"><Label htmlFor="client-onboard">Onboard Date</Label><Input id="client-onboard" type="date" value={clientForm.onboard_date ?? ""} onChange={(e) => setClientForm((f) => f ? { ...f, onboard_date: e.target.value || null } : null)} /></div>
               <div className="space-y-1.5"><Label htmlFor="client-notes">Notes</Label><Textarea id="client-notes" value={clientForm.notes} onChange={(e) => setClientForm((f) => f ? { ...f, notes: e.target.value } : null)} className="resize-none" rows={3} /></div>
             </div>
           )}

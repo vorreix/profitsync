@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { apiGet, apiPost, apiPatch, apiDelete } from "@/lib/api"
@@ -16,7 +16,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "sonner"
-import { Plus, Search, FileText, Building2, Mail, Phone, UserPlus, Trash2, CreditCard as Edit, ExternalLink } from "lucide-react"
+import { Plus, Search, FileText, Building2, Mail, Phone, UserPlus, Trash2, Pencil, ExternalLink, Calendar } from "lucide-react"
 
 type QuotationForm = {
   title: string
@@ -49,135 +49,14 @@ const STATUS_COLORS: Record<string, string> = {
 
 const ALL_STATUSES = ["draft", "sent", "accepted", "rejected"] as const
 
-export function QuotationsPage() {
-  const navigate = useNavigate()
-  const { getToken } = useAuth()
-  const { currency } = useCurrency()
-  const fmt = (n: number) =>
-    new Intl.NumberFormat("en-US", { style: "currency", currency, minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n)
-
-  const [quotations, setQuotations] = useState<Quotation[]>([])
-  const [clients, setClients] = useState<Client[]>([])
-  const [loading, setLoading] = useState(true)
-  const [search, setSearch] = useState("")
-  const [tab, setTab] = useState("all")
-  const [createOpen, setCreateOpen] = useState(false)
-  const [editTarget, setEditTarget] = useState<Quotation | null>(null)
-  const [deleteTarget, setDeleteTarget] = useState<Quotation | null>(null)
-  const [convertTarget, setConvertTarget] = useState<Quotation | null>(null)
-  const [form, setForm] = useState<QuotationForm>(defaultForm())
-  const [saving, setSaving] = useState(false)
-
-  const loadData = useCallback(async () => {
-    const token = await getToken()
-    if (!token) return
-    const [qs, cls] = await Promise.all([
-      apiGet<Quotation[]>("/api/quotations", token),
-      apiGet<Client[]>("/api/clients", token),
-    ])
-    setQuotations(qs)
-    setClients(cls)
-    setLoading(false)
-  }, [getToken])
-
-  useEffect(() => { loadData() }, [loadData])
-
-  const clientById = (id: string | null) => id ? clients.find((c) => c.id === id) : undefined
-
-  const filtered = quotations.filter((q) => {
-    const matchesTab = tab === "all" || q.status === tab
-    const s = search.toLowerCase()
-    const matchesSearch =
-      !s ||
-      q.title.toLowerCase().includes(s) ||
-      q.prospect_name.toLowerCase().includes(s) ||
-      q.company.toLowerCase().includes(s) ||
-      q.email.toLowerCase().includes(s)
-    return matchesTab && matchesSearch
-  })
-
-  async function handleCreate() {
-    if (!form.title.trim()) { toast.error("Title is required"); return }
-    if (!form.prospect_name.trim()) { toast.error("Prospect name is required"); return }
-    setSaving(true)
-    try {
-      const token = await getToken()
-      if (!token) throw new Error("Not authenticated")
-      await apiPost<Quotation>("/api/quotations", token, {
-        ...form,
-        amount: form.amount ? parseFloat(form.amount) : 0,
-      })
-      toast.success("Quotation created")
-      setCreateOpen(false)
-      setForm(defaultForm())
-      loadData()
-    } catch {
-      toast.error("Failed to create quotation")
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  async function handleEdit() {
-    if (!editTarget) return
-    if (!form.title.trim()) { toast.error("Title is required"); return }
-    if (!form.prospect_name.trim()) { toast.error("Prospect name is required"); return }
-    setSaving(true)
-    try {
-      const token = await getToken()
-      if (!token) throw new Error("Not authenticated")
-      await apiPatch<Quotation>(`/api/quotations/${editTarget.id}`, token, {
-        ...form,
-        amount: form.amount ? parseFloat(form.amount) : 0,
-      })
-      toast.success("Quotation updated")
-      setEditTarget(null)
-      loadData()
-    } catch {
-      toast.error("Failed to update quotation")
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  async function handleDelete() {
-    if (!deleteTarget) return
-    try {
-      const token = await getToken()
-      if (!token) throw new Error("Not authenticated")
-      await apiDelete(`/api/quotations/${deleteTarget.id}`, token)
-      toast.success("Quotation moved to trash")
-      setDeleteTarget(null)
-      loadData()
-    } catch {
-      toast.error("Failed to delete quotation")
-    }
-  }
-
-  async function handleConvert() {
-    if (!convertTarget) return
-    setSaving(true)
-    try {
-      const token = await getToken()
-      if (!token) throw new Error("Not authenticated")
-      const newClient = await apiPost<Client>(
-        `/api/quotations/${convertTarget.id}/convert`,
-        token,
-        {}
-      )
-      toast.success(`${newClient.name} added as client`)
-      setConvertTarget(null)
-      loadData()
-      navigate(`/clients/${newClient.id}`)
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : ""
-      toast.error(msg.includes("already converted") ? "Already converted to a client" : "Failed to convert")
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const QuotationFormFields = ({ f, onChange }: { f: QuotationForm; onChange: (p: Partial<QuotationForm>) => void }) => (
+function QuotationFormFields({
+  f,
+  onChange,
+}: {
+  f: QuotationForm
+  onChange: (p: Partial<QuotationForm>) => void
+}) {
+  return (
     <div className="space-y-4 py-2">
       <div className="space-y-1.5">
         <Label>Title *</Label>
@@ -224,6 +103,159 @@ export function QuotationsPage() {
       </div>
     </div>
   )
+}
+
+export function QuotationsPage() {
+  const navigate = useNavigate()
+  const { getToken } = useAuth()
+  const { currency } = useCurrency()
+  const fmt = (n: number) =>
+    new Intl.NumberFormat("en-US", { style: "currency", currency, minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n)
+
+  const [quotations, setQuotations] = useState<Quotation[]>([])
+  const [clients, setClients] = useState<Client[]>([])
+  const [total, setTotal] = useState(0)
+  const [page, setPage] = useState(1)
+  const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [search, setSearch] = useState("")
+  const [tab, setTab] = useState("all")
+  const [createOpen, setCreateOpen] = useState(false)
+  const [editTarget, setEditTarget] = useState<Quotation | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<Quotation | null>(null)
+  const [convertTarget, setConvertTarget] = useState<Quotation | null>(null)
+  const [form, setForm] = useState<QuotationForm>(defaultForm())
+  const [saving, setSaving] = useState(false)
+
+  const searchRef = useRef(search)
+  const tabRef = useRef(tab)
+  searchRef.current = search
+  tabRef.current = tab
+
+  async function fetchPage1() {
+    setLoading(true)
+    setPage(1)
+    const token = await getToken()
+    if (!token) return
+    const params = new URLSearchParams({ page: "1" })
+    if (searchRef.current.trim()) params.set("search", searchRef.current.trim())
+    if (tabRef.current !== "all") params.set("status", tabRef.current)
+    const data = await apiGet<{ data: Quotation[]; total: number }>(`/api/quotations?${params}`, token)
+    setQuotations(data.data)
+    setTotal(data.total)
+    setLoading(false)
+  }
+
+  async function handleLoadMore() {
+    setLoadingMore(true)
+    const nextPage = page + 1
+    const token = await getToken()
+    if (!token) { setLoadingMore(false); return }
+    const params = new URLSearchParams({ page: String(nextPage) })
+    if (searchRef.current.trim()) params.set("search", searchRef.current.trim())
+    if (tabRef.current !== "all") params.set("status", tabRef.current)
+    const data = await apiGet<{ data: Quotation[]; total: number }>(`/api/quotations?${params}`, token)
+    setQuotations((prev) => [...prev, ...data.data])
+    setTotal(data.total)
+    setPage(nextPage)
+    setLoadingMore(false)
+  }
+
+  useEffect(() => {
+    const t = setTimeout(fetchPage1, 300)
+    return () => clearTimeout(t)
+  }, [search, tab])
+
+  useEffect(() => {
+    async function loadClients() {
+      const token = await getToken()
+      if (!token) return
+      const data = await apiGet<Client[]>("/api/clients", token)
+      setClients(Array.isArray(data) ? data : (data as { data: Client[] }).data ?? [])
+    }
+    loadClients()
+  }, [])
+
+  const clientById = (id: string | null) => id ? clients.find((c) => c.id === id) : undefined
+
+  async function handleCreate() {
+    if (!form.title.trim()) { toast.error("Title is required"); return }
+    if (!form.prospect_name.trim()) { toast.error("Prospect name is required"); return }
+    setSaving(true)
+    try {
+      const token = await getToken()
+      if (!token) throw new Error("Not authenticated")
+      await apiPost<Quotation>("/api/quotations", token, {
+        ...form,
+        amount: form.amount ? parseFloat(form.amount) : 0,
+      })
+      toast.success("Quotation created")
+      setCreateOpen(false)
+      setForm(defaultForm())
+      fetchPage1()
+    } catch {
+      toast.error("Failed to create quotation")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleEdit() {
+    if (!editTarget) return
+    if (!form.title.trim()) { toast.error("Title is required"); return }
+    if (!form.prospect_name.trim()) { toast.error("Prospect name is required"); return }
+    setSaving(true)
+    try {
+      const token = await getToken()
+      if (!token) throw new Error("Not authenticated")
+      await apiPatch<Quotation>(`/api/quotations/${editTarget.id}`, token, {
+        ...form,
+        amount: form.amount ? parseFloat(form.amount) : 0,
+      })
+      toast.success("Quotation updated")
+      setEditTarget(null)
+      fetchPage1()
+    } catch {
+      toast.error("Failed to update quotation")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleDelete() {
+    if (!deleteTarget) return
+    try {
+      const token = await getToken()
+      if (!token) throw new Error("Not authenticated")
+      await apiDelete(`/api/quotations/${deleteTarget.id}`, token)
+      toast.success("Quotation moved to trash")
+      setDeleteTarget(null)
+      fetchPage1()
+    } catch {
+      toast.error("Failed to delete quotation")
+    }
+  }
+
+  async function handleConvert() {
+    if (!convertTarget) return
+    setSaving(true)
+    try {
+      const token = await getToken()
+      if (!token) throw new Error("Not authenticated")
+      const newClient = await apiPost<Client>(`/api/quotations/${convertTarget.id}/convert`, token, {})
+      toast.success(`${newClient.name} added as client`)
+      setConvertTarget(null)
+      fetchPage1()
+      navigate(`/clients/${newClient.id}`)
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : ""
+      toast.error(msg.includes("already converted") ? "Already converted to a client" : "Failed to convert")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const remaining = total - quotations.length
 
   return (
     <div className="p-6 space-y-6">
@@ -231,7 +263,11 @@ export function QuotationsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Quotations</h1>
-          {!loading && <p className="text-sm text-muted-foreground mt-1">{quotations.length} quotation{quotations.length !== 1 ? "s" : ""}</p>}
+          {!loading && (
+            <p className="text-sm text-muted-foreground mt-1">
+              {total} quotation{total !== 1 ? "s" : ""}
+            </p>
+          )}
         </div>
         <Button onClick={() => { setForm(defaultForm()); setCreateOpen(true) }}>
           <Plus className="size-4" />
@@ -263,9 +299,9 @@ export function QuotationsPage() {
       {/* List */}
       {loading ? (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {[1, 2, 3].map((i) => <Skeleton key={i} className="h-48 w-full rounded-xl" />)}
+          {[1, 2, 3].map((i) => <Skeleton key={i} className="h-52 w-full rounded-xl" />)}
         </div>
-      ) : filtered.length === 0 ? (
+      ) : quotations.length === 0 ? (
         <div className="py-20 text-center">
           <FileText className="size-12 mx-auto text-muted-foreground/50 mb-4" />
           <p className="text-muted-foreground font-medium">
@@ -279,97 +315,116 @@ export function QuotationsPage() {
           )}
         </div>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {filtered.map((q) => {
-            const linkedClient = clientById(q.linked_client_id)
-            const canConvert = !q.linked_client_id && (q.status === "draft" || q.status === "sent")
-            return (
-              <Card key={q.id} className="group">
-                <CardContent className="p-4 space-y-3">
-                  {/* Top row */}
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0 flex-1">
-                      <p className="font-semibold text-sm truncate">{q.title}</p>
-                      <p className="text-sm text-muted-foreground truncate">{q.prospect_name}</p>
+        <>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {quotations.map((q) => {
+              const linkedClient = clientById(q.linked_client_id)
+              const canConvert = !q.linked_client_id && (q.status === "draft" || q.status === "sent")
+              return (
+                <Card key={q.id} className="group">
+                  <CardContent className="p-4 space-y-3">
+                    {/* Top row */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="font-semibold text-sm truncate">{q.title}</p>
+                        <p className="text-sm text-muted-foreground truncate">{q.prospect_name}</p>
+                      </div>
+                      <span className={`text-xs font-medium px-2 py-0.5 rounded-full shrink-0 ${STATUS_COLORS[q.status] ?? ""}`}>
+                        {q.status.charAt(0).toUpperCase() + q.status.slice(1)}
+                      </span>
                     </div>
-                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full shrink-0 ${STATUS_COLORS[q.status] ?? ""}`}>
-                      {q.status.charAt(0).toUpperCase() + q.status.slice(1)}
-                    </span>
-                  </div>
 
-                  {/* Details */}
-                  <div className="space-y-1">
-                    {q.company && (
+                    {/* Details */}
+                    <div className="space-y-1">
+                      {q.company && (
+                        <div className="flex items-center gap-1.5">
+                          <Building2 className="size-3 text-muted-foreground shrink-0" />
+                          <p className="text-xs text-muted-foreground truncate">{q.company}</p>
+                        </div>
+                      )}
+                      {q.email && (
+                        <div className="flex items-center gap-1.5">
+                          <Mail className="size-3 text-muted-foreground shrink-0" />
+                          <p className="text-xs text-muted-foreground truncate">{q.email}</p>
+                        </div>
+                      )}
+                      {q.phone && (
+                        <div className="flex items-center gap-1.5">
+                          <Phone className="size-3 text-muted-foreground shrink-0" />
+                          <p className="text-xs text-muted-foreground truncate">{q.phone}</p>
+                        </div>
+                      )}
                       <div className="flex items-center gap-1.5">
-                        <Building2 className="size-3 text-muted-foreground shrink-0" />
-                        <p className="text-xs text-muted-foreground truncate">{q.company}</p>
+                        <Calendar className="size-3 text-muted-foreground shrink-0" />
+                        <p className="text-xs text-muted-foreground">
+                          {new Date(q.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                        </p>
                       </div>
-                    )}
-                    {q.email && (
-                      <div className="flex items-center gap-1.5">
-                        <Mail className="size-3 text-muted-foreground shrink-0" />
-                        <p className="text-xs text-muted-foreground truncate">{q.email}</p>
-                      </div>
-                    )}
-                    {q.phone && (
-                      <div className="flex items-center gap-1.5">
-                        <Phone className="size-3 text-muted-foreground shrink-0" />
-                        <p className="text-xs text-muted-foreground truncate">{q.phone}</p>
-                      </div>
-                    )}
-                  </div>
+                    </div>
 
-                  {/* Amount + linked client */}
-                  <div className="flex items-center justify-between pt-1 border-t">
-                    <p className="text-base font-bold">{fmt(Number(q.amount))}</p>
-                    {linkedClient ? (
-                      <button
-                        className="flex items-center gap-1 text-xs text-primary hover:underline"
-                        onClick={() => navigate(`/clients/${linkedClient.id}`)}
-                      >
-                        <ExternalLink className="size-3" />
-                        {linkedClient.name}
-                      </button>
-                    ) : q.linked_client_id ? (
-                      <Badge variant="outline" className="text-xs">Converted</Badge>
-                    ) : null}
-                  </div>
+                    {/* Amount + linked client */}
+                    <div className="flex items-center justify-between pt-1 border-t">
+                      <p className="text-base font-bold">{fmt(Number(q.amount))}</p>
+                      {linkedClient ? (
+                        <button
+                          className="flex items-center gap-1 text-xs text-primary hover:underline"
+                          onClick={() => navigate(`/clients/${linkedClient.id}`)}
+                        >
+                          <ExternalLink className="size-3" />
+                          {linkedClient.name}
+                        </button>
+                      ) : q.linked_client_id ? (
+                        <Badge variant="outline" className="text-xs">Converted</Badge>
+                      ) : null}
+                    </div>
 
-                  {/* Actions */}
-                  <div className="flex gap-2 pt-1">
-                    {canConvert && (
+                    {/* Actions */}
+                    <div className="flex gap-2 pt-1">
+                      {canConvert && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="flex-1 text-xs"
+                          onClick={() => setConvertTarget(q)}
+                        >
+                          <UserPlus className="size-3" />
+                          Convert to Client
+                        </Button>
+                      )}
                       <Button
                         size="sm"
-                        variant="outline"
-                        className="flex-1 text-xs"
-                        onClick={() => setConvertTarget(q)}
+                        variant="ghost"
+                        className="size-8 p-0 shrink-0"
+                        onClick={() => {
+                          setForm({ title: q.title, prospect_name: q.prospect_name, company: q.company, email: q.email, phone: q.phone, amount: q.amount, status: q.status, notes: q.notes })
+                          setEditTarget(q)
+                        }}
                       >
-                        <UserPlus className="size-3" />
-                        Convert to Client
+                        <Pencil className="size-3.5" />
                       </Button>
-                    )}
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="size-8 p-0 shrink-0"
-                      onClick={() => { setForm({ title: q.title, prospect_name: q.prospect_name, company: q.company, email: q.email, phone: q.phone, amount: q.amount, status: q.status, notes: q.notes }); setEditTarget(q) }}
-                    >
-                      <Edit className="size-3.5" />
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="size-8 p-0 shrink-0 text-muted-foreground hover:text-destructive"
-                      onClick={() => setDeleteTarget(q)}
-                    >
-                      <Trash2 className="size-3.5" />
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            )
-          })}
-        </div>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="size-8 p-0 shrink-0 text-muted-foreground hover:text-destructive"
+                        onClick={() => setDeleteTarget(q)}
+                      >
+                        <Trash2 className="size-3.5" />
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              )
+            })}
+          </div>
+
+          {remaining > 0 && (
+            <div className="flex justify-center pt-2">
+              <Button variant="outline" onClick={handleLoadMore} disabled={loadingMore}>
+                {loadingMore ? "Loading..." : `Load More (${remaining} remaining)`}
+              </Button>
+            </div>
+          )}
+        </>
       )}
 
       {/* Create Dialog */}

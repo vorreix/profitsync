@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, numeric, date, timestamp } from "drizzle-orm/pg-core"
+import { pgTable, uuid, text, numeric, date, timestamp, integer } from "drizzle-orm/pg-core"
 
 export const clients = pgTable("clients", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -9,6 +9,7 @@ export const clients = pgTable("clients", {
   phone: text("phone").default(""),
   status: text("status").default("active"),
   notes: text("notes").default(""),
+  onboardDate: date("onboard_date"),
   deletedAt: timestamp("deleted_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -43,6 +44,17 @@ export const quotations = pgTable("quotations", {
   deletedAt: timestamp("deleted_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+})
+
+export const transactionAttachments = pgTable("transaction_attachments", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  transactionId: uuid("transaction_id").notNull().references(() => transactions.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull(),
+  fileName: text("file_name").notNull(),
+  fileType: text("file_type").notNull(),
+  fileSize: integer("file_size").notNull(),
+  fileData: text("file_data").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
 })
 
 export const userProfiles = pgTable("user_profiles", {
