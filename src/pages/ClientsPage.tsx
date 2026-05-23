@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { supabase, type Client, type Transaction } from "@/lib/supabase"
+import { useAuth } from "@clerk/clerk-react"
+import { apiGet, apiPost } from "@/lib/api"
+import type { Client, Transaction } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -60,6 +62,7 @@ function formatCurrency(amount: number) {
 
 export function ClientsPage() {
   const navigate = useNavigate()
+  const { getToken } = useAuth()
   const [clientsWithStats, setClientsWithStats] = useState<ClientWithStats[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
@@ -68,13 +71,12 @@ export function ClientsPage() {
   const [saving, setSaving] = useState(false)
 
   async function loadClients() {
-    const [clientsRes, txRes] = await Promise.all([
-      supabase.from("clients").select("*").order("created_at", { ascending: false }),
-      supabase.from("transactions").select("*"),
+    const token = await getToken()
+    if (!token) return
+    const [clients, transactions] = await Promise.all([
+      apiGet<Client[]>("/api/clients", token),
+      apiGet<Transaction[]>("/api/transactions", token),
     ])
-
-    const clients: Client[] = clientsRes.data ?? []
-    const transactions: Transaction[] = txRes.data ?? []
 
     const withStats: ClientWithStats[] = clients.map((c) => {
       const clientTx = transactions.filter((t) => t.client_id === c.id)
@@ -108,16 +110,19 @@ export function ClientsPage() {
       return
     }
     setSaving(true)
-    const { error } = await supabase.from("clients").insert([form])
-    setSaving(false)
-    if (error) {
+    try {
+      const token = await getToken()
+      if (!token) throw new Error("Not authenticated")
+      await apiPost<Client>("/api/clients", token, form)
+      toast.success("Client created")
+      setDialogOpen(false)
+      setForm(defaultForm)
+      loadClients()
+    } catch {
       toast.error("Failed to create client")
-      return
+    } finally {
+      setSaving(false)
     }
-    toast.success("Client created")
-    setDialogOpen(false)
-    setForm(defaultForm)
-    loadClients()
   }
 
   return (
