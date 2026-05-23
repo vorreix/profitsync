@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { verifyToken } from "@clerk/backend"
 import { db, serialize } from "../src/lib/db"
 import { quotations } from "../src/lib/db/schema"
-import { and, eq, desc, isNull } from "drizzle-orm"
+import { and, eq, desc, isNull, ilike, or, count } from "drizzle-orm"
 
 const VALID_STATUSES = ["draft", "sent", "accepted", "rejected"]
 
@@ -17,15 +17,61 @@ async function getAuth(req: VercelRequest): Promise<string | null> {
   }
 }
 
+const PAGE_SIZE = 20
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const userId = await getAuth(req)
   if (!userId) return res.status(401).json({ error: "Unauthorized" })
 
   if (req.method === "GET") {
+    const { search, status, page } = req.query as {
+      search?: string; status?: string; page?: string
+    }
+
+    const searchFilter = search?.trim()
+      ? or(
+          ilike(quotations.title, `%${search.trim()}%`),
+          ilike(quotations.prospectName, `%${search.trim()}%`),
+          ilike(quotations.company, `%${search.trim()}%`),
+          ilike(quotations.email, `%${search.trim()}%`),
+        )
+      : undefined
+
+    const statusFilter = status && VALID_STATUSES.includes(status)
+      ? eq(quotations.status, status)
+      : undefined
+
+    const whereClause = and(
+      eq(quotations.userId, userId),
+      isNull(quotations.deletedAt),
+      searchFilter,
+      statusFilter,
+    )
+
+    if (page !== undefined) {
+      const pageNum = Math.max(1, parseInt(page, 10) || 1)
+      const offset = (pageNum - 1) * PAGE_SIZE
+
+      const [{ total }] = await db
+        .select({ total: count() })
+        .from(quotations)
+        .where(whereClause)
+
+      const rows = await db
+        .select()
+        .from(quotations)
+        .where(whereClause)
+        .orderBy(desc(quotations.createdAt))
+        .limit(PAGE_SIZE)
+        .offset(offset)
+
+      return res.json({ data: rows.map(serialize), total })
+    }
+
     const rows = await db
       .select()
       .from(quotations)
-      .where(and(eq(quotations.userId, userId), isNull(quotations.deletedAt)))
+      .where(whereClause)
       .orderBy(desc(quotations.createdAt))
     return res.json(rows.map(serialize))
   }

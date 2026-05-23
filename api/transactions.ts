@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { verifyToken } from "@clerk/backend"
 import { db, serialize } from "../src/lib/db"
 import { clients, transactions } from "../src/lib/db/schema"
-import { and, eq, desc, isNull } from "drizzle-orm"
+import { and, eq, desc, isNull, ilike, or, count } from "drizzle-orm"
 
 async function getAuth(req: VercelRequest): Promise<string | null> {
   const token = req.headers.authorization?.replace("Bearer ", "")
@@ -15,15 +15,31 @@ async function getAuth(req: VercelRequest): Promise<string | null> {
   }
 }
 
+const PAGE_SIZE = 20
+
+const txFields = {
+  id: transactions.id,
+  clientId: transactions.clientId,
+  clientName: clients.name,
+  type: transactions.type,
+  amount: transactions.amount,
+  description: transactions.description,
+  category: transactions.category,
+  date: transactions.date,
+  createdAt: transactions.createdAt,
+  updatedAt: transactions.updatedAt,
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const userId = await getAuth(req)
   if (!userId) return res.status(401).json({ error: "Unauthorized" })
 
   if (req.method === "GET") {
-    const { clientId } = req.query as { clientId?: string }
+    const { clientId, search, type, page } = req.query as {
+      clientId?: string; search?: string; type?: string; page?: string
+    }
 
     if (clientId) {
-      // Verify the client belongs to this user
       const [client] = await db
         .select({ id: clients.id })
         .from(clients)
@@ -31,18 +47,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!client) return res.status(403).json({ error: "Forbidden" })
 
       const rows = await db
-        .select({
-          id: transactions.id,
-          clientId: transactions.clientId,
-          clientName: clients.name,
-          type: transactions.type,
-          amount: transactions.amount,
-          description: transactions.description,
-          category: transactions.category,
-          date: transactions.date,
-          createdAt: transactions.createdAt,
-          updatedAt: transactions.updatedAt,
-        })
+        .select(txFields)
         .from(transactions)
         .innerJoin(clients, eq(transactions.clientId, clients.id))
         .where(eq(transactions.clientId, clientId))
@@ -50,23 +55,52 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.json(rows.map(serialize))
     }
 
-    // No clientId — fetch all transactions for this user's clients only
+    const searchFilter = search?.trim()
+      ? or(
+          ilike(transactions.description, `%${search.trim()}%`),
+          ilike(transactions.category, `%${search.trim()}%`),
+          ilike(clients.name, `%${search.trim()}%`),
+        )
+      : undefined
+
+    const typeFilter = type && ["incoming", "outgoing"].includes(type)
+      ? eq(transactions.type, type)
+      : undefined
+
+    const whereClause = and(
+      eq(clients.userId, userId),
+      isNull(clients.deletedAt),
+      searchFilter,
+      typeFilter,
+    )
+
+    if (page !== undefined) {
+      const pageNum = Math.max(1, parseInt(page, 10) || 1)
+      const offset = (pageNum - 1) * PAGE_SIZE
+
+      const [{ total }] = await db
+        .select({ total: count() })
+        .from(transactions)
+        .innerJoin(clients, eq(transactions.clientId, clients.id))
+        .where(whereClause)
+
+      const rows = await db
+        .select(txFields)
+        .from(transactions)
+        .innerJoin(clients, eq(transactions.clientId, clients.id))
+        .where(whereClause)
+        .orderBy(desc(transactions.date))
+        .limit(PAGE_SIZE)
+        .offset(offset)
+
+      return res.json({ data: rows.map(serialize), total })
+    }
+
     const rows = await db
-      .select({
-        id: transactions.id,
-        clientId: transactions.clientId,
-        clientName: clients.name,
-        type: transactions.type,
-        amount: transactions.amount,
-        description: transactions.description,
-        category: transactions.category,
-        date: transactions.date,
-        createdAt: transactions.createdAt,
-        updatedAt: transactions.updatedAt,
-      })
+      .select(txFields)
       .from(transactions)
       .innerJoin(clients, eq(transactions.clientId, clients.id))
-      .where(and(eq(clients.userId, userId), isNull(clients.deletedAt)))
+      .where(whereClause)
       .orderBy(desc(transactions.date))
     return res.json(rows.map(serialize))
   }

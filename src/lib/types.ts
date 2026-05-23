@@ -7,9 +7,22 @@ export type Client = {
   phone: string
   status: "active" | "inactive" | "archived"
   notes: string
+  onboard_date?: string | null
   deleted_at: string | null
   created_at: string
   updated_at: string
+  total_incoming?: number
+  total_outgoing?: number
+}
+
+export type TransactionAttachment = {
+  id: string
+  transaction_id: string
+  user_id: string
+  file_name: string
+  file_type: string
+  file_size: number
+  created_at: string
 }
 
 export type Transaction = {

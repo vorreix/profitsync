@@ -32,9 +32,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   if (req.method === "PATCH") {
-    const { name, company, email, phone, status, notes } = req.body as {
+    const { name, company, email, phone, status, notes, onboard_date } = req.body as {
       name?: string; company?: string; email?: string
-      phone?: string; status?: string; notes?: string
+      phone?: string; status?: string; notes?: string; onboard_date?: string | null
     }
     if (status !== undefined && !VALID_STATUSES.includes(status)) {
       return res.status(400).json({ error: "status must be active, inactive, or archived" })
@@ -48,6 +48,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ...(phone !== undefined ? { phone } : {}),
         ...(status !== undefined ? { status } : {}),
         ...(notes !== undefined ? { notes } : {}),
+        ...(onboard_date !== undefined ? { onboardDate: onboard_date } : {}),
         updatedAt: new Date(),
       })
       .where(and(eq(clients.id, id), eq(clients.userId, userId), isNull(clients.deletedAt)))
