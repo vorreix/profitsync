@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { supabase, type Client, type Transaction } from "@/lib/supabase"
+import { useAuth } from "@clerk/clerk-react"
+import { apiGet } from "@/lib/api"
+import type { Client, Transaction } from "@/lib/types"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -56,6 +58,7 @@ function formatCurrency(amount: number) {
 
 export function Dashboard() {
   const navigate = useNavigate()
+  const { getToken } = useAuth()
   const [clients, setClients] = useState<ClientWithStats[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedClientIds, setSelectedClientIds] = useState<Set<string>>(new Set())
@@ -64,13 +67,12 @@ export function Dashboard() {
 
   useEffect(() => {
     async function load() {
-      const [clientsRes, txRes] = await Promise.all([
-        supabase.from("clients").select("*").order("created_at", { ascending: false }),
-        supabase.from("transactions").select("*"),
+      const token = await getToken()
+      if (!token) return
+      const [clientList, txList] = await Promise.all([
+        apiGet<Client[]>("/api/clients", token),
+        apiGet<Transaction[]>("/api/transactions", token),
       ])
-
-      const clientList: Client[] = clientsRes.data ?? []
-      const txList: Transaction[] = txRes.data ?? []
 
       let grandIncoming = 0
       let grandOutgoing = 0
