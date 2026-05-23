@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react"
+import { useEffect } from "react"
 import { Outlet, NavLink, useLocation, useNavigate } from "react-router-dom"
-import { supabase } from "@/lib/supabase"
+import { useAuth, useUser, useClerk } from "@clerk/clerk-react"
 import {
   Sidebar,
   SidebarContent,
@@ -36,22 +36,22 @@ const navItems = [
 export function AppLayout() {
   const location = useLocation()
   const navigate = useNavigate()
-  const [userEmail, setUserEmail] = useState<string | null>(null)
+  const { isLoaded, isSignedIn } = useAuth()
+  const { user } = useUser()
+  const { signOut } = useClerk()
 
   useEffect(() => {
-    const getUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) {
-        navigate("/login")
-      } else {
-        setUserEmail(user.email || null)
-      }
+    if (isLoaded && !isSignedIn) {
+      navigate("/login")
     }
-    getUser()
-  }, [navigate])
+  }, [isLoaded, isSignedIn, navigate])
+
+  if (!isLoaded || !isSignedIn) return null
+
+  const userEmail = user?.primaryEmailAddress?.emailAddress ?? null
 
   const handleLogout = async () => {
-    await supabase.auth.signOut()
+    await signOut()
     navigate("/login")
   }
 
