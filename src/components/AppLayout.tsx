@@ -30,9 +30,12 @@ import { CurrencyProvider } from "@/lib/currency-context"
 import { OrgProvider, useOrg } from "@/lib/org-context"
 import { AdminProvider, useAdmin } from "@/lib/admin-context"
 import { OrgSwitcher } from "@/components/OrgSwitcher"
+import { MobileAppLayout } from "@/components/MobileAppLayout"
+import { useIsMobile } from "@/hooks/use-mobile"
 import {
   LayoutDashboard,
   Users,
+  UserPlus,
   TrendingUp,
   User,
   LogOut,
@@ -53,17 +56,24 @@ const quickActions = [
   { label: "Create Quotation", icon: FileText, href: "/quotations?new=1" },
 ]
 
-const navItems = [
-  { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { label: "Clients", href: "/clients", icon: Users },
-  { label: "Transactions", href: "/transactions", icon: ArrowLeftRight },
-  { label: "Quotations", href: "/quotations", icon: FileText },
-  { label: "Organizations", href: "/organizations", icon: Building2 },
-  { label: "Subscription", href: "/subscription", icon: CreditCard },
-  { label: "Trash", href: "/trash", icon: Trash2 },
-]
+type NavItem = { label: string; href: string; icon: typeof LayoutDashboard }
+
+function buildNavItems(activeOrgId: string | undefined): NavItem[] {
+  const usersHref = activeOrgId ? `/organizations/${activeOrgId}/members` : "/organizations"
+  return [
+    { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+    { label: "Clients", href: "/clients", icon: Users },
+    { label: "Transactions", href: "/transactions", icon: ArrowLeftRight },
+    { label: "Quotations", href: "/quotations", icon: FileText },
+    { label: "Users", href: usersHref, icon: UserPlus },
+    { label: "Organizations", href: "/organizations", icon: Building2 },
+    { label: "Subscription", href: "/subscription", icon: CreditCard },
+    { label: "Trash", href: "/trash", icon: Trash2 },
+  ]
+}
 
 function AppLayoutInner() {
+  const isMobile = useIsMobile()
   const location = useLocation()
   const navigate = useNavigate()
   const { user } = useUser()
@@ -71,6 +81,18 @@ function AppLayoutInner() {
   const { activeOrg } = useOrg()
   const { isAdmin } = useAdmin()
   const [fabOpen, setFabOpen] = useState(false)
+
+  if (isMobile) {
+    return <MobileAppLayout />
+  }
+
+  const navItems = buildNavItems(activeOrg?.id)
+  // Pick the most specific (longest) matching item so /organizations/:id/members
+  // highlights "Users" rather than its "Organizations" ancestor.
+  const activeNavHref =
+    [...navItems]
+      .sort((a, b) => b.href.length - a.href.length)
+      .find((n) => location.pathname === n.href || location.pathname.startsWith(n.href + "/"))?.href ?? null
 
   const userEmail = user?.primaryEmailAddress?.emailAddress ?? null
 
@@ -101,10 +123,10 @@ function AppLayoutInner() {
             <SidebarGroupContent>
               <SidebarMenu>
                 {navItems.map((item) => (
-                  <SidebarMenuItem key={item.href}>
+                  <SidebarMenuItem key={item.label}>
                     <SidebarMenuButton
                       asChild
-                      isActive={location.pathname === item.href || location.pathname.startsWith(item.href + "/")}
+                      isActive={item.href === activeNavHref}
                       tooltip={item.label}
                     >
                       <NavLink to={item.href}>
@@ -179,7 +201,7 @@ function AppLayoutInner() {
           <SidebarTrigger className="-ml-1" />
           <Separator orientation="vertical" className="h-4" />
           <span className="text-sm font-medium text-muted-foreground">
-            {navItems.find((n) => location.pathname === n.href || location.pathname.startsWith(n.href + "/"))?.label ?? ""}
+            {navItems.find((n) => n.href === activeNavHref)?.label ?? ""}
           </span>
           {activeOrg && (
             <span className="ml-auto inline-flex items-center gap-1.5 text-xs text-muted-foreground">

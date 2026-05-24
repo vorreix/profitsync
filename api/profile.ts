@@ -1,37 +1,14 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { createClerkClient } from "@clerk/backend"
-import { and, eq } from "drizzle-orm"
+import { eq } from "drizzle-orm"
 import { CURRENCY_LIST } from "../src/lib/currencies"
 import { db, serialize } from "../src/lib/db"
-import {
-  organizationMembers,
-  organizations,
-  userProfiles,
-} from "../src/lib/db/schema"
-import { getUserId } from "./_lib/auth"
+import { userProfiles } from "../src/lib/db/schema"
+import { ensurePersonalOrg, getUserId } from "./_lib/auth"
 
 const VALID_CURRENCIES = new Set(CURRENCY_LIST.map((c) => c.code))
 
 const clerk = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY! })
-
-async function ensurePersonalOrgForUser(userId: string): Promise<string> {
-  const [existing] = await db
-    .select()
-    .from(organizations)
-    .where(and(eq(organizations.ownerUserId, userId), eq(organizations.isPersonal, true)))
-  if (existing) return existing.id
-
-  const [created] = await db
-    .insert(organizations)
-    .values({ ownerUserId: userId, name: "Personal", slug: "personal", isPersonal: true })
-    .returning()
-  await db.insert(organizationMembers).values({
-    organizationId: created.id,
-    userId,
-    role: "owner",
-  })
-  return created.id
-}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const userId = await getUserId(req)
@@ -46,22 +23,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!profile) {
       const clerkUser = await clerk.users.getUser(userId)
       const email = clerkUser.emailAddresses[0]?.emailAddress ?? ""
-      const personalOrgId = await ensurePersonalOrgForUser(userId)
+      // Insert profile first so ensurePersonalOrg can read the (still default) currency.
       const [created] = await db
         .insert(userProfiles)
-        .values({
-          id: userId,
-          email,
-          fullName: clerkUser.fullName ?? "",
-          currentOrganizationId: personalOrgId,
-        })
+        .values({ id: userId, email, fullName: clerkUser.fullName ?? "" })
         .returning()
-      return res.json(serialize(created))
+      const personalOrgId = await ensurePersonalOrg(userId)
+      const [updated] = await db
+        .update(userProfiles)
+        .set({ currentOrganizationId: personalOrgId, updatedAt: new Date() })
+        .where(eq(userProfiles.id, userId))
+        .returning()
+      return res.json(serialize(updated ?? created))
     }
 
-    // Ensure profile has a current org pointer (covers older accounts)
     if (!profile.currentOrganizationId) {
-      const personalOrgId = await ensurePersonalOrgForUser(userId)
+      const personalOrgId = await ensurePersonalOrg(userId)
       const [updated] = await db
         .update(userProfiles)
         .set({ currentOrganizationId: personalOrgId, updatedAt: new Date() })
