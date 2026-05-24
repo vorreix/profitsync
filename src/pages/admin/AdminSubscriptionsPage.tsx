@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react"
+import { useSearchParams } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { toast } from "sonner"
 import { apiGet, apiPatch } from "@/lib/api"
@@ -48,13 +49,31 @@ const CYCLE_OPTIONS = ["", "monthly", "yearly"]
 
 export function AdminSubscriptionsPage() {
   const { getToken } = useAuth()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [data, setData] = useState<AdminSub[]>([])
   const [total, setTotal] = useState(0)
   const [pageSize, setPageSize] = useState(30)
-  const [page, setPage] = useState(1)
-  const [search, setSearch] = useState("")
-  const [plan, setPlan] = useState<"all" | "free" | "premium">("all")
-  const [status, setStatus] = useState<"all" | "active" | "past_due" | "cancelled" | "trialing">("all")
+  const [page, setPage] = useState(Math.max(1, parseInt(searchParams.get("page") ?? "1", 10) || 1))
+  const [search, setSearch] = useState(searchParams.get("search") ?? "")
+  const initialPlan = searchParams.get("plan")
+  const [plan, setPlan] = useState<"all" | "free" | "premium">(
+    initialPlan === "free" || initialPlan === "premium" ? initialPlan : "all",
+  )
+  const initialStatus = searchParams.get("status")
+  const [status, setStatus] = useState<"all" | "active" | "past_due" | "cancelled" | "trialing">(
+    initialStatus === "active" || initialStatus === "past_due" || initialStatus === "cancelled" || initialStatus === "trialing"
+      ? initialStatus
+      : "all",
+  )
+
+  useEffect(() => {
+    const next = new URLSearchParams()
+    if (search.trim()) next.set("search", search.trim())
+    if (plan !== "all") next.set("plan", plan)
+    if (status !== "all") next.set("status", status)
+    if (page > 1) next.set("page", String(page))
+    setSearchParams(next, { replace: true })
+  }, [search, plan, status, page, setSearchParams])
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState<AdminSub | null>(null)
   const [form, setForm] = useState<{ plan_key: string; status: string; billing_cycle: string; current_period_end: string }>({ plan_key: "", status: "", billing_cycle: "", current_period_end: "" })

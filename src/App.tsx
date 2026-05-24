@@ -21,6 +21,7 @@ import { AdminLayout } from "@/pages/admin/AdminLayout"
 import { AdminOverviewPage } from "@/pages/admin/AdminOverviewPage"
 import { AdminUsersPage } from "@/pages/admin/AdminUsersPage"
 import { AdminOrgsPage } from "@/pages/admin/AdminOrgsPage"
+import { AdminOrgDetailPage } from "@/pages/admin/AdminOrgDetailPage"
 import { AdminSubscriptionsPage } from "@/pages/admin/AdminSubscriptionsPage"
 import { AdminInvoicesPage } from "@/pages/admin/AdminInvoicesPage"
 import { AdminPlansPage } from "@/pages/admin/AdminPlansPage"
@@ -48,6 +49,7 @@ export function App() {
           <Route index element={<AdminOverviewPage />} />
           <Route path="users" element={<AdminUsersPage />} />
           <Route path="organizations" element={<AdminOrgsPage />} />
+          <Route path="organizations/:id" element={<AdminOrgDetailPage />} />
           <Route path="subscriptions" element={<AdminSubscriptionsPage />} />
           <Route path="invoices" element={<AdminInvoicesPage />} />
           <Route path="plans" element={<AdminPlansPage />} />

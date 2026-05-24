@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react"
+import { useSearchParams } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { toast } from "sonner"
 import { apiGet, apiPatch, apiPost } from "@/lib/api"
@@ -48,12 +49,24 @@ const STATUS_OPTIONS = ["draft", "open", "paid", "uncollectible", "void", "refun
 
 export function AdminInvoicesPage() {
   const { getToken } = useAuth()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [data, setData] = useState<AdminInvoice[]>([])
   const [total, setTotal] = useState(0)
   const [pageSize, setPageSize] = useState(30)
-  const [page, setPage] = useState(1)
-  const [search, setSearch] = useState("")
-  const [status, setStatus] = useState<"all" | (typeof STATUS_OPTIONS)[number]>("all")
+  const [page, setPage] = useState(Math.max(1, parseInt(searchParams.get("page") ?? "1", 10) || 1))
+  const [search, setSearch] = useState(searchParams.get("search") ?? "")
+  const initialStatus = searchParams.get("status")
+  const [status, setStatus] = useState<"all" | (typeof STATUS_OPTIONS)[number]>(
+    initialStatus && STATUS_OPTIONS.includes(initialStatus) ? (initialStatus as (typeof STATUS_OPTIONS)[number]) : "all",
+  )
+
+  useEffect(() => {
+    const next = new URLSearchParams()
+    if (search.trim()) next.set("search", search.trim())
+    if (status !== "all") next.set("status", status)
+    if (page > 1) next.set("page", String(page))
+    setSearchParams(next, { replace: true })
+  }, [search, status, page, setSearchParams])
   const [loading, setLoading] = useState(true)
 
   const [editing, setEditing] = useState<AdminInvoice | null>(null)

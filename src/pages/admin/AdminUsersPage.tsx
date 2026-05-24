@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useState } from "react"
+import { useNavigate, useSearchParams } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { toast } from "sonner"
-import { apiGet, apiPatch } from "@/lib/api"
+import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Label } from "@/components/ui/label"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   Dialog,
@@ -20,10 +22,13 @@ import {
   ChevronRight,
   Crown,
   Loader as Loader2,
+  Mail,
   Search,
   ShieldAlert,
   ShieldCheck,
+  Trash2,
   User,
+  UserPlus,
 } from "lucide-react"
 
 type AdminUser = {
@@ -51,19 +56,52 @@ type OrgRow = {
   plan_status: string | null
 }
 
+type OrgPick = { id: string; name: string }
+
+const ROLE_OPTIONS = ["admin", "editor", "viewer"]
+type BannedFilter = "all" | "true" | "false"
+
 export function AdminUsersPage() {
   const { getToken } = useAuth()
+  const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
+
   const [data, setData] = useState<AdminUser[]>([])
   const [total, setTotal] = useState(0)
   const [pageSize, setPageSize] = useState(30)
-  const [page, setPage] = useState(1)
-  const [search, setSearch] = useState("")
-  const [bannedFilter, setBannedFilter] = useState<"all" | "true" | "false">("all")
+  const [search, setSearch] = useState(searchParams.get("search") ?? "")
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState<string | null>(null)
 
+  const page = Math.max(1, parseInt(searchParams.get("page") ?? "1", 10) || 1)
+  const bannedFilter = ((): BannedFilter => {
+    const v = searchParams.get("banned")
+    if (v === "true" || v === "false") return v
+    return "all"
+  })()
+
   const [detail, setDetail] = useState<{ user: AdminUser; orgs: OrgRow[] } | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
+
+  const [inviteOpen, setInviteOpen] = useState(false)
+  const [inviteForm, setInviteForm] = useState({ organization_id: "", email: "", role: "editor" })
+  const [inviting, setInviting] = useState(false)
+  const [orgs, setOrgs] = useState<OrgPick[]>([])
+
+  const [deleteTarget, setDeleteTarget] = useState<AdminUser | null>(null)
+  const [deleting, setDeleting] = useState(false)
+
+  const updateParams = useCallback(
+    (patch: Record<string, string | null>) => {
+      const next = new URLSearchParams(searchParams)
+      for (const [k, v] of Object.entries(patch)) {
+        if (v === null || v === "") next.delete(k)
+        else next.set(k, v)
+      }
+      setSearchParams(next, { replace: true })
+    },
+    [searchParams, setSearchParams],
+  )
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -121,13 +159,72 @@ export function AdminUsersPage() {
     }
   }
 
+  const openInvite = async () => {
+    setInviteOpen(true)
+    try {
+      const token = await getToken()
+      if (!token) return
+      const res = await apiGet<{ data: Array<OrgPick & Record<string, unknown>> }>(`/api/admin/organizations?page=1`, token)
+      setOrgs(res.data.map((o) => ({ id: o.id, name: o.name })))
+    } catch {
+      toast.error("Failed to load organizations")
+    }
+  }
+
+  const handleInvite = async () => {
+    if (!inviteForm.organization_id || !inviteForm.email.trim()) {
+      toast.error("Pick an organization and enter an email")
+      return
+    }
+    setInviting(true)
+    try {
+      const token = await getToken()
+      if (!token) return
+      await apiPost("/api/admin/invitations", token, {
+        organization_id: inviteForm.organization_id,
+        email: inviteForm.email.trim(),
+        role: inviteForm.role,
+      })
+      toast.success("Invitation sent")
+      setInviteOpen(false)
+      setInviteForm({ organization_id: "", email: "", role: "editor" })
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed")
+    } finally {
+      setInviting(false)
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return
+    setDeleting(true)
+    try {
+      const token = await getToken()
+      if (!token) return
+      await apiDelete("/api/admin/users", token, { user_id: deleteTarget.id })
+      toast.success("User deleted")
+      setDeleteTarget(null)
+      setDetail(null)
+      await load()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed")
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   const totalPages = Math.max(1, Math.ceil(total / pageSize))
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Users</h1>
-        <p className="text-sm text-muted-foreground mt-1">All accounts in the platform.</p>
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Users</h1>
+          <p className="text-sm text-muted-foreground mt-1">All accounts in the platform.</p>
+        </div>
+        <Button onClick={openInvite}>
+          <UserPlus className="size-3.5 mr-1.5" /> Invite user
+        </Button>
       </div>
 
       <Card className="p-4 space-y-4">
@@ -139,12 +236,15 @@ export function AdminUsersPage() {
               className="pl-8"
               value={search}
               onChange={(e) => {
-                setPage(1)
+                updateParams({ page: null, search: e.target.value || null })
                 setSearch(e.target.value)
               }}
             />
           </div>
-          <Tabs value={bannedFilter} onValueChange={(v) => { setPage(1); setBannedFilter(v as typeof bannedFilter) }}>
+          <Tabs
+            value={bannedFilter}
+            onValueChange={(v) => updateParams({ page: null, banned: v === "all" ? null : v })}
+          >
             <TabsList>
               <TabsTrigger value="all">All</TabsTrigger>
               <TabsTrigger value="false">Active</TabsTrigger>
@@ -210,6 +310,15 @@ export function AdminUsersPage() {
                       <Button size="sm" variant="ghost" onClick={() => openDetail(u)}>
                         Details
                       </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="hover:text-destructive ml-1"
+                        onClick={() => setDeleteTarget(u)}
+                        aria-label="Delete user"
+                      >
+                        <Trash2 className="size-3.5" />
+                      </Button>
                     </td>
                   </tr>
                 ))
@@ -221,10 +330,10 @@ export function AdminUsersPage() {
         <div className="flex items-center justify-between text-xs text-muted-foreground">
           <span>Page {page} of {totalPages}</span>
           <div className="flex gap-1">
-            <Button size="icon" variant="ghost" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
+            <Button size="icon" variant="ghost" disabled={page <= 1} onClick={() => updateParams({ page: String(Math.max(1, page - 1)) })}>
               <ChevronLeft className="size-3.5" />
             </Button>
-            <Button size="icon" variant="ghost" disabled={page >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}>
+            <Button size="icon" variant="ghost" disabled={page >= totalPages} onClick={() => updateParams({ page: String(Math.min(totalPages, page + 1)) })}>
               <ChevronRight className="size-3.5" />
             </Button>
           </div>
@@ -266,7 +375,12 @@ export function AdminUsersPage() {
                 {detailLoading ? <Skeleton className="h-12 w-full" /> : (
                   <div className="space-y-1">
                     {detail.orgs.map((o) => (
-                      <div key={o.id} className="flex items-center justify-between border border-border rounded-md px-3 py-2">
+                      <button
+                        type="button"
+                        key={o.id}
+                        onClick={() => { setDetail(null); navigate(`/admin/organizations/${o.id}`) }}
+                        className="w-full flex items-center justify-between border border-border rounded-md px-3 py-2 text-left hover:bg-accent/40"
+                      >
                         <div>
                           <div className="flex items-center gap-1.5">
                             <p className="text-sm font-medium">{o.name}</p>
@@ -284,8 +398,11 @@ export function AdminUsersPage() {
                         >
                           {o.plan_key ?? "—"} · {o.plan_status ?? "—"}
                         </Badge>
-                      </div>
+                      </button>
                     ))}
+                    {detail.orgs.length === 0 && (
+                      <p className="text-xs text-muted-foreground italic">No organizations.</p>
+                    )}
                   </div>
                 )}
               </div>
@@ -311,11 +428,94 @@ export function AdminUsersPage() {
                     <Crown className="size-3.5 mr-1" /> Promote to admin
                   </Button>
                 )}
+                <Button size="sm" variant="destructive" className="ml-auto" onClick={() => setDeleteTarget(detail.user)}>
+                  <Trash2 className="size-3.5 mr-1" /> Delete user
+                </Button>
               </div>
             </div>
           )}
           <DialogFooter>
             <Button variant="ghost" onClick={() => setDetail(null)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Invite user to organization</DialogTitle>
+          </DialogHeader>
+          <p className="text-xs text-muted-foreground">
+            Creates a pending invitation. The recipient signs up (or signs in) to accept it.
+          </p>
+          <div className="space-y-3 text-sm">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Organization</Label>
+              <select
+                value={inviteForm.organization_id}
+                onChange={(e) => setInviteForm({ ...inviteForm, organization_id: e.target.value })}
+                className="w-full bg-background border border-input rounded-md h-9 px-2 text-sm"
+              >
+                <option value="">Select an organization…</option>
+                {orgs.map((o) => (
+                  <option key={o.id} value={o.id}>{o.name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Email</Label>
+              <div className="relative">
+                <Mail className="absolute left-2 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
+                <Input
+                  type="email"
+                  className="pl-8"
+                  value={inviteForm.email}
+                  onChange={(e) => setInviteForm({ ...inviteForm, email: e.target.value })}
+                  placeholder="person@example.com"
+                />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Role</Label>
+              <div className="flex gap-1.5 flex-wrap">
+                {ROLE_OPTIONS.map((r) => (
+                  <Button
+                    key={r}
+                    type="button"
+                    size="sm"
+                    variant={inviteForm.role === r ? "default" : "outline"}
+                    onClick={() => setInviteForm({ ...inviteForm, role: r })}
+                  >
+                    {r}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setInviteOpen(false)} disabled={inviting}>Cancel</Button>
+            <Button onClick={handleInvite} disabled={inviting}>
+              {inviting ? <Loader2 className="size-3.5 mr-1 animate-spin" /> : null}
+              Send invitation
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!deleteTarget} onOpenChange={(o) => { if (!o) setDeleteTarget(null) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete user permanently?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            This will delete <span className="text-foreground font-medium">{deleteTarget?.email}</span>, every organization they own, plus all their clients, transactions, quotations, subscriptions, and invoices. This cannot be undone.
+          </p>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setDeleteTarget(null)} disabled={deleting}>Cancel</Button>
+            <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
+              {deleting ? <Loader2 className="size-3.5 mr-1 animate-spin" /> : null}
+              Delete user
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

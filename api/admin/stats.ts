@@ -6,6 +6,7 @@ import {
   invoices,
   organizations,
   subscriptions,
+  transactions,
   userProfiles,
 } from "../../src/lib/db/schema"
 import { requireAdmin } from "../_lib/admin"
@@ -24,6 +25,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     [{ paidSubs }],
     [{ paidInvoices }],
     [{ clientsTotal }],
+    [{ transactionsTotal }],
   ] = await Promise.all([
     db.select({ users: count() }).from(userProfiles),
     db.select({ banned: count() }).from(userProfiles).where(isNotNull(userProfiles.bannedAt)),
@@ -36,6 +38,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .where(and(eq(subscriptions.planKey, "premium"), eq(subscriptions.status, "active"))),
     db.select({ paidInvoices: count() }).from(invoices).where(eq(invoices.status, "paid")),
     db.select({ clientsTotal: count() }).from(clients).where(isNull(clients.deletedAt)),
+    db
+      .select({ transactionsTotal: count() })
+      .from(transactions)
+      .innerJoin(clients, eq(clients.id, transactions.clientId))
+      .where(isNull(clients.deletedAt)),
   ])
 
   return res.json({
@@ -49,5 +56,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     paidSubscriptions: paidSubs,
     paidInvoices,
     clientsTotal,
+    transactionsTotal,
   })
 }
