@@ -1,10 +1,10 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { verifyToken } from "@clerk/backend"
 import { db, serialize } from "../../src/lib/db"
-import { clients } from "../../src/lib/db/schema"
+import { quotations } from "../../src/lib/db/schema"
 import { and, eq, isNull } from "drizzle-orm"
 
-const VALID_STATUSES = ["active", "inactive", "archived"]
+const VALID_STATUSES = ["draft", "sent", "accepted", "rejected"]
 
 async function getAuth(req: VercelRequest): Promise<string | null> {
   const token = req.headers.authorization?.replace("Bearer ", "")
@@ -25,44 +25,44 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === "GET") {
     const [row] = await db
       .select()
-      .from(clients)
-      .where(and(eq(clients.id, id), eq(clients.userId, userId), isNull(clients.deletedAt)))
+      .from(quotations)
+      .where(and(eq(quotations.id, id), eq(quotations.userId, userId), isNull(quotations.deletedAt)))
     if (!row) return res.status(404).json({ error: "Not found" })
     return res.json(serialize(row))
   }
 
   if (req.method === "PATCH") {
-    const { name, company, email, phone, status, notes, onboard_date } = req.body as {
-      name?: string; company?: string; email?: string
-      phone?: string; status?: string; notes?: string; onboard_date?: string | null
+    const { title, prospect_name, company, email, phone, amount, status, notes } = req.body as {
+      title?: string; prospect_name?: string; company?: string; email?: string
+      phone?: string; amount?: number; status?: string; notes?: string
     }
     if (status !== undefined && !VALID_STATUSES.includes(status)) {
-      return res.status(400).json({ error: "status must be active, inactive, or archived" })
+      return res.status(400).json({ error: "status must be draft, sent, accepted, or rejected" })
     }
     const [updated] = await db
-      .update(clients)
+      .update(quotations)
       .set({
-        ...(name !== undefined ? { name: name.trim() } : {}),
+        ...(title !== undefined ? { title: title.trim() } : {}),
+        ...(prospect_name !== undefined ? { prospectName: prospect_name.trim() } : {}),
         ...(company !== undefined ? { company } : {}),
         ...(email !== undefined ? { email } : {}),
         ...(phone !== undefined ? { phone } : {}),
+        ...(amount !== undefined ? { amount: String(amount) } : {}),
         ...(status !== undefined ? { status } : {}),
         ...(notes !== undefined ? { notes } : {}),
-        ...(onboard_date !== undefined ? { onboardDate: onboard_date } : {}),
         updatedAt: new Date(),
       })
-      .where(and(eq(clients.id, id), eq(clients.userId, userId), isNull(clients.deletedAt)))
+      .where(and(eq(quotations.id, id), eq(quotations.userId, userId), isNull(quotations.deletedAt)))
       .returning()
     if (!updated) return res.status(404).json({ error: "Not found" })
     return res.json(serialize(updated))
   }
 
   if (req.method === "DELETE") {
-    // Soft delete: set deleted_at instead of removing the row
     const [updated] = await db
-      .update(clients)
+      .update(quotations)
       .set({ deletedAt: new Date(), updatedAt: new Date() })
-      .where(and(eq(clients.id, id), eq(clients.userId, userId), isNull(clients.deletedAt)))
+      .where(and(eq(quotations.id, id), eq(quotations.userId, userId), isNull(quotations.deletedAt)))
       .returning()
     if (!updated) return res.status(404).json({ error: "Not found" })
     return res.status(204).end()

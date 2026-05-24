@@ -1,8 +1,11 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { createClerkClient, verifyToken } from "@clerk/backend"
+import { eq } from "drizzle-orm"
+import { CURRENCY_LIST } from "../src/lib/currencies"
 import { db, serialize } from "../src/lib/db"
 import { userProfiles } from "../src/lib/db/schema"
-import { eq } from "drizzle-orm"
+
+const VALID_CURRENCIES = new Set(CURRENCY_LIST.map((c) => c.code))
 
 const clerk = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY! })
 
@@ -42,6 +45,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method === "PATCH") {
     const { full_name, currency } = req.body as { full_name?: string; currency?: string }
+    if (currency !== undefined && !VALID_CURRENCIES.has(currency)) {
+      return res.status(400).json({ error: "Invalid currency code" })
+    }
     const [updated] = await db
       .update(userProfiles)
       .set({

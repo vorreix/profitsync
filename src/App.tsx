@@ -3,6 +3,9 @@ import { AppLayout } from "@/components/AppLayout"
 import { Dashboard } from "@/pages/Dashboard"
 import { ClientsPage } from "@/pages/ClientsPage"
 import { ClientDetailPage } from "@/pages/ClientDetailPage"
+import { TransactionsPage } from "@/pages/TransactionsPage"
+import { QuotationsPage } from "@/pages/QuotationsPage"
+import { TrashPage } from "@/pages/TrashPage"
 import { LoginPage } from "@/pages/LoginPage"
 import { SignupPage } from "@/pages/SignupPage"
 import { ForgotPasswordPage } from "@/pages/ForgotPasswordPage"
@@ -26,6 +29,9 @@ export function App() {
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="clients" element={<ClientsPage />} />
           <Route path="clients/:id" element={<ClientDetailPage />} />
+          <Route path="transactions" element={<TransactionsPage />} />
+          <Route path="quotations" element={<QuotationsPage />} />
+          <Route path="trash" element={<TrashPage />} />
           <Route path="profile" element={<ProfilePage />} />
         </Route>
       </Routes>

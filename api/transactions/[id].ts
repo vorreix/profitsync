@@ -20,8 +20,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!userId) return res.status(401).json({ error: "Unauthorized" })
   const { id } = req.query as { id: string }
 
+  // Verify ownership: transaction's client must belong to this user
   const [row] = await db
-    .select({ tx: transactions, clientUserId: clients.userId })
+    .select({ clientUserId: clients.userId })
     .from(transactions)
     .innerJoin(clients, eq(transactions.clientId, clients.id))
     .where(eq(transactions.id, id))
@@ -32,6 +33,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const { type, amount, description, category, date } = req.body as {
       type?: string; amount?: number; description?: string; category?: string; date?: string
     }
+    if (type !== undefined && !["incoming", "outgoing"].includes(type)) {
+      return res.status(400).json({ error: "type must be incoming or outgoing" })
+    }
     const [updated] = await db
       .update(transactions)
       .set({
@@ -40,6 +44,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ...(description !== undefined ? { description } : {}),
         ...(category !== undefined ? { category } : {}),
         ...(date !== undefined ? { date } : {}),
+        updatedAt: new Date(),
       })
       .where(eq(transactions.id, id))
       .returning()
