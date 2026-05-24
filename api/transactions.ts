@@ -1,11 +1,25 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { and, count, desc, eq, ilike, isNull, or } from "drizzle-orm"
+import { and, asc, count, desc, eq, ilike, isNull, or, sql } from "drizzle-orm"
 import { db, serialize } from "../src/lib/db"
 import { clients, transactions } from "../src/lib/db/schema"
 import { canWrite, requireAuth } from "./_lib/auth"
 import { checkTransactionQuota } from "./_lib/quota"
 
 const PAGE_SIZE = 20
+
+function pickOrder(sort: string | undefined) {
+  switch (sort) {
+    case "date_asc":
+      return [asc(transactions.date), asc(transactions.createdAt)]
+    case "amount_desc":
+      return [desc(sql`${transactions.amount}::numeric`), desc(transactions.createdAt)]
+    case "amount_asc":
+      return [asc(sql`${transactions.amount}::numeric`), desc(transactions.createdAt)]
+    case "date_desc":
+    default:
+      return [desc(transactions.date), desc(transactions.createdAt)]
+  }
+}
 
 const txFields = {
   id: transactions.id,
@@ -26,9 +40,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { orgId, role } = ctx
 
   if (req.method === "GET") {
-    const { clientId, search, type, page } = req.query as {
-      clientId?: string; search?: string; type?: string; page?: string
+    const { clientId, search, type, page, sort } = req.query as {
+      clientId?: string; search?: string; type?: string; page?: string; sort?: string
     }
+
+    const orderBy = pickOrder(sort)
 
     if (clientId) {
       const [client] = await db
@@ -42,7 +58,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .from(transactions)
         .innerJoin(clients, eq(transactions.clientId, clients.id))
         .where(eq(transactions.clientId, clientId))
-        .orderBy(desc(transactions.date))
+        .orderBy(...orderBy)
       return res.json(rows.map(serialize))
     }
 
@@ -80,7 +96,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .from(transactions)
         .innerJoin(clients, eq(transactions.clientId, clients.id))
         .where(whereClause)
-        .orderBy(desc(transactions.date))
+        .orderBy(...orderBy)
         .limit(PAGE_SIZE)
         .offset(offset)
 
@@ -92,7 +108,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .from(transactions)
       .innerJoin(clients, eq(transactions.clientId, clients.id))
       .where(whereClause)
-      .orderBy(desc(transactions.date))
+      .orderBy(...orderBy)
     return res.json(rows.map(serialize))
   }
 
