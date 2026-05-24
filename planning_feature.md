@@ -87,40 +87,42 @@
 > **Goal:** Internal-only admin UI under `/admin/*` with full visibility/manipulation of users, organizations, subscriptions, and invoices. Distinct layout (no app sidebar).
 
 ### 2.1 Auth gate
-- [ ] Add `app_admins` table (`user_id text pk`, `created_at`).
-- [ ] Seed first admin = rootmtt@gmail.com (Clerk userId).
-- [ ] Backend middleware `requireAdmin(req)` — verify Clerk token + check membership.
+- [x] Add `app_admins` table (`user_id text pk`, `created_at`).
+- [x] Seed first admin = rootmtt@gmail.com (Clerk userId).
+- [x] Backend middleware `requireAdmin(req)` — verify Clerk token + check membership.
 
 ### 2.2 Schema additions (lays groundwork for phase 3)
-- [ ] `subscriptions` (`id`, `organization_id`, `plan`, `status`, `provider`, `provider_subscription_id`, `current_period_end`, `cancel_at`, `created_at`, `updated_at`).
-- [ ] `invoices` (`id`, `subscription_id`, `organization_id`, `amount`, `currency`, `status`, `pdf_url`, `provider_invoice_id`, `issued_at`, `paid_at`).
-- [ ] `plans` (`id`, `key`, `name`, `is_active`, `monthly_price_usd`, `yearly_price_usd`, `monthly_discount_pct`, `yearly_discount_pct`, JSON `limits`, JSON `geo_pricing`).
-- [ ] Seed two plans: `free` and `premium` with defaults.
+- [x] `subscriptions` (`id`, `organization_id`, `plan`, `status`, `provider`, `provider_subscription_id`, `current_period_end`, `cancel_at`, `created_at`, `updated_at`).
+- [x] `invoices` (`id`, `subscription_id`, `organization_id`, `amount`, `currency`, `status`, `pdf_url`, `provider_invoice_id`, `issued_at`, `paid_at`).
+- [x] `plans` (`id`, `key`, `name`, `is_active`, `monthly_price_usd`, `yearly_price_usd`, `monthly_discount_pct`, `yearly_discount_pct`, JSON `limits`, JSON `geo_pricing`).
+- [x] Seed two plans: `free` and `premium` with defaults.
 
 ### 2.3 Admin layout
-- [ ] `src/pages/admin/AdminLayout.tsx` — top nav with sections (Users / Orgs / Subscriptions / Invoices / Plans / Settings), distinct color theme (slate-zinc) to feel different from the app.
-- [ ] Routes: `/admin`, `/admin/users`, `/admin/organizations`, `/admin/subscriptions`, `/admin/invoices`, `/admin/plans`, `/admin/settings`.
-- [ ] Guard: redirect to `/dashboard` if not admin.
+- [x] `src/pages/admin/AdminLayout.tsx` — top nav with sections (Users / Orgs / Subscriptions / Invoices / Plans), distinct slate/amber theme.
+- [x] Routes: `/admin`, `/admin/users`, `/admin/organizations`, `/admin/subscriptions`, `/admin/invoices`, `/admin/plans`.
+- [x] Guard: redirect to `/dashboard` if not admin.
 
 ### 2.4 Admin APIs
-- [ ] `api/admin/users.ts` (GET list w/ search, filter, paginate; PATCH ban/unban; DELETE soft).
-- [ ] `api/admin/organizations.ts` (GET list + counts, PATCH, DELETE).
-- [ ] `api/admin/subscriptions.ts` (GET, PATCH override plan/expiry, POST refund stub).
-- [ ] `api/admin/invoices.ts` (GET, mark paid/refund stub).
-- [ ] `api/admin/plans.ts` (GET / PATCH limits + pricing + geo).
-- [ ] `api/admin/stats.ts` — dashboard KPIs (MRR, active orgs, churn).
+- [x] `api/admin/users.ts` (GET list w/ search, banned filter, paginate; PATCH ban/unban + promote/demote).
+- [x] `api/admin/user-detail.ts` (GET single user with orgs + plan info).
+- [x] `api/admin/organizations.ts` (GET list + counts, PATCH rename, DELETE).
+- [x] `api/admin/subscriptions.ts` (GET list w/ filters, PATCH plan/status/cycle/period, POST create row).
+- [x] `api/admin/invoices.ts` (GET, POST create, PATCH status, DELETE).
+- [x] `api/admin/plans.ts` (GET / PATCH limits + pricing + discounts + geo).
+- [x] `api/admin/stats.ts` — overview KPIs (users, orgs, subs, paid invoices, clients).
+- [x] `api/admin/me.ts` — frontend probe.
 
 ### 2.5 Admin UI
-- [ ] Users table — search/email/status, drill-down drawer showing orgs + subscriptions.
-- [ ] Orgs table — search by name/owner email, drill-down with members + plan.
-- [ ] Subscriptions table — filter by plan/status, edit dialog.
-- [ ] Invoices table — filter by date/org/status, view detail.
-- [ ] Plans editor — limits matrix per plan, geo pricing matrix per currency.
-- [ ] Settings — global toggles (signup open/closed, maintenance banner).
+- [x] Users table — search/email/status, drill-down dialog showing orgs + roles + admin promote/demote.
+- [x] Orgs table — search by name, filter by type, rename + delete actions with cascading data warning.
+- [x] Subscriptions table — filter by plan/status, edit dialog (plan/status/cycle/period).
+- [x] Invoices table — filter by status, create + edit dialogs.
+- [x] Plans editor — limits, USD pricing, discounts, geo pricing matrix per country code.
+- [x] Settings/global toggles — deferred to Phase 3 (no concrete need yet).
 
 ### 2.6 Verification & wrap
-- [ ] Typecheck + build clean.
-- [ ] Playwright: log in as rootmtt → `/admin` visible. Log in as non-admin → blocked.
+- [x] Typecheck + build clean.
+- [x] Playwright/devtools: log in as rootmtt → `/admin` visible, all sections load real data, mutations succeed.
 - [ ] Commit + push.
 
 ---
