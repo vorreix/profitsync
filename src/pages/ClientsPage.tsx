@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import { useNavigate } from "react-router-dom"
+import { useNavigate, useSearchParams } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { apiGet, apiPost } from "@/lib/api"
 import type { Client } from "@/lib/types"
@@ -61,6 +61,7 @@ function toWithStats(c: Client): ClientWithStats {
 
 export function ClientsPage() {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { getToken } = useAuth()
   const { currency } = useCurrency()
   const formatCurrency = (n: number) =>
@@ -116,6 +117,13 @@ export function ClientsPage() {
     const t = setTimeout(fetchPage1, 300)
     return () => clearTimeout(t)
   }, [search, sort])
+
+  useEffect(() => {
+    if (searchParams.get("new") === "1") {
+      setDialogOpen(true)
+      setSearchParams({}, { replace: true })
+    }
+  }, [searchParams, setSearchParams])
 
   async function handleCreate() {
     if (!form.name.trim()) { toast.error("Client name is required"); return }

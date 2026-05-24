@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState } from "react"
-import { useNavigate } from "react-router-dom"
+import { useNavigate, useSearchParams } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { apiGet, apiPost, apiPatch, apiDelete } from "@/lib/api"
-import type { Client, Quotation } from "@/lib/types"
+import type { Client, Quotation, QuotationAttachment } from "@/lib/types"
 import { useCurrency } from "@/lib/currency-context"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Separator } from "@/components/ui/separator"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { Label } from "@/components/ui/label"
@@ -16,7 +17,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "sonner"
-import { Plus, Search, FileText, Building2, Mail, Phone, UserPlus, Trash2, Pencil, ExternalLink, Calendar } from "lucide-react"
+import { Plus, Search, FileText, Building2, Mail, Phone, UserPlus, Trash2, Pencil, ExternalLink, Calendar, Paperclip, Download, X } from "lucide-react"
 
 type QuotationForm = {
   title: string
@@ -48,6 +49,15 @@ const STATUS_COLORS: Record<string, string> = {
 }
 
 const ALL_STATUSES = ["draft", "sent", "accepted", "rejected"] as const
+
+const formatDate = (d: string) =>
+  new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+
+const formatFileSize = (bytes: number) => {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
 
 function QuotationFormFields({
   f,
@@ -107,6 +117,7 @@ function QuotationFormFields({
 
 export function QuotationsPage() {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { getToken } = useAuth()
   const { currency } = useCurrency()
   const fmt = (n: number) =>
@@ -124,8 +135,15 @@ export function QuotationsPage() {
   const [editTarget, setEditTarget] = useState<Quotation | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Quotation | null>(null)
   const [convertTarget, setConvertTarget] = useState<Quotation | null>(null)
+  const [viewTarget, setViewTarget] = useState<Quotation | null>(null)
   const [form, setForm] = useState<QuotationForm>(defaultForm())
   const [saving, setSaving] = useState(false)
+
+  const [attachments, setAttachments] = useState<QuotationAttachment[]>([])
+  const [attachLoading, setAttachLoading] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [deleteAttachId, setDeleteAttachId] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const searchRef = useRef(search)
   const tabRef = useRef(tab)
@@ -167,6 +185,14 @@ export function QuotationsPage() {
   }, [search, tab])
 
   useEffect(() => {
+    if (searchParams.get("new") === "1") {
+      setForm(defaultForm())
+      setCreateOpen(true)
+      setSearchParams({}, { replace: true })
+    }
+  }, [searchParams, setSearchParams])
+
+  useEffect(() => {
     async function loadClients() {
       const token = await getToken()
       if (!token) return
@@ -177,6 +203,104 @@ export function QuotationsPage() {
   }, [])
 
   const clientById = (id: string | null) => id ? clients.find((c) => c.id === id) : undefined
+
+  async function loadAttachments(quotationId: string) {
+    setAttachLoading(true)
+    try {
+      const token = await getToken()
+      if (!token) return
+      const data = await apiGet<QuotationAttachment[]>(`/api/quotations/${quotationId}/attachments`, token)
+      setAttachments(data)
+    } catch {
+      toast.error("Failed to load attachments")
+    } finally {
+      setAttachLoading(false)
+    }
+  }
+
+  function openViewModal(q: Quotation) {
+    setViewTarget(q)
+    setAttachments([])
+    loadAttachments(q.id)
+  }
+
+  function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file || !viewTarget) return
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error("File exceeds 2MB limit")
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = async () => {
+      const base64 = (reader.result as string).split(",")[1]
+      setUploading(true)
+      try {
+        const token = await getToken()
+        if (!token) throw new Error("Not authenticated")
+        const res = await fetch(`/api/quotations/${viewTarget.id}/attachments`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            file_name: file.name,
+            file_type: file.type || "application/octet-stream",
+            file_size: file.size,
+            file_data: base64,
+          }),
+        })
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}))
+          throw new Error((err as { error?: string }).error ?? "Upload failed")
+        }
+        toast.success("Attachment uploaded")
+        loadAttachments(viewTarget.id)
+      } catch (err: unknown) {
+        toast.error(err instanceof Error ? err.message : "Failed to upload attachment")
+      } finally {
+        setUploading(false)
+        if (fileInputRef.current) fileInputRef.current.value = ""
+      }
+    }
+    reader.readAsDataURL(file)
+  }
+
+  async function handleDownload(attachment: QuotationAttachment) {
+    try {
+      const token = await getToken()
+      if (!token) return
+      const res = await fetch(`/api/quotation-attachments/${attachment.id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (!res.ok) throw new Error()
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = attachment.file_name
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      toast.error("Failed to download attachment")
+    }
+  }
+
+  async function handleDeleteAttachment() {
+    if (!deleteAttachId || !viewTarget) return
+    try {
+      const token = await getToken()
+      if (!token) throw new Error("Not authenticated")
+      const res = await fetch(`/api/quotation-attachments/${deleteAttachId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (!res.ok) throw new Error()
+      toast.success("Attachment deleted")
+      setDeleteAttachId(null)
+      loadAttachments(viewTarget.id)
+    } catch {
+      toast.error("Failed to delete attachment")
+    }
+  }
 
   async function handleCreate() {
     if (!form.title.trim()) { toast.error("Title is required"); return }
@@ -321,7 +445,7 @@ export function QuotationsPage() {
               const linkedClient = clientById(q.linked_client_id)
               const canConvert = !q.linked_client_id && (q.status === "draft" || q.status === "sent")
               return (
-                <Card key={q.id} className="group">
+                <Card key={q.id} className="group cursor-pointer hover:shadow-md transition-shadow" onClick={() => openViewModal(q)}>
                   <CardContent className="p-4 space-y-3">
                     {/* Top row */}
                     <div className="flex items-start justify-between gap-2">
@@ -357,7 +481,7 @@ export function QuotationsPage() {
                       <div className="flex items-center gap-1.5">
                         <Calendar className="size-3 text-muted-foreground shrink-0" />
                         <p className="text-xs text-muted-foreground">
-                          {new Date(q.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                          {formatDate(q.created_at)}
                         </p>
                       </div>
                     </div>
@@ -368,7 +492,7 @@ export function QuotationsPage() {
                       {linkedClient ? (
                         <button
                           className="flex items-center gap-1 text-xs text-primary hover:underline"
-                          onClick={() => navigate(`/clients/${linkedClient.id}`)}
+                          onClick={(e) => { e.stopPropagation(); navigate(`/clients/${linkedClient.id}`) }}
                         >
                           <ExternalLink className="size-3" />
                           {linkedClient.name}
@@ -379,7 +503,7 @@ export function QuotationsPage() {
                     </div>
 
                     {/* Actions */}
-                    <div className="flex gap-2 pt-1">
+                    <div className="flex gap-2 pt-1" onClick={(e) => e.stopPropagation()}>
                       {canConvert && (
                         <Button
                           size="sm"
@@ -426,6 +550,136 @@ export function QuotationsPage() {
           )}
         </>
       )}
+
+      {/* View Modal */}
+      <Dialog open={viewTarget !== null} onOpenChange={(open) => { if (!open) setViewTarget(null) }}>
+        <DialogContent className="sm:max-w-md">
+          {viewTarget && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <FileText className="size-4" />
+                  {viewTarget.title}
+                </DialogTitle>
+              </DialogHeader>
+
+              <div className="space-y-3 py-2">
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Prospect</p>
+                    <p className="mt-0.5 font-medium">{viewTarget.prospect_name}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Status</p>
+                    <span className={`inline-block mt-0.5 text-xs font-medium px-2 py-0.5 rounded-full ${STATUS_COLORS[viewTarget.status] ?? ""}`}>
+                      {viewTarget.status.charAt(0).toUpperCase() + viewTarget.status.slice(1)}
+                    </span>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Amount</p>
+                    <p className="mt-0.5 font-bold">{fmt(Number(viewTarget.amount))}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Created</p>
+                    <p className="mt-0.5">{formatDate(viewTarget.created_at)}</p>
+                  </div>
+                  {viewTarget.company && (
+                    <div>
+                      <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Company</p>
+                      <p className="mt-0.5">{viewTarget.company}</p>
+                    </div>
+                  )}
+                  {viewTarget.email && (
+                    <div>
+                      <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Email</p>
+                      <p className="mt-0.5 truncate">{viewTarget.email}</p>
+                    </div>
+                  )}
+                  {viewTarget.phone && (
+                    <div>
+                      <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Phone</p>
+                      <p className="mt-0.5">{viewTarget.phone}</p>
+                    </div>
+                  )}
+                  {viewTarget.notes && (
+                    <div className="col-span-2">
+                      <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Notes</p>
+                      <p className="mt-0.5 text-sm whitespace-pre-wrap">{viewTarget.notes}</p>
+                    </div>
+                  )}
+                  {viewTarget.linked_client_id && clientById(viewTarget.linked_client_id) && (
+                    <div className="col-span-2">
+                      <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Linked Client</p>
+                      <button
+                        className="mt-0.5 flex items-center gap-1 text-sm text-primary hover:underline"
+                        onClick={() => { setViewTarget(null); navigate(`/clients/${viewTarget.linked_client_id}`) }}
+                      >
+                        <ExternalLink className="size-3" />
+                        {clientById(viewTarget.linked_client_id)?.name}
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <Separator />
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium flex items-center gap-1.5">
+                      <Paperclip className="size-3.5" /> Attachments
+                    </p>
+                    <div>
+                      <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileSelect} accept="*/*" />
+                      <Button size="sm" variant="outline" disabled={uploading} onClick={() => fileInputRef.current?.click()}>
+                        {uploading ? "Uploading..." : "Upload"}
+                      </Button>
+                    </div>
+                  </div>
+
+                  {attachLoading ? (
+                    <div className="space-y-1.5">
+                      {[1, 2].map((i) => <Skeleton key={i} className="h-10 w-full rounded-lg" />)}
+                    </div>
+                  ) : attachments.length === 0 ? (
+                    <p className="text-xs text-muted-foreground py-3 text-center">No attachments yet</p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {attachments.map((att) => (
+                        <div key={att.id} className="flex items-center gap-2 rounded-lg border px-3 py-2">
+                          <Paperclip className="size-3.5 text-muted-foreground shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-medium truncate">{att.file_name}</p>
+                            <p className="text-xs text-muted-foreground">{formatFileSize(att.file_size)}</p>
+                          </div>
+                          <Button variant="ghost" size="icon" className="size-7 shrink-0" onClick={() => handleDownload(att)}>
+                            <Download className="size-3.5" />
+                          </Button>
+                          <Button variant="ghost" size="icon" className="size-7 shrink-0 text-muted-foreground hover:text-destructive" onClick={() => setDeleteAttachId(att.id)}>
+                            <X className="size-3.5" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <p className="text-xs text-muted-foreground">Max 2MB per file</p>
+                </div>
+              </div>
+
+              <DialogFooter>
+                <Button variant="outline" onClick={() => {
+                  setViewTarget(null)
+                  setForm({ title: viewTarget.title, prospect_name: viewTarget.prospect_name, company: viewTarget.company, email: viewTarget.email, phone: viewTarget.phone, amount: viewTarget.amount, status: viewTarget.status, notes: viewTarget.notes })
+                  setEditTarget(viewTarget)
+                }}>
+                  <Pencil className="size-3.5" />
+                  Edit
+                </Button>
+                <Button onClick={() => setViewTarget(null)}>Close</Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Create Dialog */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
@@ -482,6 +736,22 @@ export function QuotationsPage() {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
               Move to Trash
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete Attachment Confirmation */}
+      <AlertDialog open={deleteAttachId !== null} onOpenChange={(open) => { if (!open) setDeleteAttachId(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Attachment?</AlertDialogTitle>
+            <AlertDialogDescription>This attachment will be permanently deleted.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteAttachment} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Delete
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
