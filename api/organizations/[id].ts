@@ -1,8 +1,11 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { and, eq } from "drizzle-orm"
+import { CURRENCY_LIST } from "../../src/lib/currencies"
 import { db, serialize } from "../../src/lib/db"
 import { organizations, organizationMembers, userProfiles } from "../../src/lib/db/schema"
 import { getUserId } from "../_lib/auth"
+
+const VALID_CURRENCIES = new Set(CURRENCY_LIST.map((c) => c.code))
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const userId = await getUserId(req)
@@ -10,7 +13,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const { id } = req.query as { id: string }
 
-  // Verify membership
   const [member] = await db
     .select()
     .from(organizationMembers)
@@ -25,17 +27,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   if (req.method === "PATCH") {
-    if (org.isPersonal) {
-      return res.status(400).json({ error: "Personal organization cannot be renamed" })
-    }
     if (member.role !== "owner" && member.role !== "admin") {
-      return res.status(403).json({ error: "Forbidden" })
+      return res.status(403).json({ error: "Only owners and admins can edit organization settings" })
     }
-    const { name } = req.body as { name?: string }
-    if (!name?.trim()) return res.status(400).json({ error: "name is required" })
+    const { name, currency } = req.body as { name?: string; currency?: string }
+
+    const updates: Record<string, unknown> = { updatedAt: new Date() }
+
+    if (name !== undefined) {
+      if (org.isPersonal) {
+        return res.status(400).json({ error: "Personal organization cannot be renamed" })
+      }
+      if (!name.trim()) return res.status(400).json({ error: "name cannot be empty" })
+      updates.name = name.trim()
+    }
+
+    if (currency !== undefined) {
+      const upper = currency.toUpperCase()
+      if (!VALID_CURRENCIES.has(upper)) return res.status(400).json({ error: "Invalid currency code" })
+      updates.currency = upper
+    }
+
+    if (Object.keys(updates).length === 1) {
+      return res.status(400).json({ error: "Nothing to update" })
+    }
+
     const [updated] = await db
       .update(organizations)
-      .set({ name: name.trim(), updatedAt: new Date() })
+      .set(updates)
       .where(eq(organizations.id, id))
       .returning()
     return res.json(serialize({ ...updated, role: member.role }))
@@ -49,7 +68,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(403).json({ error: "Forbidden" })
     }
 
-    // If user's current org points here, fall back to their personal org
     const [profile] = await db.select().from(userProfiles).where(eq(userProfiles.id, userId))
     if (profile?.currentOrganizationId === id) {
       const [personal] = await db

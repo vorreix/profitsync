@@ -1,34 +1,18 @@
-import { createContext, useContext, useState, useEffect, type ReactNode } from "react"
-import { useAuth } from "@clerk/clerk-react"
-import { apiGet } from "@/lib/api"
-import type { UserProfile } from "@/lib/types"
+import { createContext, useContext, type ReactNode } from "react"
+import { useOrg } from "@/lib/org-context"
 
 type CurrencyContextType = {
   currency: string
-  setCurrency: (c: string) => void
 }
 
-const CurrencyContext = createContext<CurrencyContextType>({ currency: "USD", setCurrency: () => {} })
+const CurrencyContext = createContext<CurrencyContextType>({ currency: "USD" })
 
 export function CurrencyProvider({ children }: { children: ReactNode }) {
-  const { getToken, isSignedIn } = useAuth()
-  const [currency, setCurrency] = useState("USD")
-
-  useEffect(() => {
-    if (!isSignedIn) return
-    async function load() {
-      try {
-        const token = await getToken()
-        if (!token) return
-        const profile = await apiGet<UserProfile>("/api/profile", token)
-        if (profile.currency) setCurrency(profile.currency)
-      } catch {}
-    }
-    load()
-  }, [isSignedIn])
+  const { activeOrg } = useOrg()
+  const currency = activeOrg?.currency ?? "USD"
 
   return (
-    <CurrencyContext.Provider value={{ currency, setCurrency }}>
+    <CurrencyContext.Provider value={{ currency }}>
       {children}
     </CurrencyContext.Provider>
   )

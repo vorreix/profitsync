@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
+import { CurrencyCombobox } from "@/components/CurrencyCombobox"
 import {
   Dialog,
   DialogContent,
@@ -31,6 +32,7 @@ export function OrganizationsPage() {
 
   const [editTarget, setEditTarget] = useState<Organization | null>(null)
   const [editName, setEditName] = useState("")
+  const [editCurrency, setEditCurrency] = useState("USD")
   const [saving, setSaving] = useState(false)
 
   const [deleteTarget, setDeleteTarget] = useState<Organization | null>(null)
@@ -56,18 +58,32 @@ export function OrganizationsPage() {
     }
   }
 
-  const handleRename = async () => {
-    if (!editTarget || !editName.trim()) return
+  const handleSaveEdit = async () => {
+    if (!editTarget) return
+    const trimmedName = editName.trim()
+    const nameChanged = !editTarget.is_personal && trimmedName !== editTarget.name
+    const currencyChanged = editCurrency !== editTarget.currency
+    if (!nameChanged && !currencyChanged) {
+      setEditTarget(null)
+      return
+    }
+    if (!editTarget.is_personal && !trimmedName) {
+      toast.error("Name cannot be empty")
+      return
+    }
     setSaving(true)
     try {
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
-      await apiPatch<Organization>(`/api/organizations/${editTarget.id}`, token, { name: editName.trim() })
-      toast.success("Organization renamed")
+      const body: Record<string, string> = {}
+      if (nameChanged) body.name = trimmedName
+      if (currencyChanged) body.currency = editCurrency
+      await apiPatch<Organization>(`/api/organizations/${editTarget.id}`, token, body)
+      toast.success("Organization updated")
       setEditTarget(null)
       await refresh()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to rename")
+      toast.error(err instanceof Error ? err.message : "Failed to save")
     } finally {
       setSaving(false)
     }
@@ -163,9 +179,11 @@ export function OrganizationsPage() {
                         </Badge>
                       )}
                     </div>
-                    <p className="text-xs text-muted-foreground capitalize">Role: {org.role}</p>
+                    <p className="text-xs text-muted-foreground capitalize">
+                      Role: {org.role} · Currency: <span className="font-mono uppercase">{org.currency}</span>
+                    </p>
                   </div>
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1.5 flex-wrap">
                     {!isActive && (
                       <Button
                         size="sm"
@@ -186,29 +204,30 @@ export function OrganizationsPage() {
                         <Users className="size-3.5 mr-1" /> Members
                       </Button>
                     )}
-                    {!org.is_personal && (
-                      <>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          aria-label="Rename"
-                          onClick={() => {
-                            setEditTarget(org)
-                            setEditName(org.name)
-                          }}
-                        >
-                          <Pencil className="size-3.5" />
-                        </Button>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          aria-label="Delete"
-                          className="text-destructive hover:text-destructive"
-                          onClick={() => setDeleteTarget(org)}
-                        >
-                          <Trash2 className="size-3.5" />
-                        </Button>
-                      </>
+                    {(org.role === "owner" || org.role === "admin") && (
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        aria-label="Edit"
+                        onClick={() => {
+                          setEditTarget(org)
+                          setEditName(org.name)
+                          setEditCurrency(org.currency || "USD")
+                        }}
+                      >
+                        <Pencil className="size-3.5" />
+                      </Button>
+                    )}
+                    {!org.is_personal && org.role === "owner" && (
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        aria-label="Delete"
+                        className="text-destructive hover:text-destructive"
+                        onClick={() => setDeleteTarget(org)}
+                      >
+                        <Trash2 className="size-3.5" />
+                      </Button>
                     )}
                   </div>
                 </CardContent>
@@ -249,25 +268,36 @@ export function OrganizationsPage() {
       <Dialog open={!!editTarget} onOpenChange={(o) => { if (!o) setEditTarget(null) }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Rename organization</DialogTitle>
+            <DialogTitle>Edit organization</DialogTitle>
           </DialogHeader>
-          <div className="space-y-3 py-2">
-            <Label htmlFor="edit-org-name">Name</Label>
-            <Input
-              id="edit-org-name"
-              value={editName}
-              onChange={(e) => setEditName(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") handleRename() }}
-              disabled={saving}
-            />
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-org-name">Name</Label>
+              <Input
+                id="edit-org-name"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                disabled={saving || editTarget?.is_personal}
+              />
+              {editTarget?.is_personal && (
+                <p className="text-[11px] text-muted-foreground">Personal organizations cannot be renamed.</p>
+              )}
+            </div>
+            <div className="space-y-1.5">
+              <Label>Currency</Label>
+              <CurrencyCombobox value={editCurrency} onValueChange={setEditCurrency} disabled={saving} />
+              <p className="text-[11px] text-muted-foreground">
+                Used to format every amount displayed inside this organization.
+              </p>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setEditTarget(null)} disabled={saving}>
               Cancel
             </Button>
-            <Button onClick={handleRename} disabled={!editName.trim() || saving}>
+            <Button onClick={handleSaveEdit} disabled={saving}>
               {saving ? <Loader2 className="size-4 mr-2 animate-spin" /> : null}
-              Save
+              Save changes
             </Button>
           </DialogFooter>
         </DialogContent>
