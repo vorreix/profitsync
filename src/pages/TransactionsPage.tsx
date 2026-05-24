@@ -648,31 +648,32 @@ export function TransactionsPage() {
   }
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="p-4 sm:p-6 space-y-5 sm:space-y-6">
+      <div className="flex items-center justify-between gap-2">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Transactions</h1>
           {!loading && <p className="text-sm text-muted-foreground mt-1">{total} total</p>}
         </div>
-        <Button onClick={() => { setForm(defaultForm()); setAddOpen(true) }}>
+        <Button onClick={() => { setForm(defaultForm()); setAddOpen(true) }} className="shrink-0">
           <Plus className="size-4" />
-          Add Transaction
+          <span className="hidden sm:inline">Add Transaction</span>
+          <span className="sm:hidden">Add</span>
         </Button>
       </div>
 
       {!loading && (
-        <div className="grid grid-cols-3 gap-4">
-          <div className="rounded-xl border p-4">
-            <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Income</p>
-            <p className="text-xl font-bold text-emerald-600 dark:text-emerald-400 mt-1">{fmt(totalIncoming)}</p>
+        <div className="grid grid-cols-3 gap-2 sm:gap-4">
+          <div className="rounded-xl border p-3 sm:p-4">
+            <p className="text-[10px] sm:text-xs text-muted-foreground font-medium uppercase tracking-wide">Income</p>
+            <p className="text-base sm:text-xl font-bold text-emerald-600 dark:text-emerald-400 mt-1 tabular-nums">{fmt(totalIncoming)}</p>
           </div>
-          <div className="rounded-xl border p-4">
-            <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Expenses</p>
-            <p className="text-xl font-bold text-red-600 dark:text-red-400 mt-1">{fmt(totalOutgoing)}</p>
+          <div className="rounded-xl border p-3 sm:p-4">
+            <p className="text-[10px] sm:text-xs text-muted-foreground font-medium uppercase tracking-wide">Expenses</p>
+            <p className="text-base sm:text-xl font-bold text-red-600 dark:text-red-400 mt-1 tabular-nums">{fmt(totalOutgoing)}</p>
           </div>
-          <div className="rounded-xl border p-4">
-            <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Net</p>
-            <p className={`text-xl font-bold mt-1 ${totalIncoming - totalOutgoing >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"}`}>
+          <div className="rounded-xl border p-3 sm:p-4">
+            <p className="text-[10px] sm:text-xs text-muted-foreground font-medium uppercase tracking-wide">Net</p>
+            <p className={`text-base sm:text-xl font-bold mt-1 tabular-nums ${totalIncoming - totalOutgoing >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"}`}>
               {fmt(totalIncoming - totalOutgoing)}
             </p>
           </div>
@@ -717,7 +718,7 @@ export function TransactionsPage() {
               {transactions.map((tx) => (
                 <div
                   key={tx.id}
-                  className="flex items-center gap-4 px-4 py-3 hover:bg-muted/50 transition-colors group cursor-pointer"
+                  className="flex items-center gap-3 px-3 sm:px-4 py-3 hover:bg-muted/50 transition-colors group cursor-pointer"
                   onClick={() => openViewModal(tx)}
                 >
                   <div className={`size-9 rounded-full flex items-center justify-center shrink-0 ${
@@ -729,35 +730,35 @@ export function TransactionsPage() {
                   </div>
 
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm font-medium truncate">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <p className="text-sm font-medium truncate min-w-0 flex-1">
                         {tx.description
                           ? tx.description.length > 60 ? tx.description.slice(0, 60) + "…" : tx.description
                           : (tx.type === "incoming" ? "Income" : "Expense")}
                       </p>
                       {tx.category && (
-                        <Badge variant="outline" className="text-xs py-0 shrink-0">{tx.category}</Badge>
+                        <Badge variant="outline" className="text-xs py-0 shrink-0 hidden sm:inline-flex">{tx.category}</Badge>
                       )}
                     </div>
-                    <div className="flex items-center gap-2 mt-0.5">
+                    <div className="flex items-center gap-2 mt-0.5 min-w-0">
                       <button
-                        className="text-xs text-primary hover:underline"
+                        className="text-xs text-primary hover:underline truncate min-w-0"
                         onClick={(e) => { e.stopPropagation(); navigate(`/clients/${tx.client_id}`) }}
                       >
                         {tx.client_name ?? tx.client_id}
                       </button>
-                      <span className="text-xs text-muted-foreground">·</span>
-                      <span className="text-xs text-muted-foreground">{formatDate(tx.date)}</span>
+                      <span className="text-xs text-muted-foreground shrink-0">·</span>
+                      <span className="text-xs text-muted-foreground shrink-0">{formatDate(tx.date)}</span>
                     </div>
                   </div>
 
-                  <p className={`text-sm font-semibold shrink-0 ${
+                  <p className={`text-sm font-semibold shrink-0 tabular-nums text-right ${
                     tx.type === "incoming" ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"
                   }`}>
                     {tx.type === "incoming" ? "+" : "−"}{fmt(Number(tx.amount))}
                   </p>
 
-                  <div className="flex gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="hidden sm:flex gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
                     <Button variant="ghost" size="icon" className="size-7" onClick={(e) => { e.stopPropagation(); openViewModal(tx) }}>
                       <Eye className="size-3.5" />
                     </Button>

@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { verifyToken } from "@clerk/backend"
 import { and, eq } from "drizzle-orm"
 import { db } from "../../src/lib/db"
-import { organizations, organizationMembers, userProfiles } from "../../src/lib/db/schema"
+import { organizations, organizationMembers, subscriptions, userProfiles } from "../../src/lib/db/schema"
 
 export async function getUserId(req: VercelRequest): Promise<string | null> {
   const token = req.headers.authorization?.replace("Bearer ", "")
@@ -17,23 +17,63 @@ export async function getUserId(req: VercelRequest): Promise<string | null> {
 
 export type OrgAuth = { userId: string; orgId: string; role: string }
 
-async function ensurePersonalOrg(userId: string): Promise<string> {
+export async function ensureFreeSubscription(orgId: string): Promise<void> {
+  const [existing] = await db.select().from(subscriptions).where(eq(subscriptions.organizationId, orgId))
+  if (existing) return
+  await db.insert(subscriptions).values({
+    organizationId: orgId,
+    planKey: "free",
+    status: "active",
+  })
+}
+
+export async function createOrgForUser(input: {
+  userId: string
+  name: string
+  slug: string
+  isPersonal: boolean
+  currency?: string
+}): Promise<{ id: string; currency: string }> {
+  const currency = (input.currency ?? "USD").toUpperCase()
+  const [org] = await db
+    .insert(organizations)
+    .values({
+      ownerUserId: input.userId,
+      name: input.name,
+      slug: input.slug,
+      isPersonal: input.isPersonal,
+      currency,
+    })
+    .returning()
+  await db.insert(organizationMembers).values({
+    organizationId: org.id,
+    userId: input.userId,
+    role: "owner",
+  })
+  await ensureFreeSubscription(org.id)
+  return { id: org.id, currency: org.currency }
+}
+
+export async function ensurePersonalOrg(userId: string): Promise<string> {
   const [existing] = await db
     .select()
     .from(organizations)
     .where(and(eq(organizations.ownerUserId, userId), eq(organizations.isPersonal, true)))
-  if (existing) return existing.id
+  if (existing) {
+    await ensureFreeSubscription(existing.id)
+    return existing.id
+  }
 
-  const [created] = await db
-    .insert(organizations)
-    .values({ ownerUserId: userId, name: "Personal", slug: "personal", isPersonal: true })
-    .returning()
-  await db.insert(organizationMembers).values({
-    organizationId: created.id,
+  // Pull profile currency to inherit (if profile exists yet)
+  const [profile] = await db.select().from(userProfiles).where(eq(userProfiles.id, userId))
+  const { id } = await createOrgForUser({
     userId,
-    role: "owner",
+    name: "Personal",
+    slug: "personal",
+    isPersonal: true,
+    currency: profile?.currency ?? "USD",
   })
-  return created.id
+  return id
 }
 
 export async function getActiveOrg(req: VercelRequest, userId: string): Promise<OrgAuth | null> {

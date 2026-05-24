@@ -86,6 +86,7 @@ export type Organization = {
   name: string
   slug: string
   is_personal: boolean
+  currency: string
   role: OrgRole
   plan_key: string | null
   plan_status: string | null
