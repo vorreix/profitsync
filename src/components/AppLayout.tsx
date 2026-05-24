@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react"
+import { useEffect } from "react"
 import { Outlet, NavLink, useLocation, useNavigate } from "react-router-dom"
-import { supabase } from "@/lib/supabase"
+import { useAuth, useUser, useClerk } from "@clerk/clerk-react"
 import {
   Sidebar,
   SidebarContent,
@@ -26,6 +26,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { ModeToggle } from "@/components/mode-toggle"
+import { CurrencyProvider } from "@/lib/currency-context"
 import { LayoutDashboard, Users, TrendingUp, User, LogOut } from "lucide-react"
 
 const navItems = [
@@ -36,22 +37,22 @@ const navItems = [
 export function AppLayout() {
   const location = useLocation()
   const navigate = useNavigate()
-  const [userEmail, setUserEmail] = useState<string | null>(null)
+  const { isLoaded, isSignedIn } = useAuth()
+  const { user } = useUser()
+  const { signOut } = useClerk()
 
   useEffect(() => {
-    const getUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) {
-        navigate("/login")
-      } else {
-        setUserEmail(user.email || null)
-      }
+    if (isLoaded && !isSignedIn) {
+      navigate("/login")
     }
-    getUser()
-  }, [navigate])
+  }, [isLoaded, isSignedIn, navigate])
+
+  if (!isLoaded || !isSignedIn) return null
+
+  const userEmail = user?.primaryEmailAddress?.emailAddress ?? null
 
   const handleLogout = async () => {
-    await supabase.auth.signOut()
+    await signOut()
     navigate("/login")
   }
 
@@ -134,7 +135,9 @@ export function AppLayout() {
         </header>
 
         <div className="flex-1 overflow-auto">
-          <Outlet />
+          <CurrencyProvider>
+            <Outlet />
+          </CurrencyProvider>
         </div>
       </SidebarInset>
     </SidebarProvider>
