@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
@@ -344,10 +345,13 @@ export function TransactionsPage() {
   const [loadingMore, setLoadingMore] = useState(false)
   const [search, setSearch] = useState("")
   const [tab, setTab] = useState("all")
+  const [sort, setSort] = useState("date_desc")
   const searchRef = useRef(search)
   searchRef.current = search
   const tabRef = useRef(tab)
   tabRef.current = tab
+  const sortRef = useRef(sort)
+  sortRef.current = sort
 
   const [categories, setCategories] = useState<{ incoming: string[]; outgoing: string[] }>(loadCategories)
 
@@ -376,10 +380,11 @@ export function TransactionsPage() {
   const [pendingFiles, setPendingFiles] = useState<File[]>([])
   const addFileInputRef = useRef<HTMLInputElement>(null)
 
-  const buildParams = useCallback((pageNum: number, s: string, t: string) => {
+  const buildParams = useCallback((pageNum: number, s: string, t: string, srt: string) => {
     const params = new URLSearchParams({ page: String(pageNum) })
     if (s.trim()) params.set("search", s.trim())
     if (t !== "all") params.set("type", t)
+    if (srt) params.set("sort", srt)
     return params.toString()
   }, [])
 
@@ -389,7 +394,7 @@ export function TransactionsPage() {
     setLoading(true)
     try {
       const [result, cls] = await Promise.all([
-        apiGet<PaginatedResponse<Transaction>>(`/api/transactions?${buildParams(1, searchRef.current, tabRef.current)}`, token),
+        apiGet<PaginatedResponse<Transaction>>(`/api/transactions?${buildParams(1, searchRef.current, tabRef.current, sortRef.current)}`, token),
         apiGet<{ data: Client[]; total: number } | Client[]>("/api/clients?page=1", token),
       ])
       setTransactions(result.data)
@@ -405,7 +410,7 @@ export function TransactionsPage() {
   useEffect(() => {
     const timer = setTimeout(() => { fetchPage1() }, search === "" ? 0 : 300)
     return () => clearTimeout(timer)
-  }, [search, tab, fetchPage1])
+  }, [search, tab, sort, fetchPage1])
 
   useEffect(() => {
     if (searchParams.get("new") === "1") {
@@ -422,7 +427,7 @@ export function TransactionsPage() {
     try {
       const nextPage = page + 1
       const result = await apiGet<PaginatedResponse<Transaction>>(
-        `/api/transactions?${buildParams(nextPage, search, tab)}`,
+        `/api/transactions?${buildParams(nextPage, search, tab, sort)}`,
         token,
       )
       setTransactions((prev) => [...prev, ...result.data])
@@ -680,11 +685,22 @@ export function TransactionsPage() {
         </div>
       )}
 
-      <div className="flex items-center gap-3 flex-wrap">
-        <div className="relative flex-1 min-w-48">
+      <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+        <div className="relative flex-1 min-w-40">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
           <Input placeholder="Search by client, description, category..." className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
+        <Select value={sort} onValueChange={setSort}>
+          <SelectTrigger className="w-40 sm:w-44 shrink-0">
+            <SelectValue placeholder="Sort by" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="date_desc">Date (newest)</SelectItem>
+            <SelectItem value="date_asc">Date (oldest)</SelectItem>
+            <SelectItem value="amount_desc">Amount (largest)</SelectItem>
+            <SelectItem value="amount_asc">Amount (smallest)</SelectItem>
+          </SelectContent>
+        </Select>
         <Tabs value={tab} onValueChange={(v) => { setTab(v) }}>
           <TabsList>
             <TabsTrigger value="all">All</TabsTrigger>
