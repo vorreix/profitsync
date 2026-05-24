@@ -19,6 +19,7 @@ import {
   TrendingUp,
   MoreHorizontal,
   ChevronDown,
+  Sparkles,
 } from "lucide-react"
 import { useOrg } from "@/lib/org-context"
 import { useAdmin } from "@/lib/admin-context"
@@ -89,17 +90,39 @@ export function MobileAppLayout() {
     <div className="min-h-screen flex flex-col bg-background ios-tap">
       <header className="safe-pt sticky top-0 z-30 bg-background/95 backdrop-blur border-b">
         <div className="flex items-center gap-2 px-4 h-12">
+          <button
+            onClick={() => navigate("/dashboard")}
+            className="pressable flex items-center gap-1.5 shrink-0"
+            aria-label="Home"
+          >
+            <div className="flex size-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
+              <TrendingUp className="size-3.5" />
+            </div>
+            <span className="font-semibold text-sm tracking-tight">ProfitSync</span>
+          </button>
+
           <Sheet open={orgSheetOpen} onOpenChange={setOrgSheetOpen}>
             <SheetTrigger asChild>
-              <button className="pressable flex items-center gap-2 px-2.5 py-1.5 rounded-full bg-muted text-sm font-medium max-w-[55%]">
+              <button className="pressable flex items-center gap-2 px-2.5 py-1.5 rounded-full bg-muted text-sm font-medium max-w-[50%] ml-auto">
                 <div className="flex size-5 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground">
                   <Building2 className="size-3" />
                 </div>
                 <span className="truncate text-xs">{activeOrg?.name ?? "Personal"}</span>
-                <ChevronDown className="size-3 text-muted-foreground" />
+                {activeOrg && (
+                  <span
+                    className={`text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded-full border shrink-0 ${
+                      activeOrg.plan_key === "premium"
+                        ? "border-amber-500/40 text-amber-600 bg-amber-500/10 dark:text-amber-300"
+                        : "border-border text-muted-foreground"
+                    }`}
+                  >
+                    {activeOrg.plan_key === "premium" ? "Pro" : "Free"}
+                  </span>
+                )}
+                <ChevronDown className="size-3 text-muted-foreground shrink-0" />
               </button>
             </SheetTrigger>
-            <SheetContent side="left" className="w-[85%] max-w-sm p-0">
+            <SheetContent side="left" className="w-[85%] max-w-sm p-0 flex flex-col">
               <SheetHeader className="p-4 border-b">
                 <SheetTitle>Organizations</SheetTitle>
               </SheetHeader>
@@ -117,7 +140,18 @@ export function MobileAppLayout() {
                         <Building2 className="size-4" />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{org.name}</p>
+                        <div className="flex items-center gap-1.5">
+                          <p className="text-sm font-medium truncate">{org.name}</p>
+                          <span
+                            className={`text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded-full border shrink-0 ${
+                              org.plan_key === "premium"
+                                ? "border-amber-500/40 text-amber-600 bg-amber-500/10 dark:text-amber-300"
+                                : "border-border text-muted-foreground"
+                            }`}
+                          >
+                            {org.plan_key === "premium" ? "Pro" : "Free"}
+                          </span>
+                        </div>
                         <p className="text-[11px] text-muted-foreground uppercase tracking-wide">{org.role}</p>
                       </div>
                       {org.id === activeOrg?.id && <span className="size-2 rounded-full bg-primary" />}
@@ -125,6 +159,18 @@ export function MobileAppLayout() {
                   ))}
                 </div>
                 <div className="p-2 border-t space-y-1">
+                  {activeOrg && activeOrg.plan_key !== "premium" && (
+                    <button
+                      onClick={() => { setOrgSheetOpen(false); navigate("/subscription") }}
+                      className="w-full flex items-center gap-3 p-3 rounded-lg pressable text-left bg-amber-500 text-amber-950 hover:bg-amber-400 dark:bg-amber-500/20 dark:text-amber-200 dark:hover:bg-amber-500/30"
+                    >
+                      <Sparkles className="size-4" />
+                      <div className="flex-1">
+                        <span className="text-sm font-medium block">Upgrade to Premium</span>
+                        <span className="text-[11px] opacity-80">More clients, attachments &amp; storage</span>
+                      </div>
+                    </button>
+                  )}
                   <button
                     onClick={() => { setOrgSheetOpen(false); navigate("/organizations") }}
                     className="w-full flex items-center gap-3 p-3 rounded-lg pressable hover:bg-accent text-left"
@@ -144,16 +190,9 @@ export function MobileAppLayout() {
             </SheetContent>
           </Sheet>
 
-          <div className="flex items-center gap-1.5 mx-auto">
-            <div className="flex size-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
-              <TrendingUp className="size-3.5" />
-            </div>
-            <span className="font-semibold text-sm tracking-tight">ProfitSync</span>
-          </div>
-
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="pressable size-9 rounded-full bg-muted flex items-center justify-center">
+              <button className="pressable size-9 rounded-full bg-muted flex items-center justify-center shrink-0">
                 <Menu className="size-4" />
               </button>
             </DropdownMenuTrigger>

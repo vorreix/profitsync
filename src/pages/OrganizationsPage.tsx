@@ -147,6 +147,16 @@ export function OrganizationsPage() {
                           Personal
                         </Badge>
                       )}
+                      <Badge
+                        variant="outline"
+                        className={`text-[10px] uppercase tracking-wide ${
+                          org.plan_key === "premium"
+                            ? "border-amber-500/40 text-amber-600 bg-amber-500/10 dark:text-amber-300"
+                            : ""
+                        }`}
+                      >
+                        {org.plan_key === "premium" ? "Premium" : "Free"}
+                      </Badge>
                       {isActive && (
                         <Badge className="text-[10px] uppercase tracking-wide">
                           <Check className="size-3 mr-1" /> Active
