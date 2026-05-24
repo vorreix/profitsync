@@ -27,7 +27,23 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { ModeToggle } from "@/components/mode-toggle"
 import { CurrencyProvider } from "@/lib/currency-context"
-import { LayoutDashboard, Users, TrendingUp, User, LogOut, ArrowLeftRight, FileText, Trash2, Plus, X } from "lucide-react"
+import { OrgProvider, useOrg } from "@/lib/org-context"
+import { OrgSwitcher } from "@/components/OrgSwitcher"
+import {
+  LayoutDashboard,
+  Users,
+  TrendingUp,
+  User,
+  LogOut,
+  ArrowLeftRight,
+  FileText,
+  Trash2,
+  Plus,
+  X,
+  Building2,
+  ShieldCheck,
+  ScrollText,
+} from "lucide-react"
 
 const quickActions = [
   { label: "Add Client", icon: Users, href: "/clients?new=1" },
@@ -40,24 +56,17 @@ const navItems = [
   { label: "Clients", href: "/clients", icon: Users },
   { label: "Transactions", href: "/transactions", icon: ArrowLeftRight },
   { label: "Quotations", href: "/quotations", icon: FileText },
+  { label: "Organizations", href: "/organizations", icon: Building2 },
   { label: "Trash", href: "/trash", icon: Trash2 },
 ]
 
-export function AppLayout() {
+function AppLayoutInner() {
   const location = useLocation()
   const navigate = useNavigate()
-  const { isLoaded, isSignedIn } = useAuth()
   const { user } = useUser()
   const { signOut } = useClerk()
+  const { activeOrg } = useOrg()
   const [fabOpen, setFabOpen] = useState(false)
-
-  useEffect(() => {
-    if (isLoaded && !isSignedIn) {
-      navigate("/login")
-    }
-  }, [isLoaded, isSignedIn, navigate])
-
-  if (!isLoaded || !isSignedIn) return null
 
   const userEmail = user?.primaryEmailAddress?.emailAddress ?? null
 
@@ -69,7 +78,7 @@ export function AppLayout() {
   return (
     <SidebarProvider>
       <Sidebar collapsible="icon">
-        <SidebarHeader className="pb-0">
+        <SidebarHeader className="pb-0 gap-2">
           <div className="flex items-center gap-2 px-2 py-3">
             <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
               <TrendingUp className="size-4" />
@@ -77,6 +86,9 @@ export function AppLayout() {
             <span className="font-semibold text-sm tracking-tight group-data-[collapsible=icon]:hidden">
               ProfitSync
             </span>
+          </div>
+          <div className="px-1">
+            <OrgSwitcher />
           </div>
         </SidebarHeader>
 
@@ -104,6 +116,14 @@ export function AppLayout() {
         </SidebarContent>
 
         <SidebarFooter>
+          <div className="flex flex-col gap-1 px-1 text-[11px] text-muted-foreground group-data-[collapsible=icon]:hidden">
+            <NavLink to="/privacy-policy" className="hover:text-foreground inline-flex items-center gap-1.5">
+              <ShieldCheck className="size-3" /> Privacy Policy
+            </NavLink>
+            <NavLink to="/terms-of-service" className="hover:text-foreground inline-flex items-center gap-1.5">
+              <ScrollText className="size-3" /> Terms of Service
+            </NavLink>
+          </div>
           <div className="flex items-center gap-2">
             <div className="px-2 py-2 group-data-[collapsible=icon]:px-0">
               <ModeToggle />
@@ -118,11 +138,20 @@ export function AppLayout() {
                 <DropdownMenuLabel className="flex flex-col space-y-1">
                   <span>Account</span>
                   {userEmail && <span className="text-xs font-normal text-muted-foreground">{userEmail}</span>}
+                  {activeOrg && (
+                    <span className="text-xs font-normal text-muted-foreground">
+                      Org: {activeOrg.name}
+                    </span>
+                  )}
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => navigate("/profile")}>
                   <User className="size-4 mr-2" />
                   Profile Settings
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => navigate("/organizations")}>
+                  <Building2 className="size-4 mr-2" />
+                  Organizations
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleLogout} className="text-destructive">
@@ -142,15 +171,18 @@ export function AppLayout() {
           <span className="text-sm font-medium text-muted-foreground">
             {navItems.find((n) => location.pathname === n.href || location.pathname.startsWith(n.href + "/"))?.label ?? ""}
           </span>
+          {activeOrg && (
+            <span className="ml-auto inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Building2 className="size-3" />
+              {activeOrg.name}
+            </span>
+          )}
         </header>
 
         <div className="flex-1 overflow-auto">
-          <CurrencyProvider>
-            <Outlet />
-          </CurrencyProvider>
+          <Outlet key={activeOrg?.id ?? "no-org"} />
         </div>
       </SidebarInset>
-      {/* Quick-add FAB */}
       {fabOpen && (
         <div className="fixed inset-0 z-40" onClick={() => setFabOpen(false)} />
       )}
@@ -184,5 +216,26 @@ export function AppLayout() {
         </Button>
       </div>
     </SidebarProvider>
+  )
+}
+
+export function AppLayout() {
+  const navigate = useNavigate()
+  const { isLoaded, isSignedIn } = useAuth()
+
+  useEffect(() => {
+    if (isLoaded && !isSignedIn) {
+      navigate("/login")
+    }
+  }, [isLoaded, isSignedIn, navigate])
+
+  if (!isLoaded || !isSignedIn) return null
+
+  return (
+    <OrgProvider>
+      <CurrencyProvider>
+        <AppLayoutInner />
+      </CurrencyProvider>
+    </OrgProvider>
   )
 }

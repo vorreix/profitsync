@@ -1,27 +1,16 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { verifyToken } from "@clerk/backend"
+import { and, asc, count, desc, eq, ilike, isNull, or, sql } from "drizzle-orm"
 import { db, serialize } from "../src/lib/db"
 import { clients, transactions } from "../src/lib/db/schema"
-import { and, eq, desc, asc, isNull, ilike, or, count, sql } from "drizzle-orm"
+import { canWrite, requireAuth } from "./_lib/auth"
 
 const VALID_STATUSES = ["active", "inactive", "archived"]
-
-async function getAuth(req: VercelRequest): Promise<string | null> {
-  const token = req.headers.authorization?.replace("Bearer ", "")
-  if (!token) return null
-  try {
-    const payload = await verifyToken(token, { secretKey: process.env.CLERK_SECRET_KEY! })
-    return payload.sub
-  } catch {
-    return null
-  }
-}
-
 const PAGE_SIZE = 20
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const userId = await getAuth(req)
-  if (!userId) return res.status(401).json({ error: "Unauthorized" })
+  const ctx = await requireAuth(req, res)
+  if (!ctx) return
+  const { userId, orgId, role } = ctx
 
   if (req.method === "GET") {
     const { search, sort, page } = req.query as {
@@ -36,7 +25,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         )
       : undefined
 
-    const whereClause = and(eq(clients.userId, userId), isNull(clients.deletedAt), searchFilter)
+    const whereClause = and(
+      eq(clients.organizationId, orgId),
+      isNull(clients.deletedAt),
+      searchFilter,
+    )
 
     const orderBy = (() => {
       switch (sort) {
@@ -50,6 +43,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const selectFields = {
       id: clients.id,
       userId: clients.userId,
+      organizationId: clients.organizationId,
       name: clients.name,
       company: clients.company,
       email: clients.email,
@@ -97,6 +91,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   if (req.method === "POST") {
+    if (!canWrite(role)) return res.status(403).json({ error: "Forbidden" })
     const { name, company, email, phone, status, notes, onboard_date } = req.body as {
       name: string; company?: string; email?: string
       phone?: string; status?: string; notes?: string; onboard_date?: string
@@ -110,6 +105,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .insert(clients)
       .values({
         userId,
+        organizationId: orgId,
         name: name.trim(),
         company: company ?? "",
         email: email ?? "",
