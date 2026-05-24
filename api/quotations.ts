@@ -3,6 +3,7 @@ import { and, count, desc, eq, ilike, isNull, or } from "drizzle-orm"
 import { db, serialize } from "../src/lib/db"
 import { quotations } from "../src/lib/db/schema"
 import { canWrite, requireAuth } from "./_lib/auth"
+import { checkNoteLength, checkQuotationQuota } from "./_lib/quota"
 
 const VALID_STATUSES = ["draft", "sent", "accepted", "rejected"]
 const PAGE_SIZE = 20
@@ -77,6 +78,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!VALID_STATUSES.includes(normalizedStatus)) {
       return res.status(400).json({ error: "status must be draft, sent, accepted, or rejected" })
     }
+    const quota = await checkQuotationQuota(orgId)
+    if (!quota.allowed) return res.status(402).json(quota)
+    const noteCheck = await checkNoteLength(orgId, notes)
+    if (!noteCheck.allowed) return res.status(402).json(noteCheck)
     const [row] = await db
       .insert(quotations)
       .values({

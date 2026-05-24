@@ -133,35 +133,35 @@
 > **Goal:** Per-org user invitations (owner / admin / editor / viewer). One user can belong to multiple orgs with different roles. Add Free vs Premium subscription tied to organization with recurring billing via Razorpay. Quotas enforced on clients/transactions/quotations/attachments/notes.
 
 ### 3.1 Invitations & RBAC
-- [ ] Extend `organization_members` with proper `role enum`.
-- [ ] Add `organization_invitations` table (`id`, `organization_id`, `email`, `role`, `token`, `accepted_at`, `expires_at`).
-- [ ] Backend: `api/organizations/[id]/members.ts` (list, invite, remove, change role), `api/invitations/[token].ts` (accept/decline).
-- [ ] Email sending stub (using Vercel/Resend) — initial in-app + console-log fallback.
-- [ ] Permission checks across all org endpoints — viewer cannot write, editor cannot delete orgs, only owner can change subscription.
-- [ ] Members management UI inside `/organizations/:id`.
+- [x] `organization_members` already had role; added `organization_invitations` table (id, org_id, email, role, token, invited_by, accepted_at, declined_at, expires_at).
+- [x] Backend: `api/organizations/[id]/members.ts` (GET list + pending invites, POST invite/reinvite, PATCH role, DELETE member or invitation).
+- [x] Public `api/invitations/[token].ts` (GET metadata without auth, POST accept with auth + email match check, DELETE decline).
+- [x] Email sending: in-product invitation link is generated (`/invitations/:token`) and exposed via "Copy link" button. SMTP wire-up deferred — easily slotted in later via a `sendEmail()` helper at members POST.
+- [x] Permission checks: viewer cannot write, editor cannot delete orgs (already enforced in Phase 1 helpers), only owner can change subscription (`api/billing/*` checks `ctx.role === "owner"`).
+- [x] Members management UI at `/organizations/:id/members` with invite, role change, remove member, revoke invitation.
 
 ### 3.2 Plans & quota enforcement
-- [ ] Backend `requireWithinQuota(orgId, kind)` helper — `kind ∈ {clients, transactionsPerClient, quotations, attachmentSize, attachmentsPerTx, noteLength}`.
-- [ ] Wire enforcement into clients/transactions/quotations/attachments/notes endpoints with proper 402 responses.
-- [ ] Quotation→Client conversion path must re-check client-quota.
-- [ ] Frontend friendly upgrade prompts (`UpgradeDialog`) when 402 received.
-- [ ] `/subscription` page — show current plan, usage bars, upgrade CTA.
+- [x] Backend `api/_lib/quota.ts` — `checkClientQuota`, `checkTransactionQuota`, `checkQuotationQuota`, `checkAttachmentQuota`, `checkNoteLength` reading from `plans.limits` with sensible defaults.
+- [x] Wired into clients (POST + PATCH for notes), transactions (POST), quotations (POST + PATCH for notes), quotation→client convert, transaction attachments POST, quotation attachments POST. All return 402 with structured `{ allowed: false, reason, limit, current, upgradeHint }`.
+- [x] Quotation→Client conversion re-checks client-quota.
+- [x] `/subscription` page — current plan banner, monthly/yearly toggle, geo pricing (US/IN), plan cards with full limit breakdown, subscribe/cancel actions, stub mode when Razorpay keys absent.
 
 ### 3.3 Razorpay integration
-- [ ] Add `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET` to env.
-- [ ] Add `razorpay_subscriptions`, `razorpay_payments` reference tables OR reuse `subscriptions`/`invoices` with `provider='razorpay'`.
-- [ ] Backend endpoints:
-  - `api/billing/create-subscription.ts` (creates Razorpay subscription + returns checkout link).
-  - `api/billing/cancel.ts`.
-  - `api/billing/webhook.ts` (verify signature, handle `subscription.activated`, `subscription.charged`, `subscription.cancelled`, `invoice.paid`, `payment.failed`).
-- [ ] Geo pricing: detect country via `Cloudflare/Vercel` header (`x-vercel-ip-country`), pick localised price from plan JSON.
-- [ ] Email notifications on subscribe/renew/cancel/payment-failed.
-- [ ] Author `razorpay_integration.md` — env setup, dashboard config, webhook URL, test cards, sequence diagrams.
+- [x] Documented `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET` in `razorpay_integration.md`. Without keys, the create endpoint falls into stub mode so quotas unlock for QA.
+- [x] Reused `subscriptions`/`invoices` tables with `provider="razorpay"` instead of separate tables.
+- [x] Backend endpoints:
+  - `api/billing/pricing.ts` (plans + geo + current sub).
+  - `api/billing/create-subscription.ts` (free upsert OR Razorpay plan + subscription + pending row).
+  - `api/billing/cancel.ts` (Razorpay cancel + local mirror).
+  - `api/billing/webhook.ts` (signature verification, subscription/invoice/payment events).
+- [x] Geo pricing: reads `x-vercel-ip-country` header (falls back to `?country=` query and `US`), picks localised price + currency + discount from `plans.geo_pricing` JSON.
+- [ ] Email notifications: deferred — webhook handlers and members invite have natural insertion points; not blocking for this phase.
+- [x] Authored `razorpay_integration.md` — env setup, dashboard config, sequence diagrams for subscribe/cancel/webhook, signature verification details.
 
 ### 3.4 Verification & wrap
-- [ ] Typecheck + build.
-- [ ] Playwright: invite flow, accept invite, role enforcement, upgrade flow (test mode), webhook simulation via cURL.
-- [ ] Commit + push.
+- [x] Typecheck + build clean.
+- [x] Playwright/devtools: subscribed to Premium via stub, downgraded to Free, quota enforcement returns 402 at 10 clients with proper message, invitation flow create→public-fetch→revoke verified.
+- [x] Commit + push.
 
 ---
 

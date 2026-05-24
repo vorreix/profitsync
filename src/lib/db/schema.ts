@@ -23,6 +23,23 @@ export const organizationMembers = pgTable("organization_members", {
   userIdx: index("organization_members_user_idx").on(table.userId),
 }))
 
+export const organizationInvitations = pgTable("organization_invitations", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  email: text("email").notNull(),
+  role: text("role").notNull().default("editor"),
+  token: text("token").notNull().unique(),
+  invitedByUserId: text("invited_by_user_id").notNull(),
+  acceptedAt: timestamp("accepted_at"),
+  declinedAt: timestamp("declined_at"),
+  expiresAt: timestamp("expires_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  orgIdx: index("organization_invitations_org_idx").on(table.organizationId),
+  emailIdx: index("organization_invitations_email_idx").on(table.email),
+  tokenIdx: index("organization_invitations_token_idx").on(table.token),
+}))
+
 export const legalAcceptances = pgTable("legal_acceptances", {
   id: uuid("id").primaryKey().defaultRandom(),
   userId: text("user_id").notNull(),
