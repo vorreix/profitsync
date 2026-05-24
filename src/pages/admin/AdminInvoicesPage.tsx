@@ -146,41 +146,41 @@ export function AdminInvoicesPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between">
+      <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Invoices</h1>
-          <p className="text-sm text-slate-400 mt-1">Billing receipts.</p>
+          <p className="text-sm text-muted-foreground mt-1">Billing receipts.</p>
         </div>
-        <Button onClick={openCreate} className="bg-amber-500 text-amber-950 hover:bg-amber-400">
+        <Button onClick={openCreate}>
           <Plus className="size-3.5 mr-1.5" /> Create invoice
         </Button>
       </div>
 
-      <Card className="bg-slate-900 border-slate-800 p-4 space-y-4">
+      <Card className="p-4 space-y-4">
         <div className="flex items-center gap-3 flex-wrap">
           <div className="relative flex-1 min-w-[220px]">
-            <Search className="absolute left-2 top-1/2 -translate-y-1/2 size-3.5 text-slate-500" />
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
             <Input
               placeholder="Search by organization name"
-              className="pl-8 bg-slate-950 border-slate-800"
+              className="pl-8"
               value={search}
               onChange={(e) => { setPage(1); setSearch(e.target.value) }}
             />
           </div>
           <Tabs value={status} onValueChange={(v) => { setPage(1); setStatus(v as typeof status) }}>
-            <TabsList className="bg-slate-950 border border-slate-800">
+            <TabsList>
               <TabsTrigger value="all">All</TabsTrigger>
               {STATUS_OPTIONS.map((s) => (
                 <TabsTrigger key={s} value={s}>{s}</TabsTrigger>
               ))}
             </TabsList>
           </Tabs>
-          <span className="text-xs text-slate-500 ml-auto">{total} total</span>
+          <span className="text-xs text-muted-foreground ml-auto">{total} total</span>
         </div>
 
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="text-left text-[11px] uppercase tracking-widest text-slate-500">
+            <thead className="text-left text-[11px] uppercase tracking-widest text-muted-foreground">
               <tr>
                 <th className="py-2 pr-4">Invoice</th>
                 <th className="py-2 pr-4">Organization</th>
@@ -193,36 +193,44 @@ export function AdminInvoicesPage() {
             </thead>
             <tbody>
               {loading ? Array.from({ length: 5 }).map((_, i) => (
-                <tr key={i}><td colSpan={7} className="py-2"><Skeleton className="h-9 w-full bg-slate-800" /></td></tr>
+                <tr key={i}><td colSpan={7} className="py-2"><Skeleton className="h-9 w-full" /></td></tr>
               )) : data.length === 0 ? (
-                <tr><td colSpan={7} className="py-10 text-center text-slate-500">
+                <tr><td colSpan={7} className="py-10 text-center text-muted-foreground">
                   No invoices yet. Create one to test the flow.
                 </td></tr>
               ) : data.map((inv) => (
-                <tr key={inv.id} className="border-t border-slate-800 hover:bg-slate-800/40">
+                <tr key={inv.id} className="border-t border-border hover:bg-muted/40">
                   <td className="py-3 pr-4">
                     <div className="flex items-center gap-2">
-                      <Receipt className="size-3.5 text-slate-400" />
+                      <Receipt className="size-3.5 text-muted-foreground" />
                       <span className="font-mono text-xs">{inv.id.slice(0, 8)}…</span>
                     </div>
                   </td>
                   <td className="py-3 pr-4">
                     <p>{inv.organization_name}</p>
-                    <p className="text-xs text-slate-400">{inv.owner_email ?? "—"}</p>
+                    <p className="text-xs text-muted-foreground">{inv.owner_email ?? "—"}</p>
                   </td>
                   <td className="py-3 pr-4 tabular-nums">{inv.amount} {inv.currency}</td>
                   <td className="py-3 pr-4">
-                    <Badge className={`text-[10px] uppercase ${
-                      inv.status === "paid" ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30" :
-                      inv.status === "open" ? "bg-amber-500/15 text-amber-300 border-amber-500/30" :
-                      inv.status === "refunded" ? "bg-violet-500/15 text-violet-300 border-violet-500/30" :
-                      "bg-slate-800 text-slate-300 border-slate-700"
-                    }`}>{inv.status}</Badge>
+                    <Badge
+                      variant="outline"
+                      className={`text-[10px] uppercase ${
+                        inv.status === "paid"
+                          ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
+                          : inv.status === "open"
+                            ? "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30"
+                            : inv.status === "refunded"
+                              ? "bg-violet-500/15 text-violet-700 dark:text-violet-300 border-violet-500/30"
+                              : ""
+                      }`}
+                    >
+                      {inv.status}
+                    </Badge>
                   </td>
-                  <td className="py-3 pr-4 text-xs text-slate-300 tabular-nums">{inv.issued_at?.split("T")[0] ?? "—"}</td>
-                  <td className="py-3 pr-4 text-xs text-slate-300 tabular-nums">{inv.paid_at?.split("T")[0] ?? "—"}</td>
+                  <td className="py-3 pr-4 text-xs text-muted-foreground tabular-nums">{inv.issued_at?.split("T")[0] ?? "—"}</td>
+                  <td className="py-3 pr-4 text-xs text-muted-foreground tabular-nums">{inv.paid_at?.split("T")[0] ?? "—"}</td>
                   <td className="py-3 text-right">
-                    <Button size="sm" variant="ghost" className="text-slate-300" onClick={() => { setEditing(inv); setEditStatus(inv.status) }}>Edit</Button>
+                    <Button size="sm" variant="ghost" onClick={() => { setEditing(inv); setEditStatus(inv.status) }}>Edit</Button>
                   </td>
                 </tr>
               ))}
@@ -230,13 +238,13 @@ export function AdminInvoicesPage() {
           </table>
         </div>
 
-        <div className="flex items-center justify-between text-xs text-slate-400">
+        <div className="flex items-center justify-between text-xs text-muted-foreground">
           <span>Page {page} of {totalPages}</span>
           <div className="flex gap-1">
-            <Button size="icon" variant="ghost" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))} className="text-slate-300">
+            <Button size="icon" variant="ghost" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
               <ChevronLeft className="size-3.5" />
             </Button>
-            <Button size="icon" variant="ghost" disabled={page >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))} className="text-slate-300">
+            <Button size="icon" variant="ghost" disabled={page >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}>
               <ChevronRight className="size-3.5" />
             </Button>
           </div>
@@ -244,19 +252,19 @@ export function AdminInvoicesPage() {
       </Card>
 
       <Dialog open={!!editing} onOpenChange={(o) => { if (!o) setEditing(null) }}>
-        <DialogContent className="bg-slate-900 border-slate-800 text-slate-100">
+        <DialogContent>
           <DialogHeader>
             <DialogTitle>Edit invoice</DialogTitle>
           </DialogHeader>
           {editing && (
             <div className="space-y-3 text-sm">
-              <p className="text-xs text-slate-400">Org: <span className="text-slate-200">{editing.organization_name}</span></p>
-              <p className="text-xs text-slate-400">Amount: <span className="text-slate-200">{editing.amount} {editing.currency}</span></p>
+              <p className="text-xs text-muted-foreground">Org: <span className="text-foreground">{editing.organization_name}</span></p>
+              <p className="text-xs text-muted-foreground">Amount: <span className="text-foreground">{editing.amount} {editing.currency}</span></p>
               <div className="space-y-1.5">
                 <Label className="text-xs">Status</Label>
                 <div className="flex gap-1.5 flex-wrap">
                   {STATUS_OPTIONS.map((s) => (
-                    <Button key={s} type="button" size="sm" variant={editStatus === s ? "default" : "outline"} className={editStatus === s ? "" : "border-slate-700 text-slate-300"} onClick={() => setEditStatus(s)}>{s}</Button>
+                    <Button key={s} type="button" size="sm" variant={editStatus === s ? "default" : "outline"} onClick={() => setEditStatus(s)}>{s}</Button>
                   ))}
                 </div>
               </div>
@@ -273,7 +281,7 @@ export function AdminInvoicesPage() {
       </Dialog>
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="bg-slate-900 border-slate-800 text-slate-100">
+        <DialogContent>
           <DialogHeader>
             <DialogTitle>Create invoice</DialogTitle>
           </DialogHeader>
@@ -283,7 +291,7 @@ export function AdminInvoicesPage() {
               <select
                 value={createForm.organization_id}
                 onChange={(e) => setCreateForm({ ...createForm, organization_id: e.target.value })}
-                className="w-full bg-slate-950 border border-slate-800 rounded-md h-9 px-2 text-sm"
+                className="w-full bg-background border border-input rounded-md h-9 px-2 text-sm"
               >
                 <option value="">Select an organization…</option>
                 {orgs.map((o) => (
@@ -294,18 +302,18 @@ export function AdminInvoicesPage() {
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs">Amount</Label>
-                <Input value={createForm.amount} onChange={(e) => setCreateForm({ ...createForm, amount: e.target.value })} className="bg-slate-950 border-slate-800" placeholder="29.00" />
+                <Input value={createForm.amount} onChange={(e) => setCreateForm({ ...createForm, amount: e.target.value })} placeholder="29.00" />
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs">Currency</Label>
-                <Input value={createForm.currency} onChange={(e) => setCreateForm({ ...createForm, currency: e.target.value.toUpperCase() })} className="bg-slate-950 border-slate-800" />
+                <Input value={createForm.currency} onChange={(e) => setCreateForm({ ...createForm, currency: e.target.value.toUpperCase() })} />
               </div>
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">Status</Label>
               <div className="flex gap-1.5 flex-wrap">
                 {STATUS_OPTIONS.map((s) => (
-                  <Button key={s} type="button" size="sm" variant={createForm.status === s ? "default" : "outline"} className={createForm.status === s ? "" : "border-slate-700 text-slate-300"} onClick={() => setCreateForm({ ...createForm, status: s })}>{s}</Button>
+                  <Button key={s} type="button" size="sm" variant={createForm.status === s ? "default" : "outline"} onClick={() => setCreateForm({ ...createForm, status: s })}>{s}</Button>
                 ))}
               </div>
             </div>

@@ -122,41 +122,41 @@ export function AdminSubscriptionsPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Subscriptions</h1>
-        <p className="text-sm text-slate-400 mt-1">All subscription rows. One per organization.</p>
+        <p className="text-sm text-muted-foreground mt-1">All subscription rows. One per organization.</p>
       </div>
 
-      <Card className="bg-slate-900 border-slate-800 p-4 space-y-4">
+      <Card className="p-4 space-y-4">
         <div className="flex items-center gap-3 flex-wrap">
           <div className="relative flex-1 min-w-[220px]">
-            <Search className="absolute left-2 top-1/2 -translate-y-1/2 size-3.5 text-slate-500" />
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
             <Input
               placeholder="Search by organization name"
-              className="pl-8 bg-slate-950 border-slate-800"
+              className="pl-8"
               value={search}
               onChange={(e) => { setPage(1); setSearch(e.target.value) }}
             />
           </div>
           <Tabs value={plan} onValueChange={(v) => { setPage(1); setPlan(v as typeof plan) }}>
-            <TabsList className="bg-slate-950 border border-slate-800">
+            <TabsList>
               <TabsTrigger value="all">All plans</TabsTrigger>
               <TabsTrigger value="free">Free</TabsTrigger>
               <TabsTrigger value="premium">Premium</TabsTrigger>
             </TabsList>
           </Tabs>
           <Tabs value={status} onValueChange={(v) => { setPage(1); setStatus(v as typeof status) }}>
-            <TabsList className="bg-slate-950 border border-slate-800">
+            <TabsList>
               <TabsTrigger value="all">Any</TabsTrigger>
               <TabsTrigger value="active">Active</TabsTrigger>
               <TabsTrigger value="past_due">Past due</TabsTrigger>
               <TabsTrigger value="cancelled">Cancelled</TabsTrigger>
             </TabsList>
           </Tabs>
-          <span className="text-xs text-slate-500 ml-auto">{total} total</span>
+          <span className="text-xs text-muted-foreground ml-auto">{total} total</span>
         </div>
 
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="text-left text-[11px] uppercase tracking-widest text-slate-500">
+            <thead className="text-left text-[11px] uppercase tracking-widest text-muted-foreground">
               <tr>
                 <th className="py-2 pr-4">Organization</th>
                 <th className="py-2 pr-4">Plan</th>
@@ -169,35 +169,48 @@ export function AdminSubscriptionsPage() {
             </thead>
             <tbody>
               {loading ? Array.from({ length: 5 }).map((_, i) => (
-                <tr key={i}><td colSpan={7} className="py-2"><Skeleton className="h-9 w-full bg-slate-800" /></td></tr>
+                <tr key={i}><td colSpan={7} className="py-2"><Skeleton className="h-9 w-full" /></td></tr>
               )) : data.length === 0 ? (
-                <tr><td colSpan={7} className="py-6 text-center text-slate-500">No subscriptions.</td></tr>
+                <tr><td colSpan={7} className="py-6 text-center text-muted-foreground">No subscriptions.</td></tr>
               ) : data.map((s) => (
-                <tr key={s.id} className="border-t border-slate-800 hover:bg-slate-800/40">
+                <tr key={s.id} className="border-t border-border hover:bg-muted/40">
                   <td className="py-3 pr-4">
                     <p className="text-sm font-medium">{s.organization_name}</p>
-                    <p className="text-xs text-slate-400">{s.owner_email ?? "—"}</p>
+                    <p className="text-xs text-muted-foreground">{s.owner_email ?? "—"}</p>
                   </td>
                   <td className="py-3 pr-4">
-                    <Badge className={`text-[10px] uppercase ${s.plan_key === "premium" ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30" : "bg-slate-800 text-slate-300 border-slate-700"}`}>
+                    <Badge
+                      variant="outline"
+                      className={`text-[10px] uppercase ${
+                        s.plan_key === "premium"
+                          ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
+                          : ""
+                      }`}
+                    >
                       {s.plan_key}
                     </Badge>
                   </td>
                   <td className="py-3 pr-4">
-                    <Badge className={`text-[10px] uppercase ${
-                      s.status === "active" ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30" :
-                      s.status === "past_due" ? "bg-amber-500/15 text-amber-300 border-amber-500/30" :
-                      s.status === "cancelled" ? "bg-red-500/15 text-red-300 border-red-500/30" :
-                      "bg-slate-800 text-slate-300 border-slate-700"
-                    }`}>
+                    <Badge
+                      variant="outline"
+                      className={`text-[10px] uppercase ${
+                        s.status === "active"
+                          ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
+                          : s.status === "past_due"
+                            ? "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30"
+                            : s.status === "cancelled"
+                              ? "bg-red-500/15 text-red-700 dark:text-red-300 border-red-500/30"
+                              : ""
+                      }`}
+                    >
                       {s.status}
                     </Badge>
                   </td>
-                  <td className="py-3 pr-4 text-slate-300 text-xs">{s.billing_cycle ?? "—"}</td>
-                  <td className="py-3 pr-4 text-slate-300 text-xs">{s.provider ?? "—"}</td>
-                  <td className="py-3 pr-4 text-slate-300 text-xs tabular-nums">{s.current_period_end ? s.current_period_end.split("T")[0] : "—"}</td>
+                  <td className="py-3 pr-4 text-xs text-muted-foreground">{s.billing_cycle ?? "—"}</td>
+                  <td className="py-3 pr-4 text-xs text-muted-foreground">{s.provider ?? "—"}</td>
+                  <td className="py-3 pr-4 text-xs text-muted-foreground tabular-nums">{s.current_period_end ? s.current_period_end.split("T")[0] : "—"}</td>
                   <td className="py-3 text-right">
-                    <Button size="icon" variant="ghost" className="text-slate-300 hover:text-slate-100" onClick={() => openEdit(s)}>
+                    <Button size="icon" variant="ghost" onClick={() => openEdit(s)}>
                       <Pencil className="size-3.5" />
                     </Button>
                   </td>
@@ -207,13 +220,13 @@ export function AdminSubscriptionsPage() {
           </table>
         </div>
 
-        <div className="flex items-center justify-between text-xs text-slate-400">
+        <div className="flex items-center justify-between text-xs text-muted-foreground">
           <span>Page {page} of {totalPages}</span>
           <div className="flex gap-1">
-            <Button size="icon" variant="ghost" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))} className="text-slate-300">
+            <Button size="icon" variant="ghost" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
               <ChevronLeft className="size-3.5" />
             </Button>
-            <Button size="icon" variant="ghost" disabled={page >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))} className="text-slate-300">
+            <Button size="icon" variant="ghost" disabled={page >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}>
               <ChevronRight className="size-3.5" />
             </Button>
           </div>
@@ -221,13 +234,13 @@ export function AdminSubscriptionsPage() {
       </Card>
 
       <Dialog open={!!editing} onOpenChange={(o) => { if (!o) setEditing(null) }}>
-        <DialogContent className="bg-slate-900 border-slate-800 text-slate-100">
+        <DialogContent>
           <DialogHeader>
             <DialogTitle>Edit subscription</DialogTitle>
           </DialogHeader>
           {editing && (
             <div className="space-y-3 text-sm">
-              <div className="flex items-center gap-2 text-xs text-slate-400">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <CreditCard className="size-3.5" />
                 {editing.organization_name}
               </div>
@@ -235,7 +248,7 @@ export function AdminSubscriptionsPage() {
                 <Label className="text-xs">Plan</Label>
                 <div className="flex gap-1.5">
                   {PLAN_OPTIONS.map((p) => (
-                    <Button key={p} type="button" size="sm" variant={form.plan_key === p ? "default" : "outline"} className={form.plan_key === p ? "" : "border-slate-700 text-slate-300"} onClick={() => setForm({ ...form, plan_key: p })}>{p}</Button>
+                    <Button key={p} type="button" size="sm" variant={form.plan_key === p ? "default" : "outline"} onClick={() => setForm({ ...form, plan_key: p })}>{p}</Button>
                   ))}
                 </div>
               </div>
@@ -243,7 +256,7 @@ export function AdminSubscriptionsPage() {
                 <Label className="text-xs">Status</Label>
                 <div className="flex gap-1.5 flex-wrap">
                   {STATUS_OPTIONS.map((s) => (
-                    <Button key={s} type="button" size="sm" variant={form.status === s ? "default" : "outline"} className={form.status === s ? "" : "border-slate-700 text-slate-300"} onClick={() => setForm({ ...form, status: s })}>{s}</Button>
+                    <Button key={s} type="button" size="sm" variant={form.status === s ? "default" : "outline"} onClick={() => setForm({ ...form, status: s })}>{s}</Button>
                   ))}
                 </div>
               </div>
@@ -251,13 +264,13 @@ export function AdminSubscriptionsPage() {
                 <Label className="text-xs">Billing cycle</Label>
                 <div className="flex gap-1.5">
                   {CYCLE_OPTIONS.map((c) => (
-                    <Button key={c || "none"} type="button" size="sm" variant={form.billing_cycle === c ? "default" : "outline"} className={form.billing_cycle === c ? "" : "border-slate-700 text-slate-300"} onClick={() => setForm({ ...form, billing_cycle: c })}>{c || "none"}</Button>
+                    <Button key={c || "none"} type="button" size="sm" variant={form.billing_cycle === c ? "default" : "outline"} onClick={() => setForm({ ...form, billing_cycle: c })}>{c || "none"}</Button>
                   ))}
                 </div>
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs">Current period end</Label>
-                <Input type="date" value={form.current_period_end} onChange={(e) => setForm({ ...form, current_period_end: e.target.value })} className="bg-slate-950 border-slate-800" />
+                <Input type="date" value={form.current_period_end} onChange={(e) => setForm({ ...form, current_period_end: e.target.value })} />
               </div>
             </div>
           )}
