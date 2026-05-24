@@ -1,7 +1,12 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { and, count, desc, eq, ilike, or, sql } from "drizzle-orm"
 import { db, serialize } from "../../src/lib/db"
-import { appAdmins, userProfiles } from "../../src/lib/db/schema"
+import {
+  appAdmins,
+  organizationMembers,
+  organizations,
+  userProfiles,
+} from "../../src/lib/db/schema"
 import { requireAdmin } from "../_lib/admin"
 
 const PAGE_SIZE = 30
@@ -110,6 +115,49 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // role parameter currently unused — reserved for future global role assignments
     void role
     return res.status(400).json({ error: "Unknown action" })
+  }
+
+  if (req.method === "DELETE") {
+    const { user_id } = req.body as { user_id?: string }
+    if (!user_id) return res.status(400).json({ error: "user_id is required" })
+    if (user_id === adminId) {
+      return res.status(400).json({ error: "Cannot delete yourself" })
+    }
+
+    // Delete every org the user owns (cascades to clients/transactions/subscriptions/invoices/members/invitations).
+    const ownedOrgs = await db
+      .select({ id: organizations.id })
+      .from(organizations)
+      .where(eq(organizations.ownerUserId, user_id))
+
+    for (const o of ownedOrgs) {
+      // Re-point any profile that had this org as current
+      const profilesWithCurrent = await db
+        .select({ id: userProfiles.id })
+        .from(userProfiles)
+        .where(eq(userProfiles.currentOrganizationId, o.id))
+      for (const p of profilesWithCurrent) {
+        await db
+          .update(userProfiles)
+          .set({ currentOrganizationId: null, updatedAt: new Date() })
+          .where(eq(userProfiles.id, p.id))
+      }
+      await db.delete(organizations).where(eq(organizations.id, o.id))
+    }
+
+    // Drop any non-owner memberships the user holds in other orgs.
+    await db.delete(organizationMembers).where(eq(organizationMembers.userId, user_id))
+
+    // Drop app-admin grant if any.
+    await db.delete(appAdmins).where(eq(appAdmins.userId, user_id))
+
+    // Finally delete the profile row.
+    const result = await db
+      .delete(userProfiles)
+      .where(eq(userProfiles.id, user_id))
+      .returning({ id: userProfiles.id })
+    if (!result.length) return res.status(404).json({ error: "Not found" })
+    return res.status(204).end()
   }
 
   return res.status(405).json({ error: "Method not allowed" })
