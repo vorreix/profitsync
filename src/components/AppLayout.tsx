@@ -30,6 +30,8 @@ import { CurrencyProvider } from "@/lib/currency-context"
 import { OrgProvider, useOrg } from "@/lib/org-context"
 import { AdminProvider, useAdmin } from "@/lib/admin-context"
 import { OrgSwitcher } from "@/components/OrgSwitcher"
+import { MobileAppLayout } from "@/components/MobileAppLayout"
+import { useIsMobile } from "@/hooks/use-mobile"
 import {
   LayoutDashboard,
   Users,
@@ -64,6 +66,7 @@ const navItems = [
 ]
 
 function AppLayoutInner() {
+  const isMobile = useIsMobile()
   const location = useLocation()
   const navigate = useNavigate()
   const { user } = useUser()
@@ -71,6 +74,10 @@ function AppLayoutInner() {
   const { activeOrg } = useOrg()
   const { isAdmin } = useAdmin()
   const [fabOpen, setFabOpen] = useState(false)
+
+  if (isMobile) {
+    return <MobileAppLayout />
+  }
 
   const userEmail = user?.primaryEmailAddress?.emailAddress ?? null
 
