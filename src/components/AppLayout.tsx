@@ -1,4 +1,4 @@
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import { Outlet, NavLink, useLocation, useNavigate } from "react-router-dom"
 import { useAuth, useUser, useClerk } from "@clerk/clerk-react"
 import {
@@ -27,11 +27,20 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { ModeToggle } from "@/components/mode-toggle"
 import { CurrencyProvider } from "@/lib/currency-context"
-import { LayoutDashboard, Users, TrendingUp, User, LogOut } from "lucide-react"
+import { LayoutDashboard, Users, TrendingUp, User, LogOut, ArrowLeftRight, FileText, Trash2, Plus, X } from "lucide-react"
+
+const quickActions = [
+  { label: "Add Client", icon: Users, href: "/clients?new=1" },
+  { label: "Add Transaction", icon: ArrowLeftRight, href: "/transactions?new=1" },
+  { label: "Create Quotation", icon: FileText, href: "/quotations?new=1" },
+]
 
 const navItems = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { label: "Clients", href: "/clients", icon: Users },
+  { label: "Transactions", href: "/transactions", icon: ArrowLeftRight },
+  { label: "Quotations", href: "/quotations", icon: FileText },
+  { label: "Trash", href: "/trash", icon: Trash2 },
 ]
 
 export function AppLayout() {
@@ -40,6 +49,7 @@ export function AppLayout() {
   const { isLoaded, isSignedIn } = useAuth()
   const { user } = useUser()
   const { signOut } = useClerk()
+  const [fabOpen, setFabOpen] = useState(false)
 
   useEffect(() => {
     if (isLoaded && !isSignedIn) {
@@ -140,6 +150,39 @@ export function AppLayout() {
           </CurrencyProvider>
         </div>
       </SidebarInset>
+      {/* Quick-add FAB */}
+      {fabOpen && (
+        <div className="fixed inset-0 z-40" onClick={() => setFabOpen(false)} />
+      )}
+      <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3">
+        {fabOpen && quickActions.map((action) => (
+          <div
+            key={action.href}
+            className="flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2 duration-150"
+          >
+            <span className="text-sm font-medium bg-background border shadow-sm rounded-md px-2.5 py-1 whitespace-nowrap">
+              {action.label}
+            </span>
+            <Button
+              size="icon"
+              variant="secondary"
+              className="size-10 rounded-full shadow-md shrink-0"
+              onClick={() => { navigate(action.href); setFabOpen(false) }}
+            >
+              <action.icon className="size-4" />
+            </Button>
+          </div>
+        ))}
+        <Button
+          size="icon"
+          className="size-14 rounded-full shadow-lg"
+          onClick={() => setFabOpen((o) => !o)}
+        >
+          {fabOpen
+            ? <X className="size-5 transition-transform duration-200" />
+            : <Plus className="size-5 transition-transform duration-200" />}
+        </Button>
+      </div>
     </SidebarProvider>
   )
 }
