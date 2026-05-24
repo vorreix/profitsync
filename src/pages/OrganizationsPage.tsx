@@ -1,7 +1,8 @@
 import { useState } from "react"
+import { useNavigate } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { toast } from "sonner"
-import { Building2, Check, Loader as Loader2, Pencil, Plus, Trash2 } from "lucide-react"
+import { Building2, Check, Loader as Loader2, Pencil, Plus, Trash2, Users } from "lucide-react"
 import { apiDelete, apiPatch, apiPost } from "@/lib/api"
 import { useOrg } from "@/lib/org-context"
 import type { Organization } from "@/lib/types"
@@ -20,6 +21,7 @@ import {
 } from "@/components/ui/dialog"
 
 export function OrganizationsPage() {
+  const navigate = useNavigate()
   const { getToken } = useAuth()
   const { orgs, activeOrg, loading, switchOrg, refresh } = useOrg()
 
@@ -163,6 +165,15 @@ export function OrganizationsPage() {
                       >
                         {switching === org.id ? <Loader2 className="size-3 mr-1 animate-spin" /> : null}
                         Switch
+                      </Button>
+                    )}
+                    {!org.is_personal && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => navigate(`/organizations/${org.id}/members`)}
+                      >
+                        <Users className="size-3.5 mr-1" /> Members
                       </Button>
                     )}
                     {!org.is_personal && (

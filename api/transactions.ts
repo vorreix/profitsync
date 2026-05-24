@@ -3,6 +3,7 @@ import { and, count, desc, eq, ilike, isNull, or } from "drizzle-orm"
 import { db, serialize } from "../src/lib/db"
 import { clients, transactions } from "../src/lib/db/schema"
 import { canWrite, requireAuth } from "./_lib/auth"
+import { checkTransactionQuota } from "./_lib/quota"
 
 const PAGE_SIZE = 20
 
@@ -111,6 +112,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .from(clients)
       .where(and(eq(clients.id, client_id), eq(clients.organizationId, orgId), isNull(clients.deletedAt)))
     if (!client) return res.status(403).json({ error: "Forbidden" })
+
+    const quota = await checkTransactionQuota(orgId, client_id)
+    if (!quota.allowed) return res.status(402).json(quota)
 
     const today = new Date().toISOString().split("T")[0]
     const [row] = await db

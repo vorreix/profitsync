@@ -12,6 +12,9 @@ import { ForgotPasswordPage } from "@/pages/ForgotPasswordPage"
 import { ResetPasswordPage } from "@/pages/ResetPasswordPage"
 import { ProfilePage } from "@/pages/ProfilePage"
 import { OrganizationsPage } from "@/pages/OrganizationsPage"
+import { OrgMembersPage } from "@/pages/OrgMembersPage"
+import { SubscriptionPage } from "@/pages/SubscriptionPage"
+import { InvitationPage } from "@/pages/InvitationPage"
 import { PrivacyPolicyPage } from "@/pages/PrivacyPolicyPage"
 import { TermsOfServicePage } from "@/pages/TermsOfServicePage"
 import { AdminLayout } from "@/pages/admin/AdminLayout"
@@ -30,6 +33,9 @@ export function App() {
         {/* Public legal routes */}
         <Route path="privacy-policy" element={<PrivacyPolicyPage />} />
         <Route path="terms-of-service" element={<TermsOfServicePage />} />
+
+        {/* Invitation accept page (public landing — handles sign-in flow inline) */}
+        <Route path="invitations/:token" element={<InvitationPage />} />
 
         {/* Auth Routes — /* glob required for Clerk's multi-step routing */}
         <Route path="login/*" element={<LoginPage />} />
@@ -56,6 +62,8 @@ export function App() {
           <Route path="transactions" element={<TransactionsPage />} />
           <Route path="quotations" element={<QuotationsPage />} />
           <Route path="organizations" element={<OrganizationsPage />} />
+          <Route path="organizations/:id/members" element={<OrgMembersPage />} />
+          <Route path="subscription" element={<SubscriptionPage />} />
           <Route path="trash" element={<TrashPage />} />
           <Route path="profile" element={<ProfilePage />} />
         </Route>

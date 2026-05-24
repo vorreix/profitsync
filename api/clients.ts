@@ -3,6 +3,7 @@ import { and, asc, count, desc, eq, ilike, isNull, or, sql } from "drizzle-orm"
 import { db, serialize } from "../src/lib/db"
 import { clients, transactions } from "../src/lib/db/schema"
 import { canWrite, requireAuth } from "./_lib/auth"
+import { checkClientQuota, checkNoteLength } from "./_lib/quota"
 
 const VALID_STATUSES = ["active", "inactive", "archived"]
 const PAGE_SIZE = 20
@@ -101,6 +102,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!VALID_STATUSES.includes(normalizedStatus)) {
       return res.status(400).json({ error: "status must be active, inactive, or archived" })
     }
+    const quota = await checkClientQuota(orgId)
+    if (!quota.allowed) return res.status(402).json(quota)
+    const noteCheck = await checkNoteLength(orgId, notes)
+    if (!noteCheck.allowed) return res.status(402).json(noteCheck)
     const [row] = await db
       .insert(clients)
       .values({
