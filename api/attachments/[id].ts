@@ -1,33 +1,36 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { verifyToken } from "@clerk/backend"
-import { db } from "../../src/lib/db"
-import { transactionAttachments } from "../../src/lib/db/schema"
 import { and, eq } from "drizzle-orm"
-
-async function getAuth(req: VercelRequest): Promise<string | null> {
-  const token = req.headers.authorization?.replace("Bearer ", "")
-  if (!token) return null
-  try {
-    const payload = await verifyToken(token, { secretKey: process.env.CLERK_SECRET_KEY! })
-    return payload.sub
-  } catch {
-    return null
-  }
-}
+import { db } from "../../src/lib/db"
+import {
+  clients,
+  transactionAttachments,
+  transactions,
+} from "../../src/lib/db/schema"
+import { canDelete, requireAuth } from "../_lib/auth"
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const userId = await getAuth(req)
-  if (!userId) return res.status(401).json({ error: "Unauthorized" })
+  const ctx = await requireAuth(req, res)
+  if (!ctx) return
+  const { orgId, role } = ctx
 
   const { id } = req.query as { id: string }
 
-  if (req.method === "GET") {
-    const [attachment] = await db
-      .select()
-      .from(transactionAttachments)
-      .where(and(eq(transactionAttachments.id, id), eq(transactionAttachments.userId, userId)))
-    if (!attachment) return res.status(404).json({ error: "Not found" })
+  // Resolve attachment and confirm it belongs to this org
+  const [row] = await db
+    .select({
+      attachment: transactionAttachments,
+      clientOrgId: clients.organizationId,
+    })
+    .from(transactionAttachments)
+    .innerJoin(transactions, eq(transactions.id, transactionAttachments.transactionId))
+    .innerJoin(clients, eq(clients.id, transactions.clientId))
+    .where(eq(transactionAttachments.id, id))
 
+  if (!row || row.clientOrgId !== orgId) return res.status(404).json({ error: "Not found" })
+
+  const attachment = row.attachment
+
+  if (req.method === "GET") {
     const buffer = Buffer.from(attachment.fileData, "base64")
     res.setHeader("Content-Type", attachment.fileType)
     res.setHeader("Content-Disposition", `attachment; filename="${attachment.fileName}"`)
@@ -36,9 +39,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   if (req.method === "DELETE") {
+    if (!canDelete(role)) return res.status(403).json({ error: "Forbidden" })
     const [deleted] = await db
       .delete(transactionAttachments)
-      .where(and(eq(transactionAttachments.id, id), eq(transactionAttachments.userId, userId)))
+      .where(eq(transactionAttachments.id, id))
       .returning({ id: transactionAttachments.id })
     if (!deleted) return res.status(404).json({ error: "Not found" })
     return res.status(204).end()
