@@ -1,38 +1,28 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { verifyToken } from "@clerk/backend"
+import { and, desc, eq } from "drizzle-orm"
 import { db, serialize } from "../../../src/lib/db"
-import { quotations, quotationAttachments } from "../../../src/lib/db/schema"
-import { and, eq, desc } from "drizzle-orm"
+import { quotationAttachments, quotations } from "../../../src/lib/db/schema"
+import { canWrite, requireAuth } from "../../_lib/auth"
 
 const MAX_SIZE_BYTES = 2 * 1024 * 1024
 
-async function getAuth(req: VercelRequest): Promise<string | null> {
-  const token = req.headers.authorization?.replace("Bearer ", "")
-  if (!token) return null
-  try {
-    const payload = await verifyToken(token, { secretKey: process.env.CLERK_SECRET_KEY! })
-    return payload.sub
-  } catch {
-    return null
-  }
-}
-
-async function verifyQuotationOwner(quotationId: string, userId: string): Promise<boolean> {
+async function verifyQuotationOrg(quotationId: string, orgId: string): Promise<boolean> {
   const [row] = await db
     .select({ id: quotations.id })
     .from(quotations)
-    .where(and(eq(quotations.id, quotationId), eq(quotations.userId, userId)))
+    .where(and(eq(quotations.id, quotationId), eq(quotations.organizationId, orgId)))
   return !!row
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const userId = await getAuth(req)
-  if (!userId) return res.status(401).json({ error: "Unauthorized" })
+  const ctx = await requireAuth(req, res)
+  if (!ctx) return
+  const { userId, orgId, role } = ctx
 
   const { id } = req.query as { id: string }
 
   if (req.method === "GET") {
-    const owned = await verifyQuotationOwner(id, userId)
+    const owned = await verifyQuotationOrg(id, orgId)
     if (!owned) return res.status(404).json({ error: "Not found" })
 
     const rows = await db
@@ -46,13 +36,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         createdAt: quotationAttachments.createdAt,
       })
       .from(quotationAttachments)
-      .where(and(eq(quotationAttachments.quotationId, id), eq(quotationAttachments.userId, userId)))
+      .where(eq(quotationAttachments.quotationId, id))
       .orderBy(desc(quotationAttachments.createdAt))
     return res.json(rows.map(serialize))
   }
 
   if (req.method === "POST") {
-    const owned = await verifyQuotationOwner(id, userId)
+    if (!canWrite(role)) return res.status(403).json({ error: "Forbidden" })
+    const owned = await verifyQuotationOrg(id, orgId)
     if (!owned) return res.status(404).json({ error: "Not found" })
 
     const { file_name, file_type, file_size, file_data } = req.body as {

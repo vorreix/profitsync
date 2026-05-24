@@ -1,9 +1,20 @@
+let activeOrgId: string | null = null
+
+export function setActiveOrgId(id: string | null) {
+  activeOrgId = id
+}
+
+export function getActiveOrgId(): string | null {
+  return activeOrgId
+}
+
 async function request<T>(method: string, path: string, token: string, body?: unknown): Promise<T> {
   const res = await fetch(path, {
     method,
     headers: {
       ...(body ? { "Content-Type": "application/json" } : {}),
       Authorization: `Bearer ${token}`,
+      ...(activeOrgId ? { "x-org-id": activeOrgId } : {}),
     },
     ...(body ? { body: JSON.stringify(body) } : {}),
   })
