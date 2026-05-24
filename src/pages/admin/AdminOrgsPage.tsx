@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useState } from "react"
+import { useNavigate, useSearchParams } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { toast } from "sonner"
-import { apiDelete, apiGet, apiPatch } from "@/lib/api"
+import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Label } from "@/components/ui/label"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   Dialog,
@@ -16,11 +18,15 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import {
+  ArrowDownCircle,
+  ArrowUpCircle,
   Building2,
   ChevronLeft,
   ChevronRight,
+  ChevronRight as ChevronRightIcon,
   Loader as Loader2,
   Pencil,
+  Plus,
   Search,
   Trash2,
 } from "lucide-react"
@@ -31,6 +37,7 @@ type AdminOrg = {
   name: string
   slug: string
   is_personal: boolean
+  currency: string
   created_at: string
   updated_at: string
   owner_email: string | null
@@ -42,22 +49,56 @@ type AdminOrg = {
   plan_status: string | null
 }
 
+type UserPick = { id: string; email: string; full_name: string | null }
+
+type TypeFilter = "all" | "personal" | "team"
+
 export function AdminOrgsPage() {
   const { getToken } = useAuth()
+  const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
+
   const [data, setData] = useState<AdminOrg[]>([])
   const [total, setTotal] = useState(0)
   const [pageSize, setPageSize] = useState(30)
-  const [page, setPage] = useState(1)
-  const [search, setSearch] = useState("")
-  const [type, setType] = useState<"all" | "personal" | "team">("all")
+  const [search, setSearch] = useState(searchParams.get("search") ?? "")
   const [loading, setLoading] = useState(true)
+
+  const page = Math.max(1, parseInt(searchParams.get("page") ?? "1", 10) || 1)
+  const type = ((): TypeFilter => {
+    const v = searchParams.get("type")
+    if (v === "personal" || v === "team") return v
+    return "all"
+  })()
+
+  const [busy, setBusy] = useState<string | null>(null)
 
   const [editTarget, setEditTarget] = useState<AdminOrg | null>(null)
   const [editName, setEditName] = useState("")
+  const [editCurrency, setEditCurrency] = useState("USD")
   const [saving, setSaving] = useState(false)
 
   const [deleteTarget, setDeleteTarget] = useState<AdminOrg | null>(null)
   const [deleting, setDeleting] = useState(false)
+
+  const [createOpen, setCreateOpen] = useState(false)
+  const [createForm, setCreateForm] = useState({ owner_user_id: "", name: "", currency: "USD" })
+  const [creating, setCreating] = useState(false)
+  const [userSearch, setUserSearch] = useState("")
+  const [userResults, setUserResults] = useState<UserPick[]>([])
+  const [userSearching, setUserSearching] = useState(false)
+
+  const updateParams = useCallback(
+    (patch: Record<string, string | null>) => {
+      const next = new URLSearchParams(searchParams)
+      for (const [k, v] of Object.entries(patch)) {
+        if (v === null || v === "") next.delete(k)
+        else next.set(k, v)
+      }
+      setSearchParams(next, { replace: true })
+    },
+    [searchParams, setSearchParams],
+  )
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -83,14 +124,49 @@ export function AdminOrgsPage() {
     load()
   }, [load])
 
+  // Debounced user search for the "Create organization" picker.
+  useEffect(() => {
+    if (!createOpen) return
+    const term = userSearch.trim()
+    if (!term) {
+      setUserResults([])
+      return
+    }
+    let cancelled = false
+    const timer = setTimeout(async () => {
+      setUserSearching(true)
+      try {
+        const token = await getToken()
+        if (!token) return
+        const res = await apiGet<{ data: Array<{ id: string; email: string; full_name: string | null }> }>(
+          `/api/admin/users?search=${encodeURIComponent(term)}&page=1`,
+          token,
+        )
+        if (!cancelled) setUserResults(res.data.slice(0, 8))
+      } catch {
+        if (!cancelled) setUserResults([])
+      } finally {
+        if (!cancelled) setUserSearching(false)
+      }
+    }, 250)
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [userSearch, createOpen, getToken])
+
   const handleRename = async () => {
     if (!editTarget) return
     setSaving(true)
     try {
       const token = await getToken()
       if (!token) return
-      await apiPatch("/api/admin/organizations", token, { organization_id: editTarget.id, name: editName.trim() })
-      toast.success("Organization renamed")
+      await apiPatch("/api/admin/organizations", token, {
+        organization_id: editTarget.id,
+        name: editName.trim(),
+        currency: editCurrency.trim().toUpperCase(),
+      })
+      toast.success("Organization updated")
       setEditTarget(null)
       await load()
     } catch (err) {
@@ -106,12 +182,7 @@ export function AdminOrgsPage() {
     try {
       const token = await getToken()
       if (!token) return
-      const res = await fetch("/api/admin/organizations", {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ organization_id: deleteTarget.id }),
-      })
-      if (!res.ok) throw new Error(await res.text())
+      await apiDelete("/api/admin/organizations", token, { organization_id: deleteTarget.id })
       toast.success("Organization deleted")
       setDeleteTarget(null)
       await load()
@@ -120,46 +191,103 @@ export function AdminOrgsPage() {
     } finally {
       setDeleting(false)
     }
-    // The apiDelete helper is body-less so we used fetch directly above.
-    void apiDelete
+  }
+
+  const togglePlan = async (org: AdminOrg) => {
+    setBusy(org.id + "plan")
+    try {
+      const token = await getToken()
+      if (!token) return
+      const nextPlan = org.plan_key === "premium" ? "free" : "premium"
+      await apiPatch("/api/admin/organizations", token, {
+        organization_id: org.id,
+        plan_key: nextPlan,
+        plan_status: "active",
+      })
+      toast.success(`Switched to ${nextPlan}`)
+      await load()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed")
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const openCreate = () => {
+    setCreateForm({ owner_user_id: "", name: "", currency: "USD" })
+    setUserSearch("")
+    setUserResults([])
+    setCreateOpen(true)
+  }
+
+  const handleCreate = async () => {
+    if (!createForm.owner_user_id || !createForm.name.trim()) {
+      toast.error("Pick an owner and enter a name")
+      return
+    }
+    setCreating(true)
+    try {
+      const token = await getToken()
+      if (!token) return
+      const created = await apiPost<{ id: string }>("/api/admin/organizations", token, {
+        owner_user_id: createForm.owner_user_id,
+        name: createForm.name.trim(),
+        currency: createForm.currency.trim().toUpperCase() || "USD",
+      })
+      toast.success("Organization created")
+      setCreateOpen(false)
+      navigate(`/admin/organizations/${created.id}`)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed")
+    } finally {
+      setCreating(false)
+    }
   }
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize))
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Organizations</h1>
-        <p className="text-sm text-slate-400 mt-1">All organizations across the platform.</p>
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Organizations</h1>
+          <p className="text-sm text-muted-foreground mt-1">All organizations across the platform. Click a row to manage its clients, transactions, and subscription.</p>
+        </div>
+        <Button onClick={openCreate}>
+          <Plus className="size-3.5 mr-1.5" /> Create organization
+        </Button>
       </div>
 
-      <Card className="bg-slate-900 border-slate-800 p-4 space-y-4">
+      <Card className="p-4 space-y-4">
         <div className="flex items-center gap-3 flex-wrap">
           <div className="relative flex-1 min-w-[220px]">
-            <Search className="absolute left-2 top-1/2 -translate-y-1/2 size-3.5 text-slate-500" />
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
             <Input
               placeholder="Search by name"
-              className="pl-8 bg-slate-950 border-slate-800"
+              className="pl-8"
               value={search}
               onChange={(e) => {
-                setPage(1)
+                updateParams({ page: null, search: e.target.value || null })
                 setSearch(e.target.value)
               }}
             />
           </div>
-          <Tabs value={type} onValueChange={(v) => { setPage(1); setType(v as typeof type) }}>
-            <TabsList className="bg-slate-950 border border-slate-800">
+          <Tabs
+            value={type}
+            onValueChange={(v) => updateParams({ page: null, type: v === "all" ? null : v })}
+          >
+            <TabsList>
               <TabsTrigger value="all">All</TabsTrigger>
               <TabsTrigger value="team">Team</TabsTrigger>
               <TabsTrigger value="personal">Personal</TabsTrigger>
             </TabsList>
           </Tabs>
-          <span className="text-xs text-slate-500 ml-auto">{total} total</span>
+          <span className="text-xs text-muted-foreground ml-auto">{total} total</span>
         </div>
 
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="text-left text-[11px] uppercase tracking-widest text-slate-500">
+            <thead className="text-left text-[11px] uppercase tracking-widest text-muted-foreground">
               <tr>
                 <th className="py-2 pr-4">Organization</th>
                 <th className="py-2 pr-4">Owner</th>
@@ -173,45 +301,95 @@ export function AdminOrgsPage() {
             <tbody>
               {loading ? (
                 Array.from({ length: 5 }).map((_, i) => (
-                  <tr key={i}><td colSpan={7} className="py-2"><Skeleton className="h-9 w-full bg-slate-800" /></td></tr>
+                  <tr key={i}><td colSpan={7} className="py-2"><Skeleton className="h-9 w-full" /></td></tr>
                 ))
               ) : data.length === 0 ? (
-                <tr><td colSpan={7} className="py-6 text-center text-slate-500">No organizations found.</td></tr>
+                <tr><td colSpan={7} className="py-6 text-center text-muted-foreground">No organizations found.</td></tr>
               ) : (
                 data.map((o) => (
-                  <tr key={o.id} className="border-t border-slate-800 hover:bg-slate-800/40">
+                  <tr
+                    key={o.id}
+                    className="border-t border-border hover:bg-muted/40 cursor-pointer"
+                    onClick={(e) => {
+                      // Ignore clicks coming from inline action buttons
+                      if ((e.target as HTMLElement).closest("[data-row-action]")) return
+                      navigate(`/admin/organizations/${o.id}`)
+                    }}
+                  >
                     <td className="py-3 pr-4">
                       <div className="flex items-center gap-2">
-                        <div className="flex size-7 items-center justify-center rounded-md bg-slate-800 text-slate-400">
+                        <div className="flex size-7 items-center justify-center rounded-md bg-muted text-muted-foreground">
                           <Building2 className="size-3.5" />
                         </div>
                         <div className="leading-tight">
                           <div className="flex items-center gap-1.5">
                             <p className="text-sm font-medium">{o.name}</p>
-                            {o.is_personal && <Badge variant="outline" className="text-[10px] border-slate-700 text-slate-400">Personal</Badge>}
+                            {o.is_personal && <Badge variant="outline" className="text-[10px]">Personal</Badge>}
                           </div>
-                          <p className="text-xs text-slate-500">{o.slug}</p>
+                          <p className="text-xs text-muted-foreground">{o.slug}</p>
                         </div>
                       </div>
                     </td>
                     <td className="py-3 pr-4">
                       <p className="text-sm">{o.owner_name || "—"}</p>
-                      <p className="text-xs text-slate-400">{o.owner_email}</p>
+                      <p className="text-xs text-muted-foreground">{o.owner_email}</p>
                     </td>
-                    <td className="py-3 pr-4 text-slate-300">{o.member_count}</td>
-                    <td className="py-3 pr-4 text-slate-300">{o.client_count}</td>
-                    <td className="py-3 pr-4 text-slate-300">{o.quotation_count}</td>
+                    <td className="py-3 pr-4">{o.member_count}</td>
+                    <td className="py-3 pr-4">{o.client_count}</td>
+                    <td className="py-3 pr-4">{o.quotation_count}</td>
                     <td className="py-3 pr-4">
-                      <Badge className={`text-[10px] uppercase ${o.plan_key === "premium" ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30" : "bg-slate-800 text-slate-300 border-slate-700"}`}>
+                      <Badge
+                        variant="outline"
+                        className={`text-[10px] uppercase ${
+                          o.plan_key === "premium"
+                            ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
+                            : ""
+                        }`}
+                      >
                         {o.plan_key ?? "—"}
                       </Badge>
                     </td>
-                    <td className="py-3 text-right">
-                      <Button size="icon" variant="ghost" aria-label="Rename" className="text-slate-300 hover:text-slate-100" onClick={() => { setEditTarget(o); setEditName(o.name) }}>
+                    <td className="py-3 text-right whitespace-nowrap" data-row-action>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="mr-1"
+                        disabled={busy === o.id + "plan"}
+                        onClick={() => togglePlan(o)}
+                        title={o.plan_key === "premium" ? "Downgrade to free" : "Upgrade to premium"}
+                      >
+                        {busy === o.id + "plan" ? (
+                          <Loader2 className="size-3.5 animate-spin" />
+                        ) : o.plan_key === "premium" ? (
+                          <><ArrowDownCircle className="size-3.5 mr-1" /> Free</>
+                        ) : (
+                          <><ArrowUpCircle className="size-3.5 mr-1" /> Premium</>
+                        )}
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        aria-label="Rename"
+                        onClick={() => { setEditTarget(o); setEditName(o.name); setEditCurrency(o.currency || "USD") }}
+                      >
                         <Pencil className="size-3.5" />
                       </Button>
-                      <Button size="icon" variant="ghost" aria-label="Delete" className="text-slate-300 hover:text-red-300" onClick={() => setDeleteTarget(o)}>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        aria-label="Delete"
+                        className="hover:text-destructive"
+                        onClick={() => setDeleteTarget(o)}
+                      >
                         <Trash2 className="size-3.5" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        aria-label="Open detail"
+                        onClick={() => navigate(`/admin/organizations/${o.id}`)}
+                      >
+                        <ChevronRightIcon className="size-3.5" />
                       </Button>
                     </td>
                   </tr>
@@ -221,13 +399,13 @@ export function AdminOrgsPage() {
           </table>
         </div>
 
-        <div className="flex items-center justify-between text-xs text-slate-400">
+        <div className="flex items-center justify-between text-xs text-muted-foreground">
           <span>Page {page} of {totalPages}</span>
           <div className="flex gap-1">
-            <Button size="icon" variant="ghost" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))} className="text-slate-300">
+            <Button size="icon" variant="ghost" disabled={page <= 1} onClick={() => updateParams({ page: String(Math.max(1, page - 1)) })}>
               <ChevronLeft className="size-3.5" />
             </Button>
-            <Button size="icon" variant="ghost" disabled={page >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))} className="text-slate-300">
+            <Button size="icon" variant="ghost" disabled={page >= totalPages} onClick={() => updateParams({ page: String(Math.min(totalPages, page + 1)) })}>
               <ChevronRight className="size-3.5" />
             </Button>
           </div>
@@ -235,11 +413,24 @@ export function AdminOrgsPage() {
       </Card>
 
       <Dialog open={!!editTarget} onOpenChange={(o) => { if (!o) setEditTarget(null) }}>
-        <DialogContent className="bg-slate-900 border-slate-800 text-slate-100">
+        <DialogContent>
           <DialogHeader>
-            <DialogTitle>Rename organization</DialogTitle>
+            <DialogTitle>Edit organization</DialogTitle>
           </DialogHeader>
-          <Input value={editName} onChange={(e) => setEditName(e.target.value)} className="bg-slate-950 border-slate-800" />
+          <div className="space-y-3 text-sm">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Name</Label>
+              <Input value={editName} onChange={(e) => setEditName(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Default currency</Label>
+              <Input
+                value={editCurrency}
+                onChange={(e) => setEditCurrency(e.target.value.toUpperCase())}
+                maxLength={6}
+              />
+            </div>
+          </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setEditTarget(null)} disabled={saving}>Cancel</Button>
             <Button onClick={handleRename} disabled={!editName.trim() || saving}>
@@ -251,18 +442,82 @@ export function AdminOrgsPage() {
       </Dialog>
 
       <Dialog open={!!deleteTarget} onOpenChange={(o) => { if (!o) setDeleteTarget(null) }}>
-        <DialogContent className="bg-slate-900 border-slate-800 text-slate-100">
+        <DialogContent>
           <DialogHeader>
             <DialogTitle>Delete organization permanently?</DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-slate-400">
-            This will delete <span className="text-slate-100 font-medium">{deleteTarget?.name}</span> along with its clients, transactions, and quotations.
+          <p className="text-sm text-muted-foreground">
+            This will delete <span className="text-foreground font-medium">{deleteTarget?.name}</span> along with its clients, transactions, and quotations.
           </p>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setDeleteTarget(null)} disabled={deleting}>Cancel</Button>
             <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
               {deleting ? <Loader2 className="size-3.5 mr-1 animate-spin" /> : null}
               Delete forever
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create organization</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 text-sm">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Owner</Label>
+              <div className="relative">
+                <Search className="absolute left-2 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
+                <Input
+                  className="pl-8"
+                  value={userSearch}
+                  onChange={(e) => {
+                    setUserSearch(e.target.value)
+                    setCreateForm((f) => ({ ...f, owner_user_id: "" }))
+                  }}
+                  placeholder="Search a user by email or name…"
+                />
+              </div>
+              {userSearching && <p className="text-[11px] text-muted-foreground">Searching…</p>}
+              {userResults.length > 0 && !createForm.owner_user_id && (
+                <div className="border border-border rounded-md max-h-44 overflow-y-auto">
+                  {userResults.map((u) => (
+                    <button
+                      key={u.id}
+                      type="button"
+                      onClick={() => {
+                        setCreateForm((f) => ({ ...f, owner_user_id: u.id }))
+                        setUserSearch(`${u.full_name || u.email} (${u.email})`)
+                        setUserResults([])
+                      }}
+                      className="w-full text-left px-3 py-2 hover:bg-accent/40 text-xs border-b border-border last:border-b-0"
+                    >
+                      <p className="font-medium text-sm">{u.full_name || "—"}</p>
+                      <p className="text-muted-foreground">{u.email}</p>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Organization name</Label>
+              <Input value={createForm.name} onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })} />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Currency</Label>
+              <Input
+                value={createForm.currency}
+                onChange={(e) => setCreateForm({ ...createForm, currency: e.target.value.toUpperCase() })}
+                maxLength={6}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setCreateOpen(false)} disabled={creating}>Cancel</Button>
+            <Button onClick={handleCreate} disabled={creating || !createForm.owner_user_id || !createForm.name.trim()}>
+              {creating ? <Loader2 className="size-3.5 mr-1 animate-spin" /> : null}
+              Create
             </Button>
           </DialogFooter>
         </DialogContent>
