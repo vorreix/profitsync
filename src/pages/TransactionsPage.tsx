@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from "react"
-import { useNavigate } from "react-router-dom"
+import { useNavigate, useSearchParams } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { apiGet, apiPost, apiPatch, apiDelete } from "@/lib/api"
 import type { Client, Transaction, TransactionAttachment } from "@/lib/types"
@@ -12,11 +12,13 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Separator } from "@/components/ui/separator"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import { toast } from "sonner"
-import { Plus, Search, ArrowUpRight, ArrowDownRight, DollarSign, Pencil, Trash2, Paperclip, Download, X, Eye } from "lucide-react"
+import { Plus, Search, ArrowUpRight, ArrowDownRight, DollarSign, Pencil, Trash2, Paperclip, Download, X, Eye, ChevronsUpDown, Check } from "lucide-react"
 
 type PaginatedResponse<T> = { data: T[]; total: number }
 
@@ -29,8 +31,25 @@ type TxForm = {
   date: string
 }
 
-const CATEGORIES_IN = ["Payment", "Retainer", "Project Fee", "Consultation", "Other"]
-const CATEGORIES_OUT = ["Hosting", "Design", "Development", "Advertising", "Salary", "Software", "Travel", "Taxes", "Miscellaneous"]
+const DEFAULT_CATEGORIES = {
+  incoming: ["Payment", "Retainer", "Project Fee", "Consultation", "Other"],
+  outgoing: ["Hosting", "Design", "Development", "Advertising", "Salary", "Software", "Travel", "Taxes", "Miscellaneous"],
+}
+
+const CATEGORIES_STORAGE_KEY = "ps_categories"
+
+function loadCategories(): { incoming: string[]; outgoing: string[] } {
+  try {
+    const stored = localStorage.getItem(CATEGORIES_STORAGE_KEY)
+    if (stored) return JSON.parse(stored)
+  } catch {}
+  return { incoming: [...DEFAULT_CATEGORIES.incoming], outgoing: [...DEFAULT_CATEGORIES.outgoing] }
+}
+
+function saveCategories(cats: { incoming: string[]; outgoing: string[] }) {
+  try { localStorage.setItem(CATEGORIES_STORAGE_KEY, JSON.stringify(cats)) } catch {}
+}
+
 const PAGE_SIZE = 20
 
 const defaultForm = (): TxForm => ({
@@ -51,8 +70,267 @@ const formatFileSize = (bytes: number) => {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
+// ─── Client combobox ─────────────────────────────────────────────────────────
+
+function ClientCombobox({ clients, value, onChange }: {
+  clients: Client[]
+  value: string
+  onChange: (id: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const selected = clients.find((c) => c.id === value)
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button variant="outline" role="combobox" className="w-full justify-between font-normal">
+          {selected
+            ? `${selected.name}${selected.company ? ` — ${selected.company}` : ""}`
+            : <span className="text-muted-foreground">Select client...</span>}
+          <ChevronsUpDown className="size-4 ml-2 shrink-0 text-muted-foreground" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+        <Command>
+          <CommandInput placeholder="Search clients..." />
+          <CommandList>
+            <CommandEmpty>No client found.</CommandEmpty>
+            <CommandGroup>
+              {clients.map((c) => (
+                <CommandItem
+                  key={c.id}
+                  value={`${c.name} ${c.company}`}
+                  onSelect={() => { onChange(c.id); setOpen(false) }}
+                >
+                  <Check className={`mr-2 size-4 shrink-0 ${value === c.id ? "opacity-100" : "opacity-0"}`} />
+                  {c.name}{c.company ? ` — ${c.company}` : ""}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  )
+}
+
+// ─── Category combobox ────────────────────────────────────────────────────────
+
+function CategoryCombobox({ categories, value, onChangeCategories, onChange }: {
+  categories: string[]
+  value: string
+  onChangeCategories: (cats: string[]) => void
+  onChange: (v: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [search, setSearch] = useState("")
+  const [editingIdx, setEditingIdx] = useState<number | null>(null)
+  const [editVal, setEditVal] = useState("")
+
+  const filtered = categories.filter((c) => c.toLowerCase().includes(search.toLowerCase()))
+  const canAdd = search.trim() !== "" && !categories.some((c) => c.toLowerCase() === search.trim().toLowerCase())
+
+  function close() { setOpen(false); setSearch(""); setEditingIdx(null) }
+
+  function select(cat: string) { onChange(cat); close() }
+
+  function addCategory() {
+    const name = search.trim()
+    if (!name) return
+    const next = [...categories, name]
+    onChangeCategories(next)
+    onChange(name)
+    close()
+  }
+
+  function startEdit(idx: number) {
+    setEditingIdx(idx)
+    setEditVal(categories[idx])
+  }
+
+  function saveEdit(idx: number) {
+    const trimmed = editVal.trim()
+    if (!trimmed) return
+    if (trimmed !== categories[idx] && categories.some((c) => c.toLowerCase() === trimmed.toLowerCase())) return
+    const next = [...categories]
+    const old = next[idx]
+    next[idx] = trimmed
+    onChangeCategories(next)
+    if (value === old) onChange(trimmed)
+    setEditingIdx(null)
+  }
+
+  function deleteCategory(idx: number) {
+    const next = categories.filter((_, i) => i !== idx)
+    onChangeCategories(next)
+    if (value === categories[idx]) onChange("")
+  }
+
+  return (
+    <Popover open={open} onOpenChange={(o) => { if (!o) close(); else setOpen(true) }}>
+      <PopoverTrigger asChild>
+        <Button variant="outline" role="combobox" className="w-full justify-between font-normal">
+          {value || <span className="text-muted-foreground">Select...</span>}
+          <ChevronsUpDown className="size-4 ml-2 shrink-0 text-muted-foreground" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+        <div className="p-2 border-b">
+          <Input
+            placeholder="Search or type to add..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="h-8 text-sm"
+            onKeyDown={(e) => { if (e.key === "Enter" && canAdd) addCategory() }}
+          />
+        </div>
+        <ScrollArea className="max-h-52">
+          {filtered.length === 0 && !canAdd && (
+            <p className="text-xs text-muted-foreground text-center py-4">No categories found</p>
+          )}
+          {filtered.map((cat) => {
+            const realIdx = categories.indexOf(cat)
+            return (
+              <div key={cat} className="flex items-center gap-0.5 px-1 py-0.5 group">
+                {editingIdx === realIdx ? (
+                  <>
+                    <Input
+                      value={editVal}
+                      onChange={(e) => setEditVal(e.target.value)}
+                      className="h-7 text-sm flex-1"
+                      autoFocus
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") saveEdit(realIdx)
+                        if (e.key === "Escape") setEditingIdx(null)
+                      }}
+                    />
+                    <Button size="icon" variant="ghost" className="size-7 shrink-0" onClick={() => saveEdit(realIdx)}>
+                      <Check className="size-3" />
+                    </Button>
+                    <Button size="icon" variant="ghost" className="size-7 shrink-0" onClick={() => setEditingIdx(null)}>
+                      <X className="size-3" />
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      className="flex-1 text-sm text-left py-1.5 px-2 rounded-md hover:bg-muted transition-colors flex items-center gap-2"
+                      onClick={() => select(cat)}
+                    >
+                      <Check className={`size-3 shrink-0 text-primary ${value === cat ? "opacity-100" : "opacity-0"}`} />
+                      {cat}
+                    </button>
+                    <Button
+                      size="icon" variant="ghost"
+                      className="size-7 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                      onClick={(e) => { e.stopPropagation(); startEdit(realIdx) }}
+                    >
+                      <Pencil className="size-3" />
+                    </Button>
+                    <Button
+                      size="icon" variant="ghost"
+                      className="size-7 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
+                      onClick={(e) => { e.stopPropagation(); deleteCategory(realIdx) }}
+                    >
+                      <X className="size-3" />
+                    </Button>
+                  </>
+                )}
+              </div>
+            )
+          })}
+          {canAdd && (
+            <button
+              className="w-full text-left text-sm px-3 py-2 flex items-center gap-2 text-primary hover:bg-muted transition-colors"
+              onClick={addCategory}
+            >
+              <Plus className="size-3.5" />
+              Add &ldquo;{search.trim()}&rdquo;
+            </button>
+          )}
+        </ScrollArea>
+      </PopoverContent>
+    </Popover>
+  )
+}
+
+// ─── Transaction form fields ──────────────────────────────────────────────────
+
+function TxFormFields({
+  f, onChange, showClient, clients, categories, onChangeCats,
+}: {
+  f: TxForm
+  onChange: (patch: Partial<TxForm>) => void
+  showClient: boolean
+  clients: Client[]
+  categories: { incoming: string[]; outgoing: string[] }
+  onChangeCats: (type: "incoming" | "outgoing", cats: string[]) => void
+}) {
+  const cats = f.type === "incoming" ? categories.incoming : categories.outgoing
+
+  return (
+    <div className="space-y-4 py-2">
+      {showClient && (
+        <div className="space-y-1.5">
+          <Label>Client *</Label>
+          <ClientCombobox clients={clients} value={f.client_id} onChange={(id) => onChange({ client_id: id })} />
+        </div>
+      )}
+      <div className="space-y-1.5">
+        <Label>Type</Label>
+        <div className="grid grid-cols-2 gap-2">
+          {(["incoming", "outgoing"] as const).map((type) => (
+            <button key={type} type="button" onClick={() => onChange({ type, category: "" })} className={`flex items-center justify-center gap-2 rounded-md border py-2.5 text-sm font-medium transition-colors ${
+              f.type === type
+                ? type === "incoming"
+                  ? "border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400 dark:border-emerald-600"
+                  : "border-red-500 bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400 dark:border-red-600"
+                : "border-border hover:bg-muted"
+            }`}>
+              {type === "incoming" ? <ArrowUpRight className="size-4" /> : <ArrowDownRight className="size-4" />}
+              {type === "incoming" ? "Incoming" : "Outgoing"}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="space-y-1.5">
+        <Label>Amount *</Label>
+        <Input type="number" min="0" step="0.01" placeholder="0.00" value={f.amount} onChange={(e) => onChange({ amount: e.target.value })} />
+      </div>
+      <div className="space-y-1.5">
+        <Label>Description</Label>
+        <Textarea
+          placeholder={f.type === "incoming" ? "Invoice #1234" : "Hosting fee"}
+          value={f.description}
+          onChange={(e) => onChange({ description: e.target.value })}
+          rows={3}
+          className="resize-none"
+        />
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1.5">
+          <Label>Category</Label>
+          <CategoryCombobox
+            categories={cats}
+            value={f.category}
+            onChangeCategories={(next) => onChangeCats(f.type, next)}
+            onChange={(v) => onChange({ category: v })}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label>Date</Label>
+          <Input type="date" value={f.date} onChange={(e) => onChange({ date: e.target.value })} />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
 export function TransactionsPage() {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { getToken } = useAuth()
   const { currency } = useCurrency()
   const fmt = (n: number) =>
@@ -71,6 +349,16 @@ export function TransactionsPage() {
   const tabRef = useRef(tab)
   tabRef.current = tab
 
+  const [categories, setCategories] = useState<{ incoming: string[]; outgoing: string[] }>(loadCategories)
+
+  const handleChangeCats = useCallback((type: "incoming" | "outgoing", cats: string[]) => {
+    setCategories((prev) => {
+      const next = { ...prev, [type]: cats }
+      saveCategories(next)
+      return next
+    })
+  }, [])
+
   const [addOpen, setAddOpen] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
   const [deleteId, setDeleteId] = useState<string | null>(null)
@@ -84,6 +372,9 @@ export function TransactionsPage() {
   const [uploading, setUploading] = useState(false)
   const [deleteAttachId, setDeleteAttachId] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const [pendingFiles, setPendingFiles] = useState<File[]>([])
+  const addFileInputRef = useRef<HTMLInputElement>(null)
 
   const buildParams = useCallback((pageNum: number, s: string, t: string) => {
     const params = new URLSearchParams({ page: String(pageNum) })
@@ -116,6 +407,14 @@ export function TransactionsPage() {
     return () => clearTimeout(timer)
   }, [search, tab, fetchPage1])
 
+  useEffect(() => {
+    if (searchParams.get("new") === "1") {
+      setForm(defaultForm())
+      setAddOpen(true)
+      setSearchParams({}, { replace: true })
+    }
+  }, [searchParams, setSearchParams])
+
   const handleLoadMore = async () => {
     const token = await getToken()
     if (!token) return
@@ -143,7 +442,7 @@ export function TransactionsPage() {
     try {
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
-      await apiPost<Transaction>("/api/transactions", token, {
+      const tx = await apiPost<Transaction>("/api/transactions", token, {
         client_id: form.client_id,
         type: form.type,
         amount: parseFloat(form.amount),
@@ -151,9 +450,17 @@ export function TransactionsPage() {
         category: form.category,
         date: form.date,
       })
+      for (const file of pendingFiles) {
+        try {
+          await uploadFile(file, tx.id, token)
+        } catch {
+          toast.error(`Failed to upload ${file.name}`)
+        }
+      }
       toast.success("Transaction added")
       setAddOpen(false)
       setForm(defaultForm())
+      setPendingFiles([])
       fetchPage1()
     } catch {
       toast.error("Failed to add transaction")
@@ -222,6 +529,46 @@ export function TransactionsPage() {
     loadAttachments(tx.id)
   }
 
+  async function uploadFile(file: File, txId: string, token: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = async () => {
+        const base64 = (reader.result as string).split(",")[1]
+        const res = await fetch(`/api/transactions/${txId}/attachments`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            file_name: file.name,
+            file_type: file.type || "application/octet-stream",
+            file_size: file.size,
+            file_data: base64,
+          }),
+        })
+        if (!res.ok) reject(new Error("Upload failed"))
+        else resolve()
+      }
+      reader.onerror = () => reject(new Error("Failed to read file"))
+      reader.readAsDataURL(file)
+    })
+  }
+
+  function handleAddFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? [])
+    const valid = files.filter((f) => {
+      if (f.size > 2 * 1024 * 1024) {
+        toast.error(`${f.name} exceeds 2MB limit`)
+        return false
+      }
+      return true
+    })
+    setPendingFiles((prev) => [...prev, ...valid])
+    if (addFileInputRef.current) addFileInputRef.current.value = ""
+  }
+
+  function removePendingFile(idx: number) {
+    setPendingFiles((prev) => prev.filter((_, i) => i !== idx))
+  }
+
   function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file || !viewTx) return
@@ -248,7 +595,7 @@ export function TransactionsPage() {
         })
         if (!res.ok) {
           const err = await res.json().catch(() => ({}))
-          throw new Error(err.error ?? "Upload failed")
+          throw new Error((err as { error?: string }).error ?? "Upload failed")
         }
         toast.success("Attachment uploaded")
         loadAttachments(viewTx.id)
@@ -299,68 +646,6 @@ export function TransactionsPage() {
       toast.error("Failed to delete attachment")
     }
   }
-
-  const TxFormFields = ({
-    f, onChange, showClient,
-  }: { f: TxForm; onChange: (patch: Partial<TxForm>) => void; showClient: boolean }) => (
-    <div className="space-y-4 py-2">
-      {showClient && (
-        <div className="space-y-1.5">
-          <Label>Client *</Label>
-          <Select value={f.client_id} onValueChange={(v) => onChange({ client_id: v })}>
-            <SelectTrigger className="w-full"><SelectValue placeholder="Select client..." /></SelectTrigger>
-            <SelectContent>
-              {clients.map((c) => (
-                <SelectItem key={c.id} value={c.id}>{c.name}{c.company ? ` — ${c.company}` : ""}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      )}
-      <div className="space-y-1.5">
-        <Label>Type</Label>
-        <div className="grid grid-cols-2 gap-2">
-          {(["incoming", "outgoing"] as const).map((type) => (
-            <button key={type} type="button" onClick={() => onChange({ type, category: "" })} className={`flex items-center justify-center gap-2 rounded-md border py-2.5 text-sm font-medium transition-colors ${
-              f.type === type
-                ? type === "incoming"
-                  ? "border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400 dark:border-emerald-600"
-                  : "border-red-500 bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400 dark:border-red-600"
-                : "border-border hover:bg-muted"
-            }`}>
-              {type === "incoming" ? <ArrowUpRight className="size-4" /> : <ArrowDownRight className="size-4" />}
-              {type === "incoming" ? "Incoming" : "Outgoing"}
-            </button>
-          ))}
-        </div>
-      </div>
-      <div className="space-y-1.5">
-        <Label>Amount *</Label>
-        <Input type="number" min="0" step="0.01" placeholder="0.00" value={f.amount} onChange={(e) => onChange({ amount: e.target.value })} />
-      </div>
-      <div className="space-y-1.5">
-        <Label>Description</Label>
-        <Textarea placeholder={f.type === "incoming" ? "Invoice #1234" : "Hosting fee"} value={f.description} onChange={(e) => onChange({ description: e.target.value })} rows={3} className="resize-none" />
-      </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1.5">
-          <Label>Category</Label>
-          <Select value={f.category} onValueChange={(v) => onChange({ category: v })}>
-            <SelectTrigger className="w-full"><SelectValue placeholder="Select..." /></SelectTrigger>
-            <SelectContent>
-              {(f.type === "incoming" ? CATEGORIES_IN : CATEGORIES_OUT).map((c) => (
-                <SelectItem key={c} value={c}>{c}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-1.5">
-          <Label>Date</Label>
-          <Input type="date" value={f.date} onChange={(e) => onChange({ date: e.target.value })} />
-        </div>
-      </div>
-    </div>
-  )
 
   return (
     <div className="p-6 space-y-6">
@@ -550,7 +835,7 @@ export function TransactionsPage() {
                   {viewTx.description && (
                     <div className="col-span-2">
                       <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Description</p>
-                      <p className="mt-0.5">{viewTx.description}</p>
+                      <p className="mt-0.5 whitespace-pre-wrap">{viewTx.description}</p>
                     </div>
                   )}
                   {viewTx.category && (
@@ -622,12 +907,51 @@ export function TransactionsPage() {
       </Dialog>
 
       {/* Add Dialog */}
-      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+      <Dialog open={addOpen} onOpenChange={(open) => { if (!open) setPendingFiles([]); setAddOpen(open) }}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader><DialogTitle>Add Transaction</DialogTitle></DialogHeader>
-          <TxFormFields f={form} onChange={(p) => setForm((f) => ({ ...f, ...p }))} showClient />
+          <TxFormFields
+            f={form}
+            onChange={(p) => setForm((f) => ({ ...f, ...p }))}
+            showClient
+            clients={clients}
+            categories={categories}
+            onChangeCats={handleChangeCats}
+          />
+          <Separator />
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label className="flex items-center gap-1.5 text-sm font-medium">
+                <Paperclip className="size-3.5" /> Attachments
+              </Label>
+              <div>
+                <input ref={addFileInputRef} type="file" className="hidden" multiple onChange={handleAddFileSelect} />
+                <Button size="sm" variant="outline" type="button" onClick={() => addFileInputRef.current?.click()}>
+                  Add files
+                </Button>
+              </div>
+            </div>
+            {pendingFiles.length > 0 ? (
+              <div className="space-y-1.5">
+                {pendingFiles.map((file, i) => (
+                  <div key={i} className="flex items-center gap-2 rounded-lg border px-3 py-2">
+                    <Paperclip className="size-3.5 text-muted-foreground shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium truncate">{file.name}</p>
+                      <p className="text-xs text-muted-foreground">{formatFileSize(file.size)}</p>
+                    </div>
+                    <Button variant="ghost" size="icon" className="size-7 shrink-0 text-muted-foreground hover:text-destructive" onClick={() => removePendingFile(i)}>
+                      <X className="size-3.5" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">Max 2MB per file. Files will be uploaded with the transaction.</p>
+            )}
+          </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => { setAddOpen(false); setPendingFiles([]) }}>Cancel</Button>
             <Button onClick={handleAdd} disabled={saving}>{saving ? "Adding..." : "Add"}</Button>
           </DialogFooter>
         </DialogContent>
@@ -638,7 +962,14 @@ export function TransactionsPage() {
         <DialogContent className="sm:max-w-sm">
           <DialogHeader><DialogTitle>Edit Transaction</DialogTitle></DialogHeader>
           {editForm && (
-            <TxFormFields f={editForm} onChange={(p) => setEditForm((f) => f ? { ...f, ...p } : null)} showClient={false} />
+            <TxFormFields
+              f={editForm}
+              onChange={(p) => setEditForm((f) => f ? { ...f, ...p } : null)}
+              showClient={false}
+              clients={clients}
+              categories={categories}
+              onChangeCats={handleChangeCats}
+            />
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
@@ -683,3 +1014,6 @@ export function TransactionsPage() {
     </div>
   )
 }
+
+// suppress unused import warning — PAGE_SIZE is intentional for documentation
+void PAGE_SIZE
