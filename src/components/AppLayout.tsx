@@ -44,6 +44,7 @@ import {
   Building2,
   ShieldCheck,
   ScrollText,
+  CreditCard,
 } from "lucide-react"
 
 const quickActions = [
@@ -58,6 +59,7 @@ const navItems = [
   { label: "Transactions", href: "/transactions", icon: ArrowLeftRight },
   { label: "Quotations", href: "/quotations", icon: FileText },
   { label: "Organizations", href: "/organizations", icon: Building2 },
+  { label: "Subscription", href: "/subscription", icon: CreditCard },
   { label: "Trash", href: "/trash", icon: Trash2 },
 ]
 
