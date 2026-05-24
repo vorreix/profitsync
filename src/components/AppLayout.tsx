@@ -28,6 +28,7 @@ import {
 import { ModeToggle } from "@/components/mode-toggle"
 import { CurrencyProvider } from "@/lib/currency-context"
 import { OrgProvider, useOrg } from "@/lib/org-context"
+import { AdminProvider, useAdmin } from "@/lib/admin-context"
 import { OrgSwitcher } from "@/components/OrgSwitcher"
 import {
   LayoutDashboard,
@@ -66,6 +67,7 @@ function AppLayoutInner() {
   const { user } = useUser()
   const { signOut } = useClerk()
   const { activeOrg } = useOrg()
+  const { isAdmin } = useAdmin()
   const [fabOpen, setFabOpen] = useState(false)
 
   const userEmail = user?.primaryEmailAddress?.emailAddress ?? null
@@ -153,6 +155,12 @@ function AppLayoutInner() {
                   <Building2 className="size-4 mr-2" />
                   Organizations
                 </DropdownMenuItem>
+                {isAdmin && (
+                  <DropdownMenuItem onClick={() => navigate("/admin")}>
+                    <ShieldCheck className="size-4 mr-2" />
+                    Admin console
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleLogout} className="text-destructive">
                   <LogOut className="size-4 mr-2" />
@@ -233,9 +241,11 @@ export function AppLayout() {
 
   return (
     <OrgProvider>
-      <CurrencyProvider>
-        <AppLayoutInner />
-      </CurrencyProvider>
+      <AdminProvider>
+        <CurrencyProvider>
+          <AppLayoutInner />
+        </CurrencyProvider>
+      </AdminProvider>
     </OrgProvider>
   )
 }
