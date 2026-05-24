@@ -7,8 +7,7 @@ import {
   transactions,
 } from "../../../src/lib/db/schema"
 import { canWrite, requireAuth } from "../../_lib/auth"
-
-const MAX_SIZE_BYTES = 2 * 1024 * 1024
+import { checkAttachmentQuota } from "../../_lib/quota"
 
 async function verifyTransactionOrg(transactionId: string, orgId: string): Promise<boolean> {
   const [row] = await db
@@ -58,14 +57,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!file_name || !file_type || !file_data) {
       return res.status(400).json({ error: "file_name, file_type, and file_data are required" })
     }
-    if (file_size > MAX_SIZE_BYTES) {
-      return res.status(400).json({ error: "File exceeds 2MB limit" })
-    }
-
     const byteLength = Buffer.byteLength(file_data, "base64")
-    if (byteLength > MAX_SIZE_BYTES) {
-      return res.status(400).json({ error: "File exceeds 2MB limit" })
-    }
+    const effectiveSize = Math.max(file_size ?? 0, byteLength)
+
+    const quota = await checkAttachmentQuota(orgId, {
+      kind: "transaction",
+      parentId: id,
+      sizeBytes: effectiveSize,
+    })
+    if (!quota.allowed) return res.status(402).json(quota)
 
     const [row] = await db
       .insert(transactionAttachments)

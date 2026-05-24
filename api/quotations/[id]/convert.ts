@@ -3,6 +3,7 @@ import { and, eq, isNull } from "drizzle-orm"
 import { db, serialize } from "../../../src/lib/db"
 import { clients, quotations } from "../../../src/lib/db/schema"
 import { canWrite, requireAuth } from "../../_lib/auth"
+import { checkClientQuota } from "../../_lib/quota"
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ctx = await requireAuth(req, res)
@@ -21,6 +22,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (quotation.linkedClientId) {
     return res.status(409).json({ error: "Quotation already converted to a client" })
   }
+
+  const quota = await checkClientQuota(orgId)
+  if (!quota.allowed) return res.status(402).json(quota)
 
   const [newClient] = await db
     .insert(clients)
