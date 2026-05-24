@@ -1,12 +1,6 @@
-import { createClient } from "@supabase/supabase-js"
-
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
-
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
-
 export type Client = {
   id: string
+  user_id: string
   name: string
   company: string
   email: string
@@ -29,15 +23,6 @@ export type Transaction = {
   updated_at: string
 }
 
-export type TransactionAttachment = {
-  id: string
-  transaction_id: string
-  file_name: string
-  file_url: string
-  file_size: number
-  created_at: string
-}
-
 export type UserProfile = {
   id: string
   email: string
@@ -47,6 +32,7 @@ export type UserProfile = {
   updated_at: string
 }
 
-const CURRENCIES = ["USD", "EUR", "GBP", "CAD", "AUD", "JPY", "INR", "CHF", "CNY", "SEK", "NZD"]
-
-export { CURRENCIES }
+export const CURRENCIES = [
+  "USD", "EUR", "GBP", "CAD", "AUD", "JPY",
+  "INR", "CHF", "CNY", "SEK", "NZD",
+]

@@ -1,17 +1,23 @@
 import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
-import { supabase, type UserProfile, CURRENCIES } from "@/lib/supabase"
+import { useAuth, useClerk } from "@clerk/clerk-react"
+import { apiGet, apiPatch } from "@/lib/api"
+import type { UserProfile } from "@/lib/types"
+import { useCurrency } from "@/lib/currency-context"
+import { CurrencyCombobox } from "@/components/CurrencyCombobox"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { toast } from "sonner"
 import { ArrowLeft, Loader as Loader2, LogOut } from "lucide-react"
 
 export function ProfilePage() {
   const navigate = useNavigate()
+  const { getToken } = useAuth()
+  const { signOut } = useClerk()
+  const { setCurrency: setGlobalCurrency } = useCurrency()
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -23,55 +29,39 @@ export function ProfilePage() {
   }, [])
 
   const loadProfile = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
-      navigate("/login")
-      return
-    }
-
-    const { data, error } = await supabase
-      .from("user_profiles")
-      .select("*")
-      .eq("id", user.id)
-      .maybeSingle()
-
-    if (error) {
-      toast.error("Failed to load profile")
-      return
-    }
-
-    if (data) {
+    try {
+      const token = await getToken()
+      if (!token) { navigate("/login"); return }
+      const data = await apiGet<UserProfile>("/api/profile", token)
       setProfile(data)
       setFullName(data.full_name || "")
       setCurrency(data.currency || "USD")
+    } catch {
+      toast.error("Failed to load profile")
+    } finally {
+      setLoading(false)
     }
-
-    setLoading(false)
   }
 
   const handleSave = async () => {
     if (!profile) return
-
     setSaving(true)
-    const { error } = await supabase
-      .from("user_profiles")
-      .update({ full_name: fullName, currency })
-      .eq("id", profile.id)
-
-    setSaving(false)
-
-    if (error) {
+    try {
+      const token = await getToken()
+      if (!token) throw new Error("Not authenticated")
+      const updated = await apiPatch<UserProfile>("/api/profile", token, { full_name: fullName, currency })
+      setProfile(updated)
+      setGlobalCurrency(currency)
+      toast.success("Profile updated successfully")
+    } catch {
       toast.error("Failed to save profile")
-      return
+    } finally {
+      setSaving(false)
     }
-
-    setProfile({ ...profile, full_name: fullName, currency })
-    toast.success("Profile updated successfully")
   }
 
   const handleLogout = async () => {
-    await supabase.auth.signOut()
-    toast.success("Logged out successfully")
+    await signOut()
     navigate("/login")
   }
 
@@ -120,20 +110,9 @@ export function ProfilePage() {
 
           {/* Currency Selection */}
           <div className="space-y-2">
-            <Label htmlFor="currency">Default Currency</Label>
+            <Label>Default Currency</Label>
             <p className="text-xs text-muted-foreground">This currency will be used for all transactions and dashboards</p>
-            <Select value={currency} onValueChange={setCurrency} disabled={saving}>
-              <SelectTrigger id="currency">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {CURRENCIES.map((curr) => (
-                  <SelectItem key={curr} value={curr}>
-                    {curr}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <CurrencyCombobox value={currency} onValueChange={setCurrency} disabled={saving} />
           </div>
 
           {/* Save Button */}

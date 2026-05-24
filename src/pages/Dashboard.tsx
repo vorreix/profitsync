@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { supabase, type Client, type Transaction } from "@/lib/supabase"
+import { useAuth } from "@clerk/clerk-react"
+import { apiGet } from "@/lib/api"
+import type { Client, Transaction } from "@/lib/types"
+import { useCurrency } from "@/lib/currency-context"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -45,10 +48,10 @@ const chartConfig: ChartConfig = {
   outgoing: { label: "Outgoing", color: "var(--chart-5)" },
 }
 
-function formatCurrency(amount: number) {
+function formatCurrency(amount: number, currency: string) {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
-    currency: "USD",
+    currency,
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   }).format(amount)
@@ -56,6 +59,8 @@ function formatCurrency(amount: number) {
 
 export function Dashboard() {
   const navigate = useNavigate()
+  const { getToken } = useAuth()
+  const { currency } = useCurrency()
   const [clients, setClients] = useState<ClientWithStats[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedClientIds, setSelectedClientIds] = useState<Set<string>>(new Set())
@@ -64,13 +69,12 @@ export function Dashboard() {
 
   useEffect(() => {
     async function load() {
-      const [clientsRes, txRes] = await Promise.all([
-        supabase.from("clients").select("*").order("created_at", { ascending: false }),
-        supabase.from("transactions").select("*"),
+      const token = await getToken()
+      if (!token) return
+      const [clientList, txList] = await Promise.all([
+        apiGet<Client[]>("/api/clients", token),
+        apiGet<Transaction[]>("/api/transactions", token),
       ])
-
-      const clientList: Client[] = clientsRes.data ?? []
-      const txList: Transaction[] = txRes.data ?? []
 
       let grandIncoming = 0
       let grandOutgoing = 0
@@ -200,7 +204,7 @@ export function Dashboard() {
               <>
                 <div className="flex items-center gap-2">
                   <DollarSign className="size-4 text-muted-foreground" />
-                  <span className="text-2xl font-bold">{formatCurrency(displayIncoming)}</span>
+                  <span className="text-2xl font-bold">{formatCurrency(displayIncoming, currency)}</span>
                 </div>
                 <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
                   <ArrowUpRight className="size-3 text-emerald-500" />
@@ -224,7 +228,7 @@ export function Dashboard() {
               <>
                 <div className="flex items-center gap-2">
                   <TrendingDown className="size-4 text-muted-foreground" />
-                  <span className="text-2xl font-bold">{formatCurrency(displayOutgoing)}</span>
+                  <span className="text-2xl font-bold">{formatCurrency(displayOutgoing, currency)}</span>
                 </div>
                 <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
                   <ArrowDownRight className="size-3 text-destructive" />
@@ -249,7 +253,7 @@ export function Dashboard() {
                 <div className="flex items-center gap-2">
                   <TrendingUp className="size-4 text-muted-foreground" />
                   <span className={`text-2xl font-bold ${netProfit >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"}`}>
-                    {formatCurrency(netProfit)}
+                    {formatCurrency(netProfit, currency)}
                   </span>
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
@@ -343,16 +347,16 @@ export function Dashboard() {
                     <div className="grid grid-cols-3 gap-2 text-xs">
                       <div>
                         <p className="text-muted-foreground">Income</p>
-                        <p className="font-semibold text-emerald-600 dark:text-emerald-400">{formatCurrency(client.totalIncoming)}</p>
+                        <p className="font-semibold text-emerald-600 dark:text-emerald-400">{formatCurrency(client.totalIncoming, currency)}</p>
                       </div>
                       <div>
                         <p className="text-muted-foreground">Expenses</p>
-                        <p className="font-semibold text-red-600 dark:text-red-400">{formatCurrency(client.totalOutgoing)}</p>
+                        <p className="font-semibold text-red-600 dark:text-red-400">{formatCurrency(client.totalOutgoing, currency)}</p>
                       </div>
                       <div>
                         <p className="text-muted-foreground">Profit</p>
                         <p className={`font-semibold ${client.profit >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"}`}>
-                          {formatCurrency(client.profit)}
+                          {formatCurrency(client.profit, currency)}
                         </p>
                       </div>
                     </div>
@@ -376,7 +380,7 @@ export function Dashboard() {
                       </div>
                       <div className="text-right ml-2 shrink-0">
                         <p className={`text-sm font-semibold ${client.profit >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"}`}>
-                          {formatCurrency(client.profit)}
+                          {formatCurrency(client.profit, currency)}
                         </p>
                         <Badge variant="outline" className="text-xs">
                           {client.status}
