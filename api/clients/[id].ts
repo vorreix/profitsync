@@ -1,37 +1,28 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { verifyToken } from "@clerk/backend"
+import { and, eq, isNull } from "drizzle-orm"
 import { db, serialize } from "../../src/lib/db"
 import { clients } from "../../src/lib/db/schema"
-import { and, eq, isNull } from "drizzle-orm"
+import { canDelete, canWrite, requireAuth } from "../_lib/auth"
 
 const VALID_STATUSES = ["active", "inactive", "archived"]
 
-async function getAuth(req: VercelRequest): Promise<string | null> {
-  const token = req.headers.authorization?.replace("Bearer ", "")
-  if (!token) return null
-  try {
-    const payload = await verifyToken(token, { secretKey: process.env.CLERK_SECRET_KEY! })
-    return payload.sub
-  } catch {
-    return null
-  }
-}
-
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const userId = await getAuth(req)
-  if (!userId) return res.status(401).json({ error: "Unauthorized" })
+  const ctx = await requireAuth(req, res)
+  if (!ctx) return
+  const { orgId, role } = ctx
   const { id } = req.query as { id: string }
 
   if (req.method === "GET") {
     const [row] = await db
       .select()
       .from(clients)
-      .where(and(eq(clients.id, id), eq(clients.userId, userId), isNull(clients.deletedAt)))
+      .where(and(eq(clients.id, id), eq(clients.organizationId, orgId), isNull(clients.deletedAt)))
     if (!row) return res.status(404).json({ error: "Not found" })
     return res.json(serialize(row))
   }
 
   if (req.method === "PATCH") {
+    if (!canWrite(role)) return res.status(403).json({ error: "Forbidden" })
     const { name, company, email, phone, status, notes, onboard_date } = req.body as {
       name?: string; company?: string; email?: string
       phone?: string; status?: string; notes?: string; onboard_date?: string | null
@@ -51,18 +42,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ...(onboard_date !== undefined ? { onboardDate: onboard_date } : {}),
         updatedAt: new Date(),
       })
-      .where(and(eq(clients.id, id), eq(clients.userId, userId), isNull(clients.deletedAt)))
+      .where(and(eq(clients.id, id), eq(clients.organizationId, orgId), isNull(clients.deletedAt)))
       .returning()
     if (!updated) return res.status(404).json({ error: "Not found" })
     return res.json(serialize(updated))
   }
 
   if (req.method === "DELETE") {
-    // Soft delete: set deleted_at instead of removing the row
+    if (!canDelete(role)) return res.status(403).json({ error: "Forbidden" })
     const [updated] = await db
       .update(clients)
       .set({ deletedAt: new Date(), updatedAt: new Date() })
-      .where(and(eq(clients.id, id), eq(clients.userId, userId), isNull(clients.deletedAt)))
+      .where(and(eq(clients.id, id), eq(clients.organizationId, orgId), isNull(clients.deletedAt)))
       .returning()
     if (!updated) return res.status(404).json({ error: "Not found" })
     return res.status(204).end()

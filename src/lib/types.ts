@@ -1,6 +1,7 @@
 export type Client = {
   id: string
   user_id: string
+  organization_id?: string | null
   name: string
   company: string
   email: string
@@ -51,6 +52,7 @@ export type Transaction = {
 export type Quotation = {
   id: string
   user_id: string
+  organization_id?: string | null
   title: string
   prospect_name: string
   company: string
@@ -70,6 +72,21 @@ export type UserProfile = {
   email: string
   full_name: string
   currency: string
+  current_organization_id: string | null
+  terms_accepted_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type OrgRole = "owner" | "admin" | "editor" | "viewer"
+
+export type Organization = {
+  id: string
+  owner_user_id: string
+  name: string
+  slug: string
+  is_personal: boolean
+  role: OrgRole
   created_at: string
   updated_at: string
 }
@@ -78,3 +95,5 @@ export const CURRENCIES = [
   "USD", "EUR", "GBP", "CAD", "AUD", "JPY",
   "INR", "CHF", "CNY", "SEK", "NZD",
 ]
+
+export const LEGAL_DOC_VERSION = "1.0.0"

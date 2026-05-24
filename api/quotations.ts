@@ -1,27 +1,16 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { verifyToken } from "@clerk/backend"
+import { and, count, desc, eq, ilike, isNull, or } from "drizzle-orm"
 import { db, serialize } from "../src/lib/db"
 import { quotations } from "../src/lib/db/schema"
-import { and, eq, desc, isNull, ilike, or, count } from "drizzle-orm"
+import { canWrite, requireAuth } from "./_lib/auth"
 
 const VALID_STATUSES = ["draft", "sent", "accepted", "rejected"]
-
-async function getAuth(req: VercelRequest): Promise<string | null> {
-  const token = req.headers.authorization?.replace("Bearer ", "")
-  if (!token) return null
-  try {
-    const payload = await verifyToken(token, { secretKey: process.env.CLERK_SECRET_KEY! })
-    return payload.sub
-  } catch {
-    return null
-  }
-}
-
 const PAGE_SIZE = 20
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const userId = await getAuth(req)
-  if (!userId) return res.status(401).json({ error: "Unauthorized" })
+  const ctx = await requireAuth(req, res)
+  if (!ctx) return
+  const { userId, orgId, role } = ctx
 
   if (req.method === "GET") {
     const { search, status, page } = req.query as {
@@ -42,7 +31,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       : undefined
 
     const whereClause = and(
-      eq(quotations.userId, userId),
+      eq(quotations.organizationId, orgId),
       isNull(quotations.deletedAt),
       searchFilter,
       statusFilter,
@@ -77,6 +66,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   if (req.method === "POST") {
+    if (!canWrite(role)) return res.status(403).json({ error: "Forbidden" })
     const { title, prospect_name, company, email, phone, amount, status, notes } = req.body as {
       title: string; prospect_name: string; company?: string; email?: string
       phone?: string; amount?: number; status?: string; notes?: string
@@ -91,6 +81,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .insert(quotations)
       .values({
         userId,
+        organizationId: orgId,
         title: title.trim(),
         prospectName: prospect_name.trim(),
         company: company ?? "",
