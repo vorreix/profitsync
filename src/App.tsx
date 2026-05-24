@@ -14,6 +14,13 @@ import { ProfilePage } from "@/pages/ProfilePage"
 import { OrganizationsPage } from "@/pages/OrganizationsPage"
 import { PrivacyPolicyPage } from "@/pages/PrivacyPolicyPage"
 import { TermsOfServicePage } from "@/pages/TermsOfServicePage"
+import { AdminLayout } from "@/pages/admin/AdminLayout"
+import { AdminOverviewPage } from "@/pages/admin/AdminOverviewPage"
+import { AdminUsersPage } from "@/pages/admin/AdminUsersPage"
+import { AdminOrgsPage } from "@/pages/admin/AdminOrgsPage"
+import { AdminSubscriptionsPage } from "@/pages/admin/AdminSubscriptionsPage"
+import { AdminInvoicesPage } from "@/pages/admin/AdminInvoicesPage"
+import { AdminPlansPage } from "@/pages/admin/AdminPlansPage"
 import { Toaster } from "@/components/ui/sonner"
 
 export function App() {
@@ -29,6 +36,16 @@ export function App() {
         <Route path="signup/*" element={<SignupPage />} />
         <Route path="forgot-password" element={<ForgotPasswordPage />} />
         <Route path="reset-password" element={<ResetPasswordPage />} />
+
+        {/* Admin Routes — distinct shell, admin guard */}
+        <Route path="/admin" element={<AdminLayout />}>
+          <Route index element={<AdminOverviewPage />} />
+          <Route path="users" element={<AdminUsersPage />} />
+          <Route path="organizations" element={<AdminOrgsPage />} />
+          <Route path="subscriptions" element={<AdminSubscriptionsPage />} />
+          <Route path="invoices" element={<AdminInvoicesPage />} />
+          <Route path="plans" element={<AdminPlansPage />} />
+        </Route>
 
         {/* App Routes */}
         <Route path="/" element={<AppLayout />}>

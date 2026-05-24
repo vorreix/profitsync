@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, numeric, date, timestamp, integer, boolean, index } from "drizzle-orm/pg-core"
+import { pgTable, uuid, text, numeric, date, timestamp, integer, boolean, index, jsonb } from "drizzle-orm/pg-core"
 
 export const organizations = pgTable("organizations", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -114,6 +114,61 @@ export const userProfiles = pgTable("user_profiles", {
   currency: text("currency").default("USD"),
   currentOrganizationId: uuid("current_organization_id"),
   termsAcceptedAt: timestamp("terms_accepted_at"),
+  bannedAt: timestamp("banned_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 })
+
+export const appAdmins = pgTable("app_admins", {
+  userId: text("user_id").primaryKey(),
+  createdAt: timestamp("created_at").defaultNow(),
+})
+
+export const plans = pgTable("plans", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  key: text("key").notNull().unique(), // free | premium
+  name: text("name").notNull(),
+  isActive: boolean("is_active").notNull().default(true),
+  monthlyPriceUsd: numeric("monthly_price_usd", { precision: 12, scale: 2 }).notNull().default("0"),
+  yearlyPriceUsd: numeric("yearly_price_usd", { precision: 12, scale: 2 }).notNull().default("0"),
+  monthlyDiscountPct: integer("monthly_discount_pct").notNull().default(0),
+  yearlyDiscountPct: integer("yearly_discount_pct").notNull().default(0),
+  limits: jsonb("limits").notNull().default({}), // { clients, transactionsPerClient, quotations, attachmentSizeKb, attachmentsPerTx, noteLength }
+  geoPricing: jsonb("geo_pricing").notNull().default({}), // { country_code: { currency, monthly, yearly, monthlyDiscountPct, yearlyDiscountPct } }
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+})
+
+export const subscriptions = pgTable("subscriptions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  planKey: text("plan_key").notNull().default("free"),
+  status: text("status").notNull().default("active"), // active | past_due | cancelled | trialing
+  billingCycle: text("billing_cycle"), // monthly | yearly | null for free
+  provider: text("provider"), // razorpay | manual | null
+  providerSubscriptionId: text("provider_subscription_id"),
+  currentPeriodEnd: timestamp("current_period_end"),
+  cancelAt: timestamp("cancel_at"),
+  cancelledAt: timestamp("cancelled_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  orgIdx: index("subscriptions_org_idx").on(table.organizationId),
+}))
+
+export const invoices = pgTable("invoices", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  subscriptionId: uuid("subscription_id").references(() => subscriptions.id, { onDelete: "set null" }),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  amount: numeric("amount", { precision: 12, scale: 2 }).notNull().default("0"),
+  currency: text("currency").notNull().default("USD"),
+  status: text("status").notNull().default("draft"), // draft | open | paid | uncollectible | void | refunded
+  provider: text("provider"),
+  providerInvoiceId: text("provider_invoice_id"),
+  pdfUrl: text("pdf_url"),
+  issuedAt: timestamp("issued_at").defaultNow(),
+  paidAt: timestamp("paid_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  orgIdx: index("invoices_org_idx").on(table.organizationId),
+}))
