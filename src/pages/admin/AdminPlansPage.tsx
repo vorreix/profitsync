@@ -109,8 +109,8 @@ export function AdminPlansPage() {
   if (loading) {
     return (
       <div className="space-y-3">
-        <Skeleton className="h-7 w-48 bg-slate-800" />
-        <Skeleton className="h-32 w-full bg-slate-800" />
+        <Skeleton className="h-7 w-48" />
+        <Skeleton className="h-32 w-full" />
       </div>
     )
   }
@@ -119,29 +119,31 @@ export function AdminPlansPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Plans</h1>
-        <p className="text-sm text-slate-400 mt-1">Pricing, discounts, and per-plan limits. Geo pricing is keyed by ISO 3166-1 alpha-2 country code.</p>
+        <p className="text-sm text-muted-foreground mt-1">
+          Pricing, discounts, and per-plan limits. Geo pricing is keyed by ISO 3166-1 alpha-2 country code.
+        </p>
       </div>
 
       {plans.map((p) => {
         const draft = drafts[p.id]
         return (
-          <Card key={p.id} className="bg-slate-900 border-slate-800 p-6 space-y-5">
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex-1 space-y-1">
-                <div className="flex items-center gap-2">
+          <Card key={p.id} className="p-6 space-y-5">
+            <div className="flex items-start justify-between gap-4 flex-wrap">
+              <div className="flex-1 space-y-1 min-w-[220px]">
+                <div className="flex items-center gap-2 flex-wrap">
                   <Input
                     value={draft.name}
                     onChange={(e) => updateDraft(p.id, { name: e.target.value })}
-                    className="text-lg font-semibold bg-slate-950 border-slate-800 max-w-xs"
+                    className="text-lg font-semibold max-w-xs"
                   />
-                  <span className="text-xs uppercase tracking-widest text-slate-500">{p.key}</span>
+                  <span className="text-xs uppercase tracking-widest text-muted-foreground">{p.key}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Switch checked={draft.is_active} onCheckedChange={(v) => updateDraft(p.id, { is_active: v })} />
-                  <span className="text-xs text-slate-400">{draft.is_active ? "Active" : "Disabled"}</span>
+                  <span className="text-xs text-muted-foreground">{draft.is_active ? "Active" : "Disabled"}</span>
                 </div>
               </div>
-              <Button onClick={() => handleSave(p.id)} disabled={savingId === p.id} className="bg-amber-500 text-amber-950 hover:bg-amber-400">
+              <Button onClick={() => handleSave(p.id)} disabled={savingId === p.id}>
                 {savingId === p.id ? <Loader2 className="size-3.5 mr-1.5 animate-spin" /> : <Save className="size-3.5 mr-1.5" />}
                 Save
               </Button>
@@ -150,24 +152,24 @@ export function AdminPlansPage() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs">Monthly (USD)</Label>
-                <Input value={draft.monthly_price_usd} onChange={(e) => updateDraft(p.id, { monthly_price_usd: e.target.value })} className="bg-slate-950 border-slate-800" />
+                <Input value={draft.monthly_price_usd} onChange={(e) => updateDraft(p.id, { monthly_price_usd: e.target.value })} />
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs">Yearly (USD)</Label>
-                <Input value={draft.yearly_price_usd} onChange={(e) => updateDraft(p.id, { yearly_price_usd: e.target.value })} className="bg-slate-950 border-slate-800" />
+                <Input value={draft.yearly_price_usd} onChange={(e) => updateDraft(p.id, { yearly_price_usd: e.target.value })} />
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs">Monthly discount %</Label>
-                <Input type="number" value={draft.monthly_discount_pct} onChange={(e) => updateDraft(p.id, { monthly_discount_pct: parseInt(e.target.value || "0", 10) })} className="bg-slate-950 border-slate-800" />
+                <Input type="number" value={draft.monthly_discount_pct} onChange={(e) => updateDraft(p.id, { monthly_discount_pct: parseInt(e.target.value || "0", 10) })} />
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs">Yearly discount %</Label>
-                <Input type="number" value={draft.yearly_discount_pct} onChange={(e) => updateDraft(p.id, { yearly_discount_pct: parseInt(e.target.value || "0", 10) })} className="bg-slate-950 border-slate-800" />
+                <Input type="number" value={draft.yearly_discount_pct} onChange={(e) => updateDraft(p.id, { yearly_discount_pct: parseInt(e.target.value || "0", 10) })} />
               </div>
             </div>
 
             <div>
-              <p className="text-xs uppercase tracking-widest text-slate-500 mb-2">Limits</p>
+              <p className="text-xs uppercase tracking-widest text-muted-foreground mb-2">Limits</p>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                 {LIMIT_FIELDS.map(({ key, label, suffix }) => (
                   <div key={key} className="space-y-1.5">
@@ -177,9 +179,8 @@ export function AdminPlansPage() {
                         type="number"
                         value={draft.limits?.[key] ?? 0}
                         onChange={(e) => updateLimit(p.id, key as string, parseInt(e.target.value || "0", 10))}
-                        className="bg-slate-950 border-slate-800"
                       />
-                      {suffix && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-500">{suffix}</span>}
+                      {suffix && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">{suffix}</span>}
                     </div>
                   </div>
                 ))}
@@ -187,40 +188,39 @@ export function AdminPlansPage() {
             </div>
 
             <div>
-              <p className="text-xs uppercase tracking-widest text-slate-500 mb-2">Geo pricing</p>
+              <p className="text-xs uppercase tracking-widest text-muted-foreground mb-2">Geo pricing</p>
               <div className="space-y-2">
                 {Object.entries(draft.geo_pricing).map(([country, cfg]) => (
-                  <div key={country} className="grid grid-cols-6 gap-2 items-end border border-slate-800 rounded-md p-3">
+                  <div key={country} className="grid grid-cols-2 md:grid-cols-6 gap-2 items-end border border-border rounded-md p-3">
                     <div className="space-y-1">
                       <Label className="text-[10px]">Country</Label>
-                      <Input value={country} disabled className="bg-slate-950 border-slate-800" />
+                      <Input value={country} disabled />
                     </div>
                     <div className="space-y-1">
                       <Label className="text-[10px]">Currency</Label>
-                      <Input value={cfg.currency} onChange={(e) => updateGeo(p.id, country, { currency: e.target.value.toUpperCase() })} className="bg-slate-950 border-slate-800" />
+                      <Input value={cfg.currency} onChange={(e) => updateGeo(p.id, country, { currency: e.target.value.toUpperCase() })} />
                     </div>
                     <div className="space-y-1">
                       <Label className="text-[10px]">Monthly (minor)</Label>
-                      <Input type="number" value={cfg.monthly} onChange={(e) => updateGeo(p.id, country, { monthly: parseInt(e.target.value || "0", 10) })} className="bg-slate-950 border-slate-800" />
+                      <Input type="number" value={cfg.monthly} onChange={(e) => updateGeo(p.id, country, { monthly: parseInt(e.target.value || "0", 10) })} />
                     </div>
                     <div className="space-y-1">
                       <Label className="text-[10px]">Yearly (minor)</Label>
-                      <Input type="number" value={cfg.yearly} onChange={(e) => updateGeo(p.id, country, { yearly: parseInt(e.target.value || "0", 10) })} className="bg-slate-950 border-slate-800" />
+                      <Input type="number" value={cfg.yearly} onChange={(e) => updateGeo(p.id, country, { yearly: parseInt(e.target.value || "0", 10) })} />
                     </div>
                     <div className="space-y-1">
                       <Label className="text-[10px]">Monthly disc%</Label>
-                      <Input type="number" value={cfg.monthlyDiscountPct ?? 0} onChange={(e) => updateGeo(p.id, country, { monthlyDiscountPct: parseInt(e.target.value || "0", 10) })} className="bg-slate-950 border-slate-800" />
+                      <Input type="number" value={cfg.monthlyDiscountPct ?? 0} onChange={(e) => updateGeo(p.id, country, { monthlyDiscountPct: parseInt(e.target.value || "0", 10) })} />
                     </div>
                     <div className="space-y-1">
                       <Label className="text-[10px]">Yearly disc%</Label>
-                      <Input type="number" value={cfg.yearlyDiscountPct ?? 0} onChange={(e) => updateGeo(p.id, country, { yearlyDiscountPct: parseInt(e.target.value || "0", 10) })} className="bg-slate-950 border-slate-800" />
+                      <Input type="number" value={cfg.yearlyDiscountPct ?? 0} onChange={(e) => updateGeo(p.id, country, { yearlyDiscountPct: parseInt(e.target.value || "0", 10) })} />
                     </div>
                   </div>
                 ))}
                 <Button
                   size="sm"
                   variant="outline"
-                  className="border-slate-700 text-slate-300"
                   onClick={() => {
                     const code = window.prompt("Country code (ISO 3166-1 alpha-2, e.g. US, IN, GB)")?.toUpperCase()
                     if (!code) return
