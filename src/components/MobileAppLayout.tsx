@@ -4,6 +4,7 @@ import { useUser, useClerk } from "@clerk/clerk-react"
 import {
   LayoutDashboard,
   Users,
+  UserPlus,
   ArrowLeftRight,
   FileText,
   Plus,
@@ -43,14 +44,20 @@ const primaryTabs = [
   { label: "Quotes", href: "/quotations", icon: FileText },
 ]
 
-const moreItems = [
-  { label: "Organizations", href: "/organizations", icon: Building2 },
-  { label: "Subscription", href: "/subscription", icon: CreditCard },
-  { label: "Trash", href: "/trash", icon: Trash2 },
-  { label: "Profile", href: "/profile", icon: User },
-  { label: "Privacy Policy", href: "/privacy-policy", icon: ShieldCheck },
-  { label: "Terms of Service", href: "/terms-of-service", icon: ScrollText },
-]
+type MoreItem = { label: string; href: string; icon: typeof Building2 }
+
+function buildMoreItems(activeOrgId: string | undefined): MoreItem[] {
+  const usersHref = activeOrgId ? `/organizations/${activeOrgId}/members` : "/organizations"
+  return [
+    { label: "Users", href: usersHref, icon: UserPlus },
+    { label: "Organizations", href: "/organizations", icon: Building2 },
+    { label: "Subscription", href: "/subscription", icon: CreditCard },
+    { label: "Trash", href: "/trash", icon: Trash2 },
+    { label: "Profile", href: "/profile", icon: User },
+    { label: "Privacy Policy", href: "/privacy-policy", icon: ShieldCheck },
+    { label: "Terms of Service", href: "/terms-of-service", icon: ScrollText },
+  ]
+}
 
 const quickActions = [
   { label: "Add Client", icon: Users, href: "/clients?new=1" },
@@ -82,6 +89,7 @@ export function MobileAppLayout() {
     navigate("/login")
   }
 
+  const moreItems = buildMoreItems(activeOrg?.id)
   const onMorePage = !primaryTabs.some((t) =>
     location.pathname === t.href || location.pathname.startsWith(t.href + "/"),
   )
