@@ -2,7 +2,7 @@ import { useState } from "react"
 import { useAuth } from "@clerk/clerk-react"
 import { useNavigate } from "react-router-dom"
 import { toast } from "sonner"
-import { Building2, Check, ChevronsUpDown, Plus, Search, Loader as Loader2 } from "lucide-react"
+import { Building2, Check, ChevronsUpDown, Plus, Search, Loader as Loader2, Sparkles } from "lucide-react"
 import { useOrg } from "@/lib/org-context"
 import { apiPost } from "@/lib/api"
 import type { Organization } from "@/lib/types"
@@ -86,7 +86,20 @@ export function OrgSwitcher() {
                 <Building2 className="size-3.5" />
               </div>
               <div className="text-left min-w-0 group-data-[collapsible=icon]:hidden">
-                <p className="text-xs font-medium leading-tight truncate">{activeOrg?.name ?? "Personal"}</p>
+                <div className="flex items-center gap-1.5">
+                  <p className="text-xs font-medium leading-tight truncate">{activeOrg?.name ?? "Personal"}</p>
+                  {activeOrg && (
+                    <span
+                      className={`text-[9px] uppercase tracking-wider px-1 py-0.5 rounded-sm border shrink-0 leading-none ${
+                        activeOrg.plan_key === "premium"
+                          ? "border-amber-500/40 text-amber-600 bg-amber-500/10 dark:text-amber-300"
+                          : "border-border text-muted-foreground"
+                      }`}
+                    >
+                      {activeOrg.plan_key === "premium" ? "Pro" : "Free"}
+                    </span>
+                  )}
+                </div>
                 <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{activeOrg?.role ?? "owner"}</p>
               </div>
             </div>
@@ -131,6 +144,15 @@ export function OrgSwitcher() {
                             Personal
                           </span>
                         )}
+                        <span
+                          className={`text-[10px] uppercase tracking-wide px-1 rounded-sm border ${
+                            org.plan_key === "premium"
+                              ? "border-amber-500/40 text-amber-600 bg-amber-500/10 dark:text-amber-300"
+                              : "border-border text-muted-foreground"
+                          }`}
+                        >
+                          {org.plan_key === "premium" ? "Pro" : "Free"}
+                        </span>
                       </div>
                       <p className="text-[11px] text-muted-foreground uppercase tracking-wide">{org.role}</p>
                     </div>
@@ -141,6 +163,19 @@ export function OrgSwitcher() {
             </div>
           </ScrollArea>
           <div className="border-t p-1 flex flex-col">
+            {activeOrg && activeOrg.plan_key !== "premium" && (
+              <Button
+                variant="ghost"
+                className="justify-start gap-2 px-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300"
+                onClick={() => {
+                  setOpen(false)
+                  navigate("/subscription")
+                }}
+              >
+                <Sparkles className="size-4" />
+                <span className="text-sm font-medium">Upgrade to Premium</span>
+              </Button>
+            )}
             <Button
               variant="ghost"
               className="justify-start gap-2 px-2"

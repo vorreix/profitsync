@@ -87,6 +87,8 @@ export type Organization = {
   slug: string
   is_personal: boolean
   role: OrgRole
+  plan_key: string | null
+  plan_status: string | null
   created_at: string
   updated_at: string
 }
