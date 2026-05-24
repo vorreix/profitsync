@@ -1,8 +1,11 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { and, asc, eq, ilike } from "drizzle-orm"
+import { and, asc, eq, ilike, sql } from "drizzle-orm"
+import { CURRENCY_LIST } from "../src/lib/currencies"
 import { db, serialize } from "../src/lib/db"
-import { organizations, organizationMembers } from "../src/lib/db/schema"
-import { getUserId } from "./_lib/auth"
+import { organizations, organizationMembers, userProfiles } from "../src/lib/db/schema"
+import { createOrgForUser, getUserId } from "./_lib/auth"
+
+const VALID_CURRENCIES = new Set(CURRENCY_LIST.map((c) => c.code))
 
 function slugify(name: string): string {
   return name
@@ -43,9 +46,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         name: organizations.name,
         slug: organizations.slug,
         isPersonal: organizations.isPersonal,
+        currency: organizations.currency,
         createdAt: organizations.createdAt,
         updatedAt: organizations.updatedAt,
         role: organizationMembers.role,
+        planKey: sql<string>`coalesce((select s.plan_key from subscriptions s where s.organization_id = organizations.id order by s.updated_at desc limit 1), 'free')`,
+        planStatus: sql<string>`coalesce((select s.status from subscriptions s where s.organization_id = organizations.id order by s.updated_at desc limit 1), 'active')`,
       })
       .from(organizationMembers)
       .innerJoin(organizations, eq(organizations.id, organizationMembers.organizationId))
@@ -56,25 +62,46 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   if (req.method === "POST") {
-    const { name } = req.body as { name?: string }
+    const { name, currency } = req.body as { name?: string; currency?: string }
     if (!name?.trim()) return res.status(400).json({ error: "name is required" })
+    if (currency !== undefined && !VALID_CURRENCIES.has(currency.toUpperCase())) {
+      return res.status(400).json({ error: "Invalid currency code" })
+    }
+
+    let resolvedCurrency = currency?.toUpperCase()
+    if (!resolvedCurrency) {
+      const [profile] = await db.select().from(userProfiles).where(eq(userProfiles.id, userId))
+      resolvedCurrency = profile?.currency ?? "USD"
+    }
 
     const slug = await uniqueSlug(userId, slugify(name))
-    const [created] = await db
-      .insert(organizations)
-      .values({
-        ownerUserId: userId,
-        name: name.trim(),
-        slug,
-        isPersonal: false,
-      })
-      .returning()
-    await db.insert(organizationMembers).values({
-      organizationId: created.id,
+    await createOrgForUser({
       userId,
-      role: "owner",
+      name: name.trim(),
+      slug,
+      isPersonal: false,
+      currency: resolvedCurrency,
     })
-    return res.status(201).json(serialize({ ...created, role: "owner" }))
+
+    // Return full record with plan info (mirrors GET shape)
+    const [created] = await db
+      .select({
+        id: organizations.id,
+        ownerUserId: organizations.ownerUserId,
+        name: organizations.name,
+        slug: organizations.slug,
+        isPersonal: organizations.isPersonal,
+        currency: organizations.currency,
+        createdAt: organizations.createdAt,
+        updatedAt: organizations.updatedAt,
+        role: sql<string>`'owner'`,
+        planKey: sql<string>`'free'`,
+        planStatus: sql<string>`'active'`,
+      })
+      .from(organizations)
+      .where(and(eq(organizations.ownerUserId, userId), eq(organizations.slug, slug)))
+
+    return res.status(201).json(serialize(created))
   }
 
   return res.status(405).json({ error: "Method not allowed" })

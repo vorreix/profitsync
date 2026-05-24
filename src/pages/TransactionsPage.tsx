@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
@@ -344,10 +345,13 @@ export function TransactionsPage() {
   const [loadingMore, setLoadingMore] = useState(false)
   const [search, setSearch] = useState("")
   const [tab, setTab] = useState("all")
+  const [sort, setSort] = useState("date_desc")
   const searchRef = useRef(search)
   searchRef.current = search
   const tabRef = useRef(tab)
   tabRef.current = tab
+  const sortRef = useRef(sort)
+  sortRef.current = sort
 
   const [categories, setCategories] = useState<{ incoming: string[]; outgoing: string[] }>(loadCategories)
 
@@ -376,10 +380,11 @@ export function TransactionsPage() {
   const [pendingFiles, setPendingFiles] = useState<File[]>([])
   const addFileInputRef = useRef<HTMLInputElement>(null)
 
-  const buildParams = useCallback((pageNum: number, s: string, t: string) => {
+  const buildParams = useCallback((pageNum: number, s: string, t: string, srt: string) => {
     const params = new URLSearchParams({ page: String(pageNum) })
     if (s.trim()) params.set("search", s.trim())
     if (t !== "all") params.set("type", t)
+    if (srt) params.set("sort", srt)
     return params.toString()
   }, [])
 
@@ -389,7 +394,7 @@ export function TransactionsPage() {
     setLoading(true)
     try {
       const [result, cls] = await Promise.all([
-        apiGet<PaginatedResponse<Transaction>>(`/api/transactions?${buildParams(1, searchRef.current, tabRef.current)}`, token),
+        apiGet<PaginatedResponse<Transaction>>(`/api/transactions?${buildParams(1, searchRef.current, tabRef.current, sortRef.current)}`, token),
         apiGet<{ data: Client[]; total: number } | Client[]>("/api/clients?page=1", token),
       ])
       setTransactions(result.data)
@@ -405,7 +410,7 @@ export function TransactionsPage() {
   useEffect(() => {
     const timer = setTimeout(() => { fetchPage1() }, search === "" ? 0 : 300)
     return () => clearTimeout(timer)
-  }, [search, tab, fetchPage1])
+  }, [search, tab, sort, fetchPage1])
 
   useEffect(() => {
     if (searchParams.get("new") === "1") {
@@ -422,7 +427,7 @@ export function TransactionsPage() {
     try {
       const nextPage = page + 1
       const result = await apiGet<PaginatedResponse<Transaction>>(
-        `/api/transactions?${buildParams(nextPage, search, tab)}`,
+        `/api/transactions?${buildParams(nextPage, search, tab, sort)}`,
         token,
       )
       setTransactions((prev) => [...prev, ...result.data])
@@ -648,42 +653,54 @@ export function TransactionsPage() {
   }
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="p-4 sm:p-6 space-y-5 sm:space-y-6">
+      <div className="flex items-center justify-between gap-2">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Transactions</h1>
           {!loading && <p className="text-sm text-muted-foreground mt-1">{total} total</p>}
         </div>
-        <Button onClick={() => { setForm(defaultForm()); setAddOpen(true) }}>
+        <Button onClick={() => { setForm(defaultForm()); setAddOpen(true) }} className="shrink-0">
           <Plus className="size-4" />
-          Add Transaction
+          <span className="hidden sm:inline">Add Transaction</span>
+          <span className="sm:hidden">Add</span>
         </Button>
       </div>
 
       {!loading && (
-        <div className="grid grid-cols-3 gap-4">
-          <div className="rounded-xl border p-4">
-            <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Income</p>
-            <p className="text-xl font-bold text-emerald-600 dark:text-emerald-400 mt-1">{fmt(totalIncoming)}</p>
+        <div className="grid grid-cols-3 gap-2 sm:gap-4">
+          <div className="rounded-xl border p-3 sm:p-4">
+            <p className="text-[10px] sm:text-xs text-muted-foreground font-medium uppercase tracking-wide">Income</p>
+            <p className="text-base sm:text-xl font-bold text-emerald-600 dark:text-emerald-400 mt-1 tabular-nums">{fmt(totalIncoming)}</p>
           </div>
-          <div className="rounded-xl border p-4">
-            <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Expenses</p>
-            <p className="text-xl font-bold text-red-600 dark:text-red-400 mt-1">{fmt(totalOutgoing)}</p>
+          <div className="rounded-xl border p-3 sm:p-4">
+            <p className="text-[10px] sm:text-xs text-muted-foreground font-medium uppercase tracking-wide">Expenses</p>
+            <p className="text-base sm:text-xl font-bold text-red-600 dark:text-red-400 mt-1 tabular-nums">{fmt(totalOutgoing)}</p>
           </div>
-          <div className="rounded-xl border p-4">
-            <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Net</p>
-            <p className={`text-xl font-bold mt-1 ${totalIncoming - totalOutgoing >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"}`}>
+          <div className="rounded-xl border p-3 sm:p-4">
+            <p className="text-[10px] sm:text-xs text-muted-foreground font-medium uppercase tracking-wide">Net</p>
+            <p className={`text-base sm:text-xl font-bold mt-1 tabular-nums ${totalIncoming - totalOutgoing >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"}`}>
               {fmt(totalIncoming - totalOutgoing)}
             </p>
           </div>
         </div>
       )}
 
-      <div className="flex items-center gap-3 flex-wrap">
-        <div className="relative flex-1 min-w-48">
+      <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+        <div className="relative flex-1 min-w-40">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
           <Input placeholder="Search by client, description, category..." className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
+        <Select value={sort} onValueChange={setSort}>
+          <SelectTrigger className="w-40 sm:w-44 shrink-0">
+            <SelectValue placeholder="Sort by" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="date_desc">Date (newest)</SelectItem>
+            <SelectItem value="date_asc">Date (oldest)</SelectItem>
+            <SelectItem value="amount_desc">Amount (largest)</SelectItem>
+            <SelectItem value="amount_asc">Amount (smallest)</SelectItem>
+          </SelectContent>
+        </Select>
         <Tabs value={tab} onValueChange={(v) => { setTab(v) }}>
           <TabsList>
             <TabsTrigger value="all">All</TabsTrigger>
@@ -717,7 +734,7 @@ export function TransactionsPage() {
               {transactions.map((tx) => (
                 <div
                   key={tx.id}
-                  className="flex items-center gap-4 px-4 py-3 hover:bg-muted/50 transition-colors group cursor-pointer"
+                  className="flex items-center gap-3 px-3 sm:px-4 py-3 hover:bg-muted/50 transition-colors group cursor-pointer"
                   onClick={() => openViewModal(tx)}
                 >
                   <div className={`size-9 rounded-full flex items-center justify-center shrink-0 ${
@@ -729,35 +746,35 @@ export function TransactionsPage() {
                   </div>
 
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm font-medium truncate">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <p className="text-sm font-medium truncate min-w-0 flex-1">
                         {tx.description
                           ? tx.description.length > 60 ? tx.description.slice(0, 60) + "…" : tx.description
                           : (tx.type === "incoming" ? "Income" : "Expense")}
                       </p>
                       {tx.category && (
-                        <Badge variant="outline" className="text-xs py-0 shrink-0">{tx.category}</Badge>
+                        <Badge variant="outline" className="text-xs py-0 shrink-0 hidden sm:inline-flex">{tx.category}</Badge>
                       )}
                     </div>
-                    <div className="flex items-center gap-2 mt-0.5">
+                    <div className="flex items-center gap-2 mt-0.5 min-w-0">
                       <button
-                        className="text-xs text-primary hover:underline"
+                        className="text-xs text-primary hover:underline truncate min-w-0"
                         onClick={(e) => { e.stopPropagation(); navigate(`/clients/${tx.client_id}`) }}
                       >
                         {tx.client_name ?? tx.client_id}
                       </button>
-                      <span className="text-xs text-muted-foreground">·</span>
-                      <span className="text-xs text-muted-foreground">{formatDate(tx.date)}</span>
+                      <span className="text-xs text-muted-foreground shrink-0">·</span>
+                      <span className="text-xs text-muted-foreground shrink-0">{formatDate(tx.date)}</span>
                     </div>
                   </div>
 
-                  <p className={`text-sm font-semibold shrink-0 ${
+                  <p className={`text-sm font-semibold shrink-0 tabular-nums text-right ${
                     tx.type === "incoming" ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"
                   }`}>
                     {tx.type === "incoming" ? "+" : "−"}{fmt(Number(tx.amount))}
                   </p>
 
-                  <div className="flex gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="hidden sm:flex gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
                     <Button variant="ghost" size="icon" className="size-7" onClick={(e) => { e.stopPropagation(); openViewModal(tx) }}>
                       <Eye className="size-3.5" />
                     </Button>
