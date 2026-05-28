@@ -50,7 +50,7 @@ export async function getOrgPlan(orgId: string): Promise<{ planKey: string; limi
     .orderBy(desc(subscriptions.updatedAt))
     .limit(1)
 
-  const planKey = sub?.planKey ?? "free"
+  const planKey = (sub?.status === "active" || sub?.status === "trialing") ? (sub.planKey ?? "free") : "free"
 
   const [plan] = await db.select().from(plans).where(eq(plans.key, planKey))
   const fallback = planKey === "premium" ? DEFAULT_PREMIUM_LIMITS : DEFAULT_FREE_LIMITS

@@ -79,6 +79,37 @@ export async function createSubscription(input: {
   })
 }
 
+export type RazorpayOrder = {
+  id: string
+  entity: "order"
+  amount: number
+  currency: string
+  receipt: string
+  status: string
+}
+
+export async function createOrder(input: {
+  amount: number
+  currency: string
+  receipt: string
+}): Promise<RazorpayOrder> {
+  if (input.amount < 100) throw new Error("amount must be at least 100 paise")
+  return call<RazorpayOrder>("/orders", {
+    method: "POST",
+    body: JSON.stringify({ amount: input.amount, currency: input.currency, receipt: input.receipt }),
+  })
+}
+
+export function verifyPaymentSignature(orderId: string, paymentId: string, signature: string): boolean {
+  const secret = process.env.RAZORPAY_KEY_SECRET
+  if (!secret) throw new Error("RAZORPAY_KEY_SECRET not configured")
+  const generated = createHmac("sha256", secret).update(`${orderId}|${paymentId}`).digest("hex")
+  const a = Buffer.from(generated)
+  const b = Buffer.from(signature)
+  if (a.length !== b.length) return false
+  return timingSafeEqual(a, b)
+}
+
 export async function cancelSubscription(subscriptionId: string, cancelAtCycleEnd = true) {
   return call<RazorpaySubscription>(`/subscriptions/${subscriptionId}/cancel`, {
     method: "POST",

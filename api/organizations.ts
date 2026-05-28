@@ -50,7 +50,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         createdAt: organizations.createdAt,
         updatedAt: organizations.updatedAt,
         role: organizationMembers.role,
-        planKey: sql<string>`coalesce((select s.plan_key from subscriptions s where s.organization_id = organizations.id order by s.updated_at desc limit 1), 'free')`,
+        planKey: sql<string>`coalesce((select s.plan_key from subscriptions s where s.organization_id = organizations.id and s.status in ('active', 'trialing') order by s.updated_at desc limit 1), 'free')`,
         planStatus: sql<string>`coalesce((select s.status from subscriptions s where s.organization_id = organizations.id order by s.updated_at desc limit 1), 'active')`,
       })
       .from(organizationMembers)

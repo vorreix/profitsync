@@ -65,14 +65,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   // Paid plan: orchestrate Razorpay (or stub when not configured)
-  const country = (req.headers["x-vercel-ip-country"] as string | undefined)?.toUpperCase() || "US"
+  const country = (req.headers["x-vercel-ip-country"] as string | undefined)?.toUpperCase() || "IN"
   const geo = (plan.geoPricing as Record<string, GeoPricingEntry>) ?? {}
-  const local = geo[country]
+  // Fall back to IN pricing when country has no entry — Razorpay only supports INR
+  const local = geo[country] ?? geo["IN"]
   const billing = cycle ?? "monthly"
   const amountMinor = local
     ? billing === "yearly" ? local.yearly : local.monthly
     : Math.round(Number(billing === "yearly" ? plan.yearlyPriceUsd : plan.monthlyPriceUsd) * 100)
-  const currency = local?.currency ?? "USD"
+  const currency = local?.currency ?? "INR"
+
+  // TEMP DEBUG — remove after we confirm Razorpay env vars are loading
+  console.log("[razorpay-debug]", {
+    hasKeyId: !!process.env.RAZORPAY_KEY_ID,
+    keyIdPrefix: process.env.RAZORPAY_KEY_ID?.slice(0, 8) ?? null,
+    hasKeySecret: !!process.env.RAZORPAY_KEY_SECRET,
+    hasWebhookSecret: !!process.env.RAZORPAY_WEBHOOK_SECRET,
+  })
 
   if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
     // Dev/test stub: mark as active w/o calling Razorpay so quotas unlock for testing
@@ -85,28 +94,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const expiry = new Date()
     expiry.setMonth(expiry.getMonth() + (billing === "yearly" ? 12 : 1))
 
-    if (existing) {
-      const [updated] = await db
-        .update(subscriptions)
-        .set({
-          planKey: plan_key,
-          status: "active",
-          billingCycle: billing,
-          provider: "stub",
-          providerSubscriptionId: `stub_${Date.now()}`,
-          currentPeriodEnd: expiry,
-          cancelAt: null,
-          cancelledAt: null,
-          updatedAt: new Date(),
-        })
-        .where(eq(subscriptions.id, existing.id))
-        .returning()
-      return res.json({
-        subscription: serialize(updated),
-        checkout_url: null,
-        message: "Stub mode: Razorpay credentials not configured. Subscription marked active for testing.",
-      })
+    const stubValues = {
+      planKey: plan_key,
+      status: "active" as const,
+      billingCycle: billing,
+      provider: "stub",
+      providerSubscriptionId: `stub_${Date.now()}`,
+      currentPeriodEnd: expiry,
+      cancelAt: null,
+      cancelledAt: null,
+      updatedAt: new Date(),
     }
+
+    const [row] = existing
+      ? await db.update(subscriptions).set(stubValues).where(eq(subscriptions.id, existing.id)).returning()
+      : await db.insert(subscriptions).values({ organizationId: ctx.orgId, ...stubValues }).returning()
+
+    return res.json({
+      subscription: serialize(row),
+      checkout_url: null,
+      message: "Stub mode: Razorpay credentials not configured. Subscription marked active for testing.",
+    })
   }
 
   try {
@@ -116,7 +124,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       currency,
       interval: billing as "monthly" | "yearly",
     })
-    const totalCount = billing === "yearly" ? 5 : 60 // 5 years or 5 years × 12 months
+    const totalCount = billing === "yearly" ? 5 : 60
     const rzpSub = await createSubscription({
       planId: rzpPlan.id,
       totalCount,
@@ -149,6 +157,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.json({
       checkout_url: rzpSub.short_url,
       provider_subscription_id: rzpSub.id,
+      razorpay_key_id: process.env.RAZORPAY_KEY_ID,
     })
   } catch (err) {
     return res.status(502).json({ error: err instanceof Error ? err.message : "Razorpay failure" })
