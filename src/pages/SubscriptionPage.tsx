@@ -95,22 +95,58 @@ export function SubscriptionPage() {
     load()
   }, [getToken, activeOrg?.id])
 
+  const openRazorpayModal = (subscriptionId: string, keyId: string): Promise<void> =>
+    new Promise((resolve, reject) => {
+      const existing = document.getElementById("rzp-checkout-js")
+      const load = (cb: () => void) => {
+        if ((window as Window & { Razorpay?: unknown }).Razorpay) { cb(); return }
+        const s = document.createElement("script")
+        s.id = "rzp-checkout-js"
+        s.src = "https://checkout.razorpay.com/v1/checkout.js"
+        s.onload = cb
+        s.onerror = () => reject(new Error("Failed to load Razorpay checkout"))
+        if (!existing) document.body.appendChild(s)
+      }
+      load(() => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const rzp = new (window as any).Razorpay({
+          key: keyId,
+          subscription_id: subscriptionId,
+          name: "ProfitSync",
+          description: "Premium subscription",
+          handler: () => resolve(),
+          modal: { ondismiss: () => reject(new Error("dismissed")) },
+        })
+        rzp.open()
+      })
+    })
+
   const handleSubscribe = async (planKey: string) => {
     if (!activeOrg) return
     setBusy(planKey)
     try {
       const token = await getToken()
       if (!token) return
-      const result = await apiPost<{ subscription?: Subscription; checkout_url?: string; message?: string }>(
+      const result = await apiPost<{
+        subscription?: Subscription
+        checkout_url?: string
+        provider_subscription_id?: string
+        razorpay_key_id?: string
+        message?: string
+      }>(
         "/api/billing/create-subscription",
         token,
         { plan_key: planKey, cycle: planKey === "free" ? undefined : cycle },
       )
-      if (result.checkout_url) {
-        window.open(result.checkout_url, "_blank")
-        toast.message("Complete payment in the opened tab", {
-          description: "Once paid, your plan will activate via webhook.",
-        })
+      if (result.provider_subscription_id && result.razorpay_key_id) {
+        try {
+          await openRazorpayModal(result.provider_subscription_id, result.razorpay_key_id)
+          toast.success("Payment submitted — your plan will activate shortly.")
+        } catch (e) {
+          if (e instanceof Error && e.message !== "dismissed") throw e
+          // user closed the modal — subscription stays pending, they can retry
+          toast.message("Payment cancelled", { description: "Your subscription is pending. Click the button again to pay." })
+        }
       } else {
         toast.success(result.message || "Subscription updated")
       }
@@ -154,6 +190,7 @@ export function SubscriptionPage() {
   }
 
   const current = data.currentSubscription
+  const effectivePlanKey = (current?.status === "active" || current?.status === "trialing") ? (current?.plan_key ?? "free") : "free"
   const isCancelling = current?.status === "cancelled" && current.cancel_at
 
   return (
@@ -202,7 +239,7 @@ export function SubscriptionPage() {
 
       <div className="grid md:grid-cols-2 gap-4">
         {data.plans.map((plan) => {
-          const isCurrent = current?.plan_key === plan.key
+          const isCurrent = effectivePlanKey === plan.key
           const local = plan.local_pricing
           const base = cycle === "yearly" ? local.yearly : local.monthly
           const discount = cycle === "yearly" ? local.yearly_discount_pct : local.monthly_discount_pct
@@ -223,13 +260,18 @@ export function SubscriptionPage() {
                     <p className="text-3xl font-semibold">Free</p>
                   ) : (
                     <div>
+                      {discount > 0 && (
+                        <p className="text-sm text-muted-foreground line-through">
+                          {formatMinor(base, local.currency)}<span className="text-xs">/{cycle === "yearly" ? "yr" : "mo"}</span>
+                        </p>
+                      )}
                       <p className="text-3xl font-semibold">
                         {formatMinor(finalAmount, local.currency)}
                         <span className="text-sm font-normal text-muted-foreground ml-1">/{cycle === "yearly" ? "yr" : "mo"}</span>
                       </p>
                       {discount > 0 && (
                         <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1">
-                          {discount}% off · was {formatMinor(base, local.currency)}
+                          First month {discount}% off
                         </p>
                       )}
                     </div>
@@ -256,8 +298,8 @@ export function SubscriptionPage() {
                     ? "Current plan"
                     : isFree
                       ? "Switch to Free"
-                      : current?.plan_key === plan.key
-                        ? "Reactivate"
+                      : current?.plan_key === plan.key && current?.status !== "active"
+                        ? "Complete payment"
                         : (
                           <>
                             Subscribe
