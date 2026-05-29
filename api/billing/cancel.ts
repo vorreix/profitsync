@@ -3,7 +3,7 @@ import { desc, eq } from "drizzle-orm"
 import { db, serialize } from "../../src/lib/db"
 import { subscriptions } from "../../src/lib/db/schema"
 import { requireAuth } from "../_lib/auth"
-import { cancelSubscription } from "../_lib/razorpay"
+import { cancelSubscription } from "../_lib/dodo"
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ctx = await requireAuth(req, res)
@@ -24,11 +24,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: "Free plan cannot be cancelled" })
   }
 
-  if (sub.provider === "razorpay" && sub.providerSubscriptionId) {
+  if (sub.provider === "dodo" && sub.providerSubscriptionId) {
     try {
-      await cancelSubscription(sub.providerSubscriptionId, true)
+      await cancelSubscription(sub.providerSubscriptionId, false) // cancel at end of current period
     } catch (err) {
-      return res.status(502).json({ error: err instanceof Error ? err.message : "Razorpay error" })
+      return res.status(502).json({ error: err instanceof Error ? err.message : "Dodo Payments error" })
     }
   }
 
@@ -43,5 +43,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     .where(eq(subscriptions.id, sub.id))
     .returning()
 
-  return res.json({ subscription: serialize(updated), message: "Subscription cancelled. Access continues until end of current period." })
+  return res.json({
+    subscription: serialize(updated),
+    message: "Subscription cancelled. Access continues until the end of the current period.",
+  })
 }

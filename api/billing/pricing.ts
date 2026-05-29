@@ -19,13 +19,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const country = (req.headers["x-vercel-ip-country"] as string | undefined)?.toUpperCase() ||
                   (req.query.country as string | undefined)?.toUpperCase() ||
-                  "IN"
+                  "US"
 
   const rows = await db.select().from(plans).orderBy(asc(plans.key))
 
   const enriched = rows.map((p) => {
     const geo = (p.geoPricing as Record<string, GeoPricingEntry>) ?? {}
-    // Fall back to IN pricing when country has no entry — Razorpay only supports INR
+    // Display fallback when a country has no explicit entry. Dodo (Merchant of Record)
+    // presents localized currency + tax at checkout regardless of this displayed value.
     const local = geo[country] ?? geo["IN"]
     return {
       ...serialize(p),
@@ -39,7 +40,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             yearly_discount_pct: local.yearlyDiscountPct ?? 0,
           }
         : {
-            currency: "INR",
+            currency: "USD",
             monthly: Math.round(Number(p.monthlyPriceUsd) * 100),
             yearly: Math.round(Number(p.yearlyPriceUsd) * 100),
             monthly_discount_pct: p.monthlyDiscountPct,
