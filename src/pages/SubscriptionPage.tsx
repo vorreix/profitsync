@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react"
+import { useSearchParams } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { toast } from "sonner"
 import { apiGet, apiPost } from "@/lib/api"
@@ -73,27 +74,64 @@ function formatLimitValue(key: string, val: number): string {
 
 export function SubscriptionPage() {
   const { getToken } = useAuth()
-  const { activeOrg } = useOrg()
+  const { activeOrg, refresh: refreshOrg } = useOrg()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [data, setData] = useState<PricingResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState<string | null>(null)
   const [cycle, setCycle] = useState<"monthly" | "yearly">("monthly")
 
+  async function load() {
+    try {
+      const token = await getToken()
+      if (!token) return
+      const res = await apiGet<PricingResponse>("/api/billing/pricing", token)
+      setData(res)
+    } catch {
+      toast.error("Failed to load pricing")
+    } finally {
+      setLoading(false)
+    }
+  }
+
   useEffect(() => {
-    async function load() {
+    load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [getToken, activeOrg?.id])
+
+  // Reconcile when the user returns from the Dodo hosted checkout.
+  useEffect(() => {
+    if (searchParams.get("dodo") !== "return") return
+    let cancelled = false
+    ;(async () => {
       try {
         const token = await getToken()
         if (!token) return
-        const res = await apiGet<PricingResponse>("/api/billing/pricing", token)
-        setData(res)
+        const result = await apiPost<{ subscription?: Subscription; synced?: boolean }>("/api/billing/sync", token, {})
+        if (cancelled) return
+        const status = result.subscription?.status
+        if (status === "active") {
+          toast.success("Payment confirmed — Premium is now active. 🎉")
+          await refreshOrg()
+        } else if (status === "pending") {
+          toast.message("Payment is processing", { description: "Your plan will activate shortly. Refresh in a moment." })
+        } else {
+          toast.message("Checkout closed", { description: "Your subscription is still pending. You can retry anytime." })
+        }
       } catch {
-        toast.error("Failed to load pricing")
+        toast.error("Could not confirm payment status")
       } finally {
-        setLoading(false)
+        if (!cancelled) {
+          // Strip our return marker plus the params Dodo appends to the return URL.
+          for (const k of ["dodo", "subscription_id", "status", "email"]) searchParams.delete(k)
+          setSearchParams(searchParams, { replace: true })
+          load()
+        }
       }
-    }
-    load()
-  }, [getToken, activeOrg?.id])
+    })()
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams])
 
   const handleSubscribe = async (planKey: string) => {
     if (!activeOrg) return
@@ -101,21 +139,28 @@ export function SubscriptionPage() {
     try {
       const token = await getToken()
       if (!token) return
-      const result = await apiPost<{ subscription?: Subscription; checkout_url?: string; message?: string }>(
+      const result = await apiPost<{
+        subscription?: Subscription
+        checkout_url?: string | null
+        provider_subscription_id?: string
+        provider?: string
+        message?: string
+      }>(
         "/api/billing/create-subscription",
         token,
         { plan_key: planKey, cycle: planKey === "free" ? undefined : cycle },
       )
+
       if (result.checkout_url) {
-        window.open(result.checkout_url, "_blank")
-        toast.message("Complete payment in the opened tab", {
-          description: "Once paid, your plan will activate via webhook.",
-        })
-      } else {
-        toast.success(result.message || "Subscription updated")
+        // Redirect to Dodo's hosted checkout. The return_url brings the user back to this page.
+        window.location.href = result.checkout_url
+        return
       }
-      const fresh = await apiGet<PricingResponse>("/api/billing/pricing", token)
-      setData(fresh)
+
+      // Free plan or stub mode — applied server-side immediately.
+      toast.success(result.message || "Subscription updated")
+      await refreshOrg()
+      await load()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed")
     } finally {
@@ -132,8 +177,8 @@ export function SubscriptionPage() {
       if (!token) return
       const result = await apiPost<{ message?: string }>("/api/billing/cancel", token, {})
       toast.success(result.message || "Subscription cancelled")
-      const fresh = await apiGet<PricingResponse>("/api/billing/pricing", token)
-      setData(fresh)
+      await refreshOrg()
+      await load()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed")
     } finally {
@@ -143,9 +188,9 @@ export function SubscriptionPage() {
 
   if (loading || !data) {
     return (
-      <div className="p-6 space-y-4 max-w-5xl">
+      <div className="p-3 sm:p-6 space-y-4 max-w-5xl">
         <Skeleton className="h-8 w-64" />
-        <div className="grid md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Skeleton className="h-64 w-full" />
           <Skeleton className="h-64 w-full" />
         </div>
@@ -154,13 +199,14 @@ export function SubscriptionPage() {
   }
 
   const current = data.currentSubscription
+  const effectivePlanKey = (current?.status === "active" || current?.status === "trialing") ? (current?.plan_key ?? "free") : "free"
   const isCancelling = current?.status === "cancelled" && current.cancel_at
 
   return (
-    <div className="p-6 space-y-6 max-w-5xl">
-      <div className="flex items-start justify-between gap-4">
+    <div className="p-3 sm:p-6 space-y-6 max-w-5xl">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Subscription</h1>
+          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">Subscription</h1>
           <p className="text-sm text-muted-foreground mt-1">
             {activeOrg ? `Managing ${activeOrg.name}` : "Choose the plan that fits your team."}
             <span className="ml-2 text-xs">· Pricing for {data.detectedCountry}</span>
@@ -200,9 +246,9 @@ export function SubscriptionPage() {
         </Card>
       )}
 
-      <div className="grid md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {data.plans.map((plan) => {
-          const isCurrent = current?.plan_key === plan.key
+          const isCurrent = effectivePlanKey === plan.key
           const local = plan.local_pricing
           const base = cycle === "yearly" ? local.yearly : local.monthly
           const discount = cycle === "yearly" ? local.yearly_discount_pct : local.monthly_discount_pct
@@ -223,13 +269,18 @@ export function SubscriptionPage() {
                     <p className="text-3xl font-semibold">Free</p>
                   ) : (
                     <div>
+                      {discount > 0 && (
+                        <p className="text-sm text-muted-foreground line-through">
+                          {formatMinor(base, local.currency)}<span className="text-xs">/{cycle === "yearly" ? "yr" : "mo"}</span>
+                        </p>
+                      )}
                       <p className="text-3xl font-semibold">
                         {formatMinor(finalAmount, local.currency)}
                         <span className="text-sm font-normal text-muted-foreground ml-1">/{cycle === "yearly" ? "yr" : "mo"}</span>
                       </p>
                       {discount > 0 && (
                         <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1">
-                          {discount}% off · was {formatMinor(base, local.currency)}
+                          First month {discount}% off
                         </p>
                       )}
                     </div>
@@ -256,8 +307,8 @@ export function SubscriptionPage() {
                     ? "Current plan"
                     : isFree
                       ? "Switch to Free"
-                      : current?.plan_key === plan.key
-                        ? "Reactivate"
+                      : current?.plan_key === plan.key && current?.status !== "active"
+                        ? "Complete payment"
                         : (
                           <>
                             Subscribe

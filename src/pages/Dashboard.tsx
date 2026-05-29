@@ -79,10 +79,22 @@ export function Dashboard() {
       let grandIncoming = 0
       let grandOutgoing = 0
 
+      // Group transactions by client once (O(n)) rather than scanning the whole
+      // transaction list for every client (O(n*m)).
+      const txByClient = new Map<string, Transaction[]>()
+      for (const t of txList) {
+        const arr = txByClient.get(t.client_id)
+        if (arr) arr.push(t)
+        else txByClient.set(t.client_id, [t])
+      }
+
       const withStats: ClientWithStats[] = clientList.map((c) => {
-        const clientTx = txList.filter((t) => t.client_id === c.id)
-        const incoming = clientTx.filter((t) => t.type === "incoming").reduce((s, t) => s + Number(t.amount), 0)
-        const outgoing = clientTx.filter((t) => t.type === "outgoing").reduce((s, t) => s + Number(t.amount), 0)
+        let incoming = 0
+        let outgoing = 0
+        for (const t of txByClient.get(c.id) ?? []) {
+          if (t.type === "incoming") incoming += Number(t.amount)
+          else if (t.type === "outgoing") outgoing += Number(t.amount)
+        }
         grandIncoming += incoming
         grandOutgoing += outgoing
         return { ...c, totalIncoming: incoming, totalOutgoing: outgoing, profit: incoming - outgoing }
@@ -134,15 +146,15 @@ export function Dashboard() {
         }))
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-start justify-between gap-4">
+    <div className="p-3 sm:p-6 space-y-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
+          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">Dashboard</h1>
           <p className="text-sm text-muted-foreground mt-1">
             {selectedClientIds.size > 0 ? `Viewing ${selectedClientIds.size} client${selectedClientIds.size === 1 ? "" : "s"}` : "Financial overview across all clients"}
           </p>
         </div>
-        <div className="w-64">
+        <div className="w-full sm:w-64">
           <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
             <PopoverTrigger asChild>
               <Button variant="outline" className="w-full justify-between">
@@ -150,7 +162,7 @@ export function Dashboard() {
                 <ChevronRight className="size-4 opacity-50" />
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-72 p-0" align="end">
+            <PopoverContent className="w-[90vw] max-w-sm sm:w-72 p-0" align="end">
               <div className="border-b p-3 sticky top-0 bg-background">
                 <div className="relative">
                   <Search className="absolute left-2 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
@@ -190,7 +202,7 @@ export function Dashboard() {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">

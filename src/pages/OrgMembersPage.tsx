@@ -170,7 +170,7 @@ export function OrgMembersPage() {
   const canChangeRoles = data?.current_role === "owner"
 
   return (
-    <div className="p-6 space-y-6 max-w-3xl">
+    <div className="p-3 sm:p-6 space-y-6 max-w-3xl">
       <Button variant="ghost" size="sm" onClick={() => navigate("/organizations")} className="-ml-2">
         <ArrowLeft className="size-3.5 mr-1.5" /> Back to organizations
       </Button>
@@ -217,7 +217,7 @@ export function OrgMembersPage() {
                         value={m.role}
                         onChange={(e) => handleRoleChange(m.id, e.target.value)}
                         disabled={busy?.startsWith(m.id)}
-                        className="text-xs bg-background border rounded-md h-7 px-2"
+                        className="text-xs bg-background border rounded-md h-9 sm:h-7 px-2"
                       >
                         {ROLE_OPTIONS.map((r) => (
                           <option key={r} value={r}>{r}</option>
@@ -228,7 +228,7 @@ export function OrgMembersPage() {
                       <Button
                         size="icon"
                         variant="ghost"
-                        className="text-destructive hover:text-destructive"
+                        className="text-destructive hover:text-destructive size-9 sm:size-8"
                         onClick={() => handleRemoveMember(m.id)}
                         disabled={busy === m.id || m.role === "owner"}
                         aria-label="Remove"
@@ -274,7 +274,7 @@ export function OrgMembersPage() {
                         <Button
                           size="icon"
                           variant="ghost"
-                          className="text-destructive hover:text-destructive"
+                          className="text-destructive hover:text-destructive size-9 sm:size-8"
                           onClick={() => handleRevokeInvite(inv.id)}
                           disabled={busy === inv.id}
                           aria-label="Revoke"

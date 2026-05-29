@@ -61,7 +61,7 @@ export function ProfilePage() {
 
   if (loading) {
     return (
-      <div className="p-6 space-y-6">
+      <div className="p-3 sm:p-6 space-y-6">
         <Skeleton className="h-8 w-48" />
         <Skeleton className="h-64 w-full" />
       </div>
@@ -71,7 +71,7 @@ export function ProfilePage() {
   if (!profile) return null
 
   return (
-    <div className="p-6 space-y-6 max-w-2xl">
+    <div className="p-3 sm:p-6 space-y-6 max-w-2xl">
       <Button variant="ghost" size="icon" onClick={() => navigate("/dashboard")} className="-ml-2">
         <ArrowLeft className="size-4" />
       </Button>

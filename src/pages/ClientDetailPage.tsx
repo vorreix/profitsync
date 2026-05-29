@@ -151,9 +151,9 @@ export function ClientDetailPage() {
   }
 
   if (loading) return (
-    <div className="p-6 space-y-6">
+    <div className="p-3 sm:p-6 space-y-6">
       <Skeleton className="h-8 w-48" />
-      <div className="grid grid-cols-3 gap-4">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-24" />)}</div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-24" />)}</div>
       <Skeleton className="h-64" />
     </div>
   )
@@ -161,16 +161,16 @@ export function ClientDetailPage() {
   if (!client) return null
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-3 sm:p-6 space-y-6">
       {/* Header */}
-      <div className="flex items-start gap-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <Button variant="ghost" size="icon" onClick={() => navigate("/clients")} className="-ml-2 mt-0.5"><ArrowLeft className="size-4" /></Button>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-3 flex-wrap">
             <h1 className="text-2xl font-semibold tracking-tight">{client.name}</h1>
             <Badge variant={client.status === "active" ? "default" : "secondary"}>{client.status}</Badge>
           </div>
-          <div className="flex items-center gap-4 mt-1.5 flex-wrap">
+          <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-4 mt-1.5 flex-wrap">
             {client.company && <span className="flex items-center gap-1.5 text-sm text-muted-foreground"><Building2 className="size-3.5" />{client.company}</span>}
             {client.email && <span className="flex items-center gap-1.5 text-sm text-muted-foreground"><Mail className="size-3.5" />{client.email}</span>}
             {client.phone && <span className="flex items-center gap-1.5 text-sm text-muted-foreground"><Phone className="size-3.5" />{client.phone}</span>}
@@ -179,7 +179,7 @@ export function ClientDetailPage() {
           </div>
           {client.notes && <p className="text-sm text-muted-foreground mt-1.5 flex items-start gap-1.5"><FileText className="size-3.5 mt-0.5 shrink-0" />{client.notes}</p>}
         </div>
-        <div className="flex gap-2 shrink-0">
+        <div className="flex flex-wrap gap-2 shrink-0">
           <Button variant="outline" size="icon" onClick={() => { setClientForm(client); setEditClientDialogOpen(true) }}><Pencil className="size-4" /></Button>
           <Button variant="outline" size="icon" className="text-muted-foreground hover:text-destructive" onClick={() => { setDeleteId(client.id); setDeleteType("client") }}><Trash2 className="size-4" /></Button>
           <Button onClick={() => { setTxForm(defaultTxForm); setTxDialogOpen(true) }}><Plus className="size-4" />Add Transaction</Button>

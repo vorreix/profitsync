@@ -42,17 +42,29 @@ const DEFAULT_PREMIUM_LIMITS: Required<PlanLimits> = {
 }
 
 export async function getOrgPlan(orgId: string): Promise<{ planKey: string; limits: Required<PlanLimits> }> {
-  // Pick most recently updated subscription for the org
-  const [sub] = await db
-    .select()
-    .from(subscriptions)
-    .where(eq(subscriptions.organizationId, orgId))
-    .orderBy(desc(subscriptions.updatedAt))
-    .limit(1)
+  // The plan that applies depends on the subscription's plan_key, but the plans
+  // table is tiny (free/premium), so fetch the subscription and all plans
+  // concurrently and resolve in memory — one parallel batch instead of two
+  // sequential neon-http round-trips.
+  const [subRows, planRows] = await Promise.all([
+    db
+      .select()
+      .from(subscriptions)
+      .where(eq(subscriptions.organizationId, orgId))
+      .orderBy(desc(subscriptions.updatedAt))
+      .limit(1),
+    db.select().from(plans),
+  ])
 
-  const planKey = sub?.planKey ?? "free"
+  const sub = subRows[0]
+  // Entitled while active/trialing, and during the grace period after a cancellation
+  // (cancel takes effect at period end, so honor the plan until cancelAt).
+  const inGracePeriod =
+    sub?.status === "cancelled" && sub.cancelAt != null && new Date(sub.cancelAt) > new Date()
+  const entitled = sub?.status === "active" || sub?.status === "trialing" || inGracePeriod
+  const planKey = entitled ? (sub.planKey ?? "free") : "free"
 
-  const [plan] = await db.select().from(plans).where(eq(plans.key, planKey))
+  const plan = planRows.find((p) => p.key === planKey)
   const fallback = planKey === "premium" ? DEFAULT_PREMIUM_LIMITS : DEFAULT_FREE_LIMITS
   const stored = (plan?.limits as PlanLimits | undefined) ?? {}
 

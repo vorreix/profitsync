@@ -31,34 +31,29 @@ export function OrgProvider({ children }: { children: ReactNode }) {
     const token = await getToken()
     if (!token) return
 
-    // Load profile first to determine the active org
-    const profile = await apiGet<UserProfile>("/api/profile", token)
-    if (profile.current_organization_id) {
-      setActiveOrgId(profile.current_organization_id)
-      setActiveOrgIdState(profile.current_organization_id)
-    }
+    // Profile and org list are independent (both scoped by user id) — fetch in
+    // parallel to halve the app's cold-boot latency.
+    const [profile, list] = await Promise.all([
+      apiGet<UserProfile>("/api/profile", token),
+      apiGet<Organization[]>("/api/organizations", token),
+    ])
 
-    // Record legal acceptance once per user if not already done.
-    if (!profile.terms_accepted_at) {
-      try {
-        await apiPost("/api/legal/accept", token, {
-          documents: ["terms_of_service", "privacy_policy"],
-          version: LEGAL_DOC_VERSION,
-        })
-      } catch {
-        // non-fatal — we'll retry next session
-      }
+    // Prefer the profile's current org; otherwise fall back to the first (personal) org.
+    const activeId = profile.current_organization_id ?? (list.length > 0 ? list[0].id : null)
+    if (activeId) {
+      setActiveOrgId(activeId)
+      setActiveOrgIdState(activeId)
     }
-
-    // Then list orgs (now that the header is set, the API returns org-scoped data)
-    const list = await apiGet<Organization[]>("/api/organizations", token)
     setOrgs(list)
 
-    // Fallback: if profile had no current org but list is non-empty, pick first (personal)
-    if (!profile.current_organization_id && list.length > 0) {
-      const first = list[0]
-      setActiveOrgId(first.id)
-      setActiveOrgIdState(first.id)
+    // Record legal acceptance once per user — fire-and-forget, never blocks boot.
+    if (!profile.terms_accepted_at) {
+      apiPost("/api/legal/accept", token, {
+        documents: ["terms_of_service", "privacy_policy"],
+        version: LEGAL_DOC_VERSION,
+      }).catch(() => {
+        // non-fatal — we'll retry next session
+      })
     }
 
     setLoading(false)
