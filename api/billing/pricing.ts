@@ -21,7 +21,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                   (req.query.country as string | undefined)?.toUpperCase() ||
                   "US"
 
-  const rows = await db.select().from(plans).orderBy(asc(plans.key))
+  // Plans list and the org's current subscription are independent — fetch together.
+  const [rows, subRows] = await Promise.all([
+    db.select().from(plans).orderBy(asc(plans.key)),
+    db.select().from(subscriptions).where(eq(subscriptions.organizationId, ctx.orgId)),
+  ])
 
   const enriched = rows.map((p) => {
     const geo = (p.geoPricing as Record<string, GeoPricingEntry>) ?? {}
@@ -49,11 +53,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   })
 
-  // Current org subscription
-  const [currentSub] = await db
-    .select()
-    .from(subscriptions)
-    .where(eq(subscriptions.organizationId, ctx.orgId))
+  const [currentSub] = subRows
 
   return res.json({
     plans: enriched,

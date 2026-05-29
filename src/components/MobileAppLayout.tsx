@@ -21,6 +21,7 @@ import {
   MoreHorizontal,
   ChevronDown,
   Sparkles,
+  Loader,
 } from "lucide-react"
 import { useOrg } from "@/lib/org-context"
 import { useAdmin } from "@/lib/admin-context"
@@ -70,7 +71,7 @@ export function MobileAppLayout() {
   const location = useLocation()
   const { user } = useUser()
   const { signOut } = useClerk()
-  const { activeOrg, orgs, switchOrg, refresh } = useOrg()
+  const { activeOrg, orgs, switchOrg, refresh, loading: orgLoading } = useOrg()
   const { isAdmin } = useAdmin()
   const [orgSheetOpen, setOrgSheetOpen] = useState(false)
   const [moreOpen, setMoreOpen] = useState(false)
@@ -235,7 +236,13 @@ export function MobileAppLayout() {
       </header>
 
       <main className="flex-1 overflow-auto pb-32 page-enter" key={location.pathname + (activeOrg?.id ?? "")}>
-        <Outlet />
+        {orgLoading ? (
+          <div className="flex h-[60vh] items-center justify-center">
+            <Loader className="size-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : (
+          <Outlet />
+        )}
       </main>
 
       {/* Floating action button */}
