@@ -48,6 +48,7 @@ import {
   ShieldCheck,
   ScrollText,
   CreditCard,
+  Loader as Loader2,
 } from "lucide-react"
 
 const quickActions = [
@@ -78,7 +79,7 @@ function AppLayoutInner() {
   const navigate = useNavigate()
   const { user } = useUser()
   const { signOut } = useClerk()
-  const { activeOrg } = useOrg()
+  const { activeOrg, loading: orgLoading } = useOrg()
   const { isAdmin } = useAdmin()
   const [fabOpen, setFabOpen] = useState(false)
 
@@ -212,7 +213,13 @@ function AppLayoutInner() {
         </header>
 
         <div className="flex-1 overflow-auto">
-          <Outlet key={activeOrg?.id ?? "no-org"} />
+          {orgLoading ? (
+            <div className="flex h-[60vh] items-center justify-center">
+              <Loader2 className="size-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : (
+            <Outlet key={activeOrg?.id ?? "no-org"} />
+          )}
         </div>
       </SidebarInset>
       {fabOpen && (
