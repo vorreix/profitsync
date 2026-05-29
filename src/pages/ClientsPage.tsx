@@ -155,11 +155,11 @@ export function ClientsPage() {
   const remaining = total - clients.length
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-3 sm:p-6 space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Clients</h1>
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">Clients</h1>
           <p className="text-sm text-muted-foreground mt-1">
             {loading ? "Loading..." : `${total} client${total !== 1 ? "s" : ""}`}
           </p>
@@ -172,7 +172,7 @@ export function ClientsPage() {
 
       {/* Toolbar */}
       <div className="flex items-center gap-3 flex-wrap">
-        <div className="relative flex-1 min-w-48">
+        <div className="relative flex-1 min-w-0">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
           <Input
             placeholder="Search clients..."
@@ -182,7 +182,7 @@ export function ClientsPage() {
           />
         </div>
         <Select value={sort} onValueChange={setSort}>
-          <SelectTrigger className="w-44">
+          <SelectTrigger className="w-40 sm:w-44">
             <SelectValue placeholder="Sort by" />
           </SelectTrigger>
           <SelectContent>
@@ -214,7 +214,7 @@ export function ClientsPage() {
 
       {/* Content */}
       {loading ? (
-        <div className={viewMode === "grid" ? "grid gap-3 sm:grid-cols-2 lg:grid-cols-3" : "space-y-2"}>
+        <div className={viewMode === "grid" ? "grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3" : "space-y-2"}>
           {[1, 2, 3].map((i) => (
             <Skeleton key={i} className={viewMode === "grid" ? "h-36 w-full rounded-xl" : "h-16 w-full rounded-lg"} />
           ))}
@@ -235,7 +235,7 @@ export function ClientsPage() {
       ) : (
         <>
           {viewMode === "grid" ? (
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
               {clients.map((client) => (
                 <Card
                   key={client.id}
@@ -373,7 +373,7 @@ export function ClientsPage() {
 
       {/* Create Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="w-[92vw] max-w-md">
           <DialogHeader>
             <DialogTitle>Create New Client</DialogTitle>
           </DialogHeader>
@@ -396,7 +396,7 @@ export function ClientsPage() {
                 onChange={(e) => setForm((f) => ({ ...f, company: e.target.value }))}
               />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label htmlFor="email">Email</Label>
                 <Input
@@ -417,7 +417,7 @@ export function ClientsPage() {
                 />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label>Status</Label>
                 <Select

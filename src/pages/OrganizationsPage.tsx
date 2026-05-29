@@ -120,9 +120,9 @@ export function OrganizationsPage() {
   }
 
   return (
-    <div className="p-6 space-y-6 max-w-4xl">
-      <div className="flex items-start justify-between gap-4">
-        <div>
+    <div className="p-3 sm:p-6 space-y-6 max-w-4xl">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
           <h1 className="text-2xl font-semibold tracking-tight">Organizations</h1>
           <p className="text-sm text-muted-foreground mt-1">
             You must have at least one organization. Each organization has its own data.
@@ -183,7 +183,7 @@ export function OrganizationsPage() {
                       Role: {org.role} · Currency: <span className="font-mono uppercase">{org.currency}</span>
                     </p>
                   </div>
-                  <div className="flex items-center gap-1.5 flex-wrap">
+                  <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-1.5">
                     {!isActive && (
                       <Button
                         size="sm"

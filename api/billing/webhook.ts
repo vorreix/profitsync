@@ -2,11 +2,11 @@ import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { desc, eq } from "drizzle-orm"
 import { db } from "../../src/lib/db"
 import { invoices, subscriptions } from "../../src/lib/db/schema"
-import { verifyWebhookSignature } from "../_lib/razorpay"
+import { verifyWebhookSignature } from "../_lib/dodo"
 
 export const config = {
   api: {
-    bodyParser: false, // we need the raw body to verify the signature
+    bodyParser: false, // we need the raw body to verify the Standard Webhooks signature
   },
 }
 
@@ -19,102 +19,134 @@ async function readBody(req: VercelRequest): Promise<string> {
   })
 }
 
+function header(req: VercelRequest, name: string): string | undefined {
+  const v = req.headers[name]
+  return Array.isArray(v) ? v[0] : v
+}
+
+// Map a Dodo subscription webhook event onto our internal status.
+function statusForEvent(event: string): "active" | "past_due" | "cancelled" | null {
+  switch (event) {
+    case "subscription.active":
+    case "subscription.renewed":
+    case "subscription.plan_changed":
+      return "active"
+    case "subscription.on_hold":
+    case "subscription.failed":
+      return "past_due"
+    case "subscription.cancelled":
+    case "subscription.expired":
+      return "cancelled"
+    default:
+      return null
+  }
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" })
 
   const raw = await readBody(req)
-  const signature = req.headers["x-razorpay-signature"]
 
   try {
-    if (!verifyWebhookSignature(raw, signature)) {
-      return res.status(400).json({ error: "Invalid signature" })
-    }
+    const ok = verifyWebhookSignature(raw, {
+      id: header(req, "webhook-id"),
+      timestamp: header(req, "webhook-timestamp"),
+      signature: header(req, "webhook-signature"),
+    })
+    if (!ok) return res.status(400).json({ error: "Invalid signature" })
   } catch (err) {
+    // Misconfiguration (no secret) — surface 500 so the failure is visible in logs.
     return res.status(500).json({ error: err instanceof Error ? err.message : "Verification failed" })
   }
 
-  const payload = JSON.parse(raw) as {
-    event: string
-    payload: Record<string, { entity: Record<string, unknown> }>
+  let payload: {
+    type: string
+    data: Record<string, unknown> & { payload_type?: string }
+  }
+  try {
+    payload = JSON.parse(raw)
+  } catch {
+    return res.status(400).json({ error: "Invalid JSON" })
   }
 
-  const event = payload.event
-  const subEntity = payload.payload?.subscription?.entity as
-    | { id?: string; status?: string; current_end?: number; notes?: Record<string, string> }
-    | undefined
-  const paymentEntity = payload.payload?.payment?.entity as
-    | { id?: string; amount?: number; currency?: string; status?: string }
-    | undefined
-  const invoiceEntity = payload.payload?.invoice?.entity as
-    | { id?: string; subscription_id?: string; amount?: number; currency?: string; status?: string; short_url?: string }
-    | undefined
+  const event = payload.type
+  const data = payload.data ?? {}
 
-  // 1. Subscription lifecycle events
-  if (subEntity?.id) {
-    const [sub] = await db
-      .select()
-      .from(subscriptions)
-      .where(eq(subscriptions.providerSubscriptionId, subEntity.id))
-      .orderBy(desc(subscriptions.updatedAt))
+  // ── Subscription lifecycle ────────────────────────────────────────────────
+  if (data.payload_type === "Subscription" || event.startsWith("subscription.")) {
+    const subId = data.subscription_id as string | undefined
+    const metadata = (data.metadata as Record<string, string> | undefined) ?? {}
+    const orgId = metadata.organization_id
+
+    // Match by provider subscription id first, then by org id from metadata.
+    let sub
+    if (subId) {
+      ;[sub] = await db
+        .select()
+        .from(subscriptions)
+        .where(eq(subscriptions.providerSubscriptionId, subId))
+        .orderBy(desc(subscriptions.updatedAt))
+    }
+    if (!sub && orgId) {
+      ;[sub] = await db
+        .select()
+        .from(subscriptions)
+        .where(eq(subscriptions.organizationId, orgId))
+        .orderBy(desc(subscriptions.updatedAt))
+    }
 
     if (sub) {
-      let nextStatus = sub.status
-      const updates: Record<string, unknown> = {}
+      const nextStatus = statusForEvent(event)
+      const updates: Record<string, unknown> = { updatedAt: new Date() }
+      if (nextStatus) updates.status = nextStatus
+      if (subId && !sub.providerSubscriptionId) updates.providerSubscriptionId = subId
+      if (metadata.plan_key) updates.planKey = metadata.plan_key
 
-      if (event === "subscription.activated" || event === "subscription.charged") nextStatus = "active"
-      if (event === "subscription.cancelled") nextStatus = "cancelled"
-      if (event === "subscription.completed") nextStatus = "cancelled"
-      if (event === "subscription.halted" || event === "subscription.paused") nextStatus = "past_due"
+      const nextBilling = data.next_billing_date as string | undefined
+      if (nextBilling) updates.currentPeriodEnd = new Date(nextBilling)
 
-      updates.status = nextStatus
-      if (subEntity.current_end) updates.currentPeriodEnd = new Date(subEntity.current_end * 1000)
-      if (event === "subscription.cancelled" || event === "subscription.completed") {
+      if (nextStatus === "cancelled") {
         updates.cancelledAt = new Date()
+        updates.cancelAt = sub.currentPeriodEnd ?? new Date()
       }
-      updates.updatedAt = new Date()
 
       await db.update(subscriptions).set(updates).where(eq(subscriptions.id, sub.id))
     }
   }
 
-  // 2. Invoice lifecycle events
-  if (invoiceEntity?.id && event.startsWith("invoice.")) {
-    const [sub] = invoiceEntity.subscription_id
-      ? await db
-          .select()
-          .from(subscriptions)
-          .where(eq(subscriptions.providerSubscriptionId, invoiceEntity.subscription_id))
-      : []
-
-    if (sub) {
-      const [existing] = await db
-        .select()
-        .from(invoices)
-        .where(eq(invoices.providerInvoiceId, invoiceEntity.id))
-
-      const baseValues = {
-        organizationId: sub.organizationId,
-        subscriptionId: sub.id,
-        amount: String((invoiceEntity.amount ?? 0) / 100),
-        currency: invoiceEntity.currency ?? "USD",
-        status: event === "invoice.paid" ? "paid" : invoiceEntity.status ?? "open",
-        provider: "razorpay",
-        providerInvoiceId: invoiceEntity.id,
-        pdfUrl: invoiceEntity.short_url ?? null,
-        paidAt: event === "invoice.paid" ? new Date() : null,
+  // ── Payment succeeded → record an invoice (best-effort) ───────────────────
+  if (event === "payment.succeeded" && data.payload_type === "Payment") {
+    try {
+      const subId = data.subscription_id as string | undefined
+      const [sub] = subId
+        ? await db.select().from(subscriptions).where(eq(subscriptions.providerSubscriptionId, subId))
+        : []
+      if (sub) {
+        const paymentId = data.payment_id as string | undefined
+        const minorAmount = (data.total_amount ?? data.settlement_amount ?? data.amount) as number | undefined
+        const currency = (data.currency ?? data.settlement_currency ?? "USD") as string
+        const baseValues = {
+          organizationId: sub.organizationId,
+          subscriptionId: sub.id,
+          amount: String((minorAmount ?? 0) / 100),
+          currency,
+          status: "paid",
+          provider: "dodo",
+          providerInvoiceId: paymentId ?? null,
+          paidAt: new Date(),
+        }
+        const [existing] = paymentId
+          ? await db.select().from(invoices).where(eq(invoices.providerInvoiceId, paymentId))
+          : []
+        if (existing) {
+          await db.update(invoices).set(baseValues).where(eq(invoices.id, existing.id))
+        } else {
+          await db.insert(invoices).values(baseValues)
+        }
       }
-
-      if (existing) {
-        await db.update(invoices).set(baseValues).where(eq(invoices.id, existing.id))
-      } else {
-        await db.insert(invoices).values(baseValues)
-      }
+    } catch {
+      // Non-fatal: invoice bookkeeping failure must not 500 the webhook.
     }
-  }
-
-  // 3. Payment failure
-  if (event === "payment.failed" && paymentEntity?.id) {
-    // No-op for now beyond logging — could trigger an email notification here.
   }
 
   return res.json({ ok: true })

@@ -36,8 +36,8 @@ export function PrivacyPolicyPage() {
       <h2>4. Data sharing</h2>
       <p>
         We do not sell your personal data. We share limited data with sub-processors strictly to deliver the
-        Service: Clerk (authentication), Neon (database hosting), Vercel (application hosting), and Razorpay
-        (subscription payments, when applicable). Each sub-processor is contractually bound to handle data
+        Service: Clerk (authentication), Neon (database hosting), Vercel (application hosting), and Dodo Payments
+        (our Merchant of Record for subscription payments, when applicable). Each sub-processor is contractually bound to handle data
         consistent with applicable privacy laws.
       </p>
 

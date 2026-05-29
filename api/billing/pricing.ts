@@ -25,7 +25,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const enriched = rows.map((p) => {
     const geo = (p.geoPricing as Record<string, GeoPricingEntry>) ?? {}
-    const local = geo[country]
+    // Display fallback when a country has no explicit entry. Dodo (Merchant of Record)
+    // presents localized currency + tax at checkout regardless of this displayed value.
+    const local = geo[country] ?? geo["IN"]
     return {
       ...serialize(p),
       country,

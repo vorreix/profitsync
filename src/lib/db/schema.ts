@@ -163,7 +163,7 @@ export const subscriptions = pgTable("subscriptions", {
   planKey: text("plan_key").notNull().default("free"),
   status: text("status").notNull().default("active"), // active | past_due | cancelled | trialing
   billingCycle: text("billing_cycle"), // monthly | yearly | null for free
-  provider: text("provider"), // razorpay | manual | null
+  provider: text("provider"), // dodo | stub | manual | null
   providerSubscriptionId: text("provider_subscription_id"),
   currentPeriodEnd: timestamp("current_period_end"),
   cancelAt: timestamp("cancel_at"),
