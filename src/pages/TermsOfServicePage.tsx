@@ -31,7 +31,8 @@ export function TermsOfServicePage() {
 
       <h2>4. Subscriptions and billing</h2>
       <p>
-        Paid plans are billed in advance on a recurring monthly or yearly basis through Razorpay. You can cancel
+        Paid plans are billed in advance on a recurring monthly or yearly basis through Dodo Payments, our
+        Merchant of Record. You can cancel
         at any time; cancellation takes effect at the end of the current billing period. Refunds are provided in
         line with applicable consumer protection law.
       </p>

@@ -76,7 +76,7 @@ function QuotationFormFields({
         <Label>Prospect Name *</Label>
         <Input placeholder="Jane Smith" value={f.prospect_name} onChange={(e) => onChange({ prospect_name: e.target.value })} />
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="space-y-1.5">
           <Label>Company</Label>
           <Input placeholder="Acme Corp" value={f.company} onChange={(e) => onChange({ company: e.target.value })} />
@@ -86,7 +86,7 @@ function QuotationFormFields({
           <Input type="number" min="0" step="0.01" placeholder="0.00" value={f.amount} onChange={(e) => onChange({ amount: e.target.value })} />
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="space-y-1.5">
           <Label>Email</Label>
           <Input type="email" placeholder="jane@acme.com" value={f.email} onChange={(e) => onChange({ email: e.target.value })} />
@@ -382,7 +382,7 @@ export function QuotationsPage() {
   const remaining = total - quotations.length
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-3 sm:p-6 space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -440,7 +440,7 @@ export function QuotationsPage() {
         </div>
       ) : (
         <>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
             {quotations.map((q) => {
               const linkedClient = clientById(q.linked_client_id)
               const canConvert = !q.linked_client_id && (q.status === "draft" || q.status === "sent")
@@ -553,7 +553,7 @@ export function QuotationsPage() {
 
       {/* View Modal */}
       <Dialog open={viewTarget !== null} onOpenChange={(open) => { if (!open) setViewTarget(null) }}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="w-[92vw] max-w-md sm:max-w-md">
           {viewTarget && (
             <>
               <DialogHeader>
@@ -564,7 +564,7 @@ export function QuotationsPage() {
               </DialogHeader>
 
               <div className="space-y-3 py-2">
-                <div className="grid grid-cols-2 gap-3 text-sm">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
                   <div>
                     <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Prospect</p>
                     <p className="mt-0.5 font-medium">{viewTarget.prospect_name}</p>
@@ -683,7 +683,7 @@ export function QuotationsPage() {
 
       {/* Create Dialog */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="w-[92vw] max-w-md sm:max-w-md">
           <DialogHeader><DialogTitle>New Quotation</DialogTitle></DialogHeader>
           <QuotationFormFields f={form} onChange={(p) => setForm((f) => ({ ...f, ...p }))} />
           <DialogFooter>
@@ -695,7 +695,7 @@ export function QuotationsPage() {
 
       {/* Edit Dialog */}
       <Dialog open={editTarget !== null} onOpenChange={(open) => { if (!open) setEditTarget(null) }}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="w-[92vw] max-w-md sm:max-w-md">
           <DialogHeader><DialogTitle>Edit Quotation</DialogTitle></DialogHeader>
           <QuotationFormFields f={form} onChange={(p) => setForm((f) => ({ ...f, ...p }))} />
           <DialogFooter>

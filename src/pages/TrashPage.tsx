@@ -84,7 +84,7 @@ export function TrashPage() {
   }
 
   const ClientRow = ({ client }: { client: Client }) => (
-    <div className="flex items-center gap-4 px-4 py-3 hover:bg-muted/50 transition-colors">
+    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4 px-4 py-3 hover:bg-muted/50 transition-colors">
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium truncate">{client.name}</p>
         <div className="flex items-center gap-3 mt-0.5">
@@ -128,7 +128,7 @@ export function TrashPage() {
   )
 
   const QuotationRow = ({ quotation }: { quotation: Quotation }) => (
-    <div className="flex items-center gap-4 px-4 py-3 hover:bg-muted/50 transition-colors">
+    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4 px-4 py-3 hover:bg-muted/50 transition-colors">
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium truncate">{quotation.title}</p>
         <p className="text-xs text-muted-foreground truncate">{quotation.prospect_name}{quotation.company ? ` — ${quotation.company}` : ""}</p>
@@ -163,7 +163,7 @@ export function TrashPage() {
   const totalCount = clients.length + quotations.length
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-3 sm:p-6 space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Trash</h1>
         {!loading && (

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react"
+import { useSearchParams } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { toast } from "sonner"
 import { apiGet, apiPost } from "@/lib/api"
@@ -73,53 +74,64 @@ function formatLimitValue(key: string, val: number): string {
 
 export function SubscriptionPage() {
   const { getToken } = useAuth()
-  const { activeOrg } = useOrg()
+  const { activeOrg, refresh: refreshOrg } = useOrg()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [data, setData] = useState<PricingResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState<string | null>(null)
   const [cycle, setCycle] = useState<"monthly" | "yearly">("monthly")
 
+  async function load() {
+    try {
+      const token = await getToken()
+      if (!token) return
+      const res = await apiGet<PricingResponse>("/api/billing/pricing", token)
+      setData(res)
+    } catch {
+      toast.error("Failed to load pricing")
+    } finally {
+      setLoading(false)
+    }
+  }
+
   useEffect(() => {
-    async function load() {
+    load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [getToken, activeOrg?.id])
+
+  // Reconcile when the user returns from the Dodo hosted checkout.
+  useEffect(() => {
+    if (searchParams.get("dodo") !== "return") return
+    let cancelled = false
+    ;(async () => {
       try {
         const token = await getToken()
         if (!token) return
-        const res = await apiGet<PricingResponse>("/api/billing/pricing", token)
-        setData(res)
+        const result = await apiPost<{ subscription?: Subscription; synced?: boolean }>("/api/billing/sync", token, {})
+        if (cancelled) return
+        const status = result.subscription?.status
+        if (status === "active") {
+          toast.success("Payment confirmed — Premium is now active. 🎉")
+          await refreshOrg()
+        } else if (status === "pending") {
+          toast.message("Payment is processing", { description: "Your plan will activate shortly. Refresh in a moment." })
+        } else {
+          toast.message("Checkout closed", { description: "Your subscription is still pending. You can retry anytime." })
+        }
       } catch {
-        toast.error("Failed to load pricing")
+        toast.error("Could not confirm payment status")
       } finally {
-        setLoading(false)
+        if (!cancelled) {
+          // Strip our return marker plus the params Dodo appends to the return URL.
+          for (const k of ["dodo", "subscription_id", "status", "email"]) searchParams.delete(k)
+          setSearchParams(searchParams, { replace: true })
+          load()
+        }
       }
-    }
-    load()
-  }, [getToken, activeOrg?.id])
-
-  const openRazorpayModal = (subscriptionId: string, keyId: string): Promise<void> =>
-    new Promise((resolve, reject) => {
-      const existing = document.getElementById("rzp-checkout-js")
-      const load = (cb: () => void) => {
-        if ((window as Window & { Razorpay?: unknown }).Razorpay) { cb(); return }
-        const s = document.createElement("script")
-        s.id = "rzp-checkout-js"
-        s.src = "https://checkout.razorpay.com/v1/checkout.js"
-        s.onload = cb
-        s.onerror = () => reject(new Error("Failed to load Razorpay checkout"))
-        if (!existing) document.body.appendChild(s)
-      }
-      load(() => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const rzp = new (window as any).Razorpay({
-          key: keyId,
-          subscription_id: subscriptionId,
-          name: "ProfitSync",
-          description: "Premium subscription",
-          handler: () => resolve(),
-          modal: { ondismiss: () => reject(new Error("dismissed")) },
-        })
-        rzp.open()
-      })
-    })
+    })()
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams])
 
   const handleSubscribe = async (planKey: string) => {
     if (!activeOrg) return
@@ -129,29 +141,26 @@ export function SubscriptionPage() {
       if (!token) return
       const result = await apiPost<{
         subscription?: Subscription
-        checkout_url?: string
+        checkout_url?: string | null
         provider_subscription_id?: string
-        razorpay_key_id?: string
+        provider?: string
         message?: string
       }>(
         "/api/billing/create-subscription",
         token,
         { plan_key: planKey, cycle: planKey === "free" ? undefined : cycle },
       )
-      if (result.provider_subscription_id && result.razorpay_key_id) {
-        try {
-          await openRazorpayModal(result.provider_subscription_id, result.razorpay_key_id)
-          toast.success("Payment submitted — your plan will activate shortly.")
-        } catch (e) {
-          if (e instanceof Error && e.message !== "dismissed") throw e
-          // user closed the modal — subscription stays pending, they can retry
-          toast.message("Payment cancelled", { description: "Your subscription is pending. Click the button again to pay." })
-        }
-      } else {
-        toast.success(result.message || "Subscription updated")
+
+      if (result.checkout_url) {
+        // Redirect to Dodo's hosted checkout. The return_url brings the user back to this page.
+        window.location.href = result.checkout_url
+        return
       }
-      const fresh = await apiGet<PricingResponse>("/api/billing/pricing", token)
-      setData(fresh)
+
+      // Free plan or stub mode — applied server-side immediately.
+      toast.success(result.message || "Subscription updated")
+      await refreshOrg()
+      await load()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed")
     } finally {
@@ -168,8 +177,8 @@ export function SubscriptionPage() {
       if (!token) return
       const result = await apiPost<{ message?: string }>("/api/billing/cancel", token, {})
       toast.success(result.message || "Subscription cancelled")
-      const fresh = await apiGet<PricingResponse>("/api/billing/pricing", token)
-      setData(fresh)
+      await refreshOrg()
+      await load()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed")
     } finally {
@@ -179,9 +188,9 @@ export function SubscriptionPage() {
 
   if (loading || !data) {
     return (
-      <div className="p-6 space-y-4 max-w-5xl">
+      <div className="p-3 sm:p-6 space-y-4 max-w-5xl">
         <Skeleton className="h-8 w-64" />
-        <div className="grid md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Skeleton className="h-64 w-full" />
           <Skeleton className="h-64 w-full" />
         </div>
@@ -194,10 +203,10 @@ export function SubscriptionPage() {
   const isCancelling = current?.status === "cancelled" && current.cancel_at
 
   return (
-    <div className="p-6 space-y-6 max-w-5xl">
-      <div className="flex items-start justify-between gap-4">
+    <div className="p-3 sm:p-6 space-y-6 max-w-5xl">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Subscription</h1>
+          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">Subscription</h1>
           <p className="text-sm text-muted-foreground mt-1">
             {activeOrg ? `Managing ${activeOrg.name}` : "Choose the plan that fits your team."}
             <span className="ml-2 text-xs">· Pricing for {data.detectedCountry}</span>
@@ -237,7 +246,7 @@ export function SubscriptionPage() {
         </Card>
       )}
 
-      <div className="grid md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {data.plans.map((plan) => {
           const isCurrent = effectivePlanKey === plan.key
           const local = plan.local_pricing
