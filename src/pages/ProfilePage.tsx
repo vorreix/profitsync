@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react"
+import { useTranslation } from "react-i18next"
 import { useNavigate, Link } from "react-router-dom"
 import { useAuth, useClerk } from "@clerk/clerk-react"
 import { apiGet, apiPatch } from "@/lib/api"
@@ -8,10 +9,12 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
+import { LanguageSwitcher } from "@/components/LanguageSwitcher"
 import { toast } from "sonner"
 import { ArrowLeft, Building2, Loader as Loader2, LogOut } from "lucide-react"
 
 export function ProfilePage() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const { getToken } = useAuth()
   const { signOut } = useClerk()
@@ -32,7 +35,7 @@ export function ProfilePage() {
       setProfile(data)
       setFullName(data.full_name || "")
     } catch {
-      toast.error("Failed to load profile")
+      toast.error(t("toast.profileLoadFailed"))
     } finally {
       setLoading(false)
     }
@@ -46,9 +49,9 @@ export function ProfilePage() {
       if (!token) throw new Error("Not authenticated")
       const updated = await apiPatch<UserProfile>("/api/profile", token, { full_name: fullName })
       setProfile(updated)
-      toast.success("Profile updated successfully")
+      toast.success(t("toast.profileUpdated"))
     } catch {
-      toast.error("Failed to save profile")
+      toast.error(t("toast.profileSaveFailed"))
     } finally {
       setSaving(false)
     }
@@ -78,45 +81,55 @@ export function ProfilePage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Profile Settings</CardTitle>
+          <CardTitle>{t("profile.title")}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="space-y-2">
-            <Label>Email</Label>
+            <Label>{t("profile.email")}</Label>
             <div className="px-3 py-2 rounded-md border bg-muted text-sm">{profile.email}</div>
-            <p className="text-xs text-muted-foreground">Email cannot be changed</p>
+            <p className="text-xs text-muted-foreground">{t("profile.emailCannotChange")}</p>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="fullName">Full Name</Label>
+            <Label htmlFor="fullName">{t("profile.fullName")}</Label>
             <Input
               id="fullName"
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
-              placeholder="Your name"
+              placeholder={t("profile.yourName")}
               disabled={saving}
             />
           </div>
 
           <Button onClick={handleSave} className="w-full" disabled={saving}>
             {saving ? <Loader2 className="size-4 animate-spin mr-2" /> : null}
-            {saving ? "Saving..." : "Save Changes"}
+            {saving ? t("common.saving") : t("common.save")}
           </Button>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Currency</CardTitle>
+          <CardTitle className="text-base">{t("language.title")}</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">{t("language.description")}</p>
+          <LanguageSwitcher variant="full" align="start" />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">{t("profile.currency")}</CardTitle>
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground mb-3">
-            Currency is now set per organization. Open an organization to change its currency — only owners and admins can.
+            {t("profile.currencyDescription")}
           </p>
           <Button asChild variant="outline" className="w-full">
             <Link to="/organizations">
               <Building2 className="size-4 mr-2" />
-              Manage organizations
+              {t("org.manageOrganizations")}
             </Link>
           </Button>
         </CardContent>
@@ -124,13 +137,13 @@ export function ProfilePage() {
 
       <Card className="border-destructive/20 bg-destructive/5">
         <CardHeader>
-          <CardTitle className="text-destructive">Logout</CardTitle>
+          <CardTitle className="text-destructive">{t("profile.logoutTitle")}</CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-muted-foreground mb-4">Sign out of your ProfitSync account</p>
+          <p className="text-sm text-muted-foreground mb-4">{t("profile.logoutDescription")}</p>
           <Button variant="destructive" onClick={handleLogout} className="w-full">
             <LogOut className="size-4 mr-2" />
-            Logout
+            {t("profile.logoutTitle")}
           </Button>
         </CardContent>
       </Card>

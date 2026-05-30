@@ -1,0 +1,111 @@
+{
+  "nav": {
+    "dashboard": "Dashboard",
+    "clients": "Kunden",
+    "transactions": "Transaktionen",
+    "quotations": "Angebote",
+    "users": "Benutzer",
+    "organizations": "Organisationen",
+    "subscription": "Abonnement",
+    "trash": "Papierkorb",
+    "home": "Start",
+    "quotes": "Angebote",
+    "more": "Mehr",
+    "profile": "Profil",
+    "privacyPolicy": "Datenschutzrichtlinie",
+    "termsOfService": "Nutzungsbedingungen",
+    "admin": "Admin",
+    "adminConsole": "Admin-Konsole"
+  },
+  "actions": {
+    "addClient": "Kunde hinzufügen",
+    "addTransaction": "Transaktion hinzufügen",
+    "createQuotation": "Angebot erstellen"
+  },
+  "account": {
+    "title": "Konto",
+    "org": "Org",
+    "profileSettings": "Profileinstellungen",
+    "organizations": "Organisationen",
+    "logout": "Abmelden",
+    "theme": "Design"
+  },
+  "org": {
+    "personal": "Persönlich",
+    "pro": "Pro",
+    "free": "Kostenlos",
+    "upgradeTitle": "Auf Premium upgraden",
+    "upgradeSubtitle": "Mehr Kunden, Anhänge & Speicher",
+    "createOrganization": "Organisation erstellen",
+    "manageOrganizations": "Organisationen verwalten"
+  },
+  "language": {
+    "title": "Sprache",
+    "label": "Sprache",
+    "description": "Wählen Sie die in der gesamten App verwendete Sprache."
+  },
+  "common": {
+    "clear": "Löschen",
+    "done": "Fertig",
+    "viewAll": "Alle anzeigen",
+    "cancel": "Abbrechen",
+    "save": "Änderungen speichern",
+    "saving": "Speichern..."
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "overview": "Finanzübersicht über alle Kunden",
+    "viewingClients_one": "{{count}} Kunde wird angezeigt",
+    "viewingClients_other": "{{count}} Kunden werden angezeigt",
+    "allClients": "Alle Kunden",
+    "selectedCount": "{{count}} ausgewählt",
+    "searchClients": "Kunden suchen...",
+    "noClientsFound": "Keine Kunden gefunden",
+    "totalRevenue": "Gesamtumsatz",
+    "totalExpenses": "Gesamtausgaben",
+    "netProfit": "Nettogewinn",
+    "activeClients": "Aktive Kunden",
+    "selectedIncome": "Ausgewählte Einnahmen",
+    "allTimeIncoming": "Gesamte Einnahmen",
+    "selectedExpenses": "Ausgewählte Ausgaben",
+    "allTimeOutgoing": "Gesamte Ausgaben",
+    "margin": "{{value}} % Marge",
+    "totalClients_one": "{{count}} Kunde insgesamt",
+    "totalClients_other": "{{count}} Kunden insgesamt",
+    "transactionSummary": "Transaktionsübersicht",
+    "revenueVsExpenses": "Einnahmen vs. Ausgaben pro Kunde",
+    "noDataYet": "Noch keine Daten. Fügen Sie Kunden und Transaktionen hinzu, um das Diagramm zu sehen.",
+    "selectedClientsSummary": "Zusammenfassung ausgewählter Kunden",
+    "topClients": "Top-Kunden",
+    "noClientsToDisplay": "Keine Kunden zum Anzeigen",
+    "income": "Einnahmen",
+    "expenses": "Ausgaben",
+    "profit": "Gewinn"
+  },
+  "chart": {
+    "incoming": "Eingang",
+    "outgoing": "Ausgang"
+  },
+  "status": {
+    "active": "aktiv",
+    "inactive": "inaktiv",
+    "archived": "archiviert"
+  },
+  "profile": {
+    "title": "Profileinstellungen",
+    "email": "E-Mail",
+    "emailCannotChange": "E-Mail kann nicht geändert werden",
+    "fullName": "Vollständiger Name",
+    "yourName": "Ihr Name",
+    "currency": "Währung",
+    "currencyDescription": "Die Währung wird jetzt pro Organisation festgelegt. Öffnen Sie eine Organisation, um ihre Währung zu ändern — nur Eigentümer und Administratoren können das.",
+    "logoutTitle": "Abmelden",
+    "logoutDescription": "Von Ihrem ProfitSync-Konto abmelden"
+  },
+  "toast": {
+    "profileLoadFailed": "Profil konnte nicht geladen werden",
+    "profileSaveFailed": "Profil konnte nicht gespeichert werden",
+    "profileUpdated": "Profil erfolgreich aktualisiert",
+    "languageUpdated": "Sprache aktualisiert"
+  }
+}

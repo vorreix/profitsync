@@ -130,6 +130,7 @@ export const userProfiles = pgTable("user_profiles", {
   email: text("email").notNull().unique(),
   fullName: text("full_name"),
   currency: text("currency").default("USD"),
+  language: text("language").default("en"),
   currentOrganizationId: uuid("current_organization_id"),
   termsAcceptedAt: timestamp("terms_accepted_at"),
   bannedAt: timestamp("banned_at"),

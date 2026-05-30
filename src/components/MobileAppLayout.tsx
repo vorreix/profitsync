@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { useTranslation } from "react-i18next"
 import { Outlet, NavLink, useLocation, useNavigate } from "react-router-dom"
 import { useUser, useClerk } from "@clerk/clerk-react"
 import {
@@ -36,36 +37,38 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { ModeToggle } from "@/components/mode-toggle"
+import { LanguageSwitcher } from "@/components/LanguageSwitcher"
 
 const primaryTabs = [
-  { label: "Home", href: "/dashboard", icon: LayoutDashboard },
-  { label: "Clients", href: "/clients", icon: Users },
-  { label: "Transactions", href: "/transactions", icon: ArrowLeftRight },
-  { label: "Quotes", href: "/quotations", icon: FileText },
+  { labelKey: "nav.home", href: "/dashboard", icon: LayoutDashboard },
+  { labelKey: "nav.clients", href: "/clients", icon: Users },
+  { labelKey: "nav.transactions", href: "/transactions", icon: ArrowLeftRight },
+  { labelKey: "nav.quotes", href: "/quotations", icon: FileText },
 ]
 
-type MoreItem = { label: string; href: string; icon: typeof Building2 }
+type MoreItem = { labelKey: string; href: string; icon: typeof Building2 }
 
 function buildMoreItems(activeOrgId: string | undefined): MoreItem[] {
   const usersHref = activeOrgId ? `/organizations/${activeOrgId}/members` : "/organizations"
   return [
-    { label: "Users", href: usersHref, icon: UserPlus },
-    { label: "Organizations", href: "/organizations", icon: Building2 },
-    { label: "Subscription", href: "/subscription", icon: CreditCard },
-    { label: "Trash", href: "/trash", icon: Trash2 },
-    { label: "Profile", href: "/profile", icon: User },
-    { label: "Privacy Policy", href: "/privacy-policy", icon: ShieldCheck },
-    { label: "Terms of Service", href: "/terms-of-service", icon: ScrollText },
+    { labelKey: "nav.users", href: usersHref, icon: UserPlus },
+    { labelKey: "nav.organizations", href: "/organizations", icon: Building2 },
+    { labelKey: "nav.subscription", href: "/subscription", icon: CreditCard },
+    { labelKey: "nav.trash", href: "/trash", icon: Trash2 },
+    { labelKey: "nav.profile", href: "/profile", icon: User },
+    { labelKey: "nav.privacyPolicy", href: "/privacy-policy", icon: ShieldCheck },
+    { labelKey: "nav.termsOfService", href: "/terms-of-service", icon: ScrollText },
   ]
 }
 
 const quickActions = [
-  { label: "Add Client", icon: Users, href: "/clients?new=1" },
-  { label: "Add Transaction", icon: ArrowLeftRight, href: "/transactions?new=1" },
-  { label: "Create Quotation", icon: FileText, href: "/quotations?new=1" },
+  { labelKey: "actions.addClient", icon: Users, href: "/clients?new=1" },
+  { labelKey: "actions.addTransaction", icon: ArrowLeftRight, href: "/transactions?new=1" },
+  { labelKey: "actions.createQuotation", icon: FileText, href: "/quotations?new=1" },
 ]
 
 export function MobileAppLayout() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const location = useLocation()
   const { user } = useUser()
@@ -115,7 +118,7 @@ export function MobileAppLayout() {
                 <div className="flex size-5 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground">
                   <Building2 className="size-3" />
                 </div>
-                <span className="truncate text-xs">{activeOrg?.name ?? "Personal"}</span>
+                <span className="truncate text-xs">{activeOrg?.name ?? t("org.personal")}</span>
                 {activeOrg && (
                   <span
                     className={`text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded-full border shrink-0 ${
@@ -124,7 +127,7 @@ export function MobileAppLayout() {
                         : "border-border text-muted-foreground"
                     }`}
                   >
-                    {activeOrg.plan_key === "premium" ? "Pro" : "Free"}
+                    {activeOrg.plan_key === "premium" ? t("org.pro") : t("org.free")}
                   </span>
                 )}
                 <ChevronDown className="size-3 text-muted-foreground shrink-0" />
@@ -132,7 +135,7 @@ export function MobileAppLayout() {
             </SheetTrigger>
             <SheetContent side="left" className="w-[85%] max-w-sm p-0 flex flex-col">
               <SheetHeader className="p-4 border-b">
-                <SheetTitle>Organizations</SheetTitle>
+                <SheetTitle>{t("nav.organizations")}</SheetTitle>
               </SheetHeader>
               <ScrollArea className="flex-1">
                 <div className="p-2 space-y-1">
@@ -157,7 +160,7 @@ export function MobileAppLayout() {
                                 : "border-border text-muted-foreground"
                             }`}
                           >
-                            {org.plan_key === "premium" ? "Pro" : "Free"}
+                            {org.plan_key === "premium" ? t("org.pro") : t("org.free")}
                           </span>
                         </div>
                         <p className="text-[11px] text-muted-foreground uppercase tracking-wide">{org.role}</p>
@@ -174,8 +177,8 @@ export function MobileAppLayout() {
                     >
                       <Sparkles className="size-4" />
                       <div className="flex-1">
-                        <span className="text-sm font-medium block">Upgrade to Premium</span>
-                        <span className="text-[11px] opacity-80">More clients, attachments &amp; storage</span>
+                        <span className="text-sm font-medium block">{t("org.upgradeTitle")}</span>
+                        <span className="text-[11px] opacity-80">{t("org.upgradeSubtitle")}</span>
                       </div>
                     </button>
                   )}
@@ -184,14 +187,14 @@ export function MobileAppLayout() {
                     className="w-full flex items-center gap-3 p-3 rounded-lg pressable hover:bg-accent text-left"
                   >
                     <Plus className="size-4" />
-                    <span className="text-sm">Create organization</span>
+                    <span className="text-sm">{t("org.createOrganization")}</span>
                   </button>
                   <button
                     onClick={() => { setOrgSheetOpen(false); navigate("/organizations") }}
                     className="w-full flex items-center gap-3 p-3 rounded-lg pressable hover:bg-accent text-left"
                   >
                     <Building2 className="size-4" />
-                    <span className="text-sm">Manage organizations</span>
+                    <span className="text-sm">{t("org.manageOrganizations")}</span>
                   </button>
                 </div>
               </ScrollArea>
@@ -206,28 +209,29 @@ export function MobileAppLayout() {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-60">
               <DropdownMenuLabel className="flex flex-col space-y-1">
-                <span>Account</span>
+                <span>{t("account.title")}</span>
                 {userEmail && <span className="text-xs font-normal text-muted-foreground">{userEmail}</span>}
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => navigate("/profile")}>
-                <User className="size-4 mr-2" /> Profile
+                <User className="size-4 mr-2" /> {t("nav.profile")}
               </DropdownMenuItem>
               {isAdmin && (
                 <DropdownMenuItem onClick={() => navigate("/admin")}>
-                  <ShieldCheck className="size-4 mr-2" /> Admin console
+                  <ShieldCheck className="size-4 mr-2" /> {t("nav.adminConsole")}
                 </DropdownMenuItem>
               )}
               <DropdownMenuItem onClick={() => navigate("/subscription")}>
-                <CreditCard className="size-4 mr-2" /> Subscription
+                <CreditCard className="size-4 mr-2" /> {t("nav.subscription")}
               </DropdownMenuItem>
               <div className="px-1 py-1 flex items-center gap-2">
                 <ModeToggle />
-                <span className="text-xs text-muted-foreground">Theme</span>
+                <span className="text-xs text-muted-foreground">{t("account.theme")}</span>
+                <div className="ml-auto"><LanguageSwitcher variant="icon" align="end" /></div>
               </div>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={handleLogout} className="text-destructive">
-                <LogOut className="size-4 mr-2" /> Logout
+                <LogOut className="size-4 mr-2" /> {t("account.logout")}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -249,7 +253,7 @@ export function MobileAppLayout() {
             className="flex items-center gap-2 animate-in fade-in slide-in-from-bottom-1 duration-150"
           >
             <span className="text-xs font-medium bg-background border shadow-sm rounded-full px-2.5 py-1 whitespace-nowrap">
-              {action.label}
+              {t(action.labelKey)}
             </span>
             <Button
               size="icon"
@@ -284,7 +288,7 @@ export function MobileAppLayout() {
                 }`}
               >
                 <tab.icon className="size-5" />
-                <span className="text-[10px] font-medium leading-none">{tab.label}</span>
+                <span className="text-[10px] font-medium leading-none">{t(tab.labelKey)}</span>
               </NavLink>
             )
           })}
@@ -297,12 +301,12 @@ export function MobileAppLayout() {
                 }`}
               >
                 <MoreHorizontal className="size-5" />
-                <span className="text-[10px] font-medium leading-none">More</span>
+                <span className="text-[10px] font-medium leading-none">{t("nav.more")}</span>
               </button>
             </SheetTrigger>
             <SheetContent side="bottom" className="rounded-t-2xl h-[60vh]">
               <SheetHeader className="text-left mb-2">
-                <SheetTitle>More</SheetTitle>
+                <SheetTitle>{t("nav.more")}</SheetTitle>
               </SheetHeader>
               <div className="grid grid-cols-3 gap-3">
                 {moreItems.map((item) => (
@@ -312,7 +316,7 @@ export function MobileAppLayout() {
                     className="pressable flex flex-col items-center gap-2 p-3 rounded-xl bg-muted/50 border"
                   >
                     <item.icon className="size-5" />
-                    <span className="text-xs font-medium text-center leading-tight">{item.label}</span>
+                    <span className="text-xs font-medium text-center leading-tight">{t(item.labelKey)}</span>
                   </button>
                 ))}
                 {isAdmin && (
@@ -321,7 +325,7 @@ export function MobileAppLayout() {
                     className="pressable flex flex-col items-center gap-2 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-300"
                   >
                     <ShieldCheck className="size-5" />
-                    <span className="text-xs font-medium text-center leading-tight">Admin</span>
+                    <span className="text-xs font-medium text-center leading-tight">{t("nav.admin")}</span>
                   </button>
                 )}
               </div>
