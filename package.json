@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc -p tsconfig.app.json && tsc -p tsconfig.node.json && tsc -p api/tsconfig.json",
     "preview": "vite preview",
     "db:push": "drizzle-kit push",
     "lint": "eslint .",
