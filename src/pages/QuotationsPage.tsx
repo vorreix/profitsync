@@ -182,6 +182,7 @@ export function QuotationsPage() {
   useEffect(() => {
     const t = setTimeout(fetchPage1, 300)
     return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- debounced refetch keyed on search/tab; fetchPage1 reads the latest values via refs
   }, [search, tab])
 
   useEffect(() => {
@@ -200,6 +201,7 @@ export function QuotationsPage() {
       setClients(Array.isArray(data) ? data : (data as { data: Client[] }).data ?? [])
     }
     loadClients()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once on mount
   }, [])
 
   const clientById = (id: string | null) => id ? clients.find((c) => c.id === id) : undefined

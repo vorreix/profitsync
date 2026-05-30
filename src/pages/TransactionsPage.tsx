@@ -43,12 +43,12 @@ function loadCategories(): { incoming: string[]; outgoing: string[] } {
   try {
     const stored = localStorage.getItem(CATEGORIES_STORAGE_KEY)
     if (stored) return JSON.parse(stored)
-  } catch {}
+  } catch { /* localStorage unavailable or corrupt — fall back to defaults */ }
   return { incoming: [...DEFAULT_CATEGORIES.incoming], outgoing: [...DEFAULT_CATEGORIES.outgoing] }
 }
 
 function saveCategories(cats: { incoming: string[]; outgoing: string[] }) {
-  try { localStorage.setItem(CATEGORIES_STORAGE_KEY, JSON.stringify(cats)) } catch {}
+  try { localStorage.setItem(CATEGORIES_STORAGE_KEY, JSON.stringify(cats)) } catch { /* ignore storage quota/availability errors */ }
 }
 
 const PAGE_SIZE = 20
