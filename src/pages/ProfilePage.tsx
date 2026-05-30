@@ -25,6 +25,7 @@ export function ProfilePage() {
 
   useEffect(() => {
     loadProfile()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once on mount
   }, [])
 
   const loadProfile = async () => {

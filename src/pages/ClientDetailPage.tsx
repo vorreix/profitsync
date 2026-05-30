@@ -288,7 +288,7 @@ export function ClientDetailPage() {
               <Label>Type</Label>
               <div className="grid grid-cols-2 gap-2">
                 {["incoming", "outgoing"].map((type) => (
-                  <button key={type} type="button" onClick={() => setTxForm((f) => ({ ...f, type: type as any, category: "" }))}
+                  <button key={type} type="button" onClick={() => setTxForm((f) => ({ ...f, type: type as NewTransaction["type"], category: "" }))}
                     className={`flex items-center justify-center gap-2 rounded-md border py-2.5 text-sm font-medium transition-colors ${
                       txForm.type === type ? (type === "incoming" ? "border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400 dark:border-emerald-600" : "border-red-500 bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400 dark:border-red-600") : "border-border hover:bg-muted"
                     }`}
@@ -332,7 +332,7 @@ export function ClientDetailPage() {
                 <Label>Type</Label>
                 <div className="grid grid-cols-2 gap-2">
                   {["incoming", "outgoing"].map((type) => (
-                    <button key={type} type="button" onClick={() => setEditTxForm((f) => f ? { ...f, type: type as any, category: "" } : null)}
+                    <button key={type} type="button" onClick={() => setEditTxForm((f) => f ? { ...f, type: type as NewTransaction["type"], category: "" } : null)}
                       className={`flex items-center justify-center gap-2 rounded-md border py-2.5 text-sm font-medium transition-colors ${
                         editTxForm.type === type ? (type === "incoming" ? "border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400 dark:border-emerald-600" : "border-red-500 bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400 dark:border-red-600") : "border-border hover:bg-muted"
                       }`}
@@ -379,7 +379,7 @@ export function ClientDetailPage() {
               <div className="space-y-1.5"><Label htmlFor="client-phone">Phone</Label><Input id="client-phone" value={clientForm.phone} onChange={(e) => setClientForm((f) => f ? { ...f, phone: e.target.value } : null)} /></div>
               <div className="space-y-1.5">
                 <Label>Status</Label>
-                <Select value={clientForm.status} onValueChange={(v) => setClientForm((f) => f ? { ...f, status: v as any } : null)}>
+                <Select value={clientForm.status} onValueChange={(v) => setClientForm((f) => f ? { ...f, status: v as NewClient["status"] } : null)}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {["active", "inactive", "archived"].map((s) => <SelectItem key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</SelectItem>)}

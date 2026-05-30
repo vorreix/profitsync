@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { and, eq } from "drizzle-orm"
+import { eq } from "drizzle-orm"
 import { db } from "../../src/lib/db"
 import { quotationAttachments, quotations } from "../../src/lib/db/schema"
 import { canDelete, requireAuth } from "../_lib/auth"
