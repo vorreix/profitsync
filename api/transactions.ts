@@ -85,20 +85,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const pageNum = Math.max(1, parseInt(page, 10) || 1)
       const offset = (pageNum - 1) * PAGE_SIZE
 
-      const [{ total }] = await db
-        .select({ total: count() })
-        .from(transactions)
-        .innerJoin(clients, eq(transactions.clientId, clients.id))
-        .where(whereClause)
-
-      const rows = await db
-        .select(txFields)
-        .from(transactions)
-        .innerJoin(clients, eq(transactions.clientId, clients.id))
-        .where(whereClause)
-        .orderBy(...orderBy)
-        .limit(PAGE_SIZE)
-        .offset(offset)
+      // Count and page rows are independent — run them as one parallel batch.
+      const [[{ total }], rows] = await Promise.all([
+        db
+          .select({ total: count() })
+          .from(transactions)
+          .innerJoin(clients, eq(transactions.clientId, clients.id))
+          .where(whereClause),
+        db
+          .select(txFields)
+          .from(transactions)
+          .innerJoin(clients, eq(transactions.clientId, clients.id))
+          .where(whereClause)
+          .orderBy(...orderBy)
+          .limit(PAGE_SIZE)
+          .offset(offset),
+      ])
 
       return res.json({ data: rows.map(serialize), total })
     }

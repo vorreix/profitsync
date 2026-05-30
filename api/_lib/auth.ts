@@ -76,9 +76,33 @@ export async function ensurePersonalOrg(userId: string): Promise<string> {
   return id
 }
 
+// Short-lived in-process cache for org resolution. requireAuth runs on every API
+// call, and resolving the org otherwise costs a membership round-trip to the DB
+// (in eu-central-1) each time. Membership/role rarely changes within a session,
+// so a brief TTL keyed by (userId, headerOrgId) safely removes that round-trip.
+// Switching org changes the header → a different key, so switches are picked up
+// immediately. The cache lives for the lifetime of the warm function instance.
+type CachedOrg = { value: OrgAuth; ts: number }
+const orgAuthCache = new Map<string, CachedOrg>()
+const ORG_AUTH_TTL_MS = 60_000
+
 export async function getActiveOrg(req: VercelRequest, userId: string): Promise<OrgAuth | null> {
   const headerOrgId = (req.headers["x-org-id"] as string | undefined)?.trim() || undefined
 
+  const cacheKey = `${userId}::${headerOrgId ?? ""}`
+  const cached = orgAuthCache.get(cacheKey)
+  if (cached && Date.now() - cached.ts < ORG_AUTH_TTL_MS) return cached.value
+
+  const resolved = await resolveActiveOrg(req, userId, headerOrgId)
+  if (resolved) orgAuthCache.set(cacheKey, { value: resolved, ts: Date.now() })
+  return resolved
+}
+
+async function resolveActiveOrg(
+  req: VercelRequest,
+  userId: string,
+  headerOrgId: string | undefined,
+): Promise<OrgAuth | null> {
   if (headerOrgId) {
     const [member] = await db
       .select()
