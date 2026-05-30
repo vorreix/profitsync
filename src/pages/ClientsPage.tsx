@@ -116,6 +116,7 @@ export function ClientsPage() {
   useEffect(() => {
     const t = setTimeout(fetchPage1, 300)
     return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- debounced refetch keyed on search/sort; fetchPage1 reads the latest values via refs
   }, [search, sort])
 
   useEffect(() => {

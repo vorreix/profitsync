@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { and, count, desc, eq, ilike } from "drizzle-orm"
 import { db, serialize } from "../../src/lib/db"
-import { invoices, organizations, subscriptions, userProfiles } from "../../src/lib/db/schema"
+import { invoices, organizations, userProfiles } from "../../src/lib/db/schema"
 import { requireAdmin } from "../_lib/admin"
 
 const PAGE_SIZE = 30
