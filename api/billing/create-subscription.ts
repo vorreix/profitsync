@@ -52,6 +52,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const [row] = existing
       ? await db.update(subscriptions).set(freeValues).where(eq(subscriptions.id, existing.id)).returning()
       : await db.insert(subscriptions).values({ organizationId: ctx.orgId, ...freeValues }).returning()
+    if (!row) return res.status(500).json({ error: "Failed to update subscription" })
     return res.json({ subscription: serialize(row), message: "Switched to the Free plan." })
   }
 
@@ -75,6 +76,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const [row] = existing
       ? await db.update(subscriptions).set(stubValues).where(eq(subscriptions.id, existing.id)).returning()
       : await db.insert(subscriptions).values({ organizationId: ctx.orgId, ...stubValues }).returning()
+    if (!row) return res.status(500).json({ error: "Failed to update subscription" })
     return res.json({
       subscription: serialize(row),
       checkout_url: null,

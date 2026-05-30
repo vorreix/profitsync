@@ -42,6 +42,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .where(eq(subscriptions.id, sub.id))
       .returning()
 
+    if (!updated) return res.status(404).json({ error: "Subscription not found" })
     return res.json({ subscription: serialize(updated), synced: true, dodo_status: remote.status })
   } catch (err) {
     return res.status(502).json({ error: err instanceof Error ? err.message : "Dodo sync failed" })
