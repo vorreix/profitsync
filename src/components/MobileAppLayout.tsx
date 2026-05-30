@@ -318,7 +318,7 @@ export function MobileAppLayout() {
               <div className="grid grid-cols-3 gap-3">
                 {moreItems.map((item) => (
                   <button
-                    key={item.href}
+                    key={item.labelKey}
                     onClick={() => { setMoreOpen(false); navigate(item.href) }}
                     className="pressable flex flex-col items-center gap-2 p-3 rounded-xl bg-muted/50 border"
                   >

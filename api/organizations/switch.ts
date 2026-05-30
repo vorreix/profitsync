@@ -29,5 +29,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     .set({ currentOrganizationId: organization_id, updatedAt: new Date() })
     .where(eq(userProfiles.id, userId))
     .returning()
+  if (!updated) return res.status(404).json({ error: "Profile not found" })
   return res.json(serialize(updated))
 }
