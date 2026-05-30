@@ -43,6 +43,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     .where(eq(subscriptions.id, sub.id))
     .returning()
 
+  if (!updated) return res.status(404).json({ error: "Subscription not found" })
   return res.json({
     subscription: serialize(updated),
     message: "Subscription cancelled. Access continues until the end of the current period.",

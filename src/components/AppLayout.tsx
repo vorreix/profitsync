@@ -129,7 +129,7 @@ function AppLayoutInner() {
             <SidebarGroupContent>
               <SidebarMenu>
                 {navItems.map((item) => (
-                  <SidebarMenuItem key={item.href}>
+                  <SidebarMenuItem key={item.labelKey}>
                     <SidebarMenuButton
                       asChild
                       isActive={item.href === activeNavHref}
