@@ -72,6 +72,7 @@ export type UserProfile = {
   email: string
   full_name: string
   currency: string
+  language: string
   current_organization_id: string | null
   terms_accepted_at: string | null
   created_at: string
