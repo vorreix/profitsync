@@ -1,0 +1,111 @@
+{
+  "nav": {
+    "dashboard": "డాష్‌బోర్డ్",
+    "clients": "క్లయింట్‌లు",
+    "transactions": "లావాదేవీలు",
+    "quotations": "కొటేషన్‌లు",
+    "users": "వినియోగదారులు",
+    "organizations": "సంస్థలు",
+    "subscription": "సబ్‌స్క్రిప్షన్",
+    "trash": "ట్రాష్",
+    "home": "హోమ్",
+    "quotes": "కొటేషన్‌లు",
+    "more": "మరిన్ని",
+    "profile": "ప్రొఫైల్",
+    "privacyPolicy": "గోప్యతా విధానం",
+    "termsOfService": "సేవా నిబంధనలు",
+    "admin": "అడ్మిన్",
+    "adminConsole": "అడ్మిన్ కన్సోల్"
+  },
+  "actions": {
+    "addClient": "క్లయింట్‌ను జోడించు",
+    "addTransaction": "లావాదేవీని జోడించు",
+    "createQuotation": "కొటేషన్ సృష్టించు"
+  },
+  "account": {
+    "title": "ఖాతా",
+    "org": "సంస్థ",
+    "profileSettings": "ప్రొఫైల్ సెట్టింగ్‌లు",
+    "organizations": "సంస్థలు",
+    "logout": "లాగ్ అవుట్",
+    "theme": "థీమ్"
+  },
+  "org": {
+    "personal": "వ్యక్తిగత",
+    "pro": "ప్రో",
+    "free": "ఉచితం",
+    "upgradeTitle": "ప్రీమియంకు అప్‌గ్రేడ్ చేయండి",
+    "upgradeSubtitle": "మరిన్ని క్లయింట్‌లు, అటాచ్‌మెంట్‌లు & నిల్వ",
+    "createOrganization": "సంస్థను సృష్టించు",
+    "manageOrganizations": "సంస్థలను నిర్వహించు"
+  },
+  "language": {
+    "title": "భాష",
+    "label": "భాష",
+    "description": "యాప్ అంతటా ఉపయోగించే భాషను ఎంచుకోండి."
+  },
+  "common": {
+    "clear": "క్లియర్ చేయి",
+    "done": "పూర్తయింది",
+    "viewAll": "అన్నీ చూడండి",
+    "cancel": "రద్దు చేయి",
+    "save": "మార్పులను సేవ్ చేయి",
+    "saving": "సేవ్ చేస్తోంది..."
+  },
+  "dashboard": {
+    "title": "డాష్‌బోర్డ్",
+    "overview": "అన్ని క్లయింట్‌ల ఆర్థిక అవలోకనం",
+    "viewingClients_one": "{{count}} క్లయింట్‌ను చూస్తున్నారు",
+    "viewingClients_other": "{{count}} క్లయింట్‌లను చూస్తున్నారు",
+    "allClients": "అన్ని క్లయింట్‌లు",
+    "selectedCount": "{{count}} ఎంపిక చేయబడ్డాయి",
+    "searchClients": "క్లయింట్‌లను శోధించు...",
+    "noClientsFound": "క్లయింట్‌లు కనుగొనబడలేదు",
+    "totalRevenue": "మొత్తం ఆదాయం",
+    "totalExpenses": "మొత్తం ఖర్చులు",
+    "netProfit": "నికర లాభం",
+    "activeClients": "క్రియాశీల క్లయింట్‌లు",
+    "selectedIncome": "ఎంచుకున్న ఆదాయం",
+    "allTimeIncoming": "మొత్తం రాబడి",
+    "selectedExpenses": "ఎంచుకున్న ఖర్చులు",
+    "allTimeOutgoing": "మొత్తం ఖర్చు",
+    "margin": "{{value}}% మార్జిన్",
+    "totalClients_one": "మొత్తం {{count}} క్లయింట్",
+    "totalClients_other": "మొత్తం {{count}} క్లయింట్‌లు",
+    "transactionSummary": "లావాదేవీ సారాంశం",
+    "revenueVsExpenses": "క్లయింట్ వారీగా ఆదాయం vs ఖర్చులు",
+    "noDataYet": "ఇంకా డేటా లేదు. చార్ట్ చూడటానికి క్లయింట్‌లు మరియు లావాదేవీలను జోడించండి.",
+    "selectedClientsSummary": "ఎంచుకున్న క్లయింట్‌ల సారాంశం",
+    "topClients": "అగ్ర క్లయింట్‌లు",
+    "noClientsToDisplay": "చూపించడానికి క్లయింట్‌లు లేరు",
+    "income": "ఆదాయం",
+    "expenses": "ఖర్చులు",
+    "profit": "లాభం"
+  },
+  "chart": {
+    "incoming": "రాబడి",
+    "outgoing": "ఖర్చు"
+  },
+  "status": {
+    "active": "క్రియాశీలం",
+    "inactive": "నిష్క్రియం",
+    "archived": "ఆర్కైవ్ చేయబడింది"
+  },
+  "profile": {
+    "title": "ప్రొఫైల్ సెట్టింగ్‌లు",
+    "email": "ఇమెయిల్",
+    "emailCannotChange": "ఇమెయిల్ మార్చలేరు",
+    "fullName": "పూర్తి పేరు",
+    "yourName": "మీ పేరు",
+    "currency": "కరెన్సీ",
+    "currencyDescription": "కరెన్సీ ఇప్పుడు ప్రతి సంస్థకు విడిగా సెట్ చేయబడుతుంది. దాని కరెన్సీని మార్చడానికి ఒక సంస్థను తెరవండి — యజమానులు మరియు అడ్మిన్‌లు మాత్రమే చేయగలరు.",
+    "logoutTitle": "లాగ్ అవుట్",
+    "logoutDescription": "మీ ProfitSync ఖాతా నుండి సైన్ అవుట్ చేయండి"
+  },
+  "toast": {
+    "profileLoadFailed": "ప్రొఫైల్ లోడ్ చేయడం విఫలమైంది",
+    "profileSaveFailed": "ప్రొఫైల్ సేవ్ చేయడం విఫలమైంది",
+    "profileUpdated": "ప్రొఫైల్ విజయవంతంగా నవీకరించబడింది",
+    "languageUpdated": "భాష నవీకరించబడింది"
+  }
+}

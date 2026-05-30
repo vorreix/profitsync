@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { useNavigate } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { apiGet } from "@/lib/api"
@@ -43,11 +44,6 @@ type ClientWithStats = Client & {
   profit: number
 }
 
-const chartConfig: ChartConfig = {
-  incoming: { label: "Incoming", color: "var(--chart-2)" },
-  outgoing: { label: "Outgoing", color: "var(--chart-5)" },
-}
-
 function formatCurrency(amount: number, currency: string) {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
@@ -58,9 +54,14 @@ function formatCurrency(amount: number, currency: string) {
 }
 
 export function Dashboard() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const { getToken } = useAuth()
   const { currency } = useCurrency()
+  const chartConfig: ChartConfig = {
+    incoming: { label: t("chart.incoming"), color: "var(--chart-2)" },
+    outgoing: { label: t("chart.outgoing"), color: "var(--chart-5)" },
+  }
   const [clients, setClients] = useState<ClientWithStats[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedClientIds, setSelectedClientIds] = useState<Set<string>>(new Set())
@@ -149,16 +150,18 @@ export function Dashboard() {
     <div className="p-3 sm:p-6 space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
         <div>
-          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">Dashboard</h1>
+          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">{t("dashboard.title")}</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            {selectedClientIds.size > 0 ? `Viewing ${selectedClientIds.size} client${selectedClientIds.size === 1 ? "" : "s"}` : "Financial overview across all clients"}
+            {selectedClientIds.size > 0
+              ? t("dashboard.viewingClients", { count: selectedClientIds.size })
+              : t("dashboard.overview")}
           </p>
         </div>
         <div className="w-full sm:w-64">
           <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
             <PopoverTrigger asChild>
               <Button variant="outline" className="w-full justify-between">
-                <span className="truncate">{selectedClientIds.size === 0 ? "All Clients" : `${selectedClientIds.size} Selected`}</span>
+                <span className="truncate">{selectedClientIds.size === 0 ? t("dashboard.allClients") : t("dashboard.selectedCount", { count: selectedClientIds.size })}</span>
                 <ChevronRight className="size-4 opacity-50" />
               </Button>
             </PopoverTrigger>
@@ -166,17 +169,17 @@ export function Dashboard() {
               <div className="border-b p-3 sticky top-0 bg-background">
                 <div className="relative">
                   <Search className="absolute left-2 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-                  <Input placeholder="Search clients..." className="pl-8 h-8" value={clientSearch} onChange={(e) => setClientSearch(e.target.value)} />
+                  <Input placeholder={t("dashboard.searchClients")} className="pl-8 h-8" value={clientSearch} onChange={(e) => setClientSearch(e.target.value)} />
                 </div>
               </div>
               <ScrollArea className="h-64">
                 <div className="p-3 space-y-2">
                   <div className="flex items-center gap-2 mb-2">
                     <Checkbox id="all-clients" checked={selectedClientIds.size === clients.length && clients.length > 0} onCheckedChange={(checked) => { if (checked) { setSelectedClientIds(new Set(clients.map((c) => c.id))) } else { setSelectedClientIds(new Set()) } }} />
-                    <Label htmlFor="all-clients" className="text-sm font-medium cursor-pointer flex-1">All Clients</Label>
+                    <Label htmlFor="all-clients" className="text-sm font-medium cursor-pointer flex-1">{t("dashboard.allClients")}</Label>
                   </div>
                   {filteredClientsForSearch.length === 0 ? (
-                    <p className="text-xs text-muted-foreground py-4 text-center">No clients found</p>
+                    <p className="text-xs text-muted-foreground py-4 text-center">{t("dashboard.noClientsFound")}</p>
                   ) : (
                     filteredClientsForSearch.map((client) => (
                       <div key={client.id} className="flex items-center gap-2 py-1">
@@ -192,8 +195,8 @@ export function Dashboard() {
               </ScrollArea>
               {selectedClientIds.size > 0 && (
                 <div className="border-t p-2 flex gap-2">
-                  <Button size="sm" variant="outline" className="flex-1" onClick={clearSelection}>Clear</Button>
-                  <Button size="sm" className="flex-1" onClick={() => setPopoverOpen(false)}>Done</Button>
+                  <Button size="sm" variant="outline" className="flex-1" onClick={clearSelection}>{t("common.clear")}</Button>
+                  <Button size="sm" className="flex-1" onClick={() => setPopoverOpen(false)}>{t("common.done")}</Button>
                 </div>
               )}
             </PopoverContent>
@@ -206,7 +209,7 @@ export function Dashboard() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              Total Revenue
+              {t("dashboard.totalRevenue")}
             </CardTitle>
           </CardHeader>
           <CardContent className="pt-0">
@@ -220,7 +223,7 @@ export function Dashboard() {
                 </div>
                 <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
                   <ArrowUpRight className="size-3 text-emerald-500" />
-                  {selectedClientIds.size > 0 ? "Selected income" : "All time incoming"}
+                  {selectedClientIds.size > 0 ? t("dashboard.selectedIncome") : t("dashboard.allTimeIncoming")}
                 </p>
               </>
             )}
@@ -230,7 +233,7 @@ export function Dashboard() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              Total Expenses
+              {t("dashboard.totalExpenses")}
             </CardTitle>
           </CardHeader>
           <CardContent className="pt-0">
@@ -244,7 +247,7 @@ export function Dashboard() {
                 </div>
                 <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
                   <ArrowDownRight className="size-3 text-destructive" />
-                  {selectedClientIds.size > 0 ? "Selected expenses" : "All time outgoing"}
+                  {selectedClientIds.size > 0 ? t("dashboard.selectedExpenses") : t("dashboard.allTimeOutgoing")}
                 </p>
               </>
             )}
@@ -254,7 +257,7 @@ export function Dashboard() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              Net Profit
+              {t("dashboard.netProfit")}
             </CardTitle>
           </CardHeader>
           <CardContent className="pt-0">
@@ -269,7 +272,7 @@ export function Dashboard() {
                   </span>
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
-                  {profitMargin}% margin
+                  {t("dashboard.margin", { value: profitMargin })}
                 </p>
               </>
             )}
@@ -279,7 +282,7 @@ export function Dashboard() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              Active Clients
+              {t("dashboard.activeClients")}
             </CardTitle>
           </CardHeader>
           <CardContent className="pt-0">
@@ -292,7 +295,7 @@ export function Dashboard() {
                   <span className="text-2xl font-bold">{activeClients}</span>
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
-                  {clients.length} total clients
+                  {t("dashboard.totalClients", { count: clients.length })}
                 </p>
               </>
             )}
@@ -305,7 +308,7 @@ export function Dashboard() {
         <Card className="lg:col-span-3">
           <CardHeader>
             <CardTitle className="text-sm font-semibold">
-              {selectedClientIds.size > 0 ? "Transaction Summary" : "Revenue vs Expenses by Client"}
+              {selectedClientIds.size > 0 ? t("dashboard.transactionSummary") : t("dashboard.revenueVsExpenses")}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -313,7 +316,7 @@ export function Dashboard() {
               <Skeleton className="h-48 w-full" />
             ) : chartDataValue.length === 0 ? (
               <div className="h-48 flex items-center justify-center text-sm text-muted-foreground">
-                No data yet. Add clients and transactions to see chart.
+                {t("dashboard.noDataYet")}
               </div>
             ) : (
               <ChartContainer config={chartConfig} className="min-h-[200px] w-full">
@@ -333,16 +336,16 @@ export function Dashboard() {
         {/* Top Clients */}
         <Card className="lg:col-span-2">
           <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-sm font-semibold">{selectedClientIds.size > 0 ? "Selected Clients Summary" : "Top Clients"}</CardTitle>
+            <CardTitle className="text-sm font-semibold">{selectedClientIds.size > 0 ? t("dashboard.selectedClientsSummary") : t("dashboard.topClients")}</CardTitle>
             <Button variant="ghost" size="sm" className="text-xs" onClick={() => navigate("/clients")}>
-              View all <ChevronRight className="size-3 ml-1" />
+              {t("common.viewAll")} <ChevronRight className="size-3 ml-1" />
             </Button>
           </CardHeader>
           <CardContent className="pt-0">
             {loading ? (
               <div className="space-y-3">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-12 w-full" />)}</div>
             ) : filteredClients.length === 0 ? (
-              <div className="py-8 text-center text-sm text-muted-foreground">No clients to display</div>
+              <div className="py-8 text-center text-sm text-muted-foreground">{t("dashboard.noClientsToDisplay")}</div>
             ) : selectedClientIds.size > 0 ? (
               <div className="space-y-2 max-h-64 overflow-y-auto">
                 {filteredClients.map((client) => (
@@ -353,20 +356,20 @@ export function Dashboard() {
                         <p className="text-xs text-muted-foreground">{client.company}</p>
                       </div>
                       <Badge variant={client.status === "active" ? "default" : "secondary"} className="text-xs shrink-0">
-                        {client.status}
+                        {t(`status.${client.status}`)}
                       </Badge>
                     </div>
                     <div className="grid grid-cols-3 gap-2 text-xs">
                       <div>
-                        <p className="text-muted-foreground">Income</p>
+                        <p className="text-muted-foreground">{t("dashboard.income")}</p>
                         <p className="font-semibold text-emerald-600 dark:text-emerald-400">{formatCurrency(client.totalIncoming, currency)}</p>
                       </div>
                       <div>
-                        <p className="text-muted-foreground">Expenses</p>
+                        <p className="text-muted-foreground">{t("dashboard.expenses")}</p>
                         <p className="font-semibold text-red-600 dark:text-red-400">{formatCurrency(client.totalOutgoing, currency)}</p>
                       </div>
                       <div>
-                        <p className="text-muted-foreground">Profit</p>
+                        <p className="text-muted-foreground">{t("dashboard.profit")}</p>
                         <p className={`font-semibold ${client.profit >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"}`}>
                           {formatCurrency(client.profit, currency)}
                         </p>
@@ -395,7 +398,7 @@ export function Dashboard() {
                           {formatCurrency(client.profit, currency)}
                         </p>
                         <Badge variant="outline" className="text-xs">
-                          {client.status}
+                          {t(`status.${client.status}`)}
                         </Badge>
                       </div>
                     </button>

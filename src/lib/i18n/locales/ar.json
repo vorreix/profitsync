@@ -1,0 +1,111 @@
+{
+  "nav": {
+    "dashboard": "لوحة التحكم",
+    "clients": "العملاء",
+    "transactions": "المعاملات",
+    "quotations": "عروض الأسعار",
+    "users": "المستخدمون",
+    "organizations": "المؤسسات",
+    "subscription": "الاشتراك",
+    "trash": "المحذوفات",
+    "home": "الرئيسية",
+    "quotes": "عروض الأسعار",
+    "more": "المزيد",
+    "profile": "الملف الشخصي",
+    "privacyPolicy": "سياسة الخصوصية",
+    "termsOfService": "شروط الخدمة",
+    "admin": "المشرف",
+    "adminConsole": "وحدة تحكم المشرف"
+  },
+  "actions": {
+    "addClient": "إضافة عميل",
+    "addTransaction": "إضافة معاملة",
+    "createQuotation": "إنشاء عرض سعر"
+  },
+  "account": {
+    "title": "الحساب",
+    "org": "المؤسسة",
+    "profileSettings": "إعدادات الملف الشخصي",
+    "organizations": "المؤسسات",
+    "logout": "تسجيل الخروج",
+    "theme": "المظهر"
+  },
+  "org": {
+    "personal": "شخصي",
+    "pro": "احترافي",
+    "free": "مجاني",
+    "upgradeTitle": "الترقية إلى بريميوم",
+    "upgradeSubtitle": "المزيد من العملاء والمرفقات والتخزين",
+    "createOrganization": "إنشاء مؤسسة",
+    "manageOrganizations": "إدارة المؤسسات"
+  },
+  "language": {
+    "title": "اللغة",
+    "label": "اللغة",
+    "description": "اختر اللغة المستخدمة في جميع أنحاء التطبيق."
+  },
+  "common": {
+    "clear": "مسح",
+    "done": "تم",
+    "viewAll": "عرض الكل",
+    "cancel": "إلغاء",
+    "save": "حفظ التغييرات",
+    "saving": "جارٍ الحفظ..."
+  },
+  "dashboard": {
+    "title": "لوحة التحكم",
+    "overview": "نظرة عامة مالية على جميع العملاء",
+    "viewingClients_one": "عرض عميل واحد",
+    "viewingClients_other": "عرض {{count}} عملاء",
+    "allClients": "جميع العملاء",
+    "selectedCount": "{{count}} محدد",
+    "searchClients": "البحث عن العملاء...",
+    "noClientsFound": "لم يتم العثور على عملاء",
+    "totalRevenue": "إجمالي الإيرادات",
+    "totalExpenses": "إجمالي المصروفات",
+    "netProfit": "صافي الربح",
+    "activeClients": "العملاء النشطون",
+    "selectedIncome": "الدخل المحدد",
+    "allTimeIncoming": "إجمالي الوارد",
+    "selectedExpenses": "المصروفات المحددة",
+    "allTimeOutgoing": "إجمالي الصادر",
+    "margin": "هامش {{value}}%",
+    "totalClients_one": "عميل واحد إجمالاً",
+    "totalClients_other": "{{count}} عملاء إجمالاً",
+    "transactionSummary": "ملخص المعاملات",
+    "revenueVsExpenses": "الإيرادات مقابل المصروفات حسب العميل",
+    "noDataYet": "لا توجد بيانات بعد. أضف عملاء ومعاملات لرؤية الرسم البياني.",
+    "selectedClientsSummary": "ملخص العملاء المحددين",
+    "topClients": "أفضل العملاء",
+    "noClientsToDisplay": "لا يوجد عملاء للعرض",
+    "income": "الدخل",
+    "expenses": "المصروفات",
+    "profit": "الربح"
+  },
+  "chart": {
+    "incoming": "وارد",
+    "outgoing": "صادر"
+  },
+  "status": {
+    "active": "نشط",
+    "inactive": "غير نشط",
+    "archived": "مؤرشف"
+  },
+  "profile": {
+    "title": "إعدادات الملف الشخصي",
+    "email": "البريد الإلكتروني",
+    "emailCannotChange": "لا يمكن تغيير البريد الإلكتروني",
+    "fullName": "الاسم الكامل",
+    "yourName": "اسمك",
+    "currency": "العملة",
+    "currencyDescription": "يتم الآن تعيين العملة لكل مؤسسة. افتح مؤسسة لتغيير عملتها — المالكون والمشرفون فقط يمكنهم ذلك.",
+    "logoutTitle": "تسجيل الخروج",
+    "logoutDescription": "تسجيل الخروج من حساب ProfitSync الخاص بك"
+  },
+  "toast": {
+    "profileLoadFailed": "فشل تحميل الملف الشخصي",
+    "profileSaveFailed": "فشل حفظ الملف الشخصي",
+    "profileUpdated": "تم تحديث الملف الشخصي بنجاح",
+    "languageUpdated": "تم تحديث اللغة"
+  }
+}

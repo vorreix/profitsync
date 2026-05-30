@@ -1,0 +1,111 @@
+{
+  "nav": {
+    "dashboard": "ഡാഷ്‌ബോർഡ്",
+    "clients": "ക്ലയന്റുകൾ",
+    "transactions": "ഇടപാടുകൾ",
+    "quotations": "കൊട്ടേഷനുകൾ",
+    "users": "ഉപയോക്താക്കൾ",
+    "organizations": "സ്ഥാപനങ്ങൾ",
+    "subscription": "സബ്‌സ്‌ക്രിപ്ഷൻ",
+    "trash": "ട്രാഷ്",
+    "home": "ഹോം",
+    "quotes": "കൊട്ടേഷനുകൾ",
+    "more": "കൂടുതൽ",
+    "profile": "പ്രൊഫൈൽ",
+    "privacyPolicy": "സ്വകാര്യതാ നയം",
+    "termsOfService": "സേവന നിബന്ധനകൾ",
+    "admin": "അഡ്മിൻ",
+    "adminConsole": "അഡ്മിൻ കൺസോൾ"
+  },
+  "actions": {
+    "addClient": "ക്ലയന്റ് ചേർക്കുക",
+    "addTransaction": "ഇടപാട് ചേർക്കുക",
+    "createQuotation": "കൊട്ടേഷൻ ഉണ്ടാക്കുക"
+  },
+  "account": {
+    "title": "അക്കൗണ്ട്",
+    "org": "സ്ഥാപനം",
+    "profileSettings": "പ്രൊഫൈൽ ക്രമീകരണങ്ങൾ",
+    "organizations": "സ്ഥാപനങ്ങൾ",
+    "logout": "ലോഗ് ഔട്ട്",
+    "theme": "തീം"
+  },
+  "org": {
+    "personal": "വ്യക്തിഗതം",
+    "pro": "പ്രോ",
+    "free": "സൗജന്യം",
+    "upgradeTitle": "പ്രീമിയത്തിലേക്ക് അപ്‌ഗ്രേഡ് ചെയ്യുക",
+    "upgradeSubtitle": "കൂടുതൽ ക്ലയന്റുകൾ, അറ്റാച്ച്‌മെന്റുകൾ & സ്റ്റോറേജ്",
+    "createOrganization": "സ്ഥാപനം ഉണ്ടാക്കുക",
+    "manageOrganizations": "സ്ഥാപനങ്ങൾ കൈകാര്യം ചെയ്യുക"
+  },
+  "language": {
+    "title": "ഭാഷ",
+    "label": "ഭാഷ",
+    "description": "ആപ്പിലുടനീളം ഉപയോഗിക്കുന്ന ഭാഷ തിരഞ്ഞെടുക്കുക."
+  },
+  "common": {
+    "clear": "മായ്‌ക്കുക",
+    "done": "പൂർത്തിയായി",
+    "viewAll": "എല്ലാം കാണുക",
+    "cancel": "റദ്ദാക്കുക",
+    "save": "മാറ്റങ്ങൾ സംരക്ഷിക്കുക",
+    "saving": "സംരക്ഷിക്കുന്നു..."
+  },
+  "dashboard": {
+    "title": "ഡാഷ്‌ബോർഡ്",
+    "overview": "എല്ലാ ക്ലയന്റുകളുടെയും സാമ്പത്തിക അവലോകനം",
+    "viewingClients_one": "{{count}} ക്ലയന്റ് കാണുന്നു",
+    "viewingClients_other": "{{count}} ക്ലയന്റുകൾ കാണുന്നു",
+    "allClients": "എല്ലാ ക്ലയന്റുകളും",
+    "selectedCount": "{{count}} തിരഞ്ഞെടുത്തു",
+    "searchClients": "ക്ലയന്റുകൾ തിരയുക...",
+    "noClientsFound": "ക്ലയന്റുകളൊന്നും കണ്ടെത്തിയില്ല",
+    "totalRevenue": "മൊത്തം വരുമാനം",
+    "totalExpenses": "മൊത്തം ചെലവുകൾ",
+    "netProfit": "അറ്റ ലാഭം",
+    "activeClients": "സജീവ ക്ലയന്റുകൾ",
+    "selectedIncome": "തിരഞ്ഞെടുത്ത വരുമാനം",
+    "allTimeIncoming": "മൊത്തം വരവ്",
+    "selectedExpenses": "തിരഞ്ഞെടുത്ത ചെലവുകൾ",
+    "allTimeOutgoing": "മൊത്തം ചെലവ്",
+    "margin": "{{value}}% മാർജിൻ",
+    "totalClients_one": "ആകെ {{count}} ക്ലയന്റ്",
+    "totalClients_other": "ആകെ {{count}} ക്ലയന്റുകൾ",
+    "transactionSummary": "ഇടപാട് സംഗ്രഹം",
+    "revenueVsExpenses": "ക്ലയന്റ് അനുസരിച്ച് വരുമാനവും ചെലവും",
+    "noDataYet": "ഇതുവരെ ഡാറ്റയില്ല. ചാർട്ട് കാണാൻ ക്ലയന്റുകളും ഇടപാടുകളും ചേർക്കുക.",
+    "selectedClientsSummary": "തിരഞ്ഞെടുത്ത ക്ലയന്റുകളുടെ സംഗ്രഹം",
+    "topClients": "മികച്ച ക്ലയന്റുകൾ",
+    "noClientsToDisplay": "കാണിക്കാൻ ക്ലയന്റുകളില്ല",
+    "income": "വരുമാനം",
+    "expenses": "ചെലവുകൾ",
+    "profit": "ലാഭം"
+  },
+  "chart": {
+    "incoming": "വരവ്",
+    "outgoing": "ചെലവ്"
+  },
+  "status": {
+    "active": "സജീവം",
+    "inactive": "നിഷ്‌ക്രിയം",
+    "archived": "ആർക്കൈവ് ചെയ്തു"
+  },
+  "profile": {
+    "title": "പ്രൊഫൈൽ ക്രമീകരണങ്ങൾ",
+    "email": "ഇമെയിൽ",
+    "emailCannotChange": "ഇമെയിൽ മാറ്റാൻ കഴിയില്ല",
+    "fullName": "പൂർണ്ണ നാമം",
+    "yourName": "നിങ്ങളുടെ പേര്",
+    "currency": "കറൻസി",
+    "currencyDescription": "കറൻസി ഇപ്പോൾ ഓരോ സ്ഥാപനത്തിനും വെവ്വേറെ സജ്ജമാക്കുന്നു. അതിന്റെ കറൻസി മാറ്റാൻ ഒരു സ്ഥാപനം തുറക്കുക — ഉടമകൾക്കും അഡ്മിൻമാർക്കും മാത്രമേ കഴിയൂ.",
+    "logoutTitle": "ലോഗ് ഔട്ട്",
+    "logoutDescription": "നിങ്ങളുടെ ProfitSync അക്കൗണ്ടിൽ നിന്ന് സൈൻ ഔട്ട് ചെയ്യുക"
+  },
+  "toast": {
+    "profileLoadFailed": "പ്രൊഫൈൽ ലോഡ് ചെയ്യാൻ കഴിഞ്ഞില്ല",
+    "profileSaveFailed": "പ്രൊഫൈൽ സംരക്ഷിക്കാൻ കഴിഞ്ഞില്ല",
+    "profileUpdated": "പ്രൊഫൈൽ വിജയകരമായി അപ്‌ഡേറ്റ് ചെയ്തു",
+    "languageUpdated": "ഭാഷ അപ്‌ഡേറ്റ് ചെയ്തു"
+  }
+}

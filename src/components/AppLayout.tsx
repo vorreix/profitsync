@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { Outlet, NavLink, useLocation, useNavigate } from "react-router-dom"
 import { useAuth, useUser, useClerk } from "@clerk/clerk-react"
 import {
@@ -26,6 +27,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { ModeToggle } from "@/components/mode-toggle"
+import { LanguageSwitcher } from "@/components/LanguageSwitcher"
+import { useSyncProfileLanguage } from "@/lib/i18n/use-language"
 import { CurrencyProvider } from "@/lib/currency-context"
 import { OrgProvider, useOrg } from "@/lib/org-context"
 import { AdminProvider, useAdmin } from "@/lib/admin-context"
@@ -51,31 +54,33 @@ import {
 } from "lucide-react"
 
 const quickActions = [
-  { label: "Add Client", icon: Users, href: "/clients?new=1" },
-  { label: "Add Transaction", icon: ArrowLeftRight, href: "/transactions?new=1" },
-  { label: "Create Quotation", icon: FileText, href: "/quotations?new=1" },
+  { labelKey: "actions.addClient", icon: Users, href: "/clients?new=1" },
+  { labelKey: "actions.addTransaction", icon: ArrowLeftRight, href: "/transactions?new=1" },
+  { labelKey: "actions.createQuotation", icon: FileText, href: "/quotations?new=1" },
 ]
 
-type NavItem = { label: string; href: string; icon: typeof LayoutDashboard }
+type NavItem = { labelKey: string; href: string; icon: typeof LayoutDashboard }
 
 function buildNavItems(activeOrgId: string | undefined): NavItem[] {
   const usersHref = activeOrgId ? `/organizations/${activeOrgId}/members` : "/organizations"
   return [
-    { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-    { label: "Clients", href: "/clients", icon: Users },
-    { label: "Transactions", href: "/transactions", icon: ArrowLeftRight },
-    { label: "Quotations", href: "/quotations", icon: FileText },
-    { label: "Users", href: usersHref, icon: UserPlus },
-    { label: "Organizations", href: "/organizations", icon: Building2 },
-    { label: "Subscription", href: "/subscription", icon: CreditCard },
-    { label: "Trash", href: "/trash", icon: Trash2 },
+    { labelKey: "nav.dashboard", href: "/dashboard", icon: LayoutDashboard },
+    { labelKey: "nav.clients", href: "/clients", icon: Users },
+    { labelKey: "nav.transactions", href: "/transactions", icon: ArrowLeftRight },
+    { labelKey: "nav.quotations", href: "/quotations", icon: FileText },
+    { labelKey: "nav.users", href: usersHref, icon: UserPlus },
+    { labelKey: "nav.organizations", href: "/organizations", icon: Building2 },
+    { labelKey: "nav.subscription", href: "/subscription", icon: CreditCard },
+    { labelKey: "nav.trash", href: "/trash", icon: Trash2 },
   ]
 }
 
 function AppLayoutInner() {
+  const { t } = useTranslation()
   const isMobile = useIsMobile()
   const location = useLocation()
   const navigate = useNavigate()
+  useSyncProfileLanguage()
   const { user } = useUser()
   const { signOut } = useClerk()
   const { activeOrg } = useOrg()
@@ -123,15 +128,15 @@ function AppLayoutInner() {
             <SidebarGroupContent>
               <SidebarMenu>
                 {navItems.map((item) => (
-                  <SidebarMenuItem key={item.label}>
+                  <SidebarMenuItem key={item.href}>
                     <SidebarMenuButton
                       asChild
                       isActive={item.href === activeNavHref}
-                      tooltip={item.label}
+                      tooltip={t(item.labelKey)}
                     >
                       <NavLink to={item.href}>
                         <item.icon />
-                        <span>{item.label}</span>
+                        <span>{t(item.labelKey)}</span>
                       </NavLink>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
@@ -144,16 +149,17 @@ function AppLayoutInner() {
         <SidebarFooter>
           <div className="flex flex-col gap-1 px-1 text-[11px] text-muted-foreground group-data-[collapsible=icon]:hidden">
             <NavLink to="/privacy-policy" className="hover:text-foreground inline-flex items-center gap-1.5">
-              <ShieldCheck className="size-3" /> Privacy Policy
+              <ShieldCheck className="size-3" /> {t("nav.privacyPolicy")}
             </NavLink>
             <NavLink to="/terms-of-service" className="hover:text-foreground inline-flex items-center gap-1.5">
-              <ScrollText className="size-3" /> Terms of Service
+              <ScrollText className="size-3" /> {t("nav.termsOfService")}
             </NavLink>
           </div>
           <div className="flex items-center gap-2">
             <div className="px-2 py-2 group-data-[collapsible=icon]:px-0">
               <ModeToggle />
             </div>
+            <LanguageSwitcher variant="icon" align="start" />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="icon" className="group-data-[collapsible=icon]:size-10">
@@ -162,33 +168,33 @@ function AppLayoutInner() {
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
                 <DropdownMenuLabel className="flex flex-col space-y-1">
-                  <span>Account</span>
+                  <span>{t("account.title")}</span>
                   {userEmail && <span className="text-xs font-normal text-muted-foreground">{userEmail}</span>}
                   {activeOrg && (
                     <span className="text-xs font-normal text-muted-foreground">
-                      Org: {activeOrg.name}
+                      {t("account.org")}: {activeOrg.name}
                     </span>
                   )}
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => navigate("/profile")}>
                   <User className="size-4 mr-2" />
-                  Profile Settings
+                  {t("account.profileSettings")}
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => navigate("/organizations")}>
                   <Building2 className="size-4 mr-2" />
-                  Organizations
+                  {t("account.organizations")}
                 </DropdownMenuItem>
                 {isAdmin && (
                   <DropdownMenuItem onClick={() => navigate("/admin")}>
                     <ShieldCheck className="size-4 mr-2" />
-                    Admin console
+                    {t("nav.adminConsole")}
                   </DropdownMenuItem>
                 )}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleLogout} className="text-destructive">
                   <LogOut className="size-4 mr-2" />
-                  Logout
+                  {t("account.logout")}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -201,7 +207,10 @@ function AppLayoutInner() {
           <SidebarTrigger className="-ml-1" />
           <Separator orientation="vertical" className="h-4" />
           <span className="text-sm font-medium text-muted-foreground">
-            {navItems.find((n) => n.href === activeNavHref)?.label ?? ""}
+            {(() => {
+              const key = navItems.find((n) => n.href === activeNavHref)?.labelKey
+              return key ? t(key) : ""
+            })()}
           </span>
           {activeOrg && (
             <span className="ml-auto inline-flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -225,7 +234,7 @@ function AppLayoutInner() {
             className="flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2 duration-150"
           >
             <span className="text-sm font-medium bg-background border shadow-sm rounded-md px-2.5 py-1 whitespace-nowrap">
-              {action.label}
+              {t(action.labelKey)}
             </span>
             <Button
               size="icon"
