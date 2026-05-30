@@ -70,39 +70,44 @@ export function Dashboard() {
 
   useEffect(() => {
     async function load() {
-      const token = await getToken()
-      if (!token) return
-      const [clientList, txList] = await Promise.all([
-        apiGet<Client[]>("/api/clients", token),
-        apiGet<Transaction[]>("/api/transactions", token),
-      ])
+      try {
+        const token = await getToken()
+        if (!token) return
+        const [clientList, txList] = await Promise.all([
+          apiGet<Client[]>("/api/clients", token),
+          apiGet<Transaction[]>("/api/transactions", token),
+        ])
 
-      let grandIncoming = 0
-      let grandOutgoing = 0
+        let grandIncoming = 0
+        let grandOutgoing = 0
 
-      // Group transactions by client once (O(n)) rather than scanning the whole
-      // transaction list for every client (O(n*m)).
-      const txByClient = new Map<string, Transaction[]>()
-      for (const t of txList) {
-        const arr = txByClient.get(t.client_id)
-        if (arr) arr.push(t)
-        else txByClient.set(t.client_id, [t])
-      }
-
-      const withStats: ClientWithStats[] = clientList.map((c) => {
-        let incoming = 0
-        let outgoing = 0
-        for (const t of txByClient.get(c.id) ?? []) {
-          if (t.type === "incoming") incoming += Number(t.amount)
-          else if (t.type === "outgoing") outgoing += Number(t.amount)
+        // Group transactions by client once (O(n)) rather than scanning the whole
+        // transaction list for every client (O(n*m)).
+        const txByClient = new Map<string, Transaction[]>()
+        for (const t of txList) {
+          const arr = txByClient.get(t.client_id)
+          if (arr) arr.push(t)
+          else txByClient.set(t.client_id, [t])
         }
-        grandIncoming += incoming
-        grandOutgoing += outgoing
-        return { ...c, totalIncoming: incoming, totalOutgoing: outgoing, profit: incoming - outgoing }
-      })
 
-      setClients(withStats)
-      setLoading(false)
+        const withStats: ClientWithStats[] = clientList.map((c) => {
+          let incoming = 0
+          let outgoing = 0
+          for (const t of txByClient.get(c.id) ?? []) {
+            if (t.type === "incoming") incoming += Number(t.amount)
+            else if (t.type === "outgoing") outgoing += Number(t.amount)
+          }
+          grandIncoming += incoming
+          grandOutgoing += outgoing
+          return { ...c, totalIncoming: incoming, totalOutgoing: outgoing, profit: incoming - outgoing }
+        })
+
+        setClients(withStats)
+      } catch (err) {
+        console.error("Failed to load dashboard:", err)
+      } finally {
+        setLoading(false)
+      }
     }
     load()
   }, [])

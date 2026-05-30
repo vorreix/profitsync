@@ -402,6 +402,9 @@ export function TransactionsPage() {
       setPage(1)
       const clsData = Array.isArray(cls) ? cls : cls.data
       setClients(clsData)
+    } catch (err) {
+      console.error("Failed to load transactions:", err)
+      toast.error("Failed to load transactions")
     } finally {
       setLoading(false)
     }
@@ -432,6 +435,9 @@ export function TransactionsPage() {
       )
       setTransactions((prev) => [...prev, ...result.data])
       setPage(nextPage)
+    } catch (err) {
+      console.error("Failed to load more transactions:", err)
+      toast.error("Failed to load more transactions")
     } finally {
       setLoadingMore(false)
     }

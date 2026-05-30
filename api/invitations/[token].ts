@@ -50,7 +50,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   // Confirm email matches Clerk's primary email
   const clerkUser = await clerk.users.getUser(userId)
-  const userEmail = clerkUser.emailAddresses[0]?.emailAddress.toLowerCase() ?? ""
+  const userEmail = clerkUser.emailAddresses[0]?.emailAddress?.toLowerCase() ?? ""
   if (userEmail !== invitation.email.toLowerCase()) {
     return res.status(403).json({
       error: `Invitation was sent to ${invitation.email}. Please sign in with that account.`,

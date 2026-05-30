@@ -32,12 +32,18 @@ export function TrashPage() {
   const [working, setWorking] = useState(false)
 
   const loadData = useCallback(async () => {
-    const token = await getToken()
-    if (!token) return
-    const data = await apiGet<TrashResponse>("/api/trash", token)
-    setClients(data.clients)
-    setQuotations(data.quotations)
-    setLoading(false)
+    try {
+      const token = await getToken()
+      if (!token) return
+      const data = await apiGet<TrashResponse>("/api/trash", token)
+      setClients(data.clients)
+      setQuotations(data.quotations)
+    } catch (err) {
+      console.error("Failed to load trash:", err)
+      toast.error("Failed to load trash")
+    } finally {
+      setLoading(false)
+    }
   }, [getToken])
 
   useEffect(() => { loadData() }, [loadData])
