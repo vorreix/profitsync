@@ -78,9 +78,6 @@ export function Dashboard() {
           apiGet<Transaction[]>("/api/transactions", token),
         ])
 
-        let grandIncoming = 0
-        let grandOutgoing = 0
-
         // Group transactions by client once (O(n)) rather than scanning the whole
         // transaction list for every client (O(n*m)).
         const txByClient = new Map<string, Transaction[]>()
@@ -97,8 +94,6 @@ export function Dashboard() {
             if (t.type === "incoming") incoming += Number(t.amount)
             else if (t.type === "outgoing") outgoing += Number(t.amount)
           }
-          grandIncoming += incoming
-          grandOutgoing += outgoing
           return { ...c, totalIncoming: incoming, totalOutgoing: outgoing, profit: incoming - outgoing }
         })
 
@@ -110,6 +105,7 @@ export function Dashboard() {
       }
     }
     load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once on mount; getToken is stable
   }, [])
 
   // Filter data by selected clients
