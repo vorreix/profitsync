@@ -1,0 +1,111 @@
+{
+  "nav": {
+    "dashboard": "டாஷ்போர்டு",
+    "clients": "வாடிக்கையாளர்கள்",
+    "transactions": "பரிவர்த்தனைகள்",
+    "quotations": "மேற்கோள்கள்",
+    "users": "பயனர்கள்",
+    "organizations": "நிறுவனங்கள்",
+    "subscription": "சந்தா",
+    "trash": "குப்பை",
+    "home": "முகப்பு",
+    "quotes": "மேற்கோள்கள்",
+    "more": "மேலும்",
+    "profile": "சுயவிவரம்",
+    "privacyPolicy": "தனியுரிமைக் கொள்கை",
+    "termsOfService": "சேவை விதிமுறைகள்",
+    "admin": "நிர்வாகி",
+    "adminConsole": "நிர்வாகக் கன்சோல்"
+  },
+  "actions": {
+    "addClient": "வாடிக்கையாளரைச் சேர்",
+    "addTransaction": "பரிவர்த்தனையைச் சேர்",
+    "createQuotation": "மேற்கோள் உருவாக்கு"
+  },
+  "account": {
+    "title": "கணக்கு",
+    "org": "நிறுவனம்",
+    "profileSettings": "சுயவிவர அமைப்புகள்",
+    "organizations": "நிறுவனங்கள்",
+    "logout": "வெளியேறு",
+    "theme": "தீம்"
+  },
+  "org": {
+    "personal": "தனிப்பட்ட",
+    "pro": "புரோ",
+    "free": "இலவசம்",
+    "upgradeTitle": "பிரீமியத்திற்கு மேம்படுத்து",
+    "upgradeSubtitle": "அதிக வாடிக்கையாளர்கள், இணைப்புகள் & சேமிப்பகம்",
+    "createOrganization": "நிறுவனம் உருவாக்கு",
+    "manageOrganizations": "நிறுவனங்களை நிர்வகி"
+  },
+  "language": {
+    "title": "மொழி",
+    "label": "மொழி",
+    "description": "செயலி முழுவதும் பயன்படுத்தப்படும் மொழியைத் தேர்வுசெய்க."
+  },
+  "common": {
+    "clear": "அழி",
+    "done": "முடிந்தது",
+    "viewAll": "அனைத்தையும் காண்க",
+    "cancel": "ரத்துசெய்",
+    "save": "மாற்றங்களைச் சேமி",
+    "saving": "சேமிக்கிறது..."
+  },
+  "dashboard": {
+    "title": "டாஷ்போர்டு",
+    "overview": "அனைத்து வாடிக்கையாளர்களின் நிதி கண்ணோட்டம்",
+    "viewingClients_one": "{{count}} வாடிக்கையாளரைக் காண்கிறீர்கள்",
+    "viewingClients_other": "{{count}} வாடிக்கையாளர்களைக் காண்கிறீர்கள்",
+    "allClients": "அனைத்து வாடிக்கையாளர்கள்",
+    "selectedCount": "{{count}} தேர்ந்தெடுக்கப்பட்டது",
+    "searchClients": "வாடிக்கையாளர்களைத் தேடு...",
+    "noClientsFound": "வாடிக்கையாளர்கள் இல்லை",
+    "totalRevenue": "மொத்த வருவாய்",
+    "totalExpenses": "மொத்த செலவுகள்",
+    "netProfit": "நிகர லாபம்",
+    "activeClients": "செயலில் உள்ள வாடிக்கையாளர்கள்",
+    "selectedIncome": "தேர்ந்தெடுத்த வருமானம்",
+    "allTimeIncoming": "மொத்த வரவு",
+    "selectedExpenses": "தேர்ந்தெடுத்த செலவுகள்",
+    "allTimeOutgoing": "மொத்த செலவு",
+    "margin": "{{value}}% விளிம்பு",
+    "totalClients_one": "மொத்தம் {{count}} வாடிக்கையாளர்",
+    "totalClients_other": "மொத்தம் {{count}} வாடிக்கையாளர்கள்",
+    "transactionSummary": "பரிவர்த்தனை சுருக்கம்",
+    "revenueVsExpenses": "வாடிக்கையாளர் வாரியாக வருவாய் vs செலவுகள்",
+    "noDataYet": "இன்னும் தரவு இல்லை. வரைபடத்தைக் காண வாடிக்கையாளர்கள் மற்றும் பரிவர்த்தனைகளைச் சேர்க்கவும்.",
+    "selectedClientsSummary": "தேர்ந்தெடுத்த வாடிக்கையாளர்களின் சுருக்கம்",
+    "topClients": "சிறந்த வாடிக்கையாளர்கள்",
+    "noClientsToDisplay": "காட்ட வாடிக்கையாளர்கள் இல்லை",
+    "income": "வருமானம்",
+    "expenses": "செலவுகள்",
+    "profit": "லாபம்"
+  },
+  "chart": {
+    "incoming": "வரவு",
+    "outgoing": "செலவு"
+  },
+  "status": {
+    "active": "செயலில்",
+    "inactive": "செயலற்ற",
+    "archived": "காப்பகப்படுத்தப்பட்டது"
+  },
+  "profile": {
+    "title": "சுயவிவர அமைப்புகள்",
+    "email": "மின்னஞ்சல்",
+    "emailCannotChange": "மின்னஞ்சலை மாற்ற முடியாது",
+    "fullName": "முழு பெயர்",
+    "yourName": "உங்கள் பெயர்",
+    "currency": "நாணயம்",
+    "currencyDescription": "நாணயம் இப்போது ஒவ்வொரு நிறுவனத்திற்கும் தனித்தனியாக அமைக்கப்படுகிறது. அதன் நாணயத்தை மாற்ற ஒரு நிறுவனத்தைத் திறக்கவும் — உரிமையாளர்கள் மற்றும் நிர்வாகிகள் மட்டுமே செய்ய முடியும்.",
+    "logoutTitle": "வெளியேறு",
+    "logoutDescription": "உங்கள் ProfitSync கணக்கிலிருந்து வெளியேறவும்"
+  },
+  "toast": {
+    "profileLoadFailed": "சுயவிவரத்தை ஏற்ற முடியவில்லை",
+    "profileSaveFailed": "சுயவிவரத்தைச் சேமிக்க முடியவில்லை",
+    "profileUpdated": "சுயவிவரம் வெற்றிகரமாக புதுப்பிக்கப்பட்டது",
+    "languageUpdated": "மொழி புதுப்பிக்கப்பட்டது"
+  }
+}

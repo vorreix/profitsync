@@ -1,0 +1,111 @@
+{
+  "nav": {
+    "dashboard": "Dashboard",
+    "clients": "Clients",
+    "transactions": "Transactions",
+    "quotations": "Quotations",
+    "users": "Users",
+    "organizations": "Organizations",
+    "subscription": "Subscription",
+    "trash": "Trash",
+    "home": "Home",
+    "quotes": "Quotes",
+    "more": "More",
+    "profile": "Profile",
+    "privacyPolicy": "Privacy Policy",
+    "termsOfService": "Terms of Service",
+    "admin": "Admin",
+    "adminConsole": "Admin console"
+  },
+  "actions": {
+    "addClient": "Add Client",
+    "addTransaction": "Add Transaction",
+    "createQuotation": "Create Quotation"
+  },
+  "account": {
+    "title": "Account",
+    "org": "Org",
+    "profileSettings": "Profile Settings",
+    "organizations": "Organizations",
+    "logout": "Logout",
+    "theme": "Theme"
+  },
+  "org": {
+    "personal": "Personal",
+    "pro": "Pro",
+    "free": "Free",
+    "upgradeTitle": "Upgrade to Premium",
+    "upgradeSubtitle": "More clients, attachments & storage",
+    "createOrganization": "Create organization",
+    "manageOrganizations": "Manage organizations"
+  },
+  "language": {
+    "title": "Language",
+    "label": "Language",
+    "description": "Choose the language used across the app."
+  },
+  "common": {
+    "clear": "Clear",
+    "done": "Done",
+    "viewAll": "View all",
+    "cancel": "Cancel",
+    "save": "Save Changes",
+    "saving": "Saving..."
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "overview": "Financial overview across all clients",
+    "viewingClients_one": "Viewing {{count}} client",
+    "viewingClients_other": "Viewing {{count}} clients",
+    "allClients": "All Clients",
+    "selectedCount": "{{count}} Selected",
+    "searchClients": "Search clients...",
+    "noClientsFound": "No clients found",
+    "totalRevenue": "Total Revenue",
+    "totalExpenses": "Total Expenses",
+    "netProfit": "Net Profit",
+    "activeClients": "Active Clients",
+    "selectedIncome": "Selected income",
+    "allTimeIncoming": "All time incoming",
+    "selectedExpenses": "Selected expenses",
+    "allTimeOutgoing": "All time outgoing",
+    "margin": "{{value}}% margin",
+    "totalClients_one": "{{count}} total client",
+    "totalClients_other": "{{count}} total clients",
+    "transactionSummary": "Transaction Summary",
+    "revenueVsExpenses": "Revenue vs Expenses by Client",
+    "noDataYet": "No data yet. Add clients and transactions to see chart.",
+    "selectedClientsSummary": "Selected Clients Summary",
+    "topClients": "Top Clients",
+    "noClientsToDisplay": "No clients to display",
+    "income": "Income",
+    "expenses": "Expenses",
+    "profit": "Profit"
+  },
+  "chart": {
+    "incoming": "Incoming",
+    "outgoing": "Outgoing"
+  },
+  "status": {
+    "active": "active",
+    "inactive": "inactive",
+    "archived": "archived"
+  },
+  "profile": {
+    "title": "Profile Settings",
+    "email": "Email",
+    "emailCannotChange": "Email cannot be changed",
+    "fullName": "Full Name",
+    "yourName": "Your name",
+    "currency": "Currency",
+    "currencyDescription": "Currency is now set per organization. Open an organization to change its currency — only owners and admins can.",
+    "logoutTitle": "Logout",
+    "logoutDescription": "Sign out of your ProfitSync account"
+  },
+  "toast": {
+    "profileLoadFailed": "Failed to load profile",
+    "profileSaveFailed": "Failed to save profile",
+    "profileUpdated": "Profile updated successfully",
+    "languageUpdated": "Language updated"
+  }
+}

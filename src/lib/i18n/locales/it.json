@@ -1,0 +1,111 @@
+{
+  "nav": {
+    "dashboard": "Dashboard",
+    "clients": "Clienti",
+    "transactions": "Transazioni",
+    "quotations": "Preventivi",
+    "users": "Utenti",
+    "organizations": "Organizzazioni",
+    "subscription": "Abbonamento",
+    "trash": "Cestino",
+    "home": "Home",
+    "quotes": "Preventivi",
+    "more": "Altro",
+    "profile": "Profilo",
+    "privacyPolicy": "Informativa sulla privacy",
+    "termsOfService": "Termini di servizio",
+    "admin": "Admin",
+    "adminConsole": "Console admin"
+  },
+  "actions": {
+    "addClient": "Aggiungi cliente",
+    "addTransaction": "Aggiungi transazione",
+    "createQuotation": "Crea preventivo"
+  },
+  "account": {
+    "title": "Account",
+    "org": "Org",
+    "profileSettings": "Impostazioni profilo",
+    "organizations": "Organizzazioni",
+    "logout": "Esci",
+    "theme": "Tema"
+  },
+  "org": {
+    "personal": "Personale",
+    "pro": "Pro",
+    "free": "Gratis",
+    "upgradeTitle": "Passa a Premium",
+    "upgradeSubtitle": "Più clienti, allegati e spazio",
+    "createOrganization": "Crea organizzazione",
+    "manageOrganizations": "Gestisci organizzazioni"
+  },
+  "language": {
+    "title": "Lingua",
+    "label": "Lingua",
+    "description": "Scegli la lingua usata in tutta l'app."
+  },
+  "common": {
+    "clear": "Cancella",
+    "done": "Fatto",
+    "viewAll": "Vedi tutto",
+    "cancel": "Annulla",
+    "save": "Salva modifiche",
+    "saving": "Salvataggio..."
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "overview": "Panoramica finanziaria di tutti i clienti",
+    "viewingClients_one": "Visualizzazione di {{count}} cliente",
+    "viewingClients_other": "Visualizzazione di {{count}} clienti",
+    "allClients": "Tutti i clienti",
+    "selectedCount": "{{count}} selezionati",
+    "searchClients": "Cerca clienti...",
+    "noClientsFound": "Nessun cliente trovato",
+    "totalRevenue": "Ricavi totali",
+    "totalExpenses": "Spese totali",
+    "netProfit": "Profitto netto",
+    "activeClients": "Clienti attivi",
+    "selectedIncome": "Entrate selezionate",
+    "allTimeIncoming": "Entrate totali",
+    "selectedExpenses": "Spese selezionate",
+    "allTimeOutgoing": "Uscite totali",
+    "margin": "{{value}}% di margine",
+    "totalClients_one": "{{count}} cliente totale",
+    "totalClients_other": "{{count}} clienti totali",
+    "transactionSummary": "Riepilogo transazioni",
+    "revenueVsExpenses": "Ricavi e spese per cliente",
+    "noDataYet": "Ancora nessun dato. Aggiungi clienti e transazioni per vedere il grafico.",
+    "selectedClientsSummary": "Riepilogo clienti selezionati",
+    "topClients": "Migliori clienti",
+    "noClientsToDisplay": "Nessun cliente da mostrare",
+    "income": "Entrate",
+    "expenses": "Spese",
+    "profit": "Profitto"
+  },
+  "chart": {
+    "incoming": "Entrate",
+    "outgoing": "Uscite"
+  },
+  "status": {
+    "active": "attivo",
+    "inactive": "inattivo",
+    "archived": "archiviato"
+  },
+  "profile": {
+    "title": "Impostazioni profilo",
+    "email": "Email",
+    "emailCannotChange": "L'email non può essere modificata",
+    "fullName": "Nome completo",
+    "yourName": "Il tuo nome",
+    "currency": "Valuta",
+    "currencyDescription": "La valuta ora è impostata per organizzazione. Apri un'organizzazione per cambiarne la valuta — solo proprietari e amministratori possono farlo.",
+    "logoutTitle": "Esci",
+    "logoutDescription": "Esci dal tuo account ProfitSync"
+  },
+  "toast": {
+    "profileLoadFailed": "Impossibile caricare il profilo",
+    "profileSaveFailed": "Impossibile salvare il profilo",
+    "profileUpdated": "Profilo aggiornato con successo",
+    "languageUpdated": "Lingua aggiornata"
+  }
+}
