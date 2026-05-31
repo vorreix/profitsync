@@ -32,6 +32,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const requesterMembership = await getMembership(id, userId)
   if (!requesterMembership) return res.status(404).json({ error: "Not found" })
 
+  // Personal-account orgs are single-user — member management is business-only.
+  if (req.method !== "GET") {
+    const [org] = await db
+      .select({ accountType: organizations.accountType })
+      .from(organizations)
+      .where(eq(organizations.id, id))
+    if (org?.accountType === "personal") {
+      return res.status(403).json({
+        error: "Member management isn't available on a personal account.",
+        code: "personal_account_restricted",
+        feature: "members",
+      })
+    }
+  }
+
   if (req.method === "GET") {
     const members = await db
       .select({

@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { and, desc, eq } from "drizzle-orm"
 import { db, serialize } from "../../../../src/lib/db/index.js"
 import { quotationAttachments, quotations } from "../../../../src/lib/db/schema.js"
-import { canWrite, requireAuth } from "../../../_lib/auth.js"
+import { canWrite, requireAuth, requireBusinessFeature } from "../../../_lib/auth.js"
 import { checkAttachmentQuota } from "../../../_lib/quota.js"
 
 async function verifyQuotationOrg(quotationId: string, orgId: string): Promise<boolean> {
@@ -16,6 +16,7 @@ async function verifyQuotationOrg(quotationId: string, orgId: string): Promise<b
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ctx = await requireAuth(req, res)
   if (!ctx) return
+  if (!requireBusinessFeature(res, ctx, "quotations")) return
   const { userId, orgId, role } = ctx
 
   const { id } = req.query as { id: string }

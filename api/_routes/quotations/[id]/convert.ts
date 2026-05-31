@@ -2,12 +2,13 @@ import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { and, eq, isNull } from "drizzle-orm"
 import { db, serialize } from "../../../../src/lib/db/index.js"
 import { clients, quotations } from "../../../../src/lib/db/schema.js"
-import { canWrite, requireAuth } from "../../../_lib/auth.js"
+import { canWrite, requireAuth, requireBusinessFeature } from "../../../_lib/auth.js"
 import { checkClientQuota } from "../../../_lib/quota.js"
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ctx = await requireAuth(req, res)
   if (!ctx) return
+  if (!requireBusinessFeature(res, ctx, "quotations")) return
   const { userId, orgId, role } = ctx
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" })
   if (!canWrite(role)) return res.status(403).json({ error: "Forbidden" })

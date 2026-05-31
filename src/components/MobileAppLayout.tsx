@@ -26,6 +26,7 @@ import {
 } from "lucide-react"
 import { useOrg } from "@/lib/org-context"
 import { useAdmin } from "@/lib/admin-context"
+import { accountTypeAllows, type AccountType } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import {
@@ -40,19 +41,26 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { ModeToggle } from "@/components/mode-toggle"
 import { LanguageSwitcher } from "@/components/LanguageSwitcher"
 
-const primaryTabs = [
-  { labelKey: "nav.home", href: "/dashboard", icon: LayoutDashboard },
-  { labelKey: "nav.clients", href: "/clients", icon: Users },
-  { labelKey: "nav.transactions", href: "/transactions", icon: ArrowLeftRight },
-  { labelKey: "nav.quotes", href: "/quotations", icon: FileText },
-]
+type TabItem = { labelKey: string; href: string; icon: typeof LayoutDashboard }
+
+// Bottom-bar tabs adapt to the account type: personal accounts have no Clients
+// or Quotes, so they get a leaner, focused set.
+function buildPrimaryTabs(accountType: AccountType | null | undefined): TabItem[] {
+  const items: (TabItem | false)[] = [
+    { labelKey: "nav.home", href: "/dashboard", icon: LayoutDashboard },
+    accountTypeAllows(accountType, "clients") && { labelKey: "nav.clients", href: "/clients", icon: Users },
+    { labelKey: "nav.transactions", href: "/transactions", icon: ArrowLeftRight },
+    accountTypeAllows(accountType, "quotations") && { labelKey: "nav.quotes", href: "/quotations", icon: FileText },
+  ]
+  return items.filter((i): i is TabItem => i !== false)
+}
 
 type MoreItem = { labelKey: string; href: string; icon: typeof Building2 }
 
-function buildMoreItems(activeOrgId: string | undefined): MoreItem[] {
+function buildMoreItems(activeOrgId: string | undefined, accountType: AccountType | null | undefined): MoreItem[] {
   const usersHref = activeOrgId ? `/organizations/${activeOrgId}/members` : "/organizations"
-  return [
-    { labelKey: "nav.users", href: usersHref, icon: UserPlus },
+  const items: (MoreItem | false)[] = [
+    accountTypeAllows(accountType, "members") && { labelKey: "nav.users", href: usersHref, icon: UserPlus },
     { labelKey: "nav.organizations", href: "/organizations", icon: Building2 },
     { labelKey: "nav.subscription", href: "/subscription", icon: CreditCard },
     { labelKey: "nav.trash", href: "/trash", icon: Trash2 },
@@ -60,12 +68,15 @@ function buildMoreItems(activeOrgId: string | undefined): MoreItem[] {
     { labelKey: "nav.privacyPolicy", href: "/privacy-policy", icon: ShieldCheck },
     { labelKey: "nav.termsOfService", href: "/terms-of-service", icon: ScrollText },
   ]
+  return items.filter((i): i is MoreItem => i !== false)
 }
 
-const quickActions = [
-  { labelKey: "actions.addClient", icon: Users, href: "/clients?new=1" },
+type QuickAction = { labelKey: string; icon: typeof Users; href: string; feature?: "clients" | "quotations" }
+
+const allQuickActions: QuickAction[] = [
+  { labelKey: "actions.addClient", icon: Users, href: "/clients?new=1", feature: "clients" },
   { labelKey: "actions.addTransaction", icon: ArrowLeftRight, href: "/transactions?new=1" },
-  { labelKey: "actions.createQuotation", icon: FileText, href: "/quotations?new=1" },
+  { labelKey: "actions.createQuotation", icon: FileText, href: "/quotations?new=1", feature: "quotations" },
 ]
 
 export function MobileAppLayout() {
@@ -93,7 +104,11 @@ export function MobileAppLayout() {
     navigate("/login")
   }
 
-  const moreItems = buildMoreItems(activeOrg?.id)
+  const accountType = activeOrg?.account_type
+  const primaryTabs = buildPrimaryTabs(accountType)
+  const moreItems = buildMoreItems(activeOrg?.id, accountType)
+  const quickActions = allQuickActions.filter((a) => !a.feature || accountTypeAllows(accountType, a.feature))
+  const isPaid = !!activeOrg?.plan_key && activeOrg.plan_key !== "free"
   const onMorePage = !primaryTabs.some((t) =>
     location.pathname === t.href || location.pathname.startsWith(t.href + "/"),
   )
@@ -123,12 +138,12 @@ export function MobileAppLayout() {
                 {activeOrg && (
                   <span
                     className={`text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded-full border shrink-0 ${
-                      activeOrg.plan_key === "premium"
+                      isPaid
                         ? "border-amber-500/40 text-amber-600 bg-amber-500/10 dark:text-amber-300"
                         : "border-border text-muted-foreground"
                     }`}
                   >
-                    {activeOrg.plan_key === "premium" ? t("org.pro") : t("org.free")}
+                    {isPaid ? t("org.pro") : t("org.free")}
                   </span>
                 )}
                 <ChevronDown className="size-3 text-muted-foreground shrink-0" />
@@ -156,12 +171,12 @@ export function MobileAppLayout() {
                           <p className="text-sm font-medium truncate">{org.name}</p>
                           <span
                             className={`text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded-full border shrink-0 ${
-                              org.plan_key === "premium"
+                              (!!org.plan_key && org.plan_key !== "free")
                                 ? "border-amber-500/40 text-amber-600 bg-amber-500/10 dark:text-amber-300"
                                 : "border-border text-muted-foreground"
                             }`}
                           >
-                            {org.plan_key === "premium" ? t("org.pro") : t("org.free")}
+                            {(!!org.plan_key && org.plan_key !== "free") ? t("org.pro") : t("org.free")}
                           </span>
                         </div>
                         <p className="text-[11px] text-muted-foreground uppercase tracking-wide">{org.role}</p>
@@ -171,7 +186,7 @@ export function MobileAppLayout() {
                   ))}
                 </div>
                 <div className="p-2 border-t space-y-1">
-                  {activeOrg && activeOrg.plan_key !== "premium" && (
+                  {activeOrg && !isPaid && (
                     <button
                       onClick={() => { setOrgSheetOpen(false); navigate("/subscription") }}
                       className="w-full flex items-center gap-3 p-3 rounded-lg pressable text-left bg-amber-500 text-amber-950 hover:bg-amber-400 dark:bg-amber-500/20 dark:text-amber-200 dark:hover:bg-amber-500/30"
@@ -281,9 +296,12 @@ export function MobileAppLayout() {
         </Button>
       </div>
 
-      {/* Bottom tab bar */}
+      {/* Bottom tab bar — columns adapt to the (account-type-filtered) tab count. */}
       <nav className="safe-pb fixed bottom-0 inset-x-0 z-40 bg-background/95 backdrop-blur border-t">
-        <div className="grid grid-cols-5 px-1 py-1">
+        <div
+          className="grid px-1 py-1"
+          style={{ gridTemplateColumns: `repeat(${primaryTabs.length + 1}, minmax(0, 1fr))` }}
+        >
           {primaryTabs.map((tab) => {
             const active = location.pathname === tab.href || location.pathname.startsWith(tab.href + "/")
             return (

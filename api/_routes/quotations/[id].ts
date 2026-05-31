@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { and, eq, isNull } from "drizzle-orm"
 import { db, serialize } from "../../../src/lib/db/index.js"
 import { quotations } from "../../../src/lib/db/schema.js"
-import { canDelete, canWrite, requireAuth } from "../../_lib/auth.js"
+import { canDelete, canWrite, requireAuth, requireBusinessFeature } from "../../_lib/auth.js"
 import { checkNoteLength } from "../../_lib/quota.js"
 
 const VALID_STATUSES = ["draft", "sent", "accepted", "rejected"]
@@ -10,6 +10,7 @@ const VALID_STATUSES = ["draft", "sent", "accepted", "rejected"]
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ctx = await requireAuth(req, res)
   if (!ctx) return
+  if (!requireBusinessFeature(res, ctx, "quotations")) return
   const { orgId, role } = ctx
   const { id } = req.query as { id: string }
 

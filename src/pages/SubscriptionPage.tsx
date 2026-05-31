@@ -54,7 +54,8 @@ function formatMinor(amount: number, currency: string): string {
 }
 
 function discountedAmount(amount: number, discountPct: number): number {
-  return Math.round(amount * (1 - discountPct / 100))
+  // Floor so a 50% launch discount lands on the advertised price ($4.99 → $2.49).
+  return Math.floor(amount * (1 - discountPct / 100))
 }
 
 const LIMIT_LABELS: Record<string, string> = {
@@ -201,6 +202,9 @@ export function SubscriptionPage() {
   const current = data.currentSubscription
   const effectivePlanKey = (current?.status === "active" || current?.status === "trialing") ? (current?.plan_key ?? "free") : "free"
   const isCancelling = current?.status === "cancelled" && current.cancel_at
+  const isPersonal = activeOrg?.account_type === "personal"
+  // Hide limit rows that don't apply to a personal account, and any zeroed limit.
+  const hiddenLimitKeys = isPersonal ? new Set(["clients", "quotations"]) : new Set<string>()
 
   return (
     <div className="p-3 sm:p-6 space-y-6 max-w-5xl">
@@ -260,7 +264,7 @@ export function SubscriptionPage() {
                 <CardTitle className="flex items-center justify-between">
                   <span className="flex items-center gap-2">
                     {plan.name}
-                    {plan.key === "premium" && <Sparkles className="size-4 text-amber-500" />}
+                    {plan.key !== "free" && <Sparkles className="size-4 text-amber-500" />}
                   </span>
                   {isCurrent && <Badge>Current</Badge>}
                 </CardTitle>
@@ -289,12 +293,14 @@ export function SubscriptionPage() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <ul className="space-y-1.5 text-sm">
-                  {Object.entries(plan.limits).map(([key, val]) => (
-                    <li key={key} className="flex items-center gap-2">
-                      <Check className="size-3.5 text-emerald-500 shrink-0" />
-                      <span><span className="text-muted-foreground">{LIMIT_LABELS[key] ?? key}:</span> {formatLimitValue(key, val)}</span>
-                    </li>
-                  ))}
+                  {Object.entries(plan.limits)
+                    .filter(([key, val]) => val > 0 && !hiddenLimitKeys.has(key))
+                    .map(([key, val]) => (
+                      <li key={key} className="flex items-center gap-2">
+                        <Check className="size-3.5 text-emerald-500 shrink-0" />
+                        <span><span className="text-muted-foreground">{LIMIT_LABELS[key] ?? key}:</span> {formatLimitValue(key, val)}</span>
+                      </li>
+                    ))}
                 </ul>
                 <Button
                   className="w-full"
