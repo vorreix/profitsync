@@ -396,26 +396,27 @@ export function QuotationsPage() {
   const remaining = total - quotations.length
 
   return (
-    <div className="p-3 sm:p-6 space-y-6">
+    <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Quotations</h1>
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">Quotations</h1>
           {!loading && (
-            <p className="text-sm text-muted-foreground mt-1">
+            <p className="text-sm text-muted-foreground mt-0.5 sm:mt-1">
               {total} quotation{total !== 1 ? "s" : ""}
             </p>
           )}
         </div>
-        <Button onClick={() => { setForm(defaultForm()); setCreateOpen(true) }}>
+        <Button onClick={() => { setForm(defaultForm()); setCreateOpen(true) }} className="shrink-0">
           <Plus className="size-4" />
-          New Quotation
+          <span className="hidden sm:inline">New Quotation</span>
+          <span className="sm:hidden">New</span>
         </Button>
       </div>
 
       {/* Filters */}
-      <div className="flex items-center gap-3 flex-wrap">
-        <div className="relative flex-1 min-w-48">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+        <div className="relative w-full sm:flex-1 sm:min-w-48">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
           <Input
             placeholder="Search by name, company, title..."
@@ -424,14 +425,16 @@ export function QuotationsPage() {
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
-        <Tabs value={tab} onValueChange={setTab}>
-          <TabsList>
-            <TabsTrigger value="all">All</TabsTrigger>
-            {ALL_STATUSES.map((s) => (
-              <TabsTrigger key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
+        <div className="-mx-3 px-3 overflow-x-auto scrollbar-none sm:mx-0 sm:px-0 sm:overflow-visible">
+          <Tabs value={tab} onValueChange={setTab}>
+            <TabsList>
+              <TabsTrigger value="all">All</TabsTrigger>
+              {ALL_STATUSES.map((s) => (
+                <TabsTrigger key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
+        </div>
       </div>
 
       {/* List */}
@@ -459,8 +462,8 @@ export function QuotationsPage() {
               const linkedClient = clientById(q.linked_client_id)
               const canConvert = !q.linked_client_id && (q.status === "draft" || q.status === "sent")
               return (
-                <Card key={q.id} className="group cursor-pointer hover:shadow-md transition-shadow" onClick={() => openViewModal(q)}>
-                  <CardContent className="p-4 space-y-3">
+                <Card key={q.id} className="group cursor-pointer hover:shadow-md transition-shadow py-0" onClick={() => openViewModal(q)}>
+                  <CardContent className="p-3.5 sm:p-4 space-y-2.5 sm:space-y-3">
                     {/* Top row */}
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0 flex-1">

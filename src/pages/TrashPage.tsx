@@ -171,7 +171,7 @@ export function TrashPage() {
   return (
     <div className="p-3 sm:p-6 space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Trash</h1>
+        <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">Trash</h1>
         {!loading && (
           <p className="text-sm text-muted-foreground mt-1">
             {totalCount} item{totalCount !== 1 ? "s" : ""} in trash

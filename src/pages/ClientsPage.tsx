@@ -168,23 +168,24 @@ export function ClientsPage() {
   const remaining = total - clients.length
 
   return (
-    <div className="p-3 sm:p-6 space-y-6">
+    <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
           <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">Clients</h1>
-          <p className="text-sm text-muted-foreground mt-1">
+          <p className="text-sm text-muted-foreground mt-0.5 sm:mt-1">
             {loading ? "Loading..." : `${total} client${total !== 1 ? "s" : ""}`}
           </p>
         </div>
-        <Button onClick={() => setDialogOpen(true)}>
+        <Button onClick={() => setDialogOpen(true)} className="shrink-0">
           <Plus className="size-4" />
-          New Client
+          <span className="hidden sm:inline">New Client</span>
+          <span className="sm:hidden">New</span>
         </Button>
       </div>
 
       {/* Toolbar */}
-      <div className="flex items-center gap-3 flex-wrap">
+      <div className="flex items-center gap-2 sm:gap-3">
         <div className="relative flex-1 min-w-0">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
           <Input
@@ -195,7 +196,7 @@ export function ClientsPage() {
           />
         </div>
         <Select value={sort} onValueChange={setSort}>
-          <SelectTrigger className="w-40 sm:w-44">
+          <SelectTrigger className="w-32 sm:w-44 shrink-0">
             <SelectValue placeholder="Sort by" />
           </SelectTrigger>
           <SelectContent>
@@ -205,7 +206,7 @@ export function ClientsPage() {
             <SelectItem value="date_desc">Date (newest)</SelectItem>
           </SelectContent>
         </Select>
-        <div className="flex items-center border rounded-md overflow-hidden">
+        <div className="hidden sm:flex items-center border rounded-md overflow-hidden shrink-0">
           <Button
             variant={viewMode === "grid" ? "secondary" : "ghost"}
             size="icon"
@@ -252,10 +253,10 @@ export function ClientsPage() {
               {clients.map((client) => (
                 <Card
                   key={client.id}
-                  className="cursor-pointer hover:shadow-md transition-shadow group"
+                  className="cursor-pointer hover:shadow-md transition-shadow group py-0"
                   onClick={() => navigate(`/clients/${client.id}`)}
                 >
-                  <CardContent className="p-4 space-y-3">
+                  <CardContent className="p-3.5 sm:p-4 space-y-2.5 sm:space-y-3">
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
@@ -304,7 +305,7 @@ export function ClientsPage() {
                     </div>
 
                     {(client.email || client.phone) && (
-                      <div className="space-y-1 pt-1">
+                      <div className="hidden sm:block space-y-1 pt-1">
                         {client.email && (
                           <div className="flex items-center gap-1.5">
                             <Mail className="size-3 text-muted-foreground shrink-0" />
