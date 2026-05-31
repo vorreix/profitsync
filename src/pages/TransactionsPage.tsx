@@ -223,14 +223,14 @@ function CategoryCombobox({ categories, value, onChangeCategories, onChange }: {
                     </button>
                     <Button
                       size="icon" variant="ghost"
-                      className="size-7 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                      className="size-7 shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
                       onClick={(e) => { e.stopPropagation(); startEdit(realIdx) }}
                     >
                       <Pencil className="size-3" />
                     </Button>
                     <Button
                       size="icon" variant="ghost"
-                      className="size-7 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
+                      className="size-7 shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
                       onClick={(e) => { e.stopPropagation(); deleteCategory(realIdx) }}
                     >
                       <X className="size-3" />
@@ -663,8 +663,8 @@ export function TransactionsPage() {
     <div className="p-3 sm:p-6 space-y-5 sm:space-y-6">
       <div className="flex items-center justify-between gap-2">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Transactions</h1>
-          {!loading && <p className="text-sm text-muted-foreground mt-1">{total} total</p>}
+          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">Transactions</h1>
+          {!loading && <p className="text-sm text-muted-foreground mt-0.5 sm:mt-1">{total} total</p>}
         </div>
         <Button onClick={() => { setForm(defaultForm()); setAddOpen(true) }} className="shrink-0">
           <Plus className="size-4" />
@@ -692,29 +692,31 @@ export function TransactionsPage() {
         </div>
       )}
 
-      <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
-        <div className="relative flex-1 min-w-40">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+        <div className="relative flex-1 min-w-0">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
           <Input placeholder="Search by client, description, category..." className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
-        <Select value={sort} onValueChange={setSort}>
-          <SelectTrigger className="w-40 sm:w-44 shrink-0">
-            <SelectValue placeholder="Sort by" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="date_desc">Date (newest)</SelectItem>
-            <SelectItem value="date_asc">Date (oldest)</SelectItem>
-            <SelectItem value="amount_desc">Amount (largest)</SelectItem>
-            <SelectItem value="amount_asc">Amount (smallest)</SelectItem>
-          </SelectContent>
-        </Select>
-        <Tabs value={tab} onValueChange={(v) => { setTab(v) }}>
-          <TabsList>
-            <TabsTrigger value="all">All</TabsTrigger>
-            <TabsTrigger value="incoming">Income</TabsTrigger>
-            <TabsTrigger value="outgoing">Expenses</TabsTrigger>
-          </TabsList>
-        </Tabs>
+        <div className="flex items-center gap-2 sm:gap-3">
+          <Select value={sort} onValueChange={setSort}>
+            <SelectTrigger className="flex-1 sm:flex-none sm:w-44">
+              <SelectValue placeholder="Sort by" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="date_desc">Date (newest)</SelectItem>
+              <SelectItem value="date_asc">Date (oldest)</SelectItem>
+              <SelectItem value="amount_desc">Amount (largest)</SelectItem>
+              <SelectItem value="amount_asc">Amount (smallest)</SelectItem>
+            </SelectContent>
+          </Select>
+          <Tabs value={tab} onValueChange={(v) => { setTab(v) }} className="shrink-0">
+            <TabsList>
+              <TabsTrigger value="all">All</TabsTrigger>
+              <TabsTrigger value="incoming">Income</TabsTrigger>
+              <TabsTrigger value="outgoing">Expenses</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </div>
       </div>
 
       {loading ? (
