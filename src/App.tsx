@@ -36,6 +36,7 @@ const AdminOrgDetailPage = lazy(() => import("@/pages/admin/AdminOrgDetailPage")
 const AdminSubscriptionsPage = lazy(() => import("@/pages/admin/AdminSubscriptionsPage").then((m) => ({ default: m.AdminSubscriptionsPage })))
 const AdminInvoicesPage = lazy(() => import("@/pages/admin/AdminInvoicesPage").then((m) => ({ default: m.AdminInvoicesPage })))
 const AdminPlansPage = lazy(() => import("@/pages/admin/AdminPlansPage").then((m) => ({ default: m.AdminPlansPage })))
+const AdminAdminsPage = lazy(() => import("@/pages/admin/AdminAdminsPage").then((m) => ({ default: m.AdminAdminsPage })))
 
 function RouteFallback() {
   return (
@@ -75,6 +76,7 @@ export function App() {
             <Route path="subscriptions" element={<AdminSubscriptionsPage />} />
             <Route path="invoices" element={<AdminInvoicesPage />} />
             <Route path="plans" element={<AdminPlansPage />} />
+            <Route path="admins" element={<AdminAdminsPage />} />
           </Route>
 
           {/* App Routes */}
