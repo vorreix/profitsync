@@ -36,6 +36,7 @@ type Plan = {
   key: string
   name: string
   account_type: string | null
+  feature_labels?: Record<string, string>
   local_pricing: PlanLocalPricing
 }
 
@@ -52,9 +53,9 @@ function formatMinor(amount: number, currency: string): string {
 }
 
 function discounted(amount: number, pct: number): number {
-  // Floor so a 50% launch discount on $4.99 shows $2.49 (not $2.50) and on
-  // $9.99 shows $4.99 — matching the advertised launch prices.
-  return Math.floor(amount * (1 - pct / 100))
+  // Round the discounted cents the same way Dodo does, so the price shown here
+  // matches what the customer is actually charged at checkout.
+  return Math.round(amount * (1 - pct / 100))
 }
 
 /** Visual treatment per account type — kept in one place for consistency. */
@@ -441,11 +442,16 @@ function PlanSummary({
   const pct = cycle === "yearly" ? local.yearly_discount_pct : local.monthly_discount_pct
   const final = discounted(base, pct)
   const suffix = cycle === "yearly" ? t("onboarding.perYear") : t("onboarding.perMonth")
-  const perks = [
-    t(`onboarding.${accountType}Point1`),
-    t(`onboarding.${accountType}Point2`),
-    t(`onboarding.${accountType}Point3`),
-  ]
+  // Prefer the admin-defined feature strings (synced/configured per plan); fall
+  // back to the curated onboarding perks when none are set.
+  const customFeatures = Object.values(plan.feature_labels ?? {}).filter(Boolean)
+  const perks = customFeatures.length > 0
+    ? customFeatures
+    : [
+        t(`onboarding.${accountType}Point1`),
+        t(`onboarding.${accountType}Point2`),
+        t(`onboarding.${accountType}Point3`),
+      ]
   return (
     <div className="relative overflow-hidden rounded-2xl border bg-card p-5 shadow-sm sm:p-6">
       <div
