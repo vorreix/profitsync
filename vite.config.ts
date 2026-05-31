@@ -12,28 +12,21 @@ export default defineConfig({
     },
   },
   build: {
-    // Split large/independent vendors into separate, long-term-cacheable chunks
-    // so a change in app code doesn't bust the whole vendor bundle, and heavy
-    // libs (charts) load only with the routes that need them.
+    // Split only the heavy charting libs (recharts/d3) into their own one-way
+    // leaf chunk so they load lazily with the routes that use them. Everything
+    // else — INCLUDING React — stays in a single "vendor" chunk.
+    //
+    // Do NOT isolate react/react-dom into its own chunk: that created a circular
+    // dependency (vendor <-> react) which Rollup warned about and which broke the
+    // production build at runtime with
+    //   "TypeError: Cannot set properties of undefined (setting 'Activity')"
+    // (React internals were accessed before the cross-referenced chunk had
+    // initialized). Keeping React with the rest of vendor avoids the cycle.
     rollupOptions: {
       output: {
         manualChunks(id) {
           if (!id.includes("node_modules")) return
           if (id.includes("recharts") || id.includes("d3-") || id.includes("victory-vendor")) return "charts"
-          if (id.includes("@clerk")) return "clerk"
-          if (id.includes("react-router") || id.includes("@remix-run")) return "router"
-          if (
-            id.includes("radix-ui") ||
-            id.includes("@radix-ui") ||
-            id.includes("lucide-react") ||
-            id.includes("cmdk") ||
-            id.includes("vaul") ||
-            id.includes("embla-carousel") ||
-            id.includes("react-day-picker")
-          ) {
-            return "ui"
-          }
-          if (id.includes("/react-dom/") || id.includes("/react/") || id.includes("/scheduler/")) return "react"
           return "vendor"
         },
       },
