@@ -434,6 +434,7 @@ export function TransactionsPage() {
         token,
       )
       setTransactions((prev) => [...prev, ...result.data])
+      setTotal(result.total)
       setPage(nextPage)
     } catch (err) {
       console.error("Failed to load more transactions:", err)
