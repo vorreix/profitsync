@@ -6,8 +6,11 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "vercel-build": "node scripts/db-migrate.mjs && npm run build",
     "typecheck": "tsc -p tsconfig.app.json && tsc -p tsconfig.node.json && tsc -p api/tsconfig.json",
     "preview": "vite preview",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "node scripts/db-migrate.mjs",
     "db:push": "drizzle-kit push",
     "lint": "eslint .",
     "test": "vitest",
