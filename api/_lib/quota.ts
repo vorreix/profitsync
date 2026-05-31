@@ -21,7 +21,7 @@ export type PlanLimits = {
 
 export type QuotaCheck =
   | { allowed: true }
-  | { allowed: false; reason: string; limit: number; current?: number; upgradeHint: true }
+  | { allowed: false; reason: string; limit: number; current?: number; upgradeHint: boolean }
 
 const DEFAULT_FREE_LIMITS: Required<PlanLimits> = {
   clients: 10,
