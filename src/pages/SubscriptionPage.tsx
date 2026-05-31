@@ -21,6 +21,7 @@ type Plan = {
   monthly_discount_pct: number
   yearly_discount_pct: number
   limits: Record<string, number>
+  feature_labels: Record<string, string>
   country: string
   local_pricing: {
     currency: string
@@ -54,8 +55,8 @@ function formatMinor(amount: number, currency: string): string {
 }
 
 function discountedAmount(amount: number, discountPct: number): number {
-  // Floor so a 50% launch discount lands on the advertised price ($4.99 → $2.49).
-  return Math.floor(amount * (1 - discountPct / 100))
+  // Round the discounted cents like Dodo does, so this matches the actual charge.
+  return Math.round(amount * (1 - discountPct / 100))
 }
 
 const LIMIT_LABELS: Record<string, string> = {
@@ -293,14 +294,28 @@ export function SubscriptionPage() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <ul className="space-y-1.5 text-sm">
-                  {Object.entries(plan.limits)
-                    .filter(([key, val]) => val > 0 && !hiddenLimitKeys.has(key))
-                    .map(([key, val]) => (
-                      <li key={key} className="flex items-center gap-2">
-                        <Check className="size-3.5 text-emerald-500 shrink-0" />
-                        <span><span className="text-muted-foreground">{LIMIT_LABELS[key] ?? key}:</span> {formatLimitValue(key, val)}</span>
-                      </li>
-                    ))}
+                  {Object.keys(LIMIT_LABELS)
+                    // Drive the feature list off the known limit keys (not whatever
+                    // happens to be in `limits`), so a custom label shows even when the
+                    // numeric limit is unset. Personal accounts hide clients/quotations.
+                    .filter((key) => {
+                      if (hiddenLimitKeys.has(key)) return false
+                      const custom = plan.feature_labels?.[key]
+                      const val = plan.limits?.[key] ?? 0
+                      return !!custom || val > 0
+                    })
+                    .map((key) => {
+                      const custom = plan.feature_labels?.[key]
+                      const val = plan.limits?.[key] ?? 0
+                      return (
+                        <li key={key} className="flex items-center gap-2">
+                          <Check className="size-3.5 text-emerald-500 shrink-0" />
+                          {custom
+                            ? <span>{custom}</span>
+                            : <span><span className="text-muted-foreground">{LIMIT_LABELS[key] ?? key}:</span> {formatLimitValue(key, val)}</span>}
+                        </li>
+                      )
+                    })}
                 </ul>
                 <Button
                   className="w-full"

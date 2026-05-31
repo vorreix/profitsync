@@ -117,6 +117,9 @@ export async function getSubscription(subscriptionId: string): Promise<DodoSubsc
 export type DodoPriceDetail = {
   price: number // minor units (e.g. cents)
   currency: string
+  discount?: number // percentage off the list price (0-100)
+  tax_inclusive?: boolean
+  trial_period_days?: number
   payment_frequency_interval?: string // "Month" | "Year"
   payment_frequency_count?: number
 }
@@ -129,6 +132,9 @@ export type DodoProduct = {
   // GET /products/{id} returns `price` as an object; some list shapes use a number.
   price: DodoPriceDetail | number
   currency?: string
+  image?: string | null
+  tax_category?: string | null
+  metadata?: Record<string, string> | null
 }
 
 /** Fetch a single Dodo product (used to derive plan name / price / interval). */
@@ -136,18 +142,44 @@ export async function getProduct(productId: string): Promise<DodoProduct> {
   return call<DodoProduct>(`/products/${encodeURIComponent(productId)}`)
 }
 
-/** Normalize a Dodo product's price into { amountUsdMinor, currency, interval }. */
-export function priceFromProduct(product: DodoProduct): {
-  minor: number
+/** Everything we can derive about a plan cycle from a single Dodo product. */
+export type DerivedProduct = {
+  productId: string
+  name: string
+  description: string
+  minor: number // list price in minor units (cents)
   currency: string
+  discountPct: number // percentage off (0-100)
   interval: "monthly" | "yearly" | null
-} {
+  trialDays: number
+  recurring: boolean
+  image: string | null
+  taxCategory: string | null
+  metadata: Record<string, string>
+}
+
+/** Normalize a Dodo product into the fields we sync onto a plan. */
+export function priceFromProduct(product: DodoProduct): DerivedProduct {
   const detail = typeof product.price === "object" ? product.price : null
   const minor = detail ? detail.price : (typeof product.price === "number" ? product.price : 0)
   const currency = detail?.currency ?? product.currency ?? "USD"
   const rawInterval = detail?.payment_frequency_interval?.toLowerCase()
   const interval = rawInterval === "year" ? "yearly" : rawInterval === "month" ? "monthly" : null
-  return { minor, currency, interval }
+  const discountPct = Math.max(0, Math.min(100, Math.round(detail?.discount ?? 0)))
+  return {
+    productId: product.product_id,
+    name: product.name ?? "",
+    description: product.description ?? "",
+    minor,
+    currency,
+    discountPct,
+    interval,
+    trialDays: detail?.trial_period_days ?? 0,
+    recurring: !!product.is_recurring,
+    image: product.image ?? null,
+    taxCategory: product.tax_category ?? null,
+    metadata: product.metadata ?? {},
+  }
 }
 
 /**

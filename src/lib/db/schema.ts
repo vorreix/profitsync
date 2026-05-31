@@ -154,6 +154,7 @@ export const plans = pgTable("plans", {
   id: uuid("id").primaryKey().defaultRandom(),
   key: text("key").notNull().unique(), // free | personal | business (legacy: premium)
   name: text("name").notNull(),
+  description: text("description").notNull().default(""), // synced from the Dodo product
   // Which account type this plan serves. Null for the shared "free" tier.
   accountType: text("account_type"), // personal | business | null
   isActive: boolean("is_active").notNull().default(true),
@@ -165,7 +166,9 @@ export const plans = pgTable("plans", {
   // admins set these in the admin panel and the rest is derived from Dodo.
   dodoProductMonthly: text("dodo_product_monthly"),
   dodoProductYearly: text("dodo_product_yearly"),
-  limits: jsonb("limits").notNull().default({}), // { clients, transactionsPerClient, quotations, attachmentSizeKb, attachmentsPerTx, noteLength }
+  limits: jsonb("limits").notNull().default({}), // { clients, transactionsPerClient, quotations, attachmentSizeKb, attachmentsPerTx, noteLength } — REAL numeric limits used by quota
+  featureLabels: jsonb("feature_labels").notNull().default({}), // { <limitKey>: "display string" } — shown in the plan's feature list
+  dodoMetadata: jsonb("dodo_metadata").notNull().default({}), // raw data synced from Dodo: { monthly: {...}, yearly: {...} }
   geoPricing: jsonb("geo_pricing").notNull().default({}), // { country_code: { currency, monthly, yearly, monthlyDiscountPct, yearlyDiscountPct } }
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
