@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import { useNavigate } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
@@ -15,10 +15,6 @@ import { Label } from "@/components/ui/label"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import {
-  TrendingUp,
-  TrendingDown,
-  DollarSign,
-  Users,
   ArrowUpRight,
   ArrowDownRight,
   ChevronRight,
@@ -51,6 +47,38 @@ function formatCurrency(amount: number, currency: string) {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   }).format(amount)
+}
+
+// Compact KPI tile — keeps a single figure readable without consuming a full
+// card's worth of vertical space on small screens.
+function StatCard({
+  label, value, valueClass = "", hint, loading,
+}: {
+  label: string
+  value: string
+  valueClass?: string
+  hint?: ReactNode
+  loading?: boolean
+}) {
+  return (
+    <div className="rounded-xl border bg-card px-3 py-2.5 sm:px-4 sm:py-3.5">
+      <p className="text-[10px] sm:text-xs font-medium text-muted-foreground uppercase tracking-wide truncate">
+        {label}
+      </p>
+      {loading ? (
+        <Skeleton className="h-6 sm:h-8 w-20 sm:w-28 mt-1.5" />
+      ) : (
+        <>
+          <p className={`text-lg sm:text-2xl font-bold mt-1 tabular-nums truncate ${valueClass}`}>{value}</p>
+          {hint && (
+            <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5 flex items-center gap-1 truncate">
+              {hint}
+            </p>
+          )}
+        </>
+      )}
+    </div>
+  )
 }
 
 export function Dashboard() {
@@ -148,7 +176,7 @@ export function Dashboard() {
         }))
 
   return (
-    <div className="p-3 sm:p-6 space-y-6">
+    <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
         <div>
           <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">{t("dashboard.title")}</h1>
@@ -206,105 +234,45 @@ export function Dashboard() {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              {t("dashboard.totalRevenue")}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="pt-0">
-            {loading ? (
-              <Skeleton className="h-8 w-28" />
-            ) : (
-              <>
-                <div className="flex items-center gap-2">
-                  <DollarSign className="size-4 text-muted-foreground" />
-                  <span className="text-2xl font-bold">{formatCurrency(displayIncoming, currency)}</span>
-                </div>
-                <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
-                  <ArrowUpRight className="size-3 text-emerald-500" />
-                  {selectedClientIds.size > 0 ? t("dashboard.selectedIncome") : t("dashboard.allTimeIncoming")}
-                </p>
-              </>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              {t("dashboard.totalExpenses")}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="pt-0">
-            {loading ? (
-              <Skeleton className="h-8 w-28" />
-            ) : (
-              <>
-                <div className="flex items-center gap-2">
-                  <TrendingDown className="size-4 text-muted-foreground" />
-                  <span className="text-2xl font-bold">{formatCurrency(displayOutgoing, currency)}</span>
-                </div>
-                <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
-                  <ArrowDownRight className="size-3 text-destructive" />
-                  {selectedClientIds.size > 0 ? t("dashboard.selectedExpenses") : t("dashboard.allTimeOutgoing")}
-                </p>
-              </>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              {t("dashboard.netProfit")}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="pt-0">
-            {loading ? (
-              <Skeleton className="h-8 w-28" />
-            ) : (
-              <>
-                <div className="flex items-center gap-2">
-                  <TrendingUp className="size-4 text-muted-foreground" />
-                  <span className={`text-2xl font-bold ${netProfit >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"}`}>
-                    {formatCurrency(netProfit, currency)}
-                  </span>
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {t("dashboard.margin", { value: profitMargin })}
-                </p>
-              </>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              {t("dashboard.activeClients")}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="pt-0">
-            {loading ? (
-              <Skeleton className="h-8 w-20" />
-            ) : (
-              <>
-                <div className="flex items-center gap-2">
-                  <Users className="size-4 text-muted-foreground" />
-                  <span className="text-2xl font-bold">{activeClients}</span>
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {t("dashboard.totalClients", { count: clients.length })}
-                </p>
-              </>
-            )}
-          </CardContent>
-        </Card>
+      <div className="grid gap-2.5 sm:gap-4 grid-cols-2 lg:grid-cols-4">
+        <StatCard
+          loading={loading}
+          label={t("dashboard.totalRevenue")}
+          value={formatCurrency(displayIncoming, currency)}
+          hint={
+            <>
+              <ArrowUpRight className="size-3 text-emerald-500 shrink-0" />
+              {selectedClientIds.size > 0 ? t("dashboard.selectedIncome") : t("dashboard.allTimeIncoming")}
+            </>
+          }
+        />
+        <StatCard
+          loading={loading}
+          label={t("dashboard.totalExpenses")}
+          value={formatCurrency(displayOutgoing, currency)}
+          hint={
+            <>
+              <ArrowDownRight className="size-3 text-destructive shrink-0" />
+              {selectedClientIds.size > 0 ? t("dashboard.selectedExpenses") : t("dashboard.allTimeOutgoing")}
+            </>
+          }
+        />
+        <StatCard
+          loading={loading}
+          label={t("dashboard.netProfit")}
+          value={formatCurrency(netProfit, currency)}
+          valueClass={netProfit >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"}
+          hint={t("dashboard.margin", { value: profitMargin })}
+        />
+        <StatCard
+          loading={loading}
+          label={t("dashboard.activeClients")}
+          value={String(activeClients)}
+          hint={t("dashboard.totalClients", { count: clients.length })}
+        />
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-5">
+      <div className="grid gap-4 sm:gap-6 lg:grid-cols-5">
         {/* Chart */}
         <Card className="lg:col-span-3">
           <CardHeader>
