@@ -43,6 +43,7 @@ import billingSync from "./_routes/billing/sync.js"
 // when it is its own function file — see api/billing/webhook.ts. The filesystem
 // route serves /api/billing/webhook before the catch-all rewrite reaches this.
 import adminMe from "./_routes/admin/me.js"
+import adminAdmins from "./_routes/admin/admins.js"
 import adminStats from "./_routes/admin/stats.js"
 import adminUsers from "./_routes/admin/users.js"
 import adminUserDetail from "./_routes/admin/user-detail.js"
@@ -96,6 +97,7 @@ const routes: RoutePattern<ApiHandler>[] = [
   { segments: ["billing", "sync"], handler: billingSync },
 
   { segments: ["admin", "me"], handler: adminMe },
+  { segments: ["admin", "admins"], handler: adminAdmins },
   { segments: ["admin", "stats"], handler: adminStats },
   { segments: ["admin", "users"], handler: adminUsers },
   { segments: ["admin", "user-detail"], handler: adminUserDetail },
