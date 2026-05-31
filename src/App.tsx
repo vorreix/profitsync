@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom"
 import { Loader as Loader2 } from "lucide-react"
 import { AppLayout } from "@/components/AppLayout"
 import { AdminLayout } from "@/pages/admin/AdminLayout"
+import { BusinessOnlyRoute } from "@/components/BusinessOnlyRoute"
 import { Toaster } from "@/components/ui/sonner"
 
 // Route-level code splitting: each page becomes its own chunk so the initial
@@ -18,6 +19,7 @@ const ProfilePage = lazy(() => import("@/pages/ProfilePage").then((m) => ({ defa
 const OrganizationsPage = lazy(() => import("@/pages/OrganizationsPage").then((m) => ({ default: m.OrganizationsPage })))
 const OrgMembersPage = lazy(() => import("@/pages/OrgMembersPage").then((m) => ({ default: m.OrgMembersPage })))
 const SubscriptionPage = lazy(() => import("@/pages/SubscriptionPage").then((m) => ({ default: m.SubscriptionPage })))
+const OnboardingPage = lazy(() => import("@/pages/OnboardingPage").then((m) => ({ default: m.OnboardingPage })))
 const InvitationPage = lazy(() => import("@/pages/InvitationPage").then((m) => ({ default: m.InvitationPage })))
 const PrivacyPolicyPage = lazy(() => import("@/pages/PrivacyPolicyPage").then((m) => ({ default: m.PrivacyPolicyPage })))
 const TermsOfServicePage = lazy(() => import("@/pages/TermsOfServicePage").then((m) => ({ default: m.TermsOfServicePage })))
@@ -61,6 +63,9 @@ export function App() {
           <Route path="forgot-password" element={<ForgotPasswordPage />} />
           <Route path="reset-password" element={<ResetPasswordPage />} />
 
+          {/* Onboarding — full-screen, no app shell. Shown until account type is chosen. */}
+          <Route path="onboarding" element={<OnboardingPage />} />
+
           {/* Admin Routes — distinct shell, admin guard */}
           <Route path="/admin" element={<AdminLayout />}>
             <Route index element={<AdminOverviewPage />} />
@@ -76,12 +81,12 @@ export function App() {
           <Route path="/" element={<AppLayout />}>
             <Route index element={<Navigate to="/dashboard" replace />} />
             <Route path="dashboard" element={<Dashboard />} />
-            <Route path="clients" element={<ClientsPage />} />
-            <Route path="clients/:id" element={<ClientDetailPage />} />
+            <Route path="clients" element={<BusinessOnlyRoute feature="clients"><ClientsPage /></BusinessOnlyRoute>} />
+            <Route path="clients/:id" element={<BusinessOnlyRoute feature="clients"><ClientDetailPage /></BusinessOnlyRoute>} />
             <Route path="transactions" element={<TransactionsPage />} />
-            <Route path="quotations" element={<QuotationsPage />} />
+            <Route path="quotations" element={<BusinessOnlyRoute feature="quotations"><QuotationsPage /></BusinessOnlyRoute>} />
             <Route path="organizations" element={<OrganizationsPage />} />
-            <Route path="organizations/:id/members" element={<OrgMembersPage />} />
+            <Route path="organizations/:id/members" element={<BusinessOnlyRoute feature="members"><OrgMembersPage /></BusinessOnlyRoute>} />
             <Route path="subscription" element={<SubscriptionPage />} />
             <Route path="trash" element={<TrashPage />} />
             <Route path="profile" element={<ProfilePage />} />

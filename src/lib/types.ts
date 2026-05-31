@@ -75,11 +75,39 @@ export type UserProfile = {
   language: string
   current_organization_id: string | null
   terms_accepted_at: string | null
+  onboarded_at: string | null
   created_at: string
   updated_at: string
 }
 
 export type OrgRole = "owner" | "admin" | "editor" | "viewer"
+
+/**
+ * The feature tier a workspace was set up for. Chosen during onboarding and
+ * stored on the organization. Drives feature gating across UI and API:
+ *   - personal: solo finance tracking — no Clients, Quotations, or members
+ *   - business: full experience
+ */
+export type AccountType = "personal" | "business"
+
+export const ACCOUNT_TYPES: AccountType[] = ["personal", "business"]
+
+/**
+ * Single source of truth for which sections an account type can access.
+ * Enforced in the UI (nav + route guards) and on the server (API authz).
+ */
+export type BusinessFeature = "clients" | "quotations" | "members"
+
+export function accountTypeAllows(
+  accountType: AccountType | null | undefined,
+  feature: BusinessFeature,
+): boolean {
+  const isBusinessOnly = feature === "clients" || feature === "quotations" || feature === "members"
+  // Unknown / legacy orgs default to the full (business) experience so we never
+  // lock an existing user out of features they already use.
+  if (isBusinessOnly && accountType === "personal") return false
+  return true
+}
 
 export type Organization = {
   id: string
@@ -87,6 +115,7 @@ export type Organization = {
   name: string
   slug: string
   is_personal: boolean
+  account_type: AccountType | null
   currency: string
   role: OrgRole
   plan_key: string | null

@@ -8,6 +8,34 @@
       "when": 1780240897665,
       "tag": "0000_thin_robbie_robertson",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1780259910040,
+      "tag": "0001_account_types_and_plan_products",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1780259910041,
+      "tag": "0002_seed_account_type_plans",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1780266865880,
+      "tag": "0003_plan_description",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1780269347203,
+      "tag": "0004_plan_feature_labels_and_dodo_metadata",
+      "breakpoints": true
     }
   ]
 }

@@ -175,18 +175,20 @@ export function OrgMembersPage() {
         <ArrowLeft className="size-3.5 mr-1.5" /> Back to organizations
       </Button>
 
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">{org?.name ?? "Organization"} members</h1>
-          <p className="text-sm text-muted-foreground mt-1">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">{org?.name ?? "Organization"} members</h1>
+          <p className="text-sm text-muted-foreground mt-0.5 sm:mt-1">
             Invite teammates and manage their roles. {data?.current_role && (
               <span>You are an <span className="capitalize font-medium">{data.current_role}</span>.</span>
             )}
           </p>
         </div>
         {canManage && (
-          <Button onClick={() => setInviteOpen(true)}>
-            <Plus className="size-4 mr-1.5" /> Invite member
+          <Button onClick={() => setInviteOpen(true)} className="shrink-0">
+            <Plus className="size-4 sm:mr-1.5" />
+            <span className="hidden sm:inline">Invite member</span>
+            <span className="sm:hidden">Invite</span>
           </Button>
         )}
       </div>
