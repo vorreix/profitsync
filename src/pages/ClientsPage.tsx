@@ -87,30 +87,42 @@ export function ClientsPage() {
   async function fetchPage1() {
     setLoading(true)
     setPage(1)
-    const token = await getToken()
-    if (!token) return
-    const params = new URLSearchParams({ page: "1" })
-    if (searchRef.current.trim()) params.set("search", searchRef.current.trim())
-    if (sortRef.current) params.set("sort", sortRef.current)
-    const data = await apiGet<{ data: Client[]; total: number }>(`/api/clients?${params}`, token)
-    setClients(data.data.map(toWithStats))
-    setTotal(data.total)
-    setLoading(false)
+    try {
+      const token = await getToken()
+      if (!token) return
+      const params = new URLSearchParams({ page: "1" })
+      if (searchRef.current.trim()) params.set("search", searchRef.current.trim())
+      if (sortRef.current) params.set("sort", sortRef.current)
+      const data = await apiGet<{ data: Client[]; total: number }>(`/api/clients?${params}`, token)
+      setClients(data.data.map(toWithStats))
+      setTotal(data.total)
+    } catch (err) {
+      console.error("Failed to load clients:", err)
+      toast.error("Failed to load clients")
+    } finally {
+      setLoading(false)
+    }
   }
 
   async function handleLoadMore() {
     setLoadingMore(true)
-    const nextPage = page + 1
-    const token = await getToken()
-    if (!token) { setLoadingMore(false); return }
-    const params = new URLSearchParams({ page: String(nextPage) })
-    if (searchRef.current.trim()) params.set("search", searchRef.current.trim())
-    if (sortRef.current) params.set("sort", sortRef.current)
-    const data = await apiGet<{ data: Client[]; total: number }>(`/api/clients?${params}`, token)
-    setClients((prev) => [...prev, ...data.data.map(toWithStats)])
-    setTotal(data.total)
-    setPage(nextPage)
-    setLoadingMore(false)
+    try {
+      const nextPage = page + 1
+      const token = await getToken()
+      if (!token) return
+      const params = new URLSearchParams({ page: String(nextPage) })
+      if (searchRef.current.trim()) params.set("search", searchRef.current.trim())
+      if (sortRef.current) params.set("sort", sortRef.current)
+      const data = await apiGet<{ data: Client[]; total: number }>(`/api/clients?${params}`, token)
+      setClients((prev) => [...prev, ...data.data.map(toWithStats)])
+      setTotal(data.total)
+      setPage(nextPage)
+    } catch (err) {
+      console.error("Failed to load more clients:", err)
+      toast.error("Failed to load more clients")
+    } finally {
+      setLoadingMore(false)
+    }
   }
 
   useEffect(() => {
