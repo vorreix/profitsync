@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { and, count, desc, eq, ilike, isNull, or } from "drizzle-orm"
 import { db, serialize } from "../../src/lib/db/index.js"
 import { quotations } from "../../src/lib/db/schema.js"
-import { canWrite, requireAuth } from "../_lib/auth.js"
+import { canWrite, requireAuth, requireBusinessFeature } from "../_lib/auth.js"
 import { checkNoteLength, checkQuotationQuota } from "../_lib/quota.js"
 
 const VALID_STATUSES = ["draft", "sent", "accepted", "rejected"]
@@ -11,6 +11,8 @@ const PAGE_SIZE = 20
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ctx = await requireAuth(req, res)
   if (!ctx) return
+  // Quotations are a business-only feature.
+  if (!requireBusinessFeature(res, ctx, "quotations")) return
   const { userId, orgId, role } = ctx
 
   if (req.method === "GET") {

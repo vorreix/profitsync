@@ -13,6 +13,7 @@ import { matchRoute, type RoutePattern } from "../src/lib/api-router.js"
 // ---------------------------------------------------------------------------
 
 import profile from "./_routes/profile.js"
+import onboarding from "./_routes/onboarding.js"
 import clients from "./_routes/clients.js"
 import clientById from "./_routes/clients/[id].js"
 import transactions from "./_routes/transactions.js"
@@ -60,6 +61,7 @@ type ApiHandler = (req: VercelRequest, res: VercelResponse) => unknown | Promise
 // same length (see ["organizations", "switch"] before ["organizations", ":id"]).
 const routes: RoutePattern<ApiHandler>[] = [
   { segments: ["profile"], handler: profile },
+  { segments: ["onboarding"], handler: onboarding },
 
   { segments: ["clients"], handler: clients },
   { segments: ["clients", ":id"], handler: clientById },

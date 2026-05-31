@@ -27,16 +27,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: "cycle must be monthly or yearly" })
   }
 
-  const [plan] = await db.select().from(plans).where(eq(plans.key, plan_key))
-  if (!plan || !plan.isActive) return res.status(404).json({ error: "Plan not available" })
-
   const [existing] = await db
     .select()
     .from(subscriptions)
     .where(eq(subscriptions.organizationId, ctx.orgId))
     .orderBy(desc(subscriptions.updatedAt))
 
-  // Free plan: just upsert the row to free/active.
+  // Free plan: just upsert the row to free/active (no plan row required — free is implicit).
   if (plan_key === "free") {
     const freeValues = {
       planKey: "free",
@@ -54,6 +51,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       : await db.insert(subscriptions).values({ organizationId: ctx.orgId, ...freeValues }).returning()
     if (!row) return res.status(500).json({ error: "Failed to update subscription" })
     return res.json({ subscription: serialize(row), message: "Switched to the Free plan." })
+  }
+
+  const [plan] = await db.select().from(plans).where(eq(plans.key, plan_key))
+  if (!plan || !plan.isActive) return res.status(404).json({ error: "Plan not available" })
+
+  // A personal org can only subscribe to a personal plan, and vice versa.
+  if (plan.accountType && ctx.accountType && plan.accountType !== ctx.accountType) {
+    return res.status(403).json({ error: `The ${plan.name} plan isn't available for this workspace.` })
   }
 
   const billing = (cycle ?? "monthly") as "monthly" | "yearly"
@@ -84,7 +89,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     })
   }
 
-  const productId = productIdForPlan(plan_key, billing)
+  // Source of truth: the admin-configured product id on the plan row. Fall back
+  // to env config only when the plan row has none.
+  const productId =
+    (billing === "yearly" ? plan.dodoProductYearly : plan.dodoProductMonthly) || productIdForPlan(plan_key, billing)
   if (!productId) {
     return res.status(400).json({ error: `No Dodo product configured for plan "${plan_key}" (${billing}).` })
   }

@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { and, asc, count, desc, eq, ilike, isNull, or, sql } from "drizzle-orm"
 import { db, serialize } from "../../src/lib/db/index.js"
 import { clients, transactions } from "../../src/lib/db/schema.js"
-import { canWrite, requireAuth } from "../_lib/auth.js"
+import { canWrite, ensureDefaultClient, isPersonalAccount, requireAuth } from "../_lib/auth.js"
 import { checkTransactionQuota } from "../_lib/quota.js"
 
 const PAGE_SIZE = 20
@@ -37,7 +37,7 @@ const txFields = {
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ctx = await requireAuth(req, res)
   if (!ctx) return
-  const { orgId, role } = ctx
+  const { userId, orgId, role } = ctx
 
   if (req.method === "GET") {
     const { clientId, search, type, page, sort } = req.query as {
@@ -121,24 +121,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       description?: string; category?: string; date?: string
     }
 
-    if (!client_id) return res.status(400).json({ error: "client_id is required" })
     if (!amount || isNaN(Number(amount))) return res.status(400).json({ error: "amount is required" })
     if (!["incoming", "outgoing"].includes(type)) return res.status(400).json({ error: "type must be incoming or outgoing" })
 
-    const [client] = await db
-      .select({ id: clients.id })
-      .from(clients)
-      .where(and(eq(clients.id, client_id), eq(clients.organizationId, orgId), isNull(clients.deletedAt)))
-    if (!client) return res.status(403).json({ error: "Forbidden" })
+    // Personal accounts have a single hidden default client that every
+    // transaction anchors to; the client picker isn't shown, so resolve it here.
+    let clientId: string
+    if (isPersonalAccount(ctx)) {
+      clientId = await ensureDefaultClient(orgId, userId)
+    } else {
+      if (!client_id) return res.status(400).json({ error: "client_id is required" })
+      const [client] = await db
+        .select({ id: clients.id })
+        .from(clients)
+        .where(and(eq(clients.id, client_id), eq(clients.organizationId, orgId), isNull(clients.deletedAt)))
+      if (!client) return res.status(403).json({ error: "Forbidden" })
+      clientId = client_id
+    }
 
-    const quota = await checkTransactionQuota(orgId, client_id)
+    const quota = await checkTransactionQuota(orgId, clientId)
     if (!quota.allowed) return res.status(402).json(quota)
 
     const today = new Date().toISOString().split("T")[0]
     const [row] = await db
       .insert(transactions)
       .values({
-        clientId: client_id,
+        clientId,
         type,
         amount: String(amount),
         description: description ?? "",

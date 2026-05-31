@@ -22,10 +22,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                   "US"
 
   // Plans list and the org's current subscription are independent — fetch together.
-  const [rows, subRows] = await Promise.all([
+  const [allRows, subRows] = await Promise.all([
     db.select().from(plans).orderBy(asc(plans.key)),
     db.select().from(subscriptions).where(eq(subscriptions.organizationId, ctx.orgId)),
   ])
+
+  // Surface only the plans relevant to this workspace's account type (plus the
+  // shared free tier). Account-type feature gating is enforced separately; this
+  // just keeps the pricing screen focused on plans the org can actually buy.
+  const rows = allRows.filter(
+    (p) => p.isActive && (p.key === "free" || !p.accountType || p.accountType === ctx.accountType),
+  )
 
   const enriched = rows.map((p) => {
     const geo = (p.geoPricing as Record<string, GeoPricingEntry>) ?? {}
@@ -47,8 +54,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             currency: "USD",
             monthly: Math.round(Number(p.monthlyPriceUsd) * 100),
             yearly: Math.round(Number(p.yearlyPriceUsd) * 100),
-            monthly_discount_pct: p.monthlyDiscountPct,
-            yearly_discount_pct: p.yearlyDiscountPct,
+            monthly_discount_pct: p.monthlyDiscountPct ?? 0,
+            yearly_discount_pct: p.yearlyDiscountPct ?? 0,
           },
     }
   })

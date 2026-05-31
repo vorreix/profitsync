@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { Outlet, NavLink, useLocation, useNavigate } from "react-router-dom"
+import { Outlet, NavLink, Navigate, useLocation, useNavigate } from "react-router-dom"
 import { useAuth, useUser, useClerk } from "@clerk/clerk-react"
 import {
   Sidebar,
@@ -32,6 +32,7 @@ import { useSyncProfileLanguage } from "@/lib/i18n/use-language"
 import { CurrencyProvider } from "@/lib/currency-context"
 import { OrgProvider, useOrg } from "@/lib/org-context"
 import { AdminProvider, useAdmin } from "@/lib/admin-context"
+import { accountTypeAllows, type AccountType } from "@/lib/types"
 import { OrgSwitcher } from "@/components/OrgSwitcher"
 import { MobileAppLayout } from "@/components/MobileAppLayout"
 import { useIsMobile } from "@/hooks/use-mobile"
@@ -54,26 +55,29 @@ import {
   Loader as Loader2,
 } from "lucide-react"
 
-const quickActions = [
-  { labelKey: "actions.addClient", icon: Users, href: "/clients?new=1" },
+type QuickAction = { labelKey: string; icon: typeof Users; href: string; feature?: "clients" | "quotations" }
+
+const quickActions: QuickAction[] = [
+  { labelKey: "actions.addClient", icon: Users, href: "/clients?new=1", feature: "clients" },
   { labelKey: "actions.addTransaction", icon: ArrowLeftRight, href: "/transactions?new=1" },
-  { labelKey: "actions.createQuotation", icon: FileText, href: "/quotations?new=1" },
+  { labelKey: "actions.createQuotation", icon: FileText, href: "/quotations?new=1", feature: "quotations" },
 ]
 
 type NavItem = { labelKey: string; href: string; icon: typeof LayoutDashboard }
 
-function buildNavItems(activeOrgId: string | undefined): NavItem[] {
+function buildNavItems(activeOrgId: string | undefined, accountType: AccountType | null | undefined): NavItem[] {
   const usersHref = activeOrgId ? `/organizations/${activeOrgId}/members` : "/organizations"
-  return [
+  const items: (NavItem | false)[] = [
     { labelKey: "nav.dashboard", href: "/dashboard", icon: LayoutDashboard },
-    { labelKey: "nav.clients", href: "/clients", icon: Users },
+    accountTypeAllows(accountType, "clients") && { labelKey: "nav.clients", href: "/clients", icon: Users },
     { labelKey: "nav.transactions", href: "/transactions", icon: ArrowLeftRight },
-    { labelKey: "nav.quotations", href: "/quotations", icon: FileText },
-    { labelKey: "nav.users", href: usersHref, icon: UserPlus },
+    accountTypeAllows(accountType, "quotations") && { labelKey: "nav.quotations", href: "/quotations", icon: FileText },
+    accountTypeAllows(accountType, "members") && { labelKey: "nav.users", href: usersHref, icon: UserPlus },
     { labelKey: "nav.organizations", href: "/organizations", icon: Building2 },
     { labelKey: "nav.subscription", href: "/subscription", icon: CreditCard },
     { labelKey: "nav.trash", href: "/trash", icon: Trash2 },
   ]
+  return items.filter((i): i is NavItem => i !== false)
 }
 
 function AppLayoutInner() {
@@ -84,15 +88,21 @@ function AppLayoutInner() {
   useSyncProfileLanguage()
   const { user } = useUser()
   const { signOut } = useClerk()
-  const { activeOrg, loading: orgLoading } = useOrg()
+  const { activeOrg, needsOnboarding, loading: orgLoading } = useOrg()
   const { isAdmin } = useAdmin()
   const [fabOpen, setFabOpen] = useState(false)
+
+  // New (or not-yet-chosen) users must pick an account type first.
+  if (!orgLoading && needsOnboarding) {
+    return <Navigate to="/onboarding" replace />
+  }
 
   if (isMobile) {
     return <MobileAppLayout />
   }
 
-  const navItems = buildNavItems(activeOrg?.id)
+  const navItems = buildNavItems(activeOrg?.id, activeOrg?.account_type)
+  const actions = quickActions.filter((a) => !a.feature || accountTypeAllows(activeOrg?.account_type, a.feature))
   // Pick the most specific (longest) matching item so /organizations/:id/members
   // highlights "Users" rather than its "Organizations" ancestor.
   const activeNavHref =
@@ -235,7 +245,7 @@ function AppLayoutInner() {
         <div className="fixed inset-0 z-40" onClick={() => setFabOpen(false)} />
       )}
       <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3">
-        {fabOpen && quickActions.map((action) => (
+        {fabOpen && actions.map((action) => (
           <div
             key={action.href}
             className="flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2 duration-150"

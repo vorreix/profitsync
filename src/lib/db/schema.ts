@@ -6,6 +6,10 @@ export const organizations = pgTable("organizations", {
   name: text("name").notNull(),
   slug: text("slug").notNull(),
   isPersonal: boolean("is_personal").notNull().default(false),
+  // The org's feature tier, chosen during onboarding. Drives feature gating
+  // (Clients / Quotations / member management are business-only). Nullable for
+  // historical rows; treated as "business" (full features) when absent.
+  accountType: text("account_type"), // personal | business
   currency: text("currency").notNull().default("USD"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -133,6 +137,9 @@ export const userProfiles = pgTable("user_profiles", {
   language: text("language").default("en"),
   currentOrganizationId: uuid("current_organization_id"),
   termsAcceptedAt: timestamp("terms_accepted_at"),
+  // Set the first time a user completes the Personal/Business onboarding flow.
+  // Null → the onboarding screen is shown on next app load.
+  onboardedAt: timestamp("onboarded_at"),
   bannedAt: timestamp("banned_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -145,13 +152,19 @@ export const appAdmins = pgTable("app_admins", {
 
 export const plans = pgTable("plans", {
   id: uuid("id").primaryKey().defaultRandom(),
-  key: text("key").notNull().unique(), // free | premium
+  key: text("key").notNull().unique(), // free | personal | business (legacy: premium)
   name: text("name").notNull(),
+  // Which account type this plan serves. Null for the shared "free" tier.
+  accountType: text("account_type"), // personal | business | null
   isActive: boolean("is_active").notNull().default(true),
   monthlyPriceUsd: numeric("monthly_price_usd", { precision: 12, scale: 2 }).notNull().default("0"),
   yearlyPriceUsd: numeric("yearly_price_usd", { precision: 12, scale: 2 }).notNull().default("0"),
   monthlyDiscountPct: integer("monthly_discount_pct").notNull().default(0),
   yearlyDiscountPct: integer("yearly_discount_pct").notNull().default(0),
+  // Dodo Payments product IDs per billing cycle. Source of truth for checkout;
+  // admins set these in the admin panel and the rest is derived from Dodo.
+  dodoProductMonthly: text("dodo_product_monthly"),
+  dodoProductYearly: text("dodo_product_yearly"),
   limits: jsonb("limits").notNull().default({}), // { clients, transactionsPerClient, quotations, attachmentSizeKb, attachmentsPerTx, noteLength }
   geoPricing: jsonb("geo_pricing").notNull().default({}), // { country_code: { currency, monthly, yearly, monthlyDiscountPct, yearlyDiscountPct } }
   createdAt: timestamp("created_at").defaultNow(),
