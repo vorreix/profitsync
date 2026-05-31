@@ -65,7 +65,8 @@ export async function getOrgPlan(orgId: string): Promise<{ planKey: string; limi
   const planKey = entitled ? (sub.planKey ?? "free") : "free"
 
   const plan = planRows.find((p) => p.key === planKey)
-  const fallback = planKey === "premium" ? DEFAULT_PREMIUM_LIMITS : DEFAULT_FREE_LIMITS
+  // Any paid plan defaults to generous limits when a specific field is unset.
+  const fallback = planKey === "free" ? DEFAULT_FREE_LIMITS : DEFAULT_PREMIUM_LIMITS
   const stored = (plan?.limits as PlanLimits | undefined) ?? {}
 
   return {
@@ -83,7 +84,7 @@ export async function getOrgPlan(orgId: string): Promise<{ planKey: string; limi
 
 export async function checkClientQuota(orgId: string): Promise<QuotaCheck> {
   const { planKey, limits } = await getOrgPlan(orgId)
-  if (planKey === "premium") return { allowed: true }
+  if (planKey !== "free") return { allowed: true }
   const [{ current }] = await db
     .select({ current: count() })
     .from(clients)
@@ -102,7 +103,7 @@ export async function checkClientQuota(orgId: string): Promise<QuotaCheck> {
 
 export async function checkTransactionQuota(orgId: string, clientId: string): Promise<QuotaCheck> {
   const { planKey, limits } = await getOrgPlan(orgId)
-  if (planKey === "premium") return { allowed: true }
+  if (planKey !== "free") return { allowed: true }
   const [{ current }] = await db
     .select({ current: count() })
     .from(transactions)
@@ -121,7 +122,7 @@ export async function checkTransactionQuota(orgId: string, clientId: string): Pr
 
 export async function checkQuotationQuota(orgId: string): Promise<QuotaCheck> {
   const { planKey, limits } = await getOrgPlan(orgId)
-  if (planKey === "premium") return { allowed: true }
+  if (planKey !== "free") return { allowed: true }
   const [{ current }] = await db
     .select({ current: count() })
     .from(quotations)

@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { and, asc, count, desc, eq, ilike, isNull, or, sql } from "drizzle-orm"
 import { db, serialize } from "../../src/lib/db/index.js"
 import { clients, transactions } from "../../src/lib/db/schema.js"
-import { canWrite, requireAuth } from "../_lib/auth.js"
+import { canWrite, ensureDefaultClient, isPersonalAccount, requireAuth, requireBusinessFeature } from "../_lib/auth.js"
 import { checkClientQuota, checkNoteLength } from "../_lib/quota.js"
 
 const VALID_STATUSES = ["active", "inactive", "archived"]
@@ -14,6 +14,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { userId, orgId, role } = ctx
 
   if (req.method === "GET") {
+    // Personal accounts have no Clients UI but transactions anchor to a single
+    // default client — make sure it exists so the personal experience works.
+    if (isPersonalAccount(ctx)) await ensureDefaultClient(orgId, userId)
+
     const { search, sort, page } = req.query as {
       search?: string; sort?: string; page?: string
     }
@@ -91,6 +95,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   if (req.method === "POST") {
+    // Personal accounts can't manage clients — they get exactly one default client.
+    if (!requireBusinessFeature(res, ctx, "clients")) return
     if (!canWrite(role)) return res.status(403).json({ error: "Forbidden" })
     const { name, company, email, phone, status, notes, onboard_date } = req.body as {
       name: string; company?: string; email?: string

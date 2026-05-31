@@ -114,6 +114,74 @@ export async function getSubscription(subscriptionId: string): Promise<DodoSubsc
   return call<DodoSubscription>(`/subscriptions/${subscriptionId}`)
 }
 
+export type DodoPriceDetail = {
+  price: number // minor units (e.g. cents)
+  currency: string
+  discount?: number // percentage off the list price (0-100)
+  tax_inclusive?: boolean
+  trial_period_days?: number
+  payment_frequency_interval?: string // "Month" | "Year"
+  payment_frequency_count?: number
+}
+
+export type DodoProduct = {
+  product_id: string
+  name: string | null
+  description: string | null
+  is_recurring: boolean
+  // GET /products/{id} returns `price` as an object; some list shapes use a number.
+  price: DodoPriceDetail | number
+  currency?: string
+  image?: string | null
+  tax_category?: string | null
+  metadata?: Record<string, string> | null
+}
+
+/** Fetch a single Dodo product (used to derive plan name / price / interval). */
+export async function getProduct(productId: string): Promise<DodoProduct> {
+  return call<DodoProduct>(`/products/${encodeURIComponent(productId)}`)
+}
+
+/** Everything we can derive about a plan cycle from a single Dodo product. */
+export type DerivedProduct = {
+  productId: string
+  name: string
+  description: string
+  minor: number // list price in minor units (cents)
+  currency: string
+  discountPct: number // percentage off (0-100)
+  interval: "monthly" | "yearly" | null
+  trialDays: number
+  recurring: boolean
+  image: string | null
+  taxCategory: string | null
+  metadata: Record<string, string>
+}
+
+/** Normalize a Dodo product into the fields we sync onto a plan. */
+export function priceFromProduct(product: DodoProduct): DerivedProduct {
+  const detail = typeof product.price === "object" ? product.price : null
+  const minor = detail ? detail.price : (typeof product.price === "number" ? product.price : 0)
+  const currency = detail?.currency ?? product.currency ?? "USD"
+  const rawInterval = detail?.payment_frequency_interval?.toLowerCase()
+  const interval = rawInterval === "year" ? "yearly" : rawInterval === "month" ? "monthly" : null
+  const discountPct = Math.max(0, Math.min(100, Math.round(detail?.discount ?? 0)))
+  return {
+    productId: product.product_id,
+    name: product.name ?? "",
+    description: product.description ?? "",
+    minor,
+    currency,
+    discountPct,
+    interval,
+    trialDays: detail?.trial_period_days ?? 0,
+    recurring: !!product.is_recurring,
+    image: product.image ?? null,
+    taxCategory: product.tax_category ?? null,
+    metadata: product.metadata ?? {},
+  }
+}
+
 /**
  * Cancel a subscription. By default the cancellation takes effect at the end of
  * the current billing period (access continues until then). Pass `immediate` to
@@ -128,13 +196,34 @@ export async function cancelSubscription(subscriptionId: string, immediate = fal
   })
 }
 
-/** Resolve the Dodo product id for a plan + billing cycle from env config. */
+/**
+ * Resolve the Dodo product id for a plan + billing cycle from env config.
+ *
+ * This is the *fallback* path: the source of truth is the plans table
+ * (dodo_product_monthly / dodo_product_yearly), which admins configure. Env
+ * vars are only used when a plan row has no product id set.
+ */
 export function productIdForPlan(planKey: string, cycle: "monthly" | "yearly"): string | null {
-  if (planKey !== "premium") return null
-  const yearly = process.env.DODO_PRODUCT_PREMIUM_YEARLY
-  const monthly = process.env.DODO_PRODUCT_PREMIUM_MONTHLY
-  if (cycle === "yearly" && yearly) return yearly
-  return monthly || null
+  const byPlan: Record<string, { monthly?: string; yearly?: string }> = {
+    personal: {
+      monthly: process.env.DODO_PRODUCT_PERSONAL_MONTHLY,
+      yearly: process.env.DODO_PRODUCT_PERSONAL_YEARLY,
+    },
+    business: {
+      monthly: process.env.DODO_PRODUCT_BUSINESS_MONTHLY,
+      yearly: process.env.DODO_PRODUCT_BUSINESS_YEARLY,
+    },
+    premium: {
+      monthly: process.env.DODO_PRODUCT_PREMIUM_MONTHLY,
+      yearly: process.env.DODO_PRODUCT_PREMIUM_YEARLY,
+    },
+  }
+  const entry = byPlan[planKey]
+  if (!entry) return null
+  // Never cross-fall-back between cycles: returning the monthly product for a
+  // yearly request would charge the wrong billing frequency. Return null so the
+  // caller fails loudly instead.
+  return (cycle === "yearly" ? entry.yearly : entry.monthly) || null
 }
 
 /** Map a Dodo subscription status onto our internal subscription status enum. */
