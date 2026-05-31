@@ -1,8 +1,8 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { and, count, desc, eq, ilike, sql } from "drizzle-orm"
-import { db, serialize } from "../../../src/lib/db"
-import { organizations, subscriptions, userProfiles } from "../../../src/lib/db/schema"
-import { requireAdmin } from "../../_lib/admin"
+import { db, serialize } from "../../../src/lib/db/index.js"
+import { organizations, subscriptions, userProfiles } from "../../../src/lib/db/schema.js"
+import { requireAdmin } from "../../_lib/admin.js"
 
 const PAGE_SIZE = 30
 const VALID_PLANS = ["free", "premium"]

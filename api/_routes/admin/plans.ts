@@ -1,8 +1,8 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { asc, eq } from "drizzle-orm"
-import { db, serialize } from "../../../src/lib/db"
-import { plans } from "../../../src/lib/db/schema"
-import { requireAdmin } from "../../_lib/admin"
+import { db, serialize } from "../../../src/lib/db/index.js"
+import { plans } from "../../../src/lib/db/schema.js"
+import { requireAdmin } from "../../_lib/admin.js"
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const adminId = await requireAdmin(req, res)

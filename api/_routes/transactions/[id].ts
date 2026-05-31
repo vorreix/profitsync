@@ -1,8 +1,8 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { eq } from "drizzle-orm"
-import { db, serialize } from "../../../src/lib/db"
-import { clients, transactions } from "../../../src/lib/db/schema"
-import { canDelete, canWrite, requireAuth } from "../../_lib/auth"
+import { db, serialize } from "../../../src/lib/db/index.js"
+import { clients, transactions } from "../../../src/lib/db/schema.js"
+import { canDelete, canWrite, requireAuth } from "../../_lib/auth.js"
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ctx = await requireAuth(req, res)

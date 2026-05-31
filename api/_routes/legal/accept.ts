@@ -1,8 +1,8 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { eq } from "drizzle-orm"
-import { db, serialize } from "../../../src/lib/db"
-import { legalAcceptances, userProfiles } from "../../../src/lib/db/schema"
-import { getUserId } from "../../_lib/auth"
+import { db, serialize } from "../../../src/lib/db/index.js"
+import { legalAcceptances, userProfiles } from "../../../src/lib/db/schema.js"
+import { getUserId } from "../../_lib/auth.js"
 
 const KNOWN_DOCS = new Set(["privacy_policy", "terms_of_service"])
 

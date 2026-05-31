@@ -1,9 +1,9 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { and, asc, count, desc, eq, ilike, isNull, or, sql } from "drizzle-orm"
-import { db, serialize } from "../../src/lib/db"
-import { clients, transactions } from "../../src/lib/db/schema"
-import { canWrite, requireAuth } from "../_lib/auth"
-import { checkTransactionQuota } from "../_lib/quota"
+import { db, serialize } from "../../src/lib/db/index.js"
+import { clients, transactions } from "../../src/lib/db/schema.js"
+import { canWrite, requireAuth } from "../_lib/auth.js"
+import { checkTransactionQuota } from "../_lib/quota.js"
 
 const PAGE_SIZE = 20
 

@@ -1,9 +1,9 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { and, eq, isNull } from "drizzle-orm"
-import { db, serialize } from "../../../../src/lib/db"
-import { clients, quotations } from "../../../../src/lib/db/schema"
-import { canWrite, requireAuth } from "../../../_lib/auth"
-import { checkClientQuota } from "../../../_lib/quota"
+import { db, serialize } from "../../../../src/lib/db/index.js"
+import { clients, quotations } from "../../../../src/lib/db/schema.js"
+import { canWrite, requireAuth } from "../../../_lib/auth.js"
+import { checkClientQuota } from "../../../_lib/quota.js"
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ctx = await requireAuth(req, res)

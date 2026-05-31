@@ -1,9 +1,9 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { and, asc, eq, ilike, sql } from "drizzle-orm"
-import { CURRENCY_LIST } from "../../src/lib/currencies"
-import { db, serialize } from "../../src/lib/db"
-import { organizations, organizationMembers, userProfiles } from "../../src/lib/db/schema"
-import { createOrgForUser, getUserId } from "../_lib/auth"
+import { CURRENCY_LIST } from "../../src/lib/currencies.js"
+import { db, serialize } from "../../src/lib/db/index.js"
+import { organizations, organizationMembers, userProfiles } from "../../src/lib/db/schema.js"
+import { createOrgForUser, getUserId } from "../_lib/auth.js"
 
 const VALID_CURRENCIES = new Set(CURRENCY_LIST.map((c) => c.code))
 

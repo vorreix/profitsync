@@ -1,14 +1,14 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { randomBytes } from "crypto"
 import { and, desc, eq, isNull, sql } from "drizzle-orm"
-import { db, serialize } from "../../../src/lib/db"
+import { db, serialize } from "../../../src/lib/db/index.js"
 import {
   organizationInvitations,
   organizationMembers,
   organizations,
   userProfiles,
-} from "../../../src/lib/db/schema"
-import { requireAdmin } from "../../_lib/admin"
+} from "../../../src/lib/db/schema.js"
+import { requireAdmin } from "../../_lib/admin.js"
 
 const VALID_ROLES = ["admin", "editor", "viewer"]
 

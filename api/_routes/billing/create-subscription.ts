@@ -1,9 +1,9 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { desc, eq } from "drizzle-orm"
-import { db, serialize } from "../../../src/lib/db"
-import { plans, subscriptions, userProfiles } from "../../../src/lib/db/schema"
-import { requireAuth } from "../../_lib/auth"
-import { createSubscription, isDodoConfigured, productIdForPlan } from "../../_lib/dodo"
+import { db, serialize } from "../../../src/lib/db/index.js"
+import { plans, subscriptions, userProfiles } from "../../../src/lib/db/schema.js"
+import { requireAuth } from "../../_lib/auth.js"
+import { createSubscription, isDodoConfigured, productIdForPlan } from "../../_lib/dodo.js"
 
 function originFromRequest(req: VercelRequest): string {
   const host = (req.headers["x-forwarded-host"] as string | undefined) || req.headers.host || "localhost:3000"

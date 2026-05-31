@@ -1,8 +1,8 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { and, eq } from "drizzle-orm"
-import { db, serialize } from "../../../src/lib/db"
-import { organizationMembers, userProfiles } from "../../../src/lib/db/schema"
-import { getUserId } from "../../_lib/auth"
+import { db, serialize } from "../../../src/lib/db/index.js"
+import { organizationMembers, userProfiles } from "../../../src/lib/db/schema.js"
+import { getUserId } from "../../_lib/auth.js"
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const userId = await getUserId(req)
