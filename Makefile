@@ -81,7 +81,7 @@ pr: ## Full pre-commit gate: format → lint → type check → tests
 	@echo "→ lint..."
 	@npx eslint . || (echo "✗ lint failed" && exit 1)
 	@echo "→ type check..."
-	@npx tsc --noEmit || (echo "✗ type check failed" && exit 1)
+	@npm run typecheck || (echo "✗ type check failed" && exit 1)
 	@echo "→ tests..."
 	@npm run test:ci || (echo "✗ tests failed" && exit 1)
 	@echo "✓ all checks passed"
