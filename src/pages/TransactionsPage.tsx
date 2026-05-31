@@ -4,6 +4,7 @@ import { useAuth } from "@clerk/clerk-react"
 import { apiGet, apiPost, apiPatch, apiDelete } from "@/lib/api"
 import type { Client, Transaction, TransactionAttachment } from "@/lib/types"
 import { useCurrency } from "@/lib/currency-context"
+import { useOrg } from "@/lib/org-context"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -334,6 +335,10 @@ export function TransactionsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const { getToken } = useAuth()
   const { currency } = useCurrency()
+  const { activeOrg } = useOrg()
+  // Personal accounts have no Clients UI — the client picker is hidden and
+  // transactions anchor to the workspace's single default client server-side.
+  const isPersonal = activeOrg?.account_type === "personal"
   const fmt = (n: number) =>
     new Intl.NumberFormat("en-US", { style: "currency", currency, minimumFractionDigits: 2 }).format(n)
 
@@ -448,7 +453,7 @@ export function TransactionsPage() {
   const totalOutgoing = transactions.filter((t) => t.type === "outgoing").reduce((s, t) => s + Number(t.amount), 0)
 
   async function handleAdd() {
-    if (!form.client_id) { toast.error("Client is required"); return }
+    if (!isPersonal && !form.client_id) { toast.error("Client is required"); return }
     if (!form.amount || isNaN(parseFloat(form.amount))) { toast.error("Valid amount is required"); return }
     setSaving(true)
     try {
@@ -766,13 +771,17 @@ export function TransactionsPage() {
                       )}
                     </div>
                     <div className="flex items-center gap-2 mt-0.5 min-w-0">
-                      <button
-                        className="text-xs text-primary hover:underline truncate min-w-0"
-                        onClick={(e) => { e.stopPropagation(); navigate(`/clients/${tx.client_id}`) }}
-                      >
-                        {tx.client_name ?? tx.client_id}
-                      </button>
-                      <span className="text-xs text-muted-foreground shrink-0">·</span>
+                      {!isPersonal && (
+                        <>
+                          <button
+                            className="text-xs text-primary hover:underline truncate min-w-0"
+                            onClick={(e) => { e.stopPropagation(); navigate(`/clients/${tx.client_id}`) }}
+                          >
+                            {tx.client_name ?? tx.client_id}
+                          </button>
+                          <span className="text-xs text-muted-foreground shrink-0">·</span>
+                        </>
+                      )}
                       <span className="text-xs text-muted-foreground shrink-0">{formatDate(tx.date)}</span>
                     </div>
                   </div>
@@ -845,15 +854,17 @@ export function TransactionsPage() {
                       {viewTx.type === "incoming" ? "Income" : "Expense"}
                     </Badge>
                   </div>
-                  <div>
-                    <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Client</p>
-                    <button
-                      className="text-sm text-primary hover:underline mt-0.5"
-                      onClick={() => { setViewTx(null); navigate(`/clients/${viewTx.client_id}`) }}
-                    >
-                      {viewTx.client_name ?? viewTx.client_id}
-                    </button>
-                  </div>
+                  {!isPersonal && (
+                    <div>
+                      <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Client</p>
+                      <button
+                        className="text-sm text-primary hover:underline mt-0.5"
+                        onClick={() => { setViewTx(null); navigate(`/clients/${viewTx.client_id}`) }}
+                      >
+                        {viewTx.client_name ?? viewTx.client_id}
+                      </button>
+                    </div>
+                  )}
                   <div>
                     <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Date</p>
                     <p className="mt-0.5">{formatDate(viewTx.date)}</p>
@@ -939,7 +950,7 @@ export function TransactionsPage() {
           <TxFormFields
             f={form}
             onChange={(p) => setForm((f) => ({ ...f, ...p }))}
-            showClient
+            showClient={!isPersonal}
             clients={clients}
             categories={categories}
             onChangeCats={handleChangeCats}

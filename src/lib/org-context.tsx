@@ -6,6 +6,9 @@ import { LEGAL_DOC_VERSION, type Organization, type UserProfile } from "@/lib/ty
 type OrgContextValue = {
   orgs: Organization[]
   activeOrg: Organization | null
+  profile: UserProfile | null
+  /** True once the profile has loaded and the user hasn't completed onboarding. */
+  needsOnboarding: boolean
   loading: boolean
   switchOrg: (id: string) => Promise<void>
   refresh: () => Promise<void>
@@ -14,6 +17,8 @@ type OrgContextValue = {
 const OrgContext = createContext<OrgContextValue>({
   orgs: [],
   activeOrg: null,
+  profile: null,
+  needsOnboarding: false,
   loading: true,
   switchOrg: async () => {},
   refresh: async () => {},
@@ -22,6 +27,7 @@ const OrgContext = createContext<OrgContextValue>({
 export function OrgProvider({ children }: { children: ReactNode }) {
   const { getToken, isSignedIn } = useAuth()
   const [orgs, setOrgs] = useState<Organization[]>([])
+  const [profile, setProfile] = useState<UserProfile | null>(null)
   const [activeOrgId, setActiveOrgIdState] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -36,13 +42,15 @@ export function OrgProvider({ children }: { children: ReactNode }) {
 
       // Profile and org list are independent (both scoped by user id) — fetch in
       // parallel to halve the app's cold-boot latency.
-      const [profile, list] = await Promise.all([
+      const [profileData, list] = await Promise.all([
         apiGet<UserProfile>("/api/profile", token),
         apiGet<Organization[]>("/api/organizations", token),
       ])
 
+      setProfile(profileData)
+
       // Prefer the profile's current org; otherwise fall back to the first (personal) org.
-      const activeId = profile.current_organization_id ?? (list.length > 0 ? list[0].id : null)
+      const activeId = profileData.current_organization_id ?? (list.length > 0 ? list[0].id : null)
       if (activeId) {
         setActiveOrgId(activeId)
         setActiveOrgIdState(activeId)
@@ -50,7 +58,7 @@ export function OrgProvider({ children }: { children: ReactNode }) {
       setOrgs(list)
 
       // Record legal acceptance once per user — fire-and-forget, never blocks boot.
-      if (!profile.terms_accepted_at) {
+      if (!profileData.terms_accepted_at) {
         apiPost("/api/legal/accept", token, {
           documents: ["terms_of_service", "privacy_policy"],
           version: LEGAL_DOC_VERSION,
@@ -72,6 +80,7 @@ export function OrgProvider({ children }: { children: ReactNode }) {
       setActiveOrgId(null)
       setActiveOrgIdState(null)
       setOrgs([])
+      setProfile(null)
       setLoading(false)
       return
     }
@@ -95,8 +104,12 @@ export function OrgProvider({ children }: { children: ReactNode }) {
     [orgs, activeOrgId],
   )
 
+  // Onboarding is complete once `onboarded_at` is set. Only meaningful after the
+  // profile has loaded, so a null profile (still loading) never triggers it.
+  const needsOnboarding = !!profile && !profile.onboarded_at
+
   return (
-    <OrgContext.Provider value={{ orgs, activeOrg, loading, switchOrg, refresh }}>
+    <OrgContext.Provider value={{ orgs, activeOrg, profile, needsOnboarding, loading, switchOrg, refresh }}>
       {children}
     </OrgContext.Provider>
   )
