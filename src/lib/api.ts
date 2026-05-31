@@ -19,16 +19,32 @@ let activeOrgId: string | null = readStoredOrg()
 // instant. Cache is scoped by active org and dropped on any mutation.
 type CacheEntry = { ts: number; data: unknown }
 const GET_TTL_MS = 30_000
+const MAX_CACHE_ENTRIES = 50
 const cache = new Map<string, CacheEntry>()
 const inflight = new Map<string, Promise<unknown>>()
+// Bumped on every clear so an in-flight GET that resolves *after* a mutation
+// doesn't re-populate the cache with now-stale data.
+let cacheGeneration = 0
 
 function cacheKey(path: string): string {
   return `${activeOrgId ?? ""}::${path}`
 }
 
+// Insert with simple LRU eviction so paginating through many pages can't grow
+// the cache without bound.
+function setCacheEntry(key: string, data: unknown) {
+  cache.delete(key) // re-insert at the end → most-recently-used
+  cache.set(key, { ts: Date.now(), data })
+  if (cache.size > MAX_CACHE_ENTRIES) {
+    const oldest = cache.keys().next().value
+    if (oldest !== undefined) cache.delete(oldest)
+  }
+}
+
 export function clearApiCache() {
   cache.clear()
   inflight.clear()
+  cacheGeneration++
 }
 
 export function setActiveOrgId(id: string | null) {
@@ -78,10 +94,12 @@ function get<T>(path: string, token: string): Promise<T> {
   const pending = inflight.get(key)
   if (pending) return pending as Promise<T>
 
+  const gen = cacheGeneration
   const p = request<T>("GET", path, token)
     .then((data) => {
-      cache.set(key, { ts: Date.now(), data })
       inflight.delete(key)
+      // Skip caching if a mutation cleared the cache while this GET was in flight.
+      if (gen === cacheGeneration) setCacheEntry(key, data)
       return data
     })
     .catch((err) => {

@@ -153,30 +153,42 @@ export function QuotationsPage() {
   async function fetchPage1() {
     setLoading(true)
     setPage(1)
-    const token = await getToken()
-    if (!token) return
-    const params = new URLSearchParams({ page: "1" })
-    if (searchRef.current.trim()) params.set("search", searchRef.current.trim())
-    if (tabRef.current !== "all") params.set("status", tabRef.current)
-    const data = await apiGet<{ data: Quotation[]; total: number }>(`/api/quotations?${params}`, token)
-    setQuotations(data.data)
-    setTotal(data.total)
-    setLoading(false)
+    try {
+      const token = await getToken()
+      if (!token) return
+      const params = new URLSearchParams({ page: "1" })
+      if (searchRef.current.trim()) params.set("search", searchRef.current.trim())
+      if (tabRef.current !== "all") params.set("status", tabRef.current)
+      const data = await apiGet<{ data: Quotation[]; total: number }>(`/api/quotations?${params}`, token)
+      setQuotations(data.data)
+      setTotal(data.total)
+    } catch (err) {
+      console.error("Failed to load quotations:", err)
+      toast.error("Failed to load quotations")
+    } finally {
+      setLoading(false)
+    }
   }
 
   async function handleLoadMore() {
     setLoadingMore(true)
-    const nextPage = page + 1
-    const token = await getToken()
-    if (!token) { setLoadingMore(false); return }
-    const params = new URLSearchParams({ page: String(nextPage) })
-    if (searchRef.current.trim()) params.set("search", searchRef.current.trim())
-    if (tabRef.current !== "all") params.set("status", tabRef.current)
-    const data = await apiGet<{ data: Quotation[]; total: number }>(`/api/quotations?${params}`, token)
-    setQuotations((prev) => [...prev, ...data.data])
-    setTotal(data.total)
-    setPage(nextPage)
-    setLoadingMore(false)
+    try {
+      const nextPage = page + 1
+      const token = await getToken()
+      if (!token) return
+      const params = new URLSearchParams({ page: String(nextPage) })
+      if (searchRef.current.trim()) params.set("search", searchRef.current.trim())
+      if (tabRef.current !== "all") params.set("status", tabRef.current)
+      const data = await apiGet<{ data: Quotation[]; total: number }>(`/api/quotations?${params}`, token)
+      setQuotations((prev) => [...prev, ...data.data])
+      setTotal(data.total)
+      setPage(nextPage)
+    } catch (err) {
+      console.error("Failed to load more quotations:", err)
+      toast.error("Failed to load more quotations")
+    } finally {
+      setLoadingMore(false)
+    }
   }
 
   useEffect(() => {
