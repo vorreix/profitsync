@@ -123,13 +123,15 @@ export function OrganizationsPage() {
     <div className="p-3 sm:p-6 space-y-6 max-w-4xl">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="text-2xl font-semibold tracking-tight">Organizations</h1>
-          <p className="text-sm text-muted-foreground mt-1">
+          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">Organizations</h1>
+          <p className="text-sm text-muted-foreground mt-0.5 sm:mt-1">
             You must have at least one organization. Each organization has its own data.
           </p>
         </div>
-        <Button onClick={() => setCreateOpen(true)}>
-          <Plus className="size-4 mr-2" /> New organization
+        <Button onClick={() => setCreateOpen(true)} className="shrink-0">
+          <Plus className="size-4 sm:mr-2" />
+          <span className="hidden sm:inline">New organization</span>
+          <span className="sm:hidden">New</span>
         </Button>
       </div>
 

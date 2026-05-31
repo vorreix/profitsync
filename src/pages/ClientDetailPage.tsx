@@ -6,7 +6,6 @@ import type { Client, Transaction } from "@/lib/types"
 import { useCurrency } from "@/lib/currency-context"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Input } from "@/components/ui/input"
@@ -17,7 +16,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "sonner"
-import { ArrowLeft, Plus, Trash2, TrendingUp, TrendingDown, DollarSign, Building2, Mail, Phone, FileText, ArrowUpRight, ArrowDownRight, Pencil, Search, Calendar } from "lucide-react"
+import { ArrowLeft, Plus, Trash2, DollarSign, Building2, Mail, Phone, FileText, ArrowUpRight, ArrowDownRight, Pencil, Search, Calendar } from "lucide-react"
 
 type NewTransaction = { type: "incoming" | "outgoing"; amount: string; description: string; category: string; date: string }
 type NewClient = { name: string; company: string; email: string; phone: string; status: "active" | "inactive" | "archived"; notes: string; onboard_date?: string | null }
@@ -161,79 +160,73 @@ export function ClientDetailPage() {
   if (!client) return null
 
   return (
-    <div className="p-3 sm:p-6 space-y-6">
+    <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <Button variant="ghost" size="icon" onClick={() => navigate("/clients")} className="-ml-2 mt-0.5"><ArrowLeft className="size-4" /></Button>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-3 flex-wrap">
-            <h1 className="text-2xl font-semibold tracking-tight">{client.name}</h1>
-            <Badge variant={client.status === "active" ? "default" : "secondary"}>{client.status}</Badge>
+      <div className="space-y-3">
+        <div className="flex items-start gap-2 sm:gap-3">
+          <Button variant="ghost" size="icon" onClick={() => navigate("/clients")} className="-ml-2 mt-0.5 shrink-0"><ArrowLeft className="size-4" /></Button>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+              <h1 className="text-xl sm:text-2xl font-semibold tracking-tight truncate">{client.name}</h1>
+              <Badge variant={client.status === "active" ? "default" : "secondary"}>{client.status}</Badge>
+            </div>
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-4 mt-1.5 flex-wrap">
+              {client.company && <span className="flex items-center gap-1.5 text-sm text-muted-foreground min-w-0"><Building2 className="size-3.5 shrink-0" /><span className="truncate">{client.company}</span></span>}
+              {client.email && <span className="flex items-center gap-1.5 text-sm text-muted-foreground min-w-0"><Mail className="size-3.5 shrink-0" /><span className="truncate">{client.email}</span></span>}
+              {client.phone && <span className="flex items-center gap-1.5 text-sm text-muted-foreground"><Phone className="size-3.5 shrink-0" />{client.phone}</span>}
+              {client.onboard_date && <span className="flex items-center gap-1.5 text-sm text-muted-foreground"><Calendar className="size-3.5 shrink-0" />Onboarded {formatDate(client.onboard_date)}</span>}
+              <span className="flex items-center gap-1.5 text-sm text-muted-foreground"><Calendar className="size-3.5 shrink-0" />Client since {formatDate(client.created_at)}</span>
+            </div>
+            {client.notes && <p className="text-sm text-muted-foreground mt-1.5 flex items-start gap-1.5"><FileText className="size-3.5 mt-0.5 shrink-0" />{client.notes}</p>}
           </div>
-          <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-4 mt-1.5 flex-wrap">
-            {client.company && <span className="flex items-center gap-1.5 text-sm text-muted-foreground"><Building2 className="size-3.5" />{client.company}</span>}
-            {client.email && <span className="flex items-center gap-1.5 text-sm text-muted-foreground"><Mail className="size-3.5" />{client.email}</span>}
-            {client.phone && <span className="flex items-center gap-1.5 text-sm text-muted-foreground"><Phone className="size-3.5" />{client.phone}</span>}
-            {client.onboard_date && <span className="flex items-center gap-1.5 text-sm text-muted-foreground"><Calendar className="size-3.5" />Onboarded {formatDate(client.onboard_date)}</span>}
-            <span className="flex items-center gap-1.5 text-sm text-muted-foreground"><Calendar className="size-3.5" />Client since {formatDate(client.created_at)}</span>
+          {/* Desktop actions */}
+          <div className="hidden sm:flex flex-wrap gap-2 shrink-0">
+            <Button variant="outline" size="icon" onClick={() => { setClientForm(client); setEditClientDialogOpen(true) }}><Pencil className="size-4" /></Button>
+            <Button variant="outline" size="icon" className="text-muted-foreground hover:text-destructive" onClick={() => { setDeleteId(client.id); setDeleteType("client") }}><Trash2 className="size-4" /></Button>
+            <Button onClick={() => { setTxForm(defaultTxForm); setTxDialogOpen(true) }}><Plus className="size-4" />Add Transaction</Button>
           </div>
-          {client.notes && <p className="text-sm text-muted-foreground mt-1.5 flex items-start gap-1.5"><FileText className="size-3.5 mt-0.5 shrink-0" />{client.notes}</p>}
         </div>
-        <div className="flex flex-wrap gap-2 shrink-0">
-          <Button variant="outline" size="icon" onClick={() => { setClientForm(client); setEditClientDialogOpen(true) }}><Pencil className="size-4" /></Button>
-          <Button variant="outline" size="icon" className="text-muted-foreground hover:text-destructive" onClick={() => { setDeleteId(client.id); setDeleteType("client") }}><Trash2 className="size-4" /></Button>
-          <Button onClick={() => { setTxForm(defaultTxForm); setTxDialogOpen(true) }}><Plus className="size-4" />Add Transaction</Button>
+        {/* Mobile actions */}
+        <div className="flex sm:hidden gap-2">
+          <Button className="flex-1" onClick={() => { setTxForm(defaultTxForm); setTxDialogOpen(true) }}><Plus className="size-4" />Add Transaction</Button>
+          <Button variant="outline" size="icon" className="shrink-0" onClick={() => { setClientForm(client); setEditClientDialogOpen(true) }}><Pencil className="size-4" /></Button>
+          <Button variant="outline" size="icon" className="shrink-0 text-muted-foreground hover:text-destructive" onClick={() => { setDeleteId(client.id); setDeleteType("client") }}><Trash2 className="size-4" /></Button>
         </div>
       </div>
 
       <Separator />
 
       {/* Stats */}
-      <div className="grid gap-4 grid-cols-1 sm:grid-cols-3">
-        <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Total Income</CardTitle></CardHeader>
-          <CardContent className="pt-0">
-            <div className="flex items-center gap-2">
-              <TrendingUp className="size-4 text-emerald-500" />
-              <span className="text-xl font-bold text-emerald-600 dark:text-emerald-400">{formatCurrency(totalIncoming)}</span>
-            </div>
-            <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1"><ArrowUpRight className="size-3" />{transactions.filter((t) => t.type === "incoming").length} transaction{transactions.filter((t) => t.type === "incoming").length !== 1 ? "s" : ""}</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Total Expenses</CardTitle></CardHeader>
-          <CardContent className="pt-0">
-            <div className="flex items-center gap-2">
-              <TrendingDown className="size-4 text-destructive" />
-              <span className="text-xl font-bold text-destructive">{formatCurrency(totalOutgoing)}</span>
-            </div>
-            <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1"><ArrowDownRight className="size-3" />{transactions.filter((t) => t.type === "outgoing").length} transaction{transactions.filter((t) => t.type === "outgoing").length !== 1 ? "s" : ""}</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Net Profit</CardTitle></CardHeader>
-          <CardContent className="pt-0">
-            <div className="flex items-center gap-2">
-              <DollarSign className="size-4 text-muted-foreground" />
-              <span className={`text-xl font-bold ${netProfit >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"}`}>{formatCurrency(netProfit)}</span>
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">{totalIncoming > 0 ? ((netProfit / totalIncoming) * 100).toFixed(1) : 0}% margin</p>
-          </CardContent>
-        </Card>
+      <div className="grid grid-cols-3 gap-2 sm:gap-4">
+        <div className="rounded-xl border p-3 sm:p-4">
+          <p className="text-[10px] sm:text-xs text-muted-foreground font-medium uppercase tracking-wide truncate">Income</p>
+          <p className="text-base sm:text-xl font-bold text-emerald-600 dark:text-emerald-400 mt-1 tabular-nums truncate">{formatCurrency(totalIncoming)}</p>
+          <p className="hidden sm:flex text-xs text-muted-foreground mt-1 items-center gap-1"><ArrowUpRight className="size-3" />{transactions.filter((t) => t.type === "incoming").length} transaction{transactions.filter((t) => t.type === "incoming").length !== 1 ? "s" : ""}</p>
+        </div>
+        <div className="rounded-xl border p-3 sm:p-4">
+          <p className="text-[10px] sm:text-xs text-muted-foreground font-medium uppercase tracking-wide truncate">Expenses</p>
+          <p className="text-base sm:text-xl font-bold text-destructive mt-1 tabular-nums truncate">{formatCurrency(totalOutgoing)}</p>
+          <p className="hidden sm:flex text-xs text-muted-foreground mt-1 items-center gap-1"><ArrowDownRight className="size-3" />{transactions.filter((t) => t.type === "outgoing").length} transaction{transactions.filter((t) => t.type === "outgoing").length !== 1 ? "s" : ""}</p>
+        </div>
+        <div className="rounded-xl border p-3 sm:p-4">
+          <p className="text-[10px] sm:text-xs text-muted-foreground font-medium uppercase tracking-wide truncate">Net</p>
+          <p className={`text-base sm:text-xl font-bold mt-1 tabular-nums truncate ${netProfit >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"}`}>{formatCurrency(netProfit)}</p>
+          <p className="hidden sm:block text-xs text-muted-foreground mt-1">{totalIncoming > 0 ? ((netProfit / totalIncoming) * 100).toFixed(1) : 0}% margin</p>
+        </div>
       </div>
 
       {/* Transactions */}
       <div>
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
-            <TabsList>
-              <TabsTrigger value="all">All ({transactions.length})</TabsTrigger>
-              <TabsTrigger value="incoming">Income ({transactions.filter((t) => t.type === "incoming").length})</TabsTrigger>
-              <TabsTrigger value="outgoing">Expenses ({transactions.filter((t) => t.type === "outgoing").length})</TabsTrigger>
-            </TabsList>
-            <div className="relative flex-1 min-w-48 max-w-xs">
+          <div className="flex flex-col gap-2 mb-4 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+            <div className="-mx-3 px-3 overflow-x-auto scrollbar-none sm:mx-0 sm:px-0 sm:overflow-visible">
+              <TabsList>
+                <TabsTrigger value="all">All ({transactions.length})</TabsTrigger>
+                <TabsTrigger value="incoming">Income ({transactions.filter((t) => t.type === "incoming").length})</TabsTrigger>
+                <TabsTrigger value="outgoing">Expenses ({transactions.filter((t) => t.type === "outgoing").length})</TabsTrigger>
+              </TabsList>
+            </div>
+            <div className="relative w-full sm:flex-1 sm:min-w-48 sm:max-w-xs">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
               <Input placeholder="Search transactions..." className="pl-9 h-9" value={txSearch} onChange={(e) => setTxSearch(e.target.value)} />
             </div>
@@ -266,7 +259,7 @@ export function ClientDetailPage() {
                           {tx.type === "incoming" ? "+" : "−"}{formatCurrency(Number(tx.amount))}
                         </p>
                       </div>
-                      <div className="flex gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className="flex gap-0.5 sm:gap-1 shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                         <Button variant="ghost" size="icon-sm" onClick={() => { setEditTxForm({ ...tx, amount: tx.amount.toString() }); setEditTxDialogOpen(true) }}><Pencil className="size-3.5" /></Button>
                         <Button variant="ghost" size="icon-sm" className="text-muted-foreground hover:text-destructive" onClick={() => { setDeleteId(tx.id); setDeleteType("transaction") }}><Trash2 className="size-3.5" /></Button>
                       </div>

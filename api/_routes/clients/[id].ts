@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { and, eq, isNull } from "drizzle-orm"
 import { db, serialize } from "../../../src/lib/db/index.js"
 import { clients } from "../../../src/lib/db/schema.js"
-import { canDelete, canWrite, requireAuth } from "../../_lib/auth.js"
+import { canDelete, canWrite, requireAuth, requireBusinessFeature } from "../../_lib/auth.js"
 import { checkNoteLength } from "../../_lib/quota.js"
 
 const VALID_STATUSES = ["active", "inactive", "archived"]
@@ -23,6 +23,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   if (req.method === "PATCH") {
+    if (!requireBusinessFeature(res, ctx, "clients")) return
     if (!canWrite(role)) return res.status(403).json({ error: "Forbidden" })
     const { name, company, email, phone, status, notes, onboard_date } = req.body as {
       name?: string; company?: string; email?: string
@@ -54,6 +55,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   if (req.method === "DELETE") {
+    if (!requireBusinessFeature(res, ctx, "clients")) return
     if (!canDelete(role)) return res.status(403).json({ error: "Forbidden" })
     const [updated] = await db
       .update(clients)
