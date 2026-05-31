@@ -248,16 +248,16 @@ function AppLayoutInner() {
         {fabOpen && actions.map((action) => (
           <div
             key={action.href}
-            className="flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2 duration-150"
+            className="flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2 duration-150 cursor-pointer group/action"
+            onClick={() => { navigate(action.href); setFabOpen(false) }}
           >
-            <span className="text-sm font-medium bg-background border shadow-sm rounded-md px-2.5 py-1 whitespace-nowrap">
+            <span className="text-sm font-medium bg-background border shadow-sm rounded-md px-2.5 py-1 whitespace-nowrap group-hover/action:bg-accent transition-colors">
               {t(action.labelKey)}
             </span>
             <Button
               size="icon"
               variant="secondary"
-              className="size-10 rounded-full shadow-md shrink-0"
-              onClick={() => { navigate(action.href); setFabOpen(false) }}
+              className="size-10 rounded-full shadow-md shrink-0 pointer-events-none"
             >
               <action.icon className="size-4" />
             </Button>
