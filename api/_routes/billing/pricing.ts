@@ -1,8 +1,8 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { asc, eq } from "drizzle-orm"
-import { db, serialize } from "../../../src/lib/db"
-import { plans, subscriptions } from "../../../src/lib/db/schema"
-import { requireAuth } from "../../_lib/auth"
+import { db, serialize } from "../../../src/lib/db/index.js"
+import { plans, subscriptions } from "../../../src/lib/db/schema.js"
+import { requireAuth } from "../../_lib/auth.js"
 
 type GeoPricingEntry = {
   currency: string

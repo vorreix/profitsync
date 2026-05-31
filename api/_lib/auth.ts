@@ -1,8 +1,8 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { verifyToken } from "@clerk/backend"
 import { and, eq } from "drizzle-orm"
-import { db } from "../../src/lib/db"
-import { organizations, organizationMembers, subscriptions, userProfiles } from "../../src/lib/db/schema"
+import { db } from "../../src/lib/db/index.js"
+import { organizations, organizationMembers, subscriptions, userProfiles } from "../../src/lib/db/schema.js"
 
 export async function getUserId(req: VercelRequest): Promise<string | null> {
   const token = req.headers.authorization?.replace("Bearer ", "")

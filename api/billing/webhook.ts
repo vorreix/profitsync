@@ -1,8 +1,8 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { desc, eq } from "drizzle-orm"
-import { db } from "../../src/lib/db"
-import { invoices, subscriptions } from "../../src/lib/db/schema"
-import { verifyWebhookSignature } from "../_lib/dodo"
+import { db } from "../../src/lib/db/index.js"
+import { invoices, subscriptions } from "../../src/lib/db/schema.js"
+import { verifyWebhookSignature } from "../_lib/dodo.js"
 
 export const config = {
   api: {

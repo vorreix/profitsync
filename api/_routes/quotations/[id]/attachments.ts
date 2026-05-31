@@ -1,9 +1,9 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { and, desc, eq } from "drizzle-orm"
-import { db, serialize } from "../../../../src/lib/db"
-import { quotationAttachments, quotations } from "../../../../src/lib/db/schema"
-import { canWrite, requireAuth } from "../../../_lib/auth"
-import { checkAttachmentQuota } from "../../../_lib/quota"
+import { db, serialize } from "../../../../src/lib/db/index.js"
+import { quotationAttachments, quotations } from "../../../../src/lib/db/schema.js"
+import { canWrite, requireAuth } from "../../../_lib/auth.js"
+import { checkAttachmentQuota } from "../../../_lib/quota.js"
 
 async function verifyQuotationOrg(quotationId: string, orgId: string): Promise<boolean> {
   const [row] = await db

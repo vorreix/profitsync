@@ -1,5 +1,5 @@
 import { and, count, desc, eq, isNull } from "drizzle-orm"
-import { db } from "../../src/lib/db"
+import { db } from "../../src/lib/db/index.js"
 import {
   clients,
   plans,
@@ -8,7 +8,7 @@ import {
   subscriptions,
   transactionAttachments,
   transactions,
-} from "../../src/lib/db/schema"
+} from "../../src/lib/db/schema.js"
 
 export type PlanLimits = {
   clients?: number

@@ -1,8 +1,8 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { eq } from "drizzle-orm"
-import { db } from "../../src/lib/db"
-import { appAdmins } from "../../src/lib/db/schema"
-import { getUserId } from "./auth"
+import { db } from "../../src/lib/db/index.js"
+import { appAdmins } from "../../src/lib/db/schema.js"
+import { getUserId } from "./auth.js"
 
 export async function requireAdmin(
   req: VercelRequest,

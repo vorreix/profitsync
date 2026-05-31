@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { and, count, eq, isNotNull, isNull } from "drizzle-orm"
-import { db } from "../../../src/lib/db"
+import { db } from "../../../src/lib/db/index.js"
 import {
   clients,
   invoices,
@@ -8,8 +8,8 @@ import {
   subscriptions,
   transactions,
   userProfiles,
-} from "../../../src/lib/db/schema"
-import { requireAdmin } from "../../_lib/admin"
+} from "../../../src/lib/db/schema.js"
+import { requireAdmin } from "../../_lib/admin.js"
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const userId = await requireAdmin(req, res)

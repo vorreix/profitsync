@@ -1,11 +1,11 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { createClerkClient } from "@clerk/backend"
 import { eq } from "drizzle-orm"
-import { CURRENCY_LIST } from "../../src/lib/currencies"
-import { SUPPORTED_LANGUAGE_CODES } from "../../src/lib/i18n/languages"
-import { db, serialize } from "../../src/lib/db"
-import { userProfiles } from "../../src/lib/db/schema"
-import { ensurePersonalOrg, getUserId } from "../_lib/auth"
+import { CURRENCY_LIST } from "../../src/lib/currencies.js"
+import { SUPPORTED_LANGUAGE_CODES } from "../../src/lib/i18n/languages.js"
+import { db, serialize } from "../../src/lib/db/index.js"
+import { userProfiles } from "../../src/lib/db/schema.js"
+import { ensurePersonalOrg, getUserId } from "../_lib/auth.js"
 
 const VALID_CURRENCIES = new Set(CURRENCY_LIST.map((c) => c.code))
 const VALID_LANGUAGES = new Set(SUPPORTED_LANGUAGE_CODES)

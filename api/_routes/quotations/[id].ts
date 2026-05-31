@@ -1,9 +1,9 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { and, eq, isNull } from "drizzle-orm"
-import { db, serialize } from "../../../src/lib/db"
-import { quotations } from "../../../src/lib/db/schema"
-import { canDelete, canWrite, requireAuth } from "../../_lib/auth"
-import { checkNoteLength } from "../../_lib/quota"
+import { db, serialize } from "../../../src/lib/db/index.js"
+import { quotations } from "../../../src/lib/db/schema.js"
+import { canDelete, canWrite, requireAuth } from "../../_lib/auth.js"
+import { checkNoteLength } from "../../_lib/quota.js"
 
 const VALID_STATUSES = ["draft", "sent", "accepted", "rejected"]
 

@@ -1,9 +1,9 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { desc, eq } from "drizzle-orm"
-import { db, serialize } from "../../../src/lib/db"
-import { subscriptions } from "../../../src/lib/db/schema"
-import { requireAuth } from "../../_lib/auth"
-import { cancelSubscription } from "../../_lib/dodo"
+import { db, serialize } from "../../../src/lib/db/index.js"
+import { subscriptions } from "../../../src/lib/db/schema.js"
+import { requireAuth } from "../../_lib/auth.js"
+import { cancelSubscription } from "../../_lib/dodo.js"
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ctx = await requireAuth(req, res)
