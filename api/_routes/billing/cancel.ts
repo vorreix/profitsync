@@ -3,7 +3,7 @@ import { desc, eq } from "drizzle-orm"
 import { db, serialize } from "../../../src/lib/db/index.js"
 import { subscriptions } from "../../../src/lib/db/schema.js"
 import { requireAuth } from "../../_lib/auth.js"
-import { cancelSubscription } from "../../_lib/dodo.js"
+import { cancelSubscription, defaultDodoEnv, type DodoEnv } from "../../_lib/dodo.js"
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ctx = await requireAuth(req, res)
@@ -25,8 +25,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   if (sub.provider === "dodo" && sub.providerSubscriptionId) {
+    const env = (sub.dodoEnvironment ?? defaultDodoEnv()) as DodoEnv
     try {
-      await cancelSubscription(sub.providerSubscriptionId, false) // cancel at end of current period
+      await cancelSubscription(sub.providerSubscriptionId, env, false) // cancel at end of current period
     } catch (err) {
       return res.status(502).json({ error: err instanceof Error ? err.message : "Dodo Payments error" })
     }

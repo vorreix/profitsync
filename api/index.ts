@@ -34,6 +34,7 @@ import legalAccept from "./_routes/legal/accept.js"
 import trash from "./_routes/trash.js"
 import trashRestore from "./_routes/trash/restore.js"
 import trashPurge from "./_routes/trash/purge.js"
+import publicPricing from "./_routes/public/pricing.js"
 import billingPricing from "./_routes/billing/pricing.js"
 import billingCreateSubscription from "./_routes/billing/create-subscription.js"
 import billingCancel from "./_routes/billing/cancel.js"
@@ -92,6 +93,9 @@ const routes: RoutePattern<ApiHandler>[] = [
   { segments: ["trash"], handler: trash },
   { segments: ["trash", "restore"], handler: trashRestore },
   { segments: ["trash", "purge"], handler: trashPurge },
+
+  // Public, unauthenticated pricing for the marketing landing page.
+  { segments: ["public", "pricing"], handler: publicPricing },
 
   { segments: ["billing", "pricing"], handler: billingPricing },
   { segments: ["billing", "create-subscription"], handler: billingCreateSubscription },

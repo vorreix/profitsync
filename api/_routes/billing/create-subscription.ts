@@ -3,7 +3,7 @@ import { desc, eq } from "drizzle-orm"
 import { db, serialize } from "../../../src/lib/db/index.js"
 import { plans, subscriptions, userProfiles } from "../../../src/lib/db/schema.js"
 import { requireAuth } from "../../_lib/auth.js"
-import { createSubscription, isDodoConfigured, productIdForPlan } from "../../_lib/dodo.js"
+import { createSubscription, isDodoConfigured, productIdForPlan, type DodoEnv } from "../../_lib/dodo.js"
 
 function originFromRequest(req: VercelRequest): string {
   const host = (req.headers["x-forwarded-host"] as string | undefined) || req.headers.host || "localhost:3000"
@@ -39,6 +39,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       planKey: "free",
       status: "active" as const,
       billingCycle: null,
+      dodoEnvironment: null,
       provider: null,
       providerSubscriptionId: null,
       currentPeriodEnd: null,
@@ -62,15 +63,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const billing = (cycle ?? "monthly") as "monthly" | "yearly"
+  // Which Dodo environment this plan's product IDs live in. Snapshotted onto the
+  // subscription below so cancel/sync/invoice later target the same environment.
+  const dodoEnv = (plan.dodoEnvironment ?? "live") as DodoEnv
 
   // Dev/test stub when Dodo isn't configured: mark active so quotas unlock for local testing.
-  if (!isDodoConfigured()) {
+  if (!isDodoConfigured(dodoEnv)) {
     const expiry = new Date()
     expiry.setMonth(expiry.getMonth() + (billing === "yearly" ? 12 : 1))
     const stubValues = {
       planKey: plan_key,
       status: "active" as const,
       billingCycle: billing,
+      dodoEnvironment: dodoEnv,
       provider: "stub",
       providerSubscriptionId: `stub_${ctx.orgId}`,
       currentPeriodEnd: expiry,
@@ -111,12 +116,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       billing: { country },
       returnUrl: `${originFromRequest(req)}/subscription?dodo=return`,
       metadata: { organization_id: ctx.orgId, plan_key, billing_cycle: billing },
+      env: dodoEnv,
     })
 
     const pendingValues = {
       planKey: plan_key,
       status: "pending",
       billingCycle: billing,
+      dodoEnvironment: dodoEnv,
       provider: "dodo",
       providerSubscriptionId: sub.subscription_id,
       currentPeriodEnd: null,
