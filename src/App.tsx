@@ -1,5 +1,5 @@
 import { lazy, Suspense } from "react"
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom"
+import { BrowserRouter, Routes, Route } from "react-router-dom"
 import { Loader as Loader2 } from "lucide-react"
 import { AppLayout } from "@/components/AppLayout"
 import { AdminLayout } from "@/pages/admin/AdminLayout"
@@ -23,6 +23,10 @@ const OnboardingPage = lazy(() => import("@/pages/OnboardingPage").then((m) => (
 const InvitationPage = lazy(() => import("@/pages/InvitationPage").then((m) => ({ default: m.InvitationPage })))
 const PrivacyPolicyPage = lazy(() => import("@/pages/PrivacyPolicyPage").then((m) => ({ default: m.PrivacyPolicyPage })))
 const TermsOfServicePage = lazy(() => import("@/pages/TermsOfServicePage").then((m) => ({ default: m.TermsOfServicePage })))
+
+// Public marketing landing — fully self-contained in src/landing/ (its own
+// components, styles, i18n). Lazy-loaded so it never bloats the app bundle.
+const LandingApp = lazy(() => import("@/landing/LandingApp"))
 
 const LoginPage = lazy(() => import("@/pages/LoginPage").then((m) => ({ default: m.LoginPage })))
 const SignupPage = lazy(() => import("@/pages/SignupPage").then((m) => ({ default: m.SignupPage })))
@@ -79,9 +83,11 @@ export function App() {
             <Route path="admins" element={<AdminAdminsPage />} />
           </Route>
 
-          {/* App Routes */}
-          <Route path="/" element={<AppLayout />}>
-            <Route index element={<Navigate to="/dashboard" replace />} />
+          {/* Public marketing landing at the root domain (profitsync.net). */}
+          <Route path="/" element={<LandingApp />} />
+
+          {/* App Routes — pathless layout so /dashboard, /clients, … keep working. */}
+          <Route element={<AppLayout />}>
             <Route path="dashboard" element={<Dashboard />} />
             <Route path="clients" element={<BusinessOnlyRoute feature="clients"><ClientsPage /></BusinessOnlyRoute>} />
             <Route path="clients/:id" element={<BusinessOnlyRoute feature="clients"><ClientDetailPage /></BusinessOnlyRoute>} />
