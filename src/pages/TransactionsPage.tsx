@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from "react"
+import { useEffect, useMemo, useState, useCallback, useRef } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { apiGet, apiPost, apiPatch, apiDelete } from "@/lib/api"
@@ -20,9 +20,9 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { toast } from "sonner"
-import { Plus, Search, ArrowUpRight, ArrowDownRight, DollarSign, Pencil, Trash2, Paperclip, Download, X, Eye, ChevronsUpDown, Check } from "lucide-react"
+import { Plus, Search, ArrowUpRight, ArrowDownRight, DollarSign, Pencil, Trash2, Paperclip, Download, X, Eye, ChevronsUpDown, Check, Tag } from "lucide-react"
 
-type PaginatedResponse<T> = { data: T[]; total: number }
+type PaginatedResponse<T> = { data: T[]; total: number; summary?: { incoming: number; outgoing: number } }
 
 type TxForm = {
   client_id: string
@@ -105,7 +105,10 @@ function ClientCombobox({ clients, value, onChange }: {
                   onSelect={() => { onChange(c.id); setOpen(false) }}
                 >
                   <Check className={`mr-2 size-4 shrink-0 ${value === c.id ? "opacity-100" : "opacity-0"}`} />
-                  {c.name}{c.company ? ` — ${c.company}` : ""}
+                  <span className="truncate">{c.name}{c.company ? ` — ${c.company}` : ""}</span>
+                  {c.is_own && (
+                    <Badge variant="outline" className="ml-auto text-[10px] py-0 shrink-0">Own</Badge>
+                  )}
                 </CommandItem>
               ))}
             </CommandGroup>
@@ -351,12 +354,16 @@ export function TransactionsPage() {
   const [search, setSearch] = useState("")
   const [tab, setTab] = useState("all")
   const [sort, setSort] = useState("date_desc")
+  const [categoryFilter, setCategoryFilter] = useState("all")
+  const [summary, setSummary] = useState<{ incoming: number; outgoing: number }>({ incoming: 0, outgoing: 0 })
   const searchRef = useRef(search)
   searchRef.current = search
   const tabRef = useRef(tab)
   tabRef.current = tab
   const sortRef = useRef(sort)
   sortRef.current = sort
+  const categoryRef = useRef(categoryFilter)
+  categoryRef.current = categoryFilter
 
   const [categories, setCategories] = useState<{ incoming: string[]; outgoing: string[] }>(loadCategories)
 
@@ -385,11 +392,12 @@ export function TransactionsPage() {
   const [pendingFiles, setPendingFiles] = useState<File[]>([])
   const addFileInputRef = useRef<HTMLInputElement>(null)
 
-  const buildParams = useCallback((pageNum: number, s: string, t: string, srt: string) => {
+  const buildParams = useCallback((pageNum: number, s: string, t: string, srt: string, cat: string) => {
     const params = new URLSearchParams({ page: String(pageNum) })
     if (s.trim()) params.set("search", s.trim())
     if (t !== "all") params.set("type", t)
     if (srt) params.set("sort", srt)
+    if (cat && cat !== "all") params.set("category", cat)
     return params.toString()
   }, [])
 
@@ -399,11 +407,12 @@ export function TransactionsPage() {
     setLoading(true)
     try {
       const [result, cls] = await Promise.all([
-        apiGet<PaginatedResponse<Transaction>>(`/api/transactions?${buildParams(1, searchRef.current, tabRef.current, sortRef.current)}`, token),
+        apiGet<PaginatedResponse<Transaction>>(`/api/transactions?${buildParams(1, searchRef.current, tabRef.current, sortRef.current, categoryRef.current)}`, token),
         apiGet<{ data: Client[]; total: number } | Client[]>("/api/clients?page=1", token),
       ])
       setTransactions(result.data)
       setTotal(result.total)
+      setSummary(result.summary ?? { incoming: 0, outgoing: 0 })
       setPage(1)
       const clsData = Array.isArray(cls) ? cls : cls.data
       setClients(clsData)
@@ -418,7 +427,7 @@ export function TransactionsPage() {
   useEffect(() => {
     const timer = setTimeout(() => { fetchPage1() }, search === "" ? 0 : 300)
     return () => clearTimeout(timer)
-  }, [search, tab, sort, fetchPage1])
+  }, [search, tab, sort, categoryFilter, fetchPage1])
 
   useEffect(() => {
     if (searchParams.get("new") === "1") {
@@ -435,11 +444,12 @@ export function TransactionsPage() {
     try {
       const nextPage = page + 1
       const result = await apiGet<PaginatedResponse<Transaction>>(
-        `/api/transactions?${buildParams(nextPage, search, tab, sort)}`,
+        `/api/transactions?${buildParams(nextPage, search, tab, sort, categoryFilter)}`,
         token,
       )
       setTransactions((prev) => [...prev, ...result.data])
       setTotal(result.total)
+      if (result.summary) setSummary(result.summary)
       setPage(nextPage)
     } catch (err) {
       console.error("Failed to load more transactions:", err)
@@ -449,8 +459,18 @@ export function TransactionsPage() {
     }
   }
 
-  const totalIncoming = transactions.filter((t) => t.type === "incoming").reduce((s, t) => s + Number(t.amount), 0)
-  const totalOutgoing = transactions.filter((t) => t.type === "outgoing").reduce((s, t) => s + Number(t.amount), 0)
+  // Income/expense totals come from the server (full filtered set), so they stay
+  // correct across pagination and reflect the search + category filters.
+  const totalIncoming = summary.incoming
+  const totalOutgoing = summary.outgoing
+  const ownClientIds = useMemo(() => new Set(clients.filter((c) => c.is_own).map((c) => c.id)), [clients])
+  // Filter options = the user's defined categories plus any category that appears
+  // in the loaded transactions (covers ones added on another device).
+  const allCategoryOptions = useMemo(() => {
+    const set = new Set<string>([...categories.incoming, ...categories.outgoing])
+    for (const tx of transactions) if (tx.category?.trim()) set.add(tx.category.trim())
+    return [...set].filter(Boolean).sort((a, b) => a.localeCompare(b))
+  }, [categories, transactions])
 
   async function handleAdd() {
     if (!isPersonal && !form.client_id) { toast.error("Client is required"); return }
@@ -702,7 +722,19 @@ export function TransactionsPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
           <Input placeholder="Search by client, description, category..." className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
-        <div className="flex items-center gap-2 sm:gap-3">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+          <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+            <SelectTrigger className="flex-1 sm:flex-none sm:w-44">
+              <Tag className="size-3.5 opacity-60" />
+              <SelectValue placeholder="Category" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All categories</SelectItem>
+              {allCategoryOptions.map((c) => (
+                <SelectItem key={c} value={c}>{c}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Select value={sort} onValueChange={setSort}>
             <SelectTrigger className="flex-1 sm:flex-none sm:w-44">
               <SelectValue placeholder="Sort by" />
@@ -732,9 +764,9 @@ export function TransactionsPage() {
         <div className="py-20 text-center border rounded-xl">
           <DollarSign className="size-10 mx-auto text-muted-foreground/50 mb-3" />
           <p className="text-muted-foreground font-medium">
-            {search || tab !== "all" ? "No transactions match your filters" : "No transactions yet"}
+            {search || tab !== "all" || categoryFilter !== "all" ? "No transactions match your filters" : "No transactions yet"}
           </p>
-          {!search && tab === "all" && clients.length > 0 && (
+          {!search && tab === "all" && categoryFilter === "all" && clients.length > 0 && (
             <Button className="mt-4" onClick={() => { setForm(defaultForm()); setAddOpen(true) }}>
               <Plus className="size-4" />
               Add first transaction
@@ -779,6 +811,9 @@ export function TransactionsPage() {
                           >
                             {tx.client_name ?? tx.client_id}
                           </button>
+                          {ownClientIds.has(tx.client_id) && (
+                            <Badge variant="outline" className="text-[10px] py-0 shrink-0">Own</Badge>
+                          )}
                           <span className="text-xs text-muted-foreground shrink-0">·</span>
                         </>
                       )}

@@ -40,8 +40,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { userId, orgId, role } = ctx
 
   if (req.method === "GET") {
-    const { clientId, search, type, page, sort, limit } = req.query as {
-      clientId?: string; search?: string; type?: string; page?: string; sort?: string; limit?: string
+    const { clientId, search, type, page, sort, limit, category } = req.query as {
+      clientId?: string; search?: string; type?: string; page?: string; sort?: string; limit?: string; category?: string
     }
 
     const orderBy = pickOrder(sort)
@@ -74,19 +74,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ? eq(transactions.type, type)
       : undefined
 
+    const categoryFilter = category?.trim()
+      ? eq(transactions.category, category.trim())
+      : undefined
+
     const whereClause = and(
       eq(clients.organizationId, orgId),
       isNull(clients.deletedAt),
       searchFilter,
       typeFilter,
+      categoryFilter,
     )
 
     if (page !== undefined) {
       const pageNum = Math.max(1, parseInt(page, 10) || 1)
       const offset = (pageNum - 1) * PAGE_SIZE
 
-      // Count and page rows are independent — run them as one parallel batch.
-      const [[{ total }], rows] = await Promise.all([
+      // The income/expense summary ignores the type tab (so both totals always
+      // show) but respects search + category, so the cards reflect the filters.
+      const summaryWhere = and(
+        eq(clients.organizationId, orgId),
+        isNull(clients.deletedAt),
+        searchFilter,
+        categoryFilter,
+      )
+
+      // Count, page rows and summary are independent — run as one parallel batch.
+      const [[{ total }], rows, [summaryRow]] = await Promise.all([
         db
           .select({ total: count() })
           .from(transactions)
@@ -100,9 +114,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           .orderBy(...orderBy)
           .limit(PAGE_SIZE)
           .offset(offset),
+        db
+          .select({
+            incoming: sql<string>`coalesce(sum(case when ${transactions.type} = 'incoming' then ${transactions.amount}::numeric else 0 end), 0)`,
+            outgoing: sql<string>`coalesce(sum(case when ${transactions.type} = 'outgoing' then ${transactions.amount}::numeric else 0 end), 0)`,
+          })
+          .from(transactions)
+          .innerJoin(clients, eq(transactions.clientId, clients.id))
+          .where(summaryWhere),
       ])
 
-      return res.json({ data: rows.map(serialize), total })
+      return res.json({
+        data: rows.map(serialize),
+        total,
+        summary: { incoming: Number(summaryRow.incoming), outgoing: Number(summaryRow.outgoing) },
+      })
     }
 
     // `?limit=N` (without `page`) returns just the top N rows — used by the

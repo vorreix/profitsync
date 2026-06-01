@@ -30,6 +30,7 @@ type Plan = {
   yearly_price_usd: string
   monthly_discount_pct: number
   yearly_discount_pct: number
+  promo_note: string
   limits: Record<string, number>
   feature_labels: Record<string, string>
   country: string
@@ -375,9 +376,9 @@ export function SubscriptionPage() {
                         {formatMinor(finalAmount, local.currency)}
                         <span className="text-sm font-normal text-muted-foreground ml-1">/{cycle === "yearly" ? "yr" : "mo"}</span>
                       </p>
-                      {discount > 0 && (
+                      {(plan.promo_note?.trim() || discount > 0) && (
                         <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1">
-                          First {cycle === "yearly" ? "year" : "month"} {discount}% off
+                          {plan.promo_note?.trim() || `First ${cycle === "yearly" ? "year" : "month"} ${discount}% off`}
                         </p>
                       )}
                     </div>

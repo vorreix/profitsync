@@ -8,6 +8,7 @@ export type Client = {
   phone: string
   status: "active" | "inactive" | "archived"
   notes: string
+  is_own?: boolean
   onboard_date?: string | null
   deleted_at: string | null
   created_at: string

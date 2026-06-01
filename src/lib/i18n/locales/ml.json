@@ -87,7 +87,18 @@
     "companyUpsellBody": "ക്ലയന്റുകളെ കൈകാര്യം ചെയ്യൂ, ക്വട്ടേഷനുകൾ അയയ്ക്കൂ, ടീമിനെ ക്ഷണിക്കൂ — ഒരു കമ്പനി വർക്ക്‌സ്‌പേസ് സൗജന്യമായി പരീക്ഷിക്കൂ.",
     "companyUpsellCta": "സൗജന്യമായി പരീക്ഷിക്കൂ",
     "companyUpsellNeverShow": "വീണ്ടും കാണിക്കരുത്",
-    "companyUpsellDismiss": "അടയ്ക്കുക"
+    "companyUpsellDismiss": "അടയ്ക്കുക",
+    "filtered": "ഫിൽട്ടർ ചെയ്ത കാഴ്ച",
+    "allCategories": "എല്ലാ വിഭാഗങ്ങൾ",
+    "searchCategories": "വിഭാഗങ്ങൾ തിരയുക...",
+    "noCategoriesFound": "വിഭാഗങ്ങൾ കണ്ടെത്തിയില്ല",
+    "uncategorized": "വിഭാഗമില്ലാത്തത്",
+    "ownLabel": "സ്വന്തം",
+    "transactionsKpi": "ഇടപാടുകൾ",
+    "transactionsTotal_one": "{{count}} മൊത്തം",
+    "transactionsTotal_other": "{{count}} മൊത്തം",
+    "revenueVsCategories": "വിഭാഗം അനുസരിച്ച് വരുമാനവും ചെലവും",
+    "topCategories": "മുൻനിര വിഭാഗങ്ങൾ"
   },
   "chart": {
     "incoming": "വരവ്",

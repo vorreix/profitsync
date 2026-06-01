@@ -87,7 +87,18 @@
     "companyUpsellBody": "క్లయింట్‌లను నిర్వహించండి, కొటేషన్‌లను పంపండి, మీ టీమ్‌ను ఆహ్వానించండి — కంపెనీ ఖాతాను ఉచితంగా ప్రయత్నించండి.",
     "companyUpsellCta": "ఉచితంగా ప్రయత్నించండి",
     "companyUpsellNeverShow": "మరలా చూపవద్దు",
-    "companyUpsellDismiss": "మూయు"
+    "companyUpsellDismiss": "మూయు",
+    "filtered": "ఫిల్టర్ చేసిన వీక్షణ",
+    "allCategories": "అన్ని విభాగాలు",
+    "searchCategories": "విభాగాలను శోధించండి...",
+    "noCategoriesFound": "విభాగాలు కనుగొనబడలేదు",
+    "uncategorized": "వర్గీకరించనిది",
+    "ownLabel": "స్వంత",
+    "transactionsKpi": "లావాదేవీలు",
+    "transactionsTotal_one": "{{count}} మొత్తం",
+    "transactionsTotal_other": "{{count}} మొత్తం",
+    "revenueVsCategories": "విభాగం వారీగా రాబడి vs ఖర్చులు",
+    "topCategories": "టాప్ విభాగాలు"
   },
   "chart": {
     "incoming": "రాబడి",

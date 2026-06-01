@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { and, asc, count, desc, eq, ilike, isNull, or, sql } from "drizzle-orm"
 import { db, serialize } from "../../src/lib/db/index.js"
 import { clients, transactions } from "../../src/lib/db/schema.js"
-import { canWrite, ensureDefaultClient, isPersonalAccount, requireAuth, requireBusinessFeature } from "../_lib/auth.js"
+import { canWrite, ensureDefaultClient, requireAuth, requireBusinessFeature } from "../_lib/auth.js"
 import { checkClientQuota, checkNoteLength } from "../_lib/quota.js"
 
 const VALID_STATUSES = ["active", "inactive", "archived"]
@@ -14,9 +14,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { userId, orgId, role } = ctx
 
   if (req.method === "GET") {
-    // Personal accounts have no Clients UI but transactions anchor to a single
-    // default client — make sure it exists so the personal experience works.
-    if (isPersonalAccount(ctx)) await ensureDefaultClient(orgId, userId)
+    // Every workspace has exactly one "own"/internal client (the personal anchor,
+    // or the business own-company client). Make sure it exists before listing.
+    await ensureDefaultClient(orgId, userId)
 
     const { search, sort, page } = req.query as {
       search?: string; sort?: string; page?: string
@@ -55,6 +55,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       phone: clients.phone,
       status: clients.status,
       notes: clients.notes,
+      isOwn: clients.isOwn,
       onboardDate: clients.onboardDate,
       deletedAt: clients.deletedAt,
       createdAt: clients.createdAt,
@@ -76,7 +77,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           .leftJoin(transactions, eq(transactions.clientId, clients.id))
           .where(whereClause)
           .groupBy(clients.id)
-          .orderBy(orderBy, desc(clients.id))
+          .orderBy(desc(clients.isOwn), orderBy, desc(clients.id))
           .limit(PAGE_SIZE)
           .offset(offset),
       ])
@@ -90,7 +91,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .leftJoin(transactions, eq(transactions.clientId, clients.id))
       .where(whereClause)
       .groupBy(clients.id)
-      .orderBy(orderBy)
+      .orderBy(desc(clients.isOwn), orderBy)
     return res.json(rows.map(serialize))
   }
 

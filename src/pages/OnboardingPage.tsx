@@ -36,6 +36,7 @@ type Plan = {
   key: string
   name: string
   account_type: string | null
+  promo_note?: string
   feature_labels?: Record<string, string>
   local_pricing: PlanLocalPricing
 }
@@ -467,9 +468,9 @@ function PlanSummary({
             <p className="text-xs text-muted-foreground">{t(`onboarding.${accountType}Tagline`)}</p>
           </div>
         </div>
-        {pct > 0 && (
+        {(plan.promo_note?.trim() || pct > 0) && (
           <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-300">
-            <Sparkles className="size-3" /> {t("onboarding.launchDiscount", { discount: pct })}
+            <Sparkles className="size-3" /> {plan.promo_note?.trim() || t("onboarding.launchDiscount", { discount: pct })}
           </span>
         )}
       </div>
