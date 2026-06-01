@@ -5,7 +5,8 @@ import { organizations, subscriptions, userProfiles } from "../../../src/lib/db/
 import { requireAdmin } from "../../_lib/admin.js"
 
 const PAGE_SIZE = 30
-const VALID_PLANS = ["free", "premium"]
+// free + the current paid tiers (personal/business). "premium" kept for legacy rows.
+const VALID_PLANS = ["free", "personal", "business", "premium"]
 const VALID_STATUSES = ["active", "past_due", "cancelled", "trialing"]
 const VALID_CYCLES = ["monthly", "yearly", ""] // empty allowed for free
 

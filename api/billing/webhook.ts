@@ -2,7 +2,8 @@ import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { desc, eq } from "drizzle-orm"
 import { db } from "../../src/lib/db/index.js"
 import { invoices, subscriptions } from "../../src/lib/db/schema.js"
-import { verifyWebhookSignature, type DodoEnv } from "../_lib/dodo.js"
+import { verifyWebhookSignature, type DodoEnv, type DodoScheduledChange } from "../_lib/dodo.js"
+import { resolveScheduledChange } from "../_lib/billing-sync.js"
 
 export const config = {
   api: {
@@ -106,12 +107,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (nextStatus) updates.status = nextStatus
       if (subId && !sub.providerSubscriptionId) updates.providerSubscriptionId = subId
       if (metadata.plan_key) updates.planKey = metadata.plan_key
+      if (metadata.billing_cycle) updates.billingCycle = metadata.billing_cycle
       // Self-heal legacy rows: a subscription's env is fixed for life, so if it's
       // missing, adopt the env that signed this webhook (the authoritative source).
       if (webhookEnv && !sub.dodoEnvironment) updates.dodoEnvironment = webhookEnv
 
+      const prevBilling = data.previous_billing_date as string | undefined
+      if (prevBilling) updates.currentPeriodStart = new Date(prevBilling)
       const nextBilling = data.next_billing_date as string | undefined
       if (nextBilling) updates.currentPeriodEnd = new Date(nextBilling)
+
+      // Keep any scheduled cycle switch (e.g. monthly → yearly) in sync with Dodo.
+      const planKeyForResolve = (metadata.plan_key ?? sub.planKey) as string
+      updates.scheduledChange = await resolveScheduledChange(
+        data.scheduled_change as DodoScheduledChange | undefined,
+        planKeyForResolve,
+      )
 
       if (nextStatus === "cancelled") {
         updates.cancelledAt = new Date()
@@ -133,6 +144,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const paymentId = data.payment_id as string | undefined
         const minorAmount = (data.total_amount ?? data.settlement_amount ?? data.amount) as number | undefined
         const currency = (data.currency ?? data.settlement_currency ?? "USD") as string
+        // Use the payment's own timestamp so the invoice's issued/paid date matches
+        // Dodo (and the reconcile path's invoiceValuesFromPayment) instead of the
+        // webhook-handler clock — otherwise a later reconcile rewrites the row.
+        const paidAt = data.created_at ? new Date(data.created_at as string) : new Date()
         const baseValues = {
           organizationId: sub.organizationId,
           subscriptionId: sub.id,
@@ -141,7 +156,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           status: "paid",
           provider: "dodo",
           providerInvoiceId: paymentId ?? null,
-          paidAt: new Date(),
+          issuedAt: paidAt,
+          paidAt,
         }
         const [existing] = paymentId
           ? await db.select().from(invoices).where(eq(invoices.providerInvoiceId, paymentId))

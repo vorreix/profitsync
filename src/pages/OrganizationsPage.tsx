@@ -6,7 +6,7 @@ import { toast } from "sonner"
 import { Building2, Check, Loader as Loader2, Pencil, Plus, Trash2, Users } from "lucide-react"
 import { apiDelete, apiPatch, apiPost } from "@/lib/api"
 import { useOrg } from "@/lib/org-context"
-import type { Organization } from "@/lib/types"
+import { isPaidPlanKey, type Organization } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -171,12 +171,12 @@ export function OrganizationsPage() {
                       <Badge
                         variant="outline"
                         className={`text-[10px] uppercase tracking-wide ${
-                          org.plan_key === "premium"
+                          isPaidPlanKey(org.plan_key)
                             ? "border-amber-500/40 text-amber-600 bg-amber-500/10 dark:text-amber-300"
                             : ""
                         }`}
                       >
-                        {org.plan_key === "premium" ? t("organizations.premium") : t("organizations.free")}
+                        {isPaidPlanKey(org.plan_key) ? t("organizations.premium") : t("organizations.free")}
                       </Badge>
                       {isActive && (
                         <Badge className="text-[10px] uppercase tracking-wide">
