@@ -49,6 +49,17 @@ function formatCurrency(amount: number, currency: string) {
   }).format(amount)
 }
 
+// Compact currency for chart axis ticks (e.g. "$5K", "€1.2M"). Currency-aware so
+// the axis tracks the active org currency instead of a hardcoded symbol.
+function formatCompactCurrency(amount: number, currency: string) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency,
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format(amount)
+}
+
 function formatTxDate(value: string) {
   const d = new Date(value)
   if (Number.isNaN(d.getTime())) return value
@@ -558,8 +569,29 @@ export function Dashboard() {
                 <BarChart data={chartData} accessibilityLayer>
                   <CartesianGrid vertical={false} className="stroke-border" />
                   <XAxis dataKey="name" tickLine={false} axisLine={false} tick={{ fontSize: 12 }} />
-                  <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 12 }} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} />
-                  <ChartTooltip content={<ChartTooltipContent />} />
+                  <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 12 }} tickFormatter={(v) => formatCompactCurrency(Number(v), currency)} />
+                  <ChartTooltip
+                    content={
+                      <ChartTooltipContent
+                        formatter={(value, name) => (
+                          <>
+                            <div
+                              className="size-2.5 shrink-0 rounded-[2px]"
+                              style={{ backgroundColor: `var(--color-${name})` }}
+                            />
+                            <div className="flex flex-1 items-center justify-between gap-2 leading-none">
+                              <span className="text-muted-foreground">
+                                {chartConfig[String(name)]?.label ?? name}
+                              </span>
+                              <span className="font-mono font-medium tabular-nums text-foreground">
+                                {formatCurrency(Number(value), currency)}
+                              </span>
+                            </div>
+                          </>
+                        )}
+                      />
+                    }
+                  />
                   <Bar dataKey="incoming" fill="var(--color-incoming)" radius={[4, 4, 0, 0]} />
                   <Bar dataKey="outgoing" fill="var(--color-outgoing)" radius={[4, 4, 0, 0]} />
                 </BarChart>
