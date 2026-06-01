@@ -1,9 +1,9 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { and, eq } from "drizzle-orm"
 import { db } from "../../../src/lib/db/index.js"
-import { invoices } from "../../../src/lib/db/schema.js"
+import { invoices, subscriptions } from "../../../src/lib/db/schema.js"
 import { requireAuth } from "../../_lib/auth.js"
-import { fetchInvoicePdf, isDodoConfigured } from "../../_lib/dodo.js"
+import { defaultDodoEnv, fetchInvoicePdf, isDodoConfigured, type DodoEnv } from "../../_lib/dodo.js"
 
 /**
  * Stream a Dodo-generated invoice PDF for one of the active org's invoices.
@@ -34,12 +34,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.json({ url: invoice.pdfUrl })
   }
 
-  if (invoice.provider !== "dodo" || !invoice.providerInvoiceId || !isDodoConfigured()) {
+  if (invoice.provider !== "dodo" || !invoice.providerInvoiceId) {
+    return res.status(404).json({ error: "No downloadable invoice document is available yet." })
+  }
+
+  // The invoice's Dodo environment is whatever its subscription was created in.
+  const [sub] = invoice.subscriptionId
+    ? await db.select().from(subscriptions).where(eq(subscriptions.id, invoice.subscriptionId))
+    : []
+  const env = (sub?.dodoEnvironment ?? defaultDodoEnv()) as DodoEnv
+  if (!isDodoConfigured(env)) {
     return res.status(404).json({ error: "No downloadable invoice document is available yet." })
   }
 
   try {
-    const pdf = await fetchInvoicePdf(invoice.providerInvoiceId)
+    const pdf = await fetchInvoicePdf(invoice.providerInvoiceId, env)
     res.setHeader("Content-Type", "application/pdf")
     res.setHeader("Content-Disposition", `inline; filename="invoice-${invoice.id}.pdf"`)
     return res.status(200).send(pdf)

@@ -3,7 +3,7 @@ import { asc, eq } from "drizzle-orm"
 import { db, serialize } from "../../../src/lib/db/index.js"
 import { plans } from "../../../src/lib/db/schema.js"
 import { requireAdmin } from "../../_lib/admin.js"
-import { getProduct, isDodoConfigured, priceFromProduct } from "../../_lib/dodo.js"
+import { getProduct, isDodoConfigured, priceFromProduct, type DodoEnv } from "../../_lib/dodo.js"
 
 const VALID_ACCOUNT_TYPES = new Set(["personal", "business"])
 
@@ -59,10 +59,14 @@ type Preview = {
  * description, per-cycle price + discount (and the resulting discounted price),
  * currency, billing interval and trial. Never throws — failures become warnings.
  */
-async function previewFromDodo(monthlyId?: string | null, yearlyId?: string | null): Promise<Preview> {
+async function previewFromDodo(
+  monthlyId?: string | null,
+  yearlyId?: string | null,
+  env: DodoEnv = "live",
+): Promise<Preview> {
   const warnings: string[] = []
   const out: Preview = { currency: "USD", monthly: null, yearly: null, dodo_metadata: {}, warnings }
-  if (!isDodoConfigured()) {
+  if (!isDodoConfigured(env)) {
     warnings.push("Dodo Payments isn't configured — enter the values manually.")
     return out
   }
@@ -74,7 +78,7 @@ async function previewFromDodo(monthlyId?: string | null, yearlyId?: string | nu
   for (const [cycle, id] of cycles) {
     if (!id) continue
     try {
-      const product = await getProduct(id)
+      const product = await getProduct(id, env)
       const d = priceFromProduct(product)
       out.currency = d.currency || out.currency
       // Sync the plan name + description from Dodo (first product that has them).
@@ -105,7 +109,12 @@ async function previewFromDodo(monthlyId?: string | null, yearlyId?: string | nu
         if (d.interval && d.interval !== "yearly") warnings.push(`Yearly product bills ${d.interval}, not yearly.`)
       }
     } catch (err) {
-      warnings.push(`${cycle} product: ${err instanceof Error ? err.message : "lookup failed"}`)
+      const msg = err instanceof Error ? err.message : "lookup failed"
+      // A 404 almost always means the ID belongs to the other Dodo environment.
+      const hint = /404|NOT_FOUND/i.test(msg)
+        ? ` — this product may belong to the other Dodo environment (you selected "${env}"); check the Test/Live toggle.`
+        : ""
+      warnings.push(`${cycle} product: ${msg}${hint}`)
     }
   }
   return out
@@ -142,6 +151,7 @@ type PlanBody = {
   promo_note?: string
   dodo_product_monthly?: string | null
   dodo_product_yearly?: string | null
+  dodo_environment?: DodoEnv
   limits?: Record<string, unknown>
   feature_labels?: Record<string, unknown>
   dodo_metadata?: Record<string, unknown>
@@ -164,7 +174,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Wizard preview: fetch Dodo product data and return it WITHOUT saving.
     if (body.preview) {
-      const preview = await previewFromDodo(body.dodo_product_monthly, body.dodo_product_yearly)
+      const preview = await previewFromDodo(
+        body.dodo_product_monthly,
+        body.dodo_product_yearly,
+        body.dodo_environment ?? "live",
+      )
       return res.json(preview)
     }
 
@@ -177,7 +191,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const [existing] = await db.select({ id: plans.id }).from(plans).where(eq(plans.key, key))
     if (existing) return res.status(409).json({ error: `A plan with key "${key}" already exists` })
 
-    const derived = body.derive ? await previewFromDodo(body.dodo_product_monthly, body.dodo_product_yearly) : null
+    const derived = body.derive
+      ? await previewFromDodo(body.dodo_product_monthly, body.dodo_product_yearly, body.dodo_environment ?? "live")
+      : null
     const dcols = derived ? previewToColumns(derived) : {}
 
     const [created] = await db
@@ -195,6 +211,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         promoNote: body.promo_note ?? "",
         dodoProductMonthly: body.dodo_product_monthly ?? null,
         dodoProductYearly: body.dodo_product_yearly ?? null,
+        dodoEnvironment: body.dodo_environment ?? "live",
         limits: body.limits ?? {},
         featureLabels: body.feature_labels ?? {},
         dodoMetadata: (dcols.dodoMetadata as Record<string, unknown>) ?? body.dodo_metadata ?? {},
@@ -213,7 +230,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // When asked to derive, fetch name/description/price/discount from Dodo.
-    const derived = body.derive ? await previewFromDodo(body.dodo_product_monthly, body.dodo_product_yearly) : null
+    const derived = body.derive
+      ? await previewFromDodo(body.dodo_product_monthly, body.dodo_product_yearly, body.dodo_environment ?? "live")
+      : null
     const dcols = derived ? previewToColumns(derived) : {}
 
     const [updated] = await db
@@ -230,6 +249,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ...(body.promo_note !== undefined ? { promoNote: body.promo_note } : {}),
         ...(body.dodo_product_monthly !== undefined ? { dodoProductMonthly: body.dodo_product_monthly } : {}),
         ...(body.dodo_product_yearly !== undefined ? { dodoProductYearly: body.dodo_product_yearly } : {}),
+        ...(body.dodo_environment !== undefined ? { dodoEnvironment: body.dodo_environment } : {}),
         ...(body.limits !== undefined ? { limits: body.limits } : {}),
         ...(body.feature_labels !== undefined ? { featureLabels: body.feature_labels } : {}),
         ...(body.dodo_metadata !== undefined ? { dodoMetadata: body.dodo_metadata } : {}),
