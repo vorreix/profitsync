@@ -3,32 +3,72 @@ import { createHmac, timingSafeEqual } from "crypto"
 /**
  * Dodo Payments client (Merchant of Record).
  *
- * Auth: `Authorization: Bearer <DODO_PAYMENTS_API_KEY>`.
- * Base URL is environment-scoped: test_mode -> test.dodopayments.com, live_mode -> live.dodopayments.com.
+ * Every call is scoped to a `DodoEnv` ("test" | "live") passed by the caller —
+ * test and live are fully separate datastores with separate API keys, so the
+ * environment is a per-plan property (see plans.dodo_environment), not a single
+ * deployment-wide constant. baseFor/keyFor/webhookSecretFor resolve the right
+ * endpoint + credential per env, falling back to the legacy single
+ * DODO_PAYMENTS_API_KEY / DODO_PAYMENTS_WEBHOOK_SECRET for backward compatibility.
  *
  * We use the Subscriptions API with `payment_link: true`, which returns a hosted
  * checkout URL. Dodo's hosted page collects the customer's full billing address
  * and payment method, computes tax (MoR), and supports global payment methods.
  */
 
-const ENVIRONMENT = (process.env.DODO_PAYMENTS_ENVIRONMENT || "test_mode").toLowerCase()
-const BASE = ENVIRONMENT === "live_mode" ? "https://live.dodopayments.com" : "https://test.dodopayments.com"
+/** A Dodo Payments environment. Each is a fully separate datastore + key. */
+export type DodoEnv = "test" | "live"
 
-export function isDodoConfigured(): boolean {
-  return !!process.env.DODO_PAYMENTS_API_KEY
+/**
+ * The deployment's default Dodo environment, from DODO_PAYMENTS_ENVIRONMENT
+ * (defaults to test). Two uses:
+ *  - backward-compat fallback for the legacy single DODO_PAYMENTS_API_KEY /
+ *    DODO_PAYMENTS_WEBHOOK_SECRET vars (which env they belong to), and
+ *  - the fallback env for legacy subscription rows whose dodo_environment is
+ *    null (created before per-plan environments existed) — safer than a
+ *    hardcoded "live", which would be wrong on a test_mode deployment.
+ * Read at call time so tests (and env changes) take effect without reloading.
+ */
+export function defaultDodoEnv(): DodoEnv {
+  return (process.env.DODO_PAYMENTS_ENVIRONMENT || "test_mode").toLowerCase() === "live_mode" ? "live" : "test"
 }
 
-function authHeader(): string {
-  const key = process.env.DODO_PAYMENTS_API_KEY
-  if (!key) throw new Error("DODO_PAYMENTS_API_KEY not configured")
+function baseFor(env: DodoEnv): string {
+  return env === "live" ? "https://live.dodopayments.com" : "https://test.dodopayments.com"
+}
+
+/** Resolve the API key for an env, falling back to the legacy single key. */
+function keyFor(env: DodoEnv): string | undefined {
+  const explicit = env === "live" ? process.env.DODO_PAYMENTS_API_KEY_LIVE : process.env.DODO_PAYMENTS_API_KEY_TEST
+  if (explicit) return explicit
+  if (env === defaultDodoEnv()) return process.env.DODO_PAYMENTS_API_KEY
+  return undefined
+}
+
+/** Resolve the webhook signing secret for an env, falling back to the legacy one. */
+function webhookSecretFor(env: DodoEnv): string | undefined {
+  const explicit =
+    env === "live" ? process.env.DODO_PAYMENTS_WEBHOOK_SECRET_LIVE : process.env.DODO_PAYMENTS_WEBHOOK_SECRET_TEST
+  if (explicit) return explicit
+  if (env === defaultDodoEnv()) return process.env.DODO_PAYMENTS_WEBHOOK_SECRET
+  return undefined
+}
+
+/** True when an API key is configured for the given environment. */
+export function isDodoConfigured(env: DodoEnv): boolean {
+  return !!keyFor(env)
+}
+
+function authHeader(env: DodoEnv): string {
+  const key = keyFor(env)
+  if (!key) throw new Error(`DODO_PAYMENTS_API_KEY not configured for ${env} environment`)
   return `Bearer ${key}`
 }
 
-async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const res = await fetch(BASE + path, {
+async function call<T>(path: string, env: DodoEnv, init: RequestInit = {}): Promise<T> {
+  const res = await fetch(baseFor(env) + path, {
     ...init,
     headers: {
-      Authorization: authHeader(),
+      Authorization: authHeader(env),
       "Content-Type": "application/json",
       ...(init.headers ?? {}),
     },
@@ -89,8 +129,9 @@ export async function createSubscription(input: {
   billing: DodoBilling
   returnUrl: string
   metadata?: Record<string, string>
+  env: DodoEnv
 }): Promise<DodoCreateSubscriptionResult> {
-  return call<DodoCreateSubscriptionResult>("/subscriptions", {
+  return call<DodoCreateSubscriptionResult>("/subscriptions", input.env, {
     method: "POST",
     body: JSON.stringify({
       product_id: input.productId,
@@ -110,8 +151,8 @@ export async function createSubscription(input: {
   })
 }
 
-export async function getSubscription(subscriptionId: string): Promise<DodoSubscription> {
-  return call<DodoSubscription>(`/subscriptions/${subscriptionId}`)
+export async function getSubscription(subscriptionId: string, env: DodoEnv): Promise<DodoSubscription> {
+  return call<DodoSubscription>(`/subscriptions/${subscriptionId}`, env)
 }
 
 /**
@@ -120,9 +161,9 @@ export async function getSubscription(subscriptionId: string): Promise<DodoSubsc
  * Returns the raw bytes so the caller can stream them to the browser (we never
  * expose the Dodo API key to the client).
  */
-export async function fetchInvoicePdf(paymentId: string): Promise<Buffer> {
-  const res = await fetch(`${BASE}/invoices/payments/${encodeURIComponent(paymentId)}`, {
-    headers: { Authorization: authHeader(), Accept: "application/pdf" },
+export async function fetchInvoicePdf(paymentId: string, env: DodoEnv): Promise<Buffer> {
+  const res = await fetch(`${baseFor(env)}/invoices/payments/${encodeURIComponent(paymentId)}`, {
+    headers: { Authorization: authHeader(env), Accept: "application/pdf" },
   })
   if (!res.ok) {
     const text = await res.text().catch(() => "")
@@ -155,8 +196,8 @@ export type DodoProduct = {
 }
 
 /** Fetch a single Dodo product (used to derive plan name / price / interval). */
-export async function getProduct(productId: string): Promise<DodoProduct> {
-  return call<DodoProduct>(`/products/${encodeURIComponent(productId)}`)
+export async function getProduct(productId: string, env: DodoEnv): Promise<DodoProduct> {
+  return call<DodoProduct>(`/products/${encodeURIComponent(productId)}`, env)
 }
 
 /** Everything we can derive about a plan cycle from a single Dodo product. */
@@ -204,8 +245,12 @@ export function priceFromProduct(product: DodoProduct): DerivedProduct {
  * the current billing period (access continues until then). Pass `immediate` to
  * terminate right away.
  */
-export async function cancelSubscription(subscriptionId: string, immediate = false): Promise<DodoSubscription> {
-  return call<DodoSubscription>(`/subscriptions/${subscriptionId}`, {
+export async function cancelSubscription(
+  subscriptionId: string,
+  env: DodoEnv,
+  immediate = false,
+): Promise<DodoSubscription> {
+  return call<DodoSubscription>(`/subscriptions/${subscriptionId}`, env, {
     method: "PATCH",
     body: JSON.stringify(
       immediate ? { status: "cancelled" } : { cancel_at_next_billing_date: true },
@@ -260,27 +305,18 @@ export function mapDodoStatus(dodoStatus: string): "active" | "past_due" | "canc
   }
 }
 
-/**
- * Verify a Dodo webhook using the Standard Webhooks spec.
- * Headers: `webhook-id`, `webhook-timestamp`, `webhook-signature`.
- * Signed content: `${id}.${timestamp}.${rawBody}`, HMAC-SHA256 (base64) keyed by
- * the base64-decoded secret (the part after the `whsec_` prefix).
- */
-export function verifyWebhookSignature(
+/** Does `rawBody` verify against this specific webhook secret? */
+function signatureMatches(
   rawBody: string,
-  headers: { id?: string; timestamp?: string; signature?: string },
+  headers: { id: string; timestamp: string; signature: string },
+  secret: string,
 ): boolean {
-  const secret = process.env.DODO_PAYMENTS_WEBHOOK_SECRET
-  if (!secret) throw new Error("DODO_PAYMENTS_WEBHOOK_SECRET not configured")
-  const { id, timestamp, signature } = headers
-  if (!id || !timestamp || !signature) return false
-
   const keyBytes = Buffer.from(secret.startsWith("whsec_") ? secret.slice(6) : secret, "base64")
-  const signedContent = `${id}.${timestamp}.${rawBody}`
+  const signedContent = `${headers.id}.${headers.timestamp}.${rawBody}`
   const expected = createHmac("sha256", keyBytes).update(signedContent).digest("base64")
 
   // The signature header is a space-separated list of `v1,<base64sig>` tokens.
-  const passed = signature.split(" ").map((part) => (part.includes(",") ? part.split(",")[1] : part))
+  const passed = headers.signature.split(" ").map((part) => (part.includes(",") ? part.split(",")[1] : part))
   const expectedBuf = Buffer.from(expected)
   return passed.some((sig) => {
     const sigBuf = Buffer.from(sig)
@@ -288,4 +324,30 @@ export function verifyWebhookSignature(
   })
 }
 
-export { BASE as DODO_BASE_URL, ENVIRONMENT as DODO_ENVIRONMENT }
+/**
+ * Verify a Dodo webhook using the Standard Webhooks spec.
+ * Headers: `webhook-id`, `webhook-timestamp`, `webhook-signature`.
+ * Signed content: `${id}.${timestamp}.${rawBody}`, HMAC-SHA256 (base64) keyed by
+ * the base64-decoded secret (the part after the `whsec_` prefix).
+ *
+ * A webhook doesn't announce which Dodo environment it came from, so we try both
+ * the test and live signing secrets and report which one matched. Throws only
+ * when neither environment has a secret configured (a misconfiguration).
+ */
+export function verifyWebhookSignature(
+  rawBody: string,
+  headers: { id?: string; timestamp?: string; signature?: string },
+): { valid: boolean; env?: DodoEnv } {
+  const candidates: Array<[DodoEnv, string]> = (["test", "live"] as const)
+    .map((env): [DodoEnv, string | undefined] => [env, webhookSecretFor(env)])
+    .filter((pair): pair is [DodoEnv, string] => !!pair[1])
+  if (candidates.length === 0) throw new Error("DODO_PAYMENTS_WEBHOOK_SECRET not configured")
+
+  const { id, timestamp, signature } = headers
+  if (!id || !timestamp || !signature) return { valid: false }
+
+  for (const [env, secret] of candidates) {
+    if (signatureMatches(rawBody, { id, timestamp, signature }, secret)) return { valid: true, env }
+  }
+  return { valid: false }
+}

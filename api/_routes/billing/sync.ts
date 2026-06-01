@@ -3,7 +3,7 @@ import { desc, eq } from "drizzle-orm"
 import { db, serialize } from "../../../src/lib/db/index.js"
 import { subscriptions } from "../../../src/lib/db/schema.js"
 import { requireAuth } from "../../_lib/auth.js"
-import { getSubscription, isDodoConfigured, mapDodoStatus } from "../../_lib/dodo.js"
+import { defaultDodoEnv, getSubscription, isDodoConfigured, mapDodoStatus, type DodoEnv } from "../../_lib/dodo.js"
 
 /**
  * Reconcile the org's latest subscription with Dodo. Called when the user returns
@@ -22,12 +22,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     .orderBy(desc(subscriptions.updatedAt))
 
   if (!sub) return res.status(404).json({ error: "No subscription to sync" })
-  if (sub.provider !== "dodo" || !sub.providerSubscriptionId || !isDodoConfigured()) {
+  const env = (sub.dodoEnvironment ?? defaultDodoEnv()) as DodoEnv
+  if (sub.provider !== "dodo" || !sub.providerSubscriptionId || !isDodoConfigured(env)) {
     return res.json({ subscription: serialize(sub), synced: false })
   }
 
   try {
-    const remote = await getSubscription(sub.providerSubscriptionId)
+    const remote = await getSubscription(sub.providerSubscriptionId, env)
     const mapped = mapDodoStatus(remote.status)
     const updates: Record<string, unknown> = { status: mapped, updatedAt: new Date() }
     if (remote.next_billing_date) updates.currentPeriodEnd = new Date(remote.next_billing_date)
