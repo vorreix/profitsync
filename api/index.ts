@@ -37,6 +37,7 @@ import trashPurge from "./_routes/trash/purge.js"
 import publicPricing from "./_routes/public/pricing.js"
 import billingPricing from "./_routes/billing/pricing.js"
 import billingCreateSubscription from "./_routes/billing/create-subscription.js"
+import billingChangePlan from "./_routes/billing/change-plan.js"
 import billingCancel from "./_routes/billing/cancel.js"
 import billingSync from "./_routes/billing/sync.js"
 import billingInvoices from "./_routes/billing/invoices.js"
@@ -99,6 +100,7 @@ const routes: RoutePattern<ApiHandler>[] = [
 
   { segments: ["billing", "pricing"], handler: billingPricing },
   { segments: ["billing", "create-subscription"], handler: billingCreateSubscription },
+  { segments: ["billing", "change-plan"], handler: billingChangePlan },
   { segments: ["billing", "cancel"], handler: billingCancel },
   { segments: ["billing", "sync"], handler: billingSync },
   { segments: ["billing", "invoices"], handler: billingInvoices },

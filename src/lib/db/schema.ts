@@ -206,7 +206,14 @@ export const subscriptions = pgTable("subscriptions", {
   dodoEnvironment: text("dodo_environment"), // test | live | null
   provider: text("provider"), // dodo | stub | manual | null
   providerSubscriptionId: text("provider_subscription_id"),
+  // Start of the current paid period (Dodo `previous_billing_date`). Paired with
+  // currentPeriodEnd (the next renewal / `next_billing_date`) so the UI can show
+  // both "started" and "renews on" instead of one ambiguous date.
+  currentPeriodStart: timestamp("current_period_start"),
   currentPeriodEnd: timestamp("current_period_end"),
+  // A plan change scheduled for the next billing date (e.g. monthly → yearly):
+  // { billing_cycle, product_id, effective_at }. Null when no change is pending.
+  scheduledChange: jsonb("scheduled_change"),
   cancelAt: timestamp("cancel_at"),
   cancelledAt: timestamp("cancelled_at"),
   createdAt: timestamp("created_at").defaultNow(),
