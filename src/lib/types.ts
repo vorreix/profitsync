@@ -8,6 +8,7 @@ export type Client = {
   phone: string
   status: "active" | "inactive" | "archived"
   notes: string
+  is_own?: boolean
   onboard_date?: string | null
   deleted_at: string | null
   created_at: string
@@ -76,6 +77,8 @@ export type UserProfile = {
   current_organization_id: string | null
   terms_accepted_at: string | null
   onboarded_at: string | null
+  company_upsell_dismissed_at: string | null
+  company_upsell_hidden: boolean
   created_at: string
   updated_at: string
 }

@@ -33,7 +33,10 @@ export function CurrencyCombobox({ value, onValueChange, disabled }: Props) {
           <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[400px] p-0" align="start">
+      <PopoverContent
+        className="w-[var(--radix-popover-trigger-width)] min-w-[16rem] max-w-[calc(100vw-1.5rem)] p-0 sm:w-[400px]"
+        align="start"
+      >
         <Command filter={(itemValue, search) => {
           const currency = CURRENCY_LIST.find((c) => c.code === itemValue)
           if (!currency) return 0

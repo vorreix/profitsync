@@ -57,6 +57,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === "DELETE") {
     if (!requireBusinessFeature(res, ctx, "clients")) return
     if (!canDelete(role)) return res.status(403).json({ error: "Forbidden" })
+    // The own/internal company client is permanent — it anchors internal expenses.
+    const [target] = await db
+      .select({ isOwn: clients.isOwn })
+      .from(clients)
+      .where(and(eq(clients.id, id), eq(clients.organizationId, orgId), isNull(clients.deletedAt)))
+    if (target?.isOwn) {
+      return res.status(403).json({ error: "Your own company client can't be deleted." })
+    }
     const [updated] = await db
       .update(clients)
       .set({ deletedAt: new Date(), updatedAt: new Date() })
