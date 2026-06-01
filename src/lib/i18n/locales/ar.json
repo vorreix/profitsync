@@ -80,7 +80,14 @@
     "noClientsToDisplay": "لا يوجد عملاء للعرض",
     "income": "الدخل",
     "expenses": "المصروفات",
-    "profit": "الربح"
+    "profit": "الربح",
+    "latestTransactions": "آخر المعاملات",
+    "latestTransactionsEmpty": "لا توجد معاملات حتى الآن",
+    "companyUpsellTitle": "نمِّ أعمالك مع حساب شركة",
+    "companyUpsellBody": "أدر العملاء، وأرسل عروض الأسعار، وادعُ فريقك — جرّب مساحة عمل شركة مجاناً.",
+    "companyUpsellCta": "جرّبها مجاناً",
+    "companyUpsellNeverShow": "عدم الإظهار مجدداً",
+    "companyUpsellDismiss": "إغلاق"
   },
   "chart": {
     "incoming": "وارد",

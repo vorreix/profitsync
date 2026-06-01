@@ -254,7 +254,7 @@ export function MobileAppLayout() {
         </div>
       </header>
 
-      <main className="flex-1 overflow-auto pb-32 page-enter" key={location.pathname + (activeOrg?.id ?? "")}>
+      <main className="flex-1 overflow-y-auto overflow-x-hidden pb-32 page-enter" key={location.pathname + (activeOrg?.id ?? "")}>
         {orgLoading ? (
           <div className="flex h-[60vh] items-center justify-center">
             <Loader className="size-6 animate-spin text-muted-foreground" />

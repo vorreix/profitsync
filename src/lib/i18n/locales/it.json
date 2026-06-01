@@ -80,7 +80,14 @@
     "noClientsToDisplay": "Nessun cliente da mostrare",
     "income": "Entrate",
     "expenses": "Spese",
-    "profit": "Profitto"
+    "profit": "Profitto",
+    "latestTransactions": "Ultimi movimenti",
+    "latestTransactionsEmpty": "Nessun movimento",
+    "companyUpsellTitle": "Cresci con un account Aziendale",
+    "companyUpsellBody": "Gestisci clienti, invia preventivi e invita il tuo team — prova un workspace Aziendale, gratis.",
+    "companyUpsellCta": "Prova gratis",
+    "companyUpsellNeverShow": "Non mostrare più",
+    "companyUpsellDismiss": "Chiudi"
   },
   "chart": {
     "incoming": "Entrate",

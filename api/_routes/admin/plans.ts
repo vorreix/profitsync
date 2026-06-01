@@ -245,6 +245,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // left untouched (we never call Dodo's delete API here).
     const plan_id = (req.body as PlanBody)?.plan_id ?? (req.query.plan_id as string | undefined)
     if (!plan_id) return res.status(400).json({ error: "plan_id is required" })
+    // The Free plan is mandatory for every user/org and must never be removed.
+    // Guarded here, and again by a BEFORE DELETE trigger at the database level.
+    const [target] = await db.select({ key: plans.key }).from(plans).where(eq(plans.id, plan_id))
+    if (!target) return res.status(404).json({ error: "Not found" })
+    if (target.key === "free") {
+      return res.status(403).json({ error: "The Free plan is required and cannot be deleted." })
+    }
     const [deleted] = await db
       .delete(plans)
       .where(eq(plans.id, plan_id))

@@ -80,7 +80,14 @@
     "noClientsToDisplay": "చూపించడానికి క్లయింట్‌లు లేరు",
     "income": "ఆదాయం",
     "expenses": "ఖర్చులు",
-    "profit": "లాభం"
+    "profit": "లాభం",
+    "latestTransactions": "సమీప లావాదేవీలు",
+    "latestTransactionsEmpty": "ఇంకా లావాదేవీలు లేవు",
+    "companyUpsellTitle": "కంపెనీ ఖాతాతో అభివృద్ధి చేయండి",
+    "companyUpsellBody": "క్లయింట్‌లను నిర్వహించండి, కొటేషన్‌లను పంపండి, మీ టీమ్‌ను ఆహ్వానించండి — కంపెనీ ఖాతాను ఉచితంగా ప్రయత్నించండి.",
+    "companyUpsellCta": "ఉచితంగా ప్రయత్నించండి",
+    "companyUpsellNeverShow": "మరలా చూపవద్దు",
+    "companyUpsellDismiss": "మూయు"
   },
   "chart": {
     "incoming": "రాబడి",

@@ -80,7 +80,14 @@
     "noClientsToDisplay": "Keine Kunden zum Anzeigen",
     "income": "Einnahmen",
     "expenses": "Ausgaben",
-    "profit": "Gewinn"
+    "profit": "Gewinn",
+    "latestTransactions": "Letzte Transaktionen",
+    "latestTransactionsEmpty": "Noch keine Transaktionen",
+    "companyUpsellTitle": "Wachsen Sie mit einem Unternehmenskonto",
+    "companyUpsellBody": "Verwalten Sie Kunden, senden Sie Angebote und laden Sie Ihr Team ein — testen Sie einen Unternehmens-Workspace kostenlos.",
+    "companyUpsellCta": "Kostenlos testen",
+    "companyUpsellNeverShow": "Nicht mehr anzeigen",
+    "companyUpsellDismiss": "Schließen"
   },
   "chart": {
     "incoming": "Eingang",

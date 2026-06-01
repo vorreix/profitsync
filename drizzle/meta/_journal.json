@@ -36,6 +36,20 @@
       "when": 1780269347203,
       "tag": "0004_plan_feature_labels_and_dodo_metadata",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1780272946253,
+      "tag": "0005_melted_black_queen",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1780272947253,
+      "tag": "0006_seed_and_protect_free_plan",
+      "breakpoints": true
     }
   ]
 }

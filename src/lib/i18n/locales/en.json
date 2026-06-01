@@ -80,7 +80,14 @@
     "noClientsToDisplay": "No clients to display",
     "income": "Income",
     "expenses": "Expenses",
-    "profit": "Profit"
+    "profit": "Profit",
+    "latestTransactions": "Latest Transactions",
+    "latestTransactionsEmpty": "No transactions yet",
+    "companyUpsellTitle": "Grow with a Company account",
+    "companyUpsellBody": "Manage clients, send quotations, and invite your team — try a Company workspace, free.",
+    "companyUpsellCta": "Try it for free",
+    "companyUpsellNeverShow": "Don't show again",
+    "companyUpsellDismiss": "Dismiss"
   },
   "chart": {
     "incoming": "Incoming",

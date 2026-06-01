@@ -54,7 +54,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   if (req.method === "PATCH") {
-    const { full_name, currency, language } = req.body as { full_name?: string; currency?: string; language?: string }
+    const { full_name, currency, language, company_upsell_dismissed_at, company_upsell_hidden } = req.body as {
+      full_name?: string
+      currency?: string
+      language?: string
+      company_upsell_dismissed_at?: string | null
+      company_upsell_hidden?: boolean
+    }
     if (currency !== undefined && !VALID_CURRENCIES.has(currency)) {
       return res.status(400).json({ error: "Invalid currency code" })
     }
@@ -67,6 +73,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ...(full_name !== undefined ? { fullName: full_name } : {}),
         ...(currency !== undefined ? { currency } : {}),
         ...(language !== undefined ? { language } : {}),
+        ...(company_upsell_dismissed_at !== undefined
+          ? { companyUpsellDismissedAt: company_upsell_dismissed_at ? new Date(company_upsell_dismissed_at) : null }
+          : {}),
+        ...(company_upsell_hidden !== undefined ? { companyUpsellHidden: company_upsell_hidden } : {}),
         updatedAt: new Date(),
       })
       .where(eq(userProfiles.id, userId))

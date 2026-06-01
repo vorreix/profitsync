@@ -2,9 +2,10 @@ import { useEffect, useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import { useNavigate } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
-import { apiGet } from "@/lib/api"
+import { apiGet, apiPatch } from "@/lib/api"
 import type { Client, Transaction } from "@/lib/types"
 import { useCurrency } from "@/lib/currency-context"
+import { useOrg } from "@/lib/org-context"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -17,8 +18,12 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   ArrowUpRight,
   ArrowDownRight,
+  ArrowRight,
   ChevronRight,
   Search,
+  Sparkles,
+  Building2,
+  X,
 } from "lucide-react"
 import {
   ChartContainer,
@@ -48,6 +53,14 @@ function formatCurrency(amount: number, currency: string) {
     maximumFractionDigits: 0,
   }).format(amount)
 }
+
+function formatTxDate(value: string) {
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return value
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" })
+}
+
+const UPSELL_REAPPEAR_MS = 72 * 60 * 60 * 1000 // banner returns 72h after a dismissal
 
 // Compact KPI tile — keeps a single figure readable without consuming a full
 // card's worth of vertical space on small screens.
@@ -81,6 +94,148 @@ function StatCard({
   )
 }
 
+// Invites a user with no company workspace to try one. Dismissable (returns
+// after 72h) with a durable "don't show again" opt-out — both persisted on the
+// user profile so the choice follows them across devices.
+function CompanyUpsellBanner() {
+  const { t } = useTranslation()
+  const navigate = useNavigate()
+  const { getToken } = useAuth()
+  const { orgs, profile, refresh } = useOrg()
+  const [closed, setClosed] = useState(false)
+  const [busy, setBusy] = useState(false)
+
+  const hasCompany = orgs.some((o) => !o.is_personal)
+  const dismissedAt = profile?.company_upsell_dismissed_at
+  const recentlyDismissed = dismissedAt
+    ? Date.now() - new Date(dismissedAt).getTime() < UPSELL_REAPPEAR_MS
+    : false
+  const visible =
+    !!profile && !hasCompany && !profile.company_upsell_hidden && !recentlyDismissed && !closed
+
+  if (!visible) return null
+
+  const persist = async (patch: Record<string, unknown>) => {
+    setBusy(true)
+    setClosed(true) // optimistic — hide immediately
+    try {
+      const token = await getToken()
+      if (token) await apiPatch("/api/profile", token, patch)
+      await refresh()
+    } catch {
+      // Non-fatal: the banner is hidden for this session regardless.
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="relative overflow-hidden rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent p-4 sm:p-5">
+      <div className="pointer-events-none absolute -right-8 -top-10 size-32 rounded-full bg-primary/15 blur-2xl" />
+      <button
+        type="button"
+        aria-label={t("dashboard.companyUpsellDismiss")}
+        onClick={() => persist({ company_upsell_dismissed_at: new Date().toISOString() })}
+        disabled={busy}
+        className="pressable absolute right-2 top-2 z-10 flex size-8 items-center justify-center rounded-full text-muted-foreground hover:bg-background/60 hover:text-foreground"
+      >
+        <X className="size-4" />
+      </button>
+      <div className="relative flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+        <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary sm:size-12">
+          <Building2 className="size-5 sm:size-6" />
+        </div>
+        <div className="min-w-0 flex-1 pr-6">
+          <h2 className="flex items-center gap-1.5 text-sm font-semibold sm:text-base">
+            <Sparkles className="size-4 shrink-0 text-primary" />
+            {t("dashboard.companyUpsellTitle")}
+          </h2>
+          <p className="mt-0.5 text-xs text-muted-foreground sm:text-sm">{t("dashboard.companyUpsellBody")}</p>
+        </div>
+        <div className="flex shrink-0 flex-col items-stretch gap-2 sm:flex-row sm:items-center">
+          <Button size="sm" className="h-9" onClick={() => navigate("/organizations")}>
+            {t("dashboard.companyUpsellCta")}
+            <ArrowRight className="size-4" />
+          </Button>
+          <button
+            type="button"
+            onClick={() => persist({ company_upsell_hidden: true })}
+            disabled={busy}
+            className="pressable text-center text-xs text-muted-foreground hover:text-foreground"
+          >
+            {t("dashboard.companyUpsellNeverShow")}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Compact list of the most recent transactions across the workspace.
+function LatestTransactionsCard({
+  transactions,
+  loading,
+  currency,
+}: {
+  transactions: Transaction[]
+  loading: boolean
+  currency: string
+}) {
+  const { t } = useTranslation()
+  const navigate = useNavigate()
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between">
+        <CardTitle className="text-sm font-semibold">{t("dashboard.latestTransactions")}</CardTitle>
+        <Button variant="ghost" size="sm" className="text-xs" onClick={() => navigate("/transactions")}>
+          {t("common.viewAll")} <ArrowRight className="size-3 ml-1" />
+        </Button>
+      </CardHeader>
+      <CardContent className="pt-0">
+        {loading ? (
+          <div className="space-y-2">{[1, 2, 3, 4, 5].map((i) => <Skeleton key={i} className="h-11 w-full" />)}</div>
+        ) : transactions.length === 0 ? (
+          <div className="py-8 text-center text-sm text-muted-foreground">{t("dashboard.latestTransactionsEmpty")}</div>
+        ) : (
+          <div className="divide-y">
+            {transactions.map((tx) => {
+              const incoming = tx.type === "incoming"
+              return (
+                <div key={tx.id} className="flex items-center gap-3 py-2.5">
+                  <div
+                    className={`flex size-8 shrink-0 items-center justify-center rounded-full ${
+                      incoming
+                        ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                        : "bg-red-500/10 text-red-600 dark:text-red-400"
+                    }`}
+                  >
+                    {incoming ? <ArrowUpRight className="size-4" /> : <ArrowDownRight className="size-4" />}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium">
+                      {tx.description?.trim() || tx.client_name || t(`chart.${tx.type}`)}
+                    </p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {tx.client_name ? `${tx.client_name} · ` : ""}{formatTxDate(tx.date)}
+                    </p>
+                  </div>
+                  <p
+                    className={`shrink-0 text-sm font-semibold tabular-nums ${
+                      incoming ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"
+                    }`}
+                  >
+                    {incoming ? "+" : "−"}{formatCurrency(Number(tx.amount), currency)}
+                  </p>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 export function Dashboard() {
   const { t } = useTranslation()
   const navigate = useNavigate()
@@ -91,6 +246,7 @@ export function Dashboard() {
     outgoing: { label: t("chart.outgoing"), color: "var(--chart-5)" },
   }
   const [clients, setClients] = useState<ClientWithStats[]>([])
+  const [latestTx, setLatestTx] = useState<Transaction[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedClientIds, setSelectedClientIds] = useState<Set<string>>(new Set())
   const [clientSearch, setClientSearch] = useState("")
@@ -125,7 +281,14 @@ export function Dashboard() {
           return { ...c, totalIncoming: incoming, totalOutgoing: outgoing, profit: incoming - outgoing }
         })
 
+        // Latest 20 transactions across the workspace, newest first. Derived from
+        // the list we already fetched (no extra round-trip).
+        const latest = [...txList]
+          .sort((a, b) => (b.date.localeCompare(a.date)) || b.created_at.localeCompare(a.created_at))
+          .slice(0, 20)
+
         setClients(withStats)
+        setLatestTx(latest)
       } catch (err) {
         console.error("Failed to load dashboard:", err)
       } finally {
@@ -177,6 +340,8 @@ export function Dashboard() {
 
   return (
     <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
+      <CompanyUpsellBanner />
+
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
         <div>
           <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">{t("dashboard.title")}</h1>
@@ -272,9 +437,9 @@ export function Dashboard() {
         />
       </div>
 
-      <div className="grid gap-4 sm:gap-6 lg:grid-cols-5">
+      <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-5">
         {/* Chart */}
-        <Card className="lg:col-span-3">
+        <Card className="lg:col-span-3 min-w-0">
           <CardHeader>
             <CardTitle className="text-sm font-semibold">
               {selectedClientIds.size > 0 ? t("dashboard.transactionSummary") : t("dashboard.revenueVsExpenses")}
@@ -303,7 +468,7 @@ export function Dashboard() {
         </Card>
 
         {/* Top Clients */}
-        <Card className="lg:col-span-2">
+        <Card className="lg:col-span-2 min-w-0">
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="text-sm font-semibold">{selectedClientIds.size > 0 ? t("dashboard.selectedClientsSummary") : t("dashboard.topClients")}</CardTitle>
             <Button variant="ghost" size="sm" className="text-xs" onClick={() => navigate("/clients")}>
@@ -377,6 +542,9 @@ export function Dashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Latest activity across the workspace */}
+      <LatestTransactionsCard transactions={latestTx} loading={loading} currency={currency} />
     </div>
   )
 }
