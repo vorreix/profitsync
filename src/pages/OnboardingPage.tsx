@@ -18,6 +18,7 @@ import {
 import { apiGet, apiPost, setActiveOrgId } from "@/lib/api"
 import { OrgProvider, useOrg } from "@/lib/org-context"
 import { useSyncProfileLanguage } from "@/lib/i18n/use-language"
+import { usePlanText } from "@/lib/i18n/plan-text"
 import type { AccountType } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -36,6 +37,7 @@ type Plan = {
   key: string
   name: string
   account_type: string | null
+  promo_note?: string
   feature_labels?: Record<string, string>
   local_pricing: PlanLocalPricing
 }
@@ -436,6 +438,7 @@ function PlanSummary({
   accountType: AccountType
 }) {
   const { t } = useTranslation()
+  const planText = usePlanText()
   const accent = ACCENTS[accountType]
   const local = plan.local_pricing
   const base = cycle === "yearly" ? local.yearly : local.monthly
@@ -443,8 +446,9 @@ function PlanSummary({
   const final = discounted(base, pct)
   const suffix = cycle === "yearly" ? t("onboarding.perYear") : t("onboarding.perMonth")
   // Prefer the admin-defined feature strings (synced/configured per plan); fall
-  // back to the curated onboarding perks when none are set.
-  const customFeatures = Object.values(plan.feature_labels ?? {}).filter(Boolean)
+  // back to the curated onboarding perks when none are set. Backend strings are
+  // auto-translated via the plan glossary.
+  const customFeatures = Object.values(plan.feature_labels ?? {}).filter(Boolean).map(planText)
   const perks = customFeatures.length > 0
     ? customFeatures
     : [
@@ -463,13 +467,13 @@ function PlanSummary({
             <accent.icon className="size-5" />
           </div>
           <div>
-            <p className="font-semibold leading-tight">{plan.name}</p>
+            <p className="font-semibold leading-tight">{planText(plan.name)}</p>
             <p className="text-xs text-muted-foreground">{t(`onboarding.${accountType}Tagline`)}</p>
           </div>
         </div>
-        {pct > 0 && (
+        {(plan.promo_note?.trim() || pct > 0) && (
           <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-300">
-            <Sparkles className="size-3" /> {t("onboarding.launchDiscount", { discount: pct })}
+            <Sparkles className="size-3" /> {plan.promo_note?.trim() || t("onboarding.launchDiscount", { discount: pct })}
           </span>
         )}
       </div>

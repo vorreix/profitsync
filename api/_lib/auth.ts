@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { verifyToken } from "@clerk/backend"
-import { and, eq, isNull } from "drizzle-orm"
+import { and, asc, eq, isNull } from "drizzle-orm"
 import { db } from "../../src/lib/db/index.js"
 import { clients, organizations, organizationMembers, subscriptions, userProfiles } from "../../src/lib/db/schema.js"
 import type { AccountType } from "../../src/lib/types.js"
@@ -57,29 +57,50 @@ export async function createOrgForUser(input: {
     role: "owner",
   })
   await ensureFreeSubscription(org.id)
-  // Personal accounts have no Clients section, but transactions are FK'd to a
-  // client. Provision a single hidden default client so the personal finance
-  // experience works without exposing client management.
-  if (accountType === "personal") {
-    await ensureDefaultClient(org.id, input.userId)
-  }
+  // Every workspace gets a single "own" client: for personal accounts it's the
+  // hidden anchor every transaction FKs to; for business accounts it's the
+  // company's own/internal expense client (rent, utilities, salaries).
+  await ensureDefaultClient(org.id, input.userId)
   return { id: org.id, currency: org.currency }
 }
 
 /**
- * Ensure a personal-account org has its single default client (used to anchor
- * transactions). Idempotent: returns the existing client if one is present.
+ * Ensure a workspace has its single "own"/internal client. This is the personal
+ * account's hidden anchor client, and the business account's own-company client.
+ * Idempotent: returns the existing own client (promoting a legacy default for
+ * personal orgs created before the `is_own` flag existed).
  */
 export async function ensureDefaultClient(orgId: string, userId: string): Promise<string> {
-  const [existing] = await db
+  const [own] = await db
     .select({ id: clients.id })
     .from(clients)
-    .where(and(eq(clients.organizationId, orgId), isNull(clients.deletedAt)))
+    .where(and(eq(clients.organizationId, orgId), eq(clients.isOwn, true), isNull(clients.deletedAt)))
     .limit(1)
-  if (existing) return existing.id
+  if (own) return own.id
+
+  const [org] = await db
+    .select({ name: organizations.name, isPersonal: organizations.isPersonal })
+    .from(organizations)
+    .where(eq(organizations.id, orgId))
+
+  // Legacy personal orgs have a single un-flagged client — promote it in place.
+  if (org?.isPersonal) {
+    const [legacy] = await db
+      .select({ id: clients.id })
+      .from(clients)
+      .where(and(eq(clients.organizationId, orgId), isNull(clients.deletedAt)))
+      .orderBy(asc(clients.createdAt))
+      .limit(1)
+    if (legacy) {
+      await db.update(clients).set({ isOwn: true }).where(eq(clients.id, legacy.id))
+      return legacy.id
+    }
+  }
+
+  const name = org?.isPersonal ? "Personal" : (org?.name?.trim() || "My Company")
   const [created] = await db
     .insert(clients)
-    .values({ userId, organizationId: orgId, name: "Personal", status: "active" })
+    .values({ userId, organizationId: orgId, name, status: "active", isOwn: true })
     .returning({ id: clients.id })
   return created.id
 }

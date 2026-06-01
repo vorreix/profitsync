@@ -1,6 +1,7 @@
-import { useEffect, useState, useCallback, useRef } from "react"
+import { useEffect, useMemo, useState, useCallback, useRef } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
+import { useTranslation } from "react-i18next"
 import { apiGet, apiPost, apiPatch, apiDelete } from "@/lib/api"
 import type { Client, Transaction, TransactionAttachment } from "@/lib/types"
 import { useCurrency } from "@/lib/currency-context"
@@ -20,9 +21,9 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { toast } from "sonner"
-import { Plus, Search, ArrowUpRight, ArrowDownRight, DollarSign, Pencil, Trash2, Paperclip, Download, X, Eye, ChevronsUpDown, Check } from "lucide-react"
+import { Plus, Search, ArrowUpRight, ArrowDownRight, DollarSign, Pencil, Trash2, Paperclip, Download, X, Eye, ChevronsUpDown, Check, Tag } from "lucide-react"
 
-type PaginatedResponse<T> = { data: T[]; total: number }
+type PaginatedResponse<T> = { data: T[]; total: number; summary?: { incoming: number; outgoing: number } }
 
 type TxForm = {
   client_id: string
@@ -79,6 +80,7 @@ function ClientCombobox({ clients, value, onChange }: {
   value: string
   onChange: (id: string) => void
 }) {
+  const { t } = useTranslation("transactions")
   const [open, setOpen] = useState(false)
   const selected = clients.find((c) => c.id === value)
 
@@ -88,15 +90,15 @@ function ClientCombobox({ clients, value, onChange }: {
         <Button variant="outline" role="combobox" className="w-full justify-between font-normal">
           {selected
             ? `${selected.name}${selected.company ? ` — ${selected.company}` : ""}`
-            : <span className="text-muted-foreground">Select client...</span>}
+            : <span className="text-muted-foreground">{t("selectClient")}</span>}
           <ChevronsUpDown className="size-4 ml-2 shrink-0 text-muted-foreground" />
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
         <Command>
-          <CommandInput placeholder="Search clients..." />
+          <CommandInput placeholder={t("searchClients")} />
           <CommandList>
-            <CommandEmpty>No client found.</CommandEmpty>
+            <CommandEmpty>{t("noClientFound")}</CommandEmpty>
             <CommandGroup>
               {clients.map((c) => (
                 <CommandItem
@@ -105,7 +107,10 @@ function ClientCombobox({ clients, value, onChange }: {
                   onSelect={() => { onChange(c.id); setOpen(false) }}
                 >
                   <Check className={`mr-2 size-4 shrink-0 ${value === c.id ? "opacity-100" : "opacity-0"}`} />
-                  {c.name}{c.company ? ` — ${c.company}` : ""}
+                  <span className="truncate">{c.name}{c.company ? ` — ${c.company}` : ""}</span>
+                  {c.is_own && (
+                    <Badge variant="outline" className="ml-auto text-[10px] py-0 shrink-0">{t("own")}</Badge>
+                  )}
                 </CommandItem>
               ))}
             </CommandGroup>
@@ -124,6 +129,7 @@ function CategoryCombobox({ categories, value, onChangeCategories, onChange }: {
   onChangeCategories: (cats: string[]) => void
   onChange: (v: string) => void
 }) {
+  const { t } = useTranslation("transactions")
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState("")
   const [editingIdx, setEditingIdx] = useState<number | null>(null)
@@ -172,14 +178,14 @@ function CategoryCombobox({ categories, value, onChangeCategories, onChange }: {
     <Popover open={open} onOpenChange={(o) => { if (!o) close(); else setOpen(true) }}>
       <PopoverTrigger asChild>
         <Button variant="outline" role="combobox" className="w-full justify-between font-normal">
-          {value || <span className="text-muted-foreground">Select...</span>}
+          {value || <span className="text-muted-foreground">{t("select")}</span>}
           <ChevronsUpDown className="size-4 ml-2 shrink-0 text-muted-foreground" />
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
         <div className="p-2 border-b">
           <Input
-            placeholder="Search or type to add..."
+            placeholder={t("searchOrTypeToAdd")}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="h-8 text-sm"
@@ -188,7 +194,7 @@ function CategoryCombobox({ categories, value, onChangeCategories, onChange }: {
         </div>
         <ScrollArea className="max-h-52">
           {filtered.length === 0 && !canAdd && (
-            <p className="text-xs text-muted-foreground text-center py-4">No categories found</p>
+            <p className="text-xs text-muted-foreground text-center py-4">{t("noCategoriesFound")}</p>
           )}
           {filtered.map((cat) => {
             const realIdx = categories.indexOf(cat)
@@ -247,7 +253,7 @@ function CategoryCombobox({ categories, value, onChangeCategories, onChange }: {
               onClick={addCategory}
             >
               <Plus className="size-3.5" />
-              Add &ldquo;{search.trim()}&rdquo;
+              {t("addCategory", { category: search.trim() })}
             </button>
           )}
         </ScrollArea>
@@ -268,18 +274,19 @@ function TxFormFields({
   categories: { incoming: string[]; outgoing: string[] }
   onChangeCats: (type: "incoming" | "outgoing", cats: string[]) => void
 }) {
+  const { t } = useTranslation("transactions")
   const cats = f.type === "incoming" ? categories.incoming : categories.outgoing
 
   return (
     <div className="space-y-4 py-2">
       {showClient && (
         <div className="space-y-1.5">
-          <Label>Client *</Label>
+          <Label>{t("clientRequired")}</Label>
           <ClientCombobox clients={clients} value={f.client_id} onChange={(id) => onChange({ client_id: id })} />
         </div>
       )}
       <div className="space-y-1.5">
-        <Label>Type</Label>
+        <Label>{t("type")}</Label>
         <div className="grid grid-cols-2 gap-2">
           {(["incoming", "outgoing"] as const).map((type) => (
             <button key={type} type="button" onClick={() => onChange({ type, category: "" })} className={`flex items-center justify-center gap-2 rounded-md border py-2.5 text-sm font-medium transition-colors ${
@@ -290,19 +297,19 @@ function TxFormFields({
                 : "border-border hover:bg-muted"
             }`}>
               {type === "incoming" ? <ArrowUpRight className="size-4" /> : <ArrowDownRight className="size-4" />}
-              {type === "incoming" ? "Incoming" : "Outgoing"}
+              {t(type)}
             </button>
           ))}
         </div>
       </div>
       <div className="space-y-1.5">
-        <Label>Amount *</Label>
+        <Label>{t("amountRequired")}</Label>
         <Input type="number" min="0" step="0.01" placeholder="0.00" value={f.amount} onChange={(e) => onChange({ amount: e.target.value })} />
       </div>
       <div className="space-y-1.5">
-        <Label>Description</Label>
+        <Label>{t("description")}</Label>
         <Textarea
-          placeholder={f.type === "incoming" ? "Invoice #1234" : "Hosting fee"}
+          placeholder={f.type === "incoming" ? t("invoicePlaceholder") : t("hostingFeePlaceholder")}
           value={f.description}
           onChange={(e) => onChange({ description: e.target.value })}
           rows={3}
@@ -311,7 +318,7 @@ function TxFormFields({
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="space-y-1.5">
-          <Label>Category</Label>
+          <Label>{t("category")}</Label>
           <CategoryCombobox
             categories={cats}
             value={f.category}
@@ -320,7 +327,7 @@ function TxFormFields({
           />
         </div>
         <div className="space-y-1.5">
-          <Label>Date</Label>
+          <Label>{t("date")}</Label>
           <Input type="date" value={f.date} onChange={(e) => onChange({ date: e.target.value })} />
         </div>
       </div>
@@ -331,6 +338,7 @@ function TxFormFields({
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export function TransactionsPage() {
+  const { t } = useTranslation("transactions")
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const { getToken } = useAuth()
@@ -351,12 +359,16 @@ export function TransactionsPage() {
   const [search, setSearch] = useState("")
   const [tab, setTab] = useState("all")
   const [sort, setSort] = useState("date_desc")
+  const [categoryFilter, setCategoryFilter] = useState("all")
+  const [summary, setSummary] = useState<{ incoming: number; outgoing: number }>({ incoming: 0, outgoing: 0 })
   const searchRef = useRef(search)
   searchRef.current = search
   const tabRef = useRef(tab)
   tabRef.current = tab
   const sortRef = useRef(sort)
   sortRef.current = sort
+  const categoryRef = useRef(categoryFilter)
+  categoryRef.current = categoryFilter
 
   const [categories, setCategories] = useState<{ incoming: string[]; outgoing: string[] }>(loadCategories)
 
@@ -385,11 +397,12 @@ export function TransactionsPage() {
   const [pendingFiles, setPendingFiles] = useState<File[]>([])
   const addFileInputRef = useRef<HTMLInputElement>(null)
 
-  const buildParams = useCallback((pageNum: number, s: string, t: string, srt: string) => {
+  const buildParams = useCallback((pageNum: number, s: string, t: string, srt: string, cat: string) => {
     const params = new URLSearchParams({ page: String(pageNum) })
     if (s.trim()) params.set("search", s.trim())
     if (t !== "all") params.set("type", t)
     if (srt) params.set("sort", srt)
+    if (cat && cat !== "all") params.set("category", cat)
     return params.toString()
   }, [])
 
@@ -399,11 +412,12 @@ export function TransactionsPage() {
     setLoading(true)
     try {
       const [result, cls] = await Promise.all([
-        apiGet<PaginatedResponse<Transaction>>(`/api/transactions?${buildParams(1, searchRef.current, tabRef.current, sortRef.current)}`, token),
+        apiGet<PaginatedResponse<Transaction>>(`/api/transactions?${buildParams(1, searchRef.current, tabRef.current, sortRef.current, categoryRef.current)}`, token),
         apiGet<{ data: Client[]; total: number } | Client[]>("/api/clients?page=1", token),
       ])
       setTransactions(result.data)
       setTotal(result.total)
+      setSummary(result.summary ?? { incoming: 0, outgoing: 0 })
       setPage(1)
       const clsData = Array.isArray(cls) ? cls : cls.data
       setClients(clsData)
@@ -418,7 +432,7 @@ export function TransactionsPage() {
   useEffect(() => {
     const timer = setTimeout(() => { fetchPage1() }, search === "" ? 0 : 300)
     return () => clearTimeout(timer)
-  }, [search, tab, sort, fetchPage1])
+  }, [search, tab, sort, categoryFilter, fetchPage1])
 
   useEffect(() => {
     if (searchParams.get("new") === "1") {
@@ -435,11 +449,12 @@ export function TransactionsPage() {
     try {
       const nextPage = page + 1
       const result = await apiGet<PaginatedResponse<Transaction>>(
-        `/api/transactions?${buildParams(nextPage, search, tab, sort)}`,
+        `/api/transactions?${buildParams(nextPage, search, tab, sort, categoryFilter)}`,
         token,
       )
       setTransactions((prev) => [...prev, ...result.data])
       setTotal(result.total)
+      if (result.summary) setSummary(result.summary)
       setPage(nextPage)
     } catch (err) {
       console.error("Failed to load more transactions:", err)
@@ -449,12 +464,22 @@ export function TransactionsPage() {
     }
   }
 
-  const totalIncoming = transactions.filter((t) => t.type === "incoming").reduce((s, t) => s + Number(t.amount), 0)
-  const totalOutgoing = transactions.filter((t) => t.type === "outgoing").reduce((s, t) => s + Number(t.amount), 0)
+  // Income/expense totals come from the server (full filtered set), so they stay
+  // correct across pagination and reflect the search + category filters.
+  const totalIncoming = summary.incoming
+  const totalOutgoing = summary.outgoing
+  const ownClientIds = useMemo(() => new Set(clients.filter((c) => c.is_own).map((c) => c.id)), [clients])
+  // Filter options = the user's defined categories plus any category that appears
+  // in the loaded transactions (covers ones added on another device).
+  const allCategoryOptions = useMemo(() => {
+    const set = new Set<string>([...categories.incoming, ...categories.outgoing])
+    for (const tx of transactions) if (tx.category?.trim()) set.add(tx.category.trim())
+    return [...set].filter(Boolean).sort((a, b) => a.localeCompare(b))
+  }, [categories, transactions])
 
   async function handleAdd() {
-    if (!isPersonal && !form.client_id) { toast.error("Client is required"); return }
-    if (!form.amount || isNaN(parseFloat(form.amount))) { toast.error("Valid amount is required"); return }
+    if (!isPersonal && !form.client_id) { toast.error(t("clientIsRequired")); return }
+    if (!form.amount || isNaN(parseFloat(form.amount))) { toast.error(t("validAmountIsRequired")); return }
     setSaving(true)
     try {
       const token = await getToken()
@@ -471,16 +496,16 @@ export function TransactionsPage() {
         try {
           await uploadFile(file, tx.id, token)
         } catch {
-          toast.error(`Failed to upload ${file.name}`)
+          toast.error(t("failedToUploadFile", { name: file.name }))
         }
       }
-      toast.success("Transaction added")
+      toast.success(t("transactionAdded"))
       setAddOpen(false)
       setForm(defaultForm())
       setPendingFiles([])
       fetchPage1()
     } catch {
-      toast.error("Failed to add transaction")
+      toast.error(t("failedToAddTransaction"))
     } finally {
       setSaving(false)
     }
@@ -488,7 +513,7 @@ export function TransactionsPage() {
 
   async function handleEdit() {
     if (!editForm || !editForm.amount || isNaN(parseFloat(editForm.amount))) {
-      toast.error("Valid amount is required"); return
+      toast.error(t("validAmountIsRequired")); return
     }
     setSaving(true)
     try {
@@ -501,12 +526,12 @@ export function TransactionsPage() {
         category: editForm.category,
         date: editForm.date,
       })
-      toast.success("Transaction updated")
+      toast.success(t("transactionUpdated"))
       setEditOpen(false)
       setEditForm(null)
       fetchPage1()
     } catch {
-      toast.error("Failed to update transaction")
+      toast.error(t("failedToUpdateTransaction"))
     } finally {
       setSaving(false)
     }
@@ -518,11 +543,11 @@ export function TransactionsPage() {
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
       await apiDelete(`/api/transactions/${deleteId}`, token)
-      toast.success("Transaction deleted")
+      toast.success(t("transactionDeleted"))
       setDeleteId(null)
       fetchPage1()
     } catch {
-      toast.error("Failed to delete transaction")
+      toast.error(t("failedToDeleteTransaction"))
     }
   }
 
@@ -534,7 +559,7 @@ export function TransactionsPage() {
       const data = await apiGet<TransactionAttachment[]>(`/api/transactions/${txId}/attachments`, token)
       setAttachments(data)
     } catch {
-      toast.error("Failed to load attachments")
+      toast.error(t("failedToLoadAttachments"))
     } finally {
       setAttachLoading(false)
     }
@@ -573,7 +598,7 @@ export function TransactionsPage() {
     const files = Array.from(e.target.files ?? [])
     const valid = files.filter((f) => {
       if (f.size > 2 * 1024 * 1024) {
-        toast.error(`${f.name} exceeds 2MB limit`)
+        toast.error(t("fileExceeds2MBLimit", { name: f.name }))
         return false
       }
       return true
@@ -590,7 +615,7 @@ export function TransactionsPage() {
     const file = e.target.files?.[0]
     if (!file || !viewTx) return
     if (file.size > 2 * 1024 * 1024) {
-      toast.error("File exceeds 2MB limit")
+      toast.error(t("fileExceeds2MB"))
       return
     }
     const reader = new FileReader()
@@ -612,12 +637,12 @@ export function TransactionsPage() {
         })
         if (!res.ok) {
           const err = await res.json().catch(() => ({}))
-          throw new Error((err as { error?: string }).error ?? "Upload failed")
+          throw new Error((err as { error?: string }).error ?? t("uploadFailed"))
         }
-        toast.success("Attachment uploaded")
+        toast.success(t("attachmentUploaded"))
         loadAttachments(viewTx.id)
       } catch (err: unknown) {
-        toast.error(err instanceof Error ? err.message : "Failed to upload attachment")
+        toast.error(err instanceof Error ? err.message : t("failedToUploadAttachment"))
       } finally {
         setUploading(false)
         if (fileInputRef.current) fileInputRef.current.value = ""
@@ -642,7 +667,7 @@ export function TransactionsPage() {
       a.click()
       URL.revokeObjectURL(url)
     } catch {
-      toast.error("Failed to download attachment")
+      toast.error(t("failedToDownloadAttachment"))
     }
   }
 
@@ -656,11 +681,11 @@ export function TransactionsPage() {
         headers: { Authorization: `Bearer ${token}` },
       })
       if (!res.ok) throw new Error()
-      toast.success("Attachment deleted")
+      toast.success(t("attachmentDeleted"))
       setDeleteAttachId(null)
       loadAttachments(viewTx.id)
     } catch {
-      toast.error("Failed to delete attachment")
+      toast.error(t("failedToDeleteAttachment"))
     }
   }
 
@@ -668,28 +693,28 @@ export function TransactionsPage() {
     <div className="p-3 sm:p-6 space-y-5 sm:space-y-6">
       <div className="flex items-center justify-between gap-2">
         <div>
-          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">Transactions</h1>
-          {!loading && <p className="text-sm text-muted-foreground mt-0.5 sm:mt-1">{total} total</p>}
+          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">{t("transactions")}</h1>
+          {!loading && <p className="text-sm text-muted-foreground mt-0.5 sm:mt-1">{t("totalCount", { count: total })}</p>}
         </div>
         <Button onClick={() => { setForm(defaultForm()); setAddOpen(true) }} className="shrink-0">
           <Plus className="size-4" />
-          <span className="hidden sm:inline">Add Transaction</span>
-          <span className="sm:hidden">Add</span>
+          <span className="hidden sm:inline">{t("addTransaction")}</span>
+          <span className="sm:hidden">{t("add")}</span>
         </Button>
       </div>
 
       {!loading && (
         <div className="grid grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-4">
           <div className="rounded-xl border p-3 sm:p-4">
-            <p className="text-[10px] sm:text-xs text-muted-foreground font-medium uppercase tracking-wide">Income</p>
+            <p className="text-[10px] sm:text-xs text-muted-foreground font-medium uppercase tracking-wide">{t("income")}</p>
             <p className="text-base sm:text-xl font-bold text-emerald-600 dark:text-emerald-400 mt-1 tabular-nums">{fmt(totalIncoming)}</p>
           </div>
           <div className="rounded-xl border p-3 sm:p-4">
-            <p className="text-[10px] sm:text-xs text-muted-foreground font-medium uppercase tracking-wide">Expenses</p>
+            <p className="text-[10px] sm:text-xs text-muted-foreground font-medium uppercase tracking-wide">{t("expenses")}</p>
             <p className="text-base sm:text-xl font-bold text-red-600 dark:text-red-400 mt-1 tabular-nums">{fmt(totalOutgoing)}</p>
           </div>
           <div className="rounded-xl border p-3 sm:p-4">
-            <p className="text-[10px] sm:text-xs text-muted-foreground font-medium uppercase tracking-wide">Net</p>
+            <p className="text-[10px] sm:text-xs text-muted-foreground font-medium uppercase tracking-wide">{t("net")}</p>
             <p className={`text-base sm:text-xl font-bold mt-1 tabular-nums ${totalIncoming - totalOutgoing >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"}`}>
               {fmt(totalIncoming - totalOutgoing)}
             </p>
@@ -700,25 +725,37 @@ export function TransactionsPage() {
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
         <div className="relative flex-1 min-w-0">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-          <Input placeholder="Search by client, description, category..." className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
+          <Input placeholder={t("searchByClientDescriptionCategory")} className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
-        <div className="flex items-center gap-2 sm:gap-3">
-          <Select value={sort} onValueChange={setSort}>
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+          <Select value={categoryFilter} onValueChange={setCategoryFilter}>
             <SelectTrigger className="flex-1 sm:flex-none sm:w-44">
-              <SelectValue placeholder="Sort by" />
+              <Tag className="size-3.5 opacity-60" />
+              <SelectValue placeholder={t("category")} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="date_desc">Date (newest)</SelectItem>
-              <SelectItem value="date_asc">Date (oldest)</SelectItem>
-              <SelectItem value="amount_desc">Amount (largest)</SelectItem>
-              <SelectItem value="amount_asc">Amount (smallest)</SelectItem>
+              <SelectItem value="all">{t("allCategories")}</SelectItem>
+              {allCategoryOptions.map((c) => (
+                <SelectItem key={c} value={c}>{c}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={sort} onValueChange={setSort}>
+            <SelectTrigger className="flex-1 sm:flex-none sm:w-44">
+              <SelectValue placeholder={t("sortBy")} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="date_desc">{t("dateNewest")}</SelectItem>
+              <SelectItem value="date_asc">{t("dateOldest")}</SelectItem>
+              <SelectItem value="amount_desc">{t("amountLargest")}</SelectItem>
+              <SelectItem value="amount_asc">{t("amountSmallest")}</SelectItem>
             </SelectContent>
           </Select>
           <Tabs value={tab} onValueChange={(v) => { setTab(v) }} className="shrink-0">
             <TabsList>
-              <TabsTrigger value="all">All</TabsTrigger>
-              <TabsTrigger value="incoming">Income</TabsTrigger>
-              <TabsTrigger value="outgoing">Expenses</TabsTrigger>
+              <TabsTrigger value="all">{t("all")}</TabsTrigger>
+              <TabsTrigger value="incoming">{t("income")}</TabsTrigger>
+              <TabsTrigger value="outgoing">{t("expenses")}</TabsTrigger>
             </TabsList>
           </Tabs>
         </div>
@@ -732,12 +769,12 @@ export function TransactionsPage() {
         <div className="py-20 text-center border rounded-xl">
           <DollarSign className="size-10 mx-auto text-muted-foreground/50 mb-3" />
           <p className="text-muted-foreground font-medium">
-            {search || tab !== "all" ? "No transactions match your filters" : "No transactions yet"}
+            {search || tab !== "all" || categoryFilter !== "all" ? t("noTransactionsMatchFilters") : t("noTransactionsYet")}
           </p>
-          {!search && tab === "all" && clients.length > 0 && (
+          {!search && tab === "all" && categoryFilter === "all" && clients.length > 0 && (
             <Button className="mt-4" onClick={() => { setForm(defaultForm()); setAddOpen(true) }}>
               <Plus className="size-4" />
-              Add first transaction
+              {t("addFirstTransaction")}
             </Button>
           )}
         </div>
@@ -764,7 +801,7 @@ export function TransactionsPage() {
                       <p className="text-sm font-medium truncate min-w-0 flex-1">
                         {tx.description
                           ? tx.description.length > 60 ? tx.description.slice(0, 60) + "…" : tx.description
-                          : (tx.type === "incoming" ? "Income" : "Expense")}
+                          : (tx.type === "incoming" ? t("income") : t("expense"))}
                       </p>
                       {tx.category && (
                         <Badge variant="outline" className="text-xs py-0 shrink-0 hidden sm:inline-flex">{tx.category}</Badge>
@@ -779,6 +816,9 @@ export function TransactionsPage() {
                           >
                             {tx.client_name ?? tx.client_id}
                           </button>
+                          {ownClientIds.has(tx.client_id) && (
+                            <Badge variant="outline" className="text-[10px] py-0 shrink-0">Own</Badge>
+                          )}
                           <span className="text-xs text-muted-foreground shrink-0">·</span>
                         </>
                       )}
@@ -815,7 +855,7 @@ export function TransactionsPage() {
           {transactions.length < total && (
             <div className="flex justify-center pt-2">
               <Button variant="outline" onClick={handleLoadMore} disabled={loadingMore}>
-                {loadingMore ? "Loading..." : `Load More (${total - transactions.length} remaining)`}
+                {loadingMore ? t("loading") : t("loadMore", { remaining: total - transactions.length })}
               </Button>
             </div>
           )}
@@ -836,27 +876,27 @@ export function TransactionsPage() {
                       ? <ArrowUpRight className="size-4 text-emerald-600 dark:text-emerald-400" />
                       : <ArrowDownRight className="size-4 text-red-600 dark:text-red-400" />}
                   </div>
-                  Transaction Details
+                  {t("transactionDetails")}
                 </DialogTitle>
               </DialogHeader>
 
               <div className="space-y-3 py-2">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
                   <div>
-                    <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Amount</p>
+                    <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">{t("amount")}</p>
                     <p className={`font-semibold mt-0.5 ${viewTx.type === "incoming" ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
                       {viewTx.type === "incoming" ? "+" : "−"}{fmt(Number(viewTx.amount))}
                     </p>
                   </div>
                   <div>
-                    <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Type</p>
+                    <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">{t("type")}</p>
                     <Badge variant={viewTx.type === "incoming" ? "default" : "secondary"} className="mt-0.5">
-                      {viewTx.type === "incoming" ? "Income" : "Expense"}
+                      {viewTx.type === "incoming" ? t("income") : t("expense")}
                     </Badge>
                   </div>
                   {!isPersonal && (
                     <div>
-                      <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Client</p>
+                      <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">{t("client")}</p>
                       <button
                         className="text-sm text-primary hover:underline mt-0.5"
                         onClick={() => { setViewTx(null); navigate(`/clients/${viewTx.client_id}`) }}
@@ -866,18 +906,18 @@ export function TransactionsPage() {
                     </div>
                   )}
                   <div>
-                    <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Date</p>
+                    <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">{t("date")}</p>
                     <p className="mt-0.5">{formatDate(viewTx.date)}</p>
                   </div>
                   {viewTx.description && (
                     <div className="col-span-2">
-                      <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Description</p>
+                      <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">{t("description")}</p>
                       <p className="mt-0.5 whitespace-pre-wrap">{viewTx.description}</p>
                     </div>
                   )}
                   {viewTx.category && (
                     <div>
-                      <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Category</p>
+                      <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">{t("category")}</p>
                       <p className="mt-0.5">{viewTx.category}</p>
                     </div>
                   )}
@@ -888,12 +928,12 @@ export function TransactionsPage() {
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <p className="text-sm font-medium flex items-center gap-1.5">
-                      <Paperclip className="size-3.5" /> Attachments
+                      <Paperclip className="size-3.5" /> {t("attachments")}
                     </p>
                     <div>
                       <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileSelect} accept="*/*" />
                       <Button size="sm" variant="outline" disabled={uploading} onClick={() => fileInputRef.current?.click()}>
-                        {uploading ? "Uploading..." : "Upload"}
+                        {uploading ? t("uploading") : t("upload")}
                       </Button>
                     </div>
                   </div>
@@ -903,7 +943,7 @@ export function TransactionsPage() {
                       {[1, 2].map((i) => <Skeleton key={i} className="h-10 w-full rounded-lg" />)}
                     </div>
                   ) : attachments.length === 0 ? (
-                    <p className="text-xs text-muted-foreground py-3 text-center">No attachments yet</p>
+                    <p className="text-xs text-muted-foreground py-3 text-center">{t("noAttachmentsYet")}</p>
                   ) : (
                     <div className="space-y-1.5">
                       {attachments.map((att) => (
@@ -923,7 +963,7 @@ export function TransactionsPage() {
                       ))}
                     </div>
                   )}
-                  <p className="text-xs text-muted-foreground">Max 2MB per file</p>
+                  <p className="text-xs text-muted-foreground">{t("max2MBPerFile")}</p>
                 </div>
               </div>
 
@@ -934,9 +974,9 @@ export function TransactionsPage() {
                   setEditOpen(true)
                 }}>
                   <Pencil className="size-3.5" />
-                  Edit
+                  {t("edit")}
                 </Button>
-                <Button onClick={() => setViewTx(null)}>Close</Button>
+                <Button onClick={() => setViewTx(null)}>{t("close")}</Button>
               </DialogFooter>
             </>
           )}
@@ -946,7 +986,7 @@ export function TransactionsPage() {
       {/* Add Dialog */}
       <Dialog open={addOpen} onOpenChange={(open) => { if (!open) setPendingFiles([]); setAddOpen(open) }}>
         <DialogContent className="sm:max-w-sm">
-          <DialogHeader><DialogTitle>Add Transaction</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{t("addTransaction")}</DialogTitle></DialogHeader>
           <TxFormFields
             f={form}
             onChange={(p) => setForm((f) => ({ ...f, ...p }))}
@@ -959,12 +999,12 @@ export function TransactionsPage() {
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label className="flex items-center gap-1.5 text-sm font-medium">
-                <Paperclip className="size-3.5" /> Attachments
+                <Paperclip className="size-3.5" /> {t("attachments")}
               </Label>
               <div>
                 <input ref={addFileInputRef} type="file" className="hidden" multiple onChange={handleAddFileSelect} />
                 <Button size="sm" variant="outline" type="button" onClick={() => addFileInputRef.current?.click()}>
-                  Add files
+                  {t("addFiles")}
                 </Button>
               </div>
             </div>
@@ -984,12 +1024,12 @@ export function TransactionsPage() {
                 ))}
               </div>
             ) : (
-              <p className="text-xs text-muted-foreground">Max 2MB per file. Files will be uploaded with the transaction.</p>
+              <p className="text-xs text-muted-foreground">{t("max2MBPerFileUploadedWithTransaction")}</p>
             )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setAddOpen(false); setPendingFiles([]) }}>Cancel</Button>
-            <Button onClick={handleAdd} disabled={saving}>{saving ? "Adding..." : "Add"}</Button>
+            <Button variant="outline" onClick={() => { setAddOpen(false); setPendingFiles([]) }}>{t("cancel")}</Button>
+            <Button onClick={handleAdd} disabled={saving}>{saving ? t("adding") : t("add")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -997,7 +1037,7 @@ export function TransactionsPage() {
       {/* Edit Dialog */}
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <DialogContent className="sm:max-w-sm">
-          <DialogHeader><DialogTitle>Edit Transaction</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{t("editTransaction")}</DialogTitle></DialogHeader>
           {editForm && (
             <TxFormFields
               f={editForm}
@@ -1009,8 +1049,8 @@ export function TransactionsPage() {
             />
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
-            <Button onClick={handleEdit} disabled={saving}>{saving ? "Saving..." : "Save"}</Button>
+            <Button variant="outline" onClick={() => setEditOpen(false)}>{t("cancel")}</Button>
+            <Button onClick={handleEdit} disabled={saving}>{saving ? t("saving") : t("save")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1019,15 +1059,15 @@ export function TransactionsPage() {
       <AlertDialog open={deleteId !== null} onOpenChange={(open) => { if (!open) setDeleteId(null) }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Transaction?</AlertDialogTitle>
+            <AlertDialogTitle>{t("deleteTransaction")}</AlertDialogTitle>
             <AlertDialogDescription>
-              This transaction will be permanently deleted. This action cannot be undone.
+              {t("transactionWillBeDeletedPermanently")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
             <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              Delete
+              {t("delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -1037,13 +1077,13 @@ export function TransactionsPage() {
       <AlertDialog open={deleteAttachId !== null} onOpenChange={(open) => { if (!open) setDeleteAttachId(null) }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Attachment?</AlertDialogTitle>
-            <AlertDialogDescription>This attachment will be permanently deleted.</AlertDialogDescription>
+            <AlertDialogTitle>{t("deleteAttachment")}</AlertDialogTitle>
+            <AlertDialogDescription>{t("attachmentWillBeDeletedPermanently")}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
             <AlertDialogAction onClick={handleDeleteAttachment} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              Delete
+              {t("delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
