@@ -1,9 +1,11 @@
 import { useEffect, useState, type ReactNode } from "react"
 import { useSearchParams } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { apiGet, apiPost } from "@/lib/api"
 import { useOrg } from "@/lib/org-context"
+import { usePlanText } from "@/lib/i18n/plan-text"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -93,19 +95,15 @@ function discountedAmount(amount: number, discountPct: number): number {
   return Math.round(amount * (1 - discountPct / 100))
 }
 
-const LIMIT_LABELS: Record<string, string> = {
-  clients: "Clients",
-  transactionsPerClient: "Transactions per client",
-  quotations: "Quotations",
-  attachmentSizeKb: "Attachment size",
-  attachmentsPerTx: "Attachments per item",
-  noteLength: "Note length",
-}
-
-function formatLimitValue(key: string, val: number): string {
-  if (key === "attachmentSizeKb") return `${(val / 1024).toFixed(1)}MB`
-  if (key === "noteLength") return `${val.toLocaleString()} chars`
-  return val.toLocaleString()
+// The structured limit keys → their translation key. Used when a plan has no
+// custom (admin-authored) feature label for that limit.
+const LIMIT_LABEL_KEYS: Record<string, string> = {
+  clients: "limitClients",
+  transactionsPerClient: "limitTransactionsPerClient",
+  quotations: "limitQuotations",
+  attachmentSizeKb: "limitAttachmentSize",
+  attachmentsPerTx: "limitAttachmentsPerItem",
+  noteLength: "limitNoteLength",
 }
 
 const INVOICE_BADGE: Record<string, string> = {
@@ -118,6 +116,8 @@ const INVOICE_BADGE: Record<string, string> = {
 }
 
 export function SubscriptionPage() {
+  const { t } = useTranslation("subscription")
+  const planText = usePlanText()
   const { getToken } = useAuth()
   const { activeOrg, refresh: refreshOrg } = useOrg()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -127,6 +127,15 @@ export function SubscriptionPage() {
   const [busy, setBusy] = useState<string | null>(null)
   const [downloading, setDownloading] = useState<string | null>(null)
   const [cycle, setCycle] = useState<"monthly" | "yearly">("monthly")
+
+  const cycleSuffix = cycle === "yearly" ? t("perYr") : t("perMo")
+
+  // Per-limit value text (units stay readable; "chars" is localized).
+  const limitValue = (key: string, val: number): string => {
+    if (key === "attachmentSizeKb") return `${(val / 1024).toFixed(1)}MB`
+    if (key === "noteLength") return t("charsValue", { value: val.toLocaleString() })
+    return val.toLocaleString()
+  }
 
   async function load() {
     try {
@@ -141,7 +150,7 @@ export function SubscriptionPage() {
       setData(pricing)
       setInvoices(billing.invoices ?? [])
     } catch {
-      toast.error("Failed to load pricing")
+      toast.error(t("loadPricingFailed"))
     } finally {
       setLoading(false)
     }
@@ -156,31 +165,31 @@ export function SubscriptionPage() {
   useEffect(() => {
     if (searchParams.get("dodo") !== "return") return
     let cancelled = false
-    ;(async () => {
-      try {
-        const token = await getToken()
-        if (!token) return
-        const result = await apiPost<{ subscription?: Subscription; synced?: boolean }>("/api/billing/sync", token, {})
-        if (cancelled) return
-        const status = result.subscription?.status
-        if (status === "active") {
-          toast.success("Payment confirmed — your plan is now active. 🎉")
-          await refreshOrg()
-        } else if (status === "pending") {
-          toast.message("Payment is processing", { description: "Your plan will activate shortly. Refresh in a moment." })
-        } else {
-          toast.message("Checkout closed", { description: "Your subscription is still pending. You can retry anytime." })
+      ; (async () => {
+        try {
+          const token = await getToken()
+          if (!token) return
+          const result = await apiPost<{ subscription?: Subscription; synced?: boolean }>("/api/billing/sync", token, {})
+          if (cancelled) return
+          const status = result.subscription?.status
+          if (status === "active") {
+            toast.success(t("paymentConfirmed"))
+            await refreshOrg()
+          } else if (status === "pending") {
+            toast.message(t("paymentProcessing"), { description: t("paymentProcessingDesc") })
+          } else {
+            toast.message(t("checkoutClosed"), { description: t("checkoutClosedDesc") })
+          }
+        } catch {
+          toast.error(t("confirmFailed"))
+        } finally {
+          if (!cancelled) {
+            for (const k of ["dodo", "subscription_id", "status", "email"]) searchParams.delete(k)
+            setSearchParams(searchParams, { replace: true })
+            load()
+          }
         }
-      } catch {
-        toast.error("Could not confirm payment status")
-      } finally {
-        if (!cancelled) {
-          for (const k of ["dodo", "subscription_id", "status", "email"]) searchParams.delete(k)
-          setSearchParams(searchParams, { replace: true })
-          load()
-        }
-      }
-    })()
+      })()
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams])
@@ -204,11 +213,11 @@ export function SubscriptionPage() {
         window.location.href = result.checkout_url
         return
       }
-      toast.success(result.message || "Subscription updated")
+      toast.success(result.message || t("subscriptionUpdated"))
       await refreshOrg()
       await load()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed")
+      toast.error(err instanceof Error ? err.message : t("failed"))
     } finally {
       setBusy(null)
     }
@@ -216,17 +225,17 @@ export function SubscriptionPage() {
 
   const handleCancel = async () => {
     if (!activeOrg) return
-    if (!window.confirm("Cancel the subscription? Paid features remain until the end of the current period.")) return
+    if (!window.confirm(t("cancelConfirm"))) return
     setBusy("cancel")
     try {
       const token = await getToken()
       if (!token) return
       const result = await apiPost<{ message?: string }>("/api/billing/cancel", token, {})
-      toast.success(result.message || "Subscription cancelled")
+      toast.success(result.message || t("subscriptionCancelled"))
       await refreshOrg()
       await load()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed")
+      toast.error(err instanceof Error ? err.message : t("failed"))
     } finally {
       setBusy(null)
     }
@@ -243,7 +252,7 @@ export function SubscriptionPage() {
       const contentType = res.headers.get("content-type") ?? ""
       if (!res.ok) {
         const body = contentType.includes("json") ? await res.json().catch(() => ({})) : {}
-        toast.error((body as { error?: string }).error || "No invoice document is available yet.")
+        toast.error((body as { error?: string }).error || t("noInvoiceDoc"))
         return
       }
       if (contentType.includes("application/json")) {
@@ -256,7 +265,7 @@ export function SubscriptionPage() {
       window.open(url, "_blank", "noopener")
       setTimeout(() => URL.revokeObjectURL(url), 60_000)
     } catch {
-      toast.error("Failed to download the invoice")
+      toast.error(t("downloadFailed"))
     } finally {
       setDownloading(null)
     }
@@ -289,7 +298,7 @@ export function SubscriptionPage() {
   const showBilling = isSubscribed || invoices.length > 0
 
   const planFeatures = (plan: Plan) =>
-    Object.keys(LIMIT_LABELS)
+    Object.keys(LIMIT_LABEL_KEYS)
       .filter((key) => {
         if (hiddenLimitKeys.has(key)) return false
         const custom = plan.feature_labels?.[key]
@@ -306,16 +315,15 @@ export function SubscriptionPage() {
     <div className="p-3 sm:p-6 space-y-6 max-w-5xl">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
         <div>
-          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">Subscription</h1>
+          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">{t("title")}</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            {activeOrg ? `Managing ${activeOrg.name}` : "Choose the plan that fits your team."}
-            <span className="ml-2 text-xs">· Pricing for {data.detectedCountry}</span>
+            {activeOrg ? t("managing", { name: activeOrg.name }) : t("choosePlan")}
           </p>
         </div>
         <Tabs value={cycle} onValueChange={(v) => setCycle(v as typeof cycle)}>
           <TabsList>
-            <TabsTrigger value="monthly">Monthly</TabsTrigger>
-            <TabsTrigger value="yearly">Yearly</TabsTrigger>
+            <TabsTrigger value="monthly">{t("monthly")}</TabsTrigger>
+            <TabsTrigger value="yearly">{t("yearly")}</TabsTrigger>
           </TabsList>
         </Tabs>
       </div>
@@ -329,23 +337,24 @@ export function SubscriptionPage() {
           const base = cycle === "yearly" ? local.yearly : local.monthly
           const discount = cycle === "yearly" ? local.yearly_discount_pct : local.monthly_discount_pct
           const finalAmount = discountedAmount(base, discount)
+          const promo = planText(plan.promo_note) ||
+            (discount > 0 ? t(cycle === "yearly" ? "promoFirstYear" : "promoFirstMonth", { discount }) : "")
           return (
             <Card
               key={plan.id}
-              className={`relative overflow-hidden ${
-                isCurrent
-                  ? "border-primary ring-1 ring-primary/40"
-                  : !isFree
-                    ? "border-primary/30"
-                    : ""
-              }`}
+              className={`relative overflow-hidden ${isCurrent
+                ? "border-primary ring-1 ring-primary/40"
+                : !isFree
+                  ? "border-primary/30"
+                  : ""
+                }`}
             >
               {!isFree && (
                 <>
                   <div className="pointer-events-none absolute -right-10 -top-12 size-40 rounded-full bg-gradient-to-br from-primary/15 to-transparent blur-2xl" />
                   {!isCurrent && (
                     <span className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-300">
-                      <Sparkles className="size-3" /> Recommended
+                      <Sparkles className="size-3" /> {t("recommended")}
                     </span>
                   )}
                 </>
@@ -353,33 +362,31 @@ export function SubscriptionPage() {
               <CardHeader>
                 <CardTitle className="flex items-center justify-between gap-2">
                   <span className="flex items-center gap-2">
-                    {plan.name}
+                    {planText(plan.name)}
                     {!isFree && (
                       <Badge className="bg-primary/15 text-primary hover:bg-primary/15 border-0 uppercase tracking-wide text-[10px]">
-                        Pro
+                        {t("proBadge")}
                       </Badge>
                     )}
                   </span>
-                  {isCurrent && <Badge>Current</Badge>}
+                  {isCurrent && <Badge>{t("current")}</Badge>}
                 </CardTitle>
                 <div className="pt-1">
                   {isFree ? (
-                    <p className="text-3xl font-semibold">Free</p>
+                    <p className="text-3xl font-semibold">{t("free")}</p>
                   ) : (
                     <div>
                       {discount > 0 && (
                         <p className="text-sm text-muted-foreground line-through">
-                          {formatMinor(base, local.currency)}<span className="text-xs">/{cycle === "yearly" ? "yr" : "mo"}</span>
+                          {formatMinor(base, local.currency)}<span className="text-xs">{cycleSuffix}</span>
                         </p>
                       )}
                       <p className="text-3xl font-semibold">
                         {formatMinor(finalAmount, local.currency)}
-                        <span className="text-sm font-normal text-muted-foreground ml-1">/{cycle === "yearly" ? "yr" : "mo"}</span>
+                        <span className="text-sm font-normal text-muted-foreground ml-1">{cycleSuffix}</span>
                       </p>
-                      {(plan.promo_note?.trim() || discount > 0) && (
-                        <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1">
-                          {plan.promo_note?.trim() || `First ${cycle === "yearly" ? "year" : "month"} ${discount}% off`}
-                        </p>
+                      {promo && (
+                        <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1">{promo}</p>
                       )}
                     </div>
                   )}
@@ -391,8 +398,8 @@ export function SubscriptionPage() {
                     <li key={key} className="flex items-center gap-2">
                       <Check className="size-3.5 text-emerald-500 shrink-0" />
                       {custom
-                        ? <span>{custom}</span>
-                        : <span><span className="text-muted-foreground">{LIMIT_LABELS[key] ?? key}:</span> {formatLimitValue(key, val)}</span>}
+                        ? <span>{planText(custom)}</span>
+                        : <span><span className="text-muted-foreground">{t(LIMIT_LABEL_KEYS[key] ?? key)}:</span> {limitValue(key, val)}</span>}
                     </li>
                   ))}
                 </ul>
@@ -404,14 +411,14 @@ export function SubscriptionPage() {
                 >
                   {busy === plan.key ? <Loader2 className="size-3.5 mr-2 animate-spin" /> : null}
                   {isCurrent && current?.status === "active"
-                    ? "Current plan"
+                    ? t("currentPlan")
                     : isFree
-                      ? "Switch to Free"
+                      ? t("switchToFree")
                       : current?.plan_key === plan.key && current?.status !== "active"
-                        ? "Complete payment"
+                        ? t("completePayment")
                         : (
                           <>
-                            Upgrade to {plan.name}
+                            {t("upgradeTo", { name: planText(plan.name) })}
                             <ExternalLink className="size-3.5 ml-1" />
                           </>
                         )}
@@ -427,33 +434,32 @@ export function SubscriptionPage() {
         <div className="space-y-3">
           <div className="flex items-center gap-2">
             <CreditCard className="size-4 text-muted-foreground" />
-            <h2 className="text-base font-semibold tracking-tight">Billing &amp; payments</h2>
+            <h2 className="text-base font-semibold tracking-tight">{t("billingTitle")}</h2>
           </div>
 
           <Card>
             <CardContent className="py-4 space-y-4">
               <div className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-4">
-                <Detail label="Plan" value={<span className="font-medium capitalize">{current.plan_key}</span>} />
+                <Detail label={t("planLabel")} value={<span className="font-medium capitalize">{current.plan_key}</span>} />
                 <Detail
-                  label="Status"
+                  label={t("statusLabel")}
                   value={<Badge variant="outline" className="capitalize">{current.status}</Badge>}
                 />
-                <Detail label="Billing cycle" value={<span className="capitalize">{current.billing_cycle ?? "—"}</span>} />
+                <Detail label={t("billingCycleLabel")} value={<span className="capitalize">{current.billing_cycle ?? "—"}</span>} />
                 <Detail
-                  label={isCancelling ? "Access ends" : "Renews"}
+                  label={isCancelling ? t("accessEnds") : t("renews")}
                   value={current.current_period_end ? formatDate(current.current_period_end) : "—"}
                 />
               </div>
               {current.provider && (
                 <p className="text-xs text-muted-foreground">
-                  Payments handled securely by{" "}
-                  <span className="capitalize font-medium">{current.provider === "dodo" ? "Dodo Payments" : current.provider}</span>.
+                  {t("securedBy", { provider: current.provider === "dodo" ? t("dodoPayments") : current.provider })}
                 </p>
               )}
               {current.plan_key !== "free" && current.status === "active" && (
                 <Button variant="outline" size="sm" onClick={handleCancel} disabled={busy === "cancel"}>
                   {busy === "cancel" ? <Loader2 className="size-3.5 mr-1.5 animate-spin" /> : <ShieldOff className="size-3.5 mr-1.5" />}
-                  Cancel subscription
+                  {t("cancelSubscription")}
                 </Button>
               )}
             </CardContent>
@@ -462,13 +468,13 @@ export function SubscriptionPage() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-                <Receipt className="size-4" /> Invoices
+                <Receipt className="size-4" /> {t("invoicesTitle")}
               </CardTitle>
             </CardHeader>
             <CardContent className="pt-0">
               {invoices.length === 0 ? (
                 <div className="py-8 text-center text-sm text-muted-foreground">
-                  No invoices yet. They'll appear here after your first payment.
+                  {t("noInvoices")}
                 </div>
               ) : (
                 <div className="divide-y">
@@ -491,7 +497,7 @@ export function SubscriptionPage() {
                           variant="ghost"
                           size="icon"
                           className="shrink-0"
-                          title="Download invoice"
+                          title={t("downloadInvoice")}
                           onClick={() => handleDownloadInvoice(inv)}
                           disabled={downloading === inv.id}
                         >

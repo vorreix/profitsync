@@ -88,6 +88,9 @@ export const transactions = pgTable("transactions", {
   description: text("description").default(""),
   category: text("category").default(""),
   date: date("date").notNull().defaultNow(),
+  // Soft-delete: deleted transactions move to Trash (restore/purge) instead of
+  // disappearing. All financial aggregates must exclude rows where this is set.
+  deletedAt: timestamp("deleted_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 })
