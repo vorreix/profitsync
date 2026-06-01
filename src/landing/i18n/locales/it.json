@@ -1,0 +1,256 @@
+{
+  "meta": {
+    "title": "ProfitSync — Conosci il tuo profitto. Sincronizza la tua attività.",
+    "description": "Che si tratti della tua attività o delle tue finanze personali, ProfitSync riunisce entrate, spese e flusso di cassa in un unico spazio di lavoro ordinato — così sai sempre esattamente a che punto sono i tuoi soldi."
+  },
+  "nav": {
+    "features": "Funzionalità",
+    "how": "Come funziona",
+    "pricing": "Prezzi",
+    "faq": "FAQ",
+    "login": "Accedi",
+    "getStarted": "Inizia ora",
+    "openMenu": "Apri menu",
+    "closeMenu": "Chiudi menu"
+  },
+  "theme": {
+    "toLight": "Passa alla modalità chiara",
+    "toDark": "Passa alla modalità scura"
+  },
+  "language": {
+    "label": "Lingua",
+    "select": "Seleziona lingua"
+  },
+  "hero": {
+    "badge": "Per le finanze aziendali e personali",
+    "titleLine1": "Conosci il tuo profitto.",
+    "titleLine2": "Sincronizza la tua attività.",
+    "subtitle": "Che si tratti della tua attività o delle tue finanze personali, ProfitSync riunisce entrate, spese e flusso di cassa in un unico spazio di lavoro ordinato — così sai sempre esattamente a che punto sono i tuoi soldi.",
+    "ctaPrimary": "Inizia gratis",
+    "ctaSecondary": "Scopri come funziona",
+    "microtrust": "Nessuna carta di credito · Piano gratuito per sempre",
+    "mockup": {
+      "appLabel": "Dashboard",
+      "revenue": "Ricavi",
+      "netProfit": "Utile netto",
+      "thisMonth": "Questo mese",
+      "up": "in crescita",
+      "incoming": "Entrate",
+      "outgoing": "Uscite",
+      "recent": "Transazioni recenti",
+      "client": "Cliente",
+      "designRetainer": "Contratto di design",
+      "softwareLicense": "Licenza software",
+      "consulting": "Consulenza",
+      "paid": "Pagato",
+      "expense": "Spesa"
+    }
+  },
+  "trust": {
+    "title": "Creato per chi lavora in modo essenziale",
+    "items": [
+      "Liberi professionisti",
+      "Agenzie",
+      "Studi",
+      "Consulenti",
+      "Piccoli team",
+      "Fondatori indipendenti"
+    ]
+  },
+  "features": {
+    "eyebrow": "Tutto in un unico posto",
+    "title": "Il lato economico della tua attività, finalmente organizzato",
+    "subtitle": "Clienti, transazioni e preventivi che lavorano insieme — con una dashboard in tempo reale che trasforma l'attività in risposte.",
+    "visual": {
+      "active": "Attivo",
+      "inactive": "Inattivo",
+      "incoming": "Entrate",
+      "outgoing": "Uscite"
+    },
+    "items": [
+      {
+        "title": "Ogni cliente in un unico posto",
+        "desc": "Tieni traccia di stato, cronologia e dell'intero flusso di denaro per ogni cliente. Eliminazione temporanea e ripristino, così nulla va mai perso per errore."
+      },
+      {
+        "title": "Soldi in entrata, soldi in uscita",
+        "desc": "Registra le transazioni in entrata e in uscita con categorie, date e allegati. Guarda l'utile netto aggiornarsi all'istante."
+      },
+      {
+        "title": "Crea, invia, converti",
+        "desc": "Crea preventivi professionali, contrassegnali come inviati o accettati e converti un preventivo vincente in un cliente con un clic."
+      },
+      {
+        "title": "Pensato per ogni valuta",
+        "desc": "Imposta la valuta per ogni spazio di lavoro. Importi, grafici e totali sono formattati come li legge la tua attività."
+      },
+      {
+        "title": "Coinvolgi tutto il team",
+        "desc": "Crea organizzazioni, invita membri e gestisci gli accessi con i ruoli proprietario, amministratore, editor e visualizzatore."
+      },
+      {
+        "title": "Chiarezza a colpo d'occhio",
+        "desc": "Una dashboard in tempo reale trasforma le transazioni in tendenze, così flusso di cassa e profitto sono evidenti — non sepolti nei fogli di calcolo."
+      },
+      {
+        "title": "Conserva la documentazione",
+        "desc": "Allega ricevute e documenti a transazioni e preventivi, archiviati in modo sicuro insieme a ogni record."
+      },
+      {
+        "title": "Parla la tua lingua",
+        "desc": "ProfitSync è disponibile in 8 lingue con pieno supporto da destra a sinistra, così tutto il tuo team si sente a casa."
+      }
+    ]
+  },
+  "how": {
+    "eyebrow": "Come funziona",
+    "title": "Dalla registrazione alla chiarezza in quattro passaggi",
+    "subtitle": "Nessuna chiamata di onboarding, nessun foglio di calcolo da migrare. Inizia a monitorare in pochi minuti.",
+    "steps": [
+      {
+        "title": "Crea il tuo spazio di lavoro",
+        "desc": "Registrati gratis e ottieni uno spazio di lavoro personale in pochi secondi. Nessuna carta di credito richiesta."
+      },
+      {
+        "title": "Aggiungi clienti e registra il denaro",
+        "desc": "Inserisci i tuoi clienti e registra le transazioni in entrata e in uscita man mano che avvengono."
+      },
+      {
+        "title": "Invia preventivi",
+        "desc": "Crea e invia preventivi, poi converti quelli accettati in clienti attivi."
+      },
+      {
+        "title": "Guarda il tuo profitto sincronizzarsi",
+        "desc": "La tua dashboard si aggiorna in tempo reale, così sai sempre esattamente a che punto sei."
+      }
+    ]
+  },
+  "value": {
+    "title": "Tutto ciò che serve per gestire il lato economico della tua attività",
+    "subtitle": "Progettato con cura, attento alla privacy e pronto fin dal primo giorno.",
+    "items": [
+      {
+        "title": "Piano gratuito, per sempre",
+        "desc": "Inizia con un piano gratuito davvero utile. Passa a un piano superiore solo quando cresci."
+      },
+      {
+        "title": "Privato per definizione",
+        "desc": "I tuoi dati sono limitati al tuo spazio di lavoro e non vengono mai condivisi o venduti."
+      },
+      {
+        "title": "Pronto per il multivaluta",
+        "desc": "Gestisci i tuoi numeri nella valuta che la tua attività usa davvero."
+      },
+      {
+        "title": "Pensato per i team",
+        "desc": "Invita il tuo team con accessi chiari basati sui ruoli fin dal primo giorno."
+      }
+    ]
+  },
+  "pricing": {
+    "eyebrow": "Prezzi",
+    "title": "Prezzi semplici che crescono con te",
+    "subtitle": "Inizia gratis. Passa a un piano superiore quando cresci. I prezzi sono mostrati nella tua valuta locale, ove disponibile.",
+    "monthly": "Mensile",
+    "yearly": "Annuale",
+    "save": "Risparmia {{pct}}%",
+    "free": "Gratis",
+    "perMo": "/mese",
+    "perYr": "/anno",
+    "mostPopular": "Più popolare",
+    "ctaFree": "Inizia gratis",
+    "ctaPremium": "Inizia ora",
+    "included": "Cosa è incluso",
+    "loadError": "Al momento non riusciamo a caricare i prezzi in tempo reale.",
+    "retry": "Riprova",
+    "note": "La valuta locale e le imposte vengono gestite al momento del pagamento dal nostro fornitore. Disdici quando vuoi.",
+    "charsValue": "{{value}} caratteri",
+    "limits": {
+      "clients": "Clienti",
+      "transactionsPerClient": "Transazioni per cliente",
+      "quotations": "Preventivi",
+      "attachmentSizeKb": "Dimensione allegati",
+      "attachmentsPerTx": "Allegati per voce",
+      "noteLength": "Lunghezza note"
+    },
+    "freeBlurb": "Tutto ciò che ti serve per iniziare a monitorare la tua attività.",
+    "premiumBlurb": "Limiti più alti e spazio per crescere per le attività più serie."
+  },
+  "testimonials": {
+    "eyebrow": "Amato dalle attività indipendenti",
+    "title": "Una chiarezza che si percepisce",
+    "subtitle": "Cosa cambia quando i tuoi numeri vivono finalmente in un unico posto.",
+    "items": [
+      {
+        "quote": "Finalmente conosco il mio profitto reale ogni mese invece di tirare a indovinare. Registrare una transazione richiede pochi secondi.",
+        "name": "Maya R.",
+        "role": "Designer freelance"
+      },
+      {
+        "quote": "Abbiamo spostato l'intero studio dai fogli di calcolo. I preventivi che si convertono direttamente in clienti ci hanno fatto risparmiare ore.",
+        "name": "Daniel K.",
+        "role": "Titolare di agenzia"
+      },
+      {
+        "quote": "Il multivaluta e i ruoli hanno permesso di configurare il mio team da remoto in un pomeriggio.",
+        "name": "Priya S.",
+        "role": "Responsabile di studio"
+      }
+    ]
+  },
+  "faq": {
+    "eyebrow": "FAQ",
+    "title": "Domande, con risposta",
+    "subtitle": "Tutto ciò che potresti voler sapere prima di iniziare.",
+    "items": [
+      {
+        "q": "ProfitSync è davvero gratuito?",
+        "a": "Sì. Il piano gratuito è gratis per sempre con limiti generosi. Passa a Premium in qualsiasi momento per limiti più alti e più spazio per crescere."
+      },
+      {
+        "q": "Quali valute posso usare?",
+        "a": "Imposta qualsiasi valuta per ogni spazio di lavoro. Importi, grafici e totali si formattano in base a come la tua attività legge i suoi numeri."
+      },
+      {
+        "q": "I miei dati finanziari sono privati?",
+        "a": "I tuoi dati sono limitati al tuo spazio di lavoro e non vengono mai condivisi. Puoi eliminare temporaneamente i record ed eliminarli definitivamente quando vuoi."
+      },
+      {
+        "q": "Posso invitare il mio team?",
+        "a": "Assolutamente. Crea un'organizzazione e invita membri con i ruoli proprietario, amministratore, editor o visualizzatore."
+      },
+      {
+        "q": "Come funziona la fatturazione?",
+        "a": "Premium viene addebitato in modo sicuro tramite il nostro fornitore di pagamenti, con prezzi e imposte localizzati al momento del pagamento. Puoi disdire quando vuoi."
+      },
+      {
+        "q": "Quali lingue sono supportate?",
+        "a": "Inglese, italiano, tedesco, hindi, malayalam, tamil, telugu e arabo — incluso il pieno supporto da destra a sinistra."
+      }
+    ]
+  },
+  "cta": {
+    "title": "Inizia a gestire la tua attività con i numeri",
+    "subtitle": "Crea oggi il tuo spazio di lavoro gratuito — nessuna carta di credito, nessuna configurazione, solo chiarezza.",
+    "primary": "Inizia gratis",
+    "secondary": "Esplora le funzionalità",
+    "microtrust": "Piano gratuito per sempre · Aggiorna quando vuoi"
+  },
+  "footer": {
+    "tagline": "Il modo pulito e veloce per tenere traccia di clienti, flussi di cassa e preventivi — e conoscere sempre il tuo profitto.",
+    "productHeading": "Prodotto",
+    "companyHeading": "Azienda",
+    "legalHeading": "Note legali",
+    "links": {
+      "features": "Funzionalità",
+      "pricing": "Prezzi",
+      "faq": "FAQ",
+      "login": "Accedi",
+      "signup": "Inizia ora",
+      "privacy": "Informativa sulla privacy",
+      "terms": "Termini di servizio"
+    },
+    "rights": "Tutti i diritti riservati.",
+    "language": "Lingua"
+  }
+}

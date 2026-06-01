@@ -182,6 +182,10 @@ export const plans = pgTable("plans", {
   // admins set these in the admin panel and the rest is derived from Dodo.
   dodoProductMonthly: text("dodo_product_monthly"),
   dodoProductYearly: text("dodo_product_yearly"),
+  // Which Dodo environment this plan's product IDs live in. Test products only
+  // resolve against test.dodopayments.com (with a test key); live against live.
+  // Threaded into every Dodo call for this plan and its subscriptions.
+  dodoEnvironment: text("dodo_environment").notNull().default("live"), // test | live
   limits: jsonb("limits").notNull().default({}), // { clients, transactionsPerClient, quotations, attachmentSizeKb, attachmentsPerTx, noteLength } — REAL numeric limits used by quota
   featureLabels: jsonb("feature_labels").notNull().default({}), // { <limitKey>: "display string" } — shown in the plan's feature list
   dodoMetadata: jsonb("dodo_metadata").notNull().default({}), // raw data synced from Dodo: { monthly: {...}, yearly: {...} }
@@ -196,6 +200,10 @@ export const subscriptions = pgTable("subscriptions", {
   planKey: text("plan_key").notNull().default("free"),
   status: text("status").notNull().default("active"), // active | past_due | cancelled | trialing
   billingCycle: text("billing_cycle"), // monthly | yearly | null for free
+  // Snapshot of the plan's dodo_environment at checkout time, so cancel/sync/
+  // invoice keep calling the right Dodo env even if the plan is later changed.
+  // null for free/stub/legacy rows → callers fall back to "live".
+  dodoEnvironment: text("dodo_environment"), // test | live | null
   provider: text("provider"), // dodo | stub | manual | null
   providerSubscriptionId: text("provider_subscription_id"),
   currentPeriodEnd: timestamp("current_period_end"),

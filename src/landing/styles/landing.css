@@ -1,0 +1,84 @@
+/* Fonts must be imported before any other rule. Scoped in usage to .ps-landing. */
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap");
+
+/* ---------------------------------------------------------------------------
+   All landing styles are namespaced under .ps-landing so nothing leaks into the
+   app. Colors come entirely from the app's existing CSS variables (--background,
+   --foreground, --primary, --muted, --border …) defined in src/index.css, so the
+   landing matches the product's current theme in both light and dark mode.
+--------------------------------------------------------------------------- */
+.ps-landing {
+  font-family: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+.ps-display {
+  font-family: "Plus Jakarta Sans", "Inter", ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: -0.022em;
+  font-feature-settings: "ss01" on;
+}
+
+.ps-tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Subtle dotted grid, fades toward the edges. Uses currentColor opacity so it
+   adapts to light/dark automatically. */
+.ps-grid {
+  background-image: radial-gradient(currentColor 1px, transparent 1px);
+  background-size: 22px 22px;
+  -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 35%, #000 30%, transparent 75%);
+  mask-image: radial-gradient(ellipse 70% 60% at 50% 35%, #000 30%, transparent 75%);
+}
+
+/* Soft monochrome spotlight glow behind the hero. */
+.ps-spotlight {
+  background:
+    radial-gradient(40% 50% at 50% 0%, color-mix(in oklch, var(--foreground) 8%, transparent) 0%, transparent 70%);
+}
+
+/* Thin top hairline used on section dividers. */
+.ps-hairline {
+  background: linear-gradient(90deg, transparent, var(--border), transparent);
+}
+
+@keyframes ps-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+@keyframes ps-marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+@keyframes ps-shimmer {
+  100% { transform: translateX(100%); }
+}
+
+.ps-animate-float {
+  animation: ps-float 6s ease-in-out infinite;
+}
+
+.ps-marquee-track {
+  animation: ps-marquee 32s linear infinite;
+}
+
+.ps-landing :focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ps-animate-float,
+  .ps-marquee-track {
+    animation: none !important;
+  }
+  .ps-landing * {
+    scroll-behavior: auto !important;
+  }
+}
