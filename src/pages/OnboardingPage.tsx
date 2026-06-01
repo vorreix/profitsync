@@ -18,6 +18,7 @@ import {
 import { apiGet, apiPost, setActiveOrgId } from "@/lib/api"
 import { OrgProvider, useOrg } from "@/lib/org-context"
 import { useSyncProfileLanguage } from "@/lib/i18n/use-language"
+import { usePlanText } from "@/lib/i18n/plan-text"
 import type { AccountType } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -437,6 +438,7 @@ function PlanSummary({
   accountType: AccountType
 }) {
   const { t } = useTranslation()
+  const planText = usePlanText()
   const accent = ACCENTS[accountType]
   const local = plan.local_pricing
   const base = cycle === "yearly" ? local.yearly : local.monthly
@@ -444,8 +446,9 @@ function PlanSummary({
   const final = discounted(base, pct)
   const suffix = cycle === "yearly" ? t("onboarding.perYear") : t("onboarding.perMonth")
   // Prefer the admin-defined feature strings (synced/configured per plan); fall
-  // back to the curated onboarding perks when none are set.
-  const customFeatures = Object.values(plan.feature_labels ?? {}).filter(Boolean)
+  // back to the curated onboarding perks when none are set. Backend strings are
+  // auto-translated via the plan glossary.
+  const customFeatures = Object.values(plan.feature_labels ?? {}).filter(Boolean).map(planText)
   const perks = customFeatures.length > 0
     ? customFeatures
     : [
@@ -464,7 +467,7 @@ function PlanSummary({
             <accent.icon className="size-5" />
           </div>
           <div>
-            <p className="font-semibold leading-tight">{plan.name}</p>
+            <p className="font-semibold leading-tight">{planText(plan.name)}</p>
             <p className="text-xs text-muted-foreground">{t(`onboarding.${accountType}Tagline`)}</p>
           </div>
         </div>

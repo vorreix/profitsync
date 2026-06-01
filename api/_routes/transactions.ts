@@ -57,7 +57,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .select(txFields)
         .from(transactions)
         .innerJoin(clients, eq(transactions.clientId, clients.id))
-        .where(eq(transactions.clientId, clientId))
+        .where(and(eq(transactions.clientId, clientId), isNull(transactions.deletedAt)))
         .orderBy(...orderBy)
       return res.json(rows.map(serialize))
     }
@@ -81,6 +81,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const whereClause = and(
       eq(clients.organizationId, orgId),
       isNull(clients.deletedAt),
+      isNull(transactions.deletedAt),
       searchFilter,
       typeFilter,
       categoryFilter,
@@ -95,6 +96,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const summaryWhere = and(
         eq(clients.organizationId, orgId),
         isNull(clients.deletedAt),
+        isNull(transactions.deletedAt),
         searchFilter,
         categoryFilter,
       )

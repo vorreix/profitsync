@@ -94,9 +94,11 @@ export function MobileAppLayout() {
   const userEmail = user?.primaryEmailAddress?.emailAddress ?? null
 
   const handleSwitch = async (id: string) => {
+    // Close the sheet immediately so switching feels instant on mobile; the
+    // org refresh continues in the background.
+    setOrgSheetOpen(false)
     await switchOrg(id)
     await refresh()
-    setOrgSheetOpen(false)
   }
 
   const handleLogout = async () => {

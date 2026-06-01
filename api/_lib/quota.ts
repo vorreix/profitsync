@@ -108,7 +108,7 @@ export async function checkTransactionQuota(orgId: string, clientId: string): Pr
   const [{ current }] = await db
     .select({ current: count() })
     .from(transactions)
-    .where(eq(transactions.clientId, clientId))
+    .where(and(eq(transactions.clientId, clientId), isNull(transactions.deletedAt)))
   if (current >= limits.transactionsPerClient) {
     return {
       allowed: false,

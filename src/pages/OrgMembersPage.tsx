@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { useAuth } from "@clerk/clerk-react"
 import { useNavigate, useParams } from "react-router-dom"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { apiGet, apiPatch, apiPost } from "@/lib/api"
 import { useOrg } from "@/lib/org-context"
@@ -52,6 +53,7 @@ function roleBadge(role: string) {
 }
 
 export function OrgMembersPage() {
+  const { t } = useTranslation("members")
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
   const { getToken } = useAuth()
@@ -77,11 +79,11 @@ export function OrgMembersPage() {
       const res = await apiGet<MembersResponse>(`/api/organizations/${id}/members`, token)
       setData(res)
     } catch {
-      toast.error("Failed to load members")
+      toast.error(t("failedToLoadMembers"))
     } finally {
       setLoading(false)
     }
-  }, [getToken, id])
+  }, [getToken, id, t])
 
   useEffect(() => { load() }, [load])
 
@@ -97,11 +99,11 @@ export function OrgMembersPage() {
       })
       const link = `${window.location.origin}/invitations/${created.token}`
       setLastLink(link)
-      toast.success(`Invited ${created.email}`)
+      toast.success(t("invitedEmail", { email: created.email }))
       setInviteEmail("")
       await load()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to invite")
+      toast.error(err instanceof Error ? err.message : t("failedToInvite"))
     } finally {
       setInviting(false)
     }
@@ -114,17 +116,17 @@ export function OrgMembersPage() {
       const token = await getToken()
       if (!token) return
       await apiPatch(`/api/organizations/${id}/members`, token, { member_id: memberId, role })
-      toast.success("Role updated")
+      toast.success(t("roleUpdated"))
       await load()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed")
+      toast.error(err instanceof Error ? err.message : t("failed"))
     } finally {
       setBusy(null)
     }
   }
 
   const handleRemoveMember = async (memberId: string) => {
-    if (!id || !window.confirm("Remove this member?")) return
+    if (!id || !window.confirm(t("confirmRemoveMember"))) return
     setBusy(memberId)
     try {
       const token = await getToken()
@@ -135,10 +137,10 @@ export function OrgMembersPage() {
         body: JSON.stringify({ member_id: memberId }),
       })
       if (!res.ok) throw new Error(await res.text())
-      toast.success("Member removed")
+      toast.success(t("memberRemoved"))
       await load()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed")
+      toast.error(err instanceof Error ? err.message : t("failed"))
     } finally {
       setBusy(null)
     }
@@ -156,10 +158,10 @@ export function OrgMembersPage() {
         body: JSON.stringify({ invitation_id: invitationId }),
       })
       if (!res.ok) throw new Error(await res.text())
-      toast.success("Invitation revoked")
+      toast.success(t("invitationRevoked"))
       await load()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed")
+      toast.error(err instanceof Error ? err.message : t("failed"))
     } finally {
       setBusy(null)
     }
@@ -172,23 +174,23 @@ export function OrgMembersPage() {
   return (
     <div className="p-3 sm:p-6 space-y-6 max-w-3xl">
       <Button variant="ghost" size="sm" onClick={() => navigate("/organizations")} className="-ml-2">
-        <ArrowLeft className="size-3.5 mr-1.5" /> Back to organizations
+        <ArrowLeft className="size-3.5 mr-1.5" /> {t("backToOrganizations")}
       </Button>
 
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">{org?.name ?? "Organization"} members</h1>
+          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">{org?.name ?? t("organization")} {t("members")}</h1>
           <p className="text-sm text-muted-foreground mt-0.5 sm:mt-1">
-            Invite teammates and manage their roles. {data?.current_role && (
-              <span>You are an <span className="capitalize font-medium">{data.current_role}</span>.</span>
+            {t("inviteTeammatesAndManageRoles")} {data?.current_role && (
+              <span>{t("youAreAn")} <span className="capitalize font-medium">{data.current_role}</span>.</span>
             )}
           </p>
         </div>
         {canManage && (
           <Button onClick={() => setInviteOpen(true)} className="shrink-0">
             <Plus className="size-4 sm:mr-1.5" />
-            <span className="hidden sm:inline">Invite member</span>
-            <span className="sm:hidden">Invite</span>
+            <span className="hidden sm:inline">{t("inviteMember")}</span>
+            <span className="sm:hidden">{t("invite")}</span>
           </Button>
         )}
       </div>
@@ -199,7 +201,7 @@ export function OrgMembersPage() {
         <>
           <Card>
             <CardContent className="py-3">
-              <h2 className="text-xs uppercase tracking-widest text-muted-foreground mb-2">Members ({data.members.length})</h2>
+              <h2 className="text-xs uppercase tracking-widest text-muted-foreground mb-2">{t("membersCount", { count: data.members.length })}</h2>
               <div className="divide-y">
                 {data.members.map((m) => (
                   <div key={m.id} className="py-3 flex items-center gap-3">
@@ -233,7 +235,7 @@ export function OrgMembersPage() {
                         className="text-destructive hover:text-destructive size-9 sm:size-8"
                         onClick={() => handleRemoveMember(m.id)}
                         disabled={busy === m.id || m.role === "owner"}
-                        aria-label="Remove"
+                        aria-label={t("remove")}
                       >
                         <Trash2 className="size-3.5" />
                       </Button>
@@ -247,7 +249,7 @@ export function OrgMembersPage() {
           {data.invitations.length > 0 && (
             <Card>
               <CardContent className="py-3">
-                <h2 className="text-xs uppercase tracking-widest text-muted-foreground mb-2">Pending invitations ({data.invitations.length})</h2>
+                <h2 className="text-xs uppercase tracking-widest text-muted-foreground mb-2">{t("pendingInvitationsCount", { count: data.invitations.length })}</h2>
                 <div className="divide-y">
                   {data.invitations.map((inv) => (
                     <div key={inv.id} className="py-3 flex items-center gap-3">
@@ -257,8 +259,8 @@ export function OrgMembersPage() {
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium truncate">{inv.email}</p>
                         <p className="text-xs text-muted-foreground">
-                          Role: <span className="capitalize">{inv.role}</span> ·
-                          {inv.expires_at ? ` expires ${inv.expires_at.split("T")[0]}` : " no expiry"}
+                          {t("role")}: <span className="capitalize">{inv.role}</span> ·
+                          {inv.expires_at ? ` ${t("expires")} ${inv.expires_at.split("T")[0]}` : ` ${t("noExpiry")}`}
                         </p>
                       </div>
                       <Button
@@ -267,10 +269,10 @@ export function OrgMembersPage() {
                         onClick={() => {
                           const link = `${window.location.origin}/invitations/${inv.token}`
                           navigator.clipboard.writeText(link)
-                          toast.success("Invitation link copied")
+                          toast.success(t("invitationLinkCopied"))
                         }}
                       >
-                        Copy link
+                        {t("copyLink")}
                       </Button>
                       {canManage && (
                         <Button
@@ -279,7 +281,7 @@ export function OrgMembersPage() {
                           className="text-destructive hover:text-destructive size-9 sm:size-8"
                           onClick={() => handleRevokeInvite(inv.id)}
                           disabled={busy === inv.id}
-                          aria-label="Revoke"
+                          aria-label={t("revoke")}
                         >
                           <Trash2 className="size-3.5" />
                         </Button>
@@ -296,15 +298,15 @@ export function OrgMembersPage() {
       <Dialog open={inviteOpen} onOpenChange={(o) => { if (!o) { setInviteOpen(false); setLastLink(null) } }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Invite a member</DialogTitle>
+            <DialogTitle>{t("inviteAMember")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <div className="space-y-1.5">
-              <Label htmlFor="invite-email">Email address</Label>
-              <Input id="invite-email" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} placeholder="teammate@example.com" disabled={inviting} />
+              <Label htmlFor="invite-email">{t("emailAddress")}</Label>
+              <Input id="invite-email" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} placeholder={t("placeholderEmail")} disabled={inviting} />
             </div>
             <div className="space-y-1.5">
-              <Label>Role</Label>
+              <Label>{t("role")}</Label>
               <div className="flex gap-1.5">
                 {ROLE_OPTIONS.map((r) => (
                   <Button key={r} type="button" size="sm" variant={inviteRole === r ? "default" : "outline"} onClick={() => setInviteRole(r)}>
@@ -314,21 +316,21 @@ export function OrgMembersPage() {
                 ))}
               </div>
               <p className="text-xs text-muted-foreground">
-                Editors can create and edit; viewers see read-only data; admins can manage members.
+                {t("roleDescription")}
               </p>
             </div>
             {lastLink && (
               <div className="text-xs bg-muted rounded-md p-2 break-all">
-                <p className="text-muted-foreground mb-1">Invitation link (share with the invitee):</p>
+                <p className="text-muted-foreground mb-1">{t("invitationLinkDescription")}</p>
                 <code>{lastLink}</code>
               </div>
             )}
           </div>
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setInviteOpen(false)} disabled={inviting}>Close</Button>
+            <Button variant="ghost" onClick={() => setInviteOpen(false)} disabled={inviting}>{t("close")}</Button>
             <Button onClick={handleInvite} disabled={!inviteEmail.trim() || inviting}>
               {inviting ? <Loader2 className="size-3.5 mr-1 animate-spin" /> : <Plus className="size-3.5 mr-1" />}
-              Send invite
+              {t("sendInvite")}
             </Button>
           </DialogFooter>
         </DialogContent>

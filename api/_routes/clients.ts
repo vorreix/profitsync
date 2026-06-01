@@ -74,7 +74,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         db
           .select(selectFields)
           .from(clients)
-          .leftJoin(transactions, eq(transactions.clientId, clients.id))
+          .leftJoin(transactions, and(eq(transactions.clientId, clients.id), isNull(transactions.deletedAt)))
           .where(whereClause)
           .groupBy(clients.id)
           .orderBy(desc(clients.isOwn), orderBy, desc(clients.id))
@@ -88,7 +88,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const rows = await db
       .select(selectFields)
       .from(clients)
-      .leftJoin(transactions, eq(transactions.clientId, clients.id))
+      .leftJoin(transactions, and(eq(transactions.clientId, clients.id), isNull(transactions.deletedAt)))
       .where(whereClause)
       .groupBy(clients.id)
       .orderBy(desc(clients.isOwn), orderBy)

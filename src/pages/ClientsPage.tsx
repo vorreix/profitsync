@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
+import { useTranslation } from "react-i18next"
 import { apiGet, apiPost } from "@/lib/api"
 import type { Client } from "@/lib/types"
 import { useCurrency } from "@/lib/currency-context"
@@ -60,6 +61,7 @@ function toWithStats(c: Client): ClientWithStats {
 }
 
 export function ClientsPage() {
+  const { t } = useTranslation("clients")
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const { getToken } = useAuth()
@@ -98,7 +100,7 @@ export function ClientsPage() {
       setTotal(data.total)
     } catch (err) {
       console.error("Failed to load clients:", err)
-      toast.error("Failed to load clients")
+      toast.error(t("loadClientsFailed"))
     } finally {
       setLoading(false)
     }
@@ -119,7 +121,7 @@ export function ClientsPage() {
       setPage(nextPage)
     } catch (err) {
       console.error("Failed to load more clients:", err)
-      toast.error("Failed to load more clients")
+      toast.error(t("loadMoreClientsFailed"))
     } finally {
       setLoadingMore(false)
     }
@@ -139,7 +141,7 @@ export function ClientsPage() {
   }, [searchParams, setSearchParams])
 
   async function handleCreate() {
-    if (!form.name.trim()) { toast.error("Client name is required"); return }
+    if (!form.name.trim()) { toast.error(t("clientNameRequired")); return }
     setSaving(true)
     try {
       const token = await getToken()
@@ -154,12 +156,12 @@ export function ClientsPage() {
       }
       if (form.onboard_date) body.onboard_date = form.onboard_date
       await apiPost<Client>("/api/clients", token, body)
-      toast.success("Client created")
+      toast.success(t("clientCreated"))
       setDialogOpen(false)
       setForm(defaultForm)
       fetchPage1()
     } catch {
-      toast.error("Failed to create client")
+      toast.error(t("createClientFailed"))
     } finally {
       setSaving(false)
     }
@@ -172,15 +174,15 @@ export function ClientsPage() {
       {/* Header */}
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">Clients</h1>
+          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">{t("pageTitle")}</h1>
           <p className="text-sm text-muted-foreground mt-0.5 sm:mt-1">
-            {loading ? "Loading..." : `${total} client${total !== 1 ? "s" : ""}`}
+            {loading ? t("loading") : t("clientCount", { count: total })}
           </p>
         </div>
         <Button onClick={() => setDialogOpen(true)} className="shrink-0">
           <Plus className="size-4" />
-          <span className="hidden sm:inline">New Client</span>
-          <span className="sm:hidden">New</span>
+          <span className="hidden sm:inline">{t("newClientButton")}</span>
+          <span className="sm:hidden">{t("newButton")}</span>
         </Button>
       </div>
 
@@ -189,7 +191,7 @@ export function ClientsPage() {
         <div className="relative flex-1 min-w-0">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
           <Input
-            placeholder="Search clients..."
+            placeholder={t("searchPlaceholder")}
             className="pl-9"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -197,13 +199,13 @@ export function ClientsPage() {
         </div>
         <Select value={sort} onValueChange={setSort}>
           <SelectTrigger className="w-32 sm:w-44 shrink-0">
-            <SelectValue placeholder="Sort by" />
+            <SelectValue placeholder={t("sortBy")} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="name_asc">Name A → Z</SelectItem>
-            <SelectItem value="name_desc">Name Z → A</SelectItem>
-            <SelectItem value="date_asc">Date (oldest)</SelectItem>
-            <SelectItem value="date_desc">Date (newest)</SelectItem>
+            <SelectItem value="name_asc">{t("nameAscending")}</SelectItem>
+            <SelectItem value="name_desc">{t("nameDescending")}</SelectItem>
+            <SelectItem value="date_asc">{t("dateOldest")}</SelectItem>
+            <SelectItem value="date_desc">{t("dateNewest")}</SelectItem>
           </SelectContent>
         </Select>
         <div className="hidden sm:flex items-center border rounded-md overflow-hidden shrink-0">
@@ -237,12 +239,12 @@ export function ClientsPage() {
         <div className="py-20 text-center">
           <Users className="size-12 mx-auto text-muted-foreground/50 mb-4" />
           <p className="text-muted-foreground font-medium">
-            {search ? "No clients match your search" : "No clients yet"}
+            {search ? t("noClientsMatch") : t("noClientsYet")}
           </p>
           {!search && (
             <Button className="mt-4" onClick={() => setDialogOpen(true)}>
               <Plus className="size-4" />
-              Create your first client
+              {t("createFirstClient")}
             </Button>
           )}
         </div>
@@ -263,7 +265,7 @@ export function ClientsPage() {
                           <p className="font-semibold text-sm truncate">{client.name}</p>
                           {client.is_own && (
                             <Badge variant="outline" className="text-xs shrink-0 border-primary/40 text-primary">
-                              <Building2 className="size-3 mr-0.5" /> Own company
+                              <Building2 className="size-3 mr-0.5" /> {t("ownCompany")}
                             </Badge>
                           )}
                           <Badge
@@ -285,21 +287,21 @@ export function ClientsPage() {
 
                     <div className="grid grid-cols-3 gap-2 pt-2 border-t">
                       <div>
-                        <p className="text-xs text-muted-foreground font-medium">Income</p>
+                        <p className="text-xs text-muted-foreground font-medium">{t("incomeLabel")}</p>
                         <p className="text-sm font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1 mt-0.5">
                           <TrendingUp className="size-3" />
                           {formatCurrency(Number(client.total_incoming ?? 0))}
                         </p>
                       </div>
                       <div>
-                        <p className="text-xs text-muted-foreground font-medium">Expense</p>
+                        <p className="text-xs text-muted-foreground font-medium">{t("expenseLabel")}</p>
                         <p className="text-sm font-semibold text-red-600 dark:text-red-400 flex items-center gap-1 mt-0.5">
                           <TrendingDown className="size-3" />
                           {formatCurrency(Number(client.total_outgoing ?? 0))}
                         </p>
                       </div>
                       <div>
-                        <p className="text-xs text-muted-foreground font-medium">Profit</p>
+                        <p className="text-xs text-muted-foreground font-medium">{t("profitLabel")}</p>
                         <p className={`text-sm font-semibold flex items-center gap-1 mt-0.5 ${
                           client.profit >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"
                         }`}>
@@ -342,7 +344,7 @@ export function ClientsPage() {
                       <span className="font-medium text-sm">{client.name}</span>
                       {client.is_own && (
                         <Badge variant="outline" className="text-xs border-primary/40 text-primary">
-                          <Building2 className="size-3 mr-0.5" /> Own company
+                          <Building2 className="size-3 mr-0.5" /> {t("ownCompany")}
                         </Badge>
                       )}
                       <Badge variant={client.status === "active" ? "default" : "secondary"} className="text-xs">
@@ -359,19 +361,19 @@ export function ClientsPage() {
                   </div>
                   <div className="flex items-center gap-4 shrink-0">
                     <div className="hidden md:block text-right">
-                      <p className="text-xs text-muted-foreground">Income</p>
+                      <p className="text-xs text-muted-foreground">{t("incomeLabel")}</p>
                       <p className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">
                         {formatCurrency(Number(client.total_incoming ?? 0))}
                       </p>
                     </div>
                     <div className="hidden md:block text-right">
-                      <p className="text-xs text-muted-foreground">Expense</p>
+                      <p className="text-xs text-muted-foreground">{t("expenseLabel")}</p>
                       <p className="text-sm font-semibold text-red-600 dark:text-red-400">
                         {formatCurrency(Number(client.total_outgoing ?? 0))}
                       </p>
                     </div>
                     <div className="text-right">
-                      <p className="text-xs text-muted-foreground">Profit</p>
+                      <p className="text-xs text-muted-foreground">{t("profitLabel")}</p>
                       <p className={`text-sm font-semibold ${
                         client.profit >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"
                       }`}>
@@ -388,7 +390,7 @@ export function ClientsPage() {
           {remaining > 0 && (
             <div className="flex justify-center pt-2">
               <Button variant="outline" onClick={handleLoadMore} disabled={loadingMore}>
-                {loadingMore ? "Loading..." : `Load More (${remaining} remaining)`}
+                {loadingMore ? t("loading") : t("loadMore", { remaining })}
               </Button>
             </div>
           )}
@@ -399,43 +401,43 @@ export function ClientsPage() {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="w-[92vw] max-w-md">
           <DialogHeader>
-            <DialogTitle>Create New Client</DialogTitle>
+            <DialogTitle>{t("createNewClientTitle")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-1.5">
-              <Label htmlFor="name">Name *</Label>
+              <Label htmlFor="name">{t("nameField")} *</Label>
               <Input
                 id="name"
-                placeholder="John Doe"
+                placeholder={t("namePlaceholder")}
                 value={form.name}
                 onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="company">Company</Label>
+              <Label htmlFor="company">{t("companyField")}</Label>
               <Input
                 id="company"
-                placeholder="Acme Corp"
+                placeholder={t("companyPlaceholder")}
                 value={form.company}
                 onChange={(e) => setForm((f) => ({ ...f, company: e.target.value }))}
               />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label htmlFor="email">Email</Label>
+                <Label htmlFor="email">{t("emailField")}</Label>
                 <Input
                   id="email"
                   type="email"
-                  placeholder="john@example.com"
+                  placeholder={t("emailPlaceholder")}
                   value={form.email}
                   onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="phone">Phone</Label>
+                <Label htmlFor="phone">{t("phoneField")}</Label>
                 <Input
                   id="phone"
-                  placeholder="+1 555 0000"
+                  placeholder={t("phonePlaceholder")}
                   value={form.phone}
                   onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
                 />
@@ -443,7 +445,7 @@ export function ClientsPage() {
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label>Status</Label>
+                <Label>{t("statusField")}</Label>
                 <Select
                   value={form.status}
                   onValueChange={(v) => setForm((f) => ({ ...f, status: v as "active" | "inactive" }))}
@@ -452,13 +454,13 @@ export function ClientsPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="active">Active</SelectItem>
-                    <SelectItem value="inactive">Inactive</SelectItem>
+                    <SelectItem value="active">{t("statusActive")}</SelectItem>
+                    <SelectItem value="inactive">{t("statusInactive")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="onboard_date">Onboard Date</Label>
+                <Label htmlFor="onboard_date">{t("onboardDateField")}</Label>
                 <Input
                   id="onboard_date"
                   type="date"
@@ -468,10 +470,10 @@ export function ClientsPage() {
               </div>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="notes">Notes</Label>
+              <Label htmlFor="notes">{t("notesField")}</Label>
               <Textarea
                 id="notes"
-                placeholder="Any notes about this client..."
+                placeholder={t("notesPlaceholder")}
                 className="resize-none"
                 rows={2}
                 value={form.notes}
@@ -480,9 +482,9 @@ export function ClientsPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setDialogOpen(false)}>{t("cancelButton")}</Button>
             <Button onClick={handleCreate} disabled={saving}>
-              {saving ? "Creating..." : "Create Client"}
+              {saving ? t("creating") : t("createClientButton")}
             </Button>
           </DialogFooter>
         </DialogContent>

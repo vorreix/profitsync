@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { and, eq, isNotNull } from "drizzle-orm"
 import { db, serialize } from "../../../src/lib/db/index.js"
-import { clients, quotations } from "../../../src/lib/db/schema.js"
+import { clients, quotations, transactions } from "../../../src/lib/db/schema.js"
 import { canDelete, requireAuth } from "../../_lib/auth.js"
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -14,8 +14,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const { type, id } = req.body as { type: string; id: string }
   if (!id) return res.status(400).json({ error: "id is required" })
-  if (!["client", "quotation"].includes(type)) {
-    return res.status(400).json({ error: "type must be client or quotation" })
+  if (!["client", "quotation", "transaction"].includes(type)) {
+    return res.status(400).json({ error: "type must be client, quotation, or transaction" })
+  }
+
+  if (type === "transaction") {
+    // Transactions are org-scoped via their client.
+    const [tx] = await db
+      .select({ id: transactions.id })
+      .from(transactions)
+      .innerJoin(clients, eq(transactions.clientId, clients.id))
+      .where(and(eq(transactions.id, id), eq(clients.organizationId, orgId), isNotNull(transactions.deletedAt)))
+    if (!tx) return res.status(404).json({ error: "Not found" })
+    const [updated] = await db
+      .update(transactions)
+      .set({ deletedAt: null, updatedAt: new Date() })
+      .where(eq(transactions.id, id))
+      .returning()
+    return res.json(serialize(updated))
   }
 
   if (type === "client") {
