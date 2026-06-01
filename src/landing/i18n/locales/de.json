@@ -1,0 +1,256 @@
+{
+  "meta": {
+    "title": "ProfitSync — Kenne deinen Gewinn. Synchronisiere dein Business.",
+    "description": "Ob für dein Unternehmen oder deine privaten Finanzen — ProfitSync vereint Einnahmen, Ausgaben und Cashflow in einem aufgeräumten Arbeitsbereich, sodass du immer genau weißt, wo dein Geld steht."
+  },
+  "nav": {
+    "features": "Funktionen",
+    "how": "So funktioniert's",
+    "pricing": "Preise",
+    "faq": "FAQ",
+    "login": "Anmelden",
+    "getStarted": "Loslegen",
+    "openMenu": "Menü öffnen",
+    "closeMenu": "Menü schließen"
+  },
+  "theme": {
+    "toLight": "Zum hellen Modus wechseln",
+    "toDark": "Zum dunklen Modus wechseln"
+  },
+  "language": {
+    "label": "Sprache",
+    "select": "Sprache auswählen"
+  },
+  "hero": {
+    "badge": "Für geschäftliche und private Finanzen",
+    "titleLine1": "Kenne deinen Gewinn.",
+    "titleLine2": "Synchronisiere dein Business.",
+    "subtitle": "Ob für dein Unternehmen oder deine privaten Finanzen — ProfitSync vereint Einnahmen, Ausgaben und Cashflow in einem aufgeräumten Arbeitsbereich, sodass du immer genau weißt, wo dein Geld steht.",
+    "ctaPrimary": "Kostenlos starten",
+    "ctaSecondary": "So funktioniert's",
+    "microtrust": "Keine Kreditkarte nötig · Kostenloser Tarif für immer",
+    "mockup": {
+      "appLabel": "Dashboard",
+      "revenue": "Umsatz",
+      "netProfit": "Nettogewinn",
+      "thisMonth": "Diesen Monat",
+      "up": "plus",
+      "incoming": "Eingehend",
+      "outgoing": "Ausgehend",
+      "recent": "Letzte Transaktionen",
+      "client": "Kunde",
+      "designRetainer": "Design-Retainer",
+      "softwareLicense": "Softwarelizenz",
+      "consulting": "Beratung",
+      "paid": "Bezahlt",
+      "expense": "Ausgabe"
+    }
+  },
+  "trust": {
+    "title": "Gemacht für alle, die schlank arbeiten",
+    "items": [
+      "Freelancer",
+      "Agenturen",
+      "Studios",
+      "Berater",
+      "Kleine Teams",
+      "Solo-Gründer"
+    ]
+  },
+  "features": {
+    "eyebrow": "Alles an einem Ort",
+    "title": "Die Geldseite deines Unternehmens, endlich organisiert",
+    "subtitle": "Kunden, Transaktionen und Angebote im Zusammenspiel — mit einem Live-Dashboard, das Aktivität in Antworten verwandelt.",
+    "visual": {
+      "active": "Aktiv",
+      "inactive": "Inaktiv",
+      "incoming": "Eingehend",
+      "outgoing": "Ausgehend"
+    },
+    "items": [
+      {
+        "title": "Jeder Kunde an einem Ort",
+        "desc": "Behalte Status, Verlauf und die gesamte Geldspur jedes Kunden im Blick. Soft-Delete und Wiederherstellung, sodass nie etwas versehentlich verloren geht."
+      },
+      {
+        "title": "Geld rein, Geld raus",
+        "desc": "Erfasse eingehende und ausgehende Transaktionen mit Kategorien, Daten und Anhängen. Sieh zu, wie sich der Nettogewinn sofort aktualisiert."
+      },
+      {
+        "title": "Angebot erstellen, senden, umwandeln",
+        "desc": "Erstelle professionelle Angebote, markiere sie als gesendet oder angenommen und wandle ein gewonnenes Angebot mit einem Klick in einen Kunden um."
+      },
+      {
+        "title": "Für jede Währung gemacht",
+        "desc": "Lege die Währung pro Arbeitsbereich fest. Beträge, Diagramme und Summen werden so formatiert, wie dein Unternehmen sie liest."
+      },
+      {
+        "title": "Hol dein ganzes Team an Bord",
+        "desc": "Erstelle Organisationen, lade Mitglieder ein und steuere den Zugriff mit den Rollen Inhaber, Admin, Bearbeiter und Betrachter."
+      },
+      {
+        "title": "Klarheit auf einen Blick",
+        "desc": "Ein Live-Dashboard macht aus deinen Transaktionen Trends, sodass Cashflow und Gewinn offensichtlich sind — nicht in Tabellen vergraben."
+      },
+      {
+        "title": "Bewahre den Beleg-Verlauf",
+        "desc": "Hänge Belege und Dokumente an Transaktionen und Angebote an, sicher gespeichert bei jedem Datensatz."
+      },
+      {
+        "title": "Spricht deine Sprache",
+        "desc": "ProfitSync gibt es in 8 Sprachen mit vollständiger Rechts-nach-links-Unterstützung, sodass sich dein ganzes Team zuhause fühlt."
+      }
+    ]
+  },
+  "how": {
+    "eyebrow": "So funktioniert's",
+    "title": "Von der Anmeldung zur Klarheit in vier Schritten",
+    "subtitle": "Keine Onboarding-Calls, keine Tabellen zum Migrieren. Starte das Tracking in Minuten.",
+    "steps": [
+      {
+        "title": "Erstelle deinen Arbeitsbereich",
+        "desc": "Melde dich kostenlos an und erhalte in Sekunden einen persönlichen Arbeitsbereich. Keine Kreditkarte erforderlich."
+      },
+      {
+        "title": "Kunden hinzufügen & Geld erfassen",
+        "desc": "Bringe deine Kunden ein und erfasse eingehende und ausgehende Transaktionen, sobald sie passieren."
+      },
+      {
+        "title": "Angebote senden",
+        "desc": "Erstelle und sende Angebote und wandle die angenommenen in aktive Kunden um."
+      },
+      {
+        "title": "Sieh deinem Gewinn beim Sync zu",
+        "desc": "Dein Dashboard aktualisiert sich in Echtzeit, sodass du immer genau weißt, wo du stehst."
+      }
+    ]
+  },
+  "value": {
+    "title": "Alles, was du brauchst, um die Geldseite deines Unternehmens zu führen",
+    "subtitle": "Durchdacht gebaut, datenschutzorientiert und ab dem ersten Tag einsatzbereit.",
+    "items": [
+      {
+        "title": "Kostenloser Tarif, für immer",
+        "desc": "Starte mit einem wirklich nützlichen kostenlosen Tarif. Upgrade nur, wenn du wächst."
+      },
+      {
+        "title": "Privat by Design",
+        "desc": "Deine Daten sind auf deinen Arbeitsbereich beschränkt und werden nie geteilt oder verkauft."
+      },
+      {
+        "title": "Bereit für mehrere Währungen",
+        "desc": "Führe deine Zahlen in der Währung, die dein Unternehmen tatsächlich nutzt."
+      },
+      {
+        "title": "Für Teams gemacht",
+        "desc": "Lade dein Team mit klarem, rollenbasiertem Zugriff ab dem ersten Tag ein."
+      }
+    ]
+  },
+  "pricing": {
+    "eyebrow": "Preise",
+    "title": "Einfache Preise, die mit dir wachsen",
+    "subtitle": "Kostenlos starten. Upgrade, wenn du wächst. Preise werden, wo verfügbar, in deiner lokalen Währung angezeigt.",
+    "monthly": "Monatlich",
+    "yearly": "Jährlich",
+    "save": "Spare {{pct}}%",
+    "free": "Kostenlos",
+    "perMo": "/Mon.",
+    "perYr": "/Jahr",
+    "mostPopular": "Am beliebtesten",
+    "ctaFree": "Kostenlos starten",
+    "ctaPremium": "Loslegen",
+    "included": "Was enthalten ist",
+    "loadError": "Wir konnten die Live-Preise gerade nicht laden.",
+    "retry": "Erneut versuchen",
+    "note": "Lokale Währung und Steuern werden beim Checkout von unserem Zahlungsanbieter abgewickelt. Jederzeit kündbar.",
+    "charsValue": "{{value}} Zeichen",
+    "limits": {
+      "clients": "Kunden",
+      "transactionsPerClient": "Transaktionen pro Kunde",
+      "quotations": "Angebote",
+      "attachmentSizeKb": "Anhangsgröße",
+      "attachmentsPerTx": "Anhänge pro Eintrag",
+      "noteLength": "Notizlänge"
+    },
+    "freeBlurb": "Alles, was du brauchst, um dein Business zu tracken.",
+    "premiumBlurb": "Höhere Limits und Raum zum Wachsen für ernsthafte Unternehmen."
+  },
+  "testimonials": {
+    "eyebrow": "Beliebt bei unabhängigen Unternehmen",
+    "title": "Klarheit, die man spürt",
+    "subtitle": "Was sich ändert, wenn deine Zahlen endlich an einem Ort leben.",
+    "items": [
+      {
+        "quote": "Ich kenne endlich meinen echten Gewinn jeden Monat, statt zu raten. Eine Transaktion zu erfassen dauert Sekunden.",
+        "name": "Maya R.",
+        "role": "Freelance-Designerin"
+      },
+      {
+        "quote": "Wir haben unser ganzes Studio von Tabellen befreit. Angebote, die direkt zu Kunden werden, haben uns Stunden gespart.",
+        "name": "Daniel K.",
+        "role": "Agenturinhaber"
+      },
+      {
+        "quote": "Mehrwährungen und Rollen bedeuteten, dass mein Remote-Team an einem Nachmittag eingerichtet war.",
+        "name": "Priya S.",
+        "role": "Studioleitung"
+      }
+    ]
+  },
+  "faq": {
+    "eyebrow": "FAQ",
+    "title": "Fragen, beantwortet",
+    "subtitle": "Alles, was du vor dem Start wissen möchtest.",
+    "items": [
+      {
+        "q": "Ist ProfitSync wirklich kostenlos?",
+        "a": "Ja. Der kostenlose Tarif ist für immer kostenlos mit großzügigen Limits. Wechsle jederzeit zu Premium für höhere Limits und mehr Raum zum Wachsen."
+      },
+      {
+        "q": "Welche Währungen kann ich nutzen?",
+        "a": "Lege jede Währung pro Arbeitsbereich fest. Beträge, Diagramme und Summen werden so formatiert, wie dein Unternehmen seine Zahlen liest."
+      },
+      {
+        "q": "Sind meine Finanzdaten privat?",
+        "a": "Deine Daten sind auf deinen Arbeitsbereich beschränkt und werden nie geteilt. Du kannst Datensätze per Soft-Delete entfernen und jederzeit endgültig löschen."
+      },
+      {
+        "q": "Kann ich mein Team einladen?",
+        "a": "Auf jeden Fall. Erstelle eine Organisation und lade Mitglieder mit den Rollen Inhaber, Admin, Bearbeiter oder Betrachter ein."
+      },
+      {
+        "q": "Wie funktioniert die Abrechnung?",
+        "a": "Premium wird sicher über unseren Zahlungsanbieter abgerechnet, mit lokalisierten Preisen und Steuern beim Checkout. Du kannst jederzeit kündigen."
+      },
+      {
+        "q": "Welche Sprachen werden unterstützt?",
+        "a": "Englisch, Italienisch, Deutsch, Hindi, Malayalam, Tamil, Telugu und Arabisch — inklusive vollständiger Rechts-nach-links-Unterstützung."
+      }
+    ]
+  },
+  "cta": {
+    "title": "Führe dein Business mit Zahlen",
+    "subtitle": "Erstelle heute deinen kostenlosen Arbeitsbereich — keine Kreditkarte, kein Setup, nur Klarheit.",
+    "primary": "Kostenlos starten",
+    "secondary": "Funktionen entdecken",
+    "microtrust": "Kostenloser Tarif für immer · Jederzeit upgraden"
+  },
+  "footer": {
+    "tagline": "Der saubere, schnelle Weg, Kunden, Cashflow und Angebote zu verfolgen — und immer deinen Gewinn zu kennen.",
+    "productHeading": "Produkt",
+    "companyHeading": "Unternehmen",
+    "legalHeading": "Rechtliches",
+    "links": {
+      "features": "Funktionen",
+      "pricing": "Preise",
+      "faq": "FAQ",
+      "login": "Anmelden",
+      "signup": "Loslegen",
+      "privacy": "Datenschutzerklärung",
+      "terms": "Nutzungsbedingungen"
+    },
+    "rights": "Alle Rechte vorbehalten.",
+    "language": "Sprache"
+  }
+}
