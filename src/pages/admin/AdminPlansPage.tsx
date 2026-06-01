@@ -73,6 +73,7 @@ type Plan = {
   promo_note: string
   dodo_product_monthly: string | null
   dodo_product_yearly: string | null
+  dodo_environment: "test" | "live"
   limits: Record<string, number>
   feature_labels: Record<string, string>
   dodo_metadata: { monthly?: CycleInfo; yearly?: CycleInfo }
@@ -217,6 +218,7 @@ function SyncWizard({
   const { getToken } = useAuth()
   const [step, setStep] = useState<1 | 2 | 3>(1)
   const [accountType, setAccountType] = useState<AccountType | null>(null)
+  const [dodoEnvironment, setDodoEnvironment] = useState<"test" | "live">("live")
   const [monthlyId, setMonthlyId] = useState("")
   const [yearlyId, setYearlyId] = useState("")
   const [syncing, setSyncing] = useState(false)
@@ -227,7 +229,7 @@ function SyncWizard({
   })
 
   const reset = () => {
-    setStep(1); setAccountType(null); setMonthlyId(""); setYearlyId("")
+    setStep(1); setAccountType(null); setDodoEnvironment("live"); setMonthlyId(""); setYearlyId("")
     setPreview(null); setSyncing(false); setSaving(false)
     setForm({ name: "", description: "", monthlyPrice: "0", monthlyDiscount: 0, yearlyPrice: "0", yearlyDiscount: 0 })
   }
@@ -244,6 +246,7 @@ function SyncWizard({
         preview: true,
         dodo_product_monthly: monthlyId.trim() || null,
         dodo_product_yearly: yearlyId.trim() || null,
+        dodo_environment: dodoEnvironment,
       })
       setPreview(p)
       setForm({
@@ -279,6 +282,7 @@ function SyncWizard({
         yearly_discount_pct: form.yearlyDiscount,
         dodo_product_monthly: monthlyId.trim() || null,
         dodo_product_yearly: yearlyId.trim() || null,
+        dodo_environment: dodoEnvironment,
         dodo_metadata: preview?.dodo_metadata ?? {},
       }
       // Upsert the plan that serves this account type (key === account type).
@@ -347,6 +351,29 @@ function SyncWizard({
                 )
               })}
             </div>
+            {accountType && (
+              <div className="space-y-1.5 pt-1">
+                <Label className="text-xs">Dodo environment</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  {(["live", "test"] as const).map((env) => (
+                    <button
+                      key={env}
+                      type="button"
+                      onClick={() => setDodoEnvironment(env)}
+                      className={`rounded-lg border px-3 py-2 text-sm font-medium capitalize transition-all ${
+                        dodoEnvironment === env ? "border-primary ring-2 ring-primary/40" : "hover:border-foreground/30"
+                      }`}
+                    >
+                      {env}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Which Dodo environment these product IDs live in. <span className="font-medium">Live</span> for real
+                  billing, <span className="font-medium">Test</span> for test products.
+                </p>
+              </div>
+            )}
           </div>
         )}
 
@@ -537,6 +564,7 @@ export function AdminPlansPage() {
         promo_note: draft.promo_note,
         dodo_product_monthly: draft.dodo_product_monthly || null,
         dodo_product_yearly: draft.dodo_product_yearly || null,
+        dodo_environment: draft.dodo_environment,
         limits: draft.limits,
         feature_labels: draft.feature_labels,
         geo_pricing: draft.geo_pricing,
@@ -647,6 +675,9 @@ export function AdminPlansPage() {
                       />
                       <Badge variant="outline" className={`text-[10px] uppercase tracking-wide ${accent.chip}`}>{p.key}</Badge>
                       {draft.account_type && <Badge variant="secondary" className="text-[10px] capitalize">{draft.account_type}</Badge>}
+                      {draft.dodo_environment === "test" && (
+                        <Badge variant="secondary" className="text-[10px] bg-amber-500/10 text-amber-700 dark:text-amber-400">Test</Badge>
+                      )}
                     </div>
                     <div className="flex items-center gap-2">
                       <Switch checked={draft.is_active} onCheckedChange={(v) => updateDraft(p.id, { is_active: v })} />
@@ -841,6 +872,26 @@ export function AdminPlansPage() {
                         <Label className="text-xs">Yearly</Label>
                         <Input value={draft.dodo_product_yearly ?? ""} onChange={(e) => updateDraft(p.id, { dodo_product_yearly: e.target.value })} placeholder="pdt_…" />
                       </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Environment</Label>
+                      <div className="grid max-w-xs grid-cols-2 gap-2">
+                        {(["live", "test"] as const).map((env) => (
+                          <button
+                            key={env}
+                            type="button"
+                            onClick={() => updateDraft(p.id, { dodo_environment: env })}
+                            className={`rounded-lg border px-3 py-1.5 text-sm font-medium capitalize transition-all ${
+                              draft.dodo_environment === env ? "border-primary ring-2 ring-primary/40" : "hover:border-foreground/30"
+                            }`}
+                          >
+                            {env}
+                          </button>
+                        ))}
+                      </div>
+                      <p className="text-[11px] text-muted-foreground">
+                        Which Dodo environment these product IDs live in. Used for sync, checkout and invoices.
+                      </p>
                     </div>
                   </div>
                   <DodoSyncedPanel data={draft.dodo_metadata} />

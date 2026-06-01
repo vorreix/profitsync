@@ -1,0 +1,256 @@
+{
+  "meta": {
+    "title": "ProfitSync — Know your profit. Sync your business.",
+    "description": "Whether it's your business or your personal finances, ProfitSync brings your income, expenses, and cash flow into one clean workspace — so you always know exactly where your money stands."
+  },
+  "nav": {
+    "features": "Features",
+    "how": "How it works",
+    "pricing": "Pricing",
+    "faq": "FAQ",
+    "login": "Log in",
+    "getStarted": "Get started",
+    "openMenu": "Open menu",
+    "closeMenu": "Close menu"
+  },
+  "theme": {
+    "toLight": "Switch to light mode",
+    "toDark": "Switch to dark mode"
+  },
+  "language": {
+    "label": "Language",
+    "select": "Select language"
+  },
+  "hero": {
+    "badge": "For business and personal finances",
+    "titleLine1": "Know your profit.",
+    "titleLine2": "Sync your business.",
+    "subtitle": "Whether it's your business or your personal finances, ProfitSync brings your income, expenses, and cash flow into one clean workspace — so you always know exactly where your money stands.",
+    "ctaPrimary": "Start free",
+    "ctaSecondary": "See how it works",
+    "microtrust": "No credit card required · Free plan forever",
+    "mockup": {
+      "appLabel": "Dashboard",
+      "revenue": "Revenue",
+      "netProfit": "Net profit",
+      "thisMonth": "This month",
+      "up": "up",
+      "incoming": "Incoming",
+      "outgoing": "Outgoing",
+      "recent": "Recent transactions",
+      "client": "Client",
+      "designRetainer": "Design retainer",
+      "softwareLicense": "Software license",
+      "consulting": "Consulting",
+      "paid": "Paid",
+      "expense": "Expense"
+    }
+  },
+  "trust": {
+    "title": "Built for the people who run lean",
+    "items": [
+      "Freelancers",
+      "Agencies",
+      "Studios",
+      "Consultants",
+      "Small teams",
+      "Solo founders"
+    ]
+  },
+  "features": {
+    "eyebrow": "Everything in one place",
+    "title": "The money side of your business, finally organized",
+    "subtitle": "Clients, transactions, and quotations working together — with a live dashboard that turns activity into answers.",
+    "visual": {
+      "active": "Active",
+      "inactive": "Inactive",
+      "incoming": "Incoming",
+      "outgoing": "Outgoing"
+    },
+    "items": [
+      {
+        "title": "Every client in one place",
+        "desc": "Track status, history, and the full money trail for each client. Soft-delete and restore so nothing is ever lost by accident."
+      },
+      {
+        "title": "Money in, money out",
+        "desc": "Log incoming and outgoing transactions with categories, dates, and attachments. Watch net profit update instantly."
+      },
+      {
+        "title": "Quote, send, convert",
+        "desc": "Build professional quotations, mark them sent or accepted, and convert a winning quote into a client in one click."
+      },
+      {
+        "title": "Built for any currency",
+        "desc": "Set your currency per workspace. Amounts, charts, and totals are formatted the way your business reads them."
+      },
+      {
+        "title": "Bring your whole team",
+        "desc": "Create organizations, invite members, and control access with owner, admin, editor, and viewer roles."
+      },
+      {
+        "title": "Clarity at a glance",
+        "desc": "A live dashboard turns your transactions into trends, so cash flow and profit are obvious — not buried in spreadsheets."
+      },
+      {
+        "title": "Keep the paper trail",
+        "desc": "Attach receipts and documents to transactions and quotations, stored safely alongside each record."
+      },
+      {
+        "title": "Speaks your language",
+        "desc": "ProfitSync ships in 8 languages with full right-to-left support, so your whole team feels at home."
+      }
+    ]
+  },
+  "how": {
+    "eyebrow": "How it works",
+    "title": "From signup to clarity in four steps",
+    "subtitle": "No onboarding calls, no spreadsheets to migrate. Start tracking in minutes.",
+    "steps": [
+      {
+        "title": "Create your workspace",
+        "desc": "Sign up free and get a personal workspace in seconds. No credit card required."
+      },
+      {
+        "title": "Add clients & log money",
+        "desc": "Bring in your clients and record incoming and outgoing transactions as they happen."
+      },
+      {
+        "title": "Send quotations",
+        "desc": "Draft and send quotations, then convert the ones that land into active clients."
+      },
+      {
+        "title": "Watch your profit sync",
+        "desc": "Your dashboard updates in real time, so you always know exactly where you stand."
+      }
+    ]
+  },
+  "value": {
+    "title": "Everything you need to run the money side of your business",
+    "subtitle": "Thoughtfully built, privacy-first, and ready on day one.",
+    "items": [
+      {
+        "title": "Free plan, forever",
+        "desc": "Start with a genuinely useful free tier. Upgrade only when you grow."
+      },
+      {
+        "title": "Private by design",
+        "desc": "Your records are scoped to your workspace and never shared or sold."
+      },
+      {
+        "title": "Multi-currency ready",
+        "desc": "Run your numbers in the currency your business actually uses."
+      },
+      {
+        "title": "Made for teams",
+        "desc": "Invite your team with clear, role-based access from day one."
+      }
+    ]
+  },
+  "pricing": {
+    "eyebrow": "Pricing",
+    "title": "Simple pricing that scales with you",
+    "subtitle": "Start free. Upgrade when you grow. Prices are shown in your local currency where available.",
+    "monthly": "Monthly",
+    "yearly": "Yearly",
+    "save": "Save {{pct}}%",
+    "free": "Free",
+    "perMo": "/mo",
+    "perYr": "/yr",
+    "mostPopular": "Most popular",
+    "ctaFree": "Get started free",
+    "ctaPremium": "Get started",
+    "included": "What's included",
+    "loadError": "We couldn't load live pricing right now.",
+    "retry": "Try again",
+    "note": "Localized currency and tax are handled at checkout by our payment provider. Cancel anytime.",
+    "charsValue": "{{value}} characters",
+    "limits": {
+      "clients": "Clients",
+      "transactionsPerClient": "Transactions per client",
+      "quotations": "Quotations",
+      "attachmentSizeKb": "Attachment size",
+      "attachmentsPerTx": "Attachments per item",
+      "noteLength": "Note length"
+    },
+    "freeBlurb": "Everything you need to start tracking your business.",
+    "premiumBlurb": "Higher limits and room to grow for serious businesses."
+  },
+  "testimonials": {
+    "eyebrow": "Loved by independent businesses",
+    "title": "Clarity people can feel",
+    "subtitle": "What changes when your numbers finally live in one place.",
+    "items": [
+      {
+        "quote": "I finally know my real profit each month instead of guessing. Logging a transaction takes seconds.",
+        "name": "Maya R.",
+        "role": "Freelance designer"
+      },
+      {
+        "quote": "We moved our whole studio off spreadsheets. Quotations that convert straight into clients saved us hours.",
+        "name": "Daniel K.",
+        "role": "Agency owner"
+      },
+      {
+        "quote": "Multi-currency and roles meant my remote team was set up in an afternoon.",
+        "name": "Priya S.",
+        "role": "Studio lead"
+      }
+    ]
+  },
+  "faq": {
+    "eyebrow": "FAQ",
+    "title": "Questions, answered",
+    "subtitle": "Everything you might want to know before you start.",
+    "items": [
+      {
+        "q": "Is ProfitSync really free?",
+        "a": "Yes. The free plan is free forever with generous limits. Upgrade to Premium any time for higher limits and more room to grow."
+      },
+      {
+        "q": "Which currencies can I use?",
+        "a": "Set any currency per workspace. Amounts, charts, and totals format to match the way your business reads its numbers."
+      },
+      {
+        "q": "Is my financial data private?",
+        "a": "Your records are scoped to your workspace and never shared. You can soft-delete records and permanently purge them whenever you want."
+      },
+      {
+        "q": "Can I invite my team?",
+        "a": "Absolutely. Create an organization and invite members with owner, admin, editor, or viewer roles."
+      },
+      {
+        "q": "How does billing work?",
+        "a": "Premium is billed securely through our payment provider, with localized pricing and tax handled at checkout. You can cancel anytime."
+      },
+      {
+        "q": "What languages are supported?",
+        "a": "English, Italian, German, Hindi, Malayalam, Tamil, Telugu, and Arabic — including full right-to-left support."
+      }
+    ]
+  },
+  "cta": {
+    "title": "Start running your business by the numbers",
+    "subtitle": "Create your free workspace today — no credit card, no setup, just clarity.",
+    "primary": "Get started free",
+    "secondary": "Explore features",
+    "microtrust": "Free plan forever · Upgrade anytime"
+  },
+  "footer": {
+    "tagline": "The clean, fast way to track clients, cash flow, and quotations — and always know your profit.",
+    "productHeading": "Product",
+    "companyHeading": "Company",
+    "legalHeading": "Legal",
+    "links": {
+      "features": "Features",
+      "pricing": "Pricing",
+      "faq": "FAQ",
+      "login": "Log in",
+      "signup": "Get started",
+      "privacy": "Privacy Policy",
+      "terms": "Terms of Service"
+    },
+    "rights": "All rights reserved.",
+    "language": "Language"
+  }
+}
