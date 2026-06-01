@@ -45,7 +45,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method === "DELETE") {
     if (!canDelete(role)) return res.status(403).json({ error: "Forbidden" })
-    await db.delete(transactions).where(eq(transactions.id, id))
+    // Soft-delete: the transaction moves to Trash (restorable) rather than vanishing.
+    await db.update(transactions).set({ deletedAt: new Date(), updatedAt: new Date() }).where(eq(transactions.id, id))
     return res.status(204).end()
   }
 

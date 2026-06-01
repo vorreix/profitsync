@@ -1,4 +1,4 @@
-import i18n from "i18next"
+import i18n, { type ResourceLanguage } from "i18next"
 import { initReactI18next } from "react-i18next"
 import LanguageDetector from "i18next-browser-languagedetector"
 
@@ -14,15 +14,34 @@ import ar from "./locales/ar.json"
 
 export const LANGUAGE_STORAGE_KEY = "profitsync-language"
 
+// Page-scoped namespaces. Each is also a top-level key inside the locale JSON,
+// so a key works both as `t("clients.foo")` (default namespace) and via
+// `useTranslation("clients")` + `t("foo")`. `fallbackNS` lets a page namespace
+// still resolve shared keys like `common.*`.
+const PAGE_NAMESPACES = [
+  "clients", "transactions", "quotations", "organizations", "members",
+  "trash", "subscription", "billing", "theme", "plan", "planGlossary",
+] as const
+
+type Locale = Record<string, ResourceLanguage[string]>
+
+function buildLocaleResources(locale: Locale): ResourceLanguage {
+  const res: ResourceLanguage = { translation: locale as ResourceLanguage[string] }
+  for (const ns of PAGE_NAMESPACES) {
+    if (locale[ns]) res[ns] = locale[ns]
+  }
+  return res
+}
+
 const resources = {
-  en: { translation: en },
-  it: { translation: it },
-  de: { translation: de },
-  hi: { translation: hi },
-  ml: { translation: ml },
-  ta: { translation: ta },
-  te: { translation: te },
-  ar: { translation: ar },
+  en: buildLocaleResources(en),
+  it: buildLocaleResources(it),
+  de: buildLocaleResources(de),
+  hi: buildLocaleResources(hi),
+  ml: buildLocaleResources(ml),
+  ta: buildLocaleResources(ta),
+  te: buildLocaleResources(te),
+  ar: buildLocaleResources(ar),
 } as const
 
 i18n
@@ -30,6 +49,9 @@ i18n
   .use(initReactI18next)
   .init({
     resources,
+    ns: ["translation", ...PAGE_NAMESPACES],
+    defaultNS: "translation",
+    fallbackNS: "translation",
     supportedLngs: SUPPORTED_LANGUAGE_CODES,
     fallbackLng: DEFAULT_LANGUAGE,
     // English is the source of truth; fall back to it for any missing key

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
+import { useTranslation } from "react-i18next"
 import { apiGet, apiPost, apiPatch, apiDelete } from "@/lib/api"
 import type { Client, Quotation, QuotationAttachment } from "@/lib/types"
 import { useCurrency } from "@/lib/currency-context"
@@ -66,56 +67,58 @@ function QuotationFormFields({
   f: QuotationForm
   onChange: (p: Partial<QuotationForm>) => void
 }) {
+  const { t } = useTranslation("quotations")
   return (
     <div className="space-y-4 py-2">
       <div className="space-y-1.5">
-        <Label>Title *</Label>
-        <Input placeholder="Web Design Proposal" value={f.title} onChange={(e) => onChange({ title: e.target.value })} />
+        <Label>{t("titleLabel")}</Label>
+        <Input placeholder={t("titlePlaceholder")} value={f.title} onChange={(e) => onChange({ title: e.target.value })} />
       </div>
       <div className="space-y-1.5">
-        <Label>Prospect Name *</Label>
-        <Input placeholder="Jane Smith" value={f.prospect_name} onChange={(e) => onChange({ prospect_name: e.target.value })} />
+        <Label>{t("prospectNameLabel")}</Label>
+        <Input placeholder={t("prospectNamePlaceholder")} value={f.prospect_name} onChange={(e) => onChange({ prospect_name: e.target.value })} />
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="space-y-1.5">
-          <Label>Company</Label>
-          <Input placeholder="Acme Corp" value={f.company} onChange={(e) => onChange({ company: e.target.value })} />
+          <Label>{t("companyLabel")}</Label>
+          <Input placeholder={t("companyPlaceholder")} value={f.company} onChange={(e) => onChange({ company: e.target.value })} />
         </div>
         <div className="space-y-1.5">
-          <Label>Amount</Label>
-          <Input type="number" min="0" step="0.01" placeholder="0.00" value={f.amount} onChange={(e) => onChange({ amount: e.target.value })} />
+          <Label>{t("amountLabel")}</Label>
+          <Input type="number" min="0" step="0.01" placeholder={t("amountPlaceholder")} value={f.amount} onChange={(e) => onChange({ amount: e.target.value })} />
         </div>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="space-y-1.5">
-          <Label>Email</Label>
-          <Input type="email" placeholder="jane@acme.com" value={f.email} onChange={(e) => onChange({ email: e.target.value })} />
+          <Label>{t("emailLabel")}</Label>
+          <Input type="email" placeholder={t("emailPlaceholder")} value={f.email} onChange={(e) => onChange({ email: e.target.value })} />
         </div>
         <div className="space-y-1.5">
-          <Label>Phone</Label>
-          <Input placeholder="+1 555 0000" value={f.phone} onChange={(e) => onChange({ phone: e.target.value })} />
+          <Label>{t("phoneLabel")}</Label>
+          <Input placeholder={t("phonePlaceholder")} value={f.phone} onChange={(e) => onChange({ phone: e.target.value })} />
         </div>
       </div>
       <div className="space-y-1.5">
-        <Label>Status</Label>
+        <Label>{t("statusLabel")}</Label>
         <Select value={f.status} onValueChange={(v) => onChange({ status: v as QuotationForm["status"] })}>
           <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
           <SelectContent>
             {ALL_STATUSES.map((s) => (
-              <SelectItem key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</SelectItem>
+              <SelectItem key={s} value={s}>{t(`status${s.charAt(0).toUpperCase() + s.slice(1)}`)}</SelectItem>
             ))}
           </SelectContent>
         </Select>
       </div>
       <div className="space-y-1.5">
-        <Label>Notes</Label>
-        <Textarea placeholder="Additional details..." className="resize-none" rows={2} value={f.notes} onChange={(e) => onChange({ notes: e.target.value })} />
+        <Label>{t("notesLabel")}</Label>
+        <Textarea placeholder={t("notesPlaceholder")} className="resize-none" rows={2} value={f.notes} onChange={(e) => onChange({ notes: e.target.value })} />
       </div>
     </div>
   )
 }
 
 export function QuotationsPage() {
+  const { t } = useTranslation("quotations")
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const { getToken } = useAuth()
@@ -164,7 +167,7 @@ export function QuotationsPage() {
       setTotal(data.total)
     } catch (err) {
       console.error("Failed to load quotations:", err)
-      toast.error("Failed to load quotations")
+      toast.error(t("failedLoadQuotations"))
     } finally {
       setLoading(false)
     }
@@ -185,7 +188,7 @@ export function QuotationsPage() {
       setPage(nextPage)
     } catch (err) {
       console.error("Failed to load more quotations:", err)
-      toast.error("Failed to load more quotations")
+      toast.error(t("failedLoadMoreQuotations"))
     } finally {
       setLoadingMore(false)
     }
@@ -226,7 +229,7 @@ export function QuotationsPage() {
       const data = await apiGet<QuotationAttachment[]>(`/api/quotations/${quotationId}/attachments`, token)
       setAttachments(data)
     } catch {
-      toast.error("Failed to load attachments")
+      toast.error(t("failedLoadAttachments"))
     } finally {
       setAttachLoading(false)
     }
@@ -242,7 +245,7 @@ export function QuotationsPage() {
     const file = e.target.files?.[0]
     if (!file || !viewTarget) return
     if (file.size > 2 * 1024 * 1024) {
-      toast.error("File exceeds 2MB limit")
+      toast.error(t("fileExceedsSizeLimit"))
       return
     }
     const reader = new FileReader()
@@ -266,7 +269,7 @@ export function QuotationsPage() {
           const err = await res.json().catch(() => ({}))
           throw new Error((err as { error?: string }).error ?? "Upload failed")
         }
-        toast.success("Attachment uploaded")
+        toast.success(t("attachmentUploaded"))
         loadAttachments(viewTarget.id)
       } catch (err: unknown) {
         toast.error(err instanceof Error ? err.message : "Failed to upload attachment")
@@ -294,7 +297,7 @@ export function QuotationsPage() {
       a.click()
       URL.revokeObjectURL(url)
     } catch {
-      toast.error("Failed to download attachment")
+      toast.error(t("failedDownloadAttachment"))
     }
   }
 
@@ -308,17 +311,17 @@ export function QuotationsPage() {
         headers: { Authorization: `Bearer ${token}` },
       })
       if (!res.ok) throw new Error()
-      toast.success("Attachment deleted")
+      toast.success(t("attachmentDeleted"))
       setDeleteAttachId(null)
       loadAttachments(viewTarget.id)
     } catch {
-      toast.error("Failed to delete attachment")
+      toast.error(t("failedDeleteAttachment"))
     }
   }
 
   async function handleCreate() {
-    if (!form.title.trim()) { toast.error("Title is required"); return }
-    if (!form.prospect_name.trim()) { toast.error("Prospect name is required"); return }
+    if (!form.title.trim()) { toast.error(t("titleRequired")); return }
+    if (!form.prospect_name.trim()) { toast.error(t("prospectNameRequired")); return }
     setSaving(true)
     try {
       const token = await getToken()
@@ -327,12 +330,12 @@ export function QuotationsPage() {
         ...form,
         amount: form.amount ? parseFloat(form.amount) : 0,
       })
-      toast.success("Quotation created")
+      toast.success(t("quotationCreated"))
       setCreateOpen(false)
       setForm(defaultForm())
       fetchPage1()
     } catch {
-      toast.error("Failed to create quotation")
+      toast.error(t("failedCreateQuotation"))
     } finally {
       setSaving(false)
     }
@@ -340,8 +343,8 @@ export function QuotationsPage() {
 
   async function handleEdit() {
     if (!editTarget) return
-    if (!form.title.trim()) { toast.error("Title is required"); return }
-    if (!form.prospect_name.trim()) { toast.error("Prospect name is required"); return }
+    if (!form.title.trim()) { toast.error(t("titleRequired")); return }
+    if (!form.prospect_name.trim()) { toast.error(t("prospectNameRequired")); return }
     setSaving(true)
     try {
       const token = await getToken()
@@ -350,11 +353,11 @@ export function QuotationsPage() {
         ...form,
         amount: form.amount ? parseFloat(form.amount) : 0,
       })
-      toast.success("Quotation updated")
+      toast.success(t("quotationUpdated"))
       setEditTarget(null)
       fetchPage1()
     } catch {
-      toast.error("Failed to update quotation")
+      toast.error(t("failedUpdateQuotation"))
     } finally {
       setSaving(false)
     }
@@ -366,11 +369,11 @@ export function QuotationsPage() {
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
       await apiDelete(`/api/quotations/${deleteTarget.id}`, token)
-      toast.success("Quotation moved to trash")
+      toast.success(t("quotationMovedToTrash"))
       setDeleteTarget(null)
       fetchPage1()
     } catch {
-      toast.error("Failed to delete quotation")
+      toast.error(t("failedDeleteQuotation"))
     }
   }
 
@@ -381,13 +384,13 @@ export function QuotationsPage() {
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
       const newClient = await apiPost<Client>(`/api/quotations/${convertTarget.id}/convert`, token, {})
-      toast.success(`${newClient.name} added as client`)
+      toast.success(t("clientAddedSuccess", { name: newClient.name }))
       setConvertTarget(null)
       fetchPage1()
       navigate(`/clients/${newClient.id}`)
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : ""
-      toast.error(msg.includes("already converted") ? "Already converted to a client" : "Failed to convert")
+      toast.error(msg.includes("already converted") ? t("alreadyConverted") : t("failedConvert"))
     } finally {
       setSaving(false)
     }
@@ -400,17 +403,17 @@ export function QuotationsPage() {
       {/* Header */}
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">Quotations</h1>
+          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">{t("pageTitle")}</h1>
           {!loading && (
             <p className="text-sm text-muted-foreground mt-0.5 sm:mt-1">
-              {total} quotation{total !== 1 ? "s" : ""}
+              {t("totalQuotations", { count: total })}
             </p>
           )}
         </div>
         <Button onClick={() => { setForm(defaultForm()); setCreateOpen(true) }} className="shrink-0">
           <Plus className="size-4" />
-          <span className="hidden sm:inline">New Quotation</span>
-          <span className="sm:hidden">New</span>
+          <span className="hidden sm:inline">{t("newQuotationBtn")}</span>
+          <span className="sm:hidden">{t("newShort")}</span>
         </Button>
       </div>
 
@@ -419,7 +422,7 @@ export function QuotationsPage() {
         <div className="relative w-full sm:flex-1 sm:min-w-48">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
           <Input
-            placeholder="Search by name, company, title..."
+            placeholder={t("searchPlaceholder")}
             className="pl-9"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -428,9 +431,9 @@ export function QuotationsPage() {
         <div className="-mx-3 px-3 overflow-x-auto scrollbar-none sm:mx-0 sm:px-0 sm:overflow-visible">
           <Tabs value={tab} onValueChange={setTab}>
             <TabsList>
-              <TabsTrigger value="all">All</TabsTrigger>
+              <TabsTrigger value="all">{t("tabAll")}</TabsTrigger>
               {ALL_STATUSES.map((s) => (
-                <TabsTrigger key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</TabsTrigger>
+                <TabsTrigger key={s} value={s}>{t(`status${s.charAt(0).toUpperCase() + s.slice(1)}`)}</TabsTrigger>
               ))}
             </TabsList>
           </Tabs>
@@ -439,19 +442,19 @@ export function QuotationsPage() {
 
       {/* List */}
       {loading ? (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {[1, 2, 3].map((i) => <Skeleton key={i} className="h-52 w-full rounded-xl" />)}
         </div>
       ) : quotations.length === 0 ? (
         <div className="py-20 text-center">
           <FileText className="size-12 mx-auto text-muted-foreground/50 mb-4" />
           <p className="text-muted-foreground font-medium">
-            {search || tab !== "all" ? "No quotations match your filters" : "No quotations yet"}
+            {search || tab !== "all" ? t("noQuotationsMatch") : t("noQuotationsYet")}
           </p>
           {!search && tab === "all" && (
             <Button className="mt-4" onClick={() => { setForm(defaultForm()); setCreateOpen(true) }}>
               <Plus className="size-4" />
-              Create first quotation
+              {t("createFirstQuotation")}
             </Button>
           )}
         </div>
@@ -529,7 +532,7 @@ export function QuotationsPage() {
                           onClick={() => setConvertTarget(q)}
                         >
                           <UserPlus className="size-3" />
-                          Convert to Client
+                          {t("convertToClientBtn")}
                         </Button>
                       )}
                       <Button
@@ -561,7 +564,7 @@ export function QuotationsPage() {
           {remaining > 0 && (
             <div className="flex justify-center pt-2">
               <Button variant="outline" onClick={handleLoadMore} disabled={loadingMore}>
-                {loadingMore ? "Loading..." : `Load More (${remaining} remaining)`}
+                {loadingMore ? t("loading") : t("loadMore", { remaining })}
               </Button>
             </div>
           )}
@@ -583,50 +586,50 @@ export function QuotationsPage() {
               <div className="space-y-3 py-2">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
                   <div>
-                    <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Prospect</p>
+                    <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">{t("prospectLabel")}</p>
                     <p className="mt-0.5 font-medium">{viewTarget.prospect_name}</p>
                   </div>
                   <div>
-                    <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Status</p>
+                    <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">{t("statusLabel")}</p>
                     <span className={`inline-block mt-0.5 text-xs font-medium px-2 py-0.5 rounded-full ${STATUS_COLORS[viewTarget.status] ?? ""}`}>
                       {viewTarget.status.charAt(0).toUpperCase() + viewTarget.status.slice(1)}
                     </span>
                   </div>
                   <div>
-                    <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Amount</p>
+                    <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">{t("amountLabel")}</p>
                     <p className="mt-0.5 font-bold">{fmt(Number(viewTarget.amount))}</p>
                   </div>
                   <div>
-                    <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Created</p>
+                    <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">{t("createdLabel")}</p>
                     <p className="mt-0.5">{formatDate(viewTarget.created_at)}</p>
                   </div>
                   {viewTarget.company && (
                     <div>
-                      <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Company</p>
+                      <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">{t("companyLabel")}</p>
                       <p className="mt-0.5">{viewTarget.company}</p>
                     </div>
                   )}
                   {viewTarget.email && (
                     <div>
-                      <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Email</p>
+                      <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">{t("emailLabel")}</p>
                       <p className="mt-0.5 truncate">{viewTarget.email}</p>
                     </div>
                   )}
                   {viewTarget.phone && (
                     <div>
-                      <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Phone</p>
+                      <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">{t("phoneLabel")}</p>
                       <p className="mt-0.5">{viewTarget.phone}</p>
                     </div>
                   )}
                   {viewTarget.notes && (
                     <div className="col-span-2">
-                      <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Notes</p>
+                      <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">{t("notesLabel")}</p>
                       <p className="mt-0.5 text-sm whitespace-pre-wrap">{viewTarget.notes}</p>
                     </div>
                   )}
                   {viewTarget.linked_client_id && clientById(viewTarget.linked_client_id) && (
                     <div className="col-span-2">
-                      <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Linked Client</p>
+                      <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">{t("linkedClientLabel")}</p>
                       <button
                         className="mt-0.5 flex items-center gap-1 text-sm text-primary hover:underline"
                         onClick={() => { setViewTarget(null); navigate(`/clients/${viewTarget.linked_client_id}`) }}
@@ -643,12 +646,12 @@ export function QuotationsPage() {
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <p className="text-sm font-medium flex items-center gap-1.5">
-                      <Paperclip className="size-3.5" /> Attachments
+                      <Paperclip className="size-3.5" /> {t("attachmentsLabel")}
                     </p>
                     <div>
                       <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileSelect} accept="*/*" />
                       <Button size="sm" variant="outline" disabled={uploading} onClick={() => fileInputRef.current?.click()}>
-                        {uploading ? "Uploading..." : "Upload"}
+                        {uploading ? t("uploading") : t("uploadBtn")}
                       </Button>
                     </div>
                   </div>
@@ -658,7 +661,7 @@ export function QuotationsPage() {
                       {[1, 2].map((i) => <Skeleton key={i} className="h-10 w-full rounded-lg" />)}
                     </div>
                   ) : attachments.length === 0 ? (
-                    <p className="text-xs text-muted-foreground py-3 text-center">No attachments yet</p>
+                    <p className="text-xs text-muted-foreground py-3 text-center">{t("noAttachmentsYet")}</p>
                   ) : (
                     <div className="space-y-1.5">
                       {attachments.map((att) => (
@@ -678,7 +681,7 @@ export function QuotationsPage() {
                       ))}
                     </div>
                   )}
-                  <p className="text-xs text-muted-foreground">Max 2MB per file</p>
+                  <p className="text-xs text-muted-foreground">{t("maxFileSize")}</p>
                 </div>
               </div>
 
@@ -689,9 +692,9 @@ export function QuotationsPage() {
                   setEditTarget(viewTarget)
                 }}>
                   <Pencil className="size-3.5" />
-                  Edit
+                  {t("editBtn")}
                 </Button>
-                <Button onClick={() => setViewTarget(null)}>Close</Button>
+                <Button onClick={() => setViewTarget(null)}>{t("closeBtn")}</Button>
               </DialogFooter>
             </>
           )}
@@ -701,11 +704,11 @@ export function QuotationsPage() {
       {/* Create Dialog */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="w-[92vw] max-w-md sm:max-w-md">
-          <DialogHeader><DialogTitle>New Quotation</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{t("newQuotationTitle")}</DialogTitle></DialogHeader>
           <QuotationFormFields f={form} onChange={(p) => setForm((f) => ({ ...f, ...p }))} />
           <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
-            <Button onClick={handleCreate} disabled={saving}>{saving ? "Creating..." : "Create"}</Button>
+            <Button variant="outline" onClick={() => setCreateOpen(false)}>{t("cancelBtn")}</Button>
+            <Button onClick={handleCreate} disabled={saving}>{saving ? t("creating") : t("createBtn")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -713,11 +716,11 @@ export function QuotationsPage() {
       {/* Edit Dialog */}
       <Dialog open={editTarget !== null} onOpenChange={(open) => { if (!open) setEditTarget(null) }}>
         <DialogContent className="w-[92vw] max-w-md sm:max-w-md">
-          <DialogHeader><DialogTitle>Edit Quotation</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{t("editQuotationTitle")}</DialogTitle></DialogHeader>
           <QuotationFormFields f={form} onChange={(p) => setForm((f) => ({ ...f, ...p }))} />
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditTarget(null)}>Cancel</Button>
-            <Button onClick={handleEdit} disabled={saving}>{saving ? "Saving..." : "Save"}</Button>
+            <Button variant="outline" onClick={() => setEditTarget(null)}>{t("cancelBtn")}</Button>
+            <Button onClick={handleEdit} disabled={saving}>{saving ? t("saving") : t("saveBtn")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -726,15 +729,15 @@ export function QuotationsPage() {
       <AlertDialog open={convertTarget !== null} onOpenChange={(open) => { if (!open) setConvertTarget(null) }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Convert to Client?</AlertDialogTitle>
+            <AlertDialogTitle>{t("convertToClientTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
-              This will create a new client from <strong>{convertTarget?.prospect_name}</strong> and mark this quotation as accepted. You'll be redirected to the new client's page.
+              {t("convertToClientDescription", { name: convertTarget?.prospect_name })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t("cancelBtn")}</AlertDialogCancel>
             <AlertDialogAction onClick={handleConvert} disabled={saving}>
-              {saving ? "Converting..." : "Convert"}
+              {saving ? t("converting") : t("convertBtn")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -744,15 +747,15 @@ export function QuotationsPage() {
       <AlertDialog open={deleteTarget !== null} onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Move to Trash?</AlertDialogTitle>
+            <AlertDialogTitle>{t("moveToTrashTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
-              This quotation will be moved to the trash. You can restore it later from the Trash page.
+              {t("moveToTrashDescription")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t("cancelBtn")}</AlertDialogCancel>
             <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              Move to Trash
+              {t("moveToTrashBtn")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -762,13 +765,13 @@ export function QuotationsPage() {
       <AlertDialog open={deleteAttachId !== null} onOpenChange={(open) => { if (!open) setDeleteAttachId(null) }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Attachment?</AlertDialogTitle>
-            <AlertDialogDescription>This attachment will be permanently deleted.</AlertDialogDescription>
+            <AlertDialogTitle>{t("deleteAttachmentTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>{t("deleteAttachmentDescription")}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t("cancelBtn")}</AlertDialogCancel>
             <AlertDialogAction onClick={handleDeleteAttachment} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              Delete
+              {t("deleteBtn")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

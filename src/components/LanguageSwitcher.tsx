@@ -29,10 +29,15 @@ export function LanguageSwitcher({ variant = "icon", align = "end" }: Props) {
           <Button
             variant="outline"
             size="icon"
-            className="group-data-[collapsible=icon]:size-10"
-            aria-label={t("language.label")}
+            className="relative overflow-visible group-data-[collapsible=icon]:size-10"
+            aria-label={`${t("language.label")}: ${current.englishName}`}
+            title={`${current.nativeName} (${current.code.toUpperCase()})`}
           >
             <Languages className="size-4" />
+            {/* Active language badge so the current choice is visible on the icon. */}
+            <span className="pointer-events-none absolute -bottom-1 -end-1 min-w-3.5 rounded-full border border-background bg-primary px-1 text-[8px] font-bold leading-[1.35] text-primary-foreground tracking-tight">
+              {current.code.toUpperCase()}
+            </span>
           </Button>
         ) : (
           <Button variant="outline" className="w-full justify-between">

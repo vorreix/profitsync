@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { Building2, Check, Loader as Loader2, Pencil, Plus, Trash2, Users } from "lucide-react"
 import { apiDelete, apiPatch, apiPost } from "@/lib/api"
@@ -24,6 +25,8 @@ import {
 export function OrganizationsPage() {
   const navigate = useNavigate()
   const { getToken } = useAuth()
+  // Uses the default namespace with `organizations.*` keys (a top-level locale key).
+  const { t } = useTranslation()
   const { orgs, activeOrg, loading, switchOrg, refresh } = useOrg()
 
   const [createOpen, setCreateOpen] = useState(false)
@@ -47,12 +50,12 @@ export function OrganizationsPage() {
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
       await apiPost<Organization>("/api/organizations", token, { name: newName.trim() })
-      toast.success("Organization created")
+      toast.success(t("organizations.organizationCreated"))
       setNewName("")
       setCreateOpen(false)
       await refresh()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to create organization")
+      toast.error(err instanceof Error ? err.message : t("organizations.failedToCreateOrganization"))
     } finally {
       setCreating(false)
     }
@@ -68,7 +71,7 @@ export function OrganizationsPage() {
       return
     }
     if (!editTarget.is_personal && !trimmedName) {
-      toast.error("Name cannot be empty")
+      toast.error(t("organizations.nameCannotBeEmpty"))
       return
     }
     setSaving(true)
@@ -79,11 +82,11 @@ export function OrganizationsPage() {
       if (nameChanged) body.name = trimmedName
       if (currencyChanged) body.currency = editCurrency
       await apiPatch<Organization>(`/api/organizations/${editTarget.id}`, token, body)
-      toast.success("Organization updated")
+      toast.success(t("organizations.organizationUpdated"))
       setEditTarget(null)
       await refresh()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to save")
+      toast.error(err instanceof Error ? err.message : t("organizations.failedToSave"))
     } finally {
       setSaving(false)
     }
@@ -96,11 +99,11 @@ export function OrganizationsPage() {
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
       await apiDelete(`/api/organizations/${deleteTarget.id}`, token)
-      toast.success("Organization deleted")
+      toast.success(t("organizations.organizationDeleted"))
       setDeleteTarget(null)
       await refresh()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to delete")
+      toast.error(err instanceof Error ? err.message : t("organizations.failedToDelete"))
     } finally {
       setDeleting(false)
     }
@@ -111,9 +114,9 @@ export function OrganizationsPage() {
     try {
       await switchOrg(id)
       await refresh()
-      toast.success("Switched organization")
+      toast.success(t("organizations.switchedOrganization"))
     } catch {
-      toast.error("Failed to switch organization")
+      toast.error(t("organizations.failedToSwitchOrganization"))
     } finally {
       setSwitching(null)
     }
@@ -123,15 +126,15 @@ export function OrganizationsPage() {
     <div className="p-3 sm:p-6 space-y-6 max-w-4xl">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">Organizations</h1>
+          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">{t("organizations.pageTitle")}</h1>
           <p className="text-sm text-muted-foreground mt-0.5 sm:mt-1">
-            You must have at least one organization. Each organization has its own data.
+            {t("organizations.pageDescription")}
           </p>
         </div>
         <Button onClick={() => setCreateOpen(true)} className="shrink-0">
           <Plus className="size-4 sm:mr-2" />
-          <span className="hidden sm:inline">New organization</span>
-          <span className="sm:hidden">New</span>
+          <span className="hidden sm:inline">{t("organizations.newOrganization")}</span>
+          <span className="sm:hidden">{t("organizations.new")}</span>
         </Button>
       </div>
 
@@ -144,7 +147,7 @@ export function OrganizationsPage() {
       ) : orgs.length === 0 ? (
         <Card>
           <CardContent className="py-8 text-center text-sm text-muted-foreground">
-            You don't have any organizations yet. Create one to get started.
+            {t("organizations.noOrganizationsYet")}
           </CardContent>
         </Card>
       ) : (
@@ -162,7 +165,7 @@ export function OrganizationsPage() {
                       <p className="font-medium truncate">{org.name}</p>
                       {org.is_personal && (
                         <Badge variant="outline" className="text-[10px] uppercase tracking-wide">
-                          Personal
+                          {t("organizations.personal")}
                         </Badge>
                       )}
                       <Badge
@@ -173,16 +176,16 @@ export function OrganizationsPage() {
                             : ""
                         }`}
                       >
-                        {org.plan_key === "premium" ? "Premium" : "Free"}
+                        {org.plan_key === "premium" ? t("organizations.premium") : t("organizations.free")}
                       </Badge>
                       {isActive && (
                         <Badge className="text-[10px] uppercase tracking-wide">
-                          <Check className="size-3 mr-1" /> Active
+                          <Check className="size-3 mr-1" /> {t("organizations.active")}
                         </Badge>
                       )}
                     </div>
                     <p className="text-xs text-muted-foreground capitalize">
-                      Role: {org.role} · Currency: <span className="font-mono uppercase">{org.currency}</span>
+                      {t("organizations.role")}: {org.role} · {t("organizations.currency")}: <span className="font-mono uppercase">{org.currency}</span>
                     </p>
                   </div>
                   <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-1.5">
@@ -194,7 +197,7 @@ export function OrganizationsPage() {
                         disabled={switching === org.id}
                       >
                         {switching === org.id ? <Loader2 className="size-3 mr-1 animate-spin" /> : null}
-                        Switch
+                        {t("organizations.switch")}
                       </Button>
                     )}
                     {!org.is_personal && (
@@ -203,14 +206,14 @@ export function OrganizationsPage() {
                         variant="outline"
                         onClick={() => navigate(`/organizations/${org.id}/members`)}
                       >
-                        <Users className="size-3.5 mr-1" /> Members
+                        <Users className="size-3.5 mr-1" /> {t("organizations.members")}
                       </Button>
                     )}
                     {(org.role === "owner" || org.role === "admin") && (
                       <Button
                         size="icon"
                         variant="ghost"
-                        aria-label="Edit"
+                        aria-label={t("organizations.edit")}
                         onClick={() => {
                           setEditTarget(org)
                           setEditName(org.name)
@@ -224,7 +227,7 @@ export function OrganizationsPage() {
                       <Button
                         size="icon"
                         variant="ghost"
-                        aria-label="Delete"
+                        aria-label={t("organizations.delete")}
                         className="text-destructive hover:text-destructive"
                         onClick={() => setDeleteTarget(org)}
                       >
@@ -242,26 +245,26 @@ export function OrganizationsPage() {
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Create organization</DialogTitle>
+            <DialogTitle>{t("organizations.createOrganization")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3 py-2">
-            <Label htmlFor="create-org-name">Name</Label>
+            <Label htmlFor="create-org-name">{t("organizations.name")}</Label>
             <Input
               id="create-org-name"
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
-              placeholder="Acme Inc."
+              placeholder={t("organizations.acmeIncPlaceholder")}
               onKeyDown={(e) => { if (e.key === "Enter") handleCreate() }}
               disabled={creating}
             />
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setCreateOpen(false)} disabled={creating}>
-              Cancel
+              {t("organizations.cancel")}
             </Button>
             <Button onClick={handleCreate} disabled={!newName.trim() || creating}>
               {creating ? <Loader2 className="size-4 mr-2 animate-spin" /> : null}
-              Create
+              {t("organizations.create")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -270,11 +273,11 @@ export function OrganizationsPage() {
       <Dialog open={!!editTarget} onOpenChange={(o) => { if (!o) setEditTarget(null) }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Edit organization</DialogTitle>
+            <DialogTitle>{t("organizations.editOrganization")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-1.5">
-              <Label htmlFor="edit-org-name">Name</Label>
+              <Label htmlFor="edit-org-name">{t("organizations.name")}</Label>
               <Input
                 id="edit-org-name"
                 value={editName}
@@ -282,24 +285,24 @@ export function OrganizationsPage() {
                 disabled={saving || editTarget?.is_personal}
               />
               {editTarget?.is_personal && (
-                <p className="text-[11px] text-muted-foreground">Personal organizations cannot be renamed.</p>
+                <p className="text-[11px] text-muted-foreground">{t("organizations.personalOrgCannotBeRenamed")}</p>
               )}
             </div>
             <div className="space-y-1.5">
-              <Label>Currency</Label>
+              <Label>{t("organizations.currency")}</Label>
               <CurrencyCombobox value={editCurrency} onValueChange={setEditCurrency} disabled={saving} />
               <p className="text-[11px] text-muted-foreground">
-                Used to format every amount displayed inside this organization.
+                {t("organizations.currencyUsedForFormatting")}
               </p>
             </div>
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setEditTarget(null)} disabled={saving}>
-              Cancel
+              {t("organizations.cancel")}
             </Button>
             <Button onClick={handleSaveEdit} disabled={saving}>
               {saving ? <Loader2 className="size-4 mr-2 animate-spin" /> : null}
-              Save changes
+              {t("organizations.saveChanges")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -308,19 +311,18 @@ export function OrganizationsPage() {
       <Dialog open={!!deleteTarget} onOpenChange={(o) => { if (!o) setDeleteTarget(null) }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete organization?</DialogTitle>
+            <DialogTitle>{t("organizations.deleteOrganization")}</DialogTitle>
           </DialogHeader>
           <div className="py-2 text-sm text-muted-foreground">
-            This will permanently delete <span className="font-medium text-foreground">{deleteTarget?.name}</span> and all of its
-            clients, transactions, and quotations. This cannot be undone.
+            {t("organizations.deleteOrganizationWarning", { name: deleteTarget?.name })}
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setDeleteTarget(null)} disabled={deleting}>
-              Cancel
+              {t("organizations.cancel")}
             </Button>
             <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
               {deleting ? <Loader2 className="size-4 mr-2 animate-spin" /> : null}
-              Delete forever
+              {t("organizations.deleteForever")}
             </Button>
           </DialogFooter>
         </DialogContent>
