@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Badge } from "@/components/ui/badge"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import {
   AlertDialog,
@@ -34,6 +35,10 @@ import {
   Check,
   Trash2,
   Database,
+  Gift,
+  SlidersHorizontal,
+  Globe,
+  Tag,
 } from "lucide-react"
 
 type AccountType = "personal" | "business"
@@ -65,6 +70,7 @@ type Plan = {
   yearly_price_usd: string
   monthly_discount_pct: number
   yearly_discount_pct: number
+  promo_note: string
   dodo_product_monthly: string | null
   dodo_product_yearly: string | null
   limits: Record<string, number>
@@ -98,6 +104,17 @@ const LIMIT_FIELDS: Array<{ key: keyof Plan["limits"]; label: string; suffix?: s
 const ACCOUNT_TYPE_META: Record<AccountType, { label: string; icon: typeof User; blurb: string }> = {
   personal: { label: "Personal", icon: User, blurb: "Solo finance tracking" },
   business: { label: "Business", icon: Building2, blurb: "Clients, quotations & team" },
+}
+
+/** Per-plan accent so the admin can tell plans apart at a glance. */
+function planAccent(p: Plan): { border: string; chip: string; icon: typeof User } {
+  if (p.key === "free") {
+    return { border: "border-l-slate-400", chip: "bg-slate-500/10 text-slate-600 dark:text-slate-300 border-slate-500/30", icon: Tag }
+  }
+  if (p.account_type === "personal" || p.key === "personal") {
+    return { border: "border-l-emerald-500", chip: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30", icon: User }
+  }
+  return { border: "border-l-indigo-500", chip: "bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 border-indigo-500/30", icon: Building2 }
 }
 
 // Rounds the discounted cents like Dodo does, so this matches what Dodo charges.
@@ -517,6 +534,7 @@ export function AdminPlansPage() {
         yearly_price_usd: draft.yearly_price_usd,
         monthly_discount_pct: draft.monthly_discount_pct,
         yearly_discount_pct: draft.yearly_discount_pct,
+        promo_note: draft.promo_note,
         dodo_product_monthly: draft.dodo_product_monthly || null,
         dodo_product_yearly: draft.dodo_product_yearly || null,
         limits: draft.limits,
@@ -604,182 +622,234 @@ export function AdminPlansPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {plans.map((p) => {
-        const draft = drafts[p.id]
-        if (!draft) return null
-        const mDisc = discountedUsd(draft.monthly_price_usd, draft.monthly_discount_pct)
-        const yDisc = discountedUsd(draft.yearly_price_usd, draft.yearly_discount_pct)
-        return (
-          <Card key={p.id} className="p-6 space-y-5">
-            <div className="flex items-start justify-between gap-4 flex-wrap">
-              <div className="flex-1 space-y-1 min-w-[220px]">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <Input
-                    value={draft.name}
-                    onChange={(e) => updateDraft(p.id, { name: e.target.value })}
-                    className="text-lg font-semibold max-w-xs"
-                  />
-                  <span className="text-xs uppercase tracking-widest text-muted-foreground">{p.key}</span>
-                  {draft.account_type && <Badge variant="outline" className="capitalize">{draft.account_type}</Badge>}
-                </div>
-                <div className="flex items-center gap-2">
-                  <Switch checked={draft.is_active} onCheckedChange={(v) => updateDraft(p.id, { is_active: v })} />
-                  <span className="text-xs text-muted-foreground">{draft.is_active ? "Active" : "Disabled"}</span>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button onClick={() => handleSave(p.id)} disabled={savingId === p.id}>
-                  {savingId === p.id ? <Loader2 className="size-3.5 mr-1.5 animate-spin" /> : <Save className="size-3.5 mr-1.5" />}
-                  Save
-                </Button>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="text-muted-foreground hover:text-destructive"
-                  onClick={() => setDeletePlan(p)}
-                  disabled={p.key === "free"}
-                  title={p.key === "free" ? "The Free plan is required and cannot be deleted" : "Delete plan"}
-                >
-                  <Trash2 className="size-4" />
-                </Button>
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label className="text-xs">Description</Label>
-              <Textarea
-                rows={2}
-                value={draft.description ?? ""}
-                onChange={(e) => updateDraft(p.id, { description: e.target.value })}
-                className="resize-none"
-              />
-            </div>
-
-            <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
-              <p className="text-xs uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
-                <CreditCard className="size-3.5" /> Dodo product IDs
-              </p>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Monthly</Label>
-                  <Input value={draft.dodo_product_monthly ?? ""} onChange={(e) => updateDraft(p.id, { dodo_product_monthly: e.target.value })} placeholder="pdt_…" />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Yearly</Label>
-                  <Input value={draft.dodo_product_yearly ?? ""} onChange={(e) => updateDraft(p.id, { dodo_product_yearly: e.target.value })} placeholder="pdt_…" />
-                </div>
-              </div>
-            </div>
-
-            <DodoSyncedPanel data={draft.dodo_metadata} />
-
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs">Monthly (USD)</Label>
-                <Input value={draft.monthly_price_usd} onChange={(e) => updateDraft(p.id, { monthly_price_usd: e.target.value })} />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs">Monthly discount %</Label>
-                <Input type="number" value={draft.monthly_discount_pct} onChange={(e) => updateDraft(p.id, { monthly_discount_pct: parseInt(e.target.value || "0", 10) })} />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs">Yearly (USD)</Label>
-                <Input value={draft.yearly_price_usd} onChange={(e) => updateDraft(p.id, { yearly_price_usd: e.target.value })} />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs">Yearly discount %</Label>
-                <Input type="number" value={draft.yearly_discount_pct} onChange={(e) => updateDraft(p.id, { yearly_discount_pct: parseInt(e.target.value || "0", 10) })} />
-              </div>
-            </div>
-
-            <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-muted-foreground">
-              <span>Monthly after discount: <span className="font-medium text-foreground">${mDisc}/mo</span></span>
-              <span>Yearly after discount: <span className="font-medium text-foreground">${yDisc}/yr</span></span>
-            </div>
-
-            <div>
-              <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3">
-                <p className="text-xs uppercase tracking-widest text-muted-foreground">Limits &amp; feature labels</p>
-                <p className="text-[11px] text-muted-foreground">
-                  Number = the real limit enforced by quota · Text = what's shown in this plan's feature list
-                </p>
-              </div>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                {LIMIT_FIELDS.map(({ key, label, suffix }) => {
-                  const k = key as string
-                  return (
-                    <div key={key} className="rounded-md border p-3 space-y-2">
-                      <Label className="text-xs">{label}</Label>
-                      <div className="flex gap-2">
-                        <div className="relative w-28 shrink-0">
-                          <Input
-                            type="number"
-                            value={draft.limits?.[key] ?? 0}
-                            onChange={(e) => updateLimit(p.id, k, parseInt(e.target.value || "0", 10))}
-                          />
-                          {suffix && <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">{suffix}</span>}
-                        </div>
-                        <Input
-                          value={draft.feature_labels?.[k] ?? ""}
-                          onChange={(e) => updateFeatureLabel(p.id, k, e.target.value)}
-                          placeholder={featureHint(k)}
-                          className="flex-1"
-                        />
-                      </div>
+      <div className="space-y-5">
+        {plans.map((p) => {
+          const draft = drafts[p.id]
+          if (!draft) return null
+          const accent = planAccent(draft)
+          const AccentIcon = accent.icon
+          const mDisc = discountedUsd(draft.monthly_price_usd, draft.monthly_discount_pct)
+          const yDisc = discountedUsd(draft.yearly_price_usd, draft.yearly_discount_pct)
+          return (
+            <Card key={p.id} className={`overflow-hidden border-l-4 ${accent.border} p-0 gap-0`}>
+              {/* Header */}
+              <div className="flex flex-wrap items-start justify-between gap-3 p-5 pb-3">
+                <div className="flex min-w-[240px] flex-1 items-start gap-3">
+                  <span className={`flex size-10 shrink-0 items-center justify-center rounded-xl border ${accent.chip}`}>
+                    <AccentIcon className="size-5" />
+                  </span>
+                  <div className="min-w-0 flex-1 space-y-1.5">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Input
+                        value={draft.name}
+                        onChange={(e) => updateDraft(p.id, { name: e.target.value })}
+                        className="h-8 max-w-[15rem] text-base font-semibold"
+                      />
+                      <Badge variant="outline" className={`text-[10px] uppercase tracking-wide ${accent.chip}`}>{p.key}</Badge>
+                      {draft.account_type && <Badge variant="secondary" className="text-[10px] capitalize">{draft.account_type}</Badge>}
                     </div>
-                  )
-                })}
-              </div>
-            </div>
-
-            <div>
-              <p className="text-xs uppercase tracking-widest text-muted-foreground mb-2">Geo pricing</p>
-              <div className="space-y-2">
-                {Object.entries(draft.geo_pricing).map(([country, cfg]) => (
-                  <div key={country} className="grid grid-cols-2 md:grid-cols-6 gap-2 items-end border border-border rounded-md p-3">
-                    <div className="space-y-1">
-                      <Label className="text-[10px]">Country</Label>
-                      <Input value={country} disabled />
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-[10px]">Currency</Label>
-                      <Input value={cfg.currency} onChange={(e) => updateGeo(p.id, country, { currency: e.target.value.toUpperCase() })} />
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-[10px]">Monthly (minor)</Label>
-                      <Input type="number" value={cfg.monthly} onChange={(e) => updateGeo(p.id, country, { monthly: parseInt(e.target.value || "0", 10) })} />
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-[10px]">Yearly (minor)</Label>
-                      <Input type="number" value={cfg.yearly} onChange={(e) => updateGeo(p.id, country, { yearly: parseInt(e.target.value || "0", 10) })} />
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-[10px]">Monthly disc%</Label>
-                      <Input type="number" value={cfg.monthlyDiscountPct ?? 0} onChange={(e) => updateGeo(p.id, country, { monthlyDiscountPct: parseInt(e.target.value || "0", 10) })} />
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-[10px]">Yearly disc%</Label>
-                      <Input type="number" value={cfg.yearlyDiscountPct ?? 0} onChange={(e) => updateGeo(p.id, country, { yearlyDiscountPct: parseInt(e.target.value || "0", 10) })} />
+                    <div className="flex items-center gap-2">
+                      <Switch checked={draft.is_active} onCheckedChange={(v) => updateDraft(p.id, { is_active: v })} />
+                      <span className="text-xs text-muted-foreground">{draft.is_active ? "Active" : "Disabled"}</span>
                     </div>
                   </div>
-                ))}
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    const code = window.prompt("Country code (ISO 3166-1 alpha-2, e.g. US, IN, GB)")?.toUpperCase()
-                    if (!code) return
-                    if (draft.geo_pricing[code]) { toast.error(`${code} already exists`); return }
-                    updateGeo(p.id, code, { currency: "USD", monthly: 0, yearly: 0 })
-                  }}
-                >
-                  Add country
-                </Button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button size="sm" onClick={() => handleSave(p.id)} disabled={savingId === p.id}>
+                    {savingId === p.id ? <Loader2 className="size-3.5 mr-1.5 animate-spin" /> : <Save className="size-3.5 mr-1.5" />}
+                    Save
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="text-muted-foreground hover:text-destructive"
+                    onClick={() => setDeletePlan(p)}
+                    disabled={p.key === "free"}
+                    title={p.key === "free" ? "The Free plan is required and cannot be deleted" : "Delete plan"}
+                  >
+                    <Trash2 className="size-4" />
+                  </Button>
+                </div>
               </div>
-            </div>
-          </Card>
-        )
-      })}
+
+              {/* Price summary chips — the whole plan at a glance */}
+              <div className="flex flex-wrap items-center gap-2 px-5 pb-4 text-xs">
+                <span className="inline-flex items-center gap-1.5 rounded-md border bg-muted/40 px-2 py-1">
+                  Monthly <span className="font-semibold text-foreground">${mDisc}</span>/mo
+                  {draft.monthly_discount_pct > 0 && <span className="text-muted-foreground line-through">${draft.monthly_price_usd}</span>}
+                </span>
+                <span className="inline-flex items-center gap-1.5 rounded-md border bg-muted/40 px-2 py-1">
+                  Yearly <span className="font-semibold text-foreground">${yDisc}</span>/yr
+                  {draft.yearly_discount_pct > 0 && <span className="text-muted-foreground line-through">${draft.yearly_price_usd}</span>}
+                </span>
+                {draft.promo_note?.trim() && (
+                  <span className="inline-flex items-center gap-1 rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1 font-medium text-amber-700 dark:text-amber-300">
+                    <Gift className="size-3" /> {draft.promo_note}
+                  </span>
+                )}
+                <span className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-muted-foreground">
+                  <CreditCard className="size-3" /> {(draft.dodo_product_monthly || draft.dodo_product_yearly) ? "Dodo linked" : "No Dodo product"}
+                </span>
+              </div>
+
+              {/* Tabbed editor keeps each plan's full data accessible but uncluttered */}
+              <Tabs defaultValue="pricing" className="gap-0 border-t">
+                <TabsList className="h-auto w-full justify-start gap-1 overflow-x-auto scrollbar-none rounded-none border-b bg-transparent p-2">
+                  <TabsTrigger value="pricing" className="gap-1.5 text-xs data-[state=active]:bg-muted">
+                    <Tag className="size-3.5" /> Pricing &amp; promo
+                  </TabsTrigger>
+                  <TabsTrigger value="limits" className="gap-1.5 text-xs data-[state=active]:bg-muted">
+                    <SlidersHorizontal className="size-3.5" /> Limits &amp; features
+                  </TabsTrigger>
+                  <TabsTrigger value="integration" className="gap-1.5 text-xs data-[state=active]:bg-muted">
+                    <Globe className="size-3.5" /> Integration
+                  </TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="pricing" className="space-y-4 p-5">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Description</Label>
+                    <Textarea
+                      rows={2}
+                      value={draft.description ?? ""}
+                      onChange={(e) => updateDraft(p.id, { description: e.target.value })}
+                      className="resize-none"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="flex items-center gap-1.5 text-xs">
+                      <Gift className="size-3.5" /> Promo note
+                      <span className="font-normal text-muted-foreground">— shown on the plan card</span>
+                    </Label>
+                    <Input
+                      value={draft.promo_note ?? ""}
+                      onChange={(e) => updateDraft(p.id, { promo_note: e.target.value })}
+                      placeholder='e.g. "First month 50% off"'
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Monthly (USD)</Label>
+                      <Input value={draft.monthly_price_usd} onChange={(e) => updateDraft(p.id, { monthly_price_usd: e.target.value })} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Monthly discount %</Label>
+                      <Input type="number" value={draft.monthly_discount_pct} onChange={(e) => updateDraft(p.id, { monthly_discount_pct: parseInt(e.target.value || "0", 10) })} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Yearly (USD)</Label>
+                      <Input value={draft.yearly_price_usd} onChange={(e) => updateDraft(p.id, { yearly_price_usd: e.target.value })} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Yearly discount %</Label>
+                      <Input type="number" value={draft.yearly_discount_pct} onChange={(e) => updateDraft(p.id, { yearly_discount_pct: parseInt(e.target.value || "0", 10) })} />
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="mb-2 text-xs uppercase tracking-widest text-muted-foreground">Geo pricing</p>
+                    <div className="space-y-2">
+                      {Object.entries(draft.geo_pricing).map(([country, cfg]) => (
+                        <div key={country} className="grid grid-cols-2 items-end gap-2 rounded-md border border-border p-3 md:grid-cols-6">
+                          <div className="space-y-1">
+                            <Label className="text-[10px]">Country</Label>
+                            <Input value={country} disabled />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-[10px]">Currency</Label>
+                            <Input value={cfg.currency} onChange={(e) => updateGeo(p.id, country, { currency: e.target.value.toUpperCase() })} />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-[10px]">Monthly (minor)</Label>
+                            <Input type="number" value={cfg.monthly} onChange={(e) => updateGeo(p.id, country, { monthly: parseInt(e.target.value || "0", 10) })} />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-[10px]">Yearly (minor)</Label>
+                            <Input type="number" value={cfg.yearly} onChange={(e) => updateGeo(p.id, country, { yearly: parseInt(e.target.value || "0", 10) })} />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-[10px]">Monthly disc%</Label>
+                            <Input type="number" value={cfg.monthlyDiscountPct ?? 0} onChange={(e) => updateGeo(p.id, country, { monthlyDiscountPct: parseInt(e.target.value || "0", 10) })} />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-[10px]">Yearly disc%</Label>
+                            <Input type="number" value={cfg.yearlyDiscountPct ?? 0} onChange={(e) => updateGeo(p.id, country, { yearlyDiscountPct: parseInt(e.target.value || "0", 10) })} />
+                          </div>
+                        </div>
+                      ))}
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          const code = window.prompt("Country code (ISO 3166-1 alpha-2, e.g. US, IN, GB)")?.toUpperCase()
+                          if (!code) return
+                          if (draft.geo_pricing[code]) { toast.error(`${code} already exists`); return }
+                          updateGeo(p.id, code, { currency: "USD", monthly: 0, yearly: 0 })
+                        }}
+                      >
+                        Add country
+                      </Button>
+                    </div>
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="limits" className="space-y-3 p-5">
+                  <p className="text-[11px] text-muted-foreground">
+                    Number = the real limit enforced by quota · Text = what's shown in this plan's feature list.
+                  </p>
+                  <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                    {LIMIT_FIELDS.map(({ key, label, suffix }) => {
+                      const k = key as string
+                      return (
+                        <div key={key} className="space-y-2 rounded-md border p-3">
+                          <Label className="text-xs">{label}</Label>
+                          <div className="flex gap-2">
+                            <div className="relative w-28 shrink-0">
+                              <Input
+                                type="number"
+                                value={draft.limits?.[key] ?? 0}
+                                onChange={(e) => updateLimit(p.id, k, parseInt(e.target.value || "0", 10))}
+                              />
+                              {suffix && <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">{suffix}</span>}
+                            </div>
+                            <Input
+                              value={draft.feature_labels?.[k] ?? ""}
+                              onChange={(e) => updateFeatureLabel(p.id, k, e.target.value)}
+                              placeholder={featureHint(k)}
+                              className="flex-1"
+                            />
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="integration" className="space-y-4 p-5">
+                  <div className="space-y-3 rounded-lg border bg-muted/30 p-4">
+                    <p className="flex items-center gap-1.5 text-xs uppercase tracking-widest text-muted-foreground">
+                      <CreditCard className="size-3.5" /> Dodo product IDs
+                    </p>
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                      <div className="space-y-1.5">
+                        <Label className="text-xs">Monthly</Label>
+                        <Input value={draft.dodo_product_monthly ?? ""} onChange={(e) => updateDraft(p.id, { dodo_product_monthly: e.target.value })} placeholder="pdt_…" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs">Yearly</Label>
+                        <Input value={draft.dodo_product_yearly ?? ""} onChange={(e) => updateDraft(p.id, { dodo_product_yearly: e.target.value })} placeholder="pdt_…" />
+                      </div>
+                    </div>
+                  </div>
+                  <DodoSyncedPanel data={draft.dodo_metadata} />
+                </TabsContent>
+              </Tabs>
+            </Card>
+          )
+        })}
+      </div>
     </div>
   )
 }

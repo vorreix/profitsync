@@ -87,7 +87,18 @@
     "companyUpsellBody": "Manage clients, send quotations, and invite your team — try a Company workspace, free.",
     "companyUpsellCta": "Try it for free",
     "companyUpsellNeverShow": "Don't show again",
-    "companyUpsellDismiss": "Dismiss"
+    "companyUpsellDismiss": "Dismiss",
+    "filtered": "Filtered view",
+    "allCategories": "All Categories",
+    "searchCategories": "Search categories...",
+    "noCategoriesFound": "No categories found",
+    "uncategorized": "Uncategorized",
+    "ownLabel": "Own",
+    "transactionsKpi": "Transactions",
+    "transactionsTotal_one": "{{count}} total",
+    "transactionsTotal_other": "{{count}} total",
+    "revenueVsCategories": "Revenue vs Expenses by Category",
+    "topCategories": "Top Categories"
   },
   "chart": {
     "incoming": "Incoming",

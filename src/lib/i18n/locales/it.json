@@ -87,7 +87,18 @@
     "companyUpsellBody": "Gestisci clienti, invia preventivi e invita il tuo team — prova un workspace Aziendale, gratis.",
     "companyUpsellCta": "Prova gratis",
     "companyUpsellNeverShow": "Non mostrare più",
-    "companyUpsellDismiss": "Chiudi"
+    "companyUpsellDismiss": "Chiudi",
+    "filtered": "Vista filtrata",
+    "allCategories": "Tutte le categorie",
+    "searchCategories": "Cerca categorie...",
+    "noCategoriesFound": "Nessuna categoria trovata",
+    "uncategorized": "Senza categoria",
+    "ownLabel": "Proprio",
+    "transactionsKpi": "Transazioni",
+    "transactionsTotal_one": "{{count}} totale",
+    "transactionsTotal_other": "{{count}} totali",
+    "revenueVsCategories": "Ricavi vs Spese per Categoria",
+    "topCategories": "Categorie Principali"
   },
   "chart": {
     "incoming": "Entrate",

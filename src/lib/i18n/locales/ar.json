@@ -87,7 +87,18 @@
     "companyUpsellBody": "أدر العملاء، وأرسل عروض الأسعار، وادعُ فريقك — جرّب مساحة عمل شركة مجاناً.",
     "companyUpsellCta": "جرّبها مجاناً",
     "companyUpsellNeverShow": "عدم الإظهار مجدداً",
-    "companyUpsellDismiss": "إغلاق"
+    "companyUpsellDismiss": "إغلاق",
+    "filtered": "عرض مُصفّى",
+    "allCategories": "جميع الفئات",
+    "searchCategories": "البحث في الفئات...",
+    "noCategoriesFound": "لم يتم العثور على فئات",
+    "uncategorized": "بدون فئة",
+    "ownLabel": "خاص",
+    "transactionsKpi": "المعاملات",
+    "transactionsTotal_one": "{{count}} الإجمالي",
+    "transactionsTotal_other": "{{count}} الإجمالي",
+    "revenueVsCategories": "الإيرادات مقابل النفقات حسب الفئة",
+    "topCategories": "أفضل الفئات"
   },
   "chart": {
     "incoming": "وارد",

@@ -87,7 +87,18 @@
     "companyUpsellBody": "Verwalten Sie Kunden, senden Sie Angebote und laden Sie Ihr Team ein — testen Sie einen Unternehmens-Workspace kostenlos.",
     "companyUpsellCta": "Kostenlos testen",
     "companyUpsellNeverShow": "Nicht mehr anzeigen",
-    "companyUpsellDismiss": "Schließen"
+    "companyUpsellDismiss": "Schließen",
+    "filtered": "Gefilterte Ansicht",
+    "allCategories": "Alle Kategorien",
+    "searchCategories": "Kategorien suchen...",
+    "noCategoriesFound": "Keine Kategorien gefunden",
+    "uncategorized": "Ohne Kategorie",
+    "ownLabel": "Eigen",
+    "transactionsKpi": "Transaktionen",
+    "transactionsTotal_one": "{{count}} gesamt",
+    "transactionsTotal_other": "{{count}} gesamt",
+    "revenueVsCategories": "Einnahmen vs. Ausgaben nach Kategorie",
+    "topCategories": "Top-Kategorien"
   },
   "chart": {
     "incoming": "Eingang",

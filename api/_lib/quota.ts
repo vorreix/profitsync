@@ -85,10 +85,11 @@ export async function getOrgPlan(orgId: string): Promise<{ planKey: string; limi
 export async function checkClientQuota(orgId: string): Promise<QuotaCheck> {
   const { planKey, limits } = await getOrgPlan(orgId)
   if (planKey !== "free") return { allowed: true }
+  // The auto-provisioned own/internal client doesn't count against the quota.
   const [{ current }] = await db
     .select({ current: count() })
     .from(clients)
-    .where(and(eq(clients.organizationId, orgId), isNull(clients.deletedAt)))
+    .where(and(eq(clients.organizationId, orgId), isNull(clients.deletedAt), eq(clients.isOwn, false)))
   if (current >= limits.clients) {
     return {
       allowed: false,

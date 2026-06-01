@@ -87,7 +87,18 @@
     "companyUpsellBody": "क्लाइंट प्रबंधित करें, कोटेशन भेजें और अपनी टीम को आमंत्रित करें — कंपनी वर्कस्पेस मुफ्त आज़माएं।",
     "companyUpsellCta": "मुफ्त आज़माएं",
     "companyUpsellNeverShow": "दोबारा न दिखाएं",
-    "companyUpsellDismiss": "बंद करें"
+    "companyUpsellDismiss": "बंद करें",
+    "filtered": "फ़िल्टर किया गया दृश्य",
+    "allCategories": "सभी श्रेणियाँ",
+    "searchCategories": "श्रेणियाँ खोजें...",
+    "noCategoriesFound": "कोई श्रेणी नहीं मिली",
+    "uncategorized": "बिना श्रेणी",
+    "ownLabel": "अपना",
+    "transactionsKpi": "लेनदेन",
+    "transactionsTotal_one": "{{count}} कुल",
+    "transactionsTotal_other": "{{count}} कुल",
+    "revenueVsCategories": "श्रेणी के अनुसार राजस्व बनाम व्यय",
+    "topCategories": "शीर्ष श्रेणियाँ"
   },
   "chart": {
     "incoming": "आवक",

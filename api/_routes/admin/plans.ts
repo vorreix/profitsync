@@ -139,6 +139,7 @@ type PlanBody = {
   yearly_price_usd?: number | string
   monthly_discount_pct?: number
   yearly_discount_pct?: number
+  promo_note?: string
   dodo_product_monthly?: string | null
   dodo_product_yearly?: string | null
   limits?: Record<string, unknown>
@@ -191,6 +192,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         yearlyPriceUsd: String((dcols.yearlyPriceUsd as string) ?? body.yearly_price_usd ?? "0"),
         monthlyDiscountPct: (dcols.monthlyDiscountPct as number) ?? body.monthly_discount_pct ?? 0,
         yearlyDiscountPct: (dcols.yearlyDiscountPct as number) ?? body.yearly_discount_pct ?? 0,
+        promoNote: body.promo_note ?? "",
         dodoProductMonthly: body.dodo_product_monthly ?? null,
         dodoProductYearly: body.dodo_product_yearly ?? null,
         limits: body.limits ?? {},
@@ -225,6 +227,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ...(body.yearly_price_usd !== undefined ? { yearlyPriceUsd: String(body.yearly_price_usd) } : {}),
         ...(body.monthly_discount_pct !== undefined ? { monthlyDiscountPct: body.monthly_discount_pct } : {}),
         ...(body.yearly_discount_pct !== undefined ? { yearlyDiscountPct: body.yearly_discount_pct } : {}),
+        ...(body.promo_note !== undefined ? { promoNote: body.promo_note } : {}),
         ...(body.dodo_product_monthly !== undefined ? { dodoProductMonthly: body.dodo_product_monthly } : {}),
         ...(body.dodo_product_yearly !== undefined ? { dodoProductYearly: body.dodo_product_yearly } : {}),
         ...(body.limits !== undefined ? { limits: body.limits } : {}),

@@ -50,6 +50,20 @@
       "when": 1780272947253,
       "tag": "0006_seed_and_protect_free_plan",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1780300801966,
+      "tag": "0007_handy_logan",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1780300802966,
+      "tag": "0008_backfill_own_clients",
+      "breakpoints": true
     }
   ]
 }
