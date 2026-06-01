@@ -36,6 +36,41 @@
       "when": 1780269347203,
       "tag": "0004_plan_feature_labels_and_dodo_metadata",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1780272946253,
+      "tag": "0005_melted_black_queen",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1780272947253,
+      "tag": "0006_seed_and_protect_free_plan",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1780300801966,
+      "tag": "0007_handy_logan",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1780300802966,
+      "tag": "0008_backfill_own_clients",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1780303849824,
+      "tag": "0009_high_roulette",
+      "breakpoints": true
     }
   ]
 }

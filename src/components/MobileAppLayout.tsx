@@ -94,9 +94,11 @@ export function MobileAppLayout() {
   const userEmail = user?.primaryEmailAddress?.emailAddress ?? null
 
   const handleSwitch = async (id: string) => {
+    // Close the sheet immediately so switching feels instant on mobile; the
+    // org refresh continues in the background.
+    setOrgSheetOpen(false)
     await switchOrg(id)
     await refresh()
-    setOrgSheetOpen(false)
   }
 
   const handleLogout = async () => {
@@ -254,7 +256,7 @@ export function MobileAppLayout() {
         </div>
       </header>
 
-      <main className="flex-1 overflow-auto pb-32 page-enter" key={location.pathname + (activeOrg?.id ?? "")}>
+      <main className="flex-1 overflow-y-auto overflow-x-hidden pb-32 page-enter" key={location.pathname + (activeOrg?.id ?? "")}>
         {orgLoading ? (
           <div className="flex h-[60vh] items-center justify-center">
             <Loader className="size-6 animate-spin text-muted-foreground" />

@@ -114,6 +114,23 @@ export async function getSubscription(subscriptionId: string): Promise<DodoSubsc
   return call<DodoSubscription>(`/subscriptions/${subscriptionId}`)
 }
 
+/**
+ * Download the invoice PDF Dodo generates for a successful payment.
+ * Endpoint: GET /invoices/payments/{payment_id} → application/pdf binary.
+ * Returns the raw bytes so the caller can stream them to the browser (we never
+ * expose the Dodo API key to the client).
+ */
+export async function fetchInvoicePdf(paymentId: string): Promise<Buffer> {
+  const res = await fetch(`${BASE}/invoices/payments/${encodeURIComponent(paymentId)}`, {
+    headers: { Authorization: authHeader(), Accept: "application/pdf" },
+  })
+  if (!res.ok) {
+    const text = await res.text().catch(() => "")
+    throw new Error(`Dodo invoice ${res.status}: ${text}`)
+  }
+  return Buffer.from(await res.arrayBuffer())
+}
+
 export type DodoPriceDetail = {
   price: number // minor units (e.g. cents)
   currency: string

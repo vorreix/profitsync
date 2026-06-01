@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { and, eq, isNotNull } from "drizzle-orm"
 import { db } from "../../../src/lib/db/index.js"
-import { clients, quotations } from "../../../src/lib/db/schema.js"
+import { clients, quotations, transactions } from "../../../src/lib/db/schema.js"
 import { canDelete, requireAuth } from "../../_lib/auth.js"
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -14,8 +14,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const { type, id } = req.body as { type: string; id: string }
   if (!id) return res.status(400).json({ error: "id is required" })
-  if (!["client", "quotation"].includes(type)) {
-    return res.status(400).json({ error: "type must be client or quotation" })
+  if (!["client", "quotation", "transaction"].includes(type)) {
+    return res.status(400).json({ error: "type must be client, quotation, or transaction" })
+  }
+
+  if (type === "transaction") {
+    const [tx] = await db
+      .select({ id: transactions.id })
+      .from(transactions)
+      .innerJoin(clients, eq(transactions.clientId, clients.id))
+      .where(and(eq(transactions.id, id), eq(clients.organizationId, orgId), isNotNull(transactions.deletedAt)))
+    if (!tx) return res.status(404).json({ error: "Not found" })
+    await db.delete(transactions).where(eq(transactions.id, id))
+    return res.status(204).end()
   }
 
   if (type === "client") {

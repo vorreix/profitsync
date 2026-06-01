@@ -38,6 +38,8 @@ import billingPricing from "./_routes/billing/pricing.js"
 import billingCreateSubscription from "./_routes/billing/create-subscription.js"
 import billingCancel from "./_routes/billing/cancel.js"
 import billingSync from "./_routes/billing/sync.js"
+import billingInvoices from "./_routes/billing/invoices.js"
+import billingInvoicePdf from "./_routes/billing/invoice-pdf.js"
 // NOTE: billing/webhook is intentionally NOT routed here. It needs the raw
 // request body for signature verification (bodyParser: false), which only works
 // when it is its own function file — see api/billing/webhook.ts. The filesystem
@@ -95,6 +97,8 @@ const routes: RoutePattern<ApiHandler>[] = [
   { segments: ["billing", "create-subscription"], handler: billingCreateSubscription },
   { segments: ["billing", "cancel"], handler: billingCancel },
   { segments: ["billing", "sync"], handler: billingSync },
+  { segments: ["billing", "invoices"], handler: billingInvoices },
+  { segments: ["billing", "invoice-pdf"], handler: billingInvoicePdf },
 
   { segments: ["admin", "me"], handler: adminMe },
   { segments: ["admin", "admins"], handler: adminAdmins },

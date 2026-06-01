@@ -65,6 +65,11 @@ export const clients = pgTable("clients", {
   phone: text("phone").default(""),
   status: text("status").default("active"),
   notes: text("notes").default(""),
+  // The workspace's own/internal client — the company (or person) itself. Used to
+  // record own expenses (rent, utilities, salaries). Exactly one per org; shown
+  // first and badged distinctly in lists/pickers. Personal orgs use it as their
+  // single hidden anchor client.
+  isOwn: boolean("is_own").notNull().default(false),
   onboardDate: date("onboard_date"),
   deletedAt: timestamp("deleted_at"),
   createdAt: timestamp("created_at").defaultNow(),
@@ -83,6 +88,9 @@ export const transactions = pgTable("transactions", {
   description: text("description").default(""),
   category: text("category").default(""),
   date: date("date").notNull().defaultNow(),
+  // Soft-delete: deleted transactions move to Trash (restore/purge) instead of
+  // disappearing. All financial aggregates must exclude rows where this is set.
+  deletedAt: timestamp("deleted_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 })
@@ -141,6 +149,11 @@ export const userProfiles = pgTable("user_profiles", {
   // Null → the onboarding screen is shown on next app load.
   onboardedAt: timestamp("onboarded_at"),
   bannedAt: timestamp("banned_at"),
+  // Dashboard "Try a Company account" upsell state. `dismissedAt` records the last
+  // time the user closed the banner (it reappears 72h later); `hidden` is the
+  // durable "never show again" opt-out.
+  companyUpsellDismissedAt: timestamp("company_upsell_dismissed_at"),
+  companyUpsellHidden: boolean("company_upsell_hidden").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 })
@@ -162,6 +175,9 @@ export const plans = pgTable("plans", {
   yearlyPriceUsd: numeric("yearly_price_usd", { precision: 12, scale: 2 }).notNull().default("0"),
   monthlyDiscountPct: integer("monthly_discount_pct").notNull().default(0),
   yearlyDiscountPct: integer("yearly_discount_pct").notNull().default(0),
+  // Admin-editable promotional line shown on the plan card (e.g. "First month
+  // 50% off"). Empty → the UI falls back to a discount-derived default.
+  promoNote: text("promo_note").notNull().default(""),
   // Dodo Payments product IDs per billing cycle. Source of truth for checkout;
   // admins set these in the admin panel and the rest is derived from Dodo.
   dodoProductMonthly: text("dodo_product_monthly"),
