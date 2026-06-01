@@ -71,6 +71,13 @@
       "when": 1780303849824,
       "tag": "0009_high_roulette",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1780327629110,
+      "tag": "0010_happy_thunderbird",
+      "breakpoints": true
     }
   ]
 }
