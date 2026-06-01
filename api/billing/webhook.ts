@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { desc, eq } from "drizzle-orm"
 import { db } from "../../src/lib/db/index.js"
 import { invoices, subscriptions } from "../../src/lib/db/schema.js"
-import { verifyWebhookSignature } from "../_lib/dodo.js"
+import { verifyWebhookSignature, type DodoEnv } from "../_lib/dodo.js"
 
 export const config = {
   api: {
@@ -47,13 +47,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const raw = await readBody(req)
 
+  let webhookEnv: DodoEnv | null = null
   try {
-    const ok = verifyWebhookSignature(raw, {
+    const { valid, env } = verifyWebhookSignature(raw, {
       id: header(req, "webhook-id"),
       timestamp: header(req, "webhook-timestamp"),
       signature: header(req, "webhook-signature"),
     })
-    if (!ok) return res.status(400).json({ error: "Invalid signature" })
+    if (!valid) return res.status(400).json({ error: "Invalid signature" })
+    // The matching signing secret authoritatively tells us which Dodo environment
+    // this webhook came from — used below to backfill legacy subscriptions whose
+    // dodo_environment is null (created before per-plan environments existed).
+    webhookEnv = env ?? null
   } catch (err) {
     // Misconfiguration (no secret) — surface 500 so the failure is visible in logs.
     return res.status(500).json({ error: err instanceof Error ? err.message : "Verification failed" })
@@ -101,6 +106,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (nextStatus) updates.status = nextStatus
       if (subId && !sub.providerSubscriptionId) updates.providerSubscriptionId = subId
       if (metadata.plan_key) updates.planKey = metadata.plan_key
+      // Self-heal legacy rows: a subscription's env is fixed for life, so if it's
+      // missing, adopt the env that signed this webhook (the authoritative source).
+      if (webhookEnv && !sub.dodoEnvironment) updates.dodoEnvironment = webhookEnv
 
       const nextBilling = data.next_billing_date as string | undefined
       if (nextBilling) updates.currentPeriodEnd = new Date(nextBilling)
