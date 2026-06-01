@@ -141,6 +141,11 @@ export const userProfiles = pgTable("user_profiles", {
   // Null → the onboarding screen is shown on next app load.
   onboardedAt: timestamp("onboarded_at"),
   bannedAt: timestamp("banned_at"),
+  // Dashboard "Try a Company account" upsell state. `dismissedAt` records the last
+  // time the user closed the banner (it reappears 72h later); `hidden` is the
+  // durable "never show again" opt-out.
+  companyUpsellDismissedAt: timestamp("company_upsell_dismissed_at"),
+  companyUpsellHidden: boolean("company_upsell_hidden").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 })

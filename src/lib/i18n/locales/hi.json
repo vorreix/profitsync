@@ -80,7 +80,14 @@
     "noClientsToDisplay": "दिखाने के लिए कोई ग्राहक नहीं",
     "income": "आय",
     "expenses": "व्यय",
-    "profit": "लाभ"
+    "profit": "लाभ",
+    "latestTransactions": "नवीनतम लेनदेन",
+    "latestTransactionsEmpty": "अभी कोई लेनदेन नहीं",
+    "companyUpsellTitle": "कंपनी खाते के साथ आगे बढ़ें",
+    "companyUpsellBody": "क्लाइंट प्रबंधित करें, कोटेशन भेजें और अपनी टीम को आमंत्रित करें — कंपनी वर्कस्पेस मुफ्त आज़माएं।",
+    "companyUpsellCta": "मुफ्त आज़माएं",
+    "companyUpsellNeverShow": "दोबारा न दिखाएं",
+    "companyUpsellDismiss": "बंद करें"
   },
   "chart": {
     "incoming": "आवक",

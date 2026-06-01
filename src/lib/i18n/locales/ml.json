@@ -80,7 +80,14 @@
     "noClientsToDisplay": "കാണിക്കാൻ ക്ലയന്റുകളില്ല",
     "income": "വരുമാനം",
     "expenses": "ചെലവുകൾ",
-    "profit": "ലാഭം"
+    "profit": "ലാഭം",
+    "latestTransactions": "സമീപകാല ഇടപാടുകൾ",
+    "latestTransactionsEmpty": "ഇതുവരെ ഇടപാടുകളൊന്നുമില്ല",
+    "companyUpsellTitle": "കമ്പനി അക്കൗണ്ടിലൂടെ വളരൂ",
+    "companyUpsellBody": "ക്ലയന്റുകളെ കൈകാര്യം ചെയ്യൂ, ക്വട്ടേഷനുകൾ അയയ്ക്കൂ, ടീമിനെ ക്ഷണിക്കൂ — ഒരു കമ്പനി വർക്ക്‌സ്‌പേസ് സൗജന്യമായി പരീക്ഷിക്കൂ.",
+    "companyUpsellCta": "സൗജന്യമായി പരീക്ഷിക്കൂ",
+    "companyUpsellNeverShow": "വീണ്ടും കാണിക്കരുത്",
+    "companyUpsellDismiss": "അടയ്ക്കുക"
   },
   "chart": {
     "incoming": "വരവ്",

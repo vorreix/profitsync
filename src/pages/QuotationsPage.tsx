@@ -439,7 +439,7 @@ export function QuotationsPage() {
 
       {/* List */}
       {loading ? (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {[1, 2, 3].map((i) => <Skeleton key={i} className="h-52 w-full rounded-xl" />)}
         </div>
       ) : quotations.length === 0 ? (

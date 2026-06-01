@@ -40,8 +40,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { userId, orgId, role } = ctx
 
   if (req.method === "GET") {
-    const { clientId, search, type, page, sort } = req.query as {
-      clientId?: string; search?: string; type?: string; page?: string; sort?: string
+    const { clientId, search, type, page, sort, limit } = req.query as {
+      clientId?: string; search?: string; type?: string; page?: string; sort?: string; limit?: string
     }
 
     const orderBy = pickOrder(sort)
@@ -105,12 +105,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.json({ data: rows.map(serialize), total })
     }
 
-    const rows = await db
+    // `?limit=N` (without `page`) returns just the top N rows — used by the
+    // dashboard "latest transactions" card. Capped to keep payloads small.
+    const baseQuery = db
       .select(txFields)
       .from(transactions)
       .innerJoin(clients, eq(transactions.clientId, clients.id))
       .where(whereClause)
       .orderBy(...orderBy)
+
+    if (limit !== undefined) {
+      const limitNum = Math.max(1, Math.min(100, parseInt(limit, 10) || 20))
+      const rows = await baseQuery.limit(limitNum)
+      return res.json(rows.map(serialize))
+    }
+
+    const rows = await baseQuery
     return res.json(rows.map(serialize))
   }
 

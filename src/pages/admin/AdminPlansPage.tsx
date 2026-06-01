@@ -637,7 +637,8 @@ export function AdminPlansPage() {
                   size="icon"
                   className="text-muted-foreground hover:text-destructive"
                   onClick={() => setDeletePlan(p)}
-                  title="Delete plan"
+                  disabled={p.key === "free"}
+                  title={p.key === "free" ? "The Free plan is required and cannot be deleted" : "Delete plan"}
                 >
                   <Trash2 className="size-4" />
                 </Button>

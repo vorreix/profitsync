@@ -80,7 +80,14 @@
     "noClientsToDisplay": "காட்ட வாடிக்கையாளர்கள் இல்லை",
     "income": "வருமானம்",
     "expenses": "செலவுகள்",
-    "profit": "லாபம்"
+    "profit": "லாபம்",
+    "latestTransactions": "சமீபத்திய பரிவர்த்தனைகள்",
+    "latestTransactionsEmpty": "இதுவரை பரிவர்த்தனைகள் இல்லை",
+    "companyUpsellTitle": "நிறுவனக் கணக்கோடு வளரவும்",
+    "companyUpsellBody": "கிளையன்டுகளை நிர்வகிக்கவும், மேற்கோள்களை அனுப்பவும், உங்கள் குழுவை அழைக்கவும் — நிறுவனக் கணக்கை இலவசமாக முயற்சி செய்யவும்.",
+    "companyUpsellCta": "இலவசமாக முயற்சி செய்யவும்",
+    "companyUpsellNeverShow": "மீண்டும் காட்ட வேண்டாம்",
+    "companyUpsellDismiss": "மூடு"
   },
   "chart": {
     "incoming": "வரவு",

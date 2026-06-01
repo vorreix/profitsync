@@ -76,6 +76,8 @@ export type UserProfile = {
   current_organization_id: string | null
   terms_accepted_at: string | null
   onboarded_at: string | null
+  company_upsell_dismissed_at: string | null
+  company_upsell_hidden: boolean
   created_at: string
   updated_at: string
 }
