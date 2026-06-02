@@ -1,4 +1,12 @@
 {
+  "pwa": {
+    "installTitle": "ProfitSync इंस्टॉल करें",
+    "installBody": "त्वरित, फ़ुल-स्क्रीन ऐक्सेस के लिए ProfitSync को होम स्क्रीन पर जोड़ें।",
+    "installButton": "ऐप इंस्टॉल करें",
+    "dismiss": "अभी नहीं",
+    "iosTitle": "होम स्क्रीन पर जोड़ें",
+    "iosBody": "शेयर आइकन पर टैप करें, फिर “Add to Home Screen” चुनें।"
+  },
   "nav": {
     "dashboard": "डैशबोर्ड",
     "clients": "ग्राहक",
