@@ -40,6 +40,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { ModeToggle } from "@/components/mode-toggle"
 import { LanguageSwitcher } from "@/components/LanguageSwitcher"
+import { InstallAppBanner, InstallMenuItem } from "@/components/InstallAppBanner"
 
 type TabItem = { labelKey: string; href: string; icon: typeof LayoutDashboard }
 
@@ -242,6 +243,7 @@ export function MobileAppLayout() {
               <DropdownMenuItem onClick={() => navigate("/subscription")}>
                 <CreditCard className="size-4 mr-2" /> {t("nav.subscription")}
               </DropdownMenuItem>
+              <InstallMenuItem />
               <div className="px-1 py-1 flex items-center gap-2">
                 <ModeToggle />
                 <span className="text-xs text-muted-foreground">{t("account.theme")}</span>
@@ -257,6 +259,7 @@ export function MobileAppLayout() {
       </header>
 
       <main className="flex-1 overflow-y-auto overflow-x-hidden pb-32 page-enter" key={location.pathname + (activeOrg?.id ?? "")}>
+        <InstallAppBanner className="mx-4 mt-3" />
         {orgLoading ? (
           <div className="flex h-[60vh] items-center justify-center">
             <Loader className="size-6 animate-spin text-muted-foreground" />
