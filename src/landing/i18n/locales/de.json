@@ -1,4 +1,10 @@
 {
+  "install": {
+    "button": "App installieren",
+    "iosTitle": "Zum Startbildschirm hinzufügen",
+    "iosBody": "Tippe auf das Teilen-Symbol und wähle „Zum Home-Bildschirm“.",
+    "close": "Verstanden"
+  },
   "meta": {
     "title": "ProfitSync — Kenne deinen Gewinn. Synchronisiere dein Business.",
     "description": "Ob für dein Unternehmen oder deine privaten Finanzen — ProfitSync vereint Einnahmen, Ausgaben und Cashflow in einem aufgeräumten Arbeitsbereich, sodass du immer genau weißt, wo dein Geld steht."

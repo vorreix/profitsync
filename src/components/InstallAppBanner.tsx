@@ -3,7 +3,6 @@ import { useTranslation } from "react-i18next"
 import { Download, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import { DropdownMenuItem } from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
 import { useInstallPrompt } from "@/lib/pwa/use-install-prompt"
 
@@ -65,18 +64,5 @@ export function InstallAppBanner({ className }: { className?: string }) {
         <X className="size-4" />
       </button>
     </div>
-  )
-}
-
-// Compact "Install app" entry for account/menu dropdowns. Shown only when the native
-// install prompt is available (Android/desktop Chrome); iOS users use the banner.
-export function InstallMenuItem() {
-  const { t } = useTranslation("pwa")
-  const { canInstall, isInstalled, promptInstall } = useInstallPrompt()
-  if (isInstalled || !canInstall) return null
-  return (
-    <DropdownMenuItem onClick={() => void promptInstall()}>
-      <Download className="size-4 mr-2" /> {t("installButton")}
-    </DropdownMenuItem>
   )
 }

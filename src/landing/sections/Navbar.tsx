@@ -8,6 +8,7 @@ import { Button } from "../components/Button"
 import { SmartLink } from "../components/SmartLink"
 import { ThemeToggle } from "../components/ThemeToggle"
 import { LanguagePicker } from "../components/LanguagePicker"
+import { InstallButton } from "@/components/InstallButton"
 
 const LINKS = [
   { id: "features", key: "nav.features" },
@@ -85,6 +86,14 @@ export function Navbar() {
             >
               {t("nav.login")}
             </SmartLink>
+            <InstallButton
+              label={t("install.button")}
+              iosTitle={t("install.iosTitle")}
+              iosBody={t("install.iosBody")}
+              closeLabel={t("install.close")}
+              variant="outline"
+              className="hidden md:inline-flex"
+            />
             <Button href="/signup" size="sm" className="hidden md:inline-flex">
               {t("nav.getStarted")}
             </Button>
@@ -125,6 +134,13 @@ export function Navbar() {
             <LanguagePicker align="start" />
             <ThemeToggle />
           </div>
+          <InstallButton
+            label={t("install.button")}
+            iosTitle={t("install.iosTitle")}
+            iosBody={t("install.iosBody")}
+            closeLabel={t("install.close")}
+            className="mt-3 h-11 w-full justify-center"
+          />
           <div className="mt-3 grid grid-cols-2 gap-2">
             <Button href="/login" variant="outline" size="md">
               {t("nav.login")}
