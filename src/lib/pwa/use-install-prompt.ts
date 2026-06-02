@@ -15,15 +15,39 @@ interface InstallState {
 
 const SERVER_STATE: InstallState = { canInstall: false, isInstalled: false, isIosSafari: false }
 
+// Remembered across reloads: the browser tab can't tell that a PWA is already
+// installed (display-mode is only "standalone" inside the installed app), so we
+// record the `appinstalled` event and treat it as installed. It self-heals: Chrome
+// only fires `beforeinstallprompt` when the app is NOT installed, so receiving that
+// event clears the flag again (covers the uninstall case).
+const INSTALLED_KEY = "profitsync-pwa-installed"
+
 let deferredPrompt: BeforeInstallPromptEvent | null = null
 let initialized = false
 const listeners = new Set<() => void>()
+
+function readInstalledFlag(): boolean {
+  try {
+    return localStorage.getItem(INSTALLED_KEY) === "1"
+  } catch {
+    return false
+  }
+}
+
+function writeInstalledFlag(value: boolean): void {
+  try {
+    if (value) localStorage.setItem(INSTALLED_KEY, "1")
+    else localStorage.removeItem(INSTALLED_KEY)
+  } catch {
+    /* ignore storage failures */
+  }
+}
 
 function detectInstalled(): boolean {
   if (typeof window === "undefined") return false
   const standalone = window.matchMedia?.("(display-mode: standalone)").matches ?? false
   const iosStandalone = (window.navigator as Navigator & { standalone?: boolean }).standalone === true
-  return Boolean(standalone || iosStandalone)
+  return Boolean(standalone || iosStandalone) || readInstalledFlag()
 }
 
 function detectIosSafari(): boolean {
@@ -42,26 +66,27 @@ let snapshot: InstallState = {
 
 function recompute(): void {
   snapshot = {
-    canInstall: deferredPrompt !== null && !detectInstalled(),
+    canInstall: deferredPrompt !== null,
     isInstalled: detectInstalled(),
     isIosSafari: detectIosSafari(),
   }
   listeners.forEach((listener) => listener())
 }
 
-// Attach the capture listeners once. Called from initPwa() (so it's gated to
-// login-onward routes, exactly where the event can fire once the SW is active) and
-// from subscribe() as a backstop.
+// Attach the capture listeners once. Called from initPwa() at app boot.
 export function ensureInstallListener(): void {
   if (initialized || typeof window === "undefined") return
   initialized = true
   window.addEventListener("beforeinstallprompt", (event) => {
     event.preventDefault()
     deferredPrompt = event as BeforeInstallPromptEvent
+    // Chrome only fires this when the app is NOT installed — clear any stale flag.
+    writeInstalledFlag(false)
     recompute()
   })
   window.addEventListener("appinstalled", () => {
     deferredPrompt = null
+    writeInstalledFlag(true)
     recompute()
   })
 }
@@ -87,6 +112,7 @@ export async function promptInstall(): Promise<boolean> {
   await deferredPrompt.prompt()
   const choice = await deferredPrompt.userChoice
   deferredPrompt = null
+  if (choice.outcome === "accepted") writeInstalledFlag(true)
   recompute()
   return choice.outcome === "accepted"
 }

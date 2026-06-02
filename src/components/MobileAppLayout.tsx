@@ -40,7 +40,8 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { ModeToggle } from "@/components/mode-toggle"
 import { LanguageSwitcher } from "@/components/LanguageSwitcher"
-import { InstallAppBanner, InstallMenuItem } from "@/components/InstallAppBanner"
+import { InstallAppBanner } from "@/components/InstallAppBanner"
+import { InstallButton } from "@/components/InstallButton"
 
 type TabItem = { labelKey: string; href: string; icon: typeof LayoutDashboard }
 
@@ -253,6 +254,15 @@ export function MobileAppLayout() {
             </SheetContent>
           </Sheet>
 
+          <InstallButton
+            label={null}
+            ariaLabel={t("pwa.installButton")}
+            iosTitle={t("pwa.iosTitle")}
+            iosBody={t("pwa.iosBody")}
+            closeLabel={t("common.done")}
+            variant="outline"
+          />
+
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button className="pressable size-9 rounded-full bg-muted flex items-center justify-center shrink-0">
@@ -276,7 +286,6 @@ export function MobileAppLayout() {
               <DropdownMenuItem onClick={() => navigate("/subscription")}>
                 <CreditCard className="size-4 mr-2" /> {t("nav.subscription")}
               </DropdownMenuItem>
-              <InstallMenuItem />
               <div className="px-1 py-1 flex items-center gap-2">
                 <ModeToggle />
                 <span className="text-xs text-muted-foreground">{t("account.theme")}</span>
