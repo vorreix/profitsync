@@ -25,9 +25,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === "PATCH") {
     if (!requireBusinessFeature(res, ctx, "clients")) return
     if (!canWrite(role)) return res.status(403).json({ error: "Forbidden" })
-    const { name, company, email, phone, status, notes, onboard_date } = req.body as {
+    const { name, company, email, phone, status, notes, onboard_date, closed } = req.body as {
       name?: string; company?: string; email?: string
-      phone?: string; status?: string; notes?: string; onboard_date?: string | null
+      phone?: string; status?: string; notes?: string; onboard_date?: string | null; closed?: boolean
     }
     if (status !== undefined && !VALID_STATUSES.includes(status)) {
       return res.status(400).json({ error: "status must be active, inactive, or archived" })
@@ -46,6 +46,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ...(status !== undefined ? { status } : {}),
         ...(notes !== undefined ? { notes } : {}),
         ...(onboard_date !== undefined ? { onboardDate: onboard_date } : {}),
+        ...(closed !== undefined ? { closedAt: closed ? new Date() : null } : {}),
         updatedAt: new Date(),
       })
       .where(and(eq(clients.id, id), eq(clients.organizationId, orgId), isNull(clients.deletedAt)))

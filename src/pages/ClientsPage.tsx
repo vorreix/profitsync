@@ -2,11 +2,11 @@ import { useEffect, useRef, useState } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
-import { apiGet, apiPost } from "@/lib/api"
+import { apiGet, apiPost, apiPatch } from "@/lib/api"
 import type { Client } from "@/lib/types"
 import { useCurrency } from "@/lib/currency-context"
 import { useOrg } from "@/lib/org-context"
-import { canDeleteRole } from "@/lib/roles"
+import { canDeleteRole, canWriteRole } from "@/lib/roles"
 import { useMultiSelect } from "@/lib/use-multi-select"
 import { useLongPress } from "@/lib/use-long-press"
 import { BulkActionBar } from "@/components/BulkActionBar"
@@ -34,8 +34,8 @@ import {
 } from "@/components/ui/select"
 import { toast } from "sonner"
 import {
-  Plus, Users, Building2, Mail, Phone, ChevronRight,
-  TrendingUp, TrendingDown, DollarSign, LayoutGrid, LayoutList, CheckSquare,
+  Plus, Users, Building2, Mail, Phone, ChevronRight, ChevronDown,
+  TrendingUp, TrendingDown, DollarSign, LayoutGrid, LayoutList, CheckSquare, ArchiveRestore,
 } from "lucide-react"
 import { ExpandableSearch } from "@/components/ExpandableSearch"
 import { FilterSheet, FilterSection } from "@/components/filters/FilterSheet"
@@ -77,6 +77,7 @@ export function ClientsPage() {
   const { currency } = useCurrency()
   const { activeOrg } = useOrg()
   const canDelete = canDeleteRole(activeOrg?.role)
+  const canWrite = canWriteRole(activeOrg?.role)
   const sel = useMultiSelect()
   const longPress = useLongPress()
   const [bulkDeleting, setBulkDeleting] = useState(false)
@@ -94,6 +95,13 @@ export function ClientsPage() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [form, setForm] = useState<NewClient>(defaultForm)
   const [saving, setSaving] = useState(false)
+
+  // Closed clients live in a separate, lazily-loaded section and are never part
+  // of the normal (active) fetch above.
+  const [closedOpen, setClosedOpen] = useState(false)
+  const [closedClients, setClosedClients] = useState<ClientWithStats[]>([])
+  const [closedLoaded, setClosedLoaded] = useState(false)
+  const [closedLoading, setClosedLoading] = useState(false)
 
   const searchRef = useRef(search)
   const sortRef = useRef(sort)
@@ -186,6 +194,40 @@ export function ClientsPage() {
   // The own/internal client can't be deleted, so it's never selectable.
   const selectableIds = clients.filter((c) => !c.is_own).map((c) => c.id)
   const allSelected = selectableIds.length > 0 && selectableIds.every((id) => sel.isSelected(id))
+
+  async function loadClosed() {
+    setClosedLoading(true)
+    try {
+      const token = await getToken()
+      if (!token) return
+      const data = await apiGet<{ data: Client[]; total: number }>("/api/clients?closed=1&page=1", token)
+      setClosedClients(data.data.map(toWithStats))
+      setClosedLoaded(true)
+    } catch {
+      toast.error(t("loadClientsFailed"))
+    } finally {
+      setClosedLoading(false)
+    }
+  }
+
+  function toggleClosedSection() {
+    const next = !closedOpen
+    setClosedOpen(next)
+    if (next && !closedLoaded) loadClosed()
+  }
+
+  async function reopenClient(clientId: string) {
+    try {
+      const token = await getToken()
+      if (!token) return
+      await apiPatch(`/api/clients/${clientId}`, token, { closed: false })
+      toast.success(t("closed.clientReopened"))
+      setClosedClients((prev) => prev.filter((c) => c.id !== clientId))
+      fetchPage1()
+    } catch {
+      toast.error(t("closed.actionFailed"))
+    }
+  }
 
   async function handleBulkDelete() {
     if (sel.count === 0) return
@@ -479,6 +521,54 @@ export function ClientsPage() {
             </div>
           )}
         </>
+      )}
+
+      {/* Closed clients — a completely separate, lazily-loaded section. Normal
+          fetches never include these. */}
+      {!loading && (
+        <div className="border-t pt-3">
+          <button
+            type="button"
+            onClick={toggleClosedSection}
+            className="flex w-full items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground"
+          >
+            <ChevronDown className={`size-4 transition-transform ${closedOpen ? "" : "-rotate-90"}`} />
+            {t("closed.clientsSection")}
+            {closedLoaded && <span className="text-xs">({closedClients.length})</span>}
+          </button>
+          {closedOpen && (
+            <div className="mt-3">
+              {closedLoading ? (
+                <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+                  {[1, 2, 3].map((i) => <Skeleton key={i} className="h-24 w-full rounded-xl" />)}
+                </div>
+              ) : closedClients.length === 0 ? (
+                <p className="py-6 text-center text-sm text-muted-foreground">{t("closed.noClosedClients")}</p>
+              ) : (
+                <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+                  {closedClients.map((client) => (
+                    <Card key={client.id} className="py-0 opacity-90">
+                      <CardContent className="p-3.5 space-y-2">
+                        <div className="flex items-start justify-between gap-2">
+                          <button className="min-w-0 flex-1 text-left" onClick={() => navigate(`/clients/${client.id}`)}>
+                            <p className="font-semibold text-sm truncate">{client.name}</p>
+                            {client.company && <p className="text-xs text-muted-foreground truncate">{client.company}</p>}
+                          </button>
+                          <Badge variant="outline" className="shrink-0 border-amber-500/40 text-amber-600 dark:text-amber-300">{t("closed.closedBadge")}</Badge>
+                        </div>
+                        {canWrite && (
+                          <Button variant="outline" size="sm" className="w-full" onClick={() => reopenClient(client.id)}>
+                            <ArchiveRestore className="size-3.5" /> {t("closed.reopen")}
+                          </Button>
+                        )}
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       )}
 
       {/* Create Dialog */}

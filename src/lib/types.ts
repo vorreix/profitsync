@@ -11,6 +11,7 @@ export type Client = {
   is_own?: boolean
   onboard_date?: string | null
   deleted_at: string | null
+  closed_at?: string | null
   created_at: string
   updated_at: string
   total_incoming?: number
@@ -94,6 +95,7 @@ export type Quotation = {
   notes: string
   linked_client_id: string | null
   deleted_at: string | null
+  closed_at?: string | null
   created_at: string
   updated_at: string
   attachment_count?: number
