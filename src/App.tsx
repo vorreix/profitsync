@@ -13,6 +13,7 @@ import { useShouldRedirectToApp } from "@/lib/use-redirect-to-app"
 const Dashboard = lazy(() => import("@/pages/Dashboard").then((m) => ({ default: m.Dashboard })))
 const ClientsPage = lazy(() => import("@/pages/ClientsPage").then((m) => ({ default: m.ClientsPage })))
 const ClientDetailPage = lazy(() => import("@/pages/ClientDetailPage").then((m) => ({ default: m.ClientDetailPage })))
+const ClientFilesPage = lazy(() => import("@/pages/ClientFilesPage").then((m) => ({ default: m.ClientFilesPage })))
 const TransactionsPage = lazy(() => import("@/pages/TransactionsPage").then((m) => ({ default: m.TransactionsPage })))
 const QuotationsPage = lazy(() => import("@/pages/QuotationsPage").then((m) => ({ default: m.QuotationsPage })))
 const TrashPage = lazy(() => import("@/pages/TrashPage").then((m) => ({ default: m.TrashPage })))
@@ -105,6 +106,7 @@ export function App() {
             <Route path="dashboard" element={<Dashboard />} />
             <Route path="clients" element={<BusinessOnlyRoute feature="clients"><ClientsPage /></BusinessOnlyRoute>} />
             <Route path="clients/:id" element={<BusinessOnlyRoute feature="clients"><ClientDetailPage /></BusinessOnlyRoute>} />
+            <Route path="clients/:id/files" element={<BusinessOnlyRoute feature="clients"><ClientFilesPage /></BusinessOnlyRoute>} />
             <Route path="transactions" element={<TransactionsPage />} />
             <Route path="quotations" element={<BusinessOnlyRoute feature="quotations"><QuotationsPage /></BusinessOnlyRoute>} />
             <Route path="organizations" element={<OrganizationsPage />} />

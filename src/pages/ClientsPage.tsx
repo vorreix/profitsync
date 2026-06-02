@@ -28,9 +28,10 @@ import {
 } from "@/components/ui/select"
 import { toast } from "sonner"
 import {
-  Plus, Search, Users, Building2, Mail, Phone, ChevronRight,
+  Plus, Users, Building2, Mail, Phone, ChevronRight,
   TrendingUp, TrendingDown, DollarSign, LayoutGrid, LayoutList,
 } from "lucide-react"
+import { ExpandableSearch } from "@/components/ExpandableSearch"
 
 type NewClient = {
   name: string
@@ -188,17 +189,9 @@ export function ClientsPage() {
 
       {/* Toolbar */}
       <div className="flex items-center gap-2 sm:gap-3">
-        <div className="relative flex-1 min-w-0">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-          <Input
-            placeholder={t("searchPlaceholder")}
-            className="pl-9"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-        </div>
+        <ExpandableSearch value={search} onChange={setSearch} placeholder={t("searchPlaceholder")} />
         <Select value={sort} onValueChange={setSort}>
-          <SelectTrigger className="w-32 sm:w-44 shrink-0">
+          <SelectTrigger className="w-32 sm:w-44 shrink-0 ml-auto">
             <SelectValue placeholder={t("sortBy")} />
           </SelectTrigger>
           <SelectContent>

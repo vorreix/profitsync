@@ -1,54 +1,50 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { desc, eq } from "drizzle-orm"
+import { and, desc, eq } from "drizzle-orm"
 import { db, serialize } from "../../../../src/lib/db/index.js"
-import {
-  clients,
-  transactionAttachments,
-  transactions,
-} from "../../../../src/lib/db/schema.js"
-import { canWrite, requireAuth } from "../../../_lib/auth.js"
+import { clientAttachments, clients } from "../../../../src/lib/db/schema.js"
+import { canWrite, requireAuth, requireBusinessFeature } from "../../../_lib/auth.js"
 import { checkAttachmentQuota, checkOrgAttachmentQuota } from "../../../_lib/quota.js"
 import { validateUpload } from "../../../_lib/attachments.js"
 
-async function verifyTransactionOrg(transactionId: string, orgId: string): Promise<boolean> {
+async function verifyClientOrg(clientId: string, orgId: string): Promise<boolean> {
   const [row] = await db
-    .select({ clientOrgId: clients.organizationId })
-    .from(transactions)
-    .innerJoin(clients, eq(transactions.clientId, clients.id))
-    .where(eq(transactions.id, transactionId))
-  return !!row && row.clientOrgId === orgId
+    .select({ id: clients.id })
+    .from(clients)
+    .where(and(eq(clients.id, clientId), eq(clients.organizationId, orgId)))
+  return !!row
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ctx = await requireAuth(req, res)
   if (!ctx) return
+  if (!requireBusinessFeature(res, ctx, "clients")) return
   const { userId, orgId, role } = ctx
 
   const { id } = req.query as { id: string }
 
   if (req.method === "GET") {
-    const owned = await verifyTransactionOrg(id, orgId)
+    const owned = await verifyClientOrg(id, orgId)
     if (!owned) return res.status(404).json({ error: "Not found" })
 
     const rows = await db
       .select({
-        id: transactionAttachments.id,
-        transactionId: transactionAttachments.transactionId,
-        userId: transactionAttachments.userId,
-        fileName: transactionAttachments.fileName,
-        fileType: transactionAttachments.fileType,
-        fileSize: transactionAttachments.fileSize,
-        createdAt: transactionAttachments.createdAt,
+        id: clientAttachments.id,
+        clientId: clientAttachments.clientId,
+        userId: clientAttachments.userId,
+        fileName: clientAttachments.fileName,
+        fileType: clientAttachments.fileType,
+        fileSize: clientAttachments.fileSize,
+        createdAt: clientAttachments.createdAt,
       })
-      .from(transactionAttachments)
-      .where(eq(transactionAttachments.transactionId, id))
-      .orderBy(desc(transactionAttachments.createdAt))
+      .from(clientAttachments)
+      .where(eq(clientAttachments.clientId, id))
+      .orderBy(desc(clientAttachments.createdAt))
     return res.json(rows.map(serialize))
   }
 
   if (req.method === "POST") {
     if (!canWrite(role)) return res.status(403).json({ error: "Forbidden" })
-    const owned = await verifyTransactionOrg(id, orgId)
+    const owned = await verifyClientOrg(id, orgId)
     if (!owned) return res.status(404).json({ error: "Not found" })
 
     // Validate type/size/filename before trusting any of it (see _lib/attachments).
@@ -61,16 +57,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!orgQuota.allowed) return res.status(402).json(orgQuota)
 
     const quota = await checkAttachmentQuota(orgId, {
-      kind: "transaction",
+      kind: "client",
       parentId: id,
       sizeBytes: byteLength,
     })
     if (!quota.allowed) return res.status(402).json(quota)
 
     const [row] = await db
-      .insert(transactionAttachments)
+      .insert(clientAttachments)
       .values({
-        transactionId: id,
+        clientId: id,
         userId,
         fileName,
         fileType,
@@ -78,13 +74,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         fileData,
       })
       .returning({
-        id: transactionAttachments.id,
-        transactionId: transactionAttachments.transactionId,
-        userId: transactionAttachments.userId,
-        fileName: transactionAttachments.fileName,
-        fileType: transactionAttachments.fileType,
-        fileSize: transactionAttachments.fileSize,
-        createdAt: transactionAttachments.createdAt,
+        id: clientAttachments.id,
+        clientId: clientAttachments.clientId,
+        userId: clientAttachments.userId,
+        fileName: clientAttachments.fileName,
+        fileType: clientAttachments.fileType,
+        fileSize: clientAttachments.fileSize,
+        createdAt: clientAttachments.createdAt,
       })
     return res.status(201).json(serialize(row))
   }

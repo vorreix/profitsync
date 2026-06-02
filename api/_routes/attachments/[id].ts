@@ -7,6 +7,7 @@ import {
   transactions,
 } from "../../../src/lib/db/schema.js"
 import { canDelete, requireAuth } from "../../_lib/auth.js"
+import { setDownloadHeaders } from "../../_lib/attachments.js"
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ctx = await requireAuth(req, res)
@@ -32,9 +33,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method === "GET") {
     const buffer = Buffer.from(attachment.fileData, "base64")
-    res.setHeader("Content-Type", attachment.fileType)
-    res.setHeader("Content-Disposition", `attachment; filename="${attachment.fileName}"`)
-    res.setHeader("Content-Length", buffer.length)
+    setDownloadHeaders(res, attachment.fileName, buffer.length)
     return res.send(buffer)
   }
 

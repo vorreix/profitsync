@@ -37,6 +37,16 @@ export type QuotationAttachment = {
   created_at: string
 }
 
+export type ClientAttachment = {
+  id: string
+  client_id: string
+  user_id: string
+  file_name: string
+  file_type: string
+  file_size: number
+  created_at: string
+}
+
 export type Transaction = {
   id: string
   client_id: string

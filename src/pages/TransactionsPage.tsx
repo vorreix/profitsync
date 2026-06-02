@@ -22,7 +22,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { toast } from "sonner"
-import { Plus, Search, ArrowUpRight, ArrowDownRight, DollarSign, Pencil, Trash2, Paperclip, Download, X, Eye, ChevronsUpDown, Check, Tag } from "lucide-react"
+import { Plus, ArrowUpRight, ArrowDownRight, DollarSign, Pencil, Trash2, Paperclip, Download, X, Eye, ChevronsUpDown, Check, Tag } from "lucide-react"
+import { ExpandableSearch } from "@/components/ExpandableSearch"
 
 type PaginatedResponse<T> = { data: T[]; total: number; summary?: { incoming: number; outgoing: number } }
 
@@ -443,6 +444,27 @@ export function TransactionsPage() {
     }
   }, [searchParams, setSearchParams])
 
+  // Deep link from the client media hub: ?view=<txId> opens that transaction.
+  useEffect(() => {
+    const viewId = searchParams.get("view")
+    if (!viewId) return
+    // Clear immediately so this doesn't re-fire as the list/async settles.
+    const next = new URLSearchParams(searchParams)
+    next.delete("view")
+    setSearchParams(next, { replace: true })
+    const existing = transactions.find((t) => t.id === viewId)
+    if (existing) { openViewModal(existing); return }
+    ;(async () => {
+      const token = await getToken()
+      if (!token) return
+      try {
+        const tx = await apiGet<Transaction>(`/api/transactions/${viewId}`, token)
+        if (tx) openViewModal(tx)
+      } catch { /* not found or no access */ }
+    })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams])
+
   const handleLoadMore = async () => {
     const token = await getToken()
     if (!token) return
@@ -723,12 +745,9 @@ export function TransactionsPage() {
         </div>
       )}
 
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-        <div className="relative flex-1 min-w-0">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-          <Input placeholder={t("searchByClientDescriptionCategory")} className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
-        </div>
-        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+      <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+        <ExpandableSearch value={search} onChange={setSearch} placeholder={t("searchByClientDescriptionCategory")} />
+        <div className="flex flex-1 flex-wrap items-center gap-2 sm:gap-3">
           <Select value={categoryFilter} onValueChange={setCategoryFilter}>
             <SelectTrigger className="flex-1 sm:flex-none sm:w-44">
               <Tag className="size-3.5 opacity-60" />

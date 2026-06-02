@@ -93,6 +93,12 @@ const SECTION_FAB: { prefix: string; href: string }[] = [
 ]
 
 function pageFabAction(pathname: string, actions: QuickAction[]): QuickAction | null {
+  // Anywhere inside a specific client (detail or its /files view) → add a
+  // transaction for THIS client (the dialog opens on ?newTx=1).
+  const clientMatch = pathname.match(/^\/clients\/([^/]+)(?:\/|$)/)
+  if (clientMatch) {
+    return { labelKey: "actions.addTransaction", icon: ArrowLeftRight, href: `/clients/${clientMatch[1]}?newTx=1` }
+  }
   const match = SECTION_FAB.find(
     (s) => pathname === s.prefix || pathname.startsWith(s.prefix + "/"),
   )
