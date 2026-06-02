@@ -204,6 +204,14 @@ export const userProfiles = pgTable("user_profiles", {
   // durable "never show again" opt-out.
   companyUpsellDismissedAt: timestamp("company_upsell_dismissed_at"),
   companyUpsellHidden: boolean("company_upsell_hidden").notNull().default(false),
+  // Optional contact details (all free-form, never required).
+  address: text("address").notNull().default(""),
+  city: text("city").notNull().default(""),
+  state: text("state").notNull().default(""),
+  postalCode: text("postal_code").notNull().default(""),
+  country: text("country").notNull().default(""), // ISO 3166-1 alpha-2
+  phoneCountryCode: text("phone_country_code").notNull().default(""), // dial code, e.g. "+91"
+  phone: text("phone").notNull().default(""), // national number
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 })

@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { LanguageSwitcher } from "@/components/LanguageSwitcher"
+import { CountryCombobox, CountryCodeCombobox } from "@/components/CountryCombobox"
 import { toast } from "sonner"
 import { ArrowLeft, Building2, Loader as Loader2, LogOut } from "lucide-react"
 
@@ -22,6 +23,13 @@ export function ProfilePage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [fullName, setFullName] = useState("")
+  const [address, setAddress] = useState("")
+  const [city, setCity] = useState("")
+  const [stateRegion, setStateRegion] = useState("")
+  const [postalCode, setPostalCode] = useState("")
+  const [country, setCountry] = useState("")
+  const [phoneCode, setPhoneCode] = useState("")
+  const [phone, setPhone] = useState("")
 
   useEffect(() => {
     loadProfile()
@@ -35,6 +43,13 @@ export function ProfilePage() {
       const data = await apiGet<UserProfile>("/api/profile", token)
       setProfile(data)
       setFullName(data.full_name || "")
+      setAddress(data.address || "")
+      setCity(data.city || "")
+      setStateRegion(data.state || "")
+      setPostalCode(data.postal_code || "")
+      setCountry(data.country || "")
+      setPhoneCode(data.phone_country_code || "")
+      setPhone(data.phone || "")
     } catch {
       toast.error(t("toast.profileLoadFailed"))
     } finally {
@@ -48,7 +63,16 @@ export function ProfilePage() {
     try {
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
-      const updated = await apiPatch<UserProfile>("/api/profile", token, { full_name: fullName })
+      const updated = await apiPatch<UserProfile>("/api/profile", token, {
+        full_name: fullName,
+        address,
+        city,
+        state: stateRegion,
+        postal_code: postalCode,
+        country,
+        phone_country_code: phoneCode,
+        phone,
+      })
       setProfile(updated)
       toast.success(t("toast.profileUpdated"))
     } catch {
@@ -100,6 +124,52 @@ export function ProfilePage() {
               placeholder={t("profile.yourName")}
               disabled={saving}
             />
+          </div>
+
+          {/* Contact details — all optional. */}
+          <div className="space-y-4 border-t pt-4">
+            <p className="text-sm font-medium">{t("profile.contactDetails")} <span className="text-xs font-normal text-muted-foreground">({t("profile.optional")})</span></p>
+
+            <div className="space-y-2">
+              <Label>{t("profile.phone")}</Label>
+              <div className="flex gap-2">
+                <CountryCodeCombobox value={phoneCode} onValueChange={setPhoneCode} disabled={saving} />
+                <Input
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder={t("profile.phonePlaceholder")}
+                  inputMode="tel"
+                  disabled={saving}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="address">{t("profile.address")}</Label>
+              <Input id="address" value={address} onChange={(e) => setAddress(e.target.value)} placeholder={t("profile.addressPlaceholder")} disabled={saving} />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="city">{t("profile.city")}</Label>
+                <Input id="city" value={city} onChange={(e) => setCity(e.target.value)} disabled={saving} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="state">{t("profile.state")}</Label>
+                <Input id="state" value={stateRegion} onChange={(e) => setStateRegion(e.target.value)} disabled={saving} />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="postal">{t("profile.postalCode")}</Label>
+                <Input id="postal" value={postalCode} onChange={(e) => setPostalCode(e.target.value)} disabled={saving} />
+              </div>
+              <div className="space-y-2">
+                <Label>{t("profile.country")}</Label>
+                <CountryCombobox value={country} onValueChange={setCountry} disabled={saving} placeholder={t("profile.selectCountry")} />
+              </div>
+            </div>
           </div>
 
           <Button onClick={handleSave} className="w-full" disabled={saving}>

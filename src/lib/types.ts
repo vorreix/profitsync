@@ -112,6 +112,13 @@ export type UserProfile = {
   onboarded_at: string | null
   company_upsell_dismissed_at: string | null
   company_upsell_hidden: boolean
+  address?: string
+  city?: string
+  state?: string
+  postal_code?: string
+  country?: string
+  phone_country_code?: string
+  phone?: string
   created_at: string
   updated_at: string
 }
