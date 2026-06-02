@@ -60,15 +60,39 @@ class SubscriptionScreen extends StatefulWidget {
   State<SubscriptionScreen> createState() => _SubscriptionScreenState();
 }
 
-class _SubscriptionScreenState extends State<SubscriptionScreen> {
+class _SubscriptionScreenState extends State<SubscriptionScreen>
+    with WidgetsBindingObserver {
   late Future<_Pricing> _future;
   String _cycle = 'monthly'; // monthly | yearly
   bool _busy = false;
 
+  // Payment-return handling: after we launch the hosted checkout, we wait for
+  // the user to return to the app and then reconcile with the server (mirrors
+  // the web's `?dodo=return` → /api/billing/sync flow).
+  bool _awaitingPayment = false;
+  bool _checking = false;
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _future = _load();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Came back from the browser checkout — confirm the payment automatically.
+    if (state == AppLifecycleState.resumed &&
+        _awaitingPayment &&
+        !_checking) {
+      _syncPayment();
+    }
   }
 
   Future<_Pricing> _load() async {
@@ -115,10 +139,15 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
       });
       final url = (res as Map)['checkout_url']?.toString();
       if (url != null && url.isNotEmpty) {
-        await launchUrl(Uri.parse(url),
+        final launched = await launchUrl(Uri.parse(url),
             mode: LaunchMode.externalApplication);
-        _toast('Complete checkout in your browser, then pull to refresh.');
+        if (launched) {
+          setState(() => _awaitingPayment = true);
+        } else {
+          _toast('Could not open the checkout page.');
+        }
       } else {
+        // Stub / instant activation (no hosted checkout configured).
         _toast((res['message'] ?? 'Plan updated.').toString());
         await state.refresh();
         await _refresh();
@@ -127,6 +156,40 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
       _toast(_clean(e));
     } finally {
       if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// Reconcile the latest subscription with the server. Polls a few times since
+  /// the payment provider can take a moment to mark the subscription active.
+  Future<void> _syncPayment() async {
+    final state = context.read<AppState>();
+    setState(() => _checking = true);
+    String? lastStatus;
+    try {
+      for (var attempt = 0; attempt < 5; attempt++) {
+        final res =
+            await state.api.post('/api/billing/sync', <String, dynamic>{});
+        final sub = (res as Map)['subscription'] as Map?;
+        lastStatus = sub?['status']?.toString();
+        if (lastStatus == 'active' || lastStatus == 'trialing') {
+          await state.refresh();
+          await _refresh();
+          if (mounted) {
+            setState(() => _awaitingPayment = false);
+            _toast('Payment confirmed — you\'re on the new plan.');
+          }
+          return;
+        }
+        // Still pending — wait briefly and retry.
+        await Future.delayed(const Duration(seconds: 2));
+      }
+      _toast(lastStatus == 'pending'
+          ? 'Payment is still processing. Tap "Check payment status" in a moment.'
+          : 'No completed payment found yet. If you paid, tap "Check payment status".');
+    } catch (e) {
+      _toast(_clean(e));
+    } finally {
+      if (mounted) setState(() => _checking = false);
     }
   }
 
@@ -168,8 +231,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
   String _clean(Object e) => e.toString().replaceFirst('Exception: ', '');
   void _toast(String m) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(m)));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
   }
 
   @override
@@ -190,6 +252,12 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
           final data = snap.data!;
           final currentKey = data.currentPlanKey ?? 'free';
           final paidPlans = data.plans.where((p) => !p.isFree).toList();
+          final currentName = data.plans
+                  .where((p) => p.key == currentKey)
+                  .map((p) => p.name)
+                  .cast<String?>()
+                  .firstWhere((_) => true, orElse: () => null) ??
+              planDisplayName(currentKey);
 
           return RefreshIndicator(
             onRefresh: _refresh,
@@ -197,22 +265,26 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 40),
               children: [
                 _CurrentPlanCard(
-                  planName: data.plans
-                          .where((p) => p.key == currentKey)
-                          .map((p) => p.name)
-                          .cast<String?>()
-                          .firstWhere((_) => true, orElse: () => null) ??
-                      (currentKey == 'free' ? 'Free' : currentKey),
+                  planName: currentName,
                   isPremium: currentKey != 'free',
                   status: data.currentStatus,
                 ),
+                if (_awaitingPayment) ...[
+                  const SizedBox(height: 16),
+                  _AwaitingPaymentCard(
+                    checking: _checking,
+                    onCheck: _checking ? null : _syncPayment,
+                  ),
+                ],
                 const SizedBox(height: 20),
                 if (paidPlans.isNotEmpty) ...[
-                  Center(child: _CycleToggle(
-                    value: _cycle,
-                    yearlyDiscount: paidPlans.first.yearlyDiscountPct,
-                    onChanged: (v) => setState(() => _cycle = v),
-                  )),
+                  Center(
+                    child: _CycleToggle(
+                      value: _cycle,
+                      yearlyDiscount: paidPlans.first.yearlyDiscountPct,
+                      onChanged: (v) => setState(() => _cycle = v),
+                    ),
+                  ),
                   const SizedBox(height: 18),
                   ...paidPlans.map((p) => Padding(
                         padding: const EdgeInsets.only(bottom: 12),
@@ -230,7 +302,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                       )),
                 ],
                 const SizedBox(height: 8),
-                if (currentKey != 'free') ...[
+                if (currentKey != 'free')
                   TextButton(
                     onPressed: _busy ? null : _cancel,
                     child: Text('Cancel subscription',
@@ -238,7 +310,6 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                             color: Brand.expense,
                             fontWeight: FontWeight.w600)),
                   ),
-                ],
                 if (!_isOwner)
                   Padding(
                     padding: const EdgeInsets.all(8),
@@ -255,9 +326,8 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                     padding: const EdgeInsets.only(top: 12),
                     child: Text('Secured by Dodo Payments',
                         style: TextStyle(
-                            color: Theme.of(context)
-                                .colorScheme
-                                .onSurfaceVariant,
+                            color:
+                                Theme.of(context).colorScheme.onSurfaceVariant,
                             fontSize: 12)),
                   ),
                 ),
@@ -314,14 +384,18 @@ class _CurrentPlanCard extends StatelessWidget {
           const SizedBox(height: 8),
           Row(
             children: [
-              Text(planName,
-                  style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 26,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: -0.5)),
-              const SizedBox(width: 10),
-              if (isPremium)
+              Flexible(
+                child: Text(planName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 26,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.5)),
+              ),
+              if (isPremium) ...[
+                const SizedBox(width: 10),
                 Container(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -335,6 +409,7 @@ class _CurrentPlanCard extends StatelessWidget {
                           fontSize: 10.5,
                           fontWeight: FontWeight.w800)),
                 ),
+              ],
             ],
           ),
           if (status != null) ...[
@@ -343,9 +418,67 @@ class _CurrentPlanCard extends StatelessWidget {
               status == 'cancelled'
                   ? 'Cancels at the end of the period'
                   : 'Status: $status',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
               style: TextStyle(color: Colors.white.withValues(alpha: 0.8)),
             ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+class _AwaitingPaymentCard extends StatelessWidget {
+  const _AwaitingPaymentCard({required this.checking, required this.onCheck});
+  final bool checking;
+  final VoidCallback? onCheck;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Brand.amber.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Brand.amber.withValues(alpha: 0.4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.hourglass_top_rounded,
+                  color: Brand.amber, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text('Finishing your payment',
+                    style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: scheme.onSurface)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Complete the checkout in your browser, then return here. We\'ll confirm it automatically.',
+            style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 13),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              onPressed: onCheck,
+              child: checking
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2.2, color: Colors.white))
+                  : const Text('Check payment status'),
+            ),
+          ),
         ],
       ),
     );
@@ -396,7 +529,8 @@ class _CycleToggle extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           seg('monthly', 'Monthly'),
-          seg('yearly', yearlyDiscount > 0 ? 'Yearly -$yearlyDiscount%' : 'Yearly'),
+          seg('yearly',
+              yearlyDiscount > 0 ? 'Yearly -$yearlyDiscount%' : 'Yearly'),
         ],
       ),
     );
@@ -439,14 +573,19 @@ class _PlanCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Text(name,
-                  style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                      color: scheme.onSurface)),
-              const Spacer(),
-              if (isCurrent)
+              Expanded(
+                child: Text(name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: scheme.onSurface)),
+              ),
+              if (isCurrent) ...[
+                const SizedBox(width: 8),
                 StatusChip(label: 'current', color: Brand.blue),
+              ],
             ],
           ),
           const SizedBox(height: 10),
@@ -473,15 +612,23 @@ class _PlanCard extends StatelessWidget {
                 child: Text(cycleLabel,
                     style: TextStyle(color: scheme.onSurfaceVariant)),
               ),
-              const Spacer(),
-              if (originalLabel != null)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 6),
-                  child: Text(originalLabel!,
-                      style: TextStyle(
-                          color: scheme.onSurfaceVariant,
-                          decoration: TextDecoration.lineThrough)),
+              if (originalLabel != null) ...[
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerRight,
+                      child: Text(originalLabel!,
+                          maxLines: 1,
+                          style: TextStyle(
+                              color: scheme.onSurfaceVariant,
+                              decoration: TextDecoration.lineThrough)),
+                    ),
+                  ),
                 ),
+              ],
             ],
           ),
           const SizedBox(height: 14),

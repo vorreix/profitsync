@@ -124,6 +124,28 @@ class AppState extends ChangeNotifier {
     await refresh();
   }
 
+  /// Create a new (business) workspace, then switch into it — mirrors the web's
+  /// create-organization flow. Returns the new org id.
+  Future<String> createOrg(String name) async {
+    final res = await api.post('/api/organizations', {'name': name.trim()});
+    final id = (res as Map)['id']?.toString();
+    await refresh();
+    if (id != null) {
+      await switchOrg(id);
+      return id;
+    }
+    return _activeOrgId ?? '';
+  }
+
+  /// Change the active org's currency (owner/admin only, enforced server-side),
+  /// then refresh so every screen re-renders with the new currency.
+  Future<void> changeCurrency(String code) async {
+    final org = activeOrg;
+    if (org == null) return;
+    await api.patch('/api/organizations/${org.id}', {'currency': code});
+    await refresh();
+  }
+
   /// Complete onboarding: POST the account-type choice, then refresh so the
   /// gate routes into the app.
   Future<void> completeOnboarding({

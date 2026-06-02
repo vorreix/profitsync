@@ -7,6 +7,7 @@ import 'package:integration_test/integration_test.dart';
 
 import 'package:profitsync_mobile/config.dart';
 import 'package:profitsync_mobile/main.dart';
+import 'package:profitsync_mobile/theme_controller.dart';
 
 /// Drives the real app through every screen on the simulator, pausing on each
 /// (with a log marker) so an external watcher can capture screenshots.
@@ -55,7 +56,7 @@ void main() {
 
     final container = AppContainer(authState);
     await tester.pumpWidget(
-        ProfitSyncApp(authState: authState, appState: container.state));
+        ProfitSyncApp(authState: authState, appState: container.state, themeController: ThemeController()));
     await settle(tester, frames: 12);
 
     // Signed-out → custom login.
