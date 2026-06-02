@@ -1,4 +1,12 @@
 {
+  "pwa": {
+    "installTitle": "ProfitSync installieren",
+    "installBody": "Füge ProfitSync zum Startbildschirm hinzu – für schnellen Vollbildzugriff.",
+    "installButton": "App installieren",
+    "dismiss": "Jetzt nicht",
+    "iosTitle": "Zum Startbildschirm hinzufügen",
+    "iosBody": "Tippe auf das Teilen-Symbol und wähle „Zum Home-Bildschirm“."
+  },
   "nav": {
     "dashboard": "Dashboard",
     "clients": "Kunden",

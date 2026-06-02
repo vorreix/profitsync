@@ -1,4 +1,12 @@
 {
+  "pwa": {
+    "installTitle": "Installa ProfitSync",
+    "installBody": "Aggiungi ProfitSync alla schermata Home per un accesso rapido e a schermo intero.",
+    "installButton": "Installa app",
+    "dismiss": "Non ora",
+    "iosTitle": "Aggiungi alla Home",
+    "iosBody": "Tocca l’icona Condividi, poi scegli “Aggiungi alla schermata Home”."
+  },
   "nav": {
     "dashboard": "Dashboard",
     "clients": "Clienti",
