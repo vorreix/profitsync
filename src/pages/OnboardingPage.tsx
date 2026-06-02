@@ -274,7 +274,7 @@ function OnboardingInner() {
       />
       <div className="pointer-events-none absolute -top-32 left-1/2 size-[36rem] -translate-x-1/2 rounded-full bg-gradient-to-b from-primary/10 to-transparent blur-3xl" />
 
-      <div className="safe-pt safe-pb relative mx-auto flex min-h-dvh w-full max-w-2xl flex-col px-4 pb-28 pt-6 sm:px-6 sm:pb-10 sm:pt-10">
+      <div className="relative mx-auto flex min-h-dvh w-full max-w-2xl flex-col px-4 pb-[calc(7rem_+_env(safe-area-inset-bottom))] pt-[calc(1.5rem_+_env(safe-area-inset-top))] sm:px-6 sm:pb-10 sm:pt-10">
         {/* Header */}
         <header className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -371,7 +371,7 @@ function OnboardingInner() {
         )}
 
         {/* Sticky action bar — thumb-reachable on mobile, inline on desktop. */}
-        <div className="safe-pb fixed inset-x-0 bottom-0 z-20 border-t bg-background/90 px-4 py-3 backdrop-blur sm:static sm:border-0 sm:bg-transparent sm:px-0 sm:py-0 sm:backdrop-blur-none">
+        <div className="fixed inset-x-0 bottom-0 z-20 border-t bg-background/90 px-4 pt-3 pb-[calc(0.75rem_+_env(safe-area-inset-bottom))] backdrop-blur sm:static sm:border-0 sm:bg-transparent sm:px-0 sm:py-0 sm:backdrop-blur-none">
           <div className="mx-auto w-full max-w-2xl">
             {step === 1 ? (
               <Button
