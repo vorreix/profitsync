@@ -16,10 +16,10 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "sonner"
 import { Plus, FileText, Building2, Mail, Phone, UserPlus, Trash2, Pencil, ExternalLink, Calendar, Paperclip, Download, X } from "lucide-react"
 import { ExpandableSearch } from "@/components/ExpandableSearch"
+import { FilterSheet, FilterSection } from "@/components/filters/FilterSheet"
 
 type QuotationForm = {
   title: string
@@ -135,6 +135,8 @@ export function QuotationsPage() {
   const [loadingMore, setLoadingMore] = useState(false)
   const [search, setSearch] = useState("")
   const [tab, setTab] = useState("all")
+  const [dateFrom, setDateFrom] = useState("")
+  const [dateTo, setDateTo] = useState("")
   const [createOpen, setCreateOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<Quotation | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Quotation | null>(null)
@@ -151,8 +153,18 @@ export function QuotationsPage() {
 
   const searchRef = useRef(search)
   const tabRef = useRef(tab)
+  const dateFromRef = useRef(dateFrom)
+  const dateToRef = useRef(dateTo)
   searchRef.current = search
   tabRef.current = tab
+  dateFromRef.current = dateFrom
+  dateToRef.current = dateTo
+  const appliedFilterCount = (tab !== "all" ? 1 : 0) + (dateFrom || dateTo ? 1 : 0)
+  const clearFilters = () => {
+    setTab("all")
+    setDateFrom("")
+    setDateTo("")
+  }
 
   async function fetchPage1() {
     setLoading(true)
@@ -163,6 +175,8 @@ export function QuotationsPage() {
       const params = new URLSearchParams({ page: "1" })
       if (searchRef.current.trim()) params.set("search", searchRef.current.trim())
       if (tabRef.current !== "all") params.set("status", tabRef.current)
+      if (dateFromRef.current) params.set("dateFrom", dateFromRef.current)
+      if (dateToRef.current) params.set("dateTo", dateToRef.current)
       const data = await apiGet<{ data: Quotation[]; total: number }>(`/api/quotations?${params}`, token)
       setQuotations(data.data)
       setTotal(data.total)
@@ -183,6 +197,8 @@ export function QuotationsPage() {
       const params = new URLSearchParams({ page: String(nextPage) })
       if (searchRef.current.trim()) params.set("search", searchRef.current.trim())
       if (tabRef.current !== "all") params.set("status", tabRef.current)
+      if (dateFromRef.current) params.set("dateFrom", dateFromRef.current)
+      if (dateToRef.current) params.set("dateTo", dateToRef.current)
       const data = await apiGet<{ data: Quotation[]; total: number }>(`/api/quotations?${params}`, token)
       setQuotations((prev) => [...prev, ...data.data])
       setTotal(data.total)
@@ -198,8 +214,8 @@ export function QuotationsPage() {
   useEffect(() => {
     const t = setTimeout(fetchPage1, 300)
     return () => clearTimeout(t)
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- debounced refetch keyed on search/tab; fetchPage1 reads the latest values via refs
-  }, [search, tab])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- debounced refetch keyed on filters; fetchPage1 reads the latest values via refs
+  }, [search, tab, dateFrom, dateTo])
 
   useEffect(() => {
     if (searchParams.get("new") === "1") {
@@ -438,19 +454,36 @@ export function QuotationsPage() {
         </Button>
       </div>
 
-      {/* Filters */}
+      {/* Filters — status + date live inside the filter sheet to keep the
+          toolbar compact and consistent across the app. */}
       <div className="flex items-center gap-2 sm:gap-3">
-        <ExpandableSearch value={search} onChange={setSearch} placeholder={t("searchPlaceholder")} />
-        <div className="min-w-0 flex-1 -mx-3 px-3 overflow-x-auto scrollbar-none sm:mx-0 sm:px-0 sm:overflow-visible sm:flex-none">
-          <Tabs value={tab} onValueChange={setTab}>
-            <TabsList>
-              <TabsTrigger value="all">{t("tabAll")}</TabsTrigger>
-              {ALL_STATUSES.map((s) => (
-                <TabsTrigger key={s} value={s}>{t(`status${s.charAt(0).toUpperCase() + s.slice(1)}`)}</TabsTrigger>
-              ))}
-            </TabsList>
-          </Tabs>
-        </div>
+        <ExpandableSearch
+          value={search}
+          onChange={setSearch}
+          placeholder={t("searchPlaceholder")}
+          expandedClassName="w-full sm:w-72"
+        />
+        <FilterSheet count={appliedFilterCount} onClear={clearFilters} triggerClassName="shrink-0 ml-auto">
+          <FilterSection label={t("filters.status")}>
+            <Select value={tab} onValueChange={setTab}>
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t("tabAll")}</SelectItem>
+                {ALL_STATUSES.map((s) => (
+                  <SelectItem key={s} value={s}>{t(`status${s.charAt(0).toUpperCase() + s.slice(1)}`)}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </FilterSection>
+          <FilterSection label={t("filters.dateRange")}>
+            <div className="grid grid-cols-2 gap-2">
+              <Input type="date" aria-label={t("filters.from")} value={dateFrom} max={dateTo || undefined} onChange={(e) => setDateFrom(e.target.value)} />
+              <Input type="date" aria-label={t("filters.to")} value={dateTo} min={dateFrom || undefined} onChange={(e) => setDateTo(e.target.value)} />
+            </div>
+          </FilterSection>
+        </FilterSheet>
       </div>
 
       {/* List */}
@@ -462,9 +495,9 @@ export function QuotationsPage() {
         <div className="py-20 text-center">
           <FileText className="size-12 mx-auto text-muted-foreground/50 mb-4" />
           <p className="text-muted-foreground font-medium">
-            {search || tab !== "all" ? t("noQuotationsMatch") : t("noQuotationsYet")}
+            {search || tab !== "all" || dateFrom || dateTo ? t("noQuotationsMatch") : t("noQuotationsYet")}
           </p>
-          {!search && tab === "all" && (
+          {!search && tab === "all" && !dateFrom && !dateTo && (
             <Button className="mt-4" onClick={() => { setForm(defaultForm()); setCreateOpen(true) }}>
               <Plus className="size-4" />
               {t("createFirstQuotation")}
