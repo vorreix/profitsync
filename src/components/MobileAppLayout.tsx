@@ -23,9 +23,11 @@ import {
   ChevronDown,
   Sparkles,
   Loader,
+  SlidersHorizontal,
 } from "lucide-react"
 import { useOrg } from "@/lib/org-context"
 import { useAdmin } from "@/lib/admin-context"
+import { usePageFilterState } from "@/lib/page-filter-context"
 import { accountTypeAllows, isPaidPlanKey, type AccountType } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
@@ -117,6 +119,7 @@ export function MobileAppLayout() {
   const [orgSheetOpen, setOrgSheetOpen] = useState(false)
   const [moreOpen, setMoreOpen] = useState(false)
   const [fabOpen, setFabOpen] = useState(false)
+  const pageFilter = usePageFilterState()
 
   // Close the quick-actions menu on any navigation.
   useEffect(() => {
@@ -316,6 +319,22 @@ export function MobileAppLayout() {
         <div className="fixed inset-0 z-40 bg-background/50 backdrop-blur-sm" onClick={() => setFabOpen(false)} />
       )}
       <div className="fixed bottom-24 right-4 z-50 flex flex-col items-end gap-2 safe-pb">
+        {/* Floating filter shortcut: appears just above the FAB when the current
+            page has active filters, so they're reachable without scrolling back
+            to the toolbar. Hidden while the quick-actions menu is open. */}
+        {pageFilter.onOpen && pageFilter.count > 0 && !(!pageAction && fabOpen) && (
+          <button
+            type="button"
+            onClick={() => pageFilter.onOpen?.()}
+            aria-label={t("filters.filters")}
+            className="pressable relative flex size-12 items-center justify-center rounded-full border bg-background shadow-md animate-in fade-in slide-in-from-bottom-1 duration-150"
+          >
+            <SlidersHorizontal className="size-5" />
+            <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground tabular-nums">
+              {pageFilter.count}
+            </span>
+          </button>
+        )}
         {!pageAction && fabOpen && quickActions.map((action) => (
           <div
             key={action.href}
