@@ -26,7 +26,7 @@ import {
 } from "lucide-react"
 import { useOrg } from "@/lib/org-context"
 import { useAdmin } from "@/lib/admin-context"
-import { accountTypeAllows, type AccountType } from "@/lib/types"
+import { accountTypeAllows, isPaidPlanKey, type AccountType } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import {
@@ -110,7 +110,7 @@ export function MobileAppLayout() {
   const primaryTabs = buildPrimaryTabs(accountType)
   const moreItems = buildMoreItems(activeOrg?.id, accountType)
   const quickActions = allQuickActions.filter((a) => !a.feature || accountTypeAllows(accountType, a.feature))
-  const isPaid = !!activeOrg?.plan_key && activeOrg.plan_key !== "free"
+  const isPaid = isPaidPlanKey(activeOrg?.plan_key)
   const onMorePage = !primaryTabs.some((t) =>
     location.pathname === t.href || location.pathname.startsWith(t.href + "/"),
   )
@@ -173,12 +173,12 @@ export function MobileAppLayout() {
                           <p className="text-sm font-medium truncate">{org.name}</p>
                           <span
                             className={`text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded-full border shrink-0 ${
-                              (!!org.plan_key && org.plan_key !== "free")
+                              isPaidPlanKey(org.plan_key)
                                 ? "border-amber-500/40 text-amber-600 bg-amber-500/10 dark:text-amber-300"
                                 : "border-border text-muted-foreground"
                             }`}
                           >
-                            {(!!org.plan_key && org.plan_key !== "free") ? t("org.pro") : t("org.free")}
+                            {isPaidPlanKey(org.plan_key) ? t("org.pro") : t("org.free")}
                           </span>
                         </div>
                         <p className="text-[11px] text-muted-foreground uppercase tracking-wide">{org.role}</p>

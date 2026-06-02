@@ -1,11 +1,12 @@
 import { useState } from "react"
 import { useAuth } from "@clerk/clerk-react"
 import { useNavigate } from "react-router-dom"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { Building2, Check, ChevronsUpDown, Plus, Search, Loader as Loader2, Sparkles } from "lucide-react"
 import { useOrg } from "@/lib/org-context"
 import { apiPost } from "@/lib/api"
-import type { Organization } from "@/lib/types"
+import { isPaidPlanKey, type Organization } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -21,6 +22,7 @@ import {
 
 export function OrgSwitcher() {
   const navigate = useNavigate()
+  const { t } = useTranslation()
   const { getToken } = useAuth()
   const { orgs, activeOrg, switchOrg, refresh, loading } = useOrg()
   const [open, setOpen] = useState(false)
@@ -91,12 +93,12 @@ export function OrgSwitcher() {
                   {activeOrg && (
                     <span
                       className={`text-[9px] uppercase tracking-wider px-1 py-0.5 rounded-sm border shrink-0 leading-none ${
-                        activeOrg.plan_key === "premium"
+                        isPaidPlanKey(activeOrg.plan_key)
                           ? "border-amber-500/40 text-amber-600 bg-amber-500/10 dark:text-amber-300"
                           : "border-border text-muted-foreground"
                       }`}
                     >
-                      {activeOrg.plan_key === "premium" ? "Pro" : "Free"}
+                      {isPaidPlanKey(activeOrg.plan_key) ? t("org.pro") : t("org.free")}
                     </span>
                   )}
                 </div>
@@ -146,12 +148,12 @@ export function OrgSwitcher() {
                         )}
                         <span
                           className={`text-[10px] uppercase tracking-wide px-1 rounded-sm border ${
-                            org.plan_key === "premium"
+                            isPaidPlanKey(org.plan_key)
                               ? "border-amber-500/40 text-amber-600 bg-amber-500/10 dark:text-amber-300"
                               : "border-border text-muted-foreground"
                           }`}
                         >
-                          {org.plan_key === "premium" ? "Pro" : "Free"}
+                          {isPaidPlanKey(org.plan_key) ? t("org.pro") : t("org.free")}
                         </span>
                       </div>
                       <p className="text-[11px] text-muted-foreground uppercase tracking-wide">{org.role}</p>
@@ -163,7 +165,7 @@ export function OrgSwitcher() {
             </div>
           </ScrollArea>
           <div className="border-t p-1 flex flex-col">
-            {activeOrg && activeOrg.plan_key !== "premium" && (
+            {activeOrg && !isPaidPlanKey(activeOrg.plan_key) && (
               <Button
                 variant="ghost"
                 className="justify-start gap-2 px-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300"
@@ -173,7 +175,7 @@ export function OrgSwitcher() {
                 }}
               >
                 <Sparkles className="size-4" />
-                <span className="text-sm font-medium">Upgrade to Premium</span>
+                <span className="text-sm font-medium">{t("org.upgradeTitle")}</span>
               </Button>
             )}
             <Button

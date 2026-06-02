@@ -127,6 +127,16 @@ export type Organization = {
   updated_at: string
 }
 
+/**
+ * True when a plan key represents a paid (Pro) tier. The shared free tier is the
+ * only non-paid key; everything else (`personal`, `business`, legacy `premium`)
+ * is paid. Use this everywhere instead of comparing against a specific key so the
+ * UI stays correct as plan keys evolve.
+ */
+export function isPaidPlanKey(key: string | null | undefined): boolean {
+  return !!key && key !== "free"
+}
+
 export const CURRENCIES = [
   "USD", "EUR", "GBP", "CAD", "AUD", "JPY",
   "INR", "CHF", "CNY", "SEK", "NZD",

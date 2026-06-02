@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { toast } from "sonner"
 import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api"
+import { isPaidPlanKey } from "@/lib/types"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -43,6 +44,7 @@ type OrgDetail = {
     name: string
     slug: string
     is_personal: boolean
+    account_type: string | null
     currency: string
     created_at: string
     updated_at: string
@@ -108,7 +110,7 @@ type Invite = {
   expires_at: string | null
 }
 
-const PLAN_OPTIONS = ["free", "premium"]
+const PLAN_OPTIONS = ["free", "personal", "business"]
 const STATUS_OPTIONS = ["active", "past_due", "cancelled", "trialing"]
 const CYCLE_OPTIONS = ["", "monthly", "yearly"]
 const CLIENT_STATUSES = ["active", "inactive", "archived"]
@@ -151,7 +153,9 @@ export function AdminOrgDetailPage() {
     try {
       const token = await getToken()
       if (!token) return
-      const nextPlan = detail.subscription?.plan_key === "premium" ? "free" : "premium"
+      const nextPlan = isPaidPlanKey(detail.subscription?.plan_key)
+        ? "free"
+        : detail.organization.account_type === "personal" ? "personal" : "business"
       await apiPatch("/api/admin/organizations", token, {
         organization_id: detail.organization.id,
         plan_key: nextPlan,
@@ -222,7 +226,7 @@ export function AdminOrgDetailPage() {
           <Badge
             variant="outline"
             className={`uppercase text-[10px] ${
-              plan === "premium"
+              isPaidPlanKey(plan)
                 ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
                 : ""
             }`}
@@ -232,12 +236,12 @@ export function AdminOrgDetailPage() {
           <Button onClick={togglePlan} variant="outline" size="sm" disabled={planBusy}>
             {planBusy ? (
               <Loader2 className="size-3.5 animate-spin mr-1.5" />
-            ) : plan === "premium" ? (
+            ) : isPaidPlanKey(plan) ? (
               <ArrowDownCircle className="size-3.5 mr-1.5" />
             ) : (
               <ArrowUpCircle className="size-3.5 mr-1.5" />
             )}
-            {plan === "premium" ? "Downgrade to free" : "Upgrade to premium"}
+            {isPaidPlanKey(plan) ? "Downgrade to free" : "Upgrade to paid"}
           </Button>
         </div>
       </div>

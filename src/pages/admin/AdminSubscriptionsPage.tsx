@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { toast } from "sonner"
 import { apiGet, apiPatch } from "@/lib/api"
+import { isPaidPlanKey } from "@/lib/types"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -43,7 +44,7 @@ type AdminSub = {
   updated_at: string
 }
 
-const PLAN_OPTIONS = ["free", "premium"]
+const PLAN_OPTIONS = ["free", "personal", "business"]
 const STATUS_OPTIONS = ["active", "past_due", "cancelled", "trialing"]
 const CYCLE_OPTIONS = ["", "monthly", "yearly"]
 
@@ -56,8 +57,8 @@ export function AdminSubscriptionsPage() {
   const [page, setPage] = useState(Math.max(1, parseInt(searchParams.get("page") ?? "1", 10) || 1))
   const [search, setSearch] = useState(searchParams.get("search") ?? "")
   const initialPlan = searchParams.get("plan")
-  const [plan, setPlan] = useState<"all" | "free" | "premium">(
-    initialPlan === "free" || initialPlan === "premium" ? initialPlan : "all",
+  const [plan, setPlan] = useState<"all" | "free" | "personal" | "business">(
+    initialPlan === "free" || initialPlan === "personal" || initialPlan === "business" ? initialPlan : "all",
   )
   const initialStatus = searchParams.get("status")
   const [status, setStatus] = useState<"all" | "active" | "past_due" | "cancelled" | "trialing">(
@@ -159,7 +160,8 @@ export function AdminSubscriptionsPage() {
             <TabsList>
               <TabsTrigger value="all">All plans</TabsTrigger>
               <TabsTrigger value="free">Free</TabsTrigger>
-              <TabsTrigger value="premium">Premium</TabsTrigger>
+              <TabsTrigger value="personal">Personal</TabsTrigger>
+              <TabsTrigger value="business">Business</TabsTrigger>
             </TabsList>
           </Tabs>
           <Tabs value={status} onValueChange={(v) => { setPage(1); setStatus(v as typeof status) }}>
@@ -201,7 +203,7 @@ export function AdminSubscriptionsPage() {
                     <Badge
                       variant="outline"
                       className={`text-[10px] uppercase ${
-                        s.plan_key === "premium"
+                        isPaidPlanKey(s.plan_key)
                           ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
                           : ""
                       }`}
