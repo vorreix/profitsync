@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, numeric, date, timestamp, integer, boolean, index, jsonb } from "drizzle-orm/pg-core"
+import { pgTable, uuid, text, numeric, date, timestamp, integer, boolean, index, uniqueIndex, jsonb } from "drizzle-orm/pg-core"
 
 export const organizations = pgTable("organizations", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -237,4 +237,9 @@ export const invoices = pgTable("invoices", {
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => ({
   orgIdx: index("invoices_org_idx").on(table.organizationId),
+  // One invoice per Dodo payment. Enables an atomic upsert so concurrent
+  // reconcile/webhook writes can't create duplicate rows for the same payment.
+  // Nullable column → Postgres treats NULLs as distinct, so non-Dodo invoices
+  // (no provider_invoice_id) are unaffected.
+  providerInvoiceIdx: uniqueIndex("invoices_provider_invoice_id_key").on(table.providerInvoiceId),
 }))

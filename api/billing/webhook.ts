@@ -159,11 +159,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           issuedAt: paidAt,
           paidAt,
         }
-        const [existing] = paymentId
-          ? await db.select().from(invoices).where(eq(invoices.providerInvoiceId, paymentId))
-          : []
-        if (existing) {
-          await db.update(invoices).set(baseValues).where(eq(invoices.id, existing.id))
+        // Atomic upsert keyed by the Dodo payment id, so a webhook retry or a
+        // concurrent reconcile can't create a duplicate invoice for one payment.
+        if (paymentId) {
+          await db
+            .insert(invoices)
+            .values(baseValues)
+            .onConflictDoUpdate({ target: invoices.providerInvoiceId, set: baseValues })
         } else {
           await db.insert(invoices).values(baseValues)
         }
