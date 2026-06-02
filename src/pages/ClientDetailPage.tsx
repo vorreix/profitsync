@@ -89,6 +89,18 @@ export function ClientDetailPage() {
     }
   }, [searchParams, setSearchParams])
 
+  // The mobile client "view" sheet links here with ?edit=1 to jump straight into
+  // editing — open the dialog once the client has loaded.
+  useEffect(() => {
+    if (searchParams.get("edit") === "1" && client) {
+      setClientForm(client)
+      setEditClientDialogOpen(true)
+      const next = new URLSearchParams(searchParams)
+      next.delete("edit")
+      setSearchParams(next, { replace: true })
+    }
+  }, [searchParams, setSearchParams, client])
+
   const totalIncoming = transactions.filter((t) => t.type === "incoming").reduce((s, t) => s + Number(t.amount), 0)
   const totalOutgoing = transactions.filter((t) => t.type === "outgoing").reduce((s, t) => s + Number(t.amount), 0)
   const netProfit = totalIncoming - totalOutgoing
