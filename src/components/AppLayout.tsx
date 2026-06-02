@@ -36,6 +36,8 @@ import { accountTypeAllows, type AccountType } from "@/lib/types"
 import { OrgSwitcher } from "@/components/OrgSwitcher"
 import { MobileAppLayout } from "@/components/MobileAppLayout"
 import { useIsMobile } from "@/hooks/use-mobile"
+import { InstallAppBanner, InstallMenuItem } from "@/components/InstallAppBanner"
+import { initPwa } from "@/lib/pwa/register-sw"
 import {
   LayoutDashboard,
   Users,
@@ -196,6 +198,7 @@ function AppLayoutInner() {
                   <Building2 className="size-4 mr-2" />
                   {t("account.organizations")}
                 </DropdownMenuItem>
+                <InstallMenuItem />
                 {isAdmin && (
                   <DropdownMenuItem onClick={() => navigate("/admin")}>
                     <ShieldCheck className="size-4 mr-2" />
@@ -231,6 +234,7 @@ function AppLayoutInner() {
           )}
         </header>
 
+        <InstallAppBanner className="mx-4 mt-4" />
         <div className="flex-1 overflow-auto">
           {orgLoading ? (
             <div className="flex h-[60vh] items-center justify-center">
@@ -280,6 +284,10 @@ function AppLayoutInner() {
 export function AppLayout() {
   const navigate = useNavigate()
   const { isLoaded, isSignedIn } = useAuth()
+
+  useEffect(() => {
+    initPwa()
+  }, [])
 
   useEffect(() => {
     if (isLoaded && !isSignedIn) {
