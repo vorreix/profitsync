@@ -116,6 +116,22 @@ Also fixed in my new code: `change-plan.ts` env fallback uses `defaultDodoEnv()`
   - (The earlier `next_billing_date` + `do_not_bill` design 422'd; `next_billing_date` only accepts
     `full_immediately`. Superseded by the immediate-charge requirement above.)
 
+## Cancellation rework (round 3)
+
+- **Bug:** cancel set `status: "cancelled"` immediately, but Dodo keeps the sub **active** until period
+  end (cancel-at-next-billing). So the org instantly lost Pro (sidebar → Free, features gated) despite
+  still having paid access. Fix: cancel now keeps `status` active and records `cancel_at` = period end
+  (`cancelledAt` only set when actually terminated). The org keeps its plan + features until the date.
+- **Note after cancelling:** a toast ("will cancel on {{date}} — you keep full access until then") plus a
+  persistent amber notice in the banner with the access-until date. The edge case (monthly → upgrade to
+  yearly → cancel) is handled: after the immediate upgrade the sub IS yearly, so cancel ends at the
+  **yearly** period end.
+- **Resume:** new `POST /api/billing/resume` → Dodo `cancel_at_next_billing_date: false`
+  (`resumeSubscription`); UI shows a "Resume subscription" button while cancelling. Verified the full
+  cancel → resume cycle against a real TEST sub (stays active throughout) and in the browser.
+- **Proper confirmation UI:** replaced all `window.confirm` with a shadcn `AlertDialog` (cancel + switch
+  confirmations) — verified rendering in the browser.
+
 ## Verification
 - `npm run typecheck`, `npm run lint`, `npm run test:ci` (43 tests incl. new invoice-map + isPaidPlanKey).
 - Live integration script against Dodo TEST: `getSubscription` (period start/end) + `listPayments`

@@ -501,7 +501,19 @@
     "cancelNote": "Nessun rimborso. Il piano resta attivo fino alla data di rinnovo, poi passa automaticamente a Free.",
     "resubscribeNote": "Il tuo piano termina il {{date}}. Riabbonati quando vuoi per mantenere le funzionalità.",
     "resubscribe": "Riabbonati",
-    "saveBadge": "Risparmia {{pct}}%"
+    "saveBadge": "Risparmia {{pct}}%",
+    "statusCancelling": "In cancellazione",
+    "cancelDialogTitle": "Annullare l’abbonamento?",
+    "cancelDialogDesc": "Nessun rimborso — manterrai l’accesso a {{name}} fino al {{date}}, poi passerà a Free. Non ti verrà più addebitato nulla.",
+    "cancelDialogConfirm": "Sì, annulla",
+    "switchDialogTitle": "Passare alla fatturazione annuale?",
+    "switchDialogDesc": "Ti verrà addebitato oggi il prezzo annuale (risparmiando il {{pct}}%) e il passaggio è immediato.",
+    "switchDialogConfirm": "Passa all’annuale",
+    "dialogDismiss": "Non ora",
+    "resume": "Riprendi abbonamento",
+    "resumeSuccess": "Abbonamento ripreso — continuerà a rinnovarsi normalmente.",
+    "cancellingNotice": "Il tuo piano è impostato per annullarsi il {{date}}. Manterrai l’accesso completo fino ad allora.",
+    "cancelScheduledToast": "Il tuo abbonamento si annullerà il {{date}} — mantieni l’accesso completo fino ad allora."
   },
   "trash": {
     "title": "Cestino",

@@ -501,7 +501,19 @@
     "cancelNote": "No refunds. Your plan stays active until the renewal date, then automatically switches to Free.",
     "resubscribeNote": "Your plan ends on {{date}}. Resubscribe anytime to keep your features.",
     "resubscribe": "Resubscribe",
-    "saveBadge": "Save {{pct}}%"
+    "saveBadge": "Save {{pct}}%",
+    "statusCancelling": "Cancelling",
+    "cancelDialogTitle": "Cancel your subscription?",
+    "cancelDialogDesc": "There are no refunds — you’ll keep {{name}} access until {{date}}, then it switches to Free. You won’t be charged again.",
+    "cancelDialogConfirm": "Yes, cancel",
+    "switchDialogTitle": "Switch to yearly billing?",
+    "switchDialogDesc": "You’ll be charged the yearly price today (saving {{pct}}%) and switch to yearly immediately.",
+    "switchDialogConfirm": "Switch to yearly",
+    "dialogDismiss": "Not now",
+    "resume": "Resume subscription",
+    "resumeSuccess": "Subscription resumed — it will keep renewing as usual.",
+    "cancellingNotice": "Your plan is set to cancel on {{date}}. You’ll keep full access until then.",
+    "cancelScheduledToast": "Your subscription will cancel on {{date}} — you keep full access until then."
   },
   "trash": {
     "title": "Trash",

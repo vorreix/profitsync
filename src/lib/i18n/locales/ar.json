@@ -501,7 +501,19 @@
     "cancelNote": "لا توجد استردادات. تبقى خطتك نشطة حتى تاريخ التجديد، ثم تتحول تلقائيًا إلى Free.",
     "resubscribeNote": "تنتهي خطتك في {{date}}. أعد الاشتراك في أي وقت للاحتفاظ بميزاتك.",
     "resubscribe": "إعادة الاشتراك",
-    "saveBadge": "وفّر {{pct}}%"
+    "saveBadge": "وفّر {{pct}}%",
+    "statusCancelling": "قيد الإلغاء",
+    "cancelDialogTitle": "إلغاء الاشتراك؟",
+    "cancelDialogDesc": "لا توجد استردادات — ستحتفظ بوصول {{name}} حتى {{date}}، ثم يتحول إلى Free. لن تتم محاسبتك مرة أخرى.",
+    "cancelDialogConfirm": "نعم، إلغاء",
+    "switchDialogTitle": "التحويل إلى الفوترة السنوية؟",
+    "switchDialogDesc": "سيتم خصم السعر السنوي اليوم (توفير {{pct}}%) والتحويل فوري.",
+    "switchDialogConfirm": "التحويل إلى السنوي",
+    "dialogDismiss": "ليس الآن",
+    "resume": "استئناف الاشتراك",
+    "resumeSuccess": "تم استئناف الاشتراك — سيستمر التجديد كالمعتاد.",
+    "cancellingNotice": "خطتك مضبوطة للإلغاء في {{date}}. ستحتفظ بالوصول الكامل حتى ذلك الحين.",
+    "cancelScheduledToast": "سيتم إلغاء اشتراكك في {{date}} — تحتفظ بالوصول الكامل حتى ذلك الحين."
   },
   "trash": {
     "title": "السلة",
