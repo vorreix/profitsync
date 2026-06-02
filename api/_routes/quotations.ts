@@ -16,9 +16,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { userId, orgId, role } = ctx
 
   if (req.method === "GET") {
-    const { search, status, page, dateFrom, dateTo } = req.query as {
-      search?: string; status?: string; page?: string; dateFrom?: string; dateTo?: string
+    const { search, status, page, dateFrom, dateTo, closed, includeClosed } = req.query as {
+      search?: string; status?: string; page?: string; dateFrom?: string; dateTo?: string; closed?: string; includeClosed?: string
     }
+
+    const closedFilter =
+      closed === "1"
+        ? sql`${quotations.closedAt} is not null`
+        : includeClosed === "1"
+          ? undefined
+          : isNull(quotations.closedAt)
 
     const searchFilter = search?.trim()
       ? or(
@@ -41,6 +48,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const whereClause = and(
       eq(quotations.organizationId, orgId),
       isNull(quotations.deletedAt),
+      closedFilter,
       searchFilter,
       statusFilter,
       dateFromFilter,

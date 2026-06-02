@@ -42,13 +42,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { userId, orgId, role } = ctx
 
   if (req.method === "GET") {
-    const { clientId, search, type, page, sort, limit, category, from, to } = req.query as {
-      clientId?: string; search?: string; type?: string; page?: string; sort?: string; limit?: string; category?: string; from?: string; to?: string
+    const { clientId, search, type, page, sort, limit, category, from, to, includeClosed } = req.query as {
+      clientId?: string; search?: string; type?: string; page?: string; sort?: string; limit?: string; category?: string; from?: string; to?: string; includeClosed?: string
     }
 
     const isDate = (v: string | undefined): v is string => !!v && /^\d{4}-\d{2}-\d{2}$/.test(v)
     const dateFromFilter = isDate(from) ? gte(transactions.date, from) : undefined
     const dateToFilter = isDate(to) ? lte(transactions.date, to) : undefined
+    // Exclude transactions of closed clients from the default list/analytics;
+    // `?includeClosed=1` brings them back (dashboard "show closed" toggle).
+    const closedClientFilter = includeClosed === "1" ? undefined : isNull(clients.closedAt)
 
     const orderBy = pickOrder(sort)
 
@@ -88,6 +91,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       eq(clients.organizationId, orgId),
       isNull(clients.deletedAt),
       isNull(transactions.deletedAt),
+      closedClientFilter,
       searchFilter,
       typeFilter,
       categoryFilter,
@@ -105,6 +109,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         eq(clients.organizationId, orgId),
         isNull(clients.deletedAt),
         isNull(transactions.deletedAt),
+        closedClientFilter,
         searchFilter,
         categoryFilter,
         dateFromFilter,

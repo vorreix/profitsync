@@ -26,6 +26,7 @@ import {
   Building2,
   Tag,
   X,
+  Archive,
 } from "lucide-react"
 import { FilterSheet, FilterSection } from "@/components/filters/FilterSheet"
 import {
@@ -360,15 +361,19 @@ export function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [selectedClientIds, setSelectedClientIds] = useState<Set<string>>(new Set())
   const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set())
+  // When on, closed clients (and their transactions) are loaded so they can be
+  // included in the filter + aggregates. Off by default → analytics excludes them.
+  const [showClosed, setShowClosed] = useState(false)
 
   useEffect(() => {
     async function load() {
       try {
         const token = await getToken()
         if (!token) return
+        const suffix = showClosed ? "?includeClosed=1" : ""
         const [clientList, txList] = await Promise.all([
-          apiGet<Client[]>("/api/clients", token),
-          apiGet<Transaction[]>("/api/transactions", token),
+          apiGet<Client[]>(`/api/clients${suffix}`, token),
+          apiGet<Transaction[]>(`/api/transactions${suffix}`, token),
         ])
         setClients(clientList)
         setTransactions(txList)
@@ -379,8 +384,8 @@ export function Dashboard() {
       }
     }
     load()
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once on mount; getToken is stable
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- getToken is stable; reload when the closed toggle changes
+  }, [showClosed])
 
   const clientsById = useMemo(() => {
     const m = new Map<string, Client>()
@@ -509,6 +514,17 @@ export function Dashboard() {
             onChange={setSelectedCategories}
             icon={<Tag className="size-4 opacity-60" />}
           />
+          {!isPersonal && (
+            <Button
+              variant={showClosed ? "secondary" : "outline"}
+              size="sm"
+              className="h-9 shrink-0"
+              onClick={() => setShowClosed((v) => !v)}
+            >
+              <Archive className="size-4" />
+              {t("closed.showClosedClients")}
+            </Button>
+          )}
         </div>
         <div className="sm:hidden shrink-0">
           <FilterSheet count={appliedFilterCount} onClear={clearAllFilters}>
@@ -538,6 +554,12 @@ export function Dashboard() {
                 icon={<Tag className="size-4 opacity-60" />}
               />
             </FilterSection>
+            {!isPersonal && (
+              <label className="flex items-center gap-2 pt-1">
+                <Checkbox checked={showClosed} onCheckedChange={(c) => setShowClosed(!!c)} />
+                <span className="text-sm">{t("closed.showClosedClients")}</span>
+              </label>
+            )}
           </FilterSheet>
         </div>
       </div>
