@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { toast } from "sonner"
 import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api"
+import { isPaidPlanKey } from "@/lib/types"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -37,6 +38,7 @@ type AdminOrg = {
   name: string
   slug: string
   is_personal: boolean
+  account_type: string | null
   currency: string
   created_at: string
   updated_at: string
@@ -198,7 +200,11 @@ export function AdminOrgsPage() {
     try {
       const token = await getToken()
       if (!token) return
-      const nextPlan = org.plan_key === "premium" ? "free" : "premium"
+      // Toggle paid ↔ free. Granting paid picks the plan matching the org's
+      // account type (personal vs business) so quota + features line up.
+      const nextPlan = isPaidPlanKey(org.plan_key)
+        ? "free"
+        : org.account_type === "personal" ? "personal" : "business"
       await apiPatch("/api/admin/organizations", token, {
         organization_id: org.id,
         plan_key: nextPlan,
@@ -341,7 +347,7 @@ export function AdminOrgsPage() {
                       <Badge
                         variant="outline"
                         className={`text-[10px] uppercase ${
-                          o.plan_key === "premium"
+                          isPaidPlanKey(o.plan_key)
                             ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
                             : ""
                         }`}
@@ -356,14 +362,14 @@ export function AdminOrgsPage() {
                         className="mr-1"
                         disabled={busy === o.id + "plan"}
                         onClick={() => togglePlan(o)}
-                        title={o.plan_key === "premium" ? "Downgrade to free" : "Upgrade to premium"}
+                        title={isPaidPlanKey(o.plan_key) ? "Downgrade to free" : "Upgrade to paid"}
                       >
                         {busy === o.id + "plan" ? (
                           <Loader2 className="size-3.5 animate-spin" />
-                        ) : o.plan_key === "premium" ? (
+                        ) : isPaidPlanKey(o.plan_key) ? (
                           <><ArrowDownCircle className="size-3.5 mr-1" /> Free</>
                         ) : (
-                          <><ArrowUpCircle className="size-3.5 mr-1" /> Premium</>
+                          <><ArrowUpCircle className="size-3.5 mr-1" /> Upgrade</>
                         )}
                       </Button>
                       <Button

@@ -103,18 +103,42 @@ export type DodoCreateSubscriptionResult = {
   metadata: Record<string, string>
 }
 
+/** A plan change Dodo has scheduled for a future billing date. */
+export type DodoScheduledChange = {
+  id?: string
+  product_id: string
+  product_name?: string | null
+  quantity?: number
+  effective_at: string
+} | null
+
 export type DodoSubscription = {
   subscription_id: string
   status: string // pending | active | on_hold | cancelled | expired | failed
   product_id: string
   currency: string
   recurring_pre_tax_amount: number
+  created_at?: string | null
   next_billing_date: string | null
   previous_billing_date: string | null
   cancelled_at: string | null
   cancel_at_next_billing_date: boolean
+  scheduled_change?: DodoScheduledChange
   customer: { customer_id: string; email: string; name: string }
   metadata: Record<string, string>
+}
+
+/** A Dodo payment (one charge). `total_amount` is in minor units (e.g. cents). */
+export type DodoPayment = {
+  payment_id: string
+  status: string // succeeded | processing | failed | cancelled | requires_*
+  total_amount: number
+  currency: string
+  created_at: string
+  subscription_id: string | null
+  invoice_id?: string | null
+  invoice_url?: string | null
+  metadata?: Record<string, string>
 }
 
 /**
@@ -153,6 +177,52 @@ export async function createSubscription(input: {
 
 export async function getSubscription(subscriptionId: string, env: DodoEnv): Promise<DodoSubscription> {
   return call<DodoSubscription>(`/subscriptions/${subscriptionId}`, env)
+}
+
+/**
+ * List the payments (charges) Dodo recorded for one subscription, newest first.
+ * Used to populate invoice history directly (the webhook is best-effort and may
+ * not be configured for every environment). `GET /payments?subscription_id=`.
+ */
+export async function listPayments(subscriptionId: string, env: DodoEnv): Promise<DodoPayment[]> {
+  const res = await call<{ items?: DodoPayment[] }>(
+    `/payments?subscription_id=${encodeURIComponent(subscriptionId)}&page_size=100`,
+    env,
+  )
+  return res.items ?? []
+}
+
+export type DodoProrationMode =
+  | "prorated_immediately"
+  | "full_immediately"
+  | "difference_immediately"
+  | "do_not_bill"
+
+/**
+ * Change a subscription's plan (e.g. monthly → yearly). With
+ * `effectiveAt: "next_billing_date"` the customer keeps their current plan until
+ * the period ends, then the new plan/price takes effect — no charge today. The
+ * pending change is reported back on the subscription's `scheduled_change`.
+ */
+export async function changePlan(input: {
+  subscriptionId: string
+  productId: string
+  quantity?: number
+  prorationBillingMode: DodoProrationMode
+  effectiveAt?: "immediately" | "next_billing_date"
+  metadata?: Record<string, string>
+  env: DodoEnv
+}): Promise<DodoSubscription> {
+  return call<DodoSubscription>(`/subscriptions/${input.subscriptionId}/change-plan`, input.env, {
+    method: "POST",
+    body: JSON.stringify({
+      product_id: input.productId,
+      quantity: input.quantity ?? 1,
+      proration_billing_mode: input.prorationBillingMode,
+      effective_at: input.effectiveAt ?? "immediately",
+      ...(input.metadata ? { metadata: input.metadata } : {}),
+    }),
+  })
 }
 
 /**
@@ -259,6 +329,18 @@ export async function cancelSubscription(
 }
 
 /**
+ * Undo a pending end-of-period cancellation: the subscription keeps renewing as
+ * usual. Clears `cancel_at_next_billing_date`. The subscription must still be
+ * active (not yet expired) for this to take effect.
+ */
+export async function resumeSubscription(subscriptionId: string, env: DodoEnv): Promise<DodoSubscription> {
+  return call<DodoSubscription>(`/subscriptions/${subscriptionId}`, env, {
+    method: "PATCH",
+    body: JSON.stringify({ cancel_at_next_billing_date: false }),
+  })
+}
+
+/**
  * Resolve the Dodo product id for a plan + billing cycle from env config.
  *
  * This is the *fallback* path: the source of truth is the plans table
@@ -286,6 +368,21 @@ export function productIdForPlan(planKey: string, cycle: "monthly" | "yearly"): 
   // yearly request would charge the wrong billing frequency. Return null so the
   // caller fails loudly instead.
   return (cycle === "yearly" ? entry.yearly : entry.monthly) || null
+}
+
+/**
+ * Cancel any scheduled (future) plan change on a subscription. Dodo allows only
+ * one pending change at a time, so this is called before scheduling/applying a
+ * new one. A 404 (no scheduled change exists) is treated as success.
+ */
+export async function cancelScheduledChange(subscriptionId: string, env: DodoEnv): Promise<void> {
+  const res = await fetch(
+    `${baseFor(env)}/subscriptions/${encodeURIComponent(subscriptionId)}/change-plan/scheduled`,
+    { method: "DELETE", headers: { Authorization: authHeader(env) } },
+  )
+  if (res.ok || res.status === 404) return
+  const text = await res.text().catch(() => "")
+  throw new Error(`Dodo cancel-scheduled-change ${res.status}: ${text}`)
 }
 
 /** Map a Dodo subscription status onto our internal subscription status enum. */
