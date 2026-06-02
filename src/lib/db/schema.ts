@@ -137,6 +137,19 @@ export const quotationAttachments = pgTable("quotation_attachments", {
   createdAt: timestamp("created_at").defaultNow(),
 })
 
+export const clientAttachments = pgTable("client_attachments", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  clientId: uuid("client_id").notNull().references(() => clients.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull(),
+  fileName: text("file_name").notNull(),
+  fileType: text("file_type").notNull(),
+  fileSize: integer("file_size").notNull(),
+  fileData: text("file_data").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  clientIdx: index("client_attachments_client_idx").on(table.clientId),
+}))
+
 export const userProfiles = pgTable("user_profiles", {
   id: text("id").primaryKey(),
   email: text("email").notNull().unique(),
