@@ -42,7 +42,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       dodoEnvironment: null,
       provider: null,
       providerSubscriptionId: null,
+      currentPeriodStart: null,
       currentPeriodEnd: null,
+      scheduledChange: null,
       cancelAt: null,
       cancelledAt: null,
       updatedAt: new Date(),
@@ -69,6 +71,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   // Dev/test stub when Dodo isn't configured: mark active so quotas unlock for local testing.
   if (!isDodoConfigured(dodoEnv)) {
+    const now = new Date()
     const expiry = new Date()
     expiry.setMonth(expiry.getMonth() + (billing === "yearly" ? 12 : 1))
     const stubValues = {
@@ -78,7 +81,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       dodoEnvironment: dodoEnv,
       provider: "stub",
       providerSubscriptionId: `stub_${ctx.orgId}`,
+      currentPeriodStart: now,
       currentPeriodEnd: expiry,
+      scheduledChange: null,
       cancelAt: null,
       cancelledAt: null,
       updatedAt: new Date(),
@@ -126,7 +131,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       dodoEnvironment: dodoEnv,
       provider: "dodo",
       providerSubscriptionId: sub.subscription_id,
+      currentPeriodStart: null,
       currentPeriodEnd: null,
+      scheduledChange: null,
       cancelAt: null,
       cancelledAt: null,
       updatedAt: new Date(),

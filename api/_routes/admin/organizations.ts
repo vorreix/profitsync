@@ -66,6 +66,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         name: organizations.name,
         slug: organizations.slug,
         isPersonal: organizations.isPersonal,
+        accountType: organizations.accountType,
         currency: organizations.currency,
         createdAt: organizations.createdAt,
         updatedAt: organizations.updatedAt,
@@ -120,7 +121,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const { organization_id, name, plan_key, plan_status, currency } = req.body as {
       organization_id?: string
       name?: string
-      plan_key?: "free" | "premium"
+      plan_key?: "free" | "personal" | "business" | "premium"
       plan_status?: "active" | "past_due" | "cancelled" | "trialing"
       currency?: string
     }

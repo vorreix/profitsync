@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { toast } from "sonner"
 import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api"
+import { isPaidPlanKey } from "@/lib/types"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -391,7 +392,7 @@ export function AdminUsersPage() {
                         <Badge
                           variant="outline"
                           className={`text-[10px] uppercase ${
-                            o.plan_key === "premium"
+                            isPaidPlanKey(o.plan_key)
                               ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
                               : ""
                           }`}
