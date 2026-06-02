@@ -30,6 +30,7 @@ import { toast } from "sonner"
 import { Plus, ArrowUpRight, ArrowDownRight, DollarSign, Pencil, Trash2, Paperclip, Download, X, Eye, ChevronsUpDown, Check, Tag, CheckSquare } from "lucide-react"
 import { ExpandableSearch } from "@/components/ExpandableSearch"
 import { FilterSheet, FilterSection } from "@/components/filters/FilterSheet"
+import { AttachmentBadge } from "@/components/AttachmentBadge"
 
 type PaginatedResponse<T> = { data: T[]; total: number; summary?: { incoming: number; outgoing: number } }
 
@@ -923,6 +924,7 @@ export function TransactionsPage() {
                       {tx.category && (
                         <Badge variant="outline" className="text-xs py-0 shrink-0 hidden sm:inline-flex">{tx.category}</Badge>
                       )}
+                      <AttachmentBadge count={tx.attachment_count} />
                     </div>
                     <div className="flex items-center gap-2 mt-0.5 min-w-0">
                       {!isPersonal && (

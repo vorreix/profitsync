@@ -26,6 +26,7 @@ import { toast } from "sonner"
 import { Plus, FileText, Building2, Mail, Phone, UserPlus, Trash2, Pencil, ExternalLink, Calendar, Paperclip, Download, X, CheckSquare } from "lucide-react"
 import { ExpandableSearch } from "@/components/ExpandableSearch"
 import { FilterSheet, FilterSection } from "@/components/filters/FilterSheet"
+import { AttachmentBadge } from "@/components/AttachmentBadge"
 
 type QuotationForm = {
   title: string
@@ -613,6 +614,7 @@ export function QuotationsPage() {
                         <p className="text-xs text-muted-foreground">
                           {formatDate(q.created_at)}
                         </p>
+                        <AttachmentBadge count={q.attachment_count} className="ml-auto" />
                       </div>
                     </div>
 

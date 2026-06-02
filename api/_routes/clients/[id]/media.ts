@@ -43,6 +43,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         fileName: clientAttachments.fileName,
         fileType: clientAttachments.fileType,
         fileSize: clientAttachments.fileSize,
+        displayName: clientAttachments.displayName,
+        tags: clientAttachments.tags,
+        category: clientAttachments.category,
         createdAt: clientAttachments.createdAt,
       })
       .from(clientAttachments)
@@ -53,6 +56,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         fileName: transactionAttachments.fileName,
         fileType: transactionAttachments.fileType,
         fileSize: transactionAttachments.fileSize,
+        displayName: transactionAttachments.displayName,
+        tags: transactionAttachments.tags,
+        category: transactionAttachments.category,
         createdAt: transactionAttachments.createdAt,
         txId: transactions.id,
         txDesc: transactions.description,
@@ -67,6 +73,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         fileName: quotationAttachments.fileName,
         fileType: quotationAttachments.fileType,
         fileSize: quotationAttachments.fileSize,
+        displayName: quotationAttachments.displayName,
+        tags: quotationAttachments.tags,
+        category: quotationAttachments.category,
         createdAt: quotationAttachments.createdAt,
         qId: quotations.id,
         qTitle: quotations.title,
@@ -85,6 +94,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       file_name: r.fileName,
       file_type: r.fileType,
       file_size: r.fileSize,
+      display_name: r.displayName,
+      tags: r.tags,
+      category: r.category,
       created_at: r.createdAt,
     })),
     ...txRows.map((r) => ({
@@ -95,6 +107,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       file_name: r.fileName,
       file_type: r.fileType,
       file_size: r.fileSize,
+      display_name: r.displayName,
+      tags: r.tags,
+      category: r.category,
       created_at: r.createdAt,
     })),
     ...qRows.map((r) => ({
@@ -105,6 +120,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       file_name: r.fileName,
       file_type: r.fileType,
       file_size: r.fileSize,
+      display_name: r.displayName,
+      tags: r.tags,
+      category: r.category,
       created_at: r.createdAt,
     })),
   ]
@@ -114,6 +132,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const tb = b.created_at ? new Date(b.created_at).getTime() : 0
     return tb - ta
   })
+
+  // Server-side pagination over the merged, metadata-only list. Without
+  // limit/offset the full list is returned (back-compat).
+  const limitRaw = parseInt((req.query.limit as string) ?? "", 10)
+  const offsetRaw = parseInt((req.query.offset as string) ?? "", 10)
+  if (Number.isFinite(limitRaw)) {
+    const limit = Math.min(Math.max(1, limitRaw), 100)
+    const offset = Math.max(0, Number.isFinite(offsetRaw) ? offsetRaw : 0)
+    const items = media.slice(offset, offset + limit)
+    return res.json({
+      items,
+      total: media.length,
+      limit,
+      offset,
+      has_next: offset + limit < media.length,
+      has_prev: offset > 0,
+    })
+  }
 
   return res.json(media)
 }

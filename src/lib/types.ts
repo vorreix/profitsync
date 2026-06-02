@@ -15,9 +15,18 @@ export type Client = {
   updated_at: string
   total_incoming?: number
   total_outgoing?: number
+  attachment_count?: number
 }
 
-export type TransactionAttachment = {
+// Editable metadata shared by all attachment kinds (see the attachment tables).
+export type AttachmentMeta = {
+  display_name?: string | null
+  tags?: string[]
+  category?: string
+  updated_at?: string
+}
+
+export type TransactionAttachment = AttachmentMeta & {
   id: string
   transaction_id: string
   user_id: string
@@ -27,7 +36,7 @@ export type TransactionAttachment = {
   created_at: string
 }
 
-export type QuotationAttachment = {
+export type QuotationAttachment = AttachmentMeta & {
   id: string
   quotation_id: string
   user_id: string
@@ -37,7 +46,7 @@ export type QuotationAttachment = {
   created_at: string
 }
 
-export type ClientAttachment = {
+export type ClientAttachment = AttachmentMeta & {
   id: string
   client_id: string
   user_id: string
@@ -58,6 +67,7 @@ export type Transaction = {
   date: string
   created_at: string
   updated_at: string
+  attachment_count?: number
 }
 
 export type Quotation = {
@@ -76,6 +86,7 @@ export type Quotation = {
   deleted_at: string | null
   created_at: string
   updated_at: string
+  attachment_count?: number
 }
 
 export type UserProfile = {

@@ -39,6 +39,7 @@ import {
 } from "lucide-react"
 import { ExpandableSearch } from "@/components/ExpandableSearch"
 import { FilterSheet, FilterSection } from "@/components/filters/FilterSheet"
+import { AttachmentBadge } from "@/components/AttachmentBadge"
 
 type NewClient = {
   name: string
@@ -337,6 +338,7 @@ export function ClientsPage() {
                           >
                             {client.status}
                           </Badge>
+                          <AttachmentBadge count={client.attachment_count} />
                         </div>
                         {client.company && (
                           <div className="flex items-center gap-1.5 mt-1">
@@ -430,6 +432,7 @@ export function ClientsPage() {
                       <Badge variant={client.status === "active" ? "default" : "secondary"} className="text-xs">
                         {client.status}
                       </Badge>
+                      <AttachmentBadge count={client.attachment_count} />
                     </div>
                     {client.company && (
                       <p className="text-xs text-muted-foreground truncate mt-0.5">{client.company}</p>
