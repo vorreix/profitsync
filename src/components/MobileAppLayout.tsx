@@ -24,6 +24,7 @@ import {
   Sparkles,
   Loader,
   SlidersHorizontal,
+  Tag,
 } from "lucide-react"
 import { useOrg } from "@/lib/org-context"
 import { useAdmin } from "@/lib/admin-context"
@@ -65,6 +66,7 @@ function buildMoreItems(activeOrgId: string | undefined, accountType: AccountTyp
   const usersHref = activeOrgId ? `/organizations/${activeOrgId}/members` : "/organizations"
   const items: (MoreItem | false)[] = [
     accountTypeAllows(accountType, "members") && { labelKey: "nav.users", href: usersHref, icon: UserPlus },
+    { labelKey: "nav.categories", href: "/categories", icon: Tag },
     { labelKey: "nav.organizations", href: "/organizations", icon: Building2 },
     { labelKey: "nav.subscription", href: "/subscription", icon: CreditCard },
     { labelKey: "nav.trash", href: "/trash", icon: Trash2 },

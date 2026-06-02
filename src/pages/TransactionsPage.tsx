@@ -6,6 +6,7 @@ import { apiGet, apiPost, apiPatch, apiDelete } from "@/lib/api"
 import type { Client, Transaction, TransactionAttachment } from "@/lib/types"
 import { useCurrency } from "@/lib/currency-context"
 import { useOrg } from "@/lib/org-context"
+import { useCategories } from "@/lib/use-categories"
 import { canDeleteRole } from "@/lib/roles"
 import { useMultiSelect } from "@/lib/use-multi-select"
 import { useLongPress } from "@/lib/use-long-press"
@@ -41,25 +42,6 @@ type TxForm = {
   description: string
   category: string
   date: string
-}
-
-const DEFAULT_CATEGORIES = {
-  incoming: ["Payment", "Retainer", "Project Fee", "Consultation", "Other"],
-  outgoing: ["Hosting", "Design", "Development", "Advertising", "Salary", "Software", "Travel", "Taxes", "Miscellaneous"],
-}
-
-const CATEGORIES_STORAGE_KEY = "ps_categories"
-
-function loadCategories(): { incoming: string[]; outgoing: string[] } {
-  try {
-    const stored = localStorage.getItem(CATEGORIES_STORAGE_KEY)
-    if (stored) return JSON.parse(stored)
-  } catch { /* localStorage unavailable or corrupt — fall back to defaults */ }
-  return { incoming: [...DEFAULT_CATEGORIES.incoming], outgoing: [...DEFAULT_CATEGORIES.outgoing] }
-}
-
-function saveCategories(cats: { incoming: string[]; outgoing: string[] }) {
-  try { localStorage.setItem(CATEGORIES_STORAGE_KEY, JSON.stringify(cats)) } catch { /* ignore storage quota/availability errors */ }
 }
 
 const PAGE_SIZE = 20
@@ -398,15 +380,39 @@ export function TransactionsPage() {
     setDateTo("")
   }
 
-  const [categories, setCategories] = useState<{ incoming: string[]; outgoing: string[] }>(loadCategories)
+  // Categories are now org-scoped and managed server-side (see /categories).
+  const { categories: catRows, byType: categories, refresh: refreshCats } = useCategories()
 
-  const handleChangeCats = useCallback((type: "incoming" | "outgoing", cats: string[]) => {
-    setCategories((prev) => {
-      const next = { ...prev, [type]: cats }
-      saveCategories(next)
-      return next
-    })
-  }, [])
+  // The picker emits the full desired name list for a type; diff it against the
+  // server state and apply the minimal create/rename/delete. A single
+  // swap (one added + one removed, same length) is treated as a rename so the
+  // matching transactions' stored category text is updated too.
+  const handleChangeCats = useCallback(
+    async (type: "incoming" | "outgoing", names: string[]) => {
+      const token = await getToken()
+      if (!token) return
+      const current = catRows.filter((c) => c.type === type)
+      const currentNames = current.map((c) => c.name)
+      const added = names.filter((n) => !currentNames.includes(n))
+      const removed = currentNames.filter((n) => !names.includes(n))
+      try {
+        if (added.length === 1 && removed.length === 1 && names.length === currentNames.length) {
+          const cat = current.find((c) => c.name === removed[0])
+          if (cat) await apiPatch(`/api/categories/${cat.id}`, token, { name: added[0] })
+        } else {
+          for (const n of added) await apiPost("/api/categories", token, { name: n, type })
+          for (const n of removed) {
+            const cat = current.find((c) => c.name === n)
+            if (cat) await apiDelete(`/api/categories/${cat.id}`, token)
+          }
+        }
+        await refreshCats()
+      } catch {
+        toast.error("Failed to update categories")
+      }
+    },
+    [getToken, catRows, refreshCats],
+  )
 
   const [addOpen, setAddOpen] = useState(false)
   const [editOpen, setEditOpen] = useState(false)

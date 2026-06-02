@@ -18,6 +18,16 @@ export type Client = {
   attachment_count?: number
 }
 
+export type Category = {
+  id: string
+  organization_id: string
+  name: string
+  type: "incoming" | "outgoing"
+  color: string
+  created_at: string
+  updated_at: string
+}
+
 // Editable metadata shared by all attachment kinds (see the attachment tables).
 export type AttachmentMeta = {
   display_name?: string | null

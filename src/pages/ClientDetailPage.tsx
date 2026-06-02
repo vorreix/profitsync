@@ -4,6 +4,7 @@ import { useAuth } from "@clerk/clerk-react"
 import { apiGet, apiPost, apiPatch, apiDelete } from "@/lib/api"
 import type { Client, Transaction } from "@/lib/types"
 import { useCurrency } from "@/lib/currency-context"
+import { useCategories } from "@/lib/use-categories"
 import { ACCEPT_ATTR, attachmentsListPath, uploadAttachment, validateFile } from "@/lib/attachments-client"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -25,8 +26,6 @@ type NewTransaction = { type: "incoming" | "outgoing"; amount: string; descripti
 type NewClient = { name: string; company: string; email: string; phone: string; status: "active" | "inactive" | "archived"; notes: string; onboard_date?: string | null }
 
 const defaultTxForm: NewTransaction = { type: "incoming", amount: "", description: "", category: "", date: new Date().toISOString().split("T")[0] }
-const CATEGORIES_IN = ["Payment", "Retainer", "Project Fee", "Consultation", "Other"]
-const CATEGORIES_OUT = ["Hosting", "Design", "Development", "Advertising", "Salary", "Software", "Travel", "Taxes", "Miscellaneous"]
 
 const formatDate = (dateStr: string) => new Date(dateStr).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
 
@@ -36,6 +35,14 @@ export function ClientDetailPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const { getToken } = useAuth()
   const { currency } = useCurrency()
+  const { byType: categoriesByType } = useCategories()
+  // Org-managed category names for the given type, always including the current
+  // value so an existing transaction's label stays visible even if it was later
+  // removed from the managed list.
+  const catOptions = (type: "incoming" | "outgoing", current: string) => {
+    const base = type === "incoming" ? categoriesByType.incoming : categoriesByType.outgoing
+    return current && !base.includes(current) ? [current, ...base] : base
+  }
   const formatCurrency = (amount: number) => new Intl.NumberFormat("en-US", { style: "currency", currency, minimumFractionDigits: 2 }).format(amount)
   const [client, setClient] = useState<Client | null>(null)
   const [transactions, setTransactions] = useState<Transaction[]>([])
@@ -342,7 +349,7 @@ export function ClientDetailPage() {
                 <Label>Category</Label>
                 <Select value={txForm.category} onValueChange={(v) => setTxForm((f) => ({ ...f, category: v }))}>
                   <SelectTrigger className="w-full"><SelectValue placeholder="Select..." /></SelectTrigger>
-                  <SelectContent>{(txForm.type === "incoming" ? CATEGORIES_IN : CATEGORIES_OUT).map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+                  <SelectContent>{catOptions(txForm.type, txForm.category).map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
               <div className="space-y-1.5">
@@ -408,7 +415,7 @@ export function ClientDetailPage() {
                   <Label>Category</Label>
                   <Select value={editTxForm.category} onValueChange={(v) => setEditTxForm((f) => f ? { ...f, category: v } : null)}>
                     <SelectTrigger className="w-full"><SelectValue placeholder="Select..." /></SelectTrigger>
-                    <SelectContent>{(editTxForm.type === "incoming" ? CATEGORIES_IN : CATEGORIES_OUT).map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+                    <SelectContent>{catOptions(editTxForm.type, editTxForm.category).map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-1.5">
