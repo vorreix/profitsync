@@ -94,6 +94,19 @@ Also fixed in my new code: `change-plan.ts` env fallback uses `defaultDodoEnv()`
 `live`); `sync.ts` query `.limit(1)`; webhook invoice insert sets `issuedAt` from the payment's
 `created_at` (so a later reconcile doesn't rewrite it).
 
+## Follow-up fixes (round 2)
+
+- **Duplicate invoices.** Returning from checkout fired two concurrent reconciles (mount `load()`
+  + the `?dodo=return` sync), each doing check-then-insert with no unique constraint → two invoice
+  rows for one payment (observed 9–34 ms apart). Fix: unique index on `invoices.provider_invoice_id`
+  (NULLs distinct, so non-Dodo invoices are unaffected) + atomic `onConflictDoUpdate` in both
+  `reconcileInvoices` and the webhook; `migration 0012` dedupes existing rows then adds the index;
+  `SubscriptionPage` skips the mount load on the return path. Verified: 2 concurrent reconciles → 1 row.
+- **change-plan 502.** Dodo rejects `do_not_bill` with `effective_at: next_billing_date`
+  (`INVALID_PRORATION_MODE_WITH_NEXT_BILLING_DATE`). Only `full_immediately` is allowed there. Fixed.
+  Empirically verified on a real TEST sub: call succeeds, **no charge today** (payment count
+  unchanged), `scheduled_change` correctly set to the yearly product effective at the next billing date.
+
 ## Verification
 - `npm run typecheck`, `npm run lint`, `npm run test:ci` (43 tests incl. new invoice-map + isPaidPlanKey).
 - Live integration script against Dodo TEST: `getSubscription` (period start/end) + `listPayments`

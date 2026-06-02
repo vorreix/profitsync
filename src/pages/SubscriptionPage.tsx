@@ -187,6 +187,9 @@ export function SubscriptionPage() {
   }
 
   useEffect(() => {
+    // On the checkout-return path, the dedicated effect below runs sync + load;
+    // skip the initial load here so the two don't reconcile concurrently.
+    if (new URLSearchParams(window.location.search).get("dodo") === "return") return
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [getToken, activeOrg?.id])

@@ -59,13 +59,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    // Schedule at the next billing date with no immediate charge — the new cycle
-    // is billed when the current period ends.
+    // Schedule at the next billing date: the customer keeps their current plan
+    // until the period ends, then the new cycle's full price is charged — no
+    // charge today. Dodo requires `full_immediately` with `next_billing_date`
+    // (it rejects every other proration mode for a scheduled change).
     await changePlan({
       subscriptionId: sub.providerSubscriptionId,
       productId,
       quantity: 1,
-      prorationBillingMode: "do_not_bill",
+      prorationBillingMode: "full_immediately",
       effectiveAt: "next_billing_date",
       metadata: { organization_id: ctx.orgId, plan_key: sub.planKey, billing_cycle: target },
       env,

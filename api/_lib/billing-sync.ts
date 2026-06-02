@@ -63,15 +63,13 @@ export async function reconcileInvoices(
         organizationId: sub.organizationId,
         subscriptionId: sub.id,
       })
-      const [existing] = await db
-        .select({ id: invoices.id })
-        .from(invoices)
-        .where(eq(invoices.providerInvoiceId, payment.payment_id))
-      if (existing) {
-        await db.update(invoices).set(values).where(eq(invoices.id, existing.id))
-      } else {
-        await db.insert(invoices).values(values)
-      }
+      // Atomic upsert keyed by the Dodo payment id — concurrent reconcile/webhook
+      // writes for the same payment collapse to one row instead of racing
+      // check-then-insert (which produced duplicate invoices).
+      await db
+        .insert(invoices)
+        .values(values)
+        .onConflictDoUpdate({ target: invoices.providerInvoiceId, set: values })
       written += 1
     }
     return written
