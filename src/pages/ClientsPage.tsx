@@ -5,8 +5,14 @@ import { useTranslation } from "react-i18next"
 import { apiGet, apiPost } from "@/lib/api"
 import type { Client } from "@/lib/types"
 import { useCurrency } from "@/lib/currency-context"
+import { useOrg } from "@/lib/org-context"
+import { canDeleteRole } from "@/lib/roles"
+import { useMultiSelect } from "@/lib/use-multi-select"
+import { useLongPress } from "@/lib/use-long-press"
+import { BulkActionBar } from "@/components/BulkActionBar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -29,7 +35,7 @@ import {
 import { toast } from "sonner"
 import {
   Plus, Users, Building2, Mail, Phone, ChevronRight,
-  TrendingUp, TrendingDown, DollarSign, LayoutGrid, LayoutList,
+  TrendingUp, TrendingDown, DollarSign, LayoutGrid, LayoutList, CheckSquare,
 } from "lucide-react"
 import { ExpandableSearch } from "@/components/ExpandableSearch"
 import { FilterSheet, FilterSection } from "@/components/filters/FilterSheet"
@@ -68,6 +74,11 @@ export function ClientsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const { getToken } = useAuth()
   const { currency } = useCurrency()
+  const { activeOrg } = useOrg()
+  const canDelete = canDeleteRole(activeOrg?.role)
+  const sel = useMultiSelect()
+  const longPress = useLongPress()
+  const [bulkDeleting, setBulkDeleting] = useState(false)
   const formatCurrency = (n: number) =>
     new Intl.NumberFormat("en-US", { style: "currency", currency, minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n)
 
@@ -171,6 +182,29 @@ export function ClientsPage() {
 
   const remaining = total - clients.length
 
+  // The own/internal client can't be deleted, so it's never selectable.
+  const selectableIds = clients.filter((c) => !c.is_own).map((c) => c.id)
+  const allSelected = selectableIds.length > 0 && selectableIds.every((id) => sel.isSelected(id))
+
+  async function handleBulkDelete() {
+    if (sel.count === 0) return
+    setBulkDeleting(true)
+    try {
+      const token = await getToken()
+      if (!token) throw new Error("Not authenticated")
+      const { deleted } = await apiPost<{ deleted: number }>("/api/clients/bulk-delete", token, {
+        ids: sel.selectedIds,
+      })
+      toast.success(t("multiSelect.deleted", { count: deleted }))
+      sel.exitSelection()
+      fetchPage1()
+    } catch {
+      toast.error(t("multiSelect.deleteFailed"))
+    } finally {
+      setBulkDeleting(false)
+    }
+  }
+
   return (
     <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
       {/* Header — on mobile the search + filter sit right next to "+ New"
@@ -204,6 +238,17 @@ export function ClientsPage() {
               </Select>
             </FilterSection>
           </FilterSheet>
+          {canDelete && clients.length > 0 && (
+            <Button
+              variant={sel.selectionMode ? "secondary" : "outline"}
+              size="sm"
+              className="hidden sm:inline-flex shrink-0 h-9"
+              onClick={() => (sel.selectionMode ? sel.exitSelection() : sel.enterSelection())}
+            >
+              <CheckSquare className="size-4" />
+              {t("multiSelect.select")}
+            </Button>
+          )}
           <div className="hidden sm:flex items-center border rounded-md overflow-hidden shrink-0">
             <Button
               variant={viewMode === "grid" ? "secondary" : "ghost"}
@@ -254,14 +299,30 @@ export function ClientsPage() {
         <>
           {viewMode === "grid" ? (
             <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-              {clients.map((client) => (
+              {clients.map((client) => {
+                const selectable = canDelete && !client.is_own
+                return (
                 <Card
                   key={client.id}
-                  className="cursor-pointer hover:shadow-md transition-shadow group py-0"
-                  onClick={() => navigate(`/clients/${client.id}`)}
+                  className={`cursor-pointer hover:shadow-md transition-shadow group py-0 ${sel.isSelected(client.id) ? "ring-2 ring-primary" : ""}`}
+                  onClick={() => {
+                    if (sel.selectionMode && selectable) { sel.toggle(client.id); return }
+                    if (longPress.didLongPress()) return
+                    navigate(`/clients/${client.id}`)
+                  }}
+                  {...(selectable ? longPress.bind(() => sel.enterSelection(client.id)) : {})}
                 >
                   <CardContent className="p-3.5 sm:p-4 space-y-2.5 sm:space-y-3">
                     <div className="flex items-start justify-between gap-2">
+                      {sel.selectionMode && selectable && (
+                        <Checkbox
+                          checked={sel.isSelected(client.id)}
+                          onClick={(e) => e.stopPropagation()}
+                          onCheckedChange={() => sel.toggle(client.id)}
+                          className="mt-0.5 shrink-0"
+                          aria-label={`Select ${client.name}`}
+                        />
+                      )}
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 flex-wrap">
                           <p className="font-semibold text-sm truncate">{client.name}</p>
@@ -331,16 +392,33 @@ export function ClientsPage() {
                     )}
                   </CardContent>
                 </Card>
-              ))}
+                )
+              })}
             </div>
           ) : (
             <div className="space-y-2">
-              {clients.map((client) => (
+              {clients.map((client) => {
+                const selectable = canDelete && !client.is_own
+                return (
                 <div
                   key={client.id}
-                  className="flex items-center gap-4 px-4 py-3 rounded-lg border bg-card cursor-pointer hover:bg-accent/50 transition-colors group"
-                  onClick={() => navigate(`/clients/${client.id}`)}
+                  className={`flex items-center gap-4 px-4 py-3 rounded-lg border bg-card cursor-pointer hover:bg-accent/50 transition-colors group ${sel.isSelected(client.id) ? "ring-2 ring-primary" : ""}`}
+                  onClick={() => {
+                    if (sel.selectionMode && selectable) { sel.toggle(client.id); return }
+                    if (longPress.didLongPress()) return
+                    navigate(`/clients/${client.id}`)
+                  }}
+                  {...(selectable ? longPress.bind(() => sel.enterSelection(client.id)) : {})}
                 >
+                  {sel.selectionMode && selectable && (
+                    <Checkbox
+                      checked={sel.isSelected(client.id)}
+                      onClick={(e) => e.stopPropagation()}
+                      onCheckedChange={() => sel.toggle(client.id)}
+                      className="shrink-0"
+                      aria-label={`Select ${client.name}`}
+                    />
+                  )}
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-medium text-sm">{client.name}</span>
@@ -385,7 +463,8 @@ export function ClientsPage() {
                   </div>
                   <ChevronRight className="size-4 text-muted-foreground shrink-0 group-hover:text-foreground transition-colors" />
                 </div>
-              ))}
+                )
+              })}
             </div>
           )}
 
@@ -491,6 +570,17 @@ export function ClientsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {sel.selectionMode && (
+        <BulkActionBar
+          count={sel.count}
+          allSelected={allSelected}
+          onToggleSelectAll={() => (allSelected ? sel.clear() : sel.selectAll(selectableIds))}
+          onDelete={handleBulkDelete}
+          onCancel={sel.exitSelection}
+          deleting={bulkDeleting}
+        />
+      )}
     </div>
   )
 }
