@@ -12,6 +12,16 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import {
   ArrowRight,
   CalendarClock,
   CalendarDays,
@@ -24,9 +34,19 @@ import {
   Info,
   Loader as Loader2,
   Receipt,
+  RotateCcw,
   ShieldOff,
   Sparkles,
 } from "lucide-react"
+
+// A pending confirmation rendered in the AlertDialog (replaces window.confirm).
+type ConfirmState = {
+  title: string
+  description: string
+  confirmLabel: string
+  destructive?: boolean
+  onConfirm: () => void
+}
 
 type Plan = {
   id: string
@@ -153,9 +173,7 @@ export function SubscriptionPage() {
   const [busy, setBusy] = useState<string | null>(null)
   const [downloading, setDownloading] = useState<string | null>(null)
   const [cycle, setCycle] = useState<"monthly" | "yearly">("monthly")
-  // When already subscribed, the plan cards are hidden behind the manage view.
-  // This reveals them again so a user in their grace period can resubscribe.
-  const [showPlans, setShowPlans] = useState(false)
+  const [confirm, setConfirm] = useState<ConfirmState | null>(null)
 
   const cycleSuffix = cycle === "yearly" ? t("perYr") : t("perMo")
 
@@ -256,15 +274,15 @@ export function SubscriptionPage() {
     }
   }
 
-  const handleCancel = async (renewDate: string | null, planName: string) => {
+  const performCancel = async (accessEndsAt: string | null) => {
     if (!activeOrg) return
-    if (!window.confirm(t("cancelConfirm", { name: planName, date: formatDate(renewDate) }))) return
     setBusy("cancel")
     try {
       const token = await getToken()
       if (!token) return
-      const result = await apiPost<{ message?: string }>("/api/billing/cancel", token, {})
-      toast.success(result.message || t("subscriptionCancelled"))
+      const result = await apiPost<{ message?: string; cancel_at?: string }>("/api/billing/cancel", token, {})
+      // The note the user asked for: confirm exactly when access ends.
+      toast.success(t("cancelScheduledToast", { date: formatDate(result.cancel_at ?? accessEndsAt) }))
       await refreshOrg()
       await load()
     } catch (err) {
@@ -274,15 +292,32 @@ export function SubscriptionPage() {
     }
   }
 
-  const handleSwitchToYearly = async () => {
+  const handleResume = async () => {
     if (!activeOrg) return
-    if (!window.confirm(t("switchConfirm"))) return
+    setBusy("resume")
+    try {
+      const token = await getToken()
+      if (!token) return
+      const result = await apiPost<{ message?: string }>("/api/billing/resume", token, {})
+      toast.success(result.message || t("resumeSuccess"))
+      await refreshOrg()
+      await load()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t("failed"))
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const performSwitchToYearly = async () => {
+    if (!activeOrg) return
     setBusy("change")
     try {
       const token = await getToken()
       if (!token) return
       const result = await apiPost<{ message?: string }>("/api/billing/change-plan", token, { cycle: "yearly" })
       toast.success(result.message || t("switchSuccess"))
+      await refreshOrg()
       await load()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : t("failed"))
@@ -345,17 +380,18 @@ export function SubscriptionPage() {
   const savingsPct = yearlySavingsPct(paidPlan)
 
   // Subscription state machine for the page layout:
-  //  - active paid plan, or a cancelled plan still inside its paid period → "manage" view (banner, no cards)
+  //  - has paid access (active / trialing / cancelling-but-still-in-period) → "manage" view (banner, no cards)
   //  - otherwise (free / pending / lapsed) → "choose a plan" view (cards)
   const isPaid = !!current && isPaidPlanKey(current.plan_key)
-  const isActivePaid = isPaid && current!.status === "active"
-  const inGracePeriod =
-    isPaid &&
-    current!.status === "cancelled" &&
-    !!current!.cancel_at &&
-    new Date(current!.cancel_at).getTime() > Date.now()
-  const manageView = isActivePaid || inGracePeriod
-  const showCards = !manageView || showPlans
+  // Scheduled to cancel at period end (Dodo keeps it active until then) — cancel_at
+  // is in the future. Reversible via Resume.
+  const isCancelling = isPaid && !!current!.cancel_at && new Date(current!.cancel_at).getTime() > Date.now()
+  const hasAccess =
+    isPaid && (current!.status === "active" || current!.status === "trialing" || isCancelling)
+  const isActivePaid = hasAccess && !isCancelling
+  const accessEndsAt = current?.cancel_at ?? null
+  const manageView = hasAccess
+  const showCards = !manageView
 
   const planForCurrent = current ? data.plans.find((p) => p.key === current.plan_key) ?? null : null
   const currentPlanName = planForCurrent ? planText(planForCurrent.name) : (current?.plan_key ?? "")
@@ -412,11 +448,17 @@ export function SubscriptionPage() {
                     </Badge>
                   </div>
                   <p className="text-sm text-muted-foreground mt-0.5">
-                    {inGracePeriod ? t("planCancelledLine") : t("planActiveLine")}
+                    {isCancelling ? t("planCancelledLine") : t("planActiveLine")}
                   </p>
                 </div>
               </div>
-              <Badge variant="outline" className="capitalize shrink-0">{current.status}</Badge>
+              {isCancelling ? (
+                <Badge variant="outline" className="shrink-0 border-amber-500/40 text-amber-700 bg-amber-500/10 dark:text-amber-300">
+                  {t("statusCancelling")}
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="capitalize shrink-0">{current.status}</Badge>
+              )}
             </div>
 
             {/* Dates: started + renews/access-ends, sourced from Dodo. */}
@@ -430,11 +472,11 @@ export function SubscriptionPage() {
                 value={formatDate(current.current_period_start)}
               />
               <Detail
-                label={inGracePeriod ? t("accessUntil") : t("renews")}
+                label={isCancelling ? t("accessUntil") : t("renews")}
                 value={
                   <span className="inline-flex items-center gap-1.5">
                     <CalendarDays className="size-3.5 text-muted-foreground" />
-                    {formatDate(inGracePeriod ? current.cancel_at : current.current_period_end)}
+                    {formatDate(isCancelling ? current.cancel_at : current.current_period_end)}
                   </span>
                 }
               />
@@ -474,8 +516,15 @@ export function SubscriptionPage() {
                 <Button
                   size="sm"
                   className="shrink-0"
-                  onClick={() => handleSwitchToYearly()}
                   disabled={busy === "change"}
+                  onClick={() =>
+                    setConfirm({
+                      title: t("switchDialogTitle"),
+                      description: t("switchDialogDesc", { pct: savingsPct }),
+                      confirmLabel: t("switchDialogConfirm"),
+                      onConfirm: performSwitchToYearly,
+                    })
+                  }
                 >
                   {busy === "change" ? <Loader2 className="size-3.5 mr-1.5 animate-spin" /> : <ArrowRight className="size-3.5 mr-1.5" />}
                   {t("switchToYearlyCta", { pct: savingsPct })}
@@ -483,7 +532,7 @@ export function SubscriptionPage() {
               </div>
             )}
 
-            {/* Cancel (active) or resubscribe (grace period). */}
+            {/* Active (not cancelling) → offer cancel. */}
             {isActivePaid && (
               <div className="space-y-2 border-t pt-4">
                 <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
@@ -494,22 +543,33 @@ export function SubscriptionPage() {
                   variant="outline"
                   size="sm"
                   className="text-destructive hover:text-destructive"
-                  onClick={() => handleCancel(current.current_period_end, currentPlanName)}
                   disabled={busy === "cancel"}
+                  onClick={() =>
+                    setConfirm({
+                      title: t("cancelDialogTitle"),
+                      description: t("cancelDialogDesc", { name: currentPlanName, date: formatDate(current.current_period_end) }),
+                      confirmLabel: t("cancelDialogConfirm"),
+                      destructive: true,
+                      onConfirm: () => performCancel(current.current_period_end),
+                    })
+                  }
                 >
                   {busy === "cancel" ? <Loader2 className="size-3.5 mr-1.5 animate-spin" /> : <ShieldOff className="size-3.5 mr-1.5" />}
                   {t("cancelSubscription")}
                 </Button>
               </div>
             )}
-            {inGracePeriod && (
-              <div className="space-y-2 border-t pt-4">
-                <p className="text-xs text-muted-foreground">
-                  {t("resubscribeNote", { date: formatDate(current.cancel_at) })}
+
+            {/* Cancelling (scheduled to end) → show the end date + let them resume. */}
+            {isCancelling && (
+              <div className="space-y-3 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
+                <p className="flex items-start gap-1.5 text-sm">
+                  <CalendarClock className="size-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                  {t("cancellingNotice", { date: formatDate(accessEndsAt) })}
                 </p>
-                <Button size="sm" onClick={() => setShowPlans(true)}>
-                  <Sparkles className="size-3.5 mr-1.5" />
-                  {t("resubscribe")}
+                <Button size="sm" onClick={handleResume} disabled={busy === "resume"}>
+                  {busy === "resume" ? <Loader2 className="size-3.5 mr-1.5 animate-spin" /> : <RotateCcw className="size-3.5 mr-1.5" />}
+                  {t("resume")}
                 </Button>
               </div>
             )}
@@ -677,6 +737,29 @@ export function SubscriptionPage() {
           </Card>
         </div>
       )}
+
+      {/* Confirmation dialog (replaces window.confirm). */}
+      <AlertDialog open={!!confirm} onOpenChange={(open) => { if (!open) setConfirm(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{confirm?.title}</AlertDialogTitle>
+            <AlertDialogDescription>{confirm?.description}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("dialogDismiss")}</AlertDialogCancel>
+            <AlertDialogAction
+              className={confirm?.destructive ? "bg-destructive text-white hover:bg-destructive/90" : undefined}
+              onClick={() => {
+                const fn = confirm?.onConfirm
+                setConfirm(null)
+                fn?.()
+              }}
+            >
+              {confirm?.confirmLabel}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

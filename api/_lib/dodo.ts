@@ -329,6 +329,18 @@ export async function cancelSubscription(
 }
 
 /**
+ * Undo a pending end-of-period cancellation: the subscription keeps renewing as
+ * usual. Clears `cancel_at_next_billing_date`. The subscription must still be
+ * active (not yet expired) for this to take effect.
+ */
+export async function resumeSubscription(subscriptionId: string, env: DodoEnv): Promise<DodoSubscription> {
+  return call<DodoSubscription>(`/subscriptions/${subscriptionId}`, env, {
+    method: "PATCH",
+    body: JSON.stringify({ cancel_at_next_billing_date: false }),
+  })
+}
+
+/**
  * Resolve the Dodo product id for a plan + billing cycle from env config.
  *
  * This is the *fallback* path: the source of truth is the plans table
