@@ -34,12 +34,13 @@ import {
 } from "@/components/ui/select"
 import { toast } from "sonner"
 import {
-  Plus, Users, Building2, Mail, Phone, ChevronRight, ChevronDown,
+  Plus, Users, Building2, Mail, Phone, ChevronRight, ChevronDown, Eye,
   TrendingUp, TrendingDown, DollarSign, LayoutGrid, LayoutList, CheckSquare, ArchiveRestore,
 } from "lucide-react"
 import { ExpandableSearch } from "@/components/ExpandableSearch"
 import { FilterSheet, FilterSection } from "@/components/filters/FilterSheet"
 import { AttachmentBadge } from "@/components/AttachmentBadge"
+import { ClientDetailSheet } from "@/components/ClientDetailSheet"
 
 type NewClient = {
   name: string
@@ -102,6 +103,7 @@ export function ClientsPage() {
   const [closedClients, setClosedClients] = useState<ClientWithStats[]>([])
   const [closedLoaded, setClosedLoaded] = useState(false)
   const [closedLoading, setClosedLoading] = useState(false)
+  const [viewClient, setViewClient] = useState<ClientWithStats | null>(null)
 
   const searchRef = useRef(search)
   const sortRef = useRef(sort)
@@ -389,7 +391,20 @@ export function ClientsPage() {
                           </div>
                         )}
                       </div>
-                      <ChevronRight className="size-4 text-muted-foreground shrink-0 mt-0.5 group-hover:text-foreground transition-colors" />
+                      {/* Mobile: an explicit "view" (eye) opens a quick details
+                          sheet; desktop keeps the chevron nav hint. */}
+                      {!sel.selectionMode && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="size-8 shrink-0 -mt-1 -mr-1 sm:hidden"
+                          aria-label={`View ${client.name}`}
+                          onClick={(e) => { e.stopPropagation(); setViewClient(client) }}
+                        >
+                          <Eye className="size-4" />
+                        </Button>
+                      )}
+                      <ChevronRight className="hidden sm:block size-4 text-muted-foreground shrink-0 mt-0.5 group-hover:text-foreground transition-colors" />
                     </div>
 
                     <div className="grid grid-cols-3 gap-2 pt-2 border-t">
@@ -674,6 +689,12 @@ export function ClientsPage() {
           deleting={bulkDeleting}
         />
       )}
+
+      <ClientDetailSheet
+        client={viewClient}
+        open={viewClient !== null}
+        onOpenChange={(o) => { if (!o) setViewClient(null) }}
+      />
     </div>
   )
 }
