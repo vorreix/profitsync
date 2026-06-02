@@ -3,16 +3,18 @@ import { desc, eq } from "drizzle-orm"
 import { db, serialize } from "../../../src/lib/db/index.js"
 import { plans, subscriptions } from "../../../src/lib/db/schema.js"
 import { requireAuth } from "../../_lib/auth.js"
-import { changePlan, defaultDodoEnv, getSubscription, isDodoConfigured, type DodoEnv } from "../../_lib/dodo.js"
-import { resolveScheduledChange } from "../../_lib/billing-sync.js"
+import { cancelScheduledChange, changePlan, defaultDodoEnv, isDodoConfigured, listPayments, type DodoEnv } from "../../_lib/dodo.js"
+import { reconcileSubscriptionFromDodo } from "../../_lib/billing-sync.js"
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 /**
  * Switch the billing cycle of an active Dodo subscription (e.g. monthly → yearly).
  *
- * The change is scheduled for the next billing date: the customer keeps their
- * current plan/price until the period ends, then the new cycle takes effect and
- * is charged — no charge today. The pending switch is stored in
- * subscriptions.scheduled_change for the UI to display.
+ * The switch takes effect immediately and the new cycle's full price is charged
+ * right away, so the payment (and its invoice) appears at once. We then reconcile
+ * from Dodo to record the new cycle + period dates and pull the fresh payment into
+ * the invoices list.
  *
  * POST body: { cycle: "monthly" | "yearly" } — the target cycle.
  */
@@ -59,33 +61,48 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    // Schedule at the next billing date: the customer keeps their current plan
-    // until the period ends, then the new cycle's full price is charged — no
-    // charge today. Dodo requires `full_immediately` with `next_billing_date`
-    // (it rejects every other proration mode for a scheduled change).
+    // Baseline payment count so we can detect the new charge below.
+    const paymentsBefore = (await listPayments(sub.providerSubscriptionId, env)).length
+
+    // A subscription can hold only one pending change; clear any leftover
+    // scheduled change first (Dodo 409s otherwise). No-op when none exists.
+    await cancelScheduledChange(sub.providerSubscriptionId, env)
+    // Switch now and bill the new cycle's full price immediately, so the customer
+    // pays for the yearly term today. effective_at: immediately permits any
+    // proration mode; full_immediately charges the full new price now.
     await changePlan({
       subscriptionId: sub.providerSubscriptionId,
       productId,
       quantity: 1,
       prorationBillingMode: "full_immediately",
-      effectiveAt: "next_billing_date",
+      effectiveAt: "immediately",
       metadata: { organization_id: ctx.orgId, plan_key: sub.planKey, billing_cycle: target },
       env,
     })
 
-    // Re-read the subscription so we capture the scheduled_change Dodo recorded.
-    const remote = await getSubscription(sub.providerSubscriptionId, env)
-    const scheduledChange = await resolveScheduledChange(remote.scheduled_change, sub.planKey)
+    // Dodo records the upgrade charge asynchronously (a few seconds), so wait for
+    // it to appear before reconciling — that way the response (and the invoices
+    // list) already includes the new payment. Best-effort: if it doesn't land in
+    // time, the self-healing invoices GET will pick it up on the next page load.
+    for (let i = 0; i < 8; i++) {
+      const now = (await listPayments(sub.providerSubscriptionId, env)).length
+      if (now > paymentsBefore) break
+      await sleep(1500)
+    }
 
+    // Reconcile the now-current state from Dodo (status, period dates) and pull the
+    // fresh charge into the invoices list, then record the new billing cycle. The
+    // switch is immediate, so there's no pending scheduled change.
+    await reconcileSubscriptionFromDodo(sub, env)
     const [updated] = await db
       .update(subscriptions)
-      .set({ scheduledChange, updatedAt: new Date() })
+      .set({ billingCycle: target, scheduledChange: null, updatedAt: new Date() })
       .where(eq(subscriptions.id, sub.id))
       .returning()
 
     return res.json({
       subscription: updated ? serialize(updated) : null,
-      message: `You'll switch to ${target} billing on your next renewal. No charge today.`,
+      message: `Switched to ${target} billing — you've been charged the ${target} price.`,
     })
   } catch (err) {
     return res.status(502).json({ error: err instanceof Error ? err.message : "Dodo Payments error" })
