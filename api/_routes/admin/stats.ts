@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { and, count, eq, isNotNull, isNull } from "drizzle-orm"
+import { and, count, eq, isNotNull, isNull, ne } from "drizzle-orm"
 import { db } from "../../../src/lib/db/index.js"
 import {
   clients,
@@ -35,7 +35,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     db
       .select({ paidSubs: count() })
       .from(subscriptions)
-      .where(and(eq(subscriptions.planKey, "premium"), eq(subscriptions.status, "active"))),
+      .where(and(ne(subscriptions.planKey, "free"), eq(subscriptions.status, "active"))),
     db.select({ paidInvoices: count() }).from(invoices).where(eq(invoices.status, "paid")),
     db.select({ clientsTotal: count() }).from(clients).where(isNull(clients.deletedAt)),
     db

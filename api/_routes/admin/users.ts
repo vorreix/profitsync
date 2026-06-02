@@ -60,7 +60,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           from subscriptions s
           inner join organization_members om on om.organization_id = s.organization_id
           where om.user_id = user_profiles.id
-            and s.plan_key = 'premium'
+            and s.plan_key <> 'free'
             and s.status = 'active'
         )`,
       })
