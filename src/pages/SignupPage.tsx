@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Link } from "react-router-dom"
 import { SignUp } from "@clerk/clerk-react"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -6,13 +6,19 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { ArrowRight, TrendingUp } from "lucide-react"
+import { InstallAppBanner } from "@/components/InstallAppBanner"
+import { initPwa } from "@/lib/pwa/register-sw"
 
 export function SignupPage() {
   const [agreed, setAgreed] = useState(false)
   const [continued, setContinued] = useState(false)
 
+  useEffect(() => {
+    initPwa()
+  }, [])
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-muted/30 p-4">
+    <div className="min-h-screen flex flex-col items-center justify-center bg-muted/30 p-4 gap-4">
       {continued ? (
         <div className="flex flex-col items-center gap-4">
           <SignUp
@@ -79,6 +85,7 @@ export function SignupPage() {
           </CardContent>
         </Card>
       )}
+      <InstallAppBanner className="w-full max-w-md" />
     </div>
   )
 }
