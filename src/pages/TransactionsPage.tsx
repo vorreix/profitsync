@@ -6,8 +6,13 @@ import { apiGet, apiPost, apiPatch, apiDelete } from "@/lib/api"
 import type { Client, Transaction, TransactionAttachment } from "@/lib/types"
 import { useCurrency } from "@/lib/currency-context"
 import { useOrg } from "@/lib/org-context"
+import { canDeleteRole } from "@/lib/roles"
+import { useMultiSelect } from "@/lib/use-multi-select"
+import { useLongPress } from "@/lib/use-long-press"
+import { BulkActionBar } from "@/components/BulkActionBar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Textarea } from "@/components/ui/textarea"
 import { FitText } from "@/components/FitText"
 import { Badge } from "@/components/ui/badge"
@@ -22,7 +27,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { toast } from "sonner"
-import { Plus, ArrowUpRight, ArrowDownRight, DollarSign, Pencil, Trash2, Paperclip, Download, X, Eye, ChevronsUpDown, Check, Tag } from "lucide-react"
+import { Plus, ArrowUpRight, ArrowDownRight, DollarSign, Pencil, Trash2, Paperclip, Download, X, Eye, ChevronsUpDown, Check, Tag, CheckSquare } from "lucide-react"
 import { ExpandableSearch } from "@/components/ExpandableSearch"
 import { FilterSheet, FilterSection } from "@/components/filters/FilterSheet"
 
@@ -350,6 +355,10 @@ export function TransactionsPage() {
   // Personal accounts have no Clients UI — the client picker is hidden and
   // transactions anchor to the workspace's single default client server-side.
   const isPersonal = activeOrg?.account_type === "personal"
+  const canDelete = canDeleteRole(activeOrg?.role)
+  const sel = useMultiSelect()
+  const longPress = useLongPress()
+  const [bulkDeleting, setBulkDeleting] = useState(false)
   const fmt = (n: number) =>
     new Intl.NumberFormat("en-US", { style: "currency", currency, minimumFractionDigits: 2 }).format(n)
 
@@ -733,6 +742,28 @@ export function TransactionsPage() {
     }
   }
 
+  const selectableIds = transactions.map((tx) => tx.id)
+  const allSelected = selectableIds.length > 0 && selectableIds.every((id) => sel.isSelected(id))
+
+  async function handleBulkDelete() {
+    if (sel.count === 0) return
+    setBulkDeleting(true)
+    try {
+      const token = await getToken()
+      if (!token) throw new Error("Not authenticated")
+      const { deleted } = await apiPost<{ deleted: number }>("/api/transactions/bulk-delete", token, {
+        ids: sel.selectedIds,
+      })
+      toast.success(t("multiSelect.deleted", { count: deleted }))
+      sel.exitSelection()
+      fetchPage1()
+    } catch {
+      toast.error(t("multiSelect.deleteFailed"))
+    } finally {
+      setBulkDeleting(false)
+    }
+  }
+
   return (
     <div className="p-3 sm:p-6 space-y-5 sm:space-y-6">
       <div className="flex items-center justify-between gap-2">
@@ -740,11 +771,24 @@ export function TransactionsPage() {
           <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">{t("transactions")}</h1>
           {!loading && <p className="text-sm text-muted-foreground mt-0.5 sm:mt-1">{t("totalCount", { count: total })}</p>}
         </div>
-        <Button onClick={() => { setForm(defaultForm()); setAddOpen(true) }} className="shrink-0">
-          <Plus className="size-4" />
-          <span className="hidden sm:inline">{t("addTransaction")}</span>
-          <span className="sm:hidden">{t("add")}</span>
-        </Button>
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          {canDelete && transactions.length > 0 && (
+            <Button
+              variant={sel.selectionMode ? "secondary" : "outline"}
+              size="sm"
+              className="hidden sm:inline-flex h-9"
+              onClick={() => (sel.selectionMode ? sel.exitSelection() : sel.enterSelection())}
+            >
+              <CheckSquare className="size-4" />
+              {t("multiSelect.select")}
+            </Button>
+          )}
+          <Button onClick={() => { setForm(defaultForm()); setAddOpen(true) }} className="shrink-0">
+            <Plus className="size-4" />
+            <span className="hidden sm:inline">{t("addTransaction")}</span>
+            <span className="sm:hidden">{t("add")}</span>
+          </Button>
+        </div>
       </div>
 
       {!loading && (
@@ -843,16 +887,31 @@ export function TransactionsPage() {
               {transactions.map((tx) => (
                 <div
                   key={tx.id}
-                  className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-3 hover:bg-muted/50 transition-colors group cursor-pointer"
-                  onClick={() => openViewModal(tx)}
+                  className={`flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-3 hover:bg-muted/50 transition-colors group cursor-pointer ${sel.isSelected(tx.id) ? "bg-primary/5" : ""}`}
+                  onClick={() => {
+                    if (sel.selectionMode) { sel.toggle(tx.id); return }
+                    if (longPress.didLongPress()) return
+                    openViewModal(tx)
+                  }}
+                  {...(canDelete ? longPress.bind(() => sel.enterSelection(tx.id)) : {})}
                 >
-                  <div className={`size-9 rounded-full flex items-center justify-center shrink-0 ${
-                    tx.type === "incoming" ? "bg-emerald-100 dark:bg-emerald-900/30" : "bg-red-100 dark:bg-red-900/30"
-                  }`}>
-                    {tx.type === "incoming"
-                      ? <ArrowUpRight className="size-4 text-emerald-600 dark:text-emerald-400" />
-                      : <ArrowDownRight className="size-4 text-red-600 dark:text-red-400" />}
-                  </div>
+                  {sel.selectionMode ? (
+                    <Checkbox
+                      checked={sel.isSelected(tx.id)}
+                      onClick={(e) => e.stopPropagation()}
+                      onCheckedChange={() => sel.toggle(tx.id)}
+                      className="shrink-0"
+                      aria-label="Select transaction"
+                    />
+                  ) : (
+                    <div className={`size-9 rounded-full flex items-center justify-center shrink-0 ${
+                      tx.type === "incoming" ? "bg-emerald-100 dark:bg-emerald-900/30" : "bg-red-100 dark:bg-red-900/30"
+                    }`}>
+                      {tx.type === "incoming"
+                        ? <ArrowUpRight className="size-4 text-emerald-600 dark:text-emerald-400" />
+                        : <ArrowDownRight className="size-4 text-red-600 dark:text-red-400" />}
+                    </div>
+                  )}
 
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 min-w-0">
@@ -890,7 +949,7 @@ export function TransactionsPage() {
                     {tx.type === "incoming" ? "+" : "−"}{fmt(Number(tx.amount))}
                   </p>
 
-                  <div className="hidden sm:flex gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className={`hidden sm:flex gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity ${sel.selectionMode ? "sm:hidden" : ""}`}>
                     <Button variant="ghost" size="icon" className="size-8 sm:size-9" onClick={(e) => { e.stopPropagation(); openViewModal(tx) }}>
                       <Eye className="size-3.5" />
                     </Button>
@@ -1146,6 +1205,17 @@ export function TransactionsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {sel.selectionMode && (
+        <BulkActionBar
+          count={sel.count}
+          allSelected={allSelected}
+          onToggleSelectAll={() => (allSelected ? sel.clear() : sel.selectAll(selectableIds))}
+          onDelete={handleBulkDelete}
+          onCancel={sel.exitSelection}
+          deleting={bulkDeleting}
+        />
+      )}
     </div>
   )
 }

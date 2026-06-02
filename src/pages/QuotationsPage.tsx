@@ -5,8 +5,14 @@ import { useTranslation } from "react-i18next"
 import { apiGet, apiPost, apiPatch, apiDelete } from "@/lib/api"
 import type { Client, Quotation, QuotationAttachment } from "@/lib/types"
 import { useCurrency } from "@/lib/currency-context"
+import { useOrg } from "@/lib/org-context"
+import { canDeleteRole } from "@/lib/roles"
+import { useMultiSelect } from "@/lib/use-multi-select"
+import { useLongPress } from "@/lib/use-long-press"
+import { BulkActionBar } from "@/components/BulkActionBar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -17,7 +23,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "sonner"
-import { Plus, FileText, Building2, Mail, Phone, UserPlus, Trash2, Pencil, ExternalLink, Calendar, Paperclip, Download, X } from "lucide-react"
+import { Plus, FileText, Building2, Mail, Phone, UserPlus, Trash2, Pencil, ExternalLink, Calendar, Paperclip, Download, X, CheckSquare } from "lucide-react"
 import { ExpandableSearch } from "@/components/ExpandableSearch"
 import { FilterSheet, FilterSection } from "@/components/filters/FilterSheet"
 
@@ -124,6 +130,11 @@ export function QuotationsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const { getToken } = useAuth()
   const { currency } = useCurrency()
+  const { activeOrg } = useOrg()
+  const canDelete = canDeleteRole(activeOrg?.role)
+  const sel = useMultiSelect()
+  const longPress = useLongPress()
+  const [bulkDeleting, setBulkDeleting] = useState(false)
   const fmt = (n: number) =>
     new Intl.NumberFormat("en-US", { style: "currency", currency, minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n)
 
@@ -435,6 +446,28 @@ export function QuotationsPage() {
 
   const remaining = total - quotations.length
 
+  const selectableIds = quotations.map((q) => q.id)
+  const allSelected = selectableIds.length > 0 && selectableIds.every((id) => sel.isSelected(id))
+
+  async function handleBulkDelete() {
+    if (sel.count === 0) return
+    setBulkDeleting(true)
+    try {
+      const token = await getToken()
+      if (!token) throw new Error("Not authenticated")
+      const { deleted } = await apiPost<{ deleted: number }>("/api/quotations/bulk-delete", token, {
+        ids: sel.selectedIds,
+      })
+      toast.success(t("multiSelect.deleted", { count: deleted }))
+      sel.exitSelection()
+      fetchPage1()
+    } catch {
+      toast.error(t("multiSelect.deleteFailed"))
+    } finally {
+      setBulkDeleting(false)
+    }
+  }
+
   return (
     <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
       {/* Header */}
@@ -447,11 +480,24 @@ export function QuotationsPage() {
             </p>
           )}
         </div>
-        <Button onClick={() => { setForm(defaultForm()); setCreateOpen(true) }} className="shrink-0">
-          <Plus className="size-4" />
-          <span className="hidden sm:inline">{t("newQuotationBtn")}</span>
-          <span className="sm:hidden">{t("newShort")}</span>
-        </Button>
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          {canDelete && quotations.length > 0 && (
+            <Button
+              variant={sel.selectionMode ? "secondary" : "outline"}
+              size="sm"
+              className="hidden sm:inline-flex h-9"
+              onClick={() => (sel.selectionMode ? sel.exitSelection() : sel.enterSelection())}
+            >
+              <CheckSquare className="size-4" />
+              {t("multiSelect.select")}
+            </Button>
+          )}
+          <Button onClick={() => { setForm(defaultForm()); setCreateOpen(true) }} className="shrink-0">
+            <Plus className="size-4" />
+            <span className="hidden sm:inline">{t("newQuotationBtn")}</span>
+            <span className="sm:hidden">{t("newShort")}</span>
+          </Button>
+        </div>
       </div>
 
       {/* Filters — status + date live inside the filter sheet to keep the
@@ -511,10 +557,28 @@ export function QuotationsPage() {
               const linkedClient = clientById(q.linked_client_id)
               const canConvert = !q.linked_client_id && (q.status === "draft" || q.status === "sent")
               return (
-                <Card key={q.id} className="group cursor-pointer hover:shadow-md transition-shadow py-0" onClick={() => openViewModal(q)}>
+                <Card
+                  key={q.id}
+                  className={`group cursor-pointer hover:shadow-md transition-shadow py-0 ${sel.isSelected(q.id) ? "ring-2 ring-primary" : ""}`}
+                  onClick={() => {
+                    if (sel.selectionMode) { sel.toggle(q.id); return }
+                    if (longPress.didLongPress()) return
+                    openViewModal(q)
+                  }}
+                  {...(canDelete ? longPress.bind(() => sel.enterSelection(q.id)) : {})}
+                >
                   <CardContent className="p-3.5 sm:p-4 space-y-2.5 sm:space-y-3">
                     {/* Top row */}
                     <div className="flex items-start justify-between gap-2">
+                      {sel.selectionMode && (
+                        <Checkbox
+                          checked={sel.isSelected(q.id)}
+                          onClick={(e) => e.stopPropagation()}
+                          onCheckedChange={() => sel.toggle(q.id)}
+                          className="mt-0.5 shrink-0"
+                          aria-label={`Select ${q.title}`}
+                        />
+                      )}
                       <div className="min-w-0 flex-1">
                         <p className="font-semibold text-sm truncate">{q.title}</p>
                         <p className="text-sm text-muted-foreground truncate">{q.prospect_name}</p>
@@ -569,6 +633,7 @@ export function QuotationsPage() {
                     </div>
 
                     {/* Actions */}
+                    {!sel.selectionMode && (
                     <div className="flex gap-2 pt-1" onClick={(e) => e.stopPropagation()}>
                       {canConvert && (
                         <Button
@@ -601,6 +666,7 @@ export function QuotationsPage() {
                         <Trash2 className="size-3.5" />
                       </Button>
                     </div>
+                    )}
                   </CardContent>
                 </Card>
               )
@@ -822,6 +888,17 @@ export function QuotationsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {sel.selectionMode && (
+        <BulkActionBar
+          count={sel.count}
+          allSelected={allSelected}
+          onToggleSelectAll={() => (allSelected ? sel.clear() : sel.selectAll(selectableIds))}
+          onDelete={handleBulkDelete}
+          onCancel={sel.exitSelection}
+          deleting={bulkDeleting}
+        />
+      )}
     </div>
   )
 }
