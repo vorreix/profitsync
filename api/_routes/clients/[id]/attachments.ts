@@ -14,6 +14,20 @@ async function verifyClientOrg(clientId: string, orgId: string): Promise<boolean
   return !!row
 }
 
+const metaFields = {
+  id: clientAttachments.id,
+  clientId: clientAttachments.clientId,
+  userId: clientAttachments.userId,
+  fileName: clientAttachments.fileName,
+  fileType: clientAttachments.fileType,
+  fileSize: clientAttachments.fileSize,
+  displayName: clientAttachments.displayName,
+  tags: clientAttachments.tags,
+  category: clientAttachments.category,
+  createdAt: clientAttachments.createdAt,
+  updatedAt: clientAttachments.updatedAt,
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ctx = await requireAuth(req, res)
   if (!ctx) return
@@ -27,15 +41,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!owned) return res.status(404).json({ error: "Not found" })
 
     const rows = await db
-      .select({
-        id: clientAttachments.id,
-        clientId: clientAttachments.clientId,
-        userId: clientAttachments.userId,
-        fileName: clientAttachments.fileName,
-        fileType: clientAttachments.fileType,
-        fileSize: clientAttachments.fileSize,
-        createdAt: clientAttachments.createdAt,
-      })
+      .select(metaFields)
       .from(clientAttachments)
       .where(eq(clientAttachments.clientId, id))
       .orderBy(desc(clientAttachments.createdAt))
@@ -73,15 +79,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         fileSize,
         fileData,
       })
-      .returning({
-        id: clientAttachments.id,
-        clientId: clientAttachments.clientId,
-        userId: clientAttachments.userId,
-        fileName: clientAttachments.fileName,
-        fileType: clientAttachments.fileType,
-        fileSize: clientAttachments.fileSize,
-        createdAt: clientAttachments.createdAt,
-      })
+      .returning(metaFields)
     return res.status(201).json(serialize(row))
   }
 

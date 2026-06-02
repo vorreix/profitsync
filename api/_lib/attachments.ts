@@ -135,6 +135,59 @@ export function validateUpload(input: {
   return { ok: true, value: { fileName, fileType: canonicalType, fileSize, byteLength } }
 }
 
+// ---------------------------------------------------------------------------
+// Editable attachment metadata (display name, tags, category). The file bytes
+// are immutable; only these user-facing labels can be PATCHed. All inputs are
+// stripped of control chars and length-capped — they're rendered as plain text
+// in the UI, never as HTML.
+// ---------------------------------------------------------------------------
+const MAX_DISPLAY_NAME_LENGTH = 200
+const MAX_TAG_LENGTH = 40
+const MAX_TAGS = 20
+const MAX_CATEGORY_LENGTH = 60
+
+export type AttachmentMetaUpdate = {
+  displayName?: string | null
+  tags?: string[]
+  category?: string
+}
+
+function cleanText(v: unknown, max: number): string {
+  return typeof v === "string" ? v.replace(CONTROL_CHARS, "").trim().slice(0, max) : ""
+}
+
+// Build a partial update from a PATCH body — only keys actually present are
+// returned, so unspecified fields are left untouched.
+export function sanitizeAttachmentMeta(input: {
+  display_name?: unknown
+  tags?: unknown
+  category?: unknown
+}): AttachmentMetaUpdate {
+  const out: AttachmentMetaUpdate = {}
+  if (input.display_name !== undefined) {
+    const cleaned = cleanText(input.display_name, MAX_DISPLAY_NAME_LENGTH)
+    out.displayName = cleaned || null
+  }
+  if (input.tags !== undefined && Array.isArray(input.tags)) {
+    const seen = new Set<string>()
+    const tags: string[] = []
+    for (const raw of input.tags) {
+      const t = cleanText(raw, MAX_TAG_LENGTH)
+      if (!t) continue
+      const key = t.toLowerCase()
+      if (seen.has(key)) continue
+      seen.add(key)
+      tags.push(t)
+      if (tags.length >= MAX_TAGS) break
+    }
+    out.tags = tags
+  }
+  if (input.category !== undefined) {
+    out.category = cleanText(input.category, MAX_CATEGORY_LENGTH)
+  }
+  return out
+}
+
 // RFC 5987 encoding for the Content-Disposition filename* parameter.
 function rfc5987(value: string): string {
   return encodeURIComponent(value).replace(

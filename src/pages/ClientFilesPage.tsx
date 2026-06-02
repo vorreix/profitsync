@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { useParams, useNavigate } from "react-router-dom"
+import { useParams, useNavigate, useSearchParams } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { toast } from "sonner"
 import {
@@ -14,6 +14,7 @@ import {
   ChevronRight,
 } from "lucide-react"
 import { ExpandableSearch } from "@/components/ExpandableSearch"
+import { AttachmentDetailModal, type AttachmentModalItem } from "@/components/AttachmentDetailModal"
 import type { Client } from "@/lib/types"
 import { useOrg } from "@/lib/org-context"
 import { apiGet, clearApiCache } from "@/lib/api"
@@ -49,6 +50,9 @@ type MediaItem = {
   file_type: string
   file_size: number
   created_at: string
+  display_name?: string | null
+  tags?: string[]
+  category?: string
 }
 
 const PAGE_SIZE = 12
@@ -93,7 +97,24 @@ export function ClientFilesPage() {
   const [to, setTo] = useState("")
   const [page, setPage] = useState(1)
   const [deleteItem, setDeleteItem] = useState<MediaItem | null>(null)
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [modalItem, setModalItem] = useState<MediaItem | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+
+  // Open the detail modal and reflect it in the URL so the view is shareable.
+  function openModal(item: MediaItem) {
+    setModalItem(item)
+    const next = new URLSearchParams(searchParams)
+    next.set("file", item.id)
+    setSearchParams(next, { replace: true })
+  }
+
+  function closeModal() {
+    setModalItem(null)
+    const next = new URLSearchParams(searchParams)
+    next.delete("file")
+    setSearchParams(next, { replace: true })
+  }
 
   const load = useCallback(async () => {
     if (!id) return
@@ -115,6 +136,17 @@ export function ClientFilesPage() {
   }, [id, getToken, navigate])
 
   useEffect(() => { load() }, [load])
+
+  // Deep link: ?file=<id> opens that attachment's modal once the list is loaded
+  // (so a pasted URL reopens the same view).
+  useEffect(() => {
+    const fileId = searchParams.get("file")
+    if (!fileId) { setModalItem(null); return }
+    if (modalItem?.id === fileId) return
+    const found = items.find((i) => i.id === fileId)
+    if (found) setModalItem(found)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, items])
 
   const filtered = useMemo(() => {
     let list = items
@@ -171,11 +203,6 @@ export function ClientFilesPage() {
       await load()
     }
     setUploading(false)
-  }
-
-  function openEntity(item: MediaItem) {
-    if (item.source === "transaction") navigate(`/transactions?view=${item.source_id}`)
-    else if (item.source === "quotation") navigate(`/quotations?view=${item.source_id}`)
   }
 
   async function download(item: MediaItem) {
@@ -291,18 +318,19 @@ export function ClientFilesPage() {
                 <li
                   key={`${item.source}-${item.id}`}
                   className="flex items-center gap-3 rounded-xl border p-3 sm:p-3.5 hover:bg-muted/40 transition-colors cursor-pointer"
-                  onClick={() => (navigable ? openEntity(item) : download(item))}
+                  onClick={() => openModal(item)}
                 >
                   <div className="size-9 sm:size-10 rounded-lg bg-muted flex items-center justify-center shrink-0">
                     <FileText className="size-4 sm:size-5 text-muted-foreground" />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium truncate">{item.file_name}</p>
+                    <p className="text-sm font-medium truncate">{item.display_name || item.file_name}</p>
                     <div className="flex items-center gap-2 flex-wrap mt-1">
                       <span className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${badge.className}`}>
                         {navigable && <ExternalLink className="size-2.5" />}
                         {badge.label}
                       </span>
+                      {item.category && <span className="rounded-full border px-1.5 py-0.5 text-[10px] text-muted-foreground">{item.category}</span>}
                       {navigable && <span className="text-xs text-muted-foreground max-w-[12rem] truncate">{item.source_label}</span>}
                       <span className="text-xs text-muted-foreground">{extOf(item.file_name)}</span>
                       <span className="text-xs text-muted-foreground">{formatSize(item.file_size)}</span>
@@ -356,6 +384,22 @@ export function ClientFilesPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <AttachmentDetailModal
+        item={modalItem as AttachmentModalItem | null}
+        open={modalItem !== null}
+        onOpenChange={(o) => { if (!o) closeModal() }}
+        canEdit={canModify}
+        canDelete={canRemove}
+        onUpdated={(updated) => {
+          setItems((prev) => prev.map((i) => (i.id === updated.id ? { ...i, display_name: updated.display_name, tags: updated.tags, category: updated.category } : i)))
+        }}
+        onDeleted={(deletedId) => {
+          setItems((prev) => prev.filter((i) => i.id !== deletedId))
+          closeModal()
+          clearApiCache()
+        }}
+      />
     </div>
   )
 }
