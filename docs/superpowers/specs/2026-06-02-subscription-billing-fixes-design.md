@@ -102,10 +102,19 @@ Also fixed in my new code: `change-plan.ts` env fallback uses `defaultDodoEnv()`
   (NULLs distinct, so non-Dodo invoices are unaffected) + atomic `onConflictDoUpdate` in both
   `reconcileInvoices` and the webhook; `migration 0012` dedupes existing rows then adds the index;
   `SubscriptionPage` skips the mount load on the return path. Verified: 2 concurrent reconciles → 1 row.
-- **change-plan 502.** Dodo rejects `do_not_bill` with `effective_at: next_billing_date`
-  (`INVALID_PRORATION_MODE_WITH_NEXT_BILLING_DATE`). Only `full_immediately` is allowed there. Fixed.
-  Empirically verified on a real TEST sub: call succeeds, **no charge today** (payment count
-  unchanged), `scheduled_change` correctly set to the yearly product effective at the next billing date.
+- **change-plan 502 → immediate charge (requirement change).** The monthly→yearly switch now happens
+  **immediately and charges the yearly price now** (per updated requirement), instead of scheduling at
+  the next renewal. Uses `effective_at: immediately` + `proration_billing_mode: full_immediately`.
+  Important Dodo behaviours found and handled:
+  - A sub can hold only one pending change → `409 SCHEDULED_PLAN_CHANGE_EXISTS`. The route calls
+    `cancelScheduledChange` (DELETE `/subscriptions/{id}/change-plan/scheduled`, 404 = no-op) first.
+  - The upgrade charge is created **asynchronously** (~3–5 s). The route polls `listPayments` (up to
+    ~12 s) for the new payment before reconciling, so the invoice is present when the response returns;
+    the self-healing invoices GET is the fallback. Empirically verified on a real TEST sub: switch →
+    yearly product, next billing +1 year, **$49 yearly charge created**, reconcile → yearly invoice
+    appears alongside the prior monthly one. UI messaging updated to "charged now / immediate".
+  - (The earlier `next_billing_date` + `do_not_bill` design 422'd; `next_billing_date` only accepts
+    `full_immediately`. Superseded by the immediate-charge requirement above.)
 
 ## Verification
 - `npm run typecheck`, `npm run lint`, `npm run test:ci` (43 tests incl. new invoice-map + isPaidPlanKey).

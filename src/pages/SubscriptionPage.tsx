@@ -274,9 +274,9 @@ export function SubscriptionPage() {
     }
   }
 
-  const handleSwitchToYearly = async (renewDate: string | null) => {
+  const handleSwitchToYearly = async () => {
     if (!activeOrg) return
-    if (!window.confirm(t("switchConfirm", { date: formatDate(renewDate) }))) return
+    if (!window.confirm(t("switchConfirm"))) return
     setBusy("change")
     try {
       const token = await getToken()
@@ -467,14 +467,14 @@ export function SubscriptionPage() {
                   <div>
                     <p className="text-sm font-medium">{t("switchToYearly")}</p>
                     <p className="text-xs text-muted-foreground">
-                      {t("switchToYearlyDesc", { pct: savingsPct, date: formatDate(current.current_period_end) })}
+                      {t("switchToYearlyDesc", { pct: savingsPct })}
                     </p>
                   </div>
                 </div>
                 <Button
                   size="sm"
                   className="shrink-0"
-                  onClick={() => handleSwitchToYearly(current.current_period_end)}
+                  onClick={() => handleSwitchToYearly()}
                   disabled={busy === "change"}
                 >
                   {busy === "change" ? <Loader2 className="size-3.5 mr-1.5 animate-spin" /> : <ArrowRight className="size-3.5 mr-1.5" />}

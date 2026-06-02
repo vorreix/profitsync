@@ -358,6 +358,21 @@ export function productIdForPlan(planKey: string, cycle: "monthly" | "yearly"): 
   return (cycle === "yearly" ? entry.yearly : entry.monthly) || null
 }
 
+/**
+ * Cancel any scheduled (future) plan change on a subscription. Dodo allows only
+ * one pending change at a time, so this is called before scheduling/applying a
+ * new one. A 404 (no scheduled change exists) is treated as success.
+ */
+export async function cancelScheduledChange(subscriptionId: string, env: DodoEnv): Promise<void> {
+  const res = await fetch(
+    `${baseFor(env)}/subscriptions/${encodeURIComponent(subscriptionId)}/change-plan/scheduled`,
+    { method: "DELETE", headers: { Authorization: authHeader(env) } },
+  )
+  if (res.ok || res.status === 404) return
+  const text = await res.text().catch(() => "")
+  throw new Error(`Dodo cancel-scheduled-change ${res.status}: ${text}`)
+}
+
 /** Map a Dodo subscription status onto our internal subscription status enum. */
 export function mapDodoStatus(dodoStatus: string): "active" | "past_due" | "cancelled" | "pending" {
   switch (dodoStatus) {
