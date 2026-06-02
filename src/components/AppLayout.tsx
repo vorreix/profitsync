@@ -56,6 +56,7 @@ import {
   ShieldCheck,
   ScrollText,
   CreditCard,
+  Tag,
   Loader as Loader2,
 } from "lucide-react"
 
@@ -102,6 +103,7 @@ function buildNavItems(activeOrgId: string | undefined, accountType: AccountType
     { labelKey: "nav.transactions", href: "/transactions", icon: ArrowLeftRight },
     accountTypeAllows(accountType, "quotations") && { labelKey: "nav.quotations", href: "/quotations", icon: FileText },
     accountTypeAllows(accountType, "members") && { labelKey: "nav.users", href: usersHref, icon: UserPlus },
+    { labelKey: "nav.categories", href: "/categories", icon: Tag },
     { labelKey: "nav.organizations", href: "/organizations", icon: Building2 },
     { labelKey: "nav.subscription", href: "/subscription", icon: CreditCard },
     { labelKey: "nav.trash", href: "/trash", icon: Trash2 },
