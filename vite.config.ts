@@ -3,9 +3,11 @@ import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
 import { defineConfig } from "vite"
 
+import { buildPwaPlugin } from "./pwa/vite-pwa"
+
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), buildPwaPlugin()],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
@@ -25,6 +27,9 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks(id) {
+          // Isolate the marketing landing page into its own chunk so it can be kept
+          // out of the PWA precache (see pwa/sw-policy.ts PRECACHE_GLOB_IGNORES).
+          if (id.includes("/src/landing/")) return "landing"
           if (!id.includes("node_modules")) return
           if (id.includes("recharts") || id.includes("d3-") || id.includes("victory-vendor")) return "charts"
           return "vendor"

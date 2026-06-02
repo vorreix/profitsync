@@ -6,6 +6,7 @@ import "./index.css"
 import "@/lib/i18n"
 import App from "./App.tsx"
 import { ThemeProvider } from "@/components/theme-provider.tsx"
+import { initPwa } from "@/lib/pwa/register-sw"
 
 const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY
 
@@ -22,3 +23,6 @@ createRoot(document.getElementById("root")!).render(
     </ClerkProvider>
   </StrictMode>
 )
+
+// Register the PWA service worker (no-op on the landing page and other pre-auth routes).
+initPwa()

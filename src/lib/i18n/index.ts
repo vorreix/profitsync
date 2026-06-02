@@ -20,7 +20,7 @@ export const LANGUAGE_STORAGE_KEY = "profitsync-language"
 // still resolve shared keys like `common.*`.
 const PAGE_NAMESPACES = [
   "clients", "transactions", "quotations", "organizations", "members",
-  "trash", "subscription", "billing", "theme", "plan", "planGlossary",
+  "trash", "subscription", "billing", "theme", "plan", "planGlossary", "pwa",
 ] as const
 
 type Locale = Record<string, ResourceLanguage[string]>
