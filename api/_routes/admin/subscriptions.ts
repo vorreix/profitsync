@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { and, count, desc, eq, ilike, sql } from "drizzle-orm"
 import { db, serialize } from "../../../src/lib/db/index.js"
 import { organizations, subscriptions, userProfiles } from "../../../src/lib/db/schema.js"
-import { requireAdmin } from "../../_lib/admin.js"
+import { requireAdminCap } from "../../_lib/admin.js"
 
 const PAGE_SIZE = 30
 // free + the current paid tiers (personal/business). "premium" kept for legacy rows.
@@ -11,8 +11,9 @@ const VALID_STATUSES = ["active", "past_due", "cancelled", "trialing"]
 const VALID_CYCLES = ["monthly", "yearly", ""] // empty allowed for free
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const adminId = await requireAdmin(req, res)
-  if (!adminId) return
+  const ctx = await requireAdminCap(req, res, req.method === "GET" ? "read" : "write")
+  if (!ctx) return
+  const adminId = ctx.userId
 
   if (req.method === "GET") {
     const { search, plan, status, page } = req.query as {

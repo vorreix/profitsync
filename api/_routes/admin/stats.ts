@@ -9,11 +9,12 @@ import {
   transactions,
   userProfiles,
 } from "../../../src/lib/db/schema.js"
-import { requireAdmin } from "../../_lib/admin.js"
+import { requireAdminCap } from "../../_lib/admin.js"
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const userId = await requireAdmin(req, res)
-  if (!userId) return
+  const ctx = await requireAdminCap(req, res, "read")
+  if (!ctx) return
+  const userId = ctx.userId
   if (req.method !== "GET") return res.status(405).json({ error: "Method not allowed" })
 
   const [

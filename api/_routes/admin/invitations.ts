@@ -8,7 +8,7 @@ import {
   organizations,
   userProfiles,
 } from "../../../src/lib/db/schema.js"
-import { requireAdmin } from "../../_lib/admin.js"
+import { requireAdminCap } from "../../_lib/admin.js"
 
 const VALID_ROLES = ["admin", "editor", "viewer"]
 
@@ -17,8 +17,9 @@ function generateToken(): string {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const adminId = await requireAdmin(req, res)
-  if (!adminId) return
+  const ctx = await requireAdminCap(req, res, req.method === "GET" ? "read" : "write")
+  if (!ctx) return
+  const adminId = ctx.userId
 
   if (req.method === "GET") {
     const { organization_id } = req.query as { organization_id?: string }

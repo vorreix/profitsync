@@ -7,13 +7,14 @@ import {
   organizations,
   userProfiles,
 } from "../../../src/lib/db/schema.js"
-import { requireAdmin } from "../../_lib/admin.js"
+import { requireAdminCap } from "../../_lib/admin.js"
 
 const PAGE_SIZE = 30
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const adminId = await requireAdmin(req, res)
-  if (!adminId) return
+  const ctx = await requireAdminCap(req, res, req.method === "GET" ? "read" : "write")
+  if (!ctx) return
+  const adminId = ctx.userId
 
   if (req.method === "GET") {
     const { search, page, banned } = req.query as { search?: string; page?: string; banned?: string }

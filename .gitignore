@@ -29,3 +29,6 @@ dist-ssr
 .playwright-mcp
 .mcp.json
 
+task1-admin-roles.png
+task*.png
+.playwright-mcp/
