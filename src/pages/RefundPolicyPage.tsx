@@ -56,7 +56,7 @@ export function RefundPolicyPage() {
 
       <h2>8. How to request a refund</h2>
       <p>
-        Email <a href="mailto:support@profitsync.net">support@profitsync.net</a> from the address associated with
+        Email <a href="mailto:hello@profitsync.app">hello@profitsync.app</a> from the address associated with
         your account, including the charge date and amount. We aim to respond within 3 business days. Approved
         refunds are processed by Dodo Payments and may take several business days to appear, depending on your
         bank or card issuer.
