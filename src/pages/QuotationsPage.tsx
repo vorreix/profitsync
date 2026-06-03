@@ -27,6 +27,7 @@ import { Plus, FileText, Building2, Mail, Phone, UserPlus, Trash2, Pencil, Exter
 import { ExpandableSearch } from "@/components/ExpandableSearch"
 import { FilterSheet, FilterSection } from "@/components/filters/FilterSheet"
 import { AttachmentBadge } from "@/components/AttachmentBadge"
+import { CategoryPicker } from "@/components/CategoryPicker"
 
 type QuotationForm = {
   title: string
@@ -37,6 +38,7 @@ type QuotationForm = {
   amount: string
   status: "draft" | "sent" | "accepted" | "rejected"
   notes: string
+  category: string
 }
 
 const defaultForm = (): QuotationForm => ({
@@ -48,6 +50,7 @@ const defaultForm = (): QuotationForm => ({
   amount: "",
   status: "draft",
   notes: "",
+  category: "",
 })
 
 const STATUS_COLORS: Record<string, string> = {
@@ -116,6 +119,10 @@ function QuotationFormFields({
             ))}
           </SelectContent>
         </Select>
+      </div>
+      <div className="space-y-1.5">
+        <Label>{t("filters.category")}</Label>
+        <CategoryPicker type="quotation" value={f.category} onChange={(v) => onChange({ category: v })} />
       </div>
       <div className="space-y-1.5">
         <Label>{t("notesLabel")}</Label>
@@ -626,6 +633,7 @@ export function QuotationsPage() {
                       <div className="min-w-0 flex-1">
                         <p className="font-semibold text-sm truncate">{q.title}</p>
                         <p className="text-sm text-muted-foreground truncate">{q.prospect_name}</p>
+                        {q.category && <Badge variant="outline" className="mt-1 text-[10px]">{q.category}</Badge>}
                       </div>
                       <span className={`text-xs font-medium px-2 py-0.5 rounded-full shrink-0 ${STATUS_COLORS[q.status] ?? ""}`}>
                         {q.status.charAt(0).toUpperCase() + q.status.slice(1)}
@@ -696,7 +704,7 @@ export function QuotationsPage() {
                         variant="ghost"
                         className="size-8 p-0 shrink-0"
                         onClick={() => {
-                          setForm({ title: q.title, prospect_name: q.prospect_name, company: q.company, email: q.email, phone: q.phone, amount: q.amount, status: q.status, notes: q.notes })
+                          setForm({ title: q.title, prospect_name: q.prospect_name, company: q.company, email: q.email, phone: q.phone, amount: q.amount, status: q.status, notes: q.notes, category: q.category ?? "" })
                           setEditTarget(q)
                         }}
                       >
@@ -897,7 +905,7 @@ export function QuotationsPage() {
                 </Button>
                 <Button variant="outline" onClick={() => {
                   setViewTarget(null)
-                  setForm({ title: viewTarget.title, prospect_name: viewTarget.prospect_name, company: viewTarget.company, email: viewTarget.email, phone: viewTarget.phone, amount: viewTarget.amount, status: viewTarget.status, notes: viewTarget.notes })
+                  setForm({ title: viewTarget.title, prospect_name: viewTarget.prospect_name, company: viewTarget.company, email: viewTarget.email, phone: viewTarget.phone, amount: viewTarget.amount, status: viewTarget.status, notes: viewTarget.notes, category: viewTarget.category ?? "" })
                   setEditTarget(viewTarget)
                 }}>
                   <Pencil className="size-3.5" />

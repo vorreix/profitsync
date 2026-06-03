@@ -32,6 +32,8 @@ export function useCategories() {
     () => ({
       incoming: categories.filter((c) => c.type === "incoming").map((c) => c.name),
       outgoing: categories.filter((c) => c.type === "outgoing").map((c) => c.name),
+      client: categories.filter((c) => c.type === "client").map((c) => c.name),
+      quotation: categories.filter((c) => c.type === "quotation").map((c) => c.name),
     }),
     [categories],
   )

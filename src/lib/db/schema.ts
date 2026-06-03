@@ -65,6 +65,7 @@ export const clients = pgTable("clients", {
   phone: text("phone").default(""),
   status: text("status").default("active"),
   notes: text("notes").default(""),
+  category: text("category").notNull().default(""), // optional category label (type "client")
   // The workspace's own/internal client — the company (or person) itself. Used to
   // record own expenses (rent, utilities, salaries). Exactly one per org; shown
   // first and badged distinctly in lists/pickers. Personal orgs use it as their
@@ -128,6 +129,7 @@ export const quotations = pgTable("quotations", {
   amount: numeric("amount", { precision: 12, scale: 2 }).default("0"),
   status: text("status").default("draft"), // draft | sent | accepted | rejected
   notes: text("notes").default(""),
+  category: text("category").notNull().default(""), // optional category label (type "quotation")
   linkedClientId: uuid("linked_client_id"), // set when converted to a client
   deletedAt: timestamp("deleted_at"),
   // When set, the quotation is "closed": excluded from the default list, shown in
