@@ -78,6 +78,7 @@ function buildMoreItems(activeOrgId: string | undefined, accountType: AccountTyp
     { labelKey: "nav.profile", href: "/profile", icon: User },
     { labelKey: "nav.privacyPolicy", href: "/privacy-policy", icon: ShieldCheck },
     { labelKey: "nav.termsOfService", href: "/terms-of-service", icon: ScrollText },
+    { labelKey: "nav.refundPolicy", href: "/refund-policy", icon: ScrollText },
   ]
   return items.filter((i): i is MoreItem => i !== false)
 }
