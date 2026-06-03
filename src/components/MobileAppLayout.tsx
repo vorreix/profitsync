@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { Outlet, NavLink, useLocation, useNavigate } from "react-router-dom"
-import { useUser, useClerk } from "@clerk/clerk-react"
+import { useUser, useClerk, useAuth } from "@clerk/clerk-react"
+import { toast } from "sonner"
 import {
   LayoutDashboard,
   Users,
@@ -31,8 +32,20 @@ import {
 import { useOrg } from "@/lib/org-context"
 import { useAdmin } from "@/lib/admin-context"
 import { usePageFilterState } from "@/lib/page-filter-context"
-import { accountTypeAllows, isPaidPlanKey, type AccountType } from "@/lib/types"
+import { apiPost } from "@/lib/api"
+import { detectDefaultCurrency } from "@/lib/currencies"
+import { accountTypeAllows, isPaidPlanKey, type AccountType, type Organization } from "@/lib/types"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { CurrencyCombobox } from "@/components/CurrencyCombobox"
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import {
   DropdownMenu,
@@ -122,11 +135,16 @@ export function MobileAppLayout() {
   const location = useLocation()
   const { user } = useUser()
   const { signOut } = useClerk()
+  const { getToken } = useAuth()
   const { activeOrg, orgs, switchOrg, refresh, loading: orgLoading } = useOrg()
   const { isAdmin } = useAdmin()
   const [orgSheetOpen, setOrgSheetOpen] = useState(false)
   const [moreOpen, setMoreOpen] = useState(false)
   const [fabOpen, setFabOpen] = useState(false)
+  const [createOpen, setCreateOpen] = useState(false)
+  const [newName, setNewName] = useState("")
+  const [newCurrency, setNewCurrency] = useState("USD")
+  const [creating, setCreating] = useState(false)
   const pageFilter = usePageFilterState()
 
   // Close the quick-actions menu on any navigation.
@@ -147,6 +165,37 @@ export function MobileAppLayout() {
   const handleLogout = async () => {
     await signOut()
     navigate("/login")
+  }
+
+  const openCreate = () => {
+    // Default to the active org's currency (most likely pick), else a geo default.
+    setNewCurrency(activeOrg?.currency || detectDefaultCurrency())
+    setNewName("")
+    setOrgSheetOpen(false)
+    setCreateOpen(true)
+  }
+
+  const handleCreate = async () => {
+    if (!newName.trim()) return
+    setCreating(true)
+    try {
+      const token = await getToken()
+      if (!token) throw new Error("Not authenticated")
+      const created = await apiPost<Organization>("/api/organizations", token, {
+        name: newName.trim(),
+        currency: newCurrency,
+      })
+      toast.success(t("organizations.organizationCreated"))
+      setCreateOpen(false)
+      setNewName("")
+      await switchOrg(created.id)
+      await refresh()
+      navigate("/dashboard")
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t("organizations.failedToCreateOrganization"))
+    } finally {
+      setCreating(false)
+    }
   }
 
   const accountType = activeOrg?.account_type
@@ -247,7 +296,7 @@ export function MobileAppLayout() {
                     </button>
                   )}
                   <button
-                    onClick={() => { setOrgSheetOpen(false); navigate("/organizations") }}
+                    onClick={openCreate}
                     className="w-full flex items-center gap-3 p-3 rounded-lg pressable hover:bg-accent text-left"
                   >
                     <Plus className="size-4" />
@@ -264,6 +313,44 @@ export function MobileAppLayout() {
               </ScrollArea>
             </SheetContent>
           </Sheet>
+
+          <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>{t("organizations.createOrganization")}</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4 py-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="mobile-create-org-name">{t("organizations.name")}</Label>
+                  <Input
+                    id="mobile-create-org-name"
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    placeholder={t("organizations.acmeIncPlaceholder")}
+                    onKeyDown={(e) => { if (e.key === "Enter") handleCreate() }}
+                    disabled={creating}
+                    autoFocus
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>{t("organizations.currency")}</Label>
+                  <CurrencyCombobox value={newCurrency} onValueChange={setNewCurrency} disabled={creating} />
+                  <p className="text-[11px] text-muted-foreground">
+                    {t("organizations.currencyUsedForFormatting")}
+                  </p>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="ghost" onClick={() => setCreateOpen(false)} disabled={creating}>
+                  {t("organizations.cancel")}
+                </Button>
+                <Button onClick={handleCreate} disabled={!newName.trim() || creating}>
+                  {creating ? <Loader className="size-4 mr-2 animate-spin" /> : <Plus className="size-4 mr-2" />}
+                  {t("organizations.create")}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
 
           <InstallButton
             label={null}
