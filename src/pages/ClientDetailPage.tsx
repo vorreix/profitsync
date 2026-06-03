@@ -19,7 +19,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "sonner"
-import { ArrowLeft, Plus, Trash2, DollarSign, Building2, Mail, Phone, FileText, ArrowUpRight, ArrowDownRight, Pencil, Calendar, Paperclip, Upload, X, FolderOpen } from "lucide-react"
+import { ArrowLeft, Plus, Trash2, DollarSign, Building2, Mail, Phone, FileText, ArrowUpRight, ArrowDownRight, Pencil, Calendar, Paperclip, Upload, X, FolderOpen, Archive, ArchiveRestore } from "lucide-react"
 import { ExpandableSearch } from "@/components/ExpandableSearch"
 
 type NewTransaction = { type: "incoming" | "outgoing"; amount: string; description: string; category: string; date: string }
@@ -178,6 +178,20 @@ export function ClientDetailPage() {
     }
   }
 
+  const handleToggleClosed = async () => {
+    if (!client) return
+    const closing = !client.closed_at
+    try {
+      const token = await getToken()
+      if (!token) throw new Error("Not authenticated")
+      await apiPatch(`/api/clients/${client.id}`, token, { closed: closing })
+      toast.success(closing ? "Client closed" : "Client reopened")
+      loadData()
+    } catch {
+      toast.error("Action failed")
+    }
+  }
+
   const handleDelete = async () => {
     if (!deleteId || !deleteType) return
     try {
@@ -220,6 +234,7 @@ export function ClientDetailPage() {
             <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
               <h1 className="text-xl sm:text-2xl font-semibold tracking-tight truncate">{client.name}</h1>
               <Badge variant={client.status === "active" ? "default" : "secondary"}>{client.status}</Badge>
+              {client.closed_at && <Badge variant="outline" className="border-amber-500/40 text-amber-600 dark:text-amber-300">Closed</Badge>}
             </div>
             <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-4 mt-1.5 flex-wrap">
               {client.company && <span className="flex items-center gap-1.5 text-sm text-muted-foreground min-w-0"><Building2 className="size-3.5 shrink-0" /><span className="truncate">{client.company}</span></span>}
@@ -233,6 +248,9 @@ export function ClientDetailPage() {
           {/* Actions — kept in the client-name row on every breakpoint to save
               vertical space on mobile (icon-only there, labelled on desktop). */}
           <div className="flex gap-1.5 sm:gap-2 shrink-0">
+            <Button variant="outline" size="icon" onClick={handleToggleClosed} aria-label={client.closed_at ? "Reopen client" : "Close client"} title={client.closed_at ? "Reopen client" : "Close client"}>
+              {client.closed_at ? <ArchiveRestore className="size-4" /> : <Archive className="size-4" />}
+            </Button>
             <Button variant="outline" size="icon" onClick={() => { setClientForm(client); setEditClientDialogOpen(true) }} aria-label="Edit client"><Pencil className="size-4" /></Button>
             <Button variant="outline" size="icon" className="text-muted-foreground hover:text-destructive" onClick={() => { setDeleteId(client.id); setDeleteType("client") }} aria-label="Delete client"><Trash2 className="size-4" /></Button>
             <Button className="px-2.5 sm:px-4" onClick={() => { setTxForm(defaultTxForm); setTxDialogOpen(true) }} aria-label="Add transaction">

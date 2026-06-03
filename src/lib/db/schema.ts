@@ -72,6 +72,10 @@ export const clients = pgTable("clients", {
   isOwn: boolean("is_own").notNull().default(false),
   onboardDate: date("onboard_date"),
   deletedAt: timestamp("deleted_at"),
+  // When set, the client is "closed": kept for history but excluded from the
+  // default list and from analytics aggregation. Distinct from soft-delete and
+  // reversible (reopen clears it).
+  closedAt: timestamp("closed_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => ({
@@ -126,6 +130,9 @@ export const quotations = pgTable("quotations", {
   notes: text("notes").default(""),
   linkedClientId: uuid("linked_client_id"), // set when converted to a client
   deletedAt: timestamp("deleted_at"),
+  // When set, the quotation is "closed": excluded from the default list, shown in
+  // a separate section. Reversible (reopen clears it).
+  closedAt: timestamp("closed_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => ({
