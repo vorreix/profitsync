@@ -77,12 +77,12 @@ export function BulkActionBar({
           <AlertDialogFooter>
             <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
             <AlertDialogAction
+              variant="destructive"
               onClick={async (e) => {
                 e.preventDefault()
                 await onDelete()
                 setConfirmOpen(false)
               }}
-              className="bg-destructive text-white hover:bg-destructive/90"
             >
               {t("multiSelect.delete")}
             </AlertDialogAction>

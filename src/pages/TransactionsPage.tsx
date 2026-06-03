@@ -7,7 +7,7 @@ import type { Client, Transaction, TransactionAttachment } from "@/lib/types"
 import { useCurrency } from "@/lib/currency-context"
 import { useOrg } from "@/lib/org-context"
 import { useCategories } from "@/lib/use-categories"
-import { canDeleteRole } from "@/lib/roles"
+import { canDeleteRole, canWriteRole } from "@/lib/roles"
 import { useMultiSelect } from "@/lib/use-multi-select"
 import { useLongPress } from "@/lib/use-long-press"
 import { BulkActionBar } from "@/components/BulkActionBar"
@@ -32,6 +32,8 @@ import { Plus, ArrowUpRight, ArrowDownRight, DollarSign, Pencil, Trash2, Papercl
 import { ExpandableSearch } from "@/components/ExpandableSearch"
 import { FilterSheet, FilterSection } from "@/components/filters/FilterSheet"
 import { AttachmentBadge } from "@/components/AttachmentBadge"
+import { AttachmentDetailModal, type AttachmentModalItem } from "@/components/AttachmentDetailModal"
+import { loadLastTx, saveLastTx } from "@/lib/last-tx"
 
 type PaginatedResponse<T> = { data: T[]; total: number; summary?: { incoming: number; outgoing: number } }
 
@@ -339,6 +341,7 @@ export function TransactionsPage() {
   // transactions anchor to the workspace's single default client server-side.
   const isPersonal = activeOrg?.account_type === "personal"
   const canDelete = canDeleteRole(activeOrg?.role)
+  const canWrite = canWriteRole(activeOrg?.role)
   const sel = useMultiSelect()
   const longPress = useLongPress()
   const [bulkDeleting, setBulkDeleting] = useState(false)
@@ -418,6 +421,7 @@ export function TransactionsPage() {
   const [editOpen, setEditOpen] = useState(false)
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [viewTx, setViewTx] = useState<Transaction | null>(null)
+  const [viewAttachment, setViewAttachment] = useState<AttachmentModalItem | null>(null)
   const [form, setForm] = useState<TxForm>(defaultForm())
   const [editForm, setEditForm] = useState<TxForm & { id: string } | null>(null)
   const [saving, setSaving] = useState(false)
@@ -475,20 +479,20 @@ export function TransactionsPage() {
 
   useEffect(() => {
     if (searchParams.get("new") === "1") {
-      setForm(defaultForm())
-      setAddOpen(true)
-      setSearchParams({}, { replace: true })
+      openAddDialog()
+      const next = new URLSearchParams(searchParams)
+      next.delete("new")
+      setSearchParams(next, { replace: true })
     }
   }, [searchParams, setSearchParams])
 
-  // Deep link from the client media hub: ?view=<txId> opens that transaction.
+  // URL-driven view modal: ?view=<txId> opens that transaction (deep-link from a
+  // click, the client media hub, or a pasted URL). The param stays in the URL
+  // while the modal is open and is cleared on close (see closeViewModal).
   useEffect(() => {
     const viewId = searchParams.get("view")
     if (!viewId) return
-    // Clear immediately so this doesn't re-fire as the list/async settles.
-    const next = new URLSearchParams(searchParams)
-    next.delete("view")
-    setSearchParams(next, { replace: true })
+    if (viewTx?.id === viewId) return
     const existing = transactions.find((t) => t.id === viewId)
     if (existing) { openViewModal(existing); return }
     ;(async () => {
@@ -500,7 +504,7 @@ export function TransactionsPage() {
       } catch { /* not found or no access */ }
     })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams])
+  }, [searchParams, transactions])
 
   const handleLoadMore = async () => {
     const token = await getToken()
@@ -537,6 +541,20 @@ export function TransactionsPage() {
     return [...set].filter(Boolean).sort((a, b) => a.localeCompare(b))
   }, [categories, transactions])
 
+  // Open the add dialog pre-filled with the last-used client/type/category
+  // (date always today), so repeat entry is fast.
+  function openAddDialog() {
+    const last = loadLastTx()
+    setForm({
+      ...defaultForm(),
+      client_id: last.client_id ?? "",
+      type: last.type ?? "incoming",
+      category: last.category ?? "",
+    })
+    setPendingFiles([])
+    setAddOpen(true)
+  }
+
   async function handleAdd() {
     if (!isPersonal && !form.client_id) { toast.error(t("clientIsRequired")); return }
     if (!form.amount || isNaN(parseFloat(form.amount))) { toast.error(t("validAmountIsRequired")); return }
@@ -559,6 +577,7 @@ export function TransactionsPage() {
           toast.error(t("failedToUploadFile", { name: file.name }))
         }
       }
+      saveLastTx({ client_id: form.client_id, type: form.type, category: form.category })
       toast.success(t("transactionAdded"))
       setAddOpen(false)
       setForm(defaultForm())
@@ -629,6 +648,21 @@ export function TransactionsPage() {
     setViewTx(tx)
     setAttachments([])
     loadAttachments(tx.id)
+    // Reflect the open transaction in the URL so it's shareable / restorable.
+    if (searchParams.get("view") !== tx.id) {
+      const next = new URLSearchParams(searchParams)
+      next.set("view", tx.id)
+      setSearchParams(next, { replace: true })
+    }
+  }
+
+  function closeViewModal() {
+    setViewTx(null)
+    if (searchParams.get("view")) {
+      const next = new URLSearchParams(searchParams)
+      next.delete("view")
+      setSearchParams(next, { replace: true })
+    }
   }
 
   async function uploadFile(file: File, txId: string, token: string): Promise<void> {
@@ -790,7 +824,7 @@ export function TransactionsPage() {
               {t("multiSelect.select")}
             </Button>
           )}
-          <Button onClick={() => { setForm(defaultForm()); setAddOpen(true) }} className="shrink-0">
+          <Button onClick={openAddDialog} className="shrink-0">
             <Plus className="size-4" />
             <span className="hidden sm:inline">{t("addTransaction")}</span>
             <span className="sm:hidden">{t("add")}</span>
@@ -881,7 +915,7 @@ export function TransactionsPage() {
             {search || tab !== "all" || categoryFilter !== "all" || dateFrom || dateTo ? t("noTransactionsMatchFilters") : t("noTransactionsYet")}
           </p>
           {!search && tab === "all" && categoryFilter === "all" && !dateFrom && !dateTo && clients.length > 0 && (
-            <Button className="mt-4" onClick={() => { setForm(defaultForm()); setAddOpen(true) }}>
+            <Button className="mt-4" onClick={openAddDialog}>
               <Plus className="size-4" />
               {t("addFirstTransaction")}
             </Button>
@@ -988,7 +1022,7 @@ export function TransactionsPage() {
       )}
 
       {/* View Modal */}
-      <Dialog open={viewTx !== null} onOpenChange={(open) => { if (!open) setViewTx(null) }}>
+      <Dialog open={viewTx !== null} onOpenChange={(open) => { if (!open) closeViewModal() }}>
         <DialogContent className="w-[92vw] max-w-md">
           {viewTx && (
             <>
@@ -1024,7 +1058,7 @@ export function TransactionsPage() {
                       <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">{t("client")}</p>
                       <button
                         className="text-sm text-primary hover:underline mt-0.5"
-                        onClick={() => { setViewTx(null); navigate(`/clients/${viewTx.client_id}`) }}
+                        onClick={() => { closeViewModal(); navigate(`/clients/${viewTx.client_id}`) }}
                       >
                         {viewTx.client_name ?? viewTx.client_id}
                       </button>
@@ -1073,11 +1107,21 @@ export function TransactionsPage() {
                     <div className="space-y-1.5">
                       {attachments.map((att) => (
                         <div key={att.id} className="flex items-center gap-2 rounded-lg border px-3 py-2">
-                          <Paperclip className="size-3.5 text-muted-foreground shrink-0" />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs font-medium truncate">{att.file_name}</p>
-                            <p className="text-xs text-muted-foreground">{formatFileSize(att.file_size)}</p>
-                          </div>
+                          <button
+                            type="button"
+                            className="flex flex-1 items-center gap-2 min-w-0 text-left"
+                            onClick={() => viewTx && setViewAttachment({
+                              id: att.id, source: "transaction", source_id: viewTx.id, source_label: viewTx.description?.trim() || (viewTx.type === "incoming" ? t("income") : t("expense")),
+                              file_name: att.file_name, file_type: att.file_type, file_size: att.file_size,
+                              created_at: att.created_at, display_name: att.display_name, tags: att.tags, category: att.category,
+                            })}
+                          >
+                            <Paperclip className="size-3.5 text-muted-foreground shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-medium truncate">{att.display_name || att.file_name}</p>
+                              <p className="text-xs text-muted-foreground">{formatFileSize(att.file_size)}</p>
+                            </div>
+                          </button>
                           <Button variant="ghost" size="icon" className="size-7 shrink-0" onClick={() => handleDownload(att)}>
                             <Download className="size-3.5" />
                           </Button>
@@ -1094,14 +1138,14 @@ export function TransactionsPage() {
 
               <DialogFooter>
                 <Button variant="outline" onClick={() => {
-                  setViewTx(null)
+                  closeViewModal()
                   setEditForm({ id: viewTx.id, client_id: viewTx.client_id, type: viewTx.type, amount: String(viewTx.amount), description: viewTx.description, category: viewTx.category, date: viewTx.date })
                   setEditOpen(true)
                 }}>
                   <Pencil className="size-3.5" />
                   {t("edit")}
                 </Button>
-                <Button onClick={() => setViewTx(null)}>{t("close")}</Button>
+                <Button onClick={closeViewModal}>{t("close")}</Button>
               </DialogFooter>
             </>
           )}
@@ -1224,6 +1268,16 @@ export function TransactionsPage() {
           deleting={bulkDeleting}
         />
       )}
+
+      <AttachmentDetailModal
+        item={viewAttachment}
+        open={viewAttachment !== null}
+        onOpenChange={(o) => { if (!o) setViewAttachment(null) }}
+        canEdit={canWrite}
+        canDelete={canDelete}
+        onUpdated={() => { if (viewTx) loadAttachments(viewTx.id) }}
+        onDeleted={() => { setViewAttachment(null); if (viewTx) loadAttachments(viewTx.id) }}
+      />
     </div>
   )
 }
