@@ -10,6 +10,8 @@ import { isPaidPlanKey, type Organization } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { CurrencyCombobox } from "@/components/CurrencyCombobox"
+import { detectDefaultCurrency } from "@/lib/currencies"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import {
@@ -29,6 +31,7 @@ export function OrgSwitcher() {
   const [search, setSearch] = useState("")
   const [createOpen, setCreateOpen] = useState(false)
   const [newName, setNewName] = useState("")
+  const [newCurrency, setNewCurrency] = useState("USD")
   const [creating, setCreating] = useState(false)
 
   const filtered = orgs.filter((o) => o.name.toLowerCase().includes(search.toLowerCase().trim()))
@@ -50,7 +53,7 @@ export function OrgSwitcher() {
     try {
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
-      const created = await apiPost<Organization>("/api/organizations", token, { name: newName.trim() })
+      const created = await apiPost<Organization>("/api/organizations", token, { name: newName.trim(), currency: newCurrency })
       toast.success(`Organization "${created.name}" created`)
       setCreateOpen(false)
       setOpen(false)
@@ -183,6 +186,8 @@ export function OrgSwitcher() {
               className="justify-start gap-2 px-2"
               onClick={() => {
                 setOpen(false)
+                setNewName("")
+                setNewCurrency(activeOrg?.currency || detectDefaultCurrency())
                 setCreateOpen(true)
               }}
             >
@@ -209,18 +214,25 @@ export function OrgSwitcher() {
           <DialogHeader>
             <DialogTitle>Create a new organization</DialogTitle>
           </DialogHeader>
-          <div className="space-y-3 py-2">
-            <Label htmlFor="org-name">Organization name</Label>
-            <Input
-              id="org-name"
-              placeholder="Acme Inc."
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && newName.trim()) handleCreate()
-              }}
-              disabled={creating}
-            />
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="org-name">Organization name</Label>
+              <Input
+                id="org-name"
+                placeholder="Acme Inc."
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && newName.trim()) handleCreate()
+                }}
+                disabled={creating}
+                autoFocus
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>{t("organizations.currency")}</Label>
+              <CurrencyCombobox value={newCurrency} onValueChange={setNewCurrency} disabled={creating} />
+            </div>
             <p className="text-xs text-muted-foreground">
               You'll become the owner. Each organization has its own clients, transactions, and quotations.
             </p>
