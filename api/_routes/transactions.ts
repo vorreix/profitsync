@@ -4,6 +4,7 @@ import { db, serialize } from "../../src/lib/db/index.js"
 import { clients, transactions } from "../../src/lib/db/schema.js"
 import { canWrite, ensureDefaultClient, isPersonalAccount, requireAuth } from "../_lib/auth.js"
 import { checkTransactionQuota } from "../_lib/quota.js"
+import { logAudit } from "../_lib/audit.js"
 
 const PAGE_SIZE = 20
 
@@ -205,8 +206,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         description: description ?? "",
         category: category ?? "",
         date: date ?? today,
+        createdBy: userId,
+        updatedBy: userId,
       })
       .returning()
+    await logAudit({ orgId, entityType: "transaction", entityId: row.id, action: "create", actorId: userId })
     return res.status(201).json(serialize(row))
   }
 

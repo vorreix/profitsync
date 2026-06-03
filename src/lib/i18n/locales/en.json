@@ -62,6 +62,25 @@
     "save": "Save Changes",
     "saving": "Saving..."
   },
+  "audit": {
+    "history": "History",
+    "created": "Created",
+    "updated": "Updated",
+    "deleted": "Deleted",
+    "closed": "Closed",
+    "reopened": "Reopened",
+    "you": "You",
+    "teammate": "A teammate",
+    "empty": "No history yet",
+    "changedField": "{{field}}: {{from}} → {{to}}",
+    "empty_value": "—",
+    "fields": {
+      "name": "Name", "company": "Company", "email": "Email", "phone": "Phone",
+      "status": "Status", "notes": "Notes", "category": "Category", "onboardDate": "Onboard date",
+      "amount": "Amount", "type": "Type", "description": "Description", "date": "Date",
+      "title": "Title", "prospectName": "Prospect"
+    }
+  },
   "analytics": {
     "title": "Analytics",
     "subtitle": "Income, expenses and trends across your workspace",

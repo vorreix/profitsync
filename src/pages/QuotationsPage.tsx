@@ -28,6 +28,7 @@ import { ExpandableSearch } from "@/components/ExpandableSearch"
 import { FilterSheet, FilterSection } from "@/components/filters/FilterSheet"
 import { AttachmentBadge } from "@/components/AttachmentBadge"
 import { CategoryPicker } from "@/components/CategoryPicker"
+import { AuditHistory } from "@/components/AuditHistory"
 
 type QuotationForm = {
   title: string
@@ -892,6 +893,11 @@ export function QuotationsPage() {
                     </div>
                   )}
                   <p className="text-xs text-muted-foreground">{t("maxFileSize")}</p>
+                </div>
+
+                <div className="border-t pt-3 space-y-1.5">
+                  <p className="text-sm font-medium">{t("audit.history")}</p>
+                  <AuditHistory entityType="quotation" entityId={viewTarget.id} />
                 </div>
               </div>
 
