@@ -23,7 +23,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "sonner"
-import { Plus, FileText, Building2, Mail, Phone, UserPlus, Trash2, Pencil, ExternalLink, Calendar, Paperclip, Download, X, CheckSquare } from "lucide-react"
+import { Plus, FileText, Building2, Mail, Phone, UserPlus, Trash2, Pencil, ExternalLink, Calendar, Paperclip, Download, X, CheckSquare, ChevronDown, Archive, ArchiveRestore } from "lucide-react"
 import { ExpandableSearch } from "@/components/ExpandableSearch"
 import { FilterSheet, FilterSection } from "@/components/filters/FilterSheet"
 import { AttachmentBadge } from "@/components/AttachmentBadge"
@@ -149,6 +149,10 @@ export function QuotationsPage() {
   const [tab, setTab] = useState("all")
   const [dateFrom, setDateFrom] = useState("")
   const [dateTo, setDateTo] = useState("")
+  const [closedOpen, setClosedOpen] = useState(false)
+  const [closedQuotations, setClosedQuotations] = useState<Quotation[]>([])
+  const [closedLoaded, setClosedLoaded] = useState(false)
+  const [closedLoading, setClosedLoading] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<Quotation | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Quotation | null>(null)
@@ -450,6 +454,45 @@ export function QuotationsPage() {
   const selectableIds = quotations.map((q) => q.id)
   const allSelected = selectableIds.length > 0 && selectableIds.every((id) => sel.isSelected(id))
 
+  async function loadClosed() {
+    setClosedLoading(true)
+    try {
+      const token = await getToken()
+      if (!token) return
+      const data = await apiGet<{ data: Quotation[]; total: number }>("/api/quotations?closed=1&page=1", token)
+      setClosedQuotations(data.data)
+      setClosedLoaded(true)
+    } catch {
+      toast.error(t("failedLoadQuotations"))
+    } finally {
+      setClosedLoading(false)
+    }
+  }
+
+  function toggleClosedSection() {
+    const next = !closedOpen
+    setClosedOpen(next)
+    if (next && !closedLoaded) loadClosed()
+  }
+
+  async function setQuotationClosed(quotationId: string, closed: boolean) {
+    try {
+      const token = await getToken()
+      if (!token) return
+      await apiPatch(`/api/quotations/${quotationId}`, token, { closed })
+      toast.success(closed ? t("closed.quotationClosed") : t("closed.quotationReopened"))
+      if (closed) {
+        setViewTarget(null)
+        fetchPage1()
+      } else {
+        setClosedQuotations((prev) => prev.filter((q) => q.id !== quotationId))
+        fetchPage1()
+      }
+    } catch {
+      toast.error(t("closed.actionFailed"))
+    }
+  }
+
   async function handleBulkDelete() {
     if (sel.count === 0) return
     setBulkDeleting(true)
@@ -685,6 +728,51 @@ export function QuotationsPage() {
         </>
       )}
 
+      {/* Closed quotations — separate, lazily-loaded section. */}
+      {!loading && (
+        <div className="border-t pt-3">
+          <button
+            type="button"
+            onClick={toggleClosedSection}
+            className="flex w-full items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground"
+          >
+            <ChevronDown className={`size-4 transition-transform ${closedOpen ? "" : "-rotate-90"}`} />
+            {t("closed.quotationsSection")}
+            {closedLoaded && <span className="text-xs">({closedQuotations.length})</span>}
+          </button>
+          {closedOpen && (
+            <div className="mt-3">
+              {closedLoading ? (
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {[1, 2, 3].map((i) => <Skeleton key={i} className="h-28 w-full rounded-xl" />)}
+                </div>
+              ) : closedQuotations.length === 0 ? (
+                <p className="py-6 text-center text-sm text-muted-foreground">{t("closed.noClosedQuotations")}</p>
+              ) : (
+                <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+                  {closedQuotations.map((q) => (
+                    <Card key={q.id} className="py-0 opacity-90">
+                      <CardContent className="p-3.5 space-y-2">
+                        <div className="flex items-start justify-between gap-2">
+                          <button className="min-w-0 flex-1 text-left" onClick={() => openViewModal(q)}>
+                            <p className="font-semibold text-sm truncate">{q.title}</p>
+                            <p className="text-xs text-muted-foreground truncate">{q.prospect_name}</p>
+                          </button>
+                          <Badge variant="outline" className="shrink-0 border-amber-500/40 text-amber-600 dark:text-amber-300">{t("closed.closedBadge")}</Badge>
+                        </div>
+                        <Button variant="outline" size="sm" className="w-full" onClick={() => setQuotationClosed(q.id, false)}>
+                          <ArchiveRestore className="size-3.5" /> {t("closed.reopen")}
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* View Modal */}
       <Dialog open={viewTarget !== null} onOpenChange={(open) => { if (!open) setViewTarget(null) }}>
         <DialogContent className="w-[92vw] max-w-md sm:max-w-md">
@@ -800,6 +888,13 @@ export function QuotationsPage() {
               </div>
 
               <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => setQuotationClosed(viewTarget.id, !viewTarget.closed_at)}
+                >
+                  {viewTarget.closed_at ? <ArchiveRestore className="size-3.5" /> : <Archive className="size-3.5" />}
+                  {viewTarget.closed_at ? t("closed.reopen") : t("closed.close")}
+                </Button>
                 <Button variant="outline" onClick={() => {
                   setViewTarget(null)
                   setForm({ title: viewTarget.title, prospect_name: viewTarget.prospect_name, company: viewTarget.company, email: viewTarget.email, phone: viewTarget.phone, amount: viewTarget.amount, status: viewTarget.status, notes: viewTarget.notes })

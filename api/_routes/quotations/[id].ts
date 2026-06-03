@@ -25,9 +25,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method === "PATCH") {
     if (!canWrite(role)) return res.status(403).json({ error: "Forbidden" })
-    const { title, prospect_name, company, email, phone, amount, status, notes } = req.body as {
+    const { title, prospect_name, company, email, phone, amount, status, notes, closed } = req.body as {
       title?: string; prospect_name?: string; company?: string; email?: string
-      phone?: string; amount?: number; status?: string; notes?: string
+      phone?: string; amount?: number; status?: string; notes?: string; closed?: boolean
     }
     if (status !== undefined && !VALID_STATUSES.includes(status)) {
       return res.status(400).json({ error: "status must be draft, sent, accepted, or rejected" })
@@ -47,6 +47,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ...(amount !== undefined ? { amount: String(amount) } : {}),
         ...(status !== undefined ? { status } : {}),
         ...(notes !== undefined ? { notes } : {}),
+        ...(closed !== undefined ? { closedAt: closed ? new Date() : null } : {}),
         updatedAt: new Date(),
       })
       .where(and(eq(quotations.id, id), eq(quotations.organizationId, orgId), isNull(quotations.deletedAt)))

@@ -18,8 +18,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // or the business own-company client). Make sure it exists before listing.
     await ensureDefaultClient(orgId, userId)
 
-    const { search, sort, page } = req.query as {
-      search?: string; sort?: string; page?: string
+    const { search, sort, page, closed, includeClosed } = req.query as {
+      search?: string; sort?: string; page?: string; closed?: string; includeClosed?: string
     }
 
     const searchFilter = search?.trim()
@@ -30,9 +30,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         )
       : undefined
 
+    // Closed filtering: by default only active (closed_at IS NULL). `?closed=1`
+    // returns only closed (the list's "Closed" section); `?includeClosed=1`
+    // returns both (the dashboard "show closed" toggle).
+    const closedFilter =
+      closed === "1"
+        ? sql`${clients.closedAt} is not null`
+        : includeClosed === "1"
+          ? undefined
+          : isNull(clients.closedAt)
+
     const whereClause = and(
       eq(clients.organizationId, orgId),
       isNull(clients.deletedAt),
+      closedFilter,
       searchFilter,
     )
 
@@ -58,6 +69,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       isOwn: clients.isOwn,
       onboardDate: clients.onboardDate,
       deletedAt: clients.deletedAt,
+      closedAt: clients.closedAt,
       createdAt: clients.createdAt,
       updatedAt: clients.updatedAt,
       totalIncoming: sql<string>`coalesce(sum(case when ${transactions.type} = 'incoming' then ${transactions.amount}::numeric else 0 end), 0)`,
