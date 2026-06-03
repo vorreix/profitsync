@@ -19,6 +19,21 @@ async function verifyTransactionOrg(transactionId: string, orgId: string): Promi
   return !!row && row.clientOrgId === orgId
 }
 
+// Metadata fields returned to clients (never includes fileData).
+const metaFields = {
+  id: transactionAttachments.id,
+  transactionId: transactionAttachments.transactionId,
+  userId: transactionAttachments.userId,
+  fileName: transactionAttachments.fileName,
+  fileType: transactionAttachments.fileType,
+  fileSize: transactionAttachments.fileSize,
+  displayName: transactionAttachments.displayName,
+  tags: transactionAttachments.tags,
+  category: transactionAttachments.category,
+  createdAt: transactionAttachments.createdAt,
+  updatedAt: transactionAttachments.updatedAt,
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ctx = await requireAuth(req, res)
   if (!ctx) return
@@ -31,15 +46,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!owned) return res.status(404).json({ error: "Not found" })
 
     const rows = await db
-      .select({
-        id: transactionAttachments.id,
-        transactionId: transactionAttachments.transactionId,
-        userId: transactionAttachments.userId,
-        fileName: transactionAttachments.fileName,
-        fileType: transactionAttachments.fileType,
-        fileSize: transactionAttachments.fileSize,
-        createdAt: transactionAttachments.createdAt,
-      })
+      .select(metaFields)
       .from(transactionAttachments)
       .where(eq(transactionAttachments.transactionId, id))
       .orderBy(desc(transactionAttachments.createdAt))
@@ -77,15 +84,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         fileSize,
         fileData,
       })
-      .returning({
-        id: transactionAttachments.id,
-        transactionId: transactionAttachments.transactionId,
-        userId: transactionAttachments.userId,
-        fileName: transactionAttachments.fileName,
-        fileType: transactionAttachments.fileType,
-        fileSize: transactionAttachments.fileSize,
-        createdAt: transactionAttachments.createdAt,
-      })
+      .returning(metaFields)
     return res.status(201).json(serialize(row))
   }
 

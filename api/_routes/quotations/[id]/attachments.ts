@@ -14,6 +14,20 @@ async function verifyQuotationOrg(quotationId: string, orgId: string): Promise<b
   return !!row
 }
 
+const metaFields = {
+  id: quotationAttachments.id,
+  quotationId: quotationAttachments.quotationId,
+  userId: quotationAttachments.userId,
+  fileName: quotationAttachments.fileName,
+  fileType: quotationAttachments.fileType,
+  fileSize: quotationAttachments.fileSize,
+  displayName: quotationAttachments.displayName,
+  tags: quotationAttachments.tags,
+  category: quotationAttachments.category,
+  createdAt: quotationAttachments.createdAt,
+  updatedAt: quotationAttachments.updatedAt,
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ctx = await requireAuth(req, res)
   if (!ctx) return
@@ -27,15 +41,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!owned) return res.status(404).json({ error: "Not found" })
 
     const rows = await db
-      .select({
-        id: quotationAttachments.id,
-        quotationId: quotationAttachments.quotationId,
-        userId: quotationAttachments.userId,
-        fileName: quotationAttachments.fileName,
-        fileType: quotationAttachments.fileType,
-        fileSize: quotationAttachments.fileSize,
-        createdAt: quotationAttachments.createdAt,
-      })
+      .select(metaFields)
       .from(quotationAttachments)
       .where(eq(quotationAttachments.quotationId, id))
       .orderBy(desc(quotationAttachments.createdAt))
@@ -73,15 +79,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         fileSize,
         fileData,
       })
-      .returning({
-        id: quotationAttachments.id,
-        quotationId: quotationAttachments.quotationId,
-        userId: quotationAttachments.userId,
-        fileName: quotationAttachments.fileName,
-        fileType: quotationAttachments.fileType,
-        fileSize: quotationAttachments.fileSize,
-        createdAt: quotationAttachments.createdAt,
-      })
+      .returning(metaFields)
     return res.status(201).json(serialize(row))
   }
 
