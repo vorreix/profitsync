@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { useAuth } from "@clerk/clerk-react"
 import { toast } from "sonner"
-import { Building2, Mail, Phone, Calendar, FileText, Pencil, Paperclip, Upload, Loader, FolderOpen, Tag } from "lucide-react"
+import { Building2, Mail, Phone, Calendar, FileText, Pencil, Paperclip, Upload, Loader, FolderOpen, Tag, History } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { FitText } from "@/components/FitText"
 import { AttachmentDetailModal, type AttachmentModalItem } from "@/components/AttachmentDetailModal"
+import { AuditHistory } from "@/components/AuditHistory"
 import { useCurrency } from "@/lib/currency-context"
 import { apiGet, clearApiCache } from "@/lib/api"
 import {
@@ -195,6 +196,12 @@ export function ClientOverviewModal({
                   ))}
                 </ul>
               )}
+            </div>
+
+            {/* History */}
+            <div className="border-t pt-3 space-y-2">
+              <p className="text-sm font-medium flex items-center gap-1.5"><History className="size-3.5" /> {t("audit.history")}</p>
+              <AuditHistory entityType="client" entityId={client.id} />
             </div>
 
             <div className="flex flex-wrap gap-2 border-t pt-3">

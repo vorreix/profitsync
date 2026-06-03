@@ -4,6 +4,7 @@ import { db, serialize } from "../../src/lib/db/index.js"
 import { clients, transactions } from "../../src/lib/db/schema.js"
 import { canWrite, ensureDefaultClient, requireAuth, requireBusinessFeature } from "../_lib/auth.js"
 import { checkClientQuota, checkNoteLength } from "../_lib/quota.js"
+import { logAudit } from "../_lib/audit.js"
 
 const VALID_STATUSES = ["active", "inactive", "archived"]
 const PAGE_SIZE = 20
@@ -141,8 +142,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         notes: notes ?? "",
         category: typeof category === "string" ? category.trim().slice(0, 60) : "",
         onboardDate: onboard_date ?? null,
+        createdBy: userId,
+        updatedBy: userId,
       })
       .returning()
+    await logAudit({ orgId, entityType: "client", entityId: row.id, action: "create", actorId: userId })
     return res.status(201).json(serialize(row))
   }
 

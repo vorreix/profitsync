@@ -10,6 +10,7 @@ import { CategoryPicker } from "@/components/CategoryPicker"
 import { ClientOverviewModal } from "@/components/ClientOverviewModal"
 import { AttachmentBadge } from "@/components/AttachmentBadge"
 import { AttachmentDetailModal, type AttachmentModalItem } from "@/components/AttachmentDetailModal"
+import { AuditHistory } from "@/components/AuditHistory"
 import { FilterSheet, FilterSection } from "@/components/filters/FilterSheet"
 import { ACCEPT_ATTR, attachmentsListPath, uploadAttachment, validateFile } from "@/lib/attachments-client"
 import { Button } from "@/components/ui/button"
@@ -630,6 +631,10 @@ export function ClientDetailPage() {
                       </button>
                     </div>
                   ))}
+                </div>
+                <div className="border-t pt-3 space-y-1.5">
+                  <p className="text-sm font-medium">History</p>
+                  <AuditHistory entityType="transaction" entityId={viewTx.id} />
                 </div>
               </div>
               <DialogFooter>

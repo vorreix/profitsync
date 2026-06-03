@@ -3,6 +3,7 @@ import { and, eq, inArray, isNull } from "drizzle-orm"
 import { db } from "../../../src/lib/db/index.js"
 import { clients } from "../../../src/lib/db/schema.js"
 import { canDelete, requireAuth, requireBusinessFeature } from "../../_lib/auth.js"
+import { logAudit } from "../../_lib/audit.js"
 
 const MAX_IDS = 200
 
@@ -10,7 +11,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ctx = await requireAuth(req, res)
   if (!ctx) return
   if (!requireBusinessFeature(res, ctx, "clients")) return
-  const { orgId, role } = ctx
+  const { userId, orgId, role } = ctx
 
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" })
   if (!canDelete(role)) return res.status(403).json({ error: "Forbidden" })
@@ -36,5 +37,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     )
     .returning({ id: clients.id })
 
+  await Promise.all(deleted.map((r) => logAudit({ orgId, entityType: "client", entityId: r.id, action: "delete", actorId: userId })))
   return res.json({ deleted: deleted.length })
 }
