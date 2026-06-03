@@ -9,6 +9,7 @@ import { AnalyticsTeaser } from "./sections/AnalyticsTeaser"
 import { ValueBand } from "./sections/ValueBand"
 import { Pricing } from "./sections/Pricing"
 import { Referral } from "./sections/Referral"
+import { Blog } from "./sections/Blog"
 import { Testimonials } from "./sections/Testimonials"
 import { FAQ } from "./sections/FAQ"
 import { CTA } from "./sections/CTA"
@@ -36,6 +37,7 @@ export function LandingPage() {
         <ValueBand />
         <Pricing />
         <Referral />
+        <Blog />
         <Testimonials />
         <FAQ />
         <CTA />
