@@ -24,6 +24,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { toast } from "sonner"
 import { Plus, ArrowUpRight, ArrowDownRight, DollarSign, Pencil, Trash2, Paperclip, Download, X, Eye, ChevronsUpDown, Check, Tag } from "lucide-react"
 import { ExpandableSearch } from "@/components/ExpandableSearch"
+import { FilterSheet, FilterSection } from "@/components/filters/FilterSheet"
 
 type PaginatedResponse<T> = { data: T[]; total: number; summary?: { incoming: number; outgoing: number } }
 
@@ -362,6 +363,8 @@ export function TransactionsPage() {
   const [tab, setTab] = useState("all")
   const [sort, setSort] = useState("date_desc")
   const [categoryFilter, setCategoryFilter] = useState("all")
+  const [dateFrom, setDateFrom] = useState("")
+  const [dateTo, setDateTo] = useState("")
   const [summary, setSummary] = useState<{ incoming: number; outgoing: number }>({ incoming: 0, outgoing: 0 })
   const searchRef = useRef(search)
   searchRef.current = search
@@ -371,6 +374,19 @@ export function TransactionsPage() {
   sortRef.current = sort
   const categoryRef = useRef(categoryFilter)
   categoryRef.current = categoryFilter
+  const dateFromRef = useRef(dateFrom)
+  dateFromRef.current = dateFrom
+  const dateToRef = useRef(dateTo)
+  dateToRef.current = dateTo
+  const appliedFilterCount =
+    (tab !== "all" ? 1 : 0) + (categoryFilter !== "all" ? 1 : 0) + (dateFrom || dateTo ? 1 : 0)
+  const clearFilters = () => {
+    setTab("all")
+    setCategoryFilter("all")
+    setSort("date_desc")
+    setDateFrom("")
+    setDateTo("")
+  }
 
   const [categories, setCategories] = useState<{ incoming: string[]; outgoing: string[] }>(loadCategories)
 
@@ -399,14 +415,19 @@ export function TransactionsPage() {
   const [pendingFiles, setPendingFiles] = useState<File[]>([])
   const addFileInputRef = useRef<HTMLInputElement>(null)
 
-  const buildParams = useCallback((pageNum: number, s: string, t: string, srt: string, cat: string) => {
-    const params = new URLSearchParams({ page: String(pageNum) })
-    if (s.trim()) params.set("search", s.trim())
-    if (t !== "all") params.set("type", t)
-    if (srt) params.set("sort", srt)
-    if (cat && cat !== "all") params.set("category", cat)
-    return params.toString()
-  }, [])
+  const buildParams = useCallback(
+    (pageNum: number, s: string, t: string, srt: string, cat: string, from: string, to: string) => {
+      const params = new URLSearchParams({ page: String(pageNum) })
+      if (s.trim()) params.set("search", s.trim())
+      if (t !== "all") params.set("type", t)
+      if (srt) params.set("sort", srt)
+      if (cat && cat !== "all") params.set("category", cat)
+      if (from) params.set("from", from)
+      if (to) params.set("to", to)
+      return params.toString()
+    },
+    [],
+  )
 
   const fetchPage1 = useCallback(async () => {
     const token = await getToken()
@@ -414,7 +435,7 @@ export function TransactionsPage() {
     setLoading(true)
     try {
       const [result, cls] = await Promise.all([
-        apiGet<PaginatedResponse<Transaction>>(`/api/transactions?${buildParams(1, searchRef.current, tabRef.current, sortRef.current, categoryRef.current)}`, token),
+        apiGet<PaginatedResponse<Transaction>>(`/api/transactions?${buildParams(1, searchRef.current, tabRef.current, sortRef.current, categoryRef.current, dateFromRef.current, dateToRef.current)}`, token),
         apiGet<{ data: Client[]; total: number } | Client[]>("/api/clients?page=1", token),
       ])
       setTransactions(result.data)
@@ -434,7 +455,7 @@ export function TransactionsPage() {
   useEffect(() => {
     const timer = setTimeout(() => { fetchPage1() }, search === "" ? 0 : 300)
     return () => clearTimeout(timer)
-  }, [search, tab, sort, categoryFilter, fetchPage1])
+  }, [search, tab, sort, categoryFilter, dateFrom, dateTo, fetchPage1])
 
   useEffect(() => {
     if (searchParams.get("new") === "1") {
@@ -472,7 +493,7 @@ export function TransactionsPage() {
     try {
       const nextPage = page + 1
       const result = await apiGet<PaginatedResponse<Transaction>>(
-        `/api/transactions?${buildParams(nextPage, search, tab, sort, categoryFilter)}`,
+        `/api/transactions?${buildParams(nextPage, search, tab, sort, categoryFilter, dateFrom, dateTo)}`,
         token,
       )
       setTransactions((prev) => [...prev, ...result.data])
@@ -745,40 +766,57 @@ export function TransactionsPage() {
         </div>
       )}
 
-      <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-        <ExpandableSearch value={search} onChange={setSearch} placeholder={t("searchByClientDescriptionCategory")} />
-        <div className="flex flex-1 flex-wrap items-center gap-2 sm:gap-3">
-          <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-            <SelectTrigger className="flex-1 sm:flex-none sm:w-44">
-              <Tag className="size-3.5 opacity-60" />
-              <SelectValue placeholder={t("category")} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t("allCategories")}</SelectItem>
-              {allCategoryOptions.map((c) => (
-                <SelectItem key={c} value={c}>{c}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={sort} onValueChange={setSort}>
-            <SelectTrigger className="flex-1 sm:flex-none sm:w-44">
-              <SelectValue placeholder={t("sortBy")} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="date_desc">{t("dateNewest")}</SelectItem>
-              <SelectItem value="date_asc">{t("dateOldest")}</SelectItem>
-              <SelectItem value="amount_desc">{t("amountLargest")}</SelectItem>
-              <SelectItem value="amount_asc">{t("amountSmallest")}</SelectItem>
-            </SelectContent>
-          </Select>
-          <Tabs value={tab} onValueChange={(v) => { setTab(v) }} className="shrink-0">
-            <TabsList>
-              <TabsTrigger value="all">{t("all")}</TabsTrigger>
-              <TabsTrigger value="incoming">{t("income")}</TabsTrigger>
-              <TabsTrigger value="outgoing">{t("expenses")}</TabsTrigger>
-            </TabsList>
-          </Tabs>
-        </div>
+      <div className="flex items-center gap-2 sm:gap-3">
+        <ExpandableSearch
+          value={search}
+          onChange={setSearch}
+          placeholder={t("searchByClientDescriptionCategory")}
+          expandedClassName="w-full sm:w-72"
+        />
+        <FilterSheet count={appliedFilterCount} onClear={clearFilters} triggerClassName="shrink-0 ml-auto">
+          <FilterSection label={t("filters.type")}>
+            <Tabs value={tab} onValueChange={setTab}>
+              <TabsList className="w-full">
+                <TabsTrigger value="all" className="flex-1">{t("all")}</TabsTrigger>
+                <TabsTrigger value="incoming" className="flex-1">{t("income")}</TabsTrigger>
+                <TabsTrigger value="outgoing" className="flex-1">{t("expenses")}</TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </FilterSection>
+          <FilterSection label={t("category")}>
+            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+              <SelectTrigger className="w-full">
+                <Tag className="size-3.5 opacity-60" />
+                <SelectValue placeholder={t("category")} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t("allCategories")}</SelectItem>
+                {allCategoryOptions.map((c) => (
+                  <SelectItem key={c} value={c}>{c}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </FilterSection>
+          <FilterSection label={t("filters.sortBy")}>
+            <Select value={sort} onValueChange={setSort}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder={t("sortBy")} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="date_desc">{t("dateNewest")}</SelectItem>
+                <SelectItem value="date_asc">{t("dateOldest")}</SelectItem>
+                <SelectItem value="amount_desc">{t("amountLargest")}</SelectItem>
+                <SelectItem value="amount_asc">{t("amountSmallest")}</SelectItem>
+              </SelectContent>
+            </Select>
+          </FilterSection>
+          <FilterSection label={t("filters.dateRange")}>
+            <div className="grid grid-cols-2 gap-2">
+              <Input type="date" aria-label={t("filters.from")} value={dateFrom} max={dateTo || undefined} onChange={(e) => setDateFrom(e.target.value)} />
+              <Input type="date" aria-label={t("filters.to")} value={dateTo} min={dateFrom || undefined} onChange={(e) => setDateTo(e.target.value)} />
+            </div>
+          </FilterSection>
+        </FilterSheet>
       </div>
 
       {loading ? (
@@ -789,9 +827,9 @@ export function TransactionsPage() {
         <div className="py-20 text-center border rounded-xl">
           <DollarSign className="size-10 mx-auto text-muted-foreground/50 mb-3" />
           <p className="text-muted-foreground font-medium">
-            {search || tab !== "all" || categoryFilter !== "all" ? t("noTransactionsMatchFilters") : t("noTransactionsYet")}
+            {search || tab !== "all" || categoryFilter !== "all" || dateFrom || dateTo ? t("noTransactionsMatchFilters") : t("noTransactionsYet")}
           </p>
-          {!search && tab === "all" && categoryFilter === "all" && clients.length > 0 && (
+          {!search && tab === "all" && categoryFilter === "all" && !dateFrom && !dateTo && clients.length > 0 && (
             <Button className="mt-4" onClick={() => { setForm(defaultForm()); setAddOpen(true) }}>
               <Plus className="size-4" />
               {t("addFirstTransaction")}

@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { and, count, desc, eq, ilike, isNull, or } from "drizzle-orm"
+import { and, count, desc, eq, ilike, isNull, or, sql } from "drizzle-orm"
 import { db, serialize } from "../../src/lib/db/index.js"
 import { quotations } from "../../src/lib/db/schema.js"
 import { canWrite, requireAuth, requireBusinessFeature } from "../_lib/auth.js"
@@ -16,8 +16,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { userId, orgId, role } = ctx
 
   if (req.method === "GET") {
-    const { search, status, page } = req.query as {
-      search?: string; status?: string; page?: string
+    const { search, status, page, dateFrom, dateTo } = req.query as {
+      search?: string; status?: string; page?: string; dateFrom?: string; dateTo?: string
     }
 
     const searchFilter = search?.trim()
@@ -33,11 +33,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ? eq(quotations.status, status)
       : undefined
 
+    // Date range filters on created_at; `dateTo` is inclusive of the whole day.
+    const isDate = (v: string | undefined): v is string => !!v && /^\d{4}-\d{2}-\d{2}$/.test(v)
+    const dateFromFilter = isDate(dateFrom) ? sql`${quotations.createdAt} >= ${dateFrom}::date` : undefined
+    const dateToFilter = isDate(dateTo) ? sql`${quotations.createdAt} < (${dateTo}::date + interval '1 day')` : undefined
+
     const whereClause = and(
       eq(quotations.organizationId, orgId),
       isNull(quotations.deletedAt),
       searchFilter,
       statusFilter,
+      dateFromFilter,
+      dateToFilter,
     )
 
     if (page !== undefined) {

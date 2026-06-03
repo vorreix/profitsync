@@ -32,6 +32,7 @@ import {
   TrendingUp, TrendingDown, DollarSign, LayoutGrid, LayoutList,
 } from "lucide-react"
 import { ExpandableSearch } from "@/components/ExpandableSearch"
+import { FilterSheet, FilterSection } from "@/components/filters/FilterSheet"
 
 type NewClient = {
   name: string
@@ -172,51 +173,59 @@ export function ClientsPage() {
 
   return (
     <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between gap-3">
+      {/* Header — on mobile the search + filter sit right next to "+ New"
+          (sort lives inside the filter); on desktop the view toggle joins them. */}
+      <div className="flex items-center justify-between gap-2">
         <div className="min-w-0">
           <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">{t("pageTitle")}</h1>
           <p className="text-sm text-muted-foreground mt-0.5 sm:mt-1">
             {loading ? t("loading") : t("clientCount", { count: total })}
           </p>
         </div>
-        <Button onClick={() => setDialogOpen(true)} className="shrink-0">
-          <Plus className="size-4" />
-          <span className="hidden sm:inline">{t("newClientButton")}</span>
-          <span className="sm:hidden">{t("newButton")}</span>
-        </Button>
-      </div>
-
-      {/* Toolbar */}
-      <div className="flex items-center gap-2 sm:gap-3">
-        <ExpandableSearch value={search} onChange={setSearch} placeholder={t("searchPlaceholder")} />
-        <Select value={sort} onValueChange={setSort}>
-          <SelectTrigger className="w-32 sm:w-44 shrink-0 ml-auto">
-            <SelectValue placeholder={t("sortBy")} />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="name_asc">{t("nameAscending")}</SelectItem>
-            <SelectItem value="name_desc">{t("nameDescending")}</SelectItem>
-            <SelectItem value="date_asc">{t("dateOldest")}</SelectItem>
-            <SelectItem value="date_desc">{t("dateNewest")}</SelectItem>
-          </SelectContent>
-        </Select>
-        <div className="hidden sm:flex items-center border rounded-md overflow-hidden shrink-0">
-          <Button
-            variant={viewMode === "grid" ? "secondary" : "ghost"}
-            size="icon"
-            className="rounded-none border-0 h-9 w-9"
-            onClick={() => setViewMode("grid")}
-          >
-            <LayoutGrid className="size-4" />
-          </Button>
-          <Button
-            variant={viewMode === "list" ? "secondary" : "ghost"}
-            size="icon"
-            className="rounded-none border-0 h-9 w-9"
-            onClick={() => setViewMode("list")}
-          >
-            <LayoutList className="size-4" />
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          <ExpandableSearch
+            value={search}
+            onChange={setSearch}
+            placeholder={t("searchPlaceholder")}
+            expandedClassName="w-36 sm:w-64"
+          />
+          <FilterSheet count={0} onClear={() => setSort("date_desc")}>
+            <FilterSection label={t("filters.sortBy")}>
+              <Select value={sort} onValueChange={setSort}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder={t("sortBy")} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="name_asc">{t("nameAscending")}</SelectItem>
+                  <SelectItem value="name_desc">{t("nameDescending")}</SelectItem>
+                  <SelectItem value="date_asc">{t("dateOldest")}</SelectItem>
+                  <SelectItem value="date_desc">{t("dateNewest")}</SelectItem>
+                </SelectContent>
+              </Select>
+            </FilterSection>
+          </FilterSheet>
+          <div className="hidden sm:flex items-center border rounded-md overflow-hidden shrink-0">
+            <Button
+              variant={viewMode === "grid" ? "secondary" : "ghost"}
+              size="icon"
+              className="rounded-none border-0 h-9 w-9"
+              onClick={() => setViewMode("grid")}
+            >
+              <LayoutGrid className="size-4" />
+            </Button>
+            <Button
+              variant={viewMode === "list" ? "secondary" : "ghost"}
+              size="icon"
+              className="rounded-none border-0 h-9 w-9"
+              onClick={() => setViewMode("list")}
+            >
+              <LayoutList className="size-4" />
+            </Button>
+          </div>
+          <Button onClick={() => setDialogOpen(true)} className="shrink-0">
+            <Plus className="size-4" />
+            <span className="hidden sm:inline">{t("newClientButton")}</span>
+            <span className="sm:hidden">{t("newButton")}</span>
           </Button>
         </div>
       </div>

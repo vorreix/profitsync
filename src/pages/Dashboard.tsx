@@ -27,6 +27,7 @@ import {
   Tag,
   X,
 } from "lucide-react"
+import { FilterSheet, FilterSection } from "@/components/filters/FilterSheet"
 import {
   ChartContainer,
   ChartTooltip,
@@ -429,6 +430,11 @@ export function Dashboard() {
   const netProfit = displayIncoming - displayOutgoing
   const profitMargin = displayIncoming > 0 ? ((netProfit / displayIncoming) * 100).toFixed(1) : "0"
   const filtersActive = selectedClientIds.size > 0 || selectedCategories.size > 0
+  const appliedFilterCount = (selectedClientIds.size > 0 ? 1 : 0) + (selectedCategories.size > 0 ? 1 : 0)
+  const clearAllFilters = () => {
+    setSelectedClientIds(new Set())
+    setSelectedCategories(new Set())
+  }
 
   const realClients = clients.filter((c) => !c.is_own)
   const activeClients = realClients.filter((c) => c.status === "active").length
@@ -471,14 +477,16 @@ export function Dashboard() {
     <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
       <CompanyUpsellBanner />
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-        <div>
+      <div className="flex items-start justify-between gap-2 sm:gap-4">
+        <div className="min-w-0">
           <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">{t("dashboard.title")}</h1>
           <p className="text-sm text-muted-foreground mt-1">
             {filtersActive ? t("dashboard.filtered") : t("dashboard.overview")}
           </p>
         </div>
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        {/* Desktop: filters inline beside the title. Mobile: a single filter
+            button on the same line (req #1), opening a sheet with both. */}
+        <div className="hidden sm:flex sm:items-center sm:gap-2 shrink-0">
           {!isPersonal && (
             <MultiSelectFilter
               triggerLabel={t("dashboard.allClients")}
@@ -501,6 +509,36 @@ export function Dashboard() {
             onChange={setSelectedCategories}
             icon={<Tag className="size-4 opacity-60" />}
           />
+        </div>
+        <div className="sm:hidden shrink-0">
+          <FilterSheet count={appliedFilterCount} onClear={clearAllFilters}>
+            {!isPersonal && (
+              <FilterSection label={t("filters.client")}>
+                <MultiSelectFilter
+                  triggerLabel={t("dashboard.allClients")}
+                  allLabel={t("dashboard.allClients")}
+                  searchPlaceholder={t("dashboard.searchClients")}
+                  emptyText={t("dashboard.noClientsFound")}
+                  options={clientOptions}
+                  selected={selectedClientIds}
+                  onChange={setSelectedClientIds}
+                  icon={<Building2 className="size-4 opacity-60" />}
+                />
+              </FilterSection>
+            )}
+            <FilterSection label={t("filters.category")}>
+              <MultiSelectFilter
+                triggerLabel={t("dashboard.allCategories")}
+                allLabel={t("dashboard.allCategories")}
+                searchPlaceholder={t("dashboard.searchCategories")}
+                emptyText={t("dashboard.noCategoriesFound")}
+                options={categoryOptions}
+                selected={selectedCategories}
+                onChange={setSelectedCategories}
+                icon={<Tag className="size-4 opacity-60" />}
+              />
+            </FilterSection>
+          </FilterSheet>
         </div>
       </div>
 
