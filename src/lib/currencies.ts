@@ -166,3 +166,41 @@ export const CURRENCY_LIST: CurrencyInfo[] = [
 export function getCurrencySymbol(code: string): string {
   return CURRENCY_LIST.find((c) => c.code === code)?.symbol ?? code
 }
+
+/**
+ * ISO 3166-1 alpha-2 country code → default currency code. Covers major markets;
+ * anything not listed falls back to USD via `currencyForCountry`. Eurozone members
+ * all map to EUR.
+ */
+export const COUNTRY_TO_CURRENCY: Record<string, string> = {
+  // North America
+  US: "USD", CA: "CAD", MX: "MXN",
+  // Eurozone
+  AT: "EUR", BE: "EUR", CY: "EUR", EE: "EUR", FI: "EUR", FR: "EUR", DE: "EUR",
+  GR: "EUR", IE: "EUR", IT: "EUR", LV: "EUR", LT: "EUR", LU: "EUR", MT: "EUR",
+  NL: "EUR", PT: "EUR", SK: "EUR", SI: "EUR", ES: "EUR", HR: "EUR",
+  // Rest of Europe
+  GB: "GBP", CH: "CHF", NO: "NOK", SE: "SEK", DK: "DKK", PL: "PLN", CZ: "CZK",
+  HU: "HUF", RO: "RON", BG: "BGN", UA: "UAH", RU: "RUB", TR: "TRY", IS: "ISK",
+  // Middle East
+  AE: "AED", SA: "SAR", QA: "QAR", KW: "KWD", BH: "BHD", OM: "OMR", IL: "ILS",
+  JO: "JOD", LB: "LBP",
+  // Asia-Pacific
+  IN: "INR", CN: "CNY", JP: "JPY", KR: "KRW", SG: "SGD", HK: "HKD", TW: "TWD",
+  MY: "MYR", TH: "THB", ID: "IDR", PH: "PHP", VN: "VND", PK: "PKR", BD: "BDT",
+  LK: "LKR", NP: "NPR", AU: "AUD", NZ: "NZD",
+  // Africa
+  ZA: "ZAR", NG: "NGN", EG: "EGP", KE: "KES", GH: "GHS", MA: "MAD", TZ: "TZS",
+  UG: "UGX",
+  // Latin America
+  BR: "BRL", AR: "ARS", CL: "CLP", CO: "COP", PE: "PEN", UY: "UYU",
+}
+
+/**
+ * Resolve a likely default currency for an ISO alpha-2 country code. Returns "USD"
+ * when the code is missing or unmapped.
+ */
+export function currencyForCountry(code?: string | null): string {
+  if (!code) return "USD"
+  return COUNTRY_TO_CURRENCY[code.toUpperCase()] ?? "USD"
+}
