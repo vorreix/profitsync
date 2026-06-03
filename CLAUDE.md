@@ -53,9 +53,10 @@ All pages are lazy-loaded (`React.lazy` + `Suspense`) for code splitting. Route 
 | Group | Paths | Shell |
 |---|---|---|
 | Public legal | `/privacy-policy`, `/terms-of-service` | None |
+| Public blog | `/blog`, `/blog/:slug` | None (marketing — reuses `src/landing/` design + isolated i18n) |
 | Invitation | `/invitations/:token` | None (handles sign-in inline) |
 | Auth | `/login/*`, `/signup/*`, `/forgot-password`, `/reset-password` | None (Clerk requires `/*` glob) |
-| Admin | `/admin`, `/admin/users`, `/admin/organizations`, `/admin/organizations/:id`, `/admin/subscriptions`, `/admin/invoices`, `/admin/plans` | `AdminLayout` |
+| Admin | `/admin`, `/admin/users`, `/admin/organizations`, `/admin/organizations/:id`, `/admin/subscriptions`, `/admin/invoices`, `/admin/plans`, `/admin/blog` | `AdminLayout` |
 | App | `/dashboard`, `/clients`, `/clients/:id`, `/transactions`, `/quotations`, `/organizations`, `/organizations/:id/members`, `/subscription`, `/trash`, `/profile` | `AppLayout` |
 
 ### AppLayout (`src/components/AppLayout.tsx`)
@@ -97,6 +98,7 @@ The sidebar has a floating action button (FAB) for quick access to Add Client, A
 | `Invoice` | `invoices` | `organization_id`, `status`: `draft\|open\|paid\|uncollectible\|void\|refunded` |
 | `AppAdmin` | `app_admins` | `user_id` (Clerk userId) |
 | `LegalAcceptance` | `legal_acceptances` | `document`: `privacy_policy\|terms_of_service` |
+| `BlogPost` | `blog_posts` | **global** (not org-scoped — admin-authored), `slug` (unique), `status`: `draft\|published`, `content` (Markdown), `published_at`, `reading_time_minutes` |
 
 `CURRENCIES` (ISO code list) and `LEGAL_DOC_VERSION` are exported from `src/lib/types.ts`.
 
@@ -137,6 +139,8 @@ To stay within Vercel Hobby's 12-function cap, **all** route handlers live under
 | `/api/trash` | `_routes/trash.ts` — GET soft-deleted items |
 | `/api/trash/restore` | `_routes/trash/restore.ts` — POST |
 | `/api/trash/purge` | `_routes/trash/purge.ts` — POST |
+| `/api/public/blog` | `_routes/public/blog.ts` — GET published list (no auth, no `content`) |
+| `/api/public/blog/:slug` | `_routes/public/blog/[slug].ts` — GET published post (no auth) |
 | `/api/billing/pricing` | `_routes/billing/pricing.ts` |
 | `/api/billing/create-subscription` | `_routes/billing/create-subscription.ts` |
 | `/api/billing/cancel` | `_routes/billing/cancel.ts` |
@@ -154,6 +158,8 @@ To stay within Vercel Hobby's 12-function cap, **all** route handlers live under
 | `/api/admin/invoices` | `_routes/admin/invoices.ts` |
 | `/api/admin/invitations` | `_routes/admin/invitations.ts` |
 | `/api/admin/plans` | `_routes/admin/plans.ts` |
+| `/api/admin/blog` | `_routes/admin/blog.ts` — GET all + POST (admin-only) |
+| `/api/admin/blog/:id` | `_routes/admin/blog/[id].ts` — GET + PATCH (incl. publish/unpublish) + DELETE |
 
 ### Auth & authorization (`api/_lib/auth.ts`)
 

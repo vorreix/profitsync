@@ -41,6 +41,7 @@ import {
   User,
   UserCog,
   Gift,
+  Newspaper,
 } from "lucide-react"
 
 const navItems = [
@@ -50,6 +51,7 @@ const navItems = [
   { label: "Subscriptions", href: "/admin/subscriptions", icon: CreditCard },
   { label: "Invoices", href: "/admin/invoices", icon: ReceiptText },
   { label: "Plans", href: "/admin/plans", icon: Layers },
+  { label: "Blog", href: "/admin/blog", icon: Newspaper },
   { label: "Referrals", href: "/admin/referrals", icon: Gift },
   { label: "Admins", href: "/admin/admins", icon: UserCog },
 ]

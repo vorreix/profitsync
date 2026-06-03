@@ -73,6 +73,12 @@ export function Navbar() {
                 {t(l.key)}
               </button>
             ))}
+            <SmartLink
+              href="/blog"
+              className="rounded-full px-3.5 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted/70 hover:text-foreground"
+            >
+              {t("nav.blog")}
+            </SmartLink>
           </nav>
 
           <div className="flex items-center gap-2">
@@ -129,6 +135,13 @@ export function Navbar() {
                 {t(l.key)}
               </button>
             ))}
+            <SmartLink
+              href="/blog"
+              onClick={() => setOpen(false)}
+              className="rounded-xl px-3 py-3 text-start text-base font-medium text-foreground/90 transition-colors hover:bg-muted"
+            >
+              {t("nav.blog")}
+            </SmartLink>
           </nav>
           <div className="mt-3 flex items-center justify-between gap-2 border-t border-border pt-4">
             <LanguagePicker align="start" />
