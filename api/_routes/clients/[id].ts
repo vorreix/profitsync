@@ -4,13 +4,14 @@ import { db, serialize } from "../../../src/lib/db/index.js"
 import { clients } from "../../../src/lib/db/schema.js"
 import { canDelete, canWrite, requireAuth, requireBusinessFeature } from "../../_lib/auth.js"
 import { checkNoteLength } from "../../_lib/quota.js"
+import { diffFields, logAudit } from "../../_lib/audit.js"
 
 const VALID_STATUSES = ["active", "inactive", "archived"]
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ctx = await requireAuth(req, res)
   if (!ctx) return
-  const { orgId, role } = ctx
+  const { userId, orgId, role } = ctx
   const { id } = req.query as { id: string }
 
   if (req.method === "GET") {
@@ -36,6 +37,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const noteCheck = await checkNoteLength(orgId, notes)
       if (!noteCheck.allowed) return res.status(402).json(noteCheck)
     }
+    const [before] = await db
+      .select()
+      .from(clients)
+      .where(and(eq(clients.id, id), eq(clients.organizationId, orgId), isNull(clients.deletedAt)))
     const [updated] = await db
       .update(clients)
       .set({
@@ -48,11 +53,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ...(category !== undefined ? { category: category.trim().slice(0, 60) } : {}),
         ...(onboard_date !== undefined ? { onboardDate: onboard_date } : {}),
         ...(closed !== undefined ? { closedAt: closed ? new Date() : null } : {}),
+        updatedBy: userId,
         updatedAt: new Date(),
       })
       .where(and(eq(clients.id, id), eq(clients.organizationId, orgId), isNull(clients.deletedAt)))
       .returning()
     if (!updated) return res.status(404).json({ error: "Not found" })
+    if (closed !== undefined && (!!before?.closedAt !== !!updated.closedAt)) {
+      await logAudit({ orgId, entityType: "client", entityId: id, action: closed ? "close" : "reopen", actorId: userId })
+    } else {
+      const changes = diffFields(
+        before as Record<string, unknown>,
+        updated as Record<string, unknown>,
+        ["name", "company", "email", "phone", "status", "notes", "category", "onboardDate"],
+      )
+      if (Object.keys(changes).length) await logAudit({ orgId, entityType: "client", entityId: id, action: "update", actorId: userId, changes })
+    }
     return res.json(serialize(updated))
   }
 
@@ -69,10 +85,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
     const [updated] = await db
       .update(clients)
-      .set({ deletedAt: new Date(), updatedAt: new Date() })
+      .set({ deletedAt: new Date(), updatedBy: userId, updatedAt: new Date() })
       .where(and(eq(clients.id, id), eq(clients.organizationId, orgId), isNull(clients.deletedAt)))
       .returning()
     if (!updated) return res.status(404).json({ error: "Not found" })
+    await logAudit({ orgId, entityType: "client", entityId: id, action: "delete", actorId: userId })
     return res.status(204).end()
   }
 
