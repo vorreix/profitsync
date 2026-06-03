@@ -8,6 +8,7 @@ import { HowItWorks } from "./sections/HowItWorks"
 import { AnalyticsTeaser } from "./sections/AnalyticsTeaser"
 import { ValueBand } from "./sections/ValueBand"
 import { Pricing } from "./sections/Pricing"
+import { Referral } from "./sections/Referral"
 import { Testimonials } from "./sections/Testimonials"
 import { FAQ } from "./sections/FAQ"
 import { CTA } from "./sections/CTA"
@@ -34,6 +35,7 @@ export function LandingPage() {
         <AnalyticsTeaser />
         <ValueBand />
         <Pricing />
+        <Referral />
         <Testimonials />
         <FAQ />
         <CTA />

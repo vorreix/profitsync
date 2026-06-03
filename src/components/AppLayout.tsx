@@ -39,6 +39,7 @@ import { MobileAppLayout } from "@/components/MobileAppLayout"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { InstallAppBanner } from "@/components/InstallAppBanner"
 import { InstallButton } from "@/components/InstallButton"
+import { ReferralBanner } from "@/components/ReferralBanner"
 import { initPwa } from "@/lib/pwa/register-sw"
 import {
   LayoutDashboard,
@@ -58,6 +59,7 @@ import {
   CreditCard,
   Tag,
   ChartColumn,
+  Gift,
   Loader as Loader2,
 } from "lucide-react"
 
@@ -106,6 +108,7 @@ function buildNavItems(activeOrgId: string | undefined, accountType: AccountType
     accountTypeAllows(accountType, "quotations") && { labelKey: "nav.quotations", href: "/quotations", icon: FileText },
     accountTypeAllows(accountType, "members") && { labelKey: "nav.users", href: usersHref, icon: UserPlus },
     { labelKey: "nav.categories", href: "/categories", icon: Tag },
+    { labelKey: "nav.referrals", href: "/referrals", icon: Gift },
     { labelKey: "nav.organizations", href: "/organizations", icon: Building2 },
     { labelKey: "nav.subscription", href: "/subscription", icon: CreditCard },
     { labelKey: "nav.trash", href: "/trash", icon: Trash2 },
@@ -282,6 +285,7 @@ function AppLayoutInner() {
         </header>
 
         <InstallAppBanner className="mx-4 mt-4" />
+        <ReferralBanner className="mx-4 mt-4" />
         <div className="flex-1 overflow-auto">
           {orgLoading ? (
             <div className="flex h-[60vh] items-center justify-center">

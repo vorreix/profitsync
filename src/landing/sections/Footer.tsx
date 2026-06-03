@@ -29,6 +29,7 @@ export function Footer() {
       links: [
         { label: t("footer.links.privacy"), href: "/privacy-policy" },
         { label: t("footer.links.terms"), href: "/terms-of-service" },
+        { label: t("footer.links.refund", { defaultValue: "Refund Policy" }), href: "/refund-policy" },
       ],
     },
   ]

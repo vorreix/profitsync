@@ -141,6 +141,20 @@
       "when": 1780447699744,
       "tag": "0019_last_meteorite",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1780448506276,
+      "tag": "0020_panoramic_stark_industries",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1780450037018,
+      "tag": "0021_common_peter_quill",
+      "breakpoints": true
     }
   ]
 }

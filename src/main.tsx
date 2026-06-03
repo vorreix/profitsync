@@ -15,6 +15,13 @@ if (!PUBLISHABLE_KEY) {
   throw new Error("Missing VITE_CLERK_PUBLISHABLE_KEY in .env.local")
 }
 
+// Capture a referral code (?r=CODE) on first load — anywhere, including the
+// landing — so it survives the hop to signup (read there from localStorage).
+try {
+  const r = new URLSearchParams(window.location.search).get("r")
+  if (r) localStorage.setItem("ps_ref", r.trim().toUpperCase())
+} catch { /* storage unavailable */ }
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <ClerkProvider publishableKey={PUBLISHABLE_KEY}>
