@@ -7,6 +7,7 @@ import type { Client, Transaction } from "@/lib/types"
 import { useCurrency } from "@/lib/currency-context"
 import { useOrg } from "@/lib/org-context"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { FitText } from "@/components/FitText"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -88,7 +89,9 @@ function StatCard({
         <Skeleton className="h-6 sm:h-8 w-20 sm:w-28 mt-1.5" />
       ) : (
         <>
-          <p className={`text-lg sm:text-2xl font-bold mt-1 tabular-nums truncate ${valueClass}`}>{value}</p>
+          <FitText className={`mt-1 ${valueClass}`} textClassName="text-lg sm:text-2xl font-bold tabular-nums">
+            {value}
+          </FitText>
           {hint && (
             <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5 flex items-center gap-1 truncate">
               {hint}

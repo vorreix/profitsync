@@ -1,10 +1,11 @@
 import { lazy, Suspense } from "react"
-import { BrowserRouter, Routes, Route } from "react-router-dom"
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom"
 import { Loader as Loader2 } from "lucide-react"
 import { AppLayout } from "@/components/AppLayout"
 import { AdminLayout } from "@/pages/admin/AdminLayout"
 import { BusinessOnlyRoute } from "@/components/BusinessOnlyRoute"
 import { Toaster } from "@/components/ui/sonner"
+import { useShouldRedirectToApp } from "@/lib/use-redirect-to-app"
 
 // Route-level code splitting: each page becomes its own chunk so the initial
 // bundle stays small. Heavy deps (recharts on the Dashboard, the whole admin
@@ -50,6 +51,18 @@ function RouteFallback() {
   )
 }
 
+// Public landing at "/", but a signed-in visitor is the app's user — send them
+// straight to the app. Gating here (rather than inside LandingApp) means the
+// marketing bundle is never even fetched for signed-in users, and avoids loading
+// the landing's separate i18next instance for them. AppLayout forwards on to
+// /onboarding when the account isn't set up yet.
+function LandingRoute() {
+  if (useShouldRedirectToApp()) {
+    return <Navigate to="/dashboard" replace />
+  }
+  return <LandingApp />
+}
+
 export function App() {
   return (
     <BrowserRouter>
@@ -83,8 +96,9 @@ export function App() {
             <Route path="admins" element={<AdminAdminsPage />} />
           </Route>
 
-          {/* Public marketing landing at the root domain (profitsync.net). */}
-          <Route path="/" element={<LandingApp />} />
+          {/* Public marketing landing at the root domain (profitsync.net).
+              Signed-in visitors are redirected to the app before it loads. */}
+          <Route path="/" element={<LandingRoute />} />
 
           {/* App Routes — pathless layout so /dashboard, /clients, … keep working. */}
           <Route element={<AppLayout />}>

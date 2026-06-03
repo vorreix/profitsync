@@ -7,6 +7,7 @@ import { useCurrency } from "@/lib/currency-context"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
+import { FitText } from "@/components/FitText"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -200,17 +201,17 @@ export function ClientDetailPage() {
       <div className="grid grid-cols-3 gap-2 sm:gap-4">
         <div className="rounded-xl border p-3 sm:p-4">
           <p className="text-[10px] sm:text-xs text-muted-foreground font-medium uppercase tracking-wide truncate">Income</p>
-          <p className="text-base sm:text-xl font-bold text-emerald-600 dark:text-emerald-400 mt-1 tabular-nums truncate">{formatCurrency(totalIncoming)}</p>
+          <FitText className="text-emerald-600 dark:text-emerald-400 mt-1" textClassName="text-base sm:text-xl font-bold tabular-nums">{formatCurrency(totalIncoming)}</FitText>
           <p className="hidden sm:flex text-xs text-muted-foreground mt-1 items-center gap-1"><ArrowUpRight className="size-3" />{transactions.filter((t) => t.type === "incoming").length} transaction{transactions.filter((t) => t.type === "incoming").length !== 1 ? "s" : ""}</p>
         </div>
         <div className="rounded-xl border p-3 sm:p-4">
           <p className="text-[10px] sm:text-xs text-muted-foreground font-medium uppercase tracking-wide truncate">Expenses</p>
-          <p className="text-base sm:text-xl font-bold text-destructive mt-1 tabular-nums truncate">{formatCurrency(totalOutgoing)}</p>
+          <FitText className="text-destructive mt-1" textClassName="text-base sm:text-xl font-bold tabular-nums">{formatCurrency(totalOutgoing)}</FitText>
           <p className="hidden sm:flex text-xs text-muted-foreground mt-1 items-center gap-1"><ArrowDownRight className="size-3" />{transactions.filter((t) => t.type === "outgoing").length} transaction{transactions.filter((t) => t.type === "outgoing").length !== 1 ? "s" : ""}</p>
         </div>
         <div className="rounded-xl border p-3 sm:p-4">
           <p className="text-[10px] sm:text-xs text-muted-foreground font-medium uppercase tracking-wide truncate">Net</p>
-          <p className={`text-base sm:text-xl font-bold mt-1 tabular-nums truncate ${netProfit >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"}`}>{formatCurrency(netProfit)}</p>
+          <FitText className={`mt-1 ${netProfit >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"}`} textClassName="text-base sm:text-xl font-bold tabular-nums">{formatCurrency(netProfit)}</FitText>
           <p className="hidden sm:block text-xs text-muted-foreground mt-1">{totalIncoming > 0 ? ((netProfit / totalIncoming) * 100).toFixed(1) : 0}% margin</p>
         </div>
       </div>
