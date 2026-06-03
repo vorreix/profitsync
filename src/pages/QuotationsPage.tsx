@@ -18,7 +18,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "sonner"
-import { Plus, Search, FileText, Building2, Mail, Phone, UserPlus, Trash2, Pencil, ExternalLink, Calendar, Paperclip, Download, X } from "lucide-react"
+import { Plus, FileText, Building2, Mail, Phone, UserPlus, Trash2, Pencil, ExternalLink, Calendar, Paperclip, Download, X } from "lucide-react"
+import { ExpandableSearch } from "@/components/ExpandableSearch"
 
 type QuotationForm = {
   title: string
@@ -207,6 +208,26 @@ export function QuotationsPage() {
       setSearchParams({}, { replace: true })
     }
   }, [searchParams, setSearchParams])
+
+  // Deep link from the client media hub: ?view=<quotationId> opens that quote.
+  useEffect(() => {
+    const viewId = searchParams.get("view")
+    if (!viewId) return
+    const next = new URLSearchParams(searchParams)
+    next.delete("view")
+    setSearchParams(next, { replace: true })
+    const existing = quotations.find((q) => q.id === viewId)
+    if (existing) { openViewModal(existing); return }
+    ;(async () => {
+      const token = await getToken()
+      if (!token) return
+      try {
+        const q = await apiGet<Quotation>(`/api/quotations/${viewId}`, token)
+        if (q) openViewModal(q)
+      } catch { /* not found or no access */ }
+    })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams])
 
   useEffect(() => {
     async function loadClients() {
@@ -418,17 +439,9 @@ export function QuotationsPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-        <div className="relative w-full sm:flex-1 sm:min-w-48">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-          <Input
-            placeholder={t("searchPlaceholder")}
-            className="pl-9"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-        </div>
-        <div className="-mx-3 px-3 overflow-x-auto scrollbar-none sm:mx-0 sm:px-0 sm:overflow-visible">
+      <div className="flex items-center gap-2 sm:gap-3">
+        <ExpandableSearch value={search} onChange={setSearch} placeholder={t("searchPlaceholder")} />
+        <div className="min-w-0 flex-1 -mx-3 px-3 overflow-x-auto scrollbar-none sm:mx-0 sm:px-0 sm:overflow-visible sm:flex-none">
           <Tabs value={tab} onValueChange={setTab}>
             <TabsList>
               <TabsTrigger value="all">{t("tabAll")}</TabsTrigger>

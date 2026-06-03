@@ -36,7 +36,8 @@ import { accountTypeAllows, type AccountType } from "@/lib/types"
 import { OrgSwitcher } from "@/components/OrgSwitcher"
 import { MobileAppLayout } from "@/components/MobileAppLayout"
 import { useIsMobile } from "@/hooks/use-mobile"
-import { InstallAppBanner, InstallMenuItem } from "@/components/InstallAppBanner"
+import { InstallAppBanner } from "@/components/InstallAppBanner"
+import { InstallButton } from "@/components/InstallButton"
 import { initPwa } from "@/lib/pwa/register-sw"
 import {
   LayoutDashboard,
@@ -78,6 +79,12 @@ const SECTION_FAB: { prefix: string; href: string }[] = [
 ]
 
 function pageFabAction(pathname: string, actions: QuickAction[]): QuickAction | null {
+  // Anywhere inside a specific client (detail or its /files view) → add a
+  // transaction for THIS client (the dialog opens on ?newTx=1).
+  const clientMatch = pathname.match(/^\/clients\/([^/]+)(?:\/|$)/)
+  if (clientMatch) {
+    return { labelKey: "actions.addTransaction", icon: ArrowLeftRight, href: `/clients/${clientMatch[1]}?newTx=1` }
+  }
   const match = SECTION_FAB.find(
     (s) => pathname === s.prefix || pathname.startsWith(s.prefix + "/"),
   )
@@ -225,7 +232,6 @@ function AppLayoutInner() {
                   <Building2 className="size-4 mr-2" />
                   {t("account.organizations")}
                 </DropdownMenuItem>
-                <InstallMenuItem />
                 {isAdmin && (
                   <DropdownMenuItem onClick={() => navigate("/admin")}>
                     <ShieldCheck className="size-4 mr-2" />
@@ -253,12 +259,21 @@ function AppLayoutInner() {
               return key ? t(key) : ""
             })()}
           </span>
-          {activeOrg && (
-            <span className="ml-auto inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Building2 className="size-3" />
-              {activeOrg.name}
-            </span>
-          )}
+          <div className="ml-auto flex items-center gap-3">
+            <InstallButton
+              label={t("pwa.installButton")}
+              iosTitle={t("pwa.iosTitle")}
+              iosBody={t("pwa.iosBody")}
+              closeLabel={t("common.done")}
+              variant="outline"
+            />
+            {activeOrg && (
+              <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Building2 className="size-3" />
+                {activeOrg.name}
+              </span>
+            )}
+          </div>
         </header>
 
         <InstallAppBanner className="mx-4 mt-4" />

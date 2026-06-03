@@ -19,6 +19,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (!row || row.clientOrgId !== orgId) return res.status(404).json({ error: "Not found" })
 
+  if (req.method === "GET") {
+    const [tx] = await db.select().from(transactions).where(eq(transactions.id, id))
+    if (!tx) return res.status(404).json({ error: "Not found" })
+    return res.json(serialize(tx))
+  }
+
   if (req.method === "PATCH") {
     if (!canWrite(role)) return res.status(403).json({ error: "Forbidden" })
     const { type, amount, description, category, date } = req.body as {
