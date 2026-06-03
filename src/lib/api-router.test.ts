@@ -52,4 +52,19 @@ describe("matchRoute", () => {
     expect(dyn?.handler).toBe("clientById")
     expect(dyn?.params).toEqual({ id: "abc-123" })
   })
+
+  it("routes public + admin blog list/detail correctly", () => {
+    const blogRoutes: RoutePattern<string>[] = [
+      { segments: ["public", "blog"], handler: "publicBlog" },
+      { segments: ["public", "blog", ":slug"], handler: "publicBlogBySlug" },
+      { segments: ["admin", "blog"], handler: "adminBlog" },
+      { segments: ["admin", "blog", ":id"], handler: "adminBlogById" },
+    ]
+    expect(matchRoute(blogRoutes, ["public", "blog"])?.handler).toBe("publicBlog")
+    const bySlug = matchRoute(blogRoutes, ["public", "blog", "hello-world"])
+    expect(bySlug?.handler).toBe("publicBlogBySlug")
+    expect(bySlug?.params).toEqual({ slug: "hello-world" })
+    expect(matchRoute(blogRoutes, ["admin", "blog"])?.handler).toBe("adminBlog")
+    expect(matchRoute(blogRoutes, ["admin", "blog", "id-1"])?.params).toEqual({ id: "id-1" })
+  })
 })
