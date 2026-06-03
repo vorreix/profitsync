@@ -138,7 +138,7 @@ export function TermsOfServicePage() {
 
       <h2>18. Contact</h2>
       <p>
-        Email us at <a href="mailto:hello@profitsync.app">hello@profitsync.app</a>.
+        Email us at <a href="mailto:hello@profitsync.net">hello@profitsync.net</a>.
       </p>
     </LegalLayout>
   )
