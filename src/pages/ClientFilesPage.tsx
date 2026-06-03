@@ -14,6 +14,7 @@ import {
   ChevronRight,
 } from "lucide-react"
 import { ExpandableSearch } from "@/components/ExpandableSearch"
+import { FilterSheet, FilterSection } from "@/components/filters/FilterSheet"
 import { AttachmentDetailModal, type AttachmentModalItem } from "@/components/AttachmentDetailModal"
 import type { Client } from "@/lib/types"
 import { useOrg } from "@/lib/org-context"
@@ -245,8 +246,9 @@ export function ClientFilesPage() {
 
   return (
     <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
-      {/* Header */}
-      <div className="flex items-center gap-2 sm:gap-3">
+      {/* Header — search + filters live next to Upload, matching the list pages.
+          Source / sort / date all collapse into the filter sheet on mobile. */}
+      <div className="flex items-center gap-1.5 sm:gap-2">
         <Button variant="ghost" size="icon" onClick={() => navigate(id ? `/clients/${id}` : "/clients")} className="-ml-2 shrink-0">
           <ArrowLeft className="size-4" />
         </Button>
@@ -254,45 +256,49 @@ export function ClientFilesPage() {
           <h1 className="text-xl sm:text-2xl font-semibold tracking-tight truncate">Files</h1>
           {client && <p className="text-sm text-muted-foreground truncate">{client.name}</p>}
         </div>
+        <ExpandableSearch value={query} onChange={setQuery} placeholder="Search files…" expandedClassName="w-36 sm:w-56" />
+        <FilterSheet
+          count={(sourceFilter !== "all" ? 1 : 0) + (from || to ? 1 : 0)}
+          onClear={() => { setSourceFilter("all"); setSort("newest"); setFrom(""); setTo("") }}
+        >
+          <FilterSection label="Source">
+            <Select value={sourceFilter} onValueChange={(v) => setSourceFilter(v as "all" | AttachmentParent)}>
+              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All sources</SelectItem>
+                <SelectItem value="client">Documents</SelectItem>
+                <SelectItem value="transaction">Transactions</SelectItem>
+                <SelectItem value="quotation">Quotes</SelectItem>
+              </SelectContent>
+            </Select>
+          </FilterSection>
+          <FilterSection label="Sort by">
+            <Select value={sort} onValueChange={setSort}>
+              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="newest">Newest first</SelectItem>
+                <SelectItem value="oldest">Oldest first</SelectItem>
+                <SelectItem value="name">Name (A–Z)</SelectItem>
+                <SelectItem value="largest">Largest</SelectItem>
+              </SelectContent>
+            </Select>
+          </FilterSection>
+          <FilterSection label="Date range">
+            <div className="grid grid-cols-2 gap-2">
+              <Input type="date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} aria-label="From date" />
+              <Input type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} aria-label="To date" />
+            </div>
+          </FilterSection>
+        </FilterSheet>
         {canModify && (
           <>
-            <Button onClick={() => fileRef.current?.click()} disabled={uploading} className="shrink-0 px-2.5 sm:px-4">
+            <Button onClick={() => fileRef.current?.click()} disabled={uploading} size="icon" className="shrink-0 sm:size-auto sm:px-4">
               {uploading ? <Loader className="size-4 animate-spin" /> : <Upload className="size-4" />}
               <span className="hidden sm:inline">Upload</span>
             </Button>
             <input ref={fileRef} type="file" multiple accept={ACCEPT_ATTR} className="hidden" onChange={onUploadSelect} />
           </>
         )}
-      </div>
-
-      {/* Toolbar */}
-      <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:flex-wrap">
-        <ExpandableSearch value={query} onChange={setQuery} placeholder="Search files…" expandedClassName="w-full sm:w-64" />
-        <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
-          <Select value={sourceFilter} onValueChange={(v) => setSourceFilter(v as "all" | AttachmentParent)}>
-            <SelectTrigger className="h-9 sm:w-36"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All sources</SelectItem>
-              <SelectItem value="client">Documents</SelectItem>
-              <SelectItem value="transaction">Transactions</SelectItem>
-              <SelectItem value="quotation">Quotes</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={sort} onValueChange={setSort}>
-            <SelectTrigger className="h-9 sm:w-36"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="newest">Newest first</SelectItem>
-              <SelectItem value="oldest">Oldest first</SelectItem>
-              <SelectItem value="name">Name (A–Z)</SelectItem>
-              <SelectItem value="largest">Largest</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <Input type="date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} className="h-9 flex-1 sm:w-[8.5rem]" aria-label="From date" />
-          <span className="text-muted-foreground text-sm">–</span>
-          <Input type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} className="h-9 flex-1 sm:w-[8.5rem]" aria-label="To date" />
-        </div>
       </div>
 
       {/* List */}

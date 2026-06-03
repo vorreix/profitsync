@@ -84,7 +84,7 @@ function pageFabAction(pathname: string, actions: QuickAction[]): QuickAction | 
   // Anywhere inside a specific client (detail or its /files view) → add a
   // transaction for THIS client (the dialog opens on ?newTx=1).
   const clientMatch = pathname.match(/^\/clients\/([^/]+)(?:\/|$)/)
-  if (clientMatch) {
+  if (clientMatch && clientMatch[1] !== "closed") {
     return { labelKey: "actions.addTransaction", icon: ArrowLeftRight, href: `/clients/${clientMatch[1]}?newTx=1` }
   }
   const match = SECTION_FAB.find(
