@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { Outlet, NavLink, useLocation, useNavigate } from "react-router-dom"
 import { useUser, useClerk } from "@clerk/clerk-react"
@@ -74,11 +74,30 @@ function buildMoreItems(activeOrgId: string | undefined, accountType: AccountTyp
 
 type QuickAction = { labelKey: string; icon: typeof Users; href: string; feature?: "clients" | "quotations" }
 
+// Quick-actions menu, ordered top-to-bottom as it stacks above the FAB.
 const allQuickActions: QuickAction[] = [
+  { labelKey: "actions.createQuotation", icon: FileText, href: "/quotations?new=1", feature: "quotations" },
   { labelKey: "actions.addClient", icon: Users, href: "/clients?new=1", feature: "clients" },
   { labelKey: "actions.addTransaction", icon: ArrowLeftRight, href: "/transactions?new=1" },
-  { labelKey: "actions.createQuotation", icon: FileText, href: "/quotations?new=1", feature: "quotations" },
 ]
+
+// Within one of these sections, the FAB performs that section's "add" directly
+// instead of opening the menu (e.g. the Clients page → Add Client). Prefixes
+// mirror the nav's active-section logic, so nested routes like /clients/:id
+// count as being in the section too. Everywhere else (Home, etc.) the FAB keeps
+// the full quick-actions menu.
+const SECTION_FAB: { prefix: string; href: string }[] = [
+  { prefix: "/clients", href: "/clients?new=1" },
+  { prefix: "/transactions", href: "/transactions?new=1" },
+  { prefix: "/quotations", href: "/quotations?new=1" },
+]
+
+function pageFabAction(pathname: string, actions: QuickAction[]): QuickAction | null {
+  const match = SECTION_FAB.find(
+    (s) => pathname === s.prefix || pathname.startsWith(s.prefix + "/"),
+  )
+  return match ? actions.find((a) => a.href === match.href) ?? null : null
+}
 
 export function MobileAppLayout() {
   const { t } = useTranslation()
@@ -91,6 +110,11 @@ export function MobileAppLayout() {
   const [orgSheetOpen, setOrgSheetOpen] = useState(false)
   const [moreOpen, setMoreOpen] = useState(false)
   const [fabOpen, setFabOpen] = useState(false)
+
+  // Close the quick-actions menu on any navigation.
+  useEffect(() => {
+    setFabOpen(false)
+  }, [location.pathname])
 
   const userEmail = user?.primaryEmailAddress?.emailAddress ?? null
 
@@ -111,6 +135,9 @@ export function MobileAppLayout() {
   const primaryTabs = buildPrimaryTabs(accountType)
   const moreItems = buildMoreItems(activeOrg?.id, accountType)
   const quickActions = allQuickActions.filter((a) => !a.feature || accountTypeAllows(accountType, a.feature))
+  // On a section's own page, the FAB is a single direct-add button; elsewhere
+  // it opens the quick-actions menu.
+  const pageAction = pageFabAction(location.pathname, quickActions)
   const isPaid = isPaidPlanKey(activeOrg?.plan_key)
   const onMorePage = !primaryTabs.some((t) =>
     location.pathname === t.href || location.pathname.startsWith(t.href + "/"),
@@ -270,11 +297,11 @@ export function MobileAppLayout() {
       </main>
 
       {/* Floating action button */}
-      {fabOpen && (
+      {!pageAction && fabOpen && (
         <div className="fixed inset-0 z-40 bg-background/50 backdrop-blur-sm" onClick={() => setFabOpen(false)} />
       )}
       <div className="fixed bottom-24 right-4 z-50 flex flex-col items-end gap-2 safe-pb">
-        {fabOpen && quickActions.map((action) => (
+        {!pageAction && fabOpen && quickActions.map((action) => (
           <div
             key={action.href}
             className="flex items-center gap-2 animate-in fade-in slide-in-from-bottom-1 duration-150 cursor-pointer group/action"
@@ -295,9 +322,10 @@ export function MobileAppLayout() {
         <Button
           size="icon"
           className="size-14 rounded-full shadow-lg pressable"
-          onClick={() => setFabOpen((o) => !o)}
+          aria-label={pageAction ? t(pageAction.labelKey) : undefined}
+          onClick={() => { if (pageAction) navigate(pageAction.href); else setFabOpen((o) => !o) }}
         >
-          {fabOpen ? <X className="size-5" /> : <Plus className="size-5" />}
+          {!pageAction && fabOpen ? <X className="size-5" /> : <Plus className="size-5" />}
         </Button>
       </div>
 

@@ -59,11 +59,30 @@ import {
 
 type QuickAction = { labelKey: string; icon: typeof Users; href: string; feature?: "clients" | "quotations" }
 
+// Quick-actions menu, ordered top-to-bottom as it stacks above the FAB.
 const quickActions: QuickAction[] = [
+  { labelKey: "actions.createQuotation", icon: FileText, href: "/quotations?new=1", feature: "quotations" },
   { labelKey: "actions.addClient", icon: Users, href: "/clients?new=1", feature: "clients" },
   { labelKey: "actions.addTransaction", icon: ArrowLeftRight, href: "/transactions?new=1" },
-  { labelKey: "actions.createQuotation", icon: FileText, href: "/quotations?new=1", feature: "quotations" },
 ]
+
+// Within one of these sections, the FAB performs that section's "add" directly
+// instead of opening the menu (e.g. the Clients page → Add Client). Prefixes
+// mirror the nav's active-section logic, so nested routes like /clients/:id
+// count as being in the section too. Everywhere else (Home, etc.) the FAB keeps
+// the full quick-actions menu.
+const SECTION_FAB: { prefix: string; href: string }[] = [
+  { prefix: "/clients", href: "/clients?new=1" },
+  { prefix: "/transactions", href: "/transactions?new=1" },
+  { prefix: "/quotations", href: "/quotations?new=1" },
+]
+
+function pageFabAction(pathname: string, actions: QuickAction[]): QuickAction | null {
+  const match = SECTION_FAB.find(
+    (s) => pathname === s.prefix || pathname.startsWith(s.prefix + "/"),
+  )
+  return match ? actions.find((a) => a.href === match.href) ?? null : null
+}
 
 type NavItem = { labelKey: string; href: string; icon: typeof LayoutDashboard }
 
@@ -94,6 +113,11 @@ function AppLayoutInner() {
   const { isAdmin } = useAdmin()
   const [fabOpen, setFabOpen] = useState(false)
 
+  // Close the quick-actions menu on any navigation.
+  useEffect(() => {
+    setFabOpen(false)
+  }, [location.pathname])
+
   // New (or not-yet-chosen) users must pick an account type first.
   if (!orgLoading && needsOnboarding) {
     return <Navigate to="/onboarding" replace />
@@ -105,6 +129,9 @@ function AppLayoutInner() {
 
   const navItems = buildNavItems(activeOrg?.id, activeOrg?.account_type)
   const actions = quickActions.filter((a) => !a.feature || accountTypeAllows(activeOrg?.account_type, a.feature))
+  // On a section's own page, the FAB is a single direct-add button; elsewhere
+  // it opens the quick-actions menu.
+  const pageAction = pageFabAction(location.pathname, actions)
   // Pick the most specific (longest) matching item so /organizations/:id/members
   // highlights "Users" rather than its "Organizations" ancestor.
   const activeNavHref =
@@ -245,11 +272,11 @@ function AppLayoutInner() {
           )}
         </div>
       </SidebarInset>
-      {fabOpen && (
+      {!pageAction && fabOpen && (
         <div className="fixed inset-0 z-40" onClick={() => setFabOpen(false)} />
       )}
       <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3">
-        {fabOpen && actions.map((action) => (
+        {!pageAction && fabOpen && actions.map((action) => (
           <div
             key={action.href}
             className="flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2 duration-150 cursor-pointer group/action"
@@ -270,9 +297,10 @@ function AppLayoutInner() {
         <Button
           size="icon"
           className="size-14 rounded-full shadow-lg"
-          onClick={() => setFabOpen((o) => !o)}
+          aria-label={pageAction ? t(pageAction.labelKey) : undefined}
+          onClick={() => { if (pageAction) navigate(pageAction.href); else setFabOpen((o) => !o) }}
         >
-          {fabOpen
+          {!pageAction && fabOpen
             ? <X className="size-5 transition-transform duration-200" />
             : <Plus className="size-5 transition-transform duration-200" />}
         </Button>
