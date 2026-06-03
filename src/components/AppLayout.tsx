@@ -209,6 +209,9 @@ function AppLayoutInner() {
             <NavLink to="/terms-of-service" className="hover:text-foreground inline-flex items-center gap-1.5">
               <ScrollText className="size-3" /> {t("nav.termsOfService")}
             </NavLink>
+            <NavLink to="/refund-policy" className="hover:text-foreground inline-flex items-center gap-1.5">
+              <ScrollText className="size-3" /> {t("nav.refundPolicy")}
+            </NavLink>
           </div>
           <div className="flex items-center gap-2">
             <div className="px-2 py-2 group-data-[collapsible=icon]:px-0">
