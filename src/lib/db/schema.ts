@@ -77,6 +77,8 @@ export const clients = pgTable("clients", {
   // default list and from analytics aggregation. Distinct from soft-delete and
   // reversible (reopen clears it).
   closedAt: timestamp("closed_at"),
+  createdBy: text("created_by"),
+  updatedBy: text("updated_by"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => ({
@@ -113,6 +115,8 @@ export const transactions = pgTable("transactions", {
   // Soft-delete: deleted transactions move to Trash (restore/purge) instead of
   // disappearing. All financial aggregates must exclude rows where this is set.
   deletedAt: timestamp("deleted_at"),
+  createdBy: text("created_by"),
+  updatedBy: text("updated_by"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 })
@@ -135,10 +139,27 @@ export const quotations = pgTable("quotations", {
   // When set, the quotation is "closed": excluded from the default list, shown in
   // a separate section. Reversible (reopen clears it).
   closedAt: timestamp("closed_at"),
+  createdBy: text("created_by"),
+  updatedBy: text("updated_by"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => ({
   orgIdx: index("quotations_org_idx").on(table.organizationId),
+}))
+
+// Append-only change history for the main entities. `changes` holds a
+// field → { from, to } map for updates; create/delete/close/reopen carry no diff.
+export const auditLogs = pgTable("audit_logs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  entityType: text("entity_type").notNull(), // client | transaction | quotation
+  entityId: uuid("entity_id").notNull(),
+  action: text("action").notNull(), // create | update | delete | close | reopen
+  actorUserId: text("actor_user_id"),
+  changes: jsonb("changes").notNull().default({}),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  entityIdx: index("audit_logs_entity_idx").on(table.organizationId, table.entityType, table.entityId),
 }))
 
 export const transactionAttachments = pgTable("transaction_attachments", {

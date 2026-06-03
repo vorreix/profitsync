@@ -33,6 +33,7 @@ import { ExpandableSearch } from "@/components/ExpandableSearch"
 import { FilterSheet, FilterSection } from "@/components/filters/FilterSheet"
 import { AttachmentBadge } from "@/components/AttachmentBadge"
 import { AttachmentDetailModal, type AttachmentModalItem } from "@/components/AttachmentDetailModal"
+import { AuditHistory } from "@/components/AuditHistory"
 import { loadLastTx, saveLastTx } from "@/lib/last-tx"
 
 type PaginatedResponse<T> = { data: T[]; total: number; summary?: { incoming: number; outgoing: number } }
@@ -1133,6 +1134,12 @@ export function TransactionsPage() {
                     </div>
                   )}
                   <p className="text-xs text-muted-foreground">{t("max2MBPerFile")}</p>
+                </div>
+
+                <Separator />
+                <div className="space-y-1.5">
+                  <p className="text-sm font-medium">{t("audit.history")}</p>
+                  <AuditHistory entityType="transaction" entityId={viewTx.id} />
                 </div>
               </div>
 
