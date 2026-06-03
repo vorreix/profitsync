@@ -23,6 +23,7 @@ import transactions from "./_routes/transactions.js"
 import transactionsBulkDelete from "./_routes/transactions/bulk-delete.js"
 import transactionById from "./_routes/transactions/[id].js"
 import transactionAttachments from "./_routes/transactions/[id]/attachments.js"
+import analytics from "./_routes/analytics.js"
 import categories from "./_routes/categories.js"
 import categoryById from "./_routes/categories/[id].js"
 import quotations from "./_routes/quotations.js"
@@ -83,6 +84,7 @@ const routes: RoutePattern<ApiHandler>[] = [
   { segments: ["clients", ":id", "attachments"], handler: clientAttachments },
   { segments: ["clients", ":id", "media"], handler: clientMedia },
 
+  { segments: ["analytics"], handler: analytics },
   { segments: ["categories"], handler: categories },
   { segments: ["categories", ":id"], handler: categoryById },
 
