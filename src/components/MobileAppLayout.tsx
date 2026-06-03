@@ -26,6 +26,7 @@ import {
   SlidersHorizontal,
   Tag,
   ChartColumn,
+  Gift,
 } from "lucide-react"
 import { useOrg } from "@/lib/org-context"
 import { useAdmin } from "@/lib/admin-context"
@@ -46,6 +47,7 @@ import { ModeToggle } from "@/components/mode-toggle"
 import { LanguageSwitcher } from "@/components/LanguageSwitcher"
 import { InstallAppBanner } from "@/components/InstallAppBanner"
 import { InstallButton } from "@/components/InstallButton"
+import { ReferralBanner } from "@/components/ReferralBanner"
 
 type TabItem = { labelKey: string; href: string; icon: typeof LayoutDashboard }
 
@@ -69,6 +71,7 @@ function buildMoreItems(activeOrgId: string | undefined, accountType: AccountTyp
     accountTypeAllows(accountType, "members") && { labelKey: "nav.users", href: usersHref, icon: UserPlus },
     { labelKey: "nav.analytics", href: "/analytics", icon: ChartColumn },
     { labelKey: "nav.categories", href: "/categories", icon: Tag },
+    { labelKey: "nav.referrals", href: "/referrals", icon: Gift },
     { labelKey: "nav.organizations", href: "/organizations", icon: Building2 },
     { labelKey: "nav.subscription", href: "/subscription", icon: CreditCard },
     { labelKey: "nav.trash", href: "/trash", icon: Trash2 },
@@ -309,6 +312,7 @@ export function MobileAppLayout() {
 
       <main className="flex-1 overflow-y-auto overflow-x-hidden pb-32 page-enter" key={location.pathname + (activeOrg?.id ?? "")}>
         <InstallAppBanner className="mx-4 mt-3" />
+        <ReferralBanner className="mx-4 mt-3" />
         {orgLoading ? (
           <div className="flex h-[60vh] items-center justify-center">
             <Loader className="size-6 animate-spin text-muted-foreground" />

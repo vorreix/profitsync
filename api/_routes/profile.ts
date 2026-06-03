@@ -6,6 +6,7 @@ import { SUPPORTED_LANGUAGE_CODES } from "../../src/lib/i18n/languages.js"
 import { db, serialize } from "../../src/lib/db/index.js"
 import { userProfiles } from "../../src/lib/db/schema.js"
 import { ensurePersonalOrg, getUserId } from "../_lib/auth.js"
+import { attributeReferral } from "../_lib/referral.js"
 
 const VALID_CURRENCIES = new Set(CURRENCY_LIST.map((c) => c.code))
 const VALID_LANGUAGES = new Set(SUPPORTED_LANGUAGE_CODES)
@@ -30,6 +31,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .insert(userProfiles)
         .values({ id: userId, email, fullName: clerkUser.fullName ?? "" })
         .returning()
+      // Attribute a referral if the signup carried a code (?r=… → unsafeMetadata).
+      const referralCode = (clerkUser.unsafeMetadata as { referralCode?: string } | undefined)?.referralCode
+      if (referralCode) await attributeReferral(userId, referralCode)
       const personalOrgId = await ensurePersonalOrg(userId)
       const [updated] = await db
         .update(userProfiles)

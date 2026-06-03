@@ -4,6 +4,7 @@ import { db } from "../../src/lib/db/index.js"
 import { invoices, subscriptions } from "../../src/lib/db/schema.js"
 import { verifyWebhookSignature, type DodoEnv, type DodoScheduledChange } from "../_lib/dodo.js"
 import { resolveScheduledChange } from "../_lib/billing-sync.js"
+import { creditReferralOnPaid } from "../_lib/referral.js"
 
 export const config = {
   api: {
@@ -169,6 +170,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         } else {
           await db.insert(invoices).values(baseValues)
         }
+        // Credit a pending referral for this org's owner (idempotent: only a
+        // signed_up referral becomes paid, so renewals / retries don't re-credit).
+        await creditReferralOnPaid(sub.organizationId, (minorAmount ?? 0) / 100, currency)
       }
     } catch {
       // Non-fatal: invoice bookkeeping failure must not 500 the webhook.
