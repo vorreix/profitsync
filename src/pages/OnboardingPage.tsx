@@ -19,8 +19,10 @@ import { apiGet, apiPost, setActiveOrgId } from "@/lib/api"
 import { OrgProvider, useOrg } from "@/lib/org-context"
 import { useSyncProfileLanguage } from "@/lib/i18n/use-language"
 import { usePlanText } from "@/lib/i18n/plan-text"
+import { currencyForCountry } from "@/lib/currencies"
 import type { AccountType } from "@/lib/types"
 import { Button } from "@/components/ui/button"
+import { CurrencyCombobox } from "@/components/CurrencyCombobox"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
@@ -174,6 +176,9 @@ function OnboardingInner() {
   const [companyName, setCompanyName] = useState("")
   const [submitting, setSubmitting] = useState(false)
 
+  const [currency, setCurrency] = useState("USD")
+  const [currencyTouched, setCurrencyTouched] = useState(false)
+
   const [cycle, setCycle] = useState<Cycle>("monthly")
   const [pricing, setPricing] = useState<PricingResponse | null>(null)
   const [pricingLoading, setPricingLoading] = useState(false)
@@ -188,12 +193,22 @@ function OnboardingInner() {
       if (!token) return
       const res = await apiGet<PricingResponse>("/api/billing/pricing", token)
       setPricing(res)
+      // Prefill the currency from the detected location, unless the user already
+      // picked one (a late response must not clobber a manual choice).
+      setCurrency((prev) => (currencyTouched ? prev : currencyForCountry(res.detectedCountry)))
     } catch {
       // Pricing is best-effort; the user can still continue to the app.
     } finally {
       setPricingLoading(false)
     }
   }
+
+  // Fetch pricing on mount to derive the geo-default currency for step 1; this also
+  // pre-warms the pricing shown in step 2 (apiGet dedupes/caches the repeat call).
+  useEffect(() => {
+    void loadPricing()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const handleChoose = async () => {
     if (!accountType || submitting) return
@@ -204,7 +219,11 @@ function OnboardingInner() {
       const result = await apiPost<{ organization_id: string; account_type: AccountType }>(
         "/api/onboarding",
         token,
-        { account_type: accountType, company_name: accountType === "business" ? companyName : undefined },
+        {
+          account_type: accountType,
+          company_name: accountType === "business" ? companyName : undefined,
+          currency,
+        },
       )
       // Point the app at the chosen workspace, then advance to the plan step.
       setActiveOrgId(result.organization_id)
@@ -324,6 +343,22 @@ function OnboardingInner() {
                   autoFocus
                 />
                 <p className="mt-1 text-xs text-muted-foreground">{t("onboarding.companyNameOptional")}</p>
+              </div>
+            )}
+
+            {accountType && (
+              <div className="mt-4 animate-in fade-in slide-in-from-top-1 duration-300">
+                <label className="text-sm font-medium">{t("onboarding.currencyLabel")}</label>
+                <div className="mt-1.5">
+                  <CurrencyCombobox
+                    value={currency}
+                    onValueChange={(v) => {
+                      setCurrency(v)
+                      setCurrencyTouched(true)
+                    }}
+                  />
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">{t("onboarding.currencyDetectedHint")}</p>
               </div>
             )}
           </section>

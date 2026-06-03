@@ -332,6 +332,8 @@
     "companyNameLabel": "Company name",
     "companyNamePlaceholder": "Acme Inc.",
     "companyNameOptional": "Optional — you can rename it later",
+    "currencyLabel": "Currency",
+    "currencyDetectedHint": "Detected from your location — you can change it",
     "continue": "Continue",
     "back": "Back",
     "choosePlan": "Choose your plan",
