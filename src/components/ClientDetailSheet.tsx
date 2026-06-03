@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/sheet"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { FitText } from "@/components/FitText"
 import { useCurrency } from "@/lib/currency-context"
 import type { Client } from "@/lib/types"
 
@@ -62,17 +63,17 @@ export function ClientDetailSheet({
         <div className="space-y-4 px-4 pb-4">
           {/* Financial summary */}
           <div className="grid grid-cols-3 gap-2">
-            <div className="rounded-lg border p-2.5">
+            <div className="rounded-lg border p-2.5 min-w-0">
               <p className="text-[11px] text-muted-foreground">{t("incomeLabel")}</p>
-              <p className="text-sm font-semibold text-emerald-600 dark:text-emerald-400 tabular-nums">{fmt(incoming)}</p>
+              <FitText className="text-emerald-600 dark:text-emerald-400 mt-0.5" textClassName="text-sm font-semibold tabular-nums">{fmt(incoming)}</FitText>
             </div>
-            <div className="rounded-lg border p-2.5">
+            <div className="rounded-lg border p-2.5 min-w-0">
               <p className="text-[11px] text-muted-foreground">{t("expenseLabel")}</p>
-              <p className="text-sm font-semibold text-red-600 dark:text-red-400 tabular-nums">{fmt(outgoing)}</p>
+              <FitText className="text-red-600 dark:text-red-400 mt-0.5" textClassName="text-sm font-semibold tabular-nums">{fmt(outgoing)}</FitText>
             </div>
-            <div className="rounded-lg border p-2.5">
+            <div className="rounded-lg border p-2.5 min-w-0">
               <p className="text-[11px] text-muted-foreground">{t("profitLabel")}</p>
-              <p className={`text-sm font-semibold tabular-nums ${profit >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"}`}>{fmt(profit)}</p>
+              <FitText className={`mt-0.5 ${profit >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"}`} textClassName="text-sm font-semibold tabular-nums">{fmt(profit)}</FitText>
             </div>
           </div>
 

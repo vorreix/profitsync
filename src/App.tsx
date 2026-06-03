@@ -12,6 +12,7 @@ import { useShouldRedirectToApp } from "@/lib/use-redirect-to-app"
 // console) are only fetched when their route is visited.
 const Dashboard = lazy(() => import("@/pages/Dashboard").then((m) => ({ default: m.Dashboard })))
 const ClientsPage = lazy(() => import("@/pages/ClientsPage").then((m) => ({ default: m.ClientsPage })))
+const ClosedClientsPage = lazy(() => import("@/pages/ClosedClientsPage").then((m) => ({ default: m.ClosedClientsPage })))
 const ClientDetailPage = lazy(() => import("@/pages/ClientDetailPage").then((m) => ({ default: m.ClientDetailPage })))
 const ClientFilesPage = lazy(() => import("@/pages/ClientFilesPage").then((m) => ({ default: m.ClientFilesPage })))
 const TransactionsPage = lazy(() => import("@/pages/TransactionsPage").then((m) => ({ default: m.TransactionsPage })))
@@ -106,6 +107,7 @@ export function App() {
           <Route element={<AppLayout />}>
             <Route path="dashboard" element={<Dashboard />} />
             <Route path="clients" element={<BusinessOnlyRoute feature="clients"><ClientsPage /></BusinessOnlyRoute>} />
+            <Route path="clients/closed" element={<BusinessOnlyRoute feature="clients"><ClosedClientsPage /></BusinessOnlyRoute>} />
             <Route path="clients/:id" element={<BusinessOnlyRoute feature="clients"><ClientDetailPage /></BusinessOnlyRoute>} />
             <Route path="clients/:id/files" element={<BusinessOnlyRoute feature="clients"><ClientFilesPage /></BusinessOnlyRoute>} />
             <Route path="transactions" element={<TransactionsPage />} />
