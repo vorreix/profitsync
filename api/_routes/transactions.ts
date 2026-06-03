@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { and, asc, count, desc, eq, ilike, isNull, or, sql } from "drizzle-orm"
+import { and, asc, count, desc, eq, gte, ilike, isNull, lte, or, sql } from "drizzle-orm"
 import { db, serialize } from "../../src/lib/db/index.js"
 import { clients, transactions } from "../../src/lib/db/schema.js"
 import { canWrite, ensureDefaultClient, isPersonalAccount, requireAuth } from "../_lib/auth.js"
@@ -40,9 +40,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { userId, orgId, role } = ctx
 
   if (req.method === "GET") {
-    const { clientId, search, type, page, sort, limit, category } = req.query as {
-      clientId?: string; search?: string; type?: string; page?: string; sort?: string; limit?: string; category?: string
+    const { clientId, search, type, page, sort, limit, category, from, to } = req.query as {
+      clientId?: string; search?: string; type?: string; page?: string; sort?: string; limit?: string; category?: string; from?: string; to?: string
     }
+
+    const isDate = (v: string | undefined): v is string => !!v && /^\d{4}-\d{2}-\d{2}$/.test(v)
+    const dateFromFilter = isDate(from) ? gte(transactions.date, from) : undefined
+    const dateToFilter = isDate(to) ? lte(transactions.date, to) : undefined
 
     const orderBy = pickOrder(sort)
 
@@ -85,6 +89,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       searchFilter,
       typeFilter,
       categoryFilter,
+      dateFromFilter,
+      dateToFilter,
     )
 
     if (page !== undefined) {
@@ -99,6 +105,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         isNull(transactions.deletedAt),
         searchFilter,
         categoryFilter,
+        dateFromFilter,
+        dateToFilter,
       )
 
       // Count, page rows and summary are independent — run as one parallel batch.

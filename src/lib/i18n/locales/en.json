@@ -60,6 +60,26 @@
     "save": "Save Changes",
     "saving": "Saving..."
   },
+  "filters": {
+    "filters": "Filters",
+    "filter": "Filter",
+    "sort": "Sort",
+    "sortBy": "Sort by",
+    "clearAll": "Clear all",
+    "apply": "Apply",
+    "status": "Status",
+    "type": "Type",
+    "category": "Category",
+    "client": "Client",
+    "dateRange": "Date range",
+    "from": "From",
+    "to": "To",
+    "all": "All",
+    "applied_one": "{{count}} filter applied",
+    "applied_other": "{{count}} filters applied",
+    "noResults": "No results match your filters",
+    "search": "Search"
+  },
   "dashboard": {
     "title": "Dashboard",
     "overview": "Financial overview across all clients",

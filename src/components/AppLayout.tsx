@@ -32,6 +32,7 @@ import { useSyncProfileLanguage } from "@/lib/i18n/use-language"
 import { CurrencyProvider } from "@/lib/currency-context"
 import { OrgProvider, useOrg } from "@/lib/org-context"
 import { AdminProvider, useAdmin } from "@/lib/admin-context"
+import { PageFilterProvider } from "@/lib/page-filter-context"
 import { accountTypeAllows, type AccountType } from "@/lib/types"
 import { OrgSwitcher } from "@/components/OrgSwitcher"
 import { MobileAppLayout } from "@/components/MobileAppLayout"
@@ -344,7 +345,9 @@ export function AppLayout() {
     <OrgProvider>
       <AdminProvider>
         <CurrencyProvider>
-          <AppLayoutInner />
+          <PageFilterProvider>
+            <AppLayoutInner />
+          </PageFilterProvider>
         </CurrencyProvider>
       </AdminProvider>
     </OrgProvider>
