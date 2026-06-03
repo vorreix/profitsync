@@ -60,6 +60,23 @@
     "save": "Save Changes",
     "saving": "Saving..."
   },
+  "multiSelect": {
+    "select": "Select",
+    "selected_one": "{{count}} selected",
+    "selected_other": "{{count}} selected",
+    "selectAll": "Select all",
+    "deselectAll": "Deselect all",
+    "delete": "Delete",
+    "deleteCount_one": "Delete {{count}}",
+    "deleteCount_other": "Delete {{count}}",
+    "confirmTitle_one": "Delete {{count}} item?",
+    "confirmTitle_other": "Delete {{count}} items?",
+    "confirmBody": "The selected items will be moved to Trash. You can restore them later.",
+    "deleted_one": "{{count}} item deleted",
+    "deleted_other": "{{count}} items deleted",
+    "deleteFailed": "Failed to delete the selected items",
+    "selectHint": "Press and hold to select"
+  },
   "filters": {
     "filters": "Filters",
     "filter": "Filter",

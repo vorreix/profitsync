@@ -15,13 +15,16 @@ import { matchRoute, type RoutePattern } from "../src/lib/api-router.js"
 import profile from "./_routes/profile.js"
 import onboarding from "./_routes/onboarding.js"
 import clients from "./_routes/clients.js"
+import clientsBulkDelete from "./_routes/clients/bulk-delete.js"
 import clientById from "./_routes/clients/[id].js"
 import clientAttachments from "./_routes/clients/[id]/attachments.js"
 import clientMedia from "./_routes/clients/[id]/media.js"
 import transactions from "./_routes/transactions.js"
+import transactionsBulkDelete from "./_routes/transactions/bulk-delete.js"
 import transactionById from "./_routes/transactions/[id].js"
 import transactionAttachments from "./_routes/transactions/[id]/attachments.js"
 import quotations from "./_routes/quotations.js"
+import quotationsBulkDelete from "./_routes/quotations/bulk-delete.js"
 import quotationById from "./_routes/quotations/[id].js"
 import quotationAttachments from "./_routes/quotations/[id]/attachments.js"
 import quotationConvert from "./_routes/quotations/[id]/convert.js"
@@ -73,15 +76,18 @@ const routes: RoutePattern<ApiHandler>[] = [
   { segments: ["onboarding"], handler: onboarding },
 
   { segments: ["clients"], handler: clients },
+  { segments: ["clients", "bulk-delete"], handler: clientsBulkDelete },
   { segments: ["clients", ":id"], handler: clientById },
   { segments: ["clients", ":id", "attachments"], handler: clientAttachments },
   { segments: ["clients", ":id", "media"], handler: clientMedia },
 
   { segments: ["transactions"], handler: transactions },
+  { segments: ["transactions", "bulk-delete"], handler: transactionsBulkDelete },
   { segments: ["transactions", ":id"], handler: transactionById },
   { segments: ["transactions", ":id", "attachments"], handler: transactionAttachments },
 
   { segments: ["quotations"], handler: quotations },
+  { segments: ["quotations", "bulk-delete"], handler: quotationsBulkDelete },
   { segments: ["quotations", ":id"], handler: quotationById },
   { segments: ["quotations", ":id", "attachments"], handler: quotationAttachments },
   { segments: ["quotations", ":id", "convert"], handler: quotationConvert },
