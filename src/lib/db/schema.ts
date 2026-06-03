@@ -123,7 +123,12 @@ export const transactionAttachments = pgTable("transaction_attachments", {
   fileType: text("file_type").notNull(),
   fileSize: integer("file_size").notNull(),
   fileData: text("file_data").notNull(),
+  // Editable display name (falls back to fileName) + user organisation metadata.
+  displayName: text("display_name"),
+  tags: jsonb("tags").notNull().default([]),
+  category: text("category").notNull().default(""),
   createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
 })
 
 export const quotationAttachments = pgTable("quotation_attachments", {
@@ -134,7 +139,11 @@ export const quotationAttachments = pgTable("quotation_attachments", {
   fileType: text("file_type").notNull(),
   fileSize: integer("file_size").notNull(),
   fileData: text("file_data").notNull(),
+  displayName: text("display_name"),
+  tags: jsonb("tags").notNull().default([]),
+  category: text("category").notNull().default(""),
   createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
 })
 
 export const clientAttachments = pgTable("client_attachments", {
@@ -145,7 +154,11 @@ export const clientAttachments = pgTable("client_attachments", {
   fileType: text("file_type").notNull(),
   fileSize: integer("file_size").notNull(),
   fileData: text("file_data").notNull(),
+  displayName: text("display_name"),
+  tags: jsonb("tags").notNull().default([]),
+  category: text("category").notNull().default(""),
   createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => ({
   clientIdx: index("client_attachments_client_idx").on(table.clientId),
 }))

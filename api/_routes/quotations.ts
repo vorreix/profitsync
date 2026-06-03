@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { and, count, desc, eq, ilike, isNull, or, sql } from "drizzle-orm"
+import { and, count, desc, eq, getTableColumns, ilike, isNull, or, sql } from "drizzle-orm"
 import { db, serialize } from "../../src/lib/db/index.js"
 import { quotations } from "../../src/lib/db/schema.js"
 import { canWrite, requireAuth, requireBusinessFeature } from "../_lib/auth.js"
@@ -47,6 +47,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       dateToFilter,
     )
 
+    // All quotation columns + a direct attachment count for the list badge.
+    const selectFields = {
+      ...getTableColumns(quotations),
+      attachmentCount: sql<number>`(select count(*)::int from quotation_attachments where quotation_id = ${quotations.id})`,
+    }
+
     if (page !== undefined) {
       const pageNum = Math.max(1, parseInt(page, 10) || 1)
       const offset = (pageNum - 1) * PAGE_SIZE
@@ -55,7 +61,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const [[{ total }], rows] = await Promise.all([
         db.select({ total: count() }).from(quotations).where(whereClause),
         db
-          .select()
+          .select(selectFields)
           .from(quotations)
           .where(whereClause)
           .orderBy(desc(quotations.createdAt), desc(quotations.id))
@@ -67,7 +73,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const rows = await db
-      .select()
+      .select(selectFields)
       .from(quotations)
       .where(whereClause)
       .orderBy(desc(quotations.createdAt), desc(quotations.id))

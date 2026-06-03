@@ -59,6 +59,49 @@ export function attachmentItemPath(type: AttachmentParent, attachmentId: string)
   return `/api/${ITEM_BASE[type]}/${attachmentId}`
 }
 
+// Shape of the editable metadata returned by `?metadata=1` and accepted by PATCH.
+export type AttachmentMetadata = {
+  id: string
+  file_name: string
+  file_type: string
+  file_size: number
+  display_name?: string | null
+  tags?: string[]
+  category?: string
+  created_at?: string
+  updated_at?: string
+  transaction_id?: string
+  quotation_id?: string
+  client_id?: string
+}
+
+// Fetch a single attachment's metadata (never the file bytes) — used by the
+// detail modal, including deep-linked opens where the row isn't already loaded.
+export async function fetchAttachmentMeta(
+  type: AttachmentParent,
+  attachmentId: string,
+  token: string,
+): Promise<AttachmentMetadata> {
+  const res = await fetch(`${attachmentItemPath(type, attachmentId)}?metadata=1`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!res.ok) throw new Error("Failed to load attachment")
+  return (await res.json()) as AttachmentMetadata
+}
+
+// Fetch the raw file as a Blob (for inline preview or download), authenticated.
+export async function fetchAttachmentBlob(
+  type: AttachmentParent,
+  attachmentId: string,
+  token: string,
+): Promise<Blob> {
+  const res = await fetch(attachmentItemPath(type, attachmentId), {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!res.ok) throw new Error("Failed to load file")
+  return await res.blob()
+}
+
 // Read a file as base64 and POST it to `path`. Resolves on success, rejects with
 // the server's error message otherwise. Validation should be done before calling.
 export function uploadAttachment(path: string, file: File, token: string): Promise<void> {

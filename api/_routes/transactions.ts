@@ -32,6 +32,8 @@ const txFields = {
   date: transactions.date,
   createdAt: transactions.createdAt,
   updatedAt: transactions.updatedAt,
+  // Drives the list paperclip badge.
+  attachmentCount: sql<number>`(select count(*)::int from transaction_attachments where transaction_id = ${transactions.id})`,
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {

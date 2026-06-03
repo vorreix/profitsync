@@ -62,6 +62,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       updatedAt: clients.updatedAt,
       totalIncoming: sql<string>`coalesce(sum(case when ${transactions.type} = 'incoming' then ${transactions.amount}::numeric else 0 end), 0)`,
       totalOutgoing: sql<string>`coalesce(sum(case when ${transactions.type} = 'outgoing' then ${transactions.amount}::numeric else 0 end), 0)`,
+      // Direct attachments on the client (correlated subquery → no row fan-out
+      // from the transactions LEFT JOIN above). Drives the list paperclip badge.
+      attachmentCount: sql<number>`(select count(*)::int from client_attachments where client_id = ${clients.id})`,
     }
 
     if (page !== undefined) {
