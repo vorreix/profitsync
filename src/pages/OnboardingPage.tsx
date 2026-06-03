@@ -19,7 +19,7 @@ import { apiGet, apiPost, setActiveOrgId } from "@/lib/api"
 import { OrgProvider, useOrg } from "@/lib/org-context"
 import { useSyncProfileLanguage } from "@/lib/i18n/use-language"
 import { usePlanText } from "@/lib/i18n/plan-text"
-import { currencyForCountry } from "@/lib/currencies"
+import { currencyForCountry, detectDefaultCurrency } from "@/lib/currencies"
 import type { AccountType } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { CurrencyCombobox } from "@/components/CurrencyCombobox"
@@ -176,7 +176,10 @@ function OnboardingInner() {
   const [companyName, setCompanyName] = useState("")
   const [submitting, setSubmitting] = useState(false)
 
-  const [currency, setCurrency] = useState("USD")
+  // Detected entirely client-side (timezone + locale), so it works in local dev
+  // where the Vercel IP-country header is absent. Refined by the server's real
+  // IP country in loadPricing when available.
+  const [currency, setCurrency] = useState(() => detectDefaultCurrency())
   const [currencyTouched, setCurrencyTouched] = useState(false)
 
   const [cycle, setCycle] = useState<Cycle>("monthly")
@@ -193,9 +196,13 @@ function OnboardingInner() {
       if (!token) return
       const res = await apiGet<PricingResponse>("/api/billing/pricing", token)
       setPricing(res)
-      // Prefill the currency from the detected location, unless the user already
-      // picked one (a late response must not clobber a manual choice).
-      setCurrency((prev) => (currencyTouched ? prev : currencyForCountry(res.detectedCountry)))
+      // Refine the default from the server's IP-detected country, but only when it
+      // resolved a real (non-fallback) country — the endpoint defaults to "US" when
+      // no header is present (e.g. local dev), and that must not override the more
+      // accurate client-side detection. Never clobber a manual choice.
+      if (!currencyTouched && res.detectedCountry && res.detectedCountry.toUpperCase() !== "US") {
+        setCurrency(currencyForCountry(res.detectedCountry))
+      }
     } catch {
       // Pricing is best-effort; the user can still continue to the app.
     } finally {

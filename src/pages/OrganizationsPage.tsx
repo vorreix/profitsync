@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
-import { Building2, Check, Loader as Loader2, Pencil, Plus, Trash2, Users } from "lucide-react"
+import { ArrowLeftRight, Building2, Check, Loader as Loader2, Pencil, Plus, Trash2, Users } from "lucide-react"
 import { apiDelete, apiPatch, apiPost } from "@/lib/api"
 import { useOrg } from "@/lib/org-context"
 import { isPaidPlanKey, type Organization } from "@/lib/types"
@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { CurrencyCombobox } from "@/components/CurrencyCombobox"
+import { detectDefaultCurrency } from "@/lib/currencies"
 import {
   Dialog,
   DialogContent,
@@ -45,8 +46,9 @@ export function OrganizationsPage() {
   const [switching, setSwitching] = useState<string | null>(null)
 
   const openCreate = () => {
-    // Default to the active org's currency — the most likely pick for an existing user.
-    setNewCurrency(activeOrg?.currency || "USD")
+    // Default to the active org's currency (most likely pick for an existing user),
+    // falling back to a geo-detected default.
+    setNewCurrency(activeOrg?.currency || detectDefaultCurrency())
     setNewName("")
     setCreateOpen(true)
   }
@@ -226,7 +228,11 @@ export function OrganizationsPage() {
                         onClick={() => handleSwitch(org.id)}
                         disabled={switching === org.id}
                       >
-                        {switching === org.id ? <Loader2 className="size-3.5 mr-1 animate-spin" /> : null}
+                        {switching === org.id ? (
+                          <Loader2 className="size-3.5 mr-1 animate-spin" />
+                        ) : (
+                          <ArrowLeftRight className="size-3.5 mr-1" />
+                        )}
                         {t("organizations.switch")}
                       </Button>
                     )}

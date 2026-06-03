@@ -77,10 +77,20 @@
     "changedField": "{{field}}: {{from}} → {{to}}",
     "empty_value": "—",
     "fields": {
-      "name": "Name", "company": "Company", "email": "Email", "phone": "Phone",
-      "status": "Status", "notes": "Notes", "category": "Category", "onboardDate": "Onboard date",
-      "amount": "Amount", "type": "Type", "description": "Description", "date": "Date",
-      "title": "Title", "prospectName": "Prospect"
+      "name": "Name",
+      "company": "Company",
+      "email": "Email",
+      "phone": "Phone",
+      "status": "Status",
+      "notes": "Notes",
+      "category": "Category",
+      "onboardDate": "Onboard date",
+      "amount": "Amount",
+      "type": "Type",
+      "description": "Description",
+      "date": "Date",
+      "title": "Title",
+      "prospectName": "Prospect"
     }
   },
   "analytics": {
@@ -333,7 +343,7 @@
     "companyNamePlaceholder": "Acme Inc.",
     "companyNameOptional": "Optional — you can rename it later",
     "currencyLabel": "Currency",
-    "currencyDetectedHint": "Detected from your location — you can change it",
+    "currencyDetectedHint": "You can change it later",
     "continue": "Continue",
     "back": "Back",
     "choosePlan": "Choose your plan",

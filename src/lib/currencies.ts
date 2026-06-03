@@ -204,3 +204,91 @@ export function currencyForCountry(code?: string | null): string {
   if (!code) return "USD"
   return COUNTRY_TO_CURRENCY[code.toUpperCase()] ?? "USD"
 }
+
+/**
+ * IANA timezone → ISO alpha-2 country. Curated for the common zones of the markets
+ * in COUNTRY_TO_CURRENCY. Used to infer location client-side — this works in local
+ * dev (and anywhere) where the Vercel `x-vercel-ip-country` header is absent.
+ * Unmapped zones fall back to the browser locale region in `detectCountryCode`.
+ */
+const TIMEZONE_TO_COUNTRY: Record<string, string> = {
+  // North America
+  "America/New_York": "US", "America/Detroit": "US", "America/Chicago": "US",
+  "America/Denver": "US", "America/Phoenix": "US", "America/Los_Angeles": "US",
+  "America/Anchorage": "US", "Pacific/Honolulu": "US",
+  "America/Toronto": "CA", "America/Vancouver": "CA", "America/Edmonton": "CA",
+  "America/Winnipeg": "CA", "America/Halifax": "CA",
+  "America/Mexico_City": "MX", "America/Monterrey": "MX", "America/Tijuana": "MX",
+  // Europe
+  "Europe/London": "GB", "Europe/Dublin": "IE", "Europe/Lisbon": "PT",
+  "Europe/Madrid": "ES", "Europe/Paris": "FR", "Europe/Brussels": "BE",
+  "Europe/Amsterdam": "NL", "Europe/Berlin": "DE", "Europe/Rome": "IT",
+  "Europe/Vienna": "AT", "Europe/Zurich": "CH", "Europe/Luxembourg": "LU",
+  "Europe/Athens": "GR", "Europe/Helsinki": "FI", "Europe/Tallinn": "EE",
+  "Europe/Riga": "LV", "Europe/Vilnius": "LT", "Europe/Malta": "MT",
+  "Europe/Nicosia": "CY", "Europe/Bratislava": "SK", "Europe/Ljubljana": "SI",
+  "Europe/Zagreb": "HR", "Europe/Oslo": "NO", "Europe/Stockholm": "SE",
+  "Europe/Copenhagen": "DK", "Europe/Warsaw": "PL", "Europe/Prague": "CZ",
+  "Europe/Budapest": "HU", "Europe/Bucharest": "RO", "Europe/Sofia": "BG",
+  "Europe/Kyiv": "UA", "Europe/Kiev": "UA", "Europe/Moscow": "RU",
+  "Europe/Istanbul": "TR", "Atlantic/Reykjavik": "IS",
+  // Middle East
+  "Asia/Dubai": "AE", "Asia/Riyadh": "SA", "Asia/Qatar": "QA", "Asia/Kuwait": "KW",
+  "Asia/Bahrain": "BH", "Asia/Muscat": "OM", "Asia/Jerusalem": "IL",
+  "Asia/Amman": "JO", "Asia/Beirut": "LB",
+  // Asia-Pacific
+  "Asia/Kolkata": "IN", "Asia/Calcutta": "IN", "Asia/Shanghai": "CN",
+  "Asia/Hong_Kong": "HK", "Asia/Taipei": "TW", "Asia/Tokyo": "JP",
+  "Asia/Seoul": "KR", "Asia/Singapore": "SG", "Asia/Kuala_Lumpur": "MY",
+  "Asia/Bangkok": "TH", "Asia/Jakarta": "ID", "Asia/Manila": "PH",
+  "Asia/Ho_Chi_Minh": "VN", "Asia/Karachi": "PK", "Asia/Dhaka": "BD",
+  "Asia/Colombo": "LK", "Asia/Kathmandu": "NP",
+  "Australia/Sydney": "AU", "Australia/Melbourne": "AU", "Australia/Brisbane": "AU",
+  "Australia/Perth": "AU", "Australia/Adelaide": "AU", "Pacific/Auckland": "NZ",
+  // Africa
+  "Africa/Johannesburg": "ZA", "Africa/Lagos": "NG", "Africa/Cairo": "EG",
+  "Africa/Nairobi": "KE", "Africa/Accra": "GH", "Africa/Casablanca": "MA",
+  "Africa/Dar_es_Salaam": "TZ", "Africa/Kampala": "UG",
+  // Latin America
+  "America/Sao_Paulo": "BR", "America/Argentina/Buenos_Aires": "AR",
+  "America/Santiago": "CL", "America/Bogota": "CO", "America/Lima": "PE",
+  "America/Montevideo": "UY",
+}
+
+/**
+ * Best-effort detection of the user's ISO alpha-2 country code, client-side.
+ * Tries the device timezone first (reflects physical location, independent of
+ * language), then the browser locale's region subtag. Returns undefined if neither
+ * yields a usable code.
+ */
+export function detectCountryCode(): string | undefined {
+  // 1. Timezone — most reliable location signal available without a network call.
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+    if (tz && TIMEZONE_TO_COUNTRY[tz]) return TIMEZONE_TO_COUNTRY[tz]
+  } catch {
+    // Intl unavailable — fall through to locale.
+  }
+  // 2. Browser locale region (e.g. "en-US" → US, "zh-Hans-CN" → CN).
+  if (typeof navigator !== "undefined") {
+    const locales = [navigator.language, ...(navigator.languages ?? [])].filter(Boolean)
+    for (const locale of locales) {
+      try {
+        const region = new Intl.Locale(locale).region
+        if (region && region.length === 2) return region.toUpperCase()
+      } catch {
+        // Malformed locale tag — skip it.
+      }
+    }
+  }
+  return undefined
+}
+
+/**
+ * Best-effort default currency for the current user, detected entirely client-side.
+ * Falls back to USD when location cannot be determined.
+ */
+export function detectDefaultCurrency(fallback = "USD"): string {
+  const country = detectCountryCode()
+  return country ? currencyForCountry(country) : fallback
+}
