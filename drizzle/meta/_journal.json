@@ -106,6 +106,13 @@
       "when": 1780435314444,
       "tag": "0014_chemical_dragon_lord",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1780437476344,
+      "tag": "0015_panoramic_preak",
+      "breakpoints": true
     }
   ]
 }
