@@ -2,11 +2,11 @@ import { useEffect, useRef, useState } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
-import { apiGet, apiPost, apiPatch } from "@/lib/api"
+import { apiGet, apiPost } from "@/lib/api"
 import type { Client } from "@/lib/types"
 import { useCurrency } from "@/lib/currency-context"
 import { useOrg } from "@/lib/org-context"
-import { canDeleteRole, canWriteRole } from "@/lib/roles"
+import { canDeleteRole } from "@/lib/roles"
 import { useMultiSelect } from "@/lib/use-multi-select"
 import { useLongPress } from "@/lib/use-long-press"
 import { BulkActionBar } from "@/components/BulkActionBar"
@@ -34,8 +34,8 @@ import {
 } from "@/components/ui/select"
 import { toast } from "sonner"
 import {
-  Plus, Users, Building2, Mail, Phone, ChevronRight, ChevronDown, Eye,
-  TrendingUp, TrendingDown, DollarSign, LayoutGrid, LayoutList, CheckSquare, ArchiveRestore,
+  Plus, Users, Building2, Mail, Phone, ChevronRight, Eye,
+  TrendingUp, TrendingDown, DollarSign, LayoutGrid, LayoutList, CheckSquare, Archive,
 } from "lucide-react"
 import { ExpandableSearch } from "@/components/ExpandableSearch"
 import { FilterSheet, FilterSection } from "@/components/filters/FilterSheet"
@@ -81,7 +81,6 @@ export function ClientsPage() {
   const { currency } = useCurrency()
   const { activeOrg } = useOrg()
   const canDelete = canDeleteRole(activeOrg?.role)
-  const canWrite = canWriteRole(activeOrg?.role)
   const sel = useMultiSelect()
   const longPress = useLongPress()
   const [bulkDeleting, setBulkDeleting] = useState(false)
@@ -93,19 +92,13 @@ export function ClientsPage() {
   const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
-  const [search, setSearch] = useState("")
+  // Search is mirrored to ?q= so it survives navigating into a client and back.
+  const [search, setSearch] = useState(() => searchParams.get("q") ?? "")
   const [sort, setSort] = useState("date_desc")
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid")
   const [dialogOpen, setDialogOpen] = useState(false)
   const [form, setForm] = useState<NewClient>(defaultForm)
   const [saving, setSaving] = useState(false)
-
-  // Closed clients live in a separate, lazily-loaded section and are never part
-  // of the normal (active) fetch above.
-  const [closedOpen, setClosedOpen] = useState(false)
-  const [closedClients, setClosedClients] = useState<ClientWithStats[]>([])
-  const [closedLoaded, setClosedLoaded] = useState(false)
-  const [closedLoading, setClosedLoading] = useState(false)
   const [viewClient, setViewClient] = useState<ClientWithStats | null>(null)
 
   const searchRef = useRef(search)
@@ -113,6 +106,8 @@ export function ClientsPage() {
   searchRef.current = search
   sortRef.current = sort
 
+  // While searching we also include closed clients (shown in their own section
+  // below); with no query the list is active-only.
   async function fetchPage1() {
     setLoading(true)
     setPage(1)
@@ -120,7 +115,8 @@ export function ClientsPage() {
       const token = await getToken()
       if (!token) return
       const params = new URLSearchParams({ page: "1" })
-      if (searchRef.current.trim()) params.set("search", searchRef.current.trim())
+      const q = searchRef.current.trim()
+      if (q) { params.set("search", q); params.set("includeClosed", "1") }
       if (sortRef.current) params.set("sort", sortRef.current)
       const data = await apiGet<{ data: Client[]; total: number }>(`/api/clients?${params}`, token)
       setClients(data.data.map(toWithStats))
@@ -140,7 +136,8 @@ export function ClientsPage() {
       const token = await getToken()
       if (!token) return
       const params = new URLSearchParams({ page: String(nextPage) })
-      if (searchRef.current.trim()) params.set("search", searchRef.current.trim())
+      const q = searchRef.current.trim()
+      if (q) { params.set("search", q); params.set("includeClosed", "1") }
       if (sortRef.current) params.set("sort", sortRef.current)
       const data = await apiGet<{ data: Client[]; total: number }>(`/api/clients?${params}`, token)
       setClients((prev) => [...prev, ...data.data.map(toWithStats)])
@@ -160,10 +157,24 @@ export function ClientsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- debounced refetch keyed on search/sort; fetchPage1 reads the latest values via refs
   }, [search, sort])
 
+  // Keep ?q= in sync with the search box (replace, so no history spam) so the
+  // query — and therefore the results — restore when the user comes back.
+  useEffect(() => {
+    const current = searchParams.get("q") ?? ""
+    const next = search.trim()
+    if (current === next) return
+    const params = new URLSearchParams(searchParams)
+    if (next) params.set("q", next); else params.delete("q")
+    setSearchParams(params, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search])
+
   useEffect(() => {
     if (searchParams.get("new") === "1") {
       setDialogOpen(true)
-      setSearchParams({}, { replace: true })
+      const next = new URLSearchParams(searchParams)
+      next.delete("new")
+      setSearchParams(next, { replace: true })
     }
   }, [searchParams, setSearchParams])
 
@@ -195,45 +206,16 @@ export function ClientsPage() {
     }
   }
 
+  // When searching we also pull closed clients; split them out so active matches
+  // show first and closed matches appear in their own labelled section.
+  const searching = search.trim().length > 0
+  const activeClients = searching ? clients.filter((c) => !c.closed_at) : clients
+  const closedMatches = searching ? clients.filter((c) => !!c.closed_at) : []
   const remaining = total - clients.length
 
   // The own/internal client can't be deleted, so it's never selectable.
-  const selectableIds = clients.filter((c) => !c.is_own).map((c) => c.id)
+  const selectableIds = activeClients.filter((c) => !c.is_own).map((c) => c.id)
   const allSelected = selectableIds.length > 0 && selectableIds.every((id) => sel.isSelected(id))
-
-  async function loadClosed() {
-    setClosedLoading(true)
-    try {
-      const token = await getToken()
-      if (!token) return
-      const data = await apiGet<{ data: Client[]; total: number }>("/api/clients?closed=1&page=1", token)
-      setClosedClients(data.data.map(toWithStats))
-      setClosedLoaded(true)
-    } catch {
-      toast.error(t("loadClientsFailed"))
-    } finally {
-      setClosedLoading(false)
-    }
-  }
-
-  function toggleClosedSection() {
-    const next = !closedOpen
-    setClosedOpen(next)
-    if (next && !closedLoaded) loadClosed()
-  }
-
-  async function reopenClient(clientId: string) {
-    try {
-      const token = await getToken()
-      if (!token) return
-      await apiPatch(`/api/clients/${clientId}`, token, { closed: false })
-      toast.success(t("closed.clientReopened"))
-      setClosedClients((prev) => prev.filter((c) => c.id !== clientId))
-      fetchPage1()
-    } catch {
-      toast.error(t("closed.actionFailed"))
-    }
-  }
 
   async function handleBulkDelete() {
     if (sel.count === 0) return
@@ -287,7 +269,18 @@ export function ClientsPage() {
               </Select>
             </FilterSection>
           </FilterSheet>
-          {canDelete && clients.length > 0 && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-9 shrink-0"
+            onClick={() => navigate("/clients/closed")}
+            aria-label={t("closed.clientsSection")}
+            title={t("closed.clientsSection")}
+          >
+            <Archive className="size-4" />
+            <span className="hidden lg:inline">{t("closed.closedBadge")}</span>
+          </Button>
+          {canDelete && activeClients.length > 0 && (
             <Button
               variant={sel.selectionMode ? "secondary" : "outline"}
               size="sm"
@@ -331,7 +324,7 @@ export function ClientsPage() {
             <Skeleton key={i} className={viewMode === "grid" ? "h-36 w-full rounded-xl" : "h-16 w-full rounded-lg"} />
           ))}
         </div>
-      ) : clients.length === 0 ? (
+      ) : activeClients.length === 0 && closedMatches.length === 0 ? (
         <div className="py-20 text-center">
           <Users className="size-12 mx-auto text-muted-foreground/50 mb-4" />
           <p className="text-muted-foreground font-medium">
@@ -348,7 +341,7 @@ export function ClientsPage() {
         <>
           {viewMode === "grid" ? (
             <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-              {clients.map((client) => {
+              {activeClients.map((client) => {
                 const selectable = canDelete && !client.is_own
                 return (
                 <Card
@@ -463,7 +456,7 @@ export function ClientsPage() {
             </div>
           ) : (
             <div className="space-y-2">
-              {clients.map((client) => {
+              {activeClients.map((client) => {
                 const selectable = canDelete && !client.is_own
                 return (
                 <div
@@ -545,51 +538,28 @@ export function ClientsPage() {
         </>
       )}
 
-      {/* Closed clients — a completely separate, lazily-loaded section. Normal
-          fetches never include these. */}
-      {!loading && (
-        <div className="border-t pt-3">
-          <button
-            type="button"
-            onClick={toggleClosedSection}
-            className="flex w-full items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground"
-          >
-            <ChevronDown className={`size-4 transition-transform ${closedOpen ? "" : "-rotate-90"}`} />
-            {t("closed.clientsSection")}
-            {closedLoaded && <span className="text-xs">({closedClients.length})</span>}
-          </button>
-          {closedOpen && (
-            <div className="mt-3">
-              {closedLoading ? (
-                <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-                  {[1, 2, 3].map((i) => <Skeleton key={i} className="h-24 w-full rounded-xl" />)}
-                </div>
-              ) : closedClients.length === 0 ? (
-                <p className="py-6 text-center text-sm text-muted-foreground">{t("closed.noClosedClients")}</p>
-              ) : (
-                <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-                  {closedClients.map((client) => (
-                    <Card key={client.id} className="py-0 opacity-90">
-                      <CardContent className="p-3.5 space-y-2">
-                        <div className="flex items-start justify-between gap-2">
-                          <button className="min-w-0 flex-1 text-left" onClick={() => navigate(`/clients/${client.id}`)}>
-                            <p className="font-semibold text-sm truncate">{client.name}</p>
-                            {client.company && <p className="text-xs text-muted-foreground truncate">{client.company}</p>}
-                          </button>
-                          <Badge variant="outline" className="shrink-0 border-amber-500/40 text-amber-600 dark:text-amber-300">{t("closed.closedBadge")}</Badge>
-                        </div>
-                        {canWrite && (
-                          <Button variant="outline" size="sm" className="w-full" onClick={() => reopenClient(client.id)}>
-                            <ArchiveRestore className="size-3.5" /> {t("closed.reopen")}
-                          </Button>
-                        )}
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
+      {/* When searching, closed matches are shown here (active ones above). The
+          full closed list lives on its own screen via the "Closed" button. */}
+      {!loading && searching && closedMatches.length > 0 && (
+        <div className="border-t pt-4 space-y-3">
+          <p className="text-sm font-medium text-muted-foreground">
+            {t("closed.clientsSection")} <span className="text-xs">({closedMatches.length})</span>
+          </p>
+          <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+            {closedMatches.map((client) => (
+              <Card key={client.id} className="py-0 opacity-90 cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate(`/clients/${client.id}`)}>
+                <CardContent className="p-3.5 space-y-1.5">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold text-sm truncate">{client.name}</p>
+                      {client.company && <p className="text-xs text-muted-foreground truncate">{client.company}</p>}
+                    </div>
+                    <Badge variant="outline" className="shrink-0 border-amber-500/40 text-amber-600 dark:text-amber-300">{t("closed.closedBadge")}</Badge>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
         </div>
       )}
 
