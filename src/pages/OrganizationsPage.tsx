@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
-import { Building2, Check, Loader as Loader2, Pencil, Plus, Trash2, Users } from "lucide-react"
+import { ArrowLeftRight, Building2, Check, Loader as Loader2, Pencil, Plus, Trash2, Users } from "lucide-react"
 import { apiDelete, apiPatch, apiPost } from "@/lib/api"
 import { useOrg } from "@/lib/org-context"
 import { isPaidPlanKey, type Organization } from "@/lib/types"
@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { CurrencyCombobox } from "@/components/CurrencyCombobox"
+import { detectDefaultCurrency } from "@/lib/currencies"
 import {
   Dialog,
   DialogContent,
@@ -31,6 +32,7 @@ export function OrganizationsPage() {
 
   const [createOpen, setCreateOpen] = useState(false)
   const [newName, setNewName] = useState("")
+  const [newCurrency, setNewCurrency] = useState("USD")
   const [creating, setCreating] = useState(false)
 
   const [editTarget, setEditTarget] = useState<Organization | null>(null)
@@ -43,13 +45,21 @@ export function OrganizationsPage() {
 
   const [switching, setSwitching] = useState<string | null>(null)
 
+  const openCreate = () => {
+    // Default to the active org's currency (most likely pick for an existing user),
+    // falling back to a geo-detected default.
+    setNewCurrency(activeOrg?.currency || detectDefaultCurrency())
+    setNewName("")
+    setCreateOpen(true)
+  }
+
   const handleCreate = async () => {
     if (!newName.trim()) return
     setCreating(true)
     try {
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
-      await apiPost<Organization>("/api/organizations", token, { name: newName.trim() })
+      await apiPost<Organization>("/api/organizations", token, { name: newName.trim(), currency: newCurrency })
       toast.success(t("organizations.organizationCreated"))
       setNewName("")
       setCreateOpen(false)
@@ -131,7 +141,7 @@ export function OrganizationsPage() {
             {t("organizations.pageDescription")}
           </p>
         </div>
-        <Button onClick={() => setCreateOpen(true)} className="shrink-0">
+        <Button onClick={openCreate} className="shrink-0">
           <Plus className="size-4 sm:mr-2" />
           <span className="hidden sm:inline">{t("organizations.newOrganization")}</span>
           <span className="sm:hidden">{t("organizations.new")}</span>
@@ -154,49 +164,75 @@ export function OrganizationsPage() {
         <div className="space-y-3">
           {orgs.map((org) => {
             const isActive = activeOrg?.id === org.id
+            const canManage = org.role === "owner" || org.role === "admin"
+            const isPaid = isPaidPlanKey(org.plan_key)
             return (
-              <Card key={org.id} className={isActive ? "border-primary" : ""}>
-                <CardContent className="flex items-center gap-3 py-4">
-                  <div className="flex size-10 shrink-0 items-center justify-center rounded-md border bg-muted text-muted-foreground">
-                    <Building2 className="size-4" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <p className="font-medium truncate">{org.name}</p>
-                      {org.is_personal && (
-                        <Badge variant="outline" className="text-[10px] uppercase tracking-wide">
-                          {t("organizations.personal")}
-                        </Badge>
-                      )}
-                      <Badge
-                        variant="outline"
-                        className={`text-[10px] uppercase tracking-wide ${
-                          isPaidPlanKey(org.plan_key)
-                            ? "border-amber-500/40 text-amber-600 bg-amber-500/10 dark:text-amber-300"
-                            : ""
-                        }`}
-                      >
-                        {isPaidPlanKey(org.plan_key) ? t("organizations.premium") : t("organizations.free")}
-                      </Badge>
-                      {isActive && (
-                        <Badge className="text-[10px] uppercase tracking-wide">
-                          <Check className="size-3 mr-1" /> {t("organizations.active")}
-                        </Badge>
-                      )}
+              <Card
+                key={org.id}
+                className={`overflow-hidden transition-colors ${
+                  isActive ? "border-primary ring-1 ring-primary/20" : "hover:border-foreground/20"
+                }`}
+              >
+                <CardContent className="p-4">
+                  {/* Identity */}
+                  <div className="flex items-start gap-3">
+                    <div
+                      className={`flex size-11 shrink-0 items-center justify-center rounded-xl border ${
+                        isActive
+                          ? "border-primary/30 bg-primary/10 text-primary"
+                          : "bg-muted text-muted-foreground"
+                      }`}
+                    >
+                      <Building2 className="size-5" />
                     </div>
-                    <p className="text-xs text-muted-foreground capitalize">
-                      {t("organizations.role")}: {org.role} · {t("organizations.currency")}: <span className="font-mono uppercase">{org.currency}</span>
-                    </p>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <p className="font-semibold truncate">{org.name}</p>
+                        {isActive && (
+                          <Badge className="shrink-0 gap-1 text-[10px] uppercase tracking-wide">
+                            <Check className="size-3" /> {t("organizations.active")}
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                        {org.is_personal && (
+                          <Badge variant="outline" className="text-[10px] uppercase tracking-wide">
+                            {t("organizations.personal")}
+                          </Badge>
+                        )}
+                        <Badge
+                          variant="outline"
+                          className={`text-[10px] uppercase tracking-wide ${
+                            isPaid ? "border-amber-500/40 text-amber-600 bg-amber-500/10 dark:text-amber-300" : ""
+                          }`}
+                        >
+                          {isPaid ? t("organizations.premium") : t("organizations.free")}
+                        </Badge>
+                        <Badge variant="secondary" className="text-[10px] capitalize">
+                          {org.role}
+                        </Badge>
+                        <Badge variant="secondary" className="gap-1 font-mono text-[10px] uppercase">
+                          {org.currency}
+                        </Badge>
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-1.5">
+
+                  {/* Actions */}
+                  <div className="mt-3 flex items-center gap-1.5 border-t pt-3">
                     {!isActive && (
                       <Button
                         size="sm"
                         variant="outline"
+                        className="flex-1 sm:flex-none"
                         onClick={() => handleSwitch(org.id)}
                         disabled={switching === org.id}
                       >
-                        {switching === org.id ? <Loader2 className="size-3 mr-1 animate-spin" /> : null}
+                        {switching === org.id ? (
+                          <Loader2 className="size-3.5 mr-1 animate-spin" />
+                        ) : (
+                          <ArrowLeftRight className="size-3.5 mr-1" />
+                        )}
                         {t("organizations.switch")}
                       </Button>
                     )}
@@ -204,36 +240,39 @@ export function OrganizationsPage() {
                       <Button
                         size="sm"
                         variant="outline"
+                        className="flex-1 sm:flex-none"
                         onClick={() => navigate(`/organizations/${org.id}/members`)}
                       >
                         <Users className="size-3.5 mr-1" /> {t("organizations.members")}
                       </Button>
                     )}
-                    {(org.role === "owner" || org.role === "admin") && (
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        aria-label={t("organizations.edit")}
-                        onClick={() => {
-                          setEditTarget(org)
-                          setEditName(org.name)
-                          setEditCurrency(org.currency || "USD")
-                        }}
-                      >
-                        <Pencil className="size-3.5" />
-                      </Button>
-                    )}
-                    {!org.is_personal && org.role === "owner" && (
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        aria-label={t("organizations.delete")}
-                        className="text-destructive hover:text-destructive"
-                        onClick={() => setDeleteTarget(org)}
-                      >
-                        <Trash2 className="size-3.5" />
-                      </Button>
-                    )}
+                    <div className="ml-auto flex items-center gap-1">
+                      {canManage && (
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          aria-label={t("organizations.edit")}
+                          onClick={() => {
+                            setEditTarget(org)
+                            setEditName(org.name)
+                            setEditCurrency(org.currency || "USD")
+                          }}
+                        >
+                          <Pencil className="size-4" />
+                        </Button>
+                      )}
+                      {!org.is_personal && org.role === "owner" && (
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          aria-label={t("organizations.delete")}
+                          className="text-destructive hover:text-destructive"
+                          onClick={() => setDeleteTarget(org)}
+                        >
+                          <Trash2 className="size-4" />
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -247,16 +286,26 @@ export function OrganizationsPage() {
           <DialogHeader>
             <DialogTitle>{t("organizations.createOrganization")}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-3 py-2">
-            <Label htmlFor="create-org-name">{t("organizations.name")}</Label>
-            <Input
-              id="create-org-name"
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              placeholder={t("organizations.acmeIncPlaceholder")}
-              onKeyDown={(e) => { if (e.key === "Enter") handleCreate() }}
-              disabled={creating}
-            />
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="create-org-name">{t("organizations.name")}</Label>
+              <Input
+                id="create-org-name"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                placeholder={t("organizations.acmeIncPlaceholder")}
+                onKeyDown={(e) => { if (e.key === "Enter") handleCreate() }}
+                disabled={creating}
+                autoFocus
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>{t("organizations.currency")}</Label>
+              <CurrencyCombobox value={newCurrency} onValueChange={setNewCurrency} disabled={creating} />
+              <p className="text-[11px] text-muted-foreground">
+                {t("organizations.currencyUsedForFormatting")}
+              </p>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setCreateOpen(false)} disabled={creating}>
