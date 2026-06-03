@@ -70,6 +70,13 @@ import adminSubscriptions from "./_routes/admin/subscriptions.js"
 import adminInvoices from "./_routes/admin/invoices.js"
 import adminInvitations from "./_routes/admin/invitations.js"
 import adminPlans from "./_routes/admin/plans.js"
+import adminReferralSettings from "./_routes/admin/referral-settings.js"
+import adminReferrals from "./_routes/admin/referrals.js"
+import adminPayouts from "./_routes/admin/payouts.js"
+import adminPayoutById from "./_routes/admin/payouts/[id].js"
+import referralsRoute from "./_routes/referrals.js"
+import referralsApply from "./_routes/referrals/apply.js"
+import referralPayouts from "./_routes/referrals/payouts.js"
 
 type ApiHandler = (req: VercelRequest, res: VercelResponse) => unknown | Promise<unknown>
 
@@ -100,6 +107,10 @@ const routes: RoutePattern<ApiHandler>[] = [
   { segments: ["quotations", ":id"], handler: quotationById },
   { segments: ["quotations", ":id", "attachments"], handler: quotationAttachments },
   { segments: ["quotations", ":id", "convert"], handler: quotationConvert },
+
+  { segments: ["referrals"], handler: referralsRoute },
+  { segments: ["referrals", "apply"], handler: referralsApply },
+  { segments: ["referrals", "payouts"], handler: referralPayouts },
 
   { segments: ["organizations"], handler: organizations },
   { segments: ["organizations", "switch"], handler: organizationSwitch },
@@ -142,6 +153,10 @@ const routes: RoutePattern<ApiHandler>[] = [
   { segments: ["admin", "invoices"], handler: adminInvoices },
   { segments: ["admin", "invitations"], handler: adminInvitations },
   { segments: ["admin", "plans"], handler: adminPlans },
+  { segments: ["admin", "referral-settings"], handler: adminReferralSettings },
+  { segments: ["admin", "referrals"], handler: adminReferrals },
+  { segments: ["admin", "payouts"], handler: adminPayouts },
+  { segments: ["admin", "payouts", ":id"], handler: adminPayoutById },
 ]
 
 // Resolve the path segments after "/api". Prefer the catch-all param Vercel

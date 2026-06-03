@@ -1,4 +1,5 @@
 import { pgTable, uuid, text, numeric, date, timestamp, integer, boolean, index, uniqueIndex, jsonb } from "drizzle-orm/pg-core"
+import { sql } from "drizzle-orm"
 
 export const organizations = pgTable("organizations", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -238,6 +239,69 @@ export const userProfiles = pgTable("user_profiles", {
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 })
+
+// ── Referral program ────────────────────────────────────────────────────────
+// One shareable code per user.
+export const referralCodes = pgTable("referral_codes", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: text("user_id").notNull().unique(),
+  code: text("code").notNull().unique(),
+  createdAt: timestamp("created_at").defaultNow(),
+})
+
+// A referred user is recorded once (unique referredUserId). The reward amount,
+// currency, type and percent are SNAPSHOTTED at the moment the referral becomes
+// "paid", so later changes to settings never retroactively alter owed money.
+export const referrals = pgTable("referrals", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  referrerUserId: text("referrer_user_id").notNull(),
+  referredUserId: text("referred_user_id").notNull().unique(),
+  code: text("code").notNull(),
+  status: text("status").notNull().default("signed_up"), // signed_up | paid | paid_out
+  organizationId: uuid("organization_id"), // the paying org, set when paid
+  rewardAmount: numeric("reward_amount", { precision: 12, scale: 2 }).notNull().default("0"),
+  rewardCurrency: text("reward_currency").notNull().default("USD"),
+  rewardType: text("reward_type"), // percent | fixed (snapshot)
+  rewardPercent: numeric("reward_percent", { precision: 5, scale: 2 }), // snapshot, if percent
+  qualifyingAt: timestamp("qualifying_at"), // payout-eligible from this time (holding period)
+  paidAt: timestamp("paid_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  referrerIdx: index("referrals_referrer_idx").on(table.referrerUserId),
+}))
+
+// Single-row, admin-managed program configuration (id is a fixed sentinel).
+export const referralSettings = pgTable("referral_settings", {
+  id: text("id").primaryKey(), // always "default"
+  rewardType: text("reward_type").notNull().default("percent"), // percent | fixed
+  rewardPercent: numeric("reward_percent", { precision: 5, scale: 2 }).notNull().default("25"),
+  rewardAmount: numeric("reward_amount", { precision: 12, scale: 2 }).notNull().default("0"),
+  rewardCurrency: text("reward_currency").notNull().default("USD"),
+  holdingDays: integer("holding_days").notNull().default(14),
+  minPayout: numeric("min_payout", { precision: 12, scale: 2 }).notNull().default("0"),
+  bannerEnabled: boolean("banner_enabled").notNull().default(false),
+  bannerText: text("banner_text").notNull().default(""),
+  updatedAt: timestamp("updated_at").defaultNow(),
+})
+
+export const payoutRequests = pgTable("payout_requests", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: text("user_id").notNull(),
+  method: text("method").notNull(), // upi | paypal | bank
+  details: jsonb("details").notNull().default({}),
+  amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+  currency: text("currency").notNull().default("USD"),
+  status: text("status").notNull().default("requested"), // requested | approved | paid | rejected
+  note: text("note").notNull().default(""),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  userIdx: index("payout_requests_user_idx").on(table.userId),
+  // At most one *pending* request per user. This atomically prevents concurrent
+  // payout requests from each passing the balance check and double-spending.
+  onePending: uniqueIndex("payout_requests_one_pending_idx").on(table.userId).where(sql`status = 'requested'`),
+}))
 
 export const appAdmins = pgTable("app_admins", {
   userId: text("user_id").primaryKey(),
