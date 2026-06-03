@@ -35,6 +35,10 @@ const RefundPolicyPage = lazy(() => import("@/pages/RefundPolicyPage").then((m) 
 // components, styles, i18n). Lazy-loaded so it never bloats the app bundle.
 const LandingApp = lazy(() => import("@/landing/LandingApp"))
 
+// Public blog (marketing) — uses the landing's design system + isolated i18n.
+const BlogIndexPage = lazy(() => import("@/landing/blog/BlogIndexPage"))
+const BlogArticlePage = lazy(() => import("@/landing/blog/BlogArticlePage"))
+
 const LoginPage = lazy(() => import("@/pages/LoginPage").then((m) => ({ default: m.LoginPage })))
 const SignupPage = lazy(() => import("@/pages/SignupPage").then((m) => ({ default: m.SignupPage })))
 const ForgotPasswordPage = lazy(() => import("@/pages/ForgotPasswordPage").then((m) => ({ default: m.ForgotPasswordPage })))
@@ -47,6 +51,7 @@ const AdminOrgDetailPage = lazy(() => import("@/pages/admin/AdminOrgDetailPage")
 const AdminSubscriptionsPage = lazy(() => import("@/pages/admin/AdminSubscriptionsPage").then((m) => ({ default: m.AdminSubscriptionsPage })))
 const AdminInvoicesPage = lazy(() => import("@/pages/admin/AdminInvoicesPage").then((m) => ({ default: m.AdminInvoicesPage })))
 const AdminPlansPage = lazy(() => import("@/pages/admin/AdminPlansPage").then((m) => ({ default: m.AdminPlansPage })))
+const AdminBlogPage = lazy(() => import("@/pages/admin/AdminBlogPage").then((m) => ({ default: m.AdminBlogPage })))
 const AdminReferralsPage = lazy(() => import("@/pages/admin/AdminReferralsPage").then((m) => ({ default: m.AdminReferralsPage })))
 const AdminAdminsPage = lazy(() => import("@/pages/admin/AdminAdminsPage").then((m) => ({ default: m.AdminAdminsPage })))
 
@@ -80,6 +85,10 @@ export function App() {
           <Route path="terms-of-service" element={<TermsOfServicePage />} />
           <Route path="refund-policy" element={<RefundPolicyPage />} />
 
+          {/* Public blog (marketing) — open to everyone, signed in or not */}
+          <Route path="blog" element={<BlogIndexPage />} />
+          <Route path="blog/:slug" element={<BlogArticlePage />} />
+
           {/* Invitation accept page (public landing — handles sign-in flow inline) */}
           <Route path="invitations/:token" element={<InvitationPage />} />
 
@@ -101,6 +110,7 @@ export function App() {
             <Route path="subscriptions" element={<AdminSubscriptionsPage />} />
             <Route path="invoices" element={<AdminInvoicesPage />} />
             <Route path="plans" element={<AdminPlansPage />} />
+            <Route path="blog" element={<AdminBlogPage />} />
             <Route path="referrals" element={<AdminReferralsPage />} />
             <Route path="admins" element={<AdminAdminsPage />} />
           </Route>

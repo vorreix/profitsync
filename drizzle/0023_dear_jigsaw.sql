@@ -1,0 +1,2 @@
+ALTER TABLE "blog_posts" ADD COLUMN "reading_time_minutes" integer DEFAULT 1 NOT NULL;--> statement-breakpoint
+ALTER TABLE "blog_posts" ADD CONSTRAINT "blog_posts_published_has_date" CHECK (status <> 'published' OR published_at IS NOT NULL);
