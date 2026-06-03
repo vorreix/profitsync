@@ -17,6 +17,7 @@
     "subscription": "Subscription",
     "trash": "Trash",
     "categories": "Categories",
+    "analytics": "Analytics",
     "home": "Home",
     "quotes": "Quotes",
     "more": "More",
@@ -60,6 +61,25 @@
     "cancel": "Cancel",
     "save": "Save Changes",
     "saving": "Saving..."
+  },
+  "analytics": {
+    "title": "Analytics",
+    "subtitle": "Income, expenses and trends across your workspace",
+    "daily": "Daily",
+    "weekly": "Weekly",
+    "monthly": "Monthly",
+    "yearly": "Yearly",
+    "totalIncome": "Income",
+    "totalExpense": "Expense",
+    "netProfit": "Net profit",
+    "profit": "Profit",
+    "transactions": "Transactions",
+    "incomeVsExpense": "Income vs expense",
+    "profitTrend": "Profit trend",
+    "topCategories": "Top categories",
+    "topClients": "Top clients",
+    "noData": "No data for this range",
+    "viewAnalytics": "View Analytics"
   },
   "closed": {
     "clientsSection": "Closed clients",

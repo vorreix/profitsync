@@ -1,4 +1,15 @@
 {
+  "analyticsTeaser": {
+    "badge": "Built-in analytics",
+    "title": "See where your money moves",
+    "subtitle": "Track income, expenses and profit over any range — daily, weekly, monthly or yearly — with clear breakdowns by client and category.",
+    "cta": "View Analytics",
+    "cardTitle": "Analytics",
+    "cardRange": "Last 6 months",
+    "income": "Income",
+    "expense": "Expense",
+    "profit": "Profit"
+  },
   "install": {
     "button": "Install app",
     "iosTitle": "Add to Home Screen",
