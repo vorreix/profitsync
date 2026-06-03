@@ -109,7 +109,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   // Customer details for the hosted checkout (the buyer confirms billing on Dodo's page).
   const [profile] = await db.select().from(userProfiles).where(eq(userProfiles.id, ctx.userId))
-  const email = profile?.email ?? `${ctx.userId}@users.noreply.profitsync.app`
+  const email = profile?.email ?? `${ctx.userId}@users.noreply.profitsync.net`
   const name = profile?.fullName?.trim() || email.split("@")[0]
   const country = (req.headers["x-vercel-ip-country"] as string | undefined)?.toUpperCase() || "US"
 

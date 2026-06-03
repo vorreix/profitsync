@@ -50,7 +50,7 @@ export function PrivacyPolicyPage() {
       <h2>6. Your rights</h2>
       <p>
         You have the right to access, correct, export, or delete your personal data. To exercise any of these
-        rights, contact us at <a href="mailto:hello@profitsync.app">hello@profitsync.app</a>.
+        rights, contact us at <a href="mailto:hello@profitsync.net">hello@profitsync.net</a>.
       </p>
 
       <h2>7. Security</h2>
@@ -74,7 +74,7 @@ export function PrivacyPolicyPage() {
 
       <h2>10. Contact</h2>
       <p>
-        Questions? Email <a href="mailto:hello@profitsync.app">hello@profitsync.app</a>.
+        Questions? Email <a href="mailto:hello@profitsync.net">hello@profitsync.net</a>.
       </p>
     </LegalLayout>
   )

@@ -14,6 +14,7 @@ export function Footer() {
       links: [
         { label: t("footer.links.features"), href: "#features" },
         { label: t("footer.links.pricing"), href: "#pricing" },
+        { label: t("footer.links.blog", { defaultValue: "Blog" }), href: "/blog" },
         { label: t("footer.links.faq"), href: "#faq" },
       ],
     },
