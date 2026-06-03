@@ -5,6 +5,7 @@ import { Hero } from "./sections/Hero"
 import { TrustBar } from "./sections/TrustBar"
 import { Features } from "./sections/Features"
 import { HowItWorks } from "./sections/HowItWorks"
+import { AnalyticsTeaser } from "./sections/AnalyticsTeaser"
 import { ValueBand } from "./sections/ValueBand"
 import { Pricing } from "./sections/Pricing"
 import { Testimonials } from "./sections/Testimonials"
@@ -30,6 +31,7 @@ export function LandingPage() {
         <TrustBar />
         <Features />
         <HowItWorks />
+        <AnalyticsTeaser />
         <ValueBand />
         <Pricing />
         <Testimonials />
