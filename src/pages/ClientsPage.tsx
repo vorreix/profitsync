@@ -41,6 +41,7 @@ import { ExpandableSearch } from "@/components/ExpandableSearch"
 import { FilterSheet, FilterSection } from "@/components/filters/FilterSheet"
 import { AttachmentBadge } from "@/components/AttachmentBadge"
 import { ClientDetailSheet } from "@/components/ClientDetailSheet"
+import { CategoryPicker } from "@/components/CategoryPicker"
 
 type NewClient = {
   name: string
@@ -49,6 +50,7 @@ type NewClient = {
   phone: string
   status: "active" | "inactive"
   notes: string
+  category: string
   onboard_date: string
 }
 
@@ -61,6 +63,7 @@ const defaultForm: NewClient = {
   phone: "",
   status: "active",
   notes: "",
+  category: "",
   onboard_date: "",
 }
 
@@ -177,6 +180,7 @@ export function ClientsPage() {
         phone: form.phone,
         status: form.status,
         notes: form.notes,
+        category: form.category,
       }
       if (form.onboard_date) body.onboard_date = form.onboard_date
       await apiPost<Client>("/api/clients", token, body)
@@ -383,6 +387,9 @@ export function ClientsPage() {
                             {client.status}
                           </Badge>
                           <AttachmentBadge count={client.attachment_count} />
+                          {client.category && (
+                            <Badge variant="outline" className="text-xs shrink-0">{client.category}</Badge>
+                          )}
                         </div>
                         {client.company && (
                           <div className="flex items-center gap-1.5 mt-1">
@@ -657,6 +664,10 @@ export function ClientsPage() {
                   onChange={(e) => setForm((f) => ({ ...f, onboard_date: e.target.value }))}
                 />
               </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>{t("filters.category")}</Label>
+              <CategoryPicker type="client" value={form.category} onChange={(v) => setForm((f) => ({ ...f, category: v }))} />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="notes">{t("notesField")}</Label>

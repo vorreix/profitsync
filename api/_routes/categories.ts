@@ -4,7 +4,7 @@ import { db, serialize } from "../../src/lib/db/index.js"
 import { categories } from "../../src/lib/db/schema.js"
 import { canWrite, requireAuth } from "../_lib/auth.js"
 
-const VALID_TYPES = ["incoming", "outgoing"]
+const VALID_TYPES = ["incoming", "outgoing", "client", "quotation"]
 const MAX_NAME_LENGTH = 60
 const MAX_CATEGORIES_PER_ORG = 300
 
