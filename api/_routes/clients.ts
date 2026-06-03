@@ -4,6 +4,7 @@ import { db, serialize } from "../../src/lib/db/index.js"
 import { clients, transactions } from "../../src/lib/db/schema.js"
 import { canWrite, ensureDefaultClient, requireAuth, requireBusinessFeature } from "../_lib/auth.js"
 import { checkClientQuota, checkNoteLength } from "../_lib/quota.js"
+import { logAudit } from "../_lib/audit.js"
 
 const VALID_STATUSES = ["active", "inactive", "archived"]
 const PAGE_SIZE = 20
@@ -18,8 +19,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // or the business own-company client). Make sure it exists before listing.
     await ensureDefaultClient(orgId, userId)
 
-    const { search, sort, page } = req.query as {
-      search?: string; sort?: string; page?: string
+    const { search, sort, page, closed, includeClosed } = req.query as {
+      search?: string; sort?: string; page?: string; closed?: string; includeClosed?: string
     }
 
     const searchFilter = search?.trim()
@@ -30,9 +31,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         )
       : undefined
 
+    // Closed filtering: by default only active (closed_at IS NULL). `?closed=1`
+    // returns only closed (the list's "Closed" section); `?includeClosed=1`
+    // returns both (the dashboard "show closed" toggle).
+    const closedFilter =
+      closed === "1"
+        ? sql`${clients.closedAt} is not null`
+        : includeClosed === "1"
+          ? undefined
+          : isNull(clients.closedAt)
+
     const whereClause = and(
       eq(clients.organizationId, orgId),
       isNull(clients.deletedAt),
+      closedFilter,
       searchFilter,
     )
 
@@ -55,13 +67,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       phone: clients.phone,
       status: clients.status,
       notes: clients.notes,
+      category: clients.category,
       isOwn: clients.isOwn,
       onboardDate: clients.onboardDate,
       deletedAt: clients.deletedAt,
+      closedAt: clients.closedAt,
       createdAt: clients.createdAt,
       updatedAt: clients.updatedAt,
       totalIncoming: sql<string>`coalesce(sum(case when ${transactions.type} = 'incoming' then ${transactions.amount}::numeric else 0 end), 0)`,
       totalOutgoing: sql<string>`coalesce(sum(case when ${transactions.type} = 'outgoing' then ${transactions.amount}::numeric else 0 end), 0)`,
+      // Direct attachments on the client (correlated subquery → no row fan-out
+      // from the transactions LEFT JOIN above). Drives the list paperclip badge.
+      attachmentCount: sql<number>`(select count(*)::int from client_attachments where client_id = ${clients.id})`,
     }
 
     if (page !== undefined) {
@@ -99,9 +116,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Personal accounts can't manage clients — they get exactly one default client.
     if (!requireBusinessFeature(res, ctx, "clients")) return
     if (!canWrite(role)) return res.status(403).json({ error: "Forbidden" })
-    const { name, company, email, phone, status, notes, onboard_date } = req.body as {
+    const { name, company, email, phone, status, notes, onboard_date, category } = req.body as {
       name: string; company?: string; email?: string
-      phone?: string; status?: string; notes?: string; onboard_date?: string
+      phone?: string; status?: string; notes?: string; onboard_date?: string; category?: string
     }
     if (!name?.trim()) return res.status(400).json({ error: "name is required" })
     const normalizedStatus = status ?? "active"
@@ -123,9 +140,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         phone: phone ?? "",
         status: normalizedStatus,
         notes: notes ?? "",
+        category: typeof category === "string" ? category.trim().slice(0, 60) : "",
         onboardDate: onboard_date ?? null,
+        createdBy: userId,
+        updatedBy: userId,
       })
       .returning()
+    await logAudit({ orgId, entityType: "client", entityId: row.id, action: "create", actorId: userId })
     return res.status(201).json(serialize(row))
   }
 

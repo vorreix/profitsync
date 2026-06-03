@@ -7,6 +7,7 @@ import type { Client, Transaction } from "@/lib/types"
 import { useCurrency } from "@/lib/currency-context"
 import { useOrg } from "@/lib/org-context"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { FitText } from "@/components/FitText"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -25,7 +26,10 @@ import {
   Building2,
   Tag,
   X,
+  Archive,
 } from "lucide-react"
+import { FilterSheet, FilterSection } from "@/components/filters/FilterSheet"
+import { TransactionPeekModal } from "@/components/TransactionPeekModal"
 import {
   ChartContainer,
   ChartTooltip,
@@ -88,7 +92,9 @@ function StatCard({
         <Skeleton className="h-6 sm:h-8 w-20 sm:w-28 mt-1.5" />
       ) : (
         <>
-          <p className={`text-lg sm:text-2xl font-bold mt-1 tabular-nums truncate ${valueClass}`}>{value}</p>
+          <FitText className={`mt-1 ${valueClass}`} textClassName="text-lg sm:text-2xl font-bold tabular-nums">
+            {value}
+          </FitText>
           {hint && (
             <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5 flex items-center gap-1 truncate">
               {hint}
@@ -272,11 +278,13 @@ function LatestTransactionsCard({
   loading,
   currency,
   showClient,
+  onSelect,
 }: {
   transactions: Transaction[]
   loading: boolean
   currency: string
   showClient: boolean
+  onSelect: (tx: Transaction) => void
 }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
@@ -301,7 +309,12 @@ function LatestTransactionsCard({
                 .filter(Boolean)
                 .join(" · ")
               return (
-                <div key={tx.id} className="flex items-center gap-3 py-2.5">
+                <button
+                  key={tx.id}
+                  type="button"
+                  onClick={() => onSelect(tx)}
+                  className="flex w-full items-center gap-3 py-2.5 text-left transition-colors hover:bg-muted/50 -mx-2 px-2 rounded-md"
+                >
                   <div
                     className={`flex size-8 shrink-0 items-center justify-center rounded-full ${
                       incoming
@@ -326,7 +339,7 @@ function LatestTransactionsCard({
                   >
                     {incoming ? "+" : "−"}{formatCurrency(Number(tx.amount), currency)}
                   </p>
-                </div>
+                </button>
               )
             })}
           </div>
@@ -356,15 +369,20 @@ export function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [selectedClientIds, setSelectedClientIds] = useState<Set<string>>(new Set())
   const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set())
+  // When on, closed clients (and their transactions) are loaded so they can be
+  // included in the filter + aggregates. Off by default → analytics excludes them.
+  const [showClosed, setShowClosed] = useState(false)
+  const [peekTx, setPeekTx] = useState<Transaction | null>(null)
 
   useEffect(() => {
     async function load() {
       try {
         const token = await getToken()
         if (!token) return
+        const suffix = showClosed ? "?includeClosed=1" : ""
         const [clientList, txList] = await Promise.all([
-          apiGet<Client[]>("/api/clients", token),
-          apiGet<Transaction[]>("/api/transactions", token),
+          apiGet<Client[]>(`/api/clients${suffix}`, token),
+          apiGet<Transaction[]>(`/api/transactions${suffix}`, token),
         ])
         setClients(clientList)
         setTransactions(txList)
@@ -375,8 +393,8 @@ export function Dashboard() {
       }
     }
     load()
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once on mount; getToken is stable
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- getToken is stable; reload when the closed toggle changes
+  }, [showClosed])
 
   const clientsById = useMemo(() => {
     const m = new Map<string, Client>()
@@ -426,6 +444,11 @@ export function Dashboard() {
   const netProfit = displayIncoming - displayOutgoing
   const profitMargin = displayIncoming > 0 ? ((netProfit / displayIncoming) * 100).toFixed(1) : "0"
   const filtersActive = selectedClientIds.size > 0 || selectedCategories.size > 0
+  const appliedFilterCount = (selectedClientIds.size > 0 ? 1 : 0) + (selectedCategories.size > 0 ? 1 : 0)
+  const clearAllFilters = () => {
+    setSelectedClientIds(new Set())
+    setSelectedCategories(new Set())
+  }
 
   const realClients = clients.filter((c) => !c.is_own)
   const activeClients = realClients.filter((c) => c.status === "active").length
@@ -468,14 +491,16 @@ export function Dashboard() {
     <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
       <CompanyUpsellBanner />
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-        <div>
+      <div className="flex items-start justify-between gap-2 sm:gap-4">
+        <div className="min-w-0">
           <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">{t("dashboard.title")}</h1>
           <p className="text-sm text-muted-foreground mt-1">
             {filtersActive ? t("dashboard.filtered") : t("dashboard.overview")}
           </p>
         </div>
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        {/* Desktop: filters inline beside the title. Mobile: a single filter
+            button on the same line (req #1), opening a sheet with both. */}
+        <div className="hidden sm:flex sm:items-center sm:gap-2 shrink-0">
           {!isPersonal && (
             <MultiSelectFilter
               triggerLabel={t("dashboard.allClients")}
@@ -498,6 +523,53 @@ export function Dashboard() {
             onChange={setSelectedCategories}
             icon={<Tag className="size-4 opacity-60" />}
           />
+          {!isPersonal && (
+            <Button
+              variant={showClosed ? "secondary" : "outline"}
+              size="sm"
+              className="h-9 shrink-0"
+              onClick={() => setShowClosed((v) => !v)}
+            >
+              <Archive className="size-4" />
+              {t("closed.showClosedClients")}
+            </Button>
+          )}
+        </div>
+        <div className="sm:hidden shrink-0">
+          <FilterSheet count={appliedFilterCount} onClear={clearAllFilters}>
+            {!isPersonal && (
+              <FilterSection label={t("filters.client")}>
+                <MultiSelectFilter
+                  triggerLabel={t("dashboard.allClients")}
+                  allLabel={t("dashboard.allClients")}
+                  searchPlaceholder={t("dashboard.searchClients")}
+                  emptyText={t("dashboard.noClientsFound")}
+                  options={clientOptions}
+                  selected={selectedClientIds}
+                  onChange={setSelectedClientIds}
+                  icon={<Building2 className="size-4 opacity-60" />}
+                />
+              </FilterSection>
+            )}
+            <FilterSection label={t("filters.category")}>
+              <MultiSelectFilter
+                triggerLabel={t("dashboard.allCategories")}
+                allLabel={t("dashboard.allCategories")}
+                searchPlaceholder={t("dashboard.searchCategories")}
+                emptyText={t("dashboard.noCategoriesFound")}
+                options={categoryOptions}
+                selected={selectedCategories}
+                onChange={setSelectedCategories}
+                icon={<Tag className="size-4 opacity-60" />}
+              />
+            </FilterSection>
+            {!isPersonal && (
+              <label className="flex items-center gap-2 pt-1">
+                <Checkbox checked={showClosed} onCheckedChange={(c) => setShowClosed(!!c)} />
+                <span className="text-sm">{t("closed.showClosedClients")}</span>
+              </label>
+            )}
+          </FilterSheet>
         </div>
       </div>
 
@@ -657,7 +729,15 @@ export function Dashboard() {
       </div>
 
       {/* Latest activity across the workspace */}
-      <LatestTransactionsCard transactions={latestTx} loading={loading} currency={currency} showClient={!isPersonal} />
+      <LatestTransactionsCard transactions={latestTx} loading={loading} currency={currency} showClient={!isPersonal} onSelect={setPeekTx} />
+
+      <TransactionPeekModal
+        tx={peekTx}
+        open={peekTx !== null}
+        onOpenChange={(o) => { if (!o) setPeekTx(null) }}
+        currency={currency}
+        showClient={!isPersonal}
+      />
     </div>
   )
 }

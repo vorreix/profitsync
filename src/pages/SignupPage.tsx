@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Link } from "react-router-dom"
 import { SignUp } from "@clerk/clerk-react"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -13,6 +13,17 @@ export function SignupPage() {
   const [agreed, setAgreed] = useState(false)
   const [continued, setContinued] = useState(false)
 
+  // Referral code from ?r= (persisted so it survives the landing → signup hop).
+  const referralCode = useMemo(() => {
+    try {
+      const fromUrl = new URLSearchParams(window.location.search).get("r")
+      if (fromUrl) { localStorage.setItem("ps_ref", fromUrl); return fromUrl }
+      return localStorage.getItem("ps_ref") || undefined
+    } catch {
+      return undefined
+    }
+  }, [])
+
   useEffect(() => {
     initPwa()
   }, [])
@@ -25,7 +36,7 @@ export function SignupPage() {
             path="/signup"
             routing="path"
             signInUrl="/login"
-            unsafeMetadata={{ acceptedLegalAt: new Date().toISOString() }}
+            unsafeMetadata={{ acceptedLegalAt: new Date().toISOString(), ...(referralCode ? { referralCode } : {}) }}
           />
           <p className="text-xs text-muted-foreground">
             By signing up you confirm you accept the{" "}

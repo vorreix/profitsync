@@ -1,9 +1,10 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { and, asc, count, desc, eq, ilike, isNull, or, sql } from "drizzle-orm"
+import { and, asc, count, desc, eq, gte, ilike, isNull, lte, or, sql } from "drizzle-orm"
 import { db, serialize } from "../../src/lib/db/index.js"
 import { clients, transactions } from "../../src/lib/db/schema.js"
 import { canWrite, ensureDefaultClient, isPersonalAccount, requireAuth } from "../_lib/auth.js"
 import { checkTransactionQuota } from "../_lib/quota.js"
+import { logAudit } from "../_lib/audit.js"
 
 const PAGE_SIZE = 20
 
@@ -32,6 +33,8 @@ const txFields = {
   date: transactions.date,
   createdAt: transactions.createdAt,
   updatedAt: transactions.updatedAt,
+  // Drives the list paperclip badge.
+  attachmentCount: sql<number>`(select count(*)::int from transaction_attachments where transaction_id = ${transactions.id})`,
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -40,9 +43,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { userId, orgId, role } = ctx
 
   if (req.method === "GET") {
-    const { clientId, search, type, page, sort, limit, category } = req.query as {
-      clientId?: string; search?: string; type?: string; page?: string; sort?: string; limit?: string; category?: string
+    const { clientId, search, type, page, sort, limit, category, from, to, includeClosed } = req.query as {
+      clientId?: string; search?: string; type?: string; page?: string; sort?: string; limit?: string; category?: string; from?: string; to?: string; includeClosed?: string
     }
+
+    const isDate = (v: string | undefined): v is string => !!v && /^\d{4}-\d{2}-\d{2}$/.test(v)
+    const dateFromFilter = isDate(from) ? gte(transactions.date, from) : undefined
+    const dateToFilter = isDate(to) ? lte(transactions.date, to) : undefined
+    // Exclude transactions of closed clients from the default list/analytics;
+    // `?includeClosed=1` brings them back (dashboard "show closed" toggle).
+    const closedClientFilter = includeClosed === "1" ? undefined : isNull(clients.closedAt)
 
     const orderBy = pickOrder(sort)
 
@@ -82,9 +92,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       eq(clients.organizationId, orgId),
       isNull(clients.deletedAt),
       isNull(transactions.deletedAt),
+      closedClientFilter,
       searchFilter,
       typeFilter,
       categoryFilter,
+      dateFromFilter,
+      dateToFilter,
     )
 
     if (page !== undefined) {
@@ -97,8 +110,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         eq(clients.organizationId, orgId),
         isNull(clients.deletedAt),
         isNull(transactions.deletedAt),
+        closedClientFilter,
         searchFilter,
         categoryFilter,
+        dateFromFilter,
+        dateToFilter,
       )
 
       // Count, page rows and summary are independent — run as one parallel batch.
@@ -190,8 +206,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         description: description ?? "",
         category: category ?? "",
         date: date ?? today,
+        createdBy: userId,
+        updatedBy: userId,
       })
       .returning()
+    await logAudit({ orgId, entityType: "transaction", entityId: row.id, action: "create", actorId: userId })
     return res.status(201).json(serialize(row))
   }
 

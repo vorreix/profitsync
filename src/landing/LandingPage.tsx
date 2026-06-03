@@ -5,8 +5,10 @@ import { Hero } from "./sections/Hero"
 import { TrustBar } from "./sections/TrustBar"
 import { Features } from "./sections/Features"
 import { HowItWorks } from "./sections/HowItWorks"
+import { AnalyticsTeaser } from "./sections/AnalyticsTeaser"
 import { ValueBand } from "./sections/ValueBand"
 import { Pricing } from "./sections/Pricing"
+import { Referral } from "./sections/Referral"
 import { Testimonials } from "./sections/Testimonials"
 import { FAQ } from "./sections/FAQ"
 import { CTA } from "./sections/CTA"
@@ -30,8 +32,10 @@ export function LandingPage() {
         <TrustBar />
         <Features />
         <HowItWorks />
+        <AnalyticsTeaser />
         <ValueBand />
         <Pricing />
+        <Referral />
         <Testimonials />
         <FAQ />
         <CTA />

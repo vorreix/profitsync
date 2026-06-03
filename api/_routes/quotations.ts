@@ -1,9 +1,10 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { and, count, desc, eq, ilike, isNull, or } from "drizzle-orm"
+import { and, count, desc, eq, getTableColumns, ilike, isNull, or, sql } from "drizzle-orm"
 import { db, serialize } from "../../src/lib/db/index.js"
 import { quotations } from "../../src/lib/db/schema.js"
 import { canWrite, requireAuth, requireBusinessFeature } from "../_lib/auth.js"
 import { checkNoteLength, checkQuotationQuota } from "../_lib/quota.js"
+import { logAudit } from "../_lib/audit.js"
 
 const VALID_STATUSES = ["draft", "sent", "accepted", "rejected"]
 const PAGE_SIZE = 20
@@ -16,9 +17,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { userId, orgId, role } = ctx
 
   if (req.method === "GET") {
-    const { search, status, page } = req.query as {
-      search?: string; status?: string; page?: string
+    const { search, status, page, dateFrom, dateTo, closed, includeClosed } = req.query as {
+      search?: string; status?: string; page?: string; dateFrom?: string; dateTo?: string; closed?: string; includeClosed?: string
     }
+
+    const closedFilter =
+      closed === "1"
+        ? sql`${quotations.closedAt} is not null`
+        : includeClosed === "1"
+          ? undefined
+          : isNull(quotations.closedAt)
 
     const searchFilter = search?.trim()
       ? or(
@@ -33,12 +41,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ? eq(quotations.status, status)
       : undefined
 
+    // Date range filters on created_at; `dateTo` is inclusive of the whole day.
+    const isDate = (v: string | undefined): v is string => !!v && /^\d{4}-\d{2}-\d{2}$/.test(v)
+    const dateFromFilter = isDate(dateFrom) ? sql`${quotations.createdAt} >= ${dateFrom}::date` : undefined
+    const dateToFilter = isDate(dateTo) ? sql`${quotations.createdAt} < (${dateTo}::date + interval '1 day')` : undefined
+
     const whereClause = and(
       eq(quotations.organizationId, orgId),
       isNull(quotations.deletedAt),
+      closedFilter,
       searchFilter,
       statusFilter,
+      dateFromFilter,
+      dateToFilter,
     )
+
+    // All quotation columns + a direct attachment count for the list badge.
+    const selectFields = {
+      ...getTableColumns(quotations),
+      attachmentCount: sql<number>`(select count(*)::int from quotation_attachments where quotation_id = ${quotations.id})`,
+    }
 
     if (page !== undefined) {
       const pageNum = Math.max(1, parseInt(page, 10) || 1)
@@ -48,7 +70,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const [[{ total }], rows] = await Promise.all([
         db.select({ total: count() }).from(quotations).where(whereClause),
         db
-          .select()
+          .select(selectFields)
           .from(quotations)
           .where(whereClause)
           .orderBy(desc(quotations.createdAt), desc(quotations.id))
@@ -60,7 +82,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const rows = await db
-      .select()
+      .select(selectFields)
       .from(quotations)
       .where(whereClause)
       .orderBy(desc(quotations.createdAt), desc(quotations.id))
@@ -69,9 +91,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method === "POST") {
     if (!canWrite(role)) return res.status(403).json({ error: "Forbidden" })
-    const { title, prospect_name, company, email, phone, amount, status, notes } = req.body as {
+    const { title, prospect_name, company, email, phone, amount, status, notes, category } = req.body as {
       title: string; prospect_name: string; company?: string; email?: string
-      phone?: string; amount?: number; status?: string; notes?: string
+      phone?: string; amount?: number; status?: string; notes?: string; category?: string
     }
     if (!title?.trim()) return res.status(400).json({ error: "title is required" })
     if (!prospect_name?.trim()) return res.status(400).json({ error: "prospect_name is required" })
@@ -96,8 +118,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         amount: amount != null ? String(amount) : "0",
         status: normalizedStatus,
         notes: notes ?? "",
+        category: typeof category === "string" ? category.trim().slice(0, 60) : "",
+        createdBy: userId,
+        updatedBy: userId,
       })
       .returning()
+    await logAudit({ orgId, entityType: "quotation", entityId: row.id, action: "create", actorId: userId })
     return res.status(201).json(serialize(row))
   }
 

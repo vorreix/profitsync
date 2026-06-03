@@ -15,11 +15,20 @@ import { matchRoute, type RoutePattern } from "../src/lib/api-router.js"
 import profile from "./_routes/profile.js"
 import onboarding from "./_routes/onboarding.js"
 import clients from "./_routes/clients.js"
+import clientsBulkDelete from "./_routes/clients/bulk-delete.js"
 import clientById from "./_routes/clients/[id].js"
+import clientAttachments from "./_routes/clients/[id]/attachments.js"
+import clientMedia from "./_routes/clients/[id]/media.js"
 import transactions from "./_routes/transactions.js"
+import transactionsBulkDelete from "./_routes/transactions/bulk-delete.js"
 import transactionById from "./_routes/transactions/[id].js"
 import transactionAttachments from "./_routes/transactions/[id]/attachments.js"
+import analytics from "./_routes/analytics.js"
+import audit from "./_routes/audit.js"
+import categories from "./_routes/categories.js"
+import categoryById from "./_routes/categories/[id].js"
 import quotations from "./_routes/quotations.js"
+import quotationsBulkDelete from "./_routes/quotations/bulk-delete.js"
 import quotationById from "./_routes/quotations/[id].js"
 import quotationAttachments from "./_routes/quotations/[id]/attachments.js"
 import quotationConvert from "./_routes/quotations/[id]/convert.js"
@@ -29,6 +38,7 @@ import organizationById from "./_routes/organizations/[id].js"
 import organizationMembers from "./_routes/organizations/[id]/members.js"
 import attachmentById from "./_routes/attachments/[id].js"
 import quotationAttachmentById from "./_routes/quotation-attachments/[id].js"
+import clientAttachmentById from "./_routes/client-attachments/[id].js"
 import invitationByToken from "./_routes/invitations/[token].js"
 import legalAccept from "./_routes/legal/accept.js"
 import trash from "./_routes/trash.js"
@@ -60,6 +70,13 @@ import adminSubscriptions from "./_routes/admin/subscriptions.js"
 import adminInvoices from "./_routes/admin/invoices.js"
 import adminInvitations from "./_routes/admin/invitations.js"
 import adminPlans from "./_routes/admin/plans.js"
+import adminReferralSettings from "./_routes/admin/referral-settings.js"
+import adminReferrals from "./_routes/admin/referrals.js"
+import adminPayouts from "./_routes/admin/payouts.js"
+import adminPayoutById from "./_routes/admin/payouts/[id].js"
+import referralsRoute from "./_routes/referrals.js"
+import referralsApply from "./_routes/referrals/apply.js"
+import referralPayouts from "./_routes/referrals/payouts.js"
 
 type ApiHandler = (req: VercelRequest, res: VercelResponse) => unknown | Promise<unknown>
 
@@ -70,16 +87,30 @@ const routes: RoutePattern<ApiHandler>[] = [
   { segments: ["onboarding"], handler: onboarding },
 
   { segments: ["clients"], handler: clients },
+  { segments: ["clients", "bulk-delete"], handler: clientsBulkDelete },
   { segments: ["clients", ":id"], handler: clientById },
+  { segments: ["clients", ":id", "attachments"], handler: clientAttachments },
+  { segments: ["clients", ":id", "media"], handler: clientMedia },
+
+  { segments: ["analytics"], handler: analytics },
+  { segments: ["audit"], handler: audit },
+  { segments: ["categories"], handler: categories },
+  { segments: ["categories", ":id"], handler: categoryById },
 
   { segments: ["transactions"], handler: transactions },
+  { segments: ["transactions", "bulk-delete"], handler: transactionsBulkDelete },
   { segments: ["transactions", ":id"], handler: transactionById },
   { segments: ["transactions", ":id", "attachments"], handler: transactionAttachments },
 
   { segments: ["quotations"], handler: quotations },
+  { segments: ["quotations", "bulk-delete"], handler: quotationsBulkDelete },
   { segments: ["quotations", ":id"], handler: quotationById },
   { segments: ["quotations", ":id", "attachments"], handler: quotationAttachments },
   { segments: ["quotations", ":id", "convert"], handler: quotationConvert },
+
+  { segments: ["referrals"], handler: referralsRoute },
+  { segments: ["referrals", "apply"], handler: referralsApply },
+  { segments: ["referrals", "payouts"], handler: referralPayouts },
 
   { segments: ["organizations"], handler: organizations },
   { segments: ["organizations", "switch"], handler: organizationSwitch },
@@ -88,6 +119,7 @@ const routes: RoutePattern<ApiHandler>[] = [
 
   { segments: ["attachments", ":id"], handler: attachmentById },
   { segments: ["quotation-attachments", ":id"], handler: quotationAttachmentById },
+  { segments: ["client-attachments", ":id"], handler: clientAttachmentById },
 
   { segments: ["invitations", ":token"], handler: invitationByToken },
   { segments: ["legal", "accept"], handler: legalAccept },
@@ -121,6 +153,10 @@ const routes: RoutePattern<ApiHandler>[] = [
   { segments: ["admin", "invoices"], handler: adminInvoices },
   { segments: ["admin", "invitations"], handler: adminInvitations },
   { segments: ["admin", "plans"], handler: adminPlans },
+  { segments: ["admin", "referral-settings"], handler: adminReferralSettings },
+  { segments: ["admin", "referrals"], handler: adminReferrals },
+  { segments: ["admin", "payouts"], handler: adminPayouts },
+  { segments: ["admin", "payouts", ":id"], handler: adminPayoutById },
 ]
 
 // Resolve the path segments after "/api". Prefer the catch-all param Vercel

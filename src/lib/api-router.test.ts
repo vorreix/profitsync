@@ -40,4 +40,16 @@ describe("matchRoute", () => {
     expect(matchRoute(routes, ["clients", "1", "extra"])).toBeNull()
     expect(matchRoute(routes, [])).toBeNull()
   })
+
+  it("routes a static bulk-delete before the dynamic :id sibling", () => {
+    const withBulk: RoutePattern<string>[] = [
+      { segments: ["clients"], handler: "clients" },
+      { segments: ["clients", "bulk-delete"], handler: "clientsBulkDelete" },
+      { segments: ["clients", ":id"], handler: "clientById" },
+    ]
+    expect(matchRoute(withBulk, ["clients", "bulk-delete"])?.handler).toBe("clientsBulkDelete")
+    const dyn = matchRoute(withBulk, ["clients", "abc-123"])
+    expect(dyn?.handler).toBe("clientById")
+    expect(dyn?.params).toEqual({ id: "abc-123" })
+  })
 })

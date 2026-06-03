@@ -5,8 +5,14 @@ import { useTranslation } from "react-i18next"
 import { apiGet, apiPost } from "@/lib/api"
 import type { Client } from "@/lib/types"
 import { useCurrency } from "@/lib/currency-context"
+import { useOrg } from "@/lib/org-context"
+import { canDeleteRole } from "@/lib/roles"
+import { useMultiSelect } from "@/lib/use-multi-select"
+import { useLongPress } from "@/lib/use-long-press"
+import { BulkActionBar } from "@/components/BulkActionBar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -28,9 +34,14 @@ import {
 } from "@/components/ui/select"
 import { toast } from "sonner"
 import {
-  Plus, Search, Users, Building2, Mail, Phone, ChevronRight,
-  TrendingUp, TrendingDown, DollarSign, LayoutGrid, LayoutList,
+  Plus, Users, Building2, Mail, Phone, ChevronRight, Eye,
+  TrendingUp, TrendingDown, DollarSign, LayoutGrid, LayoutList, CheckSquare, Archive,
 } from "lucide-react"
+import { ExpandableSearch } from "@/components/ExpandableSearch"
+import { FilterSheet, FilterSection } from "@/components/filters/FilterSheet"
+import { AttachmentBadge } from "@/components/AttachmentBadge"
+import { ClientDetailSheet } from "@/components/ClientDetailSheet"
+import { CategoryPicker } from "@/components/CategoryPicker"
 
 type NewClient = {
   name: string
@@ -39,6 +50,7 @@ type NewClient = {
   phone: string
   status: "active" | "inactive"
   notes: string
+  category: string
   onboard_date: string
 }
 
@@ -51,6 +63,7 @@ const defaultForm: NewClient = {
   phone: "",
   status: "active",
   notes: "",
+  category: "",
   onboard_date: "",
 }
 
@@ -66,6 +79,11 @@ export function ClientsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const { getToken } = useAuth()
   const { currency } = useCurrency()
+  const { activeOrg } = useOrg()
+  const canDelete = canDeleteRole(activeOrg?.role)
+  const sel = useMultiSelect()
+  const longPress = useLongPress()
+  const [bulkDeleting, setBulkDeleting] = useState(false)
   const formatCurrency = (n: number) =>
     new Intl.NumberFormat("en-US", { style: "currency", currency, minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n)
 
@@ -74,18 +92,22 @@ export function ClientsPage() {
   const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
-  const [search, setSearch] = useState("")
+  // Search is mirrored to ?q= so it survives navigating into a client and back.
+  const [search, setSearch] = useState(() => searchParams.get("q") ?? "")
   const [sort, setSort] = useState("date_desc")
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid")
   const [dialogOpen, setDialogOpen] = useState(false)
   const [form, setForm] = useState<NewClient>(defaultForm)
   const [saving, setSaving] = useState(false)
+  const [viewClient, setViewClient] = useState<ClientWithStats | null>(null)
 
   const searchRef = useRef(search)
   const sortRef = useRef(sort)
   searchRef.current = search
   sortRef.current = sort
 
+  // While searching we also include closed clients (shown in their own section
+  // below); with no query the list is active-only.
   async function fetchPage1() {
     setLoading(true)
     setPage(1)
@@ -93,7 +115,8 @@ export function ClientsPage() {
       const token = await getToken()
       if (!token) return
       const params = new URLSearchParams({ page: "1" })
-      if (searchRef.current.trim()) params.set("search", searchRef.current.trim())
+      const q = searchRef.current.trim()
+      if (q) { params.set("search", q); params.set("includeClosed", "1") }
       if (sortRef.current) params.set("sort", sortRef.current)
       const data = await apiGet<{ data: Client[]; total: number }>(`/api/clients?${params}`, token)
       setClients(data.data.map(toWithStats))
@@ -113,7 +136,8 @@ export function ClientsPage() {
       const token = await getToken()
       if (!token) return
       const params = new URLSearchParams({ page: String(nextPage) })
-      if (searchRef.current.trim()) params.set("search", searchRef.current.trim())
+      const q = searchRef.current.trim()
+      if (q) { params.set("search", q); params.set("includeClosed", "1") }
       if (sortRef.current) params.set("sort", sortRef.current)
       const data = await apiGet<{ data: Client[]; total: number }>(`/api/clients?${params}`, token)
       setClients((prev) => [...prev, ...data.data.map(toWithStats)])
@@ -133,10 +157,24 @@ export function ClientsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- debounced refetch keyed on search/sort; fetchPage1 reads the latest values via refs
   }, [search, sort])
 
+  // Keep ?q= in sync with the search box (replace, so no history spam) so the
+  // query — and therefore the results — restore when the user comes back.
+  useEffect(() => {
+    const current = searchParams.get("q") ?? ""
+    const next = search.trim()
+    if (current === next) return
+    const params = new URLSearchParams(searchParams)
+    if (next) params.set("q", next); else params.delete("q")
+    setSearchParams(params, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search])
+
   useEffect(() => {
     if (searchParams.get("new") === "1") {
       setDialogOpen(true)
-      setSearchParams({}, { replace: true })
+      const next = new URLSearchParams(searchParams)
+      next.delete("new")
+      setSearchParams(next, { replace: true })
     }
   }, [searchParams, setSearchParams])
 
@@ -153,6 +191,7 @@ export function ClientsPage() {
         phone: form.phone,
         status: form.status,
         notes: form.notes,
+        category: form.category,
       }
       if (form.onboard_date) body.onboard_date = form.onboard_date
       await apiPost<Client>("/api/clients", token, body)
@@ -167,63 +206,113 @@ export function ClientsPage() {
     }
   }
 
+  // When searching we also pull closed clients; split them out so active matches
+  // show first and closed matches appear in their own labelled section.
+  const searching = search.trim().length > 0
+  const activeClients = searching ? clients.filter((c) => !c.closed_at) : clients
+  const closedMatches = searching ? clients.filter((c) => !!c.closed_at) : []
   const remaining = total - clients.length
+
+  // The own/internal client can't be deleted, so it's never selectable.
+  const selectableIds = activeClients.filter((c) => !c.is_own).map((c) => c.id)
+  const allSelected = selectableIds.length > 0 && selectableIds.every((id) => sel.isSelected(id))
+
+  async function handleBulkDelete() {
+    if (sel.count === 0) return
+    setBulkDeleting(true)
+    try {
+      const token = await getToken()
+      if (!token) throw new Error("Not authenticated")
+      const { deleted } = await apiPost<{ deleted: number }>("/api/clients/bulk-delete", token, {
+        ids: sel.selectedIds,
+      })
+      toast.success(t("multiSelect.deleted", { count: deleted }))
+      sel.exitSelection()
+      fetchPage1()
+    } catch {
+      toast.error(t("multiSelect.deleteFailed"))
+    } finally {
+      setBulkDeleting(false)
+    }
+  }
 
   return (
     <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between gap-3">
+      {/* Header — on mobile the search + filter sit right next to "+ New"
+          (sort lives inside the filter); on desktop the view toggle joins them. */}
+      <div className="flex items-center justify-between gap-2">
         <div className="min-w-0">
           <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">{t("pageTitle")}</h1>
           <p className="text-sm text-muted-foreground mt-0.5 sm:mt-1">
             {loading ? t("loading") : t("clientCount", { count: total })}
           </p>
         </div>
-        <Button onClick={() => setDialogOpen(true)} className="shrink-0">
-          <Plus className="size-4" />
-          <span className="hidden sm:inline">{t("newClientButton")}</span>
-          <span className="sm:hidden">{t("newButton")}</span>
-        </Button>
-      </div>
-
-      {/* Toolbar */}
-      <div className="flex items-center gap-2 sm:gap-3">
-        <div className="relative flex-1 min-w-0">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-          <Input
-            placeholder={t("searchPlaceholder")}
-            className="pl-9"
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          <ExpandableSearch
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={setSearch}
+            placeholder={t("searchPlaceholder")}
+            expandedClassName="w-36 sm:w-64"
           />
-        </div>
-        <Select value={sort} onValueChange={setSort}>
-          <SelectTrigger className="w-32 sm:w-44 shrink-0">
-            <SelectValue placeholder={t("sortBy")} />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="name_asc">{t("nameAscending")}</SelectItem>
-            <SelectItem value="name_desc">{t("nameDescending")}</SelectItem>
-            <SelectItem value="date_asc">{t("dateOldest")}</SelectItem>
-            <SelectItem value="date_desc">{t("dateNewest")}</SelectItem>
-          </SelectContent>
-        </Select>
-        <div className="hidden sm:flex items-center border rounded-md overflow-hidden shrink-0">
+          <FilterSheet count={0} onClear={() => setSort("date_desc")}>
+            <FilterSection label={t("filters.sortBy")}>
+              <Select value={sort} onValueChange={setSort}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder={t("sortBy")} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="name_asc">{t("nameAscending")}</SelectItem>
+                  <SelectItem value="name_desc">{t("nameDescending")}</SelectItem>
+                  <SelectItem value="date_asc">{t("dateOldest")}</SelectItem>
+                  <SelectItem value="date_desc">{t("dateNewest")}</SelectItem>
+                </SelectContent>
+              </Select>
+            </FilterSection>
+          </FilterSheet>
           <Button
-            variant={viewMode === "grid" ? "secondary" : "ghost"}
-            size="icon"
-            className="rounded-none border-0 h-9 w-9"
-            onClick={() => setViewMode("grid")}
+            variant="outline"
+            size="sm"
+            className="h-9 shrink-0"
+            onClick={() => navigate("/clients/closed")}
+            aria-label={t("closed.clientsSection")}
+            title={t("closed.clientsSection")}
           >
-            <LayoutGrid className="size-4" />
+            <Archive className="size-4" />
+            <span className="hidden lg:inline">{t("closed.closedBadge")}</span>
           </Button>
-          <Button
-            variant={viewMode === "list" ? "secondary" : "ghost"}
-            size="icon"
-            className="rounded-none border-0 h-9 w-9"
-            onClick={() => setViewMode("list")}
-          >
-            <LayoutList className="size-4" />
+          {canDelete && activeClients.length > 0 && (
+            <Button
+              variant={sel.selectionMode ? "secondary" : "outline"}
+              size="sm"
+              className="hidden sm:inline-flex shrink-0 h-9"
+              onClick={() => (sel.selectionMode ? sel.exitSelection() : sel.enterSelection())}
+            >
+              <CheckSquare className="size-4" />
+              {t("multiSelect.select")}
+            </Button>
+          )}
+          <div className="hidden sm:flex items-center border rounded-md overflow-hidden shrink-0">
+            <Button
+              variant={viewMode === "grid" ? "secondary" : "ghost"}
+              size="icon"
+              className="rounded-none border-0 h-9 w-9"
+              onClick={() => setViewMode("grid")}
+            >
+              <LayoutGrid className="size-4" />
+            </Button>
+            <Button
+              variant={viewMode === "list" ? "secondary" : "ghost"}
+              size="icon"
+              className="rounded-none border-0 h-9 w-9"
+              onClick={() => setViewMode("list")}
+            >
+              <LayoutList className="size-4" />
+            </Button>
+          </div>
+          <Button onClick={() => setDialogOpen(true)} className="shrink-0">
+            <Plus className="size-4" />
+            <span className="hidden sm:inline">{t("newClientButton")}</span>
+            <span className="sm:hidden">{t("newButton")}</span>
           </Button>
         </div>
       </div>
@@ -235,7 +324,7 @@ export function ClientsPage() {
             <Skeleton key={i} className={viewMode === "grid" ? "h-36 w-full rounded-xl" : "h-16 w-full rounded-lg"} />
           ))}
         </div>
-      ) : clients.length === 0 ? (
+      ) : activeClients.length === 0 && closedMatches.length === 0 ? (
         <div className="py-20 text-center">
           <Users className="size-12 mx-auto text-muted-foreground/50 mb-4" />
           <p className="text-muted-foreground font-medium">
@@ -252,14 +341,30 @@ export function ClientsPage() {
         <>
           {viewMode === "grid" ? (
             <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-              {clients.map((client) => (
+              {activeClients.map((client) => {
+                const selectable = canDelete && !client.is_own
+                return (
                 <Card
                   key={client.id}
-                  className="cursor-pointer hover:shadow-md transition-shadow group py-0"
-                  onClick={() => navigate(`/clients/${client.id}`)}
+                  className={`cursor-pointer hover:shadow-md transition-shadow group py-0 ${sel.isSelected(client.id) ? "ring-2 ring-primary" : ""}`}
+                  onClick={() => {
+                    if (sel.selectionMode && selectable) { sel.toggle(client.id); return }
+                    if (longPress.didLongPress()) return
+                    navigate(`/clients/${client.id}`)
+                  }}
+                  {...(selectable ? longPress.bind(() => sel.enterSelection(client.id)) : {})}
                 >
                   <CardContent className="p-3.5 sm:p-4 space-y-2.5 sm:space-y-3">
                     <div className="flex items-start justify-between gap-2">
+                      {sel.selectionMode && selectable && (
+                        <Checkbox
+                          checked={sel.isSelected(client.id)}
+                          onClick={(e) => e.stopPropagation()}
+                          onCheckedChange={() => sel.toggle(client.id)}
+                          className="mt-0.5 shrink-0"
+                          aria-label={`Select ${client.name}`}
+                        />
+                      )}
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 flex-wrap">
                           <p className="font-semibold text-sm truncate">{client.name}</p>
@@ -274,6 +379,10 @@ export function ClientsPage() {
                           >
                             {client.status}
                           </Badge>
+                          <AttachmentBadge count={client.attachment_count} />
+                          {client.category && (
+                            <Badge variant="outline" className="text-xs shrink-0">{client.category}</Badge>
+                          )}
                         </div>
                         {client.company && (
                           <div className="flex items-center gap-1.5 mt-1">
@@ -282,7 +391,20 @@ export function ClientsPage() {
                           </div>
                         )}
                       </div>
-                      <ChevronRight className="size-4 text-muted-foreground shrink-0 mt-0.5 group-hover:text-foreground transition-colors" />
+                      {/* Mobile: an explicit "view" (eye) opens a quick details
+                          sheet; desktop keeps the chevron nav hint. */}
+                      {!sel.selectionMode && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="size-8 shrink-0 -mt-1 -mr-1 sm:hidden"
+                          aria-label={`View ${client.name}`}
+                          onClick={(e) => { e.stopPropagation(); setViewClient(client) }}
+                        >
+                          <Eye className="size-4" />
+                        </Button>
+                      )}
+                      <ChevronRight className="hidden sm:block size-4 text-muted-foreground shrink-0 mt-0.5 group-hover:text-foreground transition-colors" />
                     </div>
 
                     <div className="grid grid-cols-3 gap-2 pt-2 border-t">
@@ -329,16 +451,33 @@ export function ClientsPage() {
                     )}
                   </CardContent>
                 </Card>
-              ))}
+                )
+              })}
             </div>
           ) : (
             <div className="space-y-2">
-              {clients.map((client) => (
+              {activeClients.map((client) => {
+                const selectable = canDelete && !client.is_own
+                return (
                 <div
                   key={client.id}
-                  className="flex items-center gap-4 px-4 py-3 rounded-lg border bg-card cursor-pointer hover:bg-accent/50 transition-colors group"
-                  onClick={() => navigate(`/clients/${client.id}`)}
+                  className={`flex items-center gap-4 px-4 py-3 rounded-lg border bg-card cursor-pointer hover:bg-accent/50 transition-colors group ${sel.isSelected(client.id) ? "ring-2 ring-primary" : ""}`}
+                  onClick={() => {
+                    if (sel.selectionMode && selectable) { sel.toggle(client.id); return }
+                    if (longPress.didLongPress()) return
+                    navigate(`/clients/${client.id}`)
+                  }}
+                  {...(selectable ? longPress.bind(() => sel.enterSelection(client.id)) : {})}
                 >
+                  {sel.selectionMode && selectable && (
+                    <Checkbox
+                      checked={sel.isSelected(client.id)}
+                      onClick={(e) => e.stopPropagation()}
+                      onCheckedChange={() => sel.toggle(client.id)}
+                      className="shrink-0"
+                      aria-label={`Select ${client.name}`}
+                    />
+                  )}
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-medium text-sm">{client.name}</span>
@@ -350,6 +489,7 @@ export function ClientsPage() {
                       <Badge variant={client.status === "active" ? "default" : "secondary"} className="text-xs">
                         {client.status}
                       </Badge>
+                      <AttachmentBadge count={client.attachment_count} />
                     </div>
                     {client.company && (
                       <p className="text-xs text-muted-foreground truncate mt-0.5">{client.company}</p>
@@ -383,7 +523,8 @@ export function ClientsPage() {
                   </div>
                   <ChevronRight className="size-4 text-muted-foreground shrink-0 group-hover:text-foreground transition-colors" />
                 </div>
-              ))}
+                )
+              })}
             </div>
           )}
 
@@ -395,6 +536,31 @@ export function ClientsPage() {
             </div>
           )}
         </>
+      )}
+
+      {/* When searching, closed matches are shown here (active ones above). The
+          full closed list lives on its own screen via the "Closed" button. */}
+      {!loading && searching && closedMatches.length > 0 && (
+        <div className="border-t pt-4 space-y-3">
+          <p className="text-sm font-medium text-muted-foreground">
+            {t("closed.clientsSection")} <span className="text-xs">({closedMatches.length})</span>
+          </p>
+          <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+            {closedMatches.map((client) => (
+              <Card key={client.id} className="py-0 opacity-90 cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate(`/clients/${client.id}`)}>
+                <CardContent className="p-3.5 space-y-1.5">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold text-sm truncate">{client.name}</p>
+                      {client.company && <p className="text-xs text-muted-foreground truncate">{client.company}</p>}
+                    </div>
+                    <Badge variant="outline" className="shrink-0 border-amber-500/40 text-amber-600 dark:text-amber-300">{t("closed.closedBadge")}</Badge>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
       )}
 
       {/* Create Dialog */}
@@ -470,6 +636,10 @@ export function ClientsPage() {
               </div>
             </div>
             <div className="space-y-1.5">
+              <Label>{t("filters.category")}</Label>
+              <CategoryPicker type="client" value={form.category} onChange={(v) => setForm((f) => ({ ...f, category: v }))} />
+            </div>
+            <div className="space-y-1.5">
               <Label htmlFor="notes">{t("notesField")}</Label>
               <Textarea
                 id="notes"
@@ -489,6 +659,23 @@ export function ClientsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {sel.selectionMode && (
+        <BulkActionBar
+          count={sel.count}
+          allSelected={allSelected}
+          onToggleSelectAll={() => (allSelected ? sel.clear() : sel.selectAll(selectableIds))}
+          onDelete={handleBulkDelete}
+          onCancel={sel.exitSelection}
+          deleting={bulkDeleting}
+        />
+      )}
+
+      <ClientDetailSheet
+        client={viewClient}
+        open={viewClient !== null}
+        onOpenChange={(o) => { if (!o) setViewClient(null) }}
+      />
     </div>
   )
 }

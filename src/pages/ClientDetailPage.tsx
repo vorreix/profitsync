@@ -1,12 +1,22 @@
-import { useEffect, useState, useCallback } from "react"
-import { useParams, useNavigate } from "react-router-dom"
+import { useEffect, useState, useCallback, useRef } from "react"
+import { useParams, useNavigate, useSearchParams } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { apiGet, apiPost, apiPatch, apiDelete } from "@/lib/api"
-import type { Client, Transaction } from "@/lib/types"
+import type { Client, Transaction, TransactionAttachment } from "@/lib/types"
 import { useCurrency } from "@/lib/currency-context"
+import { useOrg } from "@/lib/org-context"
+import { canWriteRole, canDeleteRole } from "@/lib/roles"
+import { CategoryPicker } from "@/components/CategoryPicker"
+import { ClientOverviewModal } from "@/components/ClientOverviewModal"
+import { AttachmentBadge } from "@/components/AttachmentBadge"
+import { AttachmentDetailModal, type AttachmentModalItem } from "@/components/AttachmentDetailModal"
+import { AuditHistory } from "@/components/AuditHistory"
+import { FilterSheet, FilterSection } from "@/components/filters/FilterSheet"
+import { ACCEPT_ATTR, attachmentsListPath, uploadAttachment, validateFile } from "@/lib/attachments-client"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
+import { FitText } from "@/components/FitText"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -16,20 +26,20 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "sonner"
-import { ArrowLeft, Plus, Trash2, DollarSign, Building2, Mail, Phone, FileText, ArrowUpRight, ArrowDownRight, Pencil, Search, Calendar } from "lucide-react"
+import { ArrowLeft, Plus, Trash2, DollarSign, Building2, Mail, Phone, FileText, ArrowUpRight, ArrowDownRight, Pencil, Calendar, Paperclip, Upload, X, FolderOpen, Archive, ArchiveRestore, Eye } from "lucide-react"
+import { ExpandableSearch } from "@/components/ExpandableSearch"
 
 type NewTransaction = { type: "incoming" | "outgoing"; amount: string; description: string; category: string; date: string }
-type NewClient = { name: string; company: string; email: string; phone: string; status: "active" | "inactive" | "archived"; notes: string; onboard_date?: string | null }
+type NewClient = { name: string; company: string; email: string; phone: string; status: "active" | "inactive" | "archived"; notes: string; category?: string; onboard_date?: string | null }
 
 const defaultTxForm: NewTransaction = { type: "incoming", amount: "", description: "", category: "", date: new Date().toISOString().split("T")[0] }
-const CATEGORIES_IN = ["Payment", "Retainer", "Project Fee", "Consultation", "Other"]
-const CATEGORIES_OUT = ["Hosting", "Design", "Development", "Advertising", "Salary", "Software", "Travel", "Taxes", "Miscellaneous"]
 
 const formatDate = (dateStr: string) => new Date(dateStr).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
 
 export function ClientDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { getToken } = useAuth()
   const { currency } = useCurrency()
   const formatCurrency = (amount: number) => new Intl.NumberFormat("en-US", { style: "currency", currency, minimumFractionDigits: 2 }).format(amount)
@@ -37,6 +47,8 @@ export function ClientDetailPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [loading, setLoading] = useState(true)
   const [txDialogOpen, setTxDialogOpen] = useState(false)
+  const [pendingFiles, setPendingFiles] = useState<File[]>([])
+  const addFileRef = useRef<HTMLInputElement>(null)
   const [editClientDialogOpen, setEditClientDialogOpen] = useState(false)
   const [editTxDialogOpen, setEditTxDialogOpen] = useState(false)
   const [txForm, setTxForm] = useState<NewTransaction>(defaultTxForm)
@@ -47,6 +59,33 @@ export function ClientDetailPage() {
   const [deleteType, setDeleteType] = useState<"transaction" | "client" | null>(null)
   const [activeTab, setActiveTab] = useState("all")
   const [txSearch, setTxSearch] = useState("")
+  const [txSort, setTxSort] = useState("date_desc")
+  const [txFrom, setTxFrom] = useState("")
+  const [txTo, setTxTo] = useState("")
+  const [overviewOpen, setOverviewOpen] = useState(false)
+  const [closeConfirm, setCloseConfirm] = useState(false)
+  const [viewTx, setViewTx] = useState<Transaction | null>(null)
+  const [viewTxAtt, setViewTxAtt] = useState<TransactionAttachment[]>([])
+  const [viewAttachment, setViewAttachment] = useState<AttachmentModalItem | null>(null)
+
+  const { activeOrg } = useOrg()
+  const canModify = canWriteRole(activeOrg?.role)
+  const canRemove = canDeleteRole(activeOrg?.role)
+
+  const loadViewTxAtt = useCallback(async (txId: string) => {
+    setViewTxAtt([])
+    const token = await getToken()
+    if (!token) return
+    try {
+      const rows = await apiGet<TransactionAttachment[]>(`/api/transactions/${txId}/attachments`, token)
+      setViewTxAtt(rows)
+    } catch { /* ignore */ }
+  }, [getToken])
+
+  function openTxView(tx: Transaction) {
+    setViewTx(tx)
+    loadViewTxAtt(tx.id)
+  }
 
   const loadData = useCallback(async () => {
     if (!id) return
@@ -64,15 +103,49 @@ export function ClientDetailPage() {
 
   useEffect(() => { loadData() }, [loadData])
 
+  // The FAB on this page links to ?newTx=1 to add a transaction for this client.
+  useEffect(() => {
+    if (searchParams.get("newTx") === "1") {
+      setTxForm(defaultTxForm)
+      setPendingFiles([])
+      setTxDialogOpen(true)
+      const next = new URLSearchParams(searchParams)
+      next.delete("newTx")
+      setSearchParams(next, { replace: true })
+    }
+  }, [searchParams, setSearchParams])
+
+  // The mobile client "view" sheet links here with ?edit=1 to jump straight into
+  // editing — open the dialog once the client has loaded.
+  useEffect(() => {
+    if (searchParams.get("edit") === "1" && client) {
+      setClientForm(client)
+      setEditClientDialogOpen(true)
+      const next = new URLSearchParams(searchParams)
+      next.delete("edit")
+      setSearchParams(next, { replace: true })
+    }
+  }, [searchParams, setSearchParams, client])
+
   const totalIncoming = transactions.filter((t) => t.type === "incoming").reduce((s, t) => s + Number(t.amount), 0)
   const totalOutgoing = transactions.filter((t) => t.type === "outgoing").reduce((s, t) => s + Number(t.amount), 0)
   const netProfit = totalIncoming - totalOutgoing
 
-  const filteredTx = transactions.filter((t) => {
-    const matchesTab = activeTab === "all" || t.type === activeTab
-    const matchesSearch = txSearch === "" || t.description.toLowerCase().includes(txSearch.toLowerCase()) || t.category.toLowerCase().includes(txSearch.toLowerCase())
-    return matchesTab && matchesSearch
-  })
+  const filteredTx = transactions
+    .filter((t) => {
+      const matchesTab = activeTab === "all" || t.type === activeTab
+      const matchesSearch = txSearch === "" || t.description.toLowerCase().includes(txSearch.toLowerCase()) || t.category.toLowerCase().includes(txSearch.toLowerCase())
+      const matchesFrom = !txFrom || t.date >= txFrom
+      const matchesTo = !txTo || t.date <= txTo
+      return matchesTab && matchesSearch && matchesFrom && matchesTo
+    })
+    .sort((a, b) => {
+      if (txSort === "amount_desc") return Number(b.amount) - Number(a.amount)
+      if (txSort === "amount_asc") return Number(a.amount) - Number(b.amount)
+      if (txSort === "date_asc") return a.date.localeCompare(b.date) || a.created_at.localeCompare(b.created_at)
+      return b.date.localeCompare(a.date) || b.created_at.localeCompare(a.created_at)
+    })
+  const txFilterCount = (txFrom || txTo ? 1 : 0)
 
   const handleAddTransaction = async () => {
     if (!txForm.amount || isNaN(parseFloat(txForm.amount))) { toast.error("Valid amount is required"); return }
@@ -80,16 +153,42 @@ export function ClientDetailPage() {
     try {
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
-      await apiPost<Transaction>("/api/transactions", token, { client_id: id, type: txForm.type, amount: parseFloat(txForm.amount), description: txForm.description, category: txForm.category, date: txForm.date })
+      const created = await apiPost<Transaction>("/api/transactions", token, { client_id: id, type: txForm.type, amount: parseFloat(txForm.amount), description: txForm.description, category: txForm.category, date: txForm.date })
+      // Upload any staged attachments to the freshly-created transaction.
+      if (created?.id && pendingFiles.length > 0) {
+        let failed = 0
+        for (const file of pendingFiles) {
+          try {
+            await uploadAttachment(attachmentsListPath("transaction", created.id), file, token)
+          } catch (e) {
+            failed++
+            toast.error(e instanceof Error ? e.message : `Failed to attach ${file.name}`)
+          }
+        }
+        if (failed < pendingFiles.length) toast.success(pendingFiles.length - failed === 1 ? "File attached" : "Files attached")
+      }
       toast.success(`${txForm.type === "incoming" ? "Income" : "Expense"} added`)
       setTxDialogOpen(false)
       setTxForm(defaultTxForm)
+      setPendingFiles([])
       loadData()
     } catch {
       toast.error("Failed to add transaction")
     } finally {
       setSaving(false)
     }
+  }
+
+  function handlePendingFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? [])
+    if (addFileRef.current) addFileRef.current.value = ""
+    const valid: File[] = []
+    for (const file of files) {
+      const err = validateFile(file)
+      if (err) { toast.error(err); continue }
+      valid.push(file)
+    }
+    if (valid.length) setPendingFiles((prev) => [...prev, ...valid])
   }
 
   const handleEditTransaction = async () => {
@@ -124,6 +223,20 @@ export function ClientDetailPage() {
       toast.error("Failed to update client")
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleToggleClosed = async () => {
+    if (!client) return
+    const closing = !client.closed_at
+    try {
+      const token = await getToken()
+      if (!token) throw new Error("Not authenticated")
+      await apiPatch(`/api/clients/${client.id}`, token, { closed: closing })
+      toast.success(closing ? "Client closed" : "Client reopened")
+      loadData()
+    } catch {
+      toast.error("Action failed")
     }
   }
 
@@ -169,6 +282,7 @@ export function ClientDetailPage() {
             <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
               <h1 className="text-xl sm:text-2xl font-semibold tracking-tight truncate">{client.name}</h1>
               <Badge variant={client.status === "active" ? "default" : "secondary"}>{client.status}</Badge>
+              {client.closed_at && <Badge variant="outline" className="border-amber-500/40 text-amber-600 dark:text-amber-300">Closed</Badge>}
             </div>
             <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-4 mt-1.5 flex-wrap">
               {client.company && <span className="flex items-center gap-1.5 text-sm text-muted-foreground min-w-0"><Building2 className="size-3.5 shrink-0" /><span className="truncate">{client.company}</span></span>}
@@ -179,18 +293,18 @@ export function ClientDetailPage() {
             </div>
             {client.notes && <p className="text-sm text-muted-foreground mt-1.5 flex items-start gap-1.5"><FileText className="size-3.5 mt-0.5 shrink-0" />{client.notes}</p>}
           </div>
-          {/* Desktop actions */}
-          <div className="hidden sm:flex flex-wrap gap-2 shrink-0">
-            <Button variant="outline" size="icon" onClick={() => { setClientForm(client); setEditClientDialogOpen(true) }}><Pencil className="size-4" /></Button>
-            <Button variant="outline" size="icon" className="text-muted-foreground hover:text-destructive" onClick={() => { setDeleteId(client.id); setDeleteType("client") }}><Trash2 className="size-4" /></Button>
-            <Button onClick={() => { setTxForm(defaultTxForm); setTxDialogOpen(true) }}><Plus className="size-4" />Add Transaction</Button>
+          {/* Actions — kept in the client-name row on every breakpoint to save
+              vertical space on mobile (icon-only there, labelled on desktop). */}
+          <div className="flex gap-1.5 sm:gap-2 shrink-0">
+            <Button variant="outline" size="icon" onClick={() => setCloseConfirm(true)} aria-label={client.closed_at ? "Reopen client" : "Close client"} title={client.closed_at ? "Reopen client" : "Close client"}>
+              {client.closed_at ? <ArchiveRestore className="size-4" /> : <Archive className="size-4" />}
+            </Button>
+            <Button variant="outline" size="icon" onClick={() => setOverviewOpen(true)} aria-label="View client"><Eye className="size-4" /></Button>
+            <Button variant="outline" size="icon" className="text-muted-foreground hover:text-destructive" onClick={() => { setDeleteId(client.id); setDeleteType("client") }} aria-label="Delete client"><Trash2 className="size-4" /></Button>
+            <Button className="px-2.5 sm:px-4" onClick={() => { setTxForm(defaultTxForm); setTxDialogOpen(true) }} aria-label="Add transaction">
+              <Plus className="size-4" /><span className="hidden sm:inline">Add Transaction</span>
+            </Button>
           </div>
-        </div>
-        {/* Mobile actions */}
-        <div className="flex sm:hidden gap-2">
-          <Button className="flex-1" onClick={() => { setTxForm(defaultTxForm); setTxDialogOpen(true) }}><Plus className="size-4" />Add Transaction</Button>
-          <Button variant="outline" size="icon" className="shrink-0" onClick={() => { setClientForm(client); setEditClientDialogOpen(true) }}><Pencil className="size-4" /></Button>
-          <Button variant="outline" size="icon" className="shrink-0 text-muted-foreground hover:text-destructive" onClick={() => { setDeleteId(client.id); setDeleteType("client") }}><Trash2 className="size-4" /></Button>
         </div>
       </div>
 
@@ -200,17 +314,17 @@ export function ClientDetailPage() {
       <div className="grid grid-cols-3 gap-2 sm:gap-4">
         <div className="rounded-xl border p-3 sm:p-4">
           <p className="text-[10px] sm:text-xs text-muted-foreground font-medium uppercase tracking-wide truncate">Income</p>
-          <p className="text-base sm:text-xl font-bold text-emerald-600 dark:text-emerald-400 mt-1 tabular-nums truncate">{formatCurrency(totalIncoming)}</p>
+          <FitText className="text-emerald-600 dark:text-emerald-400 mt-1" textClassName="text-base sm:text-xl font-bold tabular-nums">{formatCurrency(totalIncoming)}</FitText>
           <p className="hidden sm:flex text-xs text-muted-foreground mt-1 items-center gap-1"><ArrowUpRight className="size-3" />{transactions.filter((t) => t.type === "incoming").length} transaction{transactions.filter((t) => t.type === "incoming").length !== 1 ? "s" : ""}</p>
         </div>
         <div className="rounded-xl border p-3 sm:p-4">
           <p className="text-[10px] sm:text-xs text-muted-foreground font-medium uppercase tracking-wide truncate">Expenses</p>
-          <p className="text-base sm:text-xl font-bold text-destructive mt-1 tabular-nums truncate">{formatCurrency(totalOutgoing)}</p>
+          <FitText className="text-destructive mt-1" textClassName="text-base sm:text-xl font-bold tabular-nums">{formatCurrency(totalOutgoing)}</FitText>
           <p className="hidden sm:flex text-xs text-muted-foreground mt-1 items-center gap-1"><ArrowDownRight className="size-3" />{transactions.filter((t) => t.type === "outgoing").length} transaction{transactions.filter((t) => t.type === "outgoing").length !== 1 ? "s" : ""}</p>
         </div>
         <div className="rounded-xl border p-3 sm:p-4">
           <p className="text-[10px] sm:text-xs text-muted-foreground font-medium uppercase tracking-wide truncate">Net</p>
-          <p className={`text-base sm:text-xl font-bold mt-1 tabular-nums truncate ${netProfit >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"}`}>{formatCurrency(netProfit)}</p>
+          <FitText className={`mt-1 ${netProfit >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"}`} textClassName="text-base sm:text-xl font-bold tabular-nums">{formatCurrency(netProfit)}</FitText>
           <p className="hidden sm:block text-xs text-muted-foreground mt-1">{totalIncoming > 0 ? ((netProfit / totalIncoming) * 100).toFixed(1) : 0}% margin</p>
         </div>
       </div>
@@ -218,18 +332,44 @@ export function ClientDetailPage() {
       {/* Transactions */}
       <div>
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <div className="flex flex-col gap-2 mb-4 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
-            <div className="-mx-3 px-3 overflow-x-auto scrollbar-none sm:mx-0 sm:px-0 sm:overflow-visible">
+          <div className="flex items-center gap-2 mb-4">
+            <div className="flex-1 min-w-0 -mx-3 px-3 overflow-x-auto scrollbar-none sm:mx-0 sm:px-0 sm:overflow-visible">
               <TabsList>
                 <TabsTrigger value="all">All ({transactions.length})</TabsTrigger>
                 <TabsTrigger value="incoming">Income ({transactions.filter((t) => t.type === "incoming").length})</TabsTrigger>
                 <TabsTrigger value="outgoing">Expenses ({transactions.filter((t) => t.type === "outgoing").length})</TabsTrigger>
               </TabsList>
             </div>
-            <div className="relative w-full sm:flex-1 sm:min-w-48 sm:max-w-xs">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-              <Input placeholder="Search transactions..." className="pl-9 h-9" value={txSearch} onChange={(e) => setTxSearch(e.target.value)} />
-            </div>
+            <ExpandableSearch value={txSearch} onChange={setTxSearch} placeholder="Search transactions..." className="shrink-0" />
+            <FilterSheet
+              count={txFilterCount}
+              onClear={() => { setTxSort("date_desc"); setTxFrom(""); setTxTo("") }}
+              registerFloating={false}
+              triggerClassName="shrink-0"
+            >
+              <FilterSection label="Sort by">
+                <Select value={txSort} onValueChange={setTxSort}>
+                  <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="date_desc">Newest first</SelectItem>
+                    <SelectItem value="date_asc">Oldest first</SelectItem>
+                    <SelectItem value="amount_desc">Amount (high → low)</SelectItem>
+                    <SelectItem value="amount_asc">Amount (low → high)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </FilterSection>
+              <FilterSection label="Date range">
+                <div className="grid grid-cols-2 gap-2">
+                  <Input type="date" aria-label="From" value={txFrom} max={txTo || undefined} onChange={(e) => setTxFrom(e.target.value)} />
+                  <Input type="date" aria-label="To" value={txTo} min={txFrom || undefined} onChange={(e) => setTxTo(e.target.value)} />
+                </div>
+              </FilterSection>
+            </FilterSheet>
+            {id && (
+              <Button variant="outline" size="sm" className="shrink-0" onClick={() => navigate(`/clients/${id}/files`)}>
+                <FolderOpen className="size-4" /> Files
+              </Button>
+            )}
           </div>
 
           <TabsContent value={activeTab} className="mt-0">
@@ -243,7 +383,7 @@ export function ClientDetailPage() {
               <div className="border rounded-xl overflow-hidden">
                 <div className="divide-y">
                   {filteredTx.map((tx) => (
-                    <div key={tx.id} className="flex items-center gap-4 px-4 py-3 hover:bg-muted/50 transition-colors group">
+                    <div key={tx.id} className="flex items-center gap-4 px-4 py-3 hover:bg-muted/50 transition-colors group cursor-pointer" onClick={() => openTxView(tx)}>
                       <div className={`size-8 rounded-full flex items-center justify-center shrink-0 ${tx.type === "incoming" ? "bg-emerald-100 dark:bg-emerald-900/30" : "bg-red-100 dark:bg-red-900/30"}`}>
                         {tx.type === "incoming" ? <ArrowUpRight className="size-4 text-emerald-600 dark:text-emerald-400" /> : <ArrowDownRight className="size-4 text-red-600 dark:text-red-400" />}
                       </div>
@@ -252,6 +392,7 @@ export function ClientDetailPage() {
                         <div className="flex items-center gap-2 mt-0.5">
                           <span className="text-xs text-muted-foreground">{formatDate(tx.date)}</span>
                           {tx.category && <Badge variant="outline" className="text-xs py-0">{tx.category}</Badge>}
+                          <AttachmentBadge count={tx.attachment_count} />
                         </div>
                       </div>
                       <div className="text-right shrink-0">
@@ -260,8 +401,8 @@ export function ClientDetailPage() {
                         </p>
                       </div>
                       <div className="flex gap-0.5 sm:gap-1 shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-                        <Button variant="ghost" size="icon-sm" onClick={() => { setEditTxForm({ ...tx, amount: tx.amount.toString() }); setEditTxDialogOpen(true) }}><Pencil className="size-3.5" /></Button>
-                        <Button variant="ghost" size="icon-sm" className="text-muted-foreground hover:text-destructive" onClick={() => { setDeleteId(tx.id); setDeleteType("transaction") }}><Trash2 className="size-3.5" /></Button>
+                        <Button variant="ghost" size="icon-sm" onClick={(e) => { e.stopPropagation(); setEditTxForm({ ...tx, amount: tx.amount.toString() }); setEditTxDialogOpen(true) }}><Pencil className="size-3.5" /></Button>
+                        <Button variant="ghost" size="icon-sm" className="text-muted-foreground hover:text-destructive" onClick={(e) => { e.stopPropagation(); setDeleteId(tx.id); setDeleteType("transaction") }}><Trash2 className="size-3.5" /></Button>
                       </div>
                     </div>
                   ))}
@@ -273,7 +414,7 @@ export function ClientDetailPage() {
       </div>
 
       {/* Add Transaction Dialog */}
-      <Dialog open={txDialogOpen} onOpenChange={setTxDialogOpen}>
+      <Dialog open={txDialogOpen} onOpenChange={(open) => { setTxDialogOpen(open); if (!open) setPendingFiles([]) }}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader><DialogTitle>Add Transaction</DialogTitle></DialogHeader>
           <div className="space-y-4 py-2">
@@ -297,15 +438,34 @@ export function ClientDetailPage() {
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label>Category</Label>
-                <Select value={txForm.category} onValueChange={(v) => setTxForm((f) => ({ ...f, category: v }))}>
-                  <SelectTrigger className="w-full"><SelectValue placeholder="Select..." /></SelectTrigger>
-                  <SelectContent>{(txForm.type === "incoming" ? CATEGORIES_IN : CATEGORIES_OUT).map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
-                </Select>
+                <CategoryPicker type={txForm.type} value={txForm.category} onChange={(v) => setTxForm((f) => ({ ...f, category: v }))} />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="date">Date</Label>
                 <Input id="date" type="date" value={txForm.date} onChange={(e) => setTxForm((f) => ({ ...f, date: e.target.value }))} />
               </div>
+            </div>
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <Label className="flex items-center gap-1.5"><Paperclip className="size-3.5" /> Attachments</Label>
+                <Button type="button" variant="outline" size="sm" onClick={() => addFileRef.current?.click()}>
+                  <Upload className="size-3.5" /> Add file
+                </Button>
+                <input ref={addFileRef} type="file" multiple accept={ACCEPT_ATTR} className="hidden" onChange={handlePendingFileSelect} />
+              </div>
+              {pendingFiles.length > 0 && (
+                <ul className="space-y-1.5">
+                  {pendingFiles.map((file, idx) => (
+                    <li key={idx} className="flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-sm">
+                      <FileText className="size-3.5 text-muted-foreground shrink-0" />
+                      <span className="truncate flex-1 min-w-0">{file.name}</span>
+                      <button type="button" onClick={() => setPendingFiles((prev) => prev.filter((_, i) => i !== idx))} className="text-muted-foreground hover:text-destructive shrink-0" aria-label="Remove">
+                        <X className="size-3.5" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           </div>
           <DialogFooter>
@@ -341,10 +501,7 @@ export function ClientDetailPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label>Category</Label>
-                  <Select value={editTxForm.category} onValueChange={(v) => setEditTxForm((f) => f ? { ...f, category: v } : null)}>
-                    <SelectTrigger className="w-full"><SelectValue placeholder="Select..." /></SelectTrigger>
-                    <SelectContent>{(editTxForm.type === "incoming" ? CATEGORIES_IN : CATEGORIES_OUT).map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
-                  </Select>
+                  <CategoryPicker type={editTxForm.type} value={editTxForm.category} onChange={(v) => setEditTxForm((f) => f ? { ...f, category: v } : null)} />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="edit-date">Date</Label>
@@ -380,6 +537,10 @@ export function ClientDetailPage() {
                 </Select>
               </div>
               <div className="space-y-1.5"><Label htmlFor="client-onboard">Onboard Date</Label><Input id="client-onboard" type="date" value={clientForm.onboard_date ?? ""} onChange={(e) => setClientForm((f) => f ? { ...f, onboard_date: e.target.value || null } : null)} /></div>
+              <div className="space-y-1.5">
+                <Label>Category</Label>
+                <CategoryPicker type="client" value={clientForm.category ?? ""} onChange={(v) => setClientForm((f) => f ? { ...f, category: v } : null)} />
+              </div>
               <div className="space-y-1.5"><Label htmlFor="client-notes">Notes</Label><Textarea id="client-notes" value={clientForm.notes} onChange={(e) => setClientForm((f) => f ? { ...f, notes: e.target.value } : null)} className="resize-none" rows={3} /></div>
             </div>
           )}
@@ -407,6 +568,105 @@ export function ClientDetailPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Close / reopen confirmation */}
+      <AlertDialog open={closeConfirm} onOpenChange={setCloseConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{client.closed_at ? "Reopen this client?" : "Close this client?"}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {client.closed_at
+                ? "It will be active again and included in lists and analytics."
+                : "It stays for history but is hidden from the default list and excluded from analytics. You can reopen it anytime."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => { setCloseConfirm(false); handleToggleClosed() }}>
+              {client.closed_at ? "Reopen" : "Close"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Transaction detail modal */}
+      <Dialog open={viewTx !== null} onOpenChange={(open) => { if (!open) setViewTx(null) }}>
+        <DialogContent className="w-[92vw] max-w-md">
+          {viewTx && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <span className={`flex size-7 items-center justify-center rounded-full ${viewTx.type === "incoming" ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "bg-red-500/10 text-red-600 dark:text-red-400"}`}>
+                    {viewTx.type === "incoming" ? <ArrowUpRight className="size-4" /> : <ArrowDownRight className="size-4" />}
+                  </span>
+                  Transaction
+                </DialogTitle>
+              </DialogHeader>
+              <div className="space-y-3">
+                <p className={`text-2xl font-bold tabular-nums ${viewTx.type === "incoming" ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
+                  {viewTx.type === "incoming" ? "+" : "−"}{formatCurrency(Number(viewTx.amount))}
+                </p>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                  <div><p className="text-xs text-muted-foreground">Date</p><p className="font-medium">{formatDate(viewTx.date)}</p></div>
+                  {viewTx.category && <div><p className="text-xs text-muted-foreground">Category</p><Badge variant="outline">{viewTx.category}</Badge></div>}
+                </div>
+                {viewTx.description && <div><p className="text-xs text-muted-foreground">Description</p><p className="text-sm whitespace-pre-wrap break-words">{viewTx.description}</p></div>}
+                <div className="border-t pt-3 space-y-1.5">
+                  <p className="text-sm font-medium flex items-center gap-1.5"><Paperclip className="size-3.5" /> Attachments</p>
+                  {viewTxAtt.length === 0 ? (
+                    <p className="text-xs text-muted-foreground py-1">No attachments.</p>
+                  ) : viewTxAtt.map((att) => (
+                    <div key={att.id} className="flex items-center gap-2 rounded-lg border px-3 py-2">
+                      <button
+                        type="button"
+                        className="flex flex-1 items-center gap-2 min-w-0 text-left"
+                        onClick={() => setViewAttachment({
+                          id: att.id, source: "transaction", source_id: viewTx.id, source_label: viewTx.description?.trim() || (viewTx.type === "incoming" ? "Income" : "Expense"),
+                          file_name: att.file_name, file_type: att.file_type, file_size: att.file_size,
+                          created_at: att.created_at, display_name: att.display_name, tags: att.tags, category: att.category,
+                        })}
+                      >
+                        <Paperclip className="size-3.5 text-muted-foreground shrink-0" />
+                        <span className="flex-1 min-w-0 truncate text-xs font-medium">{att.display_name || att.file_name}</span>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <div className="border-t pt-3 space-y-1.5">
+                  <p className="text-sm font-medium">History</p>
+                  <AuditHistory entityType="transaction" entityId={viewTx.id} />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => { const tx = viewTx; setViewTx(null); setEditTxForm({ ...tx, amount: tx.amount.toString() }); setEditTxDialogOpen(true) }}>
+                  <Pencil className="size-3.5" /> Edit
+                </Button>
+                <Button onClick={() => setViewTx(null)}>Close</Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <AttachmentDetailModal
+        item={viewAttachment}
+        open={viewAttachment !== null}
+        onOpenChange={(o) => { if (!o) setViewAttachment(null) }}
+        canEdit={canModify}
+        canDelete={canRemove}
+        onUpdated={() => { if (viewTx) loadViewTxAtt(viewTx.id) }}
+        onDeleted={() => { setViewAttachment(null); if (viewTx) loadViewTxAtt(viewTx.id) }}
+      />
+
+      <ClientOverviewModal
+        client={client}
+        open={overviewOpen}
+        onOpenChange={setOverviewOpen}
+        onEdit={() => { setClientForm(client); setEditClientDialogOpen(true) }}
+        canModify={canModify}
+        canRemove={canRemove}
+        onFiles={id ? () => navigate(`/clients/${id}/files`) : undefined}
+      />
     </div>
   )
 }

@@ -1,4 +1,5 @@
 import { pgTable, uuid, text, numeric, date, timestamp, integer, boolean, index, uniqueIndex, jsonb } from "drizzle-orm/pg-core"
+import { sql } from "drizzle-orm"
 
 export const organizations = pgTable("organizations", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -65,6 +66,7 @@ export const clients = pgTable("clients", {
   phone: text("phone").default(""),
   status: text("status").default("active"),
   notes: text("notes").default(""),
+  category: text("category").notNull().default(""), // optional category label (type "client")
   // The workspace's own/internal client — the company (or person) itself. Used to
   // record own expenses (rent, utilities, salaries). Exactly one per org; shown
   // first and badged distinctly in lists/pickers. Personal orgs use it as their
@@ -72,10 +74,33 @@ export const clients = pgTable("clients", {
   isOwn: boolean("is_own").notNull().default(false),
   onboardDate: date("onboard_date"),
   deletedAt: timestamp("deleted_at"),
+  // When set, the client is "closed": kept for history but excluded from the
+  // default list and from analytics aggregation. Distinct from soft-delete and
+  // reversible (reopen clears it).
+  closedAt: timestamp("closed_at"),
+  createdBy: text("created_by"),
+  updatedBy: text("updated_by"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => ({
   orgIdx: index("clients_org_idx").on(table.organizationId),
+}))
+
+// Org-scoped, managed transaction categories. Transactions still store the
+// category *name* as free text (transactions.category) for back-compat; this
+// table is the source of truth for the picker and the management UI. Renaming a
+// category bulk-updates matching transactions; deleting leaves their text intact.
+export const categories = pgTable("categories", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  type: text("type").notNull(), // "incoming" | "outgoing"
+  color: text("color").notNull().default(""),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  orgTypeIdx: index("categories_org_type_idx").on(table.organizationId, table.type),
+  orgNameTypeUnique: uniqueIndex("categories_org_name_type_unique").on(table.organizationId, table.type, table.name),
 }))
 
 export const transactions = pgTable("transactions", {
@@ -91,6 +116,8 @@ export const transactions = pgTable("transactions", {
   // Soft-delete: deleted transactions move to Trash (restore/purge) instead of
   // disappearing. All financial aggregates must exclude rows where this is set.
   deletedAt: timestamp("deleted_at"),
+  createdBy: text("created_by"),
+  updatedBy: text("updated_by"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 })
@@ -107,12 +134,33 @@ export const quotations = pgTable("quotations", {
   amount: numeric("amount", { precision: 12, scale: 2 }).default("0"),
   status: text("status").default("draft"), // draft | sent | accepted | rejected
   notes: text("notes").default(""),
+  category: text("category").notNull().default(""), // optional category label (type "quotation")
   linkedClientId: uuid("linked_client_id"), // set when converted to a client
   deletedAt: timestamp("deleted_at"),
+  // When set, the quotation is "closed": excluded from the default list, shown in
+  // a separate section. Reversible (reopen clears it).
+  closedAt: timestamp("closed_at"),
+  createdBy: text("created_by"),
+  updatedBy: text("updated_by"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => ({
   orgIdx: index("quotations_org_idx").on(table.organizationId),
+}))
+
+// Append-only change history for the main entities. `changes` holds a
+// field → { from, to } map for updates; create/delete/close/reopen carry no diff.
+export const auditLogs = pgTable("audit_logs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  entityType: text("entity_type").notNull(), // client | transaction | quotation
+  entityId: uuid("entity_id").notNull(),
+  action: text("action").notNull(), // create | update | delete | close | reopen
+  actorUserId: text("actor_user_id"),
+  changes: jsonb("changes").notNull().default({}),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  entityIdx: index("audit_logs_entity_idx").on(table.organizationId, table.entityType, table.entityId),
 }))
 
 export const transactionAttachments = pgTable("transaction_attachments", {
@@ -123,7 +171,12 @@ export const transactionAttachments = pgTable("transaction_attachments", {
   fileType: text("file_type").notNull(),
   fileSize: integer("file_size").notNull(),
   fileData: text("file_data").notNull(),
+  // Editable display name (falls back to fileName) + user organisation metadata.
+  displayName: text("display_name"),
+  tags: jsonb("tags").notNull().default([]),
+  category: text("category").notNull().default(""),
   createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
 })
 
 export const quotationAttachments = pgTable("quotation_attachments", {
@@ -134,8 +187,29 @@ export const quotationAttachments = pgTable("quotation_attachments", {
   fileType: text("file_type").notNull(),
   fileSize: integer("file_size").notNull(),
   fileData: text("file_data").notNull(),
+  displayName: text("display_name"),
+  tags: jsonb("tags").notNull().default([]),
+  category: text("category").notNull().default(""),
   createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
 })
+
+export const clientAttachments = pgTable("client_attachments", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  clientId: uuid("client_id").notNull().references(() => clients.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull(),
+  fileName: text("file_name").notNull(),
+  fileType: text("file_type").notNull(),
+  fileSize: integer("file_size").notNull(),
+  fileData: text("file_data").notNull(),
+  displayName: text("display_name"),
+  tags: jsonb("tags").notNull().default([]),
+  category: text("category").notNull().default(""),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  clientIdx: index("client_attachments_client_idx").on(table.clientId),
+}))
 
 export const userProfiles = pgTable("user_profiles", {
   id: text("id").primaryKey(),
@@ -154,9 +228,80 @@ export const userProfiles = pgTable("user_profiles", {
   // durable "never show again" opt-out.
   companyUpsellDismissedAt: timestamp("company_upsell_dismissed_at"),
   companyUpsellHidden: boolean("company_upsell_hidden").notNull().default(false),
+  // Optional contact details (all free-form, never required).
+  address: text("address").notNull().default(""),
+  city: text("city").notNull().default(""),
+  state: text("state").notNull().default(""),
+  postalCode: text("postal_code").notNull().default(""),
+  country: text("country").notNull().default(""), // ISO 3166-1 alpha-2
+  phoneCountryCode: text("phone_country_code").notNull().default(""), // dial code, e.g. "+91"
+  phone: text("phone").notNull().default(""), // national number
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 })
+
+// ── Referral program ────────────────────────────────────────────────────────
+// One shareable code per user.
+export const referralCodes = pgTable("referral_codes", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: text("user_id").notNull().unique(),
+  code: text("code").notNull().unique(),
+  createdAt: timestamp("created_at").defaultNow(),
+})
+
+// A referred user is recorded once (unique referredUserId). The reward amount,
+// currency, type and percent are SNAPSHOTTED at the moment the referral becomes
+// "paid", so later changes to settings never retroactively alter owed money.
+export const referrals = pgTable("referrals", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  referrerUserId: text("referrer_user_id").notNull(),
+  referredUserId: text("referred_user_id").notNull().unique(),
+  code: text("code").notNull(),
+  status: text("status").notNull().default("signed_up"), // signed_up | paid | paid_out
+  organizationId: uuid("organization_id"), // the paying org, set when paid
+  rewardAmount: numeric("reward_amount", { precision: 12, scale: 2 }).notNull().default("0"),
+  rewardCurrency: text("reward_currency").notNull().default("USD"),
+  rewardType: text("reward_type"), // percent | fixed (snapshot)
+  rewardPercent: numeric("reward_percent", { precision: 5, scale: 2 }), // snapshot, if percent
+  qualifyingAt: timestamp("qualifying_at"), // payout-eligible from this time (holding period)
+  paidAt: timestamp("paid_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  referrerIdx: index("referrals_referrer_idx").on(table.referrerUserId),
+}))
+
+// Single-row, admin-managed program configuration (id is a fixed sentinel).
+export const referralSettings = pgTable("referral_settings", {
+  id: text("id").primaryKey(), // always "default"
+  rewardType: text("reward_type").notNull().default("percent"), // percent | fixed
+  rewardPercent: numeric("reward_percent", { precision: 5, scale: 2 }).notNull().default("25"),
+  rewardAmount: numeric("reward_amount", { precision: 12, scale: 2 }).notNull().default("0"),
+  rewardCurrency: text("reward_currency").notNull().default("USD"),
+  holdingDays: integer("holding_days").notNull().default(14),
+  minPayout: numeric("min_payout", { precision: 12, scale: 2 }).notNull().default("0"),
+  bannerEnabled: boolean("banner_enabled").notNull().default(false),
+  bannerText: text("banner_text").notNull().default(""),
+  updatedAt: timestamp("updated_at").defaultNow(),
+})
+
+export const payoutRequests = pgTable("payout_requests", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: text("user_id").notNull(),
+  method: text("method").notNull(), // upi | paypal | bank
+  details: jsonb("details").notNull().default({}),
+  amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+  currency: text("currency").notNull().default("USD"),
+  status: text("status").notNull().default("requested"), // requested | approved | paid | rejected
+  note: text("note").notNull().default(""),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  userIdx: index("payout_requests_user_idx").on(table.userId),
+  // At most one *pending* request per user. This atomically prevents concurrent
+  // payout requests from each passing the balance check and double-spending.
+  onePending: uniqueIndex("payout_requests_one_pending_idx").on(table.userId).where(sql`status = 'requested'`),
+}))
 
 export const appAdmins = pgTable("app_admins", {
   userId: text("user_id").primaryKey(),
