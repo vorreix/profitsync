@@ -92,3 +92,36 @@ After saving, reload `/login` — the link appears on the password step.
 - Custom-branded forgot/reset pages via `useSignIn()`.
 - New i18n strings.
 - Standalone deep-link forgot-password entry page (Approach C / Hybrid).
+
+---
+
+## Implementation update (2026-06-03) — pivoted to Approach B (custom flow)
+
+The user asked to actually implement forgot/reset password ("do it at best"). Built
+a **custom branded flow** with Clerk's `useSignIn()` primitives instead of relying on
+the prebuilt widget's link.
+
+**Why this is better here:** empirically, `signIn.create({ strategy:
+"reset_password_email_code", identifier })` against the live instance returns
+`form_identifier_not_found` for a fake email — i.e. the **strategy is accepted**, the
+call just reaches account lookup. So the custom flow works on the *current* config
+(password enabled + email-code verification) **without** needing
+`password.used_for_first_factor` flipped, which is what the prebuilt widget's link
+requires. The custom page therefore gives a working, on-brand reset experience today.
+
+**Built:**
+- `ForgotPasswordPage.tsx` — two-step single-route flow (request code → enter code +
+  new password), react-hook-form + zod, show/hide password, resend, change-email,
+  already-signed-in redirect, session activation via `setActive` on `complete`.
+- `ResetPasswordPage.tsx` — redirects to `/forgot-password` (self-contained flow).
+- `LoginPage.tsx` — "Forgot your password?" link below the `<SignIn>` widget.
+- i18n: `forgotPassword` namespace added to **all 8 locales** (en + it/de/hi/ml/ta/te/ar).
+
+**Adversarial review applied (workflow):** account-enumeration protection (generic
+advance on `form_identifier_not_found`), `submitting` guards against double-submit via
+Enter, clear email/form on "change email", route to `/login` on `needs_second_factor`.
+
+**Verified:** typecheck, lint, 52 tests, build all pass. Live: page renders; non-existent
+email advances to the code step without leaking account existence; Clerk accepts the
+reset strategy. Full end-to-end (real account + email code) not auto-testable here
+because signup is gated by a Cloudflare Turnstile CAPTCHA that won't load in automation.
