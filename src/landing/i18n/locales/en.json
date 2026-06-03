@@ -1,4 +1,10 @@
 {
+  "install": {
+    "button": "Install app",
+    "iosTitle": "Add to Home Screen",
+    "iosBody": "Tap the Share icon, then choose “Add to Home Screen”.",
+    "close": "Got it"
+  },
   "meta": {
     "title": "ProfitSync — Know your profit. Sync your business.",
     "description": "Whether it's your business or your personal finances, ProfitSync brings your income, expenses, and cash flow into one clean workspace — so you always know exactly where your money stands."

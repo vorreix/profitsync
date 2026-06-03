@@ -16,6 +16,8 @@ import profile from "./_routes/profile.js"
 import onboarding from "./_routes/onboarding.js"
 import clients from "./_routes/clients.js"
 import clientById from "./_routes/clients/[id].js"
+import clientAttachments from "./_routes/clients/[id]/attachments.js"
+import clientMedia from "./_routes/clients/[id]/media.js"
 import transactions from "./_routes/transactions.js"
 import transactionById from "./_routes/transactions/[id].js"
 import transactionAttachments from "./_routes/transactions/[id]/attachments.js"
@@ -29,6 +31,7 @@ import organizationById from "./_routes/organizations/[id].js"
 import organizationMembers from "./_routes/organizations/[id]/members.js"
 import attachmentById from "./_routes/attachments/[id].js"
 import quotationAttachmentById from "./_routes/quotation-attachments/[id].js"
+import clientAttachmentById from "./_routes/client-attachments/[id].js"
 import invitationByToken from "./_routes/invitations/[token].js"
 import legalAccept from "./_routes/legal/accept.js"
 import trash from "./_routes/trash.js"
@@ -71,6 +74,8 @@ const routes: RoutePattern<ApiHandler>[] = [
 
   { segments: ["clients"], handler: clients },
   { segments: ["clients", ":id"], handler: clientById },
+  { segments: ["clients", ":id", "attachments"], handler: clientAttachments },
+  { segments: ["clients", ":id", "media"], handler: clientMedia },
 
   { segments: ["transactions"], handler: transactions },
   { segments: ["transactions", ":id"], handler: transactionById },
@@ -88,6 +93,7 @@ const routes: RoutePattern<ApiHandler>[] = [
 
   { segments: ["attachments", ":id"], handler: attachmentById },
   { segments: ["quotation-attachments", ":id"], handler: quotationAttachmentById },
+  { segments: ["client-attachments", ":id"], handler: clientAttachmentById },
 
   { segments: ["invitations", ":token"], handler: invitationByToken },
   { segments: ["legal", "accept"], handler: legalAccept },

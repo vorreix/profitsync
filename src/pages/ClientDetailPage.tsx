@@ -1,9 +1,10 @@
-import { useEffect, useState, useCallback } from "react"
-import { useParams, useNavigate } from "react-router-dom"
+import { useEffect, useState, useCallback, useRef } from "react"
+import { useParams, useNavigate, useSearchParams } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { apiGet, apiPost, apiPatch, apiDelete } from "@/lib/api"
 import type { Client, Transaction } from "@/lib/types"
 import { useCurrency } from "@/lib/currency-context"
+import { ACCEPT_ATTR, attachmentsListPath, uploadAttachment, validateFile } from "@/lib/attachments-client"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
@@ -17,7 +18,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "sonner"
-import { ArrowLeft, Plus, Trash2, DollarSign, Building2, Mail, Phone, FileText, ArrowUpRight, ArrowDownRight, Pencil, Search, Calendar } from "lucide-react"
+import { ArrowLeft, Plus, Trash2, DollarSign, Building2, Mail, Phone, FileText, ArrowUpRight, ArrowDownRight, Pencil, Calendar, Paperclip, Upload, X, FolderOpen } from "lucide-react"
+import { ExpandableSearch } from "@/components/ExpandableSearch"
 
 type NewTransaction = { type: "incoming" | "outgoing"; amount: string; description: string; category: string; date: string }
 type NewClient = { name: string; company: string; email: string; phone: string; status: "active" | "inactive" | "archived"; notes: string; onboard_date?: string | null }
@@ -31,6 +33,7 @@ const formatDate = (dateStr: string) => new Date(dateStr).toLocaleDateString("en
 export function ClientDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { getToken } = useAuth()
   const { currency } = useCurrency()
   const formatCurrency = (amount: number) => new Intl.NumberFormat("en-US", { style: "currency", currency, minimumFractionDigits: 2 }).format(amount)
@@ -38,6 +41,8 @@ export function ClientDetailPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [loading, setLoading] = useState(true)
   const [txDialogOpen, setTxDialogOpen] = useState(false)
+  const [pendingFiles, setPendingFiles] = useState<File[]>([])
+  const addFileRef = useRef<HTMLInputElement>(null)
   const [editClientDialogOpen, setEditClientDialogOpen] = useState(false)
   const [editTxDialogOpen, setEditTxDialogOpen] = useState(false)
   const [txForm, setTxForm] = useState<NewTransaction>(defaultTxForm)
@@ -65,6 +70,18 @@ export function ClientDetailPage() {
 
   useEffect(() => { loadData() }, [loadData])
 
+  // The FAB on this page links to ?newTx=1 to add a transaction for this client.
+  useEffect(() => {
+    if (searchParams.get("newTx") === "1") {
+      setTxForm(defaultTxForm)
+      setPendingFiles([])
+      setTxDialogOpen(true)
+      const next = new URLSearchParams(searchParams)
+      next.delete("newTx")
+      setSearchParams(next, { replace: true })
+    }
+  }, [searchParams, setSearchParams])
+
   const totalIncoming = transactions.filter((t) => t.type === "incoming").reduce((s, t) => s + Number(t.amount), 0)
   const totalOutgoing = transactions.filter((t) => t.type === "outgoing").reduce((s, t) => s + Number(t.amount), 0)
   const netProfit = totalIncoming - totalOutgoing
@@ -81,16 +98,42 @@ export function ClientDetailPage() {
     try {
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
-      await apiPost<Transaction>("/api/transactions", token, { client_id: id, type: txForm.type, amount: parseFloat(txForm.amount), description: txForm.description, category: txForm.category, date: txForm.date })
+      const created = await apiPost<Transaction>("/api/transactions", token, { client_id: id, type: txForm.type, amount: parseFloat(txForm.amount), description: txForm.description, category: txForm.category, date: txForm.date })
+      // Upload any staged attachments to the freshly-created transaction.
+      if (created?.id && pendingFiles.length > 0) {
+        let failed = 0
+        for (const file of pendingFiles) {
+          try {
+            await uploadAttachment(attachmentsListPath("transaction", created.id), file, token)
+          } catch (e) {
+            failed++
+            toast.error(e instanceof Error ? e.message : `Failed to attach ${file.name}`)
+          }
+        }
+        if (failed < pendingFiles.length) toast.success(pendingFiles.length - failed === 1 ? "File attached" : "Files attached")
+      }
       toast.success(`${txForm.type === "incoming" ? "Income" : "Expense"} added`)
       setTxDialogOpen(false)
       setTxForm(defaultTxForm)
+      setPendingFiles([])
       loadData()
     } catch {
       toast.error("Failed to add transaction")
     } finally {
       setSaving(false)
     }
+  }
+
+  function handlePendingFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? [])
+    if (addFileRef.current) addFileRef.current.value = ""
+    const valid: File[] = []
+    for (const file of files) {
+      const err = validateFile(file)
+      if (err) { toast.error(err); continue }
+      valid.push(file)
+    }
+    if (valid.length) setPendingFiles((prev) => [...prev, ...valid])
   }
 
   const handleEditTransaction = async () => {
@@ -180,18 +223,15 @@ export function ClientDetailPage() {
             </div>
             {client.notes && <p className="text-sm text-muted-foreground mt-1.5 flex items-start gap-1.5"><FileText className="size-3.5 mt-0.5 shrink-0" />{client.notes}</p>}
           </div>
-          {/* Desktop actions */}
-          <div className="hidden sm:flex flex-wrap gap-2 shrink-0">
-            <Button variant="outline" size="icon" onClick={() => { setClientForm(client); setEditClientDialogOpen(true) }}><Pencil className="size-4" /></Button>
-            <Button variant="outline" size="icon" className="text-muted-foreground hover:text-destructive" onClick={() => { setDeleteId(client.id); setDeleteType("client") }}><Trash2 className="size-4" /></Button>
-            <Button onClick={() => { setTxForm(defaultTxForm); setTxDialogOpen(true) }}><Plus className="size-4" />Add Transaction</Button>
+          {/* Actions — kept in the client-name row on every breakpoint to save
+              vertical space on mobile (icon-only there, labelled on desktop). */}
+          <div className="flex gap-1.5 sm:gap-2 shrink-0">
+            <Button variant="outline" size="icon" onClick={() => { setClientForm(client); setEditClientDialogOpen(true) }} aria-label="Edit client"><Pencil className="size-4" /></Button>
+            <Button variant="outline" size="icon" className="text-muted-foreground hover:text-destructive" onClick={() => { setDeleteId(client.id); setDeleteType("client") }} aria-label="Delete client"><Trash2 className="size-4" /></Button>
+            <Button className="px-2.5 sm:px-4" onClick={() => { setTxForm(defaultTxForm); setTxDialogOpen(true) }} aria-label="Add transaction">
+              <Plus className="size-4" /><span className="hidden sm:inline">Add Transaction</span>
+            </Button>
           </div>
-        </div>
-        {/* Mobile actions */}
-        <div className="flex sm:hidden gap-2">
-          <Button className="flex-1" onClick={() => { setTxForm(defaultTxForm); setTxDialogOpen(true) }}><Plus className="size-4" />Add Transaction</Button>
-          <Button variant="outline" size="icon" className="shrink-0" onClick={() => { setClientForm(client); setEditClientDialogOpen(true) }}><Pencil className="size-4" /></Button>
-          <Button variant="outline" size="icon" className="shrink-0 text-muted-foreground hover:text-destructive" onClick={() => { setDeleteId(client.id); setDeleteType("client") }}><Trash2 className="size-4" /></Button>
         </div>
       </div>
 
@@ -219,18 +259,20 @@ export function ClientDetailPage() {
       {/* Transactions */}
       <div>
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <div className="flex flex-col gap-2 mb-4 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
-            <div className="-mx-3 px-3 overflow-x-auto scrollbar-none sm:mx-0 sm:px-0 sm:overflow-visible">
+          <div className="flex items-center gap-2 mb-4">
+            <div className="flex-1 min-w-0 -mx-3 px-3 overflow-x-auto scrollbar-none sm:mx-0 sm:px-0 sm:overflow-visible">
               <TabsList>
                 <TabsTrigger value="all">All ({transactions.length})</TabsTrigger>
                 <TabsTrigger value="incoming">Income ({transactions.filter((t) => t.type === "incoming").length})</TabsTrigger>
                 <TabsTrigger value="outgoing">Expenses ({transactions.filter((t) => t.type === "outgoing").length})</TabsTrigger>
               </TabsList>
             </div>
-            <div className="relative w-full sm:flex-1 sm:min-w-48 sm:max-w-xs">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-              <Input placeholder="Search transactions..." className="pl-9 h-9" value={txSearch} onChange={(e) => setTxSearch(e.target.value)} />
-            </div>
+            <ExpandableSearch value={txSearch} onChange={setTxSearch} placeholder="Search transactions..." className="shrink-0" />
+            {id && (
+              <Button variant="outline" size="sm" className="shrink-0" onClick={() => navigate(`/clients/${id}/files`)}>
+                <FolderOpen className="size-4" /> Files
+              </Button>
+            )}
           </div>
 
           <TabsContent value={activeTab} className="mt-0">
@@ -274,7 +316,7 @@ export function ClientDetailPage() {
       </div>
 
       {/* Add Transaction Dialog */}
-      <Dialog open={txDialogOpen} onOpenChange={setTxDialogOpen}>
+      <Dialog open={txDialogOpen} onOpenChange={(open) => { setTxDialogOpen(open); if (!open) setPendingFiles([]) }}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader><DialogTitle>Add Transaction</DialogTitle></DialogHeader>
           <div className="space-y-4 py-2">
@@ -307,6 +349,28 @@ export function ClientDetailPage() {
                 <Label htmlFor="date">Date</Label>
                 <Input id="date" type="date" value={txForm.date} onChange={(e) => setTxForm((f) => ({ ...f, date: e.target.value }))} />
               </div>
+            </div>
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <Label className="flex items-center gap-1.5"><Paperclip className="size-3.5" /> Attachments</Label>
+                <Button type="button" variant="outline" size="sm" onClick={() => addFileRef.current?.click()}>
+                  <Upload className="size-3.5" /> Add file
+                </Button>
+                <input ref={addFileRef} type="file" multiple accept={ACCEPT_ATTR} className="hidden" onChange={handlePendingFileSelect} />
+              </div>
+              {pendingFiles.length > 0 && (
+                <ul className="space-y-1.5">
+                  {pendingFiles.map((file, idx) => (
+                    <li key={idx} className="flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-sm">
+                      <FileText className="size-3.5 text-muted-foreground shrink-0" />
+                      <span className="truncate flex-1">{file.name}</span>
+                      <button type="button" onClick={() => setPendingFiles((prev) => prev.filter((_, i) => i !== idx))} className="text-muted-foreground hover:text-destructive shrink-0" aria-label="Remove">
+                        <X className="size-3.5" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           </div>
           <DialogFooter>

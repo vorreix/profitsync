@@ -1,4 +1,10 @@
 {
+  "install": {
+    "button": "Installa app",
+    "iosTitle": "Aggiungi alla Home",
+    "iosBody": "Tocca l’icona Condividi, poi scegli “Aggiungi alla schermata Home”.",
+    "close": "Ho capito"
+  },
   "meta": {
     "title": "ProfitSync — Conosci il tuo profitto. Sincronizza la tua attività.",
     "description": "Che si tratti della tua attività o delle tue finanze personali, ProfitSync riunisce entrate, spese e flusso di cassa in un unico spazio di lavoro ordinato — così sai sempre esattamente a che punto sono i tuoi soldi."
