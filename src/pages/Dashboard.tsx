@@ -29,6 +29,7 @@ import {
   Archive,
 } from "lucide-react"
 import { FilterSheet, FilterSection } from "@/components/filters/FilterSheet"
+import { TransactionPeekModal } from "@/components/TransactionPeekModal"
 import {
   ChartContainer,
   ChartTooltip,
@@ -277,11 +278,13 @@ function LatestTransactionsCard({
   loading,
   currency,
   showClient,
+  onSelect,
 }: {
   transactions: Transaction[]
   loading: boolean
   currency: string
   showClient: boolean
+  onSelect: (tx: Transaction) => void
 }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
@@ -306,7 +309,12 @@ function LatestTransactionsCard({
                 .filter(Boolean)
                 .join(" · ")
               return (
-                <div key={tx.id} className="flex items-center gap-3 py-2.5">
+                <button
+                  key={tx.id}
+                  type="button"
+                  onClick={() => onSelect(tx)}
+                  className="flex w-full items-center gap-3 py-2.5 text-left transition-colors hover:bg-muted/50 -mx-2 px-2 rounded-md"
+                >
                   <div
                     className={`flex size-8 shrink-0 items-center justify-center rounded-full ${
                       incoming
@@ -331,7 +339,7 @@ function LatestTransactionsCard({
                   >
                     {incoming ? "+" : "−"}{formatCurrency(Number(tx.amount), currency)}
                   </p>
-                </div>
+                </button>
               )
             })}
           </div>
@@ -364,6 +372,7 @@ export function Dashboard() {
   // When on, closed clients (and their transactions) are loaded so they can be
   // included in the filter + aggregates. Off by default → analytics excludes them.
   const [showClosed, setShowClosed] = useState(false)
+  const [peekTx, setPeekTx] = useState<Transaction | null>(null)
 
   useEffect(() => {
     async function load() {
@@ -720,7 +729,15 @@ export function Dashboard() {
       </div>
 
       {/* Latest activity across the workspace */}
-      <LatestTransactionsCard transactions={latestTx} loading={loading} currency={currency} showClient={!isPersonal} />
+      <LatestTransactionsCard transactions={latestTx} loading={loading} currency={currency} showClient={!isPersonal} onSelect={setPeekTx} />
+
+      <TransactionPeekModal
+        tx={peekTx}
+        open={peekTx !== null}
+        onOpenChange={(o) => { if (!o) setPeekTx(null) }}
+        currency={currency}
+        showClient={!isPersonal}
+      />
     </div>
   )
 }
