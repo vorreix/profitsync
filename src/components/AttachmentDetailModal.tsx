@@ -314,7 +314,7 @@ export function AttachmentDetailModal({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-white hover:bg-destructive/90">
+            <AlertDialogAction variant="destructive" onClick={handleDelete}>
               {t("attachments.delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
