@@ -3,11 +3,12 @@ import { eq } from "drizzle-orm"
 import { db, serialize } from "../../../src/lib/db/index.js"
 import { clients, transactions } from "../../../src/lib/db/schema.js"
 import { canDelete, canWrite, requireAuth } from "../../_lib/auth.js"
+import { diffFields, logAudit } from "../../_lib/audit.js"
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ctx = await requireAuth(req, res)
   if (!ctx) return
-  const { orgId, role } = ctx
+  const { userId, orgId, role } = ctx
   const { id } = req.query as { id: string }
 
   // Verify ownership via client.organization_id
@@ -19,6 +20,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (!row || row.clientOrgId !== orgId) return res.status(404).json({ error: "Not found" })
 
+  if (req.method === "GET") {
+    const [tx] = await db.select().from(transactions).where(eq(transactions.id, id))
+    if (!tx) return res.status(404).json({ error: "Not found" })
+    return res.json(serialize(tx))
+  }
+
   if (req.method === "PATCH") {
     if (!canWrite(role)) return res.status(403).json({ error: "Forbidden" })
     const { type, amount, description, category, date } = req.body as {
@@ -27,6 +34,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (type !== undefined && !["incoming", "outgoing"].includes(type)) {
       return res.status(400).json({ error: "type must be incoming or outgoing" })
     }
+    const [before] = await db.select().from(transactions).where(eq(transactions.id, id))
     const [updated] = await db
       .update(transactions)
       .set({
@@ -35,18 +43,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ...(description !== undefined ? { description } : {}),
         ...(category !== undefined ? { category } : {}),
         ...(date !== undefined ? { date } : {}),
+        updatedBy: userId,
         updatedAt: new Date(),
       })
       .where(eq(transactions.id, id))
       .returning()
     if (!updated) return res.status(404).json({ error: "Not found" })
+    const changes = diffFields(
+      before as Record<string, unknown>,
+      updated as Record<string, unknown>,
+      ["type", "amount", "description", "category", "date"],
+    )
+    if (Object.keys(changes).length) await logAudit({ orgId, entityType: "transaction", entityId: id, action: "update", actorId: userId, changes })
     return res.json(serialize(updated))
   }
 
   if (req.method === "DELETE") {
     if (!canDelete(role)) return res.status(403).json({ error: "Forbidden" })
     // Soft-delete: the transaction moves to Trash (restorable) rather than vanishing.
-    await db.update(transactions).set({ deletedAt: new Date(), updatedAt: new Date() }).where(eq(transactions.id, id))
+    await db.update(transactions).set({ deletedAt: new Date(), updatedBy: userId, updatedAt: new Date() }).where(eq(transactions.id, id))
+    await logAudit({ orgId, entityType: "transaction", entityId: id, action: "delete", actorId: userId })
     return res.status(204).end()
   }
 

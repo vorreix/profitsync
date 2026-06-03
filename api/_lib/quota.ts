@@ -1,6 +1,7 @@
-import { and, count, desc, eq, isNull } from "drizzle-orm"
+import { and, count, desc, eq, isNull, sql } from "drizzle-orm"
 import { db } from "../../src/lib/db/index.js"
 import {
+  clientAttachments,
   clients,
   plans,
   quotationAttachments,
@@ -17,6 +18,8 @@ export type PlanLimits = {
   attachmentSizeKb?: number
   attachmentsPerTx?: number
   noteLength?: number
+  // Org-wide ceiling on the total size of all attachments combined (anti-abuse).
+  attachmentTotalSizeKb?: number
 }
 
 export type QuotaCheck =
@@ -30,6 +33,7 @@ const DEFAULT_FREE_LIMITS: Required<PlanLimits> = {
   attachmentSizeKb: 1024,
   attachmentsPerTx: 1,
   noteLength: 200,
+  attachmentTotalSizeKb: 50 * 1024, // 50 MB across the whole workspace
 }
 
 const DEFAULT_PREMIUM_LIMITS: Required<PlanLimits> = {
@@ -39,6 +43,7 @@ const DEFAULT_PREMIUM_LIMITS: Required<PlanLimits> = {
   attachmentSizeKb: 10240,
   attachmentsPerTx: 10,
   noteLength: 100000,
+  attachmentTotalSizeKb: 5 * 1024 * 1024, // 5 GB across the whole workspace
 }
 
 export async function getOrgPlan(orgId: string): Promise<{ planKey: string; limits: Required<PlanLimits> }> {
@@ -78,8 +83,50 @@ export async function getOrgPlan(orgId: string): Promise<{ planKey: string; limi
       attachmentSizeKb: stored.attachmentSizeKb ?? fallback.attachmentSizeKb,
       attachmentsPerTx: stored.attachmentsPerTx ?? fallback.attachmentsPerTx,
       noteLength: stored.noteLength ?? fallback.noteLength,
+      attachmentTotalSizeKb: stored.attachmentTotalSizeKb ?? fallback.attachmentTotalSizeKb,
     },
   }
+}
+
+// Org-wide guard: the combined size of ALL attachments (client docs +
+// transaction + quotation) in the workspace must stay under the plan ceiling.
+// This is the backstop against spam/storage abuse — per-parent limits alone
+// don't bound the total, since a user can create many parents.
+export async function checkOrgAttachmentQuota(orgId: string, newSizeBytes: number): Promise<QuotaCheck> {
+  const { planKey, limits } = await getOrgPlan(orgId)
+  const maxBytes = limits.attachmentTotalSizeKb * 1024
+
+  const sumExpr = sql<number>`coalesce(sum(${transactionAttachments.fileSize}), 0)`
+  const [clientSum, txSum, quotationSum] = await Promise.all([
+    db
+      .select({ total: sql<number>`coalesce(sum(${clientAttachments.fileSize}), 0)` })
+      .from(clientAttachments)
+      .innerJoin(clients, eq(clients.id, clientAttachments.clientId))
+      .where(eq(clients.organizationId, orgId)),
+    db
+      .select({ total: sumExpr })
+      .from(transactionAttachments)
+      .innerJoin(transactions, eq(transactions.id, transactionAttachments.transactionId))
+      .innerJoin(clients, eq(clients.id, transactions.clientId))
+      .where(eq(clients.organizationId, orgId)),
+    db
+      .select({ total: sql<number>`coalesce(sum(${quotationAttachments.fileSize}), 0)` })
+      .from(quotationAttachments)
+      .innerJoin(quotations, eq(quotations.id, quotationAttachments.quotationId))
+      .where(eq(quotations.organizationId, orgId)),
+  ])
+
+  const used = Number(clientSum[0]?.total ?? 0) + Number(txSum[0]?.total ?? 0) + Number(quotationSum[0]?.total ?? 0)
+  if (used + newSizeBytes > maxBytes) {
+    return {
+      allowed: false,
+      reason: `Your workspace has reached its ${(maxBytes / (1024 * 1024)).toFixed(0)}MB attachment storage limit${planKey === "free" ? ". Upgrade to Premium for more." : "."}`,
+      limit: maxBytes,
+      current: used,
+      upgradeHint: planKey === "free",
+    }
+  }
+  return { allowed: true }
 }
 
 export async function checkClientQuota(orgId: string): Promise<QuotaCheck> {
@@ -142,7 +189,7 @@ export async function checkQuotationQuota(orgId: string): Promise<QuotaCheck> {
 
 export async function checkAttachmentQuota(
   orgId: string,
-  opts: { kind: "transaction"; parentId: string; sizeBytes: number } | { kind: "quotation"; parentId: string; sizeBytes: number },
+  opts: { kind: "transaction" | "quotation" | "client"; parentId: string; sizeBytes: number },
 ): Promise<QuotaCheck> {
   const { planKey, limits } = await getOrgPlan(orgId)
   const maxBytes = limits.attachmentSizeKb * 1024
@@ -156,9 +203,13 @@ export async function checkAttachmentQuota(
     }
   }
 
-  // Count existing attachments
-  const table = opts.kind === "transaction" ? transactionAttachments : quotationAttachments
-  const parentCol = opts.kind === "transaction" ? transactionAttachments.transactionId : quotationAttachments.quotationId
+  // Count existing attachments for this parent.
+  const { table, parentCol } =
+    opts.kind === "transaction"
+      ? { table: transactionAttachments, parentCol: transactionAttachments.transactionId }
+      : opts.kind === "quotation"
+        ? { table: quotationAttachments, parentCol: quotationAttachments.quotationId }
+        : { table: clientAttachments, parentCol: clientAttachments.clientId }
   const [{ current }] = await db
     .select({ current: count() })
     .from(table)

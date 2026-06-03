@@ -6,9 +6,16 @@ import { apiGet, apiPost, apiPatch, apiDelete } from "@/lib/api"
 import type { Client, Transaction, TransactionAttachment } from "@/lib/types"
 import { useCurrency } from "@/lib/currency-context"
 import { useOrg } from "@/lib/org-context"
+import { useCategories } from "@/lib/use-categories"
+import { canDeleteRole, canWriteRole } from "@/lib/roles"
+import { useMultiSelect } from "@/lib/use-multi-select"
+import { useLongPress } from "@/lib/use-long-press"
+import { BulkActionBar } from "@/components/BulkActionBar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Textarea } from "@/components/ui/textarea"
+import { FitText } from "@/components/FitText"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
@@ -21,7 +28,13 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { toast } from "sonner"
-import { Plus, Search, ArrowUpRight, ArrowDownRight, DollarSign, Pencil, Trash2, Paperclip, Download, X, Eye, ChevronsUpDown, Check, Tag } from "lucide-react"
+import { Plus, ArrowUpRight, ArrowDownRight, DollarSign, Pencil, Trash2, Paperclip, Download, X, Eye, ChevronsUpDown, Check, Tag, CheckSquare } from "lucide-react"
+import { ExpandableSearch } from "@/components/ExpandableSearch"
+import { FilterSheet, FilterSection } from "@/components/filters/FilterSheet"
+import { AttachmentBadge } from "@/components/AttachmentBadge"
+import { AttachmentDetailModal, type AttachmentModalItem } from "@/components/AttachmentDetailModal"
+import { AuditHistory } from "@/components/AuditHistory"
+import { loadLastTx, saveLastTx } from "@/lib/last-tx"
 
 type PaginatedResponse<T> = { data: T[]; total: number; summary?: { incoming: number; outgoing: number } }
 
@@ -32,25 +45,6 @@ type TxForm = {
   description: string
   category: string
   date: string
-}
-
-const DEFAULT_CATEGORIES = {
-  incoming: ["Payment", "Retainer", "Project Fee", "Consultation", "Other"],
-  outgoing: ["Hosting", "Design", "Development", "Advertising", "Salary", "Software", "Travel", "Taxes", "Miscellaneous"],
-}
-
-const CATEGORIES_STORAGE_KEY = "ps_categories"
-
-function loadCategories(): { incoming: string[]; outgoing: string[] } {
-  try {
-    const stored = localStorage.getItem(CATEGORIES_STORAGE_KEY)
-    if (stored) return JSON.parse(stored)
-  } catch { /* localStorage unavailable or corrupt — fall back to defaults */ }
-  return { incoming: [...DEFAULT_CATEGORIES.incoming], outgoing: [...DEFAULT_CATEGORIES.outgoing] }
-}
-
-function saveCategories(cats: { incoming: string[]; outgoing: string[] }) {
-  try { localStorage.setItem(CATEGORIES_STORAGE_KEY, JSON.stringify(cats)) } catch { /* ignore storage quota/availability errors */ }
 }
 
 const PAGE_SIZE = 20
@@ -347,6 +341,11 @@ export function TransactionsPage() {
   // Personal accounts have no Clients UI — the client picker is hidden and
   // transactions anchor to the workspace's single default client server-side.
   const isPersonal = activeOrg?.account_type === "personal"
+  const canDelete = canDeleteRole(activeOrg?.role)
+  const canWrite = canWriteRole(activeOrg?.role)
+  const sel = useMultiSelect()
+  const longPress = useLongPress()
+  const [bulkDeleting, setBulkDeleting] = useState(false)
   const fmt = (n: number) =>
     new Intl.NumberFormat("en-US", { style: "currency", currency, minimumFractionDigits: 2 }).format(n)
 
@@ -360,6 +359,8 @@ export function TransactionsPage() {
   const [tab, setTab] = useState("all")
   const [sort, setSort] = useState("date_desc")
   const [categoryFilter, setCategoryFilter] = useState("all")
+  const [dateFrom, setDateFrom] = useState("")
+  const [dateTo, setDateTo] = useState("")
   const [summary, setSummary] = useState<{ incoming: number; outgoing: number }>({ incoming: 0, outgoing: 0 })
   const searchRef = useRef(search)
   searchRef.current = search
@@ -369,21 +370,59 @@ export function TransactionsPage() {
   sortRef.current = sort
   const categoryRef = useRef(categoryFilter)
   categoryRef.current = categoryFilter
+  const dateFromRef = useRef(dateFrom)
+  dateFromRef.current = dateFrom
+  const dateToRef = useRef(dateTo)
+  dateToRef.current = dateTo
+  const appliedFilterCount =
+    (tab !== "all" ? 1 : 0) + (categoryFilter !== "all" ? 1 : 0) + (dateFrom || dateTo ? 1 : 0)
+  const clearFilters = () => {
+    setTab("all")
+    setCategoryFilter("all")
+    setSort("date_desc")
+    setDateFrom("")
+    setDateTo("")
+  }
 
-  const [categories, setCategories] = useState<{ incoming: string[]; outgoing: string[] }>(loadCategories)
+  // Categories are now org-scoped and managed server-side (see /categories).
+  const { categories: catRows, byType: categories, refresh: refreshCats } = useCategories()
 
-  const handleChangeCats = useCallback((type: "incoming" | "outgoing", cats: string[]) => {
-    setCategories((prev) => {
-      const next = { ...prev, [type]: cats }
-      saveCategories(next)
-      return next
-    })
-  }, [])
+  // The picker emits the full desired name list for a type; diff it against the
+  // server state and apply the minimal create/rename/delete. A single
+  // swap (one added + one removed, same length) is treated as a rename so the
+  // matching transactions' stored category text is updated too.
+  const handleChangeCats = useCallback(
+    async (type: "incoming" | "outgoing", names: string[]) => {
+      const token = await getToken()
+      if (!token) return
+      const current = catRows.filter((c) => c.type === type)
+      const currentNames = current.map((c) => c.name)
+      const added = names.filter((n) => !currentNames.includes(n))
+      const removed = currentNames.filter((n) => !names.includes(n))
+      try {
+        if (added.length === 1 && removed.length === 1 && names.length === currentNames.length) {
+          const cat = current.find((c) => c.name === removed[0])
+          if (cat) await apiPatch(`/api/categories/${cat.id}`, token, { name: added[0] })
+        } else {
+          for (const n of added) await apiPost("/api/categories", token, { name: n, type })
+          for (const n of removed) {
+            const cat = current.find((c) => c.name === n)
+            if (cat) await apiDelete(`/api/categories/${cat.id}`, token)
+          }
+        }
+        await refreshCats()
+      } catch {
+        toast.error("Failed to update categories")
+      }
+    },
+    [getToken, catRows, refreshCats],
+  )
 
   const [addOpen, setAddOpen] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [viewTx, setViewTx] = useState<Transaction | null>(null)
+  const [viewAttachment, setViewAttachment] = useState<AttachmentModalItem | null>(null)
   const [form, setForm] = useState<TxForm>(defaultForm())
   const [editForm, setEditForm] = useState<TxForm & { id: string } | null>(null)
   const [saving, setSaving] = useState(false)
@@ -397,14 +436,19 @@ export function TransactionsPage() {
   const [pendingFiles, setPendingFiles] = useState<File[]>([])
   const addFileInputRef = useRef<HTMLInputElement>(null)
 
-  const buildParams = useCallback((pageNum: number, s: string, t: string, srt: string, cat: string) => {
-    const params = new URLSearchParams({ page: String(pageNum) })
-    if (s.trim()) params.set("search", s.trim())
-    if (t !== "all") params.set("type", t)
-    if (srt) params.set("sort", srt)
-    if (cat && cat !== "all") params.set("category", cat)
-    return params.toString()
-  }, [])
+  const buildParams = useCallback(
+    (pageNum: number, s: string, t: string, srt: string, cat: string, from: string, to: string) => {
+      const params = new URLSearchParams({ page: String(pageNum) })
+      if (s.trim()) params.set("search", s.trim())
+      if (t !== "all") params.set("type", t)
+      if (srt) params.set("sort", srt)
+      if (cat && cat !== "all") params.set("category", cat)
+      if (from) params.set("from", from)
+      if (to) params.set("to", to)
+      return params.toString()
+    },
+    [],
+  )
 
   const fetchPage1 = useCallback(async () => {
     const token = await getToken()
@@ -412,7 +456,7 @@ export function TransactionsPage() {
     setLoading(true)
     try {
       const [result, cls] = await Promise.all([
-        apiGet<PaginatedResponse<Transaction>>(`/api/transactions?${buildParams(1, searchRef.current, tabRef.current, sortRef.current, categoryRef.current)}`, token),
+        apiGet<PaginatedResponse<Transaction>>(`/api/transactions?${buildParams(1, searchRef.current, tabRef.current, sortRef.current, categoryRef.current, dateFromRef.current, dateToRef.current)}`, token),
         apiGet<{ data: Client[]; total: number } | Client[]>("/api/clients?page=1", token),
       ])
       setTransactions(result.data)
@@ -432,15 +476,36 @@ export function TransactionsPage() {
   useEffect(() => {
     const timer = setTimeout(() => { fetchPage1() }, search === "" ? 0 : 300)
     return () => clearTimeout(timer)
-  }, [search, tab, sort, categoryFilter, fetchPage1])
+  }, [search, tab, sort, categoryFilter, dateFrom, dateTo, fetchPage1])
 
   useEffect(() => {
     if (searchParams.get("new") === "1") {
-      setForm(defaultForm())
-      setAddOpen(true)
-      setSearchParams({}, { replace: true })
+      openAddDialog()
+      const next = new URLSearchParams(searchParams)
+      next.delete("new")
+      setSearchParams(next, { replace: true })
     }
   }, [searchParams, setSearchParams])
+
+  // URL-driven view modal: ?view=<txId> opens that transaction (deep-link from a
+  // click, the client media hub, or a pasted URL). The param stays in the URL
+  // while the modal is open and is cleared on close (see closeViewModal).
+  useEffect(() => {
+    const viewId = searchParams.get("view")
+    if (!viewId) return
+    if (viewTx?.id === viewId) return
+    const existing = transactions.find((t) => t.id === viewId)
+    if (existing) { openViewModal(existing); return }
+    ;(async () => {
+      const token = await getToken()
+      if (!token) return
+      try {
+        const tx = await apiGet<Transaction>(`/api/transactions/${viewId}`, token)
+        if (tx) openViewModal(tx)
+      } catch { /* not found or no access */ }
+    })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, transactions])
 
   const handleLoadMore = async () => {
     const token = await getToken()
@@ -449,7 +514,7 @@ export function TransactionsPage() {
     try {
       const nextPage = page + 1
       const result = await apiGet<PaginatedResponse<Transaction>>(
-        `/api/transactions?${buildParams(nextPage, search, tab, sort, categoryFilter)}`,
+        `/api/transactions?${buildParams(nextPage, search, tab, sort, categoryFilter, dateFrom, dateTo)}`,
         token,
       )
       setTransactions((prev) => [...prev, ...result.data])
@@ -477,6 +542,20 @@ export function TransactionsPage() {
     return [...set].filter(Boolean).sort((a, b) => a.localeCompare(b))
   }, [categories, transactions])
 
+  // Open the add dialog pre-filled with the last-used client/type/category
+  // (date always today), so repeat entry is fast.
+  function openAddDialog() {
+    const last = loadLastTx()
+    setForm({
+      ...defaultForm(),
+      client_id: last.client_id ?? "",
+      type: last.type ?? "incoming",
+      category: last.category ?? "",
+    })
+    setPendingFiles([])
+    setAddOpen(true)
+  }
+
   async function handleAdd() {
     if (!isPersonal && !form.client_id) { toast.error(t("clientIsRequired")); return }
     if (!form.amount || isNaN(parseFloat(form.amount))) { toast.error(t("validAmountIsRequired")); return }
@@ -499,6 +578,7 @@ export function TransactionsPage() {
           toast.error(t("failedToUploadFile", { name: file.name }))
         }
       }
+      saveLastTx({ client_id: form.client_id, type: form.type, category: form.category })
       toast.success(t("transactionAdded"))
       setAddOpen(false)
       setForm(defaultForm())
@@ -569,6 +649,21 @@ export function TransactionsPage() {
     setViewTx(tx)
     setAttachments([])
     loadAttachments(tx.id)
+    // Reflect the open transaction in the URL so it's shareable / restorable.
+    if (searchParams.get("view") !== tx.id) {
+      const next = new URLSearchParams(searchParams)
+      next.set("view", tx.id)
+      setSearchParams(next, { replace: true })
+    }
+  }
+
+  function closeViewModal() {
+    setViewTx(null)
+    if (searchParams.get("view")) {
+      const next = new URLSearchParams(searchParams)
+      next.delete("view")
+      setSearchParams(next, { replace: true })
+    }
   }
 
   async function uploadFile(file: File, txId: string, token: string): Promise<void> {
@@ -689,6 +784,28 @@ export function TransactionsPage() {
     }
   }
 
+  const selectableIds = transactions.map((tx) => tx.id)
+  const allSelected = selectableIds.length > 0 && selectableIds.every((id) => sel.isSelected(id))
+
+  async function handleBulkDelete() {
+    if (sel.count === 0) return
+    setBulkDeleting(true)
+    try {
+      const token = await getToken()
+      if (!token) throw new Error("Not authenticated")
+      const { deleted } = await apiPost<{ deleted: number }>("/api/transactions/bulk-delete", token, {
+        ids: sel.selectedIds,
+      })
+      toast.success(t("multiSelect.deleted", { count: deleted }))
+      sel.exitSelection()
+      fetchPage1()
+    } catch {
+      toast.error(t("multiSelect.deleteFailed"))
+    } finally {
+      setBulkDeleting(false)
+    }
+  }
+
   return (
     <div className="p-3 sm:p-6 space-y-5 sm:space-y-6">
       <div className="flex items-center justify-between gap-2">
@@ -696,69 +813,96 @@ export function TransactionsPage() {
           <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">{t("transactions")}</h1>
           {!loading && <p className="text-sm text-muted-foreground mt-0.5 sm:mt-1">{t("totalCount", { count: total })}</p>}
         </div>
-        <Button onClick={() => { setForm(defaultForm()); setAddOpen(true) }} className="shrink-0">
-          <Plus className="size-4" />
-          <span className="hidden sm:inline">{t("addTransaction")}</span>
-          <span className="sm:hidden">{t("add")}</span>
-        </Button>
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          {canDelete && transactions.length > 0 && (
+            <Button
+              variant={sel.selectionMode ? "secondary" : "outline"}
+              size="sm"
+              className="hidden sm:inline-flex h-9"
+              onClick={() => (sel.selectionMode ? sel.exitSelection() : sel.enterSelection())}
+            >
+              <CheckSquare className="size-4" />
+              {t("multiSelect.select")}
+            </Button>
+          )}
+          <Button onClick={openAddDialog} className="shrink-0">
+            <Plus className="size-4" />
+            <span className="hidden sm:inline">{t("addTransaction")}</span>
+            <span className="sm:hidden">{t("add")}</span>
+          </Button>
+        </div>
       </div>
 
       {!loading && (
         <div className="grid grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-4">
           <div className="rounded-xl border p-3 sm:p-4">
             <p className="text-[10px] sm:text-xs text-muted-foreground font-medium uppercase tracking-wide">{t("income")}</p>
-            <p className="text-base sm:text-xl font-bold text-emerald-600 dark:text-emerald-400 mt-1 tabular-nums">{fmt(totalIncoming)}</p>
+            <FitText className="text-emerald-600 dark:text-emerald-400 mt-1" textClassName="text-base sm:text-xl font-bold tabular-nums">{fmt(totalIncoming)}</FitText>
           </div>
           <div className="rounded-xl border p-3 sm:p-4">
             <p className="text-[10px] sm:text-xs text-muted-foreground font-medium uppercase tracking-wide">{t("expenses")}</p>
-            <p className="text-base sm:text-xl font-bold text-red-600 dark:text-red-400 mt-1 tabular-nums">{fmt(totalOutgoing)}</p>
+            <FitText className="text-red-600 dark:text-red-400 mt-1" textClassName="text-base sm:text-xl font-bold tabular-nums">{fmt(totalOutgoing)}</FitText>
           </div>
           <div className="rounded-xl border p-3 sm:p-4">
             <p className="text-[10px] sm:text-xs text-muted-foreground font-medium uppercase tracking-wide">{t("net")}</p>
-            <p className={`text-base sm:text-xl font-bold mt-1 tabular-nums ${totalIncoming - totalOutgoing >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"}`}>
+            <FitText className={`mt-1 ${totalIncoming - totalOutgoing >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"}`} textClassName="text-base sm:text-xl font-bold tabular-nums">
               {fmt(totalIncoming - totalOutgoing)}
-            </p>
+            </FitText>
           </div>
         </div>
       )}
 
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-        <div className="relative flex-1 min-w-0">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-          <Input placeholder={t("searchByClientDescriptionCategory")} className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
-        </div>
-        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-          <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-            <SelectTrigger className="flex-1 sm:flex-none sm:w-44">
-              <Tag className="size-3.5 opacity-60" />
-              <SelectValue placeholder={t("category")} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t("allCategories")}</SelectItem>
-              {allCategoryOptions.map((c) => (
-                <SelectItem key={c} value={c}>{c}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={sort} onValueChange={setSort}>
-            <SelectTrigger className="flex-1 sm:flex-none sm:w-44">
-              <SelectValue placeholder={t("sortBy")} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="date_desc">{t("dateNewest")}</SelectItem>
-              <SelectItem value="date_asc">{t("dateOldest")}</SelectItem>
-              <SelectItem value="amount_desc">{t("amountLargest")}</SelectItem>
-              <SelectItem value="amount_asc">{t("amountSmallest")}</SelectItem>
-            </SelectContent>
-          </Select>
-          <Tabs value={tab} onValueChange={(v) => { setTab(v) }} className="shrink-0">
-            <TabsList>
-              <TabsTrigger value="all">{t("all")}</TabsTrigger>
-              <TabsTrigger value="incoming">{t("income")}</TabsTrigger>
-              <TabsTrigger value="outgoing">{t("expenses")}</TabsTrigger>
-            </TabsList>
-          </Tabs>
-        </div>
+      <div className="flex items-center gap-2 sm:gap-3">
+        <ExpandableSearch
+          value={search}
+          onChange={setSearch}
+          placeholder={t("searchByClientDescriptionCategory")}
+          expandedClassName="w-full sm:w-72"
+        />
+        <FilterSheet count={appliedFilterCount} onClear={clearFilters} triggerClassName="shrink-0 ml-auto">
+          <FilterSection label={t("filters.type")}>
+            <Tabs value={tab} onValueChange={setTab}>
+              <TabsList className="w-full">
+                <TabsTrigger value="all" className="flex-1">{t("all")}</TabsTrigger>
+                <TabsTrigger value="incoming" className="flex-1">{t("income")}</TabsTrigger>
+                <TabsTrigger value="outgoing" className="flex-1">{t("expenses")}</TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </FilterSection>
+          <FilterSection label={t("category")}>
+            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+              <SelectTrigger className="w-full">
+                <Tag className="size-3.5 opacity-60" />
+                <SelectValue placeholder={t("category")} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t("allCategories")}</SelectItem>
+                {allCategoryOptions.map((c) => (
+                  <SelectItem key={c} value={c}>{c}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </FilterSection>
+          <FilterSection label={t("filters.sortBy")}>
+            <Select value={sort} onValueChange={setSort}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder={t("sortBy")} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="date_desc">{t("dateNewest")}</SelectItem>
+                <SelectItem value="date_asc">{t("dateOldest")}</SelectItem>
+                <SelectItem value="amount_desc">{t("amountLargest")}</SelectItem>
+                <SelectItem value="amount_asc">{t("amountSmallest")}</SelectItem>
+              </SelectContent>
+            </Select>
+          </FilterSection>
+          <FilterSection label={t("filters.dateRange")}>
+            <div className="grid grid-cols-2 gap-2">
+              <Input type="date" aria-label={t("filters.from")} value={dateFrom} max={dateTo || undefined} onChange={(e) => setDateFrom(e.target.value)} />
+              <Input type="date" aria-label={t("filters.to")} value={dateTo} min={dateFrom || undefined} onChange={(e) => setDateTo(e.target.value)} />
+            </div>
+          </FilterSection>
+        </FilterSheet>
       </div>
 
       {loading ? (
@@ -769,10 +913,10 @@ export function TransactionsPage() {
         <div className="py-20 text-center border rounded-xl">
           <DollarSign className="size-10 mx-auto text-muted-foreground/50 mb-3" />
           <p className="text-muted-foreground font-medium">
-            {search || tab !== "all" || categoryFilter !== "all" ? t("noTransactionsMatchFilters") : t("noTransactionsYet")}
+            {search || tab !== "all" || categoryFilter !== "all" || dateFrom || dateTo ? t("noTransactionsMatchFilters") : t("noTransactionsYet")}
           </p>
-          {!search && tab === "all" && categoryFilter === "all" && clients.length > 0 && (
-            <Button className="mt-4" onClick={() => { setForm(defaultForm()); setAddOpen(true) }}>
+          {!search && tab === "all" && categoryFilter === "all" && !dateFrom && !dateTo && clients.length > 0 && (
+            <Button className="mt-4" onClick={openAddDialog}>
               <Plus className="size-4" />
               {t("addFirstTransaction")}
             </Button>
@@ -785,16 +929,31 @@ export function TransactionsPage() {
               {transactions.map((tx) => (
                 <div
                   key={tx.id}
-                  className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-3 hover:bg-muted/50 transition-colors group cursor-pointer"
-                  onClick={() => openViewModal(tx)}
+                  className={`flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-3 hover:bg-muted/50 transition-colors group cursor-pointer ${sel.isSelected(tx.id) ? "bg-primary/5" : ""}`}
+                  onClick={() => {
+                    if (sel.selectionMode) { sel.toggle(tx.id); return }
+                    if (longPress.didLongPress()) return
+                    openViewModal(tx)
+                  }}
+                  {...(canDelete ? longPress.bind(() => sel.enterSelection(tx.id)) : {})}
                 >
-                  <div className={`size-9 rounded-full flex items-center justify-center shrink-0 ${
-                    tx.type === "incoming" ? "bg-emerald-100 dark:bg-emerald-900/30" : "bg-red-100 dark:bg-red-900/30"
-                  }`}>
-                    {tx.type === "incoming"
-                      ? <ArrowUpRight className="size-4 text-emerald-600 dark:text-emerald-400" />
-                      : <ArrowDownRight className="size-4 text-red-600 dark:text-red-400" />}
-                  </div>
+                  {sel.selectionMode ? (
+                    <Checkbox
+                      checked={sel.isSelected(tx.id)}
+                      onClick={(e) => e.stopPropagation()}
+                      onCheckedChange={() => sel.toggle(tx.id)}
+                      className="shrink-0"
+                      aria-label="Select transaction"
+                    />
+                  ) : (
+                    <div className={`size-9 rounded-full flex items-center justify-center shrink-0 ${
+                      tx.type === "incoming" ? "bg-emerald-100 dark:bg-emerald-900/30" : "bg-red-100 dark:bg-red-900/30"
+                    }`}>
+                      {tx.type === "incoming"
+                        ? <ArrowUpRight className="size-4 text-emerald-600 dark:text-emerald-400" />
+                        : <ArrowDownRight className="size-4 text-red-600 dark:text-red-400" />}
+                    </div>
+                  )}
 
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 min-w-0">
@@ -806,6 +965,7 @@ export function TransactionsPage() {
                       {tx.category && (
                         <Badge variant="outline" className="text-xs py-0 shrink-0 hidden sm:inline-flex">{tx.category}</Badge>
                       )}
+                      <AttachmentBadge count={tx.attachment_count} />
                     </div>
                     <div className="flex items-center gap-2 mt-0.5 min-w-0">
                       {!isPersonal && (
@@ -832,7 +992,7 @@ export function TransactionsPage() {
                     {tx.type === "incoming" ? "+" : "−"}{fmt(Number(tx.amount))}
                   </p>
 
-                  <div className="hidden sm:flex gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className={`hidden sm:flex gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity ${sel.selectionMode ? "sm:hidden" : ""}`}>
                     <Button variant="ghost" size="icon" className="size-8 sm:size-9" onClick={(e) => { e.stopPropagation(); openViewModal(tx) }}>
                       <Eye className="size-3.5" />
                     </Button>
@@ -863,7 +1023,7 @@ export function TransactionsPage() {
       )}
 
       {/* View Modal */}
-      <Dialog open={viewTx !== null} onOpenChange={(open) => { if (!open) setViewTx(null) }}>
+      <Dialog open={viewTx !== null} onOpenChange={(open) => { if (!open) closeViewModal() }}>
         <DialogContent className="w-[92vw] max-w-md">
           {viewTx && (
             <>
@@ -899,7 +1059,7 @@ export function TransactionsPage() {
                       <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">{t("client")}</p>
                       <button
                         className="text-sm text-primary hover:underline mt-0.5"
-                        onClick={() => { setViewTx(null); navigate(`/clients/${viewTx.client_id}`) }}
+                        onClick={() => { closeViewModal(); navigate(`/clients/${viewTx.client_id}`) }}
                       >
                         {viewTx.client_name ?? viewTx.client_id}
                       </button>
@@ -948,11 +1108,21 @@ export function TransactionsPage() {
                     <div className="space-y-1.5">
                       {attachments.map((att) => (
                         <div key={att.id} className="flex items-center gap-2 rounded-lg border px-3 py-2">
-                          <Paperclip className="size-3.5 text-muted-foreground shrink-0" />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs font-medium truncate">{att.file_name}</p>
-                            <p className="text-xs text-muted-foreground">{formatFileSize(att.file_size)}</p>
-                          </div>
+                          <button
+                            type="button"
+                            className="flex flex-1 items-center gap-2 min-w-0 text-left"
+                            onClick={() => viewTx && setViewAttachment({
+                              id: att.id, source: "transaction", source_id: viewTx.id, source_label: viewTx.description?.trim() || (viewTx.type === "incoming" ? t("income") : t("expense")),
+                              file_name: att.file_name, file_type: att.file_type, file_size: att.file_size,
+                              created_at: att.created_at, display_name: att.display_name, tags: att.tags, category: att.category,
+                            })}
+                          >
+                            <Paperclip className="size-3.5 text-muted-foreground shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-medium truncate">{att.display_name || att.file_name}</p>
+                              <p className="text-xs text-muted-foreground">{formatFileSize(att.file_size)}</p>
+                            </div>
+                          </button>
                           <Button variant="ghost" size="icon" className="size-7 shrink-0" onClick={() => handleDownload(att)}>
                             <Download className="size-3.5" />
                           </Button>
@@ -965,18 +1135,24 @@ export function TransactionsPage() {
                   )}
                   <p className="text-xs text-muted-foreground">{t("max2MBPerFile")}</p>
                 </div>
+
+                <Separator />
+                <div className="space-y-1.5">
+                  <p className="text-sm font-medium">{t("audit.history")}</p>
+                  <AuditHistory entityType="transaction" entityId={viewTx.id} />
+                </div>
               </div>
 
               <DialogFooter>
                 <Button variant="outline" onClick={() => {
-                  setViewTx(null)
+                  closeViewModal()
                   setEditForm({ id: viewTx.id, client_id: viewTx.client_id, type: viewTx.type, amount: String(viewTx.amount), description: viewTx.description, category: viewTx.category, date: viewTx.date })
                   setEditOpen(true)
                 }}>
                   <Pencil className="size-3.5" />
                   {t("edit")}
                 </Button>
-                <Button onClick={() => setViewTx(null)}>{t("close")}</Button>
+                <Button onClick={closeViewModal}>{t("close")}</Button>
               </DialogFooter>
             </>
           )}
@@ -1088,6 +1264,27 @@ export function TransactionsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {sel.selectionMode && (
+        <BulkActionBar
+          count={sel.count}
+          allSelected={allSelected}
+          onToggleSelectAll={() => (allSelected ? sel.clear() : sel.selectAll(selectableIds))}
+          onDelete={handleBulkDelete}
+          onCancel={sel.exitSelection}
+          deleting={bulkDeleting}
+        />
+      )}
+
+      <AttachmentDetailModal
+        item={viewAttachment}
+        open={viewAttachment !== null}
+        onOpenChange={(o) => { if (!o) setViewAttachment(null) }}
+        canEdit={canWrite}
+        canDelete={canDelete}
+        onUpdated={() => { if (viewTx) loadAttachments(viewTx.id) }}
+        onDeleted={() => { setViewAttachment(null); if (viewTx) loadAttachments(viewTx.id) }}
+      />
     </div>
   )
 }

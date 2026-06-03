@@ -1,18 +1,24 @@
 import { lazy, Suspense } from "react"
-import { BrowserRouter, Routes, Route } from "react-router-dom"
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom"
 import { Loader as Loader2 } from "lucide-react"
 import { AppLayout } from "@/components/AppLayout"
 import { AdminLayout } from "@/pages/admin/AdminLayout"
 import { BusinessOnlyRoute } from "@/components/BusinessOnlyRoute"
 import { Toaster } from "@/components/ui/sonner"
+import { useShouldRedirectToApp } from "@/lib/use-redirect-to-app"
 
 // Route-level code splitting: each page becomes its own chunk so the initial
 // bundle stays small. Heavy deps (recharts on the Dashboard, the whole admin
 // console) are only fetched when their route is visited.
 const Dashboard = lazy(() => import("@/pages/Dashboard").then((m) => ({ default: m.Dashboard })))
 const ClientsPage = lazy(() => import("@/pages/ClientsPage").then((m) => ({ default: m.ClientsPage })))
+const ClosedClientsPage = lazy(() => import("@/pages/ClosedClientsPage").then((m) => ({ default: m.ClosedClientsPage })))
 const ClientDetailPage = lazy(() => import("@/pages/ClientDetailPage").then((m) => ({ default: m.ClientDetailPage })))
+const ClientFilesPage = lazy(() => import("@/pages/ClientFilesPage").then((m) => ({ default: m.ClientFilesPage })))
 const TransactionsPage = lazy(() => import("@/pages/TransactionsPage").then((m) => ({ default: m.TransactionsPage })))
+const CategoriesPage = lazy(() => import("@/pages/CategoriesPage").then((m) => ({ default: m.CategoriesPage })))
+const AnalyticsPage = lazy(() => import("@/pages/AnalyticsPage").then((m) => ({ default: m.AnalyticsPage })))
+const ReferralPage = lazy(() => import("@/pages/ReferralPage").then((m) => ({ default: m.ReferralPage })))
 const QuotationsPage = lazy(() => import("@/pages/QuotationsPage").then((m) => ({ default: m.QuotationsPage })))
 const TrashPage = lazy(() => import("@/pages/TrashPage").then((m) => ({ default: m.TrashPage })))
 const ProfilePage = lazy(() => import("@/pages/ProfilePage").then((m) => ({ default: m.ProfilePage })))
@@ -23,6 +29,7 @@ const OnboardingPage = lazy(() => import("@/pages/OnboardingPage").then((m) => (
 const InvitationPage = lazy(() => import("@/pages/InvitationPage").then((m) => ({ default: m.InvitationPage })))
 const PrivacyPolicyPage = lazy(() => import("@/pages/PrivacyPolicyPage").then((m) => ({ default: m.PrivacyPolicyPage })))
 const TermsOfServicePage = lazy(() => import("@/pages/TermsOfServicePage").then((m) => ({ default: m.TermsOfServicePage })))
+const RefundPolicyPage = lazy(() => import("@/pages/RefundPolicyPage").then((m) => ({ default: m.RefundPolicyPage })))
 
 // Public marketing landing — fully self-contained in src/landing/ (its own
 // components, styles, i18n). Lazy-loaded so it never bloats the app bundle.
@@ -40,6 +47,7 @@ const AdminOrgDetailPage = lazy(() => import("@/pages/admin/AdminOrgDetailPage")
 const AdminSubscriptionsPage = lazy(() => import("@/pages/admin/AdminSubscriptionsPage").then((m) => ({ default: m.AdminSubscriptionsPage })))
 const AdminInvoicesPage = lazy(() => import("@/pages/admin/AdminInvoicesPage").then((m) => ({ default: m.AdminInvoicesPage })))
 const AdminPlansPage = lazy(() => import("@/pages/admin/AdminPlansPage").then((m) => ({ default: m.AdminPlansPage })))
+const AdminReferralsPage = lazy(() => import("@/pages/admin/AdminReferralsPage").then((m) => ({ default: m.AdminReferralsPage })))
 const AdminAdminsPage = lazy(() => import("@/pages/admin/AdminAdminsPage").then((m) => ({ default: m.AdminAdminsPage })))
 
 function RouteFallback() {
@@ -50,6 +58,18 @@ function RouteFallback() {
   )
 }
 
+// Public landing at "/", but a signed-in visitor is the app's user — send them
+// straight to the app. Gating here (rather than inside LandingApp) means the
+// marketing bundle is never even fetched for signed-in users, and avoids loading
+// the landing's separate i18next instance for them. AppLayout forwards on to
+// /onboarding when the account isn't set up yet.
+function LandingRoute() {
+  if (useShouldRedirectToApp()) {
+    return <Navigate to="/dashboard" replace />
+  }
+  return <LandingApp />
+}
+
 export function App() {
   return (
     <BrowserRouter>
@@ -58,6 +78,7 @@ export function App() {
           {/* Public legal routes */}
           <Route path="privacy-policy" element={<PrivacyPolicyPage />} />
           <Route path="terms-of-service" element={<TermsOfServicePage />} />
+          <Route path="refund-policy" element={<RefundPolicyPage />} />
 
           {/* Invitation accept page (public landing — handles sign-in flow inline) */}
           <Route path="invitations/:token" element={<InvitationPage />} />
@@ -80,18 +101,25 @@ export function App() {
             <Route path="subscriptions" element={<AdminSubscriptionsPage />} />
             <Route path="invoices" element={<AdminInvoicesPage />} />
             <Route path="plans" element={<AdminPlansPage />} />
+            <Route path="referrals" element={<AdminReferralsPage />} />
             <Route path="admins" element={<AdminAdminsPage />} />
           </Route>
 
-          {/* Public marketing landing at the root domain (profitsync.net). */}
-          <Route path="/" element={<LandingApp />} />
+          {/* Public marketing landing at the root domain (profitsync.net).
+              Signed-in visitors are redirected to the app before it loads. */}
+          <Route path="/" element={<LandingRoute />} />
 
           {/* App Routes — pathless layout so /dashboard, /clients, … keep working. */}
           <Route element={<AppLayout />}>
             <Route path="dashboard" element={<Dashboard />} />
             <Route path="clients" element={<BusinessOnlyRoute feature="clients"><ClientsPage /></BusinessOnlyRoute>} />
+            <Route path="clients/closed" element={<BusinessOnlyRoute feature="clients"><ClosedClientsPage /></BusinessOnlyRoute>} />
             <Route path="clients/:id" element={<BusinessOnlyRoute feature="clients"><ClientDetailPage /></BusinessOnlyRoute>} />
+            <Route path="clients/:id/files" element={<BusinessOnlyRoute feature="clients"><ClientFilesPage /></BusinessOnlyRoute>} />
             <Route path="transactions" element={<TransactionsPage />} />
+            <Route path="analytics" element={<AnalyticsPage />} />
+            <Route path="categories" element={<CategoriesPage />} />
+            <Route path="referrals" element={<ReferralPage />} />
             <Route path="quotations" element={<BusinessOnlyRoute feature="quotations"><QuotationsPage /></BusinessOnlyRoute>} />
             <Route path="organizations" element={<OrganizationsPage />} />
             <Route path="organizations/:id/members" element={<BusinessOnlyRoute feature="members"><OrgMembersPage /></BusinessOnlyRoute>} />

@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "payout_requests_one_pending_idx" ON "payout_requests" USING btree ("user_id") WHERE status = 'requested';

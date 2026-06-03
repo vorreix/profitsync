@@ -1,7 +1,6 @@
 import { registerSW } from "virtual:pwa-register"
 
 import { ensureInstallListener } from "./use-install-prompt"
-import { shouldRegisterHere } from "./should-register"
 
 const CHUNK_RELOAD_KEY = "profitsync-chunk-reload"
 let registered = false
@@ -20,13 +19,14 @@ function installChunkErrorReload(): void {
   })
 }
 
-// Registers the service worker — but ONLY on login/app routes, never on the marketing
-// landing page or other pre-auth public routes. Idempotent and safe to call from
-// multiple mount points (boot + login/signup/app shells).
+// Registers the service worker on every route so the whole origin — including the
+// marketing landing page — is installable (the browser only fires
+// `beforeinstallprompt` for origins with a registered SW). The landing page's
+// content chunk is still excluded from precache (see pwa/sw-policy.ts), so the
+// marketing page itself stays network-fresh. Idempotent.
 export function initPwa(): void {
   if (registered) return
   if (typeof window === "undefined" || !("serviceWorker" in navigator)) return
-  if (!shouldRegisterHere(window.location.pathname)) return
   registered = true
 
   ensureInstallListener()

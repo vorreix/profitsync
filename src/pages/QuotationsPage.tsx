@@ -5,8 +5,14 @@ import { useTranslation } from "react-i18next"
 import { apiGet, apiPost, apiPatch, apiDelete } from "@/lib/api"
 import type { Client, Quotation, QuotationAttachment } from "@/lib/types"
 import { useCurrency } from "@/lib/currency-context"
+import { useOrg } from "@/lib/org-context"
+import { canDeleteRole } from "@/lib/roles"
+import { useMultiSelect } from "@/lib/use-multi-select"
+import { useLongPress } from "@/lib/use-long-press"
+import { BulkActionBar } from "@/components/BulkActionBar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -16,9 +22,13 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "sonner"
-import { Plus, Search, FileText, Building2, Mail, Phone, UserPlus, Trash2, Pencil, ExternalLink, Calendar, Paperclip, Download, X } from "lucide-react"
+import { Plus, FileText, Building2, Mail, Phone, UserPlus, Trash2, Pencil, ExternalLink, Calendar, Paperclip, Download, X, CheckSquare, ChevronDown, Archive, ArchiveRestore } from "lucide-react"
+import { ExpandableSearch } from "@/components/ExpandableSearch"
+import { FilterSheet, FilterSection } from "@/components/filters/FilterSheet"
+import { AttachmentBadge } from "@/components/AttachmentBadge"
+import { CategoryPicker } from "@/components/CategoryPicker"
+import { AuditHistory } from "@/components/AuditHistory"
 
 type QuotationForm = {
   title: string
@@ -29,6 +39,7 @@ type QuotationForm = {
   amount: string
   status: "draft" | "sent" | "accepted" | "rejected"
   notes: string
+  category: string
 }
 
 const defaultForm = (): QuotationForm => ({
@@ -40,6 +51,7 @@ const defaultForm = (): QuotationForm => ({
   amount: "",
   status: "draft",
   notes: "",
+  category: "",
 })
 
 const STATUS_COLORS: Record<string, string> = {
@@ -110,6 +122,10 @@ function QuotationFormFields({
         </Select>
       </div>
       <div className="space-y-1.5">
+        <Label>{t("filters.category")}</Label>
+        <CategoryPicker type="quotation" value={f.category} onChange={(v) => onChange({ category: v })} />
+      </div>
+      <div className="space-y-1.5">
         <Label>{t("notesLabel")}</Label>
         <Textarea placeholder={t("notesPlaceholder")} className="resize-none" rows={2} value={f.notes} onChange={(e) => onChange({ notes: e.target.value })} />
       </div>
@@ -123,6 +139,11 @@ export function QuotationsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const { getToken } = useAuth()
   const { currency } = useCurrency()
+  const { activeOrg } = useOrg()
+  const canDelete = canDeleteRole(activeOrg?.role)
+  const sel = useMultiSelect()
+  const longPress = useLongPress()
+  const [bulkDeleting, setBulkDeleting] = useState(false)
   const fmt = (n: number) =>
     new Intl.NumberFormat("en-US", { style: "currency", currency, minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n)
 
@@ -134,6 +155,12 @@ export function QuotationsPage() {
   const [loadingMore, setLoadingMore] = useState(false)
   const [search, setSearch] = useState("")
   const [tab, setTab] = useState("all")
+  const [dateFrom, setDateFrom] = useState("")
+  const [dateTo, setDateTo] = useState("")
+  const [closedOpen, setClosedOpen] = useState(false)
+  const [closedQuotations, setClosedQuotations] = useState<Quotation[]>([])
+  const [closedLoaded, setClosedLoaded] = useState(false)
+  const [closedLoading, setClosedLoading] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<Quotation | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Quotation | null>(null)
@@ -150,8 +177,18 @@ export function QuotationsPage() {
 
   const searchRef = useRef(search)
   const tabRef = useRef(tab)
+  const dateFromRef = useRef(dateFrom)
+  const dateToRef = useRef(dateTo)
   searchRef.current = search
   tabRef.current = tab
+  dateFromRef.current = dateFrom
+  dateToRef.current = dateTo
+  const appliedFilterCount = (tab !== "all" ? 1 : 0) + (dateFrom || dateTo ? 1 : 0)
+  const clearFilters = () => {
+    setTab("all")
+    setDateFrom("")
+    setDateTo("")
+  }
 
   async function fetchPage1() {
     setLoading(true)
@@ -162,6 +199,8 @@ export function QuotationsPage() {
       const params = new URLSearchParams({ page: "1" })
       if (searchRef.current.trim()) params.set("search", searchRef.current.trim())
       if (tabRef.current !== "all") params.set("status", tabRef.current)
+      if (dateFromRef.current) params.set("dateFrom", dateFromRef.current)
+      if (dateToRef.current) params.set("dateTo", dateToRef.current)
       const data = await apiGet<{ data: Quotation[]; total: number }>(`/api/quotations?${params}`, token)
       setQuotations(data.data)
       setTotal(data.total)
@@ -182,6 +221,8 @@ export function QuotationsPage() {
       const params = new URLSearchParams({ page: String(nextPage) })
       if (searchRef.current.trim()) params.set("search", searchRef.current.trim())
       if (tabRef.current !== "all") params.set("status", tabRef.current)
+      if (dateFromRef.current) params.set("dateFrom", dateFromRef.current)
+      if (dateToRef.current) params.set("dateTo", dateToRef.current)
       const data = await apiGet<{ data: Quotation[]; total: number }>(`/api/quotations?${params}`, token)
       setQuotations((prev) => [...prev, ...data.data])
       setTotal(data.total)
@@ -197,8 +238,8 @@ export function QuotationsPage() {
   useEffect(() => {
     const t = setTimeout(fetchPage1, 300)
     return () => clearTimeout(t)
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- debounced refetch keyed on search/tab; fetchPage1 reads the latest values via refs
-  }, [search, tab])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- debounced refetch keyed on filters; fetchPage1 reads the latest values via refs
+  }, [search, tab, dateFrom, dateTo])
 
   useEffect(() => {
     if (searchParams.get("new") === "1") {
@@ -207,6 +248,26 @@ export function QuotationsPage() {
       setSearchParams({}, { replace: true })
     }
   }, [searchParams, setSearchParams])
+
+  // Deep link from the client media hub: ?view=<quotationId> opens that quote.
+  useEffect(() => {
+    const viewId = searchParams.get("view")
+    if (!viewId) return
+    const next = new URLSearchParams(searchParams)
+    next.delete("view")
+    setSearchParams(next, { replace: true })
+    const existing = quotations.find((q) => q.id === viewId)
+    if (existing) { openViewModal(existing); return }
+    ;(async () => {
+      const token = await getToken()
+      if (!token) return
+      try {
+        const q = await apiGet<Quotation>(`/api/quotations/${viewId}`, token)
+        if (q) openViewModal(q)
+      } catch { /* not found or no access */ }
+    })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams])
 
   useEffect(() => {
     async function loadClients() {
@@ -398,6 +459,67 @@ export function QuotationsPage() {
 
   const remaining = total - quotations.length
 
+  const selectableIds = quotations.map((q) => q.id)
+  const allSelected = selectableIds.length > 0 && selectableIds.every((id) => sel.isSelected(id))
+
+  async function loadClosed() {
+    setClosedLoading(true)
+    try {
+      const token = await getToken()
+      if (!token) return
+      const data = await apiGet<{ data: Quotation[]; total: number }>("/api/quotations?closed=1&page=1", token)
+      setClosedQuotations(data.data)
+      setClosedLoaded(true)
+    } catch {
+      toast.error(t("failedLoadQuotations"))
+    } finally {
+      setClosedLoading(false)
+    }
+  }
+
+  function toggleClosedSection() {
+    const next = !closedOpen
+    setClosedOpen(next)
+    if (next && !closedLoaded) loadClosed()
+  }
+
+  async function setQuotationClosed(quotationId: string, closed: boolean) {
+    try {
+      const token = await getToken()
+      if (!token) return
+      await apiPatch(`/api/quotations/${quotationId}`, token, { closed })
+      toast.success(closed ? t("closed.quotationClosed") : t("closed.quotationReopened"))
+      if (closed) {
+        setViewTarget(null)
+        fetchPage1()
+      } else {
+        setClosedQuotations((prev) => prev.filter((q) => q.id !== quotationId))
+        fetchPage1()
+      }
+    } catch {
+      toast.error(t("closed.actionFailed"))
+    }
+  }
+
+  async function handleBulkDelete() {
+    if (sel.count === 0) return
+    setBulkDeleting(true)
+    try {
+      const token = await getToken()
+      if (!token) throw new Error("Not authenticated")
+      const { deleted } = await apiPost<{ deleted: number }>("/api/quotations/bulk-delete", token, {
+        ids: sel.selectedIds,
+      })
+      toast.success(t("multiSelect.deleted", { count: deleted }))
+      sel.exitSelection()
+      fetchPage1()
+    } catch {
+      toast.error(t("multiSelect.deleteFailed"))
+    } finally {
+      setBulkDeleting(false)
+    }
+  }
+
   return (
     <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
       {/* Header */}
@@ -410,34 +532,56 @@ export function QuotationsPage() {
             </p>
           )}
         </div>
-        <Button onClick={() => { setForm(defaultForm()); setCreateOpen(true) }} className="shrink-0">
-          <Plus className="size-4" />
-          <span className="hidden sm:inline">{t("newQuotationBtn")}</span>
-          <span className="sm:hidden">{t("newShort")}</span>
-        </Button>
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          {canDelete && quotations.length > 0 && (
+            <Button
+              variant={sel.selectionMode ? "secondary" : "outline"}
+              size="sm"
+              className="hidden sm:inline-flex h-9"
+              onClick={() => (sel.selectionMode ? sel.exitSelection() : sel.enterSelection())}
+            >
+              <CheckSquare className="size-4" />
+              {t("multiSelect.select")}
+            </Button>
+          )}
+          <Button onClick={() => { setForm(defaultForm()); setCreateOpen(true) }} className="shrink-0">
+            <Plus className="size-4" />
+            <span className="hidden sm:inline">{t("newQuotationBtn")}</span>
+            <span className="sm:hidden">{t("newShort")}</span>
+          </Button>
+        </div>
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-        <div className="relative w-full sm:flex-1 sm:min-w-48">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-          <Input
-            placeholder={t("searchPlaceholder")}
-            className="pl-9"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-        </div>
-        <div className="-mx-3 px-3 overflow-x-auto scrollbar-none sm:mx-0 sm:px-0 sm:overflow-visible">
-          <Tabs value={tab} onValueChange={setTab}>
-            <TabsList>
-              <TabsTrigger value="all">{t("tabAll")}</TabsTrigger>
-              {ALL_STATUSES.map((s) => (
-                <TabsTrigger key={s} value={s}>{t(`status${s.charAt(0).toUpperCase() + s.slice(1)}`)}</TabsTrigger>
-              ))}
-            </TabsList>
-          </Tabs>
-        </div>
+      {/* Filters — status + date live inside the filter sheet to keep the
+          toolbar compact and consistent across the app. */}
+      <div className="flex items-center gap-2 sm:gap-3">
+        <ExpandableSearch
+          value={search}
+          onChange={setSearch}
+          placeholder={t("searchPlaceholder")}
+          expandedClassName="w-full sm:w-72"
+        />
+        <FilterSheet count={appliedFilterCount} onClear={clearFilters} triggerClassName="shrink-0 ml-auto">
+          <FilterSection label={t("filters.status")}>
+            <Select value={tab} onValueChange={setTab}>
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t("tabAll")}</SelectItem>
+                {ALL_STATUSES.map((s) => (
+                  <SelectItem key={s} value={s}>{t(`status${s.charAt(0).toUpperCase() + s.slice(1)}`)}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </FilterSection>
+          <FilterSection label={t("filters.dateRange")}>
+            <div className="grid grid-cols-2 gap-2">
+              <Input type="date" aria-label={t("filters.from")} value={dateFrom} max={dateTo || undefined} onChange={(e) => setDateFrom(e.target.value)} />
+              <Input type="date" aria-label={t("filters.to")} value={dateTo} min={dateFrom || undefined} onChange={(e) => setDateTo(e.target.value)} />
+            </div>
+          </FilterSection>
+        </FilterSheet>
       </div>
 
       {/* List */}
@@ -449,9 +593,9 @@ export function QuotationsPage() {
         <div className="py-20 text-center">
           <FileText className="size-12 mx-auto text-muted-foreground/50 mb-4" />
           <p className="text-muted-foreground font-medium">
-            {search || tab !== "all" ? t("noQuotationsMatch") : t("noQuotationsYet")}
+            {search || tab !== "all" || dateFrom || dateTo ? t("noQuotationsMatch") : t("noQuotationsYet")}
           </p>
-          {!search && tab === "all" && (
+          {!search && tab === "all" && !dateFrom && !dateTo && (
             <Button className="mt-4" onClick={() => { setForm(defaultForm()); setCreateOpen(true) }}>
               <Plus className="size-4" />
               {t("createFirstQuotation")}
@@ -465,13 +609,32 @@ export function QuotationsPage() {
               const linkedClient = clientById(q.linked_client_id)
               const canConvert = !q.linked_client_id && (q.status === "draft" || q.status === "sent")
               return (
-                <Card key={q.id} className="group cursor-pointer hover:shadow-md transition-shadow py-0" onClick={() => openViewModal(q)}>
+                <Card
+                  key={q.id}
+                  className={`group cursor-pointer hover:shadow-md transition-shadow py-0 ${sel.isSelected(q.id) ? "ring-2 ring-primary" : ""}`}
+                  onClick={() => {
+                    if (sel.selectionMode) { sel.toggle(q.id); return }
+                    if (longPress.didLongPress()) return
+                    openViewModal(q)
+                  }}
+                  {...(canDelete ? longPress.bind(() => sel.enterSelection(q.id)) : {})}
+                >
                   <CardContent className="p-3.5 sm:p-4 space-y-2.5 sm:space-y-3">
                     {/* Top row */}
                     <div className="flex items-start justify-between gap-2">
+                      {sel.selectionMode && (
+                        <Checkbox
+                          checked={sel.isSelected(q.id)}
+                          onClick={(e) => e.stopPropagation()}
+                          onCheckedChange={() => sel.toggle(q.id)}
+                          className="mt-0.5 shrink-0"
+                          aria-label={`Select ${q.title}`}
+                        />
+                      )}
                       <div className="min-w-0 flex-1">
                         <p className="font-semibold text-sm truncate">{q.title}</p>
                         <p className="text-sm text-muted-foreground truncate">{q.prospect_name}</p>
+                        {q.category && <Badge variant="outline" className="mt-1 text-[10px]">{q.category}</Badge>}
                       </div>
                       <span className={`text-xs font-medium px-2 py-0.5 rounded-full shrink-0 ${STATUS_COLORS[q.status] ?? ""}`}>
                         {q.status.charAt(0).toUpperCase() + q.status.slice(1)}
@@ -503,6 +666,7 @@ export function QuotationsPage() {
                         <p className="text-xs text-muted-foreground">
                           {formatDate(q.created_at)}
                         </p>
+                        <AttachmentBadge count={q.attachment_count} className="ml-auto" />
                       </div>
                     </div>
 
@@ -523,6 +687,7 @@ export function QuotationsPage() {
                     </div>
 
                     {/* Actions */}
+                    {!sel.selectionMode && (
                     <div className="flex gap-2 pt-1" onClick={(e) => e.stopPropagation()}>
                       {canConvert && (
                         <Button
@@ -540,7 +705,7 @@ export function QuotationsPage() {
                         variant="ghost"
                         className="size-8 p-0 shrink-0"
                         onClick={() => {
-                          setForm({ title: q.title, prospect_name: q.prospect_name, company: q.company, email: q.email, phone: q.phone, amount: q.amount, status: q.status, notes: q.notes })
+                          setForm({ title: q.title, prospect_name: q.prospect_name, company: q.company, email: q.email, phone: q.phone, amount: q.amount, status: q.status, notes: q.notes, category: q.category ?? "" })
                           setEditTarget(q)
                         }}
                       >
@@ -555,6 +720,7 @@ export function QuotationsPage() {
                         <Trash2 className="size-3.5" />
                       </Button>
                     </div>
+                    )}
                   </CardContent>
                 </Card>
               )
@@ -569,6 +735,51 @@ export function QuotationsPage() {
             </div>
           )}
         </>
+      )}
+
+      {/* Closed quotations — separate, lazily-loaded section. */}
+      {!loading && (
+        <div className="border-t pt-3">
+          <button
+            type="button"
+            onClick={toggleClosedSection}
+            className="flex w-full items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground"
+          >
+            <ChevronDown className={`size-4 transition-transform ${closedOpen ? "" : "-rotate-90"}`} />
+            {t("closed.quotationsSection")}
+            {closedLoaded && <span className="text-xs">({closedQuotations.length})</span>}
+          </button>
+          {closedOpen && (
+            <div className="mt-3">
+              {closedLoading ? (
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {[1, 2, 3].map((i) => <Skeleton key={i} className="h-28 w-full rounded-xl" />)}
+                </div>
+              ) : closedQuotations.length === 0 ? (
+                <p className="py-6 text-center text-sm text-muted-foreground">{t("closed.noClosedQuotations")}</p>
+              ) : (
+                <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+                  {closedQuotations.map((q) => (
+                    <Card key={q.id} className="py-0 opacity-90">
+                      <CardContent className="p-3.5 space-y-2">
+                        <div className="flex items-start justify-between gap-2">
+                          <button className="min-w-0 flex-1 text-left" onClick={() => openViewModal(q)}>
+                            <p className="font-semibold text-sm truncate">{q.title}</p>
+                            <p className="text-xs text-muted-foreground truncate">{q.prospect_name}</p>
+                          </button>
+                          <Badge variant="outline" className="shrink-0 border-amber-500/40 text-amber-600 dark:text-amber-300">{t("closed.closedBadge")}</Badge>
+                        </div>
+                        <Button variant="outline" size="sm" className="w-full" onClick={() => setQuotationClosed(q.id, false)}>
+                          <ArchiveRestore className="size-3.5" /> {t("closed.reopen")}
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       )}
 
       {/* View Modal */}
@@ -683,12 +894,24 @@ export function QuotationsPage() {
                   )}
                   <p className="text-xs text-muted-foreground">{t("maxFileSize")}</p>
                 </div>
+
+                <div className="border-t pt-3 space-y-1.5">
+                  <p className="text-sm font-medium">{t("audit.history")}</p>
+                  <AuditHistory entityType="quotation" entityId={viewTarget.id} />
+                </div>
               </div>
 
               <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => setQuotationClosed(viewTarget.id, !viewTarget.closed_at)}
+                >
+                  {viewTarget.closed_at ? <ArchiveRestore className="size-3.5" /> : <Archive className="size-3.5" />}
+                  {viewTarget.closed_at ? t("closed.reopen") : t("closed.close")}
+                </Button>
                 <Button variant="outline" onClick={() => {
                   setViewTarget(null)
-                  setForm({ title: viewTarget.title, prospect_name: viewTarget.prospect_name, company: viewTarget.company, email: viewTarget.email, phone: viewTarget.phone, amount: viewTarget.amount, status: viewTarget.status, notes: viewTarget.notes })
+                  setForm({ title: viewTarget.title, prospect_name: viewTarget.prospect_name, company: viewTarget.company, email: viewTarget.email, phone: viewTarget.phone, amount: viewTarget.amount, status: viewTarget.status, notes: viewTarget.notes, category: viewTarget.category ?? "" })
                   setEditTarget(viewTarget)
                 }}>
                   <Pencil className="size-3.5" />
@@ -776,6 +999,17 @@ export function QuotationsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {sel.selectionMode && (
+        <BulkActionBar
+          count={sel.count}
+          allSelected={allSelected}
+          onToggleSelectAll={() => (allSelected ? sel.clear() : sel.selectAll(selectableIds))}
+          onDelete={handleBulkDelete}
+          onCancel={sel.exitSelection}
+          deleting={bulkDeleting}
+        />
+      )}
     </div>
   )
 }

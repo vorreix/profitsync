@@ -3,7 +3,8 @@ import { and, desc, eq } from "drizzle-orm"
 import { db, serialize } from "../../../../src/lib/db/index.js"
 import { quotationAttachments, quotations } from "../../../../src/lib/db/schema.js"
 import { canWrite, requireAuth, requireBusinessFeature } from "../../../_lib/auth.js"
-import { checkAttachmentQuota } from "../../../_lib/quota.js"
+import { checkAttachmentQuota, checkOrgAttachmentQuota } from "../../../_lib/quota.js"
+import { validateUpload } from "../../../_lib/attachments.js"
 
 async function verifyQuotationOrg(quotationId: string, orgId: string): Promise<boolean> {
   const [row] = await db
@@ -11,6 +12,20 @@ async function verifyQuotationOrg(quotationId: string, orgId: string): Promise<b
     .from(quotations)
     .where(and(eq(quotations.id, quotationId), eq(quotations.organizationId, orgId)))
   return !!row
+}
+
+const metaFields = {
+  id: quotationAttachments.id,
+  quotationId: quotationAttachments.quotationId,
+  userId: quotationAttachments.userId,
+  fileName: quotationAttachments.fileName,
+  fileType: quotationAttachments.fileType,
+  fileSize: quotationAttachments.fileSize,
+  displayName: quotationAttachments.displayName,
+  tags: quotationAttachments.tags,
+  category: quotationAttachments.category,
+  createdAt: quotationAttachments.createdAt,
+  updatedAt: quotationAttachments.updatedAt,
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -26,15 +41,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!owned) return res.status(404).json({ error: "Not found" })
 
     const rows = await db
-      .select({
-        id: quotationAttachments.id,
-        quotationId: quotationAttachments.quotationId,
-        userId: quotationAttachments.userId,
-        fileName: quotationAttachments.fileName,
-        fileType: quotationAttachments.fileType,
-        fileSize: quotationAttachments.fileSize,
-        createdAt: quotationAttachments.createdAt,
-      })
+      .select(metaFields)
       .from(quotationAttachments)
       .where(eq(quotationAttachments.quotationId, id))
       .orderBy(desc(quotationAttachments.createdAt))
@@ -46,20 +53,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const owned = await verifyQuotationOrg(id, orgId)
     if (!owned) return res.status(404).json({ error: "Not found" })
 
-    const { file_name, file_type, file_size, file_data } = req.body as {
-      file_name: string; file_type: string; file_size: number; file_data: string
-    }
+    // Validate type/size/filename before trusting any of it (see _lib/attachments).
+    const validation = validateUpload(req.body ?? {})
+    if (!validation.ok) return res.status(400).json({ error: validation.error })
+    const { fileName, fileType, fileSize, byteLength } = validation.value
+    const fileData = (req.body as { file_data: string }).file_data
 
-    if (!file_name || !file_type || !file_data) {
-      return res.status(400).json({ error: "file_name, file_type, and file_data are required" })
-    }
-    const byteLength = Buffer.byteLength(file_data, "base64")
-    const effectiveSize = Math.max(file_size ?? 0, byteLength)
+    const orgQuota = await checkOrgAttachmentQuota(orgId, byteLength)
+    if (!orgQuota.allowed) return res.status(402).json(orgQuota)
 
     const quota = await checkAttachmentQuota(orgId, {
       kind: "quotation",
       parentId: id,
-      sizeBytes: effectiveSize,
+      sizeBytes: byteLength,
     })
     if (!quota.allowed) return res.status(402).json(quota)
 
@@ -68,20 +74,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .values({
         quotationId: id,
         userId,
-        fileName: file_name,
-        fileType: file_type,
-        fileSize: file_size,
-        fileData: file_data,
+        fileName,
+        fileType,
+        fileSize,
+        fileData,
       })
-      .returning({
-        id: quotationAttachments.id,
-        quotationId: quotationAttachments.quotationId,
-        userId: quotationAttachments.userId,
-        fileName: quotationAttachments.fileName,
-        fileType: quotationAttachments.fileType,
-        fileSize: quotationAttachments.fileSize,
-        createdAt: quotationAttachments.createdAt,
-      })
+      .returning(metaFields)
     return res.status(201).json(serialize(row))
   }
 

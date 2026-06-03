@@ -32,11 +32,14 @@ import { useSyncProfileLanguage } from "@/lib/i18n/use-language"
 import { CurrencyProvider } from "@/lib/currency-context"
 import { OrgProvider, useOrg } from "@/lib/org-context"
 import { AdminProvider, useAdmin } from "@/lib/admin-context"
+import { PageFilterProvider } from "@/lib/page-filter-context"
 import { accountTypeAllows, type AccountType } from "@/lib/types"
 import { OrgSwitcher } from "@/components/OrgSwitcher"
 import { MobileAppLayout } from "@/components/MobileAppLayout"
 import { useIsMobile } from "@/hooks/use-mobile"
-import { InstallAppBanner, InstallMenuItem } from "@/components/InstallAppBanner"
+import { InstallAppBanner } from "@/components/InstallAppBanner"
+import { InstallButton } from "@/components/InstallButton"
+import { ReferralBanner } from "@/components/ReferralBanner"
 import { initPwa } from "@/lib/pwa/register-sw"
 import {
   LayoutDashboard,
@@ -54,16 +57,44 @@ import {
   ShieldCheck,
   ScrollText,
   CreditCard,
+  Tag,
+  ChartColumn,
+  Gift,
   Loader as Loader2,
 } from "lucide-react"
 
 type QuickAction = { labelKey: string; icon: typeof Users; href: string; feature?: "clients" | "quotations" }
 
+// Quick-actions menu, ordered top-to-bottom as it stacks above the FAB.
 const quickActions: QuickAction[] = [
+  { labelKey: "actions.createQuotation", icon: FileText, href: "/quotations?new=1", feature: "quotations" },
   { labelKey: "actions.addClient", icon: Users, href: "/clients?new=1", feature: "clients" },
   { labelKey: "actions.addTransaction", icon: ArrowLeftRight, href: "/transactions?new=1" },
-  { labelKey: "actions.createQuotation", icon: FileText, href: "/quotations?new=1", feature: "quotations" },
 ]
+
+// Within one of these sections, the FAB performs that section's "add" directly
+// instead of opening the menu (e.g. the Clients page → Add Client). Prefixes
+// mirror the nav's active-section logic, so nested routes like /clients/:id
+// count as being in the section too. Everywhere else (Home, etc.) the FAB keeps
+// the full quick-actions menu.
+const SECTION_FAB: { prefix: string; href: string }[] = [
+  { prefix: "/clients", href: "/clients?new=1" },
+  { prefix: "/transactions", href: "/transactions?new=1" },
+  { prefix: "/quotations", href: "/quotations?new=1" },
+]
+
+function pageFabAction(pathname: string, actions: QuickAction[]): QuickAction | null {
+  // Anywhere inside a specific client (detail or its /files view) → add a
+  // transaction for THIS client (the dialog opens on ?newTx=1).
+  const clientMatch = pathname.match(/^\/clients\/([^/]+)(?:\/|$)/)
+  if (clientMatch && clientMatch[1] !== "closed") {
+    return { labelKey: "actions.addTransaction", icon: ArrowLeftRight, href: `/clients/${clientMatch[1]}?newTx=1` }
+  }
+  const match = SECTION_FAB.find(
+    (s) => pathname === s.prefix || pathname.startsWith(s.prefix + "/"),
+  )
+  return match ? actions.find((a) => a.href === match.href) ?? null : null
+}
 
 type NavItem = { labelKey: string; href: string; icon: typeof LayoutDashboard }
 
@@ -73,8 +104,11 @@ function buildNavItems(activeOrgId: string | undefined, accountType: AccountType
     { labelKey: "nav.dashboard", href: "/dashboard", icon: LayoutDashboard },
     accountTypeAllows(accountType, "clients") && { labelKey: "nav.clients", href: "/clients", icon: Users },
     { labelKey: "nav.transactions", href: "/transactions", icon: ArrowLeftRight },
+    { labelKey: "nav.analytics", href: "/analytics", icon: ChartColumn },
     accountTypeAllows(accountType, "quotations") && { labelKey: "nav.quotations", href: "/quotations", icon: FileText },
     accountTypeAllows(accountType, "members") && { labelKey: "nav.users", href: usersHref, icon: UserPlus },
+    { labelKey: "nav.categories", href: "/categories", icon: Tag },
+    { labelKey: "nav.referrals", href: "/referrals", icon: Gift },
     { labelKey: "nav.organizations", href: "/organizations", icon: Building2 },
     { labelKey: "nav.subscription", href: "/subscription", icon: CreditCard },
     { labelKey: "nav.trash", href: "/trash", icon: Trash2 },
@@ -94,6 +128,11 @@ function AppLayoutInner() {
   const { isAdmin } = useAdmin()
   const [fabOpen, setFabOpen] = useState(false)
 
+  // Close the quick-actions menu on any navigation.
+  useEffect(() => {
+    setFabOpen(false)
+  }, [location.pathname])
+
   // New (or not-yet-chosen) users must pick an account type first.
   if (!orgLoading && needsOnboarding) {
     return <Navigate to="/onboarding" replace />
@@ -105,6 +144,9 @@ function AppLayoutInner() {
 
   const navItems = buildNavItems(activeOrg?.id, activeOrg?.account_type)
   const actions = quickActions.filter((a) => !a.feature || accountTypeAllows(activeOrg?.account_type, a.feature))
+  // On a section's own page, the FAB is a single direct-add button; elsewhere
+  // it opens the quick-actions menu.
+  const pageAction = pageFabAction(location.pathname, actions)
   // Pick the most specific (longest) matching item so /organizations/:id/members
   // highlights "Users" rather than its "Organizations" ancestor.
   const activeNavHref =
@@ -167,6 +209,9 @@ function AppLayoutInner() {
             <NavLink to="/terms-of-service" className="hover:text-foreground inline-flex items-center gap-1.5">
               <ScrollText className="size-3" /> {t("nav.termsOfService")}
             </NavLink>
+            <NavLink to="/refund-policy" className="hover:text-foreground inline-flex items-center gap-1.5">
+              <ScrollText className="size-3" /> {t("nav.refundPolicy")}
+            </NavLink>
           </div>
           <div className="flex items-center gap-2">
             <div className="px-2 py-2 group-data-[collapsible=icon]:px-0">
@@ -198,7 +243,6 @@ function AppLayoutInner() {
                   <Building2 className="size-4 mr-2" />
                   {t("account.organizations")}
                 </DropdownMenuItem>
-                <InstallMenuItem />
                 {isAdmin && (
                   <DropdownMenuItem onClick={() => navigate("/admin")}>
                     <ShieldCheck className="size-4 mr-2" />
@@ -226,15 +270,25 @@ function AppLayoutInner() {
               return key ? t(key) : ""
             })()}
           </span>
-          {activeOrg && (
-            <span className="ml-auto inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Building2 className="size-3" />
-              {activeOrg.name}
-            </span>
-          )}
+          <div className="ml-auto flex items-center gap-3">
+            <InstallButton
+              label={t("pwa.installButton")}
+              iosTitle={t("pwa.iosTitle")}
+              iosBody={t("pwa.iosBody")}
+              closeLabel={t("common.done")}
+              variant="outline"
+            />
+            {activeOrg && (
+              <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Building2 className="size-3" />
+                {activeOrg.name}
+              </span>
+            )}
+          </div>
         </header>
 
         <InstallAppBanner className="mx-4 mt-4" />
+        <ReferralBanner className="mx-4 mt-4" />
         <div className="flex-1 overflow-auto">
           {orgLoading ? (
             <div className="flex h-[60vh] items-center justify-center">
@@ -245,11 +299,11 @@ function AppLayoutInner() {
           )}
         </div>
       </SidebarInset>
-      {fabOpen && (
+      {!pageAction && fabOpen && (
         <div className="fixed inset-0 z-40" onClick={() => setFabOpen(false)} />
       )}
       <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3">
-        {fabOpen && actions.map((action) => (
+        {!pageAction && fabOpen && actions.map((action) => (
           <div
             key={action.href}
             className="flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2 duration-150 cursor-pointer group/action"
@@ -270,9 +324,10 @@ function AppLayoutInner() {
         <Button
           size="icon"
           className="size-14 rounded-full shadow-lg"
-          onClick={() => setFabOpen((o) => !o)}
+          aria-label={pageAction ? t(pageAction.labelKey) : undefined}
+          onClick={() => { if (pageAction) navigate(pageAction.href); else setFabOpen((o) => !o) }}
         >
-          {fabOpen
+          {!pageAction && fabOpen
             ? <X className="size-5 transition-transform duration-200" />
             : <Plus className="size-5 transition-transform duration-200" />}
         </Button>
@@ -301,7 +356,9 @@ export function AppLayout() {
     <OrgProvider>
       <AdminProvider>
         <CurrencyProvider>
-          <AppLayoutInner />
+          <PageFilterProvider>
+            <AppLayoutInner />
+          </PageFilterProvider>
         </CurrencyProvider>
       </AdminProvider>
     </OrgProvider>

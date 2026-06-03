@@ -8,16 +8,39 @@ export type Client = {
   phone: string
   status: "active" | "inactive" | "archived"
   notes: string
+  category?: string
   is_own?: boolean
   onboard_date?: string | null
   deleted_at: string | null
+  closed_at?: string | null
   created_at: string
   updated_at: string
   total_incoming?: number
   total_outgoing?: number
+  attachment_count?: number
 }
 
-export type TransactionAttachment = {
+export type CategoryType = "incoming" | "outgoing" | "client" | "quotation"
+
+export type Category = {
+  id: string
+  organization_id: string
+  name: string
+  type: CategoryType
+  color: string
+  created_at: string
+  updated_at: string
+}
+
+// Editable metadata shared by all attachment kinds (see the attachment tables).
+export type AttachmentMeta = {
+  display_name?: string | null
+  tags?: string[]
+  category?: string
+  updated_at?: string
+}
+
+export type TransactionAttachment = AttachmentMeta & {
   id: string
   transaction_id: string
   user_id: string
@@ -27,9 +50,19 @@ export type TransactionAttachment = {
   created_at: string
 }
 
-export type QuotationAttachment = {
+export type QuotationAttachment = AttachmentMeta & {
   id: string
   quotation_id: string
+  user_id: string
+  file_name: string
+  file_type: string
+  file_size: number
+  created_at: string
+}
+
+export type ClientAttachment = AttachmentMeta & {
+  id: string
+  client_id: string
   user_id: string
   file_name: string
   file_type: string
@@ -48,6 +81,7 @@ export type Transaction = {
   date: string
   created_at: string
   updated_at: string
+  attachment_count?: number
 }
 
 export type Quotation = {
@@ -62,10 +96,13 @@ export type Quotation = {
   amount: string
   status: "draft" | "sent" | "accepted" | "rejected"
   notes: string
+  category?: string
   linked_client_id: string | null
   deleted_at: string | null
+  closed_at?: string | null
   created_at: string
   updated_at: string
+  attachment_count?: number
 }
 
 export type UserProfile = {
@@ -79,6 +116,13 @@ export type UserProfile = {
   onboarded_at: string | null
   company_upsell_dismissed_at: string | null
   company_upsell_hidden: boolean
+  address?: string
+  city?: string
+  state?: string
+  postal_code?: string
+  country?: string
+  phone_country_code?: string
+  phone?: string
   created_at: string
   updated_at: string
 }

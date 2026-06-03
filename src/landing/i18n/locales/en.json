@@ -1,4 +1,21 @@
 {
+  "analyticsTeaser": {
+    "badge": "Built-in analytics",
+    "title": "See where your money moves",
+    "subtitle": "Track income, expenses and profit over any range — daily, weekly, monthly or yearly — with clear breakdowns by client and category.",
+    "cta": "View Analytics",
+    "cardTitle": "Analytics",
+    "cardRange": "Last 6 months",
+    "income": "Income",
+    "expense": "Expense",
+    "profit": "Profit"
+  },
+  "install": {
+    "button": "Install app",
+    "iosTitle": "Add to Home Screen",
+    "iosBody": "Tap the Share icon, then choose “Add to Home Screen”.",
+    "close": "Got it"
+  },
   "meta": {
     "title": "ProfitSync — Know your profit. Sync your business.",
     "description": "Whether it's your business or your personal finances, ProfitSync brings your income, expenses, and cash flow into one clean workspace — so you always know exactly where your money stands."
@@ -248,7 +265,8 @@
       "login": "Log in",
       "signup": "Get started",
       "privacy": "Privacy Policy",
-      "terms": "Terms of Service"
+      "terms": "Terms of Service",
+      "refund": "Refund Policy"
     },
     "rights": "All rights reserved.",
     "language": "Language"

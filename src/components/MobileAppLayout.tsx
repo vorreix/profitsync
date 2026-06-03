@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { Outlet, NavLink, useLocation, useNavigate } from "react-router-dom"
 import { useUser, useClerk } from "@clerk/clerk-react"
@@ -23,9 +23,14 @@ import {
   ChevronDown,
   Sparkles,
   Loader,
+  SlidersHorizontal,
+  Tag,
+  ChartColumn,
+  Gift,
 } from "lucide-react"
 import { useOrg } from "@/lib/org-context"
 import { useAdmin } from "@/lib/admin-context"
+import { usePageFilterState } from "@/lib/page-filter-context"
 import { accountTypeAllows, isPaidPlanKey, type AccountType } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
@@ -40,7 +45,9 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { ModeToggle } from "@/components/mode-toggle"
 import { LanguageSwitcher } from "@/components/LanguageSwitcher"
-import { InstallAppBanner, InstallMenuItem } from "@/components/InstallAppBanner"
+import { InstallAppBanner } from "@/components/InstallAppBanner"
+import { InstallButton } from "@/components/InstallButton"
+import { ReferralBanner } from "@/components/ReferralBanner"
 
 type TabItem = { labelKey: string; href: string; icon: typeof LayoutDashboard }
 
@@ -62,23 +69,52 @@ function buildMoreItems(activeOrgId: string | undefined, accountType: AccountTyp
   const usersHref = activeOrgId ? `/organizations/${activeOrgId}/members` : "/organizations"
   const items: (MoreItem | false)[] = [
     accountTypeAllows(accountType, "members") && { labelKey: "nav.users", href: usersHref, icon: UserPlus },
+    { labelKey: "nav.analytics", href: "/analytics", icon: ChartColumn },
+    { labelKey: "nav.categories", href: "/categories", icon: Tag },
+    { labelKey: "nav.referrals", href: "/referrals", icon: Gift },
     { labelKey: "nav.organizations", href: "/organizations", icon: Building2 },
     { labelKey: "nav.subscription", href: "/subscription", icon: CreditCard },
     { labelKey: "nav.trash", href: "/trash", icon: Trash2 },
     { labelKey: "nav.profile", href: "/profile", icon: User },
     { labelKey: "nav.privacyPolicy", href: "/privacy-policy", icon: ShieldCheck },
     { labelKey: "nav.termsOfService", href: "/terms-of-service", icon: ScrollText },
+    { labelKey: "nav.refundPolicy", href: "/refund-policy", icon: ScrollText },
   ]
   return items.filter((i): i is MoreItem => i !== false)
 }
 
 type QuickAction = { labelKey: string; icon: typeof Users; href: string; feature?: "clients" | "quotations" }
 
+// Quick-actions menu, ordered top-to-bottom as it stacks above the FAB.
 const allQuickActions: QuickAction[] = [
+  { labelKey: "actions.createQuotation", icon: FileText, href: "/quotations?new=1", feature: "quotations" },
   { labelKey: "actions.addClient", icon: Users, href: "/clients?new=1", feature: "clients" },
   { labelKey: "actions.addTransaction", icon: ArrowLeftRight, href: "/transactions?new=1" },
-  { labelKey: "actions.createQuotation", icon: FileText, href: "/quotations?new=1", feature: "quotations" },
 ]
+
+// Within one of these sections, the FAB performs that section's "add" directly
+// instead of opening the menu (e.g. the Clients page → Add Client). Prefixes
+// mirror the nav's active-section logic, so nested routes like /clients/:id
+// count as being in the section too. Everywhere else (Home, etc.) the FAB keeps
+// the full quick-actions menu.
+const SECTION_FAB: { prefix: string; href: string }[] = [
+  { prefix: "/clients", href: "/clients?new=1" },
+  { prefix: "/transactions", href: "/transactions?new=1" },
+  { prefix: "/quotations", href: "/quotations?new=1" },
+]
+
+function pageFabAction(pathname: string, actions: QuickAction[]): QuickAction | null {
+  // Anywhere inside a specific client (detail or its /files view) → add a
+  // transaction for THIS client (the dialog opens on ?newTx=1).
+  const clientMatch = pathname.match(/^\/clients\/([^/]+)(?:\/|$)/)
+  if (clientMatch && clientMatch[1] !== "closed") {
+    return { labelKey: "actions.addTransaction", icon: ArrowLeftRight, href: `/clients/${clientMatch[1]}?newTx=1` }
+  }
+  const match = SECTION_FAB.find(
+    (s) => pathname === s.prefix || pathname.startsWith(s.prefix + "/"),
+  )
+  return match ? actions.find((a) => a.href === match.href) ?? null : null
+}
 
 export function MobileAppLayout() {
   const { t } = useTranslation()
@@ -91,6 +127,12 @@ export function MobileAppLayout() {
   const [orgSheetOpen, setOrgSheetOpen] = useState(false)
   const [moreOpen, setMoreOpen] = useState(false)
   const [fabOpen, setFabOpen] = useState(false)
+  const pageFilter = usePageFilterState()
+
+  // Close the quick-actions menu on any navigation.
+  useEffect(() => {
+    setFabOpen(false)
+  }, [location.pathname])
 
   const userEmail = user?.primaryEmailAddress?.emailAddress ?? null
 
@@ -111,6 +153,9 @@ export function MobileAppLayout() {
   const primaryTabs = buildPrimaryTabs(accountType)
   const moreItems = buildMoreItems(activeOrg?.id, accountType)
   const quickActions = allQuickActions.filter((a) => !a.feature || accountTypeAllows(accountType, a.feature))
+  // On a section's own page, the FAB is a single direct-add button; elsewhere
+  // it opens the quick-actions menu.
+  const pageAction = pageFabAction(location.pathname, quickActions)
   const isPaid = isPaidPlanKey(activeOrg?.plan_key)
   const onMorePage = !primaryTabs.some((t) =>
     location.pathname === t.href || location.pathname.startsWith(t.href + "/"),
@@ -220,6 +265,15 @@ export function MobileAppLayout() {
             </SheetContent>
           </Sheet>
 
+          <InstallButton
+            label={null}
+            ariaLabel={t("pwa.installButton")}
+            iosTitle={t("pwa.iosTitle")}
+            iosBody={t("pwa.iosBody")}
+            closeLabel={t("common.done")}
+            variant="outline"
+          />
+
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button className="pressable size-9 rounded-full bg-muted flex items-center justify-center shrink-0">
@@ -243,7 +297,6 @@ export function MobileAppLayout() {
               <DropdownMenuItem onClick={() => navigate("/subscription")}>
                 <CreditCard className="size-4 mr-2" /> {t("nav.subscription")}
               </DropdownMenuItem>
-              <InstallMenuItem />
               <div className="px-1 py-1 flex items-center gap-2">
                 <ModeToggle />
                 <span className="text-xs text-muted-foreground">{t("account.theme")}</span>
@@ -260,6 +313,7 @@ export function MobileAppLayout() {
 
       <main className="flex-1 overflow-y-auto overflow-x-hidden pb-32 page-enter" key={location.pathname + (activeOrg?.id ?? "")}>
         <InstallAppBanner className="mx-4 mt-3" />
+        <ReferralBanner className="mx-4 mt-3" />
         {orgLoading ? (
           <div className="flex h-[60vh] items-center justify-center">
             <Loader className="size-6 animate-spin text-muted-foreground" />
@@ -270,11 +324,27 @@ export function MobileAppLayout() {
       </main>
 
       {/* Floating action button */}
-      {fabOpen && (
+      {!pageAction && fabOpen && (
         <div className="fixed inset-0 z-40 bg-background/50 backdrop-blur-sm" onClick={() => setFabOpen(false)} />
       )}
       <div className="fixed bottom-24 right-4 z-50 flex flex-col items-end gap-2 safe-pb">
-        {fabOpen && quickActions.map((action) => (
+        {/* Floating filter shortcut: appears just above the FAB when the current
+            page has active filters, so they're reachable without scrolling back
+            to the toolbar. Hidden while the quick-actions menu is open. */}
+        {pageFilter.onOpen && pageFilter.count > 0 && !(!pageAction && fabOpen) && (
+          <button
+            type="button"
+            onClick={() => pageFilter.onOpen?.()}
+            aria-label={t("filters.filters")}
+            className="pressable relative flex size-12 items-center justify-center rounded-full border bg-background shadow-md animate-in fade-in slide-in-from-bottom-1 duration-150"
+          >
+            <SlidersHorizontal className="size-5" />
+            <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground tabular-nums">
+              {pageFilter.count}
+            </span>
+          </button>
+        )}
+        {!pageAction && fabOpen && quickActions.map((action) => (
           <div
             key={action.href}
             className="flex items-center gap-2 animate-in fade-in slide-in-from-bottom-1 duration-150 cursor-pointer group/action"
@@ -295,9 +365,10 @@ export function MobileAppLayout() {
         <Button
           size="icon"
           className="size-14 rounded-full shadow-lg pressable"
-          onClick={() => setFabOpen((o) => !o)}
+          aria-label={pageAction ? t(pageAction.labelKey) : undefined}
+          onClick={() => { if (pageAction) navigate(pageAction.href); else setFabOpen((o) => !o) }}
         >
-          {fabOpen ? <X className="size-5" /> : <Plus className="size-5" />}
+          {!pageAction && fabOpen ? <X className="size-5" /> : <Plus className="size-5" />}
         </Button>
       </div>
 

@@ -7,7 +7,8 @@ import {
   transactions,
 } from "../../../../src/lib/db/schema.js"
 import { canWrite, requireAuth } from "../../../_lib/auth.js"
-import { checkAttachmentQuota } from "../../../_lib/quota.js"
+import { checkAttachmentQuota, checkOrgAttachmentQuota } from "../../../_lib/quota.js"
+import { validateUpload } from "../../../_lib/attachments.js"
 
 async function verifyTransactionOrg(transactionId: string, orgId: string): Promise<boolean> {
   const [row] = await db
@@ -16,6 +17,21 @@ async function verifyTransactionOrg(transactionId: string, orgId: string): Promi
     .innerJoin(clients, eq(transactions.clientId, clients.id))
     .where(eq(transactions.id, transactionId))
   return !!row && row.clientOrgId === orgId
+}
+
+// Metadata fields returned to clients (never includes fileData).
+const metaFields = {
+  id: transactionAttachments.id,
+  transactionId: transactionAttachments.transactionId,
+  userId: transactionAttachments.userId,
+  fileName: transactionAttachments.fileName,
+  fileType: transactionAttachments.fileType,
+  fileSize: transactionAttachments.fileSize,
+  displayName: transactionAttachments.displayName,
+  tags: transactionAttachments.tags,
+  category: transactionAttachments.category,
+  createdAt: transactionAttachments.createdAt,
+  updatedAt: transactionAttachments.updatedAt,
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -30,15 +46,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!owned) return res.status(404).json({ error: "Not found" })
 
     const rows = await db
-      .select({
-        id: transactionAttachments.id,
-        transactionId: transactionAttachments.transactionId,
-        userId: transactionAttachments.userId,
-        fileName: transactionAttachments.fileName,
-        fileType: transactionAttachments.fileType,
-        fileSize: transactionAttachments.fileSize,
-        createdAt: transactionAttachments.createdAt,
-      })
+      .select(metaFields)
       .from(transactionAttachments)
       .where(eq(transactionAttachments.transactionId, id))
       .orderBy(desc(transactionAttachments.createdAt))
@@ -50,20 +58,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const owned = await verifyTransactionOrg(id, orgId)
     if (!owned) return res.status(404).json({ error: "Not found" })
 
-    const { file_name, file_type, file_size, file_data } = req.body as {
-      file_name: string; file_type: string; file_size: number; file_data: string
-    }
+    // Validate type/size/filename before trusting any of it (see _lib/attachments).
+    const validation = validateUpload(req.body ?? {})
+    if (!validation.ok) return res.status(400).json({ error: validation.error })
+    const { fileName, fileType, fileSize, byteLength } = validation.value
+    const fileData = (req.body as { file_data: string }).file_data
 
-    if (!file_name || !file_type || !file_data) {
-      return res.status(400).json({ error: "file_name, file_type, and file_data are required" })
-    }
-    const byteLength = Buffer.byteLength(file_data, "base64")
-    const effectiveSize = Math.max(file_size ?? 0, byteLength)
+    const orgQuota = await checkOrgAttachmentQuota(orgId, byteLength)
+    if (!orgQuota.allowed) return res.status(402).json(orgQuota)
 
     const quota = await checkAttachmentQuota(orgId, {
       kind: "transaction",
       parentId: id,
-      sizeBytes: effectiveSize,
+      sizeBytes: byteLength,
     })
     if (!quota.allowed) return res.status(402).json(quota)
 
@@ -72,20 +79,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .values({
         transactionId: id,
         userId,
-        fileName: file_name,
-        fileType: file_type,
-        fileSize: file_size,
-        fileData: file_data,
+        fileName,
+        fileType,
+        fileSize,
+        fileData,
       })
-      .returning({
-        id: transactionAttachments.id,
-        transactionId: transactionAttachments.transactionId,
-        userId: transactionAttachments.userId,
-        fileName: transactionAttachments.fileName,
-        fileType: transactionAttachments.fileType,
-        fileSize: transactionAttachments.fileSize,
-        createdAt: transactionAttachments.createdAt,
-      })
+      .returning(metaFields)
     return res.status(201).json(serialize(row))
   }
 
