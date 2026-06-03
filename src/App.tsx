@@ -18,6 +18,7 @@ const ClientFilesPage = lazy(() => import("@/pages/ClientFilesPage").then((m) =>
 const TransactionsPage = lazy(() => import("@/pages/TransactionsPage").then((m) => ({ default: m.TransactionsPage })))
 const CategoriesPage = lazy(() => import("@/pages/CategoriesPage").then((m) => ({ default: m.CategoriesPage })))
 const AnalyticsPage = lazy(() => import("@/pages/AnalyticsPage").then((m) => ({ default: m.AnalyticsPage })))
+const ReferralPage = lazy(() => import("@/pages/ReferralPage").then((m) => ({ default: m.ReferralPage })))
 const QuotationsPage = lazy(() => import("@/pages/QuotationsPage").then((m) => ({ default: m.QuotationsPage })))
 const TrashPage = lazy(() => import("@/pages/TrashPage").then((m) => ({ default: m.TrashPage })))
 const ProfilePage = lazy(() => import("@/pages/ProfilePage").then((m) => ({ default: m.ProfilePage })))
@@ -28,6 +29,7 @@ const OnboardingPage = lazy(() => import("@/pages/OnboardingPage").then((m) => (
 const InvitationPage = lazy(() => import("@/pages/InvitationPage").then((m) => ({ default: m.InvitationPage })))
 const PrivacyPolicyPage = lazy(() => import("@/pages/PrivacyPolicyPage").then((m) => ({ default: m.PrivacyPolicyPage })))
 const TermsOfServicePage = lazy(() => import("@/pages/TermsOfServicePage").then((m) => ({ default: m.TermsOfServicePage })))
+const RefundPolicyPage = lazy(() => import("@/pages/RefundPolicyPage").then((m) => ({ default: m.RefundPolicyPage })))
 
 // Public marketing landing — fully self-contained in src/landing/ (its own
 // components, styles, i18n). Lazy-loaded so it never bloats the app bundle.
@@ -45,6 +47,7 @@ const AdminOrgDetailPage = lazy(() => import("@/pages/admin/AdminOrgDetailPage")
 const AdminSubscriptionsPage = lazy(() => import("@/pages/admin/AdminSubscriptionsPage").then((m) => ({ default: m.AdminSubscriptionsPage })))
 const AdminInvoicesPage = lazy(() => import("@/pages/admin/AdminInvoicesPage").then((m) => ({ default: m.AdminInvoicesPage })))
 const AdminPlansPage = lazy(() => import("@/pages/admin/AdminPlansPage").then((m) => ({ default: m.AdminPlansPage })))
+const AdminReferralsPage = lazy(() => import("@/pages/admin/AdminReferralsPage").then((m) => ({ default: m.AdminReferralsPage })))
 const AdminAdminsPage = lazy(() => import("@/pages/admin/AdminAdminsPage").then((m) => ({ default: m.AdminAdminsPage })))
 
 function RouteFallback() {
@@ -75,6 +78,7 @@ export function App() {
           {/* Public legal routes */}
           <Route path="privacy-policy" element={<PrivacyPolicyPage />} />
           <Route path="terms-of-service" element={<TermsOfServicePage />} />
+          <Route path="refund-policy" element={<RefundPolicyPage />} />
 
           {/* Invitation accept page (public landing — handles sign-in flow inline) */}
           <Route path="invitations/:token" element={<InvitationPage />} />
@@ -97,6 +101,7 @@ export function App() {
             <Route path="subscriptions" element={<AdminSubscriptionsPage />} />
             <Route path="invoices" element={<AdminInvoicesPage />} />
             <Route path="plans" element={<AdminPlansPage />} />
+            <Route path="referrals" element={<AdminReferralsPage />} />
             <Route path="admins" element={<AdminAdminsPage />} />
           </Route>
 
@@ -114,6 +119,7 @@ export function App() {
             <Route path="transactions" element={<TransactionsPage />} />
             <Route path="analytics" element={<AnalyticsPage />} />
             <Route path="categories" element={<CategoriesPage />} />
+            <Route path="referrals" element={<ReferralPage />} />
             <Route path="quotations" element={<BusinessOnlyRoute feature="quotations"><QuotationsPage /></BusinessOnlyRoute>} />
             <Route path="organizations" element={<OrganizationsPage />} />
             <Route path="organizations/:id/members" element={<BusinessOnlyRoute feature="members"><OrgMembersPage /></BusinessOnlyRoute>} />
