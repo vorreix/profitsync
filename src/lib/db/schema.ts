@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, numeric, date, timestamp, integer, boolean, index, uniqueIndex, jsonb } from "drizzle-orm/pg-core"
+import { pgTable, uuid, text, numeric, date, timestamp, integer, boolean, index, uniqueIndex, jsonb, check } from "drizzle-orm/pg-core"
 import { sql } from "drizzle-orm"
 
 export const organizations = pgTable("organizations", {
@@ -387,4 +387,46 @@ export const invoices = pgTable("invoices", {
   // Nullable column → Postgres treats NULLs as distinct, so non-Dodo invoices
   // (no provider_invoice_id) are unaffected.
   providerInvoiceIdx: uniqueIndex("invoices_provider_invoice_id_key").on(table.providerInvoiceId),
+}))
+
+// ── Blog ─────────────────────────────────────────────────────────────────────
+// Platform-wide marketing content authored by app admins (NOT org-scoped — it
+// follows the global `plans` / `referral_settings` pattern). Public read routes
+// expose only published posts; the admin console manages the full lifecycle
+// (create / edit / delete / publish / unpublish). Body is stored as Markdown and
+// rendered safely (no raw HTML) on the public site.
+export const blogPosts = pgTable("blog_posts", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  // URL slug for /blog/:slug — unique, derived from the title but editable.
+  slug: text("slug").notNull().unique(),
+  title: text("title").notNull(),
+  excerpt: text("excerpt").notNull().default(""), // short summary for cards + meta description fallback
+  content: text("content").notNull().default(""), // Markdown body
+  coverImageUrl: text("cover_image_url").notNull().default(""), // hero image URL (optional)
+  tags: jsonb("tags").notNull().default([]), // string[]
+  authorName: text("author_name").notNull().default(""), // display author (free text)
+  authorUserId: text("author_user_id"), // Clerk id of the admin who created it
+  status: text("status").notNull().default("draft"), // draft | published
+  // SEO overrides; fall back to title/excerpt when blank.
+  seoTitle: text("seo_title").notNull().default(""),
+  seoDescription: text("seo_description").notNull().default(""),
+  // Estimated reading time in minutes, computed from `content` at write time
+  // (single source of truth: readingTimeMinutes() in src/lib/blog.ts). Stored so
+  // the public list never has to fetch the full Markdown body just to derive it.
+  readingTimeMinutes: integer("reading_time_minutes").notNull().default(1),
+  // Set the first time the post is published; preserved across unpublish/republish
+  // so the public ordering stays stable. Null while it has never been published.
+  publishedAt: timestamp("published_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  // Drives the public list query: filter by status, order by publishedAt.
+  statusPublishedIdx: index("blog_posts_status_published_idx").on(table.status, table.publishedAt),
+  // Defense-in-depth: a published post must always have a publish timestamp, so
+  // the public feed ordering (by published_at) can never be broken by a row with
+  // status='published' and published_at IS NULL.
+  publishedHasDate: check(
+    "blog_posts_published_has_date",
+    sql`status <> 'published' OR published_at IS NOT NULL`,
+  ),
 }))

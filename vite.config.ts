@@ -32,6 +32,26 @@ export default defineConfig({
           if (id.includes("/src/landing/")) return "landing"
           if (!id.includes("node_modules")) return
           if (id.includes("recharts") || id.includes("d3-") || id.includes("victory-vendor")) return "charts"
+          // The Markdown renderer (react-markdown + the remark/unified/micromark/
+          // mdast/hast tree) is only used on the blog article + admin blog routes.
+          // Keep it in its own one-way leaf chunk so it loads lazily with those
+          // routes instead of bloating the eager "vendor" chunk on every page.
+          if (
+            id.includes("react-markdown") ||
+            id.includes("/remark-") ||
+            id.includes("/micromark") ||
+            id.includes("/mdast-") ||
+            id.includes("/hast-") ||
+            id.includes("/hastscript/") ||
+            id.includes("/unist-") ||
+            id.includes("/unified/") ||
+            id.includes("/vfile") ||
+            id.includes("/property-information/") ||
+            id.includes("/character-entities") ||
+            id.includes("/decode-named-character-reference/")
+          ) {
+            return "markdown"
+          }
           return "vendor"
         },
       },

@@ -45,6 +45,8 @@ import trash from "./_routes/trash.js"
 import trashRestore from "./_routes/trash/restore.js"
 import trashPurge from "./_routes/trash/purge.js"
 import publicPricing from "./_routes/public/pricing.js"
+import publicBlog from "./_routes/public/blog.js"
+import publicBlogBySlug from "./_routes/public/blog/[slug].js"
 import billingPricing from "./_routes/billing/pricing.js"
 import billingCreateSubscription from "./_routes/billing/create-subscription.js"
 import billingChangePlan from "./_routes/billing/change-plan.js"
@@ -70,6 +72,8 @@ import adminSubscriptions from "./_routes/admin/subscriptions.js"
 import adminInvoices from "./_routes/admin/invoices.js"
 import adminInvitations from "./_routes/admin/invitations.js"
 import adminPlans from "./_routes/admin/plans.js"
+import adminBlog from "./_routes/admin/blog.js"
+import adminBlogById from "./_routes/admin/blog/[id].js"
 import adminReferralSettings from "./_routes/admin/referral-settings.js"
 import adminReferrals from "./_routes/admin/referrals.js"
 import adminPayouts from "./_routes/admin/payouts.js"
@@ -130,6 +134,9 @@ const routes: RoutePattern<ApiHandler>[] = [
 
   // Public, unauthenticated pricing for the marketing landing page.
   { segments: ["public", "pricing"], handler: publicPricing },
+  // Public, unauthenticated blog reads for the marketing site (published only).
+  { segments: ["public", "blog"], handler: publicBlog },
+  { segments: ["public", "blog", ":slug"], handler: publicBlogBySlug },
 
   { segments: ["billing", "pricing"], handler: billingPricing },
   { segments: ["billing", "create-subscription"], handler: billingCreateSubscription },
@@ -153,6 +160,8 @@ const routes: RoutePattern<ApiHandler>[] = [
   { segments: ["admin", "invoices"], handler: adminInvoices },
   { segments: ["admin", "invitations"], handler: adminInvitations },
   { segments: ["admin", "plans"], handler: adminPlans },
+  { segments: ["admin", "blog"], handler: adminBlog },
+  { segments: ["admin", "blog", ":id"], handler: adminBlogById },
   { segments: ["admin", "referral-settings"], handler: adminReferralSettings },
   { segments: ["admin", "referrals"], handler: adminReferrals },
   { segments: ["admin", "payouts"], handler: adminPayouts },

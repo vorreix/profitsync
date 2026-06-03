@@ -187,3 +187,36 @@ export const CURRENCIES = [
 ]
 
 export const LEGAL_DOC_VERSION = "1.0.0"
+
+// ── Blog ─────────────────────────────────────────────────────────────────────
+export type BlogStatus = "draft" | "published"
+export const BLOG_STATUSES: BlogStatus[] = ["draft", "published"]
+
+/**
+ * A platform blog post (admin-authored, shown on the public marketing site).
+ * Not org-scoped. `content` is Markdown. `reading_time_minutes` is computed by the
+ * API and only present on responses, never stored. Public list responses omit
+ * `content` (it's only returned by the single-post endpoint and the admin API).
+ */
+export type BlogPost = {
+  id: string
+  slug: string
+  title: string
+  excerpt: string
+  content: string
+  cover_image_url: string
+  tags: string[]
+  author_name: string
+  author_user_id: string | null
+  status: BlogStatus
+  seo_title: string
+  seo_description: string
+  published_at: string | null
+  created_at: string
+  updated_at: string
+  reading_time_minutes?: number
+}
+
+// Lightweight shape returned by the public list endpoint (no `content`).
+export type BlogPostSummary = Omit<BlogPost, "content" | "author_user_id" | "seo_title" | "seo_description">
+
