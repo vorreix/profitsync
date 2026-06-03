@@ -8,6 +8,7 @@ export type Client = {
   phone: string
   status: "active" | "inactive" | "archived"
   notes: string
+  category?: string
   is_own?: boolean
   onboard_date?: string | null
   deleted_at: string | null
@@ -19,11 +20,13 @@ export type Client = {
   attachment_count?: number
 }
 
+export type CategoryType = "incoming" | "outgoing" | "client" | "quotation"
+
 export type Category = {
   id: string
   organization_id: string
   name: string
-  type: "incoming" | "outgoing"
+  type: CategoryType
   color: string
   created_at: string
   updated_at: string
@@ -93,6 +96,7 @@ export type Quotation = {
   amount: string
   status: "draft" | "sent" | "accepted" | "rejected"
   notes: string
+  category?: string
   linked_client_id: string | null
   deleted_at: string | null
   closed_at?: string | null

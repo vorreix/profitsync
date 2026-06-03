@@ -28,7 +28,13 @@ import {
 import { ExpandableSearch } from "@/components/ExpandableSearch"
 import { FilterSheet, FilterSection } from "@/components/filters/FilterSheet"
 
-type CatType = "incoming" | "outgoing"
+type CatType = "incoming" | "outgoing" | "client" | "quotation"
+const CAT_TYPES: CatType[] = ["incoming", "outgoing", "client", "quotation"]
+const typeLabelKey = (t: CatType) =>
+  t === "incoming" ? "categories.incoming"
+  : t === "outgoing" ? "categories.outgoing"
+  : t === "client" ? "categories.client"
+  : "categories.quotation"
 
 export function CategoriesPage() {
   const { t } = useTranslation()
@@ -40,6 +46,7 @@ export function CategoriesPage() {
 
   const [search, setSearch] = useState("")
   const [typeFilter, setTypeFilter] = useState<"all" | CatType>("all")
+  const [sort, setSort] = useState("name_asc")
 
   const [addOpen, setAddOpen] = useState(false)
   const [addName, setAddName] = useState("")
@@ -52,10 +59,19 @@ export function CategoriesPage() {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
-    return categories
+    const list = categories
       .filter((c) => (typeFilter === "all" ? true : c.type === typeFilter))
       .filter((c) => (q ? c.name.toLowerCase().includes(q) : true))
-  }, [categories, search, typeFilter])
+    const sorted = [...list]
+    sorted.sort((a, b) => {
+      if (sort === "name_asc") return a.name.localeCompare(b.name)
+      if (sort === "name_desc") return b.name.localeCompare(a.name)
+      const ta = new Date(a.created_at).getTime()
+      const tb = new Date(b.created_at).getTime()
+      return sort === "created_asc" ? ta - tb : tb - ta
+    })
+    return sorted
+  }, [categories, search, typeFilter, sort])
 
   const appliedCount = typeFilter !== "all" ? 1 : 0
 
@@ -123,14 +139,26 @@ export function CategoriesPage() {
         </div>
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           <ExpandableSearch value={search} onChange={setSearch} placeholder={t("categories.searchPlaceholder")} expandedClassName="w-36 sm:w-64" />
-          <FilterSheet count={appliedCount} onClear={() => setTypeFilter("all")}>
+          <FilterSheet count={appliedCount} onClear={() => { setTypeFilter("all"); setSort("name_asc") }}>
             <FilterSection label={t("filters.type")}>
               <Select value={typeFilter} onValueChange={(v) => setTypeFilter(v as "all" | CatType)}>
                 <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">{t("filters.all")}</SelectItem>
-                  <SelectItem value="incoming">{t("categories.incoming")}</SelectItem>
-                  <SelectItem value="outgoing">{t("categories.outgoing")}</SelectItem>
+                  {CAT_TYPES.map((ct) => (
+                    <SelectItem key={ct} value={ct}>{t(typeLabelKey(ct))}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FilterSection>
+            <FilterSection label={t("filters.sortBy")}>
+              <Select value={sort} onValueChange={setSort}>
+                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="name_asc">{t("categories.sortNameAsc")}</SelectItem>
+                  <SelectItem value="name_desc">{t("categories.sortNameDesc")}</SelectItem>
+                  <SelectItem value="created_desc">{t("categories.sortNewest")}</SelectItem>
+                  <SelectItem value="created_asc">{t("categories.sortOldest")}</SelectItem>
                 </SelectContent>
               </Select>
             </FilterSection>
@@ -161,15 +189,22 @@ export function CategoriesPage() {
         <ul className="space-y-2">
           {filtered.map((cat) => (
             <li key={cat.id} className="flex items-center gap-3 rounded-lg border p-3 hover:bg-muted/40 transition-colors">
-              <div className={`size-9 rounded-lg flex items-center justify-center shrink-0 ${cat.type === "incoming" ? "bg-emerald-100 dark:bg-emerald-900/30" : "bg-red-100 dark:bg-red-900/30"}`}>
+              <div className={`size-9 rounded-lg flex items-center justify-center shrink-0 ${
+                cat.type === "incoming" ? "bg-emerald-100 dark:bg-emerald-900/30"
+                : cat.type === "outgoing" ? "bg-red-100 dark:bg-red-900/30"
+                : cat.type === "client" ? "bg-blue-100 dark:bg-blue-900/30"
+                : "bg-amber-100 dark:bg-amber-900/30"
+              }`}>
                 {cat.type === "incoming"
                   ? <ArrowDownLeft className="size-4 text-emerald-600 dark:text-emerald-400" />
-                  : <ArrowUpRight className="size-4 text-red-600 dark:text-red-400" />}
+                  : cat.type === "outgoing"
+                    ? <ArrowUpRight className="size-4 text-red-600 dark:text-red-400" />
+                    : <Tag className={`size-4 ${cat.type === "client" ? "text-blue-600 dark:text-blue-400" : "text-amber-600 dark:text-amber-400"}`} />}
               </div>
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium truncate">{cat.name}</p>
                 <Badge variant="outline" className="mt-0.5 text-[10px]">
-                  {cat.type === "incoming" ? t("categories.incoming") : t("categories.outgoing")}
+                  {t(typeLabelKey(cat.type as CatType))}
                 </Badge>
               </div>
               {canWrite && (
@@ -201,8 +236,9 @@ export function CategoriesPage() {
               <Select value={addType} onValueChange={(v) => setAddType(v as CatType)}>
                 <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="incoming">{t("categories.incoming")}</SelectItem>
-                  <SelectItem value="outgoing">{t("categories.outgoing")}</SelectItem>
+                  {CAT_TYPES.map((ct) => (
+                    <SelectItem key={ct} value={ct}>{t(typeLabelKey(ct))}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
