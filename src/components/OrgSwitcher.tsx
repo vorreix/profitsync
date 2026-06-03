@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { CurrencyCombobox } from "@/components/CurrencyCombobox"
+import { detectDefaultCurrency } from "@/lib/currencies"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import {
@@ -186,7 +187,7 @@ export function OrgSwitcher() {
               onClick={() => {
                 setOpen(false)
                 setNewName("")
-                setNewCurrency(activeOrg?.currency || "USD")
+                setNewCurrency(activeOrg?.currency || detectDefaultCurrency())
                 setCreateOpen(true)
               }}
             >

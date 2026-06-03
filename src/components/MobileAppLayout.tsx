@@ -33,6 +33,7 @@ import { useOrg } from "@/lib/org-context"
 import { useAdmin } from "@/lib/admin-context"
 import { usePageFilterState } from "@/lib/page-filter-context"
 import { apiPost } from "@/lib/api"
+import { detectDefaultCurrency } from "@/lib/currencies"
 import { accountTypeAllows, isPaidPlanKey, type AccountType, type Organization } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -167,8 +168,8 @@ export function MobileAppLayout() {
   }
 
   const openCreate = () => {
-    // Default to the active org's currency — the most likely pick for an existing user.
-    setNewCurrency(activeOrg?.currency || "USD")
+    // Default to the active org's currency (most likely pick), else a geo default.
+    setNewCurrency(activeOrg?.currency || detectDefaultCurrency())
     setNewName("")
     setOrgSheetOpen(false)
     setCreateOpen(true)
