@@ -78,6 +78,23 @@ export const clients = pgTable("clients", {
   orgIdx: index("clients_org_idx").on(table.organizationId),
 }))
 
+// Org-scoped, managed transaction categories. Transactions still store the
+// category *name* as free text (transactions.category) for back-compat; this
+// table is the source of truth for the picker and the management UI. Renaming a
+// category bulk-updates matching transactions; deleting leaves their text intact.
+export const categories = pgTable("categories", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  type: text("type").notNull(), // "incoming" | "outgoing"
+  color: text("color").notNull().default(""),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  orgTypeIdx: index("categories_org_type_idx").on(table.organizationId, table.type),
+  orgNameTypeUnique: uniqueIndex("categories_org_name_type_unique").on(table.organizationId, table.type, table.name),
+}))
+
 export const transactions = pgTable("transactions", {
   id: uuid("id").primaryKey().defaultRandom(),
   clientId: uuid("client_id")
