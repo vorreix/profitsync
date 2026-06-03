@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom"
 import { Loader as Loader2 } from "lucide-react"
 import { AppLayout } from "@/components/AppLayout"
 import { AdminLayout } from "@/pages/admin/AdminLayout"
+import { RequireAdminCap } from "@/pages/admin/RequireAdminCap"
 import { BusinessOnlyRoute } from "@/components/BusinessOnlyRoute"
 import { Toaster } from "@/components/ui/sonner"
 import { useShouldRedirectToApp } from "@/lib/use-redirect-to-app"
@@ -101,18 +102,18 @@ export function App() {
           {/* Onboarding — full-screen, no app shell. Shown until account type is chosen. */}
           <Route path="onboarding" element={<OnboardingPage />} />
 
-          {/* Admin Routes — distinct shell, admin guard */}
+          {/* Admin Routes — distinct shell, admin guard + per-route capability gating */}
           <Route path="/admin" element={<AdminLayout />}>
-            <Route index element={<AdminOverviewPage />} />
-            <Route path="users" element={<AdminUsersPage />} />
-            <Route path="organizations" element={<AdminOrgsPage />} />
-            <Route path="organizations/:id" element={<AdminOrgDetailPage />} />
-            <Route path="subscriptions" element={<AdminSubscriptionsPage />} />
-            <Route path="invoices" element={<AdminInvoicesPage />} />
-            <Route path="plans" element={<AdminPlansPage />} />
-            <Route path="blog" element={<AdminBlogPage />} />
-            <Route path="referrals" element={<AdminReferralsPage />} />
-            <Route path="admins" element={<AdminAdminsPage />} />
+            <Route index element={<RequireAdminCap cap="read"><AdminOverviewPage /></RequireAdminCap>} />
+            <Route path="users" element={<RequireAdminCap cap="read"><AdminUsersPage /></RequireAdminCap>} />
+            <Route path="organizations" element={<RequireAdminCap cap="read"><AdminOrgsPage /></RequireAdminCap>} />
+            <Route path="organizations/:id" element={<RequireAdminCap cap="read"><AdminOrgDetailPage /></RequireAdminCap>} />
+            <Route path="subscriptions" element={<RequireAdminCap cap="read"><AdminSubscriptionsPage /></RequireAdminCap>} />
+            <Route path="invoices" element={<RequireAdminCap cap="read"><AdminInvoicesPage /></RequireAdminCap>} />
+            <Route path="plans" element={<RequireAdminCap cap="settings"><AdminPlansPage /></RequireAdminCap>} />
+            <Route path="blog" element={<RequireAdminCap cap="blog"><AdminBlogPage /></RequireAdminCap>} />
+            <Route path="referrals" element={<RequireAdminCap cap="read"><AdminReferralsPage /></RequireAdminCap>} />
+            <Route path="admins" element={<RequireAdminCap cap="manage_admins"><AdminAdminsPage /></RequireAdminCap>} />
           </Route>
 
           {/* Public marketing landing at the root domain (profitsync.net).

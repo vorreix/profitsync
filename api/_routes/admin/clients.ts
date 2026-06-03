@@ -2,14 +2,15 @@ import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { and, count, desc, eq, ilike, isNull, or, sql } from "drizzle-orm"
 import { db, serialize } from "../../../src/lib/db/index.js"
 import { clients, organizations, transactions } from "../../../src/lib/db/schema.js"
-import { requireAdmin } from "../../_lib/admin.js"
+import { requireAdminCap } from "../../_lib/admin.js"
 
 const PAGE_SIZE = 30
 const VALID_STATUSES = ["active", "inactive", "archived"]
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const adminId = await requireAdmin(req, res)
-  if (!adminId) return
+  const ctx = await requireAdminCap(req, res, req.method === "GET" ? "read" : "write")
+  if (!ctx) return
+  const adminId = ctx.userId
 
   if (req.method === "GET") {
     const { organization_id, search, status, page } = req.query as {
