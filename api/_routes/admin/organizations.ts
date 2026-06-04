@@ -3,7 +3,7 @@ import { and, count, desc, eq, ilike, sql } from "drizzle-orm"
 import { db, serialize } from "../../../src/lib/db/index.js"
 import { organizations, subscriptions, userProfiles } from "../../../src/lib/db/schema.js"
 import { createOrgForUser } from "../../_lib/auth.js"
-import { requireAdmin } from "../../_lib/admin.js"
+import { requireAdminCap } from "../../_lib/admin.js"
 
 const PAGE_SIZE = 30
 
@@ -33,8 +33,8 @@ async function ensureUniqueSlug(base: string): Promise<string> {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const adminId = await requireAdmin(req, res)
-  if (!adminId) return
+  const ctx = await requireAdminCap(req, res, req.method === "GET" ? "read" : "write")
+  if (!ctx) return
 
   if (req.method === "GET") {
     const { search, page, type } = req.query as { search?: string; page?: string; type?: string }
