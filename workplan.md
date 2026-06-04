@@ -29,6 +29,13 @@ target `dev` — currently identical to `main`). New env to set in production fo
 **Merge note:** Task 1 and Task 4 both edit `api/_routes/admin/invoices.ts`; on merge keep Task 1's
 `requireAdminCap` guard **and** Task 4's `handleDocument` action (trivial combine).
 
+**Post-review:** an adversarial multi-agent review of all 5 branches ran after implementation. It
+found one real bug — a privilege escalation in `admin/users.ts` (an editor could promote users to
+admin / delete accounts under the `write` cap) — fixed on the Task 1 branch (now requires
+`manage_admins`; verified editor→403, super_admin→200). Two raised "email escaping" findings were
+rejected as false positives (the email subject/plain-text are correctly NOT HTML-escaped; only the
+HTML body is).
+
 ---
 
 ## Task 2 — Transaction category dropdown: not scrollable, leaks downward
