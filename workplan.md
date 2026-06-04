@@ -15,7 +15,7 @@
 | # | Task | Branch | PR compare URL | Status |
 |---|------|--------|----------------|--------|
 | 2 | Fix transaction category dropdown scroll/overflow | `fix/tx_category_dropdown_scroll_maqbool` | https://github.com/vorreix/profitsync/compare/main...fix/tx_category_dropdown_scroll_maqbool?expand=1 | ✅ |
-| 4 | Admin invoices: visible + clickable + viewable | `fix/admin_invoices_viewable_maqbool` | _tbd_ | ☐ |
+| 4 | Admin invoices: visible + clickable + viewable | `fix/admin_invoices_viewable_maqbool` | https://github.com/vorreix/profitsync/compare/main...fix/admin_invoices_viewable_maqbool?expand=1 | ✅ |
 | 1 | Admin custom roles & privileges (viewer/editor/blog-writer) | `feature/admin_custom_roles_maqbool` | _tbd_ | ☐ |
 | 3 | Org invitations: email + shareable link + 3 accept flows | `feature/org_invitations_email_flow_maqbool` | _tbd_ | ☐ |
 | 5 | Landing vs app split + PWA app-only + seamless auto-update | `feature/landing_pwa_split_maqbool` | _tbd_ | ☐ |
@@ -150,3 +150,9 @@ Playwright — (a) signed-in browser at `/` sees landing with "Go to Dashboard";
 - `CategoryCombobox` (TransactionsPage) + `CategoryPicker` (ClientDetailPage): replaced the Radix `ScrollArea` (percentage-height viewport that never constrained → leaked downward) with a flex-column `PopoverContent` bounded to `min(20rem, --radix-popover-content-available-height)` + an `overflow-y-auto` list. Hardened `ClientCombobox` popover the same way. Removed now-unused `ScrollArea` imports.
 - typecheck ✅ · lint ✅ · build ✅ · 64/64 tests ✅.
 - Playwright (390×560 mobile, 19 categories): popover height capped at 320px, `overflow:hidden`, bottom 421 ≤ viewport 560 (no downward leak); inner list `scrollHeight 684 > clientHeight 269`, scroll moved 0→415 → **scrollable & bounded**. Screenshot `task2-category-scroll-fixed.png`.
+
+### Task 4 — admin invoices viewable ✅
+- API: added an admin-scoped `GET /api/admin/invoices?invoice_id=<id>&document=1` action (`handleDocument`) — returns `{ url }` for a stored hosted PDF, else proxies the Dodo PDF via `fetchInvoicePdf` (resolving the env from the invoice's subscription), 404 when no document exists. Not org-scoped (admin already authorized) so any workspace's invoice opens.
+- UI (`AdminInvoicesPage`): rows are now clickable → an **Invoice detail** dialog showing every field (full id, org, owner, amount, provider, provider-invoice id, subscription, issued/paid/created) + a prominent **View invoice document** button + per-row quick **View** button (with loading state) + status editor.
+- typecheck ✅ · lint ✅ · build ✅ · 64/64 tests ✅.
+- Playwright (admin, 6 real Dodo invoices): row → detail dialog renders all fields; **View invoice document** → `GET …?invoice_id=…&document=1` returned **200 OK** and opened the proxied PDF blob in a new tab. Screenshot `task4-admin-invoice-detail.png`.
