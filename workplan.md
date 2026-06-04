@@ -152,9 +152,11 @@ Playwright — (a) signed-in browser at `/` sees landing with "Go to Dashboard";
 - Playwright (390×560 mobile, 19 categories): popover height capped at 320px, `overflow:hidden`, bottom 421 ≤ viewport 560 (no downward leak); inner list `scrollHeight 684 > clientHeight 269`, scroll moved 0→415 → **scrollable & bounded**. Screenshot `task2-category-scroll-fixed.png`.
 
 ### Task 4 — admin invoices viewable ✅
-- API: admin-scoped `GET /api/admin/invoices?invoice_id&document=1` (`handleDocument`) → stored URL or proxied Dodo PDF; 404 when none. UI: clickable rows → Invoice detail dialog (all fields) + **View invoice document** + per-row View button + status editor.
-- typecheck/lint/build/64 tests ✅. Playwright (6 real Dodo invoices): View → `200 OK` PDF blob opened in new tab. Screenshot `task4-admin-invoice-detail.png`.
-- ⚠️ Merge note: both Task 4 and Task 1 edit `api/_routes/admin/invoices.ts` (Task 4 adds the document action; Task 1 swaps the guard to `requireAdminCap`). Trivial conflict — keep both: Task 1's method-aware guard + Task 4's `handleDocument`.
+- API: added an admin-scoped `GET /api/admin/invoices?invoice_id=<id>&document=1` action (`handleDocument`) — returns `{ url }` for a stored hosted PDF, else proxies the Dodo PDF via `fetchInvoicePdf` (resolving the env from the invoice's subscription), 404 when no document exists. Not org-scoped (admin already authorized) so any workspace's invoice opens.
+- UI (`AdminInvoicesPage`): rows are now clickable → an **Invoice detail** dialog showing every field (full id, org, owner, amount, provider, provider-invoice id, subscription, issued/paid/created) + a prominent **View invoice document** button + per-row quick **View** button (with loading state) + status editor.
+- typecheck ✅ · lint ✅ · build ✅ · 64/64 tests ✅.
+- Playwright (admin, 6 real Dodo invoices): row → detail dialog renders all fields; **View invoice document** → `GET …?invoice_id=…&document=1` returned **200 OK** and opened the proxied PDF blob in a new tab. Screenshot `task4-admin-invoice-detail.png`.
+- Merge note (resolved when merging into `dev`): Task 4's `handleDocument` and Task 1's `requireAdminCap` guard both live in `api/_routes/admin/invoices.ts` — both kept.
 
 ### Task 1 — admin custom roles & privileges ✅
 - Shared `src/lib/admin-roles.ts`: roles `super_admin | editor | viewer | blog_writer` → capability sets `{read, write, blog, settings, manage_admins}` (`adminCan`, metadata). Imported by both API and client.
