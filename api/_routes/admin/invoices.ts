@@ -1,17 +1,60 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { and, count, desc, eq, ilike } from "drizzle-orm"
 import { db, serialize } from "../../../src/lib/db/index.js"
-import { invoices, organizations, userProfiles } from "../../../src/lib/db/schema.js"
-import { requireAdmin } from "../../_lib/admin.js"
+import { invoices, organizations, subscriptions, userProfiles } from "../../../src/lib/db/schema.js"
+import { requireAdminCap } from "../../_lib/admin.js"
+import { defaultDodoEnv, fetchInvoicePdf, isDodoConfigured, type DodoEnv } from "../../_lib/dodo.js"
 
 const PAGE_SIZE = 30
 const VALID_STATUSES = ["draft", "open", "paid", "uncollectible", "void", "refunded"]
 
+/**
+ * Resolve a viewable invoice document for an admin (any org). Mirrors the
+ * user-facing `/api/billing/invoice-pdf` but is NOT org-scoped — `requireAdminCap`
+ * already authorized the caller, so an admin can open any workspace's invoice.
+ * Returns `{ url }` when a hosted PDF URL is stored, otherwise proxies the Dodo
+ * PDF through our API key (so it's never exposed to the browser); 404 when no
+ * downloadable document exists yet.
+ */
+async function handleDocument(invoiceId: string, res: VercelResponse) {
+  const [invoice] = await db.select().from(invoices).where(eq(invoices.id, invoiceId))
+  if (!invoice) return res.status(404).json({ error: "Invoice not found" })
+
+  if (invoice.pdfUrl) return res.json({ url: invoice.pdfUrl })
+
+  if (invoice.provider !== "dodo" || !invoice.providerInvoiceId) {
+    return res.status(404).json({ error: "No downloadable invoice document is available yet." })
+  }
+
+  const [sub] = invoice.subscriptionId
+    ? await db.select().from(subscriptions).where(eq(subscriptions.id, invoice.subscriptionId))
+    : []
+  const env = (sub?.dodoEnvironment ?? defaultDodoEnv()) as DodoEnv
+  if (!isDodoConfigured(env)) {
+    return res.status(404).json({ error: "No downloadable invoice document is available yet." })
+  }
+
+  try {
+    const pdf = await fetchInvoicePdf(invoice.providerInvoiceId, env)
+    res.setHeader("Content-Type", "application/pdf")
+    res.setHeader("Content-Disposition", `inline; filename="invoice-${invoice.id}.pdf"`)
+    return res.status(200).send(pdf)
+  } catch (err) {
+    return res.status(502).json({ error: err instanceof Error ? err.message : "Failed to fetch invoice" })
+  }
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const adminId = await requireAdmin(req, res)
-  if (!adminId) return
+  const ctx = await requireAdminCap(req, res, req.method === "GET" ? "read" : "write")
+  if (!ctx) return
 
   if (req.method === "GET") {
+    // Document view: GET /api/admin/invoices?invoice_id=<id>&document=1
+    const { invoice_id, document } = req.query as { invoice_id?: string; document?: string }
+    if (document && invoice_id) {
+      return handleDocument(invoice_id, res)
+    }
+
     const { search, status, page } = req.query as { search?: string; status?: string; page?: string }
     const pageNum = Math.max(1, parseInt(page ?? "1", 10) || 1)
     const offset = (pageNum - 1) * PAGE_SIZE
