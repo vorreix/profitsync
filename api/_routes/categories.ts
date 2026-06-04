@@ -8,16 +8,49 @@ const VALID_TYPES = ["incoming", "outgoing", "client", "quotation"]
 const MAX_NAME_LENGTH = 60
 const MAX_CATEGORIES_PER_ORG = 300
 
-// Seeded the first time an org opens its categories, so the picker is never empty.
+// Seeded/backfilled when an org opens its categories, so the transaction pickers
+// are never empty and share sensible labels across income and expense flows.
+const DEFAULT_TRANSACTION_CATEGORIES = [
+  "Sales",
+  "Services",
+  "Subscriptions",
+  "Rent",
+  "Utilities",
+  "Supplies",
+  "Marketing",
+  "Payroll",
+  "Travel",
+  "Taxes",
+  "Other",
+]
+
 const DEFAULT_CATEGORIES: Record<string, string[]> = {
-  incoming: ["Payment", "Retainer", "Project Fee", "Consultation", "Other"],
-  outgoing: ["Hosting", "Design", "Development", "Advertising", "Salary", "Software", "Travel", "Taxes", "Miscellaneous"],
+  incoming: DEFAULT_TRANSACTION_CATEGORIES,
+  outgoing: DEFAULT_TRANSACTION_CATEGORIES,
 }
 
 // eslint-disable-next-line no-control-regex
 const CONTROL_CHARS = new RegExp("[\\u0000-\\u001f\\u007f]", "g")
 function cleanName(raw: unknown): string {
   return typeof raw === "string" ? raw.replace(CONTROL_CHARS, "").trim().slice(0, MAX_NAME_LENGTH) : ""
+}
+
+async function ensureDefaultCategories(orgId: string) {
+  const existing = await db
+    .select({ name: categories.name, type: categories.type })
+    .from(categories)
+    .where(eq(categories.organizationId, orgId))
+
+  const existingKeys = new Set(existing.map((cat) => `${cat.type}:${cat.name.toLowerCase()}`))
+  const missingRows = Object.entries(DEFAULT_CATEGORIES).flatMap(([type, names]) =>
+    names
+      .filter((name) => !existingKeys.has(`${type}:${name.toLowerCase()}`))
+      .map((name) => ({ organizationId: orgId, name, type })),
+  )
+
+  if (missingRows.length > 0) {
+    await db.insert(categories).values(missingRows).onConflictDoNothing()
+  }
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -28,17 +61,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === "GET") {
     const { type } = req.query as { type?: string }
 
-    // Seed defaults on first access for this org.
-    const [{ total }] = await db
-      .select({ total: count() })
-      .from(categories)
-      .where(eq(categories.organizationId, orgId))
-    if (total === 0) {
-      const rows = Object.entries(DEFAULT_CATEGORIES).flatMap(([t, names]) =>
-        names.map((name) => ({ organizationId: orgId, name, type: t })),
-      )
-      await db.insert(categories).values(rows).onConflictDoNothing()
-    }
+    await ensureDefaultCategories(orgId)
 
     const where =
       type && VALID_TYPES.includes(type)
