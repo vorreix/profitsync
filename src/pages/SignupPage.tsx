@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
-import { Link } from "react-router-dom"
+import { Link, useSearchParams } from "react-router-dom"
 import { SignUp } from "@clerk/clerk-react"
+import { safeRedirect } from "@/lib/safe-redirect"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -12,6 +13,14 @@ import { initPwa } from "@/lib/pwa/register-sw"
 export function SignupPage() {
   const [agreed, setAgreed] = useState(false)
   const [continued, setContinued] = useState(false)
+  const [params] = useSearchParams()
+
+  // Preserve a post-signup destination (e.g. an invitation accept page) and
+  // pre-fill the invited email so a fresh account matches the invite.
+  const redirect = safeRedirect(params.get("redirect"))
+  const target = redirect ?? "/dashboard"
+  const invitedEmail = params.get("email") || undefined
+  const signInUrl = redirect ? `/login?redirect=${encodeURIComponent(redirect)}` : "/login"
 
   // Referral code from ?r= (persisted so it survives the landing → signup hop).
   const referralCode = useMemo(() => {
@@ -35,7 +44,10 @@ export function SignupPage() {
           <SignUp
             path="/signup"
             routing="path"
-            signInUrl="/login"
+            signInUrl={signInUrl}
+            forceRedirectUrl={target}
+            fallbackRedirectUrl={target}
+            initialValues={invitedEmail ? { emailAddress: invitedEmail } : undefined}
             unsafeMetadata={{ acceptedLegalAt: new Date().toISOString(), ...(referralCode ? { referralCode } : {}) }}
           />
           <p className="text-xs text-muted-foreground">

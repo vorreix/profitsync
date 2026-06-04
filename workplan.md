@@ -17,7 +17,7 @@
 | 2 | Fix transaction category dropdown scroll/overflow | `fix/tx_category_dropdown_scroll_maqbool` | https://github.com/vorreix/profitsync/compare/main...fix/tx_category_dropdown_scroll_maqbool?expand=1 | ✅ |
 | 4 | Admin invoices: visible + clickable + viewable | `fix/admin_invoices_viewable_maqbool` | https://github.com/vorreix/profitsync/compare/main...fix/admin_invoices_viewable_maqbool?expand=1 | ✅ |
 | 1 | Admin custom roles & privileges (viewer/editor/blog-writer) | `feature/admin_custom_roles_maqbool` | https://github.com/vorreix/profitsync/compare/main...feature/admin_custom_roles_maqbool?expand=1 | ✅ |
-| 3 | Org invitations: email + shareable link + 3 accept flows | `feature/org_invitations_email_flow_maqbool` | _tbd_ | ☐ |
+| 3 | Org invitations: email + shareable link + 3 accept flows | `feature/org_invitations_email_flow_maqbool` | https://github.com/vorreix/profitsync/compare/main...feature/org_invitations_email_flow_maqbool?expand=1 | ✅ |
 | 5 | Landing vs app split + PWA app-only + seamless auto-update | `feature/landing_pwa_split_maqbool` | _tbd_ | ☐ |
 
 Order of execution: **2 → 4 → 1 → 3 → 5** (small/isolated first, schema+infra later).
@@ -168,3 +168,15 @@ Playwright — (a) signed-in browser at `/` sees landing with "Go to Dashboard";
   - **viewer**: nav = Overview/Users/Orgs/Subs/Invoices/Referrals (no Plans/Blog/Admins); API `users GET 200`, `users PATCH 403`, `plans GET 200`, `plans PATCH 403`, `admins GET 403`, `blog GET 403`.
   - **super_admin**: full nav + Admins page with role pickers; root admin locked. Screenshot `task1-admin-roles.png`.
 - Post-review hardening (adversarial review caught a privilege-escalation): `admin/users.ts` `promote`/`demote`/`DELETE` now require `manage_admins` (an editor's `write` cap is not enough), and a one-click promote grants the least-privileged `viewer` admin role. The Users-page buttons are gated by `manage_admins` too. Verified: editor → promote/demote/delete `403`, ban `404` (write still works); super_admin → promote `200`.
+
+### Task 3 — org invitations: email + shareable link + 3 accept flows ✅
+- Email infra: `api/_lib/email.ts` (Resend via HTTP, no SDK dep) — `sendInvitationEmail` (branded HTML+text). Env `RESEND_API_KEY` + `EMAIL_FROM` documented in `.env.example`. Best-effort: missing key → `emailed:false`, link still returned.
+- `organizations/[id]/members.ts` POST now sends the email (origin derived from request) and returns `{ ...invite, link, emailed }`; re-invites keep the existing token. Accept endpoint (`invitations/[token].ts`) now **always** sets `current_organization_id = invited org` + stamps `onboarded_at` so new invitees land in the joined org and skip onboarding.
+- Redirect preservation: `safe-redirect.ts` (open-redirect-safe); `LoginPage`/`SignupPage` honor `?redirect=` via Clerk `forceRedirectUrl`/`signUpUrl`/`signInUrl`; `SignupPage` prefills `?email=`. `InvitationPage` rewritten: signed-out → Sign in / Create account (carry redirect+email); on accept → `setActiveOrgId(org)` + go to dashboard; email-mismatch → warning + "Use a different account". `OrgMembersPage` shows emailed-vs-copy-link toast.
+- typecheck/lint/build/64 tests ✅. Playwright:
+  - **Invite API** (Acme owner): POST → `201` with `link` + `emailed:false` (no crash without RESEND key).
+  - **Scenario 3** (logged in → accept): seeded invite into "VorreiX" → Accept → `localStorage.ps_active_org` switched to VorreiX + dashboard shows **VorreiX** (landed in joined org).
+  - **Scenario 1** (new user): signed-out invite → "Create an account" → `/signup?redirect=…&email=…` → Clerk email field **prefilled**.
+  - **Scenario 2** (logged-out existing): "Sign in to accept" → `/login?redirect=…`; Clerk signup link carries the redirect.
+  - **Redirect-after-auth**: completed a fresh Clerk signup through the invite's redirect → bounced back to `/invitations/:token` automatically.
+  - **Email mismatch**: signed in as a non-invited email → clear warning + "Use a different account". Screenshot `task3-invitation-mismatch.png`.
