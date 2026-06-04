@@ -165,3 +165,4 @@ Playwright — (a) signed-in browser at `/` sees landing with "Go to Dashboard";
   - **blog_writer**: nav shows only Blog; `/admin` → redirects to `/admin/blog`; API `blog GET 200`, `users/plans GET 403`.
   - **viewer**: nav = Overview/Users/Orgs/Subs/Invoices/Referrals (no Plans/Blog/Admins); API `users GET 200`, `users PATCH 403`, `plans GET 200`, `plans PATCH 403`, `admins GET 403`, `blog GET 403`.
   - **super_admin**: full nav + Admins page with role pickers; root admin locked. Screenshot `task1-admin-roles.png`.
+- Post-review hardening (adversarial review caught a privilege-escalation): `admin/users.ts` `promote`/`demote`/`DELETE` now require `manage_admins` (an editor's `write` cap is not enough), and a one-click promote grants the least-privileged `viewer` admin role. The Users-page buttons are gated by `manage_admins` too. Verified: editor → promote/demote/delete `403`, ban `404` (write still works); super_admin → promote `200`.
