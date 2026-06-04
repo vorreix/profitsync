@@ -20,6 +20,8 @@ import {
 import {
   ChevronLeft,
   ChevronRight,
+  ExternalLink,
+  Eye,
   Loader as Loader2,
   Plus,
   Receipt,
@@ -69,9 +71,10 @@ export function AdminInvoicesPage() {
   }, [search, status, page, setSearchParams])
   const [loading, setLoading] = useState(true)
 
-  const [editing, setEditing] = useState<AdminInvoice | null>(null)
+  const [detail, setDetail] = useState<AdminInvoice | null>(null)
   const [editStatus, setEditStatus] = useState("draft")
   const [saving, setSaving] = useState(false)
+  const [viewingDoc, setViewingDoc] = useState<string | null>(null)
 
   const [createOpen, setCreateOpen] = useState(false)
   const [createForm, setCreateForm] = useState({ organization_id: "", amount: "", currency: "USD", status: "draft" })
@@ -139,20 +142,57 @@ export function AdminInvoicesPage() {
   }
 
   const handleSave = async () => {
-    if (!editing) return
+    if (!detail) return
     setSaving(true)
     try {
       const token = await getToken()
       if (!token) return
-      await apiPatch("/api/admin/invoices", token, { invoice_id: editing.id, status: editStatus })
+      await apiPatch("/api/admin/invoices", token, { invoice_id: detail.id, status: editStatus })
       toast.success("Invoice updated")
-      setEditing(null)
+      setDetail(null)
       await load()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed")
     } finally {
       setSaving(false)
     }
+  }
+
+  // Open the actual invoice document. The admin endpoint returns either a hosted
+  // URL (JSON) or streams the Dodo-proxied PDF; either way we open it in a new tab.
+  const handleViewInvoice = async (inv: AdminInvoice) => {
+    setViewingDoc(inv.id)
+    try {
+      const token = await getToken()
+      if (!token) return
+      const res = await fetch(`/api/admin/invoices?invoice_id=${inv.id}&document=1`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const contentType = res.headers.get("content-type") ?? ""
+      if (!res.ok) {
+        const body = contentType.includes("json") ? await res.json().catch(() => ({})) : {}
+        toast.error((body as { error?: string }).error || "No invoice document is available yet.")
+        return
+      }
+      if (contentType.includes("application/json")) {
+        const body = (await res.json()) as { url?: string }
+        if (body.url) window.open(body.url, "_blank", "noopener")
+        return
+      }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      window.open(url, "_blank", "noopener")
+      setTimeout(() => URL.revokeObjectURL(url), 60_000)
+    } catch {
+      toast.error("Failed to open invoice")
+    } finally {
+      setViewingDoc(null)
+    }
+  }
+
+  const openDetail = (inv: AdminInvoice) => {
+    setDetail(inv)
+    setEditStatus(inv.status)
   }
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize))
@@ -212,7 +252,11 @@ export function AdminInvoicesPage() {
                   No invoices yet. Create one to test the flow.
                 </td></tr>
               ) : data.map((inv) => (
-                <tr key={inv.id} className="border-t border-border hover:bg-muted/40">
+                <tr
+                  key={inv.id}
+                  className="border-t border-border hover:bg-muted/40 cursor-pointer"
+                  onClick={() => openDetail(inv)}
+                >
                   <td className="py-3 pr-4">
                     <div className="flex items-center gap-2">
                       <Receipt className="size-3.5 text-muted-foreground" />
@@ -242,8 +286,21 @@ export function AdminInvoicesPage() {
                   </td>
                   <td className="py-3 pr-4 text-xs text-muted-foreground tabular-nums">{inv.issued_at?.split("T")[0] ?? "—"}</td>
                   <td className="py-3 pr-4 text-xs text-muted-foreground tabular-nums">{inv.paid_at?.split("T")[0] ?? "—"}</td>
-                  <td className="py-3 text-right">
-                    <Button size="sm" variant="ghost" onClick={() => { setEditing(inv); setEditStatus(inv.status) }}>Edit</Button>
+                  <td className="py-3 text-right" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center justify-end gap-1">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleViewInvoice(inv)}
+                        disabled={viewingDoc === inv.id}
+                      >
+                        {viewingDoc === inv.id
+                          ? <Loader2 className="size-3.5 mr-1.5 animate-spin" />
+                          : <Eye className="size-3.5 mr-1.5" />}
+                        View
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => openDetail(inv)}>Edit</Button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -264,15 +321,47 @@ export function AdminInvoicesPage() {
         </div>
       </Card>
 
-      <Dialog open={!!editing} onOpenChange={(o) => { if (!o) setEditing(null) }}>
+      <Dialog open={!!detail} onOpenChange={(o) => { if (!o) setDetail(null) }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Edit invoice</DialogTitle>
+            <DialogTitle>Invoice detail</DialogTitle>
           </DialogHeader>
-          {editing && (
-            <div className="space-y-3 text-sm">
-              <p className="text-xs text-muted-foreground">Org: <span className="text-foreground">{editing.organization_name}</span></p>
-              <p className="text-xs text-muted-foreground">Amount: <span className="text-foreground">{editing.amount} {editing.currency}</span></p>
+          {detail && (
+            <div className="space-y-4 text-sm">
+              <Button
+                className="w-full"
+                onClick={() => handleViewInvoice(detail)}
+                disabled={viewingDoc === detail.id}
+              >
+                {viewingDoc === detail.id
+                  ? <Loader2 className="size-4 mr-1.5 animate-spin" />
+                  : <ExternalLink className="size-4 mr-1.5" />}
+                View invoice document
+              </Button>
+
+              <dl className="grid grid-cols-3 gap-x-3 gap-y-2 text-xs">
+                <dt className="text-muted-foreground">Invoice ID</dt>
+                <dd className="col-span-2 font-mono break-all">{detail.id}</dd>
+                <dt className="text-muted-foreground">Organization</dt>
+                <dd className="col-span-2">{detail.organization_name}</dd>
+                <dt className="text-muted-foreground">Owner</dt>
+                <dd className="col-span-2">{detail.owner_email ?? "—"}</dd>
+                <dt className="text-muted-foreground">Amount</dt>
+                <dd className="col-span-2 tabular-nums">{detail.amount} {detail.currency}</dd>
+                <dt className="text-muted-foreground">Provider</dt>
+                <dd className="col-span-2">{detail.provider ?? "—"}</dd>
+                <dt className="text-muted-foreground">Provider invoice</dt>
+                <dd className="col-span-2 font-mono break-all">{detail.provider_invoice_id ?? "—"}</dd>
+                <dt className="text-muted-foreground">Subscription</dt>
+                <dd className="col-span-2 font-mono break-all">{detail.subscription_id ?? "—"}</dd>
+                <dt className="text-muted-foreground">Issued</dt>
+                <dd className="col-span-2 tabular-nums">{detail.issued_at?.split("T")[0] ?? "—"}</dd>
+                <dt className="text-muted-foreground">Paid</dt>
+                <dd className="col-span-2 tabular-nums">{detail.paid_at?.split("T")[0] ?? "—"}</dd>
+                <dt className="text-muted-foreground">Created</dt>
+                <dd className="col-span-2 tabular-nums">{detail.created_at?.split("T")[0] ?? "—"}</dd>
+              </dl>
+
               <div className="space-y-1.5">
                 <Label className="text-xs">Status</Label>
                 <div className="flex gap-1.5 flex-wrap">
@@ -284,10 +373,10 @@ export function AdminInvoicesPage() {
             </div>
           )}
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setEditing(null)} disabled={saving}>Cancel</Button>
-            <Button onClick={handleSave} disabled={saving}>
+            <Button variant="ghost" onClick={() => setDetail(null)} disabled={saving}>Cancel</Button>
+            <Button onClick={handleSave} disabled={saving || editStatus === detail?.status}>
               {saving ? <Loader2 className="size-3.5 mr-1 animate-spin" /> : null}
-              Save
+              Save status
             </Button>
           </DialogFooter>
         </DialogContent>
