@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { eq } from "drizzle-orm"
 import { db, serialize } from "../../../src/lib/db/index.js"
 import { referralSettings } from "../../../src/lib/db/schema.js"
-import { requireAdmin } from "../../_lib/admin.js"
+import { requireAdminCap } from "../../_lib/admin.js"
 import { getReferralSettings } from "../../_lib/referral.js"
 
 // ASCII control + Unicode bidi/zero-width/format chars — the banner renders to
@@ -16,8 +16,8 @@ const num = (v: unknown, min: number, max: number, fallback: number) => {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const adminId = await requireAdmin(req, res)
-  if (!adminId) return
+  const ctx = await requireAdminCap(req, res, req.method === "GET" ? "read" : "settings")
+  if (!ctx) return
 
   if (req.method === "GET") {
     return res.json(serialize(await getReferralSettings()))

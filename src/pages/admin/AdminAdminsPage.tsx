@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react"
 import { useAuth } from "@clerk/clerk-react"
 import { toast } from "sonner"
-import { apiDelete, apiGet, apiPost } from "@/lib/api"
+import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api"
+import { ADMIN_ROLES, ADMIN_ROLE_META, type AdminRole } from "@/lib/admin-roles"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -23,9 +24,17 @@ type Admin = {
   user_id: string | null
   email: string | null
   full_name: string | null
+  role: AdminRole
   is_root: boolean
   is_self: boolean
   created_at: string | null
+}
+
+const ROLE_BADGE: Record<AdminRole, string> = {
+  super_admin: "border-amber-500/40 text-amber-600 dark:text-amber-300",
+  editor: "border-violet-500/40 text-violet-600 dark:text-violet-300",
+  viewer: "border-slate-500/40 text-slate-600 dark:text-slate-300",
+  blog_writer: "border-sky-500/40 text-sky-600 dark:text-sky-300",
 }
 
 export function AdminAdminsPage() {
@@ -33,7 +42,9 @@ export function AdminAdminsPage() {
   const [admins, setAdmins] = useState<Admin[]>([])
   const [loading, setLoading] = useState(true)
   const [email, setEmail] = useState("")
+  const [role, setRole] = useState<AdminRole>("viewer")
   const [adding, setAdding] = useState(false)
+  const [busyId, setBusyId] = useState<string | null>(null)
   const [removeTarget, setRemoveTarget] = useState<Admin | null>(null)
   const [removing, setRemoving] = useState(false)
 
@@ -61,14 +72,29 @@ export function AdminAdminsPage() {
     try {
       const token = await getToken()
       if (!token) return
-      await apiPost("/api/admin/admins", token, { email: email.trim() })
-      toast.success(`${email.trim()} is now an admin`)
+      await apiPost("/api/admin/admins", token, { email: email.trim(), role })
+      toast.success(`${email.trim()} is now ${ADMIN_ROLE_META[role].label.toLowerCase()}`)
       setEmail("")
       await load()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to add admin")
     } finally {
       setAdding(false)
+    }
+  }
+
+  const handleRoleChange = async (userId: string, newRole: AdminRole) => {
+    setBusyId(userId)
+    try {
+      const token = await getToken()
+      if (!token) return
+      await apiPatch("/api/admin/admins", token, { user_id: userId, role: newRole })
+      toast.success("Role updated")
+      await load()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update role")
+    } finally {
+      setBusyId(null)
     }
   }
 
@@ -103,9 +129,13 @@ export function AdminAdminsPage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Admins</h1>
         <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
-          Platform admins can access this console. The <span className="font-medium">root admin(s)</span> are set by the{" "}
-          <code className="rounded bg-muted px-1 py-0.5 text-xs">ROOT_ADMIN_EMAILS</code> environment variable and can't
-          be removed here — they manage everyone else from this page.
+          Platform admins can access this console. Each admin has a <span className="font-medium">role</span> that
+          controls what they can do — <span className="font-medium">Super admin</span> (everything),{" "}
+          <span className="font-medium">Editor</span> (manage content, no settings/admins),{" "}
+          <span className="font-medium">Viewer</span> (read-only) or <span className="font-medium">Blog writer</span>{" "}
+          (blog only). The <span className="font-medium">root admin(s)</span> are set by the{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">ROOT_ADMIN_EMAILS</code> environment variable, are
+          always super admin, and can't be changed here.
         </p>
       </div>
 
@@ -122,14 +152,24 @@ export function AdminAdminsPage() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") handleAdd() }}
-            className="sm:max-w-sm"
+            className="sm:flex-1"
           />
+          <select
+            value={role}
+            onChange={(e) => setRole(e.target.value as AdminRole)}
+            className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+            aria-label="Role"
+          >
+            {ADMIN_ROLES.map((r) => (
+              <option key={r} value={r}>{ADMIN_ROLE_META[r].label}</option>
+            ))}
+          </select>
           <Button onClick={handleAdd} disabled={adding || !email.trim()}>
             {adding ? <Loader2 className="size-3.5 mr-1.5 animate-spin" /> : <UserPlus className="size-3.5 mr-1.5" />}
             Add admin
           </Button>
         </div>
-        <p className="text-xs text-muted-foreground">The person must have signed up already.</p>
+        <p className="text-xs text-muted-foreground">{ADMIN_ROLE_META[role].description} The person must have signed up already.</p>
       </Card>
 
       {/* Admin list */}
@@ -145,12 +185,27 @@ export function AdminAdminsPage() {
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-1.5">
                   <p className="text-sm font-medium truncate">{a.full_name || a.email || "Unknown"}</p>
+                  <Badge variant="outline" className={ROLE_BADGE[a.role]}>{ADMIN_ROLE_META[a.role].label}</Badge>
                   {a.is_root && <Badge variant="outline" className="border-amber-500/40 text-amber-600 dark:text-amber-300">Root</Badge>}
                   {a.is_self && <Badge variant="secondary">You</Badge>}
                   {!a.user_id && <Badge variant="outline" className="text-muted-foreground">Not signed in</Badge>}
                 </div>
                 {a.full_name && a.email && <p className="text-xs text-muted-foreground truncate">{a.email}</p>}
               </div>
+              {!a.is_root && a.user_id && (
+                <select
+                  value={a.role}
+                  onChange={(e) => handleRoleChange(a.user_id!, e.target.value as AdminRole)}
+                  disabled={busyId === a.user_id}
+                  className="h-8 shrink-0 rounded-md border border-input bg-background px-2 text-xs"
+                  aria-label="Change role"
+                  title="Change role"
+                >
+                  {ADMIN_ROLES.map((r) => (
+                    <option key={r} value={r}>{ADMIN_ROLE_META[r].label}</option>
+                  ))}
+                </select>
+              )}
               {!a.is_root && !a.is_self && a.user_id && (
                 <Button
                   variant="outline"
