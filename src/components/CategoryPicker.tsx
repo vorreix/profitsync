@@ -6,7 +6,6 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { apiPost } from "@/lib/api"
 import { useCategories } from "@/lib/use-categories"
 import type { CategoryType } from "@/lib/types"
@@ -74,8 +73,11 @@ export function CategoryPicker({
           <ChevronsUpDown className="size-4 ml-2 shrink-0 text-muted-foreground" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
-        <div className="p-2 border-b">
+      <PopoverContent
+        className="flex max-h-[min(20rem,var(--radix-popover-content-available-height,20rem))] w-[var(--radix-popover-trigger-width)] flex-col overflow-hidden p-0"
+        align="start"
+      >
+        <div className="p-2 border-b shrink-0">
           <Input
             placeholder={t("categories.searchOrAdd", { defaultValue: "Search or type to add…" })}
             value={search}
@@ -84,8 +86,7 @@ export function CategoryPicker({
             className="h-8 text-sm"
           />
         </div>
-        <ScrollArea className="max-h-56">
-          <div className="p-1">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-1">
             {value && (
               <button type="button" className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent" onClick={() => { onChange(""); close() }}>
                 <span className="size-4 shrink-0" />
@@ -107,8 +108,7 @@ export function CategoryPicker({
             {filtered.length === 0 && !canAdd && (
               <p className="px-2 py-3 text-center text-xs text-muted-foreground">{t("categories.noMatch")}</p>
             )}
-          </div>
-        </ScrollArea>
+        </div>
       </PopoverContent>
     </Popover>
   )
