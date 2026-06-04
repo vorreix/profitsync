@@ -7,13 +7,15 @@ import {
   organizations,
   userProfiles,
 } from "../../../src/lib/db/schema.js"
-import { requireAdmin } from "../../_lib/admin.js"
+import { requireAdminCap } from "../../_lib/admin.js"
+import { adminCan } from "../../../src/lib/admin-roles.js"
 
 const PAGE_SIZE = 30
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const adminId = await requireAdmin(req, res)
-  if (!adminId) return
+  const ctx = await requireAdminCap(req, res, req.method === "GET" ? "read" : "write")
+  if (!ctx) return
+  const adminId = ctx.userId
 
   if (req.method === "GET") {
     const { search, page, banned } = req.query as { search?: string; page?: string; banned?: string }
@@ -100,12 +102,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.json(serialize(updated))
     }
     if (action === "promote") {
+      // Granting platform-admin access is admin management, not a content write —
+      // only admins who can manage admins may do it.
+      if (!adminCan(ctx.role, "manage_admins")) {
+        return res.status(403).json({ error: "You don't have permission to manage admins." })
+      }
       const [existing] = await db.select().from(appAdmins).where(eq(appAdmins.userId, user_id))
       if (existing) return res.json({ ok: true, already: true })
-      await db.insert(appAdmins).values({ userId: user_id })
+      // Grant the least-privileged admin role by default; elevate from /admin/admins.
+      await db.insert(appAdmins).values({ userId: user_id, role: "viewer" })
       return res.json({ ok: true })
     }
     if (action === "demote") {
+      if (!adminCan(ctx.role, "manage_admins")) {
+        return res.status(403).json({ error: "You don't have permission to manage admins." })
+      }
       if (user_id === adminId) {
         return res.status(400).json({ error: "Cannot demote yourself" })
       }
@@ -118,6 +129,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   if (req.method === "DELETE") {
+    // Deleting a user account cascades all their data and drops any admin grant —
+    // an admin-management-grade action, not a routine content write.
+    if (!adminCan(ctx.role, "manage_admins")) {
+      return res.status(403).json({ error: "You don't have permission to delete user accounts." })
+    }
     const { user_id } = req.body as { user_id?: string }
     if (!user_id) return res.status(400).json({ error: "user_id is required" })
     if (user_id === adminId) {

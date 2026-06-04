@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { and, count, desc, eq, ilike } from "drizzle-orm"
 import { db, serialize } from "../../../src/lib/db/index.js"
 import { invoices, organizations, subscriptions, userProfiles } from "../../../src/lib/db/schema.js"
-import { requireAdmin } from "../../_lib/admin.js"
+import { requireAdminCap } from "../../_lib/admin.js"
 import { defaultDodoEnv, fetchInvoicePdf, isDodoConfigured, type DodoEnv } from "../../_lib/dodo.js"
 
 const PAGE_SIZE = 30
@@ -10,7 +10,7 @@ const VALID_STATUSES = ["draft", "open", "paid", "uncollectible", "void", "refun
 
 /**
  * Resolve a viewable invoice document for an admin (any org). Mirrors the
- * user-facing `/api/billing/invoice-pdf` but is NOT org-scoped — `requireAdmin`
+ * user-facing `/api/billing/invoice-pdf` but is NOT org-scoped — `requireAdminCap`
  * already authorized the caller, so an admin can open any workspace's invoice.
  * Returns `{ url }` when a hosted PDF URL is stored, otherwise proxies the Dodo
  * PDF through our API key (so it's never exposed to the browser); 404 when no
@@ -45,8 +45,8 @@ async function handleDocument(invoiceId: string, res: VercelResponse) {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const adminId = await requireAdmin(req, res)
-  if (!adminId) return
+  const ctx = await requireAdminCap(req, res, req.method === "GET" ? "read" : "write")
+  if (!ctx) return
 
   if (req.method === "GET") {
     // Document view: GET /api/admin/invoices?invoice_id=<id>&document=1

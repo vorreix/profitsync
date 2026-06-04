@@ -16,7 +16,7 @@
 |---|------|--------|----------------|--------|
 | 2 | Fix transaction category dropdown scroll/overflow | `fix/tx_category_dropdown_scroll_maqbool` | https://github.com/vorreix/profitsync/compare/main...fix/tx_category_dropdown_scroll_maqbool?expand=1 | ✅ |
 | 4 | Admin invoices: visible + clickable + viewable | `fix/admin_invoices_viewable_maqbool` | https://github.com/vorreix/profitsync/compare/main...fix/admin_invoices_viewable_maqbool?expand=1 | ✅ |
-| 1 | Admin custom roles & privileges (viewer/editor/blog-writer) | `feature/admin_custom_roles_maqbool` | _tbd_ | ☐ |
+| 1 | Admin custom roles & privileges (viewer/editor/blog-writer) | `feature/admin_custom_roles_maqbool` | https://github.com/vorreix/profitsync/compare/main...feature/admin_custom_roles_maqbool?expand=1 | ✅ |
 | 3 | Org invitations: email + shareable link + 3 accept flows | `feature/org_invitations_email_flow_maqbool` | _tbd_ | ☐ |
 | 5 | Landing vs app split + PWA app-only + seamless auto-update | `feature/landing_pwa_split_maqbool` | _tbd_ | ☐ |
 
@@ -156,3 +156,15 @@ Playwright — (a) signed-in browser at `/` sees landing with "Go to Dashboard";
 - UI (`AdminInvoicesPage`): rows are now clickable → an **Invoice detail** dialog showing every field (full id, org, owner, amount, provider, provider-invoice id, subscription, issued/paid/created) + a prominent **View invoice document** button + per-row quick **View** button (with loading state) + status editor.
 - typecheck ✅ · lint ✅ · build ✅ · 64/64 tests ✅.
 - Playwright (admin, 6 real Dodo invoices): row → detail dialog renders all fields; **View invoice document** → `GET …?invoice_id=…&document=1` returned **200 OK** and opened the proxied PDF blob in a new tab. Screenshot `task4-admin-invoice-detail.png`.
+- Merge note (resolved when merging into `dev`): Task 4's `handleDocument` and Task 1's `requireAdminCap` guard both live in `api/_routes/admin/invoices.ts` — both kept.
+
+### Task 1 — admin custom roles & privileges ✅
+- Shared `src/lib/admin-roles.ts`: roles `super_admin | editor | viewer | blog_writer` → capability sets `{read, write, blog, settings, manage_admins}` (`adminCan`, metadata). Imported by both API and client.
+- Migration `0024`: additive `app_admins.role text not null default 'super_admin'` (applied to dev DB; every existing admin stays super_admin — zero disruption).
+- API: `getAdminRole` + `requireAdminCap(req,res,cap)` in `api/_lib/admin.ts`; **all 19 admin routes** method-guarded (GET→read, mutations→write; blog routes→blog; plans/referral-settings→settings; payouts/[id]→settings; admins→manage_admins). `/api/admin/me` returns `{role, caps}`. `admins.ts` adds role on create/PATCH + last-super-admin lockout guard; root-email admins locked to super_admin.
+- UI: `AdminProvider` exposes `role/caps/can`; shared `admin-nav.ts` (per-item cap) filters the sidebar; `RequireAdminCap` route guard redirects to the first allowed section; `AdminAdminsPage` gains a role picker (add) + per-admin role dropdown + role badges. `make-admin.mjs` gains `--role`.
+- typecheck/lint/build/64 tests ✅. Playwright verified all three derived roles:
+  - **blog_writer**: nav shows only Blog; `/admin` → redirects to `/admin/blog`; API `blog GET 200`, `users/plans GET 403`.
+  - **viewer**: nav = Overview/Users/Orgs/Subs/Invoices/Referrals (no Plans/Blog/Admins); API `users GET 200`, `users PATCH 403`, `plans GET 200`, `plans PATCH 403`, `admins GET 403`, `blog GET 403`.
+  - **super_admin**: full nav + Admins page with role pickers; root admin locked. Screenshot `task1-admin-roles.png`.
+- Post-review hardening (adversarial review caught a privilege-escalation): `admin/users.ts` `promote`/`demote`/`DELETE` now require `manage_admins` (an editor's `write` cap is not enough), and a one-click promote grants the least-privileged `viewer` admin role. The Users-page buttons are gated by `manage_admins` too. Verified: editor → promote/demote/delete `403`, ban `404` (write still works); super_admin → promote `200`.
