@@ -3,9 +3,11 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom"
 import { Loader as Loader2 } from "lucide-react"
 import { AppLayout } from "@/components/AppLayout"
 import { AdminLayout } from "@/pages/admin/AdminLayout"
+import { RequireAdminCap } from "@/pages/admin/RequireAdminCap"
 import { BusinessOnlyRoute } from "@/components/BusinessOnlyRoute"
 import { Toaster } from "@/components/ui/sonner"
 import { useShouldRedirectToApp } from "@/lib/use-redirect-to-app"
+import { isStandalonePwa } from "@/lib/pwa/is-standalone"
 
 // Route-level code splitting: each page becomes its own chunk so the initial
 // bundle stays small. Heavy deps (recharts on the Dashboard, the whole admin
@@ -63,14 +65,21 @@ function RouteFallback() {
   )
 }
 
-// Public landing at "/", but a signed-in visitor is the app's user — send them
-// straight to the app. Gating here (rather than inside LandingApp) means the
-// marketing bundle is never even fetched for signed-in users, and avoids loading
-// the landing's separate i18next instance for them. AppLayout forwards on to
-// /onboarding when the account isn't set up yet.
+// Public landing at "/".
+//
+// In a normal browser the landing is ALWAYS shown — including to signed-in users
+// (they get a "Go to dashboard" CTA in the navbar). This lets logged-in people
+// revisit the marketing site, which the old "always redirect signed-in users"
+// behavior prevented.
+//
+// The installed PWA is the app, not a website: when running standalone we never
+// render the marketing landing at "/", and instead boot straight into the
+// product — the dashboard when signed in (AppLayout forwards to /onboarding if
+// the account isn't set up yet), or the login screen when signed out.
 function LandingRoute() {
-  if (useShouldRedirectToApp()) {
-    return <Navigate to="/dashboard" replace />
+  const signedIn = useShouldRedirectToApp()
+  if (isStandalonePwa()) {
+    return <Navigate to={signedIn ? "/dashboard" : "/login"} replace />
   }
   return <LandingApp />
 }
@@ -101,18 +110,18 @@ export function App() {
           {/* Onboarding — full-screen, no app shell. Shown until account type is chosen. */}
           <Route path="onboarding" element={<OnboardingPage />} />
 
-          {/* Admin Routes — distinct shell, admin guard */}
+          {/* Admin Routes — distinct shell, admin guard + per-route capability gating */}
           <Route path="/admin" element={<AdminLayout />}>
-            <Route index element={<AdminOverviewPage />} />
-            <Route path="users" element={<AdminUsersPage />} />
-            <Route path="organizations" element={<AdminOrgsPage />} />
-            <Route path="organizations/:id" element={<AdminOrgDetailPage />} />
-            <Route path="subscriptions" element={<AdminSubscriptionsPage />} />
-            <Route path="invoices" element={<AdminInvoicesPage />} />
-            <Route path="plans" element={<AdminPlansPage />} />
-            <Route path="blog" element={<AdminBlogPage />} />
-            <Route path="referrals" element={<AdminReferralsPage />} />
-            <Route path="admins" element={<AdminAdminsPage />} />
+            <Route index element={<RequireAdminCap cap="read"><AdminOverviewPage /></RequireAdminCap>} />
+            <Route path="users" element={<RequireAdminCap cap="read"><AdminUsersPage /></RequireAdminCap>} />
+            <Route path="organizations" element={<RequireAdminCap cap="read"><AdminOrgsPage /></RequireAdminCap>} />
+            <Route path="organizations/:id" element={<RequireAdminCap cap="read"><AdminOrgDetailPage /></RequireAdminCap>} />
+            <Route path="subscriptions" element={<RequireAdminCap cap="read"><AdminSubscriptionsPage /></RequireAdminCap>} />
+            <Route path="invoices" element={<RequireAdminCap cap="read"><AdminInvoicesPage /></RequireAdminCap>} />
+            <Route path="plans" element={<RequireAdminCap cap="settings"><AdminPlansPage /></RequireAdminCap>} />
+            <Route path="blog" element={<RequireAdminCap cap="blog"><AdminBlogPage /></RequireAdminCap>} />
+            <Route path="referrals" element={<RequireAdminCap cap="read"><AdminReferralsPage /></RequireAdminCap>} />
+            <Route path="admins" element={<RequireAdminCap cap="manage_admins"><AdminAdminsPage /></RequireAdminCap>} />
           </Route>
 
           {/* Public marketing landing at the root domain (profitsync.net).

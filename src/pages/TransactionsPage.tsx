@@ -26,7 +26,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Separator } from "@/components/ui/separator"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { toast } from "sonner"
 import { Plus, ArrowUpRight, ArrowDownRight, DollarSign, Pencil, Trash2, Paperclip, Download, X, Eye, ChevronsUpDown, Check, Tag, CheckSquare } from "lucide-react"
 import { ExpandableSearch } from "@/components/ExpandableSearch"
@@ -88,7 +87,10 @@ function ClientCombobox({ clients, value, onChange }: {
           <ChevronsUpDown className="size-4 ml-2 shrink-0 text-muted-foreground" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+      <PopoverContent
+        className="max-h-[min(20rem,var(--radix-popover-content-available-height,20rem))] w-[--radix-popover-trigger-width] overflow-hidden p-0"
+        align="start"
+      >
         <Command>
           <CommandInput placeholder={t("searchClients")} />
           <CommandList>
@@ -176,8 +178,11 @@ function CategoryCombobox({ categories, value, onChangeCategories, onChange }: {
           <ChevronsUpDown className="size-4 ml-2 shrink-0 text-muted-foreground" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
-        <div className="p-2 border-b">
+      <PopoverContent
+        className="flex max-h-[min(20rem,var(--radix-popover-content-available-height,20rem))] w-[--radix-popover-trigger-width] flex-col overflow-hidden p-0"
+        align="start"
+      >
+        <div className="p-2 border-b shrink-0">
           <Input
             placeholder={t("searchOrTypeToAdd")}
             value={search}
@@ -186,7 +191,7 @@ function CategoryCombobox({ categories, value, onChangeCategories, onChange }: {
             onKeyDown={(e) => { if (e.key === "Enter" && canAdd) addCategory() }}
           />
         </div>
-        <ScrollArea className="max-h-52">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
           {filtered.length === 0 && !canAdd && (
             <p className="text-xs text-muted-foreground text-center py-4">{t("noCategoriesFound")}</p>
           )}
@@ -250,7 +255,7 @@ function CategoryCombobox({ categories, value, onChangeCategories, onChange }: {
               {t("addCategory", { category: search.trim() })}
             </button>
           )}
-        </ScrollArea>
+        </div>
       </PopoverContent>
     </Popover>
   )

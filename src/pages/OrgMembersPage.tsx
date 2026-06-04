@@ -93,13 +93,23 @@ export function OrgMembersPage() {
     try {
       const token = await getToken()
       if (!token) return
-      const created = await apiPost<{ token: string; email: string }>(`/api/organizations/${id}/members`, token, {
-        email: inviteEmail.trim(),
-        role: inviteRole,
-      })
-      const link = `${window.location.origin}/invitations/${created.token}`
+      const created = await apiPost<{ token: string; email: string; link?: string; emailed?: boolean }>(
+        `/api/organizations/${id}/members`,
+        token,
+        { email: inviteEmail.trim(), role: inviteRole },
+      )
+      const link = created.link ?? `${window.location.origin}/invitations/${created.token}`
       setLastLink(link)
-      toast.success(t("invitedEmail", { email: created.email }))
+      if (created.emailed) {
+        toast.success(t("invitedEmail", { email: created.email }))
+      } else {
+        toast.success(
+          t("invitationCreatedCopyLink", {
+            email: created.email,
+            defaultValue: "Invitation created for {{email}} — copy the link below to share it.",
+          }),
+        )
+      }
       setInviteEmail("")
       await load()
     } catch (err) {
