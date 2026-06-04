@@ -28,33 +28,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import {
-  ShieldCheck,
-  Users,
-  Building2,
-  CreditCard,
-  ReceiptText,
-  Layers,
-  GaugeCircle,
-  LogOut,
-  ArrowLeft,
-  User,
-  UserCog,
-  Gift,
-  Newspaper,
-} from "lucide-react"
-
-const navItems = [
-  { label: "Overview", href: "/admin", icon: GaugeCircle, end: true },
-  { label: "Users", href: "/admin/users", icon: Users },
-  { label: "Organizations", href: "/admin/organizations", icon: Building2 },
-  { label: "Subscriptions", href: "/admin/subscriptions", icon: CreditCard },
-  { label: "Invoices", href: "/admin/invoices", icon: ReceiptText },
-  { label: "Plans", href: "/admin/plans", icon: Layers },
-  { label: "Blog", href: "/admin/blog", icon: Newspaper },
-  { label: "Referrals", href: "/admin/referrals", icon: Gift },
-  { label: "Admins", href: "/admin/admins", icon: UserCog },
-]
+import { ShieldCheck, LogOut, ArrowLeft, User } from "lucide-react"
+import { ADMIN_NAV } from "./admin-nav"
 
 function AdminGuard({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate()
@@ -83,6 +58,10 @@ function AdminShell() {
   const location = useLocation()
   const { signOut } = useClerk()
   const { user } = useUser()
+  const { can } = useAdmin()
+
+  // Only show sections the current admin's role can reach.
+  const navItems = ADMIN_NAV.filter((n) => can(n.cap))
 
   const userEmail = user?.primaryEmailAddress?.emailAddress ?? null
   const activeNavHref =

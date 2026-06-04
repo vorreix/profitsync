@@ -2,12 +2,12 @@ import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { desc, eq } from "drizzle-orm"
 import { db } from "../../../src/lib/db/index.js"
 import { payoutRequests, userProfiles } from "../../../src/lib/db/schema.js"
-import { requireAdmin } from "../../_lib/admin.js"
+import { requireAdminCap } from "../../_lib/admin.js"
 
 // Platform-admin list of all payout requests (manual fulfilment).
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const adminId = await requireAdmin(req, res)
-  if (!adminId) return
+  const ctx = await requireAdminCap(req, res, "read")
+  if (!ctx) return
   if (req.method !== "GET") return res.status(405).json({ error: "Method not allowed" })
 
   const rows = await db

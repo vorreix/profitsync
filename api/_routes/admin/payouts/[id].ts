@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { eq } from "drizzle-orm"
 import { db, serialize } from "../../../../src/lib/db/index.js"
 import { payoutRequests } from "../../../../src/lib/db/schema.js"
-import { requireAdmin } from "../../../_lib/admin.js"
+import { requireAdminCap } from "../../../_lib/admin.js"
 
 const STATUSES = ["requested", "approved", "paid", "rejected"]
 // eslint-disable-next-line no-control-regex
@@ -10,8 +10,8 @@ const CONTROL = new RegExp("[\\u0000-\\u001f\\u007f\\u200b-\\u200f\\u202a-\\u202
 
 // Platform-admin updates a payout request's status (manual transfer workflow).
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const adminId = await requireAdmin(req, res)
-  if (!adminId) return
+  const ctx = await requireAdminCap(req, res, "settings")
+  if (!ctx) return
   if (req.method !== "PATCH") return res.status(405).json({ error: "Method not allowed" })
 
   const { id } = req.query as { id: string }
