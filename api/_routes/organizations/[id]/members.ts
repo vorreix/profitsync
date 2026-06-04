@@ -9,6 +9,7 @@ import {
   userProfiles,
 } from "../../../../src/lib/db/schema.js"
 import { getUserId } from "../../../_lib/auth.js"
+import { sendInvitationEmail } from "../../../_lib/email.js"
 
 const VALID_ROLES = ["owner", "admin", "editor", "viewer"]
 
@@ -22,6 +23,17 @@ async function getMembership(orgId: string, userId: string) {
 
 function generateToken(): string {
   return randomBytes(24).toString("base64url")
+}
+
+// Derive the app origin from the request so invite links point at the same host
+// the inviter is on (works across local dev, preview and production). Falls back
+// to the production domain when no host header is present (e.g. a cron context).
+function baseUrl(req: VercelRequest): string {
+  const origin = req.headers.origin
+  if (typeof origin === "string" && origin) return origin.replace(/\/+$/, "")
+  const proto = (req.headers["x-forwarded-proto"] as string) || "https"
+  const host = (req.headers["x-forwarded-host"] as string) || req.headers.host || "www.profitsync.net"
+  return `${proto}://${host}`
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -127,28 +139,61 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const expiresAt = new Date()
     expiresAt.setDate(expiresAt.getDate() + 14)
 
+    let invite
+    let statusCode = 201
     if (existingInvite) {
+      // Re-inviting: refresh role + expiry but keep the existing token so any
+      // link already shared stays valid.
       const [updated] = await db
         .update(organizationInvitations)
         .set({ role: normalizedRole, expiresAt })
         .where(eq(organizationInvitations.id, existingInvite.id))
         .returning()
-      return res.json(serialize(updated))
+      invite = updated
+      statusCode = 200
+    } else {
+      const [created] = await db
+        .insert(organizationInvitations)
+        .values({
+          organizationId: id,
+          email: normalizedEmail,
+          role: normalizedRole,
+          token: generateToken(),
+          invitedByUserId: userId,
+          expiresAt,
+        })
+        .returning()
+      invite = created
     }
 
-    const [created] = await db
-      .insert(organizationInvitations)
-      .values({
-        organizationId: id,
-        email: normalizedEmail,
-        role: normalizedRole,
-        token: generateToken(),
-        invitedByUserId: userId,
-        expiresAt,
+    // Always return a shareable link; additionally try to email the invitee.
+    // Email is best-effort — a missing RESEND_API_KEY (e.g. local dev) just means
+    // `emailed: false` and the inviter shares the link manually.
+    const link = `${baseUrl(req)}/invitations/${invite.token}`
+    let emailed = false
+    try {
+      const [org] = await db
+        .select({ name: organizations.name })
+        .from(organizations)
+        .where(eq(organizations.id, id))
+      const [inviter] = await db
+        .select({ fullName: userProfiles.fullName })
+        .from(userProfiles)
+        .where(eq(userProfiles.id, userId))
+      const result = await sendInvitationEmail({
+        to: invite.email,
+        orgName: org?.name ?? "your team",
+        inviterName: inviter?.fullName,
+        role: invite.role,
+        link,
+        expiresAt: invite.expiresAt,
       })
-      .returning()
+      emailed = result.ok
+    } catch {
+      emailed = false
+    }
 
-    return res.status(201).json(serialize(created))
+    return res.status(statusCode).json({ ...serialize(invite), link, emailed })
   }
 
   if (req.method === "PATCH") {

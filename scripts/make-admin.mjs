@@ -4,6 +4,7 @@
 //
 // Usage (defaults to .env.local):
 //   node scripts/make-admin.mjs person@example.com
+//   node scripts/make-admin.mjs person@example.com --role=editor   # super_admin|editor|viewer|blog_writer
 //   node scripts/make-admin.mjs user_2abc...            # pass a Clerk id directly
 //   node scripts/make-admin.mjs person@example.com --remove
 //
@@ -57,6 +58,15 @@ if (remove) {
   const deleted = await sql`delete from app_admins where user_id = ${userId} returning user_id`
   console.log(deleted.length ? `✓ removed admin: ${target} (${userId})` : `– ${target} (${userId}) was not an admin`)
 } else {
-  await sql`insert into app_admins (user_id) values (${userId}) on conflict (user_id) do nothing`
-  console.log(`✓ ${target} (${userId}) is now a platform admin`)
+  // Optional role: --role=<super_admin|editor|viewer|blog_writer> (default super_admin).
+  const VALID_ROLES = ["super_admin", "editor", "viewer", "blog_writer"]
+  const roleArg = args.find((a) => a.startsWith("--role"))
+  const role = roleArg ? roleArg.split("=")[1] : "super_admin"
+  if (!VALID_ROLES.includes(role)) {
+    console.error(`Invalid --role "${role}". Use one of: ${VALID_ROLES.join(", ")}`)
+    process.exit(1)
+  }
+  await sql`insert into app_admins (user_id, role) values (${userId}, ${role})
+            on conflict (user_id) do update set role = ${role}`
+  console.log(`✓ ${target} (${userId}) is now a platform admin (${role})`)
 }

@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react"
 import { Link, useNavigate, useParams } from "react-router-dom"
-import { useAuth } from "@clerk/clerk-react"
+import { useAuth, useClerk, useUser } from "@clerk/clerk-react"
 import { toast } from "sonner"
+import { setActiveOrgId } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
-import { Building2, Check, Loader as Loader2, X } from "lucide-react"
+import { Building2, Check, Loader as Loader2, LogIn, UserPlus, X } from "lucide-react"
 
 type Invitation = {
   organization: { id: string; name: string; slug: string }
@@ -19,6 +20,8 @@ export function InvitationPage() {
   const { token } = useParams<{ token: string }>()
   const navigate = useNavigate()
   const { isSignedIn, isLoaded, getToken } = useAuth()
+  const { user } = useUser()
+  const { signOut } = useClerk()
   const [invitation, setInvitation] = useState<Invitation | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -36,12 +39,19 @@ export function InvitationPage() {
       .finally(() => setLoading(false))
   }, [token])
 
+  // Carry the invitation back through the auth flow so the user returns here,
+  // signed in, ready to accept. New users also get their email pre-filled.
+  const loginLink = `/login?redirect=${encodeURIComponent(`/invitations/${token}`)}`
+  const signupLink = invitation
+    ? `/signup?redirect=${encodeURIComponent(`/invitations/${token}`)}&email=${encodeURIComponent(invitation.email)}`
+    : `/signup?redirect=${encodeURIComponent(`/invitations/${token}`)}`
+
+  const currentEmail = user?.primaryEmailAddress?.emailAddress?.toLowerCase() ?? null
+  const emailMismatch =
+    isSignedIn && !!currentEmail && !!invitation && currentEmail !== invitation.email.toLowerCase()
+
   const accept = async () => {
-    if (!token) return
-    if (!isSignedIn) {
-      navigate(`/login?redirect=/invitations/${token}`)
-      return
-    }
+    if (!token || !isSignedIn) return
     setActing("accept")
     try {
       const authToken = await getToken()
@@ -52,7 +62,9 @@ export function InvitationPage() {
       })
       const body = await res.json()
       if (!res.ok) throw new Error(body.error || "Failed to accept")
-      toast.success(`You joined ${body.organization.name}`)
+      // Switch the user into the joined org so the dashboard shows it.
+      if (body.organization?.id) setActiveOrgId(body.organization.id)
+      toast.success(`You joined ${body.organization?.name ?? "the organization"}`)
       navigate("/dashboard")
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to accept")
@@ -62,11 +74,7 @@ export function InvitationPage() {
   }
 
   const decline = async () => {
-    if (!token) return
-    if (!isSignedIn) {
-      navigate(`/login?redirect=/invitations/${token}`)
-      return
-    }
+    if (!token || !isSignedIn) return
     setActing("decline")
     try {
       const authToken = await getToken()
@@ -132,21 +140,46 @@ export function InvitationPage() {
           </div>
         </CardHeader>
         <CardContent className="space-y-3">
-          {!isSignedIn && (
-            <p className="text-xs bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-300 rounded-md p-2">
-              Sign in with {invitation.email} to accept this invitation.
-            </p>
+          {!isSignedIn ? (
+            <>
+              <p className="text-xs bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-300 rounded-md p-2">
+                Sign in or create your account with <span className="font-medium">{invitation.email}</span> to accept this invitation.
+              </p>
+              <div className="grid grid-cols-1 gap-2">
+                <Button onClick={() => navigate(loginLink)}>
+                  <LogIn className="size-4 mr-1.5" /> Sign in to accept
+                </Button>
+                <Button variant="outline" onClick={() => navigate(signupLink)}>
+                  <UserPlus className="size-4 mr-1.5" /> Create an account
+                </Button>
+              </div>
+            </>
+          ) : emailMismatch ? (
+            <>
+              <p className="text-xs bg-destructive/10 border border-destructive/30 text-destructive rounded-md p-2">
+                This invitation is for <span className="font-medium">{invitation.email}</span>, but you're signed in as{" "}
+                <span className="font-medium">{currentEmail}</span>. Sign in with the invited account to accept.
+              </p>
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => signOut({ redirectUrl: `/invitations/${token}` })}
+              >
+                <LogIn className="size-4 mr-1.5" /> Use a different account
+              </Button>
+            </>
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
+              <Button onClick={decline} variant="outline" disabled={!!acting}>
+                {acting === "decline" ? <Loader2 className="size-3.5 mr-1.5 animate-spin" /> : <X className="size-3.5 mr-1.5" />}
+                Decline
+              </Button>
+              <Button onClick={accept} disabled={!!acting}>
+                {acting === "accept" ? <Loader2 className="size-3.5 mr-1.5 animate-spin" /> : <Check className="size-3.5 mr-1.5" />}
+                Accept
+              </Button>
+            </div>
           )}
-          <div className="grid grid-cols-2 gap-3">
-            <Button onClick={decline} variant="outline" disabled={!!acting}>
-              {acting === "decline" ? <Loader2 className="size-3.5 mr-1.5 animate-spin" /> : <X className="size-3.5 mr-1.5" />}
-              Decline
-            </Button>
-            <Button onClick={accept} disabled={!!acting}>
-              {acting === "accept" ? <Loader2 className="size-3.5 mr-1.5 animate-spin" /> : <Check className="size-3.5 mr-1.5" />}
-              {isSignedIn ? "Accept" : "Sign in & accept"}
-            </Button>
-          </div>
           {invitation.expires_at && (
             <p className="text-xs text-muted-foreground text-center">
               Expires {new Date(invitation.expires_at).toLocaleDateString()}
