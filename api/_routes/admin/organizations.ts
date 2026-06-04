@@ -35,7 +35,6 @@ async function ensureUniqueSlug(base: string): Promise<string> {
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ctx = await requireAdminCap(req, res, req.method === "GET" ? "read" : "write")
   if (!ctx) return
-  const adminId = ctx.userId
 
   if (req.method === "GET") {
     const { search, page, type } = req.query as { search?: string; page?: string; type?: string }

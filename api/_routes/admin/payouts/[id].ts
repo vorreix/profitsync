@@ -12,7 +12,6 @@ const CONTROL = new RegExp("[\\u0000-\\u001f\\u007f\\u200b-\\u200f\\u202a-\\u202
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ctx = await requireAdminCap(req, res, "settings")
   if (!ctx) return
-  const adminId = ctx.userId
   if (req.method !== "PATCH") return res.status(405).json({ error: "Method not allowed" })
 
   const { id } = req.query as { id: string }

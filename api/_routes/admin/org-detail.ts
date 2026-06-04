@@ -12,7 +12,6 @@ import { requireAdminCap } from "../../_lib/admin.js"
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ctx = await requireAdminCap(req, res, "read")
   if (!ctx) return
-  const adminId = ctx.userId
   if (req.method !== "GET") return res.status(405).json({ error: "Method not allowed" })
 
   const { organization_id } = req.query as { organization_id?: string }

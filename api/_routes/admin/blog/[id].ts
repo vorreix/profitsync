@@ -34,7 +34,6 @@ type BlogPatch = {
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ctx = await requireAdminCap(req, res, "blog")
   if (!ctx) return
-  const adminId = ctx.userId
 
   const id = req.query.id as string
   if (!id) return res.status(400).json({ error: "Missing id" })

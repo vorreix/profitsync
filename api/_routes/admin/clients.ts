@@ -10,7 +10,6 @@ const VALID_STATUSES = ["active", "inactive", "archived"]
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ctx = await requireAdminCap(req, res, req.method === "GET" ? "read" : "write")
   if (!ctx) return
-  const adminId = ctx.userId
 
   if (req.method === "GET") {
     const { organization_id, search, status, page } = req.query as {
