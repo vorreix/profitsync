@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { asc, eq } from "drizzle-orm"
 import { db, serialize } from "../../../src/lib/db/index.js"
 import { plans } from "../../../src/lib/db/schema.js"
-import { requireAdmin } from "../../_lib/admin.js"
+import { requireAdminCap } from "../../_lib/admin.js"
 import { getProduct, isDodoConfigured, priceFromProduct, type DodoEnv } from "../../_lib/dodo.js"
 
 const VALID_ACCOUNT_TYPES = new Set(["personal", "business"])
@@ -161,8 +161,8 @@ type PlanBody = {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const adminId = await requireAdmin(req, res)
-  if (!adminId) return
+  const ctx = await requireAdminCap(req, res, req.method === "GET" ? "read" : "settings")
+  if (!ctx) return
 
   if (req.method === "GET") {
     const rows = await db.select().from(plans).orderBy(asc(plans.key))

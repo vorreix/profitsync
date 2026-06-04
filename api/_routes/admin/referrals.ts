@@ -3,13 +3,13 @@ import { desc, eq } from "drizzle-orm"
 import { alias } from "drizzle-orm/pg-core"
 import { db } from "../../../src/lib/db/index.js"
 import { referrals, userProfiles } from "../../../src/lib/db/schema.js"
-import { requireAdmin } from "../../_lib/admin.js"
+import { requireAdminCap } from "../../_lib/admin.js"
 
 // Platform-admin view of every referral, with referrer/referred emails and the
 // amount owed (paid but not yet paid_out).
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const adminId = await requireAdmin(req, res)
-  if (!adminId) return
+  const ctx = await requireAdminCap(req, res, "read")
+  if (!ctx) return
   if (req.method !== "GET") return res.status(405).json({ error: "Method not allowed" })
 
   const referrer = alias(userProfiles, "referrer")
