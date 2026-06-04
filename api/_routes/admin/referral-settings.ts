@@ -18,7 +18,6 @@ const num = (v: unknown, min: number, max: number, fallback: number) => {
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ctx = await requireAdminCap(req, res, req.method === "GET" ? "read" : "settings")
   if (!ctx) return
-  const adminId = ctx.userId
 
   if (req.method === "GET") {
     return res.json(serialize(await getReferralSettings()))

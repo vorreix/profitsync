@@ -47,7 +47,6 @@ async function handleDocument(invoiceId: string, res: VercelResponse) {
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ctx = await requireAdminCap(req, res, req.method === "GET" ? "read" : "write")
   if (!ctx) return
-  const adminId = ctx.userId
 
   if (req.method === "GET") {
     // Document view: GET /api/admin/invoices?invoice_id=<id>&document=1

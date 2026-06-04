@@ -13,7 +13,6 @@ const VALID_CYCLES = ["monthly", "yearly", ""] // empty allowed for free
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ctx = await requireAdminCap(req, res, req.method === "GET" ? "read" : "write")
   if (!ctx) return
-  const adminId = ctx.userId
 
   if (req.method === "GET") {
     const { search, plan, status, page } = req.query as {

@@ -23,7 +23,6 @@ const txFields = {
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ctx = await requireAdminCap(req, res, req.method === "GET" ? "read" : "write")
   if (!ctx) return
-  const adminId = ctx.userId
 
   if (req.method === "GET") {
     const { organization_id, client_id, search, type, page } = req.query as {
