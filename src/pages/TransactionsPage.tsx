@@ -106,7 +106,7 @@ function ClientCombobox({ clients, value, onChange }: {
       >
         <Command>
           <CommandInput placeholder={t("searchClients")} />
-          <CommandList>
+          <CommandList className="scrollbar-thin">
             <CommandEmpty>{t("noClientFound")}</CommandEmpty>
             <CommandGroup>
               {clients.map((c) => (
@@ -204,7 +204,7 @@ function CategoryCombobox({ categories, value, onChangeCategories, onChange }: {
             onKeyDown={(e) => { if (e.key === "Enter" && canAdd) addCategory() }}
           />
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain scrollbar-thin">
           {filtered.length === 0 && !canAdd && (
             <p className="text-xs text-muted-foreground text-center py-4">{t("noCategoriesFound")}</p>
           )}
