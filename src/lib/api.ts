@@ -80,7 +80,14 @@ async function request<T>(method: string, path: string, token: string, body?: un
   })
   if (!res.ok) {
     const text = await res.text()
-    throw new Error(text || `HTTP ${res.status}`)
+    let message = text
+    try {
+      const parsed = JSON.parse(text) as { error?: unknown }
+      if (typeof parsed.error === "string") message = parsed.error
+    } catch {
+      // Fall back to the raw response text.
+    }
+    throw new Error(message || `HTTP ${res.status}`)
   }
   if (res.status === 204) return undefined as T
   return res.json()

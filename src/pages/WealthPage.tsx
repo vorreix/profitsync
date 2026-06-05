@@ -45,6 +45,10 @@ const emptyForm: AccountForm = {
   icon: "bank",
 }
 
+const MAX_BANK_ACCOUNTS = 5
+const BANK_LIMIT_HELPER = "Maximum 5 bank accounts allowed."
+const CASH_LIMIT_HELPER = "Only one Cash in Hand account is allowed."
+
 const iconOptions: Array<{ value: string; label: string; Icon: LucideIcon }> = [
   { value: "bank", label: "Bank", Icon: Landmark },
   { value: "card", label: "Card", Icon: CreditCard },
@@ -83,6 +87,8 @@ export function WealthPage() {
   const { active, total } = useWealthSummary(accounts)
   const bankCount = active.filter((a) => a.type === "bank").length
   const hasCash = active.some((a) => a.type === "cash")
+  const bankLimitReached = bankCount >= MAX_BANK_ACCOUNTS
+  const cashLimitReached = hasCash
   const archived = useMemo(() => accounts.filter((a) => a.archived_at), [accounts])
 
   async function load() {
@@ -104,6 +110,14 @@ export function WealthPage() {
   }, [])
 
   function openCreate(type: "bank" | "cash") {
+    if (type === "bank" && bankLimitReached) {
+      toast.error(BANK_LIMIT_HELPER)
+      return
+    }
+    if (type === "cash" && cashLimitReached) {
+      toast.error(CASH_LIMIT_HELPER)
+      return
+    }
     setForm({
       ...emptyForm,
       type,
@@ -125,6 +139,16 @@ export function WealthPage() {
   }
 
   async function handleCreate() {
+    if (form.type === "bank" && bankLimitReached) {
+      toast.error(BANK_LIMIT_HELPER)
+      setOpen(false)
+      return
+    }
+    if (form.type === "cash" && cashLimitReached) {
+      toast.error(CASH_LIMIT_HELPER)
+      setOpen(false)
+      return
+    }
     if (form.type === "bank" && !form.bank_name.trim()) {
       toast.error("Bank name is required")
       return
@@ -160,7 +184,16 @@ export function WealthPage() {
         ok: response.ok,
         body: responseText,
       })
-      if (!response.ok) throw new Error(`HTTP ${response.status}: ${responseText}`)
+      if (!response.ok) {
+        let message = responseText
+        try {
+          const parsed = JSON.parse(responseText) as { error?: unknown }
+          if (typeof parsed.error === "string") message = parsed.error
+        } catch {
+          // Fall back to the raw response text.
+        }
+        throw new Error(message || `HTTP ${response.status}`)
+      }
       clearApiCache()
       window.dispatchEvent(new Event("wealth:accounts-changed"))
       toast.success("Account added")
@@ -168,7 +201,7 @@ export function WealthPage() {
       await load()
     } catch (err) {
       console.error("Could not add account:", err)
-      toast.error("Could not add account. Please try again.")
+      toast.error(err instanceof Error ? err.message : "Could not add account. Please try again.")
     } finally {
       setSaving(false)
     }
@@ -264,13 +297,21 @@ export function WealthPage() {
             <CardTitle>Banks & Cash</CardTitle>
             <p className="text-sm text-muted-foreground mt-1">Total available: {formatMoney(total, currency, balancesVisible)}</p>
           </div>
-          <div className="flex gap-2">
-            <Button size="sm" variant="outline" onClick={() => openCreate("cash")} disabled={hasCash || loading}>
-              <Plus className="size-4" /> Cash
-            </Button>
-            <Button size="sm" onClick={() => openCreate("bank")} disabled={bankCount >= 5 || loading}>
-              <Plus className="size-4" /> Bank
-            </Button>
+          <div className="flex flex-col items-end gap-1.5">
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" onClick={() => openCreate("cash")} disabled={cashLimitReached || loading}>
+                <Plus className="size-4" /> Cash
+              </Button>
+              <Button size="sm" onClick={() => openCreate("bank")} disabled={bankLimitReached || loading}>
+                <Plus className="size-4" /> Bank
+              </Button>
+            </div>
+            {(cashLimitReached || bankLimitReached) && (
+              <div className="text-right text-xs text-muted-foreground">
+                {cashLimitReached && <p>{CASH_LIMIT_HELPER}</p>}
+                {bankLimitReached && <p>{BANK_LIMIT_HELPER}</p>}
+              </div>
+            )}
           </div>
         </CardHeader>
         <CardContent>
@@ -378,7 +419,9 @@ export function WealthPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button onClick={handleCreate} disabled={saving}>{saving ? "Saving..." : "Add Account"}</Button>
+            <Button onClick={handleCreate} disabled={saving || (form.type === "bank" && bankLimitReached) || (form.type === "cash" && cashLimitReached)}>
+              {saving ? "Saving..." : "Add Account"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

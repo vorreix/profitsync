@@ -6,6 +6,9 @@ import { canWrite, ensureDefaultClient, requireAuth } from "../../_lib/auth.js"
 import { logAudit } from "../../_lib/audit.js"
 
 const MAX_BANK_ACCOUNTS = 5
+const MAX_CASH_ACCOUNTS = 1
+const BANK_LIMIT_ERROR = "Maximum 5 active bank accounts allowed."
+const CASH_LIMIT_ERROR = "Only one active Cash in Hand account is allowed."
 
 function money(value: unknown): number {
   const n = Number(value)
@@ -103,7 +106,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .select({ total: count() })
         .from(wealthAccounts)
         .where(and(eq(wealthAccounts.organizationId, orgId), eq(wealthAccounts.type, "bank"), isNull(wealthAccounts.archivedAt)))
-      if (total >= MAX_BANK_ACCOUNTS) return res.status(400).json({ error: "Maximum 5 bank accounts allowed" })
+      if (total >= MAX_BANK_ACCOUNTS) return res.status(400).json({ error: BANK_LIMIT_ERROR })
     }
 
     if (type === "cash") {
@@ -111,7 +114,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .select({ total: count() })
         .from(wealthAccounts)
         .where(and(eq(wealthAccounts.organizationId, orgId), eq(wealthAccounts.type, "cash"), isNull(wealthAccounts.archivedAt)))
-      if (total >= 1) return res.status(400).json({ error: "Only one Cash in Hand account allowed" })
+      if (total >= MAX_CASH_ACCOUNTS) return res.status(400).json({ error: CASH_LIMIT_ERROR })
     }
 
     const opening = money(openingBalance)
