@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
+import { useAuth } from "@clerk/clerk-react"
 import { Menu, X } from "lucide-react"
 import { cn } from "../lib/cn"
 import { Container } from "../components/Container"
@@ -26,6 +27,7 @@ function scrollToId(id: string) {
 
 export function Navbar() {
   const { t } = useTranslation()
+  const { isSignedIn } = useAuth()
   const [scrolled, setScrolled] = useState(false)
   const [open, setOpen] = useState(false)
 
@@ -86,12 +88,6 @@ export function Navbar() {
               <LanguagePicker />
               <ThemeToggle />
             </div>
-            <SmartLink
-              href="/login"
-              className="hidden rounded-full px-3.5 py-2 text-sm font-medium text-foreground/80 transition-colors hover:text-foreground md:inline-flex"
-            >
-              {t("nav.login")}
-            </SmartLink>
             <InstallButton
               label={t("install.button")}
               iosTitle={t("install.iosTitle")}
@@ -100,9 +96,23 @@ export function Navbar() {
               variant="outline"
               className="hidden md:inline-flex"
             />
-            <Button href="/signup" size="sm" className="hidden md:inline-flex">
-              {t("nav.getStarted")}
-            </Button>
+            {isSignedIn ? (
+              <Button href="/dashboard" size="sm" className="hidden md:inline-flex">
+                {t("nav.goToDashboard", { defaultValue: "Go to dashboard" })}
+              </Button>
+            ) : (
+              <>
+                <SmartLink
+                  href="/login"
+                  className="hidden rounded-full px-3.5 py-2 text-sm font-medium text-foreground/80 transition-colors hover:text-foreground md:inline-flex"
+                >
+                  {t("nav.login")}
+                </SmartLink>
+                <Button href="/signup" size="sm" className="hidden md:inline-flex">
+                  {t("nav.getStarted")}
+                </Button>
+              </>
+            )}
 
             <button
               type="button"
@@ -154,14 +164,20 @@ export function Navbar() {
             closeLabel={t("install.close")}
             className="mt-3 h-11 w-full justify-center"
           />
-          <div className="mt-3 grid grid-cols-2 gap-2">
-            <Button href="/login" variant="outline" size="md">
-              {t("nav.login")}
+          {isSignedIn ? (
+            <Button href="/dashboard" size="md" className="mt-3 w-full justify-center">
+              {t("nav.goToDashboard", { defaultValue: "Go to dashboard" })}
             </Button>
-            <Button href="/signup" size="md">
-              {t("nav.getStarted")}
-            </Button>
-          </div>
+          ) : (
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <Button href="/login" variant="outline" size="md">
+                {t("nav.login")}
+              </Button>
+              <Button href="/signup" size="md">
+                {t("nav.getStarted")}
+              </Button>
+            </div>
+          )}
         </Container>
       </div>
     </header>

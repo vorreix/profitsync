@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { eq } from "drizzle-orm"
 import { db, serialize } from "../../../../src/lib/db/index.js"
 import { blogPosts } from "../../../../src/lib/db/schema.js"
-import { requireAdmin } from "../../../_lib/admin.js"
+import { requireAdminCap } from "../../../_lib/admin.js"
 import { uniqueSlug, clampStr, cleanTags, safeImageUrl } from "../../../_lib/blog.js"
 import {
   readingTimeMinutes,
@@ -32,8 +32,8 @@ type BlogPatch = {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const adminId = await requireAdmin(req, res)
-  if (!adminId) return
+  const ctx = await requireAdminCap(req, res, "blog")
+  if (!ctx) return
 
   const id = req.query.id as string
   if (!id) return res.status(400).json({ error: "Missing id" })
