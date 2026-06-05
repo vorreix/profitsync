@@ -1,11 +1,16 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { and, eq, inArray, isNull } from "drizzle-orm"
+import { and, eq, inArray, isNull, sql } from "drizzle-orm"
 import { db } from "../../../src/lib/db/index.js"
-import { clients, transactions } from "../../../src/lib/db/schema.js"
+import { clients, transactions, wealthAccounts } from "../../../src/lib/db/schema.js"
 import { canDelete, requireAuth } from "../../_lib/auth.js"
 import { logAudit } from "../../_lib/audit.js"
 
 const MAX_IDS = 200
+
+function balanceDelta(type: string, amount: unknown): number {
+  const n = Number(amount)
+  return type === "incoming" ? n : -n
+}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ctx = await requireAuth(req, res)
@@ -26,7 +31,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // requested ids actually belong to this org (and aren't already deleted), then
   // soft-delete exactly those.
   const valid = await db
-    .select({ id: transactions.id })
+    .select({ id: transactions.id, wealthAccountId: transactions.wealthAccountId, type: transactions.type, amount: transactions.amount })
     .from(transactions)
     .innerJoin(clients, eq(transactions.clientId, clients.id))
     .where(
@@ -38,6 +43,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     )
   const validIds = valid.map((r) => r.id)
   if (validIds.length > 0) {
+    for (const tx of valid) {
+      if (!tx.wealthAccountId) continue
+      await db
+        .update(wealthAccounts)
+        .set({
+          currentBalance: sql`${wealthAccounts.currentBalance}::numeric - ${balanceDelta(tx.type, tx.amount)}`,
+          updatedBy: userId,
+          updatedAt: new Date(),
+        })
+        .where(eq(wealthAccounts.id, tx.wealthAccountId))
+    }
     await db
       .update(transactions)
       .set({ deletedAt: new Date(), updatedBy: userId, updatedAt: new Date() })

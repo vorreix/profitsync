@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
 import { apiGet, apiPost, apiPatch, apiDelete } from "@/lib/api"
-import type { Client, Transaction, TransactionAttachment } from "@/lib/types"
+import type { Client, Transaction, TransactionAttachment, WealthAccount } from "@/lib/types"
 import { useCurrency } from "@/lib/currency-context"
 import { useOrg } from "@/lib/org-context"
 import { useCategories } from "@/lib/use-categories"
@@ -34,12 +34,15 @@ import { FilterSheet, FilterSection } from "@/components/filters/FilterSheet"
 import { AttachmentBadge } from "@/components/AttachmentBadge"
 import { AttachmentDetailModal, type AttachmentModalItem } from "@/components/AttachmentDetailModal"
 import { AuditHistory } from "@/components/AuditHistory"
+import { WealthAccountIcon } from "@/components/WealthAccountIcon"
+import { accountDisplayName } from "@/lib/wealth"
 import { loadLastTx, saveLastTx } from "@/lib/last-tx"
 
 type PaginatedResponse<T> = { data: T[]; total: number; summary?: { incoming: number; outgoing: number } }
 
 type TxForm = {
   client_id: string
+  wealth_account_id: string
   type: "incoming" | "outgoing"
   amount: string
   description: string
@@ -51,6 +54,7 @@ const PAGE_SIZE = 20
 
 const defaultForm = (): TxForm => ({
   client_id: "",
+  wealth_account_id: "",
   type: "incoming",
   amount: "",
   description: "",
@@ -65,6 +69,55 @@ const formatFileSize = (bytes: number) => {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+function AccountCombobox({ accounts, value, onChange }: {
+  accounts: WealthAccount[]
+  value: string
+  onChange: (id: string) => void
+}) {
+  const { t } = useTranslation("transactions")
+  const [open, setOpen] = useState(false)
+  const selected = accounts.find((a) => a.id === value)
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button variant="outline" role="combobox" className="w-full justify-between font-normal">
+          {selected ? (
+            <span className="flex items-center gap-2 truncate">
+              <WealthAccountIcon account={selected} className="size-6" />
+              <span className="truncate">{accountDisplayName(selected)}</span>
+            </span>
+          ) : (
+            <span className="text-muted-foreground">{t("selectAccount")}</span>
+          )}
+          <ChevronsUpDown className="size-4 ml-2 shrink-0 text-muted-foreground" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+        <Command>
+          <CommandInput placeholder={t("searchAccounts")} />
+          <CommandList>
+            <CommandEmpty>{t("noAccountFoundShort")}</CommandEmpty>
+            <CommandGroup>
+              {accounts.map((account) => (
+                <CommandItem
+                  key={account.id}
+                  value={`${accountDisplayName(account)} ${account.bank_name}`}
+                  onSelect={() => { onChange(account.id); setOpen(false) }}
+                >
+                  <Check className={`mr-2 size-4 shrink-0 ${value === account.id ? "opacity-100" : "opacity-0"}`} />
+                  <WealthAccountIcon account={account} className="size-7 mr-2" />
+                  <span className="truncate">{account.type === "cash" ? "💵" : "🏦"} {accountDisplayName(account)}</span>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  )
 }
 
 // ─── Client combobox ─────────────────────────────────────────────────────────
@@ -259,14 +312,16 @@ function CategoryCombobox({ categories, value, onChangeCategories, onChange }: {
 // ─── Transaction form fields ──────────────────────────────────────────────────
 
 function TxFormFields({
-  f, onChange, showClient, clients, categories, onChangeCats,
+  f, onChange, showClient, clients, accounts, categories, onChangeCats, onAddAccount,
 }: {
   f: TxForm
   onChange: (patch: Partial<TxForm>) => void
   showClient: boolean
   clients: Client[]
+  accounts: WealthAccount[]
   categories: { incoming: string[]; outgoing: string[] }
   onChangeCats: (type: "incoming" | "outgoing", cats: string[]) => void
+  onAddAccount: () => void
 }) {
   const { t } = useTranslation("transactions")
   const cats = f.type === "incoming" ? categories.incoming : categories.outgoing
@@ -295,6 +350,19 @@ function TxFormFields({
             </button>
           ))}
         </div>
+      </div>
+      <div className="space-y-1.5">
+        <Label>{t("accountCashUsedRequired")}</Label>
+        {accounts.length === 0 ? (
+          <div className="rounded-lg border border-dashed p-3">
+            <p className="text-sm font-medium">{t("noAccountFound")}</p>
+            <Button type="button" size="sm" className="mt-3" onClick={onAddAccount}>
+              <Plus className="size-4" /> {t("addAccount")}
+            </Button>
+          </div>
+        ) : (
+          <AccountCombobox accounts={accounts} value={f.wealth_account_id} onChange={(id) => onChange({ wealth_account_id: id })} />
+        )}
       </div>
       <div className="space-y-1.5">
         <Label>{t("amountRequired")}</Label>
@@ -353,6 +421,7 @@ export function TransactionsPage() {
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
   const [clients, setClients] = useState<Client[]>([])
+  const [accounts, setAccounts] = useState<WealthAccount[]>([])
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
   const [search, setSearch] = useState("")
@@ -455,9 +524,10 @@ export function TransactionsPage() {
     if (!token) return
     setLoading(true)
     try {
-      const [result, cls] = await Promise.all([
+      const [result, cls, accountList] = await Promise.all([
         apiGet<PaginatedResponse<Transaction>>(`/api/transactions?${buildParams(1, searchRef.current, tabRef.current, sortRef.current, categoryRef.current, dateFromRef.current, dateToRef.current)}`, token),
         apiGet<{ data: Client[]; total: number } | Client[]>("/api/clients?page=1", token),
+        apiGet<WealthAccount[]>("/api/wealth/accounts", token),
       ])
       setTransactions(result.data)
       setTotal(result.total)
@@ -465,6 +535,7 @@ export function TransactionsPage() {
       setPage(1)
       const clsData = Array.isArray(cls) ? cls : cls.data
       setClients(clsData)
+      setAccounts(accountList.filter((a) => !a.archived_at))
     } catch (err) {
       console.error("Failed to load transactions:", err)
       toast.error("Failed to load transactions")
@@ -546,9 +617,11 @@ export function TransactionsPage() {
   // (date always today), so repeat entry is fast.
   function openAddDialog() {
     const last = loadLastTx()
+    const firstAccount = accounts[0]?.id ?? ""
     setForm({
       ...defaultForm(),
       client_id: last.client_id ?? "",
+      wealth_account_id: firstAccount,
       type: last.type ?? "incoming",
       category: last.category ?? "",
     })
@@ -558,6 +631,7 @@ export function TransactionsPage() {
 
   async function handleAdd() {
     if (!isPersonal && !form.client_id) { toast.error(t("clientIsRequired")); return }
+    if (!form.wealth_account_id) { toast.error(t("accountIsRequired")); return }
     if (!form.amount || isNaN(parseFloat(form.amount))) { toast.error(t("validAmountIsRequired")); return }
     setSaving(true)
     try {
@@ -565,6 +639,7 @@ export function TransactionsPage() {
       if (!token) throw new Error("Not authenticated")
       const tx = await apiPost<Transaction>("/api/transactions", token, {
         client_id: form.client_id,
+        wealth_account_id: form.wealth_account_id,
         type: form.type,
         amount: parseFloat(form.amount),
         description: form.description,
@@ -595,12 +670,14 @@ export function TransactionsPage() {
     if (!editForm || !editForm.amount || isNaN(parseFloat(editForm.amount))) {
       toast.error(t("validAmountIsRequired")); return
     }
+    if (!editForm.wealth_account_id) { toast.error(t("accountIsRequired")); return }
     setSaving(true)
     try {
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
       await apiPatch<Transaction>(`/api/transactions/${editForm.id}`, token, {
         type: editForm.type,
+        wealth_account_id: editForm.wealth_account_id,
         amount: parseFloat(editForm.amount),
         description: editForm.description,
         category: editForm.category,
@@ -998,7 +1075,7 @@ export function TransactionsPage() {
                     </Button>
                     <Button variant="ghost" size="icon" className="size-8 sm:size-9" onClick={(e) => {
                       e.stopPropagation()
-                      setEditForm({ id: tx.id, client_id: tx.client_id, type: tx.type, amount: String(tx.amount), description: tx.description, category: tx.category, date: tx.date })
+                      setEditForm({ id: tx.id, client_id: tx.client_id, wealth_account_id: tx.wealth_account_id ?? "", type: tx.type, amount: String(tx.amount), description: tx.description, category: tx.category, date: tx.date })
                       setEditOpen(true)
                     }}>
                       <Pencil className="size-3.5" />
@@ -1081,6 +1158,12 @@ export function TransactionsPage() {
                       <p className="mt-0.5">{viewTx.category}</p>
                     </div>
                   )}
+                  {viewTx.wealth_account_id && (
+                    <div>
+                      <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">{t("account")}</p>
+                      <p className="mt-0.5">{viewTx.wealth_account_name || viewTx.wealth_account_bank_name || viewTx.wealth_account_id}</p>
+                    </div>
+                  )}
                 </div>
 
                 <Separator />
@@ -1146,7 +1229,7 @@ export function TransactionsPage() {
               <DialogFooter>
                 <Button variant="outline" onClick={() => {
                   closeViewModal()
-                  setEditForm({ id: viewTx.id, client_id: viewTx.client_id, type: viewTx.type, amount: String(viewTx.amount), description: viewTx.description, category: viewTx.category, date: viewTx.date })
+                  setEditForm({ id: viewTx.id, client_id: viewTx.client_id, wealth_account_id: viewTx.wealth_account_id ?? "", type: viewTx.type, amount: String(viewTx.amount), description: viewTx.description, category: viewTx.category, date: viewTx.date })
                   setEditOpen(true)
                 }}>
                   <Pencil className="size-3.5" />
@@ -1168,8 +1251,10 @@ export function TransactionsPage() {
             onChange={(p) => setForm((f) => ({ ...f, ...p }))}
             showClient={!isPersonal}
             clients={clients}
+            accounts={accounts}
             categories={categories}
             onChangeCats={handleChangeCats}
+            onAddAccount={() => { setAddOpen(false); navigate("/wealth") }}
           />
           <Separator />
           <div className="space-y-2">
@@ -1220,8 +1305,10 @@ export function TransactionsPage() {
               onChange={(p) => setEditForm((f) => f ? { ...f, ...p } : null)}
               showClient={false}
               clients={clients}
+              accounts={accounts}
               categories={categories}
               onChangeCats={handleChangeCats}
+              onAddAccount={() => { setEditOpen(false); navigate("/wealth") }}
             />
           )}
           <DialogFooter>

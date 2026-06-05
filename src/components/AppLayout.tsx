@@ -60,6 +60,7 @@ import {
   Tag,
   ChartColumn,
   Gift,
+  Landmark,
   Loader as Loader2,
 } from "lucide-react"
 
@@ -104,6 +105,7 @@ function buildNavItems(activeOrgId: string | undefined, accountType: AccountType
     { labelKey: "nav.dashboard", href: "/dashboard", icon: LayoutDashboard },
     accountTypeAllows(accountType, "clients") && { labelKey: "nav.clients", href: "/clients", icon: Users },
     { labelKey: "nav.transactions", href: "/transactions", icon: ArrowLeftRight },
+    { labelKey: "nav.wealth", href: "/wealth", icon: Landmark },
     { labelKey: "nav.analytics", href: "/analytics", icon: ChartColumn },
     accountTypeAllows(accountType, "quotations") && { labelKey: "nav.quotations", href: "/quotations", icon: FileText },
     accountTypeAllows(accountType, "members") && { labelKey: "nav.users", href: usersHref, icon: UserPlus },
