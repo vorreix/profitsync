@@ -86,7 +86,7 @@ export function CategoryPicker({
             className="h-8 text-sm"
           />
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-1">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain scrollbar-thin p-1">
             {value && (
               <button type="button" className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent" onClick={() => { onChange(""); close() }}>
                 <span className="size-4 shrink-0" />
