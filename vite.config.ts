@@ -1,13 +1,87 @@
 import path from "path"
+import { config as loadDotenv } from "dotenv"
 import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
-import { defineConfig } from "vite"
+import { defineConfig, type ViteDevServer } from "vite"
+import type { IncomingMessage, ServerResponse } from "node:http"
 
 import { buildPwaPlugin } from "./pwa/vite-pwa"
 
+loadDotenv({ path: ".env.local" })
+loadDotenv()
+
+async function readJsonBody(req: IncomingMessage): Promise<unknown> {
+  if (req.method === "GET" || req.method === "HEAD") return undefined
+  const chunks: Buffer[] = []
+  for await (const chunk of req) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+  }
+  const raw = Buffer.concat(chunks).toString("utf8")
+  if (!raw) return undefined
+  try {
+    return JSON.parse(raw)
+  } catch {
+    return raw
+  }
+}
+
+function attachVercelResponseMethods(res: ServerResponse) {
+  const response = res as ServerResponse & {
+    status: (code: number) => typeof response
+    json: (body: unknown) => void
+  }
+  response.status = (code: number) => {
+    response.statusCode = code
+    return response
+  }
+  response.json = (body: unknown) => {
+    if (!response.headersSent) response.setHeader("Content-Type", "application/json")
+    response.end(JSON.stringify(body))
+  }
+  return response
+}
+
+function localApiPlugin() {
+  return {
+    name: "profitsync-local-api",
+    configureServer(server: ViteDevServer) {
+      server.middlewares.use("/api", async (req, res) => {
+        try {
+          const originalUrl = req.url ?? "/"
+          const requestUrl = new URL(originalUrl, "http://localhost")
+          const apiPath = requestUrl.pathname.replace(/^\/+api\/?/, "").replace(/^\/+/, "")
+          const query: Record<string, string | string[]> = { __apipath: apiPath }
+          requestUrl.searchParams.forEach((value, key) => {
+            const existing = query[key]
+            if (existing === undefined) query[key] = value
+            else query[key] = Array.isArray(existing) ? [...existing, value] : [existing, value]
+          })
+
+          const apiReq = req as IncomingMessage & {
+            query: Record<string, string | string[]>
+            body?: unknown
+          }
+          apiReq.query = query
+          apiReq.body = await readJsonBody(req)
+          const apiRes = attachVercelResponseMethods(res)
+          const mod = await server.ssrLoadModule("/api/index.ts")
+          await mod.default(apiReq, apiRes)
+        } catch (err) {
+          console.error("[local-api] request failed", err)
+          if (!res.headersSent) {
+            res.statusCode = 500
+            res.setHeader("Content-Type", "application/json")
+          }
+          res.end(JSON.stringify({ error: "Local API request failed" }))
+        }
+      })
+    },
+  }
+}
+
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), tailwindcss(), buildPwaPlugin()],
+  plugins: [localApiPlugin(), react(), tailwindcss(), buildPwaPlugin()],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),

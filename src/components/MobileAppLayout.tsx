@@ -28,6 +28,7 @@ import {
   Tag,
   ChartColumn,
   Gift,
+  Landmark,
 } from "lucide-react"
 import { useOrg } from "@/lib/org-context"
 import { useAdmin } from "@/lib/admin-context"
@@ -82,6 +83,7 @@ function buildMoreItems(activeOrgId: string | undefined, accountType: AccountTyp
   const usersHref = activeOrgId ? `/organizations/${activeOrgId}/members` : "/organizations"
   const items: (MoreItem | false)[] = [
     accountTypeAllows(accountType, "members") && { labelKey: "nav.users", href: usersHref, icon: UserPlus },
+    { labelKey: "nav.wealth", href: "/wealth", icon: Landmark },
     { labelKey: "nav.analytics", href: "/analytics", icon: ChartColumn },
     { labelKey: "nav.categories", href: "/categories", icon: Tag },
     { labelKey: "nav.referrals", href: "/referrals", icon: Gift },

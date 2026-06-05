@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
 import { apiGet, apiPost, apiPatch, apiDelete } from "@/lib/api"
-import type { Client, Transaction, TransactionAttachment } from "@/lib/types"
+import type { Client, Transaction, TransactionAttachment, WealthAccount } from "@/lib/types"
 import { useCurrency } from "@/lib/currency-context"
 import { useOrg } from "@/lib/org-context"
 import { useCategories } from "@/lib/use-categories"
@@ -33,14 +33,19 @@ import { FilterSheet, FilterSection } from "@/components/filters/FilterSheet"
 import { AttachmentBadge } from "@/components/AttachmentBadge"
 import { AttachmentDetailModal, type AttachmentModalItem } from "@/components/AttachmentDetailModal"
 import { AuditHistory } from "@/components/AuditHistory"
+import { accountDisplayName } from "@/lib/wealth"
+import { AccountSelector, type Allocation } from "@/components/AccountSelector"
+import { useUrlModal } from "@/hooks/use-url-modal"
 import { loadLastTx, saveLastTx } from "@/lib/last-tx"
 
 type PaginatedResponse<T> = { data: T[]; total: number; summary?: { incoming: number; outgoing: number } }
 
 type TxForm = {
   client_id: string
+  // One allocation per account. A single entry can be split across several
+  // accounts; each allocation is saved as its own transaction row upstream.
+  allocations: Allocation[]
   type: "incoming" | "outgoing"
-  amount: string
   description: string
   category: string
   date: string
@@ -50,12 +55,20 @@ const PAGE_SIZE = 20
 
 const defaultForm = (): TxForm => ({
   client_id: "",
+  allocations: [],
   type: "incoming",
-  amount: "",
   description: "",
   category: "",
   date: new Date().toISOString().split("T")[0],
 })
+
+// Cash in Hand is the default source; fall back to the first account.
+const defaultAccountId = (accounts: WealthAccount[]) =>
+  accounts.find((a) => a.type === "cash")?.id ?? accounts[0]?.id ?? ""
+
+const allocationFor = (tx: { wealth_account_id?: string | null; amount: number }, accounts: WealthAccount[]): Allocation[] => [
+  { account_id: tx.wealth_account_id ?? defaultAccountId(accounts), amount: String(tx.amount) },
+]
 
 const formatDate = (d: string) =>
   new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
@@ -93,7 +106,7 @@ function ClientCombobox({ clients, value, onChange }: {
       >
         <Command>
           <CommandInput placeholder={t("searchClients")} />
-          <CommandList>
+          <CommandList className="scrollbar-thin">
             <CommandEmpty>{t("noClientFound")}</CommandEmpty>
             <CommandGroup>
               {clients.map((c) => (
@@ -191,7 +204,7 @@ function CategoryCombobox({ categories, value, onChangeCategories, onChange }: {
             onKeyDown={(e) => { if (e.key === "Enter" && canAdd) addCategory() }}
           />
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain scrollbar-thin">
           {filtered.length === 0 && !canAdd && (
             <p className="text-xs text-muted-foreground text-center py-4">{t("noCategoriesFound")}</p>
           )}
@@ -264,14 +277,19 @@ function CategoryCombobox({ categories, value, onChangeCategories, onChange }: {
 // ─── Transaction form fields ──────────────────────────────────────────────────
 
 function TxFormFields({
-  f, onChange, showClient, clients, categories, onChangeCats,
+  f, onChange, showClient, clients, accounts, accountsLoading, categories, onChangeCats, onAddAccount, currency, singleAccount = false,
 }: {
   f: TxForm
   onChange: (patch: Partial<TxForm>) => void
   showClient: boolean
   clients: Client[]
+  accounts: WealthAccount[]
+  accountsLoading: boolean
   categories: { incoming: string[]; outgoing: string[] }
   onChangeCats: (type: "incoming" | "outgoing", cats: string[]) => void
+  onAddAccount: () => void
+  currency: string
+  singleAccount?: boolean
 }) {
   const { t } = useTranslation("transactions")
   const cats = f.type === "incoming" ? categories.incoming : categories.outgoing
@@ -301,10 +319,15 @@ function TxFormFields({
           ))}
         </div>
       </div>
-      <div className="space-y-1.5">
-        <Label>{t("amountRequired")}</Label>
-        <Input type="number" min="0" step="0.01" placeholder="0.00" value={f.amount} onChange={(e) => onChange({ amount: e.target.value })} />
-      </div>
+      <AccountSelector
+        accounts={accounts}
+        allocations={f.allocations}
+        onChange={(allocations) => onChange({ allocations })}
+        currency={currency}
+        max={singleAccount ? 1 : Infinity}
+        onAddAccount={onAddAccount}
+        loading={accountsLoading}
+      />
       <div className="space-y-1.5">
         <Label>{t("description")}</Label>
         <Textarea
@@ -315,7 +338,7 @@ function TxFormFields({
           className="resize-none"
         />
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1.5">
           <Label>{t("category")}</Label>
           <CategoryCombobox
@@ -340,6 +363,9 @@ export function TransactionsPage() {
   const { t } = useTranslation("transactions")
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
+  // ?view=<txId> drives the detail modal; useUrlModal makes browser/OS back
+  // close it (and keeps it deep-linkable) instead of leaving the page.
+  const view = useUrlModal("view")
   const { getToken } = useAuth()
   const { currency } = useCurrency()
   const { activeOrg } = useOrg()
@@ -358,6 +384,8 @@ export function TransactionsPage() {
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
   const [clients, setClients] = useState<Client[]>([])
+  const [accounts, setAccounts] = useState<WealthAccount[]>([])
+  const [accountsLoading, setAccountsLoading] = useState(true)
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
   const [search, setSearch] = useState("")
@@ -483,34 +511,94 @@ export function TransactionsPage() {
     return () => clearTimeout(timer)
   }, [search, tab, sort, categoryFilter, dateFrom, dateTo, fetchPage1])
 
+  // Accounts load independently of the (slower) transactions query so the
+  // transaction form's source picker is ready fast and never flashes an empty
+  // state. Refreshes when accounts change elsewhere (e.g. on the Wealth page).
+  const loadAccounts = useCallback(async () => {
+    const token = await getToken()
+    if (!token) return
+    try {
+      const list = await apiGet<WealthAccount[]>("/api/wealth/accounts", token)
+      setAccounts(list.filter((a) => !a.archived_at))
+    } catch {
+      /* non-blocking */
+    } finally {
+      setAccountsLoading(false)
+    }
+  }, [getToken])
+
+  useEffect(() => {
+    loadAccounts()
+    window.addEventListener("wealth:accounts-changed", loadAccounts)
+    return () => window.removeEventListener("wealth:accounts-changed", loadAccounts)
+  }, [loadAccounts])
+
+  // Remembers a requested source account (e.g. opened from a wealth account
+  // page) until accounts finish loading, so the seed effect below can apply it.
+  const pendingAddAccountRef = useRef<string | null>(null)
+
+  const openAddDialog = useCallback((preselectAccountId?: string) => {
+    const last = loadLastTx()
+    // Default the source to the explicitly requested account, else the last-used
+    // one, else Cash in Hand — so the last account leads next time.
+    const desired = preselectAccountId ?? last.wealth_account_id
+    pendingAddAccountRef.current = desired ?? null
+    const accountId = (desired && accounts.some((a) => a.id === desired))
+      ? desired
+      : defaultAccountId(accounts)
+    setForm({
+      ...defaultForm(),
+      client_id: last.client_id ?? "",
+      allocations: accountId ? [{ account_id: accountId, amount: "" }] : [],
+      type: last.type ?? "incoming",
+      category: last.category ?? "",
+    })
+    setPendingFiles([])
+    setAddOpen(true)
+  }, [accounts])
+
+  // If the add dialog opened before accounts loaded (deep link on a cold page),
+  // seed the default source — the requested account if valid, else Cash in Hand.
+  useEffect(() => {
+    if (!addOpen || accounts.length === 0) return
+    setForm((f) => {
+      if (f.allocations.length > 0) return f
+      const want = pendingAddAccountRef.current && accounts.some((a) => a.id === pendingAddAccountRef.current)
+        ? pendingAddAccountRef.current
+        : defaultAccountId(accounts)
+      return want ? { ...f, allocations: [{ account_id: want, amount: "" }] } : f
+    })
+  }, [addOpen, accounts])
+
   useEffect(() => {
     if (searchParams.get("new") === "1") {
-      openAddDialog()
+      openAddDialog(searchParams.get("account") ?? undefined)
       const next = new URLSearchParams(searchParams)
       next.delete("new")
+      next.delete("account")
       setSearchParams(next, { replace: true })
     }
-  }, [searchParams, setSearchParams])
+  }, [searchParams, setSearchParams, openAddDialog])
 
-  // URL-driven view modal: ?view=<txId> opens that transaction (deep-link from a
-  // click, the client media hub, or a pasted URL). The param stays in the URL
-  // while the modal is open and is cleared on close (see closeViewModal).
+  // Keep the detail modal in sync with ?view=<txId>: opens on a pasted/deep link
+  // and closes when the param is removed (e.g. browser/OS back). Uses showTx so
+  // it never re-pushes a history entry the user didn't create.
   useEffect(() => {
-    const viewId = searchParams.get("view")
-    if (!viewId) return
+    const viewId = view.value
+    if (!viewId) { if (viewTx) setViewTx(null); return }
     if (viewTx?.id === viewId) return
     const existing = transactions.find((t) => t.id === viewId)
-    if (existing) { openViewModal(existing); return }
+    if (existing) { showTx(existing); return }
     ;(async () => {
       const token = await getToken()
       if (!token) return
       try {
         const tx = await apiGet<Transaction>(`/api/transactions/${viewId}`, token)
-        if (tx) openViewModal(tx)
+        if (tx) showTx(tx)
       } catch { /* not found or no access */ }
     })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams, transactions])
+  }, [view.value, transactions])
 
   const handleLoadMore = async () => {
     const token = await getToken()
@@ -549,42 +637,47 @@ export function TransactionsPage() {
 
   // Open the add dialog pre-filled with the last-used client/type/category
   // (date always today), so repeat entry is fast.
-  function openAddDialog() {
-    const last = loadLastTx()
-    setForm({
-      ...defaultForm(),
-      client_id: last.client_id ?? "",
-      type: last.type ?? "incoming",
-      category: last.category ?? "",
-    })
-    setPendingFiles([])
-    setAddOpen(true)
-  }
-
   async function handleAdd() {
     if (!isPersonal && !form.client_id) { toast.error(t("clientIsRequired")); return }
-    if (!form.amount || isNaN(parseFloat(form.amount))) { toast.error(t("validAmountIsRequired")); return }
+    const allocs = form.allocations.filter((a) => a.account_id && Number(a.amount) > 0)
+    if (allocs.length === 0) { toast.error(t("validAmountIsRequired")); return }
     setSaving(true)
     try {
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
-      const tx = await apiPost<Transaction>("/api/transactions", token, {
-        client_id: form.client_id,
-        type: form.type,
-        amount: parseFloat(form.amount),
-        description: form.description,
-        category: form.category,
-        date: form.date,
-      })
-      for (const file of pendingFiles) {
+      // A split entry becomes one transaction row per account, each syncing its
+      // own balance. Each create is tracked so a partial failure (e.g. quota hit
+      // on a later row) is reported clearly rather than as a blanket error.
+      let firstId: string | null = null
+      let saved = 0
+      for (const alloc of allocs) {
         try {
-          await uploadFile(file, tx.id, token)
-        } catch {
-          toast.error(t("failedToUploadFile", { name: file.name }))
+          const tx = await apiPost<Transaction>("/api/transactions", token, {
+            client_id: form.client_id,
+            wealth_account_id: alloc.account_id,
+            type: form.type,
+            amount: parseFloat(alloc.amount),
+            description: form.description,
+            category: form.category,
+            date: form.date,
+          })
+          if (!firstId) firstId = tx.id
+          saved++
+        } catch { /* counted below */ }
+      }
+      if (saved === 0) { toast.error(t("failedToAddTransaction")); return }
+      if (firstId) {
+        for (const file of pendingFiles) {
+          try {
+            await uploadFile(file, firstId, token)
+          } catch {
+            toast.error(t("failedToUploadFile", { name: file.name }))
+          }
         }
       }
-      saveLastTx({ client_id: form.client_id, type: form.type, category: form.category })
-      toast.success(t("transactionAdded"))
+      saveLastTx({ client_id: form.client_id, type: form.type, category: form.category, wealth_account_id: allocs[0]?.account_id })
+      if (saved < allocs.length) toast.warning(t("partialSplitSaved", { saved, total: allocs.length }))
+      else toast.success(t("transactionAdded"))
       setAddOpen(false)
       setForm(defaultForm())
       setPendingFiles([])
@@ -597,16 +690,19 @@ export function TransactionsPage() {
   }
 
   async function handleEdit() {
-    if (!editForm || !editForm.amount || isNaN(parseFloat(editForm.amount))) {
+    const alloc = editForm?.allocations[0]
+    if (!editForm || !alloc || !alloc.amount || isNaN(parseFloat(alloc.amount))) {
       toast.error(t("validAmountIsRequired")); return
     }
+    if (!alloc.account_id) { toast.error(t("accountIsRequired")); return }
     setSaving(true)
     try {
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
       await apiPatch<Transaction>(`/api/transactions/${editForm.id}`, token, {
         type: editForm.type,
-        amount: parseFloat(editForm.amount),
+        wealth_account_id: alloc.account_id,
+        amount: parseFloat(alloc.amount),
         description: editForm.description,
         category: editForm.category,
         date: editForm.date,
@@ -650,25 +746,22 @@ export function TransactionsPage() {
     }
   }
 
-  function openViewModal(tx: Transaction) {
+  // Show the transaction without touching the URL (used by the deep-link effect).
+  function showTx(tx: Transaction) {
     setViewTx(tx)
     setAttachments([])
     loadAttachments(tx.id)
-    // Reflect the open transaction in the URL so it's shareable / restorable.
-    if (searchParams.get("view") !== tx.id) {
-      const next = new URLSearchParams(searchParams)
-      next.set("view", tx.id)
-      setSearchParams(next, { replace: true })
-    }
+  }
+
+  // User-initiated open: push ?view=<id> so back closes the modal.
+  function openViewModal(tx: Transaction) {
+    showTx(tx)
+    view.open(tx.id)
   }
 
   function closeViewModal() {
     setViewTx(null)
-    if (searchParams.get("view")) {
-      const next = new URLSearchParams(searchParams)
-      next.delete("view")
-      setSearchParams(next, { replace: true })
-    }
+    view.close()
   }
 
   async function uploadFile(file: File, txId: string, token: string): Promise<void> {
@@ -830,7 +923,7 @@ export function TransactionsPage() {
               {t("multiSelect.select")}
             </Button>
           )}
-          <Button onClick={openAddDialog} className="shrink-0">
+          <Button onClick={() => openAddDialog()} className="shrink-0">
             <Plus className="size-4" />
             <span className="hidden sm:inline">{t("addTransaction")}</span>
             <span className="sm:hidden">{t("add")}</span>
@@ -921,7 +1014,7 @@ export function TransactionsPage() {
             {search || tab !== "all" || categoryFilter !== "all" || dateFrom || dateTo ? t("noTransactionsMatchFilters") : t("noTransactionsYet")}
           </p>
           {!search && tab === "all" && categoryFilter === "all" && !dateFrom && !dateTo && clients.length > 0 && (
-            <Button className="mt-4" onClick={openAddDialog}>
+            <Button className="mt-4" onClick={() => openAddDialog()}>
               <Plus className="size-4" />
               {t("addFirstTransaction")}
             </Button>
@@ -988,6 +1081,14 @@ export function TransactionsPage() {
                         </>
                       )}
                       <span className="text-xs text-muted-foreground shrink-0">{formatDate(tx.date)}</span>
+                      {(tx.wealth_account_name || tx.wealth_account_bank_name) && (
+                        <>
+                          <span className="hidden text-xs text-muted-foreground shrink-0 sm:inline">·</span>
+                          <span className="hidden min-w-0 max-w-[10rem] truncate text-xs text-muted-foreground sm:inline">
+                            {accountDisplayName({ bank_name: tx.wealth_account_bank_name ?? "", nickname: tx.wealth_account_name ?? "" })}
+                          </span>
+                        </>
+                      )}
                     </div>
                   </div>
 
@@ -1003,7 +1104,7 @@ export function TransactionsPage() {
                     </Button>
                     <Button variant="ghost" size="icon" className="size-8 sm:size-9" onClick={(e) => {
                       e.stopPropagation()
-                      setEditForm({ id: tx.id, client_id: tx.client_id, type: tx.type, amount: String(tx.amount), description: tx.description, category: tx.category, date: tx.date })
+                      setEditForm({ id: tx.id, client_id: tx.client_id, allocations: allocationFor(tx, accounts), type: tx.type, description: tx.description, category: tx.category, date: tx.date })
                       setEditOpen(true)
                     }}>
                       <Pencil className="size-3.5" />
@@ -1064,7 +1165,7 @@ export function TransactionsPage() {
                       <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">{t("client")}</p>
                       <button
                         className="text-sm text-primary hover:underline mt-0.5"
-                        onClick={() => { closeViewModal(); navigate(`/clients/${viewTx.client_id}`) }}
+                        onClick={() => { setViewTx(null); navigate(`/clients/${viewTx.client_id}`) }}
                       >
                         {viewTx.client_name ?? viewTx.client_id}
                       </button>
@@ -1084,6 +1185,12 @@ export function TransactionsPage() {
                     <div>
                       <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">{t("category")}</p>
                       <p className="mt-0.5">{viewTx.category}</p>
+                    </div>
+                  )}
+                  {viewTx.wealth_account_id && (
+                    <div>
+                      <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">{t("account")}</p>
+                      <p className="mt-0.5">{viewTx.wealth_account_name || viewTx.wealth_account_bank_name || viewTx.wealth_account_id}</p>
                     </div>
                   )}
                 </div>
@@ -1151,7 +1258,7 @@ export function TransactionsPage() {
               <DialogFooter>
                 <Button variant="outline" onClick={() => {
                   closeViewModal()
-                  setEditForm({ id: viewTx.id, client_id: viewTx.client_id, type: viewTx.type, amount: String(viewTx.amount), description: viewTx.description, category: viewTx.category, date: viewTx.date })
+                  setEditForm({ id: viewTx.id, client_id: viewTx.client_id, allocations: allocationFor(viewTx, accounts), type: viewTx.type, description: viewTx.description, category: viewTx.category, date: viewTx.date })
                   setEditOpen(true)
                 }}>
                   <Pencil className="size-3.5" />
@@ -1166,21 +1273,27 @@ export function TransactionsPage() {
 
       {/* Add Dialog */}
       <Dialog open={addOpen} onOpenChange={(open) => { if (!open) setPendingFiles([]); setAddOpen(open) }}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader><DialogTitle>{t("addTransaction")}</DialogTitle></DialogHeader>
+        <DialogContent className="inset-x-0 bottom-0 top-auto flex max-h-[92svh] w-full max-w-full translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-t-2xl p-0 sm:inset-x-auto sm:bottom-auto sm:top-[7svh] sm:left-1/2 sm:max-h-[86svh] sm:w-full sm:max-w-md sm:-translate-x-1/2 sm:rounded-2xl">
+          <DialogHeader className="shrink-0 border-b px-6 pb-3 pt-6"><DialogTitle>{t("addTransaction")}</DialogTitle></DialogHeader>
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto scrollbar-thin px-6 py-1">
           <TxFormFields
             f={form}
             onChange={(p) => setForm((f) => ({ ...f, ...p }))}
             showClient={!isPersonal}
             clients={clients}
+            accounts={accounts}
+            accountsLoading={accountsLoading}
             categories={categories}
             onChangeCats={handleChangeCats}
+            onAddAccount={() => { setAddOpen(false); navigate("/wealth") }}
+            currency={currency}
           />
           <Separator />
           <div className="space-y-2">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2">
               <Label className="flex items-center gap-1.5 text-sm font-medium">
                 <Paperclip className="size-3.5" /> {t("attachments")}
+                <span className="text-xs font-normal text-muted-foreground">({t("max2MBPerFile")})</span>
               </Label>
               <div>
                 <input ref={addFileInputRef} type="file" className="hidden" multiple onChange={handleAddFileSelect} />
@@ -1189,7 +1302,7 @@ export function TransactionsPage() {
                 </Button>
               </div>
             </div>
-            {pendingFiles.length > 0 ? (
+            {pendingFiles.length > 0 && (
               <div className="space-y-1.5">
                 {pendingFiles.map((file, i) => (
                   <div key={i} className="flex items-center gap-2 rounded-lg border px-3 py-2">
@@ -1204,11 +1317,10 @@ export function TransactionsPage() {
                   </div>
                 ))}
               </div>
-            ) : (
-              <p className="text-xs text-muted-foreground">{t("max2MBPerFileUploadedWithTransaction")}</p>
             )}
           </div>
-          <DialogFooter>
+          </div>
+          <DialogFooter className="shrink-0 border-t px-6 pb-6 pt-3">
             <Button variant="outline" onClick={() => { setAddOpen(false); setPendingFiles([]) }}>{t("cancel")}</Button>
             <Button onClick={handleAdd} disabled={saving}>{saving ? t("adding") : t("add")}</Button>
           </DialogFooter>
@@ -1217,19 +1329,26 @@ export function TransactionsPage() {
 
       {/* Edit Dialog */}
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader><DialogTitle>{t("editTransaction")}</DialogTitle></DialogHeader>
+        <DialogContent className="inset-x-0 bottom-0 top-auto flex max-h-[92svh] w-full max-w-full translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-t-2xl p-0 sm:inset-x-auto sm:bottom-auto sm:top-[7svh] sm:left-1/2 sm:max-h-[86svh] sm:w-full sm:max-w-md sm:-translate-x-1/2 sm:rounded-2xl">
+          <DialogHeader className="shrink-0 border-b px-6 pb-3 pt-6"><DialogTitle>{t("editTransaction")}</DialogTitle></DialogHeader>
+          <div className="min-h-0 flex-1 overflow-y-auto scrollbar-thin px-6 py-1">
           {editForm && (
             <TxFormFields
               f={editForm}
               onChange={(p) => setEditForm((f) => f ? { ...f, ...p } : null)}
               showClient={false}
               clients={clients}
+              accounts={accounts}
+              accountsLoading={accountsLoading}
               categories={categories}
               onChangeCats={handleChangeCats}
+              onAddAccount={() => { setEditOpen(false); navigate("/wealth") }}
+              currency={currency}
+              singleAccount
             />
           )}
-          <DialogFooter>
+          </div>
+          <DialogFooter className="shrink-0 border-t px-6 pb-6 pt-3">
             <Button variant="outline" onClick={() => setEditOpen(false)}>{t("cancel")}</Button>
             <Button onClick={handleEdit} disabled={saving}>{saving ? t("saving") : t("save")}</Button>
           </DialogFooter>

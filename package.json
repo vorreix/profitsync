@@ -13,13 +13,16 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node scripts/db-migrate.mjs",
     "db:push": "drizzle-kit push",
+    "i18n:check": "node scripts/check-i18n.mjs",
     "make-admin": "node scripts/make-admin.mjs",
     "lint": "eslint .",
     "test": "vitest",
-    "test:ci": "vitest run"
+    "test:ci": "vitest run",
+    "prepare": "husky"
   },
   "dependencies": {
     "@clerk/clerk-react": "^5.0.0",
+    "@formkit/auto-animate": "^0.9.0",
     "@hookform/resolvers": "^5.2.2",
     "@neondatabase/serverless": "^0.10.4",
     "@tailwindcss/vite": "^4.2.1",
@@ -67,6 +70,7 @@
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.26",
     "globals": "^17.6.0",
+    "husky": "^9.1.7",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.60.0",
     "vite": "^7.3.1",

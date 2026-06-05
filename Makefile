@@ -39,6 +39,10 @@ build: ## Type-check then bundle for production
 preview: ## Preview the production build locally
 	@npm run preview
 
+.PHONY: claude
+claude: ## Run Claude Code with permission prompts skipped
+	@claude --dangerously-skip-permissions
+
 # ----------------------------------------------------------------------------
 # Quality
 # ----------------------------------------------------------------------------
@@ -68,20 +72,30 @@ db-push: ## Push the Drizzle schema to Neon (needs .env.local)
 # ----------------------------------------------------------------------------
 # Pre-commit gate
 #
-# Heads up: `eslint` and the `test:ci` npm script are NOT configured in this
-# project yet (package.json defines only dev/build/typecheck/preview/db:push,
-# and eslint is not a dependency). Until those are added, the format/lint/tests
-# steps below will fail. `make typecheck` is the check that works today.
+# Run this before every commit / opening a PR. Kept in sync with the husky
+# pre-commit hook (.husky/pre-commit). It fails fast on unresolved merge
+# conflict markers (in ANY tracked or untracked file — code, docs or config),
+# verifies i18n locale parity (every locale must carry all en.json keys), then
+# runs eslint (autofix + check), the TypeScript type check, and the tests.
 # ----------------------------------------------------------------------------
 
+.PHONY: i18n
+i18n: ## Verify every locale has all en.json keys (placeholders intact)
+	@echo "→ i18n parity..."
+	@npm run i18n:check
+
 .PHONY: pr
-pr: ## Full pre-commit gate: format → lint → type check → tests
+pr: ## Full pre-commit gate: conflict markers → i18n parity → format → lint → type check → tests
+	@echo "→ merge conflict markers..."
+	@if git --no-pager grep --untracked -nE '^(<{7}|>{7}|\|{7})( |$$)' -- ':!*.sample'; then echo "✗ unresolved merge conflict markers found (above)" && exit 1; fi
 	@echo "→ format..."
 	@npx eslint . --fix || (echo "✗ format failed — unfixable lint errors" && exit 1)
 	@echo "→ lint..."
 	@npx eslint . || (echo "✗ lint failed" && exit 1)
 	@echo "→ type check..."
 	@npm run typecheck || (echo "✗ type check failed" && exit 1)
+	@echo "→ i18n parity (all locales must match en.json)..."
+	@npm run i18n:check || (echo "✗ i18n parity check failed — add the missing translations to every locale in src/lib/i18n/locales/" && exit 1)
 	@echo "→ tests..."
 	@npm run test:ci || (echo "✗ tests failed" && exit 1)
 	@echo "✓ all checks passed"
