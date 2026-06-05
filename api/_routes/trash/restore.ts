@@ -1,8 +1,13 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { and, eq, isNotNull } from "drizzle-orm"
+import { and, eq, isNotNull, sql } from "drizzle-orm"
 import { db, serialize } from "../../../src/lib/db/index.js"
-import { clients, quotations, transactions } from "../../../src/lib/db/schema.js"
+import { clients, quotations, transactions, wealthAccounts } from "../../../src/lib/db/schema.js"
 import { canDelete, requireAuth } from "../../_lib/auth.js"
+
+function balanceDelta(type: string, amount: unknown): number {
+  const n = Number(amount)
+  return type === "incoming" ? n : -n
+}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ctx = await requireAuth(req, res)
@@ -21,7 +26,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (type === "transaction") {
     // Transactions are org-scoped via their client.
     const [tx] = await db
-      .select({ id: transactions.id })
+      .select({ id: transactions.id, wealthAccountId: transactions.wealthAccountId, type: transactions.type, amount: transactions.amount })
       .from(transactions)
       .innerJoin(clients, eq(transactions.clientId, clients.id))
       .where(and(eq(transactions.id, id), eq(clients.organizationId, orgId), isNotNull(transactions.deletedAt)))
@@ -31,6 +36,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .set({ deletedAt: null, updatedAt: new Date() })
       .where(eq(transactions.id, id))
       .returning()
+    if (tx.wealthAccountId) {
+      await db
+        .update(wealthAccounts)
+        .set({
+          currentBalance: sql`${wealthAccounts.currentBalance}::numeric + ${balanceDelta(tx.type, tx.amount)}`,
+          updatedAt: new Date(),
+        })
+        .where(eq(wealthAccounts.id, tx.wealthAccountId))
+    }
     return res.json(serialize(updated))
   }
 

@@ -1,12 +1,17 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { and, asc, count, desc, eq, gte, ilike, isNull, lte, or, sql } from "drizzle-orm"
 import { db, serialize } from "../../src/lib/db/index.js"
-import { clients, transactions } from "../../src/lib/db/schema.js"
+import { clients, transactions, wealthAccounts } from "../../src/lib/db/schema.js"
 import { canWrite, ensureDefaultClient, isPersonalAccount, requireAuth } from "../_lib/auth.js"
 import { checkTransactionQuota } from "../_lib/quota.js"
 import { logAudit } from "../_lib/audit.js"
 
 const PAGE_SIZE = 20
+
+function balanceDelta(type: string, amount: unknown): number {
+  const n = Number(amount)
+  return type === "incoming" ? n : -n
+}
 
 function pickOrder(sort: string | undefined) {
   switch (sort) {
@@ -26,11 +31,17 @@ const txFields = {
   id: transactions.id,
   clientId: transactions.clientId,
   clientName: clients.name,
+  wealthAccountId: transactions.wealthAccountId,
+  wealthAccountName: wealthAccounts.nickname,
+  wealthAccountBankName: wealthAccounts.bankName,
+  wealthAccountType: wealthAccounts.type,
+  wealthAccountIcon: wealthAccounts.icon,
   type: transactions.type,
   amount: transactions.amount,
   description: transactions.description,
   category: transactions.category,
   date: transactions.date,
+  isSystem: transactions.isSystem,
   createdAt: transactions.createdAt,
   updatedAt: transactions.updatedAt,
   // Drives the list paperclip badge.
@@ -67,6 +78,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .select(txFields)
         .from(transactions)
         .innerJoin(clients, eq(transactions.clientId, clients.id))
+        .leftJoin(wealthAccounts, eq(transactions.wealthAccountId, wealthAccounts.id))
         .where(and(eq(transactions.clientId, clientId), isNull(transactions.deletedAt)))
         .orderBy(...orderBy)
       return res.json(rows.map(serialize))
@@ -128,6 +140,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           .select(txFields)
           .from(transactions)
           .innerJoin(clients, eq(transactions.clientId, clients.id))
+          .leftJoin(wealthAccounts, eq(transactions.wealthAccountId, wealthAccounts.id))
           .where(whereClause)
           .orderBy(...orderBy)
           .limit(PAGE_SIZE)
@@ -155,6 +168,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .select(txFields)
       .from(transactions)
       .innerJoin(clients, eq(transactions.clientId, clients.id))
+      .leftJoin(wealthAccounts, eq(transactions.wealthAccountId, wealthAccounts.id))
       .where(whereClause)
       .orderBy(...orderBy)
 
@@ -170,13 +184,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method === "POST") {
     if (!canWrite(role)) return res.status(403).json({ error: "Forbidden" })
-    const { client_id, type, amount, description, category, date } = req.body as {
+    const { client_id, type, amount, description, category, date, wealth_account_id, is_system } = req.body as {
       client_id: string; type: string; amount: number
-      description?: string; category?: string; date?: string
+      description?: string; category?: string; date?: string; wealth_account_id?: string; is_system?: boolean
     }
 
     if (!amount || isNaN(Number(amount))) return res.status(400).json({ error: "amount is required" })
     if (!["incoming", "outgoing"].includes(type)) return res.status(400).json({ error: "type must be incoming or outgoing" })
+    if (!wealth_account_id) return res.status(400).json({ error: "wealth_account_id is required" })
+    const [account] = await db
+      .select()
+      .from(wealthAccounts)
+      .where(and(eq(wealthAccounts.id, wealth_account_id), eq(wealthAccounts.organizationId, orgId), isNull(wealthAccounts.archivedAt)))
+    if (!account) return res.status(400).json({ error: "Select an active bank or cash account" })
 
     // Personal accounts have a single hidden default client that every
     // transaction anchors to; the client picker isn't shown, so resolve it here.
@@ -201,15 +221,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .insert(transactions)
       .values({
         clientId,
+        wealthAccountId: wealth_account_id,
         type,
         amount: String(amount),
         description: description ?? "",
         category: category ?? "",
         date: date ?? today,
+        isSystem: !!is_system,
         createdBy: userId,
         updatedBy: userId,
       })
       .returning()
+    const nextBalance = Number(account.currentBalance) + balanceDelta(type, amount)
+    await db
+      .update(wealthAccounts)
+      .set({ currentBalance: String(nextBalance), updatedBy: userId, updatedAt: new Date() })
+      .where(eq(wealthAccounts.id, wealth_account_id))
     await logAudit({ orgId, entityType: "transaction", entityId: row.id, action: "create", actorId: userId })
     return res.status(201).json(serialize(row))
   }
