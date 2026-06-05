@@ -169,6 +169,13 @@
       "when": 1780517661190,
       "tag": "0023_dear_jigsaw",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1780624800000,
+      "tag": "0024_wealth_accounts",
+      "breakpoints": true
     }
   ]
 }
