@@ -103,16 +103,36 @@ export const categories = pgTable("categories", {
   orgNameTypeUnique: uniqueIndex("categories_org_name_type_unique").on(table.organizationId, table.type, table.name),
 }))
 
+export const wealthAccounts = pgTable("wealth_accounts", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  type: text("type").notNull(), // bank | cash
+  bankName: text("bank_name").notNull().default(""),
+  nickname: text("nickname").notNull().default(""),
+  openingBalance: numeric("opening_balance", { precision: 12, scale: 2 }).notNull().default("0"),
+  currentBalance: numeric("current_balance", { precision: 12, scale: 2 }).notNull().default("0"),
+  icon: text("icon").notNull().default("bank"),
+  archivedAt: timestamp("archived_at"),
+  createdBy: text("created_by"),
+  updatedBy: text("updated_by"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  orgIdx: index("wealth_accounts_org_idx").on(table.organizationId),
+}))
+
 export const transactions = pgTable("transactions", {
   id: uuid("id").primaryKey().defaultRandom(),
   clientId: uuid("client_id")
     .notNull()
     .references(() => clients.id, { onDelete: "cascade" }),
+  wealthAccountId: uuid("wealth_account_id").references(() => wealthAccounts.id, { onDelete: "set null" }),
   type: text("type").notNull(),
   amount: numeric("amount", { precision: 12, scale: 2 }).notNull().default("0"),
   description: text("description").default(""),
   category: text("category").default(""),
   date: date("date").notNull().defaultNow(),
+  isSystem: boolean("is_system").notNull().default(false),
   // Soft-delete: deleted transactions move to Trash (restore/purge) instead of
   // disappearing. All financial aggregates must exclude rows where this is set.
   deletedAt: timestamp("deleted_at"),

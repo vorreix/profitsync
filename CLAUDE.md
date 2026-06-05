@@ -16,9 +16,10 @@ npm run test:ci      # Vitest single-run (CI)
 npm run db:generate  # Generate Drizzle migration SQL from schema changes
 npm run db:migrate   # Run pending Drizzle migrations (node scripts/db-migrate.mjs)
 npm run db:push      # Push schema directly to Neon (dev shortcut — skips migrations)
+npm run i18n:check   # Verify every locale has all en.json keys (placeholders intact)
 ```
 
-There is **no** lint-on-commit hook. TypeScript (`tsc --noEmit`) and ESLint are the primary static analysis tools. Test coverage is partial — unit tests live in `src/lib/*.test.ts`.
+A husky **pre-commit hook** (`.husky/pre-commit`, installed via the `prepare` script on `npm install`) gates every commit with: `i18n:check` → `lint` → `typecheck` → `test:ci`. TypeScript (`tsc --noEmit`) and ESLint are the primary static analysis tools. Test coverage is partial — unit tests live in `src/lib/*.test.ts`.
 
 ## Environment
 
@@ -200,7 +201,9 @@ Dodo Payments (Merchant of Record) is the payment provider. Subscriptions use ho
 
 8 supported locales: `en`, `it`, `de`, `hi`, `ml`, `ta`, `te`, `ar`. Arabic (`ar`) is RTL — the i18n setup syncs `<html dir>` on language change. English is the fallback for missing keys.
 
-Language is stored in `localStorage` under key `profitsync-language`. Use the `useTranslation()` hook from `react-i18next` for all user-visible strings. Add new keys to `en.json` first, then propagate to other locale files.
+Language is stored in `localStorage` under key `profitsync-language`. Use the `useTranslation()` hook from `react-i18next` for all user-visible strings. Add new keys to `en.json` first, then propagate to **every** other locale file.
+
+`en.json` is the source of truth for which keys must exist. `npm run i18n:check` (`scripts/check-i18n.mjs`, run by the pre-commit hook) fails if any locale is missing a key, has an empty value, or drops an interpolation `{{placeholder}}` — so a new English key cannot be committed until all 7 other locales are translated. The `_one`/`_zero`/`_two` plural variants are allowed to omit `{{count}}` (idiomatic in some languages). For bulk backfills, `scripts/i18n-merge.mjs` deep-merges a `{ lang: { "dotted.key": value } }` map into the locale files (additive, preserves order).
 
 ### UI components
 

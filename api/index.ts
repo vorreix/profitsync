@@ -27,6 +27,8 @@ import analytics from "./_routes/analytics.js"
 import audit from "./_routes/audit.js"
 import categories from "./_routes/categories.js"
 import categoryById from "./_routes/categories/[id].js"
+import wealthAccounts from "./_routes/wealth/accounts.js"
+import wealthAccountById from "./_routes/wealth/accounts/[id].js"
 import quotations from "./_routes/quotations.js"
 import quotationsBulkDelete from "./_routes/quotations/bulk-delete.js"
 import quotationById from "./_routes/quotations/[id].js"
@@ -100,6 +102,10 @@ const routes: RoutePattern<ApiHandler>[] = [
   { segments: ["audit"], handler: audit },
   { segments: ["categories"], handler: categories },
   { segments: ["categories", ":id"], handler: categoryById },
+  { segments: ["wealth", "accounts"], handler: wealthAccounts },
+  { segments: ["wealth", "accounts", ":id"], handler: wealthAccountById },
+  { segments: ["wealth-accounts"], handler: wealthAccounts },
+  { segments: ["wealth-accounts", ":id"], handler: wealthAccountById },
 
   { segments: ["transactions"], handler: transactions },
   { segments: ["transactions", "bulk-delete"], handler: transactionsBulkDelete },

@@ -74,14 +74,35 @@ export type Transaction = {
   id: string
   client_id: string
   client_name?: string
+  wealth_account_id?: string | null
+  wealth_account_name?: string | null
+  wealth_account_bank_name?: string | null
+  wealth_account_type?: "bank" | "cash" | null
+  wealth_account_icon?: string | null
   type: "incoming" | "outgoing"
   amount: number
   description: string
   category: string
   date: string
+  is_system?: boolean
   created_at: string
   updated_at: string
   attachment_count?: number
+}
+
+export type WealthAccount = {
+  id: string
+  organization_id: string
+  type: "bank" | "cash"
+  bank_name: string
+  nickname: string
+  opening_balance: number
+  current_balance: number
+  icon: string
+  archived_at: string | null
+  created_at: string
+  updated_at: string
+  transaction_count?: number
 }
 
 export type Quotation = {
@@ -219,4 +240,3 @@ export type BlogPost = {
 
 // Lightweight shape returned by the public list endpoint (no `content`).
 export type BlogPostSummary = Omit<BlogPost, "content" | "author_user_id" | "seo_title" | "seo_description">
-
