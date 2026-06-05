@@ -1,0 +1,22 @@
+# ProfitSync pre-commit gate — mirrors `make pr` and the CI workflow:
+#   lint -> type check -> tests
+#
+# This hook is installed automatically when you run `npm install`
+# (via the "prepare": "husky" script in package.json). No manual setup needed.
+
+# Force dependencies to be installed before committing.
+if [ ! -d node_modules ]; then
+  echo "✗ node_modules is missing — run \`npm install\` before committing."
+  exit 1
+fi
+
+echo "→ lint..."
+npm run lint || { echo "✗ lint failed"; exit 1; }
+
+echo "→ type check..."
+npm run typecheck || { echo "✗ type check failed"; exit 1; }
+
+echo "→ tests..."
+npm run test:ci || { echo "✗ tests failed"; exit 1; }
+
+echo "✓ all checks passed"
