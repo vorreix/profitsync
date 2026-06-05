@@ -40,6 +40,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const bankName = body.bankName ?? body.bank_name
     const currentBalance = body.currentBalance ?? body.current_balance
 
+    // Cash in Hand is the default account and must always exist — it can be
+    // renamed/re-iconed and have its balance adjusted, but never archived.
+    if (archive && account.type === "cash") {
+      return res.status(400).json({ error: "Cash in Hand can't be archived" })
+    }
+
     if (account.type === "bank" && bankName !== undefined && !bankName.trim()) {
       return res.status(400).json({ error: "bankName is required" })
     }
@@ -118,6 +124,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method === "DELETE") {
     if (!canWrite(role)) return res.status(403).json({ error: "Forbidden" })
+    // Cash in Hand is permanent — never deleted or archived.
+    if (account.type === "cash") {
+      return res.status(400).json({ error: "Cash in Hand can't be removed" })
+    }
     const [{ total }] = await db
       .select({ total: count() })
       .from(transactions)

@@ -13,6 +13,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node scripts/db-migrate.mjs",
     "db:push": "drizzle-kit push",
+    "i18n:check": "node scripts/check-i18n.mjs",
     "make-admin": "node scripts/make-admin.mjs",
     "lint": "eslint .",
     "test": "vitest",
@@ -21,6 +22,7 @@
   },
   "dependencies": {
     "@clerk/clerk-react": "^5.0.0",
+    "@formkit/auto-animate": "^0.9.0",
     "@hookform/resolvers": "^5.2.2",
     "@neondatabase/serverless": "^0.10.4",
     "@tailwindcss/vite": "^4.2.1",
