@@ -17,9 +17,14 @@ npm run db:generate  # Generate Drizzle migration SQL from schema changes
 npm run db:migrate   # Run pending Drizzle migrations (node scripts/db-migrate.mjs)
 npm run db:push      # Push schema directly to Neon (dev shortcut — skips migrations)
 npm run i18n:check   # Verify every locale has all en.json keys (placeholders intact)
+
+npx vitest run src/lib/foo.test.ts        # Run a single test file
+npx vitest run -t "name of the test"      # Run tests matching a name
 ```
 
 A husky **pre-commit hook** (`.husky/pre-commit`, installed via the `prepare` script on `npm install`) gates every commit with: `i18n:check` → `lint` → `typecheck` → `test:ci`. TypeScript (`tsc --noEmit`) and ESLint are the primary static analysis tools. Test coverage is partial — unit tests live in `src/lib/*.test.ts`.
+
+**CI mirrors the hook.** `.github/workflows/pr.yml` runs the same gate (`i18n:check` → `lint` → `typecheck` → `test:ci`) on every PR and on pushes to `main`/`dev`, so commits made with `--no-verify` (or by contributors who never ran `npm install`) are still caught server-side. `.github/CODEOWNERS` assigns review and `.github/PULL_REQUEST_TEMPLATE.md` is the PR scaffold. Keep the hook and the workflow in sync when changing the gate.
 
 ## Environment
 
