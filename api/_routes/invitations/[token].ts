@@ -84,19 +84,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     })
   }
 
-  // Make sure the accepting user has a profile row (auto-create if not)
+  // Switch the accepting user into the joined org so they land on its dashboard,
+  // and stamp onboarded_at so a brand-new invitee (who has no personal-account
+  // onboarding yet) isn't bounced to /onboarding before they ever see the
+  // workspace they just joined.
   const [profile] = await db.select().from(userProfiles).where(eq(userProfiles.id, userId))
+  const now = new Date()
   if (!profile) {
     await db.insert(userProfiles).values({
       id: userId,
       email: userEmail,
       fullName: clerkUser.fullName ?? "",
       currentOrganizationId: invitation.organizationId,
+      onboardedAt: now,
     })
-  } else if (!profile.currentOrganizationId) {
+  } else {
     await db
       .update(userProfiles)
-      .set({ currentOrganizationId: invitation.organizationId, updatedAt: new Date() })
+      .set({
+        currentOrganizationId: invitation.organizationId,
+        onboardedAt: profile.onboardedAt ?? now,
+        updatedAt: now,
+      })
       .where(eq(userProfiles.id, userId))
   }
 

@@ -173,8 +173,15 @@
     {
       "idx": 24,
       "version": "7",
-      "when": 1780624800000,
-      "tag": "0024_wealth_accounts",
+      "when": 1780529086838,
+      "tag": "0024_even_malcolm_colcord",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1780659952903,
+      "tag": "0025_wealth_accounts",
       "breakpoints": true
     }
   ]

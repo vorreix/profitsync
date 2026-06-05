@@ -26,7 +26,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Separator } from "@/components/ui/separator"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { toast } from "sonner"
 import { Plus, ArrowUpRight, ArrowDownRight, DollarSign, Pencil, Trash2, Paperclip, Download, X, Eye, ChevronsUpDown, Check, Tag, CheckSquare } from "lucide-react"
 import { ExpandableSearch } from "@/components/ExpandableSearch"
@@ -141,7 +140,10 @@ function ClientCombobox({ clients, value, onChange }: {
           <ChevronsUpDown className="size-4 ml-2 shrink-0 text-muted-foreground" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+      <PopoverContent
+        className="max-h-[min(20rem,var(--radix-popover-content-available-height,20rem))] w-[--radix-popover-trigger-width] overflow-hidden p-0"
+        align="start"
+      >
         <Command>
           <CommandInput placeholder={t("searchClients")} />
           <CommandList>
@@ -229,8 +231,11 @@ function CategoryCombobox({ categories, value, onChangeCategories, onChange }: {
           <ChevronsUpDown className="size-4 ml-2 shrink-0 text-muted-foreground" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
-        <div className="p-2 border-b">
+      <PopoverContent
+        className="flex max-h-[min(20rem,var(--radix-popover-content-available-height,20rem))] w-[--radix-popover-trigger-width] flex-col overflow-hidden p-0"
+        align="start"
+      >
+        <div className="p-2 border-b shrink-0">
           <Input
             placeholder={t("searchOrTypeToAdd")}
             value={search}
@@ -239,7 +244,7 @@ function CategoryCombobox({ categories, value, onChangeCategories, onChange }: {
             onKeyDown={(e) => { if (e.key === "Enter" && canAdd) addCategory() }}
           />
         </div>
-        <ScrollArea className="max-h-52">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
           {filtered.length === 0 && !canAdd && (
             <p className="text-xs text-muted-foreground text-center py-4">{t("noCategoriesFound")}</p>
           )}
@@ -303,7 +308,7 @@ function CategoryCombobox({ categories, value, onChangeCategories, onChange }: {
               {t("addCategory", { category: search.trim() })}
             </button>
           )}
-        </ScrollArea>
+        </div>
       </PopoverContent>
     </Popover>
   )
@@ -549,6 +554,20 @@ export function TransactionsPage() {
     return () => clearTimeout(timer)
   }, [search, tab, sort, categoryFilter, dateFrom, dateTo, fetchPage1])
 
+  const openAddDialog = useCallback(() => {
+    const last = loadLastTx()
+    const firstAccount = accounts[0]?.id ?? ""
+    setForm({
+      ...defaultForm(),
+      client_id: last.client_id ?? "",
+      wealth_account_id: firstAccount,
+      type: last.type ?? "incoming",
+      category: last.category ?? "",
+    })
+    setPendingFiles([])
+    setAddOpen(true)
+  }, [accounts])
+
   useEffect(() => {
     if (searchParams.get("new") === "1") {
       openAddDialog()
@@ -556,7 +575,7 @@ export function TransactionsPage() {
       next.delete("new")
       setSearchParams(next, { replace: true })
     }
-  }, [searchParams, setSearchParams])
+  }, [searchParams, setSearchParams, openAddDialog])
 
   // URL-driven view modal: ?view=<txId> opens that transaction (deep-link from a
   // click, the client media hub, or a pasted URL). The param stays in the URL
@@ -615,20 +634,6 @@ export function TransactionsPage() {
 
   // Open the add dialog pre-filled with the last-used client/type/category
   // (date always today), so repeat entry is fast.
-  function openAddDialog() {
-    const last = loadLastTx()
-    const firstAccount = accounts[0]?.id ?? ""
-    setForm({
-      ...defaultForm(),
-      client_id: last.client_id ?? "",
-      wealth_account_id: firstAccount,
-      type: last.type ?? "incoming",
-      category: last.category ?? "",
-    })
-    setPendingFiles([])
-    setAddOpen(true)
-  }
-
   async function handleAdd() {
     if (!isPersonal && !form.client_id) { toast.error(t("clientIsRequired")); return }
     if (!form.wealth_account_id) { toast.error(t("accountIsRequired")); return }

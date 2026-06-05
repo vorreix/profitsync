@@ -325,6 +325,9 @@ export const payoutRequests = pgTable("payout_requests", {
 
 export const appAdmins = pgTable("app_admins", {
   userId: text("user_id").primaryKey(),
+  // Platform-admin role → capability set (see src/lib/admin-roles.ts). Defaults
+  // to super_admin so every pre-existing admin keeps full access on migration.
+  role: text("role").notNull().default("super_admin"), // super_admin | editor | viewer | blog_writer
   createdAt: timestamp("created_at").defaultNow(),
 })
 

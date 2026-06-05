@@ -29,3 +29,4 @@ dist-ssr
 .playwright-mcp
 .mcp.json
 
+task*.png

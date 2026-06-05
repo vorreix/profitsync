@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { and, count, desc, eq, isNull, sql } from "drizzle-orm"
 import { db, serialize } from "../../../src/lib/db/index.js"
-import { clients, transactions, wealthAccounts } from "../../../src/lib/db/schema.js"
+import { transactions, wealthAccounts } from "../../../src/lib/db/schema.js"
 import { canWrite, ensureDefaultClient, requireAuth } from "../../_lib/auth.js"
 import { logAudit } from "../../_lib/audit.js"
 

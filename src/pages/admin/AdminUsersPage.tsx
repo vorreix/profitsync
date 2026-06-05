@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { toast } from "sonner"
 import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api"
+import { useAdmin } from "@/lib/admin-context"
 import { isPaidPlanKey } from "@/lib/types"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -66,6 +67,11 @@ export function AdminUsersPage() {
   const { getToken } = useAuth()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
+
+  // Promoting/demoting admins and deleting accounts is admin-management — gated to
+  // roles with that capability (the API enforces it too).
+  const { can } = useAdmin()
+  const canManageAdmins = can("manage_admins")
 
   const [data, setData] = useState<AdminUser[]>([])
   const [total, setTotal] = useState(0)
@@ -311,15 +317,17 @@ export function AdminUsersPage() {
                       <Button size="sm" variant="ghost" onClick={() => openDetail(u)}>
                         Details
                       </Button>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="hover:text-destructive ml-1"
-                        onClick={() => setDeleteTarget(u)}
-                        aria-label="Delete user"
-                      >
-                        <Trash2 className="size-3.5" />
-                      </Button>
+                      {canManageAdmins && (
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="hover:text-destructive ml-1"
+                          onClick={() => setDeleteTarget(u)}
+                          aria-label="Delete user"
+                        >
+                          <Trash2 className="size-3.5" />
+                        </Button>
+                      )}
                     </td>
                   </tr>
                 ))
@@ -420,7 +428,7 @@ export function AdminUsersPage() {
                     Ban
                   </Button>
                 )}
-                {detail.user.is_admin ? (
+                {canManageAdmins && (detail.user.is_admin ? (
                   <Button size="sm" variant="outline" onClick={() => actOn(detail.user, "demote")} disabled={busy === detail.user.id + "demote"}>
                     Demote from admin
                   </Button>
@@ -428,10 +436,12 @@ export function AdminUsersPage() {
                   <Button size="sm" variant="outline" onClick={() => actOn(detail.user, "promote")} disabled={busy === detail.user.id + "promote"}>
                     <Crown className="size-3.5 mr-1" /> Promote to admin
                   </Button>
+                ))}
+                {canManageAdmins && (
+                  <Button size="sm" variant="destructive" className="ml-auto" onClick={() => setDeleteTarget(detail.user)}>
+                    <Trash2 className="size-3.5 mr-1" /> Delete user
+                  </Button>
                 )}
-                <Button size="sm" variant="destructive" className="ml-auto" onClick={() => setDeleteTarget(detail.user)}>
-                  <Trash2 className="size-3.5 mr-1" /> Delete user
-                </Button>
               </div>
             </div>
           )}
