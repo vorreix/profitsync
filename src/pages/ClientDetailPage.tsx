@@ -506,7 +506,7 @@ export function ClientDetailPage() {
               onAddAccount={() => { setTxDialogOpen(false); navigate("/wealth") }}
               loading={accountsLoading}
             />
-            <div className="space-y-1.5"><Label htmlFor="description">Description</Label><Input id="description" placeholder={txForm.type === "incoming" ? "Invoice #1234" : "Hosting fee"} value={txForm.description} onChange={(e) => setTxForm((f) => ({ ...f, description: e.target.value }))} /></div>
+            <div className="space-y-1.5"><Label htmlFor="description">Description</Label><Textarea id="description" rows={2} className="resize-none" placeholder={txForm.type === "incoming" ? "Invoice #1234" : "Hosting fee"} value={txForm.description} onChange={(e) => setTxForm((f) => ({ ...f, description: e.target.value }))} /></div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label>Category</Label>
@@ -577,7 +577,7 @@ export function ClientDetailPage() {
                 onAddAccount={() => { setEditTxDialogOpen(false); navigate("/wealth") }}
                 loading={accountsLoading}
               />
-              <div className="space-y-1.5"><Label htmlFor="edit-description">Description</Label><Input id="edit-description" placeholder={editTxForm.type === "incoming" ? "Invoice #1234" : "Hosting fee"} value={editTxForm.description} onChange={(e) => setEditTxForm((f) => f ? { ...f, description: e.target.value } : null)} /></div>
+              <div className="space-y-1.5"><Label htmlFor="edit-description">Description</Label><Textarea id="edit-description" rows={2} className="resize-none" placeholder={editTxForm.type === "incoming" ? "Invoice #1234" : "Hosting fee"} value={editTxForm.description} onChange={(e) => setEditTxForm((f) => f ? { ...f, description: e.target.value } : null)} /></div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label>Category</Label>
