@@ -1,11 +1,39 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { and, count, desc, eq, isNull, sql } from "drizzle-orm"
+import { and, asc, count, eq, isNull, sql } from "drizzle-orm"
 import { db, serialize } from "../../../src/lib/db/index.js"
 import { transactions, wealthAccounts } from "../../../src/lib/db/schema.js"
 import { canWrite, ensureDefaultClient, requireAuth } from "../../_lib/auth.js"
 import { logAudit } from "../../_lib/audit.js"
 
 const MAX_BANK_ACCOUNTS = 5
+
+// "Cash in Hand" is the default account every workspace always has. We lazily
+// provision it on first read so existing orgs (created before wealth tracking)
+// get one too. The partial unique index `wealth_accounts_one_active_cash_idx`
+// guarantees at most one active cash account per org, so a concurrent insert
+// from a parallel request simply errors and is ignored.
+async function ensureCashAccount(orgId: string, userId: string) {
+  const [existing] = await db
+    .select({ id: wealthAccounts.id })
+    .from(wealthAccounts)
+    .where(and(eq(wealthAccounts.organizationId, orgId), eq(wealthAccounts.type, "cash"), isNull(wealthAccounts.archivedAt)))
+  if (existing) return
+  try {
+    await db.insert(wealthAccounts).values({
+      organizationId: orgId,
+      type: "cash",
+      bankName: "Cash in Hand",
+      nickname: "",
+      openingBalance: "0",
+      currentBalance: "0",
+      icon: "wallet",
+      createdBy: userId,
+      updatedBy: userId,
+    })
+  } catch {
+    // Unique-index race: another request created the cash account first.
+  }
+}
 
 function money(value: unknown): number {
   const n = Number(value)
@@ -56,6 +84,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { userId, orgId, role } = ctx
 
   if (req.method === "GET") {
+    await ensureCashAccount(orgId, userId)
     const rows = await db
       .select({
         id: wealthAccounts.id,
@@ -75,7 +104,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .leftJoin(transactions, and(eq(transactions.wealthAccountId, wealthAccounts.id), isNull(transactions.deletedAt)))
       .where(eq(wealthAccounts.organizationId, orgId))
       .groupBy(wealthAccounts.id)
-      .orderBy(sql`${wealthAccounts.archivedAt} is not null`, desc(wealthAccounts.createdAt))
+      // Active before archived; Cash in Hand always first; banks oldest-first so
+      // the order is stable as new ones are added.
+      .orderBy(
+        sql`${wealthAccounts.archivedAt} is not null`,
+        sql`${wealthAccounts.type} = 'cash' desc`,
+        asc(wealthAccounts.createdAt),
+      )
 
     return res.json(rows.map(serialize))
   }

@@ -54,9 +54,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { userId, orgId, role } = ctx
 
   if (req.method === "GET") {
-    const { clientId, search, type, page, sort, limit, category, from, to, includeClosed } = req.query as {
-      clientId?: string; search?: string; type?: string; page?: string; sort?: string; limit?: string; category?: string; from?: string; to?: string; includeClosed?: string
+    const { clientId, wealthAccountId, search, type, page, sort, limit, category, from, to, includeClosed } = req.query as {
+      clientId?: string; wealthAccountId?: string; search?: string; type?: string; page?: string; sort?: string; limit?: string; category?: string; from?: string; to?: string; includeClosed?: string
     }
+
+    // Scope to a single wealth account (drives the account-detail page).
+    const accountFilter = wealthAccountId ? eq(transactions.wealthAccountId, wealthAccountId) : undefined
 
     const isDate = (v: string | undefined): v is string => !!v && /^\d{4}-\d{2}-\d{2}$/.test(v)
     const dateFromFilter = isDate(from) ? gte(transactions.date, from) : undefined
@@ -79,7 +82,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .from(transactions)
         .innerJoin(clients, eq(transactions.clientId, clients.id))
         .leftJoin(wealthAccounts, eq(transactions.wealthAccountId, wealthAccounts.id))
-        .where(and(eq(transactions.clientId, clientId), isNull(transactions.deletedAt)))
+        .where(and(eq(transactions.clientId, clientId), isNull(transactions.deletedAt), accountFilter))
         .orderBy(...orderBy)
       return res.json(rows.map(serialize))
     }
@@ -105,6 +108,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       isNull(clients.deletedAt),
       isNull(transactions.deletedAt),
       closedClientFilter,
+      accountFilter,
       searchFilter,
       typeFilter,
       categoryFilter,
@@ -123,6 +127,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         isNull(clients.deletedAt),
         isNull(transactions.deletedAt),
         closedClientFilter,
+        accountFilter,
         searchFilter,
         categoryFilter,
         dateFromFilter,

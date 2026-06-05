@@ -10,6 +10,9 @@ if [ ! -d node_modules ]; then
   exit 1
 fi
 
+echo "→ i18n parity (all locales must match en.json)..."
+npm run i18n:check || { echo "✗ i18n parity check failed — add the missing translations to every locale in src/lib/i18n/locales/"; exit 1; }
+
 echo "→ lint..."
 npm run lint || { echo "✗ lint failed"; exit 1; }
 
