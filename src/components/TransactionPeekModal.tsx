@@ -70,6 +70,14 @@ export function TransactionPeekModal({
                 <Badge variant="outline">{tx.category}</Badge>
               </div>
             )}
+            {(tx.tags ?? []).length > 0 && (
+              <div className="col-span-2">
+                <p className="text-xs text-muted-foreground">{t("transactions.tags", { defaultValue: "Tags" })}</p>
+                <div className="mt-1 flex flex-wrap gap-1.5">
+                  {(tx.tags ?? []).map((tag) => <Badge key={tag} variant="secondary">{tag}</Badge>)}
+                </div>
+              </div>
+            )}
             {showClient && tx.client_name && (
               <div>
                 <p className="text-xs text-muted-foreground">{t("filters.client")}</p>

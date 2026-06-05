@@ -83,6 +83,7 @@ export type Transaction = {
   amount: number
   description: string
   category: string
+  tags?: string[]
   date: string
   is_system?: boolean
   created_at: string

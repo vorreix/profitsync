@@ -47,6 +47,8 @@ type TxForm = {
   amount: string
   description: string
   category: string
+  tags: string[]
+  tag_draft: string
   date: string
 }
 
@@ -59,6 +61,8 @@ const defaultForm = (): TxForm => ({
   amount: "",
   description: "",
   category: "",
+  tags: [],
+  tag_draft: "",
   date: new Date().toISOString().split("T")[0],
 })
 
@@ -70,6 +74,8 @@ const formatFileSize = (bytes: number) => {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
+
+const txTags = (tx: Pick<Transaction, "tags"> | null | undefined) => Array.isArray(tx?.tags) ? tx.tags : []
 
 function AccountCombobox({ accounts, value, onChange }: {
   accounts: WealthAccount[]
@@ -309,10 +315,101 @@ function CategoryCombobox({ categories, value, onChangeCategories, onChange }: {
   )
 }
 
+function normalizeTag(raw: string) {
+  const text = raw.trim().replace(/^#+/, "")
+  if (!text) return ""
+  return `#${text.replace(/\s+/g, "-").slice(0, 40)}`
+}
+
+function parseTagDraft(raw: string) {
+  return raw
+    .split(/[,\s]+/)
+    .map(normalizeTag)
+    .filter(Boolean)
+}
+
+function mergeTags(tags: string[], draft: string) {
+  const next: string[] = []
+  const seen = new Set<string>()
+  for (const tag of [...tags, ...parseTagDraft(draft)]) {
+    if (seen.has(tag.toLowerCase())) continue
+    seen.add(tag.toLowerCase())
+    next.push(tag)
+  }
+  return next
+}
+
+function TagsInput({ value, draft, onDraftChange, suggestions, onChange }: {
+  value: string[]
+  draft: string
+  onDraftChange: (draft: string) => void
+  suggestions: string[]
+  onChange: (tags: string[]) => void
+}) {
+  const { t } = useTranslation("transactions")
+
+  const addTags = useCallback((raw: string) => {
+    const next = mergeTags(value, raw)
+    if (next.length !== value.length) onChange(next)
+    onDraftChange("")
+  }, [onChange, onDraftChange, value])
+
+  const removeTag = (tag: string) => onChange(value.filter((existing) => existing !== tag))
+  const visibleSuggestions = suggestions
+    .filter((tag) => !value.some((existing) => existing.toLowerCase() === tag.toLowerCase()))
+    .filter((tag) => !draft.trim() || tag.toLowerCase().includes(draft.trim().replace(/^#+/, "").toLowerCase()))
+    .slice(0, 5)
+
+  return (
+    <div className="space-y-2">
+      <div className="flex min-h-10 flex-wrap items-center gap-1.5 rounded-md border bg-background px-2 py-1.5 focus-within:ring-2 focus-within:ring-ring">
+        {value.map((tag) => (
+          <Badge key={tag} variant="secondary" className="gap-1 py-1">
+            {tag}
+            <button type="button" onClick={() => removeTag(tag)} className="rounded-full hover:text-destructive" aria-label={t("removeTag", { tag })}>
+              <X className="size-3" />
+            </button>
+          </Badge>
+        ))}
+        <input
+          value={draft}
+          onChange={(e) => onDraftChange(e.target.value)}
+          onBlur={() => addTags(draft)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === ",") {
+              e.preventDefault()
+              addTags(draft)
+            } else if (e.key === "Backspace" && !draft && value.length > 0) {
+              onChange(value.slice(0, -1))
+            }
+          }}
+          placeholder={value.length === 0 ? t("tagsPlaceholder") : ""}
+          className="min-w-0 flex-1 bg-transparent px-1 py-1 text-sm outline-none placeholder:text-muted-foreground"
+        />
+      </div>
+      {visibleSuggestions.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {visibleSuggestions.map((tag) => (
+            <button
+              key={tag}
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => addTags(tag)}
+              className="rounded-full border px-2 py-0.5 text-xs text-muted-foreground hover:border-primary/60 hover:text-foreground"
+            >
+              {tag}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Transaction form fields ──────────────────────────────────────────────────
 
 function TxFormFields({
-  f, onChange, showClient, clients, accounts, categories, onChangeCats, onAddAccount,
+  f, onChange, showClient, clients, accounts, categories, tagSuggestions, onChangeCats, onAddAccount,
 }: {
   f: TxForm
   onChange: (patch: Partial<TxForm>) => void
@@ -320,6 +417,7 @@ function TxFormFields({
   clients: Client[]
   accounts: WealthAccount[]
   categories: { incoming: string[]; outgoing: string[] }
+  tagSuggestions: string[]
   onChangeCats: (type: "incoming" | "outgoing", cats: string[]) => void
   onAddAccount: () => void
 }) {
@@ -378,6 +476,16 @@ function TxFormFields({
           className="resize-none"
         />
       </div>
+      <div className="space-y-1.5">
+        <Label>{t("tags")}</Label>
+        <TagsInput
+          value={f.tags}
+          draft={f.tag_draft}
+          suggestions={tagSuggestions}
+          onDraftChange={(tag_draft) => onChange({ tag_draft })}
+          onChange={(tags) => onChange({ tags })}
+        />
+      </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="space-y-1.5">
           <Label>{t("category")}</Label>
@@ -428,6 +536,7 @@ export function TransactionsPage() {
   const [tab, setTab] = useState("all")
   const [sort, setSort] = useState("date_desc")
   const [categoryFilter, setCategoryFilter] = useState("all")
+  const [tagFilter, setTagFilter] = useState("all")
   const [dateFrom, setDateFrom] = useState("")
   const [dateTo, setDateTo] = useState("")
   const [summary, setSummary] = useState<{ incoming: number; outgoing: number }>({ incoming: 0, outgoing: 0 })
@@ -439,15 +548,18 @@ export function TransactionsPage() {
   sortRef.current = sort
   const categoryRef = useRef(categoryFilter)
   categoryRef.current = categoryFilter
+  const tagRef = useRef(tagFilter)
+  tagRef.current = tagFilter
   const dateFromRef = useRef(dateFrom)
   dateFromRef.current = dateFrom
   const dateToRef = useRef(dateTo)
   dateToRef.current = dateTo
   const appliedFilterCount =
-    (tab !== "all" ? 1 : 0) + (categoryFilter !== "all" ? 1 : 0) + (dateFrom || dateTo ? 1 : 0)
+    (tab !== "all" ? 1 : 0) + (categoryFilter !== "all" ? 1 : 0) + (tagFilter !== "all" ? 1 : 0) + (dateFrom || dateTo ? 1 : 0)
   const clearFilters = () => {
     setTab("all")
     setCategoryFilter("all")
+    setTagFilter("all")
     setSort("date_desc")
     setDateFrom("")
     setDateTo("")
@@ -506,12 +618,13 @@ export function TransactionsPage() {
   const addFileInputRef = useRef<HTMLInputElement>(null)
 
   const buildParams = useCallback(
-    (pageNum: number, s: string, t: string, srt: string, cat: string, from: string, to: string) => {
+    (pageNum: number, s: string, t: string, srt: string, cat: string, tag: string, from: string, to: string) => {
       const params = new URLSearchParams({ page: String(pageNum) })
       if (s.trim()) params.set("search", s.trim())
       if (t !== "all") params.set("type", t)
       if (srt) params.set("sort", srt)
       if (cat && cat !== "all") params.set("category", cat)
+      if (tag && tag !== "all") params.set("tag", tag)
       if (from) params.set("from", from)
       if (to) params.set("to", to)
       return params.toString()
@@ -525,7 +638,7 @@ export function TransactionsPage() {
     setLoading(true)
     try {
       const [result, cls, accountList] = await Promise.all([
-        apiGet<PaginatedResponse<Transaction>>(`/api/transactions?${buildParams(1, searchRef.current, tabRef.current, sortRef.current, categoryRef.current, dateFromRef.current, dateToRef.current)}`, token),
+        apiGet<PaginatedResponse<Transaction>>(`/api/transactions?${buildParams(1, searchRef.current, tabRef.current, sortRef.current, categoryRef.current, tagRef.current, dateFromRef.current, dateToRef.current)}`, token),
         apiGet<{ data: Client[]; total: number } | Client[]>("/api/clients?page=1", token),
         apiGet<WealthAccount[]>("/api/wealth/accounts", token),
       ])
@@ -547,7 +660,7 @@ export function TransactionsPage() {
   useEffect(() => {
     const timer = setTimeout(() => { fetchPage1() }, search === "" ? 0 : 300)
     return () => clearTimeout(timer)
-  }, [search, tab, sort, categoryFilter, dateFrom, dateTo, fetchPage1])
+  }, [search, tab, sort, categoryFilter, tagFilter, dateFrom, dateTo, fetchPage1])
 
   useEffect(() => {
     if (searchParams.get("new") === "1") {
@@ -585,7 +698,7 @@ export function TransactionsPage() {
     try {
       const nextPage = page + 1
       const result = await apiGet<PaginatedResponse<Transaction>>(
-        `/api/transactions?${buildParams(nextPage, search, tab, sort, categoryFilter, dateFrom, dateTo)}`,
+        `/api/transactions?${buildParams(nextPage, search, tab, sort, categoryFilter, tagFilter, dateFrom, dateTo)}`,
         token,
       )
       setTransactions((prev) => [...prev, ...result.data])
@@ -612,6 +725,11 @@ export function TransactionsPage() {
     for (const tx of transactions) if (tx.category?.trim()) set.add(tx.category.trim())
     return [...set].filter(Boolean).sort((a, b) => a.localeCompare(b))
   }, [categories, transactions])
+  const allTagOptions = useMemo(() => {
+    const set = new Set<string>()
+    for (const tx of transactions) for (const tag of txTags(tx)) if (tag.trim()) set.add(tag.trim())
+    return [...set].sort((a, b) => a.localeCompare(b))
+  }, [transactions])
 
   // Open the add dialog pre-filled with the last-used client/type/category
   // (date always today), so repeat entry is fast.
@@ -624,6 +742,8 @@ export function TransactionsPage() {
       wealth_account_id: firstAccount,
       type: last.type ?? "incoming",
       category: last.category ?? "",
+      tags: [],
+      tag_draft: "",
     })
     setPendingFiles([])
     setAddOpen(true)
@@ -644,6 +764,7 @@ export function TransactionsPage() {
         amount: parseFloat(form.amount),
         description: form.description,
         category: form.category,
+        tags: mergeTags(form.tags, form.tag_draft),
         date: form.date,
       })
       for (const file of pendingFiles) {
@@ -681,6 +802,7 @@ export function TransactionsPage() {
         amount: parseFloat(editForm.amount),
         description: editForm.description,
         category: editForm.category,
+        tags: mergeTags(editForm.tags, editForm.tag_draft),
         date: editForm.date,
       })
       toast.success(t("transactionUpdated"))
@@ -726,6 +848,16 @@ export function TransactionsPage() {
     setViewTx(tx)
     setAttachments([])
     loadAttachments(tx.id)
+    ;(async () => {
+      const token = await getToken()
+      if (!token) return
+      try {
+        const fresh = await apiGet<Transaction>(`/api/transactions/${tx.id}`, token)
+        setViewTx((current) => current?.id === tx.id ? { ...current, ...fresh, tags: txTags(fresh) } : current)
+      } catch (err) {
+        console.error("Failed to refresh transaction details:", err)
+      }
+    })()
     // Reflect the open transaction in the URL so it's shareable / restorable.
     if (searchParams.get("view") !== tx.id) {
       const next = new URLSearchParams(searchParams)
@@ -960,6 +1092,20 @@ export function TransactionsPage() {
               </SelectContent>
             </Select>
           </FilterSection>
+          <FilterSection label={t("tags")}>
+            <Select value={tagFilter} onValueChange={setTagFilter}>
+              <SelectTrigger className="w-full">
+                <Tag className="size-3.5 opacity-60" />
+                <SelectValue placeholder={t("tags")} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t("allTags")}</SelectItem>
+                {allTagOptions.map((tag) => (
+                  <SelectItem key={tag} value={tag}>{tag}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </FilterSection>
           <FilterSection label={t("filters.sortBy")}>
             <Select value={sort} onValueChange={setSort}>
               <SelectTrigger className="w-full">
@@ -990,9 +1136,9 @@ export function TransactionsPage() {
         <div className="py-20 text-center border rounded-xl">
           <DollarSign className="size-10 mx-auto text-muted-foreground/50 mb-3" />
           <p className="text-muted-foreground font-medium">
-            {search || tab !== "all" || categoryFilter !== "all" || dateFrom || dateTo ? t("noTransactionsMatchFilters") : t("noTransactionsYet")}
+            {search || tab !== "all" || categoryFilter !== "all" || tagFilter !== "all" || dateFrom || dateTo ? t("noTransactionsMatchFilters") : t("noTransactionsYet")}
           </p>
-          {!search && tab === "all" && categoryFilter === "all" && !dateFrom && !dateTo && clients.length > 0 && (
+          {!search && tab === "all" && categoryFilter === "all" && tagFilter === "all" && !dateFrom && !dateTo && clients.length > 0 && (
             <Button className="mt-4" onClick={openAddDialog}>
               <Plus className="size-4" />
               {t("addFirstTransaction")}
@@ -1042,6 +1188,9 @@ export function TransactionsPage() {
                       {tx.category && (
                         <Badge variant="outline" className="text-xs py-0 shrink-0 hidden sm:inline-flex">{tx.category}</Badge>
                       )}
+                      {txTags(tx).slice(0, 2).map((tag) => (
+                        <Badge key={tag} variant="secondary" className="text-xs py-0 shrink-0 hidden md:inline-flex">{tag}</Badge>
+                      ))}
                       <AttachmentBadge count={tx.attachment_count} />
                     </div>
                     <div className="flex items-center gap-2 mt-0.5 min-w-0">
@@ -1061,6 +1210,13 @@ export function TransactionsPage() {
                       )}
                       <span className="text-xs text-muted-foreground shrink-0">{formatDate(tx.date)}</span>
                     </div>
+                    {txTags(tx).length > 0 && (
+                      <div className="mt-1 flex flex-wrap gap-1 md:hidden">
+                        {txTags(tx).slice(0, 3).map((tag) => (
+                          <Badge key={tag} variant="secondary" className="text-[10px] py-0">{tag}</Badge>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
                   <p className={`text-sm font-semibold shrink-0 tabular-nums text-right ${
@@ -1075,7 +1231,7 @@ export function TransactionsPage() {
                     </Button>
                     <Button variant="ghost" size="icon" className="size-8 sm:size-9" onClick={(e) => {
                       e.stopPropagation()
-                      setEditForm({ id: tx.id, client_id: tx.client_id, wealth_account_id: tx.wealth_account_id ?? "", type: tx.type, amount: String(tx.amount), description: tx.description, category: tx.category, date: tx.date })
+                      setEditForm({ id: tx.id, client_id: tx.client_id, wealth_account_id: tx.wealth_account_id ?? "", type: tx.type, amount: String(tx.amount), description: tx.description, category: tx.category, tags: txTags(tx), tag_draft: "", date: tx.date })
                       setEditOpen(true)
                     }}>
                       <Pencil className="size-3.5" />
@@ -1164,6 +1320,14 @@ export function TransactionsPage() {
                       <p className="mt-0.5">{viewTx.wealth_account_name || viewTx.wealth_account_bank_name || viewTx.wealth_account_id}</p>
                     </div>
                   )}
+                  {txTags(viewTx).length > 0 && (
+                    <div className="col-span-2">
+                      <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">{t("tags")}</p>
+                      <div className="mt-1 flex flex-wrap gap-1.5">
+                        {txTags(viewTx).map((tag) => <Badge key={tag} variant="secondary">{tag}</Badge>)}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <Separator />
@@ -1229,7 +1393,7 @@ export function TransactionsPage() {
               <DialogFooter>
                 <Button variant="outline" onClick={() => {
                   closeViewModal()
-                  setEditForm({ id: viewTx.id, client_id: viewTx.client_id, wealth_account_id: viewTx.wealth_account_id ?? "", type: viewTx.type, amount: String(viewTx.amount), description: viewTx.description, category: viewTx.category, date: viewTx.date })
+                  setEditForm({ id: viewTx.id, client_id: viewTx.client_id, wealth_account_id: viewTx.wealth_account_id ?? "", type: viewTx.type, amount: String(viewTx.amount), description: viewTx.description, category: viewTx.category, tags: txTags(viewTx), tag_draft: "", date: viewTx.date })
                   setEditOpen(true)
                 }}>
                   <Pencil className="size-3.5" />
@@ -1253,6 +1417,7 @@ export function TransactionsPage() {
             clients={clients}
             accounts={accounts}
             categories={categories}
+            tagSuggestions={allTagOptions}
             onChangeCats={handleChangeCats}
             onAddAccount={() => { setAddOpen(false); navigate("/wealth") }}
           />
@@ -1307,6 +1472,7 @@ export function TransactionsPage() {
               clients={clients}
               accounts={accounts}
               categories={categories}
+              tagSuggestions={allTagOptions}
               onChangeCats={handleChangeCats}
               onAddAccount={() => { setEditOpen(false); navigate("/wealth") }}
             />
