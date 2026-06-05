@@ -39,6 +39,10 @@ build: ## Type-check then bundle for production
 preview: ## Preview the production build locally
 	@npm run preview
 
+.PHONY: claude
+claude: ## Run Claude Code with permission prompts skipped
+	@claude --dangerously-skip-permissions
+
 # ----------------------------------------------------------------------------
 # Quality
 # ----------------------------------------------------------------------------
@@ -68,13 +72,20 @@ db-push: ## Push the Drizzle schema to Neon (needs .env.local)
 # ----------------------------------------------------------------------------
 # Pre-commit gate
 #
-# Run this before every commit / opening a PR. It fails fast on unresolved merge
+# Run this before every commit / opening a PR. Kept in sync with the husky
+# pre-commit hook (.husky/pre-commit). It fails fast on unresolved merge
 # conflict markers (in ANY tracked or untracked file — code, docs or config),
-# then runs eslint (autofix + check), the TypeScript type check, and the tests.
+# verifies i18n locale parity (every locale must carry all en.json keys), then
+# runs eslint (autofix + check), the TypeScript type check, and the tests.
 # ----------------------------------------------------------------------------
 
+.PHONY: i18n
+i18n: ## Verify every locale has all en.json keys (placeholders intact)
+	@echo "→ i18n parity..."
+	@npm run i18n:check
+
 .PHONY: pr
-pr: ## Full pre-commit gate: conflict markers → format → lint → type check → tests
+pr: ## Full pre-commit gate: conflict markers → i18n parity → format → lint → type check → tests
 	@echo "→ merge conflict markers..."
 	@if git --no-pager grep --untracked -nE '^(<{7}|>{7}|\|{7})( |$$)' -- ':!*.sample'; then echo "✗ unresolved merge conflict markers found (above)" && exit 1; fi
 	@echo "→ format..."
@@ -83,6 +94,8 @@ pr: ## Full pre-commit gate: conflict markers → format → lint → type check
 	@npx eslint . || (echo "✗ lint failed" && exit 1)
 	@echo "→ type check..."
 	@npm run typecheck || (echo "✗ type check failed" && exit 1)
+	@echo "→ i18n parity (all locales must match en.json)..."
+	@npm run i18n:check || (echo "✗ i18n parity check failed — add the missing translations to every locale in src/lib/i18n/locales/" && exit 1)
 	@echo "→ tests..."
 	@npm run test:ci || (echo "✗ tests failed" && exit 1)
 	@echo "✓ all checks passed"

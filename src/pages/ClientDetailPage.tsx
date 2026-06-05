@@ -2,7 +2,9 @@ import { useEffect, useState, useCallback, useRef } from "react"
 import { useParams, useNavigate, useSearchParams } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { apiGet, apiPost, apiPatch, apiDelete } from "@/lib/api"
-import type { Client, Transaction, TransactionAttachment } from "@/lib/types"
+import type { Client, Transaction, TransactionAttachment, WealthAccount } from "@/lib/types"
+import { AccountSelector, type Allocation } from "@/components/AccountSelector"
+import { loadLastTx, saveLastTx } from "@/lib/last-tx"
 import { useCurrency } from "@/lib/currency-context"
 import { useOrg } from "@/lib/org-context"
 import { canWriteRole, canDeleteRole } from "@/lib/roles"
@@ -29,10 +31,14 @@ import { toast } from "sonner"
 import { ArrowLeft, Plus, Trash2, DollarSign, Building2, Mail, Phone, FileText, ArrowUpRight, ArrowDownRight, Pencil, Calendar, Paperclip, Upload, X, FolderOpen, Archive, ArchiveRestore, Eye } from "lucide-react"
 import { ExpandableSearch } from "@/components/ExpandableSearch"
 
-type NewTransaction = { type: "incoming" | "outgoing"; amount: string; description: string; category: string; date: string }
+type NewTransaction = { type: "incoming" | "outgoing"; allocations: Allocation[]; description: string; category: string; date: string }
 type NewClient = { name: string; company: string; email: string; phone: string; status: "active" | "inactive" | "archived"; notes: string; category?: string; onboard_date?: string | null }
 
-const defaultTxForm: NewTransaction = { type: "incoming", amount: "", description: "", category: "", date: new Date().toISOString().split("T")[0] }
+const defaultTxForm: NewTransaction = { type: "incoming", allocations: [], description: "", category: "", date: new Date().toISOString().split("T")[0] }
+
+// Cash in Hand is the default source; fall back to the first active account.
+const defaultAccountId = (accounts: WealthAccount[]) =>
+  accounts.find((a) => a.type === "cash")?.id ?? accounts[0]?.id ?? ""
 
 const formatDate = (dateStr: string) => new Date(dateStr).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
 
@@ -45,6 +51,8 @@ export function ClientDetailPage() {
   const formatCurrency = (amount: number) => new Intl.NumberFormat("en-US", { style: "currency", currency, minimumFractionDigits: 2 }).format(amount)
   const [client, setClient] = useState<Client | null>(null)
   const [transactions, setTransactions] = useState<Transaction[]>([])
+  const [accounts, setAccounts] = useState<WealthAccount[]>([])
+  const [accountsLoading, setAccountsLoading] = useState(true)
   const [loading, setLoading] = useState(true)
   const [txDialogOpen, setTxDialogOpen] = useState(false)
   const [pendingFiles, setPendingFiles] = useState<File[]>([])
@@ -103,17 +111,59 @@ export function ClientDetailPage() {
 
   useEffect(() => { loadData() }, [loadData])
 
+  // Accounts load independently of the client/transactions fetch so the add-tx
+  // form's source picker is ready fast (and never flashes an empty state).
+  const loadAccounts = useCallback(async () => {
+    const token = await getToken()
+    if (!token) return
+    try {
+      const list = await apiGet<WealthAccount[]>("/api/wealth/accounts", token)
+      setAccounts(list.filter((a) => !a.archived_at))
+    } catch {
+      /* non-blocking */
+    } finally {
+      setAccountsLoading(false)
+    }
+  }, [getToken])
+
+  useEffect(() => {
+    loadAccounts()
+    window.addEventListener("wealth:accounts-changed", loadAccounts)
+    return () => window.removeEventListener("wealth:accounts-changed", loadAccounts)
+  }, [loadAccounts])
+
+  const pickDefaultAccount = useCallback(() => {
+    const lastAcc = loadLastTx().wealth_account_id
+    return (lastAcc && accounts.some((a) => a.id === lastAcc)) ? lastAcc : defaultAccountId(accounts)
+  }, [accounts])
+
+  const openAddTx = useCallback(() => {
+    const acc = pickDefaultAccount()
+    setTxForm({ ...defaultTxForm, allocations: acc ? [{ account_id: acc, amount: "" }] : [] })
+    setPendingFiles([])
+    setTxDialogOpen(true)
+  }, [pickDefaultAccount])
+
+  // If the dialog opened (e.g. via ?newTx=1) before accounts loaded, seed the
+  // default source (last-used account, else Cash in Hand) once they arrive.
+  useEffect(() => {
+    if (!txDialogOpen || accounts.length === 0) return
+    setTxForm((f) => {
+      if (f.allocations.length > 0) return f
+      const acc = pickDefaultAccount()
+      return acc ? { ...f, allocations: [{ account_id: acc, amount: "" }] } : f
+    })
+  }, [txDialogOpen, accounts, pickDefaultAccount])
+
   // The FAB on this page links to ?newTx=1 to add a transaction for this client.
   useEffect(() => {
     if (searchParams.get("newTx") === "1") {
-      setTxForm(defaultTxForm)
-      setPendingFiles([])
-      setTxDialogOpen(true)
+      openAddTx()
       const next = new URLSearchParams(searchParams)
       next.delete("newTx")
       setSearchParams(next, { replace: true })
     }
-  }, [searchParams, setSearchParams])
+  }, [searchParams, setSearchParams, openAddTx])
 
   // The mobile client "view" sheet links here with ?edit=1 to jump straight into
   // editing — open the dialog once the client has loaded.
@@ -148,18 +198,30 @@ export function ClientDetailPage() {
   const txFilterCount = (txFrom || txTo ? 1 : 0)
 
   const handleAddTransaction = async () => {
-    if (!txForm.amount || isNaN(parseFloat(txForm.amount))) { toast.error("Valid amount is required"); return }
+    const allocs = txForm.allocations.filter((a) => a.account_id && Number(a.amount) > 0)
+    if (allocs.length === 0) { toast.error("Valid amount is required"); return }
     setSaving(true)
     try {
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
-      const created = await apiPost<Transaction>("/api/transactions", token, { client_id: id, type: txForm.type, amount: parseFloat(txForm.amount), description: txForm.description, category: txForm.category, date: txForm.date })
-      // Upload any staged attachments to the freshly-created transaction.
-      if (created?.id && pendingFiles.length > 0) {
+      // A split entry becomes one transaction row per account; each create is
+      // tracked so a partial failure is reported rather than masked. Files attach
+      // to the first created row.
+      let firstId: string | null = null
+      let saved = 0
+      for (const alloc of allocs) {
+        try {
+          const created = await apiPost<Transaction>("/api/transactions", token, { client_id: id, type: txForm.type, amount: parseFloat(alloc.amount), wealth_account_id: alloc.account_id, description: txForm.description, category: txForm.category, date: txForm.date })
+          if (!firstId) firstId = created?.id ?? null
+          saved++
+        } catch { /* counted below */ }
+      }
+      if (saved === 0) { toast.error("Failed to add transaction"); return }
+      if (firstId && pendingFiles.length > 0) {
         let failed = 0
         for (const file of pendingFiles) {
           try {
-            await uploadAttachment(attachmentsListPath("transaction", created.id), file, token)
+            await uploadAttachment(attachmentsListPath("transaction", firstId), file, token)
           } catch (e) {
             failed++
             toast.error(e instanceof Error ? e.message : `Failed to attach ${file.name}`)
@@ -167,7 +229,9 @@ export function ClientDetailPage() {
         }
         if (failed < pendingFiles.length) toast.success(pendingFiles.length - failed === 1 ? "File attached" : "Files attached")
       }
-      toast.success(`${txForm.type === "incoming" ? "Income" : "Expense"} added`)
+      saveLastTx({ wealth_account_id: allocs[0]?.account_id })
+      if (saved < allocs.length) toast.warning(`Saved ${saved} of ${allocs.length} — the rest couldn't be added`)
+      else toast.success(`${txForm.type === "incoming" ? "Income" : "Expense"} added`)
       setTxDialogOpen(false)
       setTxForm(defaultTxForm)
       setPendingFiles([])
@@ -192,12 +256,13 @@ export function ClientDetailPage() {
   }
 
   const handleEditTransaction = async () => {
-    if (!editTxForm || !editTxForm.amount || isNaN(parseFloat(editTxForm.amount))) { toast.error("Valid amount is required"); return }
+    const alloc = editTxForm?.allocations[0]
+    if (!editTxForm || !alloc || !alloc.amount || isNaN(parseFloat(alloc.amount))) { toast.error("Valid amount is required"); return }
     setSaving(true)
     try {
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
-      await apiPatch<Transaction>(`/api/transactions/${editTxForm.id}`, token, { type: editTxForm.type, amount: parseFloat(editTxForm.amount), description: editTxForm.description, category: editTxForm.category, date: editTxForm.date })
+      await apiPatch<Transaction>(`/api/transactions/${editTxForm.id}`, token, { type: editTxForm.type, amount: parseFloat(alloc.amount), wealth_account_id: alloc.account_id, description: editTxForm.description, category: editTxForm.category, date: editTxForm.date })
       toast.success("Transaction updated")
       setEditTxDialogOpen(false)
       setEditTxForm(null)
@@ -401,7 +466,7 @@ export function ClientDetailPage() {
                         </p>
                       </div>
                       <div className="flex gap-0.5 sm:gap-1 shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-                        <Button variant="ghost" size="icon-sm" onClick={(e) => { e.stopPropagation(); setEditTxForm({ ...tx, amount: tx.amount.toString() }); setEditTxDialogOpen(true) }}><Pencil className="size-3.5" /></Button>
+                        <Button variant="ghost" size="icon-sm" onClick={(e) => { e.stopPropagation(); setEditTxForm({ id: tx.id, type: tx.type, allocations: [{ account_id: tx.wealth_account_id ?? defaultAccountId(accounts), amount: String(tx.amount) }], description: tx.description, category: tx.category, date: tx.date }); setEditTxDialogOpen(true) }}><Pencil className="size-3.5" /></Button>
                         <Button variant="ghost" size="icon-sm" className="text-muted-foreground hover:text-destructive" onClick={(e) => { e.stopPropagation(); setDeleteId(tx.id); setDeleteType("transaction") }}><Trash2 className="size-3.5" /></Button>
                       </div>
                     </div>
@@ -415,9 +480,9 @@ export function ClientDetailPage() {
 
       {/* Add Transaction Dialog */}
       <Dialog open={txDialogOpen} onOpenChange={(open) => { setTxDialogOpen(open); if (!open) setPendingFiles([]) }}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader><DialogTitle>Add Transaction</DialogTitle></DialogHeader>
-          <div className="space-y-4 py-2">
+        <DialogContent className="inset-x-0 bottom-0 top-auto flex max-h-[92svh] w-full max-w-full translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-t-2xl p-0 sm:inset-x-auto sm:bottom-auto sm:top-[7svh] sm:left-1/2 sm:max-h-[86svh] sm:w-full sm:max-w-md sm:-translate-x-1/2 sm:rounded-2xl">
+          <DialogHeader className="shrink-0 border-b px-6 pb-3 pt-6"><DialogTitle>Add Transaction</DialogTitle></DialogHeader>
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto scrollbar-thin px-6 py-1">
             <div className="space-y-1.5">
               <Label>Type</Label>
               <div className="grid grid-cols-2 gap-2">
@@ -433,7 +498,14 @@ export function ClientDetailPage() {
                 ))}
               </div>
             </div>
-            <div className="space-y-1.5"><Label htmlFor="amount">Amount *</Label><Input id="amount" type="number" min="0" step="0.01" placeholder="0.00" value={txForm.amount} onChange={(e) => setTxForm((f) => ({ ...f, amount: e.target.value }))} /></div>
+            <AccountSelector
+              accounts={accounts}
+              allocations={txForm.allocations}
+              onChange={(allocations) => setTxForm((f) => ({ ...f, allocations }))}
+              currency={currency}
+              onAddAccount={() => { setTxDialogOpen(false); navigate("/wealth") }}
+              loading={accountsLoading}
+            />
             <div className="space-y-1.5"><Label htmlFor="description">Description</Label><Input id="description" placeholder={txForm.type === "incoming" ? "Invoice #1234" : "Hosting fee"} value={txForm.description} onChange={(e) => setTxForm((f) => ({ ...f, description: e.target.value }))} /></div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
@@ -468,7 +540,7 @@ export function ClientDetailPage() {
               )}
             </div>
           </div>
-          <DialogFooter>
+          <DialogFooter className="shrink-0 border-t px-6 pb-6 pt-3">
             <Button variant="outline" onClick={() => setTxDialogOpen(false)}>Cancel</Button>
             <Button onClick={handleAddTransaction} disabled={saving}>{saving ? "Adding..." : "Add"}</Button>
           </DialogFooter>
@@ -477,10 +549,10 @@ export function ClientDetailPage() {
 
       {/* Edit Transaction Dialog */}
       <Dialog open={editTxDialogOpen} onOpenChange={setEditTxDialogOpen}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader><DialogTitle>Edit Transaction</DialogTitle></DialogHeader>
+        <DialogContent className="inset-x-0 bottom-0 top-auto flex max-h-[92svh] w-full max-w-full translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-t-2xl p-0 sm:inset-x-auto sm:bottom-auto sm:top-[7svh] sm:left-1/2 sm:max-h-[86svh] sm:w-full sm:max-w-md sm:-translate-x-1/2 sm:rounded-2xl">
+          <DialogHeader className="shrink-0 border-b px-6 pb-3 pt-6"><DialogTitle>Edit Transaction</DialogTitle></DialogHeader>
           {editTxForm && (
-            <div className="space-y-4 py-2">
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto scrollbar-thin px-6 py-1">
               <div className="space-y-1.5">
                 <Label>Type</Label>
                 <div className="grid grid-cols-2 gap-2">
@@ -496,7 +568,15 @@ export function ClientDetailPage() {
                   ))}
                 </div>
               </div>
-              <div className="space-y-1.5"><Label htmlFor="edit-amount">Amount *</Label><Input id="edit-amount" type="number" min="0" step="0.01" placeholder="0.00" value={editTxForm.amount} onChange={(e) => setEditTxForm((f) => f ? { ...f, amount: e.target.value } : null)} /></div>
+              <AccountSelector
+                accounts={accounts}
+                allocations={editTxForm.allocations}
+                onChange={(allocations) => setEditTxForm((f) => f ? { ...f, allocations } : null)}
+                currency={currency}
+                max={1}
+                onAddAccount={() => { setEditTxDialogOpen(false); navigate("/wealth") }}
+                loading={accountsLoading}
+              />
               <div className="space-y-1.5"><Label htmlFor="edit-description">Description</Label><Input id="edit-description" placeholder={editTxForm.type === "incoming" ? "Invoice #1234" : "Hosting fee"} value={editTxForm.description} onChange={(e) => setEditTxForm((f) => f ? { ...f, description: e.target.value } : null)} /></div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
@@ -510,7 +590,7 @@ export function ClientDetailPage() {
               </div>
             </div>
           )}
-          <DialogFooter>
+          <DialogFooter className="shrink-0 border-t px-6 pb-6 pt-3">
             <Button variant="outline" onClick={() => setEditTxDialogOpen(false)}>Cancel</Button>
             <Button onClick={handleEditTransaction} disabled={saving}>{saving ? "Saving..." : "Save"}</Button>
           </DialogFooter>
@@ -638,7 +718,7 @@ export function ClientDetailPage() {
                 </div>
               </div>
               <DialogFooter>
-                <Button variant="outline" onClick={() => { const tx = viewTx; setViewTx(null); setEditTxForm({ ...tx, amount: tx.amount.toString() }); setEditTxDialogOpen(true) }}>
+                <Button variant="outline" onClick={() => { const tx = viewTx; setViewTx(null); setEditTxForm({ id: tx.id, type: tx.type, allocations: [{ account_id: tx.wealth_account_id ?? defaultAccountId(accounts), amount: String(tx.amount) }], description: tx.description, category: tx.category, date: tx.date }); setEditTxDialogOpen(true) }}>
                   <Pencil className="size-3.5" /> Edit
                 </Button>
                 <Button onClick={() => setViewTx(null)}>Close</Button>

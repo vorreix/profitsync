@@ -1,7 +1,7 @@
 import { db } from "../../src/lib/db/index.js"
 import { auditLogs } from "../../src/lib/db/schema.js"
 
-export type AuditEntity = "client" | "transaction" | "quotation"
+export type AuditEntity = "client" | "transaction" | "quotation" | "wealth_account"
 export type AuditAction = "create" | "update" | "delete" | "close" | "reopen"
 export type AuditChanges = Record<string, { from: unknown; to: unknown }>
 
