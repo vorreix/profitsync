@@ -3,9 +3,11 @@ import { useTranslation } from "react-i18next"
 import { useNavigate } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { apiGet, apiPatch } from "@/lib/api"
-import type { Client, Transaction } from "@/lib/types"
+import type { Client, Transaction, WealthAccount } from "@/lib/types"
 import { useCurrency } from "@/lib/currency-context"
 import { useOrg } from "@/lib/org-context"
+import { accountDisplayName, formatMoney, useBalancePrivacy, useWealthSummary } from "@/lib/wealth"
+import { WealthAccountIcon } from "@/components/WealthAccountIcon"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { FitText } from "@/components/FitText"
 import { Badge } from "@/components/ui/badge"
@@ -27,6 +29,8 @@ import {
   Tag,
   X,
   Archive,
+  Eye,
+  EyeOff,
 } from "lucide-react"
 import { FilterSheet, FilterSection } from "@/components/filters/FilterSheet"
 import { TransactionPeekModal } from "@/components/TransactionPeekModal"
@@ -349,6 +353,74 @@ function LatestTransactionsCard({
   )
 }
 
+function WealthOverview({
+  accounts,
+  loading,
+  currency,
+}: {
+  accounts: WealthAccount[]
+  loading: boolean
+  currency: string
+}) {
+  const navigate = useNavigate()
+  const { balancesVisible, setBalancesVisible } = useBalancePrivacy()
+  const { active, total } = useWealthSummary(accounts)
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-start justify-between gap-3">
+        <div>
+          <CardTitle className="text-sm font-semibold">Wealth Overview</CardTitle>
+          <p className="mt-1 text-xs text-muted-foreground">Manual tracking only. ProfitSync does not connect to your bank.</p>
+        </div>
+        <Button
+          variant="outline"
+          size="icon"
+          aria-label={balancesVisible ? "Hide balances" : "Show balances"}
+          onClick={() => setBalancesVisible((v) => !v)}
+        >
+          {balancesVisible ? <Eye className="size-4" /> : <EyeOff className="size-4" />}
+        </Button>
+      </CardHeader>
+      <CardContent className="pt-0">
+        {loading ? (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-24 rounded-xl" />)}
+          </div>
+        ) : active.length === 0 ? (
+          <div className="rounded-xl border border-dashed p-6 text-center">
+            <p className="text-sm font-medium">No bank or cash account yet.</p>
+            <Button className="mt-3" size="sm" onClick={() => navigate("/wealth")}>Add Account</Button>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="rounded-xl border bg-muted/30 p-4">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Total Available Balance</p>
+              <p className="mt-1 text-2xl font-bold tabular-nums">{formatMoney(total, currency, balancesVisible)}</p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {active.map((account) => (
+                <button
+                  key={account.id}
+                  type="button"
+                  onClick={() => navigate("/wealth")}
+                  className="flex items-center gap-3 rounded-xl border bg-card p-3 text-left transition-colors hover:bg-accent"
+                >
+                  <WealthAccountIcon account={account} />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium">{accountDisplayName(account)}</p>
+                    <p className="text-sm font-semibold tabular-nums">{formatMoney(Number(account.current_balance), currency, balancesVisible)}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 const UNCATEGORIZED = "__uncat__"
 
 export function Dashboard() {
@@ -366,6 +438,7 @@ export function Dashboard() {
 
   const [clients, setClients] = useState<Client[]>([])
   const [transactions, setTransactions] = useState<Transaction[]>([])
+  const [wealthAccounts, setWealthAccounts] = useState<WealthAccount[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedClientIds, setSelectedClientIds] = useState<Set<string>>(new Set())
   const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set())
@@ -380,12 +453,14 @@ export function Dashboard() {
         const token = await getToken()
         if (!token) return
         const suffix = showClosed ? "?includeClosed=1" : ""
-        const [clientList, txList] = await Promise.all([
+        const [clientList, txList, accountList] = await Promise.all([
           apiGet<Client[]>(`/api/clients${suffix}`, token),
           apiGet<Transaction[]>(`/api/transactions${suffix}`, token),
+          apiGet<WealthAccount[]>("/api/wealth/accounts", token),
         ])
         setClients(clientList)
         setTransactions(txList)
+        setWealthAccounts(accountList)
       } catch (err) {
         console.error("Failed to load dashboard:", err)
       } finally {
@@ -395,6 +470,20 @@ export function Dashboard() {
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps -- getToken is stable; reload when the closed toggle changes
   }, [showClosed])
+
+  useEffect(() => {
+    async function refreshWealthAccounts() {
+      const token = await getToken()
+      if (!token) return
+      try {
+        setWealthAccounts(await apiGet<WealthAccount[]>("/api/wealth/accounts", token))
+      } catch (err) {
+        console.error("Failed to refresh wealth accounts:", err)
+      }
+    }
+    window.addEventListener("wealth:accounts-changed", refreshWealthAccounts)
+    return () => window.removeEventListener("wealth:accounts-changed", refreshWealthAccounts)
+  }, [getToken])
 
   const clientsById = useMemo(() => {
     const m = new Map<string, Client>()
@@ -620,6 +709,8 @@ export function Dashboard() {
           />
         )}
       </div>
+
+      <WealthOverview accounts={wealthAccounts} loading={loading} currency={currency} />
 
       <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-5">
         {/* Chart */}

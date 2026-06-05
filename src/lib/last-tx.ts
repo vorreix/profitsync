@@ -1,12 +1,13 @@
-// Remembers the last-used add-transaction selections (client, type, category) so
-// the next "Add transaction" is pre-filled with the same context. The date is
-// intentionally NOT remembered — it always defaults to today.
+// Remembers the last-used add-transaction selections (client, type, category,
+// source account) so the next "Add transaction" is pre-filled with the same
+// context. The date is intentionally NOT remembered — it always defaults to today.
 const KEY = "ps_last_tx"
 
 export type LastTxDefaults = {
   client_id?: string
   type?: "incoming" | "outgoing"
   category?: string
+  wealth_account_id?: string
 }
 
 export function loadLastTx(): LastTxDefaults {
@@ -22,7 +23,9 @@ export function loadLastTx(): LastTxDefaults {
 
 export function saveLastTx(v: LastTxDefaults) {
   try {
-    localStorage.setItem(KEY, JSON.stringify(v))
+    // Merge so a partial save (e.g. just the source account) doesn't wipe the
+    // other remembered fields.
+    localStorage.setItem(KEY, JSON.stringify({ ...loadLastTx(), ...v }))
   } catch {
     /* storage unavailable — non-fatal */
   }

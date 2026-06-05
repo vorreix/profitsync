@@ -21,6 +21,7 @@ export const LANGUAGE_STORAGE_KEY = "profitsync-language"
 const PAGE_NAMESPACES = [
   "clients", "transactions", "quotations", "organizations", "members",
   "trash", "subscription", "billing", "theme", "plan", "planGlossary", "pwa",
+  "wealth",
 ] as const
 
 type Locale = Record<string, ResourceLanguage[string]>
