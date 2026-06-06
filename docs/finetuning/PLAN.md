@@ -60,7 +60,7 @@ cross‑cutting UI refactors later so they build on stabilised forms).
 | 05 | `feat/finetune-05-dashboard-card` | **T8** Revenue‑vs‑Expense View All + top 10 + filter | ui | L | ✅ done |
 | 06 | `feat/finetune-06-admin-plans` | **T16** hide business limits for personal plan | ui | L | ✅ done |
 | 07 | `feat/finetune-07-legal-relocate` | **T12** move legal links out of More menu | ui | L | ✅ done |
-| 08 | `feat/finetune-08-orgs-layout` | **T14** organizations page card/label layout | ui | M | ⬜ todo |
+| 08 | `feat/finetune-08-orgs-layout` | **T14** organizations page card/label layout | ui | M | ✅ done |
 | 09 | `feat/finetune-09-wealth-detail` | **T5/6/7** collapsible card · attachments · edit tx | ui | M | ⬜ todo |
 | 10 | `feat/finetune-10-form-validation` | **T10** red‑border validation across forms | ui | M | ⬜ todo |
 | 11 | `feat/finetune-11-modal-behavior` | **T9** ESC/outside/cancel/submit/swipe modal rules | ui | H | ⬜ todo |
@@ -496,10 +496,17 @@ press transitions via `/transition-creator`. Keep ≥44px touch targets.
 
 **Files.** `src/pages/OrganizationsPage.tsx`.
 
-**Verify.** Playwright at 360/768/1024px: aligned badges, non‑stretched buttons,
-clean hierarchy; actions reachable.
+**Verify.** ✅ Playwright desktop (1440px): cards in a 2‑col grid with
+bottom‑aligned action bars, **Switch as a primary filled action**, tidy badge
+rows. Mobile (390px): clean single column, **no full‑width button stretch**,
+edit/delete right‑aligned. Typecheck passes.
 
-**Status:** ⬜ todo.
+**Implemented.** `OrganizationsPage.tsx`: container `space-y-3` →
+`grid grid-cols-1 lg:grid-cols-2`; card is a flex column with actions pinned via
+`mt-auto` (aligned across the grid); removed `flex-1` stretch + added `flex-wrap`;
+Switch promoted to the primary (filled) action.
+
+**Status:** ✅ done (branch `feat/finetune-08-orgs-layout`).
 
 ---
 
