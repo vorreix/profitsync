@@ -302,17 +302,20 @@ function AccountCard({
   const isCash = account.type === "cash"
 
   return (
-    // Plain container; the clickable region and the actions menu are SIBLINGS
-    // (not nested interactive elements) for valid semantics and clean keyboard use.
+    // "Stretched overlay" card: a single full-bleed button is the click target
+    // (z-0); the visible content sits above it (pointer-events-none) and only the
+    // genuinely interactive bits — Adjust + the actions menu — re-enable pointer
+    // events. This keeps the Adjust control right next to the balance without
+    // nesting interactive elements inside another button.
     <div className={`group relative rounded-2xl border bg-card transition-colors hover:border-primary/40 ${isCash ? "ring-1 ring-primary/20" : ""}`}>
-      <div
-        role="button"
-        tabIndex={0}
+      <button
+        type="button"
         onClick={onOpen}
-        onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onOpen() } }}
         aria-label={`${accountDisplayName(account)} — ${t("viewTransactions")}`}
-        className="pressable ios-tap flex flex-col rounded-2xl p-4 text-left outline-none hover:bg-muted/30 focus-visible:ring-2 focus-visible:ring-ring"
-      >
+        className="pressable ios-tap absolute inset-0 z-0 rounded-2xl outline-none hover:bg-muted/30 focus-visible:ring-2 focus-visible:ring-ring"
+      />
+
+      <div className="pointer-events-none relative z-10 flex flex-col p-4">
         <div className="flex min-w-0 items-center gap-3 pr-8">
           <WealthAccountIcon account={account} className="size-10" />
           <div className="min-w-0">
@@ -323,7 +326,19 @@ function AccountCard({
           </div>
         </div>
 
-        <p className="mt-4 text-2xl font-bold tabular-nums">{formatMoney(Number(account.current_balance), currency, balancesVisible)}</p>
+        <div className="mt-4 flex items-center gap-1.5">
+          <p className="text-2xl font-bold tabular-nums">{formatMoney(Number(account.current_balance), currency, balancesVisible)}</p>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="pointer-events-auto size-7 shrink-0 text-muted-foreground hover:text-foreground"
+            aria-label={t("adjust")}
+            title={t("adjust")}
+            onClick={(e) => { e.stopPropagation(); onAdjust() }}
+          >
+            <SlidersHorizontal className="size-4" />
+          </Button>
+        </div>
 
         <div className="mt-3 flex items-center justify-between">
           <Badge variant="secondary" className="gap-1">
@@ -336,7 +351,7 @@ function AccountCard({
         </div>
       </div>
 
-      <div className="absolute right-2 top-2">
+      <div className="absolute right-2 top-2 z-10">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon-sm" className="text-muted-foreground" aria-label={t("account")}>
@@ -344,7 +359,6 @@ function AccountCard({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onSelect={onAdjust}><SlidersHorizontal className="size-4" /> {t("adjust")}</DropdownMenuItem>
             <DropdownMenuItem onSelect={onEdit}><Pencil className="size-4" /> {t("edit")}</DropdownMenuItem>
             {!isCash && (
               <DropdownMenuItem onSelect={onArchive} disabled={saving} className="text-muted-foreground">

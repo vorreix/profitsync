@@ -24,6 +24,7 @@ import { accountDisplayName, formatMoney, useBalancePrivacy } from "@/lib/wealth
 import { useUrlModal } from "@/hooks/use-url-modal"
 import { WealthAccountIcon } from "@/components/WealthAccountIcon"
 import { WealthAccountDialogs } from "@/components/wealth/WealthAccountDialogs"
+import { AccountQuickAddSheet } from "@/components/wealth/AccountQuickAddSheet"
 import { TransactionDetailModal } from "@/components/TransactionDetailModal"
 import { AttachmentBadge } from "@/components/AttachmentBadge"
 import { Badge } from "@/components/ui/badge"
@@ -51,6 +52,7 @@ export function WealthAccountDetailPage() {
   const { activeOrg } = useOrg()
   const canWrite = canWriteRole(activeOrg?.role)
   const canDelete = canDeleteRole(activeOrg?.role)
+  const isPersonal = activeOrg?.account_type === "personal"
   const { balancesVisible, setBalancesVisible } = useBalancePrivacy()
 
   const [account, setAccount] = useState<WealthAccount | null>(null)
@@ -63,6 +65,7 @@ export function WealthAccountDetailPage() {
 
   const [editing, setEditing] = useState<WealthAccount | null>(null)
   const [adjusting, setAdjusting] = useState<WealthAccount | null>(null)
+  const [addOpen, setAddOpen] = useState(false)
 
   const view = useUrlModal("view")
   const [viewTx, setViewTx] = useState<Transaction | null>(null)
@@ -211,7 +214,6 @@ export function WealthAccountDetailPage() {
                 <Button variant="outline" size="icon" aria-label={t("account")}><MoreVertical className="size-4" /></Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onSelect={() => setAdjusting(account)}><SlidersHorizontal className="size-4" /> {t("adjust")}</DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => setEditing(account)}><Pencil className="size-4" /> {t("edit")}</DropdownMenuItem>
                 {!isCash && <DropdownMenuItem onSelect={archive} className="text-muted-foreground"><Archive className="size-4" /> {t("archive")}</DropdownMenuItem>}
               </DropdownMenuContent>
@@ -223,7 +225,21 @@ export function WealthAccountDetailPage() {
       {/* Balance hero */}
       <div className="rounded-2xl border bg-gradient-to-br from-primary/10 via-card to-card p-5 sm:p-6">
         <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("balance")}</p>
-        <p className="mt-1 text-3xl font-bold tabular-nums sm:text-4xl">{formatMoney(Number(account.current_balance), currency, balancesVisible)}</p>
+        <div className="mt-1 flex items-center gap-2">
+          <p className="text-3xl font-bold tabular-nums sm:text-4xl">{formatMoney(Number(account.current_balance), currency, balancesVisible)}</p>
+          {canWrite && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-8 shrink-0 text-muted-foreground hover:text-foreground"
+              aria-label={t("adjust")}
+              title={t("adjust")}
+              onClick={() => setAdjusting(account)}
+            >
+              <SlidersHorizontal className="size-4" />
+            </Button>
+          )}
+        </div>
         <div className="mt-4 grid grid-cols-3 gap-2 sm:gap-4">
           {stats.map((s) => (
             <div key={s.key} className="rounded-xl border bg-card/60 p-2.5 sm:p-3">
@@ -240,7 +256,7 @@ export function WealthAccountDetailPage() {
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-sm font-semibold">{t("transactions")} {total > 0 && <span className="text-muted-foreground">({total})</span>}</h2>
         {canWrite && (
-          <Button size="sm" onClick={() => navigate(`/transactions?new=1&account=${account.id}`)}>
+          <Button size="sm" onClick={() => setAddOpen(true)}>
             <Plus className="size-4" /> {t("addTransaction")}
           </Button>
         )}
@@ -250,7 +266,7 @@ export function WealthAccountDetailPage() {
         <div className="rounded-2xl border py-16 text-center">
           <p className="font-medium text-muted-foreground">{t("noTransactionsForAccount")}</p>
           {canWrite && (
-            <Button className="mt-3" variant="outline" onClick={() => navigate(`/transactions?new=1&account=${account.id}`)}>
+            <Button className="mt-3" variant="outline" onClick={() => setAddOpen(true)}>
               <Plus className="size-4" /> {t("addTransaction")}
             </Button>
           )}
@@ -310,6 +326,15 @@ export function WealthAccountDetailPage() {
         onAdjustingChange={setAdjusting}
         currency={currency}
         onChanged={load}
+      />
+
+      <AccountQuickAddSheet
+        account={account}
+        open={addOpen}
+        onOpenChange={setAddOpen}
+        currency={currency}
+        isPersonal={isPersonal}
+        onSaved={load}
       />
     </div>
   )
