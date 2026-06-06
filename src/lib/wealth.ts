@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react"
 import type { WealthAccount } from "@/lib/types"
 
 const PRIVACY_KEY = "ps_wealth_balances_visible"
+const COLLAPSED_KEY = "ps_wealth_overview_collapsed"
 
 export function useBalancePrivacy() {
   const [visible, setVisible] = useState(() => {
@@ -21,6 +22,28 @@ export function useBalancePrivacy() {
   }, [visible])
 
   return { balancesVisible: visible, setBalancesVisible: setVisible }
+}
+
+// Whether the dashboard Wealth Overview's account list is collapsed. Persisted
+// so the user's choice (e.g. "keep it tucked away") survives reloads/sessions.
+export function useWealthOverviewCollapsed() {
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem(COLLAPSED_KEY) === "1"
+    } catch {
+      return false
+    }
+  })
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(COLLAPSED_KEY, collapsed ? "1" : "0")
+    } catch {
+      // Ignore storage failures.
+    }
+  }, [collapsed])
+
+  return { collapsed, setCollapsed }
 }
 
 export function currencySymbol(currency: string) {
