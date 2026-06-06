@@ -1,20 +1,17 @@
 import 'package:intl/intl.dart';
 
-const _symbols = {
-  'USD': '\$',
-  'EUR': '€',
-  'GBP': '£',
-  'INR': '₹',
-  'JPY': '¥',
-  'CNY': '¥',
-  'CAD': 'CA\$',
-  'AUD': 'A\$',
-  'CHF': 'CHF ',
-  'SEK': 'kr ',
-  'NZD': 'NZ\$',
+import 'currencies.dart';
+
+final Map<String, String> _symbols = {
+  for (final c in kCurrencies) c.code: c.symbol,
 };
 
-String currencySymbol(String code) => _symbols[code] ?? '$code ';
+String currencySymbol(String code) {
+  final s = _symbols[code];
+  if (s == null || s.isEmpty) return '$code ';
+  // Pad multi-letter symbols (e.g. "Fr", "kr") so amounts don't crowd them.
+  return s.length > 1 && RegExp(r'[A-Za-z]$').hasMatch(s) ? '$s ' : s;
+}
 
 String formatMoney(num amount, String currency) {
   final fractionDigits = (amount % 1 == 0) ? 0 : 2;
@@ -49,4 +46,33 @@ String formatShortDate(String iso) {
   final d = DateTime.tryParse(iso);
   if (d == null) return iso;
   return DateFormat('MMM d').format(d.toLocal());
+}
+
+/// Human-friendly plan label from a plan key (`free`, `personal`, `business`,
+/// `premium`, …). Falls back to a title-cased key.
+String planDisplayName(String? key) {
+  switch (key) {
+    case null:
+    case '':
+    case 'free':
+      return 'Free';
+    case 'personal':
+      return 'Personal Pro';
+    case 'business':
+      return 'Business';
+    case 'premium':
+      return 'Premium';
+    default:
+      return key[0].toUpperCase() + key.substring(1);
+  }
+}
+
+String formatFileSize(int bytes) {
+  if (bytes >= 1024 * 1024) {
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(bytes % (1024 * 1024) == 0 ? 0 : 1)} MB';
+  }
+  if (bytes >= 1024) {
+    return '${(bytes / 1024).toStringAsFixed(0)} KB';
+  }
+  return '$bytes B';
 }
