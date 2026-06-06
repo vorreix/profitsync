@@ -204,19 +204,18 @@ export function ClientDetailPage() {
     try {
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
-      // A split entry becomes one transaction row per account; each create is
-      // tracked so a partial failure is reported rather than masked. Files attach
-      // to the first created row.
-      let firstId: string | null = null
-      let saved = 0
-      for (const alloc of allocs) {
-        try {
-          const created = await apiPost<Transaction>("/api/transactions", token, { client_id: id, type: txForm.type, amount: parseFloat(alloc.amount), wealth_account_id: alloc.account_id, description: txForm.description, category: txForm.category, date: txForm.date })
-          if (!firstId) firstId = created?.id ?? null
-          saved++
-        } catch { /* counted below */ }
-      }
-      if (saved === 0) { toast.error("Failed to add transaction"); return }
+      // A split entry is ONE logical transaction saved atomically as a group of
+      // account-legs (the server shares a group_id and syncs each balance). Files
+      // attach to the first created leg.
+      const result = await apiPost<{ group_id: string | null; ids: string[] }>("/api/transactions/group", token, {
+        client_id: id,
+        type: txForm.type,
+        description: txForm.description,
+        category: txForm.category,
+        date: txForm.date,
+        allocations: allocs.map((a) => ({ wealth_account_id: a.account_id, amount: parseFloat(a.amount) })),
+      })
+      const firstId = result.ids[0] ?? null
       if (firstId && pendingFiles.length > 0) {
         let failed = 0
         for (const file of pendingFiles) {
@@ -230,8 +229,7 @@ export function ClientDetailPage() {
         if (failed < pendingFiles.length) toast.success(pendingFiles.length - failed === 1 ? "File attached" : "Files attached")
       }
       saveLastTx({ wealth_account_id: allocs[0]?.account_id })
-      if (saved < allocs.length) toast.warning(`Saved ${saved} of ${allocs.length} — the rest couldn't be added`)
-      else toast.success(`${txForm.type === "incoming" ? "Income" : "Expense"} added`)
+      toast.success(`${txForm.type === "incoming" ? "Income" : "Expense"} added`)
       setTxDialogOpen(false)
       setTxForm(defaultTxForm)
       setPendingFiles([])

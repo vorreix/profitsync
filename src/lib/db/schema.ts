@@ -112,6 +112,22 @@ export const wealthAccounts = pgTable("wealth_accounts", {
   openingBalance: numeric("opening_balance", { precision: 12, scale: 2 }).notNull().default("0"),
   currentBalance: numeric("current_balance", { precision: 12, scale: 2 }).notNull().default("0"),
   icon: text("icon").notNull().default("bank"),
+  // Bank brand: the logo source URL (rendered) + a base64 copy stored for
+  // resilience ("logo stored on backend"); `brandDomain` is the resolved domain
+  // used to (re)fetch the logo.
+  brandDomain: text("brand_domain").notNull().default(""),
+  logoUrl: text("logo_url").notNull().default(""),
+  logoData: text("logo_data").notNull().default(""), // base64, never returned in list responses
+  // Banking identifiers. The LABEL of the primary/secondary field is dynamic per
+  // country (IBAN vs Account Number vs IFSC/Sort/Routing/BSB…); the storage is
+  // generic. See src/lib/bank-fields.ts.
+  country: text("country").notNull().default(""), // ISO 3166-1 alpha-2
+  accountNumber: text("account_number").notNull().default(""), // IBAN or local account number
+  routingNumber: text("routing_number").notNull().default(""), // IFSC / Sort Code / Routing / BSB / Transit …
+  swift: text("swift").notNull().default(""), // SWIFT / BIC
+  address: text("address").notNull().default(""),
+  location: text("location").notNull().default(""), // city / branch label
+  note: text("note").notNull().default(""),
   archivedAt: timestamp("archived_at"),
   createdBy: text("created_by"),
   updatedBy: text("updated_by"),
@@ -121,12 +137,39 @@ export const wealthAccounts = pgTable("wealth_accounts", {
   orgIdx: index("wealth_accounts_org_idx").on(table.organizationId),
 }))
 
+export const wealthAccountAttachments = pgTable("wealth_account_attachments", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  wealthAccountId: uuid("wealth_account_id").notNull().references(() => wealthAccounts.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull(),
+  fileName: text("file_name").notNull(),
+  fileType: text("file_type").notNull(),
+  fileSize: integer("file_size").notNull(),
+  fileData: text("file_data").notNull(),
+  displayName: text("display_name"),
+  tags: jsonb("tags").notNull().default([]),
+  category: text("category").notNull().default(""),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  accountIdx: index("wealth_account_attachments_account_idx").on(table.wealthAccountId),
+}))
+
 export const transactions = pgTable("transactions", {
   id: uuid("id").primaryKey().defaultRandom(),
   clientId: uuid("client_id")
     .notNull()
     .references(() => clients.id, { onDelete: "cascade" }),
   wealthAccountId: uuid("wealth_account_id").references(() => wealthAccounts.id, { onDelete: "set null" }),
+  // Links the legs of a single logical transaction that was paid from / split
+  // across multiple wealth accounts (e.g. €100 = €30 cash + €25 AC1 + €45 AC2).
+  // All legs share one group_id; a single-account transaction has group_id NULL.
+  // Also used to pair the two legs of an account-to-account transfer.
+  groupId: uuid("group_id"),
+  // 'standard' for normal income/expense (incl. splits); 'transfer' for the two
+  // legs of an account-to-account move. Transfers are real, balance-affecting
+  // rows but are excluded from the global transactions list, the income/expense
+  // summary, and analytics (they net to zero and aren't P&L).
+  kind: text("kind").notNull().default("standard"), // standard | transfer
   type: text("type").notNull(),
   amount: numeric("amount", { precision: 12, scale: 2 }).notNull().default("0"),
   description: text("description").default(""),
@@ -140,7 +183,9 @@ export const transactions = pgTable("transactions", {
   updatedBy: text("updated_by"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-})
+}, (table) => ({
+  groupIdx: index("transactions_group_idx").on(table.groupId),
+}))
 
 export const quotations = pgTable("quotations", {
   id: uuid("id").primaryKey().defaultRandom(),
