@@ -77,3 +77,13 @@ export function useWealthSummary(accounts: WealthAccount[]) {
     return { active, total }
   }, [accounts])
 }
+
+// Immutable move of arr[from] to land *before* index `before` (in the original
+// indexing). Used for drag-to-reorder; order is persisted server-side.
+export function moveBefore<T>(arr: T[], from: number, before: number): T[] {
+  const next = arr.slice()
+  const [item] = next.splice(from, 1)
+  const idx = from < before ? before - 1 : before
+  next.splice(idx, 0, item)
+  return next
+}
