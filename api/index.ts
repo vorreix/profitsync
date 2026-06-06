@@ -20,6 +20,7 @@ import clientById from "./_routes/clients/[id].js"
 import clientAttachments from "./_routes/clients/[id]/attachments.js"
 import clientMedia from "./_routes/clients/[id]/media.js"
 import transactions from "./_routes/transactions.js"
+import transactionsGroup from "./_routes/transactions/group.js"
 import transactionsBulkDelete from "./_routes/transactions/bulk-delete.js"
 import transactionById from "./_routes/transactions/[id].js"
 import transactionAttachments from "./_routes/transactions/[id]/attachments.js"
@@ -28,7 +29,12 @@ import audit from "./_routes/audit.js"
 import categories from "./_routes/categories.js"
 import categoryById from "./_routes/categories/[id].js"
 import wealthAccounts from "./_routes/wealth/accounts.js"
+import wealthAccountsReorder from "./_routes/wealth/accounts/reorder.js"
 import wealthAccountById from "./_routes/wealth/accounts/[id].js"
+import wealthAccountAttachments from "./_routes/wealth/accounts/[id]/attachments.js"
+import wealthAccountAttachmentById from "./_routes/wealth-account-attachments/[id].js"
+import wealthBankSearch from "./_routes/wealth/bank-search.js"
+import wealthTransfer from "./_routes/wealth/transfer.js"
 import quotations from "./_routes/quotations.js"
 import quotationsBulkDelete from "./_routes/quotations/bulk-delete.js"
 import quotationById from "./_routes/quotations/[id].js"
@@ -102,12 +108,18 @@ const routes: RoutePattern<ApiHandler>[] = [
   { segments: ["audit"], handler: audit },
   { segments: ["categories"], handler: categories },
   { segments: ["categories", ":id"], handler: categoryById },
+  { segments: ["wealth", "bank-search"], handler: wealthBankSearch },
+  { segments: ["wealth", "transfer"], handler: wealthTransfer },
   { segments: ["wealth", "accounts"], handler: wealthAccounts },
+  { segments: ["wealth", "accounts", "reorder"], handler: wealthAccountsReorder },
   { segments: ["wealth", "accounts", ":id"], handler: wealthAccountById },
+  { segments: ["wealth", "accounts", ":id", "attachments"], handler: wealthAccountAttachments },
   { segments: ["wealth-accounts"], handler: wealthAccounts },
   { segments: ["wealth-accounts", ":id"], handler: wealthAccountById },
+  { segments: ["wealth-account-attachments", ":id"], handler: wealthAccountAttachmentById },
 
   { segments: ["transactions"], handler: transactions },
+  { segments: ["transactions", "group"], handler: transactionsGroup },
   { segments: ["transactions", "bulk-delete"], handler: transactionsBulkDelete },
   { segments: ["transactions", ":id"], handler: transactionById },
   { segments: ["transactions", ":id", "attachments"], handler: transactionAttachments },

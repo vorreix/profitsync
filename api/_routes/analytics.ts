@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { and, eq, gte, isNull, lte, sql } from "drizzle-orm"
+import { and, eq, gte, isNull, lte, ne, sql } from "drizzle-orm"
 import { db } from "../../src/lib/db/index.js"
 import { clients, transactions } from "../../src/lib/db/schema.js"
 import { requireAuth, isPersonalAccount } from "../_lib/auth.js"
@@ -35,6 +35,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     isNull(clients.deletedAt),
     isNull(clients.closedAt),
     isNull(transactions.deletedAt),
+    // Internal account-to-account transfers aren't income/expense — exclude them.
+    ne(transactions.kind, "transfer"),
     gte(transactions.date, fromDate),
     lte(transactions.date, toDate),
   )
