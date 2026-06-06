@@ -7,6 +7,11 @@
     "iosTitle": "Add to Home Screen",
     "iosBody": "Tap the Share icon, then choose “Add to Home Screen”."
   },
+  "errorBoundary": {
+    "title": "Something went wrong",
+    "message": "The app couldn’t load — this can happen right after an update. Reload to get the latest version.",
+    "reload": "Reload"
+  },
   "nav": {
     "dashboard": "Dashboard",
     "clients": "Clients",

@@ -53,7 +53,7 @@ cross‑cutting UI refactors later so they build on stabilised forms).
 | # | Branch | Task | Scope | Complexity | Status |
 |---|--------|------|-------|-----------|--------|
 | 00 | `feat/finetune-00-plan` | Plan & tracking doc | docs | – | ✅ done |
-| 01 | `feat/finetune-01-pwa-whitescreen` | **T3** PWA white‑screen after deploy | infra | M | ⬜ todo |
+| 01 | `feat/finetune-01-pwa-whitescreen` | **T3** PWA white‑screen after deploy | infra | M | ✅ done |
 | 02 | `feat/finetune-02-split-delete-sync` | **T1** split/bulk delete wealth sync | api+ui | H | ⬜ todo |
 | 03 | `feat/finetune-03-trash-sync` | **T13** trash delete/restore/purge sync | api | H | ⬜ todo |
 | 04 | `feat/finetune-04-quotation-modal` | **T4** quotation currency symbol + date | api+ui+db | M | ⬜ todo |
@@ -134,11 +134,20 @@ shows a blank white screen until a manual reload.
 **Risks.** Reload loops (mitigated by the existing sessionStorage guard) ·
 header changes must not break the SPA rewrite · keep offline shell working.
 
-**Verify.** `build` + `preview`; simulate deploy in Chrome DevTools (Application →
-Service Workers → Update on reload, then delete old assets) and confirm recovery,
-not blank screen. Lighthouse PWA still passes. Manual: throttle + reopen.
+**Verify.** ✅ `build` + typecheck + lint + i18n + 77 tests pass. Built
+`dist/index.html` contains the inline recovery script; entry chunk resolves under
+`/assets/` (matches recovery regex); SW still precaches `index.html`
+(navigateFallback intact — *not* removed). Playwright smoke: app boots to
+`/dashboard` with **0 console errors** (boundary correctly inert on happy path).
 
-**Status:** ⬜ todo.
+**Implemented.** Inline recovery script in `index.html` (entry‑chunk failure →
+guarded single reload — the case a React boundary can't reach); `AppErrorBoundary`
+(auto‑reload once on chunk error, else recovery card) wrapping the router;
+broadened `register-sw.ts` (`vite:preloadError` + `unhandledrejection` chunk
+match → shared‑guard reload); `vercel.json` immutable headers for `/assets/(.*)`
++ explicit no‑cache for `/index.html`; `errorBoundary.*` i18n in all 8 locales.
+
+**Status:** ✅ done (branch `feat/finetune-01-pwa-whitescreen`).
 
 ---
 

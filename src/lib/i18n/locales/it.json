@@ -925,5 +925,10 @@
     "reorder": "Riordina",
     "holdToTransfer": "Tieni premuto per trasferire",
     "selectAccount": "Seleziona conto"
+  },
+  "errorBoundary": {
+    "title": "Qualcosa è andato storto",
+    "message": "Impossibile caricare l’app: può capitare subito dopo un aggiornamento. Ricarica per ottenere l’ultima versione.",
+    "reload": "Ricarica"
   }
 }
