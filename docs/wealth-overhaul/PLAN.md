@@ -32,8 +32,10 @@ Each branch is created **from the tip of the previous branch** so later work inc
 |--------|------|--------|--------------|---------------|----|
 | `feat/split-transactions-grouping` | `dev` | ✅ pushed | 0026 (`group_id`) | `0ba5b84` | — |
 | `feat/account-quick-add` | `feat/split-transactions-grouping` | ✅ pushed | — | `39b0e95` | — |
-| `feat/bank-account-details` | `feat/account-quick-add` | 🟨 in progress | 0027 (+ attachments table) | — | — |
-| `feat/account-transfers` | `feat/bank-account-details` | ⬜ not started | 0028 (`kind`) | — | — |
+| `feat/bank-account-details` | `feat/account-quick-add` | ✅ pushed | 0027 (+ attachments table) | `3f18fa1` | — |
+| `feat/account-transfers` | `feat/bank-account-details` | 🟨 in progress | 0028 (`kind`) | — | — |
+
+> **Feature 3 verified (2026-06-06):** "HSBC" autocompletes real banks with logos (Brandfetch search, server-proxied); selecting stores the logo on the backend (base64) and renders it on the card + detail header. Country=India switched the field to **IFSC Code** (default = Account Number); SWIFT/Location/Address/Note persist and show on the detail "Account details" card. Attachments upload/list/delete; **Close account** shows a confirm. `BRANDFETCH_APIKEY` was added to the Vercel **Development + Production** envs (was only in `.env.local`; `vercel dev` functions read cloud env) and the dev server restarted. Screenshots: `bank-autocomplete.png`, `bank-india-ifsc.png`, `bank-card-logo.png`, `bank-detail-page.png`.
 
 > **Feature 2 verified (2026-06-06):** `AccountQuickAddSheet` opens from `/wealth/:id` as a bottom-sheet (desktop + mobile); saving adds the tx to the same list and updates the balance with **no navigation**. Per-account **Adjust** moved next to the balance on the cards (stretched-overlay card) and the detail hero; opens the adjust dialog without opening the account. Redundant page FAB removed (the global mobile FAB already covers it). Screenshots: `wealth-cards-adjust.png`, `account-quickadd-result.png`, `account-quickadd-mobile.png`.
 
