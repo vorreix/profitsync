@@ -171,7 +171,8 @@
     "state": "Provincia / Stato",
     "postalCode": "CAP",
     "country": "Paese",
-    "selectCountry": "Seleziona paese…"
+    "selectCountry": "Seleziona paese…",
+    "legalTitle": "Note legali e politiche"
   },
   "toast": {
     "profileLoadFailed": "Impossibile caricare il profilo",

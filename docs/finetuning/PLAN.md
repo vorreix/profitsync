@@ -59,7 +59,7 @@ cross‑cutting UI refactors later so they build on stabilised forms).
 | 04 | `feat/finetune-04-quotation-modal` | **T4** quotation currency symbol + date | api+ui+db | M | ✅ done |
 | 05 | `feat/finetune-05-dashboard-card` | **T8** Revenue‑vs‑Expense View All + top 10 + filter | ui | L | ✅ done |
 | 06 | `feat/finetune-06-admin-plans` | **T16** hide business limits for personal plan | ui | L | ✅ done |
-| 07 | `feat/finetune-07-legal-relocate` | **T12** move legal links out of More menu | ui | L | ⬜ todo |
+| 07 | `feat/finetune-07-legal-relocate` | **T12** move legal links out of More menu | ui | L | ✅ done |
 | 08 | `feat/finetune-08-orgs-layout` | **T14** organizations page card/label layout | ui | M | ⬜ todo |
 | 09 | `feat/finetune-09-wealth-detail` | **T5/6/7** collapsible card · attachments · edit tx | ui | M | ⬜ todo |
 | 10 | `feat/finetune-10-form-validation` | **T10** red‑border validation across forms | ui | M | ⬜ todo |
@@ -467,10 +467,18 @@ menu stays feature‑navigation only. i18n the new heading across 8 locales.
 `src/pages/ProfilePage.tsx` · en+7 locales. (Leave `landing/sections/Footer.tsx`
 and `LegalLayout.tsx`.)
 
-**Verify.** Mobile More menu no longer lists legal; Profile shows a Legal card
-linking to all three pages; sidebar footer spacing still looks right.
+**Verify.** ✅ Playwright (desktop): Profile now shows a **“Legal & Policies”**
+card with Privacy/Terms/Refund buttons; the **sidebar footer no longer lists the
+legal links** (only theme/language/user remain). Typecheck + i18n pass. Mobile
+“More” legal items removed in code (`buildMoreItems`).
 
-**Status:** ⬜ todo.
+**Implemented.** Removed the legal block from `AppLayout` SidebarFooter + the 3
+legal items from `MobileAppLayout` `buildMoreItems` (dropped now‑unused
+`ScrollText` imports from both); added a Legal card to `ProfilePage` (reuses
+`nav.privacyPolicy/termsOfService/refundPolicy`); new `profile.legalTitle` i18n in
+all 8 locales. Landing footer + legal page cross‑links left untouched.
+
+**Status:** ✅ done (branch `feat/finetune-07-legal-relocate`).
 
 ---
 
