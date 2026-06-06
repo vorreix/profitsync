@@ -1,18 +1,19 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react"
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { useNavigate } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { toast } from "sonner"
+import { useAutoAnimate } from "@formkit/auto-animate/react"
 import {
   DndContext,
   DragOverlay,
-  PointerSensor,
+  MouseSensor,
   TouchSensor,
   closestCenter,
   useDraggable,
-  useDroppable,
   useSensor,
   useSensors,
   type DragEndEvent,
+  type DragMoveEvent,
   type DragStartEvent,
 } from "@dnd-kit/core"
 import {
@@ -21,15 +22,16 @@ import {
   ChevronRight,
   Eye,
   EyeOff,
+  GripVertical,
   MoreVertical,
   Plus,
   RotateCcw,
-  SlidersHorizontal,
   Pencil,
   Wallet,
 } from "lucide-react"
 import { apiDelete, apiGet, apiPatch, apiPost, clearApiCache } from "@/lib/api"
 import type { WealthAccount } from "@/lib/types"
+import { cn } from "@/lib/utils"
 import { useCurrency } from "@/lib/currency-context"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -48,10 +50,47 @@ import { WealthAccountDialogs } from "@/components/wealth/WealthAccountDialogs"
 import { TransferWizard } from "@/components/wealth/TransferWizard"
 import { BankAccountFormFields } from "@/components/wealth/BankAccountFormFields"
 import { type BankFormState, bankDetailsPayload, emptyBankForm } from "@/lib/bank-form"
-import { accountDisplayName, currencySymbol, formatMoney, useBalancePrivacy, useWealthSummary } from "@/lib/wealth"
+import { accountDisplayName, currencySymbol, formatMoney, moveBefore, useBalancePrivacy, useWealthSummary } from "@/lib/wealth"
 import { useTranslation } from "react-i18next"
 
 const MAX_BANKS = 5
+
+// One drag, two outcomes — disambiguated by *where on the target card* you drop,
+// which is unambiguous and needs no timing (the old dwell felt fragile on touch):
+//   • near a card's leading/trailing edge → REORDER (a drop line shows where it
+//     will land); persisted to the DB.
+//   • on a card's middle                  → TRANSFER onto it.
+// The leading/trailing third of the card (along the layout axis) is the reorder
+// zone; the central third is transfer.
+const REORDER_EDGE = 0.34
+
+// What the current drag will do if released now (drives the on-card affordance
+// and the drop action). Non-null on at most one card at a time.
+type DropTarget =
+  | { id: string; kind: "transfer" }
+  | { id: string; kind: "reorder"; edge: "before" | "after"; axis: "x" | "y" }
+  | null
+
+type HandleProps = Pick<ReturnType<typeof useDraggable>, "listeners" | "attributes"> & {
+  ref: (el: HTMLElement | null) => void
+}
+
+function sameDrop(a: DropTarget, b: DropTarget): boolean {
+  if (a === b) return true
+  if (!a || !b || a.id !== b.id || a.kind !== b.kind) return false
+  return a.kind === "reorder" && b.kind === "reorder" ? a.edge === b.edge && a.axis === b.axis : true
+}
+
+// Absolute pointer coords from the gesture's initiating event (mouse or touch).
+function pointerFromActivator(ev: Event | null): { x: number; y: number } {
+  if (ev && "touches" in ev) {
+    const te = ev as TouchEvent
+    const t = te.touches[0] ?? te.changedTouches[0]
+    if (t) return { x: t.clientX, y: t.clientY }
+  }
+  const me = ev as MouseEvent | null
+  return { x: me?.clientX ?? 0, y: me?.clientY ?? 0 }
+}
 
 type CreateForm = BankFormState & { opening_balance: string }
 const emptyCreate: CreateForm = { ...emptyBankForm, opening_balance: "" }
@@ -74,26 +113,107 @@ export function WealthPage() {
   const [transferFrom, setTransferFrom] = useState<string | undefined>(undefined)
   const [transferTo, setTransferTo] = useState<string | undefined>(undefined)
   const [draggingId, setDraggingId] = useState<string | null>(null)
+  const [drop, setDrop] = useState<DropTarget>(null)
+  // Mirror of `drop` for onDragEnd's closure (React state would be stale there).
+  const dropRef = useRef<DropTarget>(null)
+  // Pointer where the drag began + a snapshot of card geometry taken at start.
+  // Cards don't move during the drag (no live re-sort), so the snapshot stays
+  // valid and we resolve the target purely from the live pointer position.
+  const pointerStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 })
+  const rectsRef = useRef<{ id: string; rect: DOMRect }[]>([])
+  const singleColRef = useRef(false)
+  const [cardsRef] = useAutoAnimate<HTMLDivElement>({ duration: 220, easing: "ease-out" })
 
-  // Mouse: small move to drag. Touch: press-and-hold so taps + page scroll still
-  // work, then drag — the standard dnd-kit mobile setup.
+  // Drag is started from the small grip handle only (touch-action: none on it),
+  // so a tiny movement starts the drag without fighting page scroll — the
+  // canonical dnd-kit mobile-handle setup that works on touch and mouse alike.
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 220, tolerance: 8 } }),
+    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { distance: 6 } }),
   )
+
+  function setDropBoth(next: DropTarget) {
+    if (sameDrop(dropRef.current, next)) return
+    dropRef.current = next
+    setDrop(next)
+  }
 
   function onDragStart(e: DragStartEvent) {
     setDraggingId(String(e.active.id))
+    setDropBoth(null)
+    pointerStartRef.current = pointerFromActivator(e.activatorEvent)
+    const els = Array.from(document.querySelectorAll<HTMLElement>("[data-account-card]"))
+    rectsRef.current = els.map((el) => ({ id: el.dataset.accountCard!, rect: el.getBoundingClientRect() }))
+    const lefts = new Set(rectsRef.current.map((r) => Math.round(r.rect.left)))
+    singleColRef.current = lefts.size <= 1 // one column → reorder axis is vertical
+  }
+
+  function onDragMove(e: DragMoveEvent) {
+    const activeId = String(e.active.id)
+    const p = { x: pointerStartRef.current.x + e.delta.x, y: pointerStartRef.current.y + e.delta.y }
+    const cards = rectsRef.current.filter((c) => c.id !== activeId)
+    // Card under the pointer, else the nearest one (so the gap between cards and
+    // edges of the grid still resolve to a sensible target).
+    let over = cards.find((c) => p.x >= c.rect.left && p.x <= c.rect.right && p.y >= c.rect.top && p.y <= c.rect.bottom)
+    if (!over) {
+      let best: typeof cards[number] | undefined, bestD = Infinity
+      for (const c of cards) {
+        const dx = c.rect.left + c.rect.width / 2 - p.x
+        const dy = c.rect.top + c.rect.height / 2 - p.y
+        const d = dx * dx + dy * dy
+        if (d < bestD) { bestD = d; best = c }
+      }
+      over = best
+    }
+    if (!over) { setDropBoth(null); return }
+    const axis = singleColRef.current ? "y" : "x"
+    const f = axis === "y"
+      ? (p.y - over.rect.top) / over.rect.height
+      : (p.x - over.rect.left) / over.rect.width
+    if (f < REORDER_EDGE) setDropBoth({ id: over.id, kind: "reorder", edge: "before", axis })
+    else if (f > 1 - REORDER_EDGE) setDropBoth({ id: over.id, kind: "reorder", edge: "after", axis })
+    else setDropBoth({ id: over.id, kind: "transfer" })
   }
 
   function onDragEnd(e: DragEndEvent) {
+    const activeId = String(e.active.id)
+    const d = dropRef.current
     setDraggingId(null)
-    const fromId = String(e.active.id)
-    const toId = e.over ? String(e.over.id) : ""
-    if (toId && toId !== fromId) {
-      setTransferFrom(fromId)
-      setTransferTo(toId)
+    setDropBoth(null)
+    if (!d) return
+    if (d.kind === "transfer") {
+      setTransferFrom(activeId)
+      setTransferTo(d.id)
       setTransferOpen(true)
+      return
+    }
+    const ids = active.map((a) => a.id)
+    const from = ids.indexOf(activeId)
+    const overIndex = ids.indexOf(d.id)
+    if (from === -1 || overIndex === -1) return
+    const before = d.edge === "before" ? overIndex : overIndex + 1
+    const next = moveBefore(ids, from, before)
+    if (next.join("|") !== ids.join("|")) void persistOrder(next)
+  }
+
+  function onDragCancel() {
+    setDraggingId(null)
+    setDropBoth(null)
+  }
+
+  // Optimistically apply the new active-card order, then persist to the DB.
+  async function persistOrder(ids: string[]) {
+    const byId = new Map(accounts.map((a) => [a.id, a]))
+    const nextActive = ids.map((id) => byId.get(id)).filter((a): a is WealthAccount => !!a)
+    setAccounts([...nextActive, ...accounts.filter((a) => a.archived_at)])
+    try {
+      const token = await getToken()
+      if (!token) throw new Error("Not authenticated")
+      await apiPost("/api/wealth/accounts/reorder", token, { ids })
+      window.dispatchEvent(new Event("wealth:accounts-changed"))
+    } catch {
+      toast.error(t("couldNotUpdate"))
+      await load()
     }
   }
 
@@ -241,20 +361,35 @@ export function WealthPage() {
           {[1, 2, 3].map((i) => <Skeleton key={i} className="h-32 rounded-2xl" />)}
         </div>
       ) : (
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={onDragStart} onDragEnd={onDragEnd}>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragStart={onDragStart}
+          onDragMove={onDragMove}
+          onDragEnd={onDragEnd}
+          onDragCancel={onDragCancel}
+        >
+          <div ref={cardsRef} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {active.map((account) => (
-              <DndAccountCard key={account.id} account={account} dimmed={draggingId === account.id}>
-                <AccountCard
-                  account={account}
-                  currency={currency}
-                  balancesVisible={balancesVisible}
-                  onOpen={() => navigate(`/wealth/${account.id}`)}
-                  onAdjust={() => setAdjusting(account)}
-                  onEdit={() => setEditing(account)}
-                  onArchive={() => deleteOrArchive(account)}
-                  saving={saving}
-                />
+              <DndAccountCard
+                key={account.id}
+                account={account}
+                dragging={draggingId === account.id}
+                drop={drop && drop.id === account.id && draggingId !== account.id ? drop : null}
+              >
+                {(handle) => (
+                  <AccountCard
+                    account={account}
+                    currency={currency}
+                    balancesVisible={balancesVisible}
+                    handle={handle}
+                    onOpen={() => navigate(`/wealth/${account.id}`)}
+                    onAdjust={() => setAdjusting(account)}
+                    onEdit={() => setEditing(account)}
+                    onArchive={() => deleteOrArchive(account)}
+                    saving={saving}
+                  />
+                )}
               </DndAccountCard>
             ))}
             {bankCount === 0 && (
@@ -271,12 +406,16 @@ export function WealthPage() {
           </div>
           <DragOverlay dropAnimation={null}>
             {draggingId ? (
-              <div className="rounded-2xl border bg-card p-4 opacity-95 shadow-xl ring-2 ring-primary">
+              <div className="rounded-2xl border bg-card p-4 opacity-95 shadow-xl ring-2 ring-primary cursor-grabbing">
                 <div className="flex items-center gap-3">
                   <WealthAccountIcon account={accounts.find((a) => a.id === draggingId) ?? { type: "bank", icon: "bank" }} className="size-10" />
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold">{accountDisplayName(accounts.find((a) => a.id === draggingId) ?? { bank_name: "", nickname: "" })}</p>
-                    <p className="text-xs text-muted-foreground">{t("transfer")}…</p>
+                    <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                      {drop?.kind === "transfer"
+                        ? <><ArrowLeftRight className="size-3" /> {t("transfer")}</>
+                        : <><GripVertical className="size-3" /> {t("reorder")}</>}
+                    </p>
                   </div>
                 </div>
               </div>
@@ -321,18 +460,24 @@ export function WealthPage() {
         <DialogContent className="inset-x-0 bottom-0 top-auto flex max-h-[92svh] w-full max-w-full translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-t-2xl p-0 sm:inset-x-auto sm:bottom-auto sm:top-[7svh] sm:left-1/2 sm:max-h-[86svh] sm:w-full sm:max-w-md sm:-translate-x-1/2 sm:rounded-2xl">
           <DialogHeader className="shrink-0 border-b px-6 pb-3 pt-6"><DialogTitle>{t("addBankAccount")}</DialogTitle></DialogHeader>
           <div className="min-h-0 flex-1 space-y-4 overflow-y-auto scrollbar-thin px-6 py-4">
-            <BankAccountFormFields form={form} onChange={(patch) => setForm((f) => ({ ...f, ...patch }))} autoFocusName />
-            <div className="space-y-1.5">
-              <Label>{t("openingBalanceLabel", { symbol })}</Label>
-              <Input
-                type="number"
-                min="0"
-                step="0.01"
-                value={form.opening_balance}
-                placeholder={`${symbol} 0.00`}
-                onChange={(e) => setForm((f) => ({ ...f, opening_balance: e.target.value }))}
-              />
-            </div>
+            <BankAccountFormFields
+              form={form}
+              onChange={(patch) => setForm((f) => ({ ...f, ...patch }))}
+              autoFocusName
+              beforeBankDetails={
+                <div className="space-y-1.5">
+                  <Label>{t("openingBalanceLabel", { symbol })}</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={form.opening_balance}
+                    placeholder={`${symbol} 0.00`}
+                    onChange={(e) => setForm((f) => ({ ...f, opening_balance: e.target.value }))}
+                  />
+                </div>
+              }
+            />
           </div>
           <DialogFooter className="shrink-0 border-t px-6 pb-6 pt-3">
             <Button variant="outline" onClick={() => setCreateOpen(false)}>{t("cancel")}</Button>
@@ -363,32 +508,68 @@ export function WealthPage() {
   )
 }
 
-// Wraps an account card to make it both a drag source and a drop target for
-// transfers. Drag listeners sit on the wrapper; the inner card's own click /
-// adjust button still work (the pointer sensor only starts a drag after 8px).
-function DndAccountCard({ account, dimmed, children }: { account: WealthAccount; dimmed: boolean; children: ReactNode }) {
+// The blue insertion bar shown in the gap before/after a card during a reorder
+// drag. Pure transform/opacity entrance — no layout shift.
+function InsertionLine({ edge, axis }: { edge: "before" | "after"; axis: "x" | "y" }) {
+  const base = "pointer-events-none absolute z-30 rounded-full bg-primary ring-2 ring-primary/25 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-100"
+  const pos = axis === "y"
+    ? cn("left-1 right-1 h-1.5", edge === "before" ? "-top-2" : "-bottom-2")
+    : cn("top-1 bottom-1 w-1.5", edge === "before" ? "-left-2" : "-right-2")
+  return <div className={cn(base, pos)} />
+}
+
+// Wraps an account card as a drag source. The drag is activated only from the
+// grip handle (passed down via the render prop), so the card's click target and
+// Adjust button keep working and — crucially — the handle's `touch-action: none`
+// lets the drag start on mobile without the browser stealing the gesture for
+// scrolling. `drop` (set while this card is the live target) drives the
+// reorder line / transfer affordance. `data-account-card` lets the page
+// snapshot card geometry at drag start.
+function DndAccountCard({
+  account,
+  dragging,
+  drop,
+  children,
+}: {
+  account: WealthAccount
+  dragging: boolean
+  drop: DropTarget
+  children: (handle: HandleProps) => ReactNode
+}) {
+  const { t } = useTranslation("wealth")
   const drag = useDraggable({ id: account.id })
-  const drop = useDroppable({ id: account.id })
-  const setRefs = (el: HTMLDivElement | null) => { drag.setNodeRef(el); drop.setNodeRef(el) }
-  const isTarget = drop.isOver && drop.active != null && drop.active.id !== account.id
+  const handle: HandleProps = { ref: drag.setActivatorNodeRef, listeners: drag.listeners, attributes: drag.attributes }
+  const isTransfer = drop?.kind === "transfer"
   return (
     <div
-      ref={setRefs}
-      {...drag.listeners}
-      {...drag.attributes}
-      className={`rounded-2xl transition-all ${dimmed ? "opacity-40" : ""} ${isTarget ? "scale-[1.02] ring-2 ring-primary ring-offset-2 ring-offset-background" : ""}`}
+      ref={drag.setNodeRef}
+      data-account-card={account.id}
+      className={cn(
+        "relative rounded-2xl transition-[transform,box-shadow,opacity] duration-200 ease-out",
+        dragging && "opacity-40",
+        isTransfer && "ring-2 ring-primary ring-offset-2 ring-offset-background motion-safe:scale-[1.02]",
+      )}
     >
-      {children}
+      {children(handle)}
+      {drop?.kind === "reorder" && <InsertionLine edge={drop.edge} axis={drop.axis} />}
+      {isTransfer && (
+        <div className="pointer-events-none absolute inset-x-0 bottom-2 z-30 flex justify-center motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-95 motion-safe:duration-150">
+          <span className="inline-flex items-center gap-1 rounded-full bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground shadow-lg">
+            <ArrowLeftRight className="size-3" /> {t("transfer")}
+          </span>
+        </div>
+      )}
     </div>
   )
 }
 
 function AccountCard({
-  account, currency, balancesVisible, onOpen, onAdjust, onEdit, onArchive, saving,
+  account, currency, balancesVisible, handle, onOpen, onAdjust, onEdit, onArchive, saving,
 }: {
   account: WealthAccount
   currency: string
   balancesVisible: boolean
+  handle: HandleProps
   onOpen: () => void
   onAdjust: () => void
   onEdit: () => void
@@ -413,7 +594,7 @@ function AccountCard({
       />
 
       <div className="pointer-events-none relative z-10 flex flex-col p-4">
-        <div className="flex min-w-0 items-center gap-3 pr-8">
+        <div className="flex min-w-0 items-center gap-3 pr-16">
           <WealthAccountIcon account={account} className="size-10" />
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold">{accountDisplayName(account)}</p>
@@ -423,17 +604,17 @@ function AccountCard({
           </div>
         </div>
 
-        <div className="mt-4 flex items-center gap-1.5">
+        <div className="mt-4 flex items-start gap-1.5">
           <p className="text-2xl font-bold tabular-nums">{formatMoney(Number(account.current_balance), currency, balancesVisible)}</p>
           <Button
             variant="ghost"
             size="icon"
-            className="pointer-events-auto size-7 shrink-0 text-muted-foreground hover:text-foreground"
+            className="pointer-events-auto size-7 shrink-0 -translate-y-1.5 text-muted-foreground hover:text-foreground"
             aria-label={t("adjust")}
             title={t("adjust")}
             onClick={(e) => { e.stopPropagation(); onAdjust() }}
           >
-            <SlidersHorizontal className="size-4" />
+            <Pencil className="size-4" />
           </Button>
         </div>
 
@@ -448,7 +629,20 @@ function AccountCard({
         </div>
       </div>
 
-      <div className="absolute right-2 top-2 z-10">
+      <div className="absolute right-2 top-2 z-20 flex items-center gap-0.5">
+        {/* Grip handle: the only drag activator. `touch-none` (touch-action:
+            none) is what makes the drag start on mobile instead of scrolling. */}
+        <button
+          type="button"
+          ref={handle.ref}
+          {...handle.listeners}
+          {...handle.attributes}
+          aria-label={t("dragHandle")}
+          title={t("dragHandle")}
+          className="ios-tap flex size-8 cursor-grab touch-none items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:cursor-grabbing"
+        >
+          <GripVertical className="size-4" />
+        </button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon-sm" className="text-muted-foreground" aria-label={t("account")}>

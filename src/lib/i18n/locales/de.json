@@ -920,7 +920,10 @@
     "transferFailed": "Überweisung konnte nicht abgeschlossen werden",
     "sameAccountError": "Wählen Sie zwei verschiedene Konten",
     "insufficientFunds": "Mehr als der Kontostand.",
-    "dragHint": "Tipp: Ziehen Sie ein Konto auf ein anderes, um zu überweisen.",
+    "dragHint": "Tipp: Ziehen Sie den Griff zum Sortieren – lassen Sie auf der Mitte eines anderen Kontos los, um zu überweisen.",
+    "dragHandle": "Zum Sortieren oder Überweisen ziehen",
+    "reorder": "Sortieren",
+    "holdToTransfer": "Zum Überweisen halten",
     "selectAccount": "Konto auswählen"
   }
 }

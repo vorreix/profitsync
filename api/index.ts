@@ -29,6 +29,7 @@ import audit from "./_routes/audit.js"
 import categories from "./_routes/categories.js"
 import categoryById from "./_routes/categories/[id].js"
 import wealthAccounts from "./_routes/wealth/accounts.js"
+import wealthAccountsReorder from "./_routes/wealth/accounts/reorder.js"
 import wealthAccountById from "./_routes/wealth/accounts/[id].js"
 import wealthAccountAttachments from "./_routes/wealth/accounts/[id]/attachments.js"
 import wealthAccountAttachmentById from "./_routes/wealth-account-attachments/[id].js"
@@ -110,6 +111,7 @@ const routes: RoutePattern<ApiHandler>[] = [
   { segments: ["wealth", "bank-search"], handler: wealthBankSearch },
   { segments: ["wealth", "transfer"], handler: wealthTransfer },
   { segments: ["wealth", "accounts"], handler: wealthAccounts },
+  { segments: ["wealth", "accounts", "reorder"], handler: wealthAccountsReorder },
   { segments: ["wealth", "accounts", ":id"], handler: wealthAccountById },
   { segments: ["wealth", "accounts", ":id", "attachments"], handler: wealthAccountAttachments },
   { segments: ["wealth-accounts"], handler: wealthAccounts },

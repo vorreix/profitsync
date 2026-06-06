@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { and, asc, count, eq, isNull, sql } from "drizzle-orm"
+import { and, asc, count, eq, isNull, max, sql } from "drizzle-orm"
 import { db, serialize } from "../../../src/lib/db/index.js"
 import { transactions, wealthAccounts } from "../../../src/lib/db/schema.js"
 import { canWrite, ensureDefaultClient, requireAuth } from "../../_lib/auth.js"
@@ -107,6 +107,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         address: wealthAccounts.address,
         location: wealthAccounts.location,
         note: wealthAccounts.note,
+        position: wealthAccounts.position,
         archivedAt: wealthAccounts.archivedAt,
         createdAt: wealthAccounts.createdAt,
         updatedAt: wealthAccounts.updatedAt,
@@ -117,11 +118,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .leftJoin(transactions, and(eq(transactions.wealthAccountId, wealthAccounts.id), isNull(transactions.deletedAt)))
       .where(eq(wealthAccounts.organizationId, orgId))
       .groupBy(wealthAccounts.id)
-      // Active before archived; Cash in Hand always first; banks oldest-first so
-      // the order is stable as new ones are added.
+      // Active before archived, then the user's drag-to-reorder order
+      // (`position`), falling back to creation order for ties (so never-reordered
+      // workspaces keep Cash-in-Hand-first, banks oldest-first).
       .orderBy(
         sql`${wealthAccounts.archivedAt} is not null`,
-        sql`${wealthAccounts.type} = 'cash' desc`,
+        asc(wealthAccounts.position),
         asc(wealthAccounts.createdAt),
       )
 
@@ -166,6 +168,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Bank-detail fields apply to bank accounts only (Cash in Hand has none).
     const details = type === "bank" ? pickBankDetails(body) : null
     const logo = details ? await resolveLogoColumns(details.brandDomain, details.logoUrl) : null
+    // Append new accounts after the user's existing order.
+    const [{ maxPos }] = await db
+      .select({ maxPos: max(wealthAccounts.position) })
+      .from(wealthAccounts)
+      .where(eq(wealthAccounts.organizationId, orgId))
     const [row] = await db
       .insert(wealthAccounts)
       .values({
@@ -176,6 +183,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         openingBalance: String(opening),
         currentBalance: String(opening),
         icon: icon || (type === "cash" ? "wallet" : "bank"),
+        position: (maxPos ?? -1) + 1,
         ...(details ?? {}),
         ...(logo ? { logoUrl: logo.logoUrl, logoData: logo.logoData } : {}),
         createdBy: userId,
