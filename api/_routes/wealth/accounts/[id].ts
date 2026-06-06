@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { and, count, eq, isNull } from "drizzle-orm"
 import { db, serialize } from "../../../../src/lib/db/index.js"
 import { transactions, wealthAccounts } from "../../../../src/lib/db/schema.js"
-import { canWrite, ensureDefaultClient, requireAuth } from "../../../_lib/auth.js"
+import { canDelete, canWrite, ensureDefaultClient, requireAuth } from "../../../_lib/auth.js"
 import { diffFields, logAudit } from "../../../_lib/audit.js"
 import { type BankDetailInput, pickBankDetails, resolveLogoColumns } from "../../../_lib/bank-brand.js"
 
@@ -143,7 +143,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   if (req.method === "DELETE") {
-    if (!canWrite(role)) return res.status(403).json({ error: "Forbidden" })
+    // Matches the other entity DELETEs (owner/admin only). Editors can still
+    // CLOSE an account via PATCH { archive: true }.
+    if (!canDelete(role)) return res.status(403).json({ error: "Forbidden" })
     // Cash in Hand is permanent — never deleted or archived.
     if (account.type === "cash") {
       return res.status(400).json({ error: "Cash in Hand can't be removed" })

@@ -197,6 +197,13 @@
       "when": 1780800000001,
       "tag": "0027_lean_captain_midlands",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1780800000002,
+      "tag": "0028_plain_bug",
+      "breakpoints": true
     }
   ]
 }
