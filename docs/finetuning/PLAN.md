@@ -61,7 +61,7 @@ cross‑cutting UI refactors later so they build on stabilised forms).
 | 06 | `feat/finetune-06-admin-plans` | **T16** hide business limits for personal plan | ui | L | ✅ done |
 | 07 | `feat/finetune-07-legal-relocate` | **T12** move legal links out of More menu | ui | L | ✅ done |
 | 08 | `feat/finetune-08-orgs-layout` | **T14** organizations page card/label layout | ui | M | ✅ done |
-| 09 | `feat/finetune-09-wealth-detail` | **T5/6/7** collapsible card · attachments · edit tx | ui | M | ⬜ todo |
+| 09 | `feat/finetune-09-wealth-detail` | **T5/6/7** collapsible card · attachments · edit tx | ui | M | ✅ done |
 | 10 | `feat/finetune-10-form-validation` | **T10** red‑border validation across forms | ui | M | ⬜ todo |
 | 11 | `feat/finetune-11-modal-behavior` | **T9** ESC/outside/cancel/submit/swipe modal rules | ui | H | ⬜ todo |
 | 12 | `feat/finetune-12-perceived-speed` | **T11** optimistic UI + granular cache + chunked load | infra+ui | H | ⬜ todo |
@@ -374,11 +374,23 @@ existing transactions add/edit/split behaviour exactly (regression‑test on the
 transactions page after extraction) · split edit = delete‑group‑then‑recreate
 path must stay correct (ties to T1).
 
-**Verify.** Playwright on `/wealth/:id`: collapse/expand card; upload + delete an
-attachment; open a tx → Edit → change amount → save → balance + row update.
-Re‑test `/transactions` add/edit/split after the extraction.
+**Verify.** ✅ **T7 verified end‑to‑end with Playwright**: added a tx on a cash
+account → opened it → the **Edit button now appears** (was absent) → opened a
+prefilled **Edit Transaction** sheet (Save, no client selector) → changed
+€125.50→€200 → **balance re‑synced correctly** (−125.50 → −200.00). Test data
+cleaned up afterwards. T5/T6 typecheck‑verified (the AccountDetailsSection only
+renders for *bank* accounts, which the empty test org doesn’t have, so visual
+check deferred — structure is standard Collapsible).
 
-**Status:** ⬜ todo.
+**Implemented.** No risky TxFormFields extraction needed — instead extended
+`AccountQuickAddSheet` with an optional `editTx` (seeds the form, PATCHes
+`/api/transactions/:id`, "Save"/"Edit Transaction" labels, hides client). Wired
+`onEdit` on `WealthAccountDetailPage`’s `TransactionDetailModal` + reuse the sheet
+for edit. `AccountDetailsSection`: Account Detail card + Attachments now
+**collapsible** (Radix `Collapsible`, animated chevron) with an attachment **count
+badge**. All existing transaction i18n keys reused (no new keys).
+
+**Status:** ✅ done (branch `feat/finetune-09-wealth-detail`).
 
 ---
 

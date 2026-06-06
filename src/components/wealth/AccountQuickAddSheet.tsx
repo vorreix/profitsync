@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next"
 import { useAuth } from "@clerk/clerk-react"
 import { toast } from "sonner"
 import { ArrowDownRight, ArrowUpRight, Paperclip, X } from "lucide-react"
-import { apiGet, apiPost } from "@/lib/api"
+import { apiGet, apiPatch, apiPost } from "@/lib/api"
 import { ACCEPT_ATTR, attachmentsListPath, uploadAttachment, validateFile } from "@/lib/attachments-client"
 import type { Client, Transaction, WealthAccount } from "@/lib/types"
 import { accountDisplayName, currencySymbol } from "@/lib/wealth"
@@ -26,6 +26,10 @@ const formatFileSize = (bytes: number) =>
  * account is locked, it posts a single-leg group transaction, and `onSaved`
  * refreshes the list. Business orgs pick a client; personal orgs resolve the
  * hidden default client server-side.
+ *
+ * Pass `editTx` to reuse the same sheet for EDITING a single account leg: it
+ * seeds the form from the transaction and PATCHes /api/transactions/:id (which
+ * re-syncs the account balance) instead of creating a new one.
  */
 export function AccountQuickAddSheet({
   account,
@@ -34,6 +38,7 @@ export function AccountQuickAddSheet({
   currency,
   isPersonal,
   onSaved,
+  editTx = null,
 }: {
   account: WealthAccount
   open: boolean
@@ -41,10 +46,12 @@ export function AccountQuickAddSheet({
   currency: string
   isPersonal: boolean
   onSaved?: (firstId: string | null) => void
+  editTx?: Transaction | null
 }) {
   const { t } = useTranslation("transactions")
   const { getToken } = useAuth()
   const symbol = currencySymbol(currency)
+  const isEdit = !!editTx
 
   const [type, setType] = useState<"incoming" | "outgoing">("outgoing")
   const [amount, setAmount] = useState("")
@@ -57,16 +64,24 @@ export function AccountQuickAddSheet({
   const [saving, setSaving] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
-  // Reset the form each time the sheet opens.
+  // On open: seed from editTx when editing, else reset to a blank add form.
   useEffect(() => {
     if (!open) return
-    setType("outgoing")
-    setAmount("")
-    setDescription("")
-    setCategory("")
-    setDate(today())
+    if (editTx) {
+      setType(editTx.type)
+      setAmount(String(editTx.amount))
+      setDescription(editTx.description ?? "")
+      setCategory(editTx.category ?? "")
+      setDate(editTx.date)
+    } else {
+      setType("outgoing")
+      setAmount("")
+      setDescription("")
+      setCategory("")
+      setDate(today())
+    }
     setPendingFiles([])
-  }, [open])
+  }, [open, editTx])
 
   // Business orgs need a client; load them lazily on open.
   useEffect(() => {
@@ -108,19 +123,32 @@ export function AccountQuickAddSheet({
     try {
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
-      const result = await apiPost<{ group_id: string | null; ids: string[]; legs: Transaction[] }>(
-        "/api/transactions/group",
-        token,
-        {
-          ...(isPersonal ? {} : { client_id: clientId }),
+      let firstId: string | null
+      if (editTx) {
+        // Edit a single account leg: PATCH re-syncs this account's balance.
+        await apiPatch<Transaction>(`/api/transactions/${editTx.id}`, token, {
           type,
+          amount: amt,
           description,
           category,
           date,
-          allocations: [{ wealth_account_id: account.id, amount: amt }],
-        },
-      )
-      const firstId = result.ids[0] ?? null
+        })
+        firstId = editTx.id
+      } else {
+        const result = await apiPost<{ group_id: string | null; ids: string[]; legs: Transaction[] }>(
+          "/api/transactions/group",
+          token,
+          {
+            ...(isPersonal ? {} : { client_id: clientId }),
+            type,
+            description,
+            category,
+            date,
+            allocations: [{ wealth_account_id: account.id, amount: amt }],
+          },
+        )
+        firstId = result.ids[0] ?? null
+      }
       if (firstId && pendingFiles.length > 0) {
         for (const file of pendingFiles) {
           try {
@@ -130,11 +158,11 @@ export function AccountQuickAddSheet({
           }
         }
       }
-      toast.success(t("transactionAdded"))
+      toast.success(isEdit ? t("transactionUpdated") : t("transactionAdded"))
       onOpenChange(false)
       onSaved?.(firstId)
     } catch {
-      toast.error(t("failedToAddTransaction"))
+      toast.error(isEdit ? t("failedToUpdateTransaction") : t("failedToAddTransaction"))
     } finally {
       setSaving(false)
     }
@@ -146,7 +174,7 @@ export function AccountQuickAddSheet({
         <DialogHeader className="shrink-0 border-b px-6 pb-3 pt-6">
           <DialogTitle className="flex items-center gap-2">
             <WealthAccountIcon account={account} className="size-7" />
-            <span className="truncate">{accountDisplayName(account)}</span>
+            <span className="truncate">{isEdit ? t("editTransaction") : accountDisplayName(account)}</span>
           </DialogTitle>
         </DialogHeader>
 
@@ -195,8 +223,8 @@ export function AccountQuickAddSheet({
             </div>
           </div>
 
-          {/* Client (business only) */}
-          {!isPersonal && (
+          {/* Client (business only; not changeable while editing a leg) */}
+          {!isPersonal && !isEdit && (
             <div className="space-y-1.5">
               <Label>{t("clientRequired")}</Label>
               <Select value={clientId} onValueChange={setClientId}>
@@ -268,7 +296,9 @@ export function AccountQuickAddSheet({
 
         <DialogFooter className="shrink-0 border-t px-6 pb-6 pt-3">
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>{t("cancel")}</Button>
-          <Button onClick={save} disabled={saving}>{saving ? t("adding") : t("add")}</Button>
+          <Button onClick={save} disabled={saving}>
+            {isEdit ? (saving ? t("saving") : t("save")) : saving ? t("adding") : t("add")}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
