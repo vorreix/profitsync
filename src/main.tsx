@@ -2,6 +2,7 @@ import { StrictMode } from "react"
 import { createRoot } from "react-dom/client"
 import { ClerkProvider } from "@clerk/clerk-react"
 import { I18nextProvider } from "react-i18next"
+import { Analytics } from "@vercel/analytics/react"
 
 import "./index.css"
 import i18n from "@/lib/i18n"
@@ -39,6 +40,7 @@ createRoot(document.getElementById("root")!).render(
         </I18nextProvider>
       </ThemeProvider>
     </ClerkProvider>
+    <Analytics />
   </StrictMode>
 )
 
