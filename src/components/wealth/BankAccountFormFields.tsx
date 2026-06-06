@@ -1,3 +1,4 @@
+import type { ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import { accountFieldsForCountry, PRIMARY_LABEL_KEY, SECONDARY_LABEL_KEY } from "@/lib/bank-fields"
 import type { BankFormState } from "@/lib/bank-form"
@@ -12,10 +13,13 @@ export function BankAccountFormFields({
   form,
   onChange,
   autoFocusName,
+  beforeBankDetails,
 }: {
   form: BankFormState
   onChange: (patch: Partial<BankFormState>) => void
   autoFocusName?: boolean
+  /** Optional content rendered just above the "Bank Details" section (e.g. Opening Balance on create). */
+  beforeBankDetails?: ReactNode
 }) {
   const { t } = useTranslation("wealth")
   const fields = accountFieldsForCountry(form.country)
@@ -50,6 +54,8 @@ export function BankAccountFormFields({
           <IconSelect value={form.icon} onChange={(icon) => onChange({ icon })} />
         </div>
       </div>
+
+      {beforeBankDetails}
 
       <div className="space-y-3 rounded-xl border bg-muted/20 p-3">
         <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">

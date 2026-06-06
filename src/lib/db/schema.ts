@@ -128,6 +128,10 @@ export const wealthAccounts = pgTable("wealth_accounts", {
   address: text("address").notNull().default(""),
   location: text("location").notNull().default(""), // city / branch label
   note: text("note").notNull().default(""),
+  // User-defined card order within the org (lower = earlier). Set via the
+  // drag-to-reorder UI; ties fall back to createdAt so pre-existing rows keep
+  // their original order until first reordered.
+  position: integer("position").notNull().default(0),
   archivedAt: timestamp("archived_at"),
   createdBy: text("created_by"),
   updatedBy: text("updated_by"),

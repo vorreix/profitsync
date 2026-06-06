@@ -920,7 +920,10 @@
     "transferFailed": "Impossibile completare il trasferimento",
     "sameAccountError": "Scegli due conti diversi",
     "insufficientFunds": "Superiore al saldo di questo conto.",
-    "dragHint": "Suggerimento: trascina un conto su un altro per trasferire.",
+    "dragHint": "Suggerimento: trascina la maniglia per riordinare — rilascia al centro di un altro conto per trasferire.",
+    "dragHandle": "Trascina per riordinare o trasferire",
+    "reorder": "Riordina",
+    "holdToTransfer": "Tieni premuto per trasferire",
     "selectAccount": "Seleziona conto"
   }
 }

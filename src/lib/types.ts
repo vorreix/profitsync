@@ -137,6 +137,7 @@ export type WealthAccount = {
   address?: string
   location?: string
   note?: string
+  position?: number
   archived_at: string | null
   created_at: string
   updated_at: string
