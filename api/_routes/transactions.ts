@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { and, asc, count, desc, eq, gte, ilike, isNull, lte, or, sql } from "drizzle-orm"
+import { and, asc, count, desc, eq, gte, ilike, isNull, lte, ne, or, sql } from "drizzle-orm"
 import { db, serialize } from "../../src/lib/db/index.js"
 import { clients, transactions, wealthAccounts } from "../../src/lib/db/schema.js"
 import { canWrite, ensureDefaultClient, isPersonalAccount, requireAuth } from "../_lib/auth.js"
@@ -36,6 +36,8 @@ const txFields = {
   wealthAccountBankName: wealthAccounts.bankName,
   wealthAccountType: wealthAccounts.type,
   wealthAccountIcon: wealthAccounts.icon,
+  groupId: transactions.groupId,
+  kind: transactions.kind,
   type: transactions.type,
   amount: transactions.amount,
   description: transactions.description,
@@ -48,18 +50,114 @@ const txFields = {
   attachmentCount: sql<number>`(select count(*)::int from transaction_attachments where transaction_id = ${transactions.id})`,
 }
 
+// A split transaction's legs share a `group_id`; everywhere that isn't scoped to
+// a single account we collapse them into ONE representative row. The grouping key
+// is `coalesce(group_id, id)` so ordinary single-account rows (group_id NULL)
+// each form their own one-row "group" and pass through unchanged.
+const groupKey = sql`coalesce(${transactions.groupId}, ${transactions.id})`
+
+const groupedFields = {
+  // Representative leg id (earliest-created) — used to open the detail view.
+  id: sql<string>`(array_agg(${transactions.id} order by ${transactions.createdAt} asc, ${transactions.id} asc))[1]`,
+  clientId: sql<string>`max(${transactions.clientId}::text)`,
+  clientName: sql<string>`max(${clients.name})`,
+  // For a single-leg group these are the account's real values; the UI ignores
+  // them when account_count > 1 (it shows "N accounts" instead).
+  wealthAccountId: sql<string | null>`max(${transactions.wealthAccountId}::text)`,
+  wealthAccountName: sql<string | null>`max(${wealthAccounts.nickname})`,
+  wealthAccountBankName: sql<string | null>`max(${wealthAccounts.bankName})`,
+  wealthAccountType: sql<string | null>`max(${wealthAccounts.type})`,
+  wealthAccountIcon: sql<string | null>`max(${wealthAccounts.icon})`,
+  groupId: sql<string | null>`max(${transactions.groupId}::text)`,
+  kind: sql<string>`max(${transactions.kind})`,
+  legCount: sql<number>`count(*)::int`,
+  accountCount: sql<number>`count(distinct ${transactions.wealthAccountId})::int`,
+  type: sql<string>`max(${transactions.type})`,
+  amount: sql<string>`sum(${transactions.amount}::numeric)`,
+  description: sql<string>`max(${transactions.description})`,
+  category: sql<string>`max(${transactions.category})`,
+  // Cast to text so the grouped row returns a plain 'YYYY-MM-DD' like the
+  // non-grouped path (a raw max(date) comes back as a tz-shifted timestamp).
+  date: sql<string>`max(${transactions.date})::text`,
+  isSystem: sql<boolean>`bool_or(${transactions.isSystem})`,
+  createdAt: sql<string>`max(${transactions.createdAt})`,
+  updatedAt: sql<string>`max(${transactions.updatedAt})`,
+  attachmentCount: sql<number>`coalesce(sum((select count(*) from transaction_attachments where transaction_id = ${transactions.id})), 0)::int`,
+}
+
+function groupedOrder(sort: string | undefined) {
+  switch (sort) {
+    case "date_asc":
+      return [asc(sql`max(${transactions.date})`), asc(sql`max(${transactions.createdAt})`)]
+    case "amount_desc":
+      return [desc(sql`sum(${transactions.amount}::numeric)`), desc(sql`max(${transactions.createdAt})`)]
+    case "amount_asc":
+      return [asc(sql`sum(${transactions.amount}::numeric)`), desc(sql`max(${transactions.createdAt})`)]
+    case "date_desc":
+    default:
+      return [desc(sql`max(${transactions.date})`), desc(sql`max(${transactions.createdAt})`)]
+  }
+}
+
+type SqlWhere = ReturnType<typeof and>
+
+async function groupedRows(where: SqlWhere, sort: string | undefined, limit?: number, offset?: number) {
+  const q = db
+    .select(groupedFields)
+    .from(transactions)
+    .innerJoin(clients, eq(transactions.clientId, clients.id))
+    .leftJoin(wealthAccounts, eq(transactions.wealthAccountId, wealthAccounts.id))
+    .where(where)
+    .groupBy(groupKey)
+    .orderBy(...groupedOrder(sort))
+  if (limit !== undefined && offset !== undefined) return await q.limit(limit).offset(offset)
+  if (limit !== undefined) return await q.limit(limit)
+  return await q
+}
+
+async function groupedTotal(where: SqlWhere): Promise<number> {
+  const [r] = await db
+    .select({ total: sql<number>`count(distinct coalesce(${transactions.groupId}, ${transactions.id}))::int` })
+    .from(transactions)
+    .innerJoin(clients, eq(transactions.clientId, clients.id))
+    .where(where)
+  return Number(r?.total ?? 0)
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ctx = await requireAuth(req, res)
   if (!ctx) return
   const { userId, orgId, role } = ctx
 
   if (req.method === "GET") {
-    const { clientId, wealthAccountId, search, type, page, sort, limit, category, from, to, includeClosed } = req.query as {
-      clientId?: string; wealthAccountId?: string; search?: string; type?: string; page?: string; sort?: string; limit?: string; category?: string; from?: string; to?: string; includeClosed?: string
+    const { clientId, wealthAccountId, groupId, search, type, page, sort, limit, category, from, to, includeClosed } = req.query as {
+      clientId?: string; wealthAccountId?: string; groupId?: string; search?: string; type?: string; page?: string; sort?: string; limit?: string; category?: string; from?: string; to?: string; includeClosed?: string
+    }
+
+    // Fetch every leg of one split group (drives the detail breakdown). Always
+    // flat + org-scoped.
+    if (groupId) {
+      const legs = await db
+        .select(txFields)
+        .from(transactions)
+        .innerJoin(clients, eq(transactions.clientId, clients.id))
+        .leftJoin(wealthAccounts, eq(transactions.wealthAccountId, wealthAccounts.id))
+        .where(and(eq(transactions.groupId, groupId), eq(clients.organizationId, orgId), isNull(transactions.deletedAt)))
+        .orderBy(asc(transactions.createdAt), asc(transactions.id))
+      return res.json(legs.map(serialize))
     }
 
     // Scope to a single wealth account (drives the account-detail page).
     const accountFilter = wealthAccountId ? eq(transactions.wealthAccountId, wealthAccountId) : undefined
+    // Collapse split legs into one row for the GLOBAL transactions list. An
+    // account-scoped view (?wealthAccountId) shows the per-account leg; a
+    // client-scoped view (?clientId, the client detail page) keeps its own
+    // per-leg display + edit flow, so it stays flat too.
+    const grouped = !wealthAccountId && !clientId
+    // Transfers are internal account-to-account moves: show them ONLY on the
+    // account-detail list (so you can see the movement), never in the global or
+    // client lists. The income/expense summary always excludes them.
+    const listExcludesTransfers = wealthAccountId ? undefined : ne(transactions.kind, "transfer")
 
     const isDate = (v: string | undefined): v is string => !!v && /^\d{4}-\d{2}-\d{2}$/.test(v)
     const dateFromFilter = isDate(from) ? gte(transactions.date, from) : undefined
@@ -77,13 +175,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .where(and(eq(clients.id, clientId), eq(clients.organizationId, orgId), isNull(clients.deletedAt)))
       if (!client) return res.status(403).json({ error: "Forbidden" })
 
-      const rows = await db
-        .select(txFields)
-        .from(transactions)
-        .innerJoin(clients, eq(transactions.clientId, clients.id))
-        .leftJoin(wealthAccounts, eq(transactions.wealthAccountId, wealthAccounts.id))
-        .where(and(eq(transactions.clientId, clientId), isNull(transactions.deletedAt), accountFilter))
-        .orderBy(...orderBy)
+      const clientWhere = and(eq(transactions.clientId, clientId), isNull(transactions.deletedAt), accountFilter, listExcludesTransfers)
+      const rows = grouped
+        ? await groupedRows(clientWhere, sort)
+        : await db
+            .select(txFields)
+            .from(transactions)
+            .innerJoin(clients, eq(transactions.clientId, clients.id))
+            .leftJoin(wealthAccounts, eq(transactions.wealthAccountId, wealthAccounts.id))
+            .where(clientWhere)
+            .orderBy(...orderBy)
       return res.json(rows.map(serialize))
     }
 
@@ -109,6 +210,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       isNull(transactions.deletedAt),
       closedClientFilter,
       accountFilter,
+      listExcludesTransfers,
       searchFilter,
       typeFilter,
       categoryFilter,
@@ -128,28 +230,37 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         isNull(transactions.deletedAt),
         closedClientFilter,
         accountFilter,
+        // The income/expense summary never counts internal transfers (net zero).
+        ne(transactions.kind, "transfer"),
         searchFilter,
         categoryFilter,
         dateFromFilter,
         dateToFilter,
       )
 
-      // Count, page rows and summary are independent — run as one parallel batch.
-      const [[{ total }], rows, [summaryRow]] = await Promise.all([
-        db
-          .select({ total: count() })
-          .from(transactions)
-          .innerJoin(clients, eq(transactions.clientId, clients.id))
-          .where(whereClause),
-        db
-          .select(txFields)
-          .from(transactions)
-          .innerJoin(clients, eq(transactions.clientId, clients.id))
-          .leftJoin(wealthAccounts, eq(transactions.wealthAccountId, wealthAccounts.id))
-          .where(whereClause)
-          .orderBy(...orderBy)
-          .limit(PAGE_SIZE)
-          .offset(offset),
+      // Count (of groups, when grouping), page rows and summary are independent —
+      // run as one parallel batch. The summary sums RAW legs: a split's legs add
+      // up to the group total, so income/expense figures are unchanged by grouping.
+      const [total, rows, [summaryRow]] = await Promise.all([
+        grouped
+          ? groupedTotal(whereClause)
+          : db
+              .select({ total: count() })
+              .from(transactions)
+              .innerJoin(clients, eq(transactions.clientId, clients.id))
+              .where(whereClause)
+              .then((r) => Number(r[0]?.total ?? 0)),
+        grouped
+          ? groupedRows(whereClause, sort, PAGE_SIZE, offset)
+          : db
+              .select(txFields)
+              .from(transactions)
+              .innerJoin(clients, eq(transactions.clientId, clients.id))
+              .leftJoin(wealthAccounts, eq(transactions.wealthAccountId, wealthAccounts.id))
+              .where(whereClause)
+              .orderBy(...orderBy)
+              .limit(PAGE_SIZE)
+              .offset(offset),
         db
           .select({
             incoming: sql<string>`coalesce(sum(case when ${transactions.type} = 'incoming' then ${transactions.amount}::numeric else 0 end), 0)`,
@@ -169,21 +280,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // `?limit=N` (without `page`) returns just the top N rows — used by the
     // dashboard "latest transactions" card. Capped to keep payloads small.
-    const baseQuery = db
-      .select(txFields)
-      .from(transactions)
-      .innerJoin(clients, eq(transactions.clientId, clients.id))
-      .leftJoin(wealthAccounts, eq(transactions.wealthAccountId, wealthAccounts.id))
-      .where(whereClause)
-      .orderBy(...orderBy)
-
     if (limit !== undefined) {
       const limitNum = Math.max(1, Math.min(100, parseInt(limit, 10) || 20))
-      const rows = await baseQuery.limit(limitNum)
+      const rows = grouped
+        ? await groupedRows(whereClause, sort, limitNum)
+        : await db
+            .select(txFields)
+            .from(transactions)
+            .innerJoin(clients, eq(transactions.clientId, clients.id))
+            .leftJoin(wealthAccounts, eq(transactions.wealthAccountId, wealthAccounts.id))
+            .where(whereClause)
+            .orderBy(...orderBy)
+            .limit(limitNum)
       return res.json(rows.map(serialize))
     }
 
-    const rows = await baseQuery
+    const rows = grouped
+      ? await groupedRows(whereClause, sort)
+      : await db
+          .select(txFields)
+          .from(transactions)
+          .innerJoin(clients, eq(transactions.clientId, clients.id))
+          .leftJoin(wealthAccounts, eq(transactions.wealthAccountId, wealthAccounts.id))
+          .where(whereClause)
+          .orderBy(...orderBy)
     return res.json(rows.map(serialize))
   }
 

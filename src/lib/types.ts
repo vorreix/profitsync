@@ -70,6 +70,22 @@ export type ClientAttachment = AttachmentMeta & {
   created_at: string
 }
 
+// One account-leg of a transaction. A normal transaction has a single leg; a
+// "split" transaction (€100 paid €30 cash + €25 AC1 + €45 AC2) has one leg per
+// account, all sharing the same `group_id`. The list collapses a group into one
+// representative `Transaction` row (amount = sum of legs); the detail view loads
+// the individual legs.
+export type TransactionLeg = {
+  id: string
+  wealth_account_id: string | null
+  wealth_account_name?: string | null
+  wealth_account_bank_name?: string | null
+  wealth_account_type?: "bank" | "cash" | null
+  wealth_account_icon?: string | null
+  type: "incoming" | "outgoing"
+  amount: number
+}
+
 export type Transaction = {
   id: string
   client_id: string
@@ -85,9 +101,20 @@ export type Transaction = {
   category: string
   date: string
   is_system?: boolean
+  // 'transfer' marks the two legs of an account-to-account move (shown only on
+  // the account-detail list, never in the global list / analytics).
+  kind?: "standard" | "transfer"
   created_at: string
   updated_at: string
   attachment_count?: number
+  // Split/group metadata. `group_id` links the legs of one logical transaction;
+  // `leg_count`/`account_count` describe a collapsed grouped row (both default to
+  // 1 for a normal single-account transaction). `legs` is loaded on demand for
+  // the detail breakdown.
+  group_id?: string | null
+  leg_count?: number
+  account_count?: number
+  legs?: TransactionLeg[]
 }
 
 export type WealthAccount = {
@@ -99,10 +126,32 @@ export type WealthAccount = {
   opening_balance: number
   current_balance: number
   icon: string
+  // Brand + banking details (see migration 0027). `logo_data` (base64) is stored
+  // server-side but never sent in list responses — the UI renders `logo_url`.
+  brand_domain?: string
+  logo_url?: string
+  country?: string
+  account_number?: string
+  routing_number?: string
+  swift?: string
+  address?: string
+  location?: string
+  note?: string
   archived_at: string | null
   created_at: string
   updated_at: string
   transaction_count?: number
+  attachment_count?: number
+}
+
+export type WealthAccountAttachment = AttachmentMeta & {
+  id: string
+  wealth_account_id: string
+  user_id: string
+  file_name: string
+  file_type: string
+  file_size: number
+  created_at: string
 }
 
 export type Quotation = {
