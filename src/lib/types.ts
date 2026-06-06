@@ -101,6 +101,9 @@ export type Transaction = {
   category: string
   date: string
   is_system?: boolean
+  // 'transfer' marks the two legs of an account-to-account move (shown only on
+  // the account-detail list, never in the global list / analytics).
+  kind?: "standard" | "transfer"
   created_at: string
   updated_at: string
   attachment_count?: number
@@ -123,10 +126,32 @@ export type WealthAccount = {
   opening_balance: number
   current_balance: number
   icon: string
+  // Brand + banking details (see migration 0027). `logo_data` (base64) is stored
+  // server-side but never sent in list responses — the UI renders `logo_url`.
+  brand_domain?: string
+  logo_url?: string
+  country?: string
+  account_number?: string
+  routing_number?: string
+  swift?: string
+  address?: string
+  location?: string
+  note?: string
   archived_at: string | null
   created_at: string
   updated_at: string
   transaction_count?: number
+  attachment_count?: number
+}
+
+export type WealthAccountAttachment = AttachmentMeta & {
+  id: string
+  wealth_account_id: string
+  user_id: string
+  file_name: string
+  file_type: string
+  file_size: number
+  created_at: string
 }
 
 export type Quotation = {

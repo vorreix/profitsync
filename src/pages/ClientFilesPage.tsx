@@ -62,6 +62,7 @@ const SOURCE_BADGE: Record<AttachmentParent, { label: string; className: string 
   client: { label: "Document", className: "bg-muted text-foreground/70" },
   transaction: { label: "Transaction", className: "bg-blue-500/10 text-blue-600 dark:text-blue-400" },
   quotation: { label: "Quote", className: "bg-amber-500/10 text-amber-600 dark:text-amber-400" },
+  wealth_account: { label: "Account", className: "bg-violet-500/10 text-violet-600 dark:text-violet-400" },
 }
 
 function extOf(name: string): string {

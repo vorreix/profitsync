@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { Check, ChevronsUpDown } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { useDialogContainer } from "@/hooks/use-dialog-container"
 import { Button } from "@/components/ui/button"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -27,8 +28,12 @@ export function CountryCombobox({
 }) {
   const [open, setOpen] = useState(false)
   const selected = countryByCode(value)
+  // Portal into the surrounding dialog (if any) so the list wheel-scrolls when
+  // this combobox is used inside a modal (react-remove-scroll otherwise blocks it).
+  const { triggerRef, container } = useDialogContainer()
 
   return (
+    <div ref={triggerRef} className="contents">
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button variant="outline" role="combobox" aria-expanded={open} className="w-full justify-between font-normal" disabled={disabled}>
@@ -36,7 +41,7 @@ export function CountryCombobox({
           <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[var(--radix-popover-trigger-width)] min-w-[14rem] max-w-[calc(100vw-1.5rem)] p-0 sm:w-[360px]" align="start">
+      <PopoverContent container={container} className="w-[var(--radix-popover-trigger-width)] min-w-[14rem] max-w-[calc(100vw-1.5rem)] p-0 sm:w-[360px]" align="start">
         <Command filter={(v, s) => (matches(v, s) ? 1 : 0)}>
           <CommandInput placeholder="Search country…" />
           <CommandList className="max-h-64">
@@ -55,6 +60,7 @@ export function CountryCombobox({
         </Command>
       </PopoverContent>
     </Popover>
+    </div>
   )
 }
 
