@@ -2,7 +2,9 @@ import { useEffect, useRef, useState } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
+import { z } from "zod"
 import { apiGet, apiPost } from "@/lib/api"
+import { useFieldErrors } from "@/lib/use-field-errors"
 import type { Client } from "@/lib/types"
 import { useCurrency } from "@/lib/currency-context"
 import { useOrg } from "@/lib/org-context"
@@ -99,6 +101,8 @@ export function ClientsPage() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [form, setForm] = useState<NewClient>(defaultForm)
   const [saving, setSaving] = useState(false)
+  const clientSchema = z.object({ name: z.string().trim().min(1, t("clientNameRequired")) })
+  const { errors, validate, clearField, clearAll } = useFieldErrors(clientSchema)
   const [viewClient, setViewClient] = useState<ClientWithStats | null>(null)
 
   const searchRef = useRef(search)
@@ -179,7 +183,7 @@ export function ClientsPage() {
   }, [searchParams, setSearchParams])
 
   async function handleCreate() {
-    if (!form.name.trim()) { toast.error(t("clientNameRequired")); return }
+    if (!validate(form)) return
     setSaving(true)
     try {
       const token = await getToken()
@@ -564,7 +568,7 @@ export function ClientsPage() {
       )}
 
       {/* Create Dialog */}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      <Dialog open={dialogOpen} onOpenChange={(o) => { setDialogOpen(o); if (!o) clearAll() }}>
         <DialogContent className="w-[92vw] max-w-md">
           <DialogHeader>
             <DialogTitle>{t("createNewClientTitle")}</DialogTitle>
@@ -576,8 +580,10 @@ export function ClientsPage() {
                 id="name"
                 placeholder={t("namePlaceholder")}
                 value={form.name}
-                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                aria-invalid={!!errors.name}
+                onChange={(e) => { setForm((f) => ({ ...f, name: e.target.value })); clearField("name") }}
               />
+              {errors.name && <p className="text-xs text-destructive">{errors.name}</p>}
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="company">{t("companyField")}</Label>

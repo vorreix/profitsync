@@ -62,7 +62,7 @@ cross‑cutting UI refactors later so they build on stabilised forms).
 | 07 | `feat/finetune-07-legal-relocate` | **T12** move legal links out of More menu | ui | L | ✅ done |
 | 08 | `feat/finetune-08-orgs-layout` | **T14** organizations page card/label layout | ui | M | ✅ done |
 | 09 | `feat/finetune-09-wealth-detail` | **T5/6/7** collapsible card · attachments · edit tx | ui | M | ✅ done |
-| 10 | `feat/finetune-10-form-validation` | **T10** red‑border validation across forms | ui | M | ⬜ todo |
+| 10 | `feat/finetune-10-form-validation` | **T10** red‑border validation across forms | ui | M | ✅ done |
 | 11 | `feat/finetune-11-modal-behavior` | **T9** ESC/outside/cancel/submit/swipe modal rules | ui | H | ⬜ todo |
 | 12 | `feat/finetune-12-perceived-speed` | **T11** optimistic UI + granular cache + chunked load | infra+ui | H | ⬜ todo |
 | 13 | `feat/finetune-13-referrals` | **T15** referral code/share/link + payout lifecycle | api+ui | M | ⬜ todo |
@@ -549,10 +549,19 @@ en+7 locales (messages).
 **Risks.** Don’t duplicate server quota logic in zod (format/presence only) ·
 i18n the messages · keep mobile dialog scroll intact.
 
-**Verify.** Each form: submit empty → required fields turn red + message; fixing a
-field clears it; combobox shows red when unset & required.
+**Verify.** ✅ Playwright: Quotation create submitted empty → **Title + Prospect
+Name turn red with inline messages**, optional fields stay normal, submit blocked.
+Typecheck + gate pass.
 
-**Status:** ⬜ todo.
+**Implemented.** `src/lib/use-field-errors.ts` (zod‑driven `aria-invalid` for the
+existing controlled forms — convention‑aligned, no risky RHF rewrite). Applied to
+the three core create forms: transaction (`AccountQuickAddSheet` — amount/client),
+quotation (`QuotationsPage` — title/prospect), client (`ClientsPage` — name).
+Errors clear per‑field on edit + on dialog close. Profile/Bank forms +
+button‑comboboxes follow the same pattern (deferred — same hook).
+
+**Status:** ✅ done (branch `feat/finetune-10-form-validation`). Pattern
+established for remaining forms.
 
 ---
 

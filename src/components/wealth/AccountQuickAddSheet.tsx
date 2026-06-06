@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { useAuth } from "@clerk/clerk-react"
+import { z } from "zod"
 import { toast } from "sonner"
+import { useFieldErrors } from "@/lib/use-field-errors"
 import { ArrowDownRight, ArrowUpRight, Paperclip, X } from "lucide-react"
 import { apiGet, apiPatch, apiPost } from "@/lib/api"
 import { ACCEPT_ATTR, attachmentsListPath, uploadAttachment, validateFile } from "@/lib/attachments-client"
@@ -64,6 +66,12 @@ export function AccountQuickAddSheet({
   const [saving, setSaving] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
+  const formSchema = z.object({
+    amount: z.coerce.number().positive(t("validAmountIsRequired")),
+    ...(isPersonal ? {} : { clientId: z.string().min(1, t("clientIsRequired")) }),
+  })
+  const { errors, validate, clearField, clearAll } = useFieldErrors(formSchema)
+
   // On open: seed from editTx when editing, else reset to a blank add form.
   useEffect(() => {
     if (!open) return
@@ -81,7 +89,8 @@ export function AccountQuickAddSheet({
       setDate(today())
     }
     setPendingFiles([])
-  }, [open, editTx])
+    clearAll()
+  }, [open, editTx, clearAll])
 
   // Business orgs need a client; load them lazily on open.
   useEffect(() => {
@@ -116,9 +125,9 @@ export function AccountQuickAddSheet({
   }
 
   async function save() {
+    // Red-border validation (zod). Required/invalid fields turn red in place.
+    if (!validate({ amount, clientId })) return
     const amt = parseFloat(amount)
-    if (!amt || isNaN(amt) || amt <= 0) { toast.error(t("validAmountIsRequired")); return }
-    if (!isPersonal && !clientId) { toast.error(t("clientIsRequired")); return }
     setSaving(true)
     try {
       const token = await getToken()
@@ -215,26 +224,29 @@ export function AccountQuickAddSheet({
                 min="0"
                 step="0.01"
                 value={amount}
-                onChange={(e) => setAmount(e.target.value)}
+                onChange={(e) => { setAmount(e.target.value); clearField("amount") }}
                 placeholder="0.00"
+                aria-invalid={!!errors.amount}
                 className="h-12 pl-9 text-lg font-semibold tabular-nums"
                 autoFocus
               />
             </div>
+            {errors.amount && <p className="text-xs text-destructive">{errors.amount}</p>}
           </div>
 
           {/* Client (business only; not changeable while editing a leg) */}
           {!isPersonal && !isEdit && (
             <div className="space-y-1.5">
               <Label>{t("clientRequired")}</Label>
-              <Select value={clientId} onValueChange={setClientId}>
-                <SelectTrigger className="w-full"><SelectValue placeholder={t("client")} /></SelectTrigger>
+              <Select value={clientId} onValueChange={(v) => { setClientId(v); clearField("clientId") }}>
+                <SelectTrigger className="w-full" aria-invalid={!!errors.clientId}><SelectValue placeholder={t("client")} /></SelectTrigger>
                 <SelectContent>
                   {clients.map((c) => (
                     <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              {errors.clientId && <p className="text-xs text-destructive">{errors.clientId}</p>}
             </div>
           )}
 

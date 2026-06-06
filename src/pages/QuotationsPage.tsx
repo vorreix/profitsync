@@ -14,6 +14,8 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { InputGroup, InputGroupAddon, InputGroupInput, InputGroupText } from "@/components/ui/input-group"
 import { getCurrencySymbol } from "@/lib/currencies"
+import { useFieldErrors } from "@/lib/use-field-errors"
+import { z } from "zod"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
@@ -81,9 +83,13 @@ const formatFileSize = (bytes: number) => {
 function QuotationFormFields({
   f,
   onChange,
+  errors = {},
+  clearField,
 }: {
   f: QuotationForm
   onChange: (p: Partial<QuotationForm>) => void
+  errors?: Record<string, string>
+  clearField?: (field: string) => void
 }) {
   const { t } = useTranslation("quotations")
   const { currency } = useCurrency()
@@ -91,11 +97,13 @@ function QuotationFormFields({
     <div className="space-y-4 py-2">
       <div className="space-y-1.5">
         <Label>{t("titleLabel")}</Label>
-        <Input placeholder={t("titlePlaceholder")} value={f.title} onChange={(e) => onChange({ title: e.target.value })} />
+        <Input placeholder={t("titlePlaceholder")} value={f.title} aria-invalid={!!errors.title} onChange={(e) => { onChange({ title: e.target.value }); clearField?.("title") }} />
+        {errors.title && <p className="text-xs text-destructive">{errors.title}</p>}
       </div>
       <div className="space-y-1.5">
         <Label>{t("prospectNameLabel")}</Label>
-        <Input placeholder={t("prospectNamePlaceholder")} value={f.prospect_name} onChange={(e) => onChange({ prospect_name: e.target.value })} />
+        <Input placeholder={t("prospectNamePlaceholder")} value={f.prospect_name} aria-invalid={!!errors.prospect_name} onChange={(e) => { onChange({ prospect_name: e.target.value }); clearField?.("prospect_name") }} />
+        {errors.prospect_name && <p className="text-xs text-destructive">{errors.prospect_name}</p>}
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="space-y-1.5">
@@ -160,6 +168,11 @@ export function QuotationsPage() {
   const sel = useMultiSelect()
   const longPress = useLongPress()
   const [bulkDeleting, setBulkDeleting] = useState(false)
+  const quotationSchema = z.object({
+    title: z.string().trim().min(1, t("titleRequired")),
+    prospect_name: z.string().trim().min(1, t("prospectNameRequired")),
+  })
+  const { errors, validate, clearField, clearAll } = useFieldErrors(quotationSchema)
   const fmt = (n: number) =>
     new Intl.NumberFormat("en-US", { style: "currency", currency, minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n)
 
@@ -397,8 +410,7 @@ export function QuotationsPage() {
   }
 
   async function handleCreate() {
-    if (!form.title.trim()) { toast.error(t("titleRequired")); return }
-    if (!form.prospect_name.trim()) { toast.error(t("prospectNameRequired")); return }
+    if (!validate(form)) return
     setSaving(true)
     try {
       const token = await getToken()
@@ -420,8 +432,7 @@ export function QuotationsPage() {
 
   async function handleEdit() {
     if (!editTarget) return
-    if (!form.title.trim()) { toast.error(t("titleRequired")); return }
-    if (!form.prospect_name.trim()) { toast.error(t("prospectNameRequired")); return }
+    if (!validate(form)) return
     setSaving(true)
     try {
       const token = await getToken()
@@ -560,7 +571,7 @@ export function QuotationsPage() {
               {t("multiSelect.select")}
             </Button>
           )}
-          <Button onClick={() => { setForm(defaultForm()); setCreateOpen(true) }} className="shrink-0">
+          <Button onClick={() => { setForm(defaultForm()); clearAll(); setCreateOpen(true) }} className="shrink-0">
             <Plus className="size-4" />
             <span className="hidden sm:inline">{t("newQuotationBtn")}</span>
             <span className="sm:hidden">{t("newShort")}</span>
@@ -612,7 +623,7 @@ export function QuotationsPage() {
             {search || tab !== "all" || dateFrom || dateTo ? t("noQuotationsMatch") : t("noQuotationsYet")}
           </p>
           {!search && tab === "all" && !dateFrom && !dateTo && (
-            <Button className="mt-4" onClick={() => { setForm(defaultForm()); setCreateOpen(true) }}>
+            <Button className="mt-4" onClick={() => { setForm(defaultForm()); clearAll(); setCreateOpen(true) }}>
               <Plus className="size-4" />
               {t("createFirstQuotation")}
             </Button>
@@ -944,7 +955,7 @@ export function QuotationsPage() {
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="w-[92vw] max-w-md sm:max-w-md">
           <DialogHeader><DialogTitle>{t("newQuotationTitle")}</DialogTitle></DialogHeader>
-          <QuotationFormFields f={form} onChange={(p) => setForm((f) => ({ ...f, ...p }))} />
+          <QuotationFormFields f={form} onChange={(p) => setForm((f) => ({ ...f, ...p }))} errors={errors} clearField={clearField} />
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)}>{t("cancelBtn")}</Button>
             <Button onClick={handleCreate} disabled={saving}>{saving ? t("creating") : t("createBtn")}</Button>
@@ -956,7 +967,7 @@ export function QuotationsPage() {
       <Dialog open={editTarget !== null} onOpenChange={(open) => { if (!open) setEditTarget(null) }}>
         <DialogContent className="w-[92vw] max-w-md sm:max-w-md">
           <DialogHeader><DialogTitle>{t("editQuotationTitle")}</DialogTitle></DialogHeader>
-          <QuotationFormFields f={form} onChange={(p) => setForm((f) => ({ ...f, ...p }))} />
+          <QuotationFormFields f={form} onChange={(p) => setForm((f) => ({ ...f, ...p }))} errors={errors} clearField={clearField} />
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditTarget(null)}>{t("cancelBtn")}</Button>
             <Button onClick={handleEdit} disabled={saving}>{saving ? t("saving") : t("saveBtn")}</Button>
