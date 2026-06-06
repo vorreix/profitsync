@@ -31,9 +31,11 @@ Each branch is created **from the tip of the previous branch** so later work inc
 | Branch | Base | Status | Migration(s) | Pushed commit | PR |
 |--------|------|--------|--------------|---------------|----|
 | `feat/split-transactions-grouping` | `dev` | ✅ pushed | 0026 (`group_id`) | `0ba5b84` | — |
-| `feat/account-quick-add` | `feat/split-transactions-grouping` | 🟨 in progress | — | — | — |
-| `feat/bank-account-details` | `feat/account-quick-add` | ⬜ not started | 0027 (+ attachments table) | — | — |
+| `feat/account-quick-add` | `feat/split-transactions-grouping` | ✅ pushed | — | `39b0e95` | — |
+| `feat/bank-account-details` | `feat/account-quick-add` | 🟨 in progress | 0027 (+ attachments table) | — | — |
 | `feat/account-transfers` | `feat/bank-account-details` | ⬜ not started | 0028 (`kind`) | — | — |
+
+> **Feature 2 verified (2026-06-06):** `AccountQuickAddSheet` opens from `/wealth/:id` as a bottom-sheet (desktop + mobile); saving adds the tx to the same list and updates the balance with **no navigation**. Per-account **Adjust** moved next to the balance on the cards (stretched-overlay card) and the detail hero; opens the adjust dialog without opening the account. Redundant page FAB removed (the global mobile FAB already covers it). Screenshots: `wealth-cards-adjust.png`, `account-quickadd-result.png`, `account-quickadd-mobile.png`.
 
 > **Feature 1 verified (2026-06-06):** 3-way split (€30 cash + €25 AC1 + €45 AC2) renders as **one** list row ("Split · 3 accounts · €100"); detail breaks the legs down; per-account balances synced (−30/−25/−45); edit replaces the group correctly; group-delete restores all balances. Screenshots: `split-list.png`, `split-detail.png`. Migration 0026's journal `when` was bumped to `1780800000000` to clear the diverged Dev-DB migration bookmark.
 
