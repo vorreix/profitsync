@@ -1,9 +1,23 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { useNavigate } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { toast } from "sonner"
 import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  TouchSensor,
+  closestCenter,
+  useDraggable,
+  useDroppable,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core"
+import {
   Archive,
+  ArrowLeftRight,
   ChevronRight,
   Eye,
   EyeOff,
@@ -30,14 +44,17 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { WealthAccountIcon } from "@/components/WealthAccountIcon"
-import { IconSelect, WealthAccountDialogs } from "@/components/wealth/WealthAccountDialogs"
+import { WealthAccountDialogs } from "@/components/wealth/WealthAccountDialogs"
+import { TransferWizard } from "@/components/wealth/TransferWizard"
+import { BankAccountFormFields } from "@/components/wealth/BankAccountFormFields"
+import { type BankFormState, bankDetailsPayload, emptyBankForm } from "@/lib/bank-form"
 import { accountDisplayName, currencySymbol, formatMoney, useBalancePrivacy, useWealthSummary } from "@/lib/wealth"
 import { useTranslation } from "react-i18next"
 
 const MAX_BANKS = 5
 
-type CreateForm = { bank_name: string; nickname: string; opening_balance: string; icon: string }
-const emptyCreate: CreateForm = { bank_name: "", nickname: "", opening_balance: "", icon: "bank" }
+type CreateForm = BankFormState & { opening_balance: string }
+const emptyCreate: CreateForm = { ...emptyBankForm, opening_balance: "" }
 
 export function WealthPage() {
   const { t } = useTranslation("wealth")
@@ -53,6 +70,38 @@ export function WealthPage() {
   const [form, setForm] = useState<CreateForm>(emptyCreate)
   const [editing, setEditing] = useState<WealthAccount | null>(null)
   const [adjusting, setAdjusting] = useState<WealthAccount | null>(null)
+  const [transferOpen, setTransferOpen] = useState(false)
+  const [transferFrom, setTransferFrom] = useState<string | undefined>(undefined)
+  const [transferTo, setTransferTo] = useState<string | undefined>(undefined)
+  const [draggingId, setDraggingId] = useState<string | null>(null)
+
+  // Mouse: small move to drag. Touch: press-and-hold so taps + page scroll still
+  // work, then drag — the standard dnd-kit mobile setup.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 220, tolerance: 8 } }),
+  )
+
+  function onDragStart(e: DragStartEvent) {
+    setDraggingId(String(e.active.id))
+  }
+
+  function onDragEnd(e: DragEndEvent) {
+    setDraggingId(null)
+    const fromId = String(e.active.id)
+    const toId = e.over ? String(e.over.id) : ""
+    if (toId && toId !== fromId) {
+      setTransferFrom(fromId)
+      setTransferTo(toId)
+      setTransferOpen(true)
+    }
+  }
+
+  function openTransfer() {
+    setTransferFrom(undefined)
+    setTransferTo(undefined)
+    setTransferOpen(true)
+  }
 
   const { active, total } = useWealthSummary(accounts)
   const bankCount = active.filter((a) => a.type === "bank").length
@@ -96,6 +145,7 @@ export function WealthPage() {
         nickname: form.nickname.trim(),
         icon: form.icon,
         openingBalance: Number(form.opening_balance || 0),
+        ...bankDetailsPayload(form),
       })
       clearApiCache()
       window.dispatchEvent(new Event("wealth:accounts-changed"))
@@ -173,9 +223,16 @@ export function WealthPage() {
           <p className="text-sm text-muted-foreground">
             {active.length} {active.length === 1 ? t("account") : t("accounts")}
           </p>
-          <Button size="sm" onClick={openCreate} disabled={bankCount >= MAX_BANKS || loading}>
-            <Plus className="size-4" /> {t("addBank")}
-          </Button>
+          <div className="flex items-center gap-2">
+            {active.length >= 2 && (
+              <Button size="sm" variant="outline" onClick={openTransfer} disabled={loading}>
+                <ArrowLeftRight className="size-4" /> {t("transfer")}
+              </Button>
+            )}
+            <Button size="sm" onClick={openCreate} disabled={bankCount >= MAX_BANKS || loading}>
+              <Plus className="size-4" /> {t("addBank")}
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -184,32 +241,53 @@ export function WealthPage() {
           {[1, 2, 3].map((i) => <Skeleton key={i} className="h-32 rounded-2xl" />)}
         </div>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {active.map((account) => (
-            <AccountCard
-              key={account.id}
-              account={account}
-              currency={currency}
-              balancesVisible={balancesVisible}
-              onOpen={() => navigate(`/wealth/${account.id}`)}
-              onAdjust={() => setAdjusting(account)}
-              onEdit={() => setEditing(account)}
-              onArchive={() => deleteOrArchive(account)}
-              saving={saving}
-            />
-          ))}
-          {bankCount === 0 && (
-            <button
-              type="button"
-              onClick={openCreate}
-              className="pressable ios-tap flex min-h-32 flex-col items-center justify-center gap-2 rounded-2xl border border-dashed p-4 text-center text-muted-foreground transition-colors hover:bg-muted/50"
-            >
-              <Plus className="size-5" />
-              <span className="text-sm font-medium">{t("addBankAccount")}</span>
-              <span className="text-xs">{t("cashAlwaysHere")}</span>
-            </button>
-          )}
-        </div>
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={onDragStart} onDragEnd={onDragEnd}>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {active.map((account) => (
+              <DndAccountCard key={account.id} account={account} dimmed={draggingId === account.id}>
+                <AccountCard
+                  account={account}
+                  currency={currency}
+                  balancesVisible={balancesVisible}
+                  onOpen={() => navigate(`/wealth/${account.id}`)}
+                  onAdjust={() => setAdjusting(account)}
+                  onEdit={() => setEditing(account)}
+                  onArchive={() => deleteOrArchive(account)}
+                  saving={saving}
+                />
+              </DndAccountCard>
+            ))}
+            {bankCount === 0 && (
+              <button
+                type="button"
+                onClick={openCreate}
+                className="pressable ios-tap flex min-h-32 flex-col items-center justify-center gap-2 rounded-2xl border border-dashed p-4 text-center text-muted-foreground transition-colors hover:bg-muted/50"
+              >
+                <Plus className="size-5" />
+                <span className="text-sm font-medium">{t("addBankAccount")}</span>
+                <span className="text-xs">{t("cashAlwaysHere")}</span>
+              </button>
+            )}
+          </div>
+          <DragOverlay dropAnimation={null}>
+            {draggingId ? (
+              <div className="rounded-2xl border bg-card p-4 opacity-95 shadow-xl ring-2 ring-primary">
+                <div className="flex items-center gap-3">
+                  <WealthAccountIcon account={accounts.find((a) => a.id === draggingId) ?? { type: "bank", icon: "bank" }} className="size-10" />
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold">{accountDisplayName(accounts.find((a) => a.id === draggingId) ?? { bank_name: "", nickname: "" })}</p>
+                    <p className="text-xs text-muted-foreground">{t("transfer")}…</p>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+          </DragOverlay>
+        </DndContext>
+      )}
+      {active.length >= 2 && (
+        <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <ArrowLeftRight className="size-3" /> {t("dragHint")}
+        </p>
       )}
 
       {archived.length > 0 && (
@@ -240,21 +318,10 @@ export function WealthPage() {
 
       {/* Create bank dialog */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader><DialogTitle>{t("addBankAccount")}</DialogTitle></DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-1.5">
-              <Label>{t("bankName")}</Label>
-              <Input value={form.bank_name} onChange={(e) => setForm((f) => ({ ...f, bank_name: e.target.value }))} />
-            </div>
-            <div className="space-y-1.5">
-              <Label>{t("nickname")}</Label>
-              <Input value={form.nickname} placeholder="Main Account" onChange={(e) => setForm((f) => ({ ...f, nickname: e.target.value }))} />
-            </div>
-            <div className="space-y-1.5">
-              <Label>{t("logoIcon")}</Label>
-              <IconSelect value={form.icon} onChange={(icon) => setForm((f) => ({ ...f, icon }))} />
-            </div>
+        <DialogContent className="inset-x-0 bottom-0 top-auto flex max-h-[92svh] w-full max-w-full translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-t-2xl p-0 sm:inset-x-auto sm:bottom-auto sm:top-[7svh] sm:left-1/2 sm:max-h-[86svh] sm:w-full sm:max-w-md sm:-translate-x-1/2 sm:rounded-2xl">
+          <DialogHeader className="shrink-0 border-b px-6 pb-3 pt-6"><DialogTitle>{t("addBankAccount")}</DialogTitle></DialogHeader>
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto scrollbar-thin px-6 py-4">
+            <BankAccountFormFields form={form} onChange={(patch) => setForm((f) => ({ ...f, ...patch }))} autoFocusName />
             <div className="space-y-1.5">
               <Label>{t("openingBalanceLabel", { symbol })}</Label>
               <Input
@@ -267,7 +334,7 @@ export function WealthPage() {
               />
             </div>
           </div>
-          <DialogFooter>
+          <DialogFooter className="shrink-0 border-t px-6 pb-6 pt-3">
             <Button variant="outline" onClick={() => setCreateOpen(false)}>{t("cancel")}</Button>
             <Button onClick={handleCreate} disabled={saving}>{saving ? t("saving") : t("addAccount")}</Button>
           </DialogFooter>
@@ -282,6 +349,36 @@ export function WealthPage() {
         currency={currency}
         onChanged={load}
       />
+
+      <TransferWizard
+        open={transferOpen}
+        onOpenChange={setTransferOpen}
+        accounts={accounts}
+        initialFromId={transferFrom}
+        initialToId={transferTo}
+        currency={currency}
+        onDone={load}
+      />
+    </div>
+  )
+}
+
+// Wraps an account card to make it both a drag source and a drop target for
+// transfers. Drag listeners sit on the wrapper; the inner card's own click /
+// adjust button still work (the pointer sensor only starts a drag after 8px).
+function DndAccountCard({ account, dimmed, children }: { account: WealthAccount; dimmed: boolean; children: ReactNode }) {
+  const drag = useDraggable({ id: account.id })
+  const drop = useDroppable({ id: account.id })
+  const setRefs = (el: HTMLDivElement | null) => { drag.setNodeRef(el); drop.setNodeRef(el) }
+  const isTarget = drop.isOver && drop.active != null && drop.active.id !== account.id
+  return (
+    <div
+      ref={setRefs}
+      {...drag.listeners}
+      {...drag.attributes}
+      className={`rounded-2xl transition-all ${dimmed ? "opacity-40" : ""} ${isTarget ? "scale-[1.02] ring-2 ring-primary ring-offset-2 ring-offset-background" : ""}`}
+    >
+      {children}
     </div>
   )
 }

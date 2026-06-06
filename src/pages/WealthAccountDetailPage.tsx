@@ -6,6 +6,7 @@ import {
   Archive,
   ArrowDownRight,
   ArrowLeft,
+  ArrowLeftRight,
   ArrowUpRight,
   Eye,
   EyeOff,
@@ -25,7 +26,18 @@ import { useUrlModal } from "@/hooks/use-url-modal"
 import { WealthAccountIcon } from "@/components/WealthAccountIcon"
 import { WealthAccountDialogs } from "@/components/wealth/WealthAccountDialogs"
 import { AccountQuickAddSheet } from "@/components/wealth/AccountQuickAddSheet"
+import { AccountDetailsSection } from "@/components/wealth/AccountDetailsSection"
 import { TransactionDetailModal } from "@/components/TransactionDetailModal"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { AttachmentBadge } from "@/components/AttachmentBadge"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -66,6 +78,7 @@ export function WealthAccountDetailPage() {
   const [editing, setEditing] = useState<WealthAccount | null>(null)
   const [adjusting, setAdjusting] = useState<WealthAccount | null>(null)
   const [addOpen, setAddOpen] = useState(false)
+  const [closeConfirm, setCloseConfirm] = useState(false)
 
   const view = useUrlModal("view")
   const [viewTx, setViewTx] = useState<Transaction | null>(null)
@@ -215,7 +228,7 @@ export function WealthAccountDetailPage() {
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuItem onSelect={() => setEditing(account)}><Pencil className="size-4" /> {t("edit")}</DropdownMenuItem>
-                {!isCash && <DropdownMenuItem onSelect={archive} className="text-muted-foreground"><Archive className="size-4" /> {t("archive")}</DropdownMenuItem>}
+                {!isCash && <DropdownMenuItem onSelect={() => setCloseConfirm(true)} className="text-destructive focus:text-destructive"><Archive className="size-4" /> {t("closeAccount")}</DropdownMenuItem>}
               </DropdownMenuContent>
             </DropdownMenu>
           )}
@@ -252,6 +265,9 @@ export function WealthAccountDetailPage() {
         </div>
       </div>
 
+      {/* Bank details + attachments (bank accounts only) */}
+      {!isCash && <AccountDetailsSection account={account} canWrite={canWrite} canDelete={canDelete} />}
+
       {/* Transactions */}
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-sm font-semibold">{t("transactions")} {total > 0 && <span className="text-muted-foreground">({total})</span>}</h2>
@@ -282,8 +298,14 @@ export function WealthAccountDetailPage() {
                   onClick={() => view.open(tx.id)}
                   className="pressable ios-tap flex w-full items-center gap-3 px-3 py-3 text-left transition-colors hover:bg-muted/50 sm:gap-4 sm:px-4"
                 >
-                  <div className={`flex size-8 shrink-0 items-center justify-center rounded-full ${tx.type === "incoming" ? "bg-emerald-100 dark:bg-emerald-900/30" : "bg-red-100 dark:bg-red-900/30"}`}>
-                    {tx.type === "incoming" ? <ArrowUpRight className="size-4 text-emerald-600 dark:text-emerald-400" /> : <ArrowDownRight className="size-4 text-red-600 dark:text-red-400" />}
+                  <div className={`flex size-8 shrink-0 items-center justify-center rounded-full ${
+                    tx.kind === "transfer" ? "bg-primary/10" : tx.type === "incoming" ? "bg-emerald-100 dark:bg-emerald-900/30" : "bg-red-100 dark:bg-red-900/30"
+                  }`}>
+                    {tx.kind === "transfer"
+                      ? <ArrowLeftRight className="size-4 text-primary" />
+                      : tx.type === "incoming"
+                        ? <ArrowUpRight className="size-4 text-emerald-600 dark:text-emerald-400" />
+                        : <ArrowDownRight className="size-4 text-red-600 dark:text-red-400" />}
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium">{tx.description || (tx.type === "incoming" ? t("income") : t("expenses"))}</p>
@@ -336,6 +358,21 @@ export function WealthAccountDetailPage() {
         isPersonal={isPersonal}
         onSaved={load}
       />
+
+      <AlertDialog open={closeConfirm} onOpenChange={setCloseConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("closeAccountTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>{t("closeAccountDesc")}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
+            <AlertDialogAction onClick={archive} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              {t("closeAccount")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

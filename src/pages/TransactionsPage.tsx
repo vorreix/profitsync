@@ -696,23 +696,25 @@ export function TransactionsPage() {
   async function openEditTx(tx: Transaction) {
     const isGroup = (tx.leg_count ?? 1) > 1 || !!tx.group_id
     if (isGroup && tx.group_id) {
+      // A split must be edited as the full set of legs. If we can't load them,
+      // abort rather than silently collapsing the split into a single account
+      // (which would destroy the split on save).
       try {
         const token = await getToken()
-        if (token) {
-          const legs = await apiGet<Transaction[]>(`/api/transactions?groupId=${tx.group_id}`, token)
-          if (legs.length) {
-            setEditForm({
-              id: legs[0].id,
-              group_id: tx.group_id,
-              client_id: tx.client_id,
-              allocations: legs.map((l) => ({ account_id: l.wealth_account_id ?? "", amount: String(l.amount) })),
-              type: tx.type, description: tx.description, category: tx.category, date: tx.date,
-            })
-            setEditOpen(true)
-            return
-          }
-        }
-      } catch { /* fall through to single-leg edit */ }
+        const legs = token ? await apiGet<Transaction[]>(`/api/transactions?groupId=${tx.group_id}`, token) : []
+        if (!legs.length) { toast.error(t("failedToUpdateTransaction")); return }
+        setEditForm({
+          id: legs[0].id,
+          group_id: tx.group_id,
+          client_id: tx.client_id,
+          allocations: legs.map((l) => ({ account_id: l.wealth_account_id ?? "", amount: String(l.amount) })),
+          type: tx.type, description: tx.description, category: tx.category, date: tx.date,
+        })
+        setEditOpen(true)
+      } catch {
+        toast.error(t("failedToUpdateTransaction"))
+      }
+      return
     }
     setEditForm({
       id: tx.id, group_id: tx.group_id ?? null, client_id: tx.client_id,

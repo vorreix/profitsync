@@ -2,7 +2,7 @@
 // authoritative gate — these mirror its allowlist and size cap purely for fast,
 // friendly feedback before an upload is attempted.
 
-export type AttachmentParent = "client" | "transaction" | "quotation"
+export type AttachmentParent = "client" | "transaction" | "quotation" | "wealth_account"
 
 // Mirror of the server's extension allowlist.
 export const ALLOWED_EXTENSIONS = [
@@ -41,12 +41,14 @@ const LIST_BASE: Record<AttachmentParent, string> = {
   client: "clients",
   transaction: "transactions",
   quotation: "quotations",
+  wealth_account: "wealth/accounts",
 }
 
 const ITEM_BASE: Record<AttachmentParent, string> = {
   client: "client-attachments",
   transaction: "attachments",
   quotation: "quotation-attachments",
+  wealth_account: "wealth-account-attachments",
 }
 
 // List + upload endpoint for a parent record.
