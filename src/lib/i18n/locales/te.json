@@ -443,7 +443,8 @@
     "deleteAttachmentDescription": "ఈ జత శాశ్వతంగా నిలిపివేయబడుతుంది.",
     "deleteBtn": "తొలగించు",
     "totalQuotations_one": "{{count}} కోట్",
-    "totalQuotations_other": "{{count}} కోట్‌లు"
+    "totalQuotations_other": "{{count}} కోట్‌లు",
+    "dateLabel": "తేదీ"
   },
   "organizations": {
     "organizationCreated": "సంస్థ సృష్టించబడింది",

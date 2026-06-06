@@ -443,7 +443,8 @@
     "deleteAttachmentDescription": "Questo allegato verrà eliminato in modo permanente.",
     "deleteBtn": "Elimina",
     "totalQuotations_one": "{{count}} preventivo",
-    "totalQuotations_other": "{{count}} preventivi"
+    "totalQuotations_other": "{{count}} preventivi",
+    "dateLabel": "Data"
   },
   "organizations": {
     "organizationCreated": "Organizzazione creata",

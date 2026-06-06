@@ -12,6 +12,8 @@ import { useLongPress } from "@/lib/use-long-press"
 import { BulkActionBar } from "@/components/BulkActionBar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { InputGroup, InputGroupAddon, InputGroupInput, InputGroupText } from "@/components/ui/input-group"
+import { getCurrencySymbol } from "@/lib/currencies"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
@@ -37,10 +39,13 @@ type QuotationForm = {
   email: string
   phone: string
   amount: string
+  date: string
   status: "draft" | "sent" | "accepted" | "rejected"
   notes: string
   category: string
 }
+
+const todayIso = () => new Date().toISOString().split("T")[0]
 
 const defaultForm = (): QuotationForm => ({
   title: "",
@@ -49,6 +54,7 @@ const defaultForm = (): QuotationForm => ({
   email: "",
   phone: "",
   amount: "",
+  date: todayIso(),
   status: "draft",
   notes: "",
   category: "",
@@ -80,6 +86,7 @@ function QuotationFormFields({
   onChange: (p: Partial<QuotationForm>) => void
 }) {
   const { t } = useTranslation("quotations")
+  const { currency } = useCurrency()
   return (
     <div className="space-y-4 py-2">
       <div className="space-y-1.5">
@@ -97,10 +104,19 @@ function QuotationFormFields({
         </div>
         <div className="space-y-1.5">
           <Label>{t("amountLabel")}</Label>
-          <Input type="number" min="0" step="0.01" placeholder={t("amountPlaceholder")} value={f.amount} onChange={(e) => onChange({ amount: e.target.value })} />
+          <InputGroup>
+            <InputGroupAddon>
+              <InputGroupText>{getCurrencySymbol(currency)}</InputGroupText>
+            </InputGroupAddon>
+            <InputGroupInput type="number" min="0" step="0.01" placeholder={t("amountPlaceholder")} value={f.amount} onChange={(e) => onChange({ amount: e.target.value })} />
+          </InputGroup>
         </div>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="space-y-1.5">
+          <Label>{t("dateLabel")}</Label>
+          <Input type="date" value={f.date} onChange={(e) => onChange({ date: e.target.value })} />
+        </div>
         <div className="space-y-1.5">
           <Label>{t("emailLabel")}</Label>
           <Input type="email" placeholder={t("emailPlaceholder")} value={f.email} onChange={(e) => onChange({ email: e.target.value })} />
@@ -705,7 +721,7 @@ export function QuotationsPage() {
                         variant="ghost"
                         className="size-8 p-0 shrink-0"
                         onClick={() => {
-                          setForm({ title: q.title, prospect_name: q.prospect_name, company: q.company, email: q.email, phone: q.phone, amount: q.amount, status: q.status, notes: q.notes, category: q.category ?? "" })
+                          setForm({ title: q.title, prospect_name: q.prospect_name, company: q.company, email: q.email, phone: q.phone, amount: q.amount, date: q.date ?? todayIso(), status: q.status, notes: q.notes, category: q.category ?? "" })
                           setEditTarget(q)
                         }}
                       >
@@ -911,7 +927,7 @@ export function QuotationsPage() {
                 </Button>
                 <Button variant="outline" onClick={() => {
                   setViewTarget(null)
-                  setForm({ title: viewTarget.title, prospect_name: viewTarget.prospect_name, company: viewTarget.company, email: viewTarget.email, phone: viewTarget.phone, amount: viewTarget.amount, status: viewTarget.status, notes: viewTarget.notes, category: viewTarget.category ?? "" })
+                  setForm({ title: viewTarget.title, prospect_name: viewTarget.prospect_name, company: viewTarget.company, email: viewTarget.email, phone: viewTarget.phone, amount: viewTarget.amount, date: viewTarget.date ?? todayIso(), status: viewTarget.status, notes: viewTarget.notes, category: viewTarget.category ?? "" })
                   setEditTarget(viewTarget)
                 }}>
                   <Pencil className="size-3.5" />

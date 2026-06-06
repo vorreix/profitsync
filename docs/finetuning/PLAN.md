@@ -56,7 +56,7 @@ cross‑cutting UI refactors later so they build on stabilised forms).
 | 01 | `feat/finetune-01-pwa-whitescreen` | **T3** PWA white‑screen after deploy | infra | M | ✅ done |
 | 02 | `feat/finetune-02-split-delete-sync` | **T1** split/bulk delete wealth sync | api+ui | H | ✅ done |
 | 03 | `feat/finetune-03-trash-sync` | **T13** trash delete/restore/purge sync | api | H | ✅ done |
-| 04 | `feat/finetune-04-quotation-modal` | **T4** quotation currency symbol + date | api+ui+db | M | ⬜ todo |
+| 04 | `feat/finetune-04-quotation-modal` | **T4** quotation currency symbol + date | api+ui+db | M | ✅ done |
 | 05 | `feat/finetune-05-wealth-detail` | **T5/6/7** collapsible card · attachments · edit tx | ui | M | ⬜ todo |
 | 06 | `feat/finetune-06-dashboard-card` | **T8** Revenue‑vs‑Expense View All + top 10 + filter | ui | L | ⬜ todo |
 | 07 | `feat/finetune-07-admin-plans` | **T16** hide business limits for personal plan | ui | L | ⬜ todo |
@@ -313,12 +313,24 @@ to today, `<input type=date>`).
 (+ `[id].ts` if PATCH) · `src/components/ui/input-group.tsx` (reuse) · en+7 locales.
 
 **Risks.** Migration numbering/`when` (memory: gotcha) · existing rows backfilled
-to `CURRENT_DATE` by default · keep date filters consistent.
+to `now()` by default · keep date filters consistent.
 
-**Verify.** `db:generate` diff matches hand SQL; create quotation → date defaults
-to today, symbol shows; row displays date; typecheck + i18n pass.
+**Verify.** ✅ Migration `0030_skinny_zarda` generated; **hit the journal‑timestamp
+gotcha** (`when` 1780786436291 < 0029’s 1780800000003) → bumped to 1780800000004;
+applied to dev DB and **confirmed `quotations.date` column exists** + recorded at
+the bumped `when`. Typecheck + i18n parity (867 keys) pass. Playwright: app has no
+errors from these changes (only an expected `/api/admin/me` 403). Full modal
+visual blocked by an `/onboarding` account state (not mutated).
 
-**Status:** ⬜ todo.
+**Implemented.** `schema.ts` quotations `date date NOT NULL DEFAULT now()`;
+`drizzle/0030_*.sql` (+ journal `when` fix); `Quotation.date` type; QuotationsPage
+form gains `date` (defaults today) + amount wrapped in `InputGroup` with
+`getCurrencySymbol(currency)`; load/save paths carry `date`; `quotations.ts` POST
++ `quotations/[id].ts` PATCH validate/store `date` (`isIsoDate`); `dateLabel` i18n
+in all 8 locales.
+
+**Status:** ✅ done (branch `feat/finetune-04-quotation-modal`). List/detail date
+display is optional polish (deferred).
 
 ---
 

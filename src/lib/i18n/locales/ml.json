@@ -443,7 +443,8 @@
     "deleteAttachmentDescription": "ഈ അറ്റാച്ച്മെന്റ് സ്ഥിരമായി ഇല്ലാതാക്കപ്പെടും.",
     "deleteBtn": "ഇല്ലാതാക്കുക",
     "totalQuotations_one": "{{count}} ഉദ്ധരണി",
-    "totalQuotations_other": "{{count}} ഉദ്ധരണികൾ"
+    "totalQuotations_other": "{{count}} ഉദ്ധരണികൾ",
+    "dateLabel": "തീയതി"
   },
   "organizations": {
     "organizationCreated": "സംഘടന സൃഷ്ടിക്കപ്പെട്ടു",

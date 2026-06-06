@@ -663,6 +663,7 @@
     "companyPlaceholder": "Acme Corp",
     "amountLabel": "Amount",
     "amountPlaceholder": "0.00",
+    "dateLabel": "Date",
     "emailLabel": "Email",
     "emailPlaceholder": "jane@acme.com",
     "phoneLabel": "Phone",

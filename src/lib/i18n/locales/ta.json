@@ -443,7 +443,8 @@
     "deleteAttachmentDescription": "இந்த இணைப்பு நிரந்தரமாக நீக்கப்படும்.",
     "deleteBtn": "நீக்கவும்",
     "totalQuotations_one": "{{count}} மேற்கோள்",
-    "totalQuotations_other": "{{count}} மேற்கோள்கள்"
+    "totalQuotations_other": "{{count}} மேற்கோள்கள்",
+    "dateLabel": "தேதி"
   },
   "organizations": {
     "organizationCreated": "நிறுவனம் உருவாக்கப்பட்டது",

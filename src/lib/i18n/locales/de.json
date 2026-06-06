@@ -443,7 +443,8 @@
     "deleteAttachmentDescription": "Dieser Anhang wird dauerhaft gelöscht.",
     "deleteBtn": "Löschen",
     "totalQuotations_one": "{{count}} Angebot",
-    "totalQuotations_other": "{{count}} Angebote"
+    "totalQuotations_other": "{{count}} Angebote",
+    "dateLabel": "Datum"
   },
   "organizations": {
     "organizationCreated": "Organisation erstellt",

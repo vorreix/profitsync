@@ -443,7 +443,8 @@
     "deleteAttachmentDescription": "سيتم حذف هذا المرفق بشكل دائم.",
     "deleteBtn": "حذف",
     "totalQuotations_one": "{{count}} اقتراح",
-    "totalQuotations_other": "{{count}} اقتراحات"
+    "totalQuotations_other": "{{count}} اقتراحات",
+    "dateLabel": "التاريخ"
   },
   "organizations": {
     "organizationCreated": "تم إنشاء المنظمة",
