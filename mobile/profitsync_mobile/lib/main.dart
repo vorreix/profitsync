@@ -9,6 +9,7 @@ import 'screens/auth/auth_flow.dart';
 import 'screens/gate.dart';
 import 'screens/splash.dart';
 import 'theme.dart';
+import 'theme_controller.dart';
 
 /// Wires the Clerk auth state to the API client (bearer token) and app state
 /// (active org header). Kept as one object so `main()` and tests share the
@@ -42,7 +43,14 @@ Future<void> main() async {
   final authState = await ClerkAuthState.create(config: config);
   final container = AppContainer(authState);
 
-  runApp(ProfitSyncApp(authState: authState, appState: container.state));
+  final themeController = ThemeController();
+  await themeController.load();
+
+  runApp(ProfitSyncApp(
+    authState: authState,
+    appState: container.state,
+    themeController: themeController,
+  ));
 }
 
 class ProfitSyncApp extends StatelessWidget {
@@ -50,32 +58,39 @@ class ProfitSyncApp extends StatelessWidget {
     super.key,
     required this.authState,
     required this.appState,
+    required this.themeController,
   });
 
   final ClerkAuthState authState;
   final AppState appState;
+  final ThemeController themeController;
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider.value(
-      value: appState,
-      child: MaterialApp(
-        title: 'ProfitSync',
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.light(),
-        darkTheme: AppTheme.dark(),
-        themeMode: ThemeMode.system,
-        // ClerkAuth wraps the navigator (and all overlays/dialogs it pushes) so
-        // `ClerkAuth.of(context)` resolves everywhere — including from sheets and
-        // toasts. This is why ClerkAuth lives in `builder`, not as `home`.
-        builder: (context, child) => ClerkAuth(
-          authState: authState,
-          child: ClerkErrorListener(child: child!),
-        ),
-        home: ClerkAuthBuilder(
-          signedInBuilder: (context, _) => const Gate(),
-          signedOutBuilder: (context, _) => const AuthFlow(),
-          builder: (context, _) => const SplashScreen(),
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider.value(value: appState),
+        ChangeNotifierProvider.value(value: themeController),
+      ],
+      child: Consumer<ThemeController>(
+        builder: (context, theme, _) => MaterialApp(
+          title: 'ProfitSync',
+          debugShowCheckedModeBanner: false,
+          theme: AppTheme.light(),
+          darkTheme: AppTheme.dark(),
+          themeMode: theme.mode,
+          // ClerkAuth wraps the navigator (and all overlays/dialogs it pushes) so
+          // `ClerkAuth.of(context)` resolves everywhere — including from sheets and
+          // toasts. This is why ClerkAuth lives in `builder`, not as `home`.
+          builder: (context, child) => ClerkAuth(
+            authState: authState,
+            child: ClerkErrorListener(child: child!),
+          ),
+          home: ClerkAuthBuilder(
+            signedInBuilder: (context, _) => const Gate(),
+            signedOutBuilder: (context, _) => const AuthFlow(),
+            builder: (context, _) => const SplashScreen(),
+          ),
         ),
       ),
     );

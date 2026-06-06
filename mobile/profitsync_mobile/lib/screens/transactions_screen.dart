@@ -18,6 +18,8 @@ class TransactionsScreen extends StatefulWidget {
 class _TransactionsScreenState extends State<TransactionsScreen> {
   late Future<List<Transaction>> _future;
   String _filter = 'all'; // all | incoming | outgoing
+  String _range = 'all'; // all | month | d30 | year
+  String _sort = 'date_desc'; // date_desc | date_asc | amount_desc | amount_asc
 
   @override
   void initState() {
@@ -30,8 +32,47 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     final res = await api.get('/api/transactions');
     return (res as List)
         .map((e) => Transaction.fromJson(e as Map<String, dynamic>))
-        .toList()
-      ..sort((a, b) => b.date.compareTo(a.date));
+        .toList();
+  }
+
+  /// Apply the active type/date filters and sort order.
+  List<Transaction> _apply(List<Transaction> all) {
+    final now = DateTime.now();
+    bool inRange(Transaction t) {
+      if (_range == 'all') return true;
+      final d = DateTime.tryParse(t.date);
+      if (d == null) return true;
+      switch (_range) {
+        case 'month':
+          return d.year == now.year && d.month == now.month;
+        case 'd30':
+          return d.isAfter(now.subtract(const Duration(days: 30)));
+        case 'year':
+          return d.year == now.year;
+        default:
+          return true;
+      }
+    }
+
+    final list = all
+        .where((t) => _filter == 'all' || t.type == _filter)
+        .where(inRange)
+        .toList();
+    switch (_sort) {
+      case 'date_asc':
+        list.sort((a, b) => a.date.compareTo(b.date));
+        break;
+      case 'amount_desc':
+        list.sort((a, b) => b.amount.compareTo(a.amount));
+        break;
+      case 'amount_asc':
+        list.sort((a, b) => a.amount.compareTo(b.amount));
+        break;
+      case 'date_desc':
+      default:
+        list.sort((a, b) => b.date.compareTo(a.date));
+    }
+    return list;
   }
 
   Future<void> _refresh() async {
@@ -96,14 +137,16 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
               return _ErrorList(message: '${snap.error}');
             }
             final all = snap.data ?? [];
-            final txns = _filter == 'all'
-                ? all
-                : all.where((t) => t.type == _filter).toList();
+            final txns = _apply(all);
             return Column(
               children: [
                 _FilterBar(
                   value: _filter,
                   onChanged: (v) => setState(() => _filter = v),
+                  range: _range,
+                  onRangeChanged: (v) => setState(() => _range = v),
+                  sort: _sort,
+                  onSortChanged: (v) => setState(() => _sort = v),
                 ),
                 Expanded(
                   child: txns.isEmpty
@@ -112,9 +155,12 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                             const SizedBox(height: 80),
                             EmptyState(
                               icon: Icons.receipt_long_rounded,
-                              title: 'No transactions',
-                              subtitle:
-                                  'Tap Add to record your first transaction.',
+                              title: all.isEmpty
+                                  ? 'No transactions'
+                                  : 'No matches',
+                              subtitle: all.isEmpty
+                                  ? 'Tap Add to record your first transaction.'
+                                  : 'Try a different filter or date range.',
                             ),
                           ],
                         )
@@ -182,15 +228,33 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
 }
 
 class _FilterBar extends StatelessWidget {
-  const _FilterBar({required this.value, required this.onChanged});
+  const _FilterBar({
+    required this.value,
+    required this.onChanged,
+    required this.range,
+    required this.onRangeChanged,
+    required this.sort,
+    required this.onSortChanged,
+  });
   final String value;
   final ValueChanged<String> onChanged;
+  final String range;
+  final ValueChanged<String> onRangeChanged;
+  final String sort;
+  final ValueChanged<String> onSortChanged;
+
+  static const _ranges = {
+    'all': 'All time',
+    'month': 'This month',
+    'd30': 'Last 30 days',
+    'year': 'This year',
+  };
 
   @override
   Widget build(BuildContext context) {
-    Widget chip(String key, String label) {
-      final selected = value == key;
-      final scheme = Theme.of(context).colorScheme;
+    final scheme = Theme.of(context).colorScheme;
+    Widget chip(String key, String label,
+        {required bool selected, required ValueChanged<String> onTap}) {
       return Padding(
         padding: const EdgeInsets.only(right: 8),
         child: ChoiceChip(
@@ -202,22 +266,75 @@ class _FilterBar extends StatelessWidget {
             color: selected ? scheme.onPrimary : scheme.onSurfaceVariant,
           ),
           selectedColor: scheme.primary,
-          onSelected: (_) => onChanged(key),
+          onSelected: (_) => onTap(key),
         ),
       );
     }
 
-    return SizedBox(
-      height: 52,
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        children: [
-          chip('all', 'All'),
-          chip('incoming', 'Income'),
-          chip('outgoing', 'Expenses'),
-        ],
-      ),
+    return Column(
+      children: [
+        // Type filter + sort menu.
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 8, 4),
+          child: Row(
+            children: [
+              Expanded(
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      chip('all', 'All',
+                          selected: value == 'all', onTap: onChanged),
+                      chip('incoming', 'Income',
+                          selected: value == 'incoming', onTap: onChanged),
+                      chip('outgoing', 'Expenses',
+                          selected: value == 'outgoing', onTap: onChanged),
+                    ],
+                  ),
+                ),
+              ),
+              _SortButton(sort: sort, onChanged: onSortChanged),
+            ],
+          ),
+        ),
+        // Date range.
+        SizedBox(
+          height: 44,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+            children: [
+              for (final e in _ranges.entries)
+                chip(e.key, e.value,
+                    selected: range == e.key, onTap: onRangeChanged),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Reusable sort menu for list screens (date/amount/name).
+class _SortButton extends StatelessWidget {
+  const _SortButton({required this.sort, required this.onChanged});
+  final String sort;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return PopupMenuButton<String>(
+      tooltip: 'Sort',
+      initialValue: sort,
+      onSelected: onChanged,
+      icon: Icon(Icons.swap_vert_rounded, color: scheme.onSurfaceVariant),
+      itemBuilder: (_) => const [
+        PopupMenuItem(value: 'date_desc', child: Text('Newest first')),
+        PopupMenuItem(value: 'date_asc', child: Text('Oldest first')),
+        PopupMenuItem(value: 'amount_desc', child: Text('Amount: high → low')),
+        PopupMenuItem(value: 'amount_asc', child: Text('Amount: low → high')),
+      ],
     );
   }
 }

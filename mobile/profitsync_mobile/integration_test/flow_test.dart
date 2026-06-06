@@ -6,6 +6,7 @@ import 'package:integration_test/integration_test.dart';
 
 import 'package:profitsync_mobile/config.dart';
 import 'package:profitsync_mobile/main.dart';
+import 'package:profitsync_mobile/theme_controller.dart';
 
 /// Real end-to-end on the simulator: authenticate against the live Clerk dev
 /// instance (test mode), then drive onboarding against the live backend and
@@ -72,7 +73,7 @@ void main() {
         reason: 'Clerk authentication did not establish a session');
 
     await tester.pumpWidget(
-      ProfitSyncApp(authState: authState, appState: container.state),
+      ProfitSyncApp(authState: authState, appState: container.state, themeController: ThemeController()),
     );
 
     // Wait out the boot fetch (profile + organizations).
