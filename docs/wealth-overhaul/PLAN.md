@@ -33,7 +33,11 @@ Each branch is created **from the tip of the previous branch** so later work inc
 | `feat/split-transactions-grouping` | `dev` | ✅ pushed | 0026 (`group_id`) | `0ba5b84` | — |
 | `feat/account-quick-add` | `feat/split-transactions-grouping` | ✅ pushed | — | `39b0e95` | — |
 | `feat/bank-account-details` | `feat/account-quick-add` | ✅ pushed | 0027 (+ attachments table) | `3f18fa1` | — |
-| `feat/account-transfers` | `feat/bank-account-details` | 🟨 in progress | 0028 (`kind`) | — | — |
+| `feat/account-transfers` | `feat/bank-account-details` | ✅ pushed | 0028 (`kind`) | `a7fa59d` | — |
+
+> **Feature 4 verified (2026-06-06):** the **Transfer** button + dragging one account card onto another (`@dnd-kit`) both open the N26-style wizard (amount → date/note/attachments). An AC1→Cash €20 transfer updated both balances with Net Worth unchanged, showed **"Transfer to Cash in Hand"** on AC1's list with an `ArrowLeftRight` glyph, was **excluded** from EXPENSES and from the **global** transactions list ("2 total", EXPENSES €50 not €70), and analytics. Dragging AC2 onto HSBC India opened the wizard pre-filled From=AC2 / To=HSBC India. Screenshots: `transfer-step1.png`, `transfer-on-account.png`, `transfer-drag-wizard.png`.
+
+**All four feature branches are implemented, browser-verified, and pushed.** Open PRs in stack order (`split → quick-add → bank-details → transfers`) or merge the top branch (which includes the whole stack).
 
 > **Feature 3 verified (2026-06-06):** "HSBC" autocompletes real banks with logos (Brandfetch search, server-proxied); selecting stores the logo on the backend (base64) and renders it on the card + detail header. Country=India switched the field to **IFSC Code** (default = Account Number); SWIFT/Location/Address/Note persist and show on the detail "Account details" card. Attachments upload/list/delete; **Close account** shows a confirm. `BRANDFETCH_APIKEY` was added to the Vercel **Development + Production** envs (was only in `.env.local`; `vercel dev` functions read cloud env) and the dev server restarted. Screenshots: `bank-autocomplete.png`, `bank-india-ifsc.png`, `bank-card-logo.png`, `bank-detail-page.png`.
 
