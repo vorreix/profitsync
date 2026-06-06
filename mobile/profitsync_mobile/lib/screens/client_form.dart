@@ -36,6 +36,17 @@ class _ClientFormState extends State<ClientForm> {
 
   bool get _isEdit => widget.existing != null;
 
+  // Web parity: the create form offers only active/inactive. "archived" is kept
+  // selectable only when editing a client that is already archived, so its state
+  // stays visible and changeable.
+  List<String> get _statusOptions {
+    final base = ['active', 'inactive'];
+    if (widget.existing?.status == 'archived') base.add('archived');
+    return base;
+  }
+
+  String _statusLabel(String s) => s[0].toUpperCase() + s.substring(1);
+
   @override
   void initState() {
     super.initState();
@@ -143,15 +154,31 @@ class _ClientFormState extends State<ClientForm> {
                       _label('Status'),
                       Wrap(
                         spacing: 8,
-                        children: ['active', 'inactive', 'archived']
-                            .map((s) => ChoiceChip(
-                                  label: Text(s),
-                                  selected: _status == s,
-                                  showCheckmark: false,
-                                  onSelected: (_) =>
-                                      setState(() => _status = s),
-                                ))
-                            .toList(),
+                        runSpacing: 8,
+                        children: _statusOptions.map((s) {
+                          final selected = _status == s;
+                          return ChoiceChip(
+                            label: Text(_statusLabel(s)),
+                            selected: selected,
+                            showCheckmark: false,
+                            selectedColor: scheme.primary,
+                            backgroundColor:
+                                Theme.of(context).cardColor,
+                            side: BorderSide(
+                              color: selected
+                                  ? scheme.primary
+                                  : Theme.of(context).dividerColor,
+                            ),
+                            labelStyle: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              color: selected
+                                  ? Colors.white
+                                  : scheme.onSurface,
+                            ),
+                            onSelected: (_) =>
+                                setState(() => _status = s),
+                          );
+                        }).toList(),
                       ),
                     ],
                   ),

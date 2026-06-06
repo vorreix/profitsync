@@ -6,6 +6,7 @@ import 'package:integration_test/integration_test.dart';
 
 import 'package:profitsync_mobile/config.dart';
 import 'package:profitsync_mobile/main.dart';
+import 'package:profitsync_mobile/theme_controller.dart';
 
 /// Verifies the real create/edit flows through the UI (client create was
 /// reported broken) and that opening the forms doesn't overflow — the test
@@ -60,7 +61,7 @@ void main() {
 
     final container = AppContainer(authState);
     await tester.pumpWidget(
-        ProfitSyncApp(authState: authState, appState: container.state));
+        ProfitSyncApp(authState: authState, appState: container.state, themeController: ThemeController()));
 
     // Onboard as Business so Clients is available.
     expect(await waitFor(tester, find.text('How will you use ProfitSync?')),
@@ -117,7 +118,7 @@ void main() {
     });
     final container = AppContainer(authState);
     await tester.pumpWidget(
-        ProfitSyncApp(authState: authState, appState: container.state));
+        ProfitSyncApp(authState: authState, appState: container.state, themeController: ThemeController()));
 
     expect(await waitFor(tester, find.text('How will you use ProfitSync?')),
         isTrue);

@@ -19,6 +19,8 @@ class ClientsScreen extends StatefulWidget {
 class _ClientsScreenState extends State<ClientsScreen> {
   late Future<List<Client>> _future;
   String _query = '';
+  String _status = 'all'; // all | active | inactive | archived
+  String _sort = 'name_asc'; // name_asc | name_desc | net_desc | net_asc
 
   @override
   void initState() {
@@ -32,8 +34,32 @@ class _ClientsScreenState extends State<ClientsScreen> {
     return (res as List)
         .map((e) => Client.fromJson(e as Map<String, dynamic>))
         .where((c) => !c.isOwn)
-        .toList()
-      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+        .toList();
+  }
+
+  List<Client> _apply(List<Client> all) {
+    final list = all.where((c) {
+      if (_status != 'all' && c.status != _status) return false;
+      if (_query.isEmpty) return true;
+      return c.name.toLowerCase().contains(_query) ||
+          c.company.toLowerCase().contains(_query) ||
+          c.email.toLowerCase().contains(_query);
+    }).toList();
+    switch (_sort) {
+      case 'name_desc':
+        list.sort((a, b) => b.name.toLowerCase().compareTo(a.name.toLowerCase()));
+        break;
+      case 'net_desc':
+        list.sort((a, b) => b.net.compareTo(a.net));
+        break;
+      case 'net_asc':
+        list.sort((a, b) => a.net.compareTo(b.net));
+        break;
+      case 'name_asc':
+      default:
+        list.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    }
+    return list;
   }
 
   Future<void> _refresh() async {
@@ -72,25 +98,63 @@ class _ClientsScreenState extends State<ClientsScreen> {
               ]);
             }
             final all = snap.data ?? [];
-            final clients = _query.isEmpty
-                ? all
-                : all
-                    .where((c) =>
-                        c.name.toLowerCase().contains(_query) ||
-                        c.company.toLowerCase().contains(_query) ||
-                        c.email.toLowerCase().contains(_query))
-                    .toList();
+            final clients = _apply(all);
             return Column(
               children: [
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-                  child: TextField(
-                    onChanged: (v) =>
-                        setState(() => _query = v.trim().toLowerCase()),
-                    decoration: const InputDecoration(
-                      prefixIcon: Icon(Icons.search_rounded),
-                      hintText: 'Search clients',
-                    ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          onChanged: (v) =>
+                              setState(() => _query = v.trim().toLowerCase()),
+                          decoration: const InputDecoration(
+                            prefixIcon: Icon(Icons.search_rounded),
+                            hintText: 'Search clients',
+                          ),
+                        ),
+                      ),
+                      _ClientSortButton(
+                        sort: _sort,
+                        onChanged: (v) => setState(() => _sort = v),
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(
+                  height: 44,
+                  child: ListView(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+                    children: [
+                      for (final e in const {
+                        'all': 'All',
+                        'active': 'Active',
+                        'inactive': 'Inactive',
+                        'archived': 'Archived',
+                      }.entries)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: ChoiceChip(
+                            label: Text(e.value),
+                            selected: _status == e.key,
+                            showCheckmark: false,
+                            selectedColor:
+                                Theme.of(context).colorScheme.primary,
+                            labelStyle: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              color: _status == e.key
+                                  ? Theme.of(context).colorScheme.onPrimary
+                                  : Theme.of(context)
+                                      .colorScheme
+                                      .onSurfaceVariant,
+                            ),
+                            onSelected: (_) =>
+                                setState(() => _status = e.key),
+                          ),
+                        ),
+                    ],
                   ),
                 ),
                 Expanded(
@@ -135,6 +199,29 @@ class _ClientsScreenState extends State<ClientsScreen> {
           },
         ),
       ),
+    );
+  }
+}
+
+class _ClientSortButton extends StatelessWidget {
+  const _ClientSortButton({required this.sort, required this.onChanged});
+  final String sort;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return PopupMenuButton<String>(
+      tooltip: 'Sort',
+      initialValue: sort,
+      onSelected: onChanged,
+      icon: Icon(Icons.swap_vert_rounded,
+          color: Theme.of(context).colorScheme.onSurfaceVariant),
+      itemBuilder: (_) => const [
+        PopupMenuItem(value: 'name_asc', child: Text('Name: A → Z')),
+        PopupMenuItem(value: 'name_desc', child: Text('Name: Z → A')),
+        PopupMenuItem(value: 'net_desc', child: Text('Net: high → low')),
+        PopupMenuItem(value: 'net_asc', child: Text('Net: low → high')),
+      ],
     );
   }
 }

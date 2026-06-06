@@ -9,6 +9,8 @@ import {
   subscriptions,
   transactionAttachments,
   transactions,
+  wealthAccountAttachments,
+  wealthAccounts,
 } from "../../src/lib/db/schema.js"
 
 export type PlanLimits = {
@@ -97,7 +99,7 @@ export async function checkOrgAttachmentQuota(orgId: string, newSizeBytes: numbe
   const maxBytes = limits.attachmentTotalSizeKb * 1024
 
   const sumExpr = sql<number>`coalesce(sum(${transactionAttachments.fileSize}), 0)`
-  const [clientSum, txSum, quotationSum] = await Promise.all([
+  const [clientSum, txSum, quotationSum, wealthSum] = await Promise.all([
     db
       .select({ total: sql<number>`coalesce(sum(${clientAttachments.fileSize}), 0)` })
       .from(clientAttachments)
@@ -114,9 +116,14 @@ export async function checkOrgAttachmentQuota(orgId: string, newSizeBytes: numbe
       .from(quotationAttachments)
       .innerJoin(quotations, eq(quotations.id, quotationAttachments.quotationId))
       .where(eq(quotations.organizationId, orgId)),
+    db
+      .select({ total: sql<number>`coalesce(sum(${wealthAccountAttachments.fileSize}), 0)` })
+      .from(wealthAccountAttachments)
+      .innerJoin(wealthAccounts, eq(wealthAccounts.id, wealthAccountAttachments.wealthAccountId))
+      .where(eq(wealthAccounts.organizationId, orgId)),
   ])
 
-  const used = Number(clientSum[0]?.total ?? 0) + Number(txSum[0]?.total ?? 0) + Number(quotationSum[0]?.total ?? 0)
+  const used = Number(clientSum[0]?.total ?? 0) + Number(txSum[0]?.total ?? 0) + Number(quotationSum[0]?.total ?? 0) + Number(wealthSum[0]?.total ?? 0)
   if (used + newSizeBytes > maxBytes) {
     return {
       allowed: false,
@@ -189,7 +196,7 @@ export async function checkQuotationQuota(orgId: string): Promise<QuotaCheck> {
 
 export async function checkAttachmentQuota(
   orgId: string,
-  opts: { kind: "transaction" | "quotation" | "client"; parentId: string; sizeBytes: number },
+  opts: { kind: "transaction" | "quotation" | "client" | "wealth_account"; parentId: string; sizeBytes: number },
 ): Promise<QuotaCheck> {
   const { planKey, limits } = await getOrgPlan(orgId)
   const maxBytes = limits.attachmentSizeKb * 1024
@@ -209,7 +216,9 @@ export async function checkAttachmentQuota(
       ? { table: transactionAttachments, parentCol: transactionAttachments.transactionId }
       : opts.kind === "quotation"
         ? { table: quotationAttachments, parentCol: quotationAttachments.quotationId }
-        : { table: clientAttachments, parentCol: clientAttachments.clientId }
+        : opts.kind === "wealth_account"
+          ? { table: wealthAccountAttachments, parentCol: wealthAccountAttachments.wealthAccountId }
+          : { table: clientAttachments, parentCol: clientAttachments.clientId }
   const [{ current }] = await db
     .select({ current: count() })
     .from(table)

@@ -22,7 +22,9 @@ class _HomeShellState extends State<HomeShell> {
 
   @override
   Widget build(BuildContext context) {
-    final isBusiness = context.watch<AppState>().isBusiness;
+    final app = context.watch<AppState>();
+    final isBusiness = app.isBusiness;
+    final orgId = app.activeOrgId;
 
     final tabs = <_Tab>[
       _Tab(
@@ -64,8 +66,13 @@ class _HomeShellState extends State<HomeShell> {
     return Scaffold(
       // Render only the active tab so revisiting a tab re-mounts it and reloads
       // its data (served from the API GET cache when still fresh). This keeps
-      // data consistent across tabs after edits made elsewhere.
-      body: tabs[safeIndex].screen,
+      // data consistent across tabs after edits made elsewhere. Keying on the
+      // active org id forces a fresh load of the current tab right after an org
+      // switch, so the screen never shows the previous workspace's data.
+      body: KeyedSubtree(
+        key: ValueKey('${orgId ?? 'none'}#$safeIndex'),
+        child: tabs[safeIndex].screen,
+      ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: safeIndex,
         onDestinationSelected: (i) => setState(() => _index = i),

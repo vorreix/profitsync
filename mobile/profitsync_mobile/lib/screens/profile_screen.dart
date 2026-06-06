@@ -4,7 +4,10 @@ import 'package:provider/provider.dart';
 
 import '../app_state.dart';
 import '../theme.dart';
+import '../theme_controller.dart';
+import '../util.dart';
 import '../widgets.dart';
+import 'currency_picker.dart';
 import 'org_switcher_sheet.dart';
 import 'subscription_screen.dart';
 
@@ -80,12 +83,15 @@ class ProfileScreen extends StatelessWidget {
                 icon: Icons.payments_outlined,
                 title: 'Plan',
                 subtitle: (org?.isPremium ?? false)
-                    ? 'Premium · manage subscription'
+                    ? '${planDisplayName(org?.planKey)} · manage subscription'
                     : 'Free · upgrade available',
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    _PlanBadge(premium: org?.isPremium ?? false),
+                    _PlanBadge(
+                      premium: org?.isPremium ?? false,
+                      label: planDisplayName(org?.planKey).toUpperCase(),
+                    ),
                     const SizedBox(width: 6),
                     Icon(Icons.chevron_right_rounded,
                         color: Theme.of(context).colorScheme.onSurfaceVariant),
@@ -101,21 +107,27 @@ class ProfileScreen extends StatelessWidget {
               _Tile(
                 icon: Icons.attach_money_rounded,
                 title: 'Currency',
-                subtitle: state.currency,
+                subtitle: state.canDelete
+                    ? state.currency
+                    : '${state.currency} · owner/admin only',
+                trailing: state.canDelete
+                    ? Icon(Icons.chevron_right_rounded,
+                        color: scheme.onSurfaceVariant)
+                    : null,
+                onTap:
+                    state.canDelete ? () => _changeCurrency(context) : null,
               ),
             ],
           ),
           const SizedBox(height: 16),
 
+          _SectionLabel('Appearance'),
+          const _Card(children: [_AppearanceTile()]),
+          const SizedBox(height: 16),
+
           _SectionLabel('Account'),
           _Card(
             children: [
-              _Tile(
-                icon: Icons.refresh_rounded,
-                title: 'Refresh data',
-                onTap: () => context.read<AppState>().refresh(),
-              ),
-              const Divider(height: 1),
               _Tile(
                 icon: Icons.logout_rounded,
                 iconColor: Brand.expense,
@@ -134,6 +146,20 @@ class ProfileScreen extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Future<void> _changeCurrency(BuildContext context) async {
+    final state = context.read<AppState>();
+    final messenger = ScaffoldMessenger.of(context);
+    final code = await pickCurrency(context, current: state.currency);
+    if (code == null || code == state.currency) return;
+    try {
+      await state.changeCurrency(code);
+      messenger.showSnackBar(SnackBar(content: Text('Currency set to $code')));
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(
+          content: Text(e.toString().replaceFirst('Exception: ', ''))));
+    }
   }
 
   void _confirmSignOut(BuildContext context) {
@@ -239,8 +265,9 @@ class _Tile extends StatelessWidget {
 }
 
 class _PlanBadge extends StatelessWidget {
-  const _PlanBadge({required this.premium});
+  const _PlanBadge({required this.premium, required this.label});
   final bool premium;
+  final String label;
   @override
   Widget build(BuildContext context) {
     final color = premium ? Brand.amber : const Color(0xFF94A3B8);
@@ -250,9 +277,70 @@ class _PlanBadge extends StatelessWidget {
         color: color.withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(20),
       ),
-      child: Text(premium ? 'PREMIUM' : 'FREE',
+      child: Text(premium ? label : 'FREE',
           style: TextStyle(
               color: color, fontWeight: FontWeight.w800, fontSize: 11)),
+    );
+  }
+}
+
+/// System / Light / Dark selector backed by [ThemeController].
+class _AppearanceTile extends StatelessWidget {
+  const _AppearanceTile();
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = context.watch<ThemeController>();
+    final scheme = Theme.of(context).colorScheme;
+
+    Widget seg(ThemeMode mode, IconData icon, String label) {
+      final selected = controller.mode == mode;
+      return Expanded(
+        child: GestureDetector(
+          onTap: () => controller.setMode(mode),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            padding: const EdgeInsets.symmetric(vertical: 9),
+            decoration: BoxDecoration(
+              color: selected
+                  ? scheme.primary.withValues(alpha: 0.14)
+                  : Colors.transparent,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: selected ? scheme.primary : Theme.of(context).dividerColor,
+                width: selected ? 1.5 : 1,
+              ),
+            ),
+            child: Column(
+              children: [
+                Icon(icon,
+                    size: 20,
+                    color: selected ? scheme.primary : scheme.onSurfaceVariant),
+                const SizedBox(height: 4),
+                Text(label,
+                    style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color:
+                            selected ? scheme.primary : scheme.onSurfaceVariant)),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+      child: Row(
+        children: [
+          seg(ThemeMode.system, Icons.brightness_auto_rounded, 'System'),
+          const SizedBox(width: 8),
+          seg(ThemeMode.light, Icons.light_mode_rounded, 'Light'),
+          const SizedBox(width: 8),
+          seg(ThemeMode.dark, Icons.dark_mode_rounded, 'Dark'),
+        ],
+      ),
     );
   }
 }

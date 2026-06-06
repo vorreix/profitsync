@@ -1,9 +1,10 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { and, asc, count, eq, isNull, sql } from "drizzle-orm"
+import { and, asc, count, eq, isNull, max, sql } from "drizzle-orm"
 import { db, serialize } from "../../../src/lib/db/index.js"
 import { transactions, wealthAccounts } from "../../../src/lib/db/schema.js"
 import { canWrite, ensureDefaultClient, requireAuth } from "../../_lib/auth.js"
 import { logAudit } from "../../_lib/audit.js"
+import { type BankDetailInput, pickBankDetails, resolveLogoColumns } from "../../_lib/bank-brand.js"
 
 const MAX_BANK_ACCOUNTS = 5
 
@@ -95,20 +96,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         openingBalance: wealthAccounts.openingBalance,
         currentBalance: wealthAccounts.currentBalance,
         icon: wealthAccounts.icon,
+        // Small brand/detail fields for the cards + detail page. logo_data
+        // (base64) is intentionally NOT selected to keep list payloads small.
+        brandDomain: wealthAccounts.brandDomain,
+        logoUrl: wealthAccounts.logoUrl,
+        country: wealthAccounts.country,
+        accountNumber: wealthAccounts.accountNumber,
+        routingNumber: wealthAccounts.routingNumber,
+        swift: wealthAccounts.swift,
+        address: wealthAccounts.address,
+        location: wealthAccounts.location,
+        note: wealthAccounts.note,
+        position: wealthAccounts.position,
         archivedAt: wealthAccounts.archivedAt,
         createdAt: wealthAccounts.createdAt,
         updatedAt: wealthAccounts.updatedAt,
         transactionCount: count(transactions.id),
+        attachmentCount: sql<number>`(select count(*)::int from wealth_account_attachments where wealth_account_id = ${wealthAccounts.id})`,
       })
       .from(wealthAccounts)
       .leftJoin(transactions, and(eq(transactions.wealthAccountId, wealthAccounts.id), isNull(transactions.deletedAt)))
       .where(eq(wealthAccounts.organizationId, orgId))
       .groupBy(wealthAccounts.id)
-      // Active before archived; Cash in Hand always first; banks oldest-first so
-      // the order is stable as new ones are added.
+      // Active before archived, then the user's drag-to-reorder order
+      // (`position`), falling back to creation order for ties (so never-reordered
+      // workspaces keep Cash-in-Hand-first, banks oldest-first).
       .orderBy(
         sql`${wealthAccounts.archivedAt} is not null`,
-        sql`${wealthAccounts.type} = 'cash' desc`,
+        asc(wealthAccounts.position),
         asc(wealthAccounts.createdAt),
       )
 
@@ -117,7 +132,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method === "POST") {
     if (!canWrite(role)) return res.status(403).json({ error: "Forbidden" })
-    const body = req.body as {
+    const body = req.body as BankDetailInput & {
       type?: string
       bank_name?: string
       bankName?: string
@@ -150,6 +165,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const opening = money(openingBalance)
+    // Bank-detail fields apply to bank accounts only (Cash in Hand has none).
+    const details = type === "bank" ? pickBankDetails(body) : null
+    const logo = details ? await resolveLogoColumns(details.brandDomain, details.logoUrl) : null
+    // Append new accounts after the user's existing order.
+    const [{ maxPos }] = await db
+      .select({ maxPos: max(wealthAccounts.position) })
+      .from(wealthAccounts)
+      .where(eq(wealthAccounts.organizationId, orgId))
     const [row] = await db
       .insert(wealthAccounts)
       .values({
@@ -160,6 +183,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         openingBalance: String(opening),
         currentBalance: String(opening),
         icon: icon || (type === "cash" ? "wallet" : "bank"),
+        position: (maxPos ?? -1) + 1,
+        ...(details ?? {}),
+        ...(logo ? { logoUrl: logo.logoUrl, logoData: logo.logoData } : {}),
         createdBy: userId,
         updatedBy: userId,
       })
@@ -178,7 +204,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     await logAudit({ orgId, entityType: "wealth_account", entityId: row.id, action: "create", actorId: userId })
-    return res.status(201).json(serialize(row))
+    const { logoData: _logoData, ...safe } = row
+    return res.status(201).json(serialize(safe))
   }
 
   return res.status(405).json({ error: "Method not allowed" })
