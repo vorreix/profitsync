@@ -40,3 +40,17 @@ export function reversalsByAccount(legs: LedgerLeg[]): Map<string, number> {
   }
   return shifts
 }
+
+/**
+ * Sum the balance *re-applications* per wealth account for a set of legs being
+ * restored from Trash (the inverse of reversalsByAccount). Returns accountId →
+ * signed delta to ADD to current_balance.
+ */
+export function applicationsByAccount(legs: LedgerLeg[]): Map<string, number> {
+  const shifts = new Map<string, number>()
+  for (const leg of legs) {
+    if (!leg.wealthAccountId) continue
+    shifts.set(leg.wealthAccountId, (shifts.get(leg.wealthAccountId) ?? 0) + balanceDelta(leg.type, leg.amount))
+  }
+  return shifts
+}

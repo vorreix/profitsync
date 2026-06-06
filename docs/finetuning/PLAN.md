@@ -55,7 +55,7 @@ cross‑cutting UI refactors later so they build on stabilised forms).
 | 00 | `feat/finetune-00-plan` | Plan & tracking doc | docs | – | ✅ done |
 | 01 | `feat/finetune-01-pwa-whitescreen` | **T3** PWA white‑screen after deploy | infra | M | ✅ done |
 | 02 | `feat/finetune-02-split-delete-sync` | **T1** split/bulk delete wealth sync | api+ui | H | ✅ done |
-| 03 | `feat/finetune-03-trash-sync` | **T13** trash delete/restore/purge sync | api | H | ⬜ todo |
+| 03 | `feat/finetune-03-trash-sync` | **T13** trash delete/restore/purge sync | api | H | ✅ done |
 | 04 | `feat/finetune-04-quotation-modal` | **T4** quotation currency symbol + date | api+ui+db | M | ⬜ todo |
 | 05 | `feat/finetune-05-wealth-detail` | **T5/6/7** collapsible card · attachments · edit tx | ui | M | ⬜ todo |
 | 06 | `feat/finetune-06-dashboard-card` | **T8** Revenue‑vs‑Expense View All + top 10 + filter | ui | L | ⬜ todo |
@@ -264,11 +264,30 @@ consistent.
 restore with a client” rule (documented above) · balance updates not yet DB
 ‑transactional (pre‑existing debt; keep ordering safe).
 
-**Verify.** Manual ledger: client with 3 tx across 2 accounts → delete (balances
-reverse, tx in trash) → restore (balances re‑add, tx back) → delete → purge
-(balances stay correct, rows gone). Split tx purge reverses both legs.
+> **⚠️ Correction (research agent T13).** The agent said transaction purge
+> “lacks balance reversal” and should add one. **False** — a transaction in Trash
+> is *already* soft‑deleted, so its balance was already reversed; reversing again
+> on purge would **double‑reverse**. Implemented: purge does **not** touch
+> balances for already‑soft‑deleted rows. Client purge reverses only the client’s
+> still‑*live* transactions (old data deleted before cascade‑reversal existed).
 
-**Status:** ⬜ todo.
+**Verify.** ✅ `applicationsByAccount` added + tested as the exact inverse of
+`reversalsByAccount` (7 ledger cases). Typecheck + full gate pass. Manual ledger
+e2e recommended: client w/ tx across 2 accts → delete (reverse + tx in client’s
+trash) → restore (re‑apply, tx back) → delete → purge (no double‑reverse).
+
+**Implemented.**
+- `clients/[id].ts` DELETE: reverse + soft‑delete the client’s live transactions
+  (shared `deletedAt`) before soft‑deleting the client.
+- `trash/restore.ts` client branch: re‑apply + restore exactly the transactions
+  trashed *with* the client (matching `deletedAt`); refactored to the shared
+  ledger (removed its duplicate `balanceDelta`).
+- `trash/purge.ts`: transaction purge expands the split group (no balance change);
+  client purge reverses only still‑live transactions, then cascade hard‑deletes.
+- `trash.ts`: Trash *transactions* tab now excludes transactions whose client is
+  also trashed (they travel with the client — no clutter, no orphan restore).
+
+**Status:** ✅ done (branch `feat/finetune-03-trash-sync`).
 
 ---
 
