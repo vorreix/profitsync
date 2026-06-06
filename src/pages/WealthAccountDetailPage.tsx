@@ -25,7 +25,18 @@ import { useUrlModal } from "@/hooks/use-url-modal"
 import { WealthAccountIcon } from "@/components/WealthAccountIcon"
 import { WealthAccountDialogs } from "@/components/wealth/WealthAccountDialogs"
 import { AccountQuickAddSheet } from "@/components/wealth/AccountQuickAddSheet"
+import { AccountDetailsSection } from "@/components/wealth/AccountDetailsSection"
 import { TransactionDetailModal } from "@/components/TransactionDetailModal"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { AttachmentBadge } from "@/components/AttachmentBadge"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -66,6 +77,7 @@ export function WealthAccountDetailPage() {
   const [editing, setEditing] = useState<WealthAccount | null>(null)
   const [adjusting, setAdjusting] = useState<WealthAccount | null>(null)
   const [addOpen, setAddOpen] = useState(false)
+  const [closeConfirm, setCloseConfirm] = useState(false)
 
   const view = useUrlModal("view")
   const [viewTx, setViewTx] = useState<Transaction | null>(null)
@@ -215,7 +227,7 @@ export function WealthAccountDetailPage() {
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuItem onSelect={() => setEditing(account)}><Pencil className="size-4" /> {t("edit")}</DropdownMenuItem>
-                {!isCash && <DropdownMenuItem onSelect={archive} className="text-muted-foreground"><Archive className="size-4" /> {t("archive")}</DropdownMenuItem>}
+                {!isCash && <DropdownMenuItem onSelect={() => setCloseConfirm(true)} className="text-destructive focus:text-destructive"><Archive className="size-4" /> {t("closeAccount")}</DropdownMenuItem>}
               </DropdownMenuContent>
             </DropdownMenu>
           )}
@@ -251,6 +263,9 @@ export function WealthAccountDetailPage() {
           ))}
         </div>
       </div>
+
+      {/* Bank details + attachments (bank accounts only) */}
+      {!isCash && <AccountDetailsSection account={account} canWrite={canWrite} canDelete={canDelete} />}
 
       {/* Transactions */}
       <div className="flex items-center justify-between gap-2">
@@ -336,6 +351,21 @@ export function WealthAccountDetailPage() {
         isPersonal={isPersonal}
         onSaved={load}
       />
+
+      <AlertDialog open={closeConfirm} onOpenChange={setCloseConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("closeAccountTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>{t("closeAccountDesc")}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
+            <AlertDialogAction onClick={archive} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              {t("closeAccount")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

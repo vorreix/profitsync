@@ -4,10 +4,18 @@ import { db, serialize } from "../../../../src/lib/db/index.js"
 import { transactions, wealthAccounts } from "../../../../src/lib/db/schema.js"
 import { canWrite, ensureDefaultClient, requireAuth } from "../../../_lib/auth.js"
 import { diffFields, logAudit } from "../../../_lib/audit.js"
+import { type BankDetailInput, pickBankDetails, resolveLogoColumns } from "../../../_lib/bank-brand.js"
 
 function money(value: unknown): number {
   const n = Number(value)
   return Number.isFinite(n) ? n : 0
+}
+
+// Strip the heavy base64 logo from a row before returning it to the client (the
+// UI renders logo_url, not logo_data).
+function withoutLogoData<T extends { logoData?: unknown }>(row: T) {
+  const { logoData: _omit, ...rest } = row
+  return rest
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -22,11 +30,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     .where(and(eq(wealthAccounts.id, id), eq(wealthAccounts.organizationId, orgId)))
   if (!account) return res.status(404).json({ error: "Not found" })
 
-  if (req.method === "GET") return res.json(serialize(account))
+  if (req.method === "GET") return res.json(serialize(withoutLogoData(account)))
 
   if (req.method === "PATCH") {
     if (!canWrite(role)) return res.status(403).json({ error: "Forbidden" })
-    const body = req.body as {
+    const body = req.body as BankDetailInput & {
       bank_name?: string
       bankName?: string
       nickname?: string
@@ -39,6 +47,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const { nickname, icon, archive, restore } = body
     const bankName = body.bankName ?? body.bank_name
     const currentBalance = body.currentBalance ?? body.current_balance
+
+    // Bank-detail fields are only updated when at least one is present in the
+    // body (so a plain rename/adjust PATCH doesn't wipe them). Logo is re-fetched
+    // only when the brand domain / logo url is part of this update.
+    const hasDetailUpdate = ["brand_domain", "logo_url", "country", "account_number", "routing_number", "swift", "address", "location", "note"]
+      .some((k) => k in (body as Record<string, unknown>))
+    const details = account.type === "bank" && hasDetailUpdate ? pickBankDetails(body) : null
+    const logo = details && ("brand_domain" in body || "logo_url" in body)
+      ? await resolveLogoColumns(details.brandDomain, details.logoUrl)
+      : null
 
     // Cash in Hand is the default account and must always exist — it can be
     // renamed/re-iconed and have its balance adjusted, but never archived.
@@ -103,6 +121,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ...(nickname !== undefined ? { nickname: nickname.trim() } : {}),
         ...(icon !== undefined ? { icon } : {}),
         ...(currentBalance !== undefined ? { currentBalance: String(newBalance) } : {}),
+        ...(details ?? {}),
+        ...(logo ? { logoUrl: logo.logoUrl, logoData: logo.logoData } : {}),
         ...(archive ? { archivedAt: new Date() } : {}),
         ...(restore ? { archivedAt: null } : {}),
         updatedBy: userId,
@@ -114,12 +134,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const changes = diffFields(
       before as Record<string, unknown>,
       updated as Record<string, unknown>,
-      ["bankName", "nickname", "icon", "currentBalance", "archivedAt"],
+      ["bankName", "nickname", "icon", "currentBalance", "archivedAt", "country", "accountNumber", "routingNumber", "swift", "address", "location", "note"],
     )
     if (Object.keys(changes).length) {
       await logAudit({ orgId, entityType: "wealth_account", entityId: id, action: archive ? "close" : restore ? "reopen" : "update", actorId: userId, changes })
     }
-    return res.json(serialize(updated))
+    return res.json(serialize(withoutLogoData(updated)))
   }
 
   if (req.method === "DELETE") {
@@ -140,7 +160,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .where(eq(wealthAccounts.id, id))
         .returning()
       await logAudit({ orgId, entityType: "wealth_account", entityId: id, action: "close", actorId: userId })
-      return res.json(serialize(updated))
+      return res.json(serialize(withoutLogoData(updated)))
     }
 
     await db.delete(wealthAccounts).where(eq(wealthAccounts.id, id))

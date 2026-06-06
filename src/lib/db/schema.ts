@@ -112,6 +112,22 @@ export const wealthAccounts = pgTable("wealth_accounts", {
   openingBalance: numeric("opening_balance", { precision: 12, scale: 2 }).notNull().default("0"),
   currentBalance: numeric("current_balance", { precision: 12, scale: 2 }).notNull().default("0"),
   icon: text("icon").notNull().default("bank"),
+  // Bank brand: the logo source URL (rendered) + a base64 copy stored for
+  // resilience ("logo stored on backend"); `brandDomain` is the resolved domain
+  // used to (re)fetch the logo.
+  brandDomain: text("brand_domain").notNull().default(""),
+  logoUrl: text("logo_url").notNull().default(""),
+  logoData: text("logo_data").notNull().default(""), // base64, never returned in list responses
+  // Banking identifiers. The LABEL of the primary/secondary field is dynamic per
+  // country (IBAN vs Account Number vs IFSC/Sort/Routing/BSB…); the storage is
+  // generic. See src/lib/bank-fields.ts.
+  country: text("country").notNull().default(""), // ISO 3166-1 alpha-2
+  accountNumber: text("account_number").notNull().default(""), // IBAN or local account number
+  routingNumber: text("routing_number").notNull().default(""), // IFSC / Sort Code / Routing / BSB / Transit …
+  swift: text("swift").notNull().default(""), // SWIFT / BIC
+  address: text("address").notNull().default(""),
+  location: text("location").notNull().default(""), // city / branch label
+  note: text("note").notNull().default(""),
   archivedAt: timestamp("archived_at"),
   createdBy: text("created_by"),
   updatedBy: text("updated_by"),
@@ -119,6 +135,23 @@ export const wealthAccounts = pgTable("wealth_accounts", {
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => ({
   orgIdx: index("wealth_accounts_org_idx").on(table.organizationId),
+}))
+
+export const wealthAccountAttachments = pgTable("wealth_account_attachments", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  wealthAccountId: uuid("wealth_account_id").notNull().references(() => wealthAccounts.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull(),
+  fileName: text("file_name").notNull(),
+  fileType: text("file_type").notNull(),
+  fileSize: integer("file_size").notNull(),
+  fileData: text("file_data").notNull(),
+  displayName: text("display_name"),
+  tags: jsonb("tags").notNull().default([]),
+  category: text("category").notNull().default(""),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  accountIdx: index("wealth_account_attachments_account_idx").on(table.wealthAccountId),
 }))
 
 export const transactions = pgTable("transactions", {

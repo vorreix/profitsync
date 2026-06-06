@@ -30,14 +30,16 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { WealthAccountIcon } from "@/components/WealthAccountIcon"
-import { IconSelect, WealthAccountDialogs } from "@/components/wealth/WealthAccountDialogs"
+import { WealthAccountDialogs } from "@/components/wealth/WealthAccountDialogs"
+import { BankAccountFormFields } from "@/components/wealth/BankAccountFormFields"
+import { type BankFormState, bankDetailsPayload, emptyBankForm } from "@/lib/bank-form"
 import { accountDisplayName, currencySymbol, formatMoney, useBalancePrivacy, useWealthSummary } from "@/lib/wealth"
 import { useTranslation } from "react-i18next"
 
 const MAX_BANKS = 5
 
-type CreateForm = { bank_name: string; nickname: string; opening_balance: string; icon: string }
-const emptyCreate: CreateForm = { bank_name: "", nickname: "", opening_balance: "", icon: "bank" }
+type CreateForm = BankFormState & { opening_balance: string }
+const emptyCreate: CreateForm = { ...emptyBankForm, opening_balance: "" }
 
 export function WealthPage() {
   const { t } = useTranslation("wealth")
@@ -96,6 +98,7 @@ export function WealthPage() {
         nickname: form.nickname.trim(),
         icon: form.icon,
         openingBalance: Number(form.opening_balance || 0),
+        ...bankDetailsPayload(form),
       })
       clearApiCache()
       window.dispatchEvent(new Event("wealth:accounts-changed"))
@@ -240,21 +243,10 @@ export function WealthPage() {
 
       {/* Create bank dialog */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader><DialogTitle>{t("addBankAccount")}</DialogTitle></DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-1.5">
-              <Label>{t("bankName")}</Label>
-              <Input value={form.bank_name} onChange={(e) => setForm((f) => ({ ...f, bank_name: e.target.value }))} />
-            </div>
-            <div className="space-y-1.5">
-              <Label>{t("nickname")}</Label>
-              <Input value={form.nickname} placeholder="Main Account" onChange={(e) => setForm((f) => ({ ...f, nickname: e.target.value }))} />
-            </div>
-            <div className="space-y-1.5">
-              <Label>{t("logoIcon")}</Label>
-              <IconSelect value={form.icon} onChange={(icon) => setForm((f) => ({ ...f, icon }))} />
-            </div>
+        <DialogContent className="inset-x-0 bottom-0 top-auto flex max-h-[92svh] w-full max-w-full translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-t-2xl p-0 sm:inset-x-auto sm:bottom-auto sm:top-[7svh] sm:left-1/2 sm:max-h-[86svh] sm:w-full sm:max-w-md sm:-translate-x-1/2 sm:rounded-2xl">
+          <DialogHeader className="shrink-0 border-b px-6 pb-3 pt-6"><DialogTitle>{t("addBankAccount")}</DialogTitle></DialogHeader>
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto scrollbar-thin px-6 py-4">
+            <BankAccountFormFields form={form} onChange={(patch) => setForm((f) => ({ ...f, ...patch }))} autoFocusName />
             <div className="space-y-1.5">
               <Label>{t("openingBalanceLabel", { symbol })}</Label>
               <Input
@@ -267,7 +259,7 @@ export function WealthPage() {
               />
             </div>
           </div>
-          <DialogFooter>
+          <DialogFooter className="shrink-0 border-t px-6 pb-6 pt-3">
             <Button variant="outline" onClick={() => setCreateOpen(false)}>{t("cancel")}</Button>
             <Button onClick={handleCreate} disabled={saving}>{saving ? t("saving") : t("addAccount")}</Button>
           </DialogFooter>

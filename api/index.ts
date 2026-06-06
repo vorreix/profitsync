@@ -30,6 +30,9 @@ import categories from "./_routes/categories.js"
 import categoryById from "./_routes/categories/[id].js"
 import wealthAccounts from "./_routes/wealth/accounts.js"
 import wealthAccountById from "./_routes/wealth/accounts/[id].js"
+import wealthAccountAttachments from "./_routes/wealth/accounts/[id]/attachments.js"
+import wealthAccountAttachmentById from "./_routes/wealth-account-attachments/[id].js"
+import wealthBankSearch from "./_routes/wealth/bank-search.js"
 import quotations from "./_routes/quotations.js"
 import quotationsBulkDelete from "./_routes/quotations/bulk-delete.js"
 import quotationById from "./_routes/quotations/[id].js"
@@ -103,10 +106,13 @@ const routes: RoutePattern<ApiHandler>[] = [
   { segments: ["audit"], handler: audit },
   { segments: ["categories"], handler: categories },
   { segments: ["categories", ":id"], handler: categoryById },
+  { segments: ["wealth", "bank-search"], handler: wealthBankSearch },
   { segments: ["wealth", "accounts"], handler: wealthAccounts },
   { segments: ["wealth", "accounts", ":id"], handler: wealthAccountById },
+  { segments: ["wealth", "accounts", ":id", "attachments"], handler: wealthAccountAttachments },
   { segments: ["wealth-accounts"], handler: wealthAccounts },
   { segments: ["wealth-accounts", ":id"], handler: wealthAccountById },
+  { segments: ["wealth-account-attachments", ":id"], handler: wealthAccountAttachmentById },
 
   { segments: ["transactions"], handler: transactions },
   { segments: ["transactions", "group"], handler: transactionsGroup },
