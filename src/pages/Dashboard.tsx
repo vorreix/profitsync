@@ -6,7 +6,7 @@ import { apiGet, apiPatch } from "@/lib/api"
 import type { Client, Transaction, WealthAccount } from "@/lib/types"
 import { useCurrency } from "@/lib/currency-context"
 import { useOrg } from "@/lib/org-context"
-import { accountDisplayName, formatMoney, useBalancePrivacy, useWealthSummary } from "@/lib/wealth"
+import { accountDisplayName, formatMoney, useBalancePrivacy, useWealthOverviewCollapsed, useWealthSummary } from "@/lib/wealth"
 import { WealthAccountIcon } from "@/components/WealthAccountIcon"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { FitText } from "@/components/FitText"
@@ -23,15 +23,18 @@ import {
   ArrowDownRight,
   ArrowRight,
   ChevronDown,
+  ChevronRight,
   Search,
   Sparkles,
   Building2,
   Tag,
+  Wallet,
   X,
   Archive,
   Eye,
   EyeOff,
 } from "lucide-react"
+import { useAutoAnimate } from "@formkit/auto-animate/react"
 import { FilterSheet, FilterSection } from "@/components/filters/FilterSheet"
 import { TransactionPeekModal } from "@/components/TransactionPeekModal"
 import {
@@ -362,57 +365,133 @@ function WealthOverview({
   loading: boolean
   currency: string
 }) {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const { balancesVisible, setBalancesVisible } = useBalancePrivacy()
+  const { collapsed, setCollapsed } = useWealthOverviewCollapsed()
   const { active, total } = useWealthSummary(accounts)
+  // Glides account tiles into place when one is added, removed, or reordered.
+  const [gridRef] = useAutoAnimate<HTMLDivElement>()
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-start justify-between gap-3">
-        <div>
-          <CardTitle className="text-sm font-semibold">Wealth Overview</CardTitle>
-          <p className="mt-1 text-xs text-muted-foreground">Manual tracking only. ProfitSync does not connect to your bank.</p>
-        </div>
-        <Button
-          variant="outline"
-          size="icon"
-          aria-label={balancesVisible ? "Hide balances" : "Show balances"}
-          onClick={() => setBalancesVisible((v) => !v)}
-        >
-          {balancesVisible ? <Eye className="size-4" /> : <EyeOff className="size-4" />}
-        </Button>
+      <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
+        <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+          {t("wealth.title")}
+          {active.length > 0 && (
+            <span className="rounded-full border px-2 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground">
+              {active.length}
+            </span>
+          )}
+        </CardTitle>
+        {active.length > 0 && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="pressable -mr-2 size-8 shrink-0 text-muted-foreground hover:text-foreground"
+            aria-label={t("wealth.accounts")}
+            aria-expanded={!collapsed}
+            aria-controls="wealth-accounts-panel"
+            onClick={() => setCollapsed((v) => !v)}
+          >
+            <ChevronDown
+              className={`size-4 transition-transform duration-300 ease-out motion-reduce:transition-none ${collapsed ? "" : "rotate-180"}`}
+            />
+          </Button>
+        )}
       </CardHeader>
       <CardContent className="pt-0">
         {loading ? (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            {[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-24 rounded-xl" />)}
+          <div className="space-y-3">
+            <Skeleton className="h-24 rounded-2xl" />
+            <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
+              {[1, 2, 3].map((i) => <Skeleton key={i} className="h-[60px] rounded-xl" />)}
+            </div>
           </div>
         ) : active.length === 0 ? (
-          <div className="rounded-xl border border-dashed p-6 text-center">
-            <p className="text-sm font-medium">No bank or cash account yet.</p>
-            <Button className="mt-3" size="sm" onClick={() => navigate("/wealth")}>Add Account</Button>
+          <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed px-6 py-8 text-center">
+            <span className="grid size-11 place-items-center rounded-full bg-muted text-muted-foreground">
+              <Wallet className="size-5" />
+            </span>
+            <p className="text-sm font-medium">{t("wealth.noAccountsYet")}</p>
+            <Button size="sm" className="pressable" onClick={() => navigate("/wealth")}>
+              {t("wealth.addAccount")}
+            </Button>
           </div>
         ) : (
-          <div className="space-y-3">
-            <div className="rounded-xl border bg-muted/30 p-4">
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">Total Available Balance</p>
-              <p className="mt-1 text-2xl font-bold tabular-nums">{formatMoney(total, currency, balancesVisible)}</p>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {active.map((account) => (
+          <div>
+            {/* Total available — the focal figure, with an emerald "wealth" wash */}
+            <div className="relative overflow-hidden rounded-2xl border bg-gradient-to-br from-emerald-500/10 via-emerald-500/[0.04] to-transparent p-4 sm:p-5">
+              <div
+                aria-hidden
+                className="pointer-events-none absolute -right-8 -top-10 size-28 rounded-full bg-emerald-500/15 blur-2xl"
+              />
+              <div className="relative flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                    {t("wealth.totalAvailable")}
+                  </p>
+                  <FitText className="mt-1" textClassName="text-2xl sm:text-3xl font-bold tabular-nums">
+                    {formatMoney(total, currency, balancesVisible)}
+                  </FitText>
+                </div>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="pressable size-9 shrink-0 bg-background/60 backdrop-blur"
+                  aria-label={balancesVisible ? t("wealth.hideBalances") : t("wealth.showBalances")}
+                  onClick={() => setBalancesVisible((v) => !v)}
+                >
+                  {balancesVisible ? <Eye className="size-4" /> : <EyeOff className="size-4" />}
+                </Button>
+              </div>
+              <div className="relative mt-3 flex justify-end">
                 <button
-                  key={account.id}
                   type="button"
                   onClick={() => navigate("/wealth")}
-                  className="flex items-center gap-3 rounded-xl border bg-card p-3 text-left transition-colors hover:bg-accent"
+                  className="pressable inline-flex items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
                 >
-                  <WealthAccountIcon account={account} />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium">{accountDisplayName(account)}</p>
-                    <p className="text-sm font-semibold tabular-nums">{formatMoney(Number(account.current_balance), currency, balancesVisible)}</p>
-                  </div>
+                  {t("common.viewAll")}
+                  <ArrowRight className="size-3" />
                 </button>
-              ))}
+              </div>
+            </div>
+
+            {/* Collapsible account list. The grid 0fr→1fr trick keeps open/close
+                on the compositor instead of animating height — no reflow, no
+                flicker. The list's top padding sits inside the overflow-hidden,
+                so the card closes flush with no phantom gap. */}
+            <div
+              id="wealth-accounts-panel"
+              className="grid transition-[grid-template-rows] duration-300 ease-out motion-reduce:transition-none"
+              style={{ gridTemplateRows: collapsed ? "0fr" : "1fr" }}
+            >
+              <div className="overflow-hidden">
+                <div ref={gridRef} className="grid gap-2.5 pt-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {active.map((account) => (
+                    <button
+                      key={account.id}
+                      type="button"
+                      onClick={() => navigate("/wealth")}
+                      className="pressable group flex items-center gap-3 rounded-xl border bg-card p-3 text-left transition-colors hover:border-foreground/15 hover:bg-accent"
+                    >
+                      <WealthAccountIcon account={account} />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium">{accountDisplayName(account)}</p>
+                        <p className="truncate text-xs text-muted-foreground">
+                          {account.type === "cash" ? t("wealth.cash") : t("wealth.bank")}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-1">
+                        <span className="text-sm font-semibold tabular-nums">
+                          {formatMoney(Number(account.current_balance), currency, balancesVisible)}
+                        </span>
+                        <ChevronRight className="size-4 text-muted-foreground transition-transform duration-200 group-hover:translate-x-0.5" />
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
         )}
