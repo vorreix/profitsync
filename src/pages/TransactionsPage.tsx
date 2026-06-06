@@ -36,6 +36,7 @@ import { AuditHistory } from "@/components/AuditHistory"
 import { accountDisplayName } from "@/lib/wealth"
 import { AccountSelector, type Allocation } from "@/components/AccountSelector"
 import { useUrlModal } from "@/hooks/use-url-modal"
+import { useDialogContainer } from "@/hooks/use-dialog-container"
 import { loadLastTx, saveLastTx } from "@/lib/last-tx"
 
 type PaginatedResponse<T> = { data: T[]; total: number; summary?: { incoming: number; outgoing: number } }
@@ -87,10 +88,12 @@ function ClientCombobox({ clients, value, onChange }: {
   onChange: (id: string) => void
 }) {
   const { t } = useTranslation("transactions")
+  const { triggerRef, container } = useDialogContainer()
   const [open, setOpen] = useState(false)
   const selected = clients.find((c) => c.id === value)
 
   return (
+    <div ref={triggerRef} className="contents">
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button variant="outline" role="combobox" className="w-full justify-between font-normal">
@@ -101,6 +104,7 @@ function ClientCombobox({ clients, value, onChange }: {
         </Button>
       </PopoverTrigger>
       <PopoverContent
+        container={container}
         className="max-h-[min(20rem,var(--radix-popover-content-available-height,20rem))] w-[--radix-popover-trigger-width] overflow-hidden p-0"
         align="start"
       >
@@ -127,6 +131,7 @@ function ClientCombobox({ clients, value, onChange }: {
         </Command>
       </PopoverContent>
     </Popover>
+    </div>
   )
 }
 
@@ -139,6 +144,7 @@ function CategoryCombobox({ categories, value, onChangeCategories, onChange }: {
   onChange: (v: string) => void
 }) {
   const { t } = useTranslation("transactions")
+  const { triggerRef, container } = useDialogContainer()
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState("")
   const [editingIdx, setEditingIdx] = useState<number | null>(null)
@@ -184,6 +190,7 @@ function CategoryCombobox({ categories, value, onChangeCategories, onChange }: {
   }
 
   return (
+    <div ref={triggerRef} className="contents">
     <Popover open={open} onOpenChange={(o) => { if (!o) close(); else setOpen(true) }}>
       <PopoverTrigger asChild>
         <Button variant="outline" role="combobox" className="w-full justify-between font-normal">
@@ -192,6 +199,7 @@ function CategoryCombobox({ categories, value, onChangeCategories, onChange }: {
         </Button>
       </PopoverTrigger>
       <PopoverContent
+        container={container}
         className="flex max-h-[min(20rem,var(--radix-popover-content-available-height,20rem))] w-[--radix-popover-trigger-width] flex-col overflow-hidden p-0"
         align="start"
       >
@@ -271,6 +279,7 @@ function CategoryCombobox({ categories, value, onChangeCategories, onChange }: {
         </div>
       </PopoverContent>
     </Popover>
+    </div>
   )
 }
 
