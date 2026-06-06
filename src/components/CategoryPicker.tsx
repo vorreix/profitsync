@@ -1,12 +1,13 @@
 import { useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { useAuth } from "@clerk/clerk-react"
-import { Check, ChevronsUpDown, Plus } from "lucide-react"
+import { Check, ChevronsUpDown, Pencil, Plus, X } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { apiPost } from "@/lib/api"
+import { useDialogContainer } from "@/hooks/use-dialog-container"
+import { apiDelete, apiPatch, apiPost } from "@/lib/api"
 import { useCategories } from "@/lib/use-categories"
 import type { CategoryType } from "@/lib/types"
 
@@ -30,23 +31,26 @@ export function CategoryPicker({
   const { t } = useTranslation()
   const { getToken } = useAuth()
   const { categories, refresh } = useCategories()
+  const { triggerRef, container } = useDialogContainer()
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState("")
   const [adding, setAdding] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editVal, setEditVal] = useState("")
 
-  const names = useMemo(
-    () => categories.filter((c) => c.type === type).map((c) => c.name),
-    [categories, type],
-  )
-  // Always keep the current value visible even if not in the managed list.
-  const options = value && !names.includes(value) ? [value, ...names] : names
+  const typed = useMemo(() => categories.filter((c) => c.type === type), [categories, type])
+  const names = useMemo(() => typed.map((c) => c.name), [typed])
   const q = search.trim().toLowerCase()
-  const filtered = options.filter((n) => n.toLowerCase().includes(q))
-  const canAdd = search.trim() !== "" && !options.some((n) => n.toLowerCase() === search.trim().toLowerCase())
+  const filtered = useMemo(() => typed.filter((c) => c.name.toLowerCase().includes(q)), [typed, q])
+  // The current value when it isn't a managed category (free text) — shown but
+  // not editable/deletable.
+  const freeValue = value && !names.includes(value) ? value : null
+  const canAdd = search.trim() !== "" && !names.some((n) => n.toLowerCase() === search.trim().toLowerCase())
 
   function close() {
     setOpen(false)
     setSearch("")
+    setEditingId(null)
   }
 
   async function addNew() {
@@ -65,7 +69,31 @@ export function CategoryPicker({
     }
   }
 
+  async function saveEdit(cat: { id: string; name: string }) {
+    const name = editVal.trim()
+    if (!name || (name !== cat.name && names.some((n) => n.toLowerCase() === name.toLowerCase()))) { setEditingId(null); return }
+    setEditingId(null)
+    try {
+      const token = await getToken()
+      if (!token) return
+      await apiPatch(`/api/categories/${cat.id}`, token, { name })
+      await refresh()
+      if (value === cat.name) onChange(name)
+    } catch { /* keep previous */ }
+  }
+
+  async function removeCat(cat: { id: string; name: string }) {
+    try {
+      const token = await getToken()
+      if (!token) return
+      await apiDelete(`/api/categories/${cat.id}`, token)
+      await refresh()
+      if (value === cat.name) onChange("")
+    } catch { /* keep previous */ }
+  }
+
   return (
+    <div ref={triggerRef} className="contents">
     <Popover open={open} onOpenChange={(o) => (o ? setOpen(true) : close())}>
       <PopoverTrigger asChild>
         <Button variant="outline" role="combobox" className="w-full justify-between font-normal" disabled={disabled}>
@@ -74,6 +102,7 @@ export function CategoryPicker({
         </Button>
       </PopoverTrigger>
       <PopoverContent
+        container={container}
         className="flex max-h-[min(20rem,var(--radix-popover-content-available-height,20rem))] w-[var(--radix-popover-trigger-width)] flex-col overflow-hidden p-0"
         align="start"
       >
@@ -93,11 +122,44 @@ export function CategoryPicker({
                 <span className="text-muted-foreground">{t("filters.all", { defaultValue: "None" })}</span>
               </button>
             )}
-            {filtered.map((name) => (
-              <button key={name} type="button" className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent" onClick={() => { onChange(name); close() }}>
-                <Check className={cn("size-4 shrink-0", value === name ? "opacity-100" : "opacity-0")} />
-                <span className="truncate">{name}</span>
+            {freeValue && (
+              <button type="button" className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent" onClick={() => close()}>
+                <Check className="size-4 shrink-0 opacity-100" />
+                <span className="truncate">{freeValue}</span>
               </button>
+            )}
+            {filtered.map((cat) => (
+              <div key={cat.id} className="group flex items-center gap-0.5">
+                {editingId === cat.id ? (
+                  <>
+                    <Input
+                      value={editVal}
+                      onChange={(e) => setEditVal(e.target.value)}
+                      className="h-7 flex-1 text-sm"
+                      autoFocus
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") saveEdit(cat)
+                        if (e.key === "Escape") setEditingId(null)
+                      }}
+                    />
+                    <Button size="icon" variant="ghost" className="size-7 shrink-0" onClick={() => saveEdit(cat)}><Check className="size-3" /></Button>
+                    <Button size="icon" variant="ghost" className="size-7 shrink-0" onClick={() => setEditingId(null)}><X className="size-3" /></Button>
+                  </>
+                ) : (
+                  <>
+                    <button type="button" className="flex flex-1 items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent" onClick={() => { onChange(cat.name); close() }}>
+                      <Check className={cn("size-4 shrink-0", value === cat.name ? "opacity-100" : "opacity-0")} />
+                      <span className="truncate">{cat.name}</span>
+                    </button>
+                    <Button size="icon" variant="ghost" className="size-7 shrink-0 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100" onClick={(e) => { e.stopPropagation(); setEditingId(cat.id); setEditVal(cat.name) }}>
+                      <Pencil className="size-3" />
+                    </Button>
+                    <Button size="icon" variant="ghost" className="size-7 shrink-0 text-muted-foreground opacity-100 transition-opacity hover:text-destructive sm:opacity-0 sm:group-hover:opacity-100" onClick={(e) => { e.stopPropagation(); removeCat(cat) }}>
+                      <X className="size-3" />
+                    </Button>
+                  </>
+                )}
+              </div>
             ))}
             {canAdd && (
               <button type="button" disabled={adding} className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent text-primary" onClick={addNew}>
@@ -105,11 +167,12 @@ export function CategoryPicker({
                 <span className="truncate">{t("categories.addNamed", { name: search.trim(), defaultValue: `Add "${search.trim()}"` })}</span>
               </button>
             )}
-            {filtered.length === 0 && !canAdd && (
+            {filtered.length === 0 && !freeValue && !canAdd && (
               <p className="px-2 py-3 text-center text-xs text-muted-foreground">{t("categories.noMatch")}</p>
             )}
         </div>
       </PopoverContent>
     </Popover>
+    </div>
   )
 }
