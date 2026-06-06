@@ -27,13 +27,14 @@ import { Separator } from "@/components/ui/separator"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { toast } from "sonner"
-import { Plus, ArrowUpRight, ArrowDownRight, DollarSign, Pencil, Trash2, Paperclip, Download, X, Eye, ChevronsUpDown, Check, Tag, CheckSquare } from "lucide-react"
+import { Plus, ArrowUpRight, ArrowDownRight, DollarSign, Pencil, Trash2, Paperclip, Download, X, Eye, ChevronsUpDown, Check, Tag, CheckSquare, Layers } from "lucide-react"
 import { ExpandableSearch } from "@/components/ExpandableSearch"
 import { FilterSheet, FilterSection } from "@/components/filters/FilterSheet"
 import { AttachmentBadge } from "@/components/AttachmentBadge"
 import { AttachmentDetailModal, type AttachmentModalItem } from "@/components/AttachmentDetailModal"
 import { AuditHistory } from "@/components/AuditHistory"
 import { accountDisplayName } from "@/lib/wealth"
+import { WealthAccountIcon } from "@/components/WealthAccountIcon"
 import { AccountSelector, type Allocation } from "@/components/AccountSelector"
 import { useUrlModal } from "@/hooks/use-url-modal"
 import { useDialogContainer } from "@/hooks/use-dialog-container"
@@ -463,10 +464,12 @@ export function TransactionsPage() {
   const [addOpen, setAddOpen] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
   const [deleteId, setDeleteId] = useState<string | null>(null)
+  const [deleteLegCount, setDeleteLegCount] = useState(1)
   const [viewTx, setViewTx] = useState<Transaction | null>(null)
+  const [viewLegs, setViewLegs] = useState<Transaction[]>([])
   const [viewAttachment, setViewAttachment] = useState<AttachmentModalItem | null>(null)
   const [form, setForm] = useState<TxForm>(defaultForm())
-  const [editForm, setEditForm] = useState<TxForm & { id: string } | null>(null)
+  const [editForm, setEditForm] = useState<TxForm & { id: string; group_id?: string | null } | null>(null)
   const [saving, setSaving] = useState(false)
 
   const [attachments, setAttachments] = useState<TransactionAttachment[]>([])
@@ -654,27 +657,18 @@ export function TransactionsPage() {
     try {
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
-      // A split entry becomes one transaction row per account, each syncing its
-      // own balance. Each create is tracked so a partial failure (e.g. quota hit
-      // on a later row) is reported clearly rather than as a blanket error.
-      let firstId: string | null = null
-      let saved = 0
-      for (const alloc of allocs) {
-        try {
-          const tx = await apiPost<Transaction>("/api/transactions", token, {
-            client_id: form.client_id,
-            wealth_account_id: alloc.account_id,
-            type: form.type,
-            amount: parseFloat(alloc.amount),
-            description: form.description,
-            category: form.category,
-            date: form.date,
-          })
-          if (!firstId) firstId = tx.id
-          saved++
-        } catch { /* counted below */ }
-      }
-      if (saved === 0) { toast.error(t("failedToAddTransaction")); return }
+      // A split entry is ONE logical transaction saved atomically as one group of
+      // account-legs (the server shares a group_id across them and syncs each
+      // account's balance). Attachments anchor to the first returned leg.
+      const result = await apiPost<{ group_id: string | null; ids: string[] }>("/api/transactions/group", token, {
+        client_id: form.client_id,
+        type: form.type,
+        description: form.description,
+        category: form.category,
+        date: form.date,
+        allocations: allocs.map((a) => ({ wealth_account_id: a.account_id, amount: parseFloat(a.amount) })),
+      })
+      const firstId = result.ids[0] ?? null
       if (firstId) {
         for (const file of pendingFiles) {
           try {
@@ -685,8 +679,7 @@ export function TransactionsPage() {
         }
       }
       saveLastTx({ client_id: form.client_id, type: form.type, category: form.category, wealth_account_id: allocs[0]?.account_id })
-      if (saved < allocs.length) toast.warning(t("partialSplitSaved", { saved, total: allocs.length }))
-      else toast.success(t("transactionAdded"))
+      toast.success(t("transactionAdded"))
       setAddOpen(false)
       setForm(defaultForm())
       setPendingFiles([])
@@ -698,24 +691,68 @@ export function TransactionsPage() {
     }
   }
 
-  async function handleEdit() {
-    const alloc = editForm?.allocations[0]
-    if (!editForm || !alloc || !alloc.amount || isNaN(parseFloat(alloc.amount))) {
-      toast.error(t("validAmountIsRequired")); return
+  // Open the edit dialog. For a split (grouped) row we load every leg so the user
+  // edits the whole split; a single-account row prefills one allocation.
+  async function openEditTx(tx: Transaction) {
+    const isGroup = (tx.leg_count ?? 1) > 1 || !!tx.group_id
+    if (isGroup && tx.group_id) {
+      try {
+        const token = await getToken()
+        if (token) {
+          const legs = await apiGet<Transaction[]>(`/api/transactions?groupId=${tx.group_id}`, token)
+          if (legs.length) {
+            setEditForm({
+              id: legs[0].id,
+              group_id: tx.group_id,
+              client_id: tx.client_id,
+              allocations: legs.map((l) => ({ account_id: l.wealth_account_id ?? "", amount: String(l.amount) })),
+              type: tx.type, description: tx.description, category: tx.category, date: tx.date,
+            })
+            setEditOpen(true)
+            return
+          }
+        }
+      } catch { /* fall through to single-leg edit */ }
     }
-    if (!alloc.account_id) { toast.error(t("accountIsRequired")); return }
+    setEditForm({
+      id: tx.id, group_id: tx.group_id ?? null, client_id: tx.client_id,
+      allocations: allocationFor(tx, accounts), type: tx.type, description: tx.description, category: tx.category, date: tx.date,
+    })
+    setEditOpen(true)
+  }
+
+  async function handleEdit() {
+    if (!editForm) return
+    const allocs = editForm.allocations.filter((a) => a.account_id && Number(a.amount) > 0)
+    if (allocs.length === 0) { toast.error(t("validAmountIsRequired")); return }
     setSaving(true)
     try {
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
-      await apiPatch<Transaction>(`/api/transactions/${editForm.id}`, token, {
-        type: editForm.type,
-        wealth_account_id: alloc.account_id,
-        amount: parseFloat(alloc.amount),
-        description: editForm.description,
-        category: editForm.category,
-        date: editForm.date,
-      })
+      // A split (existing group, or a single edited into multiple accounts) is
+      // replaced wholesale: delete the old group (reverses balances) then recreate.
+      // A single→single edit stays a balance-preserving in-place PATCH.
+      if (editForm.group_id || allocs.length > 1) {
+        await apiDelete(`/api/transactions/${editForm.id}`, token)
+        await apiPost("/api/transactions/group", token, {
+          client_id: editForm.client_id,
+          type: editForm.type,
+          description: editForm.description,
+          category: editForm.category,
+          date: editForm.date,
+          allocations: allocs.map((a) => ({ wealth_account_id: a.account_id, amount: parseFloat(a.amount) })),
+        })
+      } else {
+        const alloc = allocs[0]
+        await apiPatch<Transaction>(`/api/transactions/${editForm.id}`, token, {
+          type: editForm.type,
+          wealth_account_id: alloc.account_id,
+          amount: parseFloat(alloc.amount),
+          description: editForm.description,
+          category: editForm.category,
+          date: editForm.date,
+        })
+      }
       toast.success(t("transactionUpdated"))
       setEditOpen(false)
       setEditForm(null)
@@ -755,11 +792,22 @@ export function TransactionsPage() {
     }
   }
 
+  // Load every account-leg of a split so the detail view can break it down.
+  async function loadLegs(groupId: string) {
+    try {
+      const token = await getToken()
+      if (!token) return
+      setViewLegs(await apiGet<Transaction[]>(`/api/transactions?groupId=${groupId}`, token))
+    } catch { /* non-blocking — the row total still shows */ }
+  }
+
   // Show the transaction without touching the URL (used by the deep-link effect).
   function showTx(tx: Transaction) {
     setViewTx(tx)
     setAttachments([])
+    setViewLegs([])
     loadAttachments(tx.id)
+    if ((tx.leg_count ?? 1) > 1 && tx.group_id) loadLegs(tx.group_id)
   }
 
   // User-initiated open: push ?view=<id> so back closes the modal.
@@ -1069,6 +1117,11 @@ export function TransactionsPage() {
                           ? tx.description.length > 60 ? tx.description.slice(0, 60) + "…" : tx.description
                           : (tx.type === "incoming" ? t("income") : t("expense"))}
                       </p>
+                      {(tx.leg_count ?? 1) > 1 && (
+                        <Badge variant="secondary" className="text-[10px] py-0 shrink-0 gap-1">
+                          <Layers className="size-3" /> {t("split")}
+                        </Badge>
+                      )}
                       {tx.category && (
                         <Badge variant="outline" className="text-xs py-0 shrink-0 hidden sm:inline-flex">{tx.category}</Badge>
                       )}
@@ -1090,14 +1143,21 @@ export function TransactionsPage() {
                         </>
                       )}
                       <span className="text-xs text-muted-foreground shrink-0">{formatDate(tx.date)}</span>
-                      {(tx.wealth_account_name || tx.wealth_account_bank_name) && (
+                      {(tx.leg_count ?? 1) > 1 ? (
+                        <>
+                          <span className="hidden text-xs text-muted-foreground shrink-0 sm:inline">·</span>
+                          <span className="hidden text-xs text-muted-foreground shrink-0 sm:inline">
+                            {t("splitAccounts", { count: tx.account_count ?? tx.leg_count })}
+                          </span>
+                        </>
+                      ) : (tx.wealth_account_name || tx.wealth_account_bank_name) ? (
                         <>
                           <span className="hidden text-xs text-muted-foreground shrink-0 sm:inline">·</span>
                           <span className="hidden min-w-0 max-w-[10rem] truncate text-xs text-muted-foreground sm:inline">
                             {accountDisplayName({ bank_name: tx.wealth_account_bank_name ?? "", nickname: tx.wealth_account_name ?? "" })}
                           </span>
                         </>
-                      )}
+                      ) : null}
                     </div>
                   </div>
 
@@ -1113,12 +1173,11 @@ export function TransactionsPage() {
                     </Button>
                     <Button variant="ghost" size="icon" className="size-8 sm:size-9" onClick={(e) => {
                       e.stopPropagation()
-                      setEditForm({ id: tx.id, client_id: tx.client_id, allocations: allocationFor(tx, accounts), type: tx.type, description: tx.description, category: tx.category, date: tx.date })
-                      setEditOpen(true)
+                      openEditTx(tx)
                     }}>
                       <Pencil className="size-3.5" />
                     </Button>
-                    <Button variant="ghost" size="icon" className="size-8 sm:size-9 text-muted-foreground hover:text-destructive" onClick={(e) => { e.stopPropagation(); setDeleteId(tx.id) }}>
+                    <Button variant="ghost" size="icon" className="size-8 sm:size-9 text-muted-foreground hover:text-destructive" onClick={(e) => { e.stopPropagation(); setDeleteLegCount(tx.leg_count ?? 1); setDeleteId(tx.id) }}>
                       <Trash2 className="size-3.5" />
                     </Button>
                   </div>
@@ -1196,12 +1255,36 @@ export function TransactionsPage() {
                       <p className="mt-0.5">{viewTx.category}</p>
                     </div>
                   )}
-                  {viewTx.wealth_account_id && (
+                  {(viewTx.leg_count ?? 1) > 1 ? (
+                    <div className="col-span-2">
+                      <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
+                        {t("splitAcross", { count: viewLegs.length || viewTx.account_count || viewTx.leg_count })}
+                      </p>
+                      <div className="mt-1.5 space-y-1.5">
+                        {viewLegs.map((leg) => (
+                          <div key={leg.id} className="flex items-center justify-between gap-2 rounded-lg border px-3 py-2">
+                            <span className="flex min-w-0 items-center gap-2">
+                              <WealthAccountIcon
+                                account={{ type: leg.wealth_account_type ?? "bank", icon: leg.wealth_account_icon ?? "bank" }}
+                                className="size-6"
+                              />
+                              <span className="truncate text-sm font-medium">
+                                {accountDisplayName({ bank_name: leg.wealth_account_bank_name ?? "", nickname: leg.wealth_account_name ?? "" })}
+                              </span>
+                            </span>
+                            <span className={`shrink-0 text-sm font-semibold tabular-nums ${viewTx.type === "incoming" ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
+                              {viewTx.type === "incoming" ? "+" : "−"}{fmt(Number(leg.amount))}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : viewTx.wealth_account_id ? (
                     <div>
                       <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">{t("account")}</p>
                       <p className="mt-0.5">{viewTx.wealth_account_name || viewTx.wealth_account_bank_name || viewTx.wealth_account_id}</p>
                     </div>
-                  )}
+                  ) : null}
                 </div>
 
                 <Separator />
@@ -1267,8 +1350,7 @@ export function TransactionsPage() {
               <DialogFooter>
                 <Button variant="outline" onClick={() => {
                   closeViewModal()
-                  setEditForm({ id: viewTx.id, client_id: viewTx.client_id, allocations: allocationFor(viewTx, accounts), type: viewTx.type, description: viewTx.description, category: viewTx.category, date: viewTx.date })
-                  setEditOpen(true)
+                  openEditTx(viewTx)
                 }}>
                   <Pencil className="size-3.5" />
                   {t("edit")}
@@ -1353,7 +1435,6 @@ export function TransactionsPage() {
               onChangeCats={handleChangeCats}
               onAddAccount={() => { setEditOpen(false); navigate("/wealth") }}
               currency={currency}
-              singleAccount
             />
           )}
           </div>
@@ -1370,7 +1451,7 @@ export function TransactionsPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>{t("deleteTransaction")}</AlertDialogTitle>
             <AlertDialogDescription>
-              {t("transactionWillBeDeletedPermanently")}
+              {deleteLegCount > 1 ? t("deleteSplitWarning", { count: deleteLegCount }) : t("transactionWillBeDeletedPermanently")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

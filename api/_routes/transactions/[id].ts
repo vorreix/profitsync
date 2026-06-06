@@ -98,18 +98,38 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!canDelete(role)) return res.status(403).json({ error: "Forbidden" })
     // Soft-delete: the transaction moves to Trash (restorable) rather than vanishing.
     const [before] = await db.select().from(transactions).where(eq(transactions.id, id))
-    await db.update(transactions).set({ deletedAt: new Date(), updatedBy: userId, updatedAt: new Date() }).where(eq(transactions.id, id))
-    if (before?.wealthAccountId) {
+    if (!before) return res.status(404).json({ error: "Not found" })
+
+    // A split transaction is one logical entry, so deleting any leg deletes the
+    // whole group and reverses each leg's balance. The legs share one client, so
+    // the ownership check above covers them all.
+    const legs = before.groupId
+      ? await db
+          .select()
+          .from(transactions)
+          .where(and(eq(transactions.groupId, before.groupId), isNull(transactions.deletedAt)))
+      : [before]
+
+    await db
+      .update(transactions)
+      .set({ deletedAt: new Date(), updatedBy: userId, updatedAt: new Date() })
+      .where(before.groupId ? eq(transactions.groupId, before.groupId) : eq(transactions.id, id))
+
+    for (const leg of legs) {
+      if (!leg.wealthAccountId) continue
       await db
         .update(wealthAccounts)
         .set({
-          currentBalance: sql`${wealthAccounts.currentBalance}::numeric - ${balanceDelta(before.type, before.amount)}`,
+          currentBalance: sql`${wealthAccounts.currentBalance}::numeric - ${balanceDelta(leg.type, leg.amount)}`,
           updatedBy: userId,
           updatedAt: new Date(),
         })
-        .where(eq(wealthAccounts.id, before.wealthAccountId))
+        .where(eq(wealthAccounts.id, leg.wealthAccountId))
     }
-    await logAudit({ orgId, entityType: "transaction", entityId: id, action: "delete", actorId: userId })
+
+    for (const leg of legs) {
+      await logAudit({ orgId, entityType: "transaction", entityId: leg.id, action: "delete", actorId: userId })
+    }
     return res.status(204).end()
   }
 

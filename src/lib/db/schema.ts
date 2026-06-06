@@ -127,6 +127,11 @@ export const transactions = pgTable("transactions", {
     .notNull()
     .references(() => clients.id, { onDelete: "cascade" }),
   wealthAccountId: uuid("wealth_account_id").references(() => wealthAccounts.id, { onDelete: "set null" }),
+  // Links the legs of a single logical transaction that was paid from / split
+  // across multiple wealth accounts (e.g. €100 = €30 cash + €25 AC1 + €45 AC2).
+  // All legs share one group_id; a single-account transaction has group_id NULL.
+  // Also used to pair the two legs of an account-to-account transfer.
+  groupId: uuid("group_id"),
   type: text("type").notNull(),
   amount: numeric("amount", { precision: 12, scale: 2 }).notNull().default("0"),
   description: text("description").default(""),
@@ -140,7 +145,9 @@ export const transactions = pgTable("transactions", {
   updatedBy: text("updated_by"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-})
+}, (table) => ({
+  groupIdx: index("transactions_group_idx").on(table.groupId),
+}))
 
 export const quotations = pgTable("quotations", {
   id: uuid("id").primaryKey().defaultRandom(),

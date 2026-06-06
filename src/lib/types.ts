@@ -70,6 +70,22 @@ export type ClientAttachment = AttachmentMeta & {
   created_at: string
 }
 
+// One account-leg of a transaction. A normal transaction has a single leg; a
+// "split" transaction (€100 paid €30 cash + €25 AC1 + €45 AC2) has one leg per
+// account, all sharing the same `group_id`. The list collapses a group into one
+// representative `Transaction` row (amount = sum of legs); the detail view loads
+// the individual legs.
+export type TransactionLeg = {
+  id: string
+  wealth_account_id: string | null
+  wealth_account_name?: string | null
+  wealth_account_bank_name?: string | null
+  wealth_account_type?: "bank" | "cash" | null
+  wealth_account_icon?: string | null
+  type: "incoming" | "outgoing"
+  amount: number
+}
+
 export type Transaction = {
   id: string
   client_id: string
@@ -88,6 +104,14 @@ export type Transaction = {
   created_at: string
   updated_at: string
   attachment_count?: number
+  // Split/group metadata. `group_id` links the legs of one logical transaction;
+  // `leg_count`/`account_count` describe a collapsed grouped row (both default to
+  // 1 for a normal single-account transaction). `legs` is loaded on demand for
+  // the detail breakdown.
+  group_id?: string | null
+  leg_count?: number
+  account_count?: number
+  legs?: TransactionLeg[]
 }
 
 export type WealthAccount = {

@@ -20,6 +20,7 @@ import clientById from "./_routes/clients/[id].js"
 import clientAttachments from "./_routes/clients/[id]/attachments.js"
 import clientMedia from "./_routes/clients/[id]/media.js"
 import transactions from "./_routes/transactions.js"
+import transactionsGroup from "./_routes/transactions/group.js"
 import transactionsBulkDelete from "./_routes/transactions/bulk-delete.js"
 import transactionById from "./_routes/transactions/[id].js"
 import transactionAttachments from "./_routes/transactions/[id]/attachments.js"
@@ -108,6 +109,7 @@ const routes: RoutePattern<ApiHandler>[] = [
   { segments: ["wealth-accounts", ":id"], handler: wealthAccountById },
 
   { segments: ["transactions"], handler: transactions },
+  { segments: ["transactions", "group"], handler: transactionsGroup },
   { segments: ["transactions", "bulk-delete"], handler: transactionsBulkDelete },
   { segments: ["transactions", ":id"], handler: transactionById },
   { segments: ["transactions", ":id", "attachments"], handler: transactionAttachments },
