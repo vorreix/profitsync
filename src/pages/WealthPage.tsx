@@ -370,7 +370,7 @@ function DndAccountCard({ account, dimmed, children }: { account: WealthAccount;
   const drag = useDraggable({ id: account.id })
   const drop = useDroppable({ id: account.id })
   const setRefs = (el: HTMLDivElement | null) => { drag.setNodeRef(el); drop.setNodeRef(el) }
-  const isTarget = drop.isOver && drop.active?.id !== account.id
+  const isTarget = drop.isOver && drop.active != null && drop.active.id !== account.id
   return (
     <div
       ref={setRefs}

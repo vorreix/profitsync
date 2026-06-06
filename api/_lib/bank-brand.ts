@@ -14,6 +14,27 @@ function fetchWithTimeout(url: string, opts: RequestInit, ms: number): Promise<R
   return fetch(url, { ...opts, signal: controller.signal }).finally(() => clearTimeout(timer))
 }
 
+// Only fetch logo images from known, public logo/favicon hosts over HTTPS. The
+// logo URL can originate from the client (the chosen brand), so this prevents
+// SSRF (e.g. pointing it at internal services or cloud metadata endpoints).
+const ALLOWED_LOGO_HOSTS = new Set([
+  "cdn.brandfetch.io",
+  "asset.brandfetch.io",
+  "www.google.com",
+  "icons.duckduckgo.com",
+  "img.logo.dev",
+  "logo.clearbit.com",
+])
+
+function isSafeLogoUrl(url: string): boolean {
+  try {
+    const u = new URL(url)
+    return u.protocol === "https:" && ALLOWED_LOGO_HOSTS.has(u.hostname)
+  } catch {
+    return false
+  }
+}
+
 /**
  * Autocomplete bank names → candidates with a resolved domain + logo URL. Returns
  * [] (never throws) when the key is missing or the upstream is unavailable, so
@@ -104,6 +125,7 @@ export async function fetchLogoData(opts: { logoUrl?: string; domain?: string })
     candidates.push(`https://icons.duckduckgo.com/ip3/${opts.domain}.ico`)
   }
   for (const url of candidates) {
+    if (!isSafeLogoUrl(url)) continue
     try {
       const res = await fetchWithTimeout(url, {}, 4500)
       if (!res.ok) continue

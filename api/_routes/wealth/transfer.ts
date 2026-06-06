@@ -1,9 +1,10 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { randomUUID } from "node:crypto"
-import { and, eq, isNull, sql } from "drizzle-orm"
+import { and, count, eq, isNull, sql } from "drizzle-orm"
 import { db, serialize } from "../../../src/lib/db/index.js"
 import { transactions, wealthAccounts } from "../../../src/lib/db/schema.js"
 import { canWrite, ensureDefaultClient, requireAuth } from "../../_lib/auth.js"
+import { getOrgPlan } from "../../_lib/quota.js"
 import { logAudit } from "../../_lib/audit.js"
 
 const displayName = (a: { nickname: string; bankName: string }) => a.nickname.trim() || a.bankName
@@ -47,6 +48,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!from || !to) return res.status(400).json({ error: "Select two active accounts" })
 
   const clientId = await ensureDefaultClient(orgId, userId)
+
+  // A transfer is two transactions; on the free plan both legs must fit under the
+  // per-client limit (otherwise transfers would be a quota bypass).
+  const { planKey, limits } = await getOrgPlan(orgId)
+  if (planKey === "free") {
+    const [{ current }] = await db
+      .select({ current: count() })
+      .from(transactions)
+      .where(and(eq(transactions.clientId, clientId), isNull(transactions.deletedAt)))
+    if (current + 2 > limits.transactionsPerClient) {
+      return res.status(402).json({
+        allowed: false,
+        reason: `Free plan is limited to ${limits.transactionsPerClient} transactions per client. Upgrade to Premium.`,
+        limit: limits.transactionsPerClient,
+        current,
+        upgradeHint: true,
+      })
+    }
+  }
+
   const today = new Date().toISOString().split("T")[0]
   const when = date ?? today
   const groupId = randomUUID()
