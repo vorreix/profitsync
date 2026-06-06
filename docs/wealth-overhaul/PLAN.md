@@ -30,10 +30,12 @@ Each branch is created **from the tip of the previous branch** so later work inc
 
 | Branch | Base | Status | Migration(s) | Pushed commit | PR |
 |--------|------|--------|--------------|---------------|----|
-| `feat/split-transactions-grouping` | `dev` | ⬜ not started | 0026 | — | — |
-| `feat/account-quick-add` | `feat/split-transactions-grouping` | ⬜ not started | — | — | — |
-| `feat/bank-account-details` | `feat/account-quick-add` | 0027 (+ attachments table) | ⬜ not started | — | — |
-| `feat/account-transfers` | `feat/bank-account-details` | 0028 (`kind`) | ⬜ not started | — | — |
+| `feat/split-transactions-grouping` | `dev` | ✅ pushed | 0026 (`group_id`) | `0ba5b84` | — |
+| `feat/account-quick-add` | `feat/split-transactions-grouping` | 🟨 in progress | — | — | — |
+| `feat/bank-account-details` | `feat/account-quick-add` | ⬜ not started | 0027 (+ attachments table) | — | — |
+| `feat/account-transfers` | `feat/bank-account-details` | ⬜ not started | 0028 (`kind`) | — | — |
+
+> **Feature 1 verified (2026-06-06):** 3-way split (€30 cash + €25 AC1 + €45 AC2) renders as **one** list row ("Split · 3 accounts · €100"); detail breaks the legs down; per-account balances synced (−30/−25/−45); edit replaces the group correctly; group-delete restores all balances. Screenshots: `split-list.png`, `split-detail.png`. Migration 0026's journal `when` was bumped to `1780800000000` to clear the diverged Dev-DB migration bookmark.
 
 Legend: ⬜ not started · 🟨 in progress · ✅ pushed · 🔵 PR open · ✔️ merged
 
