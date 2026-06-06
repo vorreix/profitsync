@@ -58,7 +58,7 @@ cross‑cutting UI refactors later so they build on stabilised forms).
 | 03 | `feat/finetune-03-trash-sync` | **T13** trash delete/restore/purge sync | api | H | ✅ done |
 | 04 | `feat/finetune-04-quotation-modal` | **T4** quotation currency symbol + date | api+ui+db | M | ✅ done |
 | 05 | `feat/finetune-05-dashboard-card` | **T8** Revenue‑vs‑Expense View All + top 10 + filter | ui | L | ✅ done |
-| 06 | `feat/finetune-06-admin-plans` | **T16** hide business limits for personal plan | ui | L | ⬜ todo |
+| 06 | `feat/finetune-06-admin-plans` | **T16** hide business limits for personal plan | ui | L | ✅ done |
 | 07 | `feat/finetune-07-legal-relocate` | **T12** move legal links out of More menu | ui | L | ⬜ todo |
 | 08 | `feat/finetune-08-orgs-layout` | **T14** organizations page card/label layout | ui | M | ⬜ todo |
 | 09 | `feat/finetune-09-wealth-detail` | **T5/6/7** collapsible card · attachments · edit tx | ui | M | ⬜ todo |
@@ -437,12 +437,19 @@ clients/quotations limits, which is meaningless (the user’s exact complaint).
 filter `LIMIT_FIELDS` accordingly; context‑aware help text. Optional API guard in
 `admin/plans.ts` to strip business‑only limits when not applicable.
 
-**Files.** `src/pages/admin/AdminPlansPage.tsx` · (opt) `api/_routes/admin/plans.ts`.
+**Files.** `src/pages/admin/AdminPlansPage.tsx`.
 
-**Verify.** Admin → Plans: personal plan hides clients/quotations/members;
-business shows all; free shows only shared quotas.
+**Verify.** ✅ Typecheck passes. `shouldShowLimitField` filters business‑only
+limits (`clients`/`quotations`/`members`) for `account_type === 'personal'` plans
++ context‑aware help text; free/business unaffected. Visual admin verification
+not possible (test user isn’t an app admin → `/api/admin/me` 403); logic is a
+straightforward filter, reviewed.
 
-**Status:** ⬜ todo.
+**Implemented.** `AdminPlansPage.tsx`: `BUSINESS_ONLY_LIMITS` set +
+`shouldShowLimitField(key, plan)`; the limits grid filters fields and shows a
+“Personal plans don’t include clients or quotations…” note for personal plans.
+
+**Status:** ✅ done (branch `feat/finetune-06-admin-plans`).
 
 ---
 
