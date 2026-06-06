@@ -6,6 +6,7 @@ import {
   Archive,
   ArrowDownRight,
   ArrowLeft,
+  ArrowLeftRight,
   ArrowUpRight,
   Eye,
   EyeOff,
@@ -297,8 +298,14 @@ export function WealthAccountDetailPage() {
                   onClick={() => view.open(tx.id)}
                   className="pressable ios-tap flex w-full items-center gap-3 px-3 py-3 text-left transition-colors hover:bg-muted/50 sm:gap-4 sm:px-4"
                 >
-                  <div className={`flex size-8 shrink-0 items-center justify-center rounded-full ${tx.type === "incoming" ? "bg-emerald-100 dark:bg-emerald-900/30" : "bg-red-100 dark:bg-red-900/30"}`}>
-                    {tx.type === "incoming" ? <ArrowUpRight className="size-4 text-emerald-600 dark:text-emerald-400" /> : <ArrowDownRight className="size-4 text-red-600 dark:text-red-400" />}
+                  <div className={`flex size-8 shrink-0 items-center justify-center rounded-full ${
+                    tx.kind === "transfer" ? "bg-primary/10" : tx.type === "incoming" ? "bg-emerald-100 dark:bg-emerald-900/30" : "bg-red-100 dark:bg-red-900/30"
+                  }`}>
+                    {tx.kind === "transfer"
+                      ? <ArrowLeftRight className="size-4 text-primary" />
+                      : tx.type === "incoming"
+                        ? <ArrowUpRight className="size-4 text-emerald-600 dark:text-emerald-400" />
+                        : <ArrowDownRight className="size-4 text-red-600 dark:text-red-400" />}
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium">{tx.description || (tx.type === "incoming" ? t("income") : t("expenses"))}</p>

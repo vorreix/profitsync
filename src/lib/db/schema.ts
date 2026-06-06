@@ -165,6 +165,11 @@ export const transactions = pgTable("transactions", {
   // All legs share one group_id; a single-account transaction has group_id NULL.
   // Also used to pair the two legs of an account-to-account transfer.
   groupId: uuid("group_id"),
+  // 'standard' for normal income/expense (incl. splits); 'transfer' for the two
+  // legs of an account-to-account move. Transfers are real, balance-affecting
+  // rows but are excluded from the global transactions list, the income/expense
+  // summary, and analytics (they net to zero and aren't P&L).
+  kind: text("kind").notNull().default("standard"), // standard | transfer
   type: text("type").notNull(),
   amount: numeric("amount", { precision: 12, scale: 2 }).notNull().default("0"),
   description: text("description").default(""),

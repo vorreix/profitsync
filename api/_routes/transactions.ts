@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { and, asc, count, desc, eq, gte, ilike, isNull, lte, or, sql } from "drizzle-orm"
+import { and, asc, count, desc, eq, gte, ilike, isNull, lte, ne, or, sql } from "drizzle-orm"
 import { db, serialize } from "../../src/lib/db/index.js"
 import { clients, transactions, wealthAccounts } from "../../src/lib/db/schema.js"
 import { canWrite, ensureDefaultClient, isPersonalAccount, requireAuth } from "../_lib/auth.js"
@@ -37,6 +37,7 @@ const txFields = {
   wealthAccountType: wealthAccounts.type,
   wealthAccountIcon: wealthAccounts.icon,
   groupId: transactions.groupId,
+  kind: transactions.kind,
   type: transactions.type,
   amount: transactions.amount,
   description: transactions.description,
@@ -68,6 +69,7 @@ const groupedFields = {
   wealthAccountType: sql<string | null>`max(${wealthAccounts.type})`,
   wealthAccountIcon: sql<string | null>`max(${wealthAccounts.icon})`,
   groupId: sql<string | null>`max(${transactions.groupId}::text)`,
+  kind: sql<string>`max(${transactions.kind})`,
   legCount: sql<number>`count(*)::int`,
   accountCount: sql<number>`count(distinct ${transactions.wealthAccountId})::int`,
   type: sql<string>`max(${transactions.type})`,
@@ -152,6 +154,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // client-scoped view (?clientId, the client detail page) keeps its own
     // per-leg display + edit flow, so it stays flat too.
     const grouped = !wealthAccountId && !clientId
+    // Transfers are internal account-to-account moves: show them ONLY on the
+    // account-detail list (so you can see the movement), never in the global or
+    // client lists. The income/expense summary always excludes them.
+    const listExcludesTransfers = wealthAccountId ? undefined : ne(transactions.kind, "transfer")
 
     const isDate = (v: string | undefined): v is string => !!v && /^\d{4}-\d{2}-\d{2}$/.test(v)
     const dateFromFilter = isDate(from) ? gte(transactions.date, from) : undefined
@@ -169,7 +175,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .where(and(eq(clients.id, clientId), eq(clients.organizationId, orgId), isNull(clients.deletedAt)))
       if (!client) return res.status(403).json({ error: "Forbidden" })
 
-      const clientWhere = and(eq(transactions.clientId, clientId), isNull(transactions.deletedAt), accountFilter)
+      const clientWhere = and(eq(transactions.clientId, clientId), isNull(transactions.deletedAt), accountFilter, listExcludesTransfers)
       const rows = grouped
         ? await groupedRows(clientWhere, sort)
         : await db
@@ -204,6 +210,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       isNull(transactions.deletedAt),
       closedClientFilter,
       accountFilter,
+      listExcludesTransfers,
       searchFilter,
       typeFilter,
       categoryFilter,
@@ -223,6 +230,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         isNull(transactions.deletedAt),
         closedClientFilter,
         accountFilter,
+        // The income/expense summary never counts internal transfers (net zero).
+        ne(transactions.kind, "transfer"),
         searchFilter,
         categoryFilter,
         dateFromFilter,

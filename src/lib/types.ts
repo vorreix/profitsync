@@ -101,6 +101,9 @@ export type Transaction = {
   category: string
   date: string
   is_system?: boolean
+  // 'transfer' marks the two legs of an account-to-account move (shown only on
+  // the account-detail list, never in the global list / analytics).
+  kind?: "standard" | "transfer"
   created_at: string
   updated_at: string
   attachment_count?: number

@@ -905,6 +905,22 @@
     "fileAttached": "File attached",
     "closeAccount": "Close account",
     "closeAccountTitle": "Close this account?",
-    "closeAccountDesc": "The account keeps its history but is hidden from your active accounts. You can reopen it later from the archived section."
+    "closeAccountDesc": "The account keeps its history but is hidden from your active accounts. You can reopen it later from the archived section.",
+    "transfer": "Transfer",
+    "transferMoney": "Transfer money",
+    "fromAccount": "From",
+    "toAccount": "To",
+    "transferAmount": "Amount",
+    "transferNote": "Note (optional)",
+    "transferDate": "Date",
+    "next": "Next",
+    "transferNow": "Transfer",
+    "transferring": "Transferring…",
+    "transferred": "Transfer complete",
+    "transferFailed": "Couldn’t complete the transfer",
+    "sameAccountError": "Choose two different accounts",
+    "insufficientFunds": "More than this account’s balance.",
+    "dragHint": "Tip: drag one account onto another to transfer.",
+    "selectAccount": "Select account"
   }
 }
