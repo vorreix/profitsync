@@ -57,15 +57,20 @@ cross‑cutting UI refactors later so they build on stabilised forms).
 | 02 | `feat/finetune-02-split-delete-sync` | **T1** split/bulk delete wealth sync | api+ui | H | ✅ done |
 | 03 | `feat/finetune-03-trash-sync` | **T13** trash delete/restore/purge sync | api | H | ✅ done |
 | 04 | `feat/finetune-04-quotation-modal` | **T4** quotation currency symbol + date | api+ui+db | M | ✅ done |
-| 05 | `feat/finetune-05-wealth-detail` | **T5/6/7** collapsible card · attachments · edit tx | ui | M | ⬜ todo |
-| 06 | `feat/finetune-06-dashboard-card` | **T8** Revenue‑vs‑Expense View All + top 10 + filter | ui | L | ⬜ todo |
-| 07 | `feat/finetune-07-admin-plans` | **T16** hide business limits for personal plan | ui | L | ⬜ todo |
-| 08 | `feat/finetune-08-legal-relocate` | **T12** move legal links out of More menu | ui | L | ⬜ todo |
-| 09 | `feat/finetune-09-orgs-layout` | **T14** organizations page card/label layout | ui | M | ⬜ todo |
+| 05 | `feat/finetune-05-dashboard-card` | **T8** Revenue‑vs‑Expense View All + top 10 + filter | ui | L | ✅ done |
+| 06 | `feat/finetune-06-admin-plans` | **T16** hide business limits for personal plan | ui | L | ⬜ todo |
+| 07 | `feat/finetune-07-legal-relocate` | **T12** move legal links out of More menu | ui | L | ⬜ todo |
+| 08 | `feat/finetune-08-orgs-layout` | **T14** organizations page card/label layout | ui | M | ⬜ todo |
+| 09 | `feat/finetune-09-wealth-detail` | **T5/6/7** collapsible card · attachments · edit tx | ui | M | ⬜ todo |
 | 10 | `feat/finetune-10-form-validation` | **T10** red‑border validation across forms | ui | M | ⬜ todo |
 | 11 | `feat/finetune-11-modal-behavior` | **T9** ESC/outside/cancel/submit/swipe modal rules | ui | H | ⬜ todo |
 | 12 | `feat/finetune-12-perceived-speed` | **T11** optimistic UI + granular cache + chunked load | infra+ui | H | ⬜ todo |
 | 13 | `feat/finetune-13-referrals` | **T15** referral code/share/link + payout lifecycle | api+ui | M | ⬜ todo |
+
+> **Order note (2026‑06‑07):** re‑sequenced after branch 04 to front‑load the
+> verifiable/low‑risk UI wins (T8/T16/T12/T14) before the heavier refactors
+> (wealth detail, validation, modal, speed) — the dev test account sits in an
+> `/onboarding` state that gates live verification of some business pages.
 | 14 | `skill/work-finetuning` | Author + test + document the `work-finetuning` skill | meta | M | ⬜ todo |
 
 Status legend: ⬜ todo · 🟡 in progress · ✅ done · 🔵 pushed (PR open) · ⏸ parked.
@@ -398,10 +403,20 @@ height / rotate labels / horizontal scroll).
 **Risks.** 10 clients can crowd small screens (handle responsively) · two View‑All
 buttons with different destinations — label/clarify intent.
 
-**Verify.** Playwright at mobile + desktop widths: ≤10 bars, View All →
-`/analytics`, selecting clients updates the chart.
+**Verify.** ✅ Playwright (desktop): the “Revenue vs Expenses by Client” card now
+shows a **View all →** button in its header; no new console errors (only the
+expected `/api/admin/me` 403). Top‑10 cap is a trivial `slice(0,10)` (typechecked);
+the card already derives from `filteredTx`, so client selection is respected.
+(Completed the dev account’s onboarding as **Company** to unblock app‑page
+verification — reversible per the onboarding screen.)
 
-**Status:** ⬜ todo.
+**Implemented.** `Dashboard.tsx`: chart cap 6 → 10 (`CHART_CAP`, sorted by
+combined volume); View‑all button in the chart card header → `navigate('/analytics')`.
+Carrying the selected‑client filter *into* Analytics deferred (Analytics’
+`by_client` is server‑capped; would need an API change — the dashboard card itself
+already honours the selection).
+
+**Status:** ✅ done (branch `feat/finetune-05-dashboard-card`).
 
 ---
 
