@@ -54,7 +54,7 @@ cross‑cutting UI refactors later so they build on stabilised forms).
 |---|--------|------|-------|-----------|--------|
 | 00 | `feat/finetune-00-plan` | Plan & tracking doc | docs | – | ✅ done |
 | 01 | `feat/finetune-01-pwa-whitescreen` | **T3** PWA white‑screen after deploy | infra | M | ✅ done |
-| 02 | `feat/finetune-02-split-delete-sync` | **T1** split/bulk delete wealth sync | api+ui | H | ⬜ todo |
+| 02 | `feat/finetune-02-split-delete-sync` | **T1** split/bulk delete wealth sync | api+ui | H | ✅ done |
 | 03 | `feat/finetune-03-trash-sync` | **T13** trash delete/restore/purge sync | api | H | ⬜ todo |
 | 04 | `feat/finetune-04-quotation-modal` | **T4** quotation currency symbol + date | api+ui+db | M | ⬜ todo |
 | 05 | `feat/finetune-05-wealth-detail` | **T5/6/7** collapsible card · attachments · edit tx | ui | M | ⬜ todo |
@@ -74,9 +74,12 @@ Status legend: ⬜ todo · 🟡 in progress · ✅ done · 🔵 pushed (PR open)
 pending a complete description; not blocking the chain.
 
 ### Push / PR policy
-Each branch is pushed to `origin`. PRs are stacked: PR for branch _N_ targets
-branch _N‑1_ (PR 01 targets `dev`) so each diff is reviewable in isolation. PR
-links recorded in each task’s Status line.
+Each branch is pushed to `origin`. PRs are intended to be stacked (PR for branch
+_N_ targets branch _N‑1_; PR 01 targets `dev`). **Note:** `gh` CLI is not
+authenticated in this environment (`gh auth login` is interactive), so PRs are
+**opened manually** by the user from the branch URLs GitHub prints on push
+(`https://github.com/vorreix/profitsync/pull/new/<branch>`). All branches are
+pushed.
 
 ---
 
@@ -202,11 +205,24 @@ existing already‑corrupted balances from the old bug are **not** auto‑repair
 (documented; a derive‑repair is unsafe because balances also include opening
 balance + manual adjustments).
 
-**Verify.** Unit tests; manual ledger: create split across 2 accounts, note
-balances, bulk‑delete the collapsed row → both accounts reverse exactly, no
-orphan legs (`?groupId=` returns empty), restore re‑adds exactly.
+**Verify.** ✅ New `src/lib/wealth-ledger.test.ts` (6 cases) locks the reversal
+sign (incoming/outgoing) **and** the per‑account aggregation for split/bulk
+delete — directly guarding the bug class the research agent hallucinated.
+Typecheck + full gate pass. Client `TransactionsPage` untouched (its confirm
+dialog + split‑leg warning already exist), so no client regression. Manual
+ledger e2e (create split across 2 accounts → bulk‑delete collapsed row → both
+balances reverse, no orphan legs) recommended as final QA.
 
-**Status:** ⬜ todo.
+**Implemented.** `src/lib/wealth-ledger.ts` — one tested source of truth for the
+money sign (`balanceDelta`/`reverseDelta`/`reversalsByAccount`); refactored
+`transactions.ts`, `transactions/[id].ts`, `transactions/group.ts` to import it
+(killed 3 duplicate copies). `api/_lib/tx-legs.ts` — `resolveTxLegs()` expands a
+selection to all org‑scoped, non‑deleted legs of any split group, deduped.
+`bulk-delete.ts` rewritten to expand groups → reverse each account once →
+soft‑delete all legs (fixes orphaned legs + partial balance reversal).
+
+**Status:** ✅ done (branch `feat/finetune-02-split-delete-sync`). restore.ts’s
+local `balanceDelta` intentionally left for branch 03 (T13) where it’s rewritten.
 
 ---
 
