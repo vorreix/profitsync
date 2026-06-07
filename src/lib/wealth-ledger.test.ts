@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { balanceDelta, reversalsByAccount, reverseDelta } from "./wealth-ledger"
+import { applicationsByAccount, balanceDelta, reversalsByAccount, reverseDelta } from "./wealth-ledger"
 
 describe("wealth-ledger", () => {
   it("incoming adds, outgoing subtracts on create", () => {
@@ -52,6 +52,23 @@ describe("wealth-ledger", () => {
 
     it("returns an empty map for no legs", () => {
       expect(reversalsByAccount([]).size).toBe(0)
+    })
+  })
+
+  describe("applicationsByAccount (restore from trash)", () => {
+    it("is the exact inverse of reversalsByAccount", () => {
+      const legs = [
+        { wealthAccountId: "A", type: "incoming", amount: "200" },
+        { wealthAccountId: "A", type: "outgoing", amount: "50" },
+        { wealthAccountId: "B", type: "incoming", amount: 10 },
+      ]
+      const applied = applicationsByAccount(legs)
+      const reversed = reversalsByAccount(legs)
+      for (const acct of ["A", "B"]) {
+        expect((applied.get(acct) ?? 0) + (reversed.get(acct) ?? 0)).toBe(0)
+      }
+      expect(applied.get("A")).toBe(150) // re-apply +200 then −50
+      expect(applied.get("B")).toBe(10)
     })
   })
 })
