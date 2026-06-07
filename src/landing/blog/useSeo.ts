@@ -61,8 +61,11 @@ export function useSeo({ title, description, image, canonicalPath, type = "websi
       setMetaByName("twitter:image", image)
     }
     setMetaByProp("og:type", type)
+    setMetaByName("twitter:card", "summary_large_image")
     if (canonicalPath && typeof window !== "undefined") {
-      setCanonical(`${window.location.origin}${canonicalPath}`)
+      const absolute = `${window.location.origin}${canonicalPath}`
+      setCanonical(absolute)
+      setMetaByProp("og:url", absolute)
     }
   }, [title, description, image, canonicalPath, type])
 }

@@ -53,8 +53,31 @@ describe("buildHead", () => {
     expect(head).toContain(`<link rel="canonical" href="${ORIGIN}/blog/post" />`)
     expect(head).toContain(`<link rel="alternate" hreflang="x-default" href="${ORIGIN}/blog/post" />`)
     expect(head).toContain('<meta property="og:url" content="https://profitsync.net/blog/post" />')
+    expect(head).toContain('<meta property="og:locale" content="en_US" />')
     expect(head).toContain('<meta name="twitter:card" content="summary_large_image" />')
     expect(head).toContain('<meta name="robots" content="index, follow" />')
+  })
+
+  it("emits dimensions + alt for the default social card, omits dimensions for custom images", () => {
+    const dflt = buildHead({ title: "T", description: "D", canonicalPath: "/" })
+    expect(dflt).toContain('<meta property="og:image" content="https://profitsync.net/og-image.png" />')
+    expect(dflt).toContain('<meta property="og:image:width" content="1200" />')
+    expect(dflt).toContain('<meta property="og:image:height" content="630" />')
+    expect(dflt).toContain('<meta property="og:image:type" content="image/png" />')
+    expect(dflt).toContain('<meta name="twitter:image:alt"')
+
+    const custom = buildHead({
+      title: "T",
+      description: "D",
+      canonicalPath: "/blog/x",
+      image: "https://cdn.example.com/cover.jpg",
+      imageAlt: "A cover",
+    })
+    expect(custom).toContain('<meta property="og:image" content="https://cdn.example.com/cover.jpg" />')
+    expect(custom).toContain('<meta property="og:image:type" content="image/jpeg" />')
+    expect(custom).toContain('<meta property="og:image:alt" content="A cover" />')
+    // We don't know a custom image's pixel size, so we must not assert one.
+    expect(custom).not.toContain("og:image:width")
   })
 
   it("defaults robots to index,follow but honors an override", () => {
@@ -81,7 +104,7 @@ describe("buildHead", () => {
 })
 
 describe("JSON-LD builders", () => {
-  it("builds a BlogPosting with absolute url, image and publisher", () => {
+  it("builds a BlogPosting with absolute url, image array, publisher and freshness flags", () => {
     const ld = blogPostingLd({
       slug: "my-post",
       title: "My Post",
@@ -92,9 +115,45 @@ describe("JSON-LD builders", () => {
     })
     expect(ld["@type"]).toBe("BlogPosting")
     expect(ld.url).toBe(`${ORIGIN}/blog/my-post`)
-    expect(ld.image).toBe(`${ORIGIN}/cover.png`)
+    expect(ld.image).toEqual([`${ORIGIN}/cover.png`])
     expect(ld.datePublished).toBe("2026-01-01T00:00:00.000Z")
+    // dateModified falls back to datePublished so the property is never missing.
+    expect(ld.dateModified).toBe("2026-01-01T00:00:00.000Z")
+    expect(ld.inLanguage).toBe("en")
+    expect(ld.isAccessibleForFree).toBe(true)
     expect((ld.author as { name: string }).name).toBe("Jane")
+  })
+
+  it("emits a rich Person author + keywords + wordCount + articleSection when provided", () => {
+    const ld = blogPostingLd({
+      slug: "p",
+      title: "P",
+      description: "d",
+      author: "Maqbool",
+      authorUrl: "https://www.linkedin.com/in/example",
+      authorJobTitle: "Founder, ProfitSync",
+      authorImage: "/headshot.jpg",
+      publishedTime: "2026-01-01T00:00:00.000Z",
+      modifiedTime: "2026-02-01T00:00:00.000Z",
+      keywords: ["cash flow", "freelancing"],
+      wordCount: 1500,
+      articleSection: "Cash Flow",
+    })
+    const author = ld.author as Record<string, unknown>
+    expect(author["@type"]).toBe("Person")
+    expect(author.url).toBe("https://www.linkedin.com/in/example")
+    expect(author.sameAs).toEqual(["https://www.linkedin.com/in/example"])
+    expect(author.jobTitle).toBe("Founder, ProfitSync")
+    expect(author.image).toBe(`${ORIGIN}/headshot.jpg`)
+    expect(ld.keywords).toBe("cash flow, freelancing")
+    expect(ld.wordCount).toBe(1500)
+    expect(ld.articleSection).toBe("Cash Flow")
+    expect(ld.dateModified).toBe("2026-02-01T00:00:00.000Z")
+  })
+
+  it("falls back to an Organization author when no author name is given", () => {
+    const ld = blogPostingLd({ slug: "p", title: "P", description: "d" })
+    expect((ld.author as { "@type": string })["@type"]).toBe("Organization")
   })
 
   it("numbers breadcrumb positions from 1 with absolute items", () => {

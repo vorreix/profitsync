@@ -484,6 +484,22 @@ export const blogPosts = pgTable("blog_posts", {
   // SEO overrides; fall back to title/excerpt when blank.
   seoTitle: text("seo_title").notNull().default(""),
   seoDescription: text("seo_description").notNull().default(""),
+  // Author E-E-A-T signals (Experience / Expertise / Authoritativeness / Trust).
+  // Surfaced both as a visible byline on the post and as a schema.org Person in
+  // the BlogPosting JSON-LD — verified 2025-26 research shows recognizable,
+  // externally-linked authors materially improve how Google + AI engines attribute
+  // and cite content. All optional: blank → omitted from schema / hidden in byline.
+  authorJobTitle: text("author_job_title").notNull().default(""), // e.g. "Founder, ProfitSync"
+  authorBio: text("author_bio").notNull().default(""), // 1–2 sentence credential line
+  authorUrl: text("author_url").notNull().default(""), // external profile (LinkedIn, etc.) → author.url + sameAs
+  authorImageUrl: text("author_image_url").notNull().default(""), // headshot → author.image
+  // Dedicated 1200×630 social/OG image override. Falls back to coverImageUrl, then
+  // the site-wide default. A landscape card out-performs the square logo in every
+  // social unfurl (X, LinkedIn, Slack, Discord, WhatsApp, iMessage).
+  ogImageUrl: text("og_image_url").notNull().default(""),
+  // Topic-cluster / pillar this post belongs to (e.g. "Cash Flow"). Emitted as
+  // schema articleSection and used for on-site grouping + internal linking.
+  articleSection: text("article_section").notNull().default(""),
   // Estimated reading time in minutes, computed from `content` at write time
   // (single source of truth: readingTimeMinutes() in src/lib/blog.ts). Stored so
   // the public list never has to fetch the full Markdown body just to derive it.

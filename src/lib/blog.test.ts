@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { slugify, readingTimeMinutes, isSafeImageUrl } from "./blog"
+import { slugify, readingTimeMinutes, isSafeImageUrl, wordCount, extractFaq } from "./blog"
 
 describe("slugify", () => {
   it("lowercases and hyphenates words", () => {
@@ -42,6 +42,45 @@ describe("readingTimeMinutes", () => {
 
   it("ignores extra whitespace between words", () => {
     expect(readingTimeMinutes("one   two\n\nthree\tfour")).toBe(1)
+  })
+})
+
+describe("wordCount", () => {
+  it("counts whitespace-separated words", () => {
+    expect(wordCount("one two three")).toBe(3)
+    expect(wordCount("  spaced   out \n words ")).toBe(3)
+    expect(wordCount("")).toBe(0)
+  })
+})
+
+describe("extractFaq", () => {
+  it("extracts H3 questions + answers under an FAQ H2", () => {
+    const md = [
+      "# Title",
+      "Intro paragraph.",
+      "## Frequently asked questions",
+      "### Is ProfitSync free?",
+      "Yes, the free plan is free forever.",
+      "### Which currencies are supported?",
+      "Any currency, set per workspace.",
+      "## Next section",
+      "### Not a question",
+      "Should be ignored.",
+    ].join("\n")
+    const faq = extractFaq(md)
+    expect(faq).toHaveLength(2)
+    expect(faq[0]).toEqual({ q: "Is ProfitSync free?", a: "Yes, the free plan is free forever." })
+    expect(faq[1].q).toBe("Which currencies are supported?")
+  })
+
+  it("matches a plain 'FAQ' heading and strips inline markdown from answers", () => {
+    const md = ["## FAQ", "### How do I start?", "Just [sign up](/signup) — it's **free**."].join("\n")
+    const faq = extractFaq(md)
+    expect(faq).toEqual([{ q: "How do I start?", a: "Just sign up — it's free." }])
+  })
+
+  it("returns [] when there is no FAQ section", () => {
+    expect(extractFaq("# Title\n## Body\nNo questions here.")).toEqual([])
   })
 })
 

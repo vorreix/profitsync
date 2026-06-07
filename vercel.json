@@ -42,6 +42,10 @@
       "destination": "/api/ssr?__ssrpath=terms-of-service"
     },
     {
+      "source": "/refund-policy",
+      "destination": "/api/ssr?__ssrpath=refund-policy"
+    },
+    {
       "source": "/((?!api|@)[^.]*)",
       "destination": "/"
     }

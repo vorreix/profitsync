@@ -13,6 +13,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node scripts/db-migrate.mjs",
     "db:push": "drizzle-kit push",
+    "seed-blog": "tsx scripts/seed-blog.ts",
     "i18n:check": "node scripts/check-i18n.mjs",
     "make-admin": "node scripts/make-admin.mjs",
     "lint": "eslint .",

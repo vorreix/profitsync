@@ -16,6 +16,7 @@ npm run test:ci      # Vitest single-run (CI)
 npm run db:generate  # Generate Drizzle migration SQL from schema changes
 npm run db:migrate   # Run pending Drizzle migrations (node scripts/db-migrate.mjs)
 npm run db:push      # Push schema directly to Neon (dev shortcut — skips migrations)
+npm run seed-blog    # Seed/refresh SEO/GEO pillar blog posts (scripts/seed-blog.ts, idempotent)
 npm run i18n:check   # Verify every locale has all en.json keys (placeholders intact)
 
 npx vitest run src/lib/foo.test.ts        # Run a single test file
@@ -126,11 +127,13 @@ To stay within Vercel Hobby's 12-function cap, **all** route handlers live under
 
 The app is a client-rendered SPA, which is invisible to crawlers/AI engines that don't run JS. `api/ssr.ts` server-renders the **public** pages so they ship real `<head>` (title, description, canonical, hreflang, OG/Twitter, JSON-LD) and a content snapshot in the initial HTML:
 
-- `vercel.json` rewrites `/`, `/blog`, `/blog/:slug`, `/privacy-policy`, `/terms-of-service`, `/sitemap.xml`, `/robots.txt`, `/llms.txt` to `/api/ssr?__ssrpath=…` (SSR routes precede the SPA fallback; `/api/*` stays first). App routes (`/dashboard`, `/admin`, …) keep serving the static shell and are `Disallow`ed in robots.txt.
+- `vercel.json` rewrites `/`, `/blog`, `/blog/:slug`, `/privacy-policy`, `/terms-of-service`, `/refund-policy`, `/sitemap.xml`, `/robots.txt`, `/llms.txt` to `/api/ssr?__ssrpath=…` (SSR routes precede the SPA fallback; `/api/*` stays first). App routes (`/dashboard`, `/admin`, …) keep serving the static shell and are `Disallow`ed in robots.txt.
 - It reads the built `index.html` (copied to `api/_ssr/index-template.html` by `vite.config.ts` `ssrTemplatePlugin`, bundled via `functions.includeFiles`, gitignored) and injects into the `<!--SSR_HEAD_START/END-->` and `<!--SSR_ROOT-->` sentinels in `index.html`. Safe because the app boots with `createRoot().render()` (not `hydrateRoot`) — the snapshot is replaced on boot, **no hydration risk**.
 - Shared, pure SEO builders live in `src/lib/seo/site.ts` (constants, `buildHead`, JSON-LD). Markdown→HTML for post snapshots uses `marked` + `sanitize-html` in `api/_ssr/markdown.ts` (allowlist mirrors `src/components/Markdown.tsx`).
+- **Blog SEO/GEO:** `blog_posts` carries author E-E-A-T columns (`author_job_title`, `author_bio`, `author_url`, `author_image_url`), a dedicated `og_image_url`, and `article_section`. The SSR emits a rich `BlogPosting` (Person author + sameAs/jobTitle/image, `wordCount`, `keywords`, `dateModified`, `inLanguage`, `isAccessibleForFree`, `articleSection`) plus a visible author byline. An `## FAQ`/`## Frequently asked questions` section is auto-detected (`extractFaq` in `src/lib/blog.ts`) and emitted as FAQPage JSON-LD. Cover/OG images become `<image:image>` sitemap entries.
+- **Auto-indexing of new/edited posts:** the dedicated **default OG image** is `public/og-image.png` (1200×630; source `scripts/og-image.html`). Publishing/editing a live post pings **IndexNow** (`api/_lib/indexnow.ts`, Bing/Yandex/Naver; prod-only, fire-and-forget) and refreshes the sitemap. Key file: `public/<INDEXNOW_KEY>.txt`. `robots.txt` welcomes all major AI crawlers (training **and** retrieval — max visibility) via the `AI_CRAWLERS` list in `api/ssr.ts`; **review that list quarterly**. Seed/refresh pillar content with `npm run seed-blog` (`scripts/seed-blog.ts`, idempotent). Full plan + content playbook + keyword clusters: **`docs/seo/PLAN.md`**.
 - **Prod-only:** in `npm run dev` the public pages are served by Vite (CSR); test SSR with `vercel dev` after a build.
-- **Caveat:** Vercel may serve static `dist/index.html` for `/` before the rewrite (filesystem precedence). The landing still carries Organization/WebSite/SoftwareApplication JSON-LD baked statically into `index.html`, so it degrades gracefully; `/blog/*` and the rest have no static collision and always SSR. The `www`→apex 301 is a Vercel **domain setting**, not code. A dedicated 1200×630 `og-image.png` is a recommended follow-up (default OG image is the square `logo.png`).
+- **Caveat:** Vercel may serve static `dist/index.html` for `/` before the rewrite (filesystem precedence). The landing still carries Organization/WebSite/SoftwareApplication JSON-LD baked statically into `index.html` (now with the 1200×630 OG image, dimensions, `og:locale`, canonical), so it degrades gracefully; `/blog/*` and the rest have no static collision and always SSR. The `www`→apex 301 is a Vercel **domain setting**, not code.
 
 #### Route table (as of current codebase)
 
