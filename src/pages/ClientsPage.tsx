@@ -4,6 +4,7 @@ import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
 import { z } from "zod"
 import { apiGet, apiPost } from "@/lib/api"
+import { runOptimistic } from "@/lib/optimistic"
 import { useFieldErrors } from "@/lib/use-field-errors"
 import type { Client } from "@/lib/types"
 import { useCurrency } from "@/lib/currency-context"
@@ -58,7 +59,8 @@ type NewClient = {
 
 type ClientWithStats = Client & { profit: number }
 
-const defaultForm: NewClient = {
+// Onboard date defaults to today so the common case needs no edit.
+const defaultForm = (): NewClient => ({
   name: "",
   company: "",
   email: "",
@@ -66,8 +68,8 @@ const defaultForm: NewClient = {
   status: "active",
   notes: "",
   category: "",
-  onboard_date: "",
-}
+  onboard_date: new Date().toISOString().split("T")[0],
+})
 
 function toWithStats(c: Client): ClientWithStats {
   const incoming = Number(c.total_incoming ?? 0)
@@ -100,7 +102,6 @@ export function ClientsPage() {
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid")
   const [dialogOpen, setDialogOpen] = useState(false)
   const [form, setForm] = useState<NewClient>(defaultForm)
-  const [saving, setSaving] = useState(false)
   const clientSchema = z.object({ name: z.string().trim().min(1, t("clientNameRequired")) })
   const { errors, validate, clearField, clearAll } = useFieldErrors(clientSchema)
   const [viewClient, setViewClient] = useState<ClientWithStats | null>(null)
@@ -184,30 +185,36 @@ export function ClientsPage() {
 
   async function handleCreate() {
     if (!validate(form)) return
-    setSaving(true)
-    try {
-      const token = await getToken()
-      if (!token) throw new Error("Not authenticated")
-      const body: Record<string, unknown> = {
-        name: form.name,
-        company: form.company,
-        email: form.email,
-        phone: form.phone,
-        status: form.status,
-        notes: form.notes,
-        category: form.category,
-      }
-      if (form.onboard_date) body.onboard_date = form.onboard_date
-      await apiPost<Client>("/api/clients", token, body)
-      toast.success(t("clientCreated"))
-      setDialogOpen(false)
-      setForm(defaultForm)
-      fetchPage1()
-    } catch {
-      toast.error(t("createClientFailed"))
-    } finally {
-      setSaving(false)
+    const token = await getToken()
+    if (!token) { toast.error(t("createClientFailed")); return }
+    const body: Record<string, unknown> = {
+      name: form.name,
+      company: form.company,
+      email: form.email,
+      phone: form.phone,
+      status: form.status,
+      notes: form.notes,
+      category: form.category,
     }
+    if (form.onboard_date) body.onboard_date = form.onboard_date
+    // Optimistic feel: close the modal instantly and save in the background. On
+    // failure, reopen the same modal (data intact) with an error toast. Granular
+    // cache invalidation keeps wealth/transactions/dashboard caches warm.
+    const snapshot = form
+    await runOptimistic({
+      apply: () => setDialogOpen(false),
+      rollback: () => { setForm(snapshot); setDialogOpen(true) },
+      mutate: () => apiPost<Client>("/api/clients", token, body, ["/api/clients"]),
+      errorMessage: t("createClientFailed"),
+      // Insert the new client in place — no full-list reload.
+      onSuccess: (created) => {
+        toast.success(t("clientCreated"))
+        setForm(defaultForm())
+        clearAll()
+        setClients((prev) => [toWithStats(created), ...prev])
+        setTotal((n) => n + 1)
+      },
+    })
   }
 
   // When searching we also pull closed clients; split them out so active matches
@@ -223,18 +230,21 @@ export function ClientsPage() {
 
   async function handleBulkDelete() {
     if (sel.count === 0) return
+    const ids = sel.selectedIds
+    // Optimistic: remove the selected clients from the list instantly.
+    const removedCount = clients.filter((c) => ids.includes(c.id)).length
+    setClients((prev) => prev.filter((c) => !ids.includes(c.id)))
+    setTotal((n) => Math.max(0, n - removedCount))
+    sel.exitSelection()
     setBulkDeleting(true)
     try {
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
-      const { deleted } = await apiPost<{ deleted: number }>("/api/clients/bulk-delete", token, {
-        ids: sel.selectedIds,
-      })
+      const { deleted } = await apiPost<{ deleted: number }>("/api/clients/bulk-delete", token, { ids })
       toast.success(t("multiSelect.deleted", { count: deleted }))
-      sel.exitSelection()
-      fetchPage1()
     } catch {
       toast.error(t("multiSelect.deleteFailed"))
+      fetchPage1() // restore on failure
     } finally {
       setBulkDeleting(false)
     }
@@ -615,22 +625,23 @@ export function ClientsPage() {
                 />
               </div>
             </div>
+            <div className="space-y-1.5">
+              <Label>{t("statusField")}</Label>
+              <Select
+                value={form.status}
+                onValueChange={(v) => setForm((f) => ({ ...f, status: v as "active" | "inactive" }))}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">{t("statusActive")}</SelectItem>
+                  <SelectItem value="inactive">{t("statusInactive")}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {/* Onboard date + Category side by side to keep the form compact. */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label>{t("statusField")}</Label>
-                <Select
-                  value={form.status}
-                  onValueChange={(v) => setForm((f) => ({ ...f, status: v as "active" | "inactive" }))}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="active">{t("statusActive")}</SelectItem>
-                    <SelectItem value="inactive">{t("statusInactive")}</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
               <div className="space-y-1.5">
                 <Label htmlFor="onboard_date">{t("onboardDateField")}</Label>
                 <Input
@@ -640,10 +651,10 @@ export function ClientsPage() {
                   onChange={(e) => setForm((f) => ({ ...f, onboard_date: e.target.value }))}
                 />
               </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label>{t("filters.category")}</Label>
-              <CategoryPicker type="client" value={form.category} onChange={(v) => setForm((f) => ({ ...f, category: v }))} />
+              <div className="space-y-1.5">
+                <Label>{t("filters.category")}</Label>
+                <CategoryPicker type="client" value={form.category} onChange={(v) => setForm((f) => ({ ...f, category: v }))} />
+              </div>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="notes">{t("notesField")}</Label>
@@ -661,9 +672,9 @@ export function ClientsPage() {
             {/* Cancel = discard: clears the draft. ESC / click-outside just close
                 and KEEP the draft (the New button doesn't reset), so an accidental
                 dismiss never loses what was typed. */}
-            <Button variant="outline" onClick={() => { setForm(defaultForm); clearAll(); setDialogOpen(false) }}>{t("cancelButton")}</Button>
-            <Button onClick={handleCreate} disabled={saving}>
-              {saving ? t("creating") : t("createClientButton")}
+            <Button variant="outline" onClick={() => { setForm(defaultForm()); clearAll(); setDialogOpen(false) }}>{t("cancelButton")}</Button>
+            <Button onClick={handleCreate}>
+              {t("createClientButton")}
             </Button>
           </DialogFooter>
         </DialogContent>
