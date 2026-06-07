@@ -59,7 +59,8 @@ type NewClient = {
 
 type ClientWithStats = Client & { profit: number }
 
-const defaultForm: NewClient = {
+// Onboard date defaults to today so the common case needs no edit.
+const defaultForm = (): NewClient => ({
   name: "",
   company: "",
   email: "",
@@ -67,8 +68,8 @@ const defaultForm: NewClient = {
   status: "active",
   notes: "",
   category: "",
-  onboard_date: "",
-}
+  onboard_date: new Date().toISOString().split("T")[0],
+})
 
 function toWithStats(c: Client): ClientWithStats {
   const incoming = Number(c.total_incoming ?? 0)
@@ -208,7 +209,7 @@ export function ClientsPage() {
       // Insert the new client in place — no full-list reload.
       onSuccess: (created) => {
         toast.success(t("clientCreated"))
-        setForm(defaultForm)
+        setForm(defaultForm())
         clearAll()
         setClients((prev) => [toWithStats(created), ...prev])
         setTotal((n) => n + 1)
@@ -624,22 +625,23 @@ export function ClientsPage() {
                 />
               </div>
             </div>
+            <div className="space-y-1.5">
+              <Label>{t("statusField")}</Label>
+              <Select
+                value={form.status}
+                onValueChange={(v) => setForm((f) => ({ ...f, status: v as "active" | "inactive" }))}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">{t("statusActive")}</SelectItem>
+                  <SelectItem value="inactive">{t("statusInactive")}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {/* Onboard date + Category side by side to keep the form compact. */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label>{t("statusField")}</Label>
-                <Select
-                  value={form.status}
-                  onValueChange={(v) => setForm((f) => ({ ...f, status: v as "active" | "inactive" }))}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="active">{t("statusActive")}</SelectItem>
-                    <SelectItem value="inactive">{t("statusInactive")}</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
               <div className="space-y-1.5">
                 <Label htmlFor="onboard_date">{t("onboardDateField")}</Label>
                 <Input
@@ -649,10 +651,10 @@ export function ClientsPage() {
                   onChange={(e) => setForm((f) => ({ ...f, onboard_date: e.target.value }))}
                 />
               </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label>{t("filters.category")}</Label>
-              <CategoryPicker type="client" value={form.category} onChange={(v) => setForm((f) => ({ ...f, category: v }))} />
+              <div className="space-y-1.5">
+                <Label>{t("filters.category")}</Label>
+                <CategoryPicker type="client" value={form.category} onChange={(v) => setForm((f) => ({ ...f, category: v }))} />
+              </div>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="notes">{t("notesField")}</Label>
@@ -670,7 +672,7 @@ export function ClientsPage() {
             {/* Cancel = discard: clears the draft. ESC / click-outside just close
                 and KEEP the draft (the New button doesn't reset), so an accidental
                 dismiss never loses what was typed. */}
-            <Button variant="outline" onClick={() => { setForm(defaultForm); clearAll(); setDialogOpen(false) }}>{t("cancelButton")}</Button>
+            <Button variant="outline" onClick={() => { setForm(defaultForm()); clearAll(); setDialogOpen(false) }}>{t("cancelButton")}</Button>
             <Button onClick={handleCreate}>
               {t("createClientButton")}
             </Button>
