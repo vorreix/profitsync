@@ -171,7 +171,8 @@
     "state": "राज्य / प्रांत",
     "postalCode": "पोस्टल कोड",
     "country": "देश",
-    "selectCountry": "देश चुनें…"
+    "selectCountry": "देश चुनें…",
+    "legalTitle": "क़ानूनी और नीतियाँ"
   },
   "toast": {
     "profileLoadFailed": "प्रोफ़ाइल लोड करने में विफल",

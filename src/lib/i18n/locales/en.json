@@ -347,7 +347,8 @@
     "currency": "Currency",
     "currencyDescription": "Currency is now set per organization. Open an organization to change its currency — only owners and admins can.",
     "logoutTitle": "Logout",
-    "logoutDescription": "Sign out of your ProfitSync account"
+    "logoutDescription": "Sign out of your ProfitSync account",
+    "legalTitle": "Legal & Policies"
   },
   "toast": {
     "profileLoadFailed": "Failed to load profile",

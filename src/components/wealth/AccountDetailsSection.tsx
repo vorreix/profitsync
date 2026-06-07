@@ -2,14 +2,16 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { useAuth } from "@clerk/clerk-react"
 import { toast } from "sonner"
-import { Download, Paperclip, Upload, X } from "lucide-react"
+import { ChevronDown, Download, Paperclip, Upload, X } from "lucide-react"
 import { apiGet } from "@/lib/api"
 import type { WealthAccount, WealthAccountAttachment } from "@/lib/types"
 import { accountFieldsForCountry, PRIMARY_LABEL_KEY, SECONDARY_LABEL_KEY } from "@/lib/bank-fields"
 import { countryByCode } from "@/lib/countries"
 import { ACCEPT_ATTR, attachmentsListPath, uploadAttachment, validateFile } from "@/lib/attachments-client"
+import { usePersistedOpen } from "@/lib/wealth"
 import { AttachmentDetailModal, type AttachmentModalItem } from "@/components/AttachmentDetailModal"
 import { Button } from "@/components/ui/button"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Skeleton } from "@/components/ui/skeleton"
 
 const formatFileSize = (bytes: number) =>
@@ -42,6 +44,9 @@ export function AccountDetailsSection({
   const [uploading, setUploading] = useState(false)
   const [viewAttachment, setViewAttachment] = useState<AttachmentModalItem | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  // Persist the collapse state per account (survives navigation + restart).
+  const [detailsOpen, setDetailsOpen] = usePersistedOpen(`ps_wealth_detail_open_${account.id}`, true)
+  const [filesOpen, setFilesOpen] = usePersistedOpen(`ps_wealth_files_open_${account.id}`, true)
 
   const loadAttachments = useCallback(async () => {
     setLoading(true)
@@ -85,23 +90,35 @@ export function AccountDetailsSection({
   return (
     <>
       {hasDetails && (
-        <div className="rounded-2xl border p-4 sm:p-5">
-          <h2 className="mb-1 text-sm font-semibold">{t("accountDetails")}</h2>
-          <div className="divide-y">
-            {country && <DetailRow label={t("country")} value={`${country.flag} ${country.name}`} />}
-            <DetailRow label={t(PRIMARY_LABEL_KEY[fields.primaryKey])} value={account.account_number ?? ""} />
-            {fields.secondaryKey && <DetailRow label={t(SECONDARY_LABEL_KEY[fields.secondaryKey])} value={account.routing_number ?? ""} />}
-            <DetailRow label={t("fieldSwift")} value={account.swift ?? ""} />
-            <DetailRow label={t("location")} value={account.location ?? ""} />
-            <DetailRow label={t("address")} value={account.address ?? ""} />
-            <DetailRow label={t("note")} value={account.note ?? ""} />
-          </div>
-        </div>
+        <Collapsible open={detailsOpen} onOpenChange={setDetailsOpen} className="rounded-2xl border">
+          <CollapsibleTrigger className="group flex w-full items-center justify-between gap-2 p-4 text-left sm:p-5">
+            <h2 className="text-sm font-semibold">{t("accountDetails")}</h2>
+            <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-180" />
+          </CollapsibleTrigger>
+          <CollapsibleContent className="px-4 pb-4 sm:px-5 sm:pb-5">
+            <div className="divide-y">
+              {country && <DetailRow label={t("country")} value={`${country.flag} ${country.name}`} />}
+              <DetailRow label={t(PRIMARY_LABEL_KEY[fields.primaryKey])} value={account.account_number ?? ""} />
+              {fields.secondaryKey && <DetailRow label={t(SECONDARY_LABEL_KEY[fields.secondaryKey])} value={account.routing_number ?? ""} />}
+              <DetailRow label={t("fieldSwift")} value={account.swift ?? ""} />
+              <DetailRow label={t("location")} value={account.location ?? ""} />
+              <DetailRow label={t("address")} value={account.address ?? ""} />
+              <DetailRow label={t("note")} value={account.note ?? ""} />
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
       )}
 
-      <div className="rounded-2xl border p-4 sm:p-5">
-        <div className="mb-2 flex items-center justify-between gap-2">
-          <h2 className="flex items-center gap-1.5 text-sm font-semibold"><Paperclip className="size-3.5" /> {t("attachments")}</h2>
+      <Collapsible open={filesOpen} onOpenChange={setFilesOpen} className="rounded-2xl border">
+        <div className="flex items-center justify-between gap-2 p-4 sm:p-5">
+          <CollapsibleTrigger className="group flex min-w-0 flex-1 items-center gap-1.5 text-left">
+            <Paperclip className="size-3.5 shrink-0" />
+            <h2 className="text-sm font-semibold">{t("attachments")}</h2>
+            {attachments.length > 0 && (
+              <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground">{attachments.length}</span>
+            )}
+            <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-180" />
+          </CollapsibleTrigger>
           {canWrite && (
             <>
               <input ref={fileRef} type="file" multiple accept={ACCEPT_ATTR} className="hidden" onChange={onPickFiles} />
@@ -111,6 +128,7 @@ export function AccountDetailsSection({
             </>
           )}
         </div>
+        <CollapsibleContent className="px-4 pb-4 sm:px-5 sm:pb-5">
         {loading ? (
           <div className="space-y-1.5">{[1, 2].map((i) => <Skeleton key={i} className="h-10 w-full rounded-lg" />)}</div>
         ) : attachments.length === 0 ? (
@@ -154,7 +172,8 @@ export function AccountDetailsSection({
             ))}
           </div>
         )}
-      </div>
+        </CollapsibleContent>
+      </Collapsible>
 
       <AttachmentDetailModal
         item={viewAttachment}
