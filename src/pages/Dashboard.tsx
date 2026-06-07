@@ -645,9 +645,13 @@ export function Dashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filteredTx, isPersonal, clientsById])
 
-  const chartData = [...buckets]
-    .sort((a, b) => b.incoming + b.outgoing - (a.incoming + a.outgoing))
-    .slice(0, 6)
+  // Cap the chart to the top 10 by combined volume so it stays readable (the
+  // full breakdown lives on Analytics, reachable via "View all"). Respects the
+  // active client/category filter because it derives from filteredTx → buckets.
+  const CHART_CAP = 10
+  const sortedBuckets = [...buckets].sort((a, b) => b.incoming + b.outgoing - (a.incoming + a.outgoing))
+  const chartData = sortedBuckets
+    .slice(0, CHART_CAP)
     .map((b) => ({ name: b.name.split(" ")[0] || b.name, incoming: b.incoming, outgoing: b.outgoing }))
 
   const topBuckets = [...buckets]
@@ -794,10 +798,18 @@ export function Dashboard() {
       <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-5">
         {/* Chart */}
         <Card className="lg:col-span-3 min-w-0">
-          <CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between gap-2">
             <CardTitle className="text-sm font-semibold">
               {isPersonal ? t("dashboard.revenueVsCategories") : t("dashboard.revenueVsExpenses")}
             </CardTitle>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-xs shrink-0"
+              onClick={() => navigate("/analytics")}
+            >
+              {t("common.viewAll")} <ArrowRight className="size-3 ml-1" />
+            </Button>
           </CardHeader>
           <CardContent>
             {loading ? (

@@ -12,7 +12,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { LanguageSwitcher } from "@/components/LanguageSwitcher"
 import { CountryCombobox, CountryCodeCombobox } from "@/components/CountryCombobox"
 import { toast } from "sonner"
-import { ArrowLeft, Building2, Loader as Loader2, LogOut } from "lucide-react"
+import { ArrowLeft, Building2, FileText, Loader as Loader2, LogOut, ScrollText, ShieldCheck } from "lucide-react"
 
 export function ProfilePage() {
   const { t } = useTranslation()
@@ -201,6 +201,32 @@ export function ProfilePage() {
             <Link to="/organizations">
               <Building2 className="size-4 mr-2" />
               {t("org.manageOrganizations")}
+            </Link>
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">{t("profile.legalTitle")}</CardTitle>
+        </CardHeader>
+        <CardContent className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <Button asChild variant="outline" className="justify-start">
+            <Link to="/privacy-policy">
+              <ShieldCheck className="size-4 mr-2" />
+              {t("nav.privacyPolicy")}
+            </Link>
+          </Button>
+          <Button asChild variant="outline" className="justify-start">
+            <Link to="/terms-of-service">
+              <ScrollText className="size-4 mr-2" />
+              {t("nav.termsOfService")}
+            </Link>
+          </Button>
+          <Button asChild variant="outline" className="justify-start">
+            <Link to="/refund-policy">
+              <FileText className="size-4 mr-2" />
+              {t("nav.refundPolicy")}
             </Link>
           </Button>
         </CardContent>
