@@ -171,7 +171,8 @@
     "state": "రాష్ట్రం / ప్రావిన్సు",
     "postalCode": "పిన్ కోడ్",
     "country": "దేశం",
-    "selectCountry": "దేశాన్ని ఎంచుకోండి..."
+    "selectCountry": "దేశాన్ని ఎంచుకోండి...",
+    "legalTitle": "చట్టపరమైనవి & విధానాలు"
   },
   "toast": {
     "profileLoadFailed": "ప్రొఫైల్ లోడ్ చేయడం విఫలమైంది",
