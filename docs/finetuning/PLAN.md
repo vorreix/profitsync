@@ -72,6 +72,8 @@ cross‑cutting UI refactors later so they build on stabilised forms).
 > (wealth detail, validation, modal, speed) — the dev test account sits in an
 > `/onboarding` state that gates live verification of some business pages.
 | 14 | `skill/work-finetuning` | Author + test + document the `work-finetuning` skill | meta | M | ✅ done |
+| 15 | `feat/finetune-15-quotation-layout` | Follow-up: Date + Category side by side in the quotation modal | ui | L | ✅ done |
+| 16 | `feat/finetune-16-wealth-detail-persist` | Follow-up: persist wealth Account-Detail/Attachments collapse per account (survives restart) | ui | L | ✅ done |
 
 Status legend: ⬜ todo · 🟡 in progress · ✅ done · 🔵 pushed (PR open) · ⏸ parked.
 
@@ -767,3 +769,8 @@ with the right trigger, and loads cleanly via the Skill tool.
   persist/discard, optimistic client create, referral code/copy. Money paths
   (T1/T13/T15) locked by unit tests + hand‑derivation. Task #2 parked (blank in
   the brief). `work-finetuning` skill authored, tested, documented.
+- **2026‑06‑07 (follow-ups)** — Branch 15: quotation modal Date + Category paired
+  side by side (verified). Branch 16: the wealth Account‑Detail + Attachments
+  collapse state now **persists per account in localStorage** (new
+  `usePersistedOpen` in `wealth.ts`) — survives navigation AND restart; verified
+  with Playwright (collapse→reload stays collapsed, expand→reload stays expanded).
