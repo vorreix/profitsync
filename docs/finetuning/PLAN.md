@@ -71,7 +71,7 @@ cross‑cutting UI refactors later so they build on stabilised forms).
 > verifiable/low‑risk UI wins (T8/T16/T12/T14) before the heavier refactors
 > (wealth detail, validation, modal, speed) — the dev test account sits in an
 > `/onboarding` state that gates live verification of some business pages.
-| 14 | `skill/work-finetuning` | Author + test + document the `work-finetuning` skill | meta | M | ⬜ todo |
+| 14 | `skill/work-finetuning` | Author + test + document the `work-finetuning` skill | meta | M | ✅ done |
 
 Status legend: ⬜ todo · 🟡 in progress · ✅ done · 🔵 pushed (PR open) · ⏸ parked.
 
@@ -743,7 +743,15 @@ user intervention:
 - **Deliverables:** `SKILL.md` + references + an example, tested end‑to‑end, with
   documentation on how/when to use it. Pushed to GitHub.
 
-**Status:** ⬜ todo.
+**Implemented.** `.claude/skills/work-finetuning/` — `SKILL.md` (procedure +
+non‑negotiables + strong trigger description), `references/playbook.md` (research
+schema, gate commands, i18n/migration mechanics, stacked‑branch git recipe,
+Playwright loop, optimistic pattern), `references/conventions.md` (ProfitSync
+facts + every correction/gotcha learned). **Tested:** structure validated (name +
+718‑char description + both refs resolve), auto‑discovered into the skill registry
+with the right trigger, and loads cleanly via the Skill tool.
+
+**Status:** ✅ done (branch `skill/work-finetuning`).
 
 ---
 
@@ -752,3 +760,10 @@ user intervention:
   adversarially verified; corrections recorded (T1 sign bug = false; T3 precache
   removal = unsafe; T10 full‑RHF = too risky; T16 gate on account type). Plan +
   branch chain established.
+- **2026‑06‑07** — **All 13 task branches + the skill shipped & pushed** (branches
+  00–14). Every branch passed the full gate (i18n → lint → typecheck → 84 tests).
+  Highlights verified with Playwright: dashboard View‑All, legal relocation, orgs
+  grid, wealth edit‑transaction (balance re‑sync), red‑border validation, modal
+  persist/discard, optimistic client create, referral code/copy. Money paths
+  (T1/T13/T15) locked by unit tests + hand‑derivation. Task #2 parked (blank in
+  the brief). `work-finetuning` skill authored, tested, documented.
