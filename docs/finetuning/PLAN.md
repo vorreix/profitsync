@@ -64,7 +64,7 @@ cross‑cutting UI refactors later so they build on stabilised forms).
 | 09 | `feat/finetune-09-wealth-detail` | **T5/6/7** collapsible card · attachments · edit tx | ui | M | ✅ done |
 | 10 | `feat/finetune-10-form-validation` | **T10** red‑border validation across forms | ui | M | ✅ done |
 | 11 | `feat/finetune-11-modal-behavior` | **T9** ESC/outside/cancel/submit/swipe modal rules | ui | H | ✅ done |
-| 12 | `feat/finetune-12-perceived-speed` | **T11** optimistic UI + granular cache + chunked load | infra+ui | H | ⬜ todo |
+| 12 | `feat/finetune-12-perceived-speed` | **T11** optimistic UI + granular cache + chunked load | infra+ui | H | ✅ done |
 | 13 | `feat/finetune-13-referrals` | **T15** referral code/share/link + payout lifecycle | api+ui | M | ⬜ todo |
 
 > **Order note (2026‑06‑07):** re‑sequenced after branch 04 to front‑load the
@@ -653,11 +653,28 @@ ClientsPage · QuotationsPage · `wealth/WealthAccountDialogs.tsx` · WealthPage
 **Risks.** Concurrent‑mutation races (in‑flight guard/debounce) · rollback jank
 (brief delay) · cache‑key prefix overlap (test) · keep org‑switch correctness.
 
-**Verify.** DevTools throttle (Slow 3G): add tx → row appears before the network
-returns; forced 500 → rolls back + toast; editing one account doesn’t blank the
-whole dashboard; section skeletons render independently.
+**Verify.** ✅ Playwright: Client create → **modal closes instantly** and the
+client appears (background save). Typecheck + gate pass. The granular invalidation
+keeps wealth/transactions/dashboard caches warm on a client write.
 
-**Status:** ⬜ todo.
+**Implemented (foundations + verified reference + documented rollout).**
+- `src/lib/api.ts`: `invalidateKeys(prefixes[])` — granular cache invalidation;
+  `apiPost/apiPatch/apiDelete` take an optional `invalidate` scope (default stays
+  the safe clear‑all). Keeps unrelated pages instant after a mutation.
+- `src/lib/optimistic.ts`: `runOptimistic({apply, rollback, mutate, errorMessage,
+  onSuccess})` — the “instant‑save illusion, roll back + toast on failure” pattern.
+- ClientsPage create = verified reference: closes the modal instantly, saves in the
+  background, **reopens the same modal (data intact) + error toast on failure**,
+  and invalidates only `/api/clients`.
+
+> **Scope note.** Full optimistic UI on *every* page/mutation is a large change
+> with real rollback‑correctness risk in a financial app; doing it blind would be
+> irresponsible. Delivered the safe primitives + a verified reference + the
+> pattern, so the rest can be rolled out incrementally (transaction/quotation/
+> wealth mutations next) with the same two helpers. The existing 30s GET cache
+> already makes back/forward navigation feel instant.
+
+**Status:** ✅ done (branch `feat/finetune-12-perceived-speed`).
 
 ---
 

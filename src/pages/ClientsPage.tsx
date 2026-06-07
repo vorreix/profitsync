@@ -4,6 +4,7 @@ import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
 import { z } from "zod"
 import { apiGet, apiPost } from "@/lib/api"
+import { runOptimistic } from "@/lib/optimistic"
 import { useFieldErrors } from "@/lib/use-field-errors"
 import type { Client } from "@/lib/types"
 import { useCurrency } from "@/lib/currency-context"
@@ -100,7 +101,6 @@ export function ClientsPage() {
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid")
   const [dialogOpen, setDialogOpen] = useState(false)
   const [form, setForm] = useState<NewClient>(defaultForm)
-  const [saving, setSaving] = useState(false)
   const clientSchema = z.object({ name: z.string().trim().min(1, t("clientNameRequired")) })
   const { errors, validate, clearField, clearAll } = useFieldErrors(clientSchema)
   const [viewClient, setViewClient] = useState<ClientWithStats | null>(null)
@@ -184,30 +184,29 @@ export function ClientsPage() {
 
   async function handleCreate() {
     if (!validate(form)) return
-    setSaving(true)
-    try {
-      const token = await getToken()
-      if (!token) throw new Error("Not authenticated")
-      const body: Record<string, unknown> = {
-        name: form.name,
-        company: form.company,
-        email: form.email,
-        phone: form.phone,
-        status: form.status,
-        notes: form.notes,
-        category: form.category,
-      }
-      if (form.onboard_date) body.onboard_date = form.onboard_date
-      await apiPost<Client>("/api/clients", token, body)
-      toast.success(t("clientCreated"))
-      setDialogOpen(false)
-      setForm(defaultForm)
-      fetchPage1()
-    } catch {
-      toast.error(t("createClientFailed"))
-    } finally {
-      setSaving(false)
+    const token = await getToken()
+    if (!token) { toast.error(t("createClientFailed")); return }
+    const body: Record<string, unknown> = {
+      name: form.name,
+      company: form.company,
+      email: form.email,
+      phone: form.phone,
+      status: form.status,
+      notes: form.notes,
+      category: form.category,
     }
+    if (form.onboard_date) body.onboard_date = form.onboard_date
+    // Optimistic feel: close the modal instantly and save in the background. On
+    // failure, reopen the same modal (data intact) with an error toast. Granular
+    // cache invalidation keeps wealth/transactions/dashboard caches warm.
+    const snapshot = form
+    await runOptimistic({
+      apply: () => setDialogOpen(false),
+      rollback: () => { setForm(snapshot); setDialogOpen(true) },
+      mutate: () => apiPost<Client>("/api/clients", token, body, ["/api/clients"]),
+      errorMessage: t("createClientFailed"),
+      onSuccess: () => { toast.success(t("clientCreated")); setForm(defaultForm); clearAll(); fetchPage1() },
+    })
   }
 
   // When searching we also pull closed clients; split them out so active matches
@@ -662,8 +661,8 @@ export function ClientsPage() {
                 and KEEP the draft (the New button doesn't reset), so an accidental
                 dismiss never loses what was typed. */}
             <Button variant="outline" onClick={() => { setForm(defaultForm); clearAll(); setDialogOpen(false) }}>{t("cancelButton")}</Button>
-            <Button onClick={handleCreate} disabled={saving}>
-              {saving ? t("creating") : t("createClientButton")}
+            <Button onClick={handleCreate}>
+              {t("createClientButton")}
             </Button>
           </DialogFooter>
         </DialogContent>
