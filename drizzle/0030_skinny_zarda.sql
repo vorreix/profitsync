@@ -1,0 +1,1 @@
+ALTER TABLE "quotations" ADD COLUMN "date" date DEFAULT now() NOT NULL;
