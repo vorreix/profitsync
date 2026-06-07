@@ -16,6 +16,7 @@ type Referral = { id: string; status: string; reward_amount: number; reward_curr
 type Payout = { id: string; method: string; amount: string; currency: string; status: string; created_at: string }
 type ReferralData = {
   code: string
+  referred_by?: { code: string; inviter: string } | null
   stats: { signups: number; paid: number; lifetimeEarned: number; eligibleEarned: number; outstanding: number; available: number; currency: string }
   settings: { reward_type: string; reward_percent: number; reward_amount: number; reward_currency: string; holding_days: number; min_payout: number }
   referrals: Referral[]
@@ -30,6 +31,7 @@ export function ReferralPage() {
   const [data, setData] = useState<ReferralData | null>(null)
   const [loading, setLoading] = useState(true)
   const [copied, setCopied] = useState(false)
+  const [codeCopied, setCodeCopied] = useState(false)
   const [codeInput, setCodeInput] = useState("")
   const [applying, setApplying] = useState(false)
 
@@ -61,6 +63,17 @@ export function ReferralPage() {
       await navigator.clipboard.writeText(link)
       setCopied(true)
       setTimeout(() => setCopied(false), 1500)
+    } catch {
+      toast.error("Couldn't copy")
+    }
+  }
+
+  async function copyCode() {
+    if (!data) return
+    try {
+      await navigator.clipboard.writeText(data.code)
+      setCodeCopied(true)
+      setTimeout(() => setCodeCopied(false), 1500)
     } catch {
       toast.error("Couldn't copy")
     }
@@ -133,6 +146,18 @@ export function ReferralPage() {
       <Card>
         <CardHeader><CardTitle className="text-sm font-semibold flex items-center gap-1.5"><Link2 className="size-4" /> Your referral link</CardTitle></CardHeader>
         <CardContent className="space-y-3">
+          {/* Your code (copyable) */}
+          <div className="flex items-center justify-between gap-2 rounded-lg border bg-muted/40 px-3 py-2">
+            <div className="min-w-0">
+              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Your code</p>
+              <p className="font-mono text-lg font-semibold tracking-widest">{data.code}</p>
+            </div>
+            <Button variant="outline" size="sm" onClick={copyCode} className="shrink-0">
+              {codeCopied ? <Check className="size-4" /> : <Copy className="size-4" />}
+              <span className="hidden sm:inline">{codeCopied ? "Copied" : "Copy code"}</span>
+            </Button>
+          </div>
+          {/* Share link */}
           <div className="flex gap-2">
             <Input readOnly value={link} className="font-mono text-xs" onFocus={(e) => e.currentTarget.select()} />
             <Button variant="outline" onClick={copyLink} className="shrink-0">{copied ? <Check className="size-4" /> : <Copy className="size-4" />}<span className="hidden sm:inline">{copied ? "Copied" : "Copy"}</span></Button>
@@ -207,14 +232,27 @@ export function ReferralPage() {
         </Card>
       )}
 
-      {/* Apply a code */}
-      <Card>
-        <CardHeader><CardTitle className="text-sm font-semibold">Have a referral code?</CardTitle></CardHeader>
-        <CardContent className="flex gap-2">
-          <Input placeholder="Enter code" value={codeInput} onChange={(e) => setCodeInput(e.target.value.toUpperCase())} className="font-mono" />
-          <Button variant="outline" onClick={applyCode} disabled={applying || !codeInput.trim()} className="shrink-0">Apply</Button>
-        </CardContent>
-      </Card>
+      {/* Already referred → show the inviter; otherwise let them apply a code.
+          A code can be applied only once, so these are mutually exclusive. */}
+      {data.referred_by ? (
+        <Card>
+          <CardHeader><CardTitle className="text-sm font-semibold">You were invited</CardTitle></CardHeader>
+          <CardContent className="flex items-center justify-between gap-2">
+            <p className="text-sm">
+              Invited by <span className="font-medium">{data.referred_by.inviter}</span>
+            </p>
+            <Badge variant="secondary" className="font-mono tracking-widest">{data.referred_by.code}</Badge>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card>
+          <CardHeader><CardTitle className="text-sm font-semibold">Have a referral code?</CardTitle></CardHeader>
+          <CardContent className="flex gap-2">
+            <Input placeholder="Enter code" value={codeInput} onChange={(e) => setCodeInput(e.target.value.toUpperCase())} className="font-mono" />
+            <Button variant="outline" onClick={applyCode} disabled={applying || !codeInput.trim()} className="shrink-0">Apply</Button>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Payout dialog */}
       <Dialog open={payoutOpen} onOpenChange={setPayoutOpen}>

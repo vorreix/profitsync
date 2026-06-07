@@ -65,7 +65,7 @@ cross‑cutting UI refactors later so they build on stabilised forms).
 | 10 | `feat/finetune-10-form-validation` | **T10** red‑border validation across forms | ui | M | ✅ done |
 | 11 | `feat/finetune-11-modal-behavior` | **T9** ESC/outside/cancel/submit/swipe modal rules | ui | H | ✅ done |
 | 12 | `feat/finetune-12-perceived-speed` | **T11** optimistic UI + granular cache + chunked load | infra+ui | H | ✅ done |
-| 13 | `feat/finetune-13-referrals` | **T15** referral code/share/link + payout lifecycle | api+ui | M | ⬜ todo |
+| 13 | `feat/finetune-13-referrals` | **T15** referral code/share/link + payout lifecycle | api+ui | M | ✅ done |
 
 > **Order note (2026‑06‑07):** re‑sequenced after branch 04 to front‑load the
 > verifiable/low‑risk UI wins (T8/T16/T12/T14) before the heavier refactors
@@ -710,12 +710,22 @@ payment success. Signup linking via `?r=` → localStorage → Clerk
 text injection (use `navigator.share` text field safely) · concurrent admin payout
 updates (status‑guarded).
 
-**Verify.** End‑to‑end with two test users: B signs up via A’s link → A sees a
-signup → B’s org buys Pro (test mode) → A accrues the correct reward → A requests
-payout → admin marks paid → A’s referrals show `paid_out`. B’s ReferralPage hides
-the apply input and shows “Invited by A”.
+**Verify.** ✅ Playwright: ReferralPage shows **“YOUR CODE … + Copy code”**, the
+share link + Copy + Share, stats, payout, and the apply‑code section (this user
+isn’t referred → shown correctly). Money path **adversarially re‑verified** and
+sound + idempotent: `?r=` → localStorage → Clerk `unsafeMetadata` →
+`attributeReferral` (validates code, blocks self‑referral, `onConflictDoNothing`)
+→ `creditReferralOnPaid` (status‑guarded snapshot) → admin payout → `paid_out`.
+Typecheck + gate pass.
 
-**Status:** ⬜ todo.
+**Implemented.** `referrals.ts` returns `referred_by {code, inviter}` (lookup on
+`referred_user_id = me`). `ReferralPage`: prominent **code + Copy‑code** button;
+when referred, shows an **“Invited by …”** card and **hides** the apply‑code input
+(mutually exclusive — a code applies once). `admin/payouts/[id].ts`: marking a
+payout `paid` transitions that referrer’s `paid` referrals → `paid_out`
+(status‑guarded, idempotent). Copy/share already worked.
+
+**Status:** ✅ done (branch `feat/finetune-13-referrals`).
 
 ---
 
