@@ -7,6 +7,11 @@
     "iosTitle": "Add to Home Screen",
     "iosBody": "Tap the Share icon, then choose “Add to Home Screen”."
   },
+  "errorBoundary": {
+    "title": "Something went wrong",
+    "message": "The app couldn’t load — this can happen right after an update. Reload to get the latest version.",
+    "reload": "Reload"
+  },
   "nav": {
     "dashboard": "Dashboard",
     "clients": "Clients",
@@ -342,7 +347,8 @@
     "currency": "Currency",
     "currencyDescription": "Currency is now set per organization. Open an organization to change its currency — only owners and admins can.",
     "logoutTitle": "Logout",
-    "logoutDescription": "Sign out of your ProfitSync account"
+    "logoutDescription": "Sign out of your ProfitSync account",
+    "legalTitle": "Legal & Policies"
   },
   "toast": {
     "profileLoadFailed": "Failed to load profile",
@@ -658,6 +664,7 @@
     "companyPlaceholder": "Acme Corp",
     "amountLabel": "Amount",
     "amountPlaceholder": "0.00",
+    "dateLabel": "Date",
     "emailLabel": "Email",
     "emailPlaceholder": "jane@acme.com",
     "phoneLabel": "Phone",

@@ -49,7 +49,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     .orderBy(desc(payoutRequests.createdAt))
     .limit(50)
 
+  // Was the CURRENT user referred by someone? If so the UI shows "Invited by …"
+  // and hides the "Have a referral code?" entry (a code can be applied only once).
+  const [referredByRow] = await db
+    .select({
+      code: referrals.code,
+      inviterName: userProfiles.fullName,
+      inviterEmail: userProfiles.email,
+    })
+    .from(referrals)
+    .leftJoin(userProfiles, eq(userProfiles.id, referrals.referrerUserId))
+    .where(eq(referrals.referredUserId, userId))
+    .limit(1)
+
   return res.json({
+    referred_by: referredByRow
+      ? { code: referredByRow.code, inviter: referredByRow.inviterName?.trim() || maskEmail(referredByRow.inviterEmail) }
+      : null,
     code,
     stats,
     settings: {

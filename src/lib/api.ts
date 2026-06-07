@@ -47,6 +47,20 @@ export function clearApiCache() {
   cacheGeneration++
 }
 
+// Granular invalidation: drop only cache/inflight entries whose path starts with
+// one of `prefixes` (scoped to the active org via the cache key), leaving the rest
+// of the cache warm. Bumping the generation prevents any in-flight GET started
+// before this call from repopulating a stale entry. Prefer this over
+// clearApiCache() for mutations so unrelated pages stay instant.
+//   invalidateKeys(["/api/transactions", "/api/wealth"])
+export function invalidateKeys(prefixes: string[]) {
+  const pathOf = (key: string) => key.slice(key.indexOf("::") + 2)
+  const matches = (key: string) => prefixes.some((p) => pathOf(key).startsWith(p))
+  for (const key of [...cache.keys()]) if (matches(key)) cache.delete(key)
+  for (const key of [...inflight.keys()]) if (matches(key)) inflight.delete(key)
+  cacheGeneration++
+}
+
 export function setActiveOrgId(id: string | null) {
   if (id !== activeOrgId) {
     // Don't clear on the initial null -> org resolution at boot: there's no stale
@@ -110,14 +124,19 @@ function get<T>(path: string, token: string): Promise<T> {
   return p
 }
 
-async function mutate<T>(method: string, path: string, token: string, body?: unknown): Promise<T> {
+async function mutate<T>(method: string, path: string, token: string, body?: unknown, invalidate?: string[]): Promise<T> {
   const result = await request<T>(method, path, token, body)
-  clearApiCache() // writes can change any list/aggregate — invalidate everything
+  // Default: clear everything (safe — a write can touch any list/aggregate).
+  // Pass `invalidate` to drop only the affected scopes and keep the rest warm.
+  if (invalidate) invalidateKeys(invalidate)
+  else clearApiCache()
   return result
 }
 
 export const apiGet = <T>(path: string, token: string) => get<T>(path, token)
-export const apiPost = <T>(path: string, token: string, body: unknown) => mutate<T>("POST", path, token, body)
-export const apiPatch = <T>(path: string, token: string, body: unknown) => mutate<T>("PATCH", path, token, body)
-export const apiDelete = <T = void>(path: string, token: string, body?: unknown) =>
-  mutate<T>("DELETE", path, token, body)
+export const apiPost = <T>(path: string, token: string, body: unknown, invalidate?: string[]) =>
+  mutate<T>("POST", path, token, body, invalidate)
+export const apiPatch = <T>(path: string, token: string, body: unknown, invalidate?: string[]) =>
+  mutate<T>("PATCH", path, token, body, invalidate)
+export const apiDelete = <T = void>(path: string, token: string, body?: unknown, invalidate?: string[]) =>
+  mutate<T>("DELETE", path, token, body, invalidate)

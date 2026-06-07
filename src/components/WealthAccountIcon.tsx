@@ -12,10 +12,12 @@ export function WealthAccountIcon({ account, className = "size-10" }: { account:
   if (account.logo_url && !logoFailed) {
     return (
       <div className={`flex shrink-0 items-center justify-center overflow-hidden rounded-full border bg-card ${className}`}>
+        {/* Fill the circle (object-cover) so the brand logo reads large instead of
+            a tiny contained glyph; a touch of scale crops any built-in padding. */}
         <img
           src={account.logo_url}
           alt=""
-          className="size-full object-contain p-1"
+          className="size-full scale-110 object-cover"
           onError={() => setLogoFailed(true)}
         />
       </div>

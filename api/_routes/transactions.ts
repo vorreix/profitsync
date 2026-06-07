@@ -5,13 +5,9 @@ import { clients, transactions, wealthAccounts } from "../../src/lib/db/schema.j
 import { canWrite, ensureDefaultClient, isPersonalAccount, requireAuth } from "../_lib/auth.js"
 import { checkTransactionQuota } from "../_lib/quota.js"
 import { logAudit } from "../_lib/audit.js"
+import { balanceDelta } from "../../src/lib/wealth-ledger.js"
 
 const PAGE_SIZE = 20
-
-function balanceDelta(type: string, amount: unknown): number {
-  const n = Number(amount)
-  return type === "incoming" ? n : -n
-}
 
 function pickOrder(sort: string | undefined) {
   switch (sort) {

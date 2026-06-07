@@ -171,7 +171,8 @@
     "state": "Bundesland / Region",
     "postalCode": "Postleitzahl",
     "country": "Land",
-    "selectCountry": "Land wählen…"
+    "selectCountry": "Land wählen…",
+    "legalTitle": "Rechtliches & Richtlinien"
   },
   "toast": {
     "profileLoadFailed": "Profil konnte nicht geladen werden",
@@ -443,7 +444,8 @@
     "deleteAttachmentDescription": "Dieser Anhang wird dauerhaft gelöscht.",
     "deleteBtn": "Löschen",
     "totalQuotations_one": "{{count}} Angebot",
-    "totalQuotations_other": "{{count}} Angebote"
+    "totalQuotations_other": "{{count}} Angebote",
+    "dateLabel": "Datum"
   },
   "organizations": {
     "organizationCreated": "Organisation erstellt",
@@ -925,5 +927,10 @@
     "reorder": "Sortieren",
     "holdToTransfer": "Zum Überweisen halten",
     "selectAccount": "Konto auswählen"
+  },
+  "errorBoundary": {
+    "title": "Etwas ist schiefgelaufen",
+    "message": "Die App konnte nicht geladen werden – das kann direkt nach einem Update passieren. Lade neu, um die neueste Version zu erhalten.",
+    "reload": "Neu laden"
   }
 }

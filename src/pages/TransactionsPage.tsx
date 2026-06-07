@@ -32,6 +32,7 @@ import { ExpandableSearch } from "@/components/ExpandableSearch"
 import { FilterSheet, FilterSection } from "@/components/filters/FilterSheet"
 import { AttachmentBadge } from "@/components/AttachmentBadge"
 import { AttachmentDetailModal, type AttachmentModalItem } from "@/components/AttachmentDetailModal"
+import { TransactionAttachments } from "@/components/transactions/TransactionAttachments"
 import { AuditHistory } from "@/components/AuditHistory"
 import { accountDisplayName } from "@/lib/wealth"
 import { WealthAccountIcon } from "@/components/WealthAccountIcon"
@@ -495,10 +496,13 @@ export function TransactionsPage() {
     [],
   )
 
-  const fetchPage1 = useCallback(async () => {
+  // `silent` reconciles the list/summary in the background WITHOUT swapping to the
+  // skeleton — used after a mutation so the screen never "reloads"; React diffs by
+  // key, so only the added/changed row actually re-renders.
+  const fetchPage1 = useCallback(async (opts?: { silent?: boolean }) => {
     const token = await getToken()
     if (!token) return
-    setLoading(true)
+    if (!opts?.silent) setLoading(true)
     try {
       const [result, cls] = await Promise.all([
         apiGet<PaginatedResponse<Transaction>>(`/api/transactions?${buildParams(1, searchRef.current, tabRef.current, sortRef.current, categoryRef.current, dateFromRef.current, dateToRef.current)}`, token),
@@ -512,9 +516,9 @@ export function TransactionsPage() {
       setClients(clsData)
     } catch (err) {
       console.error("Failed to load transactions:", err)
-      toast.error("Failed to load transactions")
+      if (!opts?.silent) toast.error("Failed to load transactions")
     } finally {
-      setLoading(false)
+      if (!opts?.silent) setLoading(false)
     }
   }, [getToken, buildParams])
 
@@ -683,7 +687,7 @@ export function TransactionsPage() {
       setAddOpen(false)
       setForm(defaultForm())
       setPendingFiles([])
-      fetchPage1()
+      fetchPage1({ silent: true })
     } catch {
       toast.error(t("failedToAddTransaction"))
     } finally {
@@ -758,7 +762,7 @@ export function TransactionsPage() {
       toast.success(t("transactionUpdated"))
       setEditOpen(false)
       setEditForm(null)
-      fetchPage1()
+      fetchPage1({ silent: true })
     } catch {
       toast.error(t("failedToUpdateTransaction"))
     } finally {
@@ -768,15 +772,24 @@ export function TransactionsPage() {
 
   async function handleDelete() {
     if (!deleteId) return
+    const id = deleteId
+    // Optimistic: remove the row instantly + adjust the summary; reconcile only on failure.
+    const removed = transactions.find((t) => t.id === id)
+    setDeleteId(null)
+    setTransactions((prev) => prev.filter((tx) => tx.id !== id))
+    setTotal((n) => Math.max(0, n - 1))
+    if (removed) {
+      const amt = Number(removed.amount)
+      setSummary((s) => removed.type === "incoming" ? { ...s, incoming: s.incoming - amt } : { ...s, outgoing: s.outgoing - amt })
+    }
     try {
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
-      await apiDelete(`/api/transactions/${deleteId}`, token)
+      await apiDelete(`/api/transactions/${id}`, token)
       toast.success(t("transactionDeleted"))
-      setDeleteId(null)
-      fetchPage1()
     } catch {
       toast.error(t("failedToDeleteTransaction"))
+      fetchPage1({ silent: true }) // restore the row on failure
     }
   }
 
@@ -946,18 +959,29 @@ export function TransactionsPage() {
 
   async function handleBulkDelete() {
     if (sel.count === 0) return
+    const ids = sel.selectedIds
+    // Optimistic: drop the selected rows + adjust the summary immediately.
+    const removed = transactions.filter((tx) => ids.includes(tx.id))
+    setTransactions((prev) => prev.filter((tx) => !ids.includes(tx.id)))
+    setTotal((n) => Math.max(0, n - removed.length))
+    setSummary((s) => {
+      let incoming = s.incoming, outgoing = s.outgoing
+      for (const r of removed) {
+        if (r.type === "incoming") incoming -= Number(r.amount)
+        else outgoing -= Number(r.amount)
+      }
+      return { incoming, outgoing }
+    })
+    sel.exitSelection()
     setBulkDeleting(true)
     try {
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
-      const { deleted } = await apiPost<{ deleted: number }>("/api/transactions/bulk-delete", token, {
-        ids: sel.selectedIds,
-      })
+      const { deleted } = await apiPost<{ deleted: number }>("/api/transactions/bulk-delete", token, { ids })
       toast.success(t("multiSelect.deleted", { count: deleted }))
-      sel.exitSelection()
-      fetchPage1()
     } catch {
       toast.error(t("multiSelect.deleteFailed"))
+      fetchPage1({ silent: true }) // restore rows on failure
     } finally {
       setBulkDeleting(false)
     }
@@ -1438,6 +1462,18 @@ export function TransactionsPage() {
               onAddAccount={() => { setEditOpen(false); navigate("/wealth") }}
               currency={currency}
             />
+          )}
+          {/* Attachments — only for a single (non-split) transaction: editing a
+              split recreates it (delete+create), which would orphan attachments. */}
+          {editForm?.id && !editForm.group_id && editForm.allocations.length <= 1 && (
+            <div className="mt-2 border-t pt-3">
+              <TransactionAttachments
+                txId={editForm.id}
+                txLabel={editForm.description?.trim() || (editForm.type === "incoming" ? t("income") : t("expense"))}
+                canEdit={canWrite}
+                canDelete={canDelete}
+              />
+            </div>
           )}
           </div>
           <DialogFooter className="shrink-0 border-t px-6 pb-6 pt-3">

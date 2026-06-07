@@ -78,6 +78,7 @@ export function WealthAccountDetailPage() {
   const [editing, setEditing] = useState<WealthAccount | null>(null)
   const [adjusting, setAdjusting] = useState<WealthAccount | null>(null)
   const [addOpen, setAddOpen] = useState(false)
+  const [editTx, setEditTx] = useState<Transaction | null>(null)
   const [closeConfirm, setCloseConfirm] = useState(false)
 
   const view = useUrlModal("view")
@@ -272,7 +273,7 @@ export function WealthAccountDetailPage() {
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-sm font-semibold">{t("transactions")} {total > 0 && <span className="text-muted-foreground">({total})</span>}</h2>
         {canWrite && (
-          <Button size="sm" onClick={() => setAddOpen(true)}>
+          <Button size="sm" onClick={() => { setEditTx(null); setAddOpen(true) }}>
             <Plus className="size-4" /> {t("addTransaction")}
           </Button>
         )}
@@ -282,7 +283,7 @@ export function WealthAccountDetailPage() {
         <div className="rounded-2xl border py-16 text-center">
           <p className="font-medium text-muted-foreground">{t("noTransactionsForAccount")}</p>
           {canWrite && (
-            <Button className="mt-3" variant="outline" onClick={() => setAddOpen(true)}>
+            <Button className="mt-3" variant="outline" onClick={() => { setEditTx(null); setAddOpen(true) }}>
               <Plus className="size-4" /> {t("addTransaction")}
             </Button>
           )}
@@ -339,6 +340,7 @@ export function WealthAccountDetailPage() {
         currency={currency}
         canEdit={canWrite}
         canDelete={canDelete}
+        onEdit={(tx) => { view.close(); setEditTx(tx); setAddOpen(true) }}
       />
 
       <WealthAccountDialogs
@@ -353,10 +355,11 @@ export function WealthAccountDetailPage() {
       <AccountQuickAddSheet
         account={account}
         open={addOpen}
-        onOpenChange={setAddOpen}
+        onOpenChange={(o) => { setAddOpen(o); if (!o) setEditTx(null) }}
         currency={currency}
         isPersonal={isPersonal}
         onSaved={load}
+        editTx={editTx}
       />
 
       <AlertDialog open={closeConfirm} onOpenChange={setCloseConfirm}>

@@ -9,6 +9,8 @@ import { logAudit } from "../_lib/audit.js"
 const VALID_STATUSES = ["draft", "sent", "accepted", "rejected"]
 const PAGE_SIZE = 20
 
+const isIsoDate = (v: unknown): v is string => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v)
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ctx = await requireAuth(req, res)
   if (!ctx) return
@@ -91,9 +93,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method === "POST") {
     if (!canWrite(role)) return res.status(403).json({ error: "Forbidden" })
-    const { title, prospect_name, company, email, phone, amount, status, notes, category } = req.body as {
+    const { title, prospect_name, company, email, phone, amount, date, status, notes, category } = req.body as {
       title: string; prospect_name: string; company?: string; email?: string
-      phone?: string; amount?: number; status?: string; notes?: string; category?: string
+      phone?: string; amount?: number; date?: string; status?: string; notes?: string; category?: string
     }
     if (!title?.trim()) return res.status(400).json({ error: "title is required" })
     if (!prospect_name?.trim()) return res.status(400).json({ error: "prospect_name is required" })
@@ -116,6 +118,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         email: email ?? "",
         phone: phone ?? "",
         amount: amount != null ? String(amount) : "0",
+        date: isIsoDate(date) ? date : new Date().toISOString().split("T")[0],
         status: normalizedStatus,
         notes: notes ?? "",
         category: typeof category === "string" ? category.trim().slice(0, 60) : "",

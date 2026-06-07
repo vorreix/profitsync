@@ -171,7 +171,8 @@
     "state": "రాష్ట్రం / ప్రావిన్సు",
     "postalCode": "పిన్ కోడ్",
     "country": "దేశం",
-    "selectCountry": "దేశాన్ని ఎంచుకోండి..."
+    "selectCountry": "దేశాన్ని ఎంచుకోండి...",
+    "legalTitle": "చట్టపరమైనవి & విధానాలు"
   },
   "toast": {
     "profileLoadFailed": "ప్రొఫైల్ లోడ్ చేయడం విఫలమైంది",
@@ -443,7 +444,8 @@
     "deleteAttachmentDescription": "ఈ జత శాశ్వతంగా నిలిపివేయబడుతుంది.",
     "deleteBtn": "తొలగించు",
     "totalQuotations_one": "{{count}} కోట్",
-    "totalQuotations_other": "{{count}} కోట్‌లు"
+    "totalQuotations_other": "{{count}} కోట్‌లు",
+    "dateLabel": "తేదీ"
   },
   "organizations": {
     "organizationCreated": "సంస్థ సృష్టించబడింది",
@@ -925,5 +927,10 @@
     "reorder": "క్రమం మార్చు",
     "holdToTransfer": "బదిలీకి నొక్కి పట్టుకోండి",
     "selectAccount": "ఖాతా ఎంచుకోండి"
+  },
+  "errorBoundary": {
+    "title": "ఏదో తప్పు జరిగింది",
+    "message": "యాప్‌ను లోడ్ చేయలేకపోయాం — అప్‌డేట్ తర్వాత ఇది జరగవచ్చు. తాజా వెర్షన్ పొందడానికి మళ్లీ లోడ్ చేయండి.",
+    "reload": "మళ్లీ లోడ్ చేయి"
   }
 }
