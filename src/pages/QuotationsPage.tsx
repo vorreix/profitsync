@@ -957,7 +957,8 @@ export function QuotationsPage() {
           <DialogHeader><DialogTitle>{t("newQuotationTitle")}</DialogTitle></DialogHeader>
           <QuotationFormFields f={form} onChange={(p) => setForm((f) => ({ ...f, ...p }))} errors={errors} clearField={clearField} />
           <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateOpen(false)}>{t("cancelBtn")}</Button>
+            {/* Cancel = discard. */}
+            <Button variant="outline" onClick={() => { setForm(defaultForm()); clearAll(); setCreateOpen(false) }}>{t("cancelBtn")}</Button>
             <Button onClick={handleCreate} disabled={saving}>{saving ? t("creating") : t("createBtn")}</Button>
           </DialogFooter>
         </DialogContent>

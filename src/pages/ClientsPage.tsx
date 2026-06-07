@@ -658,7 +658,10 @@ export function ClientsPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>{t("cancelButton")}</Button>
+            {/* Cancel = discard: clears the draft. ESC / click-outside just close
+                and KEEP the draft (the New button doesn't reset), so an accidental
+                dismiss never loses what was typed. */}
+            <Button variant="outline" onClick={() => { setForm(defaultForm); clearAll(); setDialogOpen(false) }}>{t("cancelButton")}</Button>
             <Button onClick={handleCreate} disabled={saving}>
               {saving ? t("creating") : t("createClientButton")}
             </Button>

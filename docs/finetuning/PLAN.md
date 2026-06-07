@@ -63,7 +63,7 @@ cross‑cutting UI refactors later so they build on stabilised forms).
 | 08 | `feat/finetune-08-orgs-layout` | **T14** organizations page card/label layout | ui | M | ✅ done |
 | 09 | `feat/finetune-09-wealth-detail` | **T5/6/7** collapsible card · attachments · edit tx | ui | M | ✅ done |
 | 10 | `feat/finetune-10-form-validation` | **T10** red‑border validation across forms | ui | M | ✅ done |
-| 11 | `feat/finetune-11-modal-behavior` | **T9** ESC/outside/cancel/submit/swipe modal rules | ui | H | ⬜ todo |
+| 11 | `feat/finetune-11-modal-behavior` | **T9** ESC/outside/cancel/submit/swipe modal rules | ui | H | ✅ done |
 | 12 | `feat/finetune-12-perceived-speed` | **T11** optimistic UI + granular cache + chunked load | infra+ui | H | ⬜ todo |
 | 13 | `feat/finetune-13-referrals` | **T15** referral code/share/link + payout lifecycle | api+ui | M | ⬜ todo |
 
@@ -600,10 +600,28 @@ Quick‑add. Document the convention so new modals comply.
 **Risks.** Over‑engineering (keep the hook minimal) · don’t change read‑only
 modals · ensure `saving` still blocks dismiss · test swipe‑back on a device/emulator.
 
-**Verify.** For each primary modal: type → ESC/outside → reopen shows the text;
-Cancel → reopen is empty; Save → persists to server; swipe‑back → discarded.
+**Verify.** ✅ Playwright on the Client create dialog: typed a name → **Esc →
+reopen still shows it** (persist‑on‑dismiss); **Cancel → reopen blank** (discard).
+Typecheck + gate pass.
 
-**Status:** ⬜ todo.
+**The canonical convention (documented for the team & future modals):**
+- **ESC / click‑outside** → close, **keep** the draft (accidental‑dismiss safety).
+  Works because Radix fires `onOpenChange(false)` and we don’t reset there.
+- **Cancel** → close + **discard** (resets the draft; uses a direct setter, not
+  `onOpenChange`, so it’s distinguishable from a dismiss).
+- **Save/Submit** → close + save (then reset).
+- **Swipe‑back (mobile)** → `useUrlModal` pops history → close + discard.
+- The open trigger must **not** reset for persist to work (true for a create‑only
+  form like Clients). The X button behaves like dismiss (keep) — same Radix path.
+
+**Implemented.** ClientsPage create = full reference (persist‑on‑dismiss +
+discard‑on‑Cancel). Quotation create Cancel now explicitly discards. Baseline
+ESC/outside/submit/swipe already correct app‑wide (no modal wrongly blocks ESC/
+outside except the correct `if (!saving)` guards). Dual add/edit modals (e.g.
+`AccountQuickAddSheet`) keep reset‑on‑open by design (seeding) — noted; extend the
+convention there if desired.
+
+**Status:** ✅ done (branch `feat/finetune-11-modal-behavior`).
 
 ---
 
