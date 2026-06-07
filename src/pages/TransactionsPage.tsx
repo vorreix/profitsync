@@ -32,6 +32,7 @@ import { ExpandableSearch } from "@/components/ExpandableSearch"
 import { FilterSheet, FilterSection } from "@/components/filters/FilterSheet"
 import { AttachmentBadge } from "@/components/AttachmentBadge"
 import { AttachmentDetailModal, type AttachmentModalItem } from "@/components/AttachmentDetailModal"
+import { TransactionAttachments } from "@/components/transactions/TransactionAttachments"
 import { AuditHistory } from "@/components/AuditHistory"
 import { accountDisplayName } from "@/lib/wealth"
 import { WealthAccountIcon } from "@/components/WealthAccountIcon"
@@ -1461,6 +1462,18 @@ export function TransactionsPage() {
               onAddAccount={() => { setEditOpen(false); navigate("/wealth") }}
               currency={currency}
             />
+          )}
+          {/* Attachments — only for a single (non-split) transaction: editing a
+              split recreates it (delete+create), which would orphan attachments. */}
+          {editForm?.id && !editForm.group_id && editForm.allocations.length <= 1 && (
+            <div className="mt-2 border-t pt-3">
+              <TransactionAttachments
+                txId={editForm.id}
+                txLabel={editForm.description?.trim() || (editForm.type === "incoming" ? t("income") : t("expense"))}
+                canEdit={canWrite}
+                canDelete={canDelete}
+              />
+            </div>
           )}
           </div>
           <DialogFooter className="shrink-0 border-t px-6 pb-6 pt-3">
