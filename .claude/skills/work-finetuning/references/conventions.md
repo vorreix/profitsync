@@ -24,8 +24,25 @@ Read alongside the repo's `CLAUDE.md` (authoritative architecture).
 - Forms: the project convention is zod; for the existing *controlled* forms use
   `src/lib/use-field-errors.ts` (zod → `aria-invalid` red borders) rather than a
   full react-hook-form rewrite.
-- Perceived speed: `src/lib/api.ts#invalidateKeys` (granular cache) +
-  `src/lib/optimistic.ts#runOptimistic` (instant-save illusion + rollback).
+- Perceived speed / smooth mutations (see playbook → "Smooth data mutations"):
+  - `src/lib/api.ts#invalidateKeys(prefixes)` — granular cache; `apiPost/Patch/Delete`
+    take an optional `invalidate` scope (default = safe clear-all).
+  - `src/lib/optimistic.ts#runOptimistic` (instant-save illusion + rollback).
+  - Each list page's `fetchPage1` takes `{ silent }` to reconcile without the
+    skeleton. Add/edit/delete update the list **in place** (TransactionsPage,
+    ClientsPage, QuotationsPage all do this) — no full reload. Delete is fully
+    optimistic incl. summary deltas; grouped transactions use silent‑refetch for
+    add/edit (rows are server‑shaped) but optimistic delete.
+- Persisted UI state: `src/lib/wealth.ts#usePersistedOpen(key, fallback)` —
+  localStorage‑backed collapse state, keyed per entity (e.g. the wealth
+  Account‑Detail/Attachments cards). Use it instead of `defaultOpen`.
+- Attachments: `src/components/transactions/TransactionAttachments.tsx` is a reusable
+  manager (list + add + `AttachmentDetailModal` for preview/download/rename/delete),
+  used in the transaction edit dialog. `AttachmentDetailModal` already does
+  preview(image/pdf/text)/download/rename/delete; `attachments-client.ts` has
+  `uploadAttachment`/`attachmentsListPath`/`validateFile`/`ACCEPT_ATTR`.
+- `WealthAccountIcon` renders a real bank logo (`logo_url`) `object-cover scale-110`
+  to fill the round; reused by wealth cards + the Add/Edit Transaction `AccountSelector`.
 - Plans: `plans.account_type` is `personal|business|null`; `accountTypeAllows()`
   gates business features (clients/quotations/members). The `free` tier is a shared
   quota layer (account_type null) applying to both.
@@ -58,6 +75,20 @@ re-deriving from code. Treat any similar claim with suspicion.
   forms instead.
 - ⚠️ T16 gate: hide business-only plan limits on `account_type === 'personal'`
   (the user's actual report), not only on `key === 'free'`.
+- ⚠️ **"Primitives + one reference" is not "done" for perceived speed.** Shipping
+  `invalidateKeys`/`runOptimistic` + a single example left every other list still
+  doing a full‑reload refetch — the user came back saying "you're loading the whole
+  screen again." Roll surgical in‑place updates out to **every** mutating list
+  (Transactions, Clients, Quotations) in one pass.
+- ⚠️ **Split‑edit recreates the transaction.** `handleEdit` for a split (or a single
+  edited into multiple allocations) does delete‑group‑then‑recreate, which would
+  orphan attachments. So only expose attachment management in the edit dialog for
+  **single, non‑split** transactions (`!group_id && allocations.length <= 1`).
+- ⚠️ **Persisting a UI toggle ≠ it reaches the user.** After implementing
+  `usePersistedOpen`, a "still not working" report was an environment/stale‑bundle
+  issue, not the code (proven via `localStorage` + `data-state` after reload). When
+  re‑reported, re‑verify on the running server with the inspector before assuming a
+  bug, and tell the user to hard‑refresh / note unmerged branches won't be on `dev`.
 
 ## The Drizzle journal-timestamp gotcha (bit us again)
 
