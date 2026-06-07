@@ -108,6 +108,18 @@ const ACCOUNT_TYPE_META: Record<AccountType, { label: string; icon: typeof User;
 }
 
 /** Per-plan accent so the admin can tell plans apart at a glance. */
+// Business-only quotas (clients, quotations, members) are meaningless for a
+// personal-account-type plan — personal accounts can't use those features at all
+// (see accountTypeAllows in types.ts). Hide them so the admin only edits limits
+// that actually apply to the plan. The shared "free" tier (account_type null)
+// still shows everything: it applies to both personal AND business accounts.
+const BUSINESS_ONLY_LIMITS = new Set(["clients", "quotations", "members"])
+
+function shouldShowLimitField(key: string, plan: Plan): boolean {
+  if (plan.account_type === "personal" && BUSINESS_ONLY_LIMITS.has(key)) return false
+  return true
+}
+
 function planAccent(p: Plan): { border: string; chip: string; icon: typeof User } {
   if (p.key === "free") {
     return { border: "border-l-slate-400", chip: "bg-slate-500/10 text-slate-600 dark:text-slate-300 border-slate-500/30", icon: Tag }
@@ -828,10 +840,12 @@ export function AdminPlansPage() {
 
                 <TabsContent value="limits" className="space-y-3 p-5">
                   <p className="text-[11px] text-muted-foreground">
-                    Number = the real limit enforced by quota · Text = what's shown in this plan's feature list.
+                    {draft.account_type === "personal"
+                      ? "Personal plans don't include clients or quotations, so those quotas are hidden."
+                      : "Number = the real limit enforced by quota · Text = what's shown in this plan's feature list."}
                   </p>
                   <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-                    {LIMIT_FIELDS.map(({ key, label, suffix }) => {
+                    {LIMIT_FIELDS.filter(({ key }) => shouldShowLimitField(key as string, draft)).map(({ key, label, suffix }) => {
                       const k = key as string
                       return (
                         <div key={key} className="space-y-2 rounded-md border p-3">

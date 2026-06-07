@@ -171,7 +171,8 @@
     "state": "الولاية / المنطقة",
     "postalCode": "الرمز البريدي",
     "country": "الدولة",
-    "selectCountry": "اختر دولة…"
+    "selectCountry": "اختر دولة…",
+    "legalTitle": "الشؤون القانونية والسياسات"
   },
   "toast": {
     "profileLoadFailed": "فشل تحميل الملف الشخصي",

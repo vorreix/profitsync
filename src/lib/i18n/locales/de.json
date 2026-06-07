@@ -171,7 +171,8 @@
     "state": "Bundesland / Region",
     "postalCode": "Postleitzahl",
     "country": "Land",
-    "selectCountry": "Land wählen…"
+    "selectCountry": "Land wählen…",
+    "legalTitle": "Rechtliches & Richtlinien"
   },
   "toast": {
     "profileLoadFailed": "Profil konnte nicht geladen werden",

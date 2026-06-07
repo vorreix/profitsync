@@ -14,6 +14,8 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { InputGroup, InputGroupAddon, InputGroupInput, InputGroupText } from "@/components/ui/input-group"
 import { getCurrencySymbol } from "@/lib/currencies"
+import { useFieldErrors } from "@/lib/use-field-errors"
+import { z } from "zod"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
@@ -81,9 +83,13 @@ const formatFileSize = (bytes: number) => {
 function QuotationFormFields({
   f,
   onChange,
+  errors = {},
+  clearField,
 }: {
   f: QuotationForm
   onChange: (p: Partial<QuotationForm>) => void
+  errors?: Record<string, string>
+  clearField?: (field: string) => void
 }) {
   const { t } = useTranslation("quotations")
   const { currency } = useCurrency()
@@ -91,11 +97,13 @@ function QuotationFormFields({
     <div className="space-y-4 py-2">
       <div className="space-y-1.5">
         <Label>{t("titleLabel")}</Label>
-        <Input placeholder={t("titlePlaceholder")} value={f.title} onChange={(e) => onChange({ title: e.target.value })} />
+        <Input placeholder={t("titlePlaceholder")} value={f.title} aria-invalid={!!errors.title} onChange={(e) => { onChange({ title: e.target.value }); clearField?.("title") }} />
+        {errors.title && <p className="text-xs text-destructive">{errors.title}</p>}
       </div>
       <div className="space-y-1.5">
         <Label>{t("prospectNameLabel")}</Label>
-        <Input placeholder={t("prospectNamePlaceholder")} value={f.prospect_name} onChange={(e) => onChange({ prospect_name: e.target.value })} />
+        <Input placeholder={t("prospectNamePlaceholder")} value={f.prospect_name} aria-invalid={!!errors.prospect_name} onChange={(e) => { onChange({ prospect_name: e.target.value }); clearField?.("prospect_name") }} />
+        {errors.prospect_name && <p className="text-xs text-destructive">{errors.prospect_name}</p>}
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="space-y-1.5">
@@ -112,11 +120,18 @@ function QuotationFormFields({
           </InputGroup>
         </div>
       </div>
+      {/* Date + Category side by side — keeps the meta fields compact. */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="space-y-1.5">
           <Label>{t("dateLabel")}</Label>
           <Input type="date" value={f.date} onChange={(e) => onChange({ date: e.target.value })} />
         </div>
+        <div className="space-y-1.5">
+          <Label>{t("filters.category")}</Label>
+          <CategoryPicker type="quotation" value={f.category} onChange={(v) => onChange({ category: v })} />
+        </div>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="space-y-1.5">
           <Label>{t("emailLabel")}</Label>
           <Input type="email" placeholder={t("emailPlaceholder")} value={f.email} onChange={(e) => onChange({ email: e.target.value })} />
@@ -138,10 +153,6 @@ function QuotationFormFields({
         </Select>
       </div>
       <div className="space-y-1.5">
-        <Label>{t("filters.category")}</Label>
-        <CategoryPicker type="quotation" value={f.category} onChange={(v) => onChange({ category: v })} />
-      </div>
-      <div className="space-y-1.5">
         <Label>{t("notesLabel")}</Label>
         <Textarea placeholder={t("notesPlaceholder")} className="resize-none" rows={2} value={f.notes} onChange={(e) => onChange({ notes: e.target.value })} />
       </div>
@@ -160,6 +171,11 @@ export function QuotationsPage() {
   const sel = useMultiSelect()
   const longPress = useLongPress()
   const [bulkDeleting, setBulkDeleting] = useState(false)
+  const quotationSchema = z.object({
+    title: z.string().trim().min(1, t("titleRequired")),
+    prospect_name: z.string().trim().min(1, t("prospectNameRequired")),
+  })
+  const { errors, validate, clearField, clearAll } = useFieldErrors(quotationSchema)
   const fmt = (n: number) =>
     new Intl.NumberFormat("en-US", { style: "currency", currency, minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n)
 
@@ -206,8 +222,10 @@ export function QuotationsPage() {
     setDateTo("")
   }
 
-  async function fetchPage1() {
-    setLoading(true)
+  // `silent` reconciles in the background after a mutation without swapping to the
+  // skeleton, so the list never visibly "reloads".
+  async function fetchPage1(opts?: { silent?: boolean }) {
+    if (!opts?.silent) setLoading(true)
     setPage(1)
     try {
       const token = await getToken()
@@ -222,9 +240,9 @@ export function QuotationsPage() {
       setTotal(data.total)
     } catch (err) {
       console.error("Failed to load quotations:", err)
-      toast.error(t("failedLoadQuotations"))
+      if (!opts?.silent) toast.error(t("failedLoadQuotations"))
     } finally {
-      setLoading(false)
+      if (!opts?.silent) setLoading(false)
     }
   }
 
@@ -397,20 +415,22 @@ export function QuotationsPage() {
   }
 
   async function handleCreate() {
-    if (!form.title.trim()) { toast.error(t("titleRequired")); return }
-    if (!form.prospect_name.trim()) { toast.error(t("prospectNameRequired")); return }
+    if (!validate(form)) return
     setSaving(true)
     try {
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
-      await apiPost<Quotation>("/api/quotations", token, {
+      const created = await apiPost<Quotation>("/api/quotations", token, {
         ...form,
         amount: form.amount ? parseFloat(form.amount) : 0,
       })
       toast.success(t("quotationCreated"))
       setCreateOpen(false)
       setForm(defaultForm())
-      fetchPage1()
+      clearAll()
+      // Insert the new quotation in place — no full-list reload.
+      setQuotations((prev) => [created, ...prev])
+      setTotal((n) => n + 1)
     } catch {
       toast.error(t("failedCreateQuotation"))
     } finally {
@@ -420,19 +440,20 @@ export function QuotationsPage() {
 
   async function handleEdit() {
     if (!editTarget) return
-    if (!form.title.trim()) { toast.error(t("titleRequired")); return }
-    if (!form.prospect_name.trim()) { toast.error(t("prospectNameRequired")); return }
+    if (!validate(form)) return
     setSaving(true)
     try {
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
-      await apiPatch<Quotation>(`/api/quotations/${editTarget.id}`, token, {
+      const updated = await apiPatch<Quotation>(`/api/quotations/${editTarget.id}`, token, {
         ...form,
         amount: form.amount ? parseFloat(form.amount) : 0,
       })
       toast.success(t("quotationUpdated"))
       setEditTarget(null)
-      fetchPage1()
+      clearAll()
+      // Replace the edited quotation in place — no full-list reload.
+      setQuotations((prev) => prev.map((q) => (q.id === updated.id ? updated : q)))
     } catch {
       toast.error(t("failedUpdateQuotation"))
     } finally {
@@ -442,15 +463,19 @@ export function QuotationsPage() {
 
   async function handleDelete() {
     if (!deleteTarget) return
+    const target = deleteTarget
+    // Optimistic: remove the row instantly; reconcile only on failure.
+    setDeleteTarget(null)
+    setQuotations((prev) => prev.filter((q) => q.id !== target.id))
+    setTotal((n) => Math.max(0, n - 1))
     try {
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
-      await apiDelete(`/api/quotations/${deleteTarget.id}`, token)
+      await apiDelete(`/api/quotations/${target.id}`, token)
       toast.success(t("quotationMovedToTrash"))
-      setDeleteTarget(null)
-      fetchPage1()
     } catch {
       toast.error(t("failedDeleteQuotation"))
+      fetchPage1({ silent: true }) // restore on failure
     }
   }
 
@@ -463,7 +488,7 @@ export function QuotationsPage() {
       const newClient = await apiPost<Client>(`/api/quotations/${convertTarget.id}/convert`, token, {})
       toast.success(t("clientAddedSuccess", { name: newClient.name }))
       setConvertTarget(null)
-      fetchPage1()
+      fetchPage1({ silent: true })
       navigate(`/clients/${newClient.id}`)
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : ""
@@ -507,10 +532,14 @@ export function QuotationsPage() {
       toast.success(closed ? t("closed.quotationClosed") : t("closed.quotationReopened"))
       if (closed) {
         setViewTarget(null)
-        fetchPage1()
+        // Optimistically drop it from the open list; closed list refreshes lazily.
+        setQuotations((prev) => prev.filter((q) => q.id !== quotationId))
+        setTotal((n) => Math.max(0, n - 1))
+        setClosedLoaded(false)
+        fetchPage1({ silent: true })
       } else {
         setClosedQuotations((prev) => prev.filter((q) => q.id !== quotationId))
-        fetchPage1()
+        fetchPage1({ silent: true })
       }
     } catch {
       toast.error(t("closed.actionFailed"))
@@ -519,18 +548,21 @@ export function QuotationsPage() {
 
   async function handleBulkDelete() {
     if (sel.count === 0) return
+    const ids = sel.selectedIds
+    // Optimistic: drop the selected quotations from the list instantly.
+    const removedCount = quotations.filter((q) => ids.includes(q.id)).length
+    setQuotations((prev) => prev.filter((q) => !ids.includes(q.id)))
+    setTotal((n) => Math.max(0, n - removedCount))
+    sel.exitSelection()
     setBulkDeleting(true)
     try {
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
-      const { deleted } = await apiPost<{ deleted: number }>("/api/quotations/bulk-delete", token, {
-        ids: sel.selectedIds,
-      })
+      const { deleted } = await apiPost<{ deleted: number }>("/api/quotations/bulk-delete", token, { ids })
       toast.success(t("multiSelect.deleted", { count: deleted }))
-      sel.exitSelection()
-      fetchPage1()
     } catch {
       toast.error(t("multiSelect.deleteFailed"))
+      fetchPage1({ silent: true }) // restore on failure
     } finally {
       setBulkDeleting(false)
     }
@@ -560,7 +592,7 @@ export function QuotationsPage() {
               {t("multiSelect.select")}
             </Button>
           )}
-          <Button onClick={() => { setForm(defaultForm()); setCreateOpen(true) }} className="shrink-0">
+          <Button onClick={() => { setForm(defaultForm()); clearAll(); setCreateOpen(true) }} className="shrink-0">
             <Plus className="size-4" />
             <span className="hidden sm:inline">{t("newQuotationBtn")}</span>
             <span className="sm:hidden">{t("newShort")}</span>
@@ -612,7 +644,7 @@ export function QuotationsPage() {
             {search || tab !== "all" || dateFrom || dateTo ? t("noQuotationsMatch") : t("noQuotationsYet")}
           </p>
           {!search && tab === "all" && !dateFrom && !dateTo && (
-            <Button className="mt-4" onClick={() => { setForm(defaultForm()); setCreateOpen(true) }}>
+            <Button className="mt-4" onClick={() => { setForm(defaultForm()); clearAll(); setCreateOpen(true) }}>
               <Plus className="size-4" />
               {t("createFirstQuotation")}
             </Button>
@@ -944,9 +976,10 @@ export function QuotationsPage() {
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="w-[92vw] max-w-md sm:max-w-md">
           <DialogHeader><DialogTitle>{t("newQuotationTitle")}</DialogTitle></DialogHeader>
-          <QuotationFormFields f={form} onChange={(p) => setForm((f) => ({ ...f, ...p }))} />
+          <QuotationFormFields f={form} onChange={(p) => setForm((f) => ({ ...f, ...p }))} errors={errors} clearField={clearField} />
           <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateOpen(false)}>{t("cancelBtn")}</Button>
+            {/* Cancel = discard. */}
+            <Button variant="outline" onClick={() => { setForm(defaultForm()); clearAll(); setCreateOpen(false) }}>{t("cancelBtn")}</Button>
             <Button onClick={handleCreate} disabled={saving}>{saving ? t("creating") : t("createBtn")}</Button>
           </DialogFooter>
         </DialogContent>
@@ -956,7 +989,7 @@ export function QuotationsPage() {
       <Dialog open={editTarget !== null} onOpenChange={(open) => { if (!open) setEditTarget(null) }}>
         <DialogContent className="w-[92vw] max-w-md sm:max-w-md">
           <DialogHeader><DialogTitle>{t("editQuotationTitle")}</DialogTitle></DialogHeader>
-          <QuotationFormFields f={form} onChange={(p) => setForm((f) => ({ ...f, ...p }))} />
+          <QuotationFormFields f={form} onChange={(p) => setForm((f) => ({ ...f, ...p }))} errors={errors} clearField={clearField} />
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditTarget(null)}>{t("cancelBtn")}</Button>
             <Button onClick={handleEdit} disabled={saving}>{saving ? t("saving") : t("saveBtn")}</Button>
