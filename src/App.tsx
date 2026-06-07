@@ -1,6 +1,7 @@
 import { lazy, Suspense } from "react"
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom"
 import { Loader as Loader2 } from "lucide-react"
+import { AppErrorBoundary } from "@/components/AppErrorBoundary"
 import { AppLayout } from "@/components/AppLayout"
 import { AdminLayout } from "@/pages/admin/AdminLayout"
 import { RequireAdminCap } from "@/pages/admin/RequireAdminCap"
@@ -89,6 +90,7 @@ function LandingRoute() {
 export function App() {
   return (
     <BrowserRouter>
+      <AppErrorBoundary>
       <Suspense fallback={<RouteFallback />}>
         <Routes>
           {/* Public legal routes */}
@@ -152,6 +154,7 @@ export function App() {
           </Route>
         </Routes>
       </Suspense>
+      </AppErrorBoundary>
       <Toaster />
     </BrowserRouter>
   )

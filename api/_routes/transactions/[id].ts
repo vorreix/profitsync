@@ -4,11 +4,7 @@ import { db, serialize } from "../../../src/lib/db/index.js"
 import { clients, transactions, wealthAccounts } from "../../../src/lib/db/schema.js"
 import { canDelete, canWrite, requireAuth } from "../../_lib/auth.js"
 import { diffFields, logAudit } from "../../_lib/audit.js"
-
-function balanceDelta(type: string, amount: unknown): number {
-  const n = Number(amount)
-  return type === "incoming" ? n : -n
-}
+import { balanceDelta } from "../../../src/lib/wealth-ledger.js"
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ctx = await requireAuth(req, res)

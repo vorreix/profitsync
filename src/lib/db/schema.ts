@@ -201,6 +201,8 @@ export const quotations = pgTable("quotations", {
   email: text("email").default(""),
   phone: text("phone").default(""),
   amount: numeric("amount", { precision: 12, scale: 2 }).default("0"),
+  // User-provided quotation date (e.g. when it was issued). Defaults to today.
+  date: date("date").notNull().defaultNow(),
   status: text("status").default("draft"), // draft | sent | accepted | rejected
   notes: text("notes").default(""),
   category: text("category").notNull().default(""), // optional category label (type "quotation")

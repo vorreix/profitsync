@@ -55,7 +55,6 @@ import {
   X,
   Building2,
   ShieldCheck,
-  ScrollText,
   CreditCard,
   Tag,
   ChartColumn,
@@ -204,17 +203,8 @@ function AppLayoutInner() {
         </SidebarContent>
 
         <SidebarFooter>
-          <div className="flex flex-col gap-1 px-1 text-[11px] text-muted-foreground group-data-[collapsible=icon]:hidden">
-            <NavLink to="/privacy-policy" className="hover:text-foreground inline-flex items-center gap-1.5">
-              <ShieldCheck className="size-3" /> {t("nav.privacyPolicy")}
-            </NavLink>
-            <NavLink to="/terms-of-service" className="hover:text-foreground inline-flex items-center gap-1.5">
-              <ScrollText className="size-3" /> {t("nav.termsOfService")}
-            </NavLink>
-            <NavLink to="/refund-policy" className="hover:text-foreground inline-flex items-center gap-1.5">
-              <ScrollText className="size-3" /> {t("nav.refundPolicy")}
-            </NavLink>
-          </div>
+          {/* Legal links live on the Profile page now (see ProfilePage "Legal &
+              Policies"), keeping the sidebar footer focused on app controls. */}
           <div className="flex items-center gap-2">
             <div className="px-2 py-2 group-data-[collapsible=icon]:px-0">
               <ModeToggle />

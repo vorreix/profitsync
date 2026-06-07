@@ -29,6 +29,38 @@
 
 <body>
   <div id="root"></div>
+  <!--
+    Stale-cache recovery. After a new deploy, a returning client can be served a
+    stale app shell (from the SW precache or HTTP cache) that points at hashed
+    chunks which no longer exist. The *entry* module script failing happens
+    before React mounts, so the in-app error boundary can't catch it — this
+    dependency-free inline script can. It reloads ONCE (sessionStorage-guarded)
+    so the fresh index.html + current chunks are fetched. Shares its guard key
+    with src/lib/pwa/register-sw.ts so the two recovery paths never double-reload.
+  -->
+  <script>
+    (function () {
+      var KEY = "profitsync-chunk-reload";
+      function isAssetLoadError(t) {
+        if (!t || (t.tagName !== "SCRIPT" && t.tagName !== "LINK")) return false;
+        var url = t.src || t.href || "";
+        return url.indexOf("/assets/") !== -1;
+      }
+      window.addEventListener("error", function (e) {
+        if (!isAssetLoadError(e.target)) return;
+        try {
+          if (sessionStorage.getItem(KEY)) return;
+          sessionStorage.setItem(KEY, "1");
+        } catch (_) { /* private mode */ }
+        window.location.reload();
+      }, true);
+      window.addEventListener("load", function () {
+        window.setTimeout(function () {
+          try { sessionStorage.removeItem(KEY); } catch (_) { /* ignore */ }
+        }, 10000);
+      });
+    })();
+  </script>
   <script type="module" src="/src/main.tsx"></script>
 </body>
 

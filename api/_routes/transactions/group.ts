@@ -6,11 +6,7 @@ import { clients, transactions, wealthAccounts } from "../../../src/lib/db/schem
 import { canWrite, ensureDefaultClient, isPersonalAccount, requireAuth } from "../../_lib/auth.js"
 import { getOrgPlan } from "../../_lib/quota.js"
 import { logAudit } from "../../_lib/audit.js"
-
-function balanceDelta(type: string, amount: unknown): number {
-  const n = Number(amount)
-  return type === "incoming" ? n : -n
-}
+import { balanceDelta } from "../../../src/lib/wealth-ledger.js"
 
 type AllocationInput = { wealth_account_id?: string; account_id?: string; amount?: number | string }
 

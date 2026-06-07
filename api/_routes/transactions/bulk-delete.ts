@@ -1,16 +1,13 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { and, eq, inArray, isNull, sql } from "drizzle-orm"
+import { eq, inArray, sql } from "drizzle-orm"
 import { db } from "../../../src/lib/db/index.js"
-import { clients, transactions, wealthAccounts } from "../../../src/lib/db/schema.js"
+import { transactions, wealthAccounts } from "../../../src/lib/db/schema.js"
 import { canDelete, requireAuth } from "../../_lib/auth.js"
 import { logAudit } from "../../_lib/audit.js"
+import { resolveTxLegs } from "../../_lib/tx-legs.js"
+import { reversalsByAccount } from "../../../src/lib/wealth-ledger.js"
 
 const MAX_IDS = 200
-
-function balanceDelta(type: string, amount: unknown): number {
-  const n = Number(amount)
-  return type === "incoming" ? n : -n
-}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ctx = await requireAuth(req, res)
@@ -27,39 +24,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const cleanIds = [...new Set(ids.filter((v): v is string => typeof v === "string"))].slice(0, MAX_IDS)
   if (cleanIds.length === 0) return res.status(400).json({ error: "ids must be a non-empty array" })
 
-  // Transactions are scoped to the org through their client. Resolve which of the
-  // requested ids actually belong to this org (and aren't already deleted), then
-  // soft-delete exactly those.
-  const valid = await db
-    .select({ id: transactions.id, wealthAccountId: transactions.wealthAccountId, type: transactions.type, amount: transactions.amount })
-    .from(transactions)
-    .innerJoin(clients, eq(transactions.clientId, clients.id))
-    .where(
-      and(
-        inArray(transactions.id, cleanIds),
-        eq(clients.organizationId, orgId),
-        isNull(transactions.deletedAt),
-      ),
-    )
-  const validIds = valid.map((r) => r.id)
-  if (validIds.length > 0) {
-    for (const tx of valid) {
-      if (!tx.wealthAccountId) continue
-      await db
-        .update(wealthAccounts)
-        .set({
-          currentBalance: sql`${wealthAccounts.currentBalance}::numeric - ${balanceDelta(tx.type, tx.amount)}`,
-          updatedBy: userId,
-          updatedAt: new Date(),
-        })
-        .where(eq(wealthAccounts.id, tx.wealthAccountId))
-    }
+  // Expand each requested id to its full split group (a collapsed split row only
+  // carries one representative leg id). Deduped, org-scoped, not-yet-deleted —
+  // so every leg's balance is reversed exactly once and no leg is orphaned.
+  const legs = await resolveTxLegs(orgId, cleanIds)
+  if (legs.length === 0) return res.json({ deleted: 0 })
+
+  // Reverse each touched account's balance (one UPDATE per account).
+  for (const [accountId, shift] of reversalsByAccount(legs)) {
     await db
-      .update(transactions)
-      .set({ deletedAt: new Date(), updatedBy: userId, updatedAt: new Date() })
-      .where(inArray(transactions.id, validIds))
-    await Promise.all(validIds.map((tid) => logAudit({ orgId, entityType: "transaction", entityId: tid, action: "delete", actorId: userId })))
+      .update(wealthAccounts)
+      .set({
+        currentBalance: sql`${wealthAccounts.currentBalance}::numeric + ${shift}`,
+        updatedBy: userId,
+        updatedAt: new Date(),
+      })
+      .where(eq(wealthAccounts.id, accountId))
   }
 
-  return res.json({ deleted: validIds.length })
+  const legIds = legs.map((l) => l.id)
+  await db
+    .update(transactions)
+    .set({ deletedAt: new Date(), updatedBy: userId, updatedAt: new Date() })
+    .where(inArray(transactions.id, legIds))
+  await Promise.all(
+    legIds.map((tid) => logAudit({ orgId, entityType: "transaction", entityId: tid, action: "delete", actorId: userId })),
+  )
+
+  return res.json({ deleted: legIds.length })
 }
