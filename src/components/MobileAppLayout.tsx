@@ -13,7 +13,6 @@ import {
   X,
   Building2,
   ShieldCheck,
-  ScrollText,
   CreditCard,
   Trash2,
   User,
@@ -91,9 +90,8 @@ function buildMoreItems(activeOrgId: string | undefined, accountType: AccountTyp
     { labelKey: "nav.subscription", href: "/subscription", icon: CreditCard },
     { labelKey: "nav.trash", href: "/trash", icon: Trash2 },
     { labelKey: "nav.profile", href: "/profile", icon: User },
-    { labelKey: "nav.privacyPolicy", href: "/privacy-policy", icon: ShieldCheck },
-    { labelKey: "nav.termsOfService", href: "/terms-of-service", icon: ScrollText },
-    { labelKey: "nav.refundPolicy", href: "/refund-policy", icon: ScrollText },
+    // Legal links (privacy/terms/refund) live on the Profile page now, keeping
+    // the "More" menu focused on feature navigation.
   ]
   return items.filter((i): i is MoreItem => i !== false)
 }
