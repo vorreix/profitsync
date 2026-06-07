@@ -71,7 +71,11 @@ cross‑cutting UI refactors later so they build on stabilised forms).
 > verifiable/low‑risk UI wins (T8/T16/T12/T14) before the heavier refactors
 > (wealth detail, validation, modal, speed) — the dev test account sits in an
 > `/onboarding` state that gates live verification of some business pages.
-| 14 | `skill/work-finetuning` | Author + test + document the `work-finetuning` skill | meta | M | ⬜ todo |
+| 14 | `skill/work-finetuning` | Author + test + document the `work-finetuning` skill | meta | M | ✅ done |
+| 15 | `feat/finetune-15-quotation-layout` | Follow-up: Date + Category side by side in the quotation modal | ui | L | ✅ done |
+| 16 | `feat/finetune-16-wealth-detail-persist` | Follow-up: persist wealth Account-Detail/Attachments collapse per account (survives restart) | ui | L | ✅ done |
+| 17 | `feat/finetune-17-surgical-list-updates` | **T11 full rollout**: in-place add/edit/delete (no full-screen reload) on Transactions, Clients, Quotations | ui | H | ✅ done |
+| 18 | `feat/finetune-18-client-date-tx-attach-logos` | Follow-ups: client onboard-date default+layout · tx edit attachments · bank logos fill the round | ui | M | ✅ done |
 
 Status legend: ⬜ todo · 🟡 in progress · ✅ done · 🔵 pushed (PR open) · ⏸ parked.
 
@@ -743,7 +747,15 @@ user intervention:
 - **Deliverables:** `SKILL.md` + references + an example, tested end‑to‑end, with
   documentation on how/when to use it. Pushed to GitHub.
 
-**Status:** ⬜ todo.
+**Implemented.** `.claude/skills/work-finetuning/` — `SKILL.md` (procedure +
+non‑negotiables + strong trigger description), `references/playbook.md` (research
+schema, gate commands, i18n/migration mechanics, stacked‑branch git recipe,
+Playwright loop, optimistic pattern), `references/conventions.md` (ProfitSync
+facts + every correction/gotcha learned). **Tested:** structure validated (name +
+718‑char description + both refs resolve), auto‑discovered into the skill registry
+with the right trigger, and loads cleanly via the Skill tool.
+
+**Status:** ✅ done (branch `skill/work-finetuning`).
 
 ---
 
@@ -752,3 +764,31 @@ user intervention:
   adversarially verified; corrections recorded (T1 sign bug = false; T3 precache
   removal = unsafe; T10 full‑RHF = too risky; T16 gate on account type). Plan +
   branch chain established.
+- **2026‑06‑07** — **All 13 task branches + the skill shipped & pushed** (branches
+  00–14). Every branch passed the full gate (i18n → lint → typecheck → 84 tests).
+  Highlights verified with Playwright: dashboard View‑All, legal relocation, orgs
+  grid, wealth edit‑transaction (balance re‑sync), red‑border validation, modal
+  persist/discard, optimistic client create, referral code/copy. Money paths
+  (T1/T13/T15) locked by unit tests + hand‑derivation. Task #2 parked (blank in
+  the brief). `work-finetuning` skill authored, tested, documented.
+- **2026‑06‑07 (follow-ups)** — Branch 15: quotation modal Date + Category paired
+  side by side (verified). Branch 16: the wealth Account‑Detail + Attachments
+  collapse state now **persists per account in localStorage** (new
+  `usePersistedOpen` in `wealth.ts`) — survives navigation AND restart; verified
+  with Playwright (collapse→reload stays collapsed, expand→reload stays expanded).
+- **2026‑06‑07 (T11 full rollout)** — Branch 17: replaced the post‑mutation
+  full‑list `fetchPage1()` reloads with **surgical in‑place updates** across
+  Transactions, Clients, Quotations: create → insert the row; edit → replace it;
+  delete/bulk‑delete → optimistic instant removal + summary delta; failures
+  reconcile via a **silent** refetch (no skeleton flash). Verified with Playwright:
+  client create inserts instantly (no reload); transaction delete removes the row
+  **and** updates the income/net summary instantly (€777→€0). This is the “just
+  add/remove that one item, smoothly” behavior the brief asked for.
+- **2026‑06‑07 (follow-ups)** — Branch 18: (1) Clients create modal — onboard date
+  defaults to today + onboard date & category side by side; (2) Transactions edit
+  dialog — added an Attachments section (add / preview / download / rename / delete
+  via a new reusable `TransactionAttachments` + `AttachmentDetailModal`; guarded to
+  non‑split edits since split‑edit recreates the tx); (3) `WealthAccountIcon` —
+  real bank logos now `object-cover scale-110` to fill the round (fixes both the
+  wealth cards and the Add/Edit Transaction account selector). All verified with
+  Playwright.

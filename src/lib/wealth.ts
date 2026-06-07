@@ -1,8 +1,45 @@
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import type { WealthAccount } from "@/lib/types"
 
 const PRIVACY_KEY = "ps_wealth_balances_visible"
 const COLLAPSED_KEY = "ps_wealth_overview_collapsed"
+
+/**
+ * Disclosure (open/closed) state for a collapsible, persisted to localStorage so
+ * the user's choice survives navigation AND a full restart. Keyed (e.g. by account
+ * id) so each surface remembers its own state independently; re-reads when the key
+ * changes (the component may be reused across accounts without remounting).
+ */
+export function usePersistedOpen(key: string, fallback = true) {
+  const read = (k: string) => {
+    try {
+      const v = localStorage.getItem(k)
+      return v === null ? fallback : v === "1"
+    } catch {
+      return fallback
+    }
+  }
+  const [open, setOpenState] = useState(() => read(key))
+
+  useEffect(() => {
+    setOpenState(read(key))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key])
+
+  const setOpen = useCallback(
+    (next: boolean) => {
+      setOpenState(next)
+      try {
+        localStorage.setItem(key, next ? "1" : "0")
+      } catch {
+        // Ignore storage failures (private mode, etc.).
+      }
+    },
+    [key],
+  )
+
+  return [open, setOpen] as const
+}
 
 export function useBalancePrivacy() {
   const [visible, setVisible] = useState(() => {
