@@ -120,11 +120,18 @@ function QuotationFormFields({
           </InputGroup>
         </div>
       </div>
+      {/* Date + Category side by side — keeps the meta fields compact. */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="space-y-1.5">
           <Label>{t("dateLabel")}</Label>
           <Input type="date" value={f.date} onChange={(e) => onChange({ date: e.target.value })} />
         </div>
+        <div className="space-y-1.5">
+          <Label>{t("filters.category")}</Label>
+          <CategoryPicker type="quotation" value={f.category} onChange={(v) => onChange({ category: v })} />
+        </div>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="space-y-1.5">
           <Label>{t("emailLabel")}</Label>
           <Input type="email" placeholder={t("emailPlaceholder")} value={f.email} onChange={(e) => onChange({ email: e.target.value })} />
@@ -144,10 +151,6 @@ function QuotationFormFields({
             ))}
           </SelectContent>
         </Select>
-      </div>
-      <div className="space-y-1.5">
-        <Label>{t("filters.category")}</Label>
-        <CategoryPicker type="quotation" value={f.category} onChange={(v) => onChange({ category: v })} />
       </div>
       <div className="space-y-1.5">
         <Label>{t("notesLabel")}</Label>
