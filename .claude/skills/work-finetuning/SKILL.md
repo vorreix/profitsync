@@ -1,6 +1,6 @@
 ---
 name: work-finetuning
-description: Use when given a LARGE multi-task product brief (many numbered fixes/features at once, often rough or non-native English) to execute autonomously end-to-end with no further intervention — deep parallel research, adversarial verification of findings, a structured stacked-branch plan + live tracking doc, mobile-first UX implementation with smooth transitions, browser (Playwright) verification, the full pre-commit gate, and a pushed branch per task. Trigger on "/work-finetuning", "finetune this", "here are N things to fix, do them all yourself", "implement this whole list and push each as a branch", or any big batch of UX/UX polish + correctness work where the user says they won't be available to review mid-way.
+description: Use when given a LARGE multi-task product brief (many numbered fixes/features at once, often rough or non-native English) to execute autonomously end-to-end with no further intervention — deep parallel research, adversarial verification of findings, a structured stacked-branch plan + live tracking doc, mobile-first UX implementation with smooth transitions, instant in-place data updates (no full-screen reloads on add/edit/delete), perceived-speed/optimistic UI, browser (Playwright) verification, the full pre-commit gate, and a pushed branch per task. Trigger on "/work-finetuning", "finetune this", "here are N things to fix, do them all yourself", "implement this whole list and push each as a branch", "make the UI feel faster / stop reloading the whole screen", or any big batch of UX/UX polish + correctness work where the user says they won't be available to review mid-way.
 ---
 
 # Work Fine-Tuning
@@ -105,6 +105,18 @@ For each task, in order:
    - **Migrations**: after a schema change, generate the migration and **watch the
      journal-timestamp gotcha** — the new entry's `when` must exceed the previous,
      or it silently skips. Apply it and confirm the column exists.
+   - **Instant data updates (no full-screen reload).** After *any* create / edit /
+     delete, update the affected list **in place** — never call a fetch that swaps
+     the list for a loading skeleton. Create → insert the returned row; edit →
+     replace it; delete → remove it **optimistically** and adjust totals/summaries,
+     reconciling via a **silent** refetch (no skeleton) only on failure. Modals
+     close instantly and save in the background, reopening with the data + a toast
+     on failure. This is the single biggest "feels fast" lever — see
+     `references/playbook.md` → "Smooth data mutations". The brief almost always
+     wants this even if it's only stated once; apply it to **every** list page.
+   - **Persisted UI preferences.** A user's collapse/expand (and similar) choices
+     should survive navigation AND restart — back them with `localStorage`, keyed
+     per entity (`usePersistedOpen(key, fallback)`), not component‑local `defaultOpen`.
 3. **Verify in a real browser (Playwright/Chrome DevTools)** wherever reachable:
    screenshot the change, confirm 0 *new* console errors, exercise the actual flow
    (e.g. add → edit → confirm the balance re-synced). Clean up any test data you
@@ -132,14 +144,22 @@ For each task, in order:
 - **Don't over-reach risky refactors blind.** When the safe-but-complete version is
   a primitive + a verified reference + a documented rollout, ship that rather than a
   fragile app-wide rewrite (esp. in financial code). State the trade-off.
+- **Never reload the whole screen for one item.** Add/edit/delete updates the
+  single affected row in place (optimistically); a full‑list refetch that flashes
+  a skeleton is a bug, not a refresh. If a "make it feel faster" complaint comes
+  back, it's almost always because a mutation still calls the blunt refetch —
+  finish the rollout to *every* page, don't leave it as "primitive + one reference".
 - **Clean up test data** you create in shared dev databases.
 - **Mobile-first and lovable** is the default tie-breaker for any unspecified choice.
 
 ## References
 
 - `references/playbook.md` — the research-workflow schema/prompt, the gate
-  commands, the migration + i18n mechanics, the git stacked-branch recipe, and the
-  Playwright verification loop.
+  commands, the migration + i18n mechanics, the git stacked-branch recipe, the
+  Playwright verification loop, and **"Smooth data mutations"** (the full
+  surgical/optimistic add‑edit‑delete + perceived‑speed mechanism) and
+  **"Persisted UI state"**.
 - `references/conventions.md` — ProfitSync-specific architecture facts and the
   list of corrections/gotchas learned (money sign, PWA precache, RHF risk, plan
-  account-type gating, trash double-reversal, journal timestamps).
+  account-type gating, trash double-reversal, journal timestamps, the silent‑refetch
+  data layer, split‑edit‑recreate vs attachments, logo fill, `usePersistedOpen`).

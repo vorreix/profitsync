@@ -106,12 +106,78 @@ otherwise GitHub prints a `pull/new/<branch>` URL on push — record it in the d
    safe setup on a clearly-disposable dev/test account (note it), or fall back to
    typecheck + code review and say so in the doc.
 
-## G. Optimistic-UI pattern (perceived speed)
+## G. Smooth data mutations (the core "feels fast" mechanism)
 
-- Add granular cache invalidation (`invalidateKeys(prefixes)`) so a write keeps
-  unrelated pages' caches warm instead of clearing everything.
-- `runOptimistic({apply, rollback, mutate, errorMessage, onSuccess})`: apply the
-  change locally (close the modal / update the list instantly), save in the
-  background, and on failure roll back + toast + reopen the modal with data intact.
-- Roll this out incrementally from a verified reference — do NOT blanket-convert all
-  mutations blind, especially in financial code.
+**The anti-pattern to kill:** a mutation handler that ends with a full-list refetch
+which flips `loading=true` and swaps the list for skeletons. That is the
+"it reloads the whole screen" the user feels. Replace it everywhere with **surgical
+in-place updates**:
+
+| Action | Do this — NOT a full refetch |
+|---|---|
+| **Create** | `POST` returns the new row → `setItems(prev => [created, ...prev])`; bump `total`/summary. (Flat lists: zero refetch.) |
+| **Edit** | `PATCH` returns the updated row → `setItems(prev => prev.map(x => x.id === u.id ? u : x))`. |
+| **Delete / bulk-delete** | Remove instantly *before* the request: `setItems(prev => prev.filter(...))` + subtract from `total`/summary; on failure, reconcile with a **silent** refetch + toast. |
+
+**Mechanism details that make it correct AND smooth:**
+
+- **`silent` refetch flag.** Give each page's loader an option: `fetchPage1({silent}: …)`
+  that skips `setLoading(true)` (and its error toast). Use it for *every*
+  post-mutation reconcile and every rollback, so the list never flashes — React
+  diffs by **stable `key={id}`**, so only the changed row re-renders.
+- **Optimistic modal close.** A create/edit modal closes **instantly** and saves in
+  the background (`runOptimistic({apply, rollback, mutate, errorMessage, onSuccess})`);
+  on failure it reopens with the data intact + a toast. The form draft must survive
+  the close (don't reset until success) so the retry keeps what was typed.
+- **Granular cache.** Replace blunt `clearApiCache()` on mutations with
+  `invalidateKeys(['/api/<scope>'])` so unrelated pages stay warm (instant
+  back/forward). Keep `clearApiCache()` only for logout/org-switch.
+- **When NOT to fully reconstruct optimistically:** for server-shaped/aggregated
+  rows that are risky to rebuild client-side (e.g. *grouped* transaction rows with
+  income/expense summaries), do **optimistic delete** (easy + high-value) but use a
+  **silent refetch** for add/edit — it's authoritative AND flash-free. Flat lists
+  (clients, quotations) get full optimistic insert/replace/remove.
+- **Summary/aggregate deltas.** When you optimistically remove a row, also adjust the
+  visible summary cards (e.g. `summary.incoming -= amount`) so the numbers move with
+  the row, not after a refetch.
+
+**Rollout rule:** ship this on *every* list page that mutates. A "primitive + one
+reference" is not enough — the user will (rightly) report it still reloads. Verify
+each with Playwright: the row appears/disappears and summaries update with **no**
+skeleton/flash.
+
+## H. Persisted UI state (survives navigation AND restart)
+
+User toggles (collapsible cards, view modes, "keep it closed") must persist across
+reloads/restarts — back them with `localStorage`, not component‑local `defaultOpen`:
+
+```ts
+// keyed per entity so each surface remembers its own state; re-reads on key change
+export function usePersistedOpen(key: string, fallback = true) {
+  const read = (k: string) => { try { const v = localStorage.getItem(k); return v === null ? fallback : v === "1" } catch { return fallback } }
+  const [open, set] = useState(() => read(key))
+  useEffect(() => { set(read(key)) }, [key])          // re-read when the entity changes
+  const setOpen = useCallback((next: boolean) => { set(next); try { localStorage.setItem(key, next ? "1" : "0") } catch {} }, [key])
+  return [open, setOpen] as const
+}
+// <Collapsible open={open} onOpenChange={setOpen}>  — NOT defaultOpen
+```
+
+Verify with Playwright by reading `localStorage` + the element `data-state` after a
+reload (a reload == a restart for this purpose).
+
+## I. Small UI-polish patterns that recur
+
+- **Compact forms:** pair related fields side by side in `grid grid-cols-1 sm:grid-cols-2`
+  (e.g. date + category) instead of stacking full-width.
+- **Date defaults:** make the form's `defaultForm` a **function** returning
+  `new Date().toISOString().split("T")[0]` so "today" is fresh each open (a const
+  object captures the date at module load and goes stale overnight).
+- **Brand/logo avatars:** render real logos `object-cover` (a touch of `scale-110`)
+  to **fill** the round container; `object-contain p-1` makes them look tiny. Fixing
+  the shared icon component fixes every place it's used (cards + pickers).
+- **Reuse with a guard:** extract a self-contained manager (e.g. an attachments
+  component using the existing upload helper + detail modal) and drop it into both
+  the detail view and the edit dialog — but **guard for destructive save paths**
+  (e.g. don't expose attachment management on a split‑edit that deletes+recreates
+  the row, which would orphan the files).
