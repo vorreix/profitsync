@@ -6,6 +6,7 @@ import { canWrite, ensureDefaultClient, isPersonalAccount, requireAuth } from ".
 import { checkTransactionQuota } from "../_lib/quota.js"
 import { logAudit } from "../_lib/audit.js"
 import { balanceDelta } from "../../src/lib/wealth-ledger.js"
+import { cleanTransactionTags } from "../_lib/transaction-tags.js"
 
 const PAGE_SIZE = 20
 
@@ -38,6 +39,7 @@ const txFields = {
   amount: transactions.amount,
   description: transactions.description,
   category: transactions.category,
+  tags: transactions.tags,
   date: transactions.date,
   isSystem: transactions.isSystem,
   createdAt: transactions.createdAt,
@@ -72,6 +74,7 @@ const groupedFields = {
   amount: sql<string>`sum(${transactions.amount}::numeric)`,
   description: sql<string>`max(${transactions.description})`,
   category: sql<string>`max(${transactions.category})`,
+  tags: sql<string[]>`(array_agg(${transactions.tags} order by ${transactions.createdAt} asc, ${transactions.id} asc))[1]`,
   // Cast to text so the grouped row returns a plain 'YYYY-MM-DD' like the
   // non-grouped path (a raw max(date) comes back as a tz-shifted timestamp).
   date: sql<string>`max(${transactions.date})::text`,
@@ -126,8 +129,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { userId, orgId, role } = ctx
 
   if (req.method === "GET") {
-    const { clientId, wealthAccountId, groupId, search, type, page, sort, limit, category, from, to, includeClosed } = req.query as {
-      clientId?: string; wealthAccountId?: string; groupId?: string; search?: string; type?: string; page?: string; sort?: string; limit?: string; category?: string; from?: string; to?: string; includeClosed?: string
+    const { clientId, wealthAccountId, groupId, search, type, page, sort, limit, category, tag, from, to, includeClosed } = req.query as {
+      clientId?: string; wealthAccountId?: string; groupId?: string; search?: string; type?: string; page?: string; sort?: string; limit?: string; category?: string; tag?: string; from?: string; to?: string; includeClosed?: string
     }
 
     // Fetch every leg of one split group (drives the detail breakdown). Always
@@ -188,6 +191,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ? or(
           ilike(transactions.description, `%${search.trim()}%`),
           ilike(transactions.category, `%${search.trim()}%`),
+          sql`${transactions.tags}::text ilike ${`%${search.trim()}%`}`,
           ilike(clients.name, `%${search.trim()}%`),
         )
       : undefined
@@ -198,6 +202,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const categoryFilter = category?.trim()
       ? eq(transactions.category, category.trim())
+      : undefined
+    const normalizedTag = tag?.trim()
+      ? (tag.trim().startsWith("#") ? tag.trim() : `#${tag.trim()}`)
+      : ""
+    const tagFilter = normalizedTag
+      ? sql`${transactions.tags} @> ${JSON.stringify([normalizedTag])}::jsonb`
       : undefined
 
     const whereClause = and(
@@ -210,6 +220,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       searchFilter,
       typeFilter,
       categoryFilter,
+      tagFilter,
       dateFromFilter,
       dateToFilter,
     )
@@ -230,6 +241,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ne(transactions.kind, "transfer"),
         searchFilter,
         categoryFilter,
+        tagFilter,
         dateFromFilter,
         dateToFilter,
       )
@@ -305,9 +317,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method === "POST") {
     if (!canWrite(role)) return res.status(403).json({ error: "Forbidden" })
-    const { client_id, type, amount, description, category, date, wealth_account_id, is_system } = req.body as {
+    const { client_id, type, amount, description, category, tags, date, wealth_account_id, is_system } = req.body as {
       client_id: string; type: string; amount: number
-      description?: string; category?: string; date?: string; wealth_account_id?: string; is_system?: boolean
+      description?: string; category?: string; tags?: unknown; date?: string; wealth_account_id?: string; is_system?: boolean
     }
 
     if (!amount || isNaN(Number(amount))) return res.status(400).json({ error: "amount is required" })
@@ -347,6 +359,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         amount: String(amount),
         description: description ?? "",
         category: category ?? "",
+        tags: cleanTransactionTags(tags),
         date: date ?? today,
         isSystem: !!is_system,
         createdBy: userId,

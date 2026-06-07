@@ -1,3 +1,5 @@
+import { apiUrl } from "@/lib/api-base"
+
 const ORG_STORAGE_KEY = "ps_active_org"
 
 function readStoredOrg(): string | null {
@@ -83,7 +85,7 @@ export function getActiveOrgId(): string | null {
 }
 
 async function request<T>(method: string, path: string, token: string, body?: unknown): Promise<T> {
-  const res = await fetch(path, {
+  const res = await fetch(apiUrl(path), {
     method,
     headers: {
       ...(body ? { "Content-Type": "application/json" } : {}),

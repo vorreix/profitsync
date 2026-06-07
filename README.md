@@ -91,3 +91,9 @@ PRs use `.github/PULL_REQUEST_TEMPLATE.md`; reviewers are assigned via
 See [`CLAUDE.md`](./CLAUDE.md) for a detailed map of the routing, context
 providers, data layer, the consolidated `api/_routes/**` router, auth/quota/billing
 helpers, and i18n. The full product spec lives in [`project_idea.md`](./project_idea.md).
+
+## Native apps
+
+Android and iOS support is provided by Capacitor without replacing the existing web app. See [docs/native-apps.md](docs/native-apps.md) for build, sync, OAuth, and store-preparation notes.
+
+[![Open in Bolt](https://bolt.new/static/open-in-bolt.svg)](https://bolt.new/~/sb1-pmq1yzy7)

@@ -99,6 +99,7 @@ export type Transaction = {
   amount: number
   description: string
   category: string
+  tags?: string[]
   date: string
   is_system?: boolean
   // 'transfer' marks the two legs of an account-to-account move (shown only on

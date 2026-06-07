@@ -30,5 +30,9 @@ dist-ssr
 !.env.example
 .playwright-mcp
 .mcp.json
+.codex_tmp/
+.npm-cache/
+.codex-vite.*
+run-local.*
 
 task*.png

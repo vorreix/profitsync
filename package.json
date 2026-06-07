@@ -6,6 +6,12 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "cap:sync": "npm run build && cap sync",
+    "cap:open:android": "npm run cap:sync && cap open android",
+    "cap:open:ios": "npm run cap:sync && cap open ios",
+    "cap:build:android": "npm run cap:sync && cd android && gradlew.bat assembleDebug",
+    "android:sync:debug": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"$env:VITE_NATIVE_AUTH_DEBUG='true'; npm run cap:sync\"",
+    "android:logs": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"& \\\"$env:LOCALAPPDATA\\Android\\Sdk\\platform-tools\\adb.exe\\\" logcat -v time | Select-String -Pattern 'ProfitSync|Capacitor|Chromium|Clerk|native-google-oauth'\"",
     "vercel-build": "node scripts/db-migrate.mjs && npm run build",
     "typecheck": "tsc -p tsconfig.app.json && tsc -p tsconfig.node.json && tsc -p api/tsconfig.json",
     "preview": "vite preview",
@@ -59,6 +65,12 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@capacitor/android": "^8.4.0",
+    "@capacitor/app": "^8.1.0",
+    "@capacitor/browser": "^8.0.3",
+    "@capacitor/cli": "^8.4.0",
+    "@capacitor/core": "^8.4.0",
+    "@capacitor/ios": "^8.4.0",
     "@clerk/backend": "^1.0.0",
     "@eslint/js": "^9.39.4",
     "@types/node": "^24.12.0",

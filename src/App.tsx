@@ -1,5 +1,6 @@
-import { lazy, Suspense } from "react"
+import { lazy, Suspense, useEffect } from "react"
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom"
+import { AuthenticateWithRedirectCallback, useAuth } from "@clerk/clerk-react"
 import { Loader as Loader2 } from "lucide-react"
 import { AppErrorBoundary } from "@/components/AppErrorBoundary"
 import { AppLayout } from "@/components/AppLayout"
@@ -9,6 +10,8 @@ import { BusinessOnlyRoute } from "@/components/BusinessOnlyRoute"
 import { Toaster } from "@/components/ui/sonner"
 import { useShouldRedirectToApp } from "@/lib/use-redirect-to-app"
 import { isStandalonePwa } from "@/lib/pwa/is-standalone"
+import { describeUrlForNativeAuthLog, nativeAuthDebugLog } from "@/lib/native-auth-debug"
+import { isNativeAndroidRuntime } from "@/lib/native-oauth"
 
 // Route-level code splitting: each page becomes its own chunk so the initial
 // bundle stays small. Heavy deps (recharts on the Dashboard, the whole admin
@@ -87,6 +90,41 @@ function LandingRoute() {
   return <LandingApp />
 }
 
+function OAuthCallbackRoute() {
+  const { isSignedIn } = useAuth()
+
+  useEffect(() => {
+    if (!isNativeAndroidRuntime()) return
+
+    const params = new URLSearchParams(window.location.search)
+    nativeAuthDebugLog("Clerk callback route loaded", describeUrlForNativeAuthLog(window.location.href))
+    if (params.has("error")) {
+      nativeAuthDebugLog(
+        "Clerk callback failure",
+        {
+          error: params.get("error"),
+          callbackUrl: describeUrlForNativeAuthLog(window.location.href),
+        },
+        "error",
+      )
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!isNativeAndroidRuntime() || !isSignedIn) return
+    nativeAuthDebugLog("Clerk callback success")
+  }, [isSignedIn])
+
+  return (
+    <AuthenticateWithRedirectCallback
+      signInFallbackRedirectUrl="/dashboard"
+      signUpFallbackRedirectUrl="/dashboard"
+      signInUrl="/login"
+      signUpUrl="/signup"
+    />
+  )
+}
+
 export function App() {
   return (
     <BrowserRouter>
@@ -110,6 +148,7 @@ export function App() {
           <Route path="signup/*" element={<SignupPage />} />
           <Route path="forgot-password" element={<ForgotPasswordPage />} />
           <Route path="reset-password" element={<ResetPasswordPage />} />
+          <Route path="sso-callback" element={<OAuthCallbackRoute />} />
 
           {/* Onboarding — full-screen, no app shell. Shown until account type is chosen. */}
           <Route path="onboarding" element={<OnboardingPage />} />

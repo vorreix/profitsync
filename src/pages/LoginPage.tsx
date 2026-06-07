@@ -4,6 +4,7 @@ import { SignIn } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
 
 import { InstallAppBanner } from "@/components/InstallAppBanner"
+import { NativeGoogleOAuthInterceptor } from "@/components/NativeGoogleOAuthInterceptor"
 import { initPwa } from "@/lib/pwa/register-sw"
 import { safeRedirect } from "@/lib/safe-redirect"
 
@@ -25,6 +26,7 @@ export function LoginPage() {
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-muted/30 p-4 gap-4">
+      <NativeGoogleOAuthInterceptor />
       <SignIn
         path="/login"
         routing="path"

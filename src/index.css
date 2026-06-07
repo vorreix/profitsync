@@ -143,11 +143,32 @@
 }
 
 @layer base {
+  html,
+  body,
+  #root {
+    min-height: 100%;
+  }
   * {
     @apply border-border;
   }
   body {
     @apply bg-background text-foreground;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+  .capacitor-native,
+  .capacitor-native body {
+    min-height: 100dvh;
+    overscroll-behavior-y: none;
+  }
+  .capacitor-native body {
+    -webkit-font-smoothing: antialiased;
+    touch-action: manipulation;
+  }
+  .capacitor-native input,
+  .capacitor-native textarea,
+  .capacitor-native select {
+    font-size: 16px;
   }
 }
 

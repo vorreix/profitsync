@@ -11,6 +11,8 @@ export default tseslint.config(
       "dist",
       "build",
       "coverage",
+      ".codex_tmp",
+      ".npm-cache",
       "node_modules",
       // shadcn/ui is vendored (see CLAUDE.md) — treat it as third-party.
       "src/components/ui/**",

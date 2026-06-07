@@ -8,6 +8,9 @@ import "./index.css"
 import i18n from "@/lib/i18n"
 import App from "./App.tsx"
 import { ThemeProvider } from "@/components/theme-provider.tsx"
+import { installApiBaseFetchRewrite } from "@/lib/api-base"
+import { installNativeOAuthCallbackHandler } from "@/lib/native-oauth"
+import { installNativePlatformHandlers } from "@/lib/native-platform"
 import { initPwa } from "@/lib/pwa/register-sw"
 
 const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY
@@ -15,6 +18,10 @@ const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY
 if (!PUBLISHABLE_KEY) {
   throw new Error("Missing VITE_CLERK_PUBLISHABLE_KEY in .env.local")
 }
+
+installApiBaseFetchRewrite()
+void installNativePlatformHandlers()
+void installNativeOAuthCallbackHandler()
 
 // Capture a referral code (?r=CODE) on first load — anywhere, including the
 // landing — so it survives the hop to signup (read there from localStorage).

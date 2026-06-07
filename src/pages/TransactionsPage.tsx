@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback, useRef } from "react"
+﻿import { useEffect, useMemo, useState, useCallback, useRef } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
@@ -51,6 +51,8 @@ type TxForm = {
   type: "incoming" | "outgoing"
   description: string
   category: string
+  tags: string[]
+  tag_draft: string
   date: string
 }
 
@@ -62,6 +64,8 @@ const defaultForm = (): TxForm => ({
   type: "incoming",
   description: "",
   category: "",
+  tags: [],
+  tag_draft: "",
   date: new Date().toISOString().split("T")[0],
 })
 
@@ -82,7 +86,8 @@ const formatFileSize = (bytes: number) => {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-// ─── Client combobox ─────────────────────────────────────────────────────────
+const txTags = (tx: Pick<Transaction, "tags"> | null | undefined) => Array.isArray(tx?.tags) ? tx.tags : []
+// â”€â”€â”€ Client combobox â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function ClientCombobox({ clients, value, onChange }: {
   clients: Client[]
@@ -100,7 +105,7 @@ function ClientCombobox({ clients, value, onChange }: {
       <PopoverTrigger asChild>
         <Button variant="outline" role="combobox" className="w-full justify-between font-normal">
           {selected
-            ? `${selected.name}${selected.company ? ` — ${selected.company}` : ""}`
+            ? `${selected.name}${selected.company ? ` â€” ${selected.company}` : ""}`
             : <span className="text-muted-foreground">{t("selectClient")}</span>}
           <ChevronsUpDown className="size-4 ml-2 shrink-0 text-muted-foreground" />
         </Button>
@@ -122,7 +127,7 @@ function ClientCombobox({ clients, value, onChange }: {
                   onSelect={() => { onChange(c.id); setOpen(false) }}
                 >
                   <Check className={`mr-2 size-4 shrink-0 ${value === c.id ? "opacity-100" : "opacity-0"}`} />
-                  <span className="truncate">{c.name}{c.company ? ` — ${c.company}` : ""}</span>
+                  <span className="truncate">{c.name}{c.company ? ` â€” ${c.company}` : ""}</span>
                   {c.is_own && (
                     <Badge variant="outline" className="ml-auto text-[10px] py-0 shrink-0">{t("own")}</Badge>
                   )}
@@ -137,7 +142,7 @@ function ClientCombobox({ clients, value, onChange }: {
   )
 }
 
-// ─── Category combobox ────────────────────────────────────────────────────────
+// â”€â”€â”€ Category combobox â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function CategoryCombobox({ categories, value, onChangeCategories, onChange }: {
   categories: string[]
@@ -285,10 +290,101 @@ function CategoryCombobox({ categories, value, onChangeCategories, onChange }: {
   )
 }
 
-// ─── Transaction form fields ──────────────────────────────────────────────────
+function normalizeTag(raw: string) {
+  const text = raw.trim().replace(/^#+/, "")
+  if (!text) return ""
+  return `#${text.replace(/\s+/g, "-").slice(0, 40)}`
+}
+
+function parseTagDraft(raw: string) {
+  return raw
+    .split(/[,\s]+/)
+    .map(normalizeTag)
+    .filter(Boolean)
+}
+
+function mergeTags(tags: string[], draft: string) {
+  const next: string[] = []
+  const seen = new Set<string>()
+  for (const tag of [...tags, ...parseTagDraft(draft)]) {
+    if (seen.has(tag.toLowerCase())) continue
+    seen.add(tag.toLowerCase())
+    next.push(tag)
+  }
+  return next
+}
+
+function TagsInput({ value, draft, onDraftChange, suggestions, onChange }: {
+  value: string[]
+  draft: string
+  onDraftChange: (draft: string) => void
+  suggestions: string[]
+  onChange: (tags: string[]) => void
+}) {
+  const { t } = useTranslation("transactions")
+
+  const addTags = useCallback((raw: string) => {
+    const next = mergeTags(value, raw)
+    if (next.length !== value.length) onChange(next)
+    onDraftChange("")
+  }, [onChange, onDraftChange, value])
+
+  const removeTag = (tag: string) => onChange(value.filter((existing) => existing !== tag))
+  const visibleSuggestions = suggestions
+    .filter((tag) => !value.some((existing) => existing.toLowerCase() === tag.toLowerCase()))
+    .filter((tag) => !draft.trim() || tag.toLowerCase().includes(draft.trim().replace(/^#+/, "").toLowerCase()))
+    .slice(0, 5)
+
+  return (
+    <div className="space-y-2">
+      <div className="flex min-h-10 flex-wrap items-center gap-1.5 rounded-md border bg-background px-2 py-1.5 focus-within:ring-2 focus-within:ring-ring">
+        {value.map((tag) => (
+          <Badge key={tag} variant="secondary" className="gap-1 py-1">
+            {tag}
+            <button type="button" onClick={() => removeTag(tag)} className="rounded-full hover:text-destructive" aria-label={t("removeTag", { tag })}>
+              <X className="size-3" />
+            </button>
+          </Badge>
+        ))}
+        <input
+          value={draft}
+          onChange={(e) => onDraftChange(e.target.value)}
+          onBlur={() => addTags(draft)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === ",") {
+              e.preventDefault()
+              addTags(draft)
+            } else if (e.key === "Backspace" && !draft && value.length > 0) {
+              onChange(value.slice(0, -1))
+            }
+          }}
+          placeholder={value.length === 0 ? t("tagsPlaceholder") : ""}
+          className="min-w-0 flex-1 bg-transparent px-1 py-1 text-sm outline-none placeholder:text-muted-foreground"
+        />
+      </div>
+      {visibleSuggestions.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {visibleSuggestions.map((tag) => (
+            <button
+              key={tag}
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => addTags(tag)}
+              className="rounded-full border px-2 py-0.5 text-xs text-muted-foreground hover:border-primary/60 hover:text-foreground"
+            >
+              {tag}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// â”€â”€â”€ Transaction form fields â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function TxFormFields({
-  f, onChange, showClient, clients, accounts, accountsLoading, categories, onChangeCats, onAddAccount, currency, singleAccount = false,
+  f, onChange, showClient, clients, accounts, accountsLoading, categories, tagSuggestions, onChangeCats, onAddAccount, currency, singleAccount = false,
 }: {
   f: TxForm
   onChange: (patch: Partial<TxForm>) => void
@@ -297,6 +393,7 @@ function TxFormFields({
   accounts: WealthAccount[]
   accountsLoading: boolean
   categories: { incoming: string[]; outgoing: string[] }
+  tagSuggestions: string[]
   onChangeCats: (type: "incoming" | "outgoing", cats: string[]) => void
   onAddAccount: () => void
   currency: string
@@ -349,7 +446,17 @@ function TxFormFields({
           className="resize-none"
         />
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="space-y-1.5">
+        <Label>{t("tags")}</Label>
+        <TagsInput
+          value={f.tags}
+          draft={f.tag_draft}
+          suggestions={tagSuggestions}
+          onDraftChange={(tag_draft) => onChange({ tag_draft })}
+          onChange={(tags) => onChange({ tags })}
+        />
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="space-y-1.5">
           <Label>{t("category")}</Label>
           <CategoryCombobox
@@ -368,7 +475,7 @@ function TxFormFields({
   )
 }
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export function TransactionsPage() {
   const { t } = useTranslation("transactions")
@@ -380,7 +487,7 @@ export function TransactionsPage() {
   const { getToken } = useAuth()
   const { currency } = useCurrency()
   const { activeOrg } = useOrg()
-  // Personal accounts have no Clients UI — the client picker is hidden and
+  // Personal accounts have no Clients UI â€” the client picker is hidden and
   // transactions anchor to the workspace's single default client server-side.
   const isPersonal = activeOrg?.account_type === "personal"
   const canDelete = canDeleteRole(activeOrg?.role)
@@ -403,6 +510,7 @@ export function TransactionsPage() {
   const [tab, setTab] = useState("all")
   const [sort, setSort] = useState("date_desc")
   const [categoryFilter, setCategoryFilter] = useState("all")
+  const [tagFilter, setTagFilter] = useState("all")
   const [dateFrom, setDateFrom] = useState("")
   const [dateTo, setDateTo] = useState("")
   const [summary, setSummary] = useState<{ incoming: number; outgoing: number }>({ incoming: 0, outgoing: 0 })
@@ -414,15 +522,18 @@ export function TransactionsPage() {
   sortRef.current = sort
   const categoryRef = useRef(categoryFilter)
   categoryRef.current = categoryFilter
+  const tagRef = useRef(tagFilter)
+  tagRef.current = tagFilter
   const dateFromRef = useRef(dateFrom)
   dateFromRef.current = dateFrom
   const dateToRef = useRef(dateTo)
   dateToRef.current = dateTo
   const appliedFilterCount =
-    (tab !== "all" ? 1 : 0) + (categoryFilter !== "all" ? 1 : 0) + (dateFrom || dateTo ? 1 : 0)
+    (tab !== "all" ? 1 : 0) + (categoryFilter !== "all" ? 1 : 0) + (tagFilter !== "all" ? 1 : 0) + (dateFrom || dateTo ? 1 : 0)
   const clearFilters = () => {
     setTab("all")
     setCategoryFilter("all")
+    setTagFilter("all")
     setSort("date_desc")
     setDateFrom("")
     setDateTo("")
@@ -483,12 +594,13 @@ export function TransactionsPage() {
   const addFileInputRef = useRef<HTMLInputElement>(null)
 
   const buildParams = useCallback(
-    (pageNum: number, s: string, t: string, srt: string, cat: string, from: string, to: string) => {
+    (pageNum: number, s: string, t: string, srt: string, cat: string, tag: string, from: string, to: string) => {
       const params = new URLSearchParams({ page: String(pageNum) })
       if (s.trim()) params.set("search", s.trim())
       if (t !== "all") params.set("type", t)
       if (srt) params.set("sort", srt)
       if (cat && cat !== "all") params.set("category", cat)
+      if (tag && tag !== "all") params.set("tag", tag)
       if (from) params.set("from", from)
       if (to) params.set("to", to)
       return params.toString()
@@ -497,7 +609,7 @@ export function TransactionsPage() {
   )
 
   // `silent` reconciles the list/summary in the background WITHOUT swapping to the
-  // skeleton — used after a mutation so the screen never "reloads"; React diffs by
+  // skeleton â€” used after a mutation so the screen never "reloads"; React diffs by
   // key, so only the added/changed row actually re-renders.
   const fetchPage1 = useCallback(async (opts?: { silent?: boolean }) => {
     const token = await getToken()
@@ -505,7 +617,7 @@ export function TransactionsPage() {
     if (!opts?.silent) setLoading(true)
     try {
       const [result, cls] = await Promise.all([
-        apiGet<PaginatedResponse<Transaction>>(`/api/transactions?${buildParams(1, searchRef.current, tabRef.current, sortRef.current, categoryRef.current, dateFromRef.current, dateToRef.current)}`, token),
+        apiGet<PaginatedResponse<Transaction>>(`/api/transactions?${buildParams(1, searchRef.current, tabRef.current, sortRef.current, categoryRef.current, tagRef.current, dateFromRef.current, dateToRef.current)}`, token),
         apiGet<{ data: Client[]; total: number } | Client[]>("/api/clients?page=1", token),
       ])
       setTransactions(result.data)
@@ -525,7 +637,7 @@ export function TransactionsPage() {
   useEffect(() => {
     const timer = setTimeout(() => { fetchPage1() }, search === "" ? 0 : 300)
     return () => clearTimeout(timer)
-  }, [search, tab, sort, categoryFilter, dateFrom, dateTo, fetchPage1])
+  }, [search, tab, sort, categoryFilter, tagFilter, dateFrom, dateTo, fetchPage1])
 
   // Accounts load independently of the (slower) transactions query so the
   // transaction form's source picker is ready fast and never flashes an empty
@@ -556,7 +668,7 @@ export function TransactionsPage() {
   const openAddDialog = useCallback((preselectAccountId?: string) => {
     const last = loadLastTx()
     // Default the source to the explicitly requested account, else the last-used
-    // one, else Cash in Hand — so the last account leads next time.
+    // one, else Cash in Hand â€” so the last account leads next time.
     const desired = preselectAccountId ?? last.wealth_account_id
     pendingAddAccountRef.current = desired ?? null
     const accountId = (desired && accounts.some((a) => a.id === desired))
@@ -574,7 +686,7 @@ export function TransactionsPage() {
   }, [accounts])
 
   // If the add dialog opened before accounts loaded (deep link on a cold page),
-  // seed the default source — the requested account if valid, else Cash in Hand.
+  // seed the default source â€” the requested account if valid, else Cash in Hand.
   useEffect(() => {
     if (!addOpen || accounts.length === 0) return
     setForm((f) => {
@@ -623,7 +735,7 @@ export function TransactionsPage() {
     try {
       const nextPage = page + 1
       const result = await apiGet<PaginatedResponse<Transaction>>(
-        `/api/transactions?${buildParams(nextPage, search, tab, sort, categoryFilter, dateFrom, dateTo)}`,
+        `/api/transactions?${buildParams(nextPage, search, tab, sort, categoryFilter, tagFilter, dateFrom, dateTo)}`,
         token,
       )
       setTransactions((prev) => [...prev, ...result.data])
@@ -650,6 +762,11 @@ export function TransactionsPage() {
     for (const tx of transactions) if (tx.category?.trim()) set.add(tx.category.trim())
     return [...set].filter(Boolean).sort((a, b) => a.localeCompare(b))
   }, [categories, transactions])
+  const allTagOptions = useMemo(() => {
+    const set = new Set<string>()
+    for (const tx of transactions) for (const tag of txTags(tx)) if (tag.trim()) set.add(tag.trim())
+    return [...set].sort((a, b) => a.localeCompare(b))
+  }, [transactions])
 
   // Open the add dialog pre-filled with the last-used client/type/category
   // (date always today), so repeat entry is fast.
@@ -669,6 +786,7 @@ export function TransactionsPage() {
         type: form.type,
         description: form.description,
         category: form.category,
+        tags: mergeTags(form.tags, form.tag_draft),
         date: form.date,
         allocations: allocs.map((a) => ({ wealth_account_id: a.account_id, amount: parseFloat(a.amount) })),
       })
@@ -712,7 +830,7 @@ export function TransactionsPage() {
           group_id: tx.group_id,
           client_id: tx.client_id,
           allocations: legs.map((l) => ({ account_id: l.wealth_account_id ?? "", amount: String(l.amount) })),
-          type: tx.type, description: tx.description, category: tx.category, date: tx.date,
+          type: tx.type, description: tx.description, category: tx.category, tags: txTags(tx), tag_draft: "", date: tx.date,
         })
         setEditOpen(true)
       } catch {
@@ -722,7 +840,7 @@ export function TransactionsPage() {
     }
     setEditForm({
       id: tx.id, group_id: tx.group_id ?? null, client_id: tx.client_id,
-      allocations: allocationFor(tx, accounts), type: tx.type, description: tx.description, category: tx.category, date: tx.date,
+      allocations: allocationFor(tx, accounts), type: tx.type, description: tx.description, category: tx.category, tags: txTags(tx), tag_draft: "", date: tx.date,
     })
     setEditOpen(true)
   }
@@ -737,7 +855,8 @@ export function TransactionsPage() {
       if (!token) throw new Error("Not authenticated")
       // A split (existing group, or a single edited into multiple accounts) is
       // replaced wholesale: delete the old group (reverses balances) then recreate.
-      // A single→single edit stays a balance-preserving in-place PATCH.
+      // A single-to-single edit stays a balance-preserving in-place PATCH.
+      const tags = mergeTags(editForm.tags, editForm.tag_draft)
       if (editForm.group_id || allocs.length > 1) {
         await apiDelete(`/api/transactions/${editForm.id}`, token)
         await apiPost("/api/transactions/group", token, {
@@ -745,6 +864,7 @@ export function TransactionsPage() {
           type: editForm.type,
           description: editForm.description,
           category: editForm.category,
+          tags,
           date: editForm.date,
           allocations: allocs.map((a) => ({ wealth_account_id: a.account_id, amount: parseFloat(a.amount) })),
         })
@@ -756,6 +876,7 @@ export function TransactionsPage() {
           amount: parseFloat(alloc.amount),
           description: editForm.description,
           category: editForm.category,
+          tags,
           date: editForm.date,
         })
       }
@@ -813,7 +934,7 @@ export function TransactionsPage() {
       const token = await getToken()
       if (!token) return
       setViewLegs(await apiGet<Transaction[]>(`/api/transactions?groupId=${groupId}`, token))
-    } catch { /* non-blocking — the row total still shows */ }
+    } catch { /* non-blocking â€” the row total still shows */ }
   }
 
   // Show the transaction without touching the URL (used by the deep-link effect).
@@ -823,6 +944,16 @@ export function TransactionsPage() {
     setViewLegs([])
     loadAttachments(tx.id)
     if ((tx.leg_count ?? 1) > 1 && tx.group_id) loadLegs(tx.group_id)
+    ;(async () => {
+      const token = await getToken()
+      if (!token) return
+      try {
+        const fresh = await apiGet<Transaction>(`/api/transactions/${tx.id}`, token)
+        setViewTx((current) => current?.id === tx.id ? { ...current, ...fresh, tags: txTags(fresh) } : current)
+      } catch (err) {
+        console.error("Failed to refresh transaction details:", err)
+      }
+    })()
   }
 
   // User-initiated open: push ?view=<id> so back closes the modal.
@@ -1064,6 +1195,20 @@ export function TransactionsPage() {
               </SelectContent>
             </Select>
           </FilterSection>
+          <FilterSection label={t("tags")}>
+            <Select value={tagFilter} onValueChange={setTagFilter}>
+              <SelectTrigger className="w-full">
+                <Tag className="size-3.5 opacity-60" />
+                <SelectValue placeholder={t("tags")} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t("allTags")}</SelectItem>
+                {allTagOptions.map((tag) => (
+                  <SelectItem key={tag} value={tag}>{tag}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </FilterSection>
           <FilterSection label={t("filters.sortBy")}>
             <Select value={sort} onValueChange={setSort}>
               <SelectTrigger className="w-full">
@@ -1094,9 +1239,9 @@ export function TransactionsPage() {
         <div className="py-20 text-center border rounded-xl">
           <DollarSign className="size-10 mx-auto text-muted-foreground/50 mb-3" />
           <p className="text-muted-foreground font-medium">
-            {search || tab !== "all" || categoryFilter !== "all" || dateFrom || dateTo ? t("noTransactionsMatchFilters") : t("noTransactionsYet")}
+            {search || tab !== "all" || categoryFilter !== "all" || tagFilter !== "all" || dateFrom || dateTo ? t("noTransactionsMatchFilters") : t("noTransactionsYet")}
           </p>
-          {!search && tab === "all" && categoryFilter === "all" && !dateFrom && !dateTo && clients.length > 0 && (
+          {!search && tab === "all" && categoryFilter === "all" && tagFilter === "all" && !dateFrom && !dateTo && clients.length > 0 && (
             <Button className="mt-4" onClick={() => openAddDialog()}>
               <Plus className="size-4" />
               {t("addFirstTransaction")}
@@ -1140,7 +1285,7 @@ export function TransactionsPage() {
                     <div className="flex items-center gap-2 min-w-0">
                       <p className="text-sm font-medium truncate min-w-0 flex-1">
                         {tx.description
-                          ? tx.description.length > 60 ? tx.description.slice(0, 60) + "…" : tx.description
+                          ? tx.description.length > 60 ? tx.description.slice(0, 60) + "â€¦" : tx.description
                           : (tx.type === "incoming" ? t("income") : t("expense"))}
                       </p>
                       {(tx.leg_count ?? 1) > 1 && (
@@ -1151,6 +1296,9 @@ export function TransactionsPage() {
                       {tx.category && (
                         <Badge variant="outline" className="text-xs py-0 shrink-0 hidden sm:inline-flex">{tx.category}</Badge>
                       )}
+                      {txTags(tx).slice(0, 2).map((tag) => (
+                        <Badge key={tag} variant="secondary" className="text-xs py-0 shrink-0 hidden md:inline-flex">{tag}</Badge>
+                      ))}
                       <AttachmentBadge count={tx.attachment_count} />
                     </div>
                     <div className="flex items-center gap-2 mt-0.5 min-w-0">
@@ -1165,32 +1313,39 @@ export function TransactionsPage() {
                           {ownClientIds.has(tx.client_id) && (
                             <Badge variant="outline" className="text-[10px] py-0 shrink-0">Own</Badge>
                           )}
-                          <span className="text-xs text-muted-foreground shrink-0">·</span>
+                          <span className="text-xs text-muted-foreground shrink-0">Â·</span>
                         </>
                       )}
                       <span className="text-xs text-muted-foreground shrink-0">{formatDate(tx.date)}</span>
                       {(tx.leg_count ?? 1) > 1 ? (
                         <>
-                          <span className="hidden text-xs text-muted-foreground shrink-0 sm:inline">·</span>
+                          <span className="hidden text-xs text-muted-foreground shrink-0 sm:inline">Â·</span>
                           <span className="hidden text-xs text-muted-foreground shrink-0 sm:inline">
                             {t("splitAccounts", { count: tx.account_count ?? tx.leg_count })}
                           </span>
                         </>
                       ) : (tx.wealth_account_name || tx.wealth_account_bank_name) ? (
                         <>
-                          <span className="hidden text-xs text-muted-foreground shrink-0 sm:inline">·</span>
+                          <span className="hidden text-xs text-muted-foreground shrink-0 sm:inline">Â·</span>
                           <span className="hidden min-w-0 max-w-[10rem] truncate text-xs text-muted-foreground sm:inline">
                             {accountDisplayName({ bank_name: tx.wealth_account_bank_name ?? "", nickname: tx.wealth_account_name ?? "" })}
                           </span>
                         </>
                       ) : null}
                     </div>
+                    {txTags(tx).length > 0 && (
+                      <div className="mt-1 flex flex-wrap gap-1 md:hidden">
+                        {txTags(tx).slice(0, 3).map((tag) => (
+                          <Badge key={tag} variant="secondary" className="text-[10px] py-0">{tag}</Badge>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
                   <p className={`text-sm font-semibold shrink-0 tabular-nums text-right ${
                     tx.type === "incoming" ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"
                   }`}>
-                    {tx.type === "incoming" ? "+" : "−"}{fmt(Number(tx.amount))}
+                    {tx.type === "incoming" ? "+" : "âˆ’"}{fmt(Number(tx.amount))}
                   </p>
 
                   <div className={`hidden sm:flex gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity ${sel.selectionMode ? "sm:hidden" : ""}`}>
@@ -1245,7 +1400,7 @@ export function TransactionsPage() {
                   <div>
                     <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">{t("amount")}</p>
                     <p className={`font-semibold mt-0.5 ${viewTx.type === "incoming" ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
-                      {viewTx.type === "incoming" ? "+" : "−"}{fmt(Number(viewTx.amount))}
+                      {viewTx.type === "incoming" ? "+" : "âˆ’"}{fmt(Number(viewTx.amount))}
                     </p>
                   </div>
                   <div>
@@ -1299,7 +1454,7 @@ export function TransactionsPage() {
                               </span>
                             </span>
                             <span className={`shrink-0 text-sm font-semibold tabular-nums ${viewTx.type === "incoming" ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
-                              {viewTx.type === "incoming" ? "+" : "−"}{fmt(Number(leg.amount))}
+                              {viewTx.type === "incoming" ? "+" : "âˆ’"}{fmt(Number(leg.amount))}
                             </span>
                           </div>
                         ))}
@@ -1311,6 +1466,14 @@ export function TransactionsPage() {
                       <p className="mt-0.5">{viewTx.wealth_account_name || viewTx.wealth_account_bank_name || viewTx.wealth_account_id}</p>
                     </div>
                   ) : null}
+                  {txTags(viewTx).length > 0 && (
+                    <div className="col-span-2">
+                      <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">{t("tags")}</p>
+                      <div className="mt-1 flex flex-wrap gap-1.5">
+                        {txTags(viewTx).map((tag) => <Badge key={tag} variant="secondary">{tag}</Badge>)}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <Separator />
@@ -1401,6 +1564,7 @@ export function TransactionsPage() {
             accounts={accounts}
             accountsLoading={accountsLoading}
             categories={categories}
+            tagSuggestions={allTagOptions}
             onChangeCats={handleChangeCats}
             onAddAccount={() => { setAddOpen(false); navigate("/wealth") }}
             currency={currency}
@@ -1458,12 +1622,13 @@ export function TransactionsPage() {
               accounts={accounts}
               accountsLoading={accountsLoading}
               categories={categories}
+              tagSuggestions={allTagOptions}
               onChangeCats={handleChangeCats}
               onAddAccount={() => { setEditOpen(false); navigate("/wealth") }}
               currency={currency}
             />
           )}
-          {/* Attachments — only for a single (non-split) transaction: editing a
+          {/* Attachments â€” only for a single (non-split) transaction: editing a
               split recreates it (delete+create), which would orphan attachments. */}
           {editForm?.id && !editForm.group_id && editForm.allocations.length <= 1 && (
             <div className="mt-2 border-t pt-3">
@@ -1541,5 +1706,5 @@ export function TransactionsPage() {
   )
 }
 
-// suppress unused import warning — PAGE_SIZE is intentional for documentation
+// suppress unused import warning â€” PAGE_SIZE is intentional for documentation
 void PAGE_SIZE

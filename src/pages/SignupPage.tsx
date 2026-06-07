@@ -8,11 +8,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { ArrowRight, TrendingUp } from "lucide-react"
 import { InstallAppBanner } from "@/components/InstallAppBanner"
+import { NativeGoogleOAuthInterceptor } from "@/components/NativeGoogleOAuthInterceptor"
 import { initPwa } from "@/lib/pwa/register-sw"
 
 export function SignupPage() {
   const [agreed, setAgreed] = useState(false)
   const [continued, setContinued] = useState(false)
+  const [acceptedLegalAt, setAcceptedLegalAt] = useState<string | null>(null)
   const [params] = useSearchParams()
 
   // Preserve a post-signup destination (e.g. an invitation accept page) and
@@ -37,10 +39,21 @@ export function SignupPage() {
     initPwa()
   }, [])
 
+  const signupMetadata = useMemo(
+    () => ({ acceptedLegalAt: acceptedLegalAt ?? new Date().toISOString(), ...(referralCode ? { referralCode } : {}) }),
+    [acceptedLegalAt, referralCode],
+  )
+
+  const continueToSignup = () => {
+    setAcceptedLegalAt(new Date().toISOString())
+    setContinued(true)
+  }
+
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-muted/30 p-4 gap-4">
       {continued ? (
         <div className="flex flex-col items-center gap-4">
+          <NativeGoogleOAuthInterceptor flow="sign-up" unsafeMetadata={signupMetadata} />
           <SignUp
             path="/signup"
             routing="path"
@@ -48,7 +61,7 @@ export function SignupPage() {
             forceRedirectUrl={target}
             fallbackRedirectUrl={target}
             initialValues={invitedEmail ? { emailAddress: invitedEmail } : undefined}
-            unsafeMetadata={{ acceptedLegalAt: new Date().toISOString(), ...(referralCode ? { referralCode } : {}) }}
+            unsafeMetadata={signupMetadata}
           />
           <p className="text-xs text-muted-foreground">
             By signing up you confirm you accept the{" "}
@@ -96,7 +109,7 @@ export function SignupPage() {
             <Button
               className="w-full"
               disabled={!agreed}
-              onClick={() => setContinued(true)}
+              onClick={continueToSignup}
             >
               Continue to sign up
               <ArrowRight className="size-4 ml-1.5" />

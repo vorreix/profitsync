@@ -178,6 +178,7 @@ export const transactions = pgTable("transactions", {
   amount: numeric("amount", { precision: 12, scale: 2 }).notNull().default("0"),
   description: text("description").default(""),
   category: text("category").default(""),
+  tags: jsonb("tags").notNull().default([]),
   date: date("date").notNull().defaultNow(),
   isSystem: boolean("is_system").notNull().default(false),
   // Soft-delete: deleted transactions move to Trash (restore/purge) instead of

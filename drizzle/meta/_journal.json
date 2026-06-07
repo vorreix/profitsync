@@ -218,6 +218,13 @@
       "when": 1780800000004,
       "tag": "0030_skinny_zarda",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1780711200000,
+      "tag": "0025_transaction_tags",
+      "breakpoints": true
     }
   ]
 }
