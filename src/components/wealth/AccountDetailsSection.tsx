@@ -8,6 +8,7 @@ import type { WealthAccount, WealthAccountAttachment } from "@/lib/types"
 import { accountFieldsForCountry, PRIMARY_LABEL_KEY, SECONDARY_LABEL_KEY } from "@/lib/bank-fields"
 import { countryByCode } from "@/lib/countries"
 import { ACCEPT_ATTR, attachmentsListPath, uploadAttachment, validateFile } from "@/lib/attachments-client"
+import { usePersistedOpen } from "@/lib/wealth"
 import { AttachmentDetailModal, type AttachmentModalItem } from "@/components/AttachmentDetailModal"
 import { Button } from "@/components/ui/button"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
@@ -43,6 +44,9 @@ export function AccountDetailsSection({
   const [uploading, setUploading] = useState(false)
   const [viewAttachment, setViewAttachment] = useState<AttachmentModalItem | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  // Persist the collapse state per account (survives navigation + restart).
+  const [detailsOpen, setDetailsOpen] = usePersistedOpen(`ps_wealth_detail_open_${account.id}`, true)
+  const [filesOpen, setFilesOpen] = usePersistedOpen(`ps_wealth_files_open_${account.id}`, true)
 
   const loadAttachments = useCallback(async () => {
     setLoading(true)
@@ -86,7 +90,7 @@ export function AccountDetailsSection({
   return (
     <>
       {hasDetails && (
-        <Collapsible defaultOpen className="rounded-2xl border">
+        <Collapsible open={detailsOpen} onOpenChange={setDetailsOpen} className="rounded-2xl border">
           <CollapsibleTrigger className="group flex w-full items-center justify-between gap-2 p-4 text-left sm:p-5">
             <h2 className="text-sm font-semibold">{t("accountDetails")}</h2>
             <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-180" />
@@ -105,7 +109,7 @@ export function AccountDetailsSection({
         </Collapsible>
       )}
 
-      <Collapsible defaultOpen className="rounded-2xl border">
+      <Collapsible open={filesOpen} onOpenChange={setFilesOpen} className="rounded-2xl border">
         <div className="flex items-center justify-between gap-2 p-4 sm:p-5">
           <CollapsibleTrigger className="group flex min-w-0 flex-1 items-center gap-1.5 text-left">
             <Paperclip className="size-3.5 shrink-0" />

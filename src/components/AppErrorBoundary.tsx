@@ -1,8 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from "react"
-import { useTranslation } from "react-i18next"
-import { RotateCw } from "lucide-react"
 
-import { Button } from "@/components/ui/button"
+import { AppErrorFallback } from "@/components/AppErrorFallback"
 
 // Shared with index.html's inline recovery script + src/lib/pwa/register-sw.ts so
 // the three recovery paths reload at most once between them.
@@ -13,23 +11,6 @@ function isChunkLoadError(error: unknown): boolean {
   const msg = error instanceof Error ? `${error.name} ${error.message}` : String(error ?? "")
   return /loading (?:css )?chunk|dynamically imported module|importing a module script failed|failed to fetch dynamically/i.test(
     msg,
-  )
-}
-
-function ErrorFallback({ onReload }: { onReload: () => void }) {
-  // useTranslation is safe here: i18n is initialised in main.tsx before <App/>.
-  const { t } = useTranslation()
-  return (
-    <div className="flex min-h-[100dvh] w-full flex-col items-center justify-center gap-4 p-6 text-center">
-      <div className="flex flex-col items-center gap-2">
-        <h1 className="text-lg font-semibold">{t("errorBoundary.title")}</h1>
-        <p className="max-w-sm text-sm text-muted-foreground">{t("errorBoundary.message")}</p>
-      </div>
-      <Button onClick={onReload} className="gap-2">
-        <RotateCw className="size-4" />
-        {t("errorBoundary.reload")}
-      </Button>
-    </div>
   )
 }
 
@@ -82,7 +63,7 @@ export class AppErrorBoundary extends Component<Props, State> {
   }
 
   render() {
-    if (this.state.hasError) return <ErrorFallback onReload={this.handleReload} />
+    if (this.state.hasError) return <AppErrorFallback onReload={this.handleReload} />
     return this.props.children
   }
 }
