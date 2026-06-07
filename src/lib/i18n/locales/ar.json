@@ -171,7 +171,8 @@
     "state": "الولاية / المنطقة",
     "postalCode": "الرمز البريدي",
     "country": "الدولة",
-    "selectCountry": "اختر دولة…"
+    "selectCountry": "اختر دولة…",
+    "legalTitle": "الشؤون القانونية والسياسات"
   },
   "toast": {
     "profileLoadFailed": "فشل تحميل الملف الشخصي",
@@ -443,7 +444,8 @@
     "deleteAttachmentDescription": "سيتم حذف هذا المرفق بشكل دائم.",
     "deleteBtn": "حذف",
     "totalQuotations_one": "{{count}} اقتراح",
-    "totalQuotations_other": "{{count}} اقتراحات"
+    "totalQuotations_other": "{{count}} اقتراحات",
+    "dateLabel": "التاريخ"
   },
   "organizations": {
     "organizationCreated": "تم إنشاء المنظمة",
@@ -925,5 +927,10 @@
     "reorder": "إعادة ترتيب",
     "holdToTransfer": "استمر بالضغط للتحويل",
     "selectAccount": "اختر حساباً"
+  },
+  "errorBoundary": {
+    "title": "حدث خطأ ما",
+    "message": "تعذّر تحميل التطبيق — قد يحدث هذا بعد التحديث مباشرةً. أعد التحميل للحصول على أحدث إصدار.",
+    "reload": "إعادة التحميل"
   }
 }

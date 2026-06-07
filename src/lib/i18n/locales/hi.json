@@ -171,7 +171,8 @@
     "state": "राज्य / प्रांत",
     "postalCode": "पोस्टल कोड",
     "country": "देश",
-    "selectCountry": "देश चुनें…"
+    "selectCountry": "देश चुनें…",
+    "legalTitle": "क़ानूनी और नीतियाँ"
   },
   "toast": {
     "profileLoadFailed": "प्रोफ़ाइल लोड करने में विफल",
@@ -443,7 +444,8 @@
     "deleteAttachmentDescription": "यह संलग्नक स्थायी रूप से हटा दिया जाएगा।",
     "deleteBtn": "हटाएं",
     "totalQuotations_one": "{{count}} उद्धरण",
-    "totalQuotations_other": "{{count}} उद्धरण"
+    "totalQuotations_other": "{{count}} उद्धरण",
+    "dateLabel": "तारीख़"
   },
   "organizations": {
     "organizationCreated": "संगठन बनाया गया",
@@ -925,5 +927,10 @@
     "reorder": "क्रम बदलें",
     "holdToTransfer": "ट्रांसफ़र के लिए रोकें",
     "selectAccount": "खाता चुनें"
+  },
+  "errorBoundary": {
+    "title": "कुछ ग़लत हो गया",
+    "message": "ऐप लोड नहीं हो सका — यह किसी अपडेट के तुरंत बाद हो सकता है। नवीनतम संस्करण पाने के लिए फिर से लोड करें।",
+    "reload": "फिर से लोड करें"
   }
 }

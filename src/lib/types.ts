@@ -165,6 +165,7 @@ export type Quotation = {
   email: string
   phone: string
   amount: string
+  date: string
   status: "draft" | "sent" | "accepted" | "rejected"
   notes: string
   category?: string

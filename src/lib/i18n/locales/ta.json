@@ -171,7 +171,8 @@
     "state": "மாநிலம் / பகுதி",
     "postalCode": "தபாற் குறியீடு",
     "country": "நாடு",
-    "selectCountry": "நாட்டைத் தேர்ந்தெடுக்கவும்…"
+    "selectCountry": "நாட்டைத் தேர்ந்தெடுக்கவும்…",
+    "legalTitle": "சட்டம் & கொள்கைகள்"
   },
   "toast": {
     "profileLoadFailed": "சுயவிவரத்தை ஏற்ற முடியவில்லை",
@@ -443,7 +444,8 @@
     "deleteAttachmentDescription": "இந்த இணைப்பு நிரந்தரமாக நீக்கப்படும்.",
     "deleteBtn": "நீக்கவும்",
     "totalQuotations_one": "{{count}} மேற்கோள்",
-    "totalQuotations_other": "{{count}} மேற்கோள்கள்"
+    "totalQuotations_other": "{{count}} மேற்கோள்கள்",
+    "dateLabel": "தேதி"
   },
   "organizations": {
     "organizationCreated": "நிறுவனம் உருவாக்கப்பட்டது",
@@ -925,5 +927,10 @@
     "reorder": "வரிசை மாற்று",
     "holdToTransfer": "பரிமாற்ற அழுத்திப் பிடி",
     "selectAccount": "கணக்கைத் தேர்ந்தெடுக்கவும்"
+  },
+  "errorBoundary": {
+    "title": "ஏதோ தவறு நடந்தது",
+    "message": "ஆப்பை ஏற்ற முடியவில்லை — ஒரு புதுப்பிப்புக்குப் பிறகு இது நிகழலாம். சமீபத்திய பதிப்பைப் பெற மீண்டும் ஏற்றவும்.",
+    "reload": "மீண்டும் ஏற்று"
   }
 }
