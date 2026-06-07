@@ -120,6 +120,18 @@ To stay within Vercel Hobby's 12-function cap, **all** route handlers live under
 
 **Exception:** `api/billing/webhook.ts` is its own Vercel function because it needs `bodyParser: false` for signature verification. The filesystem route is served before the catch-all rewrite.
 
+**Exception:** `api/ssr.ts` is its own Vercel function for SEO/GEO (see below).
+
+#### SEO / GEO — server-rendered public pages (`api/ssr.ts`)
+
+The app is a client-rendered SPA, which is invisible to crawlers/AI engines that don't run JS. `api/ssr.ts` server-renders the **public** pages so they ship real `<head>` (title, description, canonical, hreflang, OG/Twitter, JSON-LD) and a content snapshot in the initial HTML:
+
+- `vercel.json` rewrites `/`, `/blog`, `/blog/:slug`, `/privacy-policy`, `/terms-of-service`, `/sitemap.xml`, `/robots.txt`, `/llms.txt` to `/api/ssr?__ssrpath=…` (SSR routes precede the SPA fallback; `/api/*` stays first). App routes (`/dashboard`, `/admin`, …) keep serving the static shell and are `Disallow`ed in robots.txt.
+- It reads the built `index.html` (copied to `api/_ssr/index-template.html` by `vite.config.ts` `ssrTemplatePlugin`, bundled via `functions.includeFiles`, gitignored) and injects into the `<!--SSR_HEAD_START/END-->` and `<!--SSR_ROOT-->` sentinels in `index.html`. Safe because the app boots with `createRoot().render()` (not `hydrateRoot`) — the snapshot is replaced on boot, **no hydration risk**.
+- Shared, pure SEO builders live in `src/lib/seo/site.ts` (constants, `buildHead`, JSON-LD). Markdown→HTML for post snapshots uses `marked` + `sanitize-html` in `api/_ssr/markdown.ts` (allowlist mirrors `src/components/Markdown.tsx`).
+- **Prod-only:** in `npm run dev` the public pages are served by Vite (CSR); test SSR with `vercel dev` after a build.
+- **Caveat:** Vercel may serve static `dist/index.html` for `/` before the rewrite (filesystem precedence). The landing still carries Organization/WebSite/SoftwareApplication JSON-LD baked statically into `index.html`, so it degrades gracefully; `/blog/*` and the rest have no static collision and always SSR. The `www`→apex 301 is a Vercel **domain setting**, not code. A dedicated 1200×630 `og-image.png` is a recommended follow-up (default OG image is the square `logo.png`).
+
 #### Route table (as of current codebase)
 
 | Path | File |

@@ -12,23 +12,38 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="ProfitSync" />
+  <!--
+    Everything between the SSR_HEAD markers is the DEFAULT (static-shell) SEO
+    block. The server-render function (api/ssr.ts) replaces this whole block with
+    per-page title/description/canonical/OG/Twitter/JSON-LD for public pages
+    (/, /blog, /blog/:slug, legal). App routes (/dashboard, /admin, …) keep this
+    default; they're additionally disallowed in robots.txt so they're not indexed.
+  -->
+  <!--SSR_HEAD_START-->
   <title>ProfitSync — Know your profit. Sync your business.</title>
   <meta name="description"
     content="ProfitSync brings your clients, cash flow, and quotations into one clean workspace — so you always know exactly where your money stands." />
+  <meta name="robots" content="index, follow" />
   <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="ProfitSync" />
   <meta property="og:title" content="ProfitSync — Know your profit. Sync your business." />
   <meta property="og:description"
     content="Track clients, cash flow, and quotations in one clean workspace — and always know your profit." />
-  <meta property="og:image" content="/logo.png" />
-  <meta name="twitter:card" content="summary" />
+  <meta property="og:url" content="https://profitsync.net/" />
+  <meta property="og:image" content="https://profitsync.net/logo.png" />
+  <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="ProfitSync — Know your profit. Sync your business." />
   <meta name="twitter:description"
     content="Track clients, cash flow, and quotations in one clean workspace — and always know your profit." />
-  <meta name="twitter:image" content="/logo.png" />
+  <meta name="twitter:image" content="https://profitsync.net/logo.png" />
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"Organization","name":"ProfitSync","url":"https://profitsync.net","logo":"https://profitsync.net/logo.png","description":"ProfitSync brings your clients, cash flow, and quotations into one clean workspace — so you always know exactly where your money stands."}</script>
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","name":"ProfitSync","url":"https://profitsync.net"}</script>
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"ProfitSync","applicationCategory":"FinanceApplication","operatingSystem":"Web","url":"https://profitsync.net","description":"Track clients, cash flow, and quotations in one clean workspace — and always know your profit.","offers":{"@type":"Offer","price":"0","priceCurrency":"USD","description":"Free plan, forever — upgrade to Premium any time."}}</script>
+  <!--SSR_HEAD_END-->
 </head>
 
 <body>
-  <div id="root"></div>
+  <div id="root"><!--SSR_ROOT--></div>
   <!--
     Stale-cache recovery. After a new deploy, a returning client can be served a
     stale app shell (from the SW precache or HTTP cache) that points at hashed
