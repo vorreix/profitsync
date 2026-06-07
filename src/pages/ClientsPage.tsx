@@ -205,7 +205,14 @@ export function ClientsPage() {
       rollback: () => { setForm(snapshot); setDialogOpen(true) },
       mutate: () => apiPost<Client>("/api/clients", token, body, ["/api/clients"]),
       errorMessage: t("createClientFailed"),
-      onSuccess: () => { toast.success(t("clientCreated")); setForm(defaultForm); clearAll(); fetchPage1() },
+      // Insert the new client in place — no full-list reload.
+      onSuccess: (created) => {
+        toast.success(t("clientCreated"))
+        setForm(defaultForm)
+        clearAll()
+        setClients((prev) => [toWithStats(created), ...prev])
+        setTotal((n) => n + 1)
+      },
     })
   }
 
@@ -222,18 +229,21 @@ export function ClientsPage() {
 
   async function handleBulkDelete() {
     if (sel.count === 0) return
+    const ids = sel.selectedIds
+    // Optimistic: remove the selected clients from the list instantly.
+    const removedCount = clients.filter((c) => ids.includes(c.id)).length
+    setClients((prev) => prev.filter((c) => !ids.includes(c.id)))
+    setTotal((n) => Math.max(0, n - removedCount))
+    sel.exitSelection()
     setBulkDeleting(true)
     try {
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
-      const { deleted } = await apiPost<{ deleted: number }>("/api/clients/bulk-delete", token, {
-        ids: sel.selectedIds,
-      })
+      const { deleted } = await apiPost<{ deleted: number }>("/api/clients/bulk-delete", token, { ids })
       toast.success(t("multiSelect.deleted", { count: deleted }))
-      sel.exitSelection()
-      fetchPage1()
     } catch {
       toast.error(t("multiSelect.deleteFailed"))
+      fetchPage1() // restore on failure
     } finally {
       setBulkDeleting(false)
     }

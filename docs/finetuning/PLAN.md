@@ -74,6 +74,7 @@ cross‑cutting UI refactors later so they build on stabilised forms).
 | 14 | `skill/work-finetuning` | Author + test + document the `work-finetuning` skill | meta | M | ✅ done |
 | 15 | `feat/finetune-15-quotation-layout` | Follow-up: Date + Category side by side in the quotation modal | ui | L | ✅ done |
 | 16 | `feat/finetune-16-wealth-detail-persist` | Follow-up: persist wealth Account-Detail/Attachments collapse per account (survives restart) | ui | L | ✅ done |
+| 17 | `feat/finetune-17-surgical-list-updates` | **T11 full rollout**: in-place add/edit/delete (no full-screen reload) on Transactions, Clients, Quotations | ui | H | ✅ done |
 
 Status legend: ⬜ todo · 🟡 in progress · ✅ done · 🔵 pushed (PR open) · ⏸ parked.
 
@@ -774,3 +775,11 @@ with the right trigger, and loads cleanly via the Skill tool.
   collapse state now **persists per account in localStorage** (new
   `usePersistedOpen` in `wealth.ts`) — survives navigation AND restart; verified
   with Playwright (collapse→reload stays collapsed, expand→reload stays expanded).
+- **2026‑06‑07 (T11 full rollout)** — Branch 17: replaced the post‑mutation
+  full‑list `fetchPage1()` reloads with **surgical in‑place updates** across
+  Transactions, Clients, Quotations: create → insert the row; edit → replace it;
+  delete/bulk‑delete → optimistic instant removal + summary delta; failures
+  reconcile via a **silent** refetch (no skeleton flash). Verified with Playwright:
+  client create inserts instantly (no reload); transaction delete removes the row
+  **and** updates the income/net summary instantly (€777→€0). This is the “just
+  add/remove that one item, smoothly” behavior the brief asked for.
