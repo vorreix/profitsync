@@ -8,6 +8,8 @@ import { diffFields, logAudit } from "../../_lib/audit.js"
 
 const VALID_STATUSES = ["draft", "sent", "accepted", "rejected"]
 
+const isIsoDate = (v: unknown): v is string => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v)
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ctx = await requireAuth(req, res)
   if (!ctx) return
@@ -26,9 +28,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method === "PATCH") {
     if (!canWrite(role)) return res.status(403).json({ error: "Forbidden" })
-    const { title, prospect_name, company, email, phone, amount, status, notes, closed, category } = req.body as {
+    const { title, prospect_name, company, email, phone, amount, date, status, notes, closed, category } = req.body as {
       title?: string; prospect_name?: string; company?: string; email?: string
-      phone?: string; amount?: number; status?: string; notes?: string; closed?: boolean; category?: string
+      phone?: string; amount?: number; date?: string; status?: string; notes?: string; closed?: boolean; category?: string
     }
     if (status !== undefined && !VALID_STATUSES.includes(status)) {
       return res.status(400).json({ error: "status must be draft, sent, accepted, or rejected" })
@@ -50,6 +52,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ...(email !== undefined ? { email } : {}),
         ...(phone !== undefined ? { phone } : {}),
         ...(amount !== undefined ? { amount: String(amount) } : {}),
+        ...(isIsoDate(date) ? { date } : {}),
         ...(status !== undefined ? { status } : {}),
         ...(notes !== undefined ? { notes } : {}),
         ...(category !== undefined ? { category: category.trim().slice(0, 60) } : {}),

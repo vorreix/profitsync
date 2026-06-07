@@ -171,7 +171,8 @@
     "state": "Provincia / Stato",
     "postalCode": "CAP",
     "country": "Paese",
-    "selectCountry": "Seleziona paese…"
+    "selectCountry": "Seleziona paese…",
+    "legalTitle": "Note legali e politiche"
   },
   "toast": {
     "profileLoadFailed": "Impossibile caricare il profilo",
@@ -443,7 +444,8 @@
     "deleteAttachmentDescription": "Questo allegato verrà eliminato in modo permanente.",
     "deleteBtn": "Elimina",
     "totalQuotations_one": "{{count}} preventivo",
-    "totalQuotations_other": "{{count}} preventivi"
+    "totalQuotations_other": "{{count}} preventivi",
+    "dateLabel": "Data"
   },
   "organizations": {
     "organizationCreated": "Organizzazione creata",
@@ -925,5 +927,10 @@
     "reorder": "Riordina",
     "holdToTransfer": "Tieni premuto per trasferire",
     "selectAccount": "Seleziona conto"
+  },
+  "errorBoundary": {
+    "title": "Qualcosa è andato storto",
+    "message": "Impossibile caricare l’app: può capitare subito dopo un aggiornamento. Ricarica per ottenere l’ultima versione.",
+    "reload": "Ricarica"
   }
 }

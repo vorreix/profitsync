@@ -161,7 +161,7 @@ export function OrganizationsPage() {
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-3">
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           {orgs.map((org) => {
             const isActive = activeOrg?.id === org.id
             const canManage = org.role === "owner" || org.role === "admin"
@@ -169,11 +169,11 @@ export function OrganizationsPage() {
             return (
               <Card
                 key={org.id}
-                className={`overflow-hidden transition-colors ${
+                className={`flex flex-col overflow-hidden transition-colors ${
                   isActive ? "border-primary ring-1 ring-primary/20" : "hover:border-foreground/20"
                 }`}
               >
-                <CardContent className="p-4">
+                <CardContent className="flex flex-1 flex-col p-4">
                   {/* Identity */}
                   <div className="flex items-start gap-3">
                     <div
@@ -218,13 +218,11 @@ export function OrganizationsPage() {
                     </div>
                   </div>
 
-                  {/* Actions */}
-                  <div className="mt-3 flex items-center gap-1.5 border-t pt-3">
+                  {/* Actions — pinned to the card bottom so they align across the grid */}
+                  <div className="mt-auto flex flex-wrap items-center gap-1.5 border-t pt-3">
                     {!isActive && (
                       <Button
                         size="sm"
-                        variant="outline"
-                        className="flex-1 sm:flex-none"
                         onClick={() => handleSwitch(org.id)}
                         disabled={switching === org.id}
                       >
@@ -240,7 +238,6 @@ export function OrganizationsPage() {
                       <Button
                         size="sm"
                         variant="outline"
-                        className="flex-1 sm:flex-none"
                         onClick={() => navigate(`/organizations/${org.id}/members`)}
                       >
                         <Users className="size-3.5 mr-1" /> {t("organizations.members")}
