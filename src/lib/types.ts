@@ -280,6 +280,15 @@ export type BlogPost = {
   tags: string[]
   author_name: string
   author_user_id: string | null
+  // Author E-E-A-T signals — surfaced as a visible byline + schema.org Person.
+  author_job_title: string
+  author_bio: string
+  author_url: string
+  author_image_url: string
+  // Dedicated 1200×630 social card (falls back to cover image, then site default).
+  og_image_url: string
+  // Topic-cluster / pillar (e.g. "Cash Flow") → schema articleSection + grouping.
+  article_section: string
   status: BlogStatus
   seo_title: string
   seo_description: string
@@ -289,5 +298,9 @@ export type BlogPost = {
   reading_time_minutes?: number
 }
 
-// Lightweight shape returned by the public list endpoint (no `content`).
-export type BlogPostSummary = Omit<BlogPost, "content" | "author_user_id" | "seo_title" | "seo_description">
+// Lightweight shape returned by the public list endpoint (no `content`, no SEO
+// overrides, no long-form author bio).
+export type BlogPostSummary = Omit<
+  BlogPost,
+  "content" | "author_user_id" | "seo_title" | "seo_description" | "author_bio"
+>

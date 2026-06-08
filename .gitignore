@@ -14,6 +14,10 @@ dist
 dist-ssr
 *.local
 
+# Build artifact: the SSR HTML template, copied from dist/index.html on build
+# (see vite.config.ts ssrTemplatePlugin) and bundled into the api/ssr function.
+api/_ssr/index-template.html
+
 # Editor directories and files
 .vscode/*
 .claude/scheduled_tasks.*

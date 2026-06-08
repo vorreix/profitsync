@@ -1,4 +1,5 @@
 import path from "path"
+import { copyFileSync, existsSync, mkdirSync } from "node:fs"
 import { config as loadDotenv } from "dotenv"
 import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
@@ -79,9 +80,28 @@ function localApiPlugin() {
   }
 }
 
+// After a production build, copy the final dist/index.html (with hash-busted
+// asset references and the PWA transforms already applied) to a path the SSR
+// function bundles via vercel.json `functions.includeFiles`. api/ssr.ts reads
+// this template at runtime and injects per-page <head> + content into its
+// sentinels. Build-only; in dev the public pages are served by Vite directly.
+function ssrTemplatePlugin() {
+  return {
+    name: "profitsync-ssr-template",
+    apply: "build" as const,
+    closeBundle() {
+      const src = path.resolve(__dirname, "dist/index.html")
+      if (!existsSync(src)) return
+      const destDir = path.resolve(__dirname, "api/_ssr")
+      if (!existsSync(destDir)) mkdirSync(destDir, { recursive: true })
+      copyFileSync(src, path.join(destDir, "index-template.html"))
+    },
+  }
+}
+
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [localApiPlugin(), react(), tailwindcss(), buildPwaPlugin()],
+  plugins: [localApiPlugin(), react(), tailwindcss(), buildPwaPlugin(), ssrTemplatePlugin()],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),

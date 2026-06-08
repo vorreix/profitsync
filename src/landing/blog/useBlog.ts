@@ -22,6 +22,13 @@ export type BlogArticle = BlogSummary & {
   content: string
   seo_title: string
   seo_description: string
+  // Author E-E-A-T + social fields (returned only by the single-post endpoint).
+  author_job_title: string
+  author_bio: string
+  author_url: string
+  author_image_url: string
+  og_image_url: string
+  article_section: string
 }
 
 export type BlogListResponse = {
