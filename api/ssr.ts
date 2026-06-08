@@ -1,11 +1,25 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import fs from "node:fs"
 import path from "node:path"
+import { createRequire } from "node:module"
 import { and, desc, eq, sql } from "drizzle-orm"
 import { db } from "../src/lib/db/index.js"
 import { blogPosts } from "../src/lib/db/schema.js"
 import { isSafeImageUrl, wordCount, extractFaq } from "../src/lib/blog.js"
-import landingEn from "../src/landing/i18n/locales/en.json"
+// Landing-page copy for the SSR'd marketing pages.
+//
+// Loaded via createRequire (a CommonJS JSON require) rather than an ESM JSON import.
+// The API is compiled by `tsc` to UNBUNDLED ESM and run directly by Node in
+// production, where a bare `import x from "./x.json"` throws at module load
+// (TypeError ERR_IMPORT_ATTRIBUTE_MISSING — Node ESM requires an import attribute),
+// and `import … with { type: "json" }` is itself runtime/Node-version-dependent.
+// That load-time crash took down EVERY SSR route (/, /blog, the legal pages,
+// sitemap.xml, robots.txt, llms.txt → 500 FUNCTION_INVOCATION_FAILED). A CommonJS
+// `require()` of a .json has no attribute and works on every Node version. The
+// `import type` is erased at compile time (no runtime import), so it still gives us
+// the JSON's shape for type-safety without re-introducing the crash.
+import type LandingCopy from "../src/landing/i18n/locales/en.json"
+const landingEn = createRequire(import.meta.url)("../src/landing/i18n/locales/en.json") as typeof LandingCopy
 import {
   ORIGIN,
   SITE_NAME,
