@@ -144,7 +144,7 @@ PRs are opened from the `pull/new/<branch>` URL GitHub prints on push (recorded 
 | 02 | `feat/admin-billing-02-payment-failed` | Record payment failures in the DB: webhook `payment.failed` → `uncollectible` invoice + `past_due` sub. Unit test the mapping. | ✅ committed |
 | 03 | `feat/admin-billing-03-bulk-delete-orgs` | Multi‑select + bulk delete on `/admin/organizations`. Delete cancels each org's Dodo sub + cleans orphaned clients/quotations + cascades the rest. | ✅ committed |
 | 04 | `feat/admin-billing-04-bulk-subscriptions` | Multi‑select + bulk actions on `/admin/subscriptions` (Downgrade→Free w/ Dodo, Cancel on Dodo, Sync from Dodo) + per‑row Sync + add `pending` to filters. | ✅ committed |
-| 05 | `feat/admin-billing-05-docs-skill` | The detailed explainer doc + the `subscription-system` AI skill. Final tracker + memory update. | ⏳ pending |
+| 05 | `feat/admin-billing-05-docs-skill` | The detailed explainer doc + the `subscription-system` AI skill. Final tracker + memory update. | ✅ committed |
 
 ---
 
@@ -196,7 +196,7 @@ PRs are opened from the `pull/new/<branch>` URL GitHub prints on push (recorded 
 ### 05 — Docs + skill
 - `docs/billing/SUBSCRIPTIONS_AND_PAYMENTS.md` (the human explainer) and
   `.claude/skills/subscription-system/SKILL.md` (the AI skill). Final tracker + memory.
-- **Status:** ⏳
+- **Status:** ✅
 
 ---
 
@@ -234,3 +234,36 @@ PRs are opened from the `pull/new/<branch>` URL GitHub prints on push (recorded 
   status filter + editor. Verified: a handler‑level integration test (auth guard
   mocked) on the dev DB — downgrade_free → clean free, cancel_dodo → cancelled (plan
   kept), sync → no‑op for stub, unknown action → 400; self‑cleaned.
+- **05** — `docs/billing/SUBSCRIPTIONS_AND_PAYMENTS.md` (full human explainer) +
+  `.claude/skills/subscription-system/SKILL.md` (AI operating guide). Tracker finalized.
+
+---
+
+## 7. Final summary
+
+**The owner's questions, answered:**
+- The admin Upgrade/Downgrade buttons did **not** touch Dodo — pure DB writes. They now
+  do: downgrade/cancel **cancel on Dodo** and clear the mirror; upgrade is a documented
+  comp grant (admins can't enter a card).
+- The "still shows Renews / Dodo still active after downgrade" bug is **fixed** (clear
+  `current_period_end` + immediate Dodo cancel).
+- Every status is documented in `SUBSCRIPTIONS_AND_PAYMENTS.md` §3.
+
+**What shipped (6 stacked branches off `dev`, each pushed):**
+`00` plan · `01` Dodo‑aware admin plan changes (+stale‑renew fix) · `02` payment.failed
+→ uncollectible+past_due · `03` org multi‑select bulk delete (cancel Dodo + orphan
+cleanup; single delete fixed too) · `04` subscription multi‑select bulk actions
+(downgrade/cancel/sync) + per‑row sync + `pending` · `05` docs + skill.
+
+**Verification:** 116 unit tests green on every branch; new pure logic unit‑tested
+(`admin-billing.test.ts`). DB‑touching behaviour proven with throwaway integration tests
+against the live dev DB (free‑reset clears the renew date; signed `payment.failed` →
+uncollectible+past_due; org teardown removes all children; the three bulk subscription
+actions) — each self‑cleaned, none added to the DB‑free gate.
+
+**Honestly deferred:** live admin‑panel browser verification (needs an app‑admin Clerk
+session). The admin UI is typecheck‑clean and mirrors the existing `TransactionsPage`
+multi‑select pattern; the risky backend is fully verified.
+
+**No schema migration was needed** — everything maps onto existing columns/enums. Local
+`db:migrate` confirmed the schema is current.
