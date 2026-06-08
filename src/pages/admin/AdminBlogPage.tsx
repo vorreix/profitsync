@@ -55,8 +55,14 @@ type FormState = {
   excerpt: string
   content: string
   cover_image_url: string
+  og_image_url: string
   tags: string
+  article_section: string
   author_name: string
+  author_job_title: string
+  author_bio: string
+  author_url: string
+  author_image_url: string
   status: BlogStatus
   seo_title: string
   seo_description: string
@@ -68,8 +74,14 @@ const EMPTY_FORM: FormState = {
   excerpt: "",
   content: "",
   cover_image_url: "",
+  og_image_url: "",
   tags: "",
+  article_section: "",
   author_name: "ProfitSync Team",
+  author_job_title: "",
+  author_bio: "",
+  author_url: "",
+  author_image_url: "",
   status: "draft",
   seo_title: "",
   seo_description: "",
@@ -141,8 +153,14 @@ export function AdminBlogPage() {
       excerpt: post.excerpt,
       content: post.content,
       cover_image_url: post.cover_image_url,
+      og_image_url: post.og_image_url ?? "",
       tags: (post.tags ?? []).join(", "),
+      article_section: post.article_section ?? "",
       author_name: post.author_name,
+      author_job_title: post.author_job_title ?? "",
+      author_bio: post.author_bio ?? "",
+      author_url: post.author_url ?? "",
+      author_image_url: post.author_image_url ?? "",
       status: post.status,
       seo_title: post.seo_title,
       seo_description: post.seo_description,
@@ -168,8 +186,14 @@ export function AdminBlogPage() {
         excerpt: form.excerpt,
         content: form.content,
         cover_image_url: form.cover_image_url,
+        og_image_url: form.og_image_url,
         tags: form.tags.split(",").map((t) => t.trim()).filter(Boolean),
+        article_section: form.article_section,
         author_name: form.author_name,
+        author_job_title: form.author_job_title,
+        author_bio: form.author_bio,
+        author_url: form.author_url,
+        author_image_url: form.author_image_url,
         status: form.status,
         seo_title: form.seo_title,
         seo_description: form.seo_description,
@@ -405,6 +429,77 @@ export function AdminBlogPage() {
                   onChange={(e) => update({ author_name: e.target.value })}
                   placeholder="ProfitSync Team"
                 />
+              </div>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="blog-og">Social image URL (1200×630)</Label>
+                <Input
+                  id="blog-og"
+                  value={form.og_image_url}
+                  onChange={(e) => update({ og_image_url: e.target.value })}
+                  placeholder="https://…/social-card.png"
+                />
+                <p className="text-xs text-muted-foreground">Used for link previews. Falls back to the cover image.</p>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="blog-section">Topic / pillar</Label>
+                <Input
+                  id="blog-section"
+                  value={form.article_section}
+                  onChange={(e) => update({ article_section: e.target.value })}
+                  placeholder="Cash Flow"
+                />
+                <p className="text-xs text-muted-foreground">Used for grouping &amp; schema articleSection.</p>
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-border p-4">
+              <p className="text-sm font-medium">Author details (E-E-A-T)</p>
+              <p className="mb-3 text-xs text-muted-foreground">
+                A credible, externally-linked author improves search ranking and how AI engines cite the post.
+              </p>
+              <div className="space-y-3">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="blog-author-title">Author title</Label>
+                    <Input
+                      id="blog-author-title"
+                      value={form.author_job_title}
+                      onChange={(e) => update({ author_job_title: e.target.value })}
+                      placeholder="Founder, ProfitSync"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="blog-author-url">Author profile URL</Label>
+                    <Input
+                      id="blog-author-url"
+                      value={form.author_url}
+                      onChange={(e) => update({ author_url: e.target.value })}
+                      placeholder="https://www.linkedin.com/in/…"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="blog-author-image">Author photo URL</Label>
+                  <Input
+                    id="blog-author-image"
+                    value={form.author_image_url}
+                    onChange={(e) => update({ author_image_url: e.target.value })}
+                    placeholder="https://…/headshot.jpg"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="blog-author-bio">Author bio</Label>
+                  <Textarea
+                    id="blog-author-bio"
+                    value={form.author_bio}
+                    onChange={(e) => update({ author_bio: e.target.value })}
+                    placeholder="One or two sentences on the author's relevant experience."
+                    className="min-h-[56px]"
+                  />
+                </div>
               </div>
             </div>
 

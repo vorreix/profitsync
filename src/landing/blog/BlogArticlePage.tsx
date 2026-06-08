@@ -7,9 +7,15 @@ import { Container } from "../components/Container"
 import { Button } from "../components/Button"
 import { SmartLink } from "../components/SmartLink"
 import { Markdown } from "@/components/Markdown"
+import { isSafeImageUrl } from "@/lib/blog"
 import { BlogShell } from "./BlogShell"
 import { useBlogPost, formatBlogDate } from "./useBlog"
 import { useSeo } from "./useSeo"
+
+/** Narrow an optional string to an absolute http(s) URL (author profile links). */
+function isExternalUrl(url: string | undefined): url is string {
+  return !!url && /^https?:\/\//i.test(url)
+}
 
 function Article() {
   const { slug } = useParams<{ slug: string }>()
@@ -19,7 +25,7 @@ function Article() {
   useSeo({
     title: post ? `${post.seo_title || post.title} — ProfitSync Blog` : undefined,
     description: post ? post.seo_description || post.excerpt || undefined : undefined,
-    image: post?.cover_image_url || undefined,
+    image: post?.og_image_url || post?.cover_image_url || undefined,
     canonicalPath: slug ? `/blog/${slug}` : undefined,
     type: "article",
   })
@@ -123,6 +129,45 @@ function Article() {
       <Container className="max-w-3xl">
         <Markdown content={post.content} className="mt-8" />
       </Container>
+
+      {/* About the author — E-E-A-T signal (matches the server-rendered byline) */}
+      {post.author_name && (post.author_bio || post.author_job_title) && (
+        <Container className="max-w-3xl">
+          <div className="mt-12 flex items-start gap-4 rounded-2xl border border-border bg-muted/30 p-5">
+            {post.author_image_url && isSafeImageUrl(post.author_image_url) ? (
+              <img
+                src={post.author_image_url}
+                alt=""
+                className="size-12 shrink-0 rounded-full border border-border object-cover"
+              />
+            ) : (
+              <span className="flex size-12 shrink-0 items-center justify-center rounded-full border border-border bg-background text-sm font-semibold text-muted-foreground">
+                {post.author_name.charAt(0).toUpperCase()}
+              </span>
+            )}
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-foreground">
+                {isExternalUrl(post.author_url) ? (
+                  <a
+                    href={post.author_url}
+                    target="_blank"
+                    rel="author noopener noreferrer"
+                    className="underline decoration-primary/40 underline-offset-4 hover:decoration-primary"
+                  >
+                    {post.author_name}
+                  </a>
+                ) : (
+                  post.author_name
+                )}
+                {post.author_job_title && (
+                  <span className="font-normal text-muted-foreground"> · {post.author_job_title}</span>
+                )}
+              </p>
+              {post.author_bio && <p className="mt-1 text-sm text-muted-foreground">{post.author_bio}</p>}
+            </div>
+          </div>
+        </Container>
+      )}
 
       {/* End-of-article CTA */}
       <Container className="max-w-3xl">
