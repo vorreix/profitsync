@@ -78,6 +78,7 @@ import adminOrganizations from "./_routes/admin/organizations.js"
 import adminOrgsBulkDelete from "./_routes/admin/organizations/bulk-delete.js"
 import adminOrgDetail from "./_routes/admin/org-detail.js"
 import adminSubscriptions from "./_routes/admin/subscriptions.js"
+import adminSubscriptionsActions from "./_routes/admin/subscriptions/actions.js"
 import adminInvoices from "./_routes/admin/invoices.js"
 import adminInvitations from "./_routes/admin/invitations.js"
 import adminPlans from "./_routes/admin/plans.js"
@@ -177,6 +178,7 @@ const routes: RoutePattern<ApiHandler>[] = [
   { segments: ["admin", "organizations", "bulk-delete"], handler: adminOrgsBulkDelete },
   { segments: ["admin", "org-detail"], handler: adminOrgDetail },
   { segments: ["admin", "subscriptions"], handler: adminSubscriptions },
+  { segments: ["admin", "subscriptions", "actions"], handler: adminSubscriptionsActions },
   { segments: ["admin", "invoices"], handler: adminInvoices },
   { segments: ["admin", "invitations"], handler: adminInvitations },
   { segments: ["admin", "plans"], handler: adminPlans },
