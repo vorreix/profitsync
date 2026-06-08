@@ -93,7 +93,8 @@
     "viewAll": "View all",
     "cancel": "Cancel",
     "save": "Save Changes",
-    "saving": "Saving..."
+    "saving": "Saving...",
+    "amountTooLarge": "Amount is too large"
   },
   "audit": {
     "history": "History",

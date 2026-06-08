@@ -5,6 +5,7 @@ import { transactions, wealthAccounts } from "../../../src/lib/db/schema.js"
 import { canWrite, ensureDefaultClient, requireAuth } from "../../_lib/auth.js"
 import { logAudit } from "../../_lib/audit.js"
 import { type BankDetailInput, pickBankDetails, resolveLogoColumns } from "../../_lib/bank-brand.js"
+import { amountExceedsLimit } from "../../../src/lib/money.js"
 
 const MAX_BANK_ACCOUNTS = 5
 
@@ -165,6 +166,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const opening = money(openingBalance)
+    if (amountExceedsLimit(opening)) return res.status(400).json({ error: "Amount is too large" })
     // Bank-detail fields apply to bank accounts only (Cash in Hand has none).
     const details = type === "bank" ? pickBankDetails(body) : null
     const logo = details ? await resolveLogoColumns(details.brandDomain, details.logoUrl) : null

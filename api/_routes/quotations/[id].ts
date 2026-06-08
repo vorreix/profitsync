@@ -5,6 +5,7 @@ import { quotations } from "../../../src/lib/db/schema.js"
 import { canDelete, canWrite, requireAuth, requireBusinessFeature } from "../../_lib/auth.js"
 import { checkNoteLength } from "../../_lib/quota.js"
 import { diffFields, logAudit } from "../../_lib/audit.js"
+import { amountExceedsLimit } from "../../../src/lib/money.js"
 
 const VALID_STATUSES = ["draft", "sent", "accepted", "rejected"]
 
@@ -35,6 +36,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (status !== undefined && !VALID_STATUSES.includes(status)) {
       return res.status(400).json({ error: "status must be draft, sent, accepted, or rejected" })
     }
+    if (amount !== undefined && amountExceedsLimit(amount)) return res.status(400).json({ error: "Amount is too large" })
     if (notes !== undefined) {
       const noteCheck = await checkNoteLength(orgId, notes)
       if (!noteCheck.allowed) return res.status(402).json(noteCheck)

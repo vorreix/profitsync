@@ -88,7 +88,8 @@
     "viewAll": "Alle anzeigen",
     "cancel": "Abbrechen",
     "save": "Änderungen speichern",
-    "saving": "Speichern..."
+    "saving": "Speichern...",
+    "amountTooLarge": "Betrag ist zu groß"
   },
   "dashboard": {
     "title": "Dashboard",
