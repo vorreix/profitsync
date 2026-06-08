@@ -7,6 +7,7 @@ import { canWrite, ensureDefaultClient, isPersonalAccount, requireAuth } from ".
 import { getOrgPlan } from "../../_lib/quota.js"
 import { logAudit } from "../../_lib/audit.js"
 import { balanceDelta } from "../../../src/lib/wealth-ledger.js"
+import { amountExceedsLimit } from "../../../src/lib/money.js"
 
 type AllocationInput = { wealth_account_id?: string; account_id?: string; amount?: number | string }
 
@@ -49,6 +50,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     .filter((a) => a.accountId && !isNaN(a.amount) && a.amount > 0)
   if (legs.length === 0) {
     return res.status(400).json({ error: "At least one allocation with an account and a positive amount is required" })
+  }
+  if (legs.some((leg) => amountExceedsLimit(leg.amount))) {
+    return res.status(400).json({ error: "Amount is too large" })
   }
 
   // Validate every referenced account is an active, org-scoped account.

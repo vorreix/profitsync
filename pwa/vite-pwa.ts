@@ -8,31 +8,41 @@ import { NAVIGATE_FALLBACK_DENYLIST, PRECACHE_GLOB_IGNORES } from "./sw-policy"
 // src/lib/pwa/register-sw.ts and apply updates silently there without reloading the
 // page — so an in-progress form is never interrupted.
 //
-// skipWaiting + clientsClaim are ON so a freshly deployed service worker activates
-// immediately and takes over already-open tabs, instead of sitting in "waiting" until
-// every tab is closed. This is what makes installed PWAs auto-update with no user
-// action. It is safe here because:
-//   • the SW only precaches static, content-hashed assets (never API responses);
-//   • new hashed chunks load lazily on the next navigation, so the running page keeps
-//     working on its already-loaded chunks until then;
-//   • register-sw.ts has a `vite:preloadError` guard that does a single reload if a
-//     post-deploy navigation references a chunk that was cleaned up.
-// Existing installs converge to the new SW on their next visit / hourly update check.
+// skipWaiting + clientsClaim are OFF — this is the fix for the post-deploy "white
+// screen requiring multiple reloads" bug.
+//
+//   Previously (ON), a freshly deployed SW activated and claimed already-open tabs
+//   BEFORE its new precache was ready, while cleanupOutdatedCaches deleted the OLD
+//   hashed chunks. The running page (still the old app) then lazy-loaded an old chunk
+//   that had just been deleted and no longer existed on the server → 404 → blank
+//   screen the reload guards couldn't escape (the SW kept serving the stale shell).
+//
+//   With both OFF, a new SW INSTALLS but WAITS. The old SW keeps serving its own
+//   intact precache, so every open tab stays fully consistent (old shell + old chunks)
+//   — no 404, no white screen, no interrupted form. The new SW activates only at a
+//   clean boundary: the next cold load when no old tab is controlling, where shell and
+//   chunks are guaranteed to match. register-sw.ts must therefore NOT force-activate it
+//   (no updateSW on onNeedRefresh); it only keeps a bounded cache-bust reload as a
+//   defensive net for any residual stale-HTTP-cache case.
+//
+//   Tradeoff: an already-open tab keeps running the version it loaded with until its
+//   next cold start (or the hourly update check + reopen). Acceptable: no interruption,
+//   and never a white screen.
 export function buildPwaPlugin() {
   return VitePWA({
     registerType: "prompt",
     injectRegister: null,
     strategies: "generateSW",
     manifest,
-    includeAssets: ["favicon.png", "apple-touch-icon-180x180.png", "maskable-icon-512x512.png"],
+    includeAssets: ["favicon.ico", "favicon-96x96.png", "apple-touch-icon.png"],
     workbox: {
       globPatterns: ["**/*.{js,css,html,svg,png,ico,woff,woff2}"],
       globIgnores: PRECACHE_GLOB_IGNORES,
       navigateFallback: "/index.html",
       navigateFallbackDenylist: NAVIGATE_FALLBACK_DENYLIST,
       cleanupOutdatedCaches: true,
-      clientsClaim: true,
-      skipWaiting: true,
+      clientsClaim: false,
+      skipWaiting: false,
       maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
     },
     devOptions: {

@@ -88,7 +88,8 @@
     "viewAll": "Vedi tutto",
     "cancel": "Annulla",
     "save": "Salva modifiche",
-    "saving": "Salvataggio..."
+    "saving": "Salvataggio...",
+    "amountTooLarge": "Importo troppo elevato"
   },
   "dashboard": {
     "title": "Dashboard",

@@ -1,10 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from "react"
 
 import { AppErrorFallback } from "@/components/AppErrorFallback"
-
-// Shared with index.html's inline recovery script + src/lib/pwa/register-sw.ts so
-// the three recovery paths reload at most once between them.
-const CHUNK_RELOAD_KEY = "profitsync-chunk-reload"
+import { clearChunkReloadGuard, reloadWithCacheBust } from "@/lib/pwa/chunk-recovery"
 
 // A failed dynamic import / stale chunk after a deploy throws one of these.
 function isChunkLoadError(error: unknown): boolean {
@@ -36,30 +33,20 @@ export class AppErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    if (isChunkLoadError(error)) {
-      let alreadyReloaded = false
-      try {
-        alreadyReloaded = !!sessionStorage.getItem(CHUNK_RELOAD_KEY)
-        if (!alreadyReloaded) sessionStorage.setItem(CHUNK_RELOAD_KEY, "1")
-      } catch {
-        /* private mode — fall through to the manual card */
-      }
-      if (!alreadyReloaded) {
-        window.location.reload()
-        return
-      }
-    }
+    // A stale chunk after a deploy: the shared bounded cache-bust reload recovers
+    // it (cooperating with the other recovery paths via one sessionStorage budget).
+    // If the budget is exhausted it no-ops and the fallback card (already rendered
+    // via getDerivedStateFromError) stays up.
+    if (isChunkLoadError(error) && reloadWithCacheBust()) return
     // Keep a console trail for Sentry/analytics-free debugging.
     console.error("[AppErrorBoundary]", error, info.componentStack)
   }
 
   handleReload = () => {
-    try {
-      sessionStorage.removeItem(CHUNK_RELOAD_KEY)
-    } catch {
-      /* ignore */
-    }
-    window.location.reload()
+    // Manual "reload" button: reset the retry budget, then do a fresh cache-busted
+    // load to bypass any stale HTTP cache.
+    clearChunkReloadGuard()
+    reloadWithCacheBust()
   }
 
   render() {

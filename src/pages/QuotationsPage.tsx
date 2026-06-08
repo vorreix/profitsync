@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
 import { apiGet, apiPost, apiPatch, apiDelete } from "@/lib/api"
+import { amountExceedsLimit } from "@/lib/money"
 import type { Client, Quotation, QuotationAttachment } from "@/lib/types"
 import { useCurrency } from "@/lib/currency-context"
 import { useOrg } from "@/lib/org-context"
@@ -416,6 +417,7 @@ export function QuotationsPage() {
 
   async function handleCreate() {
     if (!validate(form)) return
+    if (amountExceedsLimit(form.amount)) { toast.error(t("common.amountTooLarge")); return }
     setSaving(true)
     try {
       const token = await getToken()
@@ -441,6 +443,7 @@ export function QuotationsPage() {
   async function handleEdit() {
     if (!editTarget) return
     if (!validate(form)) return
+    if (amountExceedsLimit(form.amount)) { toast.error(t("common.amountTooLarge")); return }
     setSaving(true)
     try {
       const token = await getToken()

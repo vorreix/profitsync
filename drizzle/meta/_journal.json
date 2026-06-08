@@ -225,6 +225,13 @@
       "when": 1780872913818,
       "tag": "0031_peaceful_nico_minoru",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1780943844193,
+      "tag": "0032_overconfident_secret_warriors",
+      "breakpoints": true
     }
   ]
 }

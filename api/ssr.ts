@@ -5,7 +5,7 @@ import { and, desc, eq, sql } from "drizzle-orm"
 import { db } from "../src/lib/db/index.js"
 import { blogPosts } from "../src/lib/db/schema.js"
 import { isSafeImageUrl, wordCount, extractFaq } from "../src/lib/blog.js"
-import landingEn from "../src/landing/i18n/locales/en.json"
+import landingEn from "../src/landing/i18n/locales/en.json" with { type: "json" }
 import {
   ORIGIN,
   SITE_NAME,

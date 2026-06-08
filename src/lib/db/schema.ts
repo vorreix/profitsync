@@ -109,8 +109,8 @@ export const wealthAccounts = pgTable("wealth_accounts", {
   type: text("type").notNull(), // bank | cash
   bankName: text("bank_name").notNull().default(""),
   nickname: text("nickname").notNull().default(""),
-  openingBalance: numeric("opening_balance", { precision: 12, scale: 2 }).notNull().default("0"),
-  currentBalance: numeric("current_balance", { precision: 12, scale: 2 }).notNull().default("0"),
+  openingBalance: numeric("opening_balance", { precision: 20, scale: 2 }).notNull().default("0"),
+  currentBalance: numeric("current_balance", { precision: 20, scale: 2 }).notNull().default("0"),
   icon: text("icon").notNull().default("bank"),
   // Bank brand: the logo source URL (rendered) + a base64 copy stored for
   // resilience ("logo stored on backend"); `brandDomain` is the resolved domain
@@ -175,7 +175,7 @@ export const transactions = pgTable("transactions", {
   // summary, and analytics (they net to zero and aren't P&L).
   kind: text("kind").notNull().default("standard"), // standard | transfer
   type: text("type").notNull(),
-  amount: numeric("amount", { precision: 12, scale: 2 }).notNull().default("0"),
+  amount: numeric("amount", { precision: 20, scale: 2 }).notNull().default("0"),
   description: text("description").default(""),
   category: text("category").default(""),
   date: date("date").notNull().defaultNow(),
@@ -200,7 +200,7 @@ export const quotations = pgTable("quotations", {
   company: text("company").default(""),
   email: text("email").default(""),
   phone: text("phone").default(""),
-  amount: numeric("amount", { precision: 12, scale: 2 }).default("0"),
+  amount: numeric("amount", { precision: 20, scale: 2 }).default("0"),
   // User-provided quotation date (e.g. when it was issued). Defaults to today.
   date: date("date").notNull().defaultNow(),
   status: text("status").default("draft"), // draft | sent | accepted | rejected
@@ -445,7 +445,7 @@ export const invoices = pgTable("invoices", {
   id: uuid("id").primaryKey().defaultRandom(),
   subscriptionId: uuid("subscription_id").references(() => subscriptions.id, { onDelete: "set null" }),
   organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
-  amount: numeric("amount", { precision: 12, scale: 2 }).notNull().default("0"),
+  amount: numeric("amount", { precision: 20, scale: 2 }).notNull().default("0"),
   currency: text("currency").notNull().default("USD"),
   status: text("status").notNull().default("draft"), // draft | open | paid | uncollectible | void | refunded
   provider: text("provider"),
