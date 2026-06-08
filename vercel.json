@@ -1,7 +1,7 @@
 {
   "functions": {
     "api/ssr.ts": {
-      "includeFiles": "api/_ssr/index-template.html"
+      "includeFiles": "{api/_ssr/index-template.html,src/landing/i18n/locales/en.json}"
     }
   },
   "rewrites": [
