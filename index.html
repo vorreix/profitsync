@@ -3,8 +3,13 @@
 
 <head>
   <meta charset="UTF-8" />
-  <link rel="icon" type="image/png" href="/favicon.png" />
-  <link rel="apple-touch-icon" href="/apple-touch-icon-180x180.png" />
+  <!-- Brand favicon set (realfavicongenerator). /favicon.ico (sizes="any") is the
+       path Google fetches first for the search-result icon; the 96px PNG is the
+       higher-res modern fallback. The 1MB favicon.svg is intentionally NOT linked
+       (perf), and the 192/512 app icons live in the PWA manifest. -->
+  <link rel="icon" href="/favicon.ico" sizes="any" />
+  <link rel="icon" type="image/png" href="/favicon-96x96.png" sizes="96x96" />
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
   <meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)" />
@@ -58,30 +63,56 @@
     stale app shell (from the SW precache or HTTP cache) that points at hashed
     chunks which no longer exist. The *entry* module script failing happens
     before React mounts, so the in-app error boundary can't catch it — this
-    dependency-free inline script can. It reloads ONCE (sessionStorage-guarded)
-    so the fresh index.html + current chunks are fetched. Shares its guard key
-    with src/lib/pwa/register-sw.ts so the two recovery paths never double-reload.
+    dependency-free inline script can. It reloads up to 3 times with exponential
+    backoff (0ms, 500ms, 1500ms), using a cache-bust query param to bypass any stale
+    SW precache and force Vercel to serve fresh index.html (max-age=0 must-revalidate).
+    Shares its guard key with src/lib/pwa/register-sw.ts so recovery paths cooperate.
   -->
   <script>
     (function () {
       var KEY = "profitsync-chunk-reload";
+      var MAX_ATTEMPTS = 3;
+      var BACKOFF_MS = [0, 500, 1500];
       function isAssetLoadError(t) {
         if (!t || (t.tagName !== "SCRIPT" && t.tagName !== "LINK")) return false;
         var url = t.src || t.href || "";
         return url.indexOf("/assets/") !== -1;
       }
+      function reloadWithCacheBust() {
+        var attemptCount = 0;
+        try {
+          var stored = sessionStorage.getItem(KEY);
+          attemptCount = stored ? parseInt(stored, 10) : 0;
+        } catch (_) { /* private mode */ }
+        if (attemptCount >= MAX_ATTEMPTS) return;
+        attemptCount += 1;
+        try {
+          sessionStorage.setItem(KEY, String(attemptCount));
+        } catch (_) { /* private mode */ }
+        var backoffMs = BACKOFF_MS[attemptCount - 1] || 0;
+        var doReload = function () {
+          // Strip any prior bust param so retries never accumulate, then replace
+          // (no junk history entry). Bypasses stale HTTP cache for a fresh shell.
+          var params = new URLSearchParams(window.location.search);
+          params.delete("_cache_bust");
+          params.set("_cache_bust", String(Date.now()));
+          var query = params.toString();
+          window.location.replace(window.location.pathname + (query ? "?" + query : "") + window.location.hash);
+        };
+        if (backoffMs > 0) {
+          window.setTimeout(doReload, backoffMs);
+        } else {
+          doReload();
+        }
+      }
       window.addEventListener("error", function (e) {
         if (!isAssetLoadError(e.target)) return;
-        try {
-          if (sessionStorage.getItem(KEY)) return;
-          sessionStorage.setItem(KEY, "1");
-        } catch (_) { /* private mode */ }
-        window.location.reload();
+        reloadWithCacheBust();
       }, true);
       window.addEventListener("load", function () {
         window.setTimeout(function () {
           try { sessionStorage.removeItem(KEY); } catch (_) { /* ignore */ }
-        }, 10000);
+        }, 30000); // Extended from 10s to 30s to allow multiple retries with backoff
       });
     })();
   </script>
