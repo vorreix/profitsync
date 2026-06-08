@@ -4,6 +4,7 @@ import { db } from "../../src/lib/db/index.js"
 import { invoices, subscriptions } from "../../src/lib/db/schema.js"
 import { verifyWebhookSignature, type DodoEnv, type DodoScheduledChange } from "../_lib/dodo.js"
 import { resolveScheduledChange } from "../_lib/billing-sync.js"
+import { invoiceStatusForPayment } from "../_lib/invoice-map.js"
 import { creditReferralOnPaid } from "../_lib/referral.js"
 
 export const config = {
@@ -173,6 +174,57 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         // Credit a pending referral for this org's owner (idempotent: only a
         // signed_up referral becomes paid, so renewals / retries don't re-credit).
         await creditReferralOnPaid(sub.organizationId, (minorAmount ?? 0) / 100, currency)
+      }
+    } catch {
+      // Non-fatal: invoice bookkeeping failure must not 500 the webhook.
+    }
+  }
+
+  // ── Payment failed → record an uncollectible invoice + flag the sub past_due ──
+  // A failed renewal charge would otherwise be invisible until the next reconcile.
+  // We persist it immediately so the admin/subscriptions + billing pages reflect it.
+  if (event === "payment.failed" && data.payload_type === "Payment") {
+    try {
+      const subId = data.subscription_id as string | undefined
+      const [sub] = subId
+        ? await db.select().from(subscriptions).where(eq(subscriptions.providerSubscriptionId, subId))
+        : []
+      if (sub) {
+        const paymentId = data.payment_id as string | undefined
+        const minorAmount = (data.total_amount ?? data.settlement_amount ?? data.amount) as number | undefined
+        const currency = (data.currency ?? data.settlement_currency ?? "USD") as string
+        const failedAt = data.created_at ? new Date(data.created_at as string) : new Date()
+        const baseValues = {
+          organizationId: sub.organizationId,
+          subscriptionId: sub.id,
+          amount: String((minorAmount ?? 0) / 100),
+          currency,
+          status: invoiceStatusForPayment("failed"), // → "uncollectible"
+          provider: "dodo",
+          providerInvoiceId: paymentId ?? null,
+          issuedAt: failedAt,
+          paidAt: null, // a failed charge is never paid
+        }
+        // Same idempotent upsert as the succeeded path: a webhook retry can't create
+        // a duplicate invoice for the same payment.
+        if (paymentId) {
+          await db
+            .insert(invoices)
+            .values(baseValues)
+            .onConflictDoUpdate({ target: invoices.providerInvoiceId, set: baseValues })
+        } else {
+          await db.insert(invoices).values(baseValues)
+        }
+        // A failed renewal → mark a currently-active subscription past_due so the UI
+        // and quota gates reflect the dunning state. Dodo usually also follows up with
+        // subscription.on_hold/failed (handled above); doing it here too is just more
+        // timely and idempotent. Leave pending/cancelled rows untouched.
+        if (sub.status === "active") {
+          await db
+            .update(subscriptions)
+            .set({ status: "past_due", updatedAt: new Date() })
+            .where(eq(subscriptions.id, sub.id))
+        }
       }
     } catch {
       // Non-fatal: invoice bookkeeping failure must not 500 the webhook.

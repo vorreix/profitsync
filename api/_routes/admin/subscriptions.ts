@@ -3,11 +3,14 @@ import { and, count, desc, eq, ilike, sql } from "drizzle-orm"
 import { db, serialize } from "../../../src/lib/db/index.js"
 import { organizations, subscriptions, userProfiles } from "../../../src/lib/db/schema.js"
 import { requireAdminCap } from "../../_lib/admin.js"
+import { cancelledNowFields, FREE_RESET_FIELDS, stopDodoBilling } from "../../_lib/admin-billing.js"
 
 const PAGE_SIZE = 30
 // free + the current paid tiers (personal/business). "premium" kept for legacy rows.
 const VALID_PLANS = ["free", "personal", "business", "premium"]
-const VALID_STATUSES = ["active", "past_due", "cancelled", "trialing"]
+// "pending" = checkout created, not yet paid (set by create-subscription). It's a
+// real status, so it's filterable/settable here alongside the rest.
+const VALID_STATUSES = ["pending", "active", "past_due", "cancelled", "trialing"]
 const VALID_CYCLES = ["monthly", "yearly", ""] // empty allowed for free
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -83,17 +86,39 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: "Invalid billing_cycle" })
     }
 
+    const [existing] = await db.select().from(subscriptions).where(eq(subscriptions.id, subscription_id))
+    if (!existing) return res.status(404).json({ error: "Not found" })
+
+    // Downgrading to free / cancelling must also stop billing on Dodo and clear the
+    // stale period+cancel fields, so the row doesn't keep a "Renews on …" date and
+    // Dodo doesn't keep the subscription active. Fail loud on a Dodo error (DB
+    // untouched) rather than silently desyncing the mirror.
+    const goingFree = plan_key === "free"
+    const goingCancelled = status === "cancelled" && !goingFree
+    if (goingFree || goingCancelled) {
+      const stop = await stopDodoBilling(existing)
+      if (stop.provider === "dodo" && !stop.ok) {
+        return res.status(502).json({ error: `Dodo cancel failed: ${stop.error}` })
+      }
+    }
+
+    const manual = {
+      ...(plan_key !== undefined ? { planKey: plan_key } : {}),
+      ...(status !== undefined ? { status } : {}),
+      ...(billing_cycle !== undefined ? { billingCycle: billing_cycle || null } : {}),
+      ...(current_period_end !== undefined
+        ? { currentPeriodEnd: current_period_end ? new Date(current_period_end) : null }
+        : {}),
+    }
+    const patch = goingFree
+      ? { ...FREE_RESET_FIELDS, updatedAt: new Date() }
+      : goingCancelled
+        ? { ...manual, ...cancelledNowFields(new Date()), updatedAt: new Date() }
+        : { ...manual, updatedAt: new Date() }
+
     const [updated] = await db
       .update(subscriptions)
-      .set({
-        ...(plan_key !== undefined ? { planKey: plan_key } : {}),
-        ...(status !== undefined ? { status } : {}),
-        ...(billing_cycle !== undefined ? { billingCycle: billing_cycle || null } : {}),
-        ...(current_period_end !== undefined
-          ? { currentPeriodEnd: current_period_end ? new Date(current_period_end) : null }
-          : {}),
-        updatedAt: new Date(),
-      })
+      .set(patch)
       .where(eq(subscriptions.id, subscription_id))
       .returning()
     if (!updated) return res.status(404).json({ error: "Not found" })

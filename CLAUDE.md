@@ -2,6 +2,29 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Skills — reach for these proactively
+
+A set of skills (plus the Workflow tool) is installed for this repo. **When a task matches one, invoke it BEFORE writing code — don't wait to be asked.** Project-specific skills override generic knowledge. Process skills come first (brainstorm/research → build → review).
+
+| Skill | Reach for it when |
+|---|---|
+| `subscription-system` | **Any** billing/subscription/plan/invoice work — Dodo Payments, webhooks, the `/admin` subscription & organization panels, or touching the `subscriptions`/`invoices`/`plans` tables. Establishes the *Dodo-is-money / DB-is-mirror* model — invoke it **first** so you don't break the sync invariants. |
+| `brainstorming` | Before **any** creative work (new feature, component, behavior change) — explore intent, requirements, and design before implementing. |
+| `ui-ux-pro-max` | Planning, building, reviewing, or improving any UI/UX — styles, color systems, font pairings, layout, accessibility, charts. |
+| `transition-creator` | Adding/polishing animations or transitions (View More, accordions, lists, modals/drawers, hover, page changes) or fixing janky/flickering motion — then verifying it feels seamless in a real browser. |
+| `shadcn` | Working with shadcn/ui components (search + examples). Remember the repo rule: install via `npx shadcn@latest add`, never edit `src/components/ui/` directly. |
+| `work-finetuning` | A large multi-task brief to execute autonomously end-to-end — stacked branches, mobile-first UX, optimistic in-place updates (no full-screen reloads), Playwright verification, the full pre-commit gate, a pushed branch per task. |
+| `deep-research` | A deep, multi-source, fact-checked research report is needed. Narrow scope with 2–3 clarifying questions first if the ask is underspecified. |
+| `code-review` | Review the current diff for correctness bugs + simplification/efficiency cleanups. `--comment` posts inline PR comments, `--fix` applies findings; `ultra` runs a cloud multi-agent review. |
+| `requesting-code-review` | Finishing a task or major feature, or before merging — verify the work actually meets requirements. |
+| `receiving-code-review` | After getting review feedback, before implementing suggestions — verify rather than perform agreement. |
+| `skill-creator` / `writing-skills` | Creating, editing, optimizing, or testing a skill. |
+| `mcp-integration` | Adding or configuring an MCP server (`.mcp.json`, SSE/stdio/HTTP server types). |
+
+**Workflow tool (`/workflow`):** deterministic multi-agent orchestration for large or parallelizable work — fan-out exploration, multi-angle review, migrations across many files. Ultracode is on for this repo, so prefer orchestrating substantive tasks through a workflow; keep trivial/conversational turns solo.
+
+**Session commands the user types (suggest them when useful — the agent cannot run these):** `/skills` (list installed skills), `/clear` (start a fresh context), `/compact` (summarize a long context), `/resume` (continue a past session), `/reload-plugins` (after changing skills/plugins), `/mcp` (view/manage MCP connections).
+
 ## Commands
 
 ```bash
