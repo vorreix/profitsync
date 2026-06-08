@@ -140,7 +140,7 @@ PRs are opened from the `pull/new/<branch>` URL GitHub prints on push (recorded 
 | # | Branch | Task | Status |
 |---|---|---|---|
 | 00 | `feat/admin-billing-00-plan` | This plan + findings doc | ✅ committed |
-| 01 | `feat/admin-billing-01-dodo-aware-admin` | Make admin plan/status changes Dodo‑aware: cancel on Dodo + clear stale period/cancel/provider fields when downgrading to free / cancelling. Fixes Q2. `api/_lib/admin-billing.ts` + unit tests. | ⏳ pending |
+| 01 | `feat/admin-billing-01-dodo-aware-admin` | Make admin plan/status changes Dodo‑aware: cancel on Dodo + clear stale period/cancel/provider fields when downgrading to free / cancelling. Fixes Q2. `api/_lib/admin-billing.ts` + unit tests. | ✅ committed |
 | 02 | `feat/admin-billing-02-payment-failed` | Record payment failures in the DB: webhook `payment.failed` → `uncollectible` invoice + `past_due` sub. Unit test the mapping. | ⏳ pending |
 | 03 | `feat/admin-billing-03-bulk-delete-orgs` | Multi‑select + bulk delete on `/admin/organizations`. Delete cancels each org's Dodo sub + cleans orphaned clients/quotations + cascades the rest. | ⏳ pending |
 | 04 | `feat/admin-billing-04-bulk-subscriptions` | Multi‑select + bulk actions on `/admin/subscriptions` (Downgrade→Free w/ Dodo, Cancel on Dodo, Sync from Dodo) + per‑row Sync + add `pending` to filters. | ⏳ pending |
@@ -204,3 +204,10 @@ PRs are opened from the `pull/new/<branch>` URL GitHub prints on push (recorded 
 
 - **00** — Investigation complete; root cause verified by hand + against the live dev
   DB (FK cascade audit, sub/invoice snapshot). Plan + branch chain authored.
+- **01** — `api/_lib/admin-billing.ts` (+13 unit tests). Admin org + subscription PATCH
+  now: downgrade→free ⇒ `stopDodoBilling` (immediate Dodo cancel, no‑op for stub/free,
+  404=success) + `FREE_RESET_FIELDS`; status→cancelled ⇒ stop Dodo + `cancelledNowFields`.
+  Dodo error ⇒ HTTP 502, DB untouched (no silent desync). `pending` added to the
+  subscriptions status set. `cancel_reason: cancelled_by_merchant` added to immediate
+  Dodo cancels. Verified: unit tests + typecheck + a throwaway‑org DB proof that the
+  free‑reset clears the stale renew date (then self‑cleaned).

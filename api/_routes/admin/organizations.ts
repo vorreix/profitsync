@@ -4,6 +4,7 @@ import { db, serialize } from "../../../src/lib/db/index.js"
 import { organizations, subscriptions, userProfiles } from "../../../src/lib/db/schema.js"
 import { createOrgForUser } from "../../_lib/auth.js"
 import { requireAdminCap } from "../../_lib/admin.js"
+import { cancelledNowFields, FREE_RESET_FIELDS, stopDodoBilling } from "../../_lib/admin-billing.js"
 
 const PAGE_SIZE = 30
 
@@ -150,20 +151,40 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     if (plan_key || plan_status) {
+      // Downgrading to free, or cancelling, must also stop billing on Dodo and
+      // wipe the stale period/cancel/provider fields — otherwise the row keeps a
+      // "Renews on …" date and Dodo keeps the subscription active and charging.
+      const goingFree = plan_key === "free"
+      const goingCancelled = plan_status === "cancelled" && !goingFree
+
       const [sub] = await db
         .select()
         .from(subscriptions)
         .where(eq(subscriptions.organizationId, organization_id))
+
       if (sub) {
-        await db
-          .update(subscriptions)
-          .set({
-            ...(plan_key ? { planKey: plan_key } : {}),
-            ...(plan_status ? { status: plan_status } : {}),
-            updatedAt: new Date(),
-          })
-          .where(eq(subscriptions.id, sub.id))
+        if (goingFree || goingCancelled) {
+          const stop = await stopDodoBilling(sub)
+          if (stop.provider === "dodo" && !stop.ok) {
+            // Fail loud and leave the DB untouched so the admin can retry instead
+            // of silently desyncing our mirror from Dodo.
+            return res.status(502).json({ error: `Dodo cancel failed: ${stop.error}` })
+          }
+        }
+
+        const subPatch = goingFree
+          ? { ...FREE_RESET_FIELDS, updatedAt: new Date() }
+          : goingCancelled
+            ? { ...(plan_key ? { planKey: plan_key } : {}), ...cancelledNowFields(new Date()), updatedAt: new Date() }
+            : {
+                ...(plan_key ? { planKey: plan_key } : {}),
+                ...(plan_status ? { status: plan_status } : {}),
+                updatedAt: new Date(),
+              }
+
+        await db.update(subscriptions).set(subPatch).where(eq(subscriptions.id, sub.id))
       } else {
+        // No subscription row yet → nothing to cancel on Dodo; just create the mirror.
         await db.insert(subscriptions).values({
           organizationId: organization_id,
           planKey: plan_key ?? "free",
