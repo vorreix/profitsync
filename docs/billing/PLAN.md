@@ -141,7 +141,7 @@ PRs are opened from the `pull/new/<branch>` URL GitHub prints on push (recorded 
 |---|---|---|---|
 | 00 | `feat/admin-billing-00-plan` | This plan + findings doc | ✅ committed |
 | 01 | `feat/admin-billing-01-dodo-aware-admin` | Make admin plan/status changes Dodo‑aware: cancel on Dodo + clear stale period/cancel/provider fields when downgrading to free / cancelling. Fixes Q2. `api/_lib/admin-billing.ts` + unit tests. | ✅ committed |
-| 02 | `feat/admin-billing-02-payment-failed` | Record payment failures in the DB: webhook `payment.failed` → `uncollectible` invoice + `past_due` sub. Unit test the mapping. | ⏳ pending |
+| 02 | `feat/admin-billing-02-payment-failed` | Record payment failures in the DB: webhook `payment.failed` → `uncollectible` invoice + `past_due` sub. Unit test the mapping. | ✅ committed |
 | 03 | `feat/admin-billing-03-bulk-delete-orgs` | Multi‑select + bulk delete on `/admin/organizations`. Delete cancels each org's Dodo sub + cleans orphaned clients/quotations + cascades the rest. | ⏳ pending |
 | 04 | `feat/admin-billing-04-bulk-subscriptions` | Multi‑select + bulk actions on `/admin/subscriptions` (Downgrade→Free w/ Dodo, Cancel on Dodo, Sync from Dodo) + per‑row Sync + add `pending` to filters. | ⏳ pending |
 | 05 | `feat/admin-billing-05-docs-skill` | The detailed explainer doc + the `subscription-system` AI skill. Final tracker + memory update. | ⏳ pending |
@@ -211,3 +211,8 @@ PRs are opened from the `pull/new/<branch>` URL GitHub prints on push (recorded 
   subscriptions status set. `cancel_reason: cancelled_by_merchant` added to immediate
   Dodo cancels. Verified: unit tests + typecheck + a throwaway‑org DB proof that the
   free‑reset clears the stale renew date (then self‑cleaned).
+- **02** — `payment.failed` webhook branch: idempotent `uncollectible` invoice (keyed
+  by Dodo payment id) + flips an `active` sub to `past_due`. Verified end‑to‑end with a
+  **signed** webhook against the live dev DB on a throwaway org (invoice `19.99`,
+  unpaid; sub `past_due`), then self‑cleaned. `failed → uncollectible` mapping already
+  unit‑tested.
