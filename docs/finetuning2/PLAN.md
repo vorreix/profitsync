@@ -66,7 +66,7 @@ earlier work. Root is `feat/ux2-00-plan` off `dev`.
 | 01 | `feat/ux2-01-referrals-paid` | 3 | Credit referrals on reconcile (not just webhook); verify redemption; referral doc | no | ✅ pushed |
 | 02 | `feat/ux2-02-india-payment` | 2 | Pass `billing_currency` (IN→INR) + full address to Dodo checkout; document dashboard config | no | ✅ pushed |
 | 03 | `feat/ux2-03-modal-back-close` | 1 | `useBackClose` primitive wired into Dialog/Sheet/Drawer/AlertDialog wrappers so Back closes any modal | no | ✅ pushed (Playwright-verified) |
-| 04 | `feat/ux2-04-invite-onboarding` | 5 | Auto-accept invitation post-signup; skip onboarding → org dashboard | no | ⬜ pending |
+| 04 | `feat/ux2-04-invite-onboarding` | 5 | Auto-accept invitation post-signup; skip onboarding → org dashboard | no | ✅ pushed (typecheck+smoke; full new-user E2E deferred) |
 | 05 | `feat/ux2-05-quick-add-toast` | 4 | Global quick-add over current page + success toast "Click to see"; Back returns to origin | no | ⬜ pending |
 | 06 | `feat/ux2-06-budgets` | 6 | `budgets` table + API + `src/lib/budget.ts` + client-card & outgoing-tx indicators | **yes** | ⬜ pending |
 | 07 | `feat/ux2-07-onboarding-wealth-budget` | 7 | Onboarding step: cash + bank accounts (plan-gated) + budgets; plan-based bank quota | **yes** | ⬜ pending |
