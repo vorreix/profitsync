@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
 import { apiGet, apiPost, apiPatch, apiDelete } from "@/lib/api"
+import { amountExceedsLimit } from "@/lib/money"
 import type { Client, Transaction, TransactionAttachment, WealthAccount } from "@/lib/types"
 import { useCurrency } from "@/lib/currency-context"
 import { useOrg } from "@/lib/org-context"
@@ -657,6 +658,7 @@ export function TransactionsPage() {
     if (!isPersonal && !form.client_id) { toast.error(t("clientIsRequired")); return }
     const allocs = form.allocations.filter((a) => a.account_id && Number(a.amount) > 0)
     if (allocs.length === 0) { toast.error(t("validAmountIsRequired")); return }
+    if (allocs.some((a) => amountExceedsLimit(a.amount))) { toast.error(t("common.amountTooLarge")); return }
     setSaving(true)
     try {
       const token = await getToken()
@@ -731,6 +733,7 @@ export function TransactionsPage() {
     if (!editForm) return
     const allocs = editForm.allocations.filter((a) => a.account_id && Number(a.amount) > 0)
     if (allocs.length === 0) { toast.error(t("validAmountIsRequired")); return }
+    if (allocs.some((a) => amountExceedsLimit(a.amount))) { toast.error(t("common.amountTooLarge")); return }
     setSaving(true)
     try {
       const token = await getToken()

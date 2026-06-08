@@ -5,6 +5,7 @@ import { transactions, wealthAccounts } from "../../../../src/lib/db/schema.js"
 import { canDelete, canWrite, ensureDefaultClient, requireAuth } from "../../../_lib/auth.js"
 import { diffFields, logAudit } from "../../../_lib/audit.js"
 import { type BankDetailInput, pickBankDetails, resolveLogoColumns } from "../../../_lib/bank-brand.js"
+import { amountExceedsLimit } from "../../../../src/lib/money.js"
 
 function money(value: unknown): number {
   const n = Number(value)
@@ -47,6 +48,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const { nickname, icon, archive, restore } = body
     const bankName = body.bankName ?? body.bank_name
     const currentBalance = body.currentBalance ?? body.current_balance
+    if (currentBalance !== undefined && amountExceedsLimit(currentBalance)) return res.status(400).json({ error: "Amount is too large" })
 
     // Bank-detail fields are only updated when at least one is present in the
     // body (so a plain rename/adjust PATCH doesn't wipe them). Logo is re-fetched

@@ -2,9 +2,11 @@ import { useCallback, useEffect, useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { toast } from "sonner"
-import { apiGet, apiPatch } from "@/lib/api"
+import { apiGet, apiPatch, apiPost } from "@/lib/api"
 import { isPaidPlanKey } from "@/lib/types"
+import { useMultiSelect } from "@/lib/use-multi-select"
 import { Card } from "@/components/ui/card"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -19,12 +21,16 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import {
+  ArrowDownCircle,
+  Ban,
   ChevronLeft,
   ChevronRight,
   CreditCard,
   Loader as Loader2,
   Pencil,
+  RefreshCw,
   Search,
+  X,
 } from "lucide-react"
 
 type AdminSub = {
@@ -45,8 +51,10 @@ type AdminSub = {
 }
 
 const PLAN_OPTIONS = ["free", "personal", "business"]
-const STATUS_OPTIONS = ["active", "past_due", "cancelled", "trialing"]
+const STATUS_OPTIONS = ["pending", "active", "past_due", "cancelled", "trialing"]
 const CYCLE_OPTIONS = ["", "monthly", "yearly"]
+
+type BulkAction = "downgrade_free" | "cancel_dodo"
 
 export function AdminSubscriptionsPage() {
   const { getToken } = useAuth()
@@ -61,8 +69,8 @@ export function AdminSubscriptionsPage() {
     initialPlan === "free" || initialPlan === "personal" || initialPlan === "business" ? initialPlan : "all",
   )
   const initialStatus = searchParams.get("status")
-  const [status, setStatus] = useState<"all" | "active" | "past_due" | "cancelled" | "trialing">(
-    initialStatus === "active" || initialStatus === "past_due" || initialStatus === "cancelled" || initialStatus === "trialing"
+  const [status, setStatus] = useState<"all" | "pending" | "active" | "past_due" | "cancelled" | "trialing">(
+    initialStatus === "pending" || initialStatus === "active" || initialStatus === "past_due" || initialStatus === "cancelled" || initialStatus === "trialing"
       ? initialStatus
       : "all",
   )
@@ -79,6 +87,12 @@ export function AdminSubscriptionsPage() {
   const [editing, setEditing] = useState<AdminSub | null>(null)
   const [form, setForm] = useState<{ plan_key: string; status: string; billing_cycle: string; current_period_end: string }>({ plan_key: "", status: "", billing_cycle: "", current_period_end: "" })
   const [saving, setSaving] = useState(false)
+
+  const sel = useMultiSelect()
+  const { clear: clearSel } = sel
+  const [confirmAction, setConfirmAction] = useState<BulkAction | null>(null)
+  const [actionBusy, setActionBusy] = useState<string | null>(null)
+  const [syncingId, setSyncingId] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -102,6 +116,76 @@ export function AdminSubscriptionsPage() {
   }, [getToken, page, search, plan, status])
 
   useEffect(() => { load() }, [load])
+
+  // Clear the selection when the visible row set changes (page / filters). Depends
+  // on the stable `clearSel`, not the whole `sel`, so a row toggle doesn't clear it.
+  useEffect(() => { clearSel() }, [page, search, plan, status, clearSel])
+
+  type ActionResult = {
+    updated: AdminSub[]
+    updated_count: number
+    failed: Array<{ id: string; error: string }>
+    not_found: string[]
+    dodo_cancelled: number
+    synced: number
+  }
+
+  // Replace the changed rows in place (no full reload), keeping the page snappy.
+  const applyUpdatedRows = (rows: AdminSub[]) => {
+    if (rows.length === 0) return
+    const map = new Map(rows.map((r) => [r.id, r]))
+    setData((prev) => prev.map((s) => map.get(s.id) ?? s))
+  }
+
+  const runBulkAction = async (action: BulkAction | "sync") => {
+    const ids = sel.selectedIds
+    if (ids.length === 0) return
+    setActionBusy(action)
+    try {
+      const token = await getToken()
+      if (!token) return
+      const res = await apiPost<ActionResult>("/api/admin/subscriptions/actions", token, {
+        subscription_ids: ids,
+        action,
+      })
+      applyUpdatedRows(res.updated)
+      if (action === "sync") {
+        toast.success(`Synced ${res.synced} from Dodo${res.updated_count - res.synced > 0 ? ` · ${res.updated_count - res.synced} not Dodo-backed` : ""}`)
+      } else {
+        let msg = `Updated ${res.updated_count} subscription${res.updated_count === 1 ? "" : "s"}`
+        if (res.dodo_cancelled > 0) msg += ` · ${res.dodo_cancelled} cancelled on Dodo`
+        toast.success(msg)
+      }
+      if (res.failed.length > 0) {
+        toast.error(`${res.failed.length} failed on Dodo — check the Dodo dashboard`)
+      }
+      sel.clear()
+      setConfirmAction(null)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Action failed")
+      await load()
+    } finally {
+      setActionBusy(null)
+    }
+  }
+
+  const syncOne = async (sub: AdminSub) => {
+    setSyncingId(sub.id)
+    try {
+      const token = await getToken()
+      if (!token) return
+      const res = await apiPost<ActionResult>("/api/admin/subscriptions/actions", token, {
+        subscription_ids: [sub.id],
+        action: "sync",
+      })
+      applyUpdatedRows(res.updated)
+      toast.success(res.synced > 0 ? "Synced from Dodo" : "Not a Dodo subscription — nothing to sync")
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Sync failed")
+    } finally {
+      setSyncingId(null)
+    }
+  }
 
   const openEdit = (sub: AdminSub) => {
     setEditing(sub)
@@ -137,6 +221,9 @@ export function AdminSubscriptionsPage() {
   }
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize))
+  const pageIds = data.map((s) => s.id)
+  const allSelected = pageIds.length > 0 && pageIds.every((id) => sel.isSelected(id))
+  const someSelected = pageIds.some((id) => sel.isSelected(id))
 
   return (
     <div className="space-y-6">
@@ -167,6 +254,7 @@ export function AdminSubscriptionsPage() {
           <Tabs value={status} onValueChange={(v) => { setPage(1); setStatus(v as typeof status) }}>
             <TabsList>
               <TabsTrigger value="all">Any</TabsTrigger>
+              <TabsTrigger value="pending">Pending</TabsTrigger>
               <TabsTrigger value="active">Active</TabsTrigger>
               <TabsTrigger value="past_due">Past due</TabsTrigger>
               <TabsTrigger value="cancelled">Cancelled</TabsTrigger>
@@ -175,10 +263,36 @@ export function AdminSubscriptionsPage() {
           <span className="text-xs text-muted-foreground ml-auto">{total} total</span>
         </div>
 
+        {sel.count > 0 && (
+          <div className="flex items-center gap-2 flex-wrap rounded-lg border border-border bg-muted/40 px-3 py-2">
+            <span className="text-sm font-medium mr-1">{sel.count} selected</span>
+            <Button size="sm" variant="outline" disabled={!!actionBusy} onClick={() => setConfirmAction("downgrade_free")}>
+              <ArrowDownCircle className="size-3.5 mr-1.5" /> Downgrade to Free
+            </Button>
+            <Button size="sm" variant="outline" disabled={!!actionBusy} onClick={() => setConfirmAction("cancel_dodo")}>
+              <Ban className="size-3.5 mr-1.5" /> Cancel on Dodo
+            </Button>
+            <Button size="sm" variant="outline" disabled={!!actionBusy} onClick={() => runBulkAction("sync")}>
+              {actionBusy === "sync" ? <Loader2 className="size-3.5 mr-1.5 animate-spin" /> : <RefreshCw className="size-3.5 mr-1.5" />}
+              Sync from Dodo
+            </Button>
+            <Button size="sm" variant="ghost" className="ml-auto" onClick={() => sel.clear()}>
+              <X className="size-3.5 mr-1.5" /> Clear
+            </Button>
+          </div>
+        )}
+
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="text-left text-[11px] uppercase tracking-widest text-muted-foreground">
               <tr>
+                <th className="py-2 pr-3 w-8">
+                  <Checkbox
+                    checked={allSelected ? true : someSelected ? "indeterminate" : false}
+                    onCheckedChange={() => (allSelected ? sel.clear() : sel.selectAll(pageIds))}
+                    aria-label="Select all on this page"
+                  />
+                </th>
                 <th className="py-2 pr-4">Organization</th>
                 <th className="py-2 pr-4">Plan</th>
                 <th className="py-2 pr-4">Status</th>
@@ -190,11 +304,18 @@ export function AdminSubscriptionsPage() {
             </thead>
             <tbody>
               {loading ? Array.from({ length: 5 }).map((_, i) => (
-                <tr key={i}><td colSpan={7} className="py-2"><Skeleton className="h-9 w-full" /></td></tr>
+                <tr key={i}><td colSpan={8} className="py-2"><Skeleton className="h-9 w-full" /></td></tr>
               )) : data.length === 0 ? (
-                <tr><td colSpan={7} className="py-6 text-center text-muted-foreground">No subscriptions.</td></tr>
+                <tr><td colSpan={8} className="py-6 text-center text-muted-foreground">No subscriptions.</td></tr>
               ) : data.map((s) => (
-                <tr key={s.id} className="border-t border-border hover:bg-muted/40">
+                <tr key={s.id} className={`border-t border-border hover:bg-muted/40 ${sel.isSelected(s.id) ? "bg-primary/5" : ""}`}>
+                  <td className="py-3 pr-3 w-8">
+                    <Checkbox
+                      checked={sel.isSelected(s.id)}
+                      onCheckedChange={() => sel.toggle(s.id)}
+                      aria-label={`Select ${s.organization_name}`}
+                    />
+                  </td>
                   <td className="py-3 pr-4">
                     <p className="text-sm font-medium">{s.organization_name}</p>
                     <p className="text-xs text-muted-foreground">{s.owner_email ?? "—"}</p>
@@ -230,8 +351,18 @@ export function AdminSubscriptionsPage() {
                   <td className="py-3 pr-4 text-xs text-muted-foreground">{s.billing_cycle ?? "—"}</td>
                   <td className="py-3 pr-4 text-xs text-muted-foreground">{s.provider ?? "—"}</td>
                   <td className="py-3 pr-4 text-xs text-muted-foreground tabular-nums">{s.current_period_end ? s.current_period_end.split("T")[0] : "—"}</td>
-                  <td className="py-3 text-right">
-                    <Button size="icon" variant="ghost" onClick={() => openEdit(s)}>
+                  <td className="py-3 text-right whitespace-nowrap">
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      title="Sync this subscription from Dodo"
+                      aria-label="Sync from Dodo"
+                      disabled={syncingId === s.id}
+                      onClick={() => syncOne(s)}
+                    >
+                      {syncingId === s.id ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
+                    </Button>
+                    <Button size="icon" variant="ghost" aria-label="Edit" onClick={() => openEdit(s)}>
                       <Pencil className="size-3.5" />
                     </Button>
                   </td>
@@ -300,6 +431,35 @@ export function AdminSubscriptionsPage() {
             <Button onClick={handleSave} disabled={saving}>
               {saving ? <Loader2 className="size-3.5 mr-1 animate-spin" /> : null}
               Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!confirmAction} onOpenChange={(o) => { if (!o) setConfirmAction(null) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {confirmAction === "downgrade_free"
+                ? `Downgrade ${sel.count} subscription${sel.count === 1 ? "" : "s"} to Free?`
+                : `Cancel ${sel.count} subscription${sel.count === 1 ? "" : "s"} on Dodo?`}
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            {confirmAction === "downgrade_free"
+              ? "Each Dodo subscription is cancelled immediately (billing stops) and the row is reset to the Free tier — clearing the renew date, billing cycle and provider link."
+              : "Each Dodo subscription is cancelled immediately (billing stops) and the row is marked cancelled. The plan key is kept for history."}
+            {" "}Free/stub rows have no Dodo subscription, so only their local state changes.
+          </p>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setConfirmAction(null)} disabled={!!actionBusy}>Cancel</Button>
+            <Button
+              variant={confirmAction === "downgrade_free" ? "default" : "destructive"}
+              disabled={!!actionBusy}
+              onClick={() => confirmAction && runBulkAction(confirmAction)}
+            >
+              {actionBusy && actionBusy !== "sync" ? <Loader2 className="size-3.5 mr-1.5 animate-spin" /> : null}
+              {confirmAction === "downgrade_free" ? "Downgrade to Free" : "Cancel on Dodo"}
             </Button>
           </DialogFooter>
         </DialogContent>

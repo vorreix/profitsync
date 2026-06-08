@@ -4,6 +4,7 @@ import { useAuth } from "@clerk/clerk-react"
 import { toast } from "sonner"
 import { ArrowRight, Paperclip, X } from "lucide-react"
 import { apiPost } from "@/lib/api"
+import { amountExceedsLimit } from "@/lib/money"
 import { ACCEPT_ATTR, attachmentsListPath, uploadAttachment, validateFile } from "@/lib/attachments-client"
 import type { WealthAccount } from "@/lib/types"
 import { accountDisplayName, currencySymbol, formatMoney } from "@/lib/wealth"
@@ -97,6 +98,7 @@ export function TransferWizard({
   async function submit() {
     if (!accountsValid) { toast.error(t("sameAccountError")); return }
     if (!amountValid) { toast.error(t("transferAmount")); return }
+    if (amountExceedsLimit(amt)) { toast.error(t("common.amountTooLarge")); return }
     setSaving(true)
     try {
       const token = await getToken()

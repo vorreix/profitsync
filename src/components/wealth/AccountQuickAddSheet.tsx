@@ -8,6 +8,7 @@ import { ArrowDownRight, ArrowUpRight, Paperclip, X } from "lucide-react"
 import { apiGet, apiPatch, apiPost } from "@/lib/api"
 import { ACCEPT_ATTR, attachmentsListPath, uploadAttachment, validateFile } from "@/lib/attachments-client"
 import type { Client, Transaction, WealthAccount } from "@/lib/types"
+import { MAX_MONEY } from "@/lib/money"
 import { accountDisplayName, currencySymbol } from "@/lib/wealth"
 import { WealthAccountIcon } from "@/components/WealthAccountIcon"
 import { CategoryPicker } from "@/components/CategoryPicker"
@@ -67,7 +68,7 @@ export function AccountQuickAddSheet({
   const fileRef = useRef<HTMLInputElement>(null)
 
   const formSchema = z.object({
-    amount: z.coerce.number().positive(t("validAmountIsRequired")),
+    amount: z.coerce.number().positive(t("validAmountIsRequired")).max(MAX_MONEY, t("common.amountTooLarge")),
     ...(isPersonal ? {} : { clientId: z.string().min(1, t("clientIsRequired")) }),
   })
   const { errors, validate, clearField, clearAll } = useFieldErrors(formSchema)
