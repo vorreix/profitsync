@@ -5,6 +5,7 @@ import { organizations, subscriptions, userProfiles } from "../../../src/lib/db/
 import { createOrgForUser } from "../../_lib/auth.js"
 import { requireAdminCap } from "../../_lib/admin.js"
 import { cancelledNowFields, FREE_RESET_FIELDS, stopDodoBilling } from "../../_lib/admin-billing.js"
+import { teardownOrganization } from "../../_lib/admin-org-delete.js"
 
 const PAGE_SIZE = 30
 
@@ -200,28 +201,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const { organization_id } = req.body as { organization_id?: string }
     if (!organization_id) return res.status(400).json({ error: "organization_id is required" })
 
-    const profilesWithCurrent = await db
-      .select()
-      .from(userProfiles)
-      .where(eq(userProfiles.currentOrganizationId, organization_id))
-
-    for (const p of profilesWithCurrent) {
-      const [personal] = await db
-        .select()
-        .from(organizations)
-        .where(and(eq(organizations.ownerUserId, p.id), eq(organizations.isPersonal, true)))
-      await db
-        .update(userProfiles)
-        .set({ currentOrganizationId: personal?.id ?? null, updatedAt: new Date() })
-        .where(eq(userProfiles.id, p.id))
-    }
-
-    const result = await db
-      .delete(organizations)
-      .where(eq(organizations.id, organization_id))
-      .returning({ id: organizations.id })
-    if (!result.length) return res.status(404).json({ error: "Not found" })
-    return res.status(204).end()
+    // Full teardown: cancel Dodo billing + clean clients/quotations (no org FK) +
+    // cascade the rest. Shared with the bulk-delete route so both behave identically.
+    const result = await teardownOrganization(organization_id)
+    if (!result.deleted) return res.status(404).json({ error: "Not found" })
+    return res.json({
+      ok: true,
+      dodo_cancelled: result.dodo.provider === "dodo" && result.dodo.ok,
+      dodo_error: result.dodo.provider === "dodo" && !result.dodo.ok ? result.dodo.error : null,
+    })
   }
 
   return res.status(405).json({ error: "Method not allowed" })

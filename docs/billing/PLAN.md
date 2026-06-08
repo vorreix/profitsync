@@ -142,7 +142,7 @@ PRs are opened from the `pull/new/<branch>` URL GitHub prints on push (recorded 
 | 00 | `feat/admin-billing-00-plan` | This plan + findings doc | ✅ committed |
 | 01 | `feat/admin-billing-01-dodo-aware-admin` | Make admin plan/status changes Dodo‑aware: cancel on Dodo + clear stale period/cancel/provider fields when downgrading to free / cancelling. Fixes Q2. `api/_lib/admin-billing.ts` + unit tests. | ✅ committed |
 | 02 | `feat/admin-billing-02-payment-failed` | Record payment failures in the DB: webhook `payment.failed` → `uncollectible` invoice + `past_due` sub. Unit test the mapping. | ✅ committed |
-| 03 | `feat/admin-billing-03-bulk-delete-orgs` | Multi‑select + bulk delete on `/admin/organizations`. Delete cancels each org's Dodo sub + cleans orphaned clients/quotations + cascades the rest. | ⏳ pending |
+| 03 | `feat/admin-billing-03-bulk-delete-orgs` | Multi‑select + bulk delete on `/admin/organizations`. Delete cancels each org's Dodo sub + cleans orphaned clients/quotations + cascades the rest. | ✅ committed |
 | 04 | `feat/admin-billing-04-bulk-subscriptions` | Multi‑select + bulk actions on `/admin/subscriptions` (Downgrade→Free w/ Dodo, Cancel on Dodo, Sync from Dodo) + per‑row Sync + add `pending` to filters. | ⏳ pending |
 | 05 | `feat/admin-billing-05-docs-skill` | The detailed explainer doc + the `subscription-system` AI skill. Final tracker + memory update. | ⏳ pending |
 
@@ -216,3 +216,13 @@ PRs are opened from the `pull/new/<branch>` URL GitHub prints on push (recorded 
   **signed** webhook against the live dev DB on a throwaway org (invoice `19.99`,
   unpaid; sub `past_due`), then self‑cleaned. `failed → uncollectible` mapping already
   unit‑tested.
+- **03** — Shared `api/_lib/admin-org-delete.ts#teardownOrganization` (cancel Dodo →
+  delete clients+quotations → reassign profiles → delete org). New
+  `admin/organizations/bulk-delete.ts` route (registered). Single DELETE refactored to
+  reuse it (so it now also cancels Dodo + cleans orphans — previously it left orphaned
+  clients/quotations). `AdminOrgsPage`: checkbox column + select‑all + bulk bar +
+  confirm dialog + optimistic row removal + Dodo‑cancel summary toast. Verified:
+  teardown integration test on the live dev DB (client/tx/quotation/wealth/member/sub
+  all removed, stub→no Dodo call), then self‑cleaned. Admin UI is typecheck‑ +
+  pattern‑verified (mirrors the TransactionsPage selection pattern); live admin‑login
+  browser check deferred (needs an app‑admin Clerk session).
