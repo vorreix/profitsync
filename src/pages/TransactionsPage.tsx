@@ -1225,8 +1225,9 @@ export function TransactionsPage() {
         </>
       )}
 
-      {/* View Modal */}
-      <Dialog open={viewTx !== null} onOpenChange={(open) => { if (!open) closeViewModal() }}>
+      {/* View Modal — driven by useUrlModal(?view), which already owns the history
+          entry, so opt out of the Dialog's own back-close to avoid a double entry. */}
+      <Dialog open={viewTx !== null} onOpenChange={(open) => { if (!open) closeViewModal() }} disableBackClose>
         <DialogContent className="w-[92vw] max-w-md">
           {viewTx && (
             <>
