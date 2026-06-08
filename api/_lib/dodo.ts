@@ -323,7 +323,9 @@ export async function cancelSubscription(
   return call<DodoSubscription>(`/subscriptions/${subscriptionId}`, env, {
     method: "PATCH",
     body: JSON.stringify(
-      immediate ? { status: "cancelled" } : { cancel_at_next_billing_date: true },
+      immediate
+        ? { status: "cancelled", cancel_reason: "cancelled_by_merchant" }
+        : { cancel_at_next_billing_date: true },
     ),
   })
 }

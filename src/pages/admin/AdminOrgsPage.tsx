@@ -4,7 +4,9 @@ import { useAuth } from "@clerk/clerk-react"
 import { toast } from "sonner"
 import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api"
 import { isPaidPlanKey } from "@/lib/types"
+import { useMultiSelect } from "@/lib/use-multi-select"
 import { Card } from "@/components/ui/card"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -30,6 +32,7 @@ import {
   Plus,
   Search,
   Trash2,
+  X,
 } from "lucide-react"
 
 type AdminOrg = {
@@ -83,6 +86,11 @@ export function AdminOrgsPage() {
   const [deleteTarget, setDeleteTarget] = useState<AdminOrg | null>(null)
   const [deleting, setDeleting] = useState(false)
 
+  const sel = useMultiSelect()
+  const { clear: clearSel } = sel
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
+  const [bulkDeleting, setBulkDeleting] = useState(false)
+
   const [createOpen, setCreateOpen] = useState(false)
   const [createForm, setCreateForm] = useState({ owner_user_id: "", name: "", currency: "USD" })
   const [creating, setCreating] = useState(false)
@@ -125,6 +133,13 @@ export function AdminOrgsPage() {
   useEffect(() => {
     load()
   }, [load])
+
+  // Clear the selection whenever the visible row set changes (page / filters).
+  // Depends on `clearSel` (stable) — NOT the whole `sel` — so toggling a row
+  // doesn't wipe the selection.
+  useEffect(() => {
+    clearSel()
+  }, [page, search, type, clearSel])
 
   // Debounced user search for the "Create organization" picker.
   useEffect(() => {
@@ -195,6 +210,44 @@ export function AdminOrgsPage() {
     }
   }
 
+  const handleBulkDelete = async () => {
+    const ids = sel.selectedIds
+    if (ids.length === 0) return
+    setBulkDeleting(true)
+    try {
+      const token = await getToken()
+      if (!token) return
+      const res = await apiPost<{
+        deleted: string[]
+        deleted_count: number
+        not_deleted: string[]
+        dodo_cancelled: number
+        dodo_failed: Array<{ id: string; error: string }>
+      }>("/api/admin/organizations/bulk-delete", token, { organization_ids: ids })
+
+      // Optimistic in-place removal of the deleted rows (no full reload).
+      const deletedSet = new Set(res.deleted)
+      setData((prev) => prev.filter((o) => !deletedSet.has(o.id)))
+      setTotal((t) => Math.max(0, t - res.deleted_count))
+
+      let msg = `Deleted ${res.deleted_count} organization${res.deleted_count === 1 ? "" : "s"}`
+      if (res.dodo_cancelled > 0) {
+        msg += ` · ${res.dodo_cancelled} Dodo subscription${res.dodo_cancelled === 1 ? "" : "s"} cancelled`
+      }
+      toast.success(msg)
+      if (res.dodo_failed.length > 0) {
+        toast.error(`${res.dodo_failed.length} Dodo cancellation${res.dodo_failed.length === 1 ? "" : "s"} failed — check the Dodo dashboard`)
+      }
+      sel.clear()
+      setBulkDeleteOpen(false)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Bulk delete failed")
+      await load()
+    } finally {
+      setBulkDeleting(false)
+    }
+  }
+
   const togglePlan = async (org: AdminOrg) => {
     setBusy(org.id + "plan")
     try {
@@ -251,6 +304,9 @@ export function AdminOrgsPage() {
   }
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize))
+  const pageIds = data.map((o) => o.id)
+  const allSelected = pageIds.length > 0 && pageIds.every((id) => sel.isSelected(id))
+  const someSelected = pageIds.some((id) => sel.isSelected(id))
 
   return (
     <div className="space-y-6">
@@ -291,10 +347,29 @@ export function AdminOrgsPage() {
           <span className="text-xs text-muted-foreground ml-auto">{total} total</span>
         </div>
 
+        {sel.count > 0 && (
+          <div className="flex items-center gap-3 flex-wrap rounded-lg border border-border bg-muted/40 px-3 py-2">
+            <span className="text-sm font-medium">{sel.count} selected</span>
+            <Button size="sm" variant="destructive" onClick={() => setBulkDeleteOpen(true)}>
+              <Trash2 className="size-3.5 mr-1.5" /> Delete selected
+            </Button>
+            <Button size="sm" variant="ghost" className="ml-auto" onClick={() => sel.clear()}>
+              <X className="size-3.5 mr-1.5" /> Clear
+            </Button>
+          </div>
+        )}
+
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="text-left text-[11px] uppercase tracking-widest text-muted-foreground">
               <tr>
+                <th className="py-2 pr-3 w-8">
+                  <Checkbox
+                    checked={allSelected ? true : someSelected ? "indeterminate" : false}
+                    onCheckedChange={() => (allSelected ? sel.clear() : sel.selectAll(pageIds))}
+                    aria-label="Select all on this page"
+                  />
+                </th>
                 <th className="py-2 pr-4">Organization</th>
                 <th className="py-2 pr-4">Owner</th>
                 <th className="py-2 pr-4">Members</th>
@@ -307,10 +382,10 @@ export function AdminOrgsPage() {
             <tbody>
               {loading ? (
                 Array.from({ length: 5 }).map((_, i) => (
-                  <tr key={i}><td colSpan={7} className="py-2"><Skeleton className="h-9 w-full" /></td></tr>
+                  <tr key={i}><td colSpan={8} className="py-2"><Skeleton className="h-9 w-full" /></td></tr>
                 ))
               ) : data.length === 0 ? (
-                <tr><td colSpan={7} className="py-6 text-center text-muted-foreground">No organizations found.</td></tr>
+                <tr><td colSpan={8} className="py-6 text-center text-muted-foreground">No organizations found.</td></tr>
               ) : (
                 data.map((o) => (
                   <tr
@@ -322,6 +397,13 @@ export function AdminOrgsPage() {
                       navigate(`/admin/organizations/${o.id}`)
                     }}
                   >
+                    <td className="py-3 pr-3 w-8" data-row-action onClick={(e) => e.stopPropagation()}>
+                      <Checkbox
+                        checked={sel.isSelected(o.id)}
+                        onCheckedChange={() => sel.toggle(o.id)}
+                        aria-label={`Select ${o.name}`}
+                      />
+                    </td>
                     <td className="py-3 pr-4">
                       <div className="flex items-center gap-2">
                         <div className="flex size-7 items-center justify-center rounded-md bg-muted text-muted-foreground">
@@ -453,13 +535,31 @@ export function AdminOrgsPage() {
             <DialogTitle>Delete organization permanently?</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            This will delete <span className="text-foreground font-medium">{deleteTarget?.name}</span> along with its clients, transactions, and quotations.
+            This will delete <span className="text-foreground font-medium">{deleteTarget?.name}</span> along with its clients, transactions, and quotations. Any active Dodo subscription is cancelled so billing stops.
           </p>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setDeleteTarget(null)} disabled={deleting}>Cancel</Button>
             <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
               {deleting ? <Loader2 className="size-3.5 mr-1 animate-spin" /> : null}
               Delete forever
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={bulkDeleteOpen} onOpenChange={(o) => { if (!o) setBulkDeleteOpen(false) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete {sel.count} organization{sel.count === 1 ? "" : "s"}?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            This permanently deletes the selected organizations along with their clients, transactions, and quotations. Any active Dodo subscription is cancelled so billing stops. This cannot be undone.
+          </p>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setBulkDeleteOpen(false)} disabled={bulkDeleting}>Cancel</Button>
+            <Button variant="destructive" onClick={handleBulkDelete} disabled={bulkDeleting}>
+              {bulkDeleting ? <Loader2 className="size-3.5 mr-1 animate-spin" /> : null}
+              Delete {sel.count} forever
             </Button>
           </DialogFooter>
         </DialogContent>
