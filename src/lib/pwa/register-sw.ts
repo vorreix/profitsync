@@ -1,50 +1,28 @@
 import { registerSW } from "virtual:pwa-register"
 
 import { ensureInstallListener } from "./use-install-prompt"
+import { reloadWithCacheBust, settleChunkRecovery } from "./chunk-recovery"
 
-const CHUNK_RELOAD_KEY = "profitsync-chunk-reload"
 let registered = false
-
-// Reload at most once (guarded so we never loop). The guard key is shared with
-// the inline recovery script in index.html and AppErrorBoundary, so the recovery
-// paths cooperate instead of fighting over reloads.
-function reloadOnce(): boolean {
-  try {
-    if (sessionStorage.getItem(CHUNK_RELOAD_KEY)) return false
-    sessionStorage.setItem(CHUNK_RELOAD_KEY, "1")
-  } catch {
-    /* private mode — still attempt a single reload */
-  }
-  window.location.reload()
-  return true
-}
 
 const CHUNK_ERROR_RE =
   /loading (?:css )?chunk|dynamically imported module|importing a module script failed|failed to fetch dynamically/i
 
-// After a deploy, an old tab may try to lazy-load a hashed chunk that no longer exists.
-// Vite fires `vite:preloadError`; some failures surface only as an unhandled
-// promise rejection (a rejected dynamic import() not wrapped by Vite's helper).
-// Recover from both with a single guarded reload.
+// After a deploy, an old tab may try to lazy-load a hashed chunk that no longer
+// exists. Vite fires `vite:preloadError`; some failures surface only as an
+// unhandled promise rejection (a rejected dynamic import() not wrapped by Vite's
+// helper). Recover from both with the shared bounded cache-bust reload.
 function installChunkErrorReload(): void {
   window.addEventListener("vite:preloadError", (event) => {
     event.preventDefault()
-    reloadOnce()
+    reloadWithCacheBust()
   })
   window.addEventListener("unhandledrejection", (event) => {
     const reason = event.reason
     const msg = reason instanceof Error ? `${reason.name} ${reason.message}` : String(reason ?? "")
-    if (CHUNK_ERROR_RE.test(msg)) reloadOnce()
+    if (CHUNK_ERROR_RE.test(msg)) reloadWithCacheBust()
   })
-  window.addEventListener("load", () => {
-    window.setTimeout(() => {
-      try {
-        sessionStorage.removeItem(CHUNK_RELOAD_KEY)
-      } catch {
-        /* ignore */
-      }
-    }, 10000)
-  })
+  window.addEventListener("load", settleChunkRecovery)
 }
 
 // Registers the service worker on every route so the whole origin — including the
@@ -60,20 +38,24 @@ export function initPwa(): void {
   ensureInstallListener()
   installChunkErrorReload()
 
-  const updateSW = registerSW({
+  registerSW({
     immediate: true,
     onRegisteredSW(_swUrl, registration) {
       if (!registration) return
-      // Hourly background check so long-lived tabs converge to the latest deploy.
+      // Hourly check: a new SW installs and then WAITS (skipWaiting is off in
+      // pwa/vite-pwa.ts). This tab keeps running the version it loaded with — fully
+      // consistent, never a white screen — and converges to the new SW on its next
+      // cold start, when no old tab is controlling.
       window.setInterval(() => {
         void registration.update()
       }, 60 * 60 * 1000)
     },
     onNeedRefresh() {
-      // New version available: activate it silently (skipWaiting) WITHOUT reloading the
-      // current tab. Fresh assets load on the next full navigation/reopen, so an
-      // in-progress form is never interrupted.
-      void updateSW(false)
+      // A new version is WAITING. We deliberately DO NOT activate it on the running
+      // tab. Forcing skipWaiting here (the old `updateSW(false)` call) let the new SW
+      // delete this page's still-needed hashed chunks mid-session and white-screen it
+      // — the exact post-deploy bug we are fixing. It activates safely on the next
+      // cold load. See the rationale in pwa/vite-pwa.ts.
     },
   })
 }

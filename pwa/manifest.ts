@@ -19,9 +19,12 @@ export const manifest: Partial<ManifestOptions> = {
   lang: "en",
   dir: "ltr",
   categories: ["business", "finance", "productivity"],
+  // Brand app icons from the realfavicongenerator set (public/). The 192/512 PNGs
+  // double as "any" and "maskable" (they carry the maskable safe-zone padding).
   icons: [
-    { src: "/pwa-192x192.png", sizes: "192x192", type: "image/png", purpose: "any" },
-    { src: "/pwa-512x512.png", sizes: "512x512", type: "image/png", purpose: "any" },
-    { src: "/maskable-icon-512x512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
+    { src: "/web-app-manifest-192x192.png", sizes: "192x192", type: "image/png", purpose: "any" },
+    { src: "/web-app-manifest-512x512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+    { src: "/web-app-manifest-192x192.png", sizes: "192x192", type: "image/png", purpose: "maskable" },
+    { src: "/web-app-manifest-512x512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
   ],
 }

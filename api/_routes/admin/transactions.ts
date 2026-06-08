@@ -3,6 +3,7 @@ import { and, count, desc, eq, ilike, isNull, or } from "drizzle-orm"
 import { db, serialize } from "../../../src/lib/db/index.js"
 import { clients, transactions } from "../../../src/lib/db/schema.js"
 import { requireAdminCap } from "../../_lib/admin.js"
+import { amountExceedsLimit } from "../../../src/lib/money.js"
 
 const PAGE_SIZE = 30
 
@@ -86,6 +87,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (amount === undefined || amount === null || isNaN(Number(amount))) {
       return res.status(400).json({ error: "amount is required" })
     }
+    if (amountExceedsLimit(amount)) return res.status(400).json({ error: "Amount is too large" })
     if (!type || !["incoming", "outgoing"].includes(type)) {
       return res.status(400).json({ error: "type must be incoming or outgoing" })
     }
@@ -131,6 +133,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
     if (amount !== undefined && amount !== null) {
       if (isNaN(Number(amount))) return res.status(400).json({ error: "amount must be numeric" })
+      if (amountExceedsLimit(amount)) return res.status(400).json({ error: "Amount is too large" })
       patch.amount = String(amount)
     }
     if (typeof description === "string") patch.description = description

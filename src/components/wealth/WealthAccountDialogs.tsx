@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next"
 import { useAuth } from "@clerk/clerk-react"
 import { toast } from "sonner"
 import { apiPatch, clearApiCache } from "@/lib/api"
+import { amountExceedsLimit } from "@/lib/money"
 import type { WealthAccount } from "@/lib/types"
 import { currencySymbol } from "@/lib/wealth"
 import { Button } from "@/components/ui/button"
@@ -142,7 +143,11 @@ export function WealthAccountDialogs({
           <DialogFooter>
             <Button variant="outline" onClick={() => onAdjustingChange(null)}>{t("cancel")}</Button>
             <Button
-              onClick={() => adjusting && patchAccount(adjusting.id, { current_balance: Number(adjustBalance || 0) }, t("balanceAdjusted"), () => onAdjustingChange(null))}
+              onClick={() => {
+                if (!adjusting) return
+                if (amountExceedsLimit(adjustBalance)) { toast.error(t("common.amountTooLarge")); return }
+                patchAccount(adjusting.id, { current_balance: Number(adjustBalance || 0) }, t("balanceAdjusted"), () => onAdjustingChange(null))
+              }}
               disabled={saving}
             >
               {saving ? t("saving") : t("adjustBalance")}

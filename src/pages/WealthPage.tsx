@@ -30,6 +30,7 @@ import {
   Wallet,
 } from "lucide-react"
 import { apiDelete, apiGet, apiPatch, apiPost, clearApiCache } from "@/lib/api"
+import { amountExceedsLimit } from "@/lib/money"
 import type { WealthAccount } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { useCurrency } from "@/lib/currency-context"
@@ -253,6 +254,10 @@ export function WealthPage() {
   async function handleCreate() {
     if (!form.bank_name.trim()) {
       toast.error(t("bankNameRequired"))
+      return
+    }
+    if (amountExceedsLimit(form.opening_balance)) {
+      toast.error(t("common.amountTooLarge"))
       return
     }
     setSaving(true)

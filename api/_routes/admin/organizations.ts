@@ -4,6 +4,8 @@ import { db, serialize } from "../../../src/lib/db/index.js"
 import { organizations, subscriptions, userProfiles } from "../../../src/lib/db/schema.js"
 import { createOrgForUser } from "../../_lib/auth.js"
 import { requireAdminCap } from "../../_lib/admin.js"
+import { cancelledNowFields, FREE_RESET_FIELDS, stopDodoBilling } from "../../_lib/admin-billing.js"
+import { teardownOrganization } from "../../_lib/admin-org-delete.js"
 
 const PAGE_SIZE = 30
 
@@ -150,20 +152,40 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     if (plan_key || plan_status) {
+      // Downgrading to free, or cancelling, must also stop billing on Dodo and
+      // wipe the stale period/cancel/provider fields — otherwise the row keeps a
+      // "Renews on …" date and Dodo keeps the subscription active and charging.
+      const goingFree = plan_key === "free"
+      const goingCancelled = plan_status === "cancelled" && !goingFree
+
       const [sub] = await db
         .select()
         .from(subscriptions)
         .where(eq(subscriptions.organizationId, organization_id))
+
       if (sub) {
-        await db
-          .update(subscriptions)
-          .set({
-            ...(plan_key ? { planKey: plan_key } : {}),
-            ...(plan_status ? { status: plan_status } : {}),
-            updatedAt: new Date(),
-          })
-          .where(eq(subscriptions.id, sub.id))
+        if (goingFree || goingCancelled) {
+          const stop = await stopDodoBilling(sub)
+          if (stop.provider === "dodo" && !stop.ok) {
+            // Fail loud and leave the DB untouched so the admin can retry instead
+            // of silently desyncing our mirror from Dodo.
+            return res.status(502).json({ error: `Dodo cancel failed: ${stop.error}` })
+          }
+        }
+
+        const subPatch = goingFree
+          ? { ...FREE_RESET_FIELDS, updatedAt: new Date() }
+          : goingCancelled
+            ? { ...(plan_key ? { planKey: plan_key } : {}), ...cancelledNowFields(new Date()), updatedAt: new Date() }
+            : {
+                ...(plan_key ? { planKey: plan_key } : {}),
+                ...(plan_status ? { status: plan_status } : {}),
+                updatedAt: new Date(),
+              }
+
+        await db.update(subscriptions).set(subPatch).where(eq(subscriptions.id, sub.id))
       } else {
+        // No subscription row yet → nothing to cancel on Dodo; just create the mirror.
         await db.insert(subscriptions).values({
           organizationId: organization_id,
           planKey: plan_key ?? "free",
@@ -179,28 +201,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const { organization_id } = req.body as { organization_id?: string }
     if (!organization_id) return res.status(400).json({ error: "organization_id is required" })
 
-    const profilesWithCurrent = await db
-      .select()
-      .from(userProfiles)
-      .where(eq(userProfiles.currentOrganizationId, organization_id))
-
-    for (const p of profilesWithCurrent) {
-      const [personal] = await db
-        .select()
-        .from(organizations)
-        .where(and(eq(organizations.ownerUserId, p.id), eq(organizations.isPersonal, true)))
-      await db
-        .update(userProfiles)
-        .set({ currentOrganizationId: personal?.id ?? null, updatedAt: new Date() })
-        .where(eq(userProfiles.id, p.id))
-    }
-
-    const result = await db
-      .delete(organizations)
-      .where(eq(organizations.id, organization_id))
-      .returning({ id: organizations.id })
-    if (!result.length) return res.status(404).json({ error: "Not found" })
-    return res.status(204).end()
+    // Full teardown: cancel Dodo billing + clean clients/quotations (no org FK) +
+    // cascade the rest. Shared with the bulk-delete route so both behave identically.
+    const result = await teardownOrganization(organization_id)
+    if (!result.deleted) return res.status(404).json({ error: "Not found" })
+    return res.json({
+      ok: true,
+      dodo_cancelled: result.dodo.provider === "dodo" && result.dodo.ok,
+      dodo_error: result.dodo.provider === "dodo" && !result.dodo.ok ? result.dodo.error : null,
+    })
   }
 
   return res.status(405).json({ error: "Method not allowed" })
