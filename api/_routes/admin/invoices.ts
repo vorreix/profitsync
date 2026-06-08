@@ -4,6 +4,7 @@ import { db, serialize } from "../../../src/lib/db/index.js"
 import { invoices, organizations, subscriptions, userProfiles } from "../../../src/lib/db/schema.js"
 import { requireAdminCap } from "../../_lib/admin.js"
 import { defaultDodoEnv, fetchInvoicePdf, isDodoConfigured, type DodoEnv } from "../../_lib/dodo.js"
+import { amountExceedsLimit } from "../../../src/lib/money.js"
 
 const PAGE_SIZE = 30
 const VALID_STATUSES = ["draft", "open", "paid", "uncollectible", "void", "refunded"]
@@ -110,6 +111,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       status?: string
     }
     if (!organization_id) return res.status(400).json({ error: "organization_id is required" })
+    if (amount != null && amountExceedsLimit(amount)) return res.status(400).json({ error: "Amount is too large" })
 
     const [created] = await db
       .insert(invoices)

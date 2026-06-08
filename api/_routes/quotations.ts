@@ -5,6 +5,7 @@ import { quotations } from "../../src/lib/db/schema.js"
 import { canWrite, requireAuth, requireBusinessFeature } from "../_lib/auth.js"
 import { checkNoteLength, checkQuotationQuota } from "../_lib/quota.js"
 import { logAudit } from "../_lib/audit.js"
+import { amountExceedsLimit } from "../../src/lib/money.js"
 
 const VALID_STATUSES = ["draft", "sent", "accepted", "rejected"]
 const PAGE_SIZE = 20
@@ -103,6 +104,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!VALID_STATUSES.includes(normalizedStatus)) {
       return res.status(400).json({ error: "status must be draft, sent, accepted, or rejected" })
     }
+    if (amount != null && amountExceedsLimit(amount)) return res.status(400).json({ error: "Amount is too large" })
     const quota = await checkQuotationQuota(orgId)
     if (!quota.allowed) return res.status(402).json(quota)
     const noteCheck = await checkNoteLength(orgId, notes)

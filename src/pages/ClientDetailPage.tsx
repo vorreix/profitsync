@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useRef } from "react"
 import { useParams, useNavigate, useSearchParams } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { apiGet, apiPost, apiPatch, apiDelete } from "@/lib/api"
+import { amountExceedsLimit } from "@/lib/money"
 import type { Client, Transaction, TransactionAttachment, WealthAccount } from "@/lib/types"
 import { AccountSelector, type Allocation } from "@/components/AccountSelector"
 import { loadLastTx, saveLastTx } from "@/lib/last-tx"
@@ -200,6 +201,7 @@ export function ClientDetailPage() {
   const handleAddTransaction = async () => {
     const allocs = txForm.allocations.filter((a) => a.account_id && Number(a.amount) > 0)
     if (allocs.length === 0) { toast.error("Valid amount is required"); return }
+    if (allocs.some((a) => amountExceedsLimit(a.amount))) { toast.error("Amount is too large"); return }
     setSaving(true)
     try {
       const token = await getToken()
@@ -256,6 +258,7 @@ export function ClientDetailPage() {
   const handleEditTransaction = async () => {
     const alloc = editTxForm?.allocations[0]
     if (!editTxForm || !alloc || !alloc.amount || isNaN(parseFloat(alloc.amount))) { toast.error("Valid amount is required"); return }
+    if (amountExceedsLimit(alloc.amount)) { toast.error("Amount is too large"); return }
     setSaving(true)
     try {
       const token = await getToken()

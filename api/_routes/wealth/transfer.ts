@@ -6,6 +6,7 @@ import { transactions, wealthAccounts } from "../../../src/lib/db/schema.js"
 import { canWrite, ensureDefaultClient, requireAuth } from "../../_lib/auth.js"
 import { getOrgPlan } from "../../_lib/quota.js"
 import { logAudit } from "../../_lib/audit.js"
+import { amountExceedsLimit } from "../../../src/lib/money.js"
 
 const displayName = (a: { nickname: string; bankName: string }) => a.nickname.trim() || a.bankName
 
@@ -38,6 +39,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!from_account_id || !to_account_id) return res.status(400).json({ error: "from_account_id and to_account_id are required" })
   if (from_account_id === to_account_id) return res.status(400).json({ error: "Choose two different accounts" })
   if (!amt || isNaN(amt) || amt <= 0) return res.status(400).json({ error: "amount must be greater than 0" })
+  if (amountExceedsLimit(amt)) return res.status(400).json({ error: "Amount is too large" })
 
   const accounts = await db
     .select()

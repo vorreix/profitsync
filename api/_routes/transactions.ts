@@ -6,6 +6,7 @@ import { canWrite, ensureDefaultClient, isPersonalAccount, requireAuth } from ".
 import { checkTransactionQuota } from "../_lib/quota.js"
 import { logAudit } from "../_lib/audit.js"
 import { balanceDelta } from "../../src/lib/wealth-ledger.js"
+import { amountExceedsLimit } from "../../src/lib/money.js"
 
 const PAGE_SIZE = 20
 
@@ -311,6 +312,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     if (!amount || isNaN(Number(amount))) return res.status(400).json({ error: "amount is required" })
+    if (amountExceedsLimit(amount)) return res.status(400).json({ error: "Amount is too large" })
     if (!["incoming", "outgoing"].includes(type)) return res.status(400).json({ error: "type must be incoming or outgoing" })
     if (!wealth_account_id) return res.status(400).json({ error: "wealth_account_id is required" })
     const [account] = await db
