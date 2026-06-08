@@ -3,7 +3,8 @@ import { eq } from "drizzle-orm"
 import { db, serialize } from "../../../../src/lib/db/index.js"
 import { blogPosts } from "../../../../src/lib/db/schema.js"
 import { requireAdminCap } from "../../../_lib/admin.js"
-import { uniqueSlug, clampStr, cleanTags, safeImageUrl } from "../../../_lib/blog.js"
+import { uniqueSlug, clampStr, cleanTags, safeImageUrl, safeHttpUrl } from "../../../_lib/blog.js"
+import { submitIndexNow } from "../../../_lib/indexnow.js"
 import {
   readingTimeMinutes,
   BLOG_TITLE_MAX,
@@ -16,6 +17,10 @@ import {
 // unpublish via `status`), and delete. Admin-only via requireAdmin.
 const COVER_URL_MAX = 600
 const AUTHOR_MAX = 120
+const JOB_TITLE_MAX = 120
+const BIO_MAX = 400
+const URL_MAX = 600
+const SECTION_MAX = 80
 const CONTENT_MAX = 200_000
 
 type BlogPatch = {
@@ -26,6 +31,12 @@ type BlogPatch = {
   cover_image_url?: unknown
   tags?: unknown
   author_name?: unknown
+  author_job_title?: unknown
+  author_bio?: unknown
+  author_url?: unknown
+  author_image_url?: unknown
+  og_image_url?: unknown
+  article_section?: unknown
   status?: unknown
   seo_title?: unknown
   seo_description?: unknown
@@ -88,6 +99,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ...(body.cover_image_url !== undefined ? { coverImageUrl: safeImageUrl(body.cover_image_url, COVER_URL_MAX) } : {}),
         ...(body.tags !== undefined ? { tags: cleanTags(body.tags) } : {}),
         ...(body.author_name !== undefined ? { authorName: clampStr(body.author_name, AUTHOR_MAX) } : {}),
+        ...(body.author_job_title !== undefined ? { authorJobTitle: clampStr(body.author_job_title, JOB_TITLE_MAX) } : {}),
+        ...(body.author_bio !== undefined ? { authorBio: clampStr(body.author_bio, BIO_MAX) } : {}),
+        ...(body.author_url !== undefined ? { authorUrl: safeHttpUrl(body.author_url, URL_MAX) } : {}),
+        ...(body.author_image_url !== undefined ? { authorImageUrl: safeImageUrl(body.author_image_url, URL_MAX) } : {}),
+        ...(body.og_image_url !== undefined ? { ogImageUrl: safeImageUrl(body.og_image_url, URL_MAX) } : {}),
+        ...(body.article_section !== undefined ? { articleSection: clampStr(body.article_section, SECTION_MAX) } : {}),
         ...(body.seo_title !== undefined ? { seoTitle: clampStr(body.seo_title, BLOG_SEO_TITLE_MAX) } : {}),
         ...(body.seo_description !== undefined
           ? { seoDescription: clampStr(body.seo_description, BLOG_SEO_DESCRIPTION_MAX) }
@@ -98,6 +115,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       })
       .where(eq(blogPosts.id, id))
       .returning()
+
+    // Re-announce to IndexNow whenever the live post (or its content) changes, so
+    // Bing/Yandex/Naver re-crawl promptly. No-op outside production; never blocks.
+    if (updated.status === "published") {
+      await submitIndexNow([`/blog/${updated.slug}`, "/blog"])
+    }
 
     return res.json(serialize(updated))
   }

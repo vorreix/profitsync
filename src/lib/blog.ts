@@ -20,12 +20,21 @@ export function slugify(input: string): string {
 }
 
 /**
+ * Word count of a Markdown body. Used for the schema.org `wordCount` property on
+ * BlogPosting (a content-depth signal that improves AI citation), and as the basis
+ * for reading time. Markdown punctuation is counted loosely — exactness isn't
+ * required, only a stable, representative integer.
+ */
+export function wordCount(content: string): number {
+  return content.trim().split(/\s+/).filter(Boolean).length
+}
+
+/**
  * Estimated reading time in whole minutes for a Markdown body, at ~200 wpm.
  * Always at least 1 minute (a one-line post still reads as "1 min read").
  */
 export function readingTimeMinutes(content: string): number {
-  const words = content.trim().split(/\s+/).filter(Boolean).length
-  return Math.max(1, Math.round(words / 200))
+  return Math.max(1, Math.round(wordCount(content) / 200))
 }
 
 /**
@@ -39,6 +48,68 @@ export function isSafeImageUrl(url: string): boolean {
   const v = url.trim()
   if (!v) return false
   return /^(https?:\/\/|\/\/|\/|\.\.?\/)/i.test(v)
+}
+
+/** Strip inline Markdown to plain text (links → text, emphasis/code markers removed). */
+function stripInlineMarkdown(text: string): string {
+  return text
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, "") // images → drop
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1") // [text](url) → text
+    .replace(/[*_~`]+/g, "") // emphasis / code markers
+    .replace(/^\s*[-*+]\s+/, "") // leading list marker
+    .replace(/\s+/g, " ")
+    .trim()
+}
+
+/**
+ * Extract a Frequently-Asked-Questions section from a Markdown body so it can be
+ * emitted as schema.org FAQPage JSON-LD (verified to materially improve how AI
+ * answer-engines extract and cite the content).
+ *
+ * Convention (matches the blog content playbook): an H2 whose text is "FAQ" or
+ * "Frequently asked questions" opens the section; each following H3 is a question,
+ * and the prose until the next H3/H2 is its answer. The section ends at the next H1/H2.
+ * Returns [] when no FAQ section is present — callers simply skip the schema.
+ */
+export function extractFaq(markdown: string): Array<{ q: string; a: string }> {
+  const lines = markdown.split(/\r?\n/)
+  const faq: Array<{ q: string; a: string }> = []
+  let inFaq = false
+  let question: string | null = null
+  let answer: string[] = []
+
+  const flush = () => {
+    if (question) {
+      const a = answer.join(" ").replace(/\s+/g, " ").trim()
+      if (a) faq.push({ q: question, a })
+    }
+    question = null
+    answer = []
+  }
+
+  for (const line of lines) {
+    const heading = line.match(/^(#{1,6})\s+(.*\S)\s*$/)
+    if (heading) {
+      const level = heading[1].length
+      const text = stripInlineMarkdown(heading[2])
+      if (level <= 2) {
+        flush()
+        inFaq = level === 2 && /^(faq|frequently asked questions?)$/i.test(text)
+        continue
+      }
+      if (inFaq && level === 3) {
+        flush()
+        question = text
+        continue
+      }
+      // Deeper headings inside the FAQ are treated as answer text.
+      if (inFaq && question) answer.push(text)
+      continue
+    }
+    if (inFaq && question && line.trim()) answer.push(stripInlineMarkdown(line))
+  }
+  flush()
+  return faq
 }
 
 export const BLOG_TITLE_MAX = 200

@@ -3,7 +3,8 @@ import { desc } from "drizzle-orm"
 import { db, serialize } from "../../../src/lib/db/index.js"
 import { blogPosts } from "../../../src/lib/db/schema.js"
 import { requireAdminCap } from "../../_lib/admin.js"
-import { uniqueSlug, clampStr, cleanTags, safeImageUrl } from "../../_lib/blog.js"
+import { uniqueSlug, clampStr, cleanTags, safeImageUrl, safeHttpUrl } from "../../_lib/blog.js"
+import { submitIndexNow } from "../../_lib/indexnow.js"
 import {
   readingTimeMinutes,
   BLOG_TITLE_MAX,
@@ -16,6 +17,10 @@ import {
 // ones. Admin-only via requireAdmin. Single-post mutations live in ./blog/[id].ts.
 const COVER_URL_MAX = 600
 const AUTHOR_MAX = 120
+const JOB_TITLE_MAX = 120
+const BIO_MAX = 400
+const URL_MAX = 600
+const SECTION_MAX = 80
 const CONTENT_MAX = 200_000 // generous Markdown body cap (~200 KB)
 
 type BlogBody = {
@@ -26,6 +31,12 @@ type BlogBody = {
   cover_image_url?: unknown
   tags?: unknown
   author_name?: unknown
+  author_job_title?: unknown
+  author_bio?: unknown
+  author_url?: unknown
+  author_image_url?: unknown
+  og_image_url?: unknown
+  article_section?: unknown
   status?: unknown
   seo_title?: unknown
   seo_description?: unknown
@@ -67,6 +78,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         tags: cleanTags(body.tags),
         authorName: clampStr(body.author_name, AUTHOR_MAX),
         authorUserId: adminId,
+        authorJobTitle: clampStr(body.author_job_title, JOB_TITLE_MAX),
+        authorBio: clampStr(body.author_bio, BIO_MAX),
+        authorUrl: safeHttpUrl(body.author_url, URL_MAX),
+        authorImageUrl: safeImageUrl(body.author_image_url, URL_MAX),
+        ogImageUrl: safeImageUrl(body.og_image_url, URL_MAX),
+        articleSection: clampStr(body.article_section, SECTION_MAX),
         status,
         seoTitle: clampStr(body.seo_title, BLOG_SEO_TITLE_MAX),
         seoDescription: clampStr(body.seo_description, BLOG_SEO_DESCRIPTION_MAX),
@@ -74,6 +91,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         publishedAt: status === "published" ? new Date() : null,
       })
       .returning()
+
+    // Ping IndexNow so Bing/Yandex/Naver crawl the new post (and the updated index)
+    // within minutes. No-op outside production; never blocks on failure.
+    if (created.status === "published") {
+      await submitIndexNow([`/blog/${created.slug}`, "/blog"])
+    }
 
     return res.status(201).json(serialize(created))
   }
