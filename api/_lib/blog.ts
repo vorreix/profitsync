@@ -20,6 +20,16 @@ export function safeImageUrl(input: unknown, max: number): string {
 }
 
 /**
+ * Sanitize an external link (e.g. an author's LinkedIn / personal site). Only
+ * absolute http(s) URLs are kept — these are rendered as `rel="author"` links and
+ * emitted as schema sameAs, so relative / javascript: / data: values are dropped.
+ */
+export function safeHttpUrl(input: unknown, max: number): string {
+  const s = clampStr(input, max)
+  return /^https?:\/\//i.test(s) ? s : ""
+}
+
+/**
  * Normalize a tags input into a clean string[]: accepts an array or a
  * comma-separated string, trims each, drops empties + duplicates, and caps both
  * the number of tags and each tag's length.

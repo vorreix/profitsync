@@ -1,8 +1,49 @@
 {
+  "functions": {
+    "api/ssr.ts": {
+      "includeFiles": "api/_ssr/index-template.html"
+    }
+  },
   "rewrites": [
     {
       "source": "/api/(.*)",
       "destination": "/api/index?__apipath=$1"
+    },
+    {
+      "source": "/robots.txt",
+      "destination": "/api/ssr?__ssrpath=robots.txt"
+    },
+    {
+      "source": "/sitemap.xml",
+      "destination": "/api/ssr?__ssrpath=sitemap.xml"
+    },
+    {
+      "source": "/llms.txt",
+      "destination": "/api/ssr?__ssrpath=llms.txt"
+    },
+    {
+      "source": "/",
+      "destination": "/api/ssr?__ssrpath="
+    },
+    {
+      "source": "/blog",
+      "destination": "/api/ssr?__ssrpath=blog"
+    },
+    {
+      "source": "/blog/:slug",
+      "destination": "/api/ssr?__ssrpath=blog/:slug"
+    },
+    {
+      "source": "/privacy-policy",
+      "destination": "/api/ssr?__ssrpath=privacy-policy"
+    },
+    {
+      "source": "/terms-of-service",
+      "destination": "/api/ssr?__ssrpath=terms-of-service"
+    },
+    {
+      "source": "/refund-policy",
+      "destination": "/api/ssr?__ssrpath=refund-policy"
     },
     {
       "source": "/((?!api|@)[^.]*)",
