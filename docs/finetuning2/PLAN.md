@@ -63,8 +63,8 @@ earlier work. Root is `feat/ux2-00-plan` off `dev`.
 | # | Branch | Item | Scope | Migration | Status |
 |---|---|---|---|---|---|
 | 00 | `feat/ux2-00-plan` | — | This plan document | no | ✅ committed |
-| 01 | `feat/ux2-01-referrals-paid` | 3 | Credit referrals on reconcile (not just webhook); verify redemption; referral doc | no | ⬜ pending |
-| 02 | `feat/ux2-02-india-payment` | 2 | Pass `billing_currency` (IN→INR) + UPI methods to Dodo checkout; document dashboard config | no | ⬜ pending |
+| 01 | `feat/ux2-01-referrals-paid` | 3 | Credit referrals on reconcile (not just webhook); verify redemption; referral doc | no | ✅ pushed |
+| 02 | `feat/ux2-02-india-payment` | 2 | Pass `billing_currency` (IN→INR) + full address to Dodo checkout; document dashboard config | no | ✅ pushed |
 | 03 | `feat/ux2-03-modal-back-close` | 1 | `useBackClose` primitive wired into Dialog/Sheet/Drawer/AlertDialog wrappers so Back closes any modal | no | ⬜ pending |
 | 04 | `feat/ux2-04-invite-onboarding` | 5 | Auto-accept invitation post-signup; skip onboarding → org dashboard | no | ⬜ pending |
 | 05 | `feat/ux2-05-quick-add-toast` | 4 | Global quick-add over current page + success toast "Click to see"; Back returns to origin | no | ⬜ pending |
