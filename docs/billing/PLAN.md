@@ -141,10 +141,10 @@ PRs are opened from the `pull/new/<branch>` URL GitHub prints on push (recorded 
 |---|---|---|---|
 | 00 | `feat/admin-billing-00-plan` | This plan + findings doc | ✅ committed |
 | 01 | `feat/admin-billing-01-dodo-aware-admin` | Make admin plan/status changes Dodo‑aware: cancel on Dodo + clear stale period/cancel/provider fields when downgrading to free / cancelling. Fixes Q2. `api/_lib/admin-billing.ts` + unit tests. | ✅ committed |
-| 02 | `feat/admin-billing-02-payment-failed` | Record payment failures in the DB: webhook `payment.failed` → `uncollectible` invoice + `past_due` sub. Unit test the mapping. | ⏳ pending |
-| 03 | `feat/admin-billing-03-bulk-delete-orgs` | Multi‑select + bulk delete on `/admin/organizations`. Delete cancels each org's Dodo sub + cleans orphaned clients/quotations + cascades the rest. | ⏳ pending |
-| 04 | `feat/admin-billing-04-bulk-subscriptions` | Multi‑select + bulk actions on `/admin/subscriptions` (Downgrade→Free w/ Dodo, Cancel on Dodo, Sync from Dodo) + per‑row Sync + add `pending` to filters. | ⏳ pending |
-| 05 | `feat/admin-billing-05-docs-skill` | The detailed explainer doc + the `subscription-system` AI skill. Final tracker + memory update. | ⏳ pending |
+| 02 | `feat/admin-billing-02-payment-failed` | Record payment failures in the DB: webhook `payment.failed` → `uncollectible` invoice + `past_due` sub. Unit test the mapping. | ✅ committed |
+| 03 | `feat/admin-billing-03-bulk-delete-orgs` | Multi‑select + bulk delete on `/admin/organizations`. Delete cancels each org's Dodo sub + cleans orphaned clients/quotations + cascades the rest. | ✅ committed |
+| 04 | `feat/admin-billing-04-bulk-subscriptions` | Multi‑select + bulk actions on `/admin/subscriptions` (Downgrade→Free w/ Dodo, Cancel on Dodo, Sync from Dodo) + per‑row Sync + add `pending` to filters. | ✅ committed |
+| 05 | `feat/admin-billing-05-docs-skill` | The detailed explainer doc + the `subscription-system` AI skill. Final tracker + memory update. | ✅ committed |
 
 ---
 
@@ -196,7 +196,7 @@ PRs are opened from the `pull/new/<branch>` URL GitHub prints on push (recorded 
 ### 05 — Docs + skill
 - `docs/billing/SUBSCRIPTIONS_AND_PAYMENTS.md` (the human explainer) and
   `.claude/skills/subscription-system/SKILL.md` (the AI skill). Final tracker + memory.
-- **Status:** ⏳
+- **Status:** ✅
 
 ---
 
@@ -211,3 +211,59 @@ PRs are opened from the `pull/new/<branch>` URL GitHub prints on push (recorded 
   subscriptions status set. `cancel_reason: cancelled_by_merchant` added to immediate
   Dodo cancels. Verified: unit tests + typecheck + a throwaway‑org DB proof that the
   free‑reset clears the stale renew date (then self‑cleaned).
+- **02** — `payment.failed` webhook branch: idempotent `uncollectible` invoice (keyed
+  by Dodo payment id) + flips an `active` sub to `past_due`. Verified end‑to‑end with a
+  **signed** webhook against the live dev DB on a throwaway org (invoice `19.99`,
+  unpaid; sub `past_due`), then self‑cleaned. `failed → uncollectible` mapping already
+  unit‑tested.
+- **03** — Shared `api/_lib/admin-org-delete.ts#teardownOrganization` (cancel Dodo →
+  delete clients+quotations → reassign profiles → delete org). New
+  `admin/organizations/bulk-delete.ts` route (registered). Single DELETE refactored to
+  reuse it (so it now also cancels Dodo + cleans orphans — previously it left orphaned
+  clients/quotations). `AdminOrgsPage`: checkbox column + select‑all + bulk bar +
+  confirm dialog + optimistic row removal + Dodo‑cancel summary toast. Verified:
+  teardown integration test on the live dev DB (client/tx/quotation/wealth/member/sub
+  all removed, stub→no Dodo call), then self‑cleaned. Admin UI is typecheck‑ +
+  pattern‑verified (mirrors the TransactionsPage selection pattern); live admin‑login
+  browser check deferred (needs an app‑admin Clerk session).
+- **04** — New `admin/subscriptions/actions.ts` route (registered): bulk
+  `downgrade_free` / `cancel_dodo` / `sync`, resilient per‑row, returns the updated
+  rows for in‑place UI replacement. `AdminSubscriptionsPage`: checkbox column +
+  select‑all + bulk bar (Downgrade→Free, Cancel on Dodo, Sync from Dodo) + a confirm
+  dialog for the destructive ones + a per‑row Sync button; `pending` added to the
+  status filter + editor. Verified: a handler‑level integration test (auth guard
+  mocked) on the dev DB — downgrade_free → clean free, cancel_dodo → cancelled (plan
+  kept), sync → no‑op for stub, unknown action → 400; self‑cleaned.
+- **05** — `docs/billing/SUBSCRIPTIONS_AND_PAYMENTS.md` (full human explainer) +
+  `.claude/skills/subscription-system/SKILL.md` (AI operating guide). Tracker finalized.
+
+---
+
+## 7. Final summary
+
+**The owner's questions, answered:**
+- The admin Upgrade/Downgrade buttons did **not** touch Dodo — pure DB writes. They now
+  do: downgrade/cancel **cancel on Dodo** and clear the mirror; upgrade is a documented
+  comp grant (admins can't enter a card).
+- The "still shows Renews / Dodo still active after downgrade" bug is **fixed** (clear
+  `current_period_end` + immediate Dodo cancel).
+- Every status is documented in `SUBSCRIPTIONS_AND_PAYMENTS.md` §3.
+
+**What shipped (6 stacked branches off `dev`, each pushed):**
+`00` plan · `01` Dodo‑aware admin plan changes (+stale‑renew fix) · `02` payment.failed
+→ uncollectible+past_due · `03` org multi‑select bulk delete (cancel Dodo + orphan
+cleanup; single delete fixed too) · `04` subscription multi‑select bulk actions
+(downgrade/cancel/sync) + per‑row sync + `pending` · `05` docs + skill.
+
+**Verification:** 116 unit tests green on every branch; new pure logic unit‑tested
+(`admin-billing.test.ts`). DB‑touching behaviour proven with throwaway integration tests
+against the live dev DB (free‑reset clears the renew date; signed `payment.failed` →
+uncollectible+past_due; org teardown removes all children; the three bulk subscription
+actions) — each self‑cleaned, none added to the DB‑free gate.
+
+**Honestly deferred:** live admin‑panel browser verification (needs an app‑admin Clerk
+session). The admin UI is typecheck‑clean and mirrors the existing `TransactionsPage`
+multi‑select pattern; the risky backend is fully verified.
+
+**No schema migration was needed** — everything maps onto existing columns/enums. Local
+`db:migrate` confirmed the schema is current.
