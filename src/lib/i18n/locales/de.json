@@ -141,7 +141,8 @@
     "transactionDetails": "Transaktionsdetails",
     "description": "Beschreibung",
     "openTransaction": "Transaktion öffnen",
-    "openClient": "Kunde öffnen"
+    "openClient": "Kunde öffnen",
+    "ownCompanyBudget": "Firmenbudget"
   },
   "chart": {
     "incoming": "Eingang",
@@ -232,7 +233,11 @@
     "budgetQuestionBusiness": "Ein Budget für dein Unternehmen festlegen?",
     "budgetHint": "Optional — jederzeit änderbar.",
     "addDefaultBudget": "Auch einen Standard für neue Kunden festlegen",
-    "finish": "Fertig"
+    "finish": "Fertig",
+    "cashQuestionBusiness": "Wie viel Bargeld hat das Unternehmen zur Hand?",
+    "cashHintBusiness": "Das Bargeld deines Unternehmens.",
+    "newOrgTitle": "Neues Unternehmen erstellen",
+    "newOrgSubtitle": "Benenne es und wähle eine Währung — später änderbar."
   },
   "transactions": {
     "add": "Hinzufügen",
@@ -946,7 +951,10 @@
     "dragHandle": "Zum Sortieren oder Überweisen ziehen",
     "reorder": "Sortieren",
     "holdToTransfer": "Zum Überweisen halten",
-    "selectAccount": "Konto auswählen"
+    "selectAccount": "Konto auswählen",
+    "healthGood": "Alles gut — alle Salden positiv",
+    "healthWarn": "Achtung — ein Konto ist negativ",
+    "healthNegative": "Gesamtsaldo ist negativ"
   },
   "errorBoundary": {
     "title": "Etwas ist schiefgelaufen",
@@ -957,7 +965,8 @@
     "viewAction": "Ansehen",
     "clientCreated": "Kunde „{{name}}“ hinzugefügt",
     "transactionCreated": "{{label}} über {{amount}} hinzugefügt",
-    "quotationCreated": "Angebot „{{title}}“ hinzugefügt"
+    "quotationCreated": "Angebot „{{title}}“ hinzugefügt",
+    "advanced": "Erweitert"
   },
   "budget": {
     "title": "Budget",

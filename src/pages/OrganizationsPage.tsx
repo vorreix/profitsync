@@ -4,7 +4,7 @@ import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { ArrowLeftRight, Building2, Check, Loader as Loader2, Pencil, Plus, Trash2, Users } from "lucide-react"
-import { apiDelete, apiPatch, apiPost } from "@/lib/api"
+import { apiDelete, apiPatch } from "@/lib/api"
 import { useOrg } from "@/lib/org-context"
 import { isPaidPlanKey, type Organization } from "@/lib/types"
 import { Button } from "@/components/ui/button"
@@ -14,7 +14,6 @@ import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { CurrencyCombobox } from "@/components/CurrencyCombobox"
-import { detectDefaultCurrency } from "@/lib/currencies"
 import {
   Dialog,
   DialogContent,
@@ -30,11 +29,6 @@ export function OrganizationsPage() {
   const { t } = useTranslation()
   const { orgs, activeOrg, loading, switchOrg, refresh } = useOrg()
 
-  const [createOpen, setCreateOpen] = useState(false)
-  const [newName, setNewName] = useState("")
-  const [newCurrency, setNewCurrency] = useState("USD")
-  const [creating, setCreating] = useState(false)
-
   const [editTarget, setEditTarget] = useState<Organization | null>(null)
   const [editName, setEditName] = useState("")
   const [editCurrency, setEditCurrency] = useState("USD")
@@ -45,34 +39,9 @@ export function OrganizationsPage() {
 
   const [switching, setSwitching] = useState<string | null>(null)
 
-  const openCreate = () => {
-    // Default to the active org's currency (most likely pick for an existing user),
-    // falling back to a geo-detected default.
-    setNewCurrency(activeOrg?.currency || detectDefaultCurrency())
-    setNewName("")
-    setCreateOpen(true)
-  }
-
-  const handleCreate = async () => {
-    if (!newName.trim()) return
-    setCreating(true)
-    try {
-      const token = await getToken()
-      if (!token) throw new Error("Not authenticated")
-      const created = await apiPost<Organization>("/api/organizations", token, { name: newName.trim(), currency: newCurrency })
-      toast.success(t("organizations.organizationCreated"))
-      setNewName("")
-      setCreateOpen(false)
-      await switchOrg(created.id)
-      await refresh()
-      // Run the new company through the setup flow (money + budgets + plan).
-      navigate("/organization-setup")
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : t("organizations.failedToCreateOrganization"))
-    } finally {
-      setCreating(false)
-    }
-  }
+  // Creating an org is now an immersive wizard (name → money → plan), so the
+  // "New organization" button just opens it.
+  const openCreate = () => navigate("/organization-setup")
 
   const handleSaveEdit = async () => {
     if (!editTarget) return
@@ -280,44 +249,6 @@ export function OrganizationsPage() {
           })}
         </div>
       )}
-
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t("organizations.createOrganization")}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="create-org-name">{t("organizations.name")}</Label>
-              <Input
-                id="create-org-name"
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                placeholder={t("organizations.acmeIncPlaceholder")}
-                onKeyDown={(e) => { if (e.key === "Enter") handleCreate() }}
-                disabled={creating}
-                autoFocus
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>{t("organizations.currency")}</Label>
-              <CurrencyCombobox value={newCurrency} onValueChange={setNewCurrency} disabled={creating} />
-              <p className="text-[11px] text-muted-foreground">
-                {t("organizations.currencyUsedForFormatting")}
-              </p>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setCreateOpen(false)} disabled={creating}>
-              {t("organizations.cancel")}
-            </Button>
-            <Button onClick={handleCreate} disabled={!newName.trim() || creating}>
-              {creating ? <Loader2 className="size-4 mr-2 animate-spin" /> : null}
-              {t("organizations.create")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       <Dialog open={!!editTarget} onOpenChange={(o) => { if (!o) setEditTarget(null) }}>
         <DialogContent>

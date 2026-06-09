@@ -374,3 +374,13 @@ must not block completion on failure.
   made robust (PATCH the existing Cash account, not a failing 2nd POST). Skills used:
   `ui-ux-pro-max` + `transition-creator`. **Playwright-verified at 390px** across every
   screen; data confirmed in DB; test data cleaned up.
+- **10** org-wizard refinements (follow-up) — (1) org/business cash step now says it's
+  the **company's** money; (2) the bank step uses the existing **bank-name autocomplete +
+  logo** (`BankNameCombobox`, Brandfetch proxy) — minimal, no extra fields; the picked
+  logo is stored on the account; (3) **immersed org creation into the wizard** — the
+  create dialogs (OrgSwitcher + Organizations page, incl. their "created" toasts) are gone;
+  "Create organization" opens `/organization-setup` which now starts with a **details
+  (name + currency)** step → money → plan, so every Back/Skip has real value (Back from
+  details cancels to the prior page). **Playwright-verified at 390px**: created an org,
+  Chase bank with logo persisted (brand_domain/logo_url/logo_data), company cash copy;
+  test org torn down.

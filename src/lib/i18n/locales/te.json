@@ -141,7 +141,8 @@
     "transactionDetails": "లావాదేవీ వివరాలు",
     "description": "వివరణ",
     "openTransaction": "లావాదేవీని తెరవండి",
-    "openClient": "క్లయింట్‌ను తెరవండి"
+    "openClient": "క్లయింట్‌ను తెరవండి",
+    "ownCompanyBudget": "కంపెనీ బడ్జెట్"
   },
   "chart": {
     "incoming": "రాబడి",
@@ -232,7 +233,11 @@
     "budgetQuestionBusiness": "మీ కంపెనీకి బడ్జెట్ సెట్ చేయాలా?",
     "budgetHint": "ఐచ్ఛికం — ఎప్పుడైనా మార్చవచ్చు.",
     "addDefaultBudget": "కొత్త క్లయింట్‌లకు డిఫాల్ట్ కూడా సెట్ చేయండి",
-    "finish": "ముగించు"
+    "finish": "ముగించు",
+    "cashQuestionBusiness": "వ్యాపారం వద్ద ఎంత నగదు ఉంది?",
+    "cashHintBusiness": "మీ కంపెనీ చేతిలో ఉన్న నగదు.",
+    "newOrgTitle": "కొత్త కంపెనీని సృష్టించండి",
+    "newOrgSubtitle": "పేరు పెట్టి కరెన్సీని ఎంచుకోండి — తర్వాత మార్చవచ్చు."
   },
   "transactions": {
     "add": "జోడించు",
@@ -946,7 +951,10 @@
     "dragHandle": "క్రమం మార్చడానికి లేదా బదిలీ చేయడానికి లాగండి",
     "reorder": "క్రమం మార్చు",
     "holdToTransfer": "బదిలీకి నొక్కి పట్టుకోండి",
-    "selectAccount": "ఖాతా ఎంచుకోండి"
+    "selectAccount": "ఖాతా ఎంచుకోండి",
+    "healthGood": "ఆరోగ్యకరం — అన్ని బ్యాలెన్స్‌లు సానుకూలం",
+    "healthWarn": "గమనిక — ఒక ఖాతా ప్రతికూలం",
+    "healthNegative": "మొత్తం బ్యాలెన్స్ ప్రతికూలం"
   },
   "errorBoundary": {
     "title": "ఏదో తప్పు జరిగింది",
@@ -957,7 +965,8 @@
     "viewAction": "చూడండి",
     "clientCreated": "క్లయింట్ “{{name}}” జోడించబడింది",
     "transactionCreated": "{{amount}} {{label}} జోడించబడింది",
-    "quotationCreated": "కోటేషన్ “{{title}}” జోడించబడింది"
+    "quotationCreated": "కోటేషన్ “{{title}}” జోడించబడింది",
+    "advanced": "అధునాతనం"
   },
   "budget": {
     "title": "బడ్జెట్",
