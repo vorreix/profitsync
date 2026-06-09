@@ -1425,8 +1425,13 @@ export function TransactionsPage() {
 
               <DialogFooter>
                 <Button variant="outline" onClick={() => {
-                  closeViewModal()
-                  openEditTx(viewTx)
+                  // Strip ?view in place (no history pop) before opening Edit, so the
+                  // detail modal's close doesn't fire a popstate that would instantly
+                  // close the freshly-opened edit dialog.
+                  const tx = viewTx
+                  setViewTx(null)
+                  view.close({ replace: true })
+                  if (tx) void openEditTx(tx)
                 }}>
                   <Pencil className="size-3.5" />
                   {t("edit")}

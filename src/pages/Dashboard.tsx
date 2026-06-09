@@ -31,7 +31,6 @@ import {
   Tag,
   Wallet,
   X,
-  Archive,
   Eye,
   EyeOff,
 } from "lucide-react"
@@ -118,7 +117,7 @@ type FilterOption = { id: string; label: string; sublabel?: string; badge?: stri
 
 // Reusable multi-select dropdown used for both the client and category filters.
 function MultiSelectFilter({
-  triggerLabel, allLabel, searchPlaceholder, emptyText, options, selected, onChange, icon,
+  triggerLabel, allLabel, searchPlaceholder, emptyText, options, selected, onChange, icon, extraToggle,
 }: {
   triggerLabel: string
   allLabel: string
@@ -128,6 +127,9 @@ function MultiSelectFilter({
   selected: Set<string>
   onChange: (next: Set<string>) => void
   icon: ReactNode
+  // Optional switch rendered inside the popover (e.g. "Show closed clients"), which
+  // expands the option list rather than living as a separate button outside.
+  extraToggle?: { label: string; checked: boolean; onChange: (v: boolean) => void }
 }) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
@@ -192,6 +194,12 @@ function MultiSelectFilter({
             )}
           </div>
         </ScrollArea>
+        {extraToggle && (
+          <label className="flex cursor-pointer items-center gap-2 border-t px-3 py-2.5">
+            <Checkbox checked={extraToggle.checked} onCheckedChange={(c) => extraToggle.onChange(!!c)} />
+            <span className="text-sm">{extraToggle.label}</span>
+          </label>
+        )}
         {selected.size > 0 && (
           <div className="border-t p-2 flex gap-2">
             <Button size="sm" variant="outline" className="flex-1" onClick={() => onChange(new Set())}>{t("common.clear")}</Button>
@@ -684,6 +692,7 @@ export function Dashboard() {
               selected={selectedClientIds}
               onChange={setSelectedClientIds}
               icon={<Building2 className="size-4 opacity-60" />}
+              extraToggle={{ label: t("closed.showClosedClients"), checked: showClosed, onChange: setShowClosed }}
             />
           )}
           <MultiSelectFilter
@@ -696,17 +705,6 @@ export function Dashboard() {
             onChange={setSelectedCategories}
             icon={<Tag className="size-4 opacity-60" />}
           />
-          {!isPersonal && (
-            <Button
-              variant={showClosed ? "secondary" : "outline"}
-              size="sm"
-              className="h-9 shrink-0"
-              onClick={() => setShowClosed((v) => !v)}
-            >
-              <Archive className="size-4" />
-              {t("closed.showClosedClients")}
-            </Button>
-          )}
         </div>
         <div className="sm:hidden shrink-0">
           <FilterSheet count={appliedFilterCount} onClear={clearAllFilters}>
@@ -721,6 +719,7 @@ export function Dashboard() {
                   selected={selectedClientIds}
                   onChange={setSelectedClientIds}
                   icon={<Building2 className="size-4 opacity-60" />}
+                  extraToggle={{ label: t("closed.showClosedClients"), checked: showClosed, onChange: setShowClosed }}
                 />
               </FilterSection>
             )}
@@ -736,12 +735,6 @@ export function Dashboard() {
                 icon={<Tag className="size-4 opacity-60" />}
               />
             </FilterSection>
-            {!isPersonal && (
-              <label className="flex items-center gap-2 pt-1">
-                <Checkbox checked={showClosed} onCheckedChange={(c) => setShowClosed(!!c)} />
-                <span className="text-sm">{t("closed.showClosedClients")}</span>
-              </label>
-            )}
           </FilterSheet>
         </div>
       </div>
