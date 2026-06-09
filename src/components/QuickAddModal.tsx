@@ -8,7 +8,8 @@ import { apiGet, apiPost } from "@/lib/api"
 import { useCurrency } from "@/lib/currency-context"
 import { useOrg } from "@/lib/org-context"
 import { accountDisplayName, formatMoney } from "@/lib/wealth"
-import { accountTypeAllows, type Client, type Quotation, type Transaction, type WealthAccount } from "@/lib/types"
+import { budgetState } from "@/lib/budget"
+import { accountTypeAllows, type Budget, type Client, type Quotation, type Transaction, type WealthAccount } from "@/lib/types"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -53,6 +54,7 @@ export function QuickAddModal({ entity, onClose }: { entity: QuickAddEntity | nu
   const [txDate, setTxDate] = useState(todayStr)
   const [accounts, setAccounts] = useState<WealthAccount[]>([])
   const [clients, setClients] = useState<Client[]>([])
+  const [budgetList, setBudgetList] = useState<Budget[]>([])
 
   // Quotation form
   const [qTitle, setQTitle] = useState("")
@@ -78,9 +80,10 @@ export function QuickAddModal({ entity, onClose }: { entity: QuickAddEntity | nu
       const token = await getToken()
       if (!token) return
       try {
-        const [accs, cls] = await Promise.all([
+        const [accs, cls, bdg] = await Promise.all([
           apiGet<WealthAccount[]>("/api/wealth/accounts", token),
           isBusiness ? apiGet<Client[] | { data: Client[] }>("/api/clients", token) : Promise.resolve([]),
+          apiGet<{ budgets: Budget[] }>("/api/budgets", token).catch(() => ({ budgets: [] })),
         ])
         if (cancelled) return
         const active = (accs || []).filter((a) => !a.archived_at)
@@ -91,6 +94,7 @@ export function QuickAddModal({ entity, onClose }: { entity: QuickAddEntity | nu
         setClients(clientList)
         // Default to the own/first client so a business user can submit fast.
         setTxClientId((prev) => prev || clientList.find((c) => c.is_own)?.id || clientList[0]?.id || "")
+        setBudgetList(bdg.budgets ?? [])
       } catch {
         /* best-effort; the user can still try to submit and see the API error */
       }
@@ -115,6 +119,21 @@ export function QuickAddModal({ entity, onClose }: { entity: QuickAddEntity | nu
     if (entity === "quotation") return qTitle.trim().length > 0 && qProspect.trim().length > 0
     return false
   }, [entity, submitting, clientName, txAmount, txAccountId, txClientId, isBusiness, qTitle, qProspect])
+
+  // Live budget impact for an outgoing transaction: how much of the relevant
+  // budget (the selected client's, or the personal/org budget) this expense uses.
+  const budgetHint = useMemo(() => {
+    if (entity !== "transaction" || txType !== "outgoing") return null
+    const amt = Number(txAmount)
+    if (!Number.isFinite(amt) || amt <= 0) return null
+    const b = isBusiness ? budgetList.find((x) => x.client_id === txClientId) : budgetList.find((x) => x.client_id === null)
+    if (!b || b.amount <= 0) return null
+    const projected = (b.spent ?? 0) + amt
+    const { remaining, state } = budgetState(projected, b.amount)
+    return remaining >= 0
+      ? { over: false, state, text: t("budget.remainingAfter", { amount: formatMoney(remaining, currency) }) }
+      : { over: true, state, text: t("budget.overAfter", { amount: formatMoney(-remaining, currency) }) }
+  }, [entity, txType, txAmount, isBusiness, budgetList, txClientId, currency, t])
 
   // Show a success toast with a "View" action that deep-links to the new item, then
   // close. navigate pushes a fresh entry over the origin page, so Back returns here.
@@ -262,6 +281,11 @@ export function QuickAddModal({ entity, onClose }: { entity: QuickAddEntity | nu
               <Input id="qa-tx-category" value={txCategory}
                 onChange={(e) => setTxCategory(e.target.value)} className="h-11" />
             </div>
+            {budgetHint && (
+              <p className={`text-xs ${budgetHint.over ? "text-red-600 dark:text-red-400" : budgetHint.state === "warn" ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"}`}>
+                {budgetHint.text}
+              </p>
+            )}
           </div>
         )}
 

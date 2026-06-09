@@ -520,3 +520,33 @@ export const blogPosts = pgTable("blog_posts", {
     sql`status <> 'published' OR published_at IS NOT NULL`,
   ),
 }))
+
+// Expense (outgoing) budgets. Business orgs set one per client (incl. their own
+// company client) plus an optional org-level DEFAULT (client_id NULL) used as the
+// template/prefill for clients without their own. Personal orgs set a single
+// personal budget (client_id NULL). `period` defines the rolling window the spend
+// is measured against. Spend is always derived from outgoing transactions — never
+// stored here — so the budget row only holds the target + cadence.
+export const budgets = pgTable("budgets", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  // NULL = the org-level budget: the personal budget for a personal org, or the
+  // default-for-clients template for a business org. Non-null = a specific client.
+  clientId: uuid("client_id").references(() => clients.id, { onDelete: "cascade" }),
+  period: text("period").notNull().default("monthly"), // lifetime | monthly | weekly | daily
+  amount: numeric("amount", { precision: 20, scale: 2 }).notNull().default("0"),
+  createdBy: text("created_by"),
+  updatedBy: text("updated_by"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  orgIdx: index("budgets_org_idx").on(table.organizationId),
+  // At most one budget per client …
+  orgClientUnique: uniqueIndex("budgets_org_client_unique")
+    .on(table.organizationId, table.clientId)
+    .where(sql`client_id IS NOT NULL`),
+  // … and at most one org-level (NULL-client) budget per org.
+  orgDefaultUnique: uniqueIndex("budgets_org_default_unique")
+    .on(table.organizationId)
+    .where(sql`client_id IS NULL`),
+}))

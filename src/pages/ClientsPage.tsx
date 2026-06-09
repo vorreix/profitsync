@@ -6,10 +6,12 @@ import { z } from "zod"
 import { apiGet, apiPost } from "@/lib/api"
 import { runOptimistic } from "@/lib/optimistic"
 import { useFieldErrors } from "@/lib/use-field-errors"
-import type { Client } from "@/lib/types"
+import type { Budget, Client } from "@/lib/types"
 import { useCurrency } from "@/lib/currency-context"
 import { useOrg } from "@/lib/org-context"
-import { canDeleteRole } from "@/lib/roles"
+import { canDeleteRole, canWriteRole } from "@/lib/roles"
+import { BudgetIndicator } from "@/components/budget/BudgetIndicator"
+import { BudgetDialog } from "@/components/budget/BudgetDialog"
 import { useMultiSelect } from "@/lib/use-multi-select"
 import { useLongPress } from "@/lib/use-long-press"
 import { BulkActionBar } from "@/components/BulkActionBar"
@@ -85,6 +87,7 @@ export function ClientsPage() {
   const { currency } = useCurrency()
   const { activeOrg } = useOrg()
   const canDelete = canDeleteRole(activeOrg?.role)
+  const canWrite = canWriteRole(activeOrg?.role)
   const sel = useMultiSelect()
   const longPress = useLongPress()
   const [bulkDeleting, setBulkDeleting] = useState(false)
@@ -105,6 +108,29 @@ export function ClientsPage() {
   const clientSchema = z.object({ name: z.string().trim().min(1, t("clientNameRequired")) })
   const { errors, validate, clearField, clearAll } = useFieldErrors(clientSchema)
   const [viewClient, setViewClient] = useState<ClientWithStats | null>(null)
+  // Per-client expense budgets (client_id → budget, with current-period spend) +
+  // the org default (template). Drives the card indicator + the set/edit dialog.
+  const [budgets, setBudgets] = useState<Map<string, Budget>>(new Map())
+  const [defaultBudget, setDefaultBudget] = useState<Budget | null>(null)
+  const [budgetClient, setBudgetClient] = useState<ClientWithStats | null>(null)
+
+  const loadBudgets = async () => {
+    try {
+      const token = await getToken()
+      if (!token) return
+      const res = await apiGet<{ budgets: Budget[] }>("/api/budgets", token)
+      const map = new Map<string, Budget>()
+      let def: Budget | null = null
+      for (const b of res.budgets) {
+        if (b.client_id) map.set(b.client_id, b)
+        else def = b // org-level (business default)
+      }
+      setBudgets(map)
+      setDefaultBudget(def)
+    } catch {
+      /* non-blocking — cards just won't show budget bars */
+    }
+  }
 
   const searchRef = useRef(search)
   const sortRef = useRef(sort)
@@ -161,6 +187,12 @@ export function ClientsPage() {
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps -- debounced refetch keyed on search/sort; fetchPage1 reads the latest values via refs
   }, [search, sort])
+
+  // Budgets load once per workspace (independent of the search/sort refetch).
+  useEffect(() => {
+    void loadBudgets()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeOrg?.id])
 
   // Keep ?q= in sync with the search box (replace, so no history spam) so the
   // query — and therefore the results — restore when the user comes back.
@@ -447,6 +479,32 @@ export function ClientsPage() {
                       </div>
                     </div>
 
+                    {/* Expense budget indicator (or a set-budget affordance). */}
+                    {(() => {
+                      const b = budgets.get(client.id)
+                      if (b) {
+                        return (
+                          <button
+                            type="button"
+                            className="w-full text-left rounded-md -m-1 p-1 hover:bg-accent/50 transition-colors"
+                            onClick={(e) => { e.stopPropagation(); setBudgetClient(client) }}
+                          >
+                            <BudgetIndicator amount={b.amount} spent={b.spent ?? 0} period={b.period} currency={currency} />
+                          </button>
+                        )
+                      }
+                      if (!canWrite) return null
+                      return (
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                          onClick={(e) => { e.stopPropagation(); setBudgetClient(client) }}
+                        >
+                          <Plus className="size-3" /> {t("budget.set", { ns: "translation" })}
+                        </button>
+                      )
+                    })()}
+
                     {(client.email || client.phone) && (
                       <div className="hidden sm:block space-y-1 pt-1">
                         {client.email && (
@@ -695,6 +753,16 @@ export function ClientsPage() {
         client={viewClient}
         open={viewClient !== null}
         onOpenChange={(o) => { if (!o) setViewClient(null) }}
+      />
+
+      <BudgetDialog
+        open={budgetClient !== null}
+        onOpenChange={(o) => { if (!o) setBudgetClient(null) }}
+        clientId={budgetClient?.id ?? null}
+        label={budgetClient?.name ?? ""}
+        current={budgetClient ? budgets.get(budgetClient.id) ?? null : null}
+        prefill={defaultBudget ? { amount: defaultBudget.amount, period: defaultBudget.period } : null}
+        onSaved={() => { void loadBudgets() }}
       />
     </div>
   )

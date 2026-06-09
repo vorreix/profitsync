@@ -939,5 +939,30 @@
     "clientCreated": "Cliente “{{name}}” aggiunto",
     "transactionCreated": "{{label}} di {{amount}} aggiunta",
     "quotationCreated": "Preventivo “{{title}}” aggiunto"
+  },
+  "budget": {
+    "title": "Budget",
+    "set": "Imposta budget",
+    "edit": "Modifica budget",
+    "remove": "Rimuovi",
+    "amountLabel": "Importo budget",
+    "periodLabel": "Periodo",
+    "lifetime": "Sempre",
+    "monthly": "Mensile",
+    "weekly": "Settimanale",
+    "daily": "Giornaliero",
+    "spentOf": "{{spent}} di {{amount}}",
+    "left": "{{amount}} rimanenti",
+    "over": "{{amount}} in eccesso",
+    "noBudget": "Nessun budget impostato",
+    "personal": "Budget personale",
+    "default": "Predefinito per nuovi clienti",
+    "company": "Budget azienda",
+    "saved": "Budget salvato",
+    "removed": "Budget rimosso",
+    "saveFailed": "Impossibile salvare il budget",
+    "save": "Salva budget",
+    "remainingAfter": "{{amount}} rimanenti dopo questa spesa",
+    "overAfter": "{{amount}} oltre il budget dopo questa spesa"
   }
 }

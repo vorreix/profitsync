@@ -8,6 +8,7 @@ import { useCurrency } from "@/lib/currency-context"
 import { useOrg } from "@/lib/org-context"
 import { accountDisplayName, formatMoney, useBalancePrivacy, useWealthOverviewCollapsed, useWealthSummary } from "@/lib/wealth"
 import { WealthAccountIcon } from "@/components/WealthAccountIcon"
+import { PersonalBudgetCard } from "@/components/budget/PersonalBudgetCard"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { FitText } from "@/components/FitText"
 import { Badge } from "@/components/ui/badge"
@@ -792,6 +793,8 @@ export function Dashboard() {
           />
         )}
       </div>
+
+      {isPersonal && <PersonalBudgetCard />}
 
       <WealthOverview accounts={wealthAccounts} loading={loading} currency={currency} />
 

@@ -4,7 +4,8 @@ import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
 import { apiGet, apiPost, apiPatch, apiDelete } from "@/lib/api"
 import { amountExceedsLimit } from "@/lib/money"
-import type { Client, Transaction, TransactionAttachment, WealthAccount } from "@/lib/types"
+import type { Budget, Client, Transaction, TransactionAttachment, WealthAccount } from "@/lib/types"
+import { budgetState } from "@/lib/budget"
 import { useCurrency } from "@/lib/currency-context"
 import { useOrg } from "@/lib/org-context"
 import { useCategories } from "@/lib/use-categories"
@@ -35,7 +36,7 @@ import { AttachmentBadge } from "@/components/AttachmentBadge"
 import { AttachmentDetailModal, type AttachmentModalItem } from "@/components/AttachmentDetailModal"
 import { TransactionAttachments } from "@/components/transactions/TransactionAttachments"
 import { AuditHistory } from "@/components/AuditHistory"
-import { accountDisplayName } from "@/lib/wealth"
+import { accountDisplayName, formatMoney } from "@/lib/wealth"
 import { WealthAccountIcon } from "@/components/WealthAccountIcon"
 import { AccountSelector, type Allocation } from "@/components/AccountSelector"
 import { useUrlModal } from "@/hooks/use-url-modal"
@@ -289,7 +290,7 @@ function CategoryCombobox({ categories, value, onChangeCategories, onChange }: {
 // ─── Transaction form fields ──────────────────────────────────────────────────
 
 function TxFormFields({
-  f, onChange, showClient, clients, accounts, accountsLoading, categories, onChangeCats, onAddAccount, currency, singleAccount = false,
+  f, onChange, showClient, clients, accounts, accountsLoading, categories, onChangeCats, onAddAccount, currency, singleAccount = false, budget = null,
 }: {
   f: TxForm
   onChange: (patch: Partial<TxForm>) => void
@@ -302,9 +303,22 @@ function TxFormFields({
   onAddAccount: () => void
   currency: string
   singleAccount?: boolean
+  // The resolved expense budget for the current client (or personal/org budget),
+  // used to show the live "x left after this expense" impact on outgoing.
+  budget?: Budget | null
 }) {
   const { t } = useTranslation("transactions")
   const cats = f.type === "incoming" ? categories.incoming : categories.outgoing
+  // Live budget impact (outgoing only): sum the split allocations and project the
+  // remaining budget for its period.
+  const txTotal = f.allocations.reduce((sum, a) => sum + (Number(a.amount) || 0), 0)
+  const budgetHint = (() => {
+    if (f.type !== "outgoing" || !budget || budget.amount <= 0 || txTotal <= 0) return null
+    const { remaining, state } = budgetState((budget.spent ?? 0) + txTotal, budget.amount)
+    return remaining >= 0
+      ? { over: false, state, text: t("budget.remainingAfter", { ns: "translation", amount: formatMoney(remaining, currency) }) }
+      : { over: true, state, text: t("budget.overAfter", { ns: "translation", amount: formatMoney(-remaining, currency) }) }
+  })()
 
   return (
     <div className="space-y-4 py-2">
@@ -340,6 +354,11 @@ function TxFormFields({
         onAddAccount={onAddAccount}
         loading={accountsLoading}
       />
+      {budgetHint && (
+        <p className={`-mt-1 text-xs ${budgetHint.over ? "text-red-600 dark:text-red-400" : budgetHint.state === "warn" ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"}`}>
+          {budgetHint.text}
+        </p>
+      )}
       <div className="space-y-1.5">
         <Label>{t("description")}</Label>
         <Textarea
@@ -398,6 +417,9 @@ export function TransactionsPage() {
   const [clients, setClients] = useState<Client[]>([])
   const [accounts, setAccounts] = useState<WealthAccount[]>([])
   const [accountsLoading, setAccountsLoading] = useState(true)
+  // Expense budgets keyed by client_id; the org/personal budget is keyed by "".
+  // Drives the live "x left after this expense" hint in the add/edit form.
+  const [budgetMap, setBudgetMap] = useState<Map<string, Budget>>(new Map())
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
   const [search, setSearch] = useState("")
@@ -549,6 +571,30 @@ export function TransactionsPage() {
     window.addEventListener("wealth:accounts-changed", loadAccounts)
     return () => window.removeEventListener("wealth:accounts-changed", loadAccounts)
   }, [loadAccounts])
+
+  const loadBudgets = useCallback(async () => {
+    const token = await getToken()
+    if (!token) return
+    try {
+      const res = await apiGet<{ budgets: Budget[] }>("/api/budgets", token)
+      const m = new Map<string, Budget>()
+      for (const b of res.budgets) m.set(b.client_id ?? "", b)
+      setBudgetMap(m)
+    } catch {
+      /* non-blocking — the form just won't show a budget hint */
+    }
+  }, [getToken])
+
+  useEffect(() => { void loadBudgets() }, [loadBudgets])
+
+  // Resolve the budget for a form. Personal → the org/personal budget (its spend is
+  // the whole workspace). Business → the client's OWN budget only; the org default
+  // is a template (spend isn't client-specific), so it's not used for the live hint.
+  const budgetFor = useCallback(
+    (clientId: string | undefined): Budget | null =>
+      (isPersonal ? budgetMap.get("") : clientId ? budgetMap.get(clientId) : undefined) ?? null,
+    [isPersonal, budgetMap],
+  )
 
   // Remembers a requested source account (e.g. opened from a wealth account
   // page) until accounts finish loading, so the seed effect below can apply it.
@@ -1408,6 +1454,7 @@ export function TransactionsPage() {
             onChangeCats={handleChangeCats}
             onAddAccount={() => { setAddOpen(false); navigate("/wealth") }}
             currency={currency}
+            budget={budgetFor(form.client_id)}
           />
           <Separator />
           <div className="space-y-2">

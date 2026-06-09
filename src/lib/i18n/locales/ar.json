@@ -939,5 +939,30 @@
     "clientCreated": "تمت إضافة العميل ”{{name}}“",
     "transactionCreated": "تمت إضافة {{label}} بقيمة {{amount}}",
     "quotationCreated": "تمت إضافة عرض السعر ”{{title}}“"
+  },
+  "budget": {
+    "title": "الميزانية",
+    "set": "تعيين ميزانية",
+    "edit": "تعديل الميزانية",
+    "remove": "إزالة",
+    "amountLabel": "مبلغ الميزانية",
+    "periodLabel": "الفترة",
+    "lifetime": "دائمًا",
+    "monthly": "شهري",
+    "weekly": "أسبوعي",
+    "daily": "يومي",
+    "spentOf": "{{spent}} من {{amount}}",
+    "left": "متبقٍ {{amount}}",
+    "over": "تجاوز {{amount}}",
+    "noBudget": "لم يتم تعيين ميزانية",
+    "personal": "الميزانية الشخصية",
+    "default": "الافتراضي للعملاء الجدد",
+    "company": "ميزانية الشركة",
+    "saved": "تم حفظ الميزانية",
+    "removed": "تمت إزالة الميزانية",
+    "saveFailed": "تعذّر حفظ الميزانية",
+    "save": "حفظ الميزانية",
+    "remainingAfter": "متبقٍ {{amount}} بعد هذه النفقة",
+    "overAfter": "تجاوز الميزانية بمقدار {{amount}} بعد هذه النفقة"
   }
 }

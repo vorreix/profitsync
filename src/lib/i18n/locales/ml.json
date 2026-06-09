@@ -939,5 +939,30 @@
     "clientCreated": "ക്ലയന്റ് “{{name}}” ചേർത്തു",
     "transactionCreated": "{{amount}} {{label}} ചേർത്തു",
     "quotationCreated": "ക്വട്ടേഷൻ “{{title}}” ചേർത്തു"
+  },
+  "budget": {
+    "title": "ബജറ്റ്",
+    "set": "ബജറ്റ് സജ്ജമാക്കുക",
+    "edit": "ബജറ്റ് തിരുത്തുക",
+    "remove": "നീക്കം ചെയ്യുക",
+    "amountLabel": "ബജറ്റ് തുക",
+    "periodLabel": "കാലയളവ്",
+    "lifetime": "എപ്പോഴും",
+    "monthly": "പ്രതിമാസം",
+    "weekly": "പ്രതിവാരം",
+    "daily": "ദിവസേന",
+    "spentOf": "{{amount}}-ൽ {{spent}}",
+    "left": "{{amount}} ബാക്കി",
+    "over": "{{amount}} അധികം",
+    "noBudget": "ബജറ്റ് സജ്ജമാക്കിയിട്ടില്ല",
+    "personal": "വ്യക്തിഗത ബജറ്റ്",
+    "default": "പുതിയ ക്ലയന്റുകൾക്കുള്ള ഡിഫോൾട്ട്",
+    "company": "കമ്പനി ബജറ്റ്",
+    "saved": "ബജറ്റ് സംരക്ഷിച്ചു",
+    "removed": "ബജറ്റ് നീക്കം ചെയ്തു",
+    "saveFailed": "ബജറ്റ് സംരക്ഷിക്കാനായില്ല",
+    "save": "ബജറ്റ് സംരക്ഷിക്കുക",
+    "remainingAfter": "ഈ ചെലവിന് ശേഷം {{amount}} ബാക്കി",
+    "overAfter": "ഈ ചെലവിന് ശേഷം {{amount}} ബജറ്റിന് അധികം"
   }
 }

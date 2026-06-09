@@ -939,5 +939,30 @@
     "clientCreated": "Kunde „{{name}}“ hinzugefügt",
     "transactionCreated": "{{label}} über {{amount}} hinzugefügt",
     "quotationCreated": "Angebot „{{title}}“ hinzugefügt"
+  },
+  "budget": {
+    "title": "Budget",
+    "set": "Budget festlegen",
+    "edit": "Budget bearbeiten",
+    "remove": "Entfernen",
+    "amountLabel": "Budgetbetrag",
+    "periodLabel": "Zeitraum",
+    "lifetime": "Gesamt",
+    "monthly": "Monatlich",
+    "weekly": "Wöchentlich",
+    "daily": "Täglich",
+    "spentOf": "{{spent}} von {{amount}}",
+    "left": "{{amount}} übrig",
+    "over": "{{amount}} darüber",
+    "noBudget": "Kein Budget festgelegt",
+    "personal": "Persönliches Budget",
+    "default": "Standard für neue Kunden",
+    "company": "Firmenbudget",
+    "saved": "Budget gespeichert",
+    "removed": "Budget entfernt",
+    "saveFailed": "Budget konnte nicht gespeichert werden",
+    "save": "Budget speichern",
+    "remainingAfter": "{{amount}} übrig nach dieser Ausgabe",
+    "overAfter": "{{amount}} über dem Budget nach dieser Ausgabe"
   }
 }
