@@ -67,7 +67,7 @@ earlier work. Root is `feat/ux2-00-plan` off `dev`.
 | 02 | `feat/ux2-02-india-payment` | 2 | Pass `billing_currency` (IN→INR) + full address to Dodo checkout; document dashboard config | no | ✅ pushed |
 | 03 | `feat/ux2-03-modal-back-close` | 1 | `useBackClose` primitive wired into Dialog/Sheet/Drawer/AlertDialog wrappers so Back closes any modal | no | ✅ pushed (Playwright-verified) |
 | 04 | `feat/ux2-04-invite-onboarding` | 5 | Auto-accept invitation post-signup; skip onboarding → org dashboard | no | ✅ pushed (typecheck+smoke; full new-user E2E deferred) |
-| 05 | `feat/ux2-05-quick-add-toast` | 4 | Global quick-add over current page + success toast "Click to see"; Back returns to origin | no | ⬜ pending |
+| 05 | `feat/ux2-05-quick-add-toast` | 4 | Global quick-add over current page + success toast "Click to see"; Back returns to origin | no | ✅ pushed (Playwright-verified) |
 | 06 | `feat/ux2-06-budgets` | 6 | `budgets` table + API + `src/lib/budget.ts` + client-card & outgoing-tx indicators | **yes** | ⬜ pending |
 | 07 | `feat/ux2-07-onboarding-wealth-budget` | 7 | Onboarding step: cash + bank accounts (plan-gated) + budgets; plan-based bank quota | **yes** | ⬜ pending |
 | 08 | `feat/ux2-08-docs-skill` | docs | Referral + budget + onboarding docs; subscription/payments skill refresh | no | ⬜ pending |
@@ -248,14 +248,23 @@ toast with the deep link and ensure Back returns to origin. Reuse existing page 
 dialogs where possible. Toast content: client → name; transaction → type + amount +
 client; quotation → title + amount.
 
-**Files.** `src/components/AppLayout.tsx` + `MobileAppLayout.tsx` (FAB), the create
-handlers in `ClientsPage`/`TransactionsPage`/`QuotationsPage`, possibly a new shared
-`QuickAdd` component. Depends on branch 03 (modal back-close).
+**Files.** New `src/components/QuickAddModal.tsx` (lightweight create forms for
+client/transaction/quotation); `AppLayout.tsx` + `MobileAppLayout.tsx` wire the FAB
+quick-actions menu to open it in place (instead of `navigate(?new=1)`); 4 new `quickAdd.*`
+i18n keys (8 locales). Builds on branch 03 (the modal closes on Back).
 
-**Risks.** Reusing page-bound create dialogs at the layout level; org/account-type gating;
-toast deep-link correctness.
+**Decision.** Rather than risky extraction of the complex page create-forms, the FAB
+quick-add uses a dedicated lightweight modal (minimal fields; power features stay on the
+full pages). It opens over the current page (no navigation), and on success toasts
+"<entity> added" with a "View" deep link. The per-section FAB (on /clients, /transactions,
+…) keeps its existing full-create dialog.
 
-**Status:** ⬜ pending.
+**Verified (Playwright).** From /dashboard and /wealth: FAB → Add Transaction/Add Client
+opens the modal with the path unchanged; submitting creates the row (confirmed in the DB/
+list), closes the modal, and fires the success toast — captured live:
+`Client "ZZZ Toast Two" added` + a **View** action. Test data cleaned up.
+
+**Status:** ✅ pushed (Playwright-verified).
 
 ---
 

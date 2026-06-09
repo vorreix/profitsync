@@ -61,6 +61,7 @@ import { LanguageSwitcher } from "@/components/LanguageSwitcher"
 import { InstallAppBanner } from "@/components/InstallAppBanner"
 import { InstallButton } from "@/components/InstallButton"
 import { ReferralBanner } from "@/components/ReferralBanner"
+import { QuickAddModal, type QuickAddEntity } from "@/components/QuickAddModal"
 
 type TabItem = { labelKey: string; href: string; icon: typeof LayoutDashboard }
 
@@ -96,13 +97,19 @@ function buildMoreItems(activeOrgId: string | undefined, accountType: AccountTyp
   return items.filter((i): i is MoreItem => i !== false)
 }
 
-type QuickAction = { labelKey: string; icon: typeof Users; href: string; feature?: "clients" | "quotations" }
+type QuickAction = {
+  labelKey: string
+  icon: typeof Users
+  href: string
+  entity: QuickAddEntity
+  feature?: "clients" | "quotations"
+}
 
 // Quick-actions menu, ordered top-to-bottom as it stacks above the FAB.
 const allQuickActions: QuickAction[] = [
-  { labelKey: "actions.createQuotation", icon: FileText, href: "/quotations?new=1", feature: "quotations" },
-  { labelKey: "actions.addClient", icon: Users, href: "/clients?new=1", feature: "clients" },
-  { labelKey: "actions.addTransaction", icon: ArrowLeftRight, href: "/transactions?new=1" },
+  { labelKey: "actions.createQuotation", icon: FileText, href: "/quotations?new=1", entity: "quotation", feature: "quotations" },
+  { labelKey: "actions.addClient", icon: Users, href: "/clients?new=1", entity: "client", feature: "clients" },
+  { labelKey: "actions.addTransaction", icon: ArrowLeftRight, href: "/transactions?new=1", entity: "transaction" },
 ]
 
 // Within one of these sections, the FAB performs that section's "add" directly
@@ -121,7 +128,7 @@ function pageFabAction(pathname: string, actions: QuickAction[]): QuickAction | 
   // transaction for THIS client (the dialog opens on ?newTx=1).
   const clientMatch = pathname.match(/^\/clients\/([^/]+)(?:\/|$)/)
   if (clientMatch && clientMatch[1] !== "closed") {
-    return { labelKey: "actions.addTransaction", icon: ArrowLeftRight, href: `/clients/${clientMatch[1]}?newTx=1` }
+    return { labelKey: "actions.addTransaction", icon: ArrowLeftRight, href: `/clients/${clientMatch[1]}?newTx=1`, entity: "transaction" }
   }
   const match = SECTION_FAB.find(
     (s) => pathname === s.prefix || pathname.startsWith(s.prefix + "/"),
@@ -141,6 +148,8 @@ export function MobileAppLayout() {
   const [orgSheetOpen, setOrgSheetOpen] = useState(false)
   const [moreOpen, setMoreOpen] = useState(false)
   const [fabOpen, setFabOpen] = useState(false)
+  // Quick-add opens the create form in place (no navigation), with a success toast.
+  const [quickAdd, setQuickAdd] = useState<QuickAddEntity | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
   const [newName, setNewName] = useState("")
   const [newCurrency, setNewCurrency] = useState("USD")
@@ -435,7 +444,7 @@ export function MobileAppLayout() {
           <div
             key={action.href}
             className="flex items-center gap-2 animate-in fade-in slide-in-from-bottom-1 duration-150 cursor-pointer group/action"
-            onClick={() => { navigate(action.href); setFabOpen(false) }}
+            onClick={() => { setQuickAdd(action.entity); setFabOpen(false) }}
           >
             <span className="text-xs font-medium bg-background border shadow-sm rounded-full px-2.5 py-1 whitespace-nowrap group-hover/action:bg-accent transition-colors">
               {t(action.labelKey)}
@@ -458,6 +467,8 @@ export function MobileAppLayout() {
           {!pageAction && fabOpen ? <X className="size-5" /> : <Plus className="size-5" />}
         </Button>
       </div>
+
+      <QuickAddModal entity={quickAdd} onClose={() => setQuickAdd(null)} />
 
       {/* Bottom tab bar — columns adapt to the (account-type-filtered) tab count. */}
       <nav className="safe-pb fixed bottom-0 inset-x-0 z-40 bg-background/95 backdrop-blur border-t">

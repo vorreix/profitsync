@@ -933,5 +933,11 @@
     "title": "कुछ ग़लत हो गया",
     "message": "ऐप लोड नहीं हो सका — यह किसी अपडेट के तुरंत बाद हो सकता है। नवीनतम संस्करण पाने के लिए फिर से लोड करें।",
     "reload": "फिर से लोड करें"
+  },
+  "quickAdd": {
+    "viewAction": "देखें",
+    "clientCreated": "क्लाइंट “{{name}}” जोड़ा गया",
+    "transactionCreated": "{{amount}} का {{label}} जोड़ा गया",
+    "quotationCreated": "कोटेशन “{{title}}” जोड़ा गया"
   }
 }

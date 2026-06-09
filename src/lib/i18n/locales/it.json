@@ -933,5 +933,11 @@
     "title": "Qualcosa è andato storto",
     "message": "Impossibile caricare l’app: può capitare subito dopo un aggiornamento. Ricarica per ottenere l’ultima versione.",
     "reload": "Ricarica"
+  },
+  "quickAdd": {
+    "viewAction": "Vedi",
+    "clientCreated": "Cliente “{{name}}” aggiunto",
+    "transactionCreated": "{{label}} di {{amount}} aggiunta",
+    "quotationCreated": "Preventivo “{{title}}” aggiunto"
   }
 }

@@ -933,5 +933,11 @@
     "title": "حدث خطأ ما",
     "message": "تعذّر تحميل التطبيق — قد يحدث هذا بعد التحديث مباشرةً. أعد التحميل للحصول على أحدث إصدار.",
     "reload": "إعادة التحميل"
+  },
+  "quickAdd": {
+    "viewAction": "عرض",
+    "clientCreated": "تمت إضافة العميل ”{{name}}“",
+    "transactionCreated": "تمت إضافة {{label}} بقيمة {{amount}}",
+    "quotationCreated": "تمت إضافة عرض السعر ”{{title}}“"
   }
 }

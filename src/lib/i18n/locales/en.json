@@ -40,6 +40,12 @@
     "addTransaction": "Add Transaction",
     "createQuotation": "Create Quotation"
   },
+  "quickAdd": {
+    "viewAction": "View",
+    "clientCreated": "Client “{{name}}” added",
+    "transactionCreated": "{{label}} of {{amount}} added",
+    "quotationCreated": "Quotation “{{title}}” added"
+  },
   "account": {
     "title": "Account",
     "org": "Org",

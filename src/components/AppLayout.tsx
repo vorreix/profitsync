@@ -40,6 +40,7 @@ import { useIsMobile } from "@/hooks/use-mobile"
 import { InstallAppBanner } from "@/components/InstallAppBanner"
 import { InstallButton } from "@/components/InstallButton"
 import { ReferralBanner } from "@/components/ReferralBanner"
+import { QuickAddModal, type QuickAddEntity } from "@/components/QuickAddModal"
 import { initPwa } from "@/lib/pwa/register-sw"
 import {
   LayoutDashboard,
@@ -63,13 +64,20 @@ import {
   Loader as Loader2,
 } from "lucide-react"
 
-type QuickAction = { labelKey: string; icon: typeof Users; href: string; feature?: "clients" | "quotations" }
+type QuickAction = {
+  labelKey: string
+  icon: typeof Users
+  href: string
+  // Which quick-add form the FAB menu opens (in place, over the current page).
+  entity: QuickAddEntity
+  feature?: "clients" | "quotations"
+}
 
 // Quick-actions menu, ordered top-to-bottom as it stacks above the FAB.
 const quickActions: QuickAction[] = [
-  { labelKey: "actions.createQuotation", icon: FileText, href: "/quotations?new=1", feature: "quotations" },
-  { labelKey: "actions.addClient", icon: Users, href: "/clients?new=1", feature: "clients" },
-  { labelKey: "actions.addTransaction", icon: ArrowLeftRight, href: "/transactions?new=1" },
+  { labelKey: "actions.createQuotation", icon: FileText, href: "/quotations?new=1", entity: "quotation", feature: "quotations" },
+  { labelKey: "actions.addClient", icon: Users, href: "/clients?new=1", entity: "client", feature: "clients" },
+  { labelKey: "actions.addTransaction", icon: ArrowLeftRight, href: "/transactions?new=1", entity: "transaction" },
 ]
 
 // Within one of these sections, the FAB performs that section's "add" directly
@@ -88,7 +96,7 @@ function pageFabAction(pathname: string, actions: QuickAction[]): QuickAction | 
   // transaction for THIS client (the dialog opens on ?newTx=1).
   const clientMatch = pathname.match(/^\/clients\/([^/]+)(?:\/|$)/)
   if (clientMatch && clientMatch[1] !== "closed") {
-    return { labelKey: "actions.addTransaction", icon: ArrowLeftRight, href: `/clients/${clientMatch[1]}?newTx=1` }
+    return { labelKey: "actions.addTransaction", icon: ArrowLeftRight, href: `/clients/${clientMatch[1]}?newTx=1`, entity: "transaction" }
   }
   const match = SECTION_FAB.find(
     (s) => pathname === s.prefix || pathname.startsWith(s.prefix + "/"),
@@ -128,6 +136,9 @@ function AppLayoutInner() {
   const { activeOrg, needsOnboarding, loading: orgLoading } = useOrg()
   const { isAdmin } = useAdmin()
   const [fabOpen, setFabOpen] = useState(false)
+  // Quick-add opens the create form IN PLACE over the current page (no navigation),
+  // so "add from any screen" keeps you where you are; a success toast deep-links.
+  const [quickAdd, setQuickAdd] = useState<QuickAddEntity | null>(null)
 
   // Close the quick-actions menu on any navigation.
   useEffect(() => {
@@ -299,7 +310,7 @@ function AppLayoutInner() {
           <div
             key={action.href}
             className="flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2 duration-150 cursor-pointer group/action"
-            onClick={() => { navigate(action.href); setFabOpen(false) }}
+            onClick={() => { setQuickAdd(action.entity); setFabOpen(false) }}
           >
             <span className="text-sm font-medium bg-background border shadow-sm rounded-md px-2.5 py-1 whitespace-nowrap group-hover/action:bg-accent transition-colors">
               {t(action.labelKey)}
@@ -324,6 +335,7 @@ function AppLayoutInner() {
             : <Plus className="size-5 transition-transform duration-200" />}
         </Button>
       </div>
+      <QuickAddModal entity={quickAdd} onClose={() => setQuickAdd(null)} />
     </SidebarProvider>
   )
 }
