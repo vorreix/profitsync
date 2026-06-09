@@ -33,6 +33,7 @@ import { CurrencyProvider, useCurrency } from "@/lib/currency-context"
 import { OrgProvider, useOrg } from "@/lib/org-context"
 import { AdminProvider, useAdmin } from "@/lib/admin-context"
 import { PageFilterProvider } from "@/lib/page-filter-context"
+import { DataRefreshProvider, useDataRefresh } from "@/lib/data-refresh-context"
 import { accountTypeAllows, type AccountType } from "@/lib/types"
 import { OrgSwitcher } from "@/components/OrgSwitcher"
 import { MobileAppLayout } from "@/components/MobileAppLayout"
@@ -140,6 +141,7 @@ function AppLayoutInner() {
   const { activeOrg, needsOnboarding, loading: orgLoading } = useOrg()
   const { isAdmin } = useAdmin()
   const { currency } = useCurrency()
+  const { bump } = useDataRefresh()
   const [fabOpen, setFabOpen] = useState(false)
   // Quick-add opens the create form IN PLACE over the current page (no navigation),
   // so "add from any screen" keeps you where you are; a success toast deep-links.
@@ -148,7 +150,9 @@ function AppLayoutInner() {
   const [addTxOpen, setAddTxOpen] = useState(false)
 
   // Success feedback for an in-place FAB transaction add: toast + deep link to it.
+  // bump() lets the current page (dashboard/analytics) refresh its figures in place.
   const onTxCreated = (info: CreatedTxInfo) => {
+    bump()
     const label = info.type === "incoming" ? t("transactions.income") : t("transactions.expense")
     toast.success(
       t("quickAdd.transactionCreated", { label, amount: formatMoney(info.amount, currency) }),
@@ -383,9 +387,11 @@ export function AppLayout() {
     <OrgProvider>
       <AdminProvider>
         <CurrencyProvider>
-          <PageFilterProvider>
-            <AppLayoutInner />
-          </PageFilterProvider>
+          <DataRefreshProvider>
+            <PageFilterProvider>
+              <AppLayoutInner />
+            </PageFilterProvider>
+          </DataRefreshProvider>
         </CurrencyProvider>
       </AdminProvider>
     </OrgProvider>

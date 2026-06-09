@@ -965,7 +965,8 @@
     "viewAction": "Ansehen",
     "clientCreated": "Kunde „{{name}}“ hinzugefügt",
     "transactionCreated": "{{label}} über {{amount}} hinzugefügt",
-    "quotationCreated": "Angebot „{{title}}“ hinzugefügt"
+    "quotationCreated": "Angebot „{{title}}“ hinzugefügt",
+    "advanced": "Erweitert"
   },
   "budget": {
     "title": "Budget",

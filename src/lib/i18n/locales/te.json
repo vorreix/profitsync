@@ -965,7 +965,8 @@
     "viewAction": "చూడండి",
     "clientCreated": "క్లయింట్ “{{name}}” జోడించబడింది",
     "transactionCreated": "{{amount}} {{label}} జోడించబడింది",
-    "quotationCreated": "కోటేషన్ “{{title}}” జోడించబడింది"
+    "quotationCreated": "కోటేషన్ “{{title}}” జోడించబడింది",
+    "advanced": "అధునాతనం"
   },
   "budget": {
     "title": "బడ్జెట్",

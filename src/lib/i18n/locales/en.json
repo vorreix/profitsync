@@ -42,6 +42,7 @@
   },
   "quickAdd": {
     "viewAction": "View",
+    "advanced": "Advanced",
     "clientCreated": "Client “{{name}}” added",
     "transactionCreated": "{{label}} of {{amount}} added",
     "quotationCreated": "Quotation “{{title}}” added"

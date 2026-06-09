@@ -965,7 +965,8 @@
     "viewAction": "Vedi",
     "clientCreated": "Cliente “{{name}}” aggiunto",
     "transactionCreated": "{{label}} di {{amount}} aggiunta",
-    "quotationCreated": "Preventivo “{{title}}” aggiunto"
+    "quotationCreated": "Preventivo “{{title}}” aggiunto",
+    "advanced": "Avanzate"
   },
   "budget": {
     "title": "Budget",
