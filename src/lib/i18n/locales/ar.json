@@ -28,7 +28,8 @@
     "categories": "الفئات",
     "analytics": "التحليلات",
     "referrals": "ادعُ وأكسب",
-    "refundPolicy": "سياسة الاسترجاع"
+    "refundPolicy": "سياسة الاسترجاع",
+    "budgets": "الميزانيات"
   },
   "actions": {
     "addClient": "إضافة عميل",
@@ -992,5 +993,34 @@
     "save": "حفظ الميزانية",
     "remainingAfter": "متبقٍ {{amount}} بعد هذه النفقة",
     "overAfter": "تجاوز الميزانية بمقدار {{amount}} بعد هذه النفقة"
+  },
+  "budgetsPage": {
+    "title": "الميزانيات",
+    "subtitle": "تتبّع الإنفاق مقابل ميزانياتك وكيف تتغيّر بمرور الوقت.",
+    "acrossAllBudgets": "عبر كل الميزانيات",
+    "onTrack": "{{count}} من {{total}} ضمن المسار",
+    "personal": "الميزانية الشخصية",
+    "companyDefault": "افتراضي الشركة",
+    "defaultTemplate": "افتراضي للعملاء الجدد",
+    "creep": "في ازدياد",
+    "empty": "لا توجد ميزانيات بعد",
+    "emptyHint": "حدّد ميزانية لتتبّع الإنفاق ورؤية السجل والاتجاهات.",
+    "setBudget": "تحديد ميزانية",
+    "spent": "المنفَق",
+    "spendVsBudget": "الإنفاق مقابل الميزانية",
+    "onBudget": "ضمن الميزانية",
+    "streak": "تتابع ضمن الميزانية",
+    "avgVsBudget": "المتوسط مقابل الميزانية",
+    "sinceFirstSet": "منذ أول تحديد",
+    "templateNoChart": "هذا هو الافتراضي للعملاء الجدد — لا إنفاق لعرضه.",
+    "changeHistory": "سجل التغييرات",
+    "noHistory": "لا تغييرات بعد.",
+    "notFound": "لم يتم العثور على الميزانية.",
+    "creepWarning": "تمت زيادتها {{count}} مرات (+{{pct}}%) — انتبه لتضخّم الميزانية.",
+    "actionSet": "تم التحديد",
+    "actionRaise": "تمت الزيادة",
+    "actionLower": "تم التخفيض",
+    "actionPeriod": "تم تغيير الفترة",
+    "actionRemove": "تمت الإزالة"
   }
 }

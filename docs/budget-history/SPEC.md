@@ -94,9 +94,30 @@ mirroring `logAudit`.
 - Default/template budget: timeline only (no spend) — detail shows a "template, no
   spend tracking" note instead of the chart.
 
-## Branch chain
-- `feat/ux2-26-budget-history-backend` — table + migration + backfill + write hook +
-  pure lib + tests + the two endpoints.
-- `feat/ux2-27-budgets-page` — `/budgets` list + overview header + nav + route + i18n.
-- `feat/ux2-28-budget-detail-insights` — `/budgets/:key` detail (timeline + chart +
-  adherence + creep) + transitions + i18n.
+## Branch chain (as shipped)
+- `feat/ux2-25-mobile-create-org` — pre-req bug fix (mobile create-org → wizard).
+- `feat/ux2-26-budget-history-backend` — table (mig 0034) + backfill + write hook +
+  pure lib + unit tests + the two endpoints.
+- `feat/ux2-27-budgets-ui` — `/budgets` list + `/budgets/:key` detail (chart + adherence
+  + creep + timeline) + nav + lazy routes + i18n (all 8 locales). (List + detail were
+  combined into one branch so the chain stays a working increment.)
+- `feat/ux2-28-budget-review-fixes` — fixes from the adversarial review (below).
+
+## Change log
+- 2026-06-09/10: feature implemented across the branches above; verified with unit
+  tests, throwaway handler tests (overview/detail/write-hook), and live Playwright on
+  mobile + desktop (incl. a real edit→timeline round-trip, then data restored).
+- Adversarial review (11 findings → 8 "confirmed"); after hand-verification, **3 were
+  real**, fixed in branch 28:
+  1. Soft-deleted (trashed) clients leaked into the budgets overview/detail — now
+     excluded (`isNull(clients.deletedAt)`; overview drops their budgets, detail 404s).
+     Verified with a throwaway test (active→present, trashed→excluded + 404).
+  2. The detail chart ignored `prefers-reduced-motion` — recharts `isAnimationActive`
+     now gated on it.
+  3. Removed an unsafe `d!` non-null assertion.
+  The other 5 were **false positives** and dismissed: the `spendForWindows`
+  "Date vs string" bug (drizzle pg `date` returns a string — proven by the live June
+  bucket = €3.46M), `budgetAmountAt` "fragility" (the boundary semantics are correct and
+  unit-tested; the suggested fix would have introduced a bug), and the
+  `budget_history.clientId` cascade (intentional + consistent with the `budgets` table —
+  history survives a budget *remove*, which is the stated intent).
