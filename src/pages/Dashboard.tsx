@@ -9,6 +9,7 @@ import { useOrg } from "@/lib/org-context"
 import { accountDisplayName, formatMoney, useBalancePrivacy, useWealthOverviewCollapsed, useWealthSummary } from "@/lib/wealth"
 import { WealthAccountIcon } from "@/components/WealthAccountIcon"
 import { PersonalBudgetCard } from "@/components/budget/PersonalBudgetCard"
+import { BusinessBudgetCard } from "@/components/budget/BusinessBudgetCard"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { FitText } from "@/components/FitText"
 import { Badge } from "@/components/ui/badge"
@@ -629,6 +630,8 @@ export function Dashboard() {
 
   const realClients = clients.filter((c) => !c.is_own)
   const activeClients = realClients.filter((c) => c.status === "active").length
+  // The own/internal company client — surfaces its expense budget on the dashboard.
+  const ownClient = clients.find((c) => c.is_own)
 
   const latestTx = useMemo(
     () =>
@@ -787,7 +790,9 @@ export function Dashboard() {
         )}
       </div>
 
-      {isPersonal && <PersonalBudgetCard />}
+      {isPersonal
+        ? <PersonalBudgetCard />
+        : ownClient && <BusinessBudgetCard clientId={ownClient.id} clientName={ownClient.name} />}
 
       <WealthOverview accounts={wealthAccounts} loading={loading} currency={currency} />
 

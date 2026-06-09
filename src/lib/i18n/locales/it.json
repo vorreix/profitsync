@@ -141,7 +141,8 @@
     "transactionDetails": "Dettagli transazione",
     "description": "Descrizione",
     "openTransaction": "Apri transazione",
-    "openClient": "Apri cliente"
+    "openClient": "Apri cliente",
+    "ownCompanyBudget": "Budget aziendale"
   },
   "chart": {
     "incoming": "Entrate",

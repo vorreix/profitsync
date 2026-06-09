@@ -344,6 +344,7 @@
     "noCategoriesFound": "No categories found",
     "uncategorized": "Uncategorized",
     "ownLabel": "Own",
+    "ownCompanyBudget": "Company budget",
     "transactionsKpi": "Transactions",
     "transactionsTotal_one": "{{count}} total",
     "transactionsTotal_other": "{{count}} total",

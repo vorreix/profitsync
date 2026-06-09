@@ -141,7 +141,8 @@
     "transactionDetails": "లావాదేవీ వివరాలు",
     "description": "వివరణ",
     "openTransaction": "లావాదేవీని తెరవండి",
-    "openClient": "క్లయింట్‌ను తెరవండి"
+    "openClient": "క్లయింట్‌ను తెరవండి",
+    "ownCompanyBudget": "కంపెనీ బడ్జెట్"
   },
   "chart": {
     "incoming": "రాబడి",

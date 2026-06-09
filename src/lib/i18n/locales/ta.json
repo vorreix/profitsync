@@ -141,7 +141,8 @@
     "transactionDetails": "பரிவர்த்தனை விவரங்கள்",
     "description": "விளக்கம்",
     "openTransaction": "பரிவர்த்தனையைத் திறக்கவும்",
-    "openClient": "வாடிக்கையாளரைத் திறக்கவும்"
+    "openClient": "வாடிக்கையாளரைத் திறக்கவும்",
+    "ownCompanyBudget": "நிறுவன பட்ஜெட்"
   },
   "chart": {
     "incoming": "வரவு",

@@ -141,7 +141,8 @@
     "transactionDetails": "Transaktionsdetails",
     "description": "Beschreibung",
     "openTransaction": "Transaktion öffnen",
-    "openClient": "Kunde öffnen"
+    "openClient": "Kunde öffnen",
+    "ownCompanyBudget": "Firmenbudget"
   },
   "chart": {
     "incoming": "Eingang",

@@ -141,7 +141,8 @@
     "transactionDetails": "ലെൻഡൻ വിവരങ്ങൾ",
     "description": "വിവരണം",
     "openTransaction": "ലെൻഡൻ തുറക്കുക",
-    "openClient": "ക്ലയന്റ് തുറക്കുക"
+    "openClient": "ക്ലയന്റ് തുറക്കുക",
+    "ownCompanyBudget": "കമ്പനി ബജറ്റ്"
   },
   "chart": {
     "incoming": "വരവ്",

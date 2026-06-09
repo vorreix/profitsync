@@ -141,7 +141,8 @@
     "transactionDetails": "लेन-देन विवरण",
     "description": "विवरण",
     "openTransaction": "लेन-देन खोलें",
-    "openClient": "ग्राहक खोलें"
+    "openClient": "ग्राहक खोलें",
+    "ownCompanyBudget": "कंपनी बजट"
   },
   "chart": {
     "incoming": "आवक",

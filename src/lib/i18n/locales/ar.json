@@ -141,7 +141,8 @@
     "transactionDetails": "تفاصيل المعاملة",
     "description": "الوصف",
     "openTransaction": "فتح المعاملة",
-    "openClient": "فتح العميل"
+    "openClient": "فتح العميل",
+    "ownCompanyBudget": "ميزانية الشركة"
   },
   "chart": {
     "incoming": "وارد",
