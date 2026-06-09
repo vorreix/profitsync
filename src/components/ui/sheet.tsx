@@ -3,9 +3,20 @@ import { XIcon } from "lucide-react"
 import { Dialog as SheetPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/utils"
+import { useModalBackClose } from "@/hooks/use-back-close"
 
-function Sheet({ ...props }: React.ComponentProps<typeof SheetPrimitive.Root>) {
-  return <SheetPrimitive.Root data-slot="sheet" {...props} />
+// NOTE: intentional enhancement to this vendored shadcn file — Root wires
+// useModalBackClose so the browser/OS Back gesture closes any sheet instead of
+// navigating away. Re-running `npx shadcn add sheet` overwrites this; re-apply.
+function Sheet({
+  open,
+  defaultOpen,
+  onOpenChange,
+  disableBackClose,
+  ...props
+}: React.ComponentProps<typeof SheetPrimitive.Root> & { disableBackClose?: boolean }) {
+  const controlled = useModalBackClose({ open, defaultOpen, onOpenChange, disableBackClose })
+  return <SheetPrimitive.Root data-slot="sheet" {...props} {...controlled} />
 }
 
 function SheetTrigger({
