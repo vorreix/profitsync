@@ -64,6 +64,7 @@ import { ReferralBanner } from "@/components/ReferralBanner"
 import { QuickAddModal, type QuickAddEntity } from "@/components/QuickAddModal"
 import { AddTransactionDialog, type CreatedTxInfo } from "@/components/transactions/AddTransactionDialog"
 import { useCurrency } from "@/lib/currency-context"
+import { useDataRefresh } from "@/lib/data-refresh-context"
 import { formatMoney } from "@/lib/wealth"
 
 type TabItem = { labelKey: string; href: string; icon: typeof LayoutDashboard }
@@ -150,6 +151,7 @@ export function MobileAppLayout() {
   const { activeOrg, orgs, switchOrg, refresh, loading: orgLoading } = useOrg()
   const { isAdmin } = useAdmin()
   const { currency } = useCurrency()
+  const { bump } = useDataRefresh()
   const [orgSheetOpen, setOrgSheetOpen] = useState(false)
   const [moreOpen, setMoreOpen] = useState(false)
   const [fabOpen, setFabOpen] = useState(false)
@@ -159,7 +161,9 @@ export function MobileAppLayout() {
   const [addTxOpen, setAddTxOpen] = useState(false)
 
   // Success feedback for an in-place FAB transaction add: toast + deep link to it.
+  // bump() lets the current page (dashboard/analytics) refresh its figures in place.
   const onTxCreated = (info: CreatedTxInfo) => {
+    bump()
     const label = info.type === "incoming" ? t("transactions.income") : t("transactions.expense")
     toast.success(
       t("quickAdd.transactionCreated", { label, amount: formatMoney(info.amount, currency) }),

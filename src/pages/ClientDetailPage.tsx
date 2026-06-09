@@ -3,7 +3,7 @@ import { useParams, useNavigate, useSearchParams } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { apiGet, apiPost, apiPatch, apiDelete } from "@/lib/api"
 import { amountExceedsLimit } from "@/lib/money"
-import type { Client, Transaction, TransactionAttachment, WealthAccount } from "@/lib/types"
+import type { Budget, Client, Transaction, TransactionAttachment, WealthAccount } from "@/lib/types"
 import { AccountSelector, type Allocation } from "@/components/AccountSelector"
 import { loadLastTx, saveLastTx } from "@/lib/last-tx"
 import { useCurrency } from "@/lib/currency-context"
@@ -11,8 +11,11 @@ import { useOrg } from "@/lib/org-context"
 import { canWriteRole, canDeleteRole } from "@/lib/roles"
 import { CategoryPicker } from "@/components/CategoryPicker"
 import { ClientOverviewModal } from "@/components/ClientOverviewModal"
+import { BudgetDialog } from "@/components/budget/BudgetDialog"
+import { BudgetIndicator } from "@/components/budget/BudgetIndicator"
 import { AttachmentBadge } from "@/components/AttachmentBadge"
 import { AttachmentDetailModal, type AttachmentModalItem } from "@/components/AttachmentDetailModal"
+import { dropModalBackEntry } from "@/hooks/use-back-close"
 import { AuditHistory } from "@/components/AuditHistory"
 import { FilterSheet, FilterSection } from "@/components/filters/FilterSheet"
 import { ACCEPT_ATTR, attachmentsListPath, uploadAttachment, validateFile } from "@/lib/attachments-client"
@@ -29,7 +32,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "sonner"
-import { ArrowLeft, Plus, Trash2, DollarSign, Building2, Mail, Phone, FileText, ArrowUpRight, ArrowDownRight, Pencil, Calendar, Paperclip, Upload, X, FolderOpen, Archive, ArchiveRestore, Eye } from "lucide-react"
+import { ArrowLeft, Plus, Trash2, DollarSign, Building2, Mail, Phone, FileText, ArrowUpRight, ArrowDownRight, Pencil, Calendar, Paperclip, Upload, X, FolderOpen, Archive, ArchiveRestore, Eye, Wallet } from "lucide-react"
 import { ExpandableSearch } from "@/components/ExpandableSearch"
 
 type NewTransaction = { type: "incoming" | "outgoing"; allocations: Allocation[]; description: string; category: string; date: string }
@@ -76,6 +79,9 @@ export function ClientDetailPage() {
   const [viewTx, setViewTx] = useState<Transaction | null>(null)
   const [viewTxAtt, setViewTxAtt] = useState<TransactionAttachment[]>([])
   const [viewAttachment, setViewAttachment] = useState<AttachmentModalItem | null>(null)
+  const [clientBudget, setClientBudget] = useState<Budget | null>(null)
+  const [defaultBudget, setDefaultBudget] = useState<Budget | null>(null)
+  const [budgetDialogOpen, setBudgetDialogOpen] = useState(false)
 
   const { activeOrg } = useOrg()
   const canModify = canWriteRole(activeOrg?.role)
@@ -96,6 +102,22 @@ export function ClientDetailPage() {
     loadViewTxAtt(tx.id)
   }
 
+  // The per-client expense budget (+ the org default, used as the dialog prefill).
+  // Spend is derived server-side, so we read it from /api/budgets rather than store
+  // it; reloading after a budget save or a transaction change keeps "spent" accurate.
+  const refreshBudget = useCallback(async () => {
+    if (!id) return
+    const token = await getToken()
+    if (!token) return
+    try {
+      const res = await apiGet<{ budgets: Budget[] }>("/api/budgets", token)
+      setClientBudget(res.budgets.find((b) => b.client_id === id) ?? null)
+      setDefaultBudget(res.budgets.find((b) => b.client_id === null) ?? null)
+    } catch {
+      /* non-blocking — the budget card just stays empty */
+    }
+  }, [id, getToken])
+
   const loadData = useCallback(async () => {
     if (!id) return
     const token = await getToken()
@@ -103,12 +125,13 @@ export function ClientDetailPage() {
     const [clientData, txData] = await Promise.all([
       apiGet<Client>(`/api/clients/${id}`, token),
       apiGet<Transaction[]>(`/api/transactions?clientId=${id}`, token),
+      refreshBudget(),
     ])
     if (!clientData) { navigate("/clients"); return }
     setClient(clientData)
     setTransactions(txData)
     setLoading(false)
-  }, [id, navigate, getToken])
+  }, [id, navigate, getToken, refreshBudget])
 
   useEffect(() => { loadData() }, [loadData])
 
@@ -362,11 +385,31 @@ export function ClientDetailPage() {
           {/* Actions — kept in the client-name row on every breakpoint to save
               vertical space on mobile (icon-only there, labelled on desktop). */}
           <div className="flex gap-1.5 sm:gap-2 shrink-0">
-            <Button variant="outline" size="icon" onClick={() => setCloseConfirm(true)} aria-label={client.closed_at ? "Reopen client" : "Close client"} title={client.closed_at ? "Reopen client" : "Close client"}>
+            {/* The own/internal company is permanent — it anchors internal expenses. Keep
+                Close and Delete VISIBLE (so the page matches every other client) but
+                DISABLED with a hint for it; the server also rejects both for is_own. */}
+            <Button
+              variant="outline"
+              size="icon"
+              disabled={client.is_own}
+              onClick={() => setCloseConfirm(true)}
+              aria-label={client.is_own ? "Your own company can't be closed" : client.closed_at ? "Reopen client" : "Close client"}
+              title={client.is_own ? "Your own company can't be closed" : client.closed_at ? "Reopen client" : "Close client"}
+            >
               {client.closed_at ? <ArchiveRestore className="size-4" /> : <Archive className="size-4" />}
             </Button>
             <Button variant="outline" size="icon" onClick={() => setOverviewOpen(true)} aria-label="View client"><Eye className="size-4" /></Button>
-            <Button variant="outline" size="icon" className="text-muted-foreground hover:text-destructive" onClick={() => { setDeleteId(client.id); setDeleteType("client") }} aria-label="Delete client"><Trash2 className="size-4" /></Button>
+            <Button
+              variant="outline"
+              size="icon"
+              disabled={client.is_own}
+              className="text-muted-foreground hover:text-destructive"
+              onClick={() => { setDeleteId(client.id); setDeleteType("client") }}
+              aria-label={client.is_own ? "Your own company can't be deleted" : "Delete client"}
+              title={client.is_own ? "Your own company can't be deleted" : "Delete client"}
+            >
+              <Trash2 className="size-4" />
+            </Button>
             <Button className="px-2.5 sm:px-4" onClick={() => { setTxForm(defaultTxForm); setTxDialogOpen(true) }} aria-label="Add transaction">
               <Plus className="size-4" /><span className="hidden sm:inline">Add Transaction</span>
             </Button>
@@ -392,6 +435,25 @@ export function ClientDetailPage() {
           <p className="text-[10px] sm:text-xs text-muted-foreground font-medium uppercase tracking-wide truncate">Net</p>
           <FitText className={`mt-1 ${netProfit >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"}`} textClassName="text-base sm:text-xl font-bold tabular-nums">{formatCurrency(netProfit)}</FitText>
           <p className="hidden sm:block text-xs text-muted-foreground mt-1">{totalIncoming > 0 ? ((netProfit / totalIncoming) * 100).toFixed(1) : 0}% margin</p>
+        </div>
+      </div>
+
+      {/* Budget — view / set / edit this client's expense budget. */}
+      <div className="rounded-xl border p-3 sm:p-4">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-sm font-medium flex items-center gap-1.5"><Wallet className="size-4 text-muted-foreground" /> Budget</p>
+          {canModify && (
+            <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setBudgetDialogOpen(true)}>
+              {clientBudget ? <><Pencil className="size-3 mr-1" />Edit</> : <><Plus className="size-3 mr-1" />Set budget</>}
+            </Button>
+          )}
+        </div>
+        <div className="mt-3">
+          {clientBudget ? (
+            <BudgetIndicator amount={clientBudget.amount} spent={clientBudget.spent ?? 0} period={clientBudget.period} currency={currency} />
+          ) : (
+            <p className="text-xs text-muted-foreground">No budget set for this client.</p>
+          )}
         </div>
       </div>
 
@@ -719,7 +781,7 @@ export function ClientDetailPage() {
                 </div>
               </div>
               <DialogFooter>
-                <Button variant="outline" onClick={() => { const tx = viewTx; setViewTx(null); setEditTxForm({ id: tx.id, type: tx.type, allocations: [{ account_id: tx.wealth_account_id ?? defaultAccountId(accounts), amount: String(tx.amount) }], description: tx.description, category: tx.category, date: tx.date }); setEditTxDialogOpen(true) }}>
+                <Button variant="outline" onClick={() => { const tx = viewTx; dropModalBackEntry(); setViewTx(null); setEditTxForm({ id: tx.id, type: tx.type, allocations: [{ account_id: tx.wealth_account_id ?? defaultAccountId(accounts), amount: String(tx.amount) }], description: tx.description, category: tx.category, date: tx.date }); setEditTxDialogOpen(true) }}>
                   <Pencil className="size-3.5" /> Edit
                 </Button>
                 <Button onClick={() => setViewTx(null)}>Close</Button>
@@ -747,6 +809,18 @@ export function ClientDetailPage() {
         canModify={canModify}
         canRemove={canRemove}
         onFiles={id ? () => navigate(`/clients/${id}/files`) : undefined}
+        totalIncoming={totalIncoming}
+        totalOutgoing={totalOutgoing}
+      />
+
+      <BudgetDialog
+        open={budgetDialogOpen}
+        onOpenChange={setBudgetDialogOpen}
+        clientId={client.id}
+        label={client.name}
+        current={clientBudget}
+        prefill={defaultBudget ? { amount: defaultBudget.amount, period: defaultBudget.period } : null}
+        onSaved={() => { void refreshBudget() }}
       />
     </div>
   )
