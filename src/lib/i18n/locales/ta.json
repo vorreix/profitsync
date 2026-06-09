@@ -965,7 +965,8 @@
     "viewAction": "பார்க்க",
     "clientCreated": "வாடிக்கையாளர் “{{name}}” சேர்க்கப்பட்டது",
     "transactionCreated": "{{amount}} {{label}} சேர்க்கப்பட்டது",
-    "quotationCreated": "மேற்கோள் “{{title}}” சேர்க்கப்பட்டது"
+    "quotationCreated": "மேற்கோள் “{{title}}” சேர்க்கப்பட்டது",
+    "advanced": "மேம்பட்டவை"
   },
   "budget": {
     "title": "பட்ஜெட்",

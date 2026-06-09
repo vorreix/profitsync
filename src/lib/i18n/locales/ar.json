@@ -965,7 +965,8 @@
     "viewAction": "عرض",
     "clientCreated": "تمت إضافة العميل ”{{name}}“",
     "transactionCreated": "تمت إضافة {{label}} بقيمة {{amount}}",
-    "quotationCreated": "تمت إضافة عرض السعر ”{{title}}“"
+    "quotationCreated": "تمت إضافة عرض السعر ”{{title}}“",
+    "advanced": "متقدم"
   },
   "budget": {
     "title": "الميزانية",

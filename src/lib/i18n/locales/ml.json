@@ -965,7 +965,8 @@
     "viewAction": "കാണുക",
     "clientCreated": "ക്ലയന്റ് “{{name}}” ചേർത്തു",
     "transactionCreated": "{{amount}} {{label}} ചേർത്തു",
-    "quotationCreated": "ക്വട്ടേഷൻ “{{title}}” ചേർത്തു"
+    "quotationCreated": "ക്വട്ടേഷൻ “{{title}}” ചേർത്തു",
+    "advanced": "വിപുലം"
   },
   "budget": {
     "title": "ബജറ്റ്",
