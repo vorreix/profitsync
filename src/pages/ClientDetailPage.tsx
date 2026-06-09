@@ -385,11 +385,31 @@ export function ClientDetailPage() {
           {/* Actions — kept in the client-name row on every breakpoint to save
               vertical space on mobile (icon-only there, labelled on desktop). */}
           <div className="flex gap-1.5 sm:gap-2 shrink-0">
-            <Button variant="outline" size="icon" onClick={() => setCloseConfirm(true)} aria-label={client.closed_at ? "Reopen client" : "Close client"} title={client.closed_at ? "Reopen client" : "Close client"}>
+            {/* The own/internal company is permanent — it anchors internal expenses. Keep
+                Close and Delete VISIBLE (so the page matches every other client) but
+                DISABLED with a hint for it; the server also rejects both for is_own. */}
+            <Button
+              variant="outline"
+              size="icon"
+              disabled={client.is_own}
+              onClick={() => setCloseConfirm(true)}
+              aria-label={client.is_own ? "Your own company can't be closed" : client.closed_at ? "Reopen client" : "Close client"}
+              title={client.is_own ? "Your own company can't be closed" : client.closed_at ? "Reopen client" : "Close client"}
+            >
               {client.closed_at ? <ArchiveRestore className="size-4" /> : <Archive className="size-4" />}
             </Button>
             <Button variant="outline" size="icon" onClick={() => setOverviewOpen(true)} aria-label="View client"><Eye className="size-4" /></Button>
-            <Button variant="outline" size="icon" className="text-muted-foreground hover:text-destructive" onClick={() => { setDeleteId(client.id); setDeleteType("client") }} aria-label="Delete client"><Trash2 className="size-4" /></Button>
+            <Button
+              variant="outline"
+              size="icon"
+              disabled={client.is_own}
+              className="text-muted-foreground hover:text-destructive"
+              onClick={() => { setDeleteId(client.id); setDeleteType("client") }}
+              aria-label={client.is_own ? "Your own company can't be deleted" : "Delete client"}
+              title={client.is_own ? "Your own company can't be deleted" : "Delete client"}
+            >
+              <Trash2 className="size-4" />
+            </Button>
             <Button className="px-2.5 sm:px-4" onClick={() => { setTxForm(defaultTxForm); setTxDialogOpen(true) }} aria-label="Add transaction">
               <Plus className="size-4" /><span className="hidden sm:inline">Add Transaction</span>
             </Button>
