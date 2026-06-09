@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react"
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import { useNavigate } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
@@ -6,6 +6,7 @@ import { apiGet, apiPatch } from "@/lib/api"
 import type { Client, Transaction, WealthAccount } from "@/lib/types"
 import { useCurrency } from "@/lib/currency-context"
 import { useOrg } from "@/lib/org-context"
+import { useDataRefresh } from "@/lib/data-refresh-context"
 import { accountDisplayName, formatMoney, useBalancePrivacy, useWealthOverviewCollapsed, useWealthSummary } from "@/lib/wealth"
 import { WealthAccountIcon } from "@/components/WealthAccountIcon"
 import { PersonalBudgetCard } from "@/components/budget/PersonalBudgetCard"
@@ -548,6 +549,7 @@ export function Dashboard() {
   const { currency } = useCurrency()
   const { activeOrg } = useOrg()
   const isPersonal = activeOrg?.account_type === "personal"
+  const { revision } = useDataRefresh()
 
   const chartConfig: ChartConfig = {
     incoming: { label: t("chart.incoming"), color: "var(--chart-2)" },
@@ -565,29 +567,36 @@ export function Dashboard() {
   const [showClosed, setShowClosed] = useState(false)
   const [peekTx, setPeekTx] = useState<Transaction | null>(null)
 
-  useEffect(() => {
-    async function load() {
-      try {
-        const token = await getToken()
-        if (!token) return
-        const suffix = showClosed ? "?includeClosed=1" : ""
-        const [clientList, txList, accountList] = await Promise.all([
-          apiGet<Client[]>(`/api/clients${suffix}`, token),
-          apiGet<Transaction[]>(`/api/transactions${suffix}`, token),
-          apiGet<WealthAccount[]>("/api/wealth/accounts", token),
-        ])
-        setClients(clientList)
-        setTransactions(txList)
-        setWealthAccounts(accountList)
-      } catch (err) {
-        console.error("Failed to load dashboard:", err)
-      } finally {
-        setLoading(false)
-      }
+  // Refetch never re-shows the skeleton (loading only starts true) — so reloads on
+  // the closed-toggle and the global refresh signal update figures in place.
+  const load = useCallback(async () => {
+    try {
+      const token = await getToken()
+      if (!token) return
+      const suffix = showClosed ? "?includeClosed=1" : ""
+      const [clientList, txList, accountList] = await Promise.all([
+        apiGet<Client[]>(`/api/clients${suffix}`, token),
+        apiGet<Transaction[]>(`/api/transactions${suffix}`, token),
+        apiGet<WealthAccount[]>("/api/wealth/accounts", token),
+      ])
+      setClients(clientList)
+      setTransactions(txList)
+      setWealthAccounts(accountList)
+    } catch (err) {
+      console.error("Failed to load dashboard:", err)
+    } finally {
+      setLoading(false)
     }
-    load()
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- getToken is stable; reload when the closed toggle changes
-  }, [showClosed])
+  }, [getToken, showClosed])
+
+  useEffect(() => { void load() }, [load])
+
+  // A transaction added elsewhere (the global + FAB) bumps the refresh signal —
+  // pull fresh figures in place (no skeleton, no navigation).
+  useEffect(() => {
+    if (revision > 0) void load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only react to the signal
+  }, [revision])
 
   useEffect(() => {
     async function refreshWealthAccounts() {
