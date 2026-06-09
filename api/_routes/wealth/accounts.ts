@@ -6,8 +6,7 @@ import { canWrite, ensureDefaultClient, requireAuth } from "../../_lib/auth.js"
 import { logAudit } from "../../_lib/audit.js"
 import { type BankDetailInput, pickBankDetails, resolveLogoColumns } from "../../_lib/bank-brand.js"
 import { amountExceedsLimit } from "../../../src/lib/money.js"
-
-const MAX_BANK_ACCOUNTS = 5
+import { checkBankAccountQuota } from "../../_lib/quota.js"
 
 // "Cash in Hand" is the default account every workspace always has. We lazily
 // provision it on first read so existing orgs (created before wealth tracking)
@@ -150,11 +149,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (type === "bank") {
       const name = bankName.trim()
       if (!name) return res.status(400).json({ error: "bank_name is required" })
-      const [{ total }] = await db
-        .select({ total: count() })
-        .from(wealthAccounts)
-        .where(and(eq(wealthAccounts.organizationId, orgId), eq(wealthAccounts.type, "bank"), isNull(wealthAccounts.archivedAt)))
-      if (total >= MAX_BANK_ACCOUNTS) return res.status(400).json({ error: "Maximum 5 bank accounts allowed" })
+      // Plan-based: free workspaces get 1 bank account, paid plans are unlimited.
+      const quota = await checkBankAccountQuota(orgId)
+      if (!quota.allowed) return res.status(402).json(quota)
     }
 
     if (type === "cash") {
