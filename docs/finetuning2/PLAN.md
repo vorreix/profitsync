@@ -65,12 +65,12 @@ earlier work. Root is `feat/ux2-00-plan` off `dev`.
 | 00 | `feat/ux2-00-plan` | — | This plan document | no | ✅ committed |
 | 01 | `feat/ux2-01-referrals-paid` | 3 | Credit referrals on reconcile (not just webhook); verify redemption; referral doc | no | ✅ pushed |
 | 02 | `feat/ux2-02-india-payment` | 2 | Pass `billing_currency` (IN→INR) + full address to Dodo checkout; document dashboard config | no | ✅ pushed |
-| 03 | `feat/ux2-03-modal-back-close` | 1 | `useBackClose` primitive wired into Dialog/Sheet/Drawer/AlertDialog wrappers so Back closes any modal | no | ⬜ pending |
-| 04 | `feat/ux2-04-invite-onboarding` | 5 | Auto-accept invitation post-signup; skip onboarding → org dashboard | no | ⬜ pending |
-| 05 | `feat/ux2-05-quick-add-toast` | 4 | Global quick-add over current page + success toast "Click to see"; Back returns to origin | no | ⬜ pending |
-| 06 | `feat/ux2-06-budgets` | 6 | `budgets` table + API + `src/lib/budget.ts` + client-card & outgoing-tx indicators | **yes** | ⬜ pending |
-| 07 | `feat/ux2-07-onboarding-wealth-budget` | 7 | Onboarding step: cash + bank accounts (plan-gated) + budgets; plan-based bank quota | **yes** | ⬜ pending |
-| 08 | `feat/ux2-08-docs-skill` | docs | Referral + budget + onboarding docs; subscription/payments skill refresh | no | ⬜ pending |
+| 03 | `feat/ux2-03-modal-back-close` | 1 | `useBackClose` primitive wired into Dialog/Sheet/Drawer/AlertDialog wrappers so Back closes any modal | no | ✅ pushed (Playwright-verified) |
+| 04 | `feat/ux2-04-invite-onboarding` | 5 | Auto-accept invitation post-signup; skip onboarding → org dashboard | no | ✅ pushed (typecheck+smoke; full new-user E2E deferred) |
+| 05 | `feat/ux2-05-quick-add-toast` | 4 | Global quick-add over current page + success toast "Click to see"; Back returns to origin | no | ✅ pushed (Playwright-verified) |
+| 06 | `feat/ux2-06-budgets` | 6 | `budgets` table + API + `src/lib/budget.ts` + client-card, personal-dashboard & outgoing-tx indicators | **yes (0033)** | ✅ pushed (Playwright-verified) |
+| 07 | `feat/ux2-07-onboarding-wealth-budget` | 7 | Onboarding step: cash + bank accounts (plan-gated) + budgets; plan-based bank quota (free=1) | no (config-only) | ✅ pushed (Playwright-verified) |
+| 08 | `feat/ux2-08-docs-skill` | docs | Budget doc + wave OVERVIEW; subscription/payments skill refresh (India + reconcile referral) | no | ✅ pushed |
 
 Ordering rationale: front-load verifiable, low-risk backend wins (referrals, payment),
 then the mechanical cross-cutting modal primitive, then small UX (invite), medium UX
@@ -248,14 +248,23 @@ toast with the deep link and ensure Back returns to origin. Reuse existing page 
 dialogs where possible. Toast content: client → name; transaction → type + amount +
 client; quotation → title + amount.
 
-**Files.** `src/components/AppLayout.tsx` + `MobileAppLayout.tsx` (FAB), the create
-handlers in `ClientsPage`/`TransactionsPage`/`QuotationsPage`, possibly a new shared
-`QuickAdd` component. Depends on branch 03 (modal back-close).
+**Files.** New `src/components/QuickAddModal.tsx` (lightweight create forms for
+client/transaction/quotation); `AppLayout.tsx` + `MobileAppLayout.tsx` wire the FAB
+quick-actions menu to open it in place (instead of `navigate(?new=1)`); 4 new `quickAdd.*`
+i18n keys (8 locales). Builds on branch 03 (the modal closes on Back).
 
-**Risks.** Reusing page-bound create dialogs at the layout level; org/account-type gating;
-toast deep-link correctness.
+**Decision.** Rather than risky extraction of the complex page create-forms, the FAB
+quick-add uses a dedicated lightweight modal (minimal fields; power features stay on the
+full pages). It opens over the current page (no navigation), and on success toasts
+"<entity> added" with a "View" deep link. The per-section FAB (on /clients, /transactions,
+…) keeps its existing full-create dialog.
 
-**Status:** ⬜ pending.
+**Verified (Playwright).** From /dashboard and /wealth: FAB → Add Transaction/Add Client
+opens the modal with the path unchanged; submitting creates the row (confirmed in the DB/
+list), closes the modal, and fires the success toast — captured live:
+`Client "ZZZ Toast Two" added` + a **View** action. Test data cleaned up.
+
+**Status:** ✅ pushed (Playwright-verified).
 
 ---
 
@@ -338,3 +347,40 @@ must not block completion on failure.
 
 - _(wave start)_ — Recon complete; research workflow launched; chain-root branch
   `feat/ux2-00-plan` created off `dev`; this plan committed.
+- **01** referrals — credit on the reconcile path (not only the webhook); idempotent;
+  `docs/referrals/REFERRALS.md`. DB-test verified.
+- **02** India payment — `billing_currency` from billing country + full address into the
+  Dodo checkout; dashboard config documented (§11). Mapping locked by `currencies.test.ts`.
+- **03** modal back-close — `useBackClose`/`useModalBackClose` in the 4 shadcn Roots;
+  `disableBackClose` opt-out for URL modals. **Playwright-verified.** ⚠️ Correction logged:
+  the history entry MUST be pushed (the research agent's "don't touch history" was wrong).
+- **04** invitation — auto-accept on land for a matching signed-in email → dashboard, no
+  onboarding flash. typecheck + smoke verified.
+- **05** quick-add — `QuickAddModal` over the current page + success toast w/ "View".
+  **Playwright-verified** (toast captured via MutationObserver).
+- **06** budgets — `budgets` table (mig 0033), `src/lib/budget.ts` (+13 tests),
+  `api/_routes/budgets.ts`, indicator/dialog/personal-card, card + tx-form hints.
+  **Playwright-verified** (€500 budget → card bar; €600 expense → "€100 over").
+- **07** onboarding — step 2 (cash + bank + budgets); plan-based bank quota (free=1).
+  **Playwright-verified** (bank created via onboarding, DB-confirmed).
+- **08** docs/skill — `docs/budget/BUDGETS.md`, `docs/finetuning2/OVERVIEW.md`,
+  `subscription-system` skill refreshed (India + reconcile-referral notes).
+- **09** onboarding wizard + new-org setup (follow-up) — split step 1 (type →
+  Continue → then currency/company), converted "Setup money" into a one-question-at-a-time
+  **mobile-first wizard** (cash → bank → budget, animated slide, progressive-disclosure
+  default budget). Extracted reusable `MoneyWizard` + `PlanStep` + `OnboardingShell`.
+  **Creating a new organization** now runs the same setup (`/organization-setup`:
+  money wizard + plan/upgrade) instead of dropping onto an empty dashboard. Cash step
+  made robust (PATCH the existing Cash account, not a failing 2nd POST). Skills used:
+  `ui-ux-pro-max` + `transition-creator`. **Playwright-verified at 390px** across every
+  screen; data confirmed in DB; test data cleaned up.
+- **10** org-wizard refinements (follow-up) — (1) org/business cash step now says it's
+  the **company's** money; (2) the bank step uses the existing **bank-name autocomplete +
+  logo** (`BankNameCombobox`, Brandfetch proxy) — minimal, no extra fields; the picked
+  logo is stored on the account; (3) **immersed org creation into the wizard** — the
+  create dialogs (OrgSwitcher + Organizations page, incl. their "created" toasts) are gone;
+  "Create organization" opens `/organization-setup` which now starts with a **details
+  (name + currency)** step → money → plan, so every Back/Skip has real value (Back from
+  details cancels to the prior page). **Playwright-verified at 390px**: created an org,
+  Chase bank with logo persisted (brand_domain/logo_url/logo_data), company cash copy;
+  test org torn down.
