@@ -362,7 +362,7 @@ export function WealthPage() {
       </div>
 
       {loading ? (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {[1, 2, 3].map((i) => <Skeleton key={i} className="h-32 rounded-2xl" />)}
         </div>
       ) : (
@@ -374,7 +374,7 @@ export function WealthPage() {
           onDragEnd={onDragEnd}
           onDragCancel={onDragCancel}
         >
-          <div ref={cardsRef} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div ref={cardsRef} className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {active.map((account) => (
               <DndAccountCard
                 key={account.id}
@@ -437,7 +437,7 @@ export function WealthPage() {
       {archived.length > 0 && (
         <div className="space-y-3">
           <p className="text-sm font-medium text-muted-foreground">{t("archived")}</p>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {archived.map((account) => (
               <div key={account.id} className="flex items-center justify-between gap-3 rounded-2xl border bg-card p-4 opacity-70">
                 <div className="flex min-w-0 items-center gap-3">

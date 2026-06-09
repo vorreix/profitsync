@@ -90,7 +90,14 @@ export async function creditReferralOnPaid(orgId: string, paymentAmount: number,
         status: "paid",
         organizationId: orgId,
         rewardAmount: String(amount),
-        rewardCurrency: settings.rewardCurrency || paymentCurrency || "USD",
+        // Currency must match the currency `amount` is denominated in: a FIXED
+        // reward is in the program's rewardCurrency; a PERCENT reward is a share of
+        // the payment, so it's in the payment's currency (e.g. an INR charge → an
+        // INR reward, not USD). Mislabeling silently corrupts the payout total.
+        rewardCurrency:
+          settings.rewardType === "fixed"
+            ? settings.rewardCurrency || "USD"
+            : paymentCurrency || settings.rewardCurrency || "USD",
         rewardType: settings.rewardType,
         rewardPercent: settings.rewardType === "percent" ? settings.rewardPercent : null,
         paidAt: now,

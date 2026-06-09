@@ -10,6 +10,7 @@ import { useOrg } from "@/lib/org-context"
 import { canDeleteRole } from "@/lib/roles"
 import { useMultiSelect } from "@/lib/use-multi-select"
 import { useLongPress } from "@/lib/use-long-press"
+import { dropModalBackEntry } from "@/hooks/use-back-close"
 import { BulkActionBar } from "@/components/BulkActionBar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -762,6 +763,18 @@ export function QuotationsPage() {
                       >
                         <Pencil className="size-3.5" />
                       </Button>
+                      {/* Close (archive) the quotation — lives on the row, not the view
+                          modal, so the modal stays a clean read-only detail view. */}
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="size-8 p-0 shrink-0 text-muted-foreground"
+                        aria-label={t("closed.close")}
+                        title={t("closed.close")}
+                        onClick={() => setQuotationClosed(q.id, true)}
+                      >
+                        <Archive className="size-3.5" />
+                      </Button>
                       <Button
                         size="sm"
                         variant="ghost"
@@ -953,14 +966,11 @@ export function QuotationsPage() {
               </div>
 
               <DialogFooter>
-                <Button
-                  variant="outline"
-                  onClick={() => setQuotationClosed(viewTarget.id, !viewTarget.closed_at)}
-                >
-                  {viewTarget.closed_at ? <ArchiveRestore className="size-3.5" /> : <Archive className="size-3.5" />}
-                  {viewTarget.closed_at ? t("closed.reopen") : t("closed.close")}
-                </Button>
                 <Button variant="outline" onClick={() => {
+                  // Neutralize the view modal's back-entry first so closing it doesn't
+                  // fire a history.back() popstate that the edit dialog's useBackClose
+                  // catches and slams shut (same race as the client overview→edit fix).
+                  dropModalBackEntry()
                   setViewTarget(null)
                   setForm({ title: viewTarget.title, prospect_name: viewTarget.prospect_name, company: viewTarget.company, email: viewTarget.email, phone: viewTarget.phone, amount: viewTarget.amount, date: viewTarget.date ?? todayIso(), status: viewTarget.status, notes: viewTarget.notes, category: viewTarget.category ?? "" })
                   setEditTarget(viewTarget)

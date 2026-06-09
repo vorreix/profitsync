@@ -22,6 +22,8 @@ export type PlanLimits = {
   noteLength?: number
   // Org-wide ceiling on the total size of all attachments combined (anti-abuse).
   attachmentTotalSizeKb?: number
+  // Max bank accounts (Cash in Hand is always free + doesn't count). Free = 1.
+  bankAccounts?: number
 }
 
 export type QuotaCheck =
@@ -36,6 +38,7 @@ const DEFAULT_FREE_LIMITS: Required<PlanLimits> = {
   attachmentsPerTx: 1,
   noteLength: 200,
   attachmentTotalSizeKb: 50 * 1024, // 50 MB across the whole workspace
+  bankAccounts: 1, // free workspaces get a single bank account (+ Cash in Hand)
 }
 
 const DEFAULT_PREMIUM_LIMITS: Required<PlanLimits> = {
@@ -46,6 +49,7 @@ const DEFAULT_PREMIUM_LIMITS: Required<PlanLimits> = {
   attachmentsPerTx: 10,
   noteLength: 100000,
   attachmentTotalSizeKb: 5 * 1024 * 1024, // 5 GB across the whole workspace
+  bankAccounts: 1000, // effectively unlimited for paid plans
 }
 
 export async function getOrgPlan(orgId: string): Promise<{ planKey: string; limits: Required<PlanLimits> }> {
@@ -86,6 +90,7 @@ export async function getOrgPlan(orgId: string): Promise<{ planKey: string; limi
       attachmentsPerTx: stored.attachmentsPerTx ?? fallback.attachmentsPerTx,
       noteLength: stored.noteLength ?? fallback.noteLength,
       attachmentTotalSizeKb: stored.attachmentTotalSizeKb ?? fallback.attachmentTotalSizeKb,
+      bankAccounts: stored.bankAccounts ?? fallback.bankAccounts,
     },
   }
 }
@@ -151,6 +156,31 @@ export async function checkClientQuota(orgId: string): Promise<QuotaCheck> {
       limit: limits.clients,
       current,
       upgradeHint: true,
+    }
+  }
+  return { allowed: true }
+}
+
+// Limit the number of (active) BANK accounts per workspace. Cash in Hand is always
+// free and never counts. Free = 1 bank account; paid plans are effectively
+// unlimited. Existing accounts beyond a (tightened) limit are grandfathered — only
+// NEW creates past the limit are blocked.
+export async function checkBankAccountQuota(orgId: string): Promise<QuotaCheck> {
+  const { planKey, limits } = await getOrgPlan(orgId)
+  const [{ current }] = await db
+    .select({ current: count() })
+    .from(wealthAccounts)
+    .where(and(eq(wealthAccounts.organizationId, orgId), eq(wealthAccounts.type, "bank"), isNull(wealthAccounts.archivedAt)))
+  if (current >= limits.bankAccounts) {
+    return {
+      allowed: false,
+      reason:
+        planKey === "free"
+          ? "Free plan includes 1 bank account. Upgrade to Premium for unlimited accounts."
+          : `This workspace has reached its limit of ${limits.bankAccounts} bank accounts.`,
+      limit: limits.bankAccounts,
+      current,
+      upgradeHint: planKey === "free",
     }
   }
   return { allowed: true }
