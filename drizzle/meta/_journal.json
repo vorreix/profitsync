@@ -239,6 +239,13 @@
       "when": 1780964093751,
       "tag": "0033_perpetual_randall",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1781041497550,
+      "tag": "0034_parched_zuras",
+      "breakpoints": true
     }
   ]
 }

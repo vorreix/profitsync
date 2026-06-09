@@ -53,6 +53,8 @@ import trash from "./_routes/trash.js"
 import trashRestore from "./_routes/trash/restore.js"
 import trashPurge from "./_routes/trash/purge.js"
 import budgets from "./_routes/budgets.js"
+import budgetsOverview from "./_routes/budgets/overview.js"
+import budgetsDetail from "./_routes/budgets/detail.js"
 import publicPricing from "./_routes/public/pricing.js"
 import publicBlog from "./_routes/public/blog.js"
 import publicBlogBySlug from "./_routes/public/blog/[slug].js"
@@ -149,6 +151,8 @@ const routes: RoutePattern<ApiHandler>[] = [
   { segments: ["invitations", ":token"], handler: invitationByToken },
   { segments: ["legal", "accept"], handler: legalAccept },
 
+  { segments: ["budgets", "overview"], handler: budgetsOverview },
+  { segments: ["budgets", "detail"], handler: budgetsDetail },
   { segments: ["budgets"], handler: budgets },
   { segments: ["trash"], handler: trash },
   { segments: ["trash", "restore"], handler: trashRestore },

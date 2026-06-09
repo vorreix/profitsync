@@ -28,7 +28,8 @@
     "categories": "Kategorien",
     "analytics": "Analysen",
     "referrals": "Empfehlen & verdienen",
-    "refundPolicy": "Rückgaberichtlinie"
+    "refundPolicy": "Rückgaberichtlinie",
+    "budgets": "Budgets"
   },
   "actions": {
     "addClient": "Kunde hinzufügen",
@@ -992,5 +993,34 @@
     "save": "Budget speichern",
     "remainingAfter": "{{amount}} übrig nach dieser Ausgabe",
     "overAfter": "{{amount}} über dem Budget nach dieser Ausgabe"
+  },
+  "budgetsPage": {
+    "title": "Budgets",
+    "subtitle": "Verfolge Ausgaben gegen deine Budgets und wie sie sich verändern.",
+    "acrossAllBudgets": "Über alle Budgets",
+    "onTrack": "{{count}} von {{total}} im Plan",
+    "personal": "Persönliches Budget",
+    "companyDefault": "Firmen-Standard",
+    "defaultTemplate": "Standard für neue Kunden",
+    "creep": "Steigt an",
+    "empty": "Noch keine Budgets",
+    "emptyHint": "Lege ein Budget fest, um Ausgaben zu verfolgen und Verlauf und Trends zu sehen.",
+    "setBudget": "Budget festlegen",
+    "spent": "Ausgegeben",
+    "spendVsBudget": "Ausgaben vs. Budget",
+    "onBudget": "Im Budget",
+    "streak": "Serie im Budget",
+    "avgVsBudget": "Ø vs. Budget",
+    "sinceFirstSet": "Seit Ersteinstellung",
+    "templateNoChart": "Dies ist der Standard für neue Kunden — keine Ausgaben darstellbar.",
+    "changeHistory": "Änderungsverlauf",
+    "noHistory": "Noch keine Änderungen.",
+    "notFound": "Budget nicht gefunden.",
+    "creepWarning": "{{count}}-mal erhöht (+{{pct}}%) — Achtung vor schleichender Budgeterhöhung.",
+    "actionSet": "Festgelegt",
+    "actionRaise": "Erhöht",
+    "actionLower": "Gesenkt",
+    "actionPeriod": "Zeitraum geändert",
+    "actionRemove": "Entfernt"
   }
 }
