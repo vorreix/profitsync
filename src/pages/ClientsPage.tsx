@@ -479,24 +479,33 @@ export function ClientsPage() {
                       </div>
                     </div>
 
-                    {/* Expense budget indicator (or a set-budget affordance) — tap to edit. */}
+                    {/* Expense budget. Two distinct actions: the bar/piggy navigates to
+                        the budget page; the pencil opens the edit dialog. */}
                     {(() => {
                       const b = budgets.get(client.id)
                       if (b) {
                         return (
-                          <button
-                            type="button"
-                            className="group/budget w-full flex items-start gap-2 text-left rounded-md -m-1 p-1 hover:bg-accent/50 transition-colors"
-                            onClick={(e) => { e.stopPropagation(); setBudgetClient(client) }}
-                            aria-label={t("budget.edit", { ns: "translation" })}
-                          >
-                            <div className="flex-1 min-w-0">
+                          <div className="flex items-start gap-1">
+                            <button
+                              type="button"
+                              className="group/budget min-w-0 flex-1 rounded-md p-1 text-left transition-colors hover:bg-accent/50"
+                              onClick={(e) => { e.stopPropagation(); navigate(`/budgets/${client.id}`) }}
+                              aria-label={t("nav.budgets", { ns: "translation" })}
+                            >
                               {/* Piggy icon sits right after the period word (Monthly 🐷 …). */}
                               <BudgetIndicator amount={b.amount} spent={b.spent ?? 0} period={b.period} currency={currency} showPeriodIcon />
-                            </div>
-                            {/* Always-visible edit affordance so it reads as tappable on touch. */}
-                            <Pencil className="size-3.5 shrink-0 mt-0.5 text-muted-foreground/70 group-hover/budget:text-foreground transition-colors" />
-                          </button>
+                            </button>
+                            {canWrite && (
+                              <button
+                                type="button"
+                                className="grid size-8 shrink-0 place-items-center rounded-md text-muted-foreground/70 transition-colors hover:bg-accent/50 hover:text-foreground"
+                                onClick={(e) => { e.stopPropagation(); setBudgetClient(client) }}
+                                aria-label={t("budget.edit", { ns: "translation" })}
+                              >
+                                <Pencil className="size-3.5" />
+                              </button>
+                            )}
+                          </div>
                         )
                       }
                       if (!canWrite) return null
