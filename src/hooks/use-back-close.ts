@@ -47,6 +47,28 @@ export function useBackClose(open: boolean, onClose: () => void): void {
 }
 
 /**
+ * Neutralize the CURRENT modal's pushed back-entry so closing it will NOT fire a
+ * `history.back()` (and therefore no stray `popstate`). Call this right before
+ * chaining straight from one plain-state modal into another (e.g. an overview's
+ * "Edit" button that closes the overview and opens an edit dialog in the same tick):
+ * without it, the first modal's cleanup pops history, and that pop is caught by the
+ * second modal's freshly-mounted `useBackClose` listener — slamming it shut. We only
+ * strip our own `__modalBackClose` marker, preserving react-router's `{usr,key,idx}`
+ * bookkeeping; the (now markerless) dummy entry is a harmless same-URL no-op.
+ *
+ * This is the plain-modal analogue of `useUrlModal.close({ replace: true })`.
+ */
+export function dropModalBackEntry(): void {
+  if (typeof window === "undefined") return
+  const st = window.history.state as ({ __modalBackClose?: boolean } & Record<string, unknown>) | null
+  if (st?.__modalBackClose) {
+    const next = { ...st }
+    delete next.__modalBackClose
+    window.history.replaceState(next, "")
+  }
+}
+
+/**
  * Make a modal's open state effectively **controlled** (works whether the caller
  * passes `open`/`onOpenChange` or uses it uncontrolled via a Trigger) and wire in
  * {@link useBackClose}. Returns the `{ open, onOpenChange }` to spread onto the

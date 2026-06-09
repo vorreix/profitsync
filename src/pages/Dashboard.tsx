@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react"
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import { useNavigate } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
@@ -6,9 +6,11 @@ import { apiGet, apiPatch } from "@/lib/api"
 import type { Client, Transaction, WealthAccount } from "@/lib/types"
 import { useCurrency } from "@/lib/currency-context"
 import { useOrg } from "@/lib/org-context"
+import { useDataRefresh } from "@/lib/data-refresh-context"
 import { accountDisplayName, formatMoney, useBalancePrivacy, useWealthOverviewCollapsed, useWealthSummary } from "@/lib/wealth"
 import { WealthAccountIcon } from "@/components/WealthAccountIcon"
 import { PersonalBudgetCard } from "@/components/budget/PersonalBudgetCard"
+import { BusinessBudgetCard } from "@/components/budget/BusinessBudgetCard"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { FitText } from "@/components/FitText"
 import { Badge } from "@/components/ui/badge"
@@ -31,7 +33,6 @@ import {
   Tag,
   Wallet,
   X,
-  Archive,
   Eye,
   EyeOff,
 } from "lucide-react"
@@ -118,7 +119,7 @@ type FilterOption = { id: string; label: string; sublabel?: string; badge?: stri
 
 // Reusable multi-select dropdown used for both the client and category filters.
 function MultiSelectFilter({
-  triggerLabel, allLabel, searchPlaceholder, emptyText, options, selected, onChange, icon,
+  triggerLabel, allLabel, searchPlaceholder, emptyText, options, selected, onChange, icon, extraToggle,
 }: {
   triggerLabel: string
   allLabel: string
@@ -128,6 +129,9 @@ function MultiSelectFilter({
   selected: Set<string>
   onChange: (next: Set<string>) => void
   icon: ReactNode
+  // Optional switch rendered inside the popover (e.g. "Show closed clients"), which
+  // expands the option list rather than living as a separate button outside.
+  extraToggle?: { label: string; checked: boolean; onChange: (v: boolean) => void }
 }) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
@@ -192,6 +196,12 @@ function MultiSelectFilter({
             )}
           </div>
         </ScrollArea>
+        {extraToggle && (
+          <label className="flex cursor-pointer items-center gap-2 border-t px-3 py-2.5">
+            <Checkbox checked={extraToggle.checked} onCheckedChange={(c) => extraToggle.onChange(!!c)} />
+            <span className="text-sm">{extraToggle.label}</span>
+          </label>
+        )}
         {selected.size > 0 && (
           <div className="border-t p-2 flex gap-2">
             <Button size="sm" variant="outline" className="flex-1" onClick={() => onChange(new Set())}>{t("common.clear")}</Button>
@@ -374,6 +384,19 @@ function WealthOverview({
   // Glides account tiles into place when one is added, removed, or reordered.
   const [gridRef] = useAutoAnimate<HTMLDivElement>()
 
+  // At-a-glance wealth health (data-driven, no arbitrary thresholds): red when the
+  // total is in the red; amber when the total is positive but an account is
+  // overdrawn; green when everything's positive. Hidden under the privacy toggle so
+  // a coloured dot never leaks the sign of a masked balance.
+  const anyAccountNegative = active.some((a) => Number(a.current_balance) < 0)
+  const health: "good" | "warn" | "negative" =
+    total < 0 ? "negative" : anyAccountNegative ? "warn" : "good"
+  const HEALTH = {
+    good: { dot: "bg-emerald-500", label: t("wealth.healthGood") },
+    warn: { dot: "bg-amber-500", label: t("wealth.healthWarn") },
+    negative: { dot: "bg-red-500", label: t("wealth.healthNegative") },
+  }[health]
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
@@ -429,8 +452,16 @@ function WealthOverview({
               />
               <div className="relative flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                  <p className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                     {t("wealth.totalAvailable")}
+                    {balancesVisible && (
+                      <span
+                        role="img"
+                        aria-label={HEALTH.label}
+                        title={HEALTH.label}
+                        className={`size-2 shrink-0 rounded-full ${HEALTH.dot}`}
+                      />
+                    )}
                   </p>
                   <FitText className="mt-1" textClassName="text-2xl sm:text-3xl font-bold tabular-nums">
                     {formatMoney(total, currency, balancesVisible)}
@@ -468,8 +499,14 @@ function WealthOverview({
               style={{ gridTemplateRows: collapsed ? "0fr" : "1fr" }}
             >
               <div className="overflow-hidden">
-                <div ref={gridRef} className="grid gap-2.5 pt-3 sm:grid-cols-2 lg:grid-cols-3">
-                  {active.map((account) => (
+                <div ref={gridRef} className="grid grid-cols-1 gap-2.5 pt-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {active.map((account) => {
+                    // A negative (overdrawn) balance is flagged in red with a red dot
+                    // — but only when balances are visible, so privacy mode never
+                    // leaks the sign through colour.
+                    const negative = Number(account.current_balance) < 0
+                    const flagNegative = negative && balancesVisible
+                    return (
                     <button
                       key={account.id}
                       type="button"
@@ -484,13 +521,15 @@ function WealthOverview({
                         </p>
                       </div>
                       <div className="flex shrink-0 items-center gap-1">
-                        <span className="text-sm font-semibold tabular-nums">
+                        {flagNegative && <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-red-500" />}
+                        <span className={`text-sm font-semibold tabular-nums ${flagNegative ? "text-red-600 dark:text-red-400" : ""}`}>
                           {formatMoney(Number(account.current_balance), currency, balancesVisible)}
                         </span>
                         <ChevronRight className="size-4 text-muted-foreground transition-transform duration-200 group-hover:translate-x-0.5" />
                       </div>
                     </button>
-                  ))}
+                    )
+                  })}
                 </div>
               </div>
             </div>
@@ -510,6 +549,7 @@ export function Dashboard() {
   const { currency } = useCurrency()
   const { activeOrg } = useOrg()
   const isPersonal = activeOrg?.account_type === "personal"
+  const { revision } = useDataRefresh()
 
   const chartConfig: ChartConfig = {
     incoming: { label: t("chart.incoming"), color: "var(--chart-2)" },
@@ -527,29 +567,36 @@ export function Dashboard() {
   const [showClosed, setShowClosed] = useState(false)
   const [peekTx, setPeekTx] = useState<Transaction | null>(null)
 
-  useEffect(() => {
-    async function load() {
-      try {
-        const token = await getToken()
-        if (!token) return
-        const suffix = showClosed ? "?includeClosed=1" : ""
-        const [clientList, txList, accountList] = await Promise.all([
-          apiGet<Client[]>(`/api/clients${suffix}`, token),
-          apiGet<Transaction[]>(`/api/transactions${suffix}`, token),
-          apiGet<WealthAccount[]>("/api/wealth/accounts", token),
-        ])
-        setClients(clientList)
-        setTransactions(txList)
-        setWealthAccounts(accountList)
-      } catch (err) {
-        console.error("Failed to load dashboard:", err)
-      } finally {
-        setLoading(false)
-      }
+  // Refetch never re-shows the skeleton (loading only starts true) — so reloads on
+  // the closed-toggle and the global refresh signal update figures in place.
+  const load = useCallback(async () => {
+    try {
+      const token = await getToken()
+      if (!token) return
+      const suffix = showClosed ? "?includeClosed=1" : ""
+      const [clientList, txList, accountList] = await Promise.all([
+        apiGet<Client[]>(`/api/clients${suffix}`, token),
+        apiGet<Transaction[]>(`/api/transactions${suffix}`, token),
+        apiGet<WealthAccount[]>("/api/wealth/accounts", token),
+      ])
+      setClients(clientList)
+      setTransactions(txList)
+      setWealthAccounts(accountList)
+    } catch (err) {
+      console.error("Failed to load dashboard:", err)
+    } finally {
+      setLoading(false)
     }
-    load()
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- getToken is stable; reload when the closed toggle changes
-  }, [showClosed])
+  }, [getToken, showClosed])
+
+  useEffect(() => { void load() }, [load])
+
+  // A transaction added elsewhere (the global + FAB) bumps the refresh signal —
+  // pull fresh figures in place (no skeleton, no navigation).
+  useEffect(() => {
+    if (revision > 0) void load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only react to the signal
+  }, [revision])
 
   useEffect(() => {
     async function refreshWealthAccounts() {
@@ -621,6 +668,8 @@ export function Dashboard() {
 
   const realClients = clients.filter((c) => !c.is_own)
   const activeClients = realClients.filter((c) => c.status === "active").length
+  // The own/internal company client — surfaces its expense budget on the dashboard.
+  const ownClient = clients.find((c) => c.is_own)
 
   const latestTx = useMemo(
     () =>
@@ -684,6 +733,7 @@ export function Dashboard() {
               selected={selectedClientIds}
               onChange={setSelectedClientIds}
               icon={<Building2 className="size-4 opacity-60" />}
+              extraToggle={{ label: t("closed.showClosedClients"), checked: showClosed, onChange: setShowClosed }}
             />
           )}
           <MultiSelectFilter
@@ -696,17 +746,6 @@ export function Dashboard() {
             onChange={setSelectedCategories}
             icon={<Tag className="size-4 opacity-60" />}
           />
-          {!isPersonal && (
-            <Button
-              variant={showClosed ? "secondary" : "outline"}
-              size="sm"
-              className="h-9 shrink-0"
-              onClick={() => setShowClosed((v) => !v)}
-            >
-              <Archive className="size-4" />
-              {t("closed.showClosedClients")}
-            </Button>
-          )}
         </div>
         <div className="sm:hidden shrink-0">
           <FilterSheet count={appliedFilterCount} onClear={clearAllFilters}>
@@ -721,6 +760,7 @@ export function Dashboard() {
                   selected={selectedClientIds}
                   onChange={setSelectedClientIds}
                   icon={<Building2 className="size-4 opacity-60" />}
+                  extraToggle={{ label: t("closed.showClosedClients"), checked: showClosed, onChange: setShowClosed }}
                 />
               </FilterSection>
             )}
@@ -736,12 +776,6 @@ export function Dashboard() {
                 icon={<Tag className="size-4 opacity-60" />}
               />
             </FilterSection>
-            {!isPersonal && (
-              <label className="flex items-center gap-2 pt-1">
-                <Checkbox checked={showClosed} onCheckedChange={(c) => setShowClosed(!!c)} />
-                <span className="text-sm">{t("closed.showClosedClients")}</span>
-              </label>
-            )}
           </FilterSheet>
         </div>
       </div>
@@ -794,7 +828,9 @@ export function Dashboard() {
         )}
       </div>
 
-      {isPersonal && <PersonalBudgetCard />}
+      {isPersonal
+        ? <PersonalBudgetCard />
+        : ownClient && <BusinessBudgetCard clientId={ownClient.id} clientName={ownClient.name} />}
 
       <WealthOverview accounts={wealthAccounts} loading={loading} currency={currency} />
 
