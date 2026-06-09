@@ -22,6 +22,8 @@ const TransactionsPage = lazy(() => import("@/pages/TransactionsPage").then((m) 
 const WealthPage = lazy(() => import("@/pages/WealthPage").then((m) => ({ default: m.WealthPage })))
 const WealthAccountDetailPage = lazy(() => import("@/pages/WealthAccountDetailPage").then((m) => ({ default: m.WealthAccountDetailPage })))
 const CategoriesPage = lazy(() => import("@/pages/CategoriesPage").then((m) => ({ default: m.CategoriesPage })))
+const BudgetsPage = lazy(() => import("@/pages/BudgetsPage").then((m) => ({ default: m.BudgetsPage })))
+const BudgetDetailPage = lazy(() => import("@/pages/BudgetDetailPage").then((m) => ({ default: m.BudgetDetailPage })))
 const AnalyticsPage = lazy(() => import("@/pages/AnalyticsPage").then((m) => ({ default: m.AnalyticsPage })))
 const ReferralPage = lazy(() => import("@/pages/ReferralPage").then((m) => ({ default: m.ReferralPage })))
 const QuotationsPage = lazy(() => import("@/pages/QuotationsPage").then((m) => ({ default: m.QuotationsPage })))
@@ -147,6 +149,8 @@ export function App() {
             <Route path="wealth/:id" element={<WealthAccountDetailPage />} />
             <Route path="analytics" element={<AnalyticsPage />} />
             <Route path="categories" element={<CategoriesPage />} />
+            <Route path="budgets" element={<BudgetsPage />} />
+            <Route path="budgets/:key" element={<BudgetDetailPage />} />
             <Route path="referrals" element={<ReferralPage />} />
             <Route path="quotations" element={<BusinessOnlyRoute feature="quotations"><QuotationsPage /></BusinessOnlyRoute>} />
             <Route path="organizations" element={<OrganizationsPage />} />
