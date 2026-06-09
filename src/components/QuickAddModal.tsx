@@ -91,7 +91,7 @@ export function QuickAddModal({ entity, onClose }: { entity: QuickAddEntity | nu
           amount: qAmount ? Number(qAmount) : undefined,
           date: qDate || todayStr(),
         })
-        successToast(t("quickAdd.quotationCreated", { title: created.title }), "/quotations")
+        successToast(t("quickAdd.quotationCreated", { title: created.title }), `/quotations?view=${created.id}`)
       }
       onClose()
     } catch (err) {
