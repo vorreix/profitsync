@@ -109,9 +109,11 @@ home for history/insights *and* set/edit), with a consistent **PiggyBank** icon 
 chevron affordance:
 - **Client detail** budget card → taps to `/budgets/:clientId`; keeps an inline Edit
   button (`stopPropagation`) for quick edits.
-- **Clients list** card budget line → piggy icon + chevron, taps to `/budgets/:clientId`
-  (both the with-budget indicator and the "Set budget" empty state). The inline
-  `BudgetDialog` was removed from this page — edit/set lives on the detail page.
+- **Clients list** card budget line → **kept its original edit-dialog design** (per
+  user pref): clicking opens the inline `BudgetDialog`, with the always-visible Pencil
+  edit affordance. The only budget-link touch here is cosmetic — a piggy icon **after**
+  the period word (via `BudgetIndicator`'s opt-in `showPeriodIcon`) and a left-piggy on
+  the "Set budget" affordance. (It does **not** navigate to `/budgets/:id`.)
 - **Dashboard** `PersonalBudgetCard` → `/budgets/default`, `BusinessBudgetCard` →
   `/budgets/:ownClientId`; whole card clickable, inline Edit kept (`stopPropagation`).
 - **API:** `/api/budgets/detail` no longer 404s for a *valid* client with no budget yet
