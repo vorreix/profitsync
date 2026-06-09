@@ -223,7 +223,16 @@
     "bankBalanceLabel": "Saldo attuale",
     "freeBankNote": "1 conto bancario nel piano Free — passa a Premium per illimitati.",
     "budgetsTitle": "Budget",
-    "skipForNow": "Salta per ora"
+    "skipForNow": "Salta per ora",
+    "detailsTitle": "Qualche dettaglio",
+    "detailsSubtitle": "Un paio di impostazioni rapide — puoi cambiarle in seguito.",
+    "cashQuestion": "Quanto contante hai a disposizione?",
+    "bankQuestion": "Aggiungi il tuo conto bancario principale",
+    "budgetQuestionPersonal": "Imposti un budget di spesa?",
+    "budgetQuestionBusiness": "Imposti un budget per la tua azienda?",
+    "budgetHint": "Facoltativo — puoi cambiarlo in qualsiasi momento.",
+    "addDefaultBudget": "Imposta anche un predefinito per i nuovi clienti",
+    "finish": "Fine"
   },
   "transactions": {
     "add": "Aggiungi",

@@ -59,11 +59,14 @@ export function OrganizationsPage() {
     try {
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
-      await apiPost<Organization>("/api/organizations", token, { name: newName.trim(), currency: newCurrency })
+      const created = await apiPost<Organization>("/api/organizations", token, { name: newName.trim(), currency: newCurrency })
       toast.success(t("organizations.organizationCreated"))
       setNewName("")
       setCreateOpen(false)
+      await switchOrg(created.id)
       await refresh()
+      // Run the new company through the setup flow (money + budgets + plan).
+      navigate("/organization-setup")
     } catch (err) {
       toast.error(err instanceof Error ? err.message : t("organizations.failedToCreateOrganization"))
     } finally {

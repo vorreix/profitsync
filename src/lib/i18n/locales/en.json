@@ -430,7 +430,16 @@
     "bankBalanceLabel": "Current balance",
     "freeBankNote": "1 bank account on Free — upgrade later for unlimited.",
     "budgetsTitle": "Budgets",
-    "skipForNow": "Skip for now"
+    "skipForNow": "Skip for now",
+    "detailsTitle": "A few details",
+    "detailsSubtitle": "A couple of quick settings — you can change them later.",
+    "cashQuestion": "How much cash do you have on hand?",
+    "bankQuestion": "Add your main bank account",
+    "budgetQuestionPersonal": "Set a spending budget?",
+    "budgetQuestionBusiness": "Set a budget for your company?",
+    "budgetHint": "Optional — you can change this anytime.",
+    "addDefaultBudget": "Also set a default for new clients",
+    "finish": "Finish"
   },
   "transactions": {
     "add": "Add",

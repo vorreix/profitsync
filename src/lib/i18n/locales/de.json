@@ -223,7 +223,16 @@
     "bankBalanceLabel": "Aktueller Saldo",
     "freeBankNote": "1 Bankkonto im Free-Plan — upgrade später für unbegrenzt.",
     "budgetsTitle": "Budgets",
-    "skipForNow": "Vorerst überspringen"
+    "skipForNow": "Vorerst überspringen",
+    "detailsTitle": "Ein paar Angaben",
+    "detailsSubtitle": "Ein paar schnelle Einstellungen — später änderbar.",
+    "cashQuestion": "Wie viel Bargeld hast du zur Hand?",
+    "bankQuestion": "Füge dein Hauptbankkonto hinzu",
+    "budgetQuestionPersonal": "Ein Ausgabenbudget festlegen?",
+    "budgetQuestionBusiness": "Ein Budget für dein Unternehmen festlegen?",
+    "budgetHint": "Optional — jederzeit änderbar.",
+    "addDefaultBudget": "Auch einen Standard für neue Kunden festlegen",
+    "finish": "Fertig"
   },
   "transactions": {
     "add": "Hinzufügen",

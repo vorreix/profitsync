@@ -60,7 +60,9 @@ export function OrgSwitcher() {
       setNewName("")
       await switchOrg(created.id)
       await refresh()
-      navigate("/dashboard")
+      // Run the new company through the setup flow (money + budgets + plan) instead
+      // of dropping it on an empty dashboard.
+      navigate("/organization-setup")
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to create organization")
     } finally {

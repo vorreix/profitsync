@@ -223,7 +223,16 @@
     "bankBalanceLabel": "वर्तमान बैलेंस",
     "freeBankNote": "फ्री प्लान में 1 बैंक खाता — असीमित के लिए बाद में अपग्रेड करें।",
     "budgetsTitle": "बजट",
-    "skipForNow": "अभी छोड़ें"
+    "skipForNow": "अभी छोड़ें",
+    "detailsTitle": "कुछ विवरण",
+    "detailsSubtitle": "कुछ त्वरित सेटिंग्स — आप इन्हें बाद में बदल सकते हैं।",
+    "cashQuestion": "आपके पास कितनी नकदी उपलब्ध है?",
+    "bankQuestion": "अपना मुख्य बैंक खाता जोड़ें",
+    "budgetQuestionPersonal": "खर्च बजट सेट करें?",
+    "budgetQuestionBusiness": "अपनी कंपनी के लिए बजट सेट करें?",
+    "budgetHint": "वैकल्पिक — आप इसे कभी भी बदल सकते हैं।",
+    "addDefaultBudget": "नए क्लाइंट के लिए डिफ़ॉल्ट भी सेट करें",
+    "finish": "समाप्त"
   },
   "transactions": {
     "add": "जोड़ें",

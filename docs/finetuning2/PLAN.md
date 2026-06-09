@@ -365,3 +365,12 @@ must not block completion on failure.
   **Playwright-verified** (bank created via onboarding, DB-confirmed).
 - **08** docs/skill — `docs/budget/BUDGETS.md`, `docs/finetuning2/OVERVIEW.md`,
   `subscription-system` skill refreshed (India + reconcile-referral notes).
+- **09** onboarding wizard + new-org setup (follow-up) — split step 1 (type →
+  Continue → then currency/company), converted "Setup money" into a one-question-at-a-time
+  **mobile-first wizard** (cash → bank → budget, animated slide, progressive-disclosure
+  default budget). Extracted reusable `MoneyWizard` + `PlanStep` + `OnboardingShell`.
+  **Creating a new organization** now runs the same setup (`/organization-setup`:
+  money wizard + plan/upgrade) instead of dropping onto an empty dashboard. Cash step
+  made robust (PATCH the existing Cash account, not a failing 2nd POST). Skills used:
+  `ui-ux-pro-max` + `transition-creator`. **Playwright-verified at 390px** across every
+  screen; data confirmed in DB; test data cleaned up.

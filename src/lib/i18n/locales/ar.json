@@ -223,7 +223,16 @@
     "bankBalanceLabel": "الرصيد الحالي",
     "freeBankNote": "حساب بنكي واحد في الخطة المجانية — قم بالترقية لاحقًا للحصول على عدد غير محدود.",
     "budgetsTitle": "الميزانيات",
-    "skipForNow": "تخطٍ الآن"
+    "skipForNow": "تخطٍ الآن",
+    "detailsTitle": "بعض التفاصيل",
+    "detailsSubtitle": "إعدادان سريعان — يمكنك تغييرهما لاحقًا.",
+    "cashQuestion": "كم لديك من النقد المتوفر؟",
+    "bankQuestion": "أضف حسابك البنكي الرئيسي",
+    "budgetQuestionPersonal": "هل تريد تعيين ميزانية إنفاق؟",
+    "budgetQuestionBusiness": "هل تريد تعيين ميزانية لشركتك؟",
+    "budgetHint": "اختياري — يمكنك تغييره في أي وقت.",
+    "addDefaultBudget": "عيّن أيضًا قيمة افتراضية للعملاء الجدد",
+    "finish": "إنهاء"
   },
   "transactions": {
     "add": "إضافة",
