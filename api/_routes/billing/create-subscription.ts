@@ -4,6 +4,7 @@ import { db, serialize } from "../../../src/lib/db/index.js"
 import { plans, subscriptions, userProfiles } from "../../../src/lib/db/schema.js"
 import { requireAuth } from "../../_lib/auth.js"
 import { createSubscription, isDodoConfigured, productIdForPlan, type DodoEnv } from "../../_lib/dodo.js"
+import { currencyForCountry } from "../../../src/lib/currencies.js"
 
 function originFromRequest(req: VercelRequest): string {
   const host = (req.headers["x-forwarded-host"] as string | undefined) || req.headers.host || "localhost:3000"
@@ -111,14 +112,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const [profile] = await db.select().from(userProfiles).where(eq(userProfiles.id, ctx.userId))
   const email = profile?.email ?? `${ctx.userId}@users.noreply.profitsync.net`
   const name = profile?.fullName?.trim() || email.split("@")[0]
-  const country = (req.headers["x-vercel-ip-country"] as string | undefined)?.toUpperCase() || "US"
+  // Billing country: prefer the user's saved profile country (authoritative for
+  // billing), else Vercel's IP geo, else US. The currency is derived from it so
+  // the charge routes to a connector that supports the customer's card — this is
+  // the fix for the "Missing connector response" error on Indian cards (a USD
+  // charge has no eligible Indian-card connector; IN → INR does).
+  const profileCountry = profile?.country?.toUpperCase()
+  const country =
+    (profileCountry && profileCountry.length === 2 ? profileCountry : undefined) ||
+    (req.headers["x-vercel-ip-country"] as string | undefined)?.toUpperCase() ||
+    "US"
+  const billingCurrency = currencyForCountry(country)
 
   try {
     const sub = await createSubscription({
       productId,
       quantity: 1,
       customer: { email, name },
-      billing: { country },
+      // Seed the full billing address from the profile so connectors that require
+      // a complete address (and tax computation) have it; the hosted page lets the
+      // buyer confirm/complete it.
+      billing: {
+        country,
+        state: profile?.state || "",
+        city: profile?.city || "",
+        street: profile?.address || "",
+        zipcode: profile?.postalCode || "",
+      },
+      billingCurrency,
       returnUrl: `${originFromRequest(req)}/subscription?dodo=return`,
       metadata: { organization_id: ctx.orgId, plan_key, billing_cycle: billing },
       env: dodoEnv,
