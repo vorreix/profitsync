@@ -4,11 +4,19 @@ import * as React from "react"
 import { Drawer as DrawerPrimitive } from "vaul"
 
 import { cn } from "@/lib/utils"
+import { useModalBackClose } from "@/hooks/use-back-close"
 
+// NOTE: intentional enhancement to this vendored shadcn file — Root wires
+// useModalBackClose so the browser/OS Back gesture closes the drawer instead of
+// navigating away. Re-running `npx shadcn add drawer` overwrites this; re-apply.
 function Drawer({
+  open,
+  onOpenChange,
+  disableBackClose,
   ...props
-}: React.ComponentProps<typeof DrawerPrimitive.Root>) {
-  return <DrawerPrimitive.Root data-slot="drawer" {...props} />
+}: React.ComponentProps<typeof DrawerPrimitive.Root> & { disableBackClose?: boolean }) {
+  const controlled = useModalBackClose({ open, onOpenChange, disableBackClose })
+  return <DrawerPrimitive.Root data-slot="drawer" {...props} {...controlled} />
 }
 
 function DrawerTrigger({
