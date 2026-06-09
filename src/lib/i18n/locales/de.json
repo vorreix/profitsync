@@ -141,7 +141,8 @@
     "transactionDetails": "Transaktionsdetails",
     "description": "Beschreibung",
     "openTransaction": "Transaktion öffnen",
-    "openClient": "Kunde öffnen"
+    "openClient": "Kunde öffnen",
+    "ownCompanyBudget": "Firmenbudget"
   },
   "chart": {
     "incoming": "Eingang",
@@ -213,7 +214,30 @@
     "maybeLater": "Später erledigen",
     "freeIncluded": "Alles, was du für den Start brauchst",
     "currencyLabel": "Währung",
-    "currencyDetectedHint": "Sie können dies später ändern"
+    "currencyDetectedHint": "Sie können dies später ändern",
+    "setupMoneyTitle": "Richte deine Finanzen ein",
+    "setupMoneySubtitle": "Füge Startguthaben und Budgets hinzu — alles optional, jederzeit änderbar.",
+    "balanceInHand": "Bargeldbestand",
+    "balanceInHandHint": "Bargeld, das du aktuell hast.",
+    "bankAccountTitle": "Bankkonto",
+    "bankNameLabel": "Name der Bank",
+    "bankBalanceLabel": "Aktueller Saldo",
+    "freeBankNote": "1 Bankkonto im Free-Plan — upgrade später für unbegrenzt.",
+    "budgetsTitle": "Budgets",
+    "skipForNow": "Vorerst überspringen",
+    "detailsTitle": "Ein paar Angaben",
+    "detailsSubtitle": "Ein paar schnelle Einstellungen — später änderbar.",
+    "cashQuestion": "Wie viel Bargeld hast du zur Hand?",
+    "bankQuestion": "Füge dein Hauptbankkonto hinzu",
+    "budgetQuestionPersonal": "Ein Ausgabenbudget festlegen?",
+    "budgetQuestionBusiness": "Ein Budget für dein Unternehmen festlegen?",
+    "budgetHint": "Optional — jederzeit änderbar.",
+    "addDefaultBudget": "Auch einen Standard für neue Kunden festlegen",
+    "finish": "Fertig",
+    "cashQuestionBusiness": "Wie viel Bargeld hat das Unternehmen zur Hand?",
+    "cashHintBusiness": "Das Bargeld deines Unternehmens.",
+    "newOrgTitle": "Neues Unternehmen erstellen",
+    "newOrgSubtitle": "Benenne es und wähle eine Währung — später änderbar."
   },
   "transactions": {
     "add": "Hinzufügen",
@@ -927,7 +951,10 @@
     "dragHandle": "Zum Sortieren oder Überweisen ziehen",
     "reorder": "Sortieren",
     "holdToTransfer": "Zum Überweisen halten",
-    "selectAccount": "Konto auswählen"
+    "selectAccount": "Konto auswählen",
+    "healthGood": "Alles gut — alle Salden positiv",
+    "healthWarn": "Achtung — ein Konto ist negativ",
+    "healthNegative": "Gesamtsaldo ist negativ"
   },
   "errorBoundary": {
     "title": "Etwas ist schiefgelaufen",
@@ -938,7 +965,8 @@
     "viewAction": "Ansehen",
     "clientCreated": "Kunde „{{name}}“ hinzugefügt",
     "transactionCreated": "{{label}} über {{amount}} hinzugefügt",
-    "quotationCreated": "Angebot „{{title}}“ hinzugefügt"
+    "quotationCreated": "Angebot „{{title}}“ hinzugefügt",
+    "advanced": "Erweitert"
   },
   "budget": {
     "title": "Budget",

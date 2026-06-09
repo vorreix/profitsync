@@ -141,7 +141,8 @@
     "transactionDetails": "లావాదేవీ వివరాలు",
     "description": "వివరణ",
     "openTransaction": "లావాదేవీని తెరవండి",
-    "openClient": "క్లయింట్‌ను తెరవండి"
+    "openClient": "క్లయింట్‌ను తెరవండి",
+    "ownCompanyBudget": "కంపెనీ బడ్జెట్"
   },
   "chart": {
     "incoming": "రాబడి",
@@ -213,7 +214,30 @@
     "maybeLater": "నేను తర్వాత చేస్తాను",
     "freeIncluded": "ప్రారంభించడానికి కావలసినవన్నీ",
     "currencyLabel": "కరెన్సీ",
-    "currencyDetectedHint": "మీరు దీన్ని తరువాత మార్చవచ్చు"
+    "currencyDetectedHint": "మీరు దీన్ని తరువాత మార్చవచ్చు",
+    "setupMoneyTitle": "మీ డబ్బును సెటప్ చేయండి",
+    "setupMoneySubtitle": "మీ ప్రారంభ బ్యాలెన్స్‌లు, బడ్జెట్‌లను జోడించండి — అన్నీ ఐచ్ఛికం, ఎప్పుడైనా మార్చవచ్చు.",
+    "balanceInHand": "చేతిలో ఉన్న నగదు",
+    "balanceInHandHint": "మీ వద్ద ప్రస్తుతం ఉన్న నగదు.",
+    "bankAccountTitle": "బ్యాంక్ ఖాతా",
+    "bankNameLabel": "బ్యాంక్ పేరు",
+    "bankBalanceLabel": "ప్రస్తుత బ్యాలెన్స్",
+    "freeBankNote": "ఫ్రీ ప్లాన్‌లో 1 బ్యాంక్ ఖాతా — అపరిమితం కోసం తర్వాత అప్‌గ్రేడ్ చేయండి.",
+    "budgetsTitle": "బడ్జెట్‌లు",
+    "skipForNow": "ప్రస్తుతానికి దాటవేయండి",
+    "detailsTitle": "కొన్ని వివరాలు",
+    "detailsSubtitle": "కొన్ని త్వరిత సెట్టింగ్‌లు — తర్వాత మార్చవచ్చు.",
+    "cashQuestion": "మీ వద్ద ఎంత నగదు ఉంది?",
+    "bankQuestion": "మీ ప్రధాన బ్యాంక్ ఖాతాను జోడించండి",
+    "budgetQuestionPersonal": "ఖర్చు బడ్జెట్ సెట్ చేయాలా?",
+    "budgetQuestionBusiness": "మీ కంపెనీకి బడ్జెట్ సెట్ చేయాలా?",
+    "budgetHint": "ఐచ్ఛికం — ఎప్పుడైనా మార్చవచ్చు.",
+    "addDefaultBudget": "కొత్త క్లయింట్‌లకు డిఫాల్ట్ కూడా సెట్ చేయండి",
+    "finish": "ముగించు",
+    "cashQuestionBusiness": "వ్యాపారం వద్ద ఎంత నగదు ఉంది?",
+    "cashHintBusiness": "మీ కంపెనీ చేతిలో ఉన్న నగదు.",
+    "newOrgTitle": "కొత్త కంపెనీని సృష్టించండి",
+    "newOrgSubtitle": "పేరు పెట్టి కరెన్సీని ఎంచుకోండి — తర్వాత మార్చవచ్చు."
   },
   "transactions": {
     "add": "జోడించు",
@@ -927,7 +951,10 @@
     "dragHandle": "క్రమం మార్చడానికి లేదా బదిలీ చేయడానికి లాగండి",
     "reorder": "క్రమం మార్చు",
     "holdToTransfer": "బదిలీకి నొక్కి పట్టుకోండి",
-    "selectAccount": "ఖాతా ఎంచుకోండి"
+    "selectAccount": "ఖాతా ఎంచుకోండి",
+    "healthGood": "ఆరోగ్యకరం — అన్ని బ్యాలెన్స్‌లు సానుకూలం",
+    "healthWarn": "గమనిక — ఒక ఖాతా ప్రతికూలం",
+    "healthNegative": "మొత్తం బ్యాలెన్స్ ప్రతికూలం"
   },
   "errorBoundary": {
     "title": "ఏదో తప్పు జరిగింది",
@@ -938,7 +965,8 @@
     "viewAction": "చూడండి",
     "clientCreated": "క్లయింట్ “{{name}}” జోడించబడింది",
     "transactionCreated": "{{amount}} {{label}} జోడించబడింది",
-    "quotationCreated": "కోటేషన్ “{{title}}” జోడించబడింది"
+    "quotationCreated": "కోటేషన్ “{{title}}” జోడించబడింది",
+    "advanced": "అధునాతనం"
   },
   "budget": {
     "title": "బడ్జెట్",

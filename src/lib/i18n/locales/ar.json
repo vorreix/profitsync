@@ -141,7 +141,8 @@
     "transactionDetails": "تفاصيل المعاملة",
     "description": "الوصف",
     "openTransaction": "فتح المعاملة",
-    "openClient": "فتح العميل"
+    "openClient": "فتح العميل",
+    "ownCompanyBudget": "ميزانية الشركة"
   },
   "chart": {
     "incoming": "وارد",
@@ -213,7 +214,30 @@
     "maybeLater": "سأفعل ذلك لاحقًا",
     "freeIncluded": "كل ما تحتاجه للبدء",
     "currencyLabel": "العملة",
-    "currencyDetectedHint": "يمكنك تغييرها لاحقاً"
+    "currencyDetectedHint": "يمكنك تغييرها لاحقاً",
+    "setupMoneyTitle": "إعداد أموالك",
+    "setupMoneySubtitle": "أضف أرصدتك الابتدائية وميزانياتك — كل ذلك اختياري ويمكنك تغييره في أي وقت.",
+    "balanceInHand": "النقد المتوفر",
+    "balanceInHandHint": "النقد الذي بحوزتك حاليًا.",
+    "bankAccountTitle": "حساب بنكي",
+    "bankNameLabel": "اسم البنك",
+    "bankBalanceLabel": "الرصيد الحالي",
+    "freeBankNote": "حساب بنكي واحد في الخطة المجانية — قم بالترقية لاحقًا للحصول على عدد غير محدود.",
+    "budgetsTitle": "الميزانيات",
+    "skipForNow": "تخطٍ الآن",
+    "detailsTitle": "بعض التفاصيل",
+    "detailsSubtitle": "إعدادان سريعان — يمكنك تغييرهما لاحقًا.",
+    "cashQuestion": "كم لديك من النقد المتوفر؟",
+    "bankQuestion": "أضف حسابك البنكي الرئيسي",
+    "budgetQuestionPersonal": "هل تريد تعيين ميزانية إنفاق؟",
+    "budgetQuestionBusiness": "هل تريد تعيين ميزانية لشركتك؟",
+    "budgetHint": "اختياري — يمكنك تغييره في أي وقت.",
+    "addDefaultBudget": "عيّن أيضًا قيمة افتراضية للعملاء الجدد",
+    "finish": "إنهاء",
+    "cashQuestionBusiness": "كم من النقد المتوفر لدى الشركة؟",
+    "cashHintBusiness": "النقد المتوفر لدى شركتك.",
+    "newOrgTitle": "إنشاء شركة جديدة",
+    "newOrgSubtitle": "أعطها اسمًا واختر عملة — يمكنك تغييرها لاحقًا."
   },
   "transactions": {
     "add": "إضافة",
@@ -927,7 +951,10 @@
     "dragHandle": "اسحب لإعادة الترتيب أو التحويل",
     "reorder": "إعادة ترتيب",
     "holdToTransfer": "استمر بالضغط للتحويل",
-    "selectAccount": "اختر حساباً"
+    "selectAccount": "اختر حساباً",
+    "healthGood": "سليم — جميع الأرصدة موجبة",
+    "healthWarn": "تنبيه — أحد الحسابات سالب",
+    "healthNegative": "إجمالي الرصيد سالب"
   },
   "errorBoundary": {
     "title": "حدث خطأ ما",
@@ -938,7 +965,8 @@
     "viewAction": "عرض",
     "clientCreated": "تمت إضافة العميل ”{{name}}“",
     "transactionCreated": "تمت إضافة {{label}} بقيمة {{amount}}",
-    "quotationCreated": "تمت إضافة عرض السعر ”{{title}}“"
+    "quotationCreated": "تمت إضافة عرض السعر ”{{title}}“",
+    "advanced": "متقدم"
   },
   "budget": {
     "title": "الميزانية",
