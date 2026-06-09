@@ -4,22 +4,11 @@ import { Dialog as DialogPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
-import { useModalBackClose } from "@/hooks/use-back-close"
 
-// NOTE: intentional enhancement to this vendored shadcn file — the Root mirrors its
-// open state and wires useModalBackClose so the browser/OS Back gesture closes ANY
-// dialog (controlled or trigger-based) instead of navigating away. Re-running
-// `npx shadcn add dialog` would overwrite this; re-apply the Root change if so.
-// Pass `disableBackClose` for dialogs that drive their own history (e.g. useUrlModal).
 function Dialog({
-  open,
-  defaultOpen,
-  onOpenChange,
-  disableBackClose,
   ...props
-}: React.ComponentProps<typeof DialogPrimitive.Root> & { disableBackClose?: boolean }) {
-  const controlled = useModalBackClose({ open, defaultOpen, onOpenChange, disableBackClose })
-  return <DialogPrimitive.Root data-slot="dialog" {...props} {...controlled} />
+}: React.ComponentProps<typeof DialogPrimitive.Root>) {
+  return <DialogPrimitive.Root data-slot="dialog" {...props} />
 }
 
 function DialogTrigger({

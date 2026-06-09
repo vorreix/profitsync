@@ -3,20 +3,11 @@ import { AlertDialog as AlertDialogPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
-import { useModalBackClose } from "@/hooks/use-back-close"
 
-// NOTE: intentional enhancement to this vendored shadcn file — Root wires
-// useModalBackClose so the browser/OS Back gesture closes a confirm dialog instead
-// of navigating away. Re-running `npx shadcn add alert-dialog` overwrites this; re-apply.
 function AlertDialog({
-  open,
-  defaultOpen,
-  onOpenChange,
-  disableBackClose,
   ...props
-}: React.ComponentProps<typeof AlertDialogPrimitive.Root> & { disableBackClose?: boolean }) {
-  const controlled = useModalBackClose({ open, defaultOpen, onOpenChange, disableBackClose })
-  return <AlertDialogPrimitive.Root data-slot="alert-dialog" {...props} {...controlled} />
+}: React.ComponentProps<typeof AlertDialogPrimitive.Root>) {
+  return <AlertDialogPrimitive.Root data-slot="alert-dialog" {...props} />
 }
 
 function AlertDialogTrigger({

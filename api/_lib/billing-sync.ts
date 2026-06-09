@@ -10,7 +10,6 @@ import {
   type DodoScheduledChange,
 } from "./dodo.js"
 import { invoiceValuesFromPayment } from "./invoice-map.js"
-import { creditReferralOnPaid } from "./referral.js"
 
 type SubscriptionRow = typeof subscriptions.$inferSelect
 
@@ -58,9 +57,6 @@ export async function reconcileInvoices(
   try {
     const payments = await listPayments(sub.providerSubscriptionId, env)
     let written = 0
-    // Track the earliest SUCCEEDED payment so we can credit a pending referral
-    // off the org's *first* real charge (matters for percent-based rewards).
-    let firstPaid: { amount: number; currency: string; at: number } | null = null
     for (const payment of payments) {
       if (!payment.payment_id) continue
       const values = invoiceValuesFromPayment(payment, {
@@ -75,25 +71,6 @@ export async function reconcileInvoices(
         .values(values)
         .onConflictDoUpdate({ target: invoices.providerInvoiceId, set: values })
       written += 1
-      if (values.status === "paid") {
-        const at = values.paidAt ? values.paidAt.getTime() : 0
-        if (!firstPaid || at < firstPaid.at) {
-          firstPaid = { amount: Number(values.amount), currency: values.currency, at }
-        }
-      }
-    }
-    // Credit a pending referral for this org's owner when a paid charge exists.
-    //
-    // WHY HERE (not only in the webhook): activation is driven by the
-    // return-from-checkout `sync` → reconcileSubscriptionFromDodo path, which the
-    // app never makes depend on webhooks. Crediting lived *only* in the
-    // payment.succeeded webhook, so when webhooks aren't configured for the plan's
-    // Dodo environment (the common dev/test setup) a real paid upgrade never
-    // flipped the referral signed_up → paid. creditReferralOnPaid is idempotent
-    // (only a `signed_up` referral transitions, guarded by a WHERE on status), so
-    // running it from both the webhook and here can never double-credit.
-    if (firstPaid) {
-      await creditReferralOnPaid(sub.organizationId, firstPaid.amount, firstPaid.currency)
     }
     return written
   } catch {

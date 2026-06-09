@@ -42,11 +42,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .select()
       .from(clients)
       .where(and(eq(clients.id, id), eq(clients.organizationId, orgId), isNull(clients.deletedAt)))
-    // The own/internal company client is permanent — it can't be closed (it anchors
-    // internal expenses), mirroring the DELETE guard below.
-    if (closed === true && before?.isOwn) {
-      return res.status(403).json({ error: "Your own company client can't be closed." })
-    }
     const [updated] = await db
       .update(clients)
       .set({

@@ -29,11 +29,10 @@ import {
 import { ModeToggle } from "@/components/mode-toggle"
 import { LanguageSwitcher } from "@/components/LanguageSwitcher"
 import { useSyncProfileLanguage } from "@/lib/i18n/use-language"
-import { CurrencyProvider, useCurrency } from "@/lib/currency-context"
+import { CurrencyProvider } from "@/lib/currency-context"
 import { OrgProvider, useOrg } from "@/lib/org-context"
 import { AdminProvider, useAdmin } from "@/lib/admin-context"
 import { PageFilterProvider } from "@/lib/page-filter-context"
-import { DataRefreshProvider, useDataRefresh } from "@/lib/data-refresh-context"
 import { accountTypeAllows, type AccountType } from "@/lib/types"
 import { OrgSwitcher } from "@/components/OrgSwitcher"
 import { MobileAppLayout } from "@/components/MobileAppLayout"
@@ -41,10 +40,6 @@ import { useIsMobile } from "@/hooks/use-mobile"
 import { InstallAppBanner } from "@/components/InstallAppBanner"
 import { InstallButton } from "@/components/InstallButton"
 import { ReferralBanner } from "@/components/ReferralBanner"
-import { QuickAddModal, type QuickAddEntity } from "@/components/QuickAddModal"
-import { AddTransactionDialog, type CreatedTxInfo } from "@/components/transactions/AddTransactionDialog"
-import { formatMoney } from "@/lib/wealth"
-import { toast } from "sonner"
 import { initPwa } from "@/lib/pwa/register-sw"
 import {
   LayoutDashboard,
@@ -68,21 +63,13 @@ import {
   Loader as Loader2,
 } from "lucide-react"
 
-type QuickAction = {
-  labelKey: string
-  icon: typeof Users
-  href: string
-  // What the FAB action does, in place over the current page. "transaction" opens
-  // the SHARED real Add-Transaction modal; client/quotation open the quick-add form.
-  kind: QuickAddEntity | "transaction"
-  feature?: "clients" | "quotations"
-}
+type QuickAction = { labelKey: string; icon: typeof Users; href: string; feature?: "clients" | "quotations" }
 
 // Quick-actions menu, ordered top-to-bottom as it stacks above the FAB.
 const quickActions: QuickAction[] = [
-  { labelKey: "actions.createQuotation", icon: FileText, href: "/quotations?new=1", kind: "quotation", feature: "quotations" },
-  { labelKey: "actions.addClient", icon: Users, href: "/clients?new=1", kind: "client", feature: "clients" },
-  { labelKey: "actions.addTransaction", icon: ArrowLeftRight, href: "/transactions?new=1", kind: "transaction" },
+  { labelKey: "actions.createQuotation", icon: FileText, href: "/quotations?new=1", feature: "quotations" },
+  { labelKey: "actions.addClient", icon: Users, href: "/clients?new=1", feature: "clients" },
+  { labelKey: "actions.addTransaction", icon: ArrowLeftRight, href: "/transactions?new=1" },
 ]
 
 // Within one of these sections, the FAB performs that section's "add" directly
@@ -101,7 +88,7 @@ function pageFabAction(pathname: string, actions: QuickAction[]): QuickAction | 
   // transaction for THIS client (the dialog opens on ?newTx=1).
   const clientMatch = pathname.match(/^\/clients\/([^/]+)(?:\/|$)/)
   if (clientMatch && clientMatch[1] !== "closed") {
-    return { labelKey: "actions.addTransaction", icon: ArrowLeftRight, href: `/clients/${clientMatch[1]}?newTx=1`, kind: "transaction" }
+    return { labelKey: "actions.addTransaction", icon: ArrowLeftRight, href: `/clients/${clientMatch[1]}?newTx=1` }
   }
   const match = SECTION_FAB.find(
     (s) => pathname === s.prefix || pathname.startsWith(s.prefix + "/"),
@@ -140,27 +127,7 @@ function AppLayoutInner() {
   const { signOut } = useClerk()
   const { activeOrg, needsOnboarding, loading: orgLoading } = useOrg()
   const { isAdmin } = useAdmin()
-  const { currency } = useCurrency()
-  const { bump } = useDataRefresh()
   const [fabOpen, setFabOpen] = useState(false)
-  // Quick-add opens the create form IN PLACE over the current page (no navigation),
-  // so "add from any screen" keeps you where you are; a success toast deep-links.
-  const [quickAdd, setQuickAdd] = useState<QuickAddEntity | null>(null)
-  // The + FAB's "Add transaction" opens the SAME real modal as the Transactions page.
-  const [addTxOpen, setAddTxOpen] = useState(false)
-
-  // Success feedback for an in-place FAB transaction add: toast + deep link to it.
-  // bump() lets the current page (dashboard/analytics) refresh its figures in place.
-  const onTxCreated = (info: CreatedTxInfo) => {
-    bump()
-    const label = info.type === "incoming" ? t("transactions.income") : t("transactions.expense")
-    toast.success(
-      t("quickAdd.transactionCreated", { label, amount: formatMoney(info.amount, currency) }),
-      info.id
-        ? { action: { label: t("quickAdd.viewAction"), onClick: () => navigate(`/transactions?view=${info.id}`) } }
-        : undefined,
-    )
-  }
 
   // Close the quick-actions menu on any navigation.
   useEffect(() => {
@@ -332,11 +299,7 @@ function AppLayoutInner() {
           <div
             key={action.href}
             className="flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2 duration-150 cursor-pointer group/action"
-            onClick={() => {
-              if (action.kind === "transaction") setAddTxOpen(true)
-              else setQuickAdd(action.kind)
-              setFabOpen(false)
-            }}
+            onClick={() => { navigate(action.href); setFabOpen(false) }}
           >
             <span className="text-sm font-medium bg-background border shadow-sm rounded-md px-2.5 py-1 whitespace-nowrap group-hover/action:bg-accent transition-colors">
               {t(action.labelKey)}
@@ -361,8 +324,6 @@ function AppLayoutInner() {
             : <Plus className="size-5 transition-transform duration-200" />}
         </Button>
       </div>
-      <QuickAddModal entity={quickAdd} onClose={() => setQuickAdd(null)} />
-      <AddTransactionDialog open={addTxOpen} onOpenChange={setAddTxOpen} onCreated={onTxCreated} />
     </SidebarProvider>
   )
 }
@@ -387,11 +348,9 @@ export function AppLayout() {
     <OrgProvider>
       <AdminProvider>
         <CurrencyProvider>
-          <DataRefreshProvider>
-            <PageFilterProvider>
-              <AppLayoutInner />
-            </PageFilterProvider>
-          </DataRefreshProvider>
+          <PageFilterProvider>
+            <AppLayoutInner />
+          </PageFilterProvider>
         </CurrencyProvider>
       </AdminProvider>
     </OrgProvider>

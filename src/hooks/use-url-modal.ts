@@ -44,21 +44,14 @@ export function useUrlModal(key: string) {
     [key, navigate, searchWith],
   )
 
-  const close = useCallback(
-    (opts?: { replace?: boolean }) => {
-      // `replace` strips the param in place (no history pop) — use it when chaining
-      // straight into ANOTHER modal, so the navigate(-1) popstate doesn't fire and
-      // get caught by the next modal's back-close handler (which would slam it shut).
-      if (pushedRef.current && !opts?.replace) {
-        pushedRef.current = false
-        navigate(-1)
-      } else {
-        pushedRef.current = false
-        navigate({ search: searchWith((p) => p.delete(key)) }, { replace: true })
-      }
-    },
-    [key, navigate, searchWith],
-  )
+  const close = useCallback(() => {
+    if (pushedRef.current) {
+      pushedRef.current = false
+      navigate(-1)
+    } else {
+      navigate({ search: searchWith((p) => p.delete(key)) }, { replace: true })
+    }
+  }, [key, navigate, searchWith])
 
   return { value, open, close }
 }

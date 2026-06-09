@@ -341,7 +341,6 @@ export function WealthAccountDetailPage() {
         canEdit={canWrite}
         canDelete={canDelete}
         onEdit={(tx) => { view.close(); setEditTx(tx); setAddOpen(true) }}
-        disableBackClose
       />
 
       <WealthAccountDialogs

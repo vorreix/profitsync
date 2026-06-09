@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { useParams, useNavigate } from "react-router-dom"
-import { useUrlModal } from "@/hooks/use-url-modal"
+import { useParams, useNavigate, useSearchParams } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { toast } from "sonner"
 import {
@@ -100,12 +99,24 @@ export function ClientFilesPage() {
   const [to, setTo] = useState("")
   const [page, setPage] = useState(1)
   const [deleteItem, setDeleteItem] = useState<MediaItem | null>(null)
-  // The detail modal is driven entirely by the `?file=<id>` URL param via a SINGLE
-  // history owner (useUrlModal): open() pushes one entry, Back/close pops it. The
-  // modal itself runs with `disableBackClose` so it doesn't push a second entry —
-  // two owners would race and pop it shut right after opening (the mobile bug).
-  const fileModal = useUrlModal("file")
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [modalItem, setModalItem] = useState<MediaItem | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+
+  // Open the detail modal and reflect it in the URL so the view is shareable.
+  function openModal(item: MediaItem) {
+    setModalItem(item)
+    const next = new URLSearchParams(searchParams)
+    next.set("file", item.id)
+    setSearchParams(next, { replace: true })
+  }
+
+  function closeModal() {
+    setModalItem(null)
+    const next = new URLSearchParams(searchParams)
+    next.delete("file")
+    setSearchParams(next, { replace: true })
+  }
 
   const load = useCallback(async () => {
     if (!id) return
@@ -128,13 +139,16 @@ export function ClientFilesPage() {
 
   useEffect(() => { load() }, [load])
 
-  // The open modal is derived from the `?file=<id>` param (set by useUrlModal),
-  // matched against the loaded list — so a pasted/deep-linked URL reopens the same
-  // view once the files arrive, with no separate modal state to keep in sync.
-  const modalItem = useMemo(
-    () => (fileModal.value ? items.find((i) => i.id === fileModal.value) ?? null : null),
-    [fileModal.value, items],
-  )
+  // Deep link: ?file=<id> opens that attachment's modal once the list is loaded
+  // (so a pasted URL reopens the same view).
+  useEffect(() => {
+    const fileId = searchParams.get("file")
+    if (!fileId) { setModalItem(null); return }
+    if (modalItem?.id === fileId) return
+    const found = items.find((i) => i.id === fileId)
+    if (found) setModalItem(found)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, items])
 
   const filtered = useMemo(() => {
     let list = items
@@ -311,7 +325,7 @@ export function ClientFilesPage() {
                 <li
                   key={`${item.source}-${item.id}`}
                   className="flex items-center gap-3 rounded-xl border p-3 sm:p-3.5 hover:bg-muted/40 transition-colors cursor-pointer"
-                  onClick={() => fileModal.open(item.id)}
+                  onClick={() => openModal(item)}
                 >
                   <div className="size-9 sm:size-10 rounded-lg bg-muted flex items-center justify-center shrink-0">
                     <FileText className="size-4 sm:size-5 text-muted-foreground" />
@@ -381,8 +395,7 @@ export function ClientFilesPage() {
       <AttachmentDetailModal
         item={modalItem as AttachmentModalItem | null}
         open={modalItem !== null}
-        onOpenChange={(o) => { if (!o) fileModal.close() }}
-        disableBackClose
+        onOpenChange={(o) => { if (!o) closeModal() }}
         canEdit={canModify}
         canDelete={canRemove}
         onUpdated={(updated) => {
@@ -390,7 +403,7 @@ export function ClientFilesPage() {
         }}
         onDeleted={(deletedId) => {
           setItems((prev) => prev.filter((i) => i.id !== deletedId))
-          fileModal.close()
+          closeModal()
           clearApiCache()
         }}
       />

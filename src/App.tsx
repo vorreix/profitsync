@@ -31,7 +31,6 @@ const OrganizationsPage = lazy(() => import("@/pages/OrganizationsPage").then((m
 const OrgMembersPage = lazy(() => import("@/pages/OrgMembersPage").then((m) => ({ default: m.OrgMembersPage })))
 const SubscriptionPage = lazy(() => import("@/pages/SubscriptionPage").then((m) => ({ default: m.SubscriptionPage })))
 const OnboardingPage = lazy(() => import("@/pages/OnboardingPage").then((m) => ({ default: m.OnboardingPage })))
-const OrgSetupPage = lazy(() => import("@/pages/OrgSetupPage").then((m) => ({ default: m.OrgSetupPage })))
 const InvitationPage = lazy(() => import("@/pages/InvitationPage").then((m) => ({ default: m.InvitationPage })))
 const PrivacyPolicyPage = lazy(() => import("@/pages/PrivacyPolicyPage").then((m) => ({ default: m.PrivacyPolicyPage })))
 const TermsOfServicePage = lazy(() => import("@/pages/TermsOfServicePage").then((m) => ({ default: m.TermsOfServicePage })))
@@ -114,8 +113,6 @@ export function App() {
 
           {/* Onboarding — full-screen, no app shell. Shown until account type is chosen. */}
           <Route path="onboarding" element={<OnboardingPage />} />
-          {/* New-organization setup — full-screen wizard (money + plan) after creating an org. */}
-          <Route path="organization-setup" element={<OrgSetupPage />} />
 
           {/* Admin Routes — distinct shell, admin guard + per-route capability gating */}
           <Route path="/admin" element={<AdminLayout />}>

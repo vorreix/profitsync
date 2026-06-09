@@ -177,21 +177,6 @@ export type Quotation = {
   attachment_count?: number
 }
 
-// An expense (outgoing) budget. `client_id` null = the org-level budget (the
-// personal budget for a personal org, or the default-for-clients template for a
-// business org). `spent` is server-computed for the budget's current period
-// (null for the business default, which is a template, not a single number).
-export type Budget = {
-  id: string
-  organization_id: string
-  client_id: string | null
-  period: "lifetime" | "monthly" | "weekly" | "daily"
-  amount: number
-  spent: number | null
-  created_at?: string
-  updated_at?: string
-}
-
 export type UserProfile = {
   id: string
   email: string

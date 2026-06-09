@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useState } from "react"
 import { Link, useNavigate, useParams } from "react-router-dom"
 import { useAuth, useClerk, useUser } from "@clerk/clerk-react"
 import { toast } from "sonner"
@@ -26,9 +26,6 @@ export function InvitationPage() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [acting, setActing] = useState<"accept" | "decline" | null>(null)
-  // Auto-accept ran but failed → fall back to the manual Accept/Decline buttons.
-  const [autoFailed, setAutoFailed] = useState(false)
-  const autoTried = useRef(false)
 
   useEffect(() => {
     if (!token) return
@@ -68,33 +65,13 @@ export function InvitationPage() {
       // Switch the user into the joined org so the dashboard shows it.
       if (body.organization?.id) setActiveOrgId(body.organization.id)
       toast.success(`You joined ${body.organization?.name ?? "the organization"}`)
-      // Accepting stamps onboarded_at server-side, so the dashboard won't bounce a
-      // brand-new invitee to /onboarding. replace: don't leave the (now-consumed)
-      // invitation page in history.
-      navigate("/dashboard", { replace: true })
+      navigate("/dashboard")
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to accept")
-      setAutoFailed(true) // surface the manual Accept/Decline fallback
     } finally {
       setActing(null)
     }
   }
-
-  // Auto-accept: a signed-in user who lands here with the matching email almost
-  // always intends to join — accept for them and go straight to the org dashboard,
-  // skipping the onboarding screen (a brand-new invitee has no personal-account
-  // onboarding to do). Runs once; on failure we fall back to the manual buttons.
-  useEffect(() => {
-    if (autoTried.current) return
-    if (loading || !isLoaded || !invitation || error || acting) return
-    // Only once we KNOW the email is loaded AND matches — never auto-accept while
-    // Clerk's user is still loading (currentEmail null) or on a mismatch.
-    if (!isSignedIn || !currentEmail || currentEmail !== invitation.email.toLowerCase()) return
-    autoTried.current = true
-    void accept()
-    // accept is intentionally omitted; autoTried guards a single run.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, isLoaded, invitation, error, isSignedIn, currentEmail])
 
   const decline = async () => {
     if (!token || !isSignedIn) return
@@ -191,14 +168,6 @@ export function InvitationPage() {
                 <LogIn className="size-4 mr-1.5" /> Use a different account
               </Button>
             </>
-          ) : !autoFailed ? (
-            // Auto-accepting → straight to the dashboard, no onboarding detour.
-            <div className="flex flex-col items-center gap-3 py-2">
-              <Loader2 className="size-6 animate-spin text-primary" />
-              <p className="text-sm text-muted-foreground">
-                Joining {invitation.organization.name}…
-              </p>
-            </div>
           ) : (
             <div className="grid grid-cols-2 gap-3">
               <Button onClick={decline} variant="outline" disabled={!!acting}>
