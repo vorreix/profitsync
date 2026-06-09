@@ -141,7 +141,8 @@
     "transactionDetails": "लेन-देन विवरण",
     "description": "विवरण",
     "openTransaction": "लेन-देन खोलें",
-    "openClient": "ग्राहक खोलें"
+    "openClient": "ग्राहक खोलें",
+    "ownCompanyBudget": "कंपनी बजट"
   },
   "chart": {
     "incoming": "आवक",
@@ -950,7 +951,10 @@
     "dragHandle": "क्रम बदलने या ट्रांसफ़र के लिए खींचें",
     "reorder": "क्रम बदलें",
     "holdToTransfer": "ट्रांसफ़र के लिए रोकें",
-    "selectAccount": "खाता चुनें"
+    "selectAccount": "खाता चुनें",
+    "healthGood": "स्वस्थ — सभी शेष धनात्मक",
+    "healthWarn": "ध्यान दें — एक खाता ऋणात्मक है",
+    "healthNegative": "कुल शेष ऋणात्मक है"
   },
   "errorBoundary": {
     "title": "कुछ ग़लत हो गया",
@@ -961,7 +965,8 @@
     "viewAction": "देखें",
     "clientCreated": "क्लाइंट “{{name}}” जोड़ा गया",
     "transactionCreated": "{{amount}} का {{label}} जोड़ा गया",
-    "quotationCreated": "कोटेशन “{{title}}” जोड़ा गया"
+    "quotationCreated": "कोटेशन “{{title}}” जोड़ा गया",
+    "advanced": "उन्नत"
   },
   "budget": {
     "title": "बजट",

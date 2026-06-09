@@ -39,7 +39,7 @@ import {
 } from "@/components/ui/select"
 import { toast } from "sonner"
 import {
-  Plus, Users, Building2, Mail, Phone, ChevronRight, Eye,
+  Plus, Users, Building2, Mail, Phone, ChevronRight, Eye, Pencil,
   TrendingUp, TrendingDown, DollarSign, LayoutGrid, LayoutList, CheckSquare, Archive,
 } from "lucide-react"
 import { ExpandableSearch } from "@/components/ExpandableSearch"
@@ -486,10 +486,15 @@ export function ClientsPage() {
                         return (
                           <button
                             type="button"
-                            className="w-full text-left rounded-md -m-1 p-1 hover:bg-accent/50 transition-colors"
+                            className="group/budget w-full flex items-start gap-2 text-left rounded-md -m-1 p-1 hover:bg-accent/50 transition-colors"
                             onClick={(e) => { e.stopPropagation(); setBudgetClient(client) }}
+                            aria-label={t("budget.edit", { ns: "translation" })}
                           >
-                            <BudgetIndicator amount={b.amount} spent={b.spent ?? 0} period={b.period} currency={currency} />
+                            <div className="flex-1 min-w-0">
+                              <BudgetIndicator amount={b.amount} spent={b.spent ?? 0} period={b.period} currency={currency} />
+                            </div>
+                            {/* Always-visible edit affordance so it reads as tappable on touch. */}
+                            <Pencil className="size-3.5 shrink-0 mt-0.5 text-muted-foreground/70 group-hover/budget:text-foreground transition-colors" />
                           </button>
                         )
                       }
