@@ -69,7 +69,7 @@ earlier work. Root is `feat/ux2-00-plan` off `dev`.
 | 04 | `feat/ux2-04-invite-onboarding` | 5 | Auto-accept invitation post-signup; skip onboarding → org dashboard | no | ✅ pushed (typecheck+smoke; full new-user E2E deferred) |
 | 05 | `feat/ux2-05-quick-add-toast` | 4 | Global quick-add over current page + success toast "Click to see"; Back returns to origin | no | ✅ pushed (Playwright-verified) |
 | 06 | `feat/ux2-06-budgets` | 6 | `budgets` table + API + `src/lib/budget.ts` + client-card, personal-dashboard & outgoing-tx indicators | **yes (0033)** | ✅ pushed (Playwright-verified) |
-| 07 | `feat/ux2-07-onboarding-wealth-budget` | 7 | Onboarding step: cash + bank accounts (plan-gated) + budgets; plan-based bank quota | **yes** | ⬜ pending |
+| 07 | `feat/ux2-07-onboarding-wealth-budget` | 7 | Onboarding step: cash + bank accounts (plan-gated) + budgets; plan-based bank quota (free=1) | no (config-only) | ✅ pushed (Playwright-verified) |
 | 08 | `feat/ux2-08-docs-skill` | docs | Referral + budget + onboarding docs; subscription/payments skill refresh | no | ⬜ pending |
 
 Ordering rationale: front-load verifiable, low-risk backend wins (referrals, payment),

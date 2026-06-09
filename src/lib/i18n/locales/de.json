@@ -213,7 +213,17 @@
     "maybeLater": "Später erledigen",
     "freeIncluded": "Alles, was du für den Start brauchst",
     "currencyLabel": "Währung",
-    "currencyDetectedHint": "Sie können dies später ändern"
+    "currencyDetectedHint": "Sie können dies später ändern",
+    "setupMoneyTitle": "Richte deine Finanzen ein",
+    "setupMoneySubtitle": "Füge Startguthaben und Budgets hinzu — alles optional, jederzeit änderbar.",
+    "balanceInHand": "Bargeldbestand",
+    "balanceInHandHint": "Bargeld, das du aktuell hast.",
+    "bankAccountTitle": "Bankkonto",
+    "bankNameLabel": "Name der Bank",
+    "bankBalanceLabel": "Aktueller Saldo",
+    "freeBankNote": "1 Bankkonto im Free-Plan — upgrade später für unbegrenzt.",
+    "budgetsTitle": "Budgets",
+    "skipForNow": "Vorerst überspringen"
   },
   "transactions": {
     "add": "Hinzufügen",

@@ -25,6 +25,7 @@ import { Button } from "@/components/ui/button"
 import { CurrencyCombobox } from "@/components/CurrencyCombobox"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { WealthBudgetStep } from "@/components/onboarding/WealthBudgetStep"
 
 type PlanLocalPricing = {
   currency: string
@@ -171,7 +172,7 @@ function OnboardingInner() {
   useSyncProfileLanguage()
   const { profile, needsOnboarding, loading, refresh } = useOrg()
 
-  const [step, setStep] = useState<1 | 2>(1)
+  const [step, setStep] = useState<1 | 2 | 3>(1)
   const [accountType, setAccountType] = useState<AccountType | null>(null)
   const [companyName, setCompanyName] = useState("")
   const [submitting, setSubmitting] = useState(false)
@@ -309,7 +310,7 @@ function OnboardingInner() {
             </div>
             <span className="text-sm font-semibold tracking-tight">ProfitSync</span>
           </div>
-          <Stepper current={step} total={2} />
+          <Stepper current={step} total={3} />
         </header>
 
         {step === 1 ? (
@@ -369,12 +370,19 @@ function OnboardingInner() {
               </div>
             )}
           </section>
+        ) : step === 2 ? (
+          <WealthBudgetStep
+            accountType={accountType!}
+            currency={currency}
+            onBack={() => setStep(1)}
+            onDone={() => setStep(3)}
+          />
         ) : (
           <section className="flex flex-1 flex-col justify-center py-8 sm:py-10">
             <div className="animate-in fade-in slide-in-from-bottom-3 duration-500">
               <button
                 type="button"
-                onClick={() => setStep(1)}
+                onClick={() => setStep(2)}
                 className="pressable inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
               >
                 <ArrowLeft className="size-4" /> {t("onboarding.back")}
@@ -412,7 +420,9 @@ function OnboardingInner() {
           </section>
         )}
 
-        {/* Sticky action bar — thumb-reachable on mobile, inline on desktop. */}
+        {/* Sticky action bar — thumb-reachable on mobile, inline on desktop. Step 2
+            (wealth + budgets) provides its own actions, so it's hidden there. */}
+        {step !== 2 && (
         <div className="fixed inset-x-0 bottom-0 z-20 border-t bg-background/90 px-4 pt-3 pb-[calc(0.75rem_+_env(safe-area-inset-bottom))] backdrop-blur sm:static sm:border-0 sm:bg-transparent sm:px-0 sm:py-0 sm:backdrop-blur-none">
           <div className="mx-auto w-full max-w-2xl">
             {step === 1 ? (
@@ -465,6 +475,7 @@ function OnboardingInner() {
             )}
           </div>
         </div>
+        )}
       </div>
     </div>
   )

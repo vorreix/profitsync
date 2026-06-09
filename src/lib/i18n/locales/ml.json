@@ -213,7 +213,17 @@
     "maybeLater": "ഞാൻ പിന്നീട് ചെയ്യാം",
     "freeIncluded": "തുടങ്ങാൻ വേണ്ടതെല്ലാം",
     "currencyLabel": "കറൻസി",
-    "currencyDetectedHint": "നിങ്ങൾ പിന്നീട് ഇത് മാറ്റാം"
+    "currencyDetectedHint": "നിങ്ങൾ പിന്നീട് ഇത് മാറ്റാം",
+    "setupMoneyTitle": "നിങ്ങളുടെ പണം ക്രമീകരിക്കുക",
+    "setupMoneySubtitle": "ആരംഭ ബാലൻസും ബജറ്റും ചേർക്കുക — എല്ലാം ഓപ്ഷണൽ, എപ്പോൾ വേണമെങ്കിലും മാറ്റാം.",
+    "balanceInHand": "കൈയിലുള്ള പണം",
+    "balanceInHandHint": "നിങ്ങളുടെ കൈയിൽ ഇപ്പോഴുള്ള പണം.",
+    "bankAccountTitle": "ബാങ്ക് അക്കൗണ്ട്",
+    "bankNameLabel": "ബാങ്കിന്റെ പേര്",
+    "bankBalanceLabel": "നിലവിലെ ബാലൻസ്",
+    "freeBankNote": "ഫ്രീ പ്ലാനിൽ 1 ബാങ്ക് അക്കൗണ്ട് — അൺലിമിറ്റഡിന് പിന്നീട് അപ്‌ഗ്രേഡ് ചെയ്യുക.",
+    "budgetsTitle": "ബജറ്റുകൾ",
+    "skipForNow": "ഇപ്പോൾ ഒഴിവാക്കുക"
   },
   "transactions": {
     "add": "ചേർക്കുക",

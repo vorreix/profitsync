@@ -213,7 +213,17 @@
     "maybeLater": "سأفعل ذلك لاحقًا",
     "freeIncluded": "كل ما تحتاجه للبدء",
     "currencyLabel": "العملة",
-    "currencyDetectedHint": "يمكنك تغييرها لاحقاً"
+    "currencyDetectedHint": "يمكنك تغييرها لاحقاً",
+    "setupMoneyTitle": "إعداد أموالك",
+    "setupMoneySubtitle": "أضف أرصدتك الابتدائية وميزانياتك — كل ذلك اختياري ويمكنك تغييره في أي وقت.",
+    "balanceInHand": "النقد المتوفر",
+    "balanceInHandHint": "النقد الذي بحوزتك حاليًا.",
+    "bankAccountTitle": "حساب بنكي",
+    "bankNameLabel": "اسم البنك",
+    "bankBalanceLabel": "الرصيد الحالي",
+    "freeBankNote": "حساب بنكي واحد في الخطة المجانية — قم بالترقية لاحقًا للحصول على عدد غير محدود.",
+    "budgetsTitle": "الميزانيات",
+    "skipForNow": "تخطٍ الآن"
   },
   "transactions": {
     "add": "إضافة",

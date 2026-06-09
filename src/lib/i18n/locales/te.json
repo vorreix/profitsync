@@ -213,7 +213,17 @@
     "maybeLater": "నేను తర్వాత చేస్తాను",
     "freeIncluded": "ప్రారంభించడానికి కావలసినవన్నీ",
     "currencyLabel": "కరెన్సీ",
-    "currencyDetectedHint": "మీరు దీన్ని తరువాత మార్చవచ్చు"
+    "currencyDetectedHint": "మీరు దీన్ని తరువాత మార్చవచ్చు",
+    "setupMoneyTitle": "మీ డబ్బును సెటప్ చేయండి",
+    "setupMoneySubtitle": "మీ ప్రారంభ బ్యాలెన్స్‌లు, బడ్జెట్‌లను జోడించండి — అన్నీ ఐచ్ఛికం, ఎప్పుడైనా మార్చవచ్చు.",
+    "balanceInHand": "చేతిలో ఉన్న నగదు",
+    "balanceInHandHint": "మీ వద్ద ప్రస్తుతం ఉన్న నగదు.",
+    "bankAccountTitle": "బ్యాంక్ ఖాతా",
+    "bankNameLabel": "బ్యాంక్ పేరు",
+    "bankBalanceLabel": "ప్రస్తుత బ్యాలెన్స్",
+    "freeBankNote": "ఫ్రీ ప్లాన్‌లో 1 బ్యాంక్ ఖాతా — అపరిమితం కోసం తర్వాత అప్‌గ్రేడ్ చేయండి.",
+    "budgetsTitle": "బడ్జెట్‌లు",
+    "skipForNow": "ప్రస్తుతానికి దాటవేయండి"
   },
   "transactions": {
     "add": "జోడించు",

@@ -213,7 +213,17 @@
     "maybeLater": "मैं बाद में करूँगा",
     "freeIncluded": "शुरू करने के लिए ज़रूरी सब कुछ",
     "currencyLabel": "मुद्रा",
-    "currencyDetectedHint": "आप इसे बाद में बदल सकते हैं"
+    "currencyDetectedHint": "आप इसे बाद में बदल सकते हैं",
+    "setupMoneyTitle": "अपना पैसा सेट करें",
+    "setupMoneySubtitle": "अपने शुरुआती बैलेंस और बजट जोड़ें — सब वैकल्पिक, कभी भी बदलें।",
+    "balanceInHand": "नकद राशि",
+    "balanceInHandHint": "आपके पास अभी मौजूद नकद।",
+    "bankAccountTitle": "बैंक खाता",
+    "bankNameLabel": "बैंक का नाम",
+    "bankBalanceLabel": "वर्तमान बैलेंस",
+    "freeBankNote": "फ्री प्लान में 1 बैंक खाता — असीमित के लिए बाद में अपग्रेड करें।",
+    "budgetsTitle": "बजट",
+    "skipForNow": "अभी छोड़ें"
   },
   "transactions": {
     "add": "जोड़ें",

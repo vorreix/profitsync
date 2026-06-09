@@ -213,7 +213,17 @@
     "maybeLater": "Lo farò più tardi",
     "freeIncluded": "Tutto ciò che ti serve per iniziare",
     "currencyLabel": "Valuta",
-    "currencyDetectedHint": "Potrai cambiarla in seguito"
+    "currencyDetectedHint": "Potrai cambiarla in seguito",
+    "setupMoneyTitle": "Configura le tue finanze",
+    "setupMoneySubtitle": "Aggiungi i saldi iniziali e i budget — tutto facoltativo, modificabile in qualsiasi momento.",
+    "balanceInHand": "Contante disponibile",
+    "balanceInHandHint": "Il contante che hai ora.",
+    "bankAccountTitle": "Conto bancario",
+    "bankNameLabel": "Nome della banca",
+    "bankBalanceLabel": "Saldo attuale",
+    "freeBankNote": "1 conto bancario nel piano Free — passa a Premium per illimitati.",
+    "budgetsTitle": "Budget",
+    "skipForNow": "Salta per ora"
   },
   "transactions": {
     "add": "Aggiungi",

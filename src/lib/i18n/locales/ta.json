@@ -213,7 +213,17 @@
     "maybeLater": "நான் பிறகு செய்கிறேன்",
     "freeIncluded": "தொடங்கத் தேவையான அனைத்தும்",
     "currencyLabel": "நாணயம்",
-    "currencyDetectedHint": "நீங்கள் பின்னர் மாற்றலாம்"
+    "currencyDetectedHint": "நீங்கள் பின்னர் மாற்றலாம்",
+    "setupMoneyTitle": "உங்கள் பணத்தை அமைக்கவும்",
+    "setupMoneySubtitle": "தொடக்க இருப்புகளையும் பட்ஜெட்டையும் சேர்க்கவும் — அனைத்தும் விருப்பத்தேர்வு, எப்போது வேண்டுமானாலும் மாற்றலாம்.",
+    "balanceInHand": "கையிருப்பு பணம்",
+    "balanceInHandHint": "உங்களிடம் இப்போது உள்ள பணம்.",
+    "bankAccountTitle": "வங்கிக் கணக்கு",
+    "bankNameLabel": "வங்கியின் பெயர்",
+    "bankBalanceLabel": "தற்போதைய இருப்பு",
+    "freeBankNote": "இலவசத் திட்டத்தில் 1 வங்கிக் கணக்கு — வரம்பற்றதற்கு பின்னர் மேம்படுத்தவும்.",
+    "budgetsTitle": "பட்ஜெட்கள்",
+    "skipForNow": "இப்போதைக்கு தவிர்க்கவும்"
   },
   "transactions": {
     "add": "சேர்க்கவும்",
