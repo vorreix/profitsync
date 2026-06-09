@@ -70,6 +70,7 @@ export function AttachmentDetailModal({
   onDeleted,
   canEdit,
   canDelete,
+  disableBackClose,
 }: {
   item: AttachmentModalItem | null
   open: boolean
@@ -78,6 +79,10 @@ export function AttachmentDetailModal({
   onDeleted?: (id: string) => void
   canEdit: boolean
   canDelete: boolean
+  // Set when the caller already drives this modal's history (e.g. a useUrlModal
+  // `?file=` param) so the Dialog doesn't push a SECOND back-entry — two history
+  // owners race and pop the modal shut right after it opens (notably on mobile).
+  disableBackClose?: boolean
 }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
@@ -218,7 +223,7 @@ export function AttachmentDetailModal({
 
   return (
     <>
-      <Dialog open={open} onOpenChange={onOpenChange}>
+      <Dialog open={open} onOpenChange={onOpenChange} disableBackClose={disableBackClose}>
         <DialogContent className="w-[94vw] max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 pr-6 break-all">

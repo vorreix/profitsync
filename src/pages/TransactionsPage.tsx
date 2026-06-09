@@ -15,20 +15,16 @@ import { BulkActionBar } from "@/components/BulkActionBar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Textarea } from "@/components/ui/textarea"
 import { FitText } from "@/components/FitText"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
-import { Label } from "@/components/ui/label"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { toast } from "sonner"
-import { Plus, ArrowUpRight, ArrowDownRight, DollarSign, Pencil, Trash2, Paperclip, Download, X, Eye, ChevronsUpDown, Check, Tag, CheckSquare, Layers } from "lucide-react"
+import { Plus, ArrowUpRight, ArrowDownRight, DollarSign, Pencil, Trash2, Paperclip, Download, X, Eye, Tag, CheckSquare, Layers } from "lucide-react"
 import { ExpandableSearch } from "@/components/ExpandableSearch"
 import { FilterSheet, FilterSection } from "@/components/filters/FilterSheet"
 import { AttachmentBadge } from "@/components/AttachmentBadge"
@@ -37,337 +33,17 @@ import { TransactionAttachments } from "@/components/transactions/TransactionAtt
 import { AuditHistory } from "@/components/AuditHistory"
 import { accountDisplayName } from "@/lib/wealth"
 import { WealthAccountIcon } from "@/components/WealthAccountIcon"
-import { AccountSelector, type Allocation } from "@/components/AccountSelector"
 import { useUrlModal } from "@/hooks/use-url-modal"
-import { useDialogContainer } from "@/hooks/use-dialog-container"
-import { loadLastTx, saveLastTx } from "@/lib/last-tx"
+import { TxFormFields } from "@/components/transactions/tx-form"
+import { allocationFor, formatFileSize, type TxForm } from "@/components/transactions/tx-form-utils"
+import { AddTransactionDialog } from "@/components/transactions/AddTransactionDialog"
 
 type PaginatedResponse<T> = { data: T[]; total: number; summary?: { incoming: number; outgoing: number } }
 
-type TxForm = {
-  client_id: string
-  // One allocation per account. A single entry can be split across several
-  // accounts; each allocation is saved as its own transaction row upstream.
-  allocations: Allocation[]
-  type: "incoming" | "outgoing"
-  description: string
-  category: string
-  date: string
-}
-
 const PAGE_SIZE = 20
-
-const defaultForm = (): TxForm => ({
-  client_id: "",
-  allocations: [],
-  type: "incoming",
-  description: "",
-  category: "",
-  date: new Date().toISOString().split("T")[0],
-})
-
-// Cash in Hand is the default source; fall back to the first account.
-const defaultAccountId = (accounts: WealthAccount[]) =>
-  accounts.find((a) => a.type === "cash")?.id ?? accounts[0]?.id ?? ""
-
-const allocationFor = (tx: { wealth_account_id?: string | null; amount: number }, accounts: WealthAccount[]): Allocation[] => [
-  { account_id: tx.wealth_account_id ?? defaultAccountId(accounts), amount: String(tx.amount) },
-]
 
 const formatDate = (d: string) =>
   new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
-
-const formatFileSize = (bytes: number) => {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
-
-// ─── Client combobox ─────────────────────────────────────────────────────────
-
-function ClientCombobox({ clients, value, onChange }: {
-  clients: Client[]
-  value: string
-  onChange: (id: string) => void
-}) {
-  const { t } = useTranslation("transactions")
-  const { triggerRef, container } = useDialogContainer()
-  const [open, setOpen] = useState(false)
-  const selected = clients.find((c) => c.id === value)
-
-  return (
-    <div ref={triggerRef} className="contents">
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button variant="outline" role="combobox" className="w-full justify-between font-normal">
-          {selected
-            ? `${selected.name}${selected.company ? ` — ${selected.company}` : ""}`
-            : <span className="text-muted-foreground">{t("selectClient")}</span>}
-          <ChevronsUpDown className="size-4 ml-2 shrink-0 text-muted-foreground" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent
-        container={container}
-        className="max-h-[min(20rem,var(--radix-popover-content-available-height,20rem))] w-[--radix-popover-trigger-width] overflow-hidden p-0"
-        align="start"
-      >
-        <Command>
-          <CommandInput placeholder={t("searchClients")} />
-          <CommandList className="scrollbar-thin">
-            <CommandEmpty>{t("noClientFound")}</CommandEmpty>
-            <CommandGroup>
-              {clients.map((c) => (
-                <CommandItem
-                  key={c.id}
-                  value={`${c.name} ${c.company}`}
-                  onSelect={() => { onChange(c.id); setOpen(false) }}
-                >
-                  <Check className={`mr-2 size-4 shrink-0 ${value === c.id ? "opacity-100" : "opacity-0"}`} />
-                  <span className="truncate">{c.name}{c.company ? ` — ${c.company}` : ""}</span>
-                  {c.is_own && (
-                    <Badge variant="outline" className="ml-auto text-[10px] py-0 shrink-0">{t("own")}</Badge>
-                  )}
-                </CommandItem>
-              ))}
-            </CommandGroup>
-          </CommandList>
-        </Command>
-      </PopoverContent>
-    </Popover>
-    </div>
-  )
-}
-
-// ─── Category combobox ────────────────────────────────────────────────────────
-
-function CategoryCombobox({ categories, value, onChangeCategories, onChange }: {
-  categories: string[]
-  value: string
-  onChangeCategories: (cats: string[]) => void
-  onChange: (v: string) => void
-}) {
-  const { t } = useTranslation("transactions")
-  const { triggerRef, container } = useDialogContainer()
-  const [open, setOpen] = useState(false)
-  const [search, setSearch] = useState("")
-  const [editingIdx, setEditingIdx] = useState<number | null>(null)
-  const [editVal, setEditVal] = useState("")
-
-  const filtered = categories.filter((c) => c.toLowerCase().includes(search.toLowerCase()))
-  const canAdd = search.trim() !== "" && !categories.some((c) => c.toLowerCase() === search.trim().toLowerCase())
-
-  function close() { setOpen(false); setSearch(""); setEditingIdx(null) }
-
-  function select(cat: string) { onChange(cat); close() }
-
-  function addCategory() {
-    const name = search.trim()
-    if (!name) return
-    const next = [...categories, name]
-    onChangeCategories(next)
-    onChange(name)
-    close()
-  }
-
-  function startEdit(idx: number) {
-    setEditingIdx(idx)
-    setEditVal(categories[idx])
-  }
-
-  function saveEdit(idx: number) {
-    const trimmed = editVal.trim()
-    if (!trimmed) return
-    if (trimmed !== categories[idx] && categories.some((c) => c.toLowerCase() === trimmed.toLowerCase())) return
-    const next = [...categories]
-    const old = next[idx]
-    next[idx] = trimmed
-    onChangeCategories(next)
-    if (value === old) onChange(trimmed)
-    setEditingIdx(null)
-  }
-
-  function deleteCategory(idx: number) {
-    const next = categories.filter((_, i) => i !== idx)
-    onChangeCategories(next)
-    if (value === categories[idx]) onChange("")
-  }
-
-  return (
-    <div ref={triggerRef} className="contents">
-    <Popover open={open} onOpenChange={(o) => { if (!o) close(); else setOpen(true) }}>
-      <PopoverTrigger asChild>
-        <Button variant="outline" role="combobox" className="w-full justify-between font-normal">
-          {value || <span className="text-muted-foreground">{t("select")}</span>}
-          <ChevronsUpDown className="size-4 ml-2 shrink-0 text-muted-foreground" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent
-        container={container}
-        className="flex max-h-[min(20rem,var(--radix-popover-content-available-height,20rem))] w-[--radix-popover-trigger-width] flex-col overflow-hidden p-0"
-        align="start"
-      >
-        <div className="p-2 border-b shrink-0">
-          <Input
-            placeholder={t("searchOrTypeToAdd")}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="h-8 text-sm"
-            onKeyDown={(e) => { if (e.key === "Enter" && canAdd) addCategory() }}
-          />
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain scrollbar-thin">
-          {filtered.length === 0 && !canAdd && (
-            <p className="text-xs text-muted-foreground text-center py-4">{t("noCategoriesFound")}</p>
-          )}
-          {filtered.map((cat) => {
-            const realIdx = categories.indexOf(cat)
-            return (
-              <div key={cat} className="flex items-center gap-0.5 px-1 py-0.5 group">
-                {editingIdx === realIdx ? (
-                  <>
-                    <Input
-                      value={editVal}
-                      onChange={(e) => setEditVal(e.target.value)}
-                      className="h-7 text-sm flex-1"
-                      autoFocus
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") saveEdit(realIdx)
-                        if (e.key === "Escape") setEditingIdx(null)
-                      }}
-                    />
-                    <Button size="icon" variant="ghost" className="size-7 shrink-0" onClick={() => saveEdit(realIdx)}>
-                      <Check className="size-3" />
-                    </Button>
-                    <Button size="icon" variant="ghost" className="size-7 shrink-0" onClick={() => setEditingIdx(null)}>
-                      <X className="size-3" />
-                    </Button>
-                  </>
-                ) : (
-                  <>
-                    <button
-                      className="flex-1 text-sm text-left py-1.5 px-2 rounded-md hover:bg-muted transition-colors flex items-center gap-2"
-                      onClick={() => select(cat)}
-                    >
-                      <Check className={`size-3 shrink-0 text-primary ${value === cat ? "opacity-100" : "opacity-0"}`} />
-                      {cat}
-                    </button>
-                    <Button
-                      size="icon" variant="ghost"
-                      className="size-7 shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
-                      onClick={(e) => { e.stopPropagation(); startEdit(realIdx) }}
-                    >
-                      <Pencil className="size-3" />
-                    </Button>
-                    <Button
-                      size="icon" variant="ghost"
-                      className="size-7 shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
-                      onClick={(e) => { e.stopPropagation(); deleteCategory(realIdx) }}
-                    >
-                      <X className="size-3" />
-                    </Button>
-                  </>
-                )}
-              </div>
-            )
-          })}
-          {canAdd && (
-            <button
-              className="w-full text-left text-sm px-3 py-2 flex items-center gap-2 text-primary hover:bg-muted transition-colors"
-              onClick={addCategory}
-            >
-              <Plus className="size-3.5" />
-              {t("addCategory", { category: search.trim() })}
-            </button>
-          )}
-        </div>
-      </PopoverContent>
-    </Popover>
-    </div>
-  )
-}
-
-// ─── Transaction form fields ──────────────────────────────────────────────────
-
-function TxFormFields({
-  f, onChange, showClient, clients, accounts, accountsLoading, categories, onChangeCats, onAddAccount, currency, singleAccount = false,
-}: {
-  f: TxForm
-  onChange: (patch: Partial<TxForm>) => void
-  showClient: boolean
-  clients: Client[]
-  accounts: WealthAccount[]
-  accountsLoading: boolean
-  categories: { incoming: string[]; outgoing: string[] }
-  onChangeCats: (type: "incoming" | "outgoing", cats: string[]) => void
-  onAddAccount: () => void
-  currency: string
-  singleAccount?: boolean
-}) {
-  const { t } = useTranslation("transactions")
-  const cats = f.type === "incoming" ? categories.incoming : categories.outgoing
-
-  return (
-    <div className="space-y-4 py-2">
-      {showClient && (
-        <div className="space-y-1.5">
-          <Label>{t("clientRequired")}</Label>
-          <ClientCombobox clients={clients} value={f.client_id} onChange={(id) => onChange({ client_id: id })} />
-        </div>
-      )}
-      <div className="space-y-1.5">
-        <Label>{t("type")}</Label>
-        <div className="grid grid-cols-2 gap-2">
-          {(["incoming", "outgoing"] as const).map((type) => (
-            <button key={type} type="button" onClick={() => onChange({ type, category: "" })} className={`flex items-center justify-center gap-2 rounded-md border py-2.5 text-sm font-medium transition-colors ${
-              f.type === type
-                ? type === "incoming"
-                  ? "border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400 dark:border-emerald-600"
-                  : "border-red-500 bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400 dark:border-red-600"
-                : "border-border hover:bg-muted"
-            }`}>
-              {type === "incoming" ? <ArrowUpRight className="size-4" /> : <ArrowDownRight className="size-4" />}
-              {t(type)}
-            </button>
-          ))}
-        </div>
-      </div>
-      <AccountSelector
-        accounts={accounts}
-        allocations={f.allocations}
-        onChange={(allocations) => onChange({ allocations })}
-        currency={currency}
-        max={singleAccount ? 1 : Infinity}
-        onAddAccount={onAddAccount}
-        loading={accountsLoading}
-      />
-      <div className="space-y-1.5">
-        <Label>{t("description")}</Label>
-        <Textarea
-          placeholder={f.type === "incoming" ? t("invoicePlaceholder") : t("hostingFeePlaceholder")}
-          value={f.description}
-          onChange={(e) => onChange({ description: e.target.value })}
-          rows={3}
-          className="resize-none"
-        />
-      </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1.5">
-          <Label>{t("category")}</Label>
-          <CategoryCombobox
-            categories={cats}
-            value={f.category}
-            onChangeCategories={(next) => onChangeCats(f.type, next)}
-            onChange={(v) => onChange({ category: v })}
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label>{t("date")}</Label>
-          <Input type="date" value={f.date} onChange={(e) => onChange({ date: e.target.value })} />
-        </div>
-      </div>
-    </div>
-  )
-}
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
@@ -470,7 +146,6 @@ export function TransactionsPage() {
   const [viewTx, setViewTx] = useState<Transaction | null>(null)
   const [viewLegs, setViewLegs] = useState<Transaction[]>([])
   const [viewAttachment, setViewAttachment] = useState<AttachmentModalItem | null>(null)
-  const [form, setForm] = useState<TxForm>(defaultForm())
   const [editForm, setEditForm] = useState<TxForm & { id: string; group_id?: string | null } | null>(null)
   const [saving, setSaving] = useState(false)
 
@@ -480,8 +155,6 @@ export function TransactionsPage() {
   const [deleteAttachId, setDeleteAttachId] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const [pendingFiles, setPendingFiles] = useState<File[]>([])
-  const addFileInputRef = useRef<HTMLInputElement>(null)
 
   const buildParams = useCallback(
     (pageNum: number, s: string, t: string, srt: string, cat: string, from: string, to: string) => {
@@ -550,52 +223,17 @@ export function TransactionsPage() {
     return () => window.removeEventListener("wealth:accounts-changed", loadAccounts)
   }, [loadAccounts])
 
-  // Remembers a requested source account (e.g. opened from a wealth account
-  // page) until accounts finish loading, so the seed effect below can apply it.
-  const pendingAddAccountRef = useRef<string | null>(null)
-
-  const openAddDialog = useCallback((preselectAccountId?: string) => {
-    const last = loadLastTx()
-    // Default the source to the explicitly requested account, else the last-used
-    // one, else Cash in Hand — so the last account leads next time.
-    const desired = preselectAccountId ?? last.wealth_account_id
-    pendingAddAccountRef.current = desired ?? null
-    const accountId = (desired && accounts.some((a) => a.id === desired))
-      ? desired
-      : defaultAccountId(accounts)
-    setForm({
-      ...defaultForm(),
-      client_id: last.client_id ?? "",
-      allocations: accountId ? [{ account_id: accountId, amount: "" }] : [],
-      type: last.type ?? "incoming",
-      category: last.category ?? "",
-    })
-    setPendingFiles([])
-    setAddOpen(true)
-  }, [accounts])
-
-  // If the add dialog opened before accounts loaded (deep link on a cold page),
-  // seed the default source — the requested account if valid, else Cash in Hand.
-  useEffect(() => {
-    if (!addOpen || accounts.length === 0) return
-    setForm((f) => {
-      if (f.allocations.length > 0) return f
-      const want = pendingAddAccountRef.current && accounts.some((a) => a.id === pendingAddAccountRef.current)
-        ? pendingAddAccountRef.current
-        : defaultAccountId(accounts)
-      return want ? { ...f, allocations: [{ account_id: want, amount: "" }] } : f
-    })
-  }, [addOpen, accounts])
-
+  // Open the Add-Transaction dialog on a ?new=1 deep link (the + FAB also routes
+  // here on the Transactions page). The dialog seeds its own form/accounts.
   useEffect(() => {
     if (searchParams.get("new") === "1") {
-      openAddDialog(searchParams.get("account") ?? undefined)
+      setAddOpen(true)
       const next = new URLSearchParams(searchParams)
       next.delete("new")
       next.delete("account")
       setSearchParams(next, { replace: true })
     }
-  }, [searchParams, setSearchParams, openAddDialog])
+  }, [searchParams, setSearchParams])
 
   // Keep the detail modal in sync with ?view=<txId>: opens on a pasted/deep link
   // and closes when the param is removed (e.g. browser/OS back). Uses showTx so
@@ -651,51 +289,6 @@ export function TransactionsPage() {
     for (const tx of transactions) if (tx.category?.trim()) set.add(tx.category.trim())
     return [...set].filter(Boolean).sort((a, b) => a.localeCompare(b))
   }, [categories, transactions])
-
-  // Open the add dialog pre-filled with the last-used client/type/category
-  // (date always today), so repeat entry is fast.
-  async function handleAdd() {
-    if (!isPersonal && !form.client_id) { toast.error(t("clientIsRequired")); return }
-    const allocs = form.allocations.filter((a) => a.account_id && Number(a.amount) > 0)
-    if (allocs.length === 0) { toast.error(t("validAmountIsRequired")); return }
-    if (allocs.some((a) => amountExceedsLimit(a.amount))) { toast.error(t("common.amountTooLarge")); return }
-    setSaving(true)
-    try {
-      const token = await getToken()
-      if (!token) throw new Error("Not authenticated")
-      // A split entry is ONE logical transaction saved atomically as one group of
-      // account-legs (the server shares a group_id across them and syncs each
-      // account's balance). Attachments anchor to the first returned leg.
-      const result = await apiPost<{ group_id: string | null; ids: string[] }>("/api/transactions/group", token, {
-        client_id: form.client_id,
-        type: form.type,
-        description: form.description,
-        category: form.category,
-        date: form.date,
-        allocations: allocs.map((a) => ({ wealth_account_id: a.account_id, amount: parseFloat(a.amount) })),
-      })
-      const firstId = result.ids[0] ?? null
-      if (firstId) {
-        for (const file of pendingFiles) {
-          try {
-            await uploadFile(file, firstId, token)
-          } catch {
-            toast.error(t("failedToUploadFile", { name: file.name }))
-          }
-        }
-      }
-      saveLastTx({ client_id: form.client_id, type: form.type, category: form.category, wealth_account_id: allocs[0]?.account_id })
-      toast.success(t("transactionAdded"))
-      setAddOpen(false)
-      setForm(defaultForm())
-      setPendingFiles([])
-      fetchPage1({ silent: true })
-    } catch {
-      toast.error(t("failedToAddTransaction"))
-    } finally {
-      setSaving(false)
-    }
-  }
 
   // Open the edit dialog. For a split (grouped) row we load every leg so the user
   // edits the whole split; a single-account row prefills one allocation.
@@ -839,46 +432,6 @@ export function TransactionsPage() {
     view.close()
   }
 
-  async function uploadFile(file: File, txId: string, token: string): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = async () => {
-        const base64 = (reader.result as string).split(",")[1]
-        const res = await fetch(`/api/transactions/${txId}/attachments`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          body: JSON.stringify({
-            file_name: file.name,
-            file_type: file.type || "application/octet-stream",
-            file_size: file.size,
-            file_data: base64,
-          }),
-        })
-        if (!res.ok) reject(new Error("Upload failed"))
-        else resolve()
-      }
-      reader.onerror = () => reject(new Error("Failed to read file"))
-      reader.readAsDataURL(file)
-    })
-  }
-
-  function handleAddFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(e.target.files ?? [])
-    const valid = files.filter((f) => {
-      if (f.size > 2 * 1024 * 1024) {
-        toast.error(t("fileExceeds2MBLimit", { name: f.name }))
-        return false
-      }
-      return true
-    })
-    setPendingFiles((prev) => [...prev, ...valid])
-    if (addFileInputRef.current) addFileInputRef.current.value = ""
-  }
-
-  function removePendingFile(idx: number) {
-    setPendingFiles((prev) => prev.filter((_, i) => i !== idx))
-  }
-
   function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file || !viewTx) return
@@ -1009,7 +562,7 @@ export function TransactionsPage() {
               {t("multiSelect.select")}
             </Button>
           )}
-          <Button onClick={() => openAddDialog()} className="shrink-0">
+          <Button onClick={() => setAddOpen(true)} className="shrink-0">
             <Plus className="size-4" />
             <span className="hidden sm:inline">{t("addTransaction")}</span>
             <span className="sm:hidden">{t("add")}</span>
@@ -1100,7 +653,7 @@ export function TransactionsPage() {
             {search || tab !== "all" || categoryFilter !== "all" || dateFrom || dateTo ? t("noTransactionsMatchFilters") : t("noTransactionsYet")}
           </p>
           {!search && tab === "all" && categoryFilter === "all" && !dateFrom && !dateTo && clients.length > 0 && (
-            <Button className="mt-4" onClick={() => openAddDialog()}>
+            <Button className="mt-4" onClick={() => setAddOpen(true)}>
               <Plus className="size-4" />
               {t("addFirstTransaction")}
             </Button>
@@ -1379,8 +932,13 @@ export function TransactionsPage() {
 
               <DialogFooter>
                 <Button variant="outline" onClick={() => {
-                  closeViewModal()
-                  openEditTx(viewTx)
+                  // Strip ?view in place (no history pop) before opening Edit, so the
+                  // detail modal's close doesn't fire a popstate that would instantly
+                  // close the freshly-opened edit dialog.
+                  const tx = viewTx
+                  setViewTx(null)
+                  view.close({ replace: true })
+                  if (tx) void openEditTx(tx)
                 }}>
                   <Pencil className="size-3.5" />
                   {t("edit")}
@@ -1392,61 +950,13 @@ export function TransactionsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Add Dialog */}
-      <Dialog open={addOpen} onOpenChange={(open) => { if (!open) setPendingFiles([]); setAddOpen(open) }}>
-        <DialogContent className="inset-x-0 bottom-0 top-auto flex max-h-[92svh] w-full max-w-full translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-t-2xl p-0 sm:inset-x-auto sm:bottom-auto sm:top-[7svh] sm:left-1/2 sm:max-h-[86svh] sm:w-full sm:max-w-md sm:-translate-x-1/2 sm:rounded-2xl">
-          <DialogHeader className="shrink-0 border-b px-6 pb-3 pt-6"><DialogTitle>{t("addTransaction")}</DialogTitle></DialogHeader>
-          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto scrollbar-thin px-6 py-1">
-          <TxFormFields
-            f={form}
-            onChange={(p) => setForm((f) => ({ ...f, ...p }))}
-            showClient={!isPersonal}
-            clients={clients}
-            accounts={accounts}
-            accountsLoading={accountsLoading}
-            categories={categories}
-            onChangeCats={handleChangeCats}
-            onAddAccount={() => { setAddOpen(false); navigate("/wealth") }}
-            currency={currency}
-          />
-          <Separator />
-          <div className="space-y-2">
-            <div className="flex items-center justify-between gap-2">
-              <Label className="flex items-center gap-1.5 text-sm font-medium">
-                <Paperclip className="size-3.5" /> {t("attachments")}
-                <span className="text-xs font-normal text-muted-foreground">({t("max2MBPerFile")})</span>
-              </Label>
-              <div>
-                <input ref={addFileInputRef} type="file" className="hidden" multiple onChange={handleAddFileSelect} />
-                <Button size="sm" variant="outline" type="button" onClick={() => addFileInputRef.current?.click()}>
-                  {t("addFiles")}
-                </Button>
-              </div>
-            </div>
-            {pendingFiles.length > 0 && (
-              <div className="space-y-1.5">
-                {pendingFiles.map((file, i) => (
-                  <div key={i} className="flex items-center gap-2 rounded-lg border px-3 py-2">
-                    <Paperclip className="size-3.5 text-muted-foreground shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium truncate">{file.name}</p>
-                      <p className="text-xs text-muted-foreground">{formatFileSize(file.size)}</p>
-                    </div>
-                    <Button variant="ghost" size="icon" className="size-7 shrink-0 text-muted-foreground hover:text-destructive" onClick={() => removePendingFile(i)}>
-                      <X className="size-3.5" />
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-          </div>
-          <DialogFooter className="shrink-0 border-t px-6 pb-6 pt-3">
-            <Button variant="outline" onClick={() => { setAddOpen(false); setPendingFiles([]) }}>{t("cancel")}</Button>
-            <Button onClick={handleAdd} disabled={saving}>{saving ? t("adding") : t("add")}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Add Dialog — the shared, reusable Add-Transaction modal (also used by the
+          global + FAB on every page), so the experience is identical everywhere. */}
+      <AddTransactionDialog
+        open={addOpen}
+        onOpenChange={setAddOpen}
+        onCreated={() => fetchPage1({ silent: true })}
+      />
 
       {/* Edit Dialog */}
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
