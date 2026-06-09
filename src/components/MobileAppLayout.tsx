@@ -62,6 +62,9 @@ import { InstallAppBanner } from "@/components/InstallAppBanner"
 import { InstallButton } from "@/components/InstallButton"
 import { ReferralBanner } from "@/components/ReferralBanner"
 import { QuickAddModal, type QuickAddEntity } from "@/components/QuickAddModal"
+import { AddTransactionDialog, type CreatedTxInfo } from "@/components/transactions/AddTransactionDialog"
+import { useCurrency } from "@/lib/currency-context"
+import { formatMoney } from "@/lib/wealth"
 
 type TabItem = { labelKey: string; href: string; icon: typeof LayoutDashboard }
 
@@ -101,15 +104,16 @@ type QuickAction = {
   labelKey: string
   icon: typeof Users
   href: string
-  entity: QuickAddEntity
+  // "transaction" opens the SHARED real Add-Transaction modal; client/quotation use quick-add.
+  kind: QuickAddEntity | "transaction"
   feature?: "clients" | "quotations"
 }
 
 // Quick-actions menu, ordered top-to-bottom as it stacks above the FAB.
 const allQuickActions: QuickAction[] = [
-  { labelKey: "actions.createQuotation", icon: FileText, href: "/quotations?new=1", entity: "quotation", feature: "quotations" },
-  { labelKey: "actions.addClient", icon: Users, href: "/clients?new=1", entity: "client", feature: "clients" },
-  { labelKey: "actions.addTransaction", icon: ArrowLeftRight, href: "/transactions?new=1", entity: "transaction" },
+  { labelKey: "actions.createQuotation", icon: FileText, href: "/quotations?new=1", kind: "quotation", feature: "quotations" },
+  { labelKey: "actions.addClient", icon: Users, href: "/clients?new=1", kind: "client", feature: "clients" },
+  { labelKey: "actions.addTransaction", icon: ArrowLeftRight, href: "/transactions?new=1", kind: "transaction" },
 ]
 
 // Within one of these sections, the FAB performs that section's "add" directly
@@ -128,7 +132,7 @@ function pageFabAction(pathname: string, actions: QuickAction[]): QuickAction | 
   // transaction for THIS client (the dialog opens on ?newTx=1).
   const clientMatch = pathname.match(/^\/clients\/([^/]+)(?:\/|$)/)
   if (clientMatch && clientMatch[1] !== "closed") {
-    return { labelKey: "actions.addTransaction", icon: ArrowLeftRight, href: `/clients/${clientMatch[1]}?newTx=1`, entity: "transaction" }
+    return { labelKey: "actions.addTransaction", icon: ArrowLeftRight, href: `/clients/${clientMatch[1]}?newTx=1`, kind: "transaction" }
   }
   const match = SECTION_FAB.find(
     (s) => pathname === s.prefix || pathname.startsWith(s.prefix + "/"),
@@ -145,11 +149,25 @@ export function MobileAppLayout() {
   const { getToken } = useAuth()
   const { activeOrg, orgs, switchOrg, refresh, loading: orgLoading } = useOrg()
   const { isAdmin } = useAdmin()
+  const { currency } = useCurrency()
   const [orgSheetOpen, setOrgSheetOpen] = useState(false)
   const [moreOpen, setMoreOpen] = useState(false)
   const [fabOpen, setFabOpen] = useState(false)
   // Quick-add opens the create form in place (no navigation), with a success toast.
   const [quickAdd, setQuickAdd] = useState<QuickAddEntity | null>(null)
+  // The + FAB's "Add transaction" opens the SAME real modal as the Transactions page.
+  const [addTxOpen, setAddTxOpen] = useState(false)
+
+  // Success feedback for an in-place FAB transaction add: toast + deep link to it.
+  const onTxCreated = (info: CreatedTxInfo) => {
+    const label = info.type === "incoming" ? t("transactions.income") : t("transactions.expense")
+    toast.success(
+      t("quickAdd.transactionCreated", { label, amount: formatMoney(info.amount, currency) }),
+      info.id
+        ? { action: { label: t("quickAdd.viewAction"), onClick: () => navigate(`/transactions?view=${info.id}`) } }
+        : undefined,
+    )
+  }
   const [createOpen, setCreateOpen] = useState(false)
   const [newName, setNewName] = useState("")
   const [newCurrency, setNewCurrency] = useState("USD")
@@ -444,7 +462,11 @@ export function MobileAppLayout() {
           <div
             key={action.href}
             className="flex items-center gap-2 animate-in fade-in slide-in-from-bottom-1 duration-150 cursor-pointer group/action"
-            onClick={() => { setQuickAdd(action.entity); setFabOpen(false) }}
+            onClick={() => {
+              if (action.kind === "transaction") setAddTxOpen(true)
+              else setQuickAdd(action.kind)
+              setFabOpen(false)
+            }}
           >
             <span className="text-xs font-medium bg-background border shadow-sm rounded-full px-2.5 py-1 whitespace-nowrap group-hover/action:bg-accent transition-colors">
               {t(action.labelKey)}
@@ -469,6 +491,7 @@ export function MobileAppLayout() {
       </div>
 
       <QuickAddModal entity={quickAdd} onClose={() => setQuickAdd(null)} />
+      <AddTransactionDialog open={addTxOpen} onOpenChange={setAddTxOpen} onCreated={onTxCreated} />
 
       {/* Bottom tab bar — columns adapt to the (account-type-filtered) tab count. */}
       <nav className="safe-pb fixed bottom-0 inset-x-0 z-40 bg-background/95 backdrop-blur border-t">

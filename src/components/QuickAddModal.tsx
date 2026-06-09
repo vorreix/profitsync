@@ -3,40 +3,31 @@ import { useNavigate } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
-import { ArrowDownRight, ArrowUpRight, Loader as Loader2 } from "lucide-react"
-import { apiGet, apiPost } from "@/lib/api"
-import { useCurrency } from "@/lib/currency-context"
-import { useOrg } from "@/lib/org-context"
-import { accountDisplayName, formatMoney } from "@/lib/wealth"
-import { budgetState } from "@/lib/budget"
-import { accountTypeAllows, type Budget, type Client, type Quotation, type Transaction, type WealthAccount } from "@/lib/types"
+import { Loader as Loader2 } from "lucide-react"
+import { apiPost } from "@/lib/api"
+import type { Client, Quotation } from "@/lib/types"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
-export type QuickAddEntity = "client" | "transaction" | "quotation"
+export type QuickAddEntity = "client" | "quotation"
 
 const todayStr = () => new Date().toISOString().split("T")[0]
 
 /**
- * A lightweight "quick add" overlay opened by the + FAB from ANY screen. It hosts
- * minimal create forms for a client / transaction / quotation, so the user creates
- * in place (no navigation away from the current page). On success it shows a toast
+ * A lightweight "quick add" overlay opened by the + FAB from ANY screen, for the
+ * simple entities (client / quotation). Transactions use the full shared
+ * AddTransactionDialog instead (splits, accounts, attachments, budgets) so the
+ * add-transaction experience is identical everywhere. On success it shows a toast
  * with the created item + a "View" deep link; pressing Back after View returns to
  * the page the user was on. Back while the modal is open just closes it (the Dialog
- * wrapper's useModalBackClose). Power features (splits, attachments) stay on the
- * full section pages.
+ * wrapper's useModalBackClose).
  */
 export function QuickAddModal({ entity, onClose }: { entity: QuickAddEntity | null; onClose: () => void }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const { getToken } = useAuth()
-  const { currency } = useCurrency()
-  const { activeOrg } = useOrg()
-  const accountType = activeOrg?.account_type
-  const isBusiness = accountTypeAllows(accountType, "clients")
 
   const [submitting, setSubmitting] = useState(false)
 
@@ -44,17 +35,6 @@ export function QuickAddModal({ entity, onClose }: { entity: QuickAddEntity | nu
   const [clientName, setClientName] = useState("")
   const [clientCompany, setClientCompany] = useState("")
   const [clientEmail, setClientEmail] = useState("")
-
-  // Transaction form
-  const [txType, setTxType] = useState<"incoming" | "outgoing">("outgoing")
-  const [txAmount, setTxAmount] = useState("")
-  const [txAccountId, setTxAccountId] = useState("")
-  const [txClientId, setTxClientId] = useState("")
-  const [txCategory, setTxCategory] = useState("")
-  const [txDate, setTxDate] = useState(todayStr)
-  const [accounts, setAccounts] = useState<WealthAccount[]>([])
-  const [clients, setClients] = useState<Client[]>([])
-  const [budgetList, setBudgetList] = useState<Budget[]>([])
 
   // Quotation form
   const [qTitle, setQTitle] = useState("")
@@ -67,44 +47,11 @@ export function QuickAddModal({ entity, onClose }: { entity: QuickAddEntity | nu
     if (!entity) return
     setSubmitting(false)
     setClientName(""); setClientCompany(""); setClientEmail("")
-    setTxType("outgoing"); setTxAmount(""); setTxCategory(""); setTxDate(todayStr())
     setQTitle(""); setQProspect(""); setQAmount(""); setQDate(todayStr())
   }, [entity])
 
-  // The transaction form needs the org's accounts (+ clients for business). Fetch
-  // them lazily when that form opens.
-  useEffect(() => {
-    if (entity !== "transaction") return
-    let cancelled = false
-    ;(async () => {
-      const token = await getToken()
-      if (!token) return
-      try {
-        const [accs, cls, bdg] = await Promise.all([
-          apiGet<WealthAccount[]>("/api/wealth/accounts", token),
-          isBusiness ? apiGet<Client[] | { data: Client[] }>("/api/clients", token) : Promise.resolve([]),
-          apiGet<{ budgets: Budget[] }>("/api/budgets", token).catch(() => ({ budgets: [] })),
-        ])
-        if (cancelled) return
-        const active = (accs || []).filter((a) => !a.archived_at)
-        setAccounts(active)
-        // Default to the first account (Cash in Hand is provisioned first).
-        setTxAccountId((prev) => prev || active[0]?.id || "")
-        const clientList = Array.isArray(cls) ? cls : (cls?.data ?? [])
-        setClients(clientList)
-        // Default to the own/first client so a business user can submit fast.
-        setTxClientId((prev) => prev || clientList.find((c) => c.is_own)?.id || clientList[0]?.id || "")
-        setBudgetList(bdg.budgets ?? [])
-      } catch {
-        /* best-effort; the user can still try to submit and see the API error */
-      }
-    })()
-    return () => { cancelled = true }
-  }, [entity, isBusiness, getToken])
-
   const title = useMemo(() => {
     if (entity === "client") return t("actions.addClient")
-    if (entity === "transaction") return t("actions.addTransaction")
     if (entity === "quotation") return t("actions.createQuotation")
     return ""
   }, [entity, t])
@@ -112,28 +59,9 @@ export function QuickAddModal({ entity, onClose }: { entity: QuickAddEntity | nu
   const canSubmit = useMemo(() => {
     if (submitting) return false
     if (entity === "client") return clientName.trim().length > 0
-    if (entity === "transaction") {
-      const amt = Number(txAmount)
-      return Number.isFinite(amt) && amt > 0 && !!txAccountId && (!isBusiness || !!txClientId)
-    }
     if (entity === "quotation") return qTitle.trim().length > 0 && qProspect.trim().length > 0
     return false
-  }, [entity, submitting, clientName, txAmount, txAccountId, txClientId, isBusiness, qTitle, qProspect])
-
-  // Live budget impact for an outgoing transaction: how much of the relevant
-  // budget (the selected client's, or the personal/org budget) this expense uses.
-  const budgetHint = useMemo(() => {
-    if (entity !== "transaction" || txType !== "outgoing") return null
-    const amt = Number(txAmount)
-    if (!Number.isFinite(amt) || amt <= 0) return null
-    const b = isBusiness ? budgetList.find((x) => x.client_id === txClientId) : budgetList.find((x) => x.client_id === null)
-    if (!b || b.amount <= 0) return null
-    const projected = (b.spent ?? 0) + amt
-    const { remaining, state } = budgetState(projected, b.amount)
-    return remaining >= 0
-      ? { over: false, state, text: t("budget.remainingAfter", { amount: formatMoney(remaining, currency) }) }
-      : { over: true, state, text: t("budget.overAfter", { amount: formatMoney(-remaining, currency) }) }
-  }, [entity, txType, txAmount, isBusiness, budgetList, txClientId, currency, t])
+  }, [entity, submitting, clientName, qTitle, qProspect])
 
   // Show a success toast with a "View" action that deep-links to the new item, then
   // close. navigate pushes a fresh entry over the origin page, so Back returns here.
@@ -156,21 +84,6 @@ export function QuickAddModal({ entity, onClose }: { entity: QuickAddEntity | nu
           email: clientEmail.trim() || undefined,
         })
         successToast(t("quickAdd.clientCreated", { name: created.name }), `/clients/${created.id}`)
-      } else if (entity === "transaction") {
-        const amt = Number(txAmount)
-        const created = await apiPost<Transaction>("/api/transactions", token, {
-          client_id: isBusiness ? txClientId : undefined,
-          type: txType,
-          amount: amt,
-          wealth_account_id: txAccountId,
-          category: txCategory.trim() || undefined,
-          date: txDate || todayStr(),
-        })
-        const label = txType === "incoming" ? t("transactions.income") : t("transactions.expense")
-        successToast(
-          t("quickAdd.transactionCreated", { label, amount: formatMoney(amt, currency) }),
-          `/transactions?view=${created.id}`,
-        )
       } else if (entity === "quotation") {
         const created = await apiPost<Quotation>("/api/quotations", token, {
           title: qTitle.trim(),
@@ -214,78 +127,6 @@ export function QuickAddModal({ entity, onClose }: { entity: QuickAddEntity | nu
                   onChange={(e) => setClientEmail(e.target.value)} className="h-11" />
               </div>
             </div>
-          </div>
-        )}
-
-        {entity === "transaction" && (
-          <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-2">
-              {(["incoming", "outgoing"] as const).map((type) => (
-                <button
-                  key={type}
-                  type="button"
-                  onClick={() => setTxType(type)}
-                  className={`flex items-center justify-center gap-1.5 rounded-lg border py-2.5 text-sm font-medium transition-colors ${
-                    txType === type
-                      ? type === "incoming"
-                        ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
-                        : "border-red-500/50 bg-red-500/10 text-red-700 dark:text-red-300"
-                      : "border-border text-muted-foreground hover:bg-accent"
-                  }`}
-                >
-                  {type === "incoming" ? <ArrowUpRight className="size-4" /> : <ArrowDownRight className="size-4" />}
-                  {type === "incoming" ? t("transactions.income") : t("transactions.expense")}
-                </button>
-              ))}
-            </div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label htmlFor="qa-tx-amount">{t("transactions.amount")}</Label>
-                <Input id="qa-tx-amount" inputMode="decimal" value={txAmount} autoFocus
-                  onChange={(e) => setTxAmount(e.target.value)} placeholder="0.00" className="h-11" />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="qa-tx-date">{t("transactions.date")}</Label>
-                <Input id="qa-tx-date" type="date" value={txDate}
-                  onChange={(e) => setTxDate(e.target.value)} className="h-11" />
-              </div>
-            </div>
-            {isBusiness && (
-              <div className="space-y-1.5">
-                <Label>{t("transactions.client")}</Label>
-                <Select value={txClientId} onValueChange={setTxClientId}>
-                  <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {clients.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-            <div className="space-y-1.5">
-              <Label>{t("transactions.account")}</Label>
-              <Select value={txAccountId} onValueChange={setTxAccountId}>
-                <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {accounts.map((a) => (
-                    <SelectItem key={a.id} value={a.id}>
-                      {accountDisplayName(a)} · {formatMoney(a.current_balance, currency)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="qa-tx-category">{t("transactions.category")}</Label>
-              <Input id="qa-tx-category" value={txCategory}
-                onChange={(e) => setTxCategory(e.target.value)} className="h-11" />
-            </div>
-            {budgetHint && (
-              <p className={`text-xs ${budgetHint.over ? "text-red-600 dark:text-red-400" : budgetHint.state === "warn" ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"}`}>
-                {budgetHint.text}
-              </p>
-            )}
           </div>
         )}
 

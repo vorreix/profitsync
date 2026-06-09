@@ -520,7 +520,7 @@ export function ClientDetailPage() {
             </div>
             <div className="space-y-1.5">
               <div className="flex items-center justify-between gap-2">
-                <Label className="flex items-center gap-1.5"><Paperclip className="size-3.5" /> Attachments</Label>
+                <Label className="flex items-center gap-1.5"><Paperclip className="size-3.5" /> Attachments <span className="text-xs font-normal text-muted-foreground">(Max 2MB per file)</span></Label>
                 <Button type="button" variant="outline" size="sm" onClick={() => addFileRef.current?.click()}>
                   <Upload className="size-3.5" /> Add file
                 </Button>
