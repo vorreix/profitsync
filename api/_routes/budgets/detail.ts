@@ -36,8 +36,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     .where(and(eq(budgets.organizationId, orgId), clientId ? eq(budgets.clientId, clientId) : isNull(budgets.clientId)))
 
   const [clientRow] = clientId
-    ? await db.select({ name: clients.name, isOwn: clients.isOwn }).from(clients).where(and(eq(clients.id, clientId), eq(clients.organizationId, orgId)))
+    ? await db.select({ name: clients.name, isOwn: clients.isOwn }).from(clients).where(and(eq(clients.id, clientId), eq(clients.organizationId, orgId), isNull(clients.deletedAt)))
     : [undefined]
+
+  // A per-client budget for a client that doesn't exist in this org (or was trashed)
+  // is not viewable here — its history/spend shouldn't surface.
+  if (clientId && !clientRow) return res.status(404).json({ error: "Client not found" })
 
   const historyRows = await db
     .select()
