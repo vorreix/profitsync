@@ -9,6 +9,7 @@ import { canWriteRole } from "@/lib/roles"
 import type { Budget } from "@/lib/types"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { Skeleton } from "@/components/ui/skeleton"
 import { BudgetIndicator } from "@/components/budget/BudgetIndicator"
 import { BudgetDialog } from "@/components/budget/BudgetDialog"
 
@@ -25,6 +26,9 @@ export function PersonalBudgetCard({ className = "" }: { className?: string }) {
   const canWrite = canWriteRole(activeOrg?.role)
   const [budget, setBudget] = useState<Budget | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
+  // Gate the empty "Set budget" state on the first load so a refresh doesn't flash
+  // "no budget" → real budget (confusing). Show a skeleton until we actually know.
+  const [loaded, setLoaded] = useState(false)
 
   const load = async () => {
     try {
@@ -34,6 +38,8 @@ export function PersonalBudgetCard({ className = "" }: { className?: string }) {
       setBudget(res.budgets.find((b) => b.client_id === null) ?? null)
     } catch {
       /* non-blocking */
+    } finally {
+      setLoaded(true)
     }
   }
 
@@ -50,14 +56,19 @@ export function PersonalBudgetCard({ className = "" }: { className?: string }) {
             <Wallet className="size-4 text-muted-foreground" />
             {t("budget.personal")}
           </div>
-          {canWrite && (
+          {canWrite && loaded && (
             <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setDialogOpen(true)}>
               {budget ? t("budget.edit") : <><Plus className="size-3 mr-1" />{t("budget.set")}</>}
             </Button>
           )}
         </div>
         <div className="mt-3">
-          {budget ? (
+          {!loaded ? (
+            <div className="space-y-1.5">
+              <Skeleton className="h-3 w-28" />
+              <Skeleton className="h-1.5 w-full" />
+            </div>
+          ) : budget ? (
             <BudgetIndicator amount={budget.amount} spent={budget.spent ?? 0} period={budget.period} currency={currency} />
           ) : (
             <p className="text-xs text-muted-foreground">{t("budget.noBudget")}</p>
