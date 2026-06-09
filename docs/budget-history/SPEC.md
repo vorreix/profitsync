@@ -103,7 +103,30 @@ mirroring `logAudit`.
   combined into one branch so the chain stays a working increment.)
 - `feat/ux2-28-budget-review-fixes` — fixes from the adversarial review (below).
 
+## Budget entry points (feat/ux2-29-budget-links)
+Every place a budget is shown now **links into `/budgets/:key`** (the detail page is the
+home for history/insights *and* set/edit), with a consistent **PiggyBank** icon + a
+chevron affordance:
+- **Client detail** budget card → taps to `/budgets/:clientId`; keeps an inline Edit
+  button (`stopPropagation`) for quick edits.
+- **Clients list** card budget line → piggy icon + chevron, taps to `/budgets/:clientId`
+  (both the with-budget indicator and the "Set budget" empty state). The inline
+  `BudgetDialog` was removed from this page — edit/set lives on the detail page.
+- **Dashboard** `PersonalBudgetCard` → `/budgets/default`, `BusinessBudgetCard` →
+  `/budgets/:ownClientId`; whole card clickable, inline Edit kept (`stopPropagation`).
+- **API:** `/api/budgets/detail` no longer 404s for a *valid* client with no budget yet
+  (only invalid/trashed clients 404) — it returns `current: null` so the link never
+  dead-ends; the page shows "No budget set" + a Set button. `BudgetDetailPage` gates the
+  spend chart on `current` existing (no all-zero chart / wrong "template" note for a
+  budget-less client).
+Verified with Playwright on desktop + 390px mobile (no overflow): all four surfaces show
+the piggy + chevron + navigate; Edit buttons `stopPropagation`; the no-budget link shows
+the set state (not 404); `/budgets/default` renders. Gate green.
+
 ## Change log
+- 2026-06-10: feat/ux2-29-budget-links — budget surfaces (client detail, clients list,
+  dashboard cards) link into `/budgets/:key` with a PiggyBank icon; detail handles the
+  no-budget case gracefully. See "Budget entry points" above.
 - 2026-06-09/10: feature implemented across the branches above; verified with unit
   tests, throwaway handler tests (overview/detail/write-hook), and live Playwright on
   mobile + desktop (incl. a real edit→timeline round-trip, then data restored).

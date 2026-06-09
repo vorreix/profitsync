@@ -11,7 +11,6 @@ import { useCurrency } from "@/lib/currency-context"
 import { useOrg } from "@/lib/org-context"
 import { canDeleteRole, canWriteRole } from "@/lib/roles"
 import { BudgetIndicator } from "@/components/budget/BudgetIndicator"
-import { BudgetDialog } from "@/components/budget/BudgetDialog"
 import { useMultiSelect } from "@/lib/use-multi-select"
 import { useLongPress } from "@/lib/use-long-press"
 import { BulkActionBar } from "@/components/BulkActionBar"
@@ -39,7 +38,7 @@ import {
 } from "@/components/ui/select"
 import { toast } from "sonner"
 import {
-  Plus, Users, Building2, Mail, Phone, ChevronRight, Eye, Pencil,
+  Plus, Users, Building2, Mail, Phone, ChevronRight, Eye, PiggyBank,
   TrendingUp, TrendingDown, DollarSign, LayoutGrid, LayoutList, CheckSquare, Archive,
 } from "lucide-react"
 import { ExpandableSearch } from "@/components/ExpandableSearch"
@@ -111,8 +110,6 @@ export function ClientsPage() {
   // Per-client expense budgets (client_id → budget, with current-period spend) +
   // the org default (template). Drives the card indicator + the set/edit dialog.
   const [budgets, setBudgets] = useState<Map<string, Budget>>(new Map())
-  const [defaultBudget, setDefaultBudget] = useState<Budget | null>(null)
-  const [budgetClient, setBudgetClient] = useState<ClientWithStats | null>(null)
 
   const loadBudgets = async () => {
     try {
@@ -120,13 +117,10 @@ export function ClientsPage() {
       if (!token) return
       const res = await apiGet<{ budgets: Budget[] }>("/api/budgets", token)
       const map = new Map<string, Budget>()
-      let def: Budget | null = null
       for (const b of res.budgets) {
         if (b.client_id) map.set(b.client_id, b)
-        else def = b // org-level (business default)
       }
       setBudgets(map)
-      setDefaultBudget(def)
     } catch {
       /* non-blocking — cards just won't show budget bars */
     }
@@ -479,7 +473,8 @@ export function ClientsPage() {
                       </div>
                     </div>
 
-                    {/* Expense budget indicator (or a set-budget affordance). */}
+                    {/* Expense budget — tap the line or piggy icon to open this client's
+                        budget history & insights (set/edit live on that page). */}
                     {(() => {
                       const b = budgets.get(client.id)
                       if (b) {
@@ -487,14 +482,15 @@ export function ClientsPage() {
                           <button
                             type="button"
                             className="group/budget w-full flex items-start gap-2 text-left rounded-md -m-1 p-1 hover:bg-accent/50 transition-colors"
-                            onClick={(e) => { e.stopPropagation(); setBudgetClient(client) }}
-                            aria-label={t("budget.edit", { ns: "translation" })}
+                            onClick={(e) => { e.stopPropagation(); navigate(`/budgets/${client.id}`) }}
+                            aria-label={t("nav.budgets", { ns: "translation" })}
                           >
+                            <PiggyBank className="size-3.5 shrink-0 mt-0.5 text-muted-foreground" />
                             <div className="flex-1 min-w-0">
                               <BudgetIndicator amount={b.amount} spent={b.spent ?? 0} period={b.period} currency={currency} />
                             </div>
-                            {/* Always-visible edit affordance so it reads as tappable on touch. */}
-                            <Pencil className="size-3.5 shrink-0 mt-0.5 text-muted-foreground/70 group-hover/budget:text-foreground transition-colors" />
+                            {/* Chevron signals the line navigates into the budget page. */}
+                            <ChevronRight className="size-3.5 shrink-0 mt-0.5 text-muted-foreground/60 group-hover/budget:text-foreground transition-colors" />
                           </button>
                         )
                       }
@@ -503,9 +499,9 @@ export function ClientsPage() {
                         <button
                           type="button"
                           className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-                          onClick={(e) => { e.stopPropagation(); setBudgetClient(client) }}
+                          onClick={(e) => { e.stopPropagation(); navigate(`/budgets/${client.id}`) }}
                         >
-                          <Plus className="size-3" /> {t("budget.set", { ns: "translation" })}
+                          <PiggyBank className="size-3" /> {t("budget.set", { ns: "translation" })}
                         </button>
                       )
                     })()}
@@ -760,15 +756,6 @@ export function ClientsPage() {
         onOpenChange={(o) => { if (!o) setViewClient(null) }}
       />
 
-      <BudgetDialog
-        open={budgetClient !== null}
-        onOpenChange={(o) => { if (!o) setBudgetClient(null) }}
-        clientId={budgetClient?.id ?? null}
-        label={budgetClient?.name ?? ""}
-        current={budgetClient ? budgets.get(budgetClient.id) ?? null : null}
-        prefill={defaultBudget ? { amount: defaultBudget.amount, period: defaultBudget.period } : null}
-        onSaved={() => { void loadBudgets() }}
-      />
     </div>
   )
 }

@@ -56,11 +56,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     createdAt: (h.createdAt ?? new Date(0)).toISOString(),
   }))
 
-  // Nothing ever set for this budget.
-  if (!budgetRow && history.length === 0) {
-    return res.status(404).json({ error: "No budget" })
-  }
-
+  // No budget yet for a valid client (or the default) is fine — the detail page is
+  // also where you *set* one, so return an empty-but-valid payload (current: null)
+  // instead of 404. (An invalid/trashed client was already rejected above.)
   const period = (isBudgetPeriod(budgetRow?.period) ? budgetRow!.period : history[history.length - 1]?.period ?? "monthly") as BudgetPeriod
 
   // Series only makes sense when there's a real, periodic spend stream: a per-client
