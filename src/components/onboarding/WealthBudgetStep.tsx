@@ -102,7 +102,19 @@ export function WealthBudgetStep({
         if (n) tasks.push(apiPost("/api/budgets", token, { client_id: clientId, amount: n, period }).catch(() => {}))
       }
       if (isBusiness) {
-        if (ownClientId) addBudget(ownClientId, companyAmt, companyPeriod)
+        // Resolve the own/company client now if the mount fetch hadn't (or failed),
+        // so a typed company budget is never silently dropped.
+        let companyClientId = ownClientId
+        if (num(companyAmt) && !companyClientId) {
+          try {
+            const cls = await apiGet<Client[] | { data: Client[] }>("/api/clients", token)
+            const list = Array.isArray(cls) ? cls : (cls?.data ?? [])
+            companyClientId = list.find((c) => c.is_own)?.id ?? null
+          } catch {
+            /* leave null — company budget skipped, default still applies */
+          }
+        }
+        if (companyClientId) addBudget(companyClientId, companyAmt, companyPeriod)
         addBudget(null, defaultAmt, defaultPeriod) // default for new clients
       } else {
         addBudget(null, personalAmt, personalPeriod)
