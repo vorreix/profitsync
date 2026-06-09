@@ -28,6 +28,7 @@ export function TransactionDetailModal({
   canEdit = false,
   canDelete = false,
   onEdit,
+  disableBackClose = false,
 }: {
   tx: Transaction | null
   open: boolean
@@ -36,6 +37,9 @@ export function TransactionDetailModal({
   canEdit?: boolean
   canDelete?: boolean
   onEdit?: (tx: Transaction) => void
+  // Set when the caller already drives history (e.g. a useUrlModal ?view= param),
+  // so the Dialog doesn't push a second back-close entry.
+  disableBackClose?: boolean
 }) {
   const { t } = useTranslation("transactions")
   const { getToken } = useAuth()
@@ -64,7 +68,7 @@ export function TransactionDetailModal({
 
   return (
     <>
-      <Dialog open={open} onOpenChange={(o) => { if (!o) onClose() }}>
+      <Dialog open={open} onOpenChange={(o) => { if (!o) onClose() }} disableBackClose={disableBackClose}>
         <DialogContent className="w-[92vw] max-w-sm sm:max-w-md">
           {tx && (
             <>

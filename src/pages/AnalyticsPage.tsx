@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next"
 import { useAuth } from "@clerk/clerk-react"
 import { useCurrency } from "@/lib/currency-context"
 import { useOrg } from "@/lib/org-context"
+import { useDataRefresh } from "@/lib/data-refresh-context"
 import { apiGet } from "@/lib/api"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { FitText } from "@/components/FitText"
@@ -60,9 +61,10 @@ export function AnalyticsPage() {
   const [loading, setLoading] = useState(true)
 
   const range = custom ?? defaultRange(granularity)
+  const { revision } = useDataRefresh()
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setLoading(true)
     try {
       const token = await getToken()
       if (!token) return
@@ -77,6 +79,13 @@ export function AnalyticsPage() {
   }, [getToken, granularity, range.from, range.to])
 
   useEffect(() => { load() }, [load])
+
+  // A transaction added via the global + FAB refreshes the analytics in place
+  // (silent — no skeleton).
+  useEffect(() => {
+    if (revision > 0) void load({ silent: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only react to the signal
+  }, [revision])
 
   const chartConfig: ChartConfig = {
     income: { label: t("chart.incoming"), color: "var(--chart-2)" },

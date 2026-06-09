@@ -154,6 +154,16 @@ export async function createSubscription(input: {
   returnUrl: string
   metadata?: Record<string, string>
   env: DodoEnv
+  /**
+   * The currency the customer is billed in (ISO 4217). Dodo routes the charge to
+   * a connector that supports {billing country × this currency}. Setting it to the
+   * customer's local currency (e.g. IN → INR) is what fixes "Missing connector
+   * response" for Indian cards: a USD-only charge has no eligible Indian-card
+   * connector. Omitted → Dodo bills in the product's base currency. If Dodo can't
+   * support the currency for the transaction it won't proceed, so only pass a
+   * currency derived from the billing country (all are Dodo-supported).
+   */
+  billingCurrency?: string
 }): Promise<DodoCreateSubscriptionResult> {
   return call<DodoCreateSubscriptionResult>("/subscriptions", input.env, {
     method: "POST",
@@ -170,6 +180,12 @@ export async function createSubscription(input: {
         street: input.billing.street ?? "",
         zipcode: input.billing.zipcode ?? "",
       },
+      // Bill in the customer's local currency so the charge routes to a connector
+      // that can actually process their card (the India fix). Intentionally NOT
+      // setting allowed_payment_method_types — that's a whitelist that would HIDE
+      // valid methods (iDEAL/SEPA/UPI/…) elsewhere; omitting it lets Dodo show
+      // every method eligible for the country × currency (incl. UPI for IN+INR).
+      ...(input.billingCurrency ? { billing_currency: input.billingCurrency } : {}),
       metadata: input.metadata ?? {},
     }),
   })

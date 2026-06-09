@@ -90,6 +90,21 @@ DO go through i18n.)
   invoice + `past_due`), as `payment.succeeded` does for `paid`.
 - **"Reconcile a wrong-looking subscription"** → `reconcileSubscriptionFromDodo` (wired
   as the per-row + bulk **Sync from Dodo** action).
+- **"Card payment fails abroad (e.g. India: 'Missing connector response')"** → Dodo routes
+  a charge to a connector by **{billing country × currency}**. Our products are USD-priced,
+  so `create-subscription` now derives **`billing_currency`** from the billing country
+  (profile country → IP → US) via `currencyForCountry` (IN→INR) and passes it +
+  the full billing address to `createSubscription` (`api/_lib/dodo.ts`). Do **not** set
+  `allowed_payment_method_types` (a whitelist that *hides* valid methods elsewhere). The
+  account must also have the region's connector/adaptive-currency enabled in the Dodo
+  dashboard; test mode needs a matching-country test card. See
+  `docs/billing/SUBSCRIPTIONS_AND_PAYMENTS.md` §11.
+- **"A referral didn't flip to paid after a real upgrade"** → referral crediting
+  (`creditReferralOnPaid`) runs from BOTH the `payment.succeeded` webhook AND the reconcile
+  path (`reconcileInvoices` in `billing-sync.ts`) — because activation never depends on
+  webhooks. It's idempotent (`signed_up → paid`, status-guarded). "Sync from Dodo" on the
+  org back-fills any historical case. Earnings unlock after `referral_settings.holding_days`
+  (default 14; admins can lower it to test). Full lifecycle: `docs/referrals/REFERRALS.md`.
 - **Add an admin bulk endpoint** → new file under `api/_routes/admin/<x>/<action>.ts`,
   register in `api/index.ts`, `requireAdminCap(req,res,"write")`, process ids
   independently, return per-row results; UI uses `useMultiSelect()` + a `Checkbox`
