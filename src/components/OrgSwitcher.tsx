@@ -8,7 +8,6 @@ import { isPaidPlanKey } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { ScrollArea } from "@/components/ui/scroll-area"
 
 export function OrgSwitcher() {
   const navigate = useNavigate()
@@ -72,8 +71,8 @@ export function OrgSwitcher() {
           <ChevronsUpDown className="size-3.5 opacity-50 group-data-[collapsible=icon]:hidden" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-72 p-0" align="start">
-        <div className="border-b p-2">
+      <PopoverContent className="flex max-h-[min(30rem,75vh)] w-72 flex-col p-0" align="start">
+        <div className="shrink-0 border-b p-2">
           <div className="relative">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
             <Input
@@ -85,7 +84,10 @@ export function OrgSwitcher() {
             />
           </div>
         </div>
-        <ScrollArea className="max-h-64">
+        {/* Plain scroll container (not Radix ScrollArea) so it reliably constrains
+            inside the flex column — otherwise a long org list overflows and overlaps
+            the footer actions below. */}
+        <div className="min-h-0 flex-1 overflow-y-auto scrollbar-thin">
           <div className="p-1">
             {filtered.length === 0 ? (
               <div className="px-2 py-6 text-center text-xs text-muted-foreground">No organizations match</div>
@@ -123,8 +125,8 @@ export function OrgSwitcher() {
               ))
             )}
           </div>
-        </ScrollArea>
-        <div className="border-t p-1 flex flex-col">
+        </div>
+        <div className="shrink-0 border-t p-1 flex flex-col">
           {activeOrg && !isPaidPlanKey(activeOrg.plan_key) && (
             <Button
               variant="ghost"

@@ -141,7 +141,8 @@
     "transactionDetails": "பரிவர்த்தனை விவரங்கள்",
     "description": "விளக்கம்",
     "openTransaction": "பரிவர்த்தனையைத் திறக்கவும்",
-    "openClient": "வாடிக்கையாளரைத் திறக்கவும்"
+    "openClient": "வாடிக்கையாளரைத் திறக்கவும்",
+    "ownCompanyBudget": "நிறுவன பட்ஜெட்"
   },
   "chart": {
     "incoming": "வரவு",
@@ -950,7 +951,10 @@
     "dragHandle": "வரிசை மாற்ற அல்லது பரிமாற்ற இழுக்கவும்",
     "reorder": "வரிசை மாற்று",
     "holdToTransfer": "பரிமாற்ற அழுத்திப் பிடி",
-    "selectAccount": "கணக்கைத் தேர்ந்தெடுக்கவும்"
+    "selectAccount": "கணக்கைத் தேர்ந்தெடுக்கவும்",
+    "healthGood": "நலமாக உள்ளது — அனைத்து இருப்புகளும் நேர்மறை",
+    "healthWarn": "கவனம் — ஒரு கணக்கு எதிர்மறை",
+    "healthNegative": "மொத்த இருப்பு எதிர்மறை"
   },
   "errorBoundary": {
     "title": "ஏதோ தவறு நடந்தது",
@@ -961,7 +965,8 @@
     "viewAction": "பார்க்க",
     "clientCreated": "வாடிக்கையாளர் “{{name}}” சேர்க்கப்பட்டது",
     "transactionCreated": "{{amount}} {{label}} சேர்க்கப்பட்டது",
-    "quotationCreated": "மேற்கோள் “{{title}}” சேர்க்கப்பட்டது"
+    "quotationCreated": "மேற்கோள் “{{title}}” சேர்க்கப்பட்டது",
+    "advanced": "மேம்பட்டவை"
   },
   "budget": {
     "title": "பட்ஜெட்",
