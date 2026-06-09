@@ -42,6 +42,7 @@
   },
   "quickAdd": {
     "viewAction": "View",
+    "advanced": "Advanced",
     "clientCreated": "Client “{{name}}” added",
     "transactionCreated": "{{label}} of {{amount}} added",
     "quotationCreated": "Quotation “{{title}}” added"
@@ -559,6 +560,9 @@
     "subtitle": "Manual tracking only — ProfitSync never connects to your bank.",
     "netWorth": "Net worth",
     "totalAvailable": "Total available",
+    "healthGood": "Healthy — all balances positive",
+    "healthWarn": "Heads up — an account is negative",
+    "healthNegative": "Total balance is negative",
     "banksAndCash": "Banks & Cash",
     "cashInHand": "Cash in Hand",
     "bank": "Bank",

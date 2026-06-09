@@ -951,7 +951,10 @@
     "dragHandle": "اسحب لإعادة الترتيب أو التحويل",
     "reorder": "إعادة ترتيب",
     "holdToTransfer": "استمر بالضغط للتحويل",
-    "selectAccount": "اختر حساباً"
+    "selectAccount": "اختر حساباً",
+    "healthGood": "سليم — جميع الأرصدة موجبة",
+    "healthWarn": "تنبيه — أحد الحسابات سالب",
+    "healthNegative": "إجمالي الرصيد سالب"
   },
   "errorBoundary": {
     "title": "حدث خطأ ما",
@@ -962,7 +965,8 @@
     "viewAction": "عرض",
     "clientCreated": "تمت إضافة العميل ”{{name}}“",
     "transactionCreated": "تمت إضافة {{label}} بقيمة {{amount}}",
-    "quotationCreated": "تمت إضافة عرض السعر ”{{title}}“"
+    "quotationCreated": "تمت إضافة عرض السعر ”{{title}}“",
+    "advanced": "متقدم"
   },
   "budget": {
     "title": "الميزانية",

@@ -46,14 +46,14 @@ Two research-agent claims were **wrong** and were corrected by hand + Playwright
 | # | Branch | Item(s) | Scope | Status |
 |---|--------|---------|-------|--------|
 | 13 | `feat/ux2-13-plan` | — | This plan doc | ✅ committed |
-| 14 | `feat/ux2-14-client-overview-modal` | 1 | Fix zero Income/Expense/Net in the client "eye" overview (pass page-computed totals); fix Edit-from-overview closing without opening | ⏳ |
-| 15 | `feat/ux2-15-quotation-toast-deeplink` | 4 | Quotation quick-add toast → `/quotations?view=<id>` (specific quote, not the list) | ⏳ |
-| 16 | `feat/ux2-16-files-modal-race` | 5 | Fix file-detail modal opening-then-closing on the files page (single history mechanism) | ⏳ |
-| 17 | `feat/ux2-17-budget-detail-and-card` | 2, 9 | Budget view/set/edit section on the client detail page; explicit edit affordance on the client-list card budget | ⏳ |
-| 18 | `feat/ux2-18-own-company-budget-noclose` | 7 | Own-company budget card on the business dashboard; own (`is_own`) client never closable (UI + server guard) | ⏳ |
-| 19 | `feat/ux2-19-wealth-health-dots` | 8 | Dashboard wealth: health dot on Total available (green/yellow/red) + per-account negative = red text + red dot | ⏳ |
-| 20 | `feat/ux2-20-overlay-advanced` | 6 | Collapsible "Advanced" section in the + overlay (client + quotation) revealing all create fields, animated | ⏳ |
-| 21 | `feat/ux2-21-inplace-updates` | 3 | After a tx add (client page + FAB from dashboard/analytics), update budgets + income/expense/net + wealth in place, no reload | ⏳ |
+| 14 | `feat/ux2-14-client-overview-modal` | 1 | Fix zero Income/Expense/Net in the client "eye" overview (pass page-computed totals); fix Edit-from-overview closing without opening | ✅ |
+| 15 | `feat/ux2-15-quotation-toast-deeplink` | 4 | Quotation quick-add toast → `/quotations?view=<id>` (specific quote, not the list) | ✅ |
+| 16 | `feat/ux2-16-files-modal-race` | 5 | Fix file-detail modal opening-then-closing on the files page (single history mechanism) | ✅ |
+| 17 | `feat/ux2-17-budget-detail-and-card` | 2, 9 | Budget view/set/edit section on the client detail page; explicit edit affordance on the client-list card budget | ✅ |
+| 18 | `feat/ux2-18-own-company-budget-noclose` | 7 | Own-company budget card on the business dashboard; own (`is_own`) client never closable (UI + server guard) | ✅ |
+| 19 | `feat/ux2-19-wealth-health-dots` | 8 | Dashboard wealth: health dot on Total available (green/yellow/red) + per-account negative = red text + red dot | ✅ |
+| 20 | `feat/ux2-20-overlay-advanced` | 6 | Collapsible "Advanced" section in the + overlay (client + quotation) revealing all create fields, animated | ✅ |
+| 21 | `feat/ux2-21-inplace-updates` | 3 | After a tx add (client page + FAB from dashboard/analytics), update budgets + income/expense/net + wealth in place, no reload | ✅ |
 
 Order rationale: low-risk verifiable wins first (14–16), budget UI (17–18) before the
 cross-cutting in-place-refresh (21) which depends on the budget section existing.
@@ -152,3 +152,24 @@ cross-cutting in-place-refresh (21) which depends on the budget section existing
 ## Change log
 - 2026-06-09: plan created on `feat/ux2-13-plan`; research (10 agents) + adversarial
   in-browser verification done; items 5 and 9 reclassified from "no-op" to real fixes.
+- 2026-06-09: **all 9 items shipped** across branches 14–21, each gate-green and pushed,
+  Playwright-verified (desktop + mobile where relevant). Notes:
+  - Item 1b's modal-handoff race got a reusable fix: `dropModalBackEntry()` in
+    `use-back-close.ts` (the plain-modal analogue of `useUrlModal.close({replace})`),
+    applied to both the overview→edit and the tx view→edit handoffs.
+  - Item 5 fixed via `useUrlModal('file')` + a new `disableBackClose` passthrough on
+    `AttachmentDetailModal` (single history owner). Verified open-stays + Back-closes +
+    deep-link on mobile.
+  - Item 3 uses a new `DataRefreshProvider` (`src/lib/data-refresh-context.tsx`); the FAB's
+    `onTxCreated` bumps it and Dashboard/Analytics silently refetch. **Note the file is
+    named `*-context.tsx` on purpose** — the eslint `react-refresh/only-export-components`
+    override exempts `**/*-context.tsx` (Provider+hook colocation); other names warn.
+  - ⚠️ **Verification gotcha (learned):** driving the AddTransactionDialog via raw
+    `input.value` setters + programmatic clicks can trigger the AccountSelector's
+    "adjust-by-balance" path and create stray *Balance Adjustment* txns; and deleting test
+    txns by **direct DB DELETE does NOT reverse wealth balances**. Both happened during
+    item-3 verification. Cleanup: deleted the test rows and **recomputed every account's
+    `current_balance` from its ledger** (`SUM(incoming) - SUM(outgoing)` over non-deleted
+    txns) — which also healed a pre-existing 12.50 drift. All accounts reconcile (drift 0).
+    For future DB cleanup of transactions, reverse the balance effect (or recompute) — or
+    delete through the API.

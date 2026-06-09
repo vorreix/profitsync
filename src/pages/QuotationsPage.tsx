@@ -10,6 +10,7 @@ import { useOrg } from "@/lib/org-context"
 import { canDeleteRole } from "@/lib/roles"
 import { useMultiSelect } from "@/lib/use-multi-select"
 import { useLongPress } from "@/lib/use-long-press"
+import { dropModalBackEntry } from "@/hooks/use-back-close"
 import { BulkActionBar } from "@/components/BulkActionBar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -966,6 +967,10 @@ export function QuotationsPage() {
 
               <DialogFooter>
                 <Button variant="outline" onClick={() => {
+                  // Neutralize the view modal's back-entry first so closing it doesn't
+                  // fire a history.back() popstate that the edit dialog's useBackClose
+                  // catches and slams shut (same race as the client overview→edit fix).
+                  dropModalBackEntry()
                   setViewTarget(null)
                   setForm({ title: viewTarget.title, prospect_name: viewTarget.prospect_name, company: viewTarget.company, email: viewTarget.email, phone: viewTarget.phone, amount: viewTarget.amount, date: viewTarget.date ?? todayIso(), status: viewTarget.status, notes: viewTarget.notes, category: viewTarget.category ?? "" })
                   setEditTarget(viewTarget)
