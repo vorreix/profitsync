@@ -16,6 +16,7 @@ import { AttachmentDetailModal, type AttachmentModalItem } from "@/components/At
 import { AuditHistory } from "@/components/AuditHistory"
 import { useCurrency } from "@/lib/currency-context"
 import { apiGet, clearApiCache } from "@/lib/api"
+import { dropModalBackEntry } from "@/hooks/use-back-close"
 import {
   ACCEPT_ATTR,
   attachmentsListPath,
@@ -42,6 +43,8 @@ export function ClientOverviewModal({
   canModify,
   canRemove,
   onFiles,
+  totalIncoming,
+  totalOutgoing,
 }: {
   client: Client | null
   open: boolean
@@ -50,6 +53,11 @@ export function ClientOverviewModal({
   canModify: boolean
   canRemove: boolean
   onFiles?: () => void
+  // Totals computed by the page from the loaded transactions — the client detail
+  // GET does not aggregate these (only the list endpoint does), so passing them in
+  // keeps the summary accurate instead of always showing zero.
+  totalIncoming?: number
+  totalOutgoing?: number
 }) {
   const { t } = useTranslation()
   const { getToken } = useAuth()
@@ -85,8 +93,8 @@ export function ClientOverviewModal({
 
   if (!client) return null
 
-  const incoming = Number(client.total_incoming ?? 0)
-  const outgoing = Number(client.total_outgoing ?? 0)
+  const incoming = totalIncoming ?? Number(client.total_incoming ?? 0)
+  const outgoing = totalOutgoing ?? Number(client.total_outgoing ?? 0)
   const profit = incoming - outgoing
 
   async function onUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -210,7 +218,7 @@ export function ClientOverviewModal({
                   <FolderOpen className="size-4" /> All files
                 </Button>
               )}
-              <Button size="sm" className="ml-auto" onClick={() => { onOpenChange(false); onEdit() }}>
+              <Button size="sm" className="ml-auto" onClick={() => { dropModalBackEntry(); onOpenChange(false); onEdit() }}>
                 <Pencil className="size-4" /> {t("categories.edit", { defaultValue: "Edit" })}
               </Button>
             </div>

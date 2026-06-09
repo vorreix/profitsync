@@ -13,6 +13,7 @@ import { CategoryPicker } from "@/components/CategoryPicker"
 import { ClientOverviewModal } from "@/components/ClientOverviewModal"
 import { AttachmentBadge } from "@/components/AttachmentBadge"
 import { AttachmentDetailModal, type AttachmentModalItem } from "@/components/AttachmentDetailModal"
+import { dropModalBackEntry } from "@/hooks/use-back-close"
 import { AuditHistory } from "@/components/AuditHistory"
 import { FilterSheet, FilterSection } from "@/components/filters/FilterSheet"
 import { ACCEPT_ATTR, attachmentsListPath, uploadAttachment, validateFile } from "@/lib/attachments-client"
@@ -719,7 +720,7 @@ export function ClientDetailPage() {
                 </div>
               </div>
               <DialogFooter>
-                <Button variant="outline" onClick={() => { const tx = viewTx; setViewTx(null); setEditTxForm({ id: tx.id, type: tx.type, allocations: [{ account_id: tx.wealth_account_id ?? defaultAccountId(accounts), amount: String(tx.amount) }], description: tx.description, category: tx.category, date: tx.date }); setEditTxDialogOpen(true) }}>
+                <Button variant="outline" onClick={() => { const tx = viewTx; dropModalBackEntry(); setViewTx(null); setEditTxForm({ id: tx.id, type: tx.type, allocations: [{ account_id: tx.wealth_account_id ?? defaultAccountId(accounts), amount: String(tx.amount) }], description: tx.description, category: tx.category, date: tx.date }); setEditTxDialogOpen(true) }}>
                   <Pencil className="size-3.5" /> Edit
                 </Button>
                 <Button onClick={() => setViewTx(null)}>Close</Button>
@@ -747,6 +748,8 @@ export function ClientDetailPage() {
         canModify={canModify}
         canRemove={canRemove}
         onFiles={id ? () => navigate(`/clients/${id}/files`) : undefined}
+        totalIncoming={totalIncoming}
+        totalOutgoing={totalOutgoing}
       />
     </div>
   )
