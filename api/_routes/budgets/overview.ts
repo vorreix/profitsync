@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { eq } from "drizzle-orm"
+import { and, eq, isNull } from "drizzle-orm"
 import { db } from "../../../src/lib/db/index.js"
 import { budgets, budgetHistory, clients } from "../../../src/lib/db/schema.js"
 import { requireAuth, isPersonalAccount } from "../../_lib/auth.js"
@@ -22,7 +22,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const [rows, clientRows, historyRows, byClient] = await Promise.all([
     db.select().from(budgets).where(eq(budgets.organizationId, orgId)),
-    db.select({ id: clients.id, name: clients.name, isOwn: clients.isOwn }).from(clients).where(eq(clients.organizationId, orgId)),
+    db.select({ id: clients.id, name: clients.name, isOwn: clients.isOwn }).from(clients).where(and(eq(clients.organizationId, orgId), isNull(clients.deletedAt))),
     db.select().from(budgetHistory).where(eq(budgetHistory.organizationId, orgId)),
     outgoingByClient(orgId, now),
   ])
@@ -74,7 +74,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ratio,
       creep_flagged: creep.flagged,
     }
-  })
+  // Drop budgets whose client was soft-deleted (trashed) — they aren't in nameById.
+  }).filter((b) => !b.client_id || nameById.has(b.client_id))
 
   // Cross-budget aggregate — over budgets that have a real spend number + amount.
   const tracked = out.filter((b) => b.spent !== null && b.amount > 0)

@@ -56,6 +56,8 @@ export function BudgetDetailPage() {
   const [d, setD] = useState<Detail | null>(null)
   const [loading, setLoading] = useState(true)
   const [editOpen, setEditOpen] = useState(false)
+  // Respect reduced-motion: recharts doesn't honour it, so gate its animations.
+  const animate = !(typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches)
 
   const load = useCallback(async () => {
     try {
@@ -76,7 +78,7 @@ export function BudgetDetailPage() {
     new Date(start + "T00:00:00Z").toLocaleDateString(i18n.language, period === "monthly" ? { month: "short" } : { day: "numeric", month: "short" })
   const fmtDate = (s: string) => new Date(s).toLocaleDateString(i18n.language, { day: "numeric", month: "short", year: "numeric" })
 
-  const chartData = (d?.series ?? []).map((p) => ({ ...p, label: fmtPeriodLabel(p.start, d!.current?.period ?? "monthly") }))
+  const chartData = (d?.series ?? []).map((p) => ({ ...p, label: fmtPeriodLabel(p.start, d?.current?.period ?? "monthly") }))
   const chartConfig: ChartConfig = {
     spent: { label: t("budgetsPage.spent") },
     budget: { label: t("budget.title", { defaultValue: "Budget" }) },
@@ -133,10 +135,10 @@ export function BudgetDetailPage() {
                   <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={6} fontSize={11} />
                   <YAxis hide />
                   <ChartTooltip content={<ChartTooltipContent />} />
-                  <Bar dataKey="spent" radius={4} isAnimationActive>
+                  <Bar dataKey="spent" radius={4} isAnimationActive={animate}>
                     {chartData.map((p) => <Cell key={p.start} fill={BAR[p.state]} />)}
                   </Bar>
-                  <Line dataKey="budget" stroke={BUDGET_LINE} strokeWidth={2} strokeDasharray="4 4" dot={false} isAnimationActive />
+                  <Line dataKey="budget" stroke={BUDGET_LINE} strokeWidth={2} strokeDasharray="4 4" dot={false} isAnimationActive={animate} />
                 </ComposedChart>
               </ChartContainer>
 
