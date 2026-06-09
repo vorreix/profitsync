@@ -951,7 +951,10 @@
     "dragHandle": "Zum Sortieren oder Überweisen ziehen",
     "reorder": "Sortieren",
     "holdToTransfer": "Zum Überweisen halten",
-    "selectAccount": "Konto auswählen"
+    "selectAccount": "Konto auswählen",
+    "healthGood": "Alles gut — alle Salden positiv",
+    "healthWarn": "Achtung — ein Konto ist negativ",
+    "healthNegative": "Gesamtsaldo ist negativ"
   },
   "errorBoundary": {
     "title": "Etwas ist schiefgelaufen",

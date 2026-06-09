@@ -383,6 +383,19 @@ function WealthOverview({
   // Glides account tiles into place when one is added, removed, or reordered.
   const [gridRef] = useAutoAnimate<HTMLDivElement>()
 
+  // At-a-glance wealth health (data-driven, no arbitrary thresholds): red when the
+  // total is in the red; amber when the total is positive but an account is
+  // overdrawn; green when everything's positive. Hidden under the privacy toggle so
+  // a coloured dot never leaks the sign of a masked balance.
+  const anyAccountNegative = active.some((a) => Number(a.current_balance) < 0)
+  const health: "good" | "warn" | "negative" =
+    total < 0 ? "negative" : anyAccountNegative ? "warn" : "good"
+  const HEALTH = {
+    good: { dot: "bg-emerald-500", label: t("wealth.healthGood") },
+    warn: { dot: "bg-amber-500", label: t("wealth.healthWarn") },
+    negative: { dot: "bg-red-500", label: t("wealth.healthNegative") },
+  }[health]
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
@@ -438,8 +451,16 @@ function WealthOverview({
               />
               <div className="relative flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                  <p className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                     {t("wealth.totalAvailable")}
+                    {balancesVisible && (
+                      <span
+                        role="img"
+                        aria-label={HEALTH.label}
+                        title={HEALTH.label}
+                        className={`size-2 shrink-0 rounded-full ${HEALTH.dot}`}
+                      />
+                    )}
                   </p>
                   <FitText className="mt-1" textClassName="text-2xl sm:text-3xl font-bold tabular-nums">
                     {formatMoney(total, currency, balancesVisible)}
@@ -478,7 +499,13 @@ function WealthOverview({
             >
               <div className="overflow-hidden">
                 <div ref={gridRef} className="grid gap-2.5 pt-3 sm:grid-cols-2 lg:grid-cols-3">
-                  {active.map((account) => (
+                  {active.map((account) => {
+                    // A negative (overdrawn) balance is flagged in red with a red dot
+                    // — but only when balances are visible, so privacy mode never
+                    // leaks the sign through colour.
+                    const negative = Number(account.current_balance) < 0
+                    const flagNegative = negative && balancesVisible
+                    return (
                     <button
                       key={account.id}
                       type="button"
@@ -493,13 +520,15 @@ function WealthOverview({
                         </p>
                       </div>
                       <div className="flex shrink-0 items-center gap-1">
-                        <span className="text-sm font-semibold tabular-nums">
+                        {flagNegative && <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-red-500" />}
+                        <span className={`text-sm font-semibold tabular-nums ${flagNegative ? "text-red-600 dark:text-red-400" : ""}`}>
                           {formatMoney(Number(account.current_balance), currency, balancesVisible)}
                         </span>
                         <ChevronRight className="size-4 text-muted-foreground transition-transform duration-200 group-hover:translate-x-0.5" />
                       </div>
                     </button>
-                  ))}
+                    )
+                  })}
                 </div>
               </div>
             </div>
