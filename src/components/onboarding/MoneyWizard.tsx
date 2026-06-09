@@ -9,6 +9,7 @@ import { getCurrencySymbol } from "@/lib/currencies"
 import type { AccountType, Client, WealthAccount } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { BankNameCombobox } from "@/components/wealth/BankNameCombobox"
 
 const PERIOD_KEY: Record<BudgetPeriod, string> = {
   lifetime: "budget.lifetime",
@@ -95,6 +96,8 @@ export function MoneyWizard({
   const [cash, setCash] = useState("")
   const [bankName, setBankName] = useState("")
   const [bankBalance, setBankBalance] = useState("")
+  const [bankDomain, setBankDomain] = useState("")
+  const [bankLogo, setBankLogo] = useState("")
   const [personalAmt, setPersonalAmt] = useState("")
   const [personalPeriod, setPersonalPeriod] = useState<BudgetPeriod>("monthly")
   const [companyAmt, setCompanyAmt] = useState("")
@@ -149,7 +152,12 @@ export function MoneyWizard({
       }
       if (bankName.trim()) {
         tasks.push(apiPost("/api/wealth/accounts", token, {
-          type: "bank", bank_name: bankName.trim(), opening_balance: num(bankBalance) ?? 0,
+          type: "bank",
+          bank_name: bankName.trim(),
+          opening_balance: num(bankBalance) ?? 0,
+          // From the bank-name autocomplete pick — the server stores the logo.
+          ...(bankDomain ? { brand_domain: bankDomain } : {}),
+          ...(bankLogo ? { logo_url: bankLogo } : {}),
         }).catch(() => {}))
       }
       const addBudget = (clientId: string | null, amt: string, period: BudgetPeriod) => {
@@ -202,8 +210,12 @@ export function MoneyWizard({
             <div className="mx-auto flex size-14 items-center justify-center rounded-2xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
               <Wallet className="size-7" />
             </div>
-            <h1 className="mt-4 text-xl font-semibold tracking-tight sm:text-2xl">{t("onboarding.cashQuestion")}</h1>
-            <p className="mt-1 text-sm text-muted-foreground">{t("onboarding.balanceInHandHint")}</p>
+            <h1 className="mt-4 text-xl font-semibold tracking-tight sm:text-2xl">
+              {isBusiness ? t("onboarding.cashQuestionBusiness") : t("onboarding.cashQuestion")}
+            </h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {isBusiness ? t("onboarding.cashHintBusiness") : t("onboarding.balanceInHandHint")}
+            </p>
             <div className="mx-auto mt-6 max-w-xs">
               <AmountField value={cash} onChange={setCash} symbol={symbol} autoFocus big />
             </div>
@@ -220,7 +232,19 @@ export function MoneyWizard({
             <div className="mx-auto mt-6 max-w-xs space-y-3 text-left">
               <div className="space-y-1.5">
                 <label htmlFor="mw-bank-name" className="text-xs font-medium">{t("onboarding.bankNameLabel")}</label>
-                <Input id="mw-bank-name" value={bankName} autoFocus onChange={(e) => setBankName(e.target.value)} className="h-11" />
+                <div className="flex items-center gap-2">
+                  {bankLogo && (
+                    <img src={bankLogo} alt="" className="size-9 shrink-0 rounded-md border bg-card object-contain p-0.5" onError={(e) => { e.currentTarget.style.display = "none" }} />
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <BankNameCombobox
+                      value={bankName}
+                      autoFocus
+                      onChange={(v) => { setBankName(v); if (!v) { setBankDomain(""); setBankLogo("") } }}
+                      onSelectBrand={(b) => { setBankName(b.name); setBankDomain(b.domain); setBankLogo(b.logoUrl) }}
+                    />
+                  </div>
+                </div>
               </div>
               <div className="space-y-1.5">
                 <label htmlFor="mw-bank-balance" className="text-xs font-medium">{t("onboarding.bankBalanceLabel")}</label>

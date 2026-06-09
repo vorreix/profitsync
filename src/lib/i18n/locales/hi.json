@@ -232,7 +232,11 @@
     "budgetQuestionBusiness": "अपनी कंपनी के लिए बजट सेट करें?",
     "budgetHint": "वैकल्पिक — आप इसे कभी भी बदल सकते हैं।",
     "addDefaultBudget": "नए क्लाइंट के लिए डिफ़ॉल्ट भी सेट करें",
-    "finish": "समाप्त"
+    "finish": "समाप्त",
+    "cashQuestionBusiness": "व्यवसाय के पास कितनी नकदी उपलब्ध है?",
+    "cashHintBusiness": "आपकी कंपनी की नकदी।",
+    "newOrgTitle": "नई कंपनी बनाएं",
+    "newOrgSubtitle": "नाम दें और मुद्रा चुनें — आप इन्हें बाद में बदल सकते हैं।"
   },
   "transactions": {
     "add": "जोड़ें",

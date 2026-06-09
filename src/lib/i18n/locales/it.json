@@ -232,7 +232,11 @@
     "budgetQuestionBusiness": "Imposti un budget per la tua azienda?",
     "budgetHint": "Facoltativo — puoi cambiarlo in qualsiasi momento.",
     "addDefaultBudget": "Imposta anche un predefinito per i nuovi clienti",
-    "finish": "Fine"
+    "finish": "Fine",
+    "cashQuestionBusiness": "Quanto contante ha l'azienda a disposizione?",
+    "cashHintBusiness": "Il contante della tua azienda.",
+    "newOrgTitle": "Crea una nuova azienda",
+    "newOrgSubtitle": "Dai un nome e scegli una valuta — puoi cambiarli in seguito."
   },
   "transactions": {
     "add": "Aggiungi",

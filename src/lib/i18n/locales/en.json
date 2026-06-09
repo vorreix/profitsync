@@ -439,7 +439,11 @@
     "budgetQuestionBusiness": "Set a budget for your company?",
     "budgetHint": "Optional — you can change this anytime.",
     "addDefaultBudget": "Also set a default for new clients",
-    "finish": "Finish"
+    "finish": "Finish",
+    "cashQuestionBusiness": "How much cash does the business have on hand?",
+    "cashHintBusiness": "Your company's cash on hand.",
+    "newOrgTitle": "Create a new company",
+    "newOrgSubtitle": "Name it and pick a currency — you can change these later."
   },
   "transactions": {
     "add": "Add",
