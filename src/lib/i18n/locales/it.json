@@ -141,7 +141,8 @@
     "transactionDetails": "Dettagli transazione",
     "description": "Descrizione",
     "openTransaction": "Apri transazione",
-    "openClient": "Apri cliente"
+    "openClient": "Apri cliente",
+    "ownCompanyBudget": "Budget aziendale"
   },
   "chart": {
     "incoming": "Entrate",
@@ -950,7 +951,10 @@
     "dragHandle": "Trascina per riordinare o trasferire",
     "reorder": "Riordina",
     "holdToTransfer": "Tieni premuto per trasferire",
-    "selectAccount": "Seleziona conto"
+    "selectAccount": "Seleziona conto",
+    "healthGood": "Tutto bene — saldi positivi",
+    "healthWarn": "Attenzione — un conto è negativo",
+    "healthNegative": "Il saldo totale è negativo"
   },
   "errorBoundary": {
     "title": "Qualcosa è andato storto",
@@ -961,7 +965,8 @@
     "viewAction": "Vedi",
     "clientCreated": "Cliente “{{name}}” aggiunto",
     "transactionCreated": "{{label}} di {{amount}} aggiunta",
-    "quotationCreated": "Preventivo “{{title}}” aggiunto"
+    "quotationCreated": "Preventivo “{{title}}” aggiunto",
+    "advanced": "Avanzate"
   },
   "budget": {
     "title": "Budget",
