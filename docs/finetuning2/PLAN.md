@@ -70,7 +70,7 @@ earlier work. Root is `feat/ux2-00-plan` off `dev`.
 | 05 | `feat/ux2-05-quick-add-toast` | 4 | Global quick-add over current page + success toast "Click to see"; Back returns to origin | no | ✅ pushed (Playwright-verified) |
 | 06 | `feat/ux2-06-budgets` | 6 | `budgets` table + API + `src/lib/budget.ts` + client-card, personal-dashboard & outgoing-tx indicators | **yes (0033)** | ✅ pushed (Playwright-verified) |
 | 07 | `feat/ux2-07-onboarding-wealth-budget` | 7 | Onboarding step: cash + bank accounts (plan-gated) + budgets; plan-based bank quota (free=1) | no (config-only) | ✅ pushed (Playwright-verified) |
-| 08 | `feat/ux2-08-docs-skill` | docs | Referral + budget + onboarding docs; subscription/payments skill refresh | no | ⬜ pending |
+| 08 | `feat/ux2-08-docs-skill` | docs | Budget doc + wave OVERVIEW; subscription/payments skill refresh (India + reconcile referral) | no | ✅ pushed |
 
 Ordering rationale: front-load verifiable, low-risk backend wins (referrals, payment),
 then the mechanical cross-cutting modal primitive, then small UX (invite), medium UX
@@ -347,3 +347,21 @@ must not block completion on failure.
 
 - _(wave start)_ — Recon complete; research workflow launched; chain-root branch
   `feat/ux2-00-plan` created off `dev`; this plan committed.
+- **01** referrals — credit on the reconcile path (not only the webhook); idempotent;
+  `docs/referrals/REFERRALS.md`. DB-test verified.
+- **02** India payment — `billing_currency` from billing country + full address into the
+  Dodo checkout; dashboard config documented (§11). Mapping locked by `currencies.test.ts`.
+- **03** modal back-close — `useBackClose`/`useModalBackClose` in the 4 shadcn Roots;
+  `disableBackClose` opt-out for URL modals. **Playwright-verified.** ⚠️ Correction logged:
+  the history entry MUST be pushed (the research agent's "don't touch history" was wrong).
+- **04** invitation — auto-accept on land for a matching signed-in email → dashboard, no
+  onboarding flash. typecheck + smoke verified.
+- **05** quick-add — `QuickAddModal` over the current page + success toast w/ "View".
+  **Playwright-verified** (toast captured via MutationObserver).
+- **06** budgets — `budgets` table (mig 0033), `src/lib/budget.ts` (+13 tests),
+  `api/_routes/budgets.ts`, indicator/dialog/personal-card, card + tx-form hints.
+  **Playwright-verified** (€500 budget → card bar; €600 expense → "€100 over").
+- **07** onboarding — step 2 (cash + bank + budgets); plan-based bank quota (free=1).
+  **Playwright-verified** (bank created via onboarding, DB-confirmed).
+- **08** docs/skill — `docs/budget/BUDGETS.md`, `docs/finetuning2/OVERVIEW.md`,
+  `subscription-system` skill refreshed (India + reconcile-referral notes).
