@@ -232,6 +232,13 @@
       "when": 1780943844193,
       "tag": "0032_overconfident_secret_warriors",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1780964093751,
+      "tag": "0033_perpetual_randall",
+      "breakpoints": true
     }
   ]
 }

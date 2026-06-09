@@ -3,104 +3,76 @@ import { useNavigate } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
-import { ArrowDownRight, ArrowUpRight, Loader as Loader2 } from "lucide-react"
-import { apiGet, apiPost } from "@/lib/api"
-import { useCurrency } from "@/lib/currency-context"
-import { useOrg } from "@/lib/org-context"
-import { accountDisplayName, formatMoney } from "@/lib/wealth"
-import { accountTypeAllows, type Client, type Quotation, type Transaction, type WealthAccount } from "@/lib/types"
+import { ChevronDown, Loader as Loader2 } from "lucide-react"
+import { apiPost } from "@/lib/api"
+import type { Client, Quotation } from "@/lib/types"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
-export type QuickAddEntity = "client" | "transaction" | "quotation"
+export type QuickAddEntity = "client" | "quotation"
 
 const todayStr = () => new Date().toISOString().split("T")[0]
 
 /**
- * A lightweight "quick add" overlay opened by the + FAB from ANY screen. It hosts
- * minimal create forms for a client / transaction / quotation, so the user creates
- * in place (no navigation away from the current page). On success it shows a toast
+ * A lightweight "quick add" overlay opened by the + FAB from ANY screen, for the
+ * simple entities (client / quotation). Transactions use the full shared
+ * AddTransactionDialog instead (splits, accounts, attachments, budgets) so the
+ * add-transaction experience is identical everywhere. On success it shows a toast
  * with the created item + a "View" deep link; pressing Back after View returns to
  * the page the user was on. Back while the modal is open just closes it (the Dialog
- * wrapper's useModalBackClose). Power features (splits, attachments) stay on the
- * full section pages.
+ * wrapper's useModalBackClose).
+ *
+ * Each form starts minimal (just the essentials) but a collapsible "Advanced"
+ * section reveals every field the full create form has — so power users never have
+ * to leave the overlay, while the common path stays a two-field affair.
  */
 export function QuickAddModal({ entity, onClose }: { entity: QuickAddEntity | null; onClose: () => void }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const { getToken } = useAuth()
-  const { currency } = useCurrency()
-  const { activeOrg } = useOrg()
-  const accountType = activeOrg?.account_type
-  const isBusiness = accountTypeAllows(accountType, "clients")
 
   const [submitting, setSubmitting] = useState(false)
+  const [advancedOpen, setAdvancedOpen] = useState(false)
 
   // Client form
   const [clientName, setClientName] = useState("")
   const [clientCompany, setClientCompany] = useState("")
   const [clientEmail, setClientEmail] = useState("")
-
-  // Transaction form
-  const [txType, setTxType] = useState<"incoming" | "outgoing">("outgoing")
-  const [txAmount, setTxAmount] = useState("")
-  const [txAccountId, setTxAccountId] = useState("")
-  const [txClientId, setTxClientId] = useState("")
-  const [txCategory, setTxCategory] = useState("")
-  const [txDate, setTxDate] = useState(todayStr)
-  const [accounts, setAccounts] = useState<WealthAccount[]>([])
-  const [clients, setClients] = useState<Client[]>([])
+  const [clientPhone, setClientPhone] = useState("")
+  const [clientStatus, setClientStatus] = useState<"active" | "inactive">("active")
+  const [clientOnboard, setClientOnboard] = useState(todayStr)
+  const [clientCategory, setClientCategory] = useState("")
+  const [clientNotes, setClientNotes] = useState("")
 
   // Quotation form
   const [qTitle, setQTitle] = useState("")
   const [qProspect, setQProspect] = useState("")
   const [qAmount, setQAmount] = useState("")
   const [qDate, setQDate] = useState(todayStr)
+  const [qCompany, setQCompany] = useState("")
+  const [qEmail, setQEmail] = useState("")
+  const [qPhone, setQPhone] = useState("")
+  const [qStatus, setQStatus] = useState<"draft" | "sent" | "accepted" | "rejected">("draft")
+  const [qCategory, setQCategory] = useState("")
+  const [qNotes, setQNotes] = useState("")
 
   // Reset all fields whenever the modal (re)opens for a given entity.
   useEffect(() => {
     if (!entity) return
     setSubmitting(false)
+    setAdvancedOpen(false)
     setClientName(""); setClientCompany(""); setClientEmail("")
-    setTxType("outgoing"); setTxAmount(""); setTxCategory(""); setTxDate(todayStr())
+    setClientPhone(""); setClientStatus("active"); setClientOnboard(todayStr()); setClientCategory(""); setClientNotes("")
     setQTitle(""); setQProspect(""); setQAmount(""); setQDate(todayStr())
+    setQCompany(""); setQEmail(""); setQPhone(""); setQStatus("draft"); setQCategory(""); setQNotes("")
   }, [entity])
-
-  // The transaction form needs the org's accounts (+ clients for business). Fetch
-  // them lazily when that form opens.
-  useEffect(() => {
-    if (entity !== "transaction") return
-    let cancelled = false
-    ;(async () => {
-      const token = await getToken()
-      if (!token) return
-      try {
-        const [accs, cls] = await Promise.all([
-          apiGet<WealthAccount[]>("/api/wealth/accounts", token),
-          isBusiness ? apiGet<Client[] | { data: Client[] }>("/api/clients", token) : Promise.resolve([]),
-        ])
-        if (cancelled) return
-        const active = (accs || []).filter((a) => !a.archived_at)
-        setAccounts(active)
-        // Default to the first account (Cash in Hand is provisioned first).
-        setTxAccountId((prev) => prev || active[0]?.id || "")
-        const clientList = Array.isArray(cls) ? cls : (cls?.data ?? [])
-        setClients(clientList)
-        // Default to the own/first client so a business user can submit fast.
-        setTxClientId((prev) => prev || clientList.find((c) => c.is_own)?.id || clientList[0]?.id || "")
-      } catch {
-        /* best-effort; the user can still try to submit and see the API error */
-      }
-    })()
-    return () => { cancelled = true }
-  }, [entity, isBusiness, getToken])
 
   const title = useMemo(() => {
     if (entity === "client") return t("actions.addClient")
-    if (entity === "transaction") return t("actions.addTransaction")
     if (entity === "quotation") return t("actions.createQuotation")
     return ""
   }, [entity, t])
@@ -108,13 +80,9 @@ export function QuickAddModal({ entity, onClose }: { entity: QuickAddEntity | nu
   const canSubmit = useMemo(() => {
     if (submitting) return false
     if (entity === "client") return clientName.trim().length > 0
-    if (entity === "transaction") {
-      const amt = Number(txAmount)
-      return Number.isFinite(amt) && amt > 0 && !!txAccountId && (!isBusiness || !!txClientId)
-    }
     if (entity === "quotation") return qTitle.trim().length > 0 && qProspect.trim().length > 0
     return false
-  }, [entity, submitting, clientName, txAmount, txAccountId, txClientId, isBusiness, qTitle, qProspect])
+  }, [entity, submitting, clientName, qTitle, qProspect])
 
   // Show a success toast with a "View" action that deep-links to the new item, then
   // close. navigate pushes a fresh entry over the origin page, so Back returns here.
@@ -135,31 +103,27 @@ export function QuickAddModal({ entity, onClose }: { entity: QuickAddEntity | nu
           name: clientName.trim(),
           company: clientCompany.trim() || undefined,
           email: clientEmail.trim() || undefined,
+          phone: clientPhone.trim() || undefined,
+          status: clientStatus,
+          notes: clientNotes.trim() || undefined,
+          category: clientCategory.trim() || undefined,
+          onboard_date: clientOnboard || undefined,
         })
         successToast(t("quickAdd.clientCreated", { name: created.name }), `/clients/${created.id}`)
-      } else if (entity === "transaction") {
-        const amt = Number(txAmount)
-        const created = await apiPost<Transaction>("/api/transactions", token, {
-          client_id: isBusiness ? txClientId : undefined,
-          type: txType,
-          amount: amt,
-          wealth_account_id: txAccountId,
-          category: txCategory.trim() || undefined,
-          date: txDate || todayStr(),
-        })
-        const label = txType === "incoming" ? t("transactions.income") : t("transactions.expense")
-        successToast(
-          t("quickAdd.transactionCreated", { label, amount: formatMoney(amt, currency) }),
-          `/transactions?view=${created.id}`,
-        )
       } else if (entity === "quotation") {
         const created = await apiPost<Quotation>("/api/quotations", token, {
           title: qTitle.trim(),
           prospect_name: qProspect.trim(),
           amount: qAmount ? Number(qAmount) : undefined,
           date: qDate || todayStr(),
+          company: qCompany.trim() || undefined,
+          email: qEmail.trim() || undefined,
+          phone: qPhone.trim() || undefined,
+          status: qStatus,
+          notes: qNotes.trim() || undefined,
+          category: qCategory.trim() || undefined,
         })
-        successToast(t("quickAdd.quotationCreated", { title: created.title }), "/quotations")
+        successToast(t("quickAdd.quotationCreated", { title: created.title }), `/quotations?view=${created.id}`)
       }
       onClose()
     } catch (err) {
@@ -169,15 +133,40 @@ export function QuickAddModal({ entity, onClose }: { entity: QuickAddEntity | nu
     }
   }
 
+  // The expand/collapse uses the grid 0fr→1fr trick (animates on the compositor, no
+  // reflow) with an inner overflow-hidden; reduced-motion users get an instant snap.
+  const advancedSection = (children: React.ReactNode) => (
+    <>
+      <button
+        type="button"
+        onClick={() => setAdvancedOpen((o) => !o)}
+        aria-expanded={advancedOpen}
+        className="flex items-center gap-1 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+      >
+        <ChevronDown className={`size-4 transition-transform duration-200 motion-reduce:transition-none ${advancedOpen ? "rotate-180" : ""}`} />
+        {t("quickAdd.advanced")}
+      </button>
+      <div
+        className="grid transition-[grid-template-rows] duration-300 ease-out motion-reduce:transition-none"
+        style={{ gridTemplateRows: advancedOpen ? "1fr" : "0fr" }}
+      >
+        <div className="overflow-hidden">
+          <div className="space-y-3 pt-1">{children}</div>
+        </div>
+      </div>
+    </>
+  )
+
   return (
     <Dialog open={entity !== null} onOpenChange={(o) => { if (!o) onClose() }}>
-      <DialogContent className="w-[92vw] max-w-md">
-        <DialogHeader>
+      <DialogContent className="flex max-h-[90svh] w-[92vw] max-w-md flex-col gap-0 overflow-hidden p-0">
+        <DialogHeader className="shrink-0 border-b px-6 pb-3 pt-6">
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
 
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto scrollbar-thin px-6 py-4">
         {entity === "client" && (
-          <div className="space-y-3">
+          <>
             <div className="space-y-1.5">
               <Label htmlFor="qa-client-name">{t("clients.nameField")}</Label>
               <Input id="qa-client-name" value={clientName} autoFocus
@@ -195,78 +184,45 @@ export function QuickAddModal({ entity, onClose }: { entity: QuickAddEntity | nu
                   onChange={(e) => setClientEmail(e.target.value)} className="h-11" />
               </div>
             </div>
-          </div>
-        )}
-
-        {entity === "transaction" && (
-          <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-2">
-              {(["incoming", "outgoing"] as const).map((type) => (
-                <button
-                  key={type}
-                  type="button"
-                  onClick={() => setTxType(type)}
-                  className={`flex items-center justify-center gap-1.5 rounded-lg border py-2.5 text-sm font-medium transition-colors ${
-                    txType === type
-                      ? type === "incoming"
-                        ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
-                        : "border-red-500/50 bg-red-500/10 text-red-700 dark:text-red-300"
-                      : "border-border text-muted-foreground hover:bg-accent"
-                  }`}
-                >
-                  {type === "incoming" ? <ArrowUpRight className="size-4" /> : <ArrowDownRight className="size-4" />}
-                  {type === "incoming" ? t("transactions.income") : t("transactions.expense")}
-                </button>
-              ))}
-            </div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label htmlFor="qa-tx-amount">{t("transactions.amount")}</Label>
-                <Input id="qa-tx-amount" inputMode="decimal" value={txAmount} autoFocus
-                  onChange={(e) => setTxAmount(e.target.value)} placeholder="0.00" className="h-11" />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="qa-tx-date">{t("transactions.date")}</Label>
-                <Input id="qa-tx-date" type="date" value={txDate}
-                  onChange={(e) => setTxDate(e.target.value)} className="h-11" />
-              </div>
-            </div>
-            {isBusiness && (
-              <div className="space-y-1.5">
-                <Label>{t("transactions.client")}</Label>
-                <Select value={txClientId} onValueChange={setTxClientId}>
-                  <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {clients.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+            {advancedSection(
+              <>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="qa-client-phone">{t("clients.phoneField")}</Label>
+                    <Input id="qa-client-phone" value={clientPhone} onChange={(e) => setClientPhone(e.target.value)} className="h-11" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>{t("clients.statusField")}</Label>
+                    <Select value={clientStatus} onValueChange={(v) => setClientStatus(v as "active" | "inactive")}>
+                      <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="active">{t("clients.statusActive")}</SelectItem>
+                        <SelectItem value="inactive">{t("clients.statusInactive")}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="qa-client-onboard">{t("clients.onboardDateField")}</Label>
+                    <Input id="qa-client-onboard" type="date" value={clientOnboard} onChange={(e) => setClientOnboard(e.target.value)} className="h-11" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="qa-client-category">{t("filters.category")}</Label>
+                    <Input id="qa-client-category" value={clientCategory} onChange={(e) => setClientCategory(e.target.value)} className="h-11" />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="qa-client-notes">{t("clients.notesField")}</Label>
+                  <Textarea id="qa-client-notes" rows={2} className="resize-none" value={clientNotes} onChange={(e) => setClientNotes(e.target.value)} placeholder={t("clients.notesPlaceholder")} />
+                </div>
+              </>,
             )}
-            <div className="space-y-1.5">
-              <Label>{t("transactions.account")}</Label>
-              <Select value={txAccountId} onValueChange={setTxAccountId}>
-                <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {accounts.map((a) => (
-                    <SelectItem key={a.id} value={a.id}>
-                      {accountDisplayName(a)} · {formatMoney(a.current_balance, currency)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="qa-tx-category">{t("transactions.category")}</Label>
-              <Input id="qa-tx-category" value={txCategory}
-                onChange={(e) => setTxCategory(e.target.value)} className="h-11" />
-            </div>
-          </div>
+          </>
         )}
 
         {entity === "quotation" && (
-          <div className="space-y-3">
+          <>
             <div className="space-y-1.5">
               <Label htmlFor="qa-q-title">{t("quotations.titleLabel")}</Label>
               <Input id="qa-q-title" value={qTitle} autoFocus
@@ -289,10 +245,51 @@ export function QuickAddModal({ entity, onClose }: { entity: QuickAddEntity | nu
                   onChange={(e) => setQDate(e.target.value)} className="h-11" />
               </div>
             </div>
-          </div>
+            {advancedSection(
+              <>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="qa-q-company">{t("quotations.companyLabel")}</Label>
+                    <Input id="qa-q-company" value={qCompany} onChange={(e) => setQCompany(e.target.value)} className="h-11" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="qa-q-email">{t("quotations.emailLabel")}</Label>
+                    <Input id="qa-q-email" type="email" value={qEmail} onChange={(e) => setQEmail(e.target.value)} className="h-11" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="qa-q-phone">{t("quotations.phoneLabel")}</Label>
+                    <Input id="qa-q-phone" value={qPhone} onChange={(e) => setQPhone(e.target.value)} className="h-11" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>{t("quotations.statusLabel")}</Label>
+                    <Select value={qStatus} onValueChange={(v) => setQStatus(v as typeof qStatus)}>
+                      <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="draft">{t("quotations.statusDraft")}</SelectItem>
+                        <SelectItem value="sent">{t("quotations.statusSent")}</SelectItem>
+                        <SelectItem value="accepted">{t("quotations.statusAccepted")}</SelectItem>
+                        <SelectItem value="rejected">{t("quotations.statusRejected")}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="qa-q-category">{t("filters.category")}</Label>
+                  <Input id="qa-q-category" value={qCategory} onChange={(e) => setQCategory(e.target.value)} className="h-11" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="qa-q-notes">{t("quotations.notesLabel")}</Label>
+                  <Textarea id="qa-q-notes" rows={2} className="resize-none" value={qNotes} onChange={(e) => setQNotes(e.target.value)} />
+                </div>
+              </>,
+            )}
+          </>
         )}
+        </div>
 
-        <DialogFooter>
+        <DialogFooter className="shrink-0 border-t px-6 pb-6 pt-3">
           <Button variant="outline" onClick={onClose} disabled={submitting}>{t("common.cancel")}</Button>
           <Button onClick={submit} disabled={!canSubmit}>
             {submitting ? <Loader2 className="size-4 animate-spin" /> : title}

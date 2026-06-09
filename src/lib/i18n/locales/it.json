@@ -141,7 +141,8 @@
     "transactionDetails": "Dettagli transazione",
     "description": "Descrizione",
     "openTransaction": "Apri transazione",
-    "openClient": "Apri cliente"
+    "openClient": "Apri cliente",
+    "ownCompanyBudget": "Budget aziendale"
   },
   "chart": {
     "incoming": "Entrate",
@@ -213,7 +214,30 @@
     "maybeLater": "Lo farò più tardi",
     "freeIncluded": "Tutto ciò che ti serve per iniziare",
     "currencyLabel": "Valuta",
-    "currencyDetectedHint": "Potrai cambiarla in seguito"
+    "currencyDetectedHint": "Potrai cambiarla in seguito",
+    "setupMoneyTitle": "Configura le tue finanze",
+    "setupMoneySubtitle": "Aggiungi i saldi iniziali e i budget — tutto facoltativo, modificabile in qualsiasi momento.",
+    "balanceInHand": "Contante disponibile",
+    "balanceInHandHint": "Il contante che hai ora.",
+    "bankAccountTitle": "Conto bancario",
+    "bankNameLabel": "Nome della banca",
+    "bankBalanceLabel": "Saldo attuale",
+    "freeBankNote": "1 conto bancario nel piano Free — passa a Premium per illimitati.",
+    "budgetsTitle": "Budget",
+    "skipForNow": "Salta per ora",
+    "detailsTitle": "Qualche dettaglio",
+    "detailsSubtitle": "Un paio di impostazioni rapide — puoi cambiarle in seguito.",
+    "cashQuestion": "Quanto contante hai a disposizione?",
+    "bankQuestion": "Aggiungi il tuo conto bancario principale",
+    "budgetQuestionPersonal": "Imposti un budget di spesa?",
+    "budgetQuestionBusiness": "Imposti un budget per la tua azienda?",
+    "budgetHint": "Facoltativo — puoi cambiarlo in qualsiasi momento.",
+    "addDefaultBudget": "Imposta anche un predefinito per i nuovi clienti",
+    "finish": "Fine",
+    "cashQuestionBusiness": "Quanto contante ha l'azienda a disposizione?",
+    "cashHintBusiness": "Il contante della tua azienda.",
+    "newOrgTitle": "Crea una nuova azienda",
+    "newOrgSubtitle": "Dai un nome e scegli una valuta — puoi cambiarli in seguito."
   },
   "transactions": {
     "add": "Aggiungi",
@@ -927,7 +951,10 @@
     "dragHandle": "Trascina per riordinare o trasferire",
     "reorder": "Riordina",
     "holdToTransfer": "Tieni premuto per trasferire",
-    "selectAccount": "Seleziona conto"
+    "selectAccount": "Seleziona conto",
+    "healthGood": "Tutto bene — saldi positivi",
+    "healthWarn": "Attenzione — un conto è negativo",
+    "healthNegative": "Il saldo totale è negativo"
   },
   "errorBoundary": {
     "title": "Qualcosa è andato storto",
@@ -938,6 +965,32 @@
     "viewAction": "Vedi",
     "clientCreated": "Cliente “{{name}}” aggiunto",
     "transactionCreated": "{{label}} di {{amount}} aggiunta",
-    "quotationCreated": "Preventivo “{{title}}” aggiunto"
+    "quotationCreated": "Preventivo “{{title}}” aggiunto",
+    "advanced": "Avanzate"
+  },
+  "budget": {
+    "title": "Budget",
+    "set": "Imposta budget",
+    "edit": "Modifica budget",
+    "remove": "Rimuovi",
+    "amountLabel": "Importo budget",
+    "periodLabel": "Periodo",
+    "lifetime": "Sempre",
+    "monthly": "Mensile",
+    "weekly": "Settimanale",
+    "daily": "Giornaliero",
+    "spentOf": "{{spent}} di {{amount}}",
+    "left": "{{amount}} rimanenti",
+    "over": "{{amount}} in eccesso",
+    "noBudget": "Nessun budget impostato",
+    "personal": "Budget personale",
+    "default": "Predefinito per nuovi clienti",
+    "company": "Budget azienda",
+    "saved": "Budget salvato",
+    "removed": "Budget rimosso",
+    "saveFailed": "Impossibile salvare il budget",
+    "save": "Salva budget",
+    "remainingAfter": "{{amount}} rimanenti dopo questa spesa",
+    "overAfter": "{{amount}} oltre il budget dopo questa spesa"
   }
 }
