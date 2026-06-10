@@ -125,8 +125,10 @@ export function BudgetDetailPage() {
             </div>
           )}
 
-          {/* Spend vs budget chart + adherence */}
-          {d.has_series && chartData.length > 0 ? (
+          {/* Spend vs budget chart + adherence — only when a budget is actually set.
+              No budget → the card above already prompts to set one; template/lifetime
+              budgets keep the timeline but show a "no chart" note instead. */}
+          {d.current && d.has_series && chartData.length > 0 ? (
             <div className="rounded-xl border p-4 space-y-4">
               <p className="text-sm font-medium">{t("budgetsPage.spendVsBudget")}</p>
               <ChartContainer config={chartConfig} className="h-44 w-full">
@@ -161,9 +163,9 @@ export function BudgetDetailPage() {
                 </div>
               )}
             </div>
-          ) : (
+          ) : d.current ? (
             <p className="text-xs text-muted-foreground rounded-xl border border-dashed p-4 text-center">{t("budgetsPage.templateNoChart")}</p>
-          )}
+          ) : null}
 
           {/* Change timeline */}
           <div className="rounded-xl border p-4 space-y-3">
