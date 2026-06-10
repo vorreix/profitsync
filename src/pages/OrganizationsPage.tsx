@@ -3,10 +3,12 @@ import { useNavigate } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
-import { ArrowLeftRight, Building2, Check, Loader as Loader2, Pencil, Plus, Trash2, Users } from "lucide-react"
+import { ArrowLeftRight, Building2, Check, ImagePlus, Loader as Loader2, Pencil, Plus, Trash2, Users, X } from "lucide-react"
 import { apiDelete, apiPatch } from "@/lib/api"
 import { useOrg } from "@/lib/org-context"
+import { fileToResizedDataUrl } from "@/lib/image-upload"
 import { isPaidPlanKey, type Organization } from "@/lib/types"
+import { EntityAvatar } from "@/components/EntityAvatar"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -32,6 +34,8 @@ export function OrganizationsPage() {
   const [editTarget, setEditTarget] = useState<Organization | null>(null)
   const [editName, setEditName] = useState("")
   const [editCurrency, setEditCurrency] = useState("USD")
+  // Pending logo change: undefined = untouched, "" = remove, string = new base64.
+  const [editLogo, setEditLogo] = useState<string | undefined>(undefined)
   const [saving, setSaving] = useState(false)
 
   const [deleteTarget, setDeleteTarget] = useState<Organization | null>(null)
@@ -48,7 +52,8 @@ export function OrganizationsPage() {
     const trimmedName = editName.trim()
     const nameChanged = !editTarget.is_personal && trimmedName !== editTarget.name
     const currencyChanged = editCurrency !== editTarget.currency
-    if (!nameChanged && !currencyChanged) {
+    const logoChanged = editLogo !== undefined
+    if (!nameChanged && !currencyChanged && !logoChanged) {
       setEditTarget(null)
       return
     }
@@ -63,6 +68,7 @@ export function OrganizationsPage() {
       const body: Record<string, string> = {}
       if (nameChanged) body.name = trimmedName
       if (currencyChanged) body.currency = editCurrency
+      if (logoChanged) body.logo_data = editLogo ?? ""
       await apiPatch<Organization>(`/api/organizations/${editTarget.id}`, token, body)
       toast.success(t("organizations.organizationUpdated"))
       setEditTarget(null)
@@ -71,6 +77,15 @@ export function OrganizationsPage() {
       toast.error(err instanceof Error ? err.message : t("organizations.failedToSave"))
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handlePickLogo = async (file: File | undefined) => {
+    if (!file) return
+    try {
+      setEditLogo(await fileToResizedDataUrl(file))
+    } catch {
+      toast.error(t("organizations.logoInvalid"))
     }
   }
 
@@ -148,15 +163,13 @@ export function OrganizationsPage() {
                 <CardContent className="flex flex-1 flex-col p-4">
                   {/* Identity */}
                   <div className="flex items-start gap-3">
-                    <div
-                      className={`flex size-11 shrink-0 items-center justify-center rounded-xl border ${
-                        isActive
-                          ? "border-primary/30 bg-primary/10 text-primary"
-                          : "bg-muted text-muted-foreground"
-                      }`}
-                    >
-                      <Building2 className="size-5" />
-                    </div>
+                    <EntityAvatar
+                      name={org.name}
+                      src={org.logo_src}
+                      className={`size-11 text-base ${isActive ? "border-primary/30" : ""}`}
+                      rounded="rounded-xl"
+                      fallbackIcon={<Building2 className="size-5" />}
+                    />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 min-w-0">
                         <p className="font-semibold truncate">{org.name}</p>
@@ -225,6 +238,7 @@ export function OrganizationsPage() {
                             setEditTarget(org)
                             setEditName(org.name)
                             setEditCurrency(org.currency || "USD")
+                            setEditLogo(undefined)
                           }}
                         >
                           <Pencil className="size-4" />
@@ -256,6 +270,38 @@ export function OrganizationsPage() {
             <DialogTitle>{t("organizations.editOrganization")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
+            {/* Logo */}
+            <div className="space-y-1.5">
+              <Label>{t("organizations.logo")}</Label>
+              <div className="flex items-center gap-3">
+                <EntityAvatar
+                  name={editName || editTarget?.name || ""}
+                  src={editLogo !== undefined ? editLogo || null : editTarget?.logo_src}
+                  className="size-14 text-lg"
+                  rounded="rounded-xl"
+                  fallbackIcon={<Building2 className="size-6" />}
+                />
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button asChild size="sm" variant="outline" disabled={saving}>
+                    <label className="cursor-pointer">
+                      <ImagePlus className="size-4" /> {t("organizations.uploadLogo")}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="sr-only"
+                        onChange={(e) => { handlePickLogo(e.target.files?.[0]); e.target.value = "" }}
+                      />
+                    </label>
+                  </Button>
+                  {(editLogo !== undefined ? !!editLogo : !!editTarget?.logo_src) && (
+                    <Button size="sm" variant="ghost" className="text-muted-foreground" disabled={saving} onClick={() => setEditLogo("")}>
+                      <X className="size-4" /> {t("organizations.removeLogo")}
+                    </Button>
+                  )}
+                </div>
+              </div>
+              <p className="text-[11px] text-muted-foreground">{t("organizations.logoHint")}</p>
+            </div>
             <div className="space-y-1.5">
               <Label htmlFor="edit-org-name">{t("organizations.name")}</Label>
               <Input

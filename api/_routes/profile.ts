@@ -7,11 +7,24 @@ import { db, serialize } from "../../src/lib/db/index.js"
 import { userProfiles } from "../../src/lib/db/schema.js"
 import { ensurePersonalOrg, getUserId } from "../_lib/auth.js"
 import { attributeReferral } from "../_lib/referral.js"
+import { imageSrc, validateImageUpload } from "../_lib/image-upload.js"
 
 const VALID_CURRENCIES = new Set(CURRENCY_LIST.map((c) => c.code))
 const VALID_LANGUAGES = new Set(SUPPORTED_LANGUAGE_CODES)
 
 const clerk = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY! })
+
+// Replace the raw avatar columns with the `avatar_src` data URL the UI renders.
+function withAvatarSrc<T extends { avatarData?: unknown; avatarMime?: unknown }>(row: T) {
+  const { avatarData, avatarMime, ...rest } = row
+  return {
+    ...rest,
+    avatarSrc: imageSrc(
+      typeof avatarData === "string" ? avatarData : null,
+      typeof avatarMime === "string" ? avatarMime : null,
+    ),
+  }
+}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const userId = await getUserId(req)
@@ -40,7 +53,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .set({ currentOrganizationId: personalOrgId, updatedAt: new Date() })
         .where(eq(userProfiles.id, userId))
         .returning()
-      return res.json(serialize(updated ?? created))
+      return res.json(serialize(withAvatarSrc(updated ?? created)))
     }
 
     if (!profile.currentOrganizationId) {
@@ -51,16 +64,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .where(eq(userProfiles.id, userId))
         .returning()
       if (!updated) return res.status(404).json({ error: "Profile not found" })
-      return res.json(serialize(updated))
+      return res.json(serialize(withAvatarSrc(updated)))
     }
 
-    return res.json(serialize(profile))
+    return res.json(serialize(withAvatarSrc(profile)))
   }
 
   if (req.method === "PATCH") {
     const {
       full_name, currency, language, company_upsell_dismissed_at, company_upsell_hidden,
-      address, city, state, postal_code, country, phone_country_code, phone,
+      address, city, state, postal_code, country, phone_country_code, phone, avatar_data,
     } = req.body as {
       full_name?: string
       currency?: string
@@ -74,12 +87,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       country?: string
       phone_country_code?: string
       phone?: string
+      avatar_data?: string | null
     }
     if (currency !== undefined && !VALID_CURRENCIES.has(currency)) {
       return res.status(400).json({ error: "Invalid currency code" })
     }
     if (language !== undefined && !VALID_LANGUAGES.has(language)) {
       return res.status(400).json({ error: "Invalid language code" })
+    }
+    // Profile picture: a base64/data-URL string sets it (validated + mime
+    // sniffed server-side); null or "" clears it.
+    let avatarUpdate: { avatarData: string; avatarMime: string } | undefined
+    if (avatar_data !== undefined) {
+      if (avatar_data === null || avatar_data === "") {
+        avatarUpdate = { avatarData: "", avatarMime: "" }
+      } else {
+        const img = validateImageUpload(avatar_data)
+        if (!img.ok) return res.status(400).json({ error: img.error })
+        avatarUpdate = { avatarData: img.data, avatarMime: img.mime }
+      }
     }
     // Optional free-form contact fields — never required; only trimmed + capped.
     const str = (v: string | undefined, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : undefined)
@@ -100,12 +126,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ...(country !== undefined ? { country: str(country, 2) } : {}),
         ...(phone_country_code !== undefined ? { phoneCountryCode: str(phone_country_code, 8) } : {}),
         ...(phone !== undefined ? { phone: str(phone, 32) } : {}),
+        ...(avatarUpdate ?? {}),
         updatedAt: new Date(),
       })
       .where(eq(userProfiles.id, userId))
       .returning()
     if (!updated) return res.status(404).json({ error: "Profile not found" })
-    return res.json(serialize(updated))
+    return res.json(serialize(withAvatarSrc(updated)))
   }
 
   return res.status(405).json({ error: "Method not allowed" })

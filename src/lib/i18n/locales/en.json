@@ -412,7 +412,12 @@
     "currencyDescription": "Currency is now set per organization. Open an organization to change its currency — only owners and admins can.",
     "logoutTitle": "Logout",
     "logoutDescription": "Sign out of your ProfitSync account",
-    "legalTitle": "Legal & Policies"
+    "legalTitle": "Legal & Policies",
+    "uploadPhoto": "Upload photo",
+    "removePhoto": "Remove",
+    "photoHint": "Square image works best. PNG, JPG or WebP.",
+    "photoUpdated": "Profile photo updated",
+    "photoInvalid": "Couldn't read that image — try a different file"
   },
   "toast": {
     "profileLoadFailed": "Failed to load profile",
@@ -868,7 +873,12 @@
     "saveChanges": "Save changes",
     "deleteOrganization": "Delete organization?",
     "deleteOrganizationWarning": "This will permanently delete {{name}} and all of its clients, transactions, and quotations. This cannot be undone.",
-    "deleteForever": "Delete forever"
+    "deleteForever": "Delete forever",
+    "logo": "Logo",
+    "uploadLogo": "Upload logo",
+    "removeLogo": "Remove",
+    "logoHint": "Shown in the sidebar and organization lists. Square image works best.",
+    "logoInvalid": "Couldn't read that image — try a different file"
   },
   "members": {
     "failedToLoadMembers": "Failed to load members",

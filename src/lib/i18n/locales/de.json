@@ -175,7 +175,12 @@
     "postalCode": "Postleitzahl",
     "country": "Land",
     "selectCountry": "Land wählen…",
-    "legalTitle": "Rechtliches & Richtlinien"
+    "legalTitle": "Rechtliches & Richtlinien",
+    "uploadPhoto": "Foto hochladen",
+    "removePhoto": "Entfernen",
+    "photoHint": "Ein quadratisches Bild eignet sich am besten. PNG, JPG oder WebP.",
+    "photoUpdated": "Profilfoto aktualisiert",
+    "photoInvalid": "Bild konnte nicht gelesen werden — versuche eine andere Datei"
   },
   "toast": {
     "profileLoadFailed": "Profil konnte nicht geladen werden",
@@ -509,7 +514,12 @@
     "saveChanges": "Änderungen speichern",
     "deleteOrganization": "Organisation löschen?",
     "deleteOrganizationWarning": "Dies löscht {{name}} und alle zugehörigen Klienten, Transaktionen und Angebote dauerhaft. Dies kann nicht rückgängig gemacht werden.",
-    "deleteForever": "Für immer löschen"
+    "deleteForever": "Für immer löschen",
+    "logo": "Logo",
+    "uploadLogo": "Logo hochladen",
+    "removeLogo": "Entfernen",
+    "logoHint": "Wird in der Seitenleiste und in Organisationslisten angezeigt. Ein quadratisches Bild eignet sich am besten.",
+    "logoInvalid": "Bild konnte nicht gelesen werden — versuche eine andere Datei"
   },
   "members": {
     "failedToLoadMembers": "Fehler beim Laden der Mitglieder",

@@ -12,6 +12,10 @@ export const organizations = pgTable("organizations", {
   // historical rows; treated as "business" (full features) when absent.
   accountType: text("account_type"), // personal | business
   currency: text("currency").notNull().default("USD"),
+  // Workspace logo: base64 bytes + sniffed mime (client resizes to ≤256px before
+  // upload, server re-validates). Exposed to the UI as a `logo_src` data URL.
+  logoData: text("logo_data").notNull().default(""),
+  logoMime: text("logo_mime").notNull().default(""),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => ({
@@ -314,6 +318,10 @@ export const userProfiles = pgTable("user_profiles", {
   country: text("country").notNull().default(""), // ISO 3166-1 alpha-2
   phoneCountryCode: text("phone_country_code").notNull().default(""), // dial code, e.g. "+91"
   phone: text("phone").notNull().default(""), // national number
+  // Profile picture: base64 bytes + sniffed mime (client resizes to ≤256px
+  // before upload, server re-validates). Exposed as an `avatar_src` data URL.
+  avatarData: text("avatar_data").notNull().default(""),
+  avatarMime: text("avatar_mime").notNull().default(""),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 })

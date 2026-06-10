@@ -137,7 +137,7 @@ export function MobileAppLayout() {
   const location = useLocation()
   const { user } = useUser()
   const { signOut } = useClerk()
-  const { activeOrg, orgs, switchOrg, refresh, loading: orgLoading } = useOrg()
+  const { activeOrg, orgs, profile, switchOrg, refresh, loading: orgLoading } = useOrg()
   const { isAdmin } = useAdmin()
   const { currency } = useCurrency()
   const { bump } = useDataRefresh()
@@ -319,8 +319,12 @@ export function MobileAppLayout() {
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="pressable size-9 rounded-full bg-muted flex items-center justify-center shrink-0">
-                <Menu className="size-4" />
+              <button className="pressable size-9 overflow-hidden rounded-full bg-muted flex items-center justify-center shrink-0">
+                {profile?.avatar_src ? (
+                  <img src={profile.avatar_src} alt="" className="size-full object-cover" />
+                ) : (
+                  <Menu className="size-4" />
+                )}
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-60">

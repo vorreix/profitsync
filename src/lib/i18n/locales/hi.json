@@ -175,7 +175,12 @@
     "postalCode": "पोस्टल कोड",
     "country": "देश",
     "selectCountry": "देश चुनें…",
-    "legalTitle": "क़ानूनी और नीतियाँ"
+    "legalTitle": "क़ानूनी और नीतियाँ",
+    "uploadPhoto": "फ़ोटो अपलोड करें",
+    "removePhoto": "हटाएँ",
+    "photoHint": "वर्गाकार छवि सबसे अच्छी रहती है। PNG, JPG या WebP।",
+    "photoUpdated": "प्रोफ़ाइल फ़ोटो अपडेट हो गई",
+    "photoInvalid": "छवि पढ़ी नहीं जा सकी — कोई दूसरी फ़ाइल आज़माएँ"
   },
   "toast": {
     "profileLoadFailed": "प्रोफ़ाइल लोड करने में विफल",
@@ -509,7 +514,12 @@
     "saveChanges": "परिवर्तनों को सहेजें",
     "deleteOrganization": "संगठन हटाएं?",
     "deleteOrganizationWarning": "यह {{name}} और इसके सभी ग्राहकों, लेन-देन और उद्धरणों को स्थायी रूप से हटा देगा। इसे पूर्ववत नहीं किया जा सकता।",
-    "deleteForever": "हमेशा के लिए हटाएं"
+    "deleteForever": "हमेशा के लिए हटाएं",
+    "logo": "लोगो",
+    "uploadLogo": "लोगो अपलोड करें",
+    "removeLogo": "हटाएँ",
+    "logoHint": "साइडबार और संगठन सूचियों में दिखाया जाता है। वर्गाकार छवि सबसे अच्छी रहती है।",
+    "logoInvalid": "छवि पढ़ी नहीं जा सकी — कोई दूसरी फ़ाइल आज़माएँ"
   },
   "members": {
     "failedToLoadMembers": "सदस्यों को लोड करने में विफल",

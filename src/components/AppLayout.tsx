@@ -140,7 +140,7 @@ function AppLayoutInner() {
   useSyncProfileLanguage()
   const { user } = useUser()
   const { signOut } = useClerk()
-  const { activeOrg, needsOnboarding, loading: orgLoading } = useOrg()
+  const { activeOrg, profile, needsOnboarding, loading: orgLoading } = useOrg()
   const { isAdmin } = useAdmin()
   const { currency } = useCurrency()
   const { bump } = useDataRefresh()
@@ -247,8 +247,12 @@ function AppLayoutInner() {
             <LanguageSwitcher variant="icon" align="start" />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="icon" className="group-data-[collapsible=icon]:size-10">
-                  <User className="size-4" />
+                <Button variant="outline" size="icon" className="overflow-hidden p-0 group-data-[collapsible=icon]:size-10">
+                  {profile?.avatar_src ? (
+                    <img src={profile.avatar_src} alt="" className="size-full object-cover" />
+                  ) : (
+                    <User className="size-4" />
+                  )}
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">

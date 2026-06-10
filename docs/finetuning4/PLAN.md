@@ -36,7 +36,7 @@
 | 01 | `feat/ux4-01-category-delete` | T10 category delete updates in place | — | ✅ |
 | 02 | `feat/ux4-02-bank-logo-persist` | T1 bank logos persist (DB-served) | — | ✅ |
 | 03 | `feat/ux4-03-bank-quota-default` | T8 crown gating + default bank | 0035 | ✅ |
-| 04 | `feat/ux4-04-org-logo-avatar` | T2 org logo + profile picture | 0036 | ⬜ |
+| 04 | `feat/ux4-04-org-logo-avatar` | T2 org logo + profile picture | 0036 | ✅ |
 | 05 | `feat/ux4-05-dodo-org-currency` | T9 checkout in org currency | 0037 | ⬜ |
 | 06 | `feat/ux4-06-billing-attempts` | T11 attempt logging + admin panel | 0038 | ⬜ |
 | 07 | `feat/ux4-07-recurring-payments` | T3 recurring payments | 0039 | ⬜ |
@@ -157,7 +157,12 @@ ProfilePage avatar section, AppLayout sidebar footer, MobileAppLayout sheets.
 Org GET list + profile GET include `logo_src`/`avatar_src` data URLs.
 **Verify:** Playwright — upload logo + avatar, both appear immediately (no reload)
 in switcher/list/sidebar; remove restores initials.
-**Status:** ⬜
+**Status:** ✅ — browser-verified: org logo uploaded via the edit dialog (canvas
+resize → webp data URL preview) appeared immediately in the org card AND the
+sidebar OrgSwitcher; profile photo uploaded on /profile rendered immediately and
+shows in the sidebar footer user button after reload. Avatar saves immediately on
+pick (no separate save step). Naming note: columns are `avatar_data/avatar_mime`
+(not profile_picture_*).
 
 ## 05 · T9 — Dodo checkout in org currency (0037)
 
@@ -314,3 +319,7 @@ docs), and the new e2e/security gates.
 - 2026-06-10 — 03 bank quota + default: /api/wealth/quota + crown gating +
   upgrade dialog; is_default (migration 0035, partial unique index) with atomic
   clear-then-set flip; AccountSelector prefers the default. Browser-verified.
+- 2026-06-10 — 04 org logo + avatar: migration 0036; EntityAvatar +
+  fileToResizedDataUrl (≤256px webp) + server re-validation (magic-byte sniff,
+  300KB cap); wired into OrgSwitcher, org cards/edit dialog, ProfilePage,
+  both layout user menus. Browser-verified.

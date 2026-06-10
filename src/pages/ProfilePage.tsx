@@ -12,7 +12,9 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { LanguageSwitcher } from "@/components/LanguageSwitcher"
 import { CountryCombobox, CountryCodeCombobox } from "@/components/CountryCombobox"
 import { toast } from "sonner"
-import { ArrowLeft, Building2, FileText, Loader as Loader2, LogOut, ScrollText, ShieldCheck } from "lucide-react"
+import { ArrowLeft, Building2, FileText, ImagePlus, Loader as Loader2, LogOut, ScrollText, ShieldCheck, UserRound, X } from "lucide-react"
+import { EntityAvatar } from "@/components/EntityAvatar"
+import { fileToResizedDataUrl } from "@/lib/image-upload"
 
 export function ProfilePage() {
   const { t } = useTranslation()
@@ -87,6 +89,30 @@ export function ProfilePage() {
     navigate("/login")
   }
 
+  // Avatar saves immediately on pick/remove (no separate Save step) — the PATCH
+  // returns the updated profile, which also refreshes every other surface via
+  // the cleared GET cache.
+  const handleAvatarChange = async (next: string | "") => {
+    try {
+      const token = await getToken()
+      if (!token) throw new Error("Not authenticated")
+      const updated = await apiPatch<UserProfile>("/api/profile", token, { avatar_data: next })
+      setProfile(updated)
+      toast.success(t("profile.photoUpdated"))
+    } catch {
+      toast.error(t("toast.profileSaveFailed"))
+    }
+  }
+
+  const handlePickAvatar = async (file: File | undefined) => {
+    if (!file) return
+    try {
+      await handleAvatarChange(await fileToResizedDataUrl(file))
+    } catch {
+      toast.error(t("profile.photoInvalid"))
+    }
+  }
+
   if (loading) {
     return (
       <div className="p-3 sm:p-6 space-y-6">
@@ -109,6 +135,38 @@ export function ProfilePage() {
           <CardTitle>{t("profile.title")}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
+          {/* Profile photo */}
+          <div className="flex items-center gap-4">
+            <EntityAvatar
+              name={fullName || profile.email}
+              src={profile.avatar_src}
+              className="size-16 text-xl"
+              rounded="rounded-full"
+              fallbackIcon={<UserRound className="size-7" />}
+            />
+            <div className="space-y-1.5">
+              <div className="flex flex-wrap items-center gap-2">
+                <Button asChild size="sm" variant="outline">
+                  <label className="cursor-pointer">
+                    <ImagePlus className="size-4" /> {t("profile.uploadPhoto")}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="sr-only"
+                      onChange={(e) => { handlePickAvatar(e.target.files?.[0]); e.target.value = "" }}
+                    />
+                  </label>
+                </Button>
+                {profile.avatar_src && (
+                  <Button size="sm" variant="ghost" className="text-muted-foreground" onClick={() => handleAvatarChange("")}>
+                    <X className="size-4" /> {t("profile.removePhoto")}
+                  </Button>
+                )}
+              </div>
+              <p className="text-[11px] text-muted-foreground">{t("profile.photoHint")}</p>
+            </div>
+          </div>
+
           <div className="space-y-2">
             <Label>{t("profile.email")}</Label>
             <div className="px-3 py-2 rounded-md border bg-muted text-sm">{profile.email}</div>

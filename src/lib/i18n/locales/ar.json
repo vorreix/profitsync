@@ -175,7 +175,12 @@
     "postalCode": "الرمز البريدي",
     "country": "الدولة",
     "selectCountry": "اختر دولة…",
-    "legalTitle": "الشؤون القانونية والسياسات"
+    "legalTitle": "الشؤون القانونية والسياسات",
+    "uploadPhoto": "تحميل صورة",
+    "removePhoto": "إزالة",
+    "photoHint": "الصورة المربعة هي الأفضل. PNG أو JPG أو WebP.",
+    "photoUpdated": "تم تحديث صورة الملف الشخصي",
+    "photoInvalid": "تعذرت قراءة الصورة — جرب ملفًا آخر"
   },
   "toast": {
     "profileLoadFailed": "فشل تحميل الملف الشخصي",
@@ -509,7 +514,12 @@
     "saveChanges": "حفظ التغييرات",
     "deleteOrganization": "حذف المنظمة؟",
     "deleteOrganizationWarning": "سيؤدي هذا إلى حذف {{name}} ومجميع العملاء والمعاملات والاقتراحات الخاصة بها بشكل دائم. لا يمكن التراجع عن هذا.",
-    "deleteForever": "حذف بشكل دائم"
+    "deleteForever": "حذف بشكل دائم",
+    "logo": "الشعار",
+    "uploadLogo": "تحميل الشعار",
+    "removeLogo": "إزالة",
+    "logoHint": "يظهر في الشريط الجانبي وقوائم المؤسسات. الصورة المربعة هي الأفضل.",
+    "logoInvalid": "تعذرت قراءة الصورة — جرب ملفًا آخر"
   },
   "members": {
     "failedToLoadMembers": "فشل تحميل الأعضاء",

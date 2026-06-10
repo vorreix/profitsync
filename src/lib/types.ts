@@ -215,6 +215,8 @@ export type UserProfile = {
   country?: string
   phone_country_code?: string
   phone?: string
+  // Profile picture as a durable data: URL (built server-side from stored bytes).
+  avatar_src?: string | null
   created_at: string
   updated_at: string
 }
@@ -256,6 +258,8 @@ export type Organization = {
   is_personal: boolean
   account_type: AccountType | null
   currency: string
+  // Workspace logo as a durable data: URL (built server-side from stored bytes).
+  logo_src?: string | null
   role: OrgRole
   plan_key: string | null
   plan_status: string | null
