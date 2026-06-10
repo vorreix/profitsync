@@ -698,7 +698,13 @@
     "dragHandle": "Drag to reorder or transfer",
     "reorder": "Reorder",
     "holdToTransfer": "Hold to transfer",
-    "selectAccount": "Select account"
+    "selectAccount": "Select account",
+    "defaultBadge": "Default",
+    "setAsDefault": "Set as default",
+    "removeDefault": "Remove default",
+    "upgradeBanksTitle": "Upgrade to add more banks",
+    "upgradeBanksBody": "Your current plan includes {{limit}} bank account. Upgrade to Premium for unlimited bank accounts.",
+    "upgradeBanksCta": "See plans"
   },
   "clients": {
     "pageTitle": "Clients",

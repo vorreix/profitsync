@@ -20,6 +20,7 @@ import {
   Archive,
   ArrowLeftRight,
   ChevronRight,
+  Crown,
   Eye,
   EyeOff,
   GripVertical,
@@ -27,6 +28,8 @@ import {
   Plus,
   RotateCcw,
   Pencil,
+  Sparkles,
+  Star,
   Wallet,
 } from "lucide-react"
 import { apiDelete, apiGet, apiPatch, apiPost, clearApiCache } from "@/lib/api"
@@ -54,7 +57,10 @@ import { type BankFormState, bankDetailsPayload, emptyBankForm } from "@/lib/ban
 import { accountDisplayName, currencySymbol, formatMoney, moveBefore, useBalancePrivacy, useWealthSummary } from "@/lib/wealth"
 import { useTranslation } from "react-i18next"
 
-const MAX_BANKS = 5
+// The org's bank-account allowance (plan-based, server-enforced via 402). Loaded
+// from /api/wealth/quota so the Add button can gate up front with the crown +
+// upgrade dialog instead of a post-submit error.
+type BankQuota = { plan_key: string; bank_accounts: { current: number; limit: number } }
 
 // One drag, two outcomes — disambiguated by *where on the target card* you drop,
 // which is unambiguous and needs no timing (the old dwell felt fragile on touch):
@@ -107,6 +113,8 @@ export function WealthPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
+  const [upgradeOpen, setUpgradeOpen] = useState(false)
+  const [quota, setQuota] = useState<BankQuota | null>(null)
   const [form, setForm] = useState<CreateForm>(emptyCreate)
   const [editing, setEditing] = useState<WealthAccount | null>(null)
   const [adjusting, setAdjusting] = useState<WealthAccount | null>(null)
@@ -227,13 +235,21 @@ export function WealthPage() {
   const { active, total } = useWealthSummary(accounts)
   const bankCount = active.filter((a) => a.type === "bank").length
   const archived = useMemo(() => accounts.filter((a) => a.archived_at), [accounts])
+  // Live count from the list (fresher than the snapshot in /quota) + the plan
+  // limit from the server. No quota yet → don't gate (server still enforces).
+  const atBankLimit = quota != null && bankCount >= quota.bank_accounts.limit
 
   async function load() {
     const token = await getToken()
     if (!token) return
     setLoading(true)
     try {
-      setAccounts(await apiGet<WealthAccount[]>("/api/wealth/accounts", token))
+      const [rows, q] = await Promise.all([
+        apiGet<WealthAccount[]>("/api/wealth/accounts", token),
+        apiGet<BankQuota>("/api/wealth/quota", token).catch(() => null),
+      ])
+      setAccounts(rows)
+      if (q) setQuota(q)
     } catch {
       toast.error(t("failedToLoad"))
     } finally {
@@ -247,8 +263,30 @@ export function WealthPage() {
   }, [])
 
   function openCreate() {
+    // At the plan's bank allowance the Add button becomes an upgrade prompt —
+    // opening the form would only end in the server's 402.
+    if (atBankLimit) {
+      setUpgradeOpen(true)
+      return
+    }
     setForm(emptyCreate)
     setCreateOpen(true)
+  }
+
+  // Optimistic default flip: exactly one active account holds the badge.
+  async function setAsDefault(account: WealthAccount, next: boolean) {
+    setAccounts((prev) =>
+      prev.map((a) => (a.id === account.id ? { ...a, is_default: next } : next ? { ...a, is_default: false } : a)),
+    )
+    try {
+      const token = await getToken()
+      if (!token) throw new Error("Not authenticated")
+      await apiPatch(`/api/wealth/accounts/${account.id}`, token, { set_default: next }, ["/api/wealth"])
+      window.dispatchEvent(new Event("wealth:accounts-changed"))
+    } catch {
+      toast.error(t("couldNotUpdate"))
+      await load()
+    }
   }
 
   async function handleCreate() {
@@ -354,8 +392,9 @@ export function WealthPage() {
                 <ArrowLeftRight className="size-4" /> {t("transfer")}
               </Button>
             )}
-            <Button size="sm" onClick={openCreate} disabled={bankCount >= MAX_BANKS || loading}>
-              <Plus className="size-4" /> {t("addBank")}
+            <Button size="sm" onClick={openCreate} disabled={loading} className="relative">
+              {atBankLimit ? <Crown className="size-4 text-amber-500 dark:text-amber-400" /> : <Plus className="size-4" />}
+              {t("addBank")}
             </Button>
           </div>
         </div>
@@ -392,6 +431,7 @@ export function WealthPage() {
                     onAdjust={() => setAdjusting(account)}
                     onEdit={() => setEditing(account)}
                     onArchive={() => deleteOrArchive(account)}
+                    onSetDefault={(next) => setAsDefault(account, next)}
                     saving={saving}
                   />
                 )}
@@ -459,6 +499,32 @@ export function WealthPage() {
           <p className="text-xs text-muted-foreground">{t("archivedHint")}</p>
         </div>
       )}
+
+      {/* Upgrade-required dialog (free plan at its bank allowance) */}
+      <Dialog open={upgradeOpen} onOpenChange={setUpgradeOpen}>
+        <DialogContent className="w-[92vw] max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <span className="flex size-9 items-center justify-center rounded-full bg-amber-500/15">
+                <Crown className="size-4 text-amber-500 dark:text-amber-400" />
+              </span>
+              {t("upgradeBanksTitle")}
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            {t("upgradeBanksBody", { limit: quota?.bank_accounts.limit ?? 1 })}
+          </p>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setUpgradeOpen(false)}>{t("cancel")}</Button>
+            <Button
+              className="bg-amber-500 text-white hover:bg-amber-600 dark:bg-amber-500 dark:hover:bg-amber-400"
+              onClick={() => { setUpgradeOpen(false); navigate("/subscription") }}
+            >
+              <Sparkles className="size-4" /> {t("upgradeBanksCta")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Create bank dialog */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
@@ -569,7 +635,7 @@ function DndAccountCard({
 }
 
 function AccountCard({
-  account, currency, balancesVisible, handle, onOpen, onAdjust, onEdit, onArchive, saving,
+  account, currency, balancesVisible, handle, onOpen, onAdjust, onEdit, onArchive, onSetDefault, saving,
 }: {
   account: WealthAccount
   currency: string
@@ -579,6 +645,7 @@ function AccountCard({
   onAdjust: () => void
   onEdit: () => void
   onArchive: () => void
+  onSetDefault: (next: boolean) => void
   saving: boolean
 }) {
   const { t } = useTranslation("wealth")
@@ -624,10 +691,17 @@ function AccountCard({
         </div>
 
         <div className="mt-3 flex items-center justify-between">
-          <Badge variant="secondary" className="gap-1">
-            {isCash ? <Wallet className="size-3" /> : null}
-            {isCash ? t("cash") : t("bank")}
-          </Badge>
+          <span className="flex items-center gap-1.5">
+            <Badge variant="secondary" className="gap-1">
+              {isCash ? <Wallet className="size-3" /> : null}
+              {isCash ? t("cash") : t("bank")}
+            </Badge>
+            {account.is_default && (
+              <Badge className="gap-1 border-amber-500/40 bg-amber-500/15 text-amber-700 dark:text-amber-300" variant="outline">
+                <Star className="size-3 fill-current" /> {t("defaultBadge")}
+              </Badge>
+            )}
+          </span>
           <span className="inline-flex items-center gap-0.5 text-xs font-medium text-muted-foreground transition-colors group-hover:text-primary">
             {t("viewTransactions")} <ChevronRight className="size-3.5 rtl:rotate-180" />
           </span>
@@ -656,6 +730,10 @@ function AccountCard({
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem onSelect={onEdit}><Pencil className="size-4" /> {t("edit")}</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => onSetDefault(!account.is_default)} disabled={saving}>
+              <Star className={cn("size-4", account.is_default && "fill-current text-amber-500")} />
+              {account.is_default ? t("removeDefault") : t("setAsDefault")}
+            </DropdownMenuItem>
             {!isCash && (
               <DropdownMenuItem onSelect={onArchive} disabled={saving} className="text-muted-foreground">
                 <Archive className="size-4" /> {t("archive")}

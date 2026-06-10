@@ -955,7 +955,13 @@
     "selectAccount": "اختر حساباً",
     "healthGood": "سليم — جميع الأرصدة موجبة",
     "healthWarn": "تنبيه — أحد الحسابات سالب",
-    "healthNegative": "إجمالي الرصيد سالب"
+    "healthNegative": "إجمالي الرصيد سالب",
+    "defaultBadge": "افتراضي",
+    "setAsDefault": "تعيين كافتراضي",
+    "removeDefault": "إزالة الافتراضي",
+    "upgradeBanksTitle": "قم بالترقية لإضافة المزيد من البنوك",
+    "upgradeBanksBody": "تتضمن خطتك الحالية {{limit}} حساب بنكي. قم بالترقية إلى بريميوم للحصول على حسابات بنكية غير محدودة.",
+    "upgradeBanksCta": "عرض الخطط"
   },
   "errorBoundary": {
     "title": "حدث خطأ ما",

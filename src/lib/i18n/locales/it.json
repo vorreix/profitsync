@@ -955,7 +955,13 @@
     "selectAccount": "Seleziona conto",
     "healthGood": "Tutto bene — saldi positivi",
     "healthWarn": "Attenzione — un conto è negativo",
-    "healthNegative": "Il saldo totale è negativo"
+    "healthNegative": "Il saldo totale è negativo",
+    "defaultBadge": "Predefinito",
+    "setAsDefault": "Imposta come predefinito",
+    "removeDefault": "Rimuovi predefinito",
+    "upgradeBanksTitle": "Passa a un piano superiore per più banche",
+    "upgradeBanksBody": "Il tuo piano attuale include {{limit}} conto bancario. Passa a Premium per conti bancari illimitati.",
+    "upgradeBanksCta": "Vedi i piani"
   },
   "errorBoundary": {
     "title": "Qualcosa è andato storto",

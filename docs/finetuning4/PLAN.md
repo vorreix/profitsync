@@ -35,7 +35,7 @@
 | 00 | `feat/ux4-00-plan` | This plan doc | — | ✅ |
 | 01 | `feat/ux4-01-category-delete` | T10 category delete updates in place | — | ✅ |
 | 02 | `feat/ux4-02-bank-logo-persist` | T1 bank logos persist (DB-served) | — | ✅ |
-| 03 | `feat/ux4-03-bank-quota-default` | T8 crown gating + default bank | 0035 | ⬜ |
+| 03 | `feat/ux4-03-bank-quota-default` | T8 crown gating + default bank | 0035 | ✅ |
 | 04 | `feat/ux4-04-org-logo-avatar` | T2 org logo + profile picture | 0036 | ⬜ |
 | 05 | `feat/ux4-05-dodo-org-currency` | T9 checkout in org currency | 0037 | ⬜ |
 | 06 | `feat/ux4-06-billing-attempts` | T11 attempt logging + admin panel | 0038 | ⬜ |
@@ -136,7 +136,13 @@ partial unique index (one active default per org); atomic single-statement
 `src/pages/WealthPage.tsx`, `src/components/AccountSelector.tsx`, i18n.
 **Verify:** Playwright on a free org with 1 bank: crown shows, upgrade dialog opens;
 set-default flips badge between accounts without reload.
-**Status:** ⬜
+**Status:** ✅ — browser-verified on a free org over its limit: golden crown on Add
+bank, click → upgrade dialog (with the plan's real limit interpolated), CTA →
+/subscription. Set-default: badge appeared instantly on the chosen card, moving it
+to Cash auto-cleared the previous holder, exactly one default after reload.
+Implementation detail: default flip is clear-then-set (two statements) because a
+single org-wide UPDATE can transiently violate the partial unique index. Also
+replaced the hardcoded restore limit (5) with the plan quota (402 + reason).
 
 ## 04 · T2 — Org logo + user profile picture (0036)
 
@@ -305,3 +311,6 @@ docs), and the new e2e/security gates.
 - 2026-06-10 — 02 bank logos: `logo_src` data URLs from stored bytes (mime
   sniffed, 15 unit tests) + bounded lazy heal on GET; browser-verified incl.
   dead-hotlink heal.
+- 2026-06-10 — 03 bank quota + default: /api/wealth/quota + crown gating +
+  upgrade dialog; is_default (migration 0035, partial unique index) with atomic
+  clear-then-set flip; AccountSelector prefers the default. Browser-verified.

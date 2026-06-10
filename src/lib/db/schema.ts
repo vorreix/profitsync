@@ -132,6 +132,10 @@ export const wealthAccounts = pgTable("wealth_accounts", {
   // drag-to-reorder UI; ties fall back to createdAt so pre-existing rows keep
   // their original order until first reordered.
   position: integer("position").notNull().default(0),
+  // The org's default account: preselected in transaction forms and badged in
+  // lists. The partial unique index below guarantees at most one ACTIVE default
+  // per org; setting a new default flips the others off in one statement.
+  isDefault: boolean("is_default").notNull().default(false),
   archivedAt: timestamp("archived_at"),
   createdBy: text("created_by"),
   updatedBy: text("updated_by"),
@@ -139,6 +143,9 @@ export const wealthAccounts = pgTable("wealth_accounts", {
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => ({
   orgIdx: index("wealth_accounts_org_idx").on(table.organizationId),
+  oneDefaultPerOrg: uniqueIndex("wealth_accounts_one_default_idx")
+    .on(table.organizationId)
+    .where(sql`is_default = true AND archived_at IS NULL`),
 }))
 
 export const wealthAccountAttachments = pgTable("wealth_account_attachments", {

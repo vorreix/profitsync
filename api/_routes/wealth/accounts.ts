@@ -112,6 +112,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         location: wealthAccounts.location,
         note: wealthAccounts.note,
         position: wealthAccounts.position,
+        isDefault: wealthAccounts.isDefault,
         archivedAt: wealthAccounts.archivedAt,
         createdAt: wealthAccounts.createdAt,
         updatedAt: wealthAccounts.updatedAt,

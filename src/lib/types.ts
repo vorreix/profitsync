@@ -140,6 +140,9 @@ export type WealthAccount = {
   location?: string
   note?: string
   position?: number
+  // Exactly one ACTIVE account per org can be the default (preselected in
+  // transaction forms, badged in lists).
+  is_default?: boolean
   archived_at: string | null
   created_at: string
   updated_at: string

@@ -955,7 +955,13 @@
     "selectAccount": "खाता चुनें",
     "healthGood": "स्वस्थ — सभी शेष धनात्मक",
     "healthWarn": "ध्यान दें — एक खाता ऋणात्मक है",
-    "healthNegative": "कुल शेष ऋणात्मक है"
+    "healthNegative": "कुल शेष ऋणात्मक है",
+    "defaultBadge": "डिफ़ॉल्ट",
+    "setAsDefault": "डिफ़ॉल्ट के रूप में सेट करें",
+    "removeDefault": "डिफ़ॉल्ट हटाएँ",
+    "upgradeBanksTitle": "और बैंक जोड़ने के लिए अपग्रेड करें",
+    "upgradeBanksBody": "आपके मौजूदा प्लान में {{limit}} बैंक खाता शामिल है। असीमित बैंक खातों के लिए प्रीमियम में अपग्रेड करें।",
+    "upgradeBanksCta": "प्लान देखें"
   },
   "errorBoundary": {
     "title": "कुछ ग़लत हो गया",

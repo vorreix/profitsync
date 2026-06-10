@@ -955,7 +955,13 @@
     "selectAccount": "Konto auswählen",
     "healthGood": "Alles gut — alle Salden positiv",
     "healthWarn": "Achtung — ein Konto ist negativ",
-    "healthNegative": "Gesamtsaldo ist negativ"
+    "healthNegative": "Gesamtsaldo ist negativ",
+    "defaultBadge": "Standard",
+    "setAsDefault": "Als Standard festlegen",
+    "removeDefault": "Standard entfernen",
+    "upgradeBanksTitle": "Upgrade für weitere Banken",
+    "upgradeBanksBody": "Dein aktueller Tarif umfasst {{limit}} Bankkonto. Upgrade auf Premium für unbegrenzte Bankkonten.",
+    "upgradeBanksCta": "Tarife ansehen"
   },
   "errorBoundary": {
     "title": "Etwas ist schiefgelaufen",

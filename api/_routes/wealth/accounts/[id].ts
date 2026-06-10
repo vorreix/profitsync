@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { and, count, eq, isNull } from "drizzle-orm"
+import { and, count, eq, isNull, sql } from "drizzle-orm"
 import { db, serialize } from "../../../../src/lib/db/index.js"
 import { transactions, wealthAccounts } from "../../../../src/lib/db/schema.js"
 import { canDelete, canWrite, ensureDefaultClient, requireAuth } from "../../../_lib/auth.js"
@@ -7,6 +7,7 @@ import { diffFields, logAudit } from "../../../_lib/audit.js"
 import { type BankDetailInput, pickBankDetails, resolveLogoColumns } from "../../../_lib/bank-brand.js"
 import { amountExceedsLimit } from "../../../../src/lib/money.js"
 import { logoDataUrl } from "../../../../src/lib/logo-data.js"
+import { checkBankAccountQuota } from "../../../_lib/quota.js"
 
 function money(value: unknown): number {
   const n = Number(value)
@@ -45,8 +46,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       currentBalance?: number
       archive?: boolean
       restore?: boolean
+      set_default?: boolean
     }
     const { nickname, icon, archive, restore } = body
+    const setDefault = typeof body.set_default === "boolean" ? body.set_default : undefined
     const bankName = body.bankName ?? body.bank_name
     const currentBalance = body.currentBalance ?? body.current_balance
     if (currentBalance !== undefined && amountExceedsLimit(currentBalance)) return res.status(400).json({ error: "Amount is too large" })
@@ -83,12 +86,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (total >= 1) return res.status(400).json({ error: "Cash in Hand already exists" })
       }
       if (account.type === "bank") {
-        const [{ total }] = await db
-          .select({ total: count() })
-          .from(wealthAccounts)
-          .where(and(eq(wealthAccounts.organizationId, orgId), eq(wealthAccounts.type, "bank"), isNull(wealthAccounts.archivedAt)))
-        if (total >= 5) return res.status(400).json({ error: "Maximum 5 bank accounts allowed" })
+        // Same plan-based allowance as creating a new bank account.
+        const quota = await checkBankAccountQuota(orgId)
+        if (!quota.allowed) return res.status(402).json(quota)
       }
+    }
+
+    // Default flip. Two steps — clear, then set — because a single UPDATE that
+    // flips both rows can transiently hold two `true` entries (row order is
+    // unspecified) and trip the one-active-default unique index. The in-between
+    // state (no default) is benign; selectors fall back to Cash.
+    if (setDefault === true) {
+      if (account.archivedAt) return res.status(400).json({ error: "Restore the account before making it default" })
+      await db
+        .update(wealthAccounts)
+        .set({ isDefault: false, updatedBy: userId, updatedAt: new Date() })
+        .where(and(eq(wealthAccounts.organizationId, orgId), eq(wealthAccounts.isDefault, true), sql`${wealthAccounts.id} != ${id}`))
+      await db
+        .update(wealthAccounts)
+        .set({ isDefault: true, updatedBy: userId, updatedAt: new Date() })
+        .where(and(eq(wealthAccounts.id, id), eq(wealthAccounts.organizationId, orgId), isNull(wealthAccounts.archivedAt)))
+    } else if (setDefault === false) {
+      await db
+        .update(wealthAccounts)
+        .set({ isDefault: false, updatedBy: userId, updatedAt: new Date() })
+        .where(and(eq(wealthAccounts.id, id), eq(wealthAccounts.organizationId, orgId)))
     }
 
     const [before] = await db.select().from(wealthAccounts).where(eq(wealthAccounts.id, id))
@@ -126,8 +148,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ...(currentBalance !== undefined ? { currentBalance: String(newBalance) } : {}),
         ...(details ?? {}),
         ...(logo ? { logoUrl: logo.logoUrl, logoData: logo.logoData } : {}),
-        ...(archive ? { archivedAt: new Date() } : {}),
-        ...(restore ? { archivedAt: null } : {}),
+        // Archiving or restoring clears the default flag (an archived default is
+        // meaningless, and restoring while another default exists would violate
+        // the one-active-default index).
+        ...(archive ? { archivedAt: new Date(), isDefault: false } : {}),
+        ...(restore ? { archivedAt: null, isDefault: false } : {}),
         updatedBy: userId,
         updatedAt: new Date(),
       })
@@ -137,7 +162,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const changes = diffFields(
       before as Record<string, unknown>,
       updated as Record<string, unknown>,
-      ["bankName", "nickname", "icon", "currentBalance", "archivedAt", "country", "accountNumber", "routingNumber", "swift", "address", "location", "note"],
+      ["bankName", "nickname", "icon", "currentBalance", "archivedAt", "isDefault", "country", "accountNumber", "routingNumber", "swift", "address", "location", "note"],
     )
     if (Object.keys(changes).length) {
       await logAudit({ orgId, entityType: "wealth_account", entityId: id, action: archive ? "close" : restore ? "reopen" : "update", actorId: userId, changes })
