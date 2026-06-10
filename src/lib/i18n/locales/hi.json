@@ -28,7 +28,8 @@
     "categories": "श्रेणियाँ",
     "analytics": "विश्लेषण",
     "referrals": "रेफर करें और कमाएं",
-    "refundPolicy": "रिफंड नीति"
+    "refundPolicy": "रिफंड नीति",
+    "budgets": "बजट"
   },
   "actions": {
     "addClient": "ग्राहक जोड़ें",
@@ -992,5 +993,34 @@
     "save": "बजट सहेजें",
     "remainingAfter": "इस खर्च के बाद {{amount}} शेष",
     "overAfter": "इस खर्च के बाद {{amount}} बजट से अधिक"
+  },
+  "budgetsPage": {
+    "title": "बजट",
+    "subtitle": "अपने बजट के मुकाबले खर्च और समय के साथ बदलाव देखें।",
+    "acrossAllBudgets": "सभी बजट में",
+    "onTrack": "{{total}} में से {{count}} सही दिशा में",
+    "personal": "व्यक्तिगत बजट",
+    "companyDefault": "कंपनी डिफ़ॉल्ट",
+    "defaultTemplate": "नए क्लाइंट के लिए डिफ़ॉल्ट",
+    "creep": "बढ़ रहा है",
+    "empty": "अभी कोई बजट नहीं",
+    "emptyHint": "खर्च ट्रैक करने और इतिहास व रुझान देखने के लिए बजट सेट करें।",
+    "setBudget": "बजट सेट करें",
+    "spent": "खर्च",
+    "spendVsBudget": "खर्च बनाम बजट",
+    "onBudget": "बजट में",
+    "streak": "बजट में लगातार",
+    "avgVsBudget": "औसत बनाम बजट",
+    "sinceFirstSet": "पहली बार सेट करने से",
+    "templateNoChart": "यह नए क्लाइंट के लिए डिफ़ॉल्ट है — दिखाने के लिए कोई खर्च नहीं।",
+    "changeHistory": "बदलाव इतिहास",
+    "noHistory": "अभी कोई बदलाव नहीं।",
+    "notFound": "बजट नहीं मिला।",
+    "creepWarning": "{{count}} बार बढ़ाया (+{{pct}}%) — बजट बढ़ने से सावधान रहें।",
+    "actionSet": "सेट किया",
+    "actionRaise": "बढ़ाया",
+    "actionLower": "घटाया",
+    "actionPeriod": "अवधि बदली",
+    "actionRemove": "हटाया"
   }
 }

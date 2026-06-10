@@ -28,7 +28,8 @@
     "categories": "Categorie",
     "analytics": "Analytics",
     "referrals": "Referral e guadagni",
-    "refundPolicy": "Politica di rimborso"
+    "refundPolicy": "Politica di rimborso",
+    "budgets": "Budget"
   },
   "actions": {
     "addClient": "Aggiungi cliente",
@@ -992,5 +993,34 @@
     "save": "Salva budget",
     "remainingAfter": "{{amount}} rimanenti dopo questa spesa",
     "overAfter": "{{amount}} oltre il budget dopo questa spesa"
+  },
+  "budgetsPage": {
+    "title": "Budget",
+    "subtitle": "Monitora le spese rispetto ai budget e come cambiano nel tempo.",
+    "acrossAllBudgets": "Su tutti i budget",
+    "onTrack": "{{count}} di {{total}} in linea",
+    "personal": "Budget personale",
+    "companyDefault": "Predefinito azienda",
+    "defaultTemplate": "Predefinito per nuovi clienti",
+    "creep": "In aumento",
+    "empty": "Ancora nessun budget",
+    "emptyHint": "Imposta un budget per monitorare le spese e vederne storico e andamento.",
+    "setBudget": "Imposta un budget",
+    "spent": "Speso",
+    "spendVsBudget": "Spesa vs budget",
+    "onBudget": "Nel budget",
+    "streak": "Serie nel budget",
+    "avgVsBudget": "Media vs budget",
+    "sinceFirstSet": "Dalla prima impostazione",
+    "templateNoChart": "È il predefinito per i nuovi clienti — nessuna spesa da mostrare.",
+    "changeHistory": "Cronologia modifiche",
+    "noHistory": "Ancora nessuna modifica.",
+    "notFound": "Budget non trovato.",
+    "creepWarning": "Aumentato {{count}} volte (+{{pct}}%) — attenzione all'aumento del budget.",
+    "actionSet": "Impostato",
+    "actionRaise": "Aumentato",
+    "actionLower": "Ridotto",
+    "actionPeriod": "Periodo modificato",
+    "actionRemove": "Rimosso"
   }
 }

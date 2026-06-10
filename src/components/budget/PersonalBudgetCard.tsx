@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react"
+import { useNavigate } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
-import { Plus, Wallet } from "lucide-react"
+import { Plus, PiggyBank, ChevronRight } from "lucide-react"
 import { apiGet } from "@/lib/api"
 import { useCurrency } from "@/lib/currency-context"
 import { useOrg } from "@/lib/org-context"
@@ -20,6 +21,7 @@ import { BudgetDialog } from "@/components/budget/BudgetDialog"
  */
 export function PersonalBudgetCard({ className = "" }: { className?: string }) {
   const { t } = useTranslation()
+  const navigate = useNavigate()
   const { getToken } = useAuth()
   const { currency } = useCurrency()
   const { activeOrg } = useOrg()
@@ -49,18 +51,27 @@ export function PersonalBudgetCard({ className = "" }: { className?: string }) {
   }, [activeOrg?.id])
 
   return (
-    <Card className={`py-0 ${className}`}>
+    <Card
+      role="button"
+      tabIndex={0}
+      onClick={() => navigate("/budgets/default")}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate("/budgets/default") } }}
+      className={`group py-0 cursor-pointer transition-colors hover:border-primary/40 hover:bg-accent/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${className}`}
+    >
       <CardContent className="p-4">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 text-sm font-medium">
-            <Wallet className="size-4 text-muted-foreground" />
+            <PiggyBank className="size-4 text-muted-foreground" />
             {t("budget.personal")}
           </div>
-          {canWrite && loaded && (
-            <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setDialogOpen(true)}>
-              {budget ? t("budget.edit") : <><Plus className="size-3 mr-1" />{t("budget.set")}</>}
-            </Button>
-          )}
+          <div className="flex items-center gap-0.5">
+            {canWrite && loaded && (
+              <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={(e) => { e.stopPropagation(); setDialogOpen(true) }}>
+                {budget ? t("budget.edit") : <><Plus className="size-3 mr-1" />{t("budget.set")}</>}
+              </Button>
+            )}
+            <ChevronRight className="size-4 shrink-0 text-muted-foreground/60 transition-colors group-hover:text-foreground" />
+          </div>
         </div>
         <div className="mt-3">
           {!loaded ? (
