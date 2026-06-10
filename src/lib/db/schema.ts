@@ -368,6 +368,10 @@ export const userProfiles = pgTable("user_profiles", {
   // before upload, server re-validates). Exposed as an `avatar_src` data URL.
   avatarData: text("avatar_data").notNull().default(""),
   avatarMime: text("avatar_mime").notNull().default(""),
+  // Custom dashboard arrangement: { version, contexts: { personal, business } },
+  // each context = { order: cardId[], hidden: cardId[] }. Normalized against
+  // the card registry on read (src/lib/dashboard-layout.ts). {} = defaults.
+  dashboardLayout: jsonb("dashboard_layout").notNull().default({}),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 })

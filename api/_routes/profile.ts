@@ -8,6 +8,7 @@ import { userProfiles } from "../../src/lib/db/schema.js"
 import { ensurePersonalOrg, getUserId } from "../_lib/auth.js"
 import { attributeReferral } from "../_lib/referral.js"
 import { imageSrc, validateImageUpload } from "../_lib/image-upload.js"
+import { normalizeLayout } from "../../src/lib/dashboard-layout.js"
 
 const VALID_CURRENCIES = new Set(CURRENCY_LIST.map((c) => c.code))
 const VALID_LANGUAGES = new Set(SUPPORTED_LANGUAGE_CODES)
@@ -88,7 +89,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       phone_country_code?: string
       phone?: string
       avatar_data?: string | null
+      dashboard_layout?: unknown
     }
+    const { dashboard_layout } = req.body as { dashboard_layout?: unknown }
     if (currency !== undefined && !VALID_CURRENCIES.has(currency)) {
       return res.status(400).json({ error: "Invalid currency code" })
     }
@@ -127,6 +130,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ...(phone_country_code !== undefined ? { phoneCountryCode: str(phone_country_code, 8) } : {}),
         ...(phone !== undefined ? { phone: str(phone, 32) } : {}),
         ...(avatarUpdate ?? {}),
+        // Normalized against the card registry — unknown ids never persist.
+        ...(dashboard_layout !== undefined ? { dashboardLayout: normalizeLayout(dashboard_layout) } : {}),
         updatedAt: new Date(),
       })
       .where(eq(userProfiles.id, userId))

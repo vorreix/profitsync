@@ -1,9 +1,31 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import { useNavigate } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
+import {
+  DndContext,
+  MouseSensor,
+  TouchSensor,
+  closestCenter,
+  useDraggable,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragMoveEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core"
+import { toast } from "sonner"
 import { apiGet, apiPatch } from "@/lib/api"
 import type { Client, Transaction, WealthAccount } from "@/lib/types"
+import {
+  normalizeLayout,
+  moveCard,
+  sameCtx,
+  type DashboardCardId,
+  type DashboardContext,
+  type DashboardLayout,
+  type LayoutCtx,
+} from "@/lib/dashboard-layout"
 import { useCurrency } from "@/lib/currency-context"
 import { useOrg } from "@/lib/org-context"
 import { useDataRefresh } from "@/lib/data-refresh-context"
@@ -27,16 +49,32 @@ import {
   ArrowRight,
   ChevronDown,
   ChevronRight,
+  GripVertical,
   Search,
+  SlidersHorizontal,
   Sparkles,
   Building2,
+  Plus,
+  Redo2,
   Tag,
+  Undo2,
   Wallet,
   X,
   Eye,
   EyeOff,
 } from "lucide-react"
 import { useAutoAnimate } from "@formkit/auto-animate/react"
+import { cn } from "@/lib/utils"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { FilterSheet, FilterSection } from "@/components/filters/FilterSheet"
 import { TransactionPeekModal } from "@/components/TransactionPeekModal"
 import {
@@ -80,6 +118,92 @@ function formatTxDate(value: string) {
 }
 
 const UPSELL_REAPPEAR_MS = 72 * 60 * 60 * 1000 // banner returns 72h after a dismissal
+
+// ── Custom dashboard cards ───────────────────────────────────────────────────
+// Spans live on the SHELL (one shared lg:grid-cols-5 grid): chart+breakdown
+// pair side-by-side when adjacent, everything else takes the full row.
+const CARD_SPANS: Record<DashboardCardId, string> = {
+  kpis: "lg:col-span-5",
+  budget: "lg:col-span-5",
+  wealth: "lg:col-span-5",
+  chart: "lg:col-span-3",
+  breakdown: "lg:col-span-2",
+  latest: "lg:col-span-5",
+}
+const CARD_LABEL_KEYS: Record<DashboardCardId, string> = {
+  kpis: "dashboard.cardKpis",
+  budget: "dashboard.cardBudget",
+  wealth: "dashboard.cardWealth",
+  chart: "dashboard.cardChart",
+  breakdown: "dashboard.cardBreakdown",
+  latest: "dashboard.cardLatest",
+}
+
+// Wraps a dashboard card. In edit mode it shows the floating handle pill
+// (drag grip + label + hide ×), a drop-position line while another card is
+// dragged over it, and disables the card's own interactions so taps can't
+// trigger navigation mid-arrangement.
+function DashCardShell({
+  id, label, span, editMode, dragging, dropEdge, hideLabel, onHide, children,
+}: {
+  id: DashboardCardId
+  label: string
+  span: string
+  editMode: boolean
+  dragging: boolean
+  dropEdge: "before" | "after" | null
+  hideLabel: string
+  onHide: () => void
+  children: ReactNode
+}) {
+  const drag = useDraggable({ id, disabled: !editMode })
+  return (
+    <div
+      ref={drag.setNodeRef}
+      data-dash-card={id}
+      className={cn(
+        "relative min-w-0 transition-[opacity,box-shadow] duration-200",
+        span,
+        dragging && "opacity-40",
+        editMode && "rounded-2xl ring-2 ring-primary/35 ring-offset-2 ring-offset-background",
+      )}
+    >
+      {editMode && (
+        <div className="absolute -top-3.5 left-1/2 z-30 flex -translate-x-1/2 items-center gap-0.5 rounded-full border bg-card px-1 py-0.5 shadow-sm">
+          {/* touch-none lets the drag start on mobile instead of scrolling */}
+          <button
+            type="button"
+            ref={drag.setActivatorNodeRef}
+            {...drag.listeners}
+            {...drag.attributes}
+            aria-label={label}
+            className="flex size-8 cursor-grab touch-none items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:cursor-grabbing"
+          >
+            <GripVertical className="size-4" />
+          </button>
+          <span className="max-w-32 truncate text-[11px] font-medium text-muted-foreground">{label}</span>
+          <button
+            type="button"
+            onClick={onHide}
+            aria-label={hideLabel}
+            className="flex size-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-destructive"
+          >
+            <X className="size-3.5" />
+          </button>
+        </div>
+      )}
+      {dropEdge && (
+        <div
+          className={cn(
+            "pointer-events-none absolute inset-x-1 z-30 h-1.5 rounded-full bg-primary ring-2 ring-primary/25 motion-safe:animate-in motion-safe:fade-in-0",
+            dropEdge === "before" ? "-top-3" : "-bottom-3",
+          )}
+        />
+      )}
+      <div className={cn("h-full", editMode && "pointer-events-none select-none")}>{children}</div>
+    </div>
+  )
+}
 
 // Compact KPI tile — keeps a single figure readable without consuming a full
 // card's worth of vertical space on small screens.
@@ -547,7 +671,7 @@ export function Dashboard() {
   const navigate = useNavigate()
   const { getToken } = useAuth()
   const { currency } = useCurrency()
-  const { activeOrg } = useOrg()
+  const { activeOrg, profile } = useOrg()
   const isPersonal = activeOrg?.account_type === "personal"
   const { revision } = useDataRefresh()
 
@@ -566,6 +690,187 @@ export function Dashboard() {
   // included in the filter + aggregates. Off by default → analytics excludes them.
   const [showClosed, setShowClosed] = useState(false)
   const [peekTx, setPeekTx] = useState<Transaction | null>(null)
+
+  // ── Custom dashboard layout (order + hidden, per personal/business) ────────
+  const LAYOUT_LS_KEY = "ps_dashboard_layout"
+  const layoutContext: DashboardContext = isPersonal ? "personal" : "business"
+  // After a successful save, the freshest layout is local (the OrgProvider's
+  // profile snapshot is from boot); next session reads it from the profile.
+  const [savedOverride, setSavedOverride] = useState<DashboardLayout | null>(null)
+  const savedLayout = useMemo(() => {
+    if (savedOverride) return savedOverride
+    let localRaw: unknown = null
+    try {
+      localRaw = JSON.parse(localStorage.getItem(LAYOUT_LS_KEY) ?? "null")
+    } catch {
+      /* ignore */
+    }
+    // localStorage is only the pre-profile fast path (profile loads at boot).
+    const source = profile ? profile.dashboard_layout : localRaw
+    return normalizeLayout(source ?? {})
+  }, [profile, savedOverride])
+  const [layout, setLayoutState] = useState<LayoutCtx>(() => savedLayout.contexts[layoutContext])
+  const [editMode, setEditMode] = useState(false)
+  const [undoStack, setUndoStack] = useState<LayoutCtx[]>([])
+  const [redoStack, setRedoStack] = useState<LayoutCtx[]>([])
+  const [confirmDiscard, setConfirmDiscard] = useState(false)
+  const [savingLayout, setSavingLayout] = useState(false)
+  const layoutDirty = !sameCtx(layout, savedLayout.contexts[layoutContext])
+
+  // Outside edit mode the layout tracks the saved source (profile may load
+  // after mount; the org/account-type can switch).
+  useEffect(() => {
+    if (!editMode) setLayoutState(savedLayout.contexts[layoutContext])
+  }, [savedLayout, layoutContext, editMode])
+
+  function applyLayout(next: LayoutCtx) {
+    setUndoStack((s) => [...s.slice(-19), layout])
+    setRedoStack([])
+    setLayoutState(next)
+  }
+  function undoLayout() {
+    if (undoStack.length === 0) return
+    setRedoStack((r) => [...r, layout])
+    setLayoutState(undoStack[undoStack.length - 1])
+    setUndoStack(undoStack.slice(0, -1))
+  }
+  function redoLayout() {
+    if (redoStack.length === 0) return
+    setUndoStack((u) => [...u, layout])
+    setLayoutState(redoStack[redoStack.length - 1])
+    setRedoStack(redoStack.slice(0, -1))
+  }
+  function enterEditMode() {
+    setUndoStack([])
+    setRedoStack([])
+    setEditMode(true)
+  }
+  function cancelEditMode(force = false) {
+    if (layoutDirty && !force) {
+      setConfirmDiscard(true)
+      return
+    }
+    setConfirmDiscard(false)
+    setLayoutState(savedLayout.contexts[layoutContext])
+    setUndoStack([])
+    setRedoStack([])
+    setEditMode(false)
+  }
+  async function saveLayout() {
+    setSavingLayout(true)
+    try {
+      const token = await getToken()
+      if (!token) throw new Error("Not authenticated")
+      const full: DashboardLayout = {
+        version: 1,
+        contexts: { ...savedLayout.contexts, [layoutContext]: layout },
+      }
+      await apiPatch("/api/profile", token, { dashboard_layout: full })
+      try {
+        localStorage.setItem(LAYOUT_LS_KEY, JSON.stringify(full))
+      } catch {
+        /* ignore */
+      }
+      setSavedOverride(full)
+      setEditMode(false)
+      setUndoStack([])
+      setRedoStack([])
+      toast.success(t("dashboard.layoutSaved"))
+    } catch {
+      toast.error(t("dashboard.layoutSaveFailed"))
+    } finally {
+      setSavingLayout(false)
+    }
+  }
+
+  // Drag-to-reorder (edit mode): the WealthPage pointer-math pattern, vertical
+  // midpoint → before/after. Cards are mostly full-width rows, so the vertical
+  // edge is the natural one on every screen size.
+  const dashSensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { distance: 6 } }),
+  )
+  const [dragCardId, setDragCardId] = useState<DashboardCardId | null>(null)
+  const [dropEdge, setDropEdge] = useState<{ id: DashboardCardId; edge: "before" | "after" } | null>(null)
+  const dropEdgeRef = useRef<typeof dropEdge>(null)
+  const dragPointerStart = useRef<{ x: number; y: number }>({ x: 0, y: 0 })
+  const dashRects = useRef<{ id: DashboardCardId; rect: DOMRect }[]>([])
+
+  function setDropEdgeBoth(next: typeof dropEdge) {
+    dropEdgeRef.current = next
+    setDropEdge(next)
+  }
+  function onDashDragStart(e: DragStartEvent) {
+    setDragCardId(e.active.id as DashboardCardId)
+    setDropEdgeBoth(null)
+    const ev = e.activatorEvent as MouseEvent | TouchEvent | null
+    const p = ev && "touches" in ev ? ev.touches[0] : (ev as MouseEvent | null)
+    dragPointerStart.current = { x: p?.clientX ?? 0, y: p?.clientY ?? 0 }
+    dashRects.current = Array.from(document.querySelectorAll<HTMLElement>("[data-dash-card]")).map((el) => ({
+      id: el.dataset.dashCard as DashboardCardId,
+      rect: el.getBoundingClientRect(),
+    }))
+  }
+  function onDashDragMove(e: DragMoveEvent) {
+    const activeId = e.active.id as DashboardCardId
+    const p = { x: dragPointerStart.current.x + e.delta.x, y: dragPointerStart.current.y + e.delta.y }
+    const others = dashRects.current.filter((c) => c.id !== activeId)
+    let best: (typeof others)[number] | undefined
+    let bestD = Infinity
+    for (const c of others) {
+      const dx = Math.max(c.rect.left - p.x, 0, p.x - c.rect.right)
+      const dy = Math.max(c.rect.top - p.y, 0, p.y - c.rect.bottom)
+      const d = dx * dx + dy * dy
+      if (d < bestD) {
+        bestD = d
+        best = c
+      }
+    }
+    if (!best) {
+      setDropEdgeBoth(null)
+      return
+    }
+    const edge = p.y < best.rect.top + best.rect.height / 2 ? "before" : "after"
+    setDropEdgeBoth({ id: best.id, edge })
+  }
+  function onDashDragEnd(e: DragEndEvent) {
+    const activeId = e.active.id as DashboardCardId
+    const target = dropEdgeRef.current
+    setDragCardId(null)
+    setDropEdgeBoth(null)
+    if (!target || target.id === activeId) return
+    const visible = layout.order.filter((id) => !layout.hidden.includes(id))
+    const beforeId =
+      target.edge === "before"
+        ? target.id
+        : (visible[visible.indexOf(target.id) + 1] ?? null)
+    if (beforeId === activeId) return
+    applyLayout({ ...layout, order: moveCard(layout.order, activeId, beforeId) })
+  }
+
+  // Mobile entry: press-and-hold any card (500ms; a >12px move cancels — that's
+  // a scroll, not a hold).
+  const pressTimer = useRef<number | null>(null)
+  const pressStart = useRef<{ x: number; y: number } | null>(null)
+  function clearPress() {
+    if (pressTimer.current) window.clearTimeout(pressTimer.current)
+    pressTimer.current = null
+    pressStart.current = null
+  }
+  function onCardsTouchStart(e: React.TouchEvent) {
+    if (editMode) return
+    const t0 = e.touches[0]
+    pressStart.current = { x: t0.clientX, y: t0.clientY }
+    pressTimer.current = window.setTimeout(() => {
+      navigator.vibrate?.(15)
+      enterEditMode()
+    }, 500)
+  }
+  function onCardsTouchMove(e: React.TouchEvent) {
+    if (!pressStart.current) return
+    const t0 = e.touches[0]
+    if (Math.hypot(t0.clientX - pressStart.current.x, t0.clientY - pressStart.current.y) > 12) clearPress()
+  }
 
   // Refetch never re-shows the skeleton (loading only starts true) — so reloads on
   // the closed-toggle and the global refresh signal update figures in place.
@@ -709,78 +1014,9 @@ export function Dashboard() {
     .sort((a, b) => b.total - a.total)
     .slice(0, 6)
 
-  return (
-    <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
-      <CompanyUpsellBanner />
-
-      <div className="flex items-start justify-between gap-2 sm:gap-4">
-        <div className="min-w-0">
-          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">{t("dashboard.title")}</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            {filtersActive ? t("dashboard.filtered") : t("dashboard.overview")}
-          </p>
-        </div>
-        {/* Desktop: filters inline beside the title. Mobile: a single filter
-            button on the same line (req #1), opening a sheet with both. */}
-        <div className="hidden sm:flex sm:items-center sm:gap-2 shrink-0">
-          {!isPersonal && (
-            <MultiSelectFilter
-              triggerLabel={t("dashboard.allClients")}
-              allLabel={t("dashboard.allClients")}
-              searchPlaceholder={t("dashboard.searchClients")}
-              emptyText={t("dashboard.noClientsFound")}
-              options={clientOptions}
-              selected={selectedClientIds}
-              onChange={setSelectedClientIds}
-              icon={<Building2 className="size-4 opacity-60" />}
-              extraToggle={{ label: t("closed.showClosedClients"), checked: showClosed, onChange: setShowClosed }}
-            />
-          )}
-          <MultiSelectFilter
-            triggerLabel={t("dashboard.allCategories")}
-            allLabel={t("dashboard.allCategories")}
-            searchPlaceholder={t("dashboard.searchCategories")}
-            emptyText={t("dashboard.noCategoriesFound")}
-            options={categoryOptions}
-            selected={selectedCategories}
-            onChange={setSelectedCategories}
-            icon={<Tag className="size-4 opacity-60" />}
-          />
-        </div>
-        <div className="sm:hidden shrink-0">
-          <FilterSheet count={appliedFilterCount} onClear={clearAllFilters}>
-            {!isPersonal && (
-              <FilterSection label={t("filters.client")}>
-                <MultiSelectFilter
-                  triggerLabel={t("dashboard.allClients")}
-                  allLabel={t("dashboard.allClients")}
-                  searchPlaceholder={t("dashboard.searchClients")}
-                  emptyText={t("dashboard.noClientsFound")}
-                  options={clientOptions}
-                  selected={selectedClientIds}
-                  onChange={setSelectedClientIds}
-                  icon={<Building2 className="size-4 opacity-60" />}
-                  extraToggle={{ label: t("closed.showClosedClients"), checked: showClosed, onChange: setShowClosed }}
-                />
-              </FilterSection>
-            )}
-            <FilterSection label={t("filters.category")}>
-              <MultiSelectFilter
-                triggerLabel={t("dashboard.allCategories")}
-                allLabel={t("dashboard.allCategories")}
-                searchPlaceholder={t("dashboard.searchCategories")}
-                emptyText={t("dashboard.noCategoriesFound")}
-                options={categoryOptions}
-                selected={selectedCategories}
-                onChange={setSelectedCategories}
-                icon={<Tag className="size-4 opacity-60" />}
-              />
-            </FilterSection>
-          </FilterSheet>
-        </div>
-      </div>
-
-      {/* KPI Cards */}
+  // ── Card registry: every dashboard section by stable id (custom layout) ────
+  const cardNodes: Record<DashboardCardId, ReactNode | null> = {
+    kpis: (
       <div className="grid gap-2.5 sm:gap-4 grid-cols-2 lg:grid-cols-4">
         <StatCard
           loading={loading}
@@ -827,16 +1063,11 @@ export function Dashboard() {
           />
         )}
       </div>
-
-      {isPersonal
-        ? <PersonalBudgetCard />
-        : ownClient && <BusinessBudgetCard clientId={ownClient.id} clientName={ownClient.name} />}
-
-      <WealthOverview accounts={wealthAccounts} loading={loading} currency={currency} />
-
-      <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-5">
-        {/* Chart */}
-        <Card className="lg:col-span-3 min-w-0">
+    ),
+    budget: isPersonal ? <PersonalBudgetCard /> : ownClient ? <BusinessBudgetCard clientId={ownClient.id} clientName={ownClient.name} /> : null,
+    wealth: <WealthOverview accounts={wealthAccounts} loading={loading} currency={currency} />,
+    chart: (
+        <Card className="min-w-0 h-full">
           <CardHeader className="flex flex-row items-center justify-between gap-2">
             <CardTitle className="text-sm font-semibold">
               {isPersonal ? t("dashboard.revenueVsCategories") : t("dashboard.revenueVsExpenses")}
@@ -892,9 +1123,9 @@ export function Dashboard() {
             )}
           </CardContent>
         </Card>
-
-        {/* Top breakdown */}
-        <Card className="lg:col-span-2 min-w-0">
+    ),
+    breakdown: (
+        <Card className="min-w-0 h-full">
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="text-sm font-semibold">
               {isPersonal ? t("dashboard.topCategories") : t("dashboard.topClients")}
@@ -947,10 +1178,182 @@ export function Dashboard() {
             )}
           </CardContent>
         </Card>
+    ),
+    latest: <LatestTransactionsCard transactions={latestTx} loading={loading} currency={currency} showClient={!isPersonal} onSelect={setPeekTx} />,
+  }
+  const visibleCards = layout.order.filter((id) => !layout.hidden.includes(id) && cardNodes[id] !== null)
+
+  return (
+    <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
+      <CompanyUpsellBanner />
+
+      <div className="flex items-start justify-between gap-2 sm:gap-4">
+        <div className="min-w-0">
+          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">{t("dashboard.title")}</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            {filtersActive ? t("dashboard.filtered") : t("dashboard.overview")}
+          </p>
+        </div>
+        {/* Desktop: filters inline beside the title. Mobile: a single filter
+            button on the same line (req #1), opening a sheet with both. */}
+        <div className="hidden sm:flex sm:items-center sm:gap-2 shrink-0">
+          {!isPersonal && (
+            <MultiSelectFilter
+              triggerLabel={t("dashboard.allClients")}
+              allLabel={t("dashboard.allClients")}
+              searchPlaceholder={t("dashboard.searchClients")}
+              emptyText={t("dashboard.noClientsFound")}
+              options={clientOptions}
+              selected={selectedClientIds}
+              onChange={setSelectedClientIds}
+              icon={<Building2 className="size-4 opacity-60" />}
+              extraToggle={{ label: t("closed.showClosedClients"), checked: showClosed, onChange: setShowClosed }}
+            />
+          )}
+          <MultiSelectFilter
+            triggerLabel={t("dashboard.allCategories")}
+            allLabel={t("dashboard.allCategories")}
+            searchPlaceholder={t("dashboard.searchCategories")}
+            emptyText={t("dashboard.noCategoriesFound")}
+            options={categoryOptions}
+            selected={selectedCategories}
+            onChange={setSelectedCategories}
+            icon={<Tag className="size-4 opacity-60" />}
+          />
+        </div>
+        {/* Customize: enter the arrange-cards mode (mobile can also press-and-hold a card) */}
+        {!editMode && (
+          <Button
+            variant="outline"
+            size="icon"
+            className="shrink-0"
+            aria-label={t("dashboard.customize")}
+            title={t("dashboard.customize")}
+            onClick={enterEditMode}
+          >
+            <SlidersHorizontal className="size-4" />
+          </Button>
+        )}
+        <div className="sm:hidden shrink-0">
+          <FilterSheet count={appliedFilterCount} onClear={clearAllFilters}>
+            {!isPersonal && (
+              <FilterSection label={t("filters.client")}>
+                <MultiSelectFilter
+                  triggerLabel={t("dashboard.allClients")}
+                  allLabel={t("dashboard.allClients")}
+                  searchPlaceholder={t("dashboard.searchClients")}
+                  emptyText={t("dashboard.noClientsFound")}
+                  options={clientOptions}
+                  selected={selectedClientIds}
+                  onChange={setSelectedClientIds}
+                  icon={<Building2 className="size-4 opacity-60" />}
+                  extraToggle={{ label: t("closed.showClosedClients"), checked: showClosed, onChange: setShowClosed }}
+                />
+              </FilterSection>
+            )}
+            <FilterSection label={t("filters.category")}>
+              <MultiSelectFilter
+                triggerLabel={t("dashboard.allCategories")}
+                allLabel={t("dashboard.allCategories")}
+                searchPlaceholder={t("dashboard.searchCategories")}
+                emptyText={t("dashboard.noCategoriesFound")}
+                options={categoryOptions}
+                selected={selectedCategories}
+                onChange={setSelectedCategories}
+                icon={<Tag className="size-4 opacity-60" />}
+              />
+            </FilterSection>
+          </FilterSheet>
+        </div>
       </div>
 
-      {/* Latest activity across the workspace */}
-      <LatestTransactionsCard transactions={latestTx} loading={loading} currency={currency} showClient={!isPersonal} onSelect={setPeekTx} />
+      {/* Hidden cards (edit mode): tap to bring one back */}
+      {editMode && layout.hidden.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-dashed p-2.5">
+          <span className="text-xs font-medium text-muted-foreground">{t("dashboard.hiddenCards")}</span>
+          {layout.hidden.map((id) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => applyLayout({ ...layout, hidden: layout.hidden.filter((h) => h !== id) })}
+              className="inline-flex min-h-8 items-center gap-1 rounded-full border bg-card px-2.5 py-1 text-xs font-medium transition-colors hover:border-primary/50"
+            >
+              <Plus className="size-3" /> {t(CARD_LABEL_KEYS[id])}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Customizable card grid. chart(3/5) + breakdown(2/5) pair side-by-side
+          on lg when adjacent; everywhere else cards span the full row. Edit
+          mode: drag by the handle to reorder, × to hide; press-and-hold any
+          card enters edit mode on touch devices. */}
+      <DndContext
+        sensors={dashSensors}
+        collisionDetection={closestCenter}
+        onDragStart={onDashDragStart}
+        onDragMove={onDashDragMove}
+        onDragEnd={onDashDragEnd}
+        onDragCancel={() => { setDragCardId(null); setDropEdgeBoth(null) }}
+      >
+        <div
+          className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-5"
+          onTouchStart={onCardsTouchStart}
+          onTouchMove={onCardsTouchMove}
+          onTouchEnd={clearPress}
+          onTouchCancel={clearPress}
+        >
+          {visibleCards.map((id) => (
+            <DashCardShell
+              key={id}
+              id={id}
+              label={t(CARD_LABEL_KEYS[id])}
+              span={CARD_SPANS[id]}
+              editMode={editMode}
+              dragging={dragCardId === id}
+              dropEdge={dropEdge && dropEdge.id === id && dragCardId !== id ? dropEdge.edge : null}
+              hideLabel={t("dashboard.hideCard")}
+              onHide={() => applyLayout({ ...layout, hidden: [...layout.hidden, id] })}
+            >
+              {cardNodes[id]}
+            </DashCardShell>
+          ))}
+        </div>
+      </DndContext>
+
+      {/* Edit-mode toolbar: undo/redo + save/cancel */}
+      {editMode && (
+        <div className="sticky bottom-24 z-30 flex items-center justify-between gap-2 rounded-2xl border bg-card/95 p-2 shadow-lg backdrop-blur sm:bottom-4">
+          <div className="flex items-center gap-1">
+            <Button size="icon" variant="outline" onClick={undoLayout} disabled={undoStack.length === 0} aria-label={t("dashboard.undo")}>
+              <Undo2 className="size-4" />
+            </Button>
+            <Button size="icon" variant="outline" onClick={redoLayout} disabled={redoStack.length === 0} aria-label={t("dashboard.redo")}>
+              <Redo2 className="size-4" />
+            </Button>
+          </div>
+          <p className="hidden flex-1 truncate px-2 text-center text-xs text-muted-foreground sm:block">{t("dashboard.editHint")}</p>
+          <div className="flex items-center gap-1.5">
+            <Button size="sm" variant="ghost" onClick={() => cancelEditMode()} disabled={savingLayout}>{t("common.cancel")}</Button>
+            <Button size="sm" onClick={saveLayout} disabled={savingLayout}>{savingLayout ? t("common.saving") : t("common.save")}</Button>
+          </div>
+        </div>
+      )}
+
+      {/* Discard-changes confirmation */}
+      <AlertDialog open={confirmDiscard} onOpenChange={setConfirmDiscard}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("dashboard.discardTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>{t("dashboard.discardBody")}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("dashboard.keepEditing")}</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" onClick={() => cancelEditMode(true)}>{t("dashboard.discardConfirm")}</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
 
       <TransactionPeekModal
         tx={peekTx}

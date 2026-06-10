@@ -41,7 +41,7 @@
 | 06 | `feat/ux4-06-billing-attempts` | T11 attempt logging + admin panel | 0038 | ✅ |
 | 07 | `feat/ux4-07-recurring-payments` | T3 recurring payments | 0039 | ✅ |
 | 08 | `feat/ux4-08-calendar` | T7 calendar visualization | — | ✅ |
-| 09 | `feat/ux4-09-custom-dashboard` | T12 custom dashboard builder | 0040 | ⬜ |
+| 09 | `feat/ux4-09-custom-dashboard` | T12 custom dashboard builder | 0040 | ✅ |
 | 10 | `feat/ux4-10-e2e-ci` | T4 Playwright e2e + CI gate for main | — | ⬜ |
 | 11 | `feat/ux4-11-security-gate` | T5 security checks (pre-commit + CI) | — | ⬜ |
 | 12 | `feat/ux4-12-audit-fixes` | T6 deep security/perf/scale audit + fixes | — | ⬜ |
@@ -280,7 +280,15 @@ in-memory undo/redo stack; sticky Save/Cancel bar (Cancel = revert, confirmation
 when dirty); respects `prefers-reduced-motion`.
 **Verify:** Playwright — reorder + hide + save persists across reload; cancel
 reverts; undo/redo steps correctly; press-and-hold enters edit mode on mobile width.
-**Status:** ⬜
+**Status:** ✅ — browser-verified end-to-end: Customize button → edit mode (6
+handle pills + hide buttons + sticky toolbar); hid the budget card (chip
+appeared in the add-back row); stepped pointer drag moved kpis below wealth;
+undo restored, redo re-applied; Save persisted to the DB + localStorage and the
+order survived a full reload; 500ms touch-hold on a card entered edit mode at
+390px; Cancel with unsaved changes raised the discard confirmation. Layout is
+stored per account type (personal/business contexts) and normalized against the
+registry on read (unknown ids drop, new cards append) — 7 unit tests. Dev
+user's layout restored to defaults after testing.
 
 ## 10 · T4 — E2E tests + GitHub Actions gate for main
 
@@ -367,3 +375,7 @@ docs), and the new e2e/security gates.
   materializes recurring first); /calendar page with Month/Week/Day, drill-down
   modal + /transactions?from&to deep link (TransactionsPage now reads URL date
   params); 16 i18n keys × 8 locales. Browser-verified desktop + mobile.
+- 2026-06-10 — 09 custom dashboard: migration 0040; card registry + normalized
+  per-context layouts (7 tests); edit mode with dnd-kit reorder, hide/add-back,
+  undo/redo, sticky save/cancel + discard confirm, mobile press-and-hold;
+  18 i18n keys × 8 locales. Browser-verified end-to-end.
