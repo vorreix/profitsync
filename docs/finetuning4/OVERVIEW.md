@@ -211,3 +211,18 @@ layout · 0041 transactions hot-path indexes.
 - **Checkout shows the wrong currency** → check the org's currency
   (Organizations → edit) and remember the India-always-INR rule; the snapshot
   on the subscription row shows what was actually sent.
+
+## 13. Admin roles & permissions (`ux4-19`)
+
+The `/admin` console now has real RBAC. **Custom roles** (Admins page → Roles,
+super admins only) combine five grantable permissions — view data, edit data,
+blog, settings, manage admins — and can be assigned like the built-in roles.
+Three powers are **super-admin-exclusive and can never be granted**: seeing an
+organization's Transactions tab, managing super admins, and managing roles.
+The visibility rule is "shouldn't even see it exists": non-supers get no
+Transactions tab (the API rejects direct calls too), never see `super_admin`
+in a role picker, and super-admin rows are redacted from their admins list.
+Guard rails: only supers can grant/change/remove supers, the last super admin
+can't be demoted or deleted, role names that collide with built-ins are
+rejected, and deleting a role still assigned to anyone is blocked. Enforcement
+is server-side everywhere — hiding is UX, the 403 is the security.

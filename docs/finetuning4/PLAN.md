@@ -51,6 +51,7 @@
 | 16 | `feat/ux4-16-edit-jiggle` | Dashboard edit mode: iOS jiggle + floating dimmed drag | — | ✅ |
 | 17 | `feat/ux4-17-postsave-scroll` | Fix: post-save mobile scroll blocked by the toast | — | ✅ |
 | 18 | `feat/ux4-18-calendar-modal-summary` | Calendar drill-down modal: in/out/profit/count card | — | ✅ |
+| 19 | `feat/ux4-19-admin-rbac` | Admin RBAC: custom roles + super-admin-only surfaces | 0042 | ✅ |
 
 ## ⚠️ Corrections to research findings (re-derived by hand)
 
@@ -470,4 +471,24 @@ pointer section. **Chain complete: 14/14 branches shipped.**
   AGGREGATES (not the listed rows, which cap at 50) so it always matches the
   grid. Verified all 3 entry points (day €987,655,643/−€20/€987,655,623/3;
   month totals matched the page summary exactly); 2×2 at 390px, no overflow.
-  **ux4 chain complete — 19 branches, migrations 0035–0041, all pushed.**
+- 2026-06-11 — 19 admin RBAC (follow-up request): custom roles + permissions
+  for /admin. Three SUPER-ADMIN-EXCLUSIVE capabilities (org_transactions,
+  manage_super_admins, manage_roles) that are never grantable — enforced by a
+  grantable allowlist validated on write AND re-filtered on read (a tampered
+  row can't escalate). Custom roles live in admin_roles (migration 0042),
+  resolved with a 30s cache; the old "unknown role → super_admin" fallback is
+  GONE (unknown keys resolve to zero capabilities). Visibility model: non-supers
+  don't see the org-detail Transactions tab (URL-forcing falls back; the API
+  403s), don't see the super_admin role in any picker (catalog omits it), and
+  super-admin ROWS are redacted from their admins list. /api/admin/admins
+  gates every path that grants/edits/removes a super (incl. the POST-upsert
+  demote) + keeps last-super lockout protection; users.ts demote/delete got the
+  same gates. Roles manager UI on /admin/admins (super-only): create/edit/
+  delete custom roles from 5 permission checkboxes; delete blocked while in
+  use (409). VERIFIED with a real non-super session (e2e user + custom
+  "Support Lead" role via Clerk testing tokens): 14/14 adversarial checks
+  passed — role catalog hid super_admin, admins list redacted, grant/demote/
+  delete super → 403, org transactions → 403 while read surfaces → 200,
+  role creation → 403. 9 unit tests lock the capability model. Super view
+  re-verified intact in the browser. Test data cleaned up.
+  **ux4 chain complete — 20 branches, migrations 0035–0042, all pushed.**

@@ -76,6 +76,8 @@ import billingInvoicePdf from "./_routes/billing/invoice-pdf.js"
 // route serves /api/billing/webhook before the catch-all rewrite reaches this.
 import adminMe from "./_routes/admin/me.js"
 import adminAdmins from "./_routes/admin/admins.js"
+import adminRolesRoute from "./_routes/admin/roles.js"
+import adminRoleById from "./_routes/admin/roles/[id].js"
 import adminStats from "./_routes/admin/stats.js"
 import adminUsers from "./_routes/admin/users.js"
 import adminUserDetail from "./_routes/admin/user-detail.js"
@@ -185,6 +187,8 @@ const routes: RoutePattern<ApiHandler>[] = [
 
   { segments: ["admin", "me"], handler: adminMe },
   { segments: ["admin", "admins"], handler: adminAdmins },
+  { segments: ["admin", "roles"], handler: adminRolesRoute },
+  { segments: ["admin", "roles", ":id"], handler: adminRoleById },
   { segments: ["admin", "stats"], handler: adminStats },
   { segments: ["admin", "users"], handler: adminUsers },
   { segments: ["admin", "user-detail"], handler: adminUserDetail },
