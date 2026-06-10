@@ -30,7 +30,8 @@
     "referrals": "ادعُ وأكسب",
     "refundPolicy": "سياسة الاسترجاع",
     "budgets": "الميزانيات",
-    "recurring": "متكرر"
+    "recurring": "متكرر",
+    "calendar": "التقويم"
   },
   "actions": {
     "addClient": "إضافة عميل",
@@ -1098,5 +1099,22 @@
     "loadFailed": "تعذر تحميل الدفعات المتكررة",
     "empty": "لا توجد دفعات متكررة بعد",
     "emptyHint": "أعدّ الإيجار أو الرواتب أو الاشتراكات مرة واحدة — وسيسجلها ProfitSync تلقائيًا عند استحقاقها."
+  },
+  "calendar": {
+    "title": "التقويم",
+    "subtitle": "حركة أموالك يومًا بيوم.",
+    "month": "شهر",
+    "week": "أسبوع",
+    "day": "يوم",
+    "previous": "السابق",
+    "next": "التالي",
+    "backToToday": "العودة إلى اليوم",
+    "incoming": "وارد",
+    "outgoing": "صادر",
+    "transactions": "المعاملات",
+    "noActivity": "لا يوجد نشاط",
+    "viewDayTransactions": "عرض {{count}} معاملة",
+    "openInTransactions": "فتح في المعاملات",
+    "loadFailed": "تعذر تحميل التقويم"
   }
 }

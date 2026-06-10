@@ -35,7 +35,8 @@
     "refundPolicy": "Refund Policy",
     "admin": "Admin",
     "adminConsole": "Admin console",
-    "recurring": "Recurring"
+    "recurring": "Recurring",
+    "calendar": "Calendar"
   },
   "actions": {
     "addClient": "Add Client",
@@ -1098,5 +1099,22 @@
     "loadFailed": "Couldn't load recurring payments",
     "empty": "No recurring payments yet",
     "emptyHint": "Set up rent, salaries or subscriptions once — ProfitSync records them automatically when they're due."
+  },
+  "calendar": {
+    "title": "Calendar",
+    "subtitle": "Your money activity, day by day.",
+    "month": "Month",
+    "week": "Week",
+    "day": "Day",
+    "previous": "Previous",
+    "next": "Next",
+    "backToToday": "Back to today",
+    "incoming": "Money in",
+    "outgoing": "Money out",
+    "transactions": "Transactions",
+    "noActivity": "No activity",
+    "viewDayTransactions": "View {{count}} transaction(s)",
+    "openInTransactions": "Open in Transactions",
+    "loadFailed": "Couldn't load the calendar"
   }
 }

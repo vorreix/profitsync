@@ -40,7 +40,7 @@
 | 05 | `feat/ux4-05-dodo-org-currency` | T9 checkout in org currency | 0037 | ✅ |
 | 06 | `feat/ux4-06-billing-attempts` | T11 attempt logging + admin panel | 0038 | ✅ |
 | 07 | `feat/ux4-07-recurring-payments` | T3 recurring payments | 0039 | ✅ |
-| 08 | `feat/ux4-08-calendar` | T7 calendar visualization | — | ⬜ |
+| 08 | `feat/ux4-08-calendar` | T7 calendar visualization | — | ✅ |
 | 09 | `feat/ux4-09-custom-dashboard` | T12 custom dashboard builder | 0040 | ⬜ |
 | 10 | `feat/ux4-10-e2e-ci` | T4 Playwright e2e + CI gate for main | — | ⬜ |
 | 11 | `feat/ux4-11-security-gate` | T5 security checks (pre-commit + CI) | — | ⬜ |
@@ -259,7 +259,13 @@ params — added). Nav entry for both desktop sidebar + mobile More menu.
 Mobile-first 44px cells; reduced-motion safe.
 **Verify:** Playwright — month renders sums matching seeded data; tap day → modal
 lists the day's transactions; expand navigates with filters applied.
-**Status:** ⬜
+**Status:** ✅ — browser-verified at desktop + 390px: month grid with activity
+dots (intensity scaled to the busiest day) + today ring; day modal listed
+exactly the day's 3 transactions (matched against the DB); "Open in
+Transactions" landed on /transactions?from&to pre-filtered (3 total, recomputed
+summaries). Month/Week/Day tabs; week strip with per-day totals; period summary
+cards tap straight into the period's transactions. Found+fixed during verify:
+the transactions `?limit=` (no page) endpoint returns a bare array, not {data}.
 
 ## 09 · T12 — Custom dashboard builder (0040)
 
@@ -357,3 +363,7 @@ docs), and the new e2e/security gates.
   idempotency index); pure date math (13 tests) + race-proof materializer
   (DB-verified concurrently); /recurring page (personal + business), nav, tx
   badges, 58 i18n keys × 8 locales. Browser-verified end-to-end.
+- 2026-06-10 — 08 calendar: /api/calendar per-day aggregates (range-capped,
+  materializes recurring first); /calendar page with Month/Week/Day, drill-down
+  modal + /transactions?from&to deep link (TransactionsPage now reads URL date
+  params); 16 i18n keys × 8 locales. Browser-verified desktop + mobile.

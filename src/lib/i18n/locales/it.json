@@ -30,7 +30,8 @@
     "referrals": "Referral e guadagni",
     "refundPolicy": "Politica di rimborso",
     "budgets": "Budget",
-    "recurring": "Ricorrenti"
+    "recurring": "Ricorrenti",
+    "calendar": "Calendario"
   },
   "actions": {
     "addClient": "Aggiungi cliente",
@@ -1098,5 +1099,22 @@
     "loadFailed": "Impossibile caricare i pagamenti ricorrenti",
     "empty": "Nessun pagamento ricorrente",
     "emptyHint": "Imposta affitto, stipendi o abbonamenti una volta sola — ProfitSync li registra automaticamente alla scadenza."
+  },
+  "calendar": {
+    "title": "Calendario",
+    "subtitle": "La tua attività finanziaria, giorno per giorno.",
+    "month": "Mese",
+    "week": "Settimana",
+    "day": "Giorno",
+    "previous": "Precedente",
+    "next": "Successivo",
+    "backToToday": "Torna a oggi",
+    "incoming": "Entrate",
+    "outgoing": "Uscite",
+    "transactions": "Transazioni",
+    "noActivity": "Nessuna attività",
+    "viewDayTransactions": "Vedi {{count}} transazione/i",
+    "openInTransactions": "Apri in Transazioni",
+    "loadFailed": "Impossibile caricare il calendario"
   }
 }

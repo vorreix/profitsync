@@ -30,7 +30,8 @@
     "referrals": "रेफर करें और कमाएं",
     "refundPolicy": "रिफंड नीति",
     "budgets": "बजट",
-    "recurring": "आवर्ती"
+    "recurring": "आवर्ती",
+    "calendar": "कैलेंडर"
   },
   "actions": {
     "addClient": "ग्राहक जोड़ें",
@@ -1098,5 +1099,22 @@
     "loadFailed": "आवर्ती भुगतान लोड नहीं हो सके",
     "empty": "अभी कोई आवर्ती भुगतान नहीं",
     "emptyHint": "किराया, वेतन या सब्सक्रिप्शन एक बार सेट करें — देय होने पर ProfitSync उन्हें अपने आप दर्ज करता है।"
+  },
+  "calendar": {
+    "title": "कैलेंडर",
+    "subtitle": "आपकी पैसों की गतिविधि, दिन-प्रतिदिन।",
+    "month": "महीना",
+    "week": "सप्ताह",
+    "day": "दिन",
+    "previous": "पिछला",
+    "next": "अगला",
+    "backToToday": "आज पर वापस",
+    "incoming": "पैसा आया",
+    "outgoing": "पैसा गया",
+    "transactions": "लेन-देन",
+    "noActivity": "कोई गतिविधि नहीं",
+    "viewDayTransactions": "{{count}} लेन-देन देखें",
+    "openInTransactions": "लेन-देन में खोलें",
+    "loadFailed": "कैलेंडर लोड नहीं हो सका"
   }
 }

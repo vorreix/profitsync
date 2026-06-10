@@ -30,7 +30,8 @@
     "referrals": "Empfehlen & verdienen",
     "refundPolicy": "Rückgaberichtlinie",
     "budgets": "Budgets",
-    "recurring": "Daueraufträge"
+    "recurring": "Daueraufträge",
+    "calendar": "Kalender"
   },
   "actions": {
     "addClient": "Kunde hinzufügen",
@@ -1098,5 +1099,22 @@
     "loadFailed": "Wiederkehrende Zahlungen konnten nicht geladen werden",
     "empty": "Noch keine wiederkehrenden Zahlungen",
     "emptyHint": "Richte Miete, Gehälter oder Abos einmal ein — ProfitSync bucht sie automatisch, wenn sie fällig sind."
+  },
+  "calendar": {
+    "title": "Kalender",
+    "subtitle": "Deine Geldbewegungen, Tag für Tag.",
+    "month": "Monat",
+    "week": "Woche",
+    "day": "Tag",
+    "previous": "Zurück",
+    "next": "Weiter",
+    "backToToday": "Zurück zu heute",
+    "incoming": "Eingänge",
+    "outgoing": "Ausgänge",
+    "transactions": "Transaktionen",
+    "noActivity": "Keine Aktivität",
+    "viewDayTransactions": "{{count}} Transaktion(en) ansehen",
+    "openInTransactions": "In Transaktionen öffnen",
+    "loadFailed": "Kalender konnte nicht geladen werden"
   }
 }
