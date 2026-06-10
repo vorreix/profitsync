@@ -54,6 +54,7 @@
 | 19 | `feat/ux4-19-admin-rbac` | Admin RBAC: custom roles + super-admin-only surfaces | 0042 | ✅ |
 | 20 | `feat/ux4-20-landing-security` | Landing: Security & privacy trust section | — | ✅ |
 | 21 | `feat/ux4-21-navbar-avatar-refresh` | Profile photo updates the navbar/menu avatar live | — | ✅ |
+| 22 | `feat/ux4-22-money-flow` | Money flow mind-map (React Flow) — personal + org, filters, dashboard card | — | ✅ |
 
 ## ⚠️ Corrections to research findings (re-derived by hand)
 
@@ -510,4 +511,21 @@ pointer section. **Chain complete: 14/14 branches shipped.**
   no refetch. Browser-verified: footer avatar UklGRmo→UklGRh4 on upload (desktop
   + mobile header), and reverted to initials on remove, both without a reload.
   Test image cleaned out of the dev account.
-  **ux4 chain complete — 22 branches, migrations 0035–0042, all pushed.**
+- 2026-06-11 — 22 money flow (user request): a Miro-style mind-map of money
+  movement. NEW dep @xyflow/react (React Flow, MIT, touch-native, lazy chunk —
+  the right tool for a pannable/zoomable node canvas; prod audit clean). New
+  /api/flow endpoint (drizzle aggregates like analytics; materializes recurring
+  first; org-scoped, excludes deleted/closed/transfers). Pure builder
+  src/lib/money-flow.ts (root → group-by-dimension → capped tx leaves + "+N
+  more" deep link; left→right layout) — 7 unit tests. /flow page: switchable
+  Accounts/Clients/Categories grouping (Accounts shows opening→current balance,
+  the user's "before→after"), collapse/expand per group + collapse-all,
+  date-range + multi category/client/account filters (sheet), empty state,
+  re-fit on data change (fixed an off-screen-after-filter bug found in verify).
+  Dashboard gains a lightweight "flow" card (registry id; no React Flow on the
+  dashboard — keeps it fast). Organizations cards get a 3-dot menu
+  consolidating Money flow + Members/Edit/Delete. Nav (Network icon) desktop +
+  mobile; 34 i18n keys × 8 locales + organizations.actions. Browser-verified
+  desktop + 390px (fitView scales the whole map); 228 unit tests + sweeps +
+  e2e green.
+  **ux4 chain complete — 23 branches, migrations 0035–0042, all pushed.**

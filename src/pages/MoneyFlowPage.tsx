@@ -1,0 +1,423 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useTranslation } from "react-i18next"
+import { useNavigate } from "react-router-dom"
+import { useAuth } from "@clerk/clerk-react"
+import {
+  Background,
+  Controls,
+  Handle,
+  Position,
+  ReactFlow,
+  type Edge,
+  type Node,
+  type NodeProps,
+  type ReactFlowInstance,
+} from "@xyflow/react"
+import "@xyflow/react/dist/style.css"
+import { toast } from "sonner"
+import {
+  ArrowDownRight,
+  ArrowUpRight,
+  ChevronDown,
+  ChevronRight,
+  Landmark,
+  ListFilter,
+  Repeat,
+  Tag,
+  Users,
+  Wallet,
+  Workflow,
+} from "lucide-react"
+import { apiGet } from "@/lib/api"
+import { useOrg } from "@/lib/org-context"
+import { useCurrency } from "@/lib/currency-context"
+import { formatMoney } from "@/lib/wealth"
+import { cn } from "@/lib/utils"
+import { accountTypeAllows } from "@/lib/types"
+import { buildFlowGraph, groupKeyId, type FlowData, type FlowGroup, type FlowLeaf } from "@/lib/money-flow"
+import { Button } from "@/components/ui/button"
+import { Label } from "@/components/ui/label"
+import { Input } from "@/components/ui/input"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Skeleton } from "@/components/ui/skeleton"
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
+import { ScrollArea } from "@/components/ui/scroll-area"
+
+type GroupBy = "account" | "client" | "category"
+type Option = { id: string; label: string }
+
+// ── Custom node components ───────────────────────────────────────────────────
+// React Flow renders these by `type`. Each reads typed data injected by the
+// page below; currency formatting + the toggle callback are passed through data.
+
+function Money({ value, sign, currency, className }: { value: number; sign?: "+" | "−"; currency: string; className?: string }) {
+  return (
+    <span className={cn("tabular-nums", className)}>
+      {sign}{formatMoney(value, currency)}
+    </span>
+  )
+}
+
+type RootData = {
+  label: string; income: number; expense: number; net: number; tx_count: number; balance: number
+  collapsed: boolean; currency: string; onToggle: () => void
+}
+function RootNode({ data }: NodeProps<Node<RootData>>) {
+  const { t } = useTranslation()
+  return (
+    <div className="w-[240px] rounded-2xl border-2 border-primary/50 bg-card p-4 shadow-lg">
+      <div className="flex items-center gap-2">
+        <span className="grid size-9 place-items-center rounded-xl bg-primary/10 text-primary"><Workflow className="size-5" /></span>
+        <div className="min-w-0">
+          <p className="truncate text-sm font-semibold">{data.label}</p>
+          <p className="text-[11px] text-muted-foreground">{t("flow.workspaceTotals")}</p>
+        </div>
+      </div>
+      <dl className="mt-3 space-y-1.5 text-xs">
+        <div className="flex items-center justify-between"><dt className="text-muted-foreground">{t("flow.revenue")}</dt><dd><Money value={data.income} sign="+" currency={data.currency} className="font-semibold text-emerald-600 dark:text-emerald-400" /></dd></div>
+        <div className="flex items-center justify-between"><dt className="text-muted-foreground">{t("flow.expenses")}</dt><dd><Money value={data.expense} sign="−" currency={data.currency} className="font-semibold text-red-600 dark:text-red-400" /></dd></div>
+        <div className="flex items-center justify-between border-t pt-1.5"><dt className="font-medium">{t("flow.net")}</dt><dd><Money value={data.net} currency={data.currency} className={cn("font-bold", data.net >= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-red-700 dark:text-red-300")} /></dd></div>
+        <div className="flex items-center justify-between"><dt className="text-muted-foreground">{t("flow.balance")}</dt><dd><Money value={data.balance} currency={data.currency} className="font-medium" /></dd></div>
+      </dl>
+      <button
+        type="button"
+        onClick={data.onToggle}
+        className="mt-3 flex w-full items-center justify-center gap-1 rounded-lg border py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted"
+      >
+        {data.collapsed ? <ChevronRight className="size-3" /> : <ChevronDown className="size-3" />}
+        {data.collapsed ? t("flow.expandAll") : t("flow.collapseAll")}
+      </button>
+      <Handle type="source" position={Position.Right} className="!size-2 !border-2 !border-primary !bg-background" />
+    </div>
+  )
+}
+
+const GROUP_ICON = { account: Landmark, client: Users, category: Tag } as const
+
+type GroupData = FlowGroup & { expanded: boolean; currency: string; onToggle: () => void }
+function GroupNode({ data }: NodeProps<Node<GroupData>>) {
+  const { t } = useTranslation()
+  const Icon = data.kind === "account" ? (data.account_type === "cash" ? Wallet : Landmark) : GROUP_ICON[data.kind]
+  const showBalances = data.kind === "account" && data.current_balance != null
+  return (
+    <div className="w-[256px] rounded-2xl border bg-card p-3.5 shadow-sm transition-shadow hover:shadow-md">
+      <Handle type="target" position={Position.Left} className="!size-2 !border-2 !border-muted-foreground/40 !bg-background" />
+      <div className="flex items-center gap-2">
+        <span className="grid size-8 place-items-center rounded-lg bg-muted text-muted-foreground"><Icon className="size-4" /></span>
+        <p className="min-w-0 flex-1 truncate text-sm font-semibold" title={data.label}>{data.label}</p>
+        <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] tabular-nums text-muted-foreground">{data.tx_count}</span>
+      </div>
+      <dl className="mt-2.5 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
+        <div><dt className="text-muted-foreground">{t("flow.in")}</dt><dd><Money value={data.income} sign="+" currency={data.currency} className="font-medium text-emerald-600 dark:text-emerald-400" /></dd></div>
+        <div><dt className="text-muted-foreground">{t("flow.out")}</dt><dd><Money value={data.expense} sign="−" currency={data.currency} className="font-medium text-red-600 dark:text-red-400" /></dd></div>
+        {showBalances ? (
+          <>
+            <div><dt className="text-muted-foreground">{t("flow.opening")}</dt><dd><Money value={data.opening_balance ?? 0} currency={data.currency} /></dd></div>
+            <div><dt className="text-muted-foreground">{t("flow.current")}</dt><dd><Money value={data.current_balance ?? 0} currency={data.currency} className="font-medium" /></dd></div>
+          </>
+        ) : (
+          <div className="col-span-2 border-t pt-1"><dt className="text-muted-foreground">{t("flow.net")}</dt><dd className="inline"> <Money value={data.net} currency={data.currency} className={cn("font-semibold", data.net >= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-red-700 dark:text-red-300")} /></dd></div>
+        )}
+      </dl>
+      {data.tx_count > 0 && (
+        <button
+          type="button"
+          onClick={data.onToggle}
+          className="mt-2.5 flex w-full items-center justify-center gap-1 rounded-lg border py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted"
+        >
+          {data.expanded ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
+          {data.expanded ? t("flow.hideTransactions") : t("flow.showTransactions")}
+        </button>
+      )}
+      <Handle type="source" position={Position.Right} className="!size-2 !border-2 !border-muted-foreground/40 !bg-background" />
+    </div>
+  )
+}
+
+type LeafData = FlowLeaf & { currency: string; formatDate: (d: string) => string }
+function LeafNode({ data }: NodeProps<Node<LeafData>>) {
+  const { t } = useTranslation()
+  const inc = data.type === "incoming"
+  return (
+    <div className="w-[230px] rounded-xl border bg-card/80 p-2.5 text-xs shadow-sm">
+      <Handle type="target" position={Position.Left} className="!size-1.5 !border !border-muted-foreground/40 !bg-background" />
+      <div className="flex items-center gap-2">
+        <span className={cn("grid size-7 shrink-0 place-items-center rounded-full", inc ? "bg-emerald-100 dark:bg-emerald-900/30" : "bg-red-100 dark:bg-red-900/30")}>
+          {inc ? <ArrowUpRight className="size-3.5 text-emerald-600 dark:text-emerald-400" /> : <ArrowDownRight className="size-3.5 text-red-600 dark:text-red-400" />}
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="flex items-center gap-1 truncate font-medium">
+            {data.description || (inc ? t("flow.income") : t("flow.expense"))}
+            {data.recurring && <Repeat className="size-3 shrink-0 text-violet-500" />}
+          </p>
+          <p className="truncate text-[10px] text-muted-foreground">{data.formatDate(data.date)}{data.category ? ` · ${data.category}` : ""}</p>
+        </div>
+        <Money value={data.amount} sign={inc ? "+" : "−"} currency={data.currency} className={cn("shrink-0 font-semibold", inc ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400")} />
+      </div>
+    </div>
+  )
+}
+
+type MoreData = { count: number; group: FlowGroup; onOpen: () => void }
+function MoreNode({ data }: NodeProps<Node<MoreData>>) {
+  const { t } = useTranslation()
+  return (
+    <button
+      type="button"
+      onClick={data.onOpen}
+      className="flex w-[230px] items-center justify-center gap-1.5 rounded-xl border border-dashed bg-card/60 px-2.5 py-2 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/50 hover:text-foreground"
+    >
+      <Handle type="target" position={Position.Left} className="!size-1.5 !border !border-muted-foreground/40 !bg-background" />
+      <ListFilter className="size-3.5" /> {t("flow.viewMore", { count: data.count })}
+    </button>
+  )
+}
+
+const NODE_TYPES = { root: RootNode, group: GroupNode, leaf: LeafNode, more: MoreNode }
+
+// ── Multi-select filter popover (compact, mobile-safe) ───────────────────────
+function MultiCheck({ label, options, selected, onChange }: { label: string; options: Option[]; selected: Set<string>; onChange: (s: Set<string>) => void }) {
+  if (options.length === 0) return null
+  const toggle = (id: string) => {
+    const next = new Set(selected)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    onChange(next)
+  }
+  return (
+    <div className="space-y-1.5">
+      <Label className="text-xs">{label}</Label>
+      <div className="max-h-40 space-y-1 overflow-y-auto rounded-lg border p-2 scrollbar-thin">
+        {options.map((o) => (
+          <label key={o.id} className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 text-sm hover:bg-muted">
+            <Checkbox checked={selected.has(o.id)} onCheckedChange={() => toggle(o.id)} />
+            <span className="truncate">{o.label}</span>
+          </label>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+const GROUP_BYS: GroupBy[] = ["account", "client", "category"]
+
+export function MoneyFlowPage() {
+  const { t, i18n } = useTranslation()
+  const navigate = useNavigate()
+  const { getToken } = useAuth()
+  const { activeOrg } = useOrg()
+  const { currency } = useCurrency()
+  const isPersonal = activeOrg?.account_type === "personal"
+  const hasClients = accountTypeAllows(activeOrg?.account_type ?? null, "clients")
+
+  const [data, setData] = useState<FlowData | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [groupBy, setGroupBy] = useState<GroupBy>(isPersonal ? "category" : "client")
+  const [from, setFrom] = useState("")
+  const [to, setTo] = useState("")
+  const [selCats, setSelCats] = useState<Set<string>>(new Set())
+  const [selClients, setSelClients] = useState<Set<string>>(new Set())
+  const [selAccounts, setSelAccounts] = useState<Set<string>>(new Set())
+  const [catOptions, setCatOptions] = useState<Option[]>([])
+  const [clientOptions, setClientOptions] = useState<Option[]>([])
+  const [accountOptions, setAccountOptions] = useState<Option[]>([])
+  const [rootCollapsed, setRootCollapsed] = useState(false)
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+
+  // Filter options (loaded once).
+  useEffect(() => {
+    let cancelled = false
+    async function loadOptions() {
+      try {
+        const token = await getToken()
+        if (!token) return
+        const [cats, accounts, clientsResp] = await Promise.all([
+          apiGet<{ name: string }[]>("/api/categories", token).catch(() => []),
+          apiGet<{ id: string; nickname?: string; bank_name?: string; archived_at?: string | null }[]>("/api/wealth/accounts", token).catch(() => []),
+          hasClients ? apiGet<{ data?: { id: string; name: string; is_own?: boolean }[] } | { id: string; name: string; is_own?: boolean }[]>("/api/clients", token).catch(() => []) : Promise.resolve([]),
+        ])
+        if (cancelled) return
+        const catList = Array.isArray(cats) ? cats : []
+        setCatOptions([...new Set(catList.map((c) => c.name).filter(Boolean))].map((n) => ({ id: n, label: n })))
+        setAccountOptions(accounts.filter((a) => !a.archived_at).map((a) => ({ id: a.id, label: a.nickname || a.bank_name || "Account" })))
+        const cl = Array.isArray(clientsResp) ? clientsResp : (clientsResp.data ?? [])
+        setClientOptions(cl.filter((c) => !c.is_own).map((c) => ({ id: c.id, label: c.name })))
+      } catch {
+        /* options are best-effort */
+      }
+    }
+    loadOptions()
+    return () => { cancelled = true }
+  }, [getToken, hasClients])
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const token = await getToken()
+      if (!token) return
+      const params = new URLSearchParams({ groupBy })
+      if (from) params.set("from", from)
+      if (to) params.set("to", to)
+      if (selCats.size) params.set("category", [...selCats].join(","))
+      if (selClients.size) params.set("clientId", [...selClients].join(","))
+      if (selAccounts.size) params.set("accountId", [...selAccounts].join(","))
+      const resp = await apiGet<FlowData>(`/api/flow?${params}`, token)
+      setData(resp)
+    } catch {
+      toast.error(t("flow.loadFailed"))
+    } finally {
+      setLoading(false)
+    }
+  }, [getToken, groupBy, from, to, selCats, selClients, selAccounts, t])
+
+  useEffect(() => { load() }, [load])
+
+  // Re-frame the canvas whenever the FETCHED data changes (initial load, filter
+  // or date change, groupBy switch) — but NOT on collapse/expand, which keeps
+  // `data` identity stable, so expanding a branch never yanks the viewport.
+  const flowRef = useRef<ReactFlowInstance<Node, Edge> | null>(null)
+  useEffect(() => {
+    if (!data) return
+    const id = requestAnimationFrame(() => flowRef.current?.fitView({ padding: 0.2, maxZoom: 1, duration: 300 }))
+    return () => cancelAnimationFrame(id)
+  }, [data])
+
+  const formatDate = useCallback((d: string) => new Date(`${d}T00:00:00`).toLocaleDateString(i18n.language, { day: "numeric", month: "short", year: "numeric" }), [i18n.language])
+
+  const toggleGroup = useCallback((key: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }, [])
+
+  // Where a group's "+N more" leaf links to (precise per dimension).
+  const openMore = useCallback((g: FlowGroup) => {
+    if (g.kind === "client" && g.key) { navigate(`/clients/${g.key}`); return }
+    if (g.kind === "account" && g.key) { navigate(`/wealth/${g.key}`); return }
+    const params = new URLSearchParams()
+    if (from) params.set("from", from)
+    if (to) params.set("to", to)
+    navigate(`/transactions${params.toString() ? `?${params}` : ""}`)
+  }, [navigate, from, to])
+
+  // Build positioned nodes/edges, then map onto React Flow objects + inject callbacks.
+  const { rfNodes, rfEdges } = useMemo(() => {
+    if (!data) return { rfNodes: [] as Node[], rfEdges: [] as Edge[] }
+    const { nodes, edges } = buildFlowGraph(data, { rootCollapsed, expanded })
+    const rfNodes: Node[] = nodes.map((n) => {
+      if (n.type === "root") return { ...n, data: { ...n.data, currency, onToggle: () => setRootCollapsed((c) => !c) } } as Node
+      if (n.type === "group") {
+        const g = n.data as unknown as FlowGroup
+        return { ...n, data: { ...n.data, currency, onToggle: () => toggleGroup(groupKeyId(g)) } } as Node
+      }
+      if (n.type === "leaf") return { ...n, data: { ...n.data, currency, formatDate } } as Node
+      if (n.type === "more") {
+        const g = (n.data as { group: FlowGroup }).group
+        return { ...n, data: { ...n.data, onOpen: () => openMore(g) } } as Node
+      }
+      return n as Node
+    })
+    return { rfNodes, rfEdges: edges as Edge[] }
+  }, [data, rootCollapsed, expanded, currency, formatDate, toggleGroup, openMore])
+
+  const activeFilterCount = selCats.size + selClients.size + selAccounts.size + (from ? 1 : 0) + (to ? 1 : 0)
+  const empty = !loading && data && data.root.tx_count === 0
+
+  const filterPanel = (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-2">
+        <div className="space-y-1.5">
+          <Label htmlFor="flow-from" className="text-xs">{t("flow.from")}</Label>
+          <Input id="flow-from" type="date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} className="h-9" />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="flow-to" className="text-xs">{t("flow.to")}</Label>
+          <Input id="flow-to" type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} className="h-9" />
+        </div>
+      </div>
+      <MultiCheck label={t("flow.categories")} options={catOptions} selected={selCats} onChange={setSelCats} />
+      {hasClients && <MultiCheck label={t("flow.clients")} options={clientOptions} selected={selClients} onChange={setSelClients} />}
+      <MultiCheck label={t("flow.accounts")} options={accountOptions} selected={selAccounts} onChange={setSelAccounts} />
+      {activeFilterCount > 0 && (
+        <Button variant="ghost" size="sm" className="w-full" onClick={() => { setFrom(""); setTo(""); setSelCats(new Set()); setSelClients(new Set()); setSelAccounts(new Set()) }}>
+          {t("flow.clearFilters")}
+        </Button>
+      )}
+    </div>
+  )
+
+  return (
+    <div className="flex h-[calc(100svh-3.5rem)] flex-col p-3 sm:h-[calc(100svh-1rem)] sm:p-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="flex items-center gap-2 text-xl font-semibold tracking-tight sm:text-2xl">
+            <Workflow className="size-5 text-primary" /> {t("flow.title")}
+          </h1>
+          <p className="mt-0.5 text-sm text-muted-foreground">{t("flow.subtitle")}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          {/* Group-by segmented control */}
+          <div className="flex rounded-lg border p-0.5">
+            {GROUP_BYS.filter((g) => g !== "client" || hasClients).map((g) => (
+              <button
+                key={g}
+                type="button"
+                onClick={() => { setGroupBy(g); setExpanded(new Set()); setRootCollapsed(false) }}
+                aria-pressed={groupBy === g}
+                className={cn("rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors", groupBy === g ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted")}
+              >
+                {t(`flow.by_${g}` as const)}
+              </button>
+            ))}
+          </div>
+          <Sheet>
+            <SheetTrigger asChild>
+              <Button variant="outline" size="sm" className="shrink-0">
+                <ListFilter className="size-4" /> {t("flow.filters")}{activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}
+              </Button>
+            </SheetTrigger>
+            <SheetContent className="w-[88vw] max-w-sm">
+              <SheetHeader><SheetTitle>{t("flow.filters")}</SheetTitle></SheetHeader>
+              <ScrollArea className="mt-4 h-[calc(100svh-6rem)] pr-3">{filterPanel}</ScrollArea>
+            </SheetContent>
+          </Sheet>
+        </div>
+      </div>
+
+      <div className="mt-4 min-h-0 flex-1 overflow-hidden rounded-2xl border bg-muted/20">
+        {loading && !data ? (
+          <div className="flex h-full items-center justify-center"><Skeleton className="h-3/4 w-11/12 rounded-xl" /></div>
+        ) : empty ? (
+          <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-muted-foreground">
+            <Workflow className="size-8 opacity-40" />
+            <p className="text-sm font-medium">{t("flow.empty")}</p>
+            <p className="max-w-xs text-xs">{t("flow.emptyHint")}</p>
+          </div>
+        ) : (
+          <ReactFlow
+            onInit={(inst) => { flowRef.current = inst }}
+            nodes={rfNodes}
+            edges={rfEdges}
+            nodeTypes={NODE_TYPES}
+            fitView
+            fitViewOptions={{ padding: 0.2, maxZoom: 1 }}
+            minZoom={0.2}
+            maxZoom={1.5}
+            nodesDraggable={false}
+            nodesConnectable={false}
+            elementsSelectable={false}
+            proOptions={{ hideAttribution: true }}
+            defaultEdgeOptions={{ type: "smoothstep", style: { strokeWidth: 1.5 }, animated: false }}
+            onlyRenderVisibleElements
+          >
+            <Background gap={20} className="text-border" />
+            <Controls showInteractive={false} className="!rounded-lg !border !shadow-sm" />
+          </ReactFlow>
+        )}
+      </div>
+    </div>
+  )
+}

@@ -226,3 +226,20 @@ Guard rails: only supers can grant/change/remove supers, the last super admin
 can't be demoted or deleted, role names that collide with built-ins are
 rejected, and deleting a role still assigned to anyone is blocked. Enforcement
 is server-side everywhere — hiding is UX, the 403 is the security.
+
+## 15. Money flow mind-map (`ux4-22`)
+
+A connected-node "mind map" (powered by React Flow) of where money comes from
+and goes — **Money flow** in the nav, on `/flow`. A root workspace node
+(revenue / expenses / net / balance) branches to **group nodes** by a
+switchable dimension: **Accounts** (each shows opening → current balance, the
+before/after), **Clients**, or **Categories**. Each group expands to show its
+recent transactions (who/when/amount, recurring marker) with a "+N more" deep
+link to the precise list; the root can collapse everything. Filter by date
+range, categories, clients and accounts. Pan/pinch-zoom works on touch, and the
+canvas auto-fits whenever the data changes. Personal workspaces see it as-is
+(no Clients lens); business workspaces see the whole org, and each org on the
+Organizations page has a **3-dot menu → Money flow** (which switches to that
+org, then opens the map). The dashboard carries a lightweight teaser card
+(no heavy canvas there) that opens the full map. Backed by `GET /api/flow`
+(exact SQL aggregates; recurring materialized first; org-scoped).
