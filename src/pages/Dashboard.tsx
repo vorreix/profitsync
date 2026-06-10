@@ -776,6 +776,7 @@ export function Dashboard() {
     setUndoStack([])
     setRedoStack([])
     setEditMode(false)
+    editExitAtRef.current = Date.now()
   }
   async function saveLayout() {
     setSavingLayout(true)
@@ -796,7 +797,10 @@ export function Dashboard() {
       setEditMode(false)
       setUndoStack([])
       setRedoStack([])
-      toast.success(t("dashboard.layoutSaved"))
+      editExitAtRef.current = Date.now()
+      // Short-lived: a confirmation, not information — and even with pan-y the
+      // toast sits where mobile thumbs scroll, so get out of the way quickly.
+      toast.success(t("dashboard.layoutSaved"), { duration: 2000 })
     } catch {
       toast.error(t("dashboard.layoutSaveFailed"))
     } finally {
@@ -875,9 +879,14 @@ export function Dashboard() {
   }
 
   // Mobile entry: press-and-hold any card (500ms; a >12px move cancels — that's
-  // a scroll, not a hold).
+  // a scroll, not a hold). Guards against the "broken after save" feel:
+  // a cool-down right after leaving edit mode (a thumb parked to scroll must
+  // not bounce the user straight back in), and any page scroll cancels the
+  // pending hold (slow drags can stay under the 12px threshold).
   const pressTimer = useRef<number | null>(null)
   const pressStart = useRef<{ x: number; y: number } | null>(null)
+  const editExitAtRef = useRef(0)
+  const HOLD_COOLDOWN_MS = 1200
   function clearPress() {
     if (pressTimer.current) window.clearTimeout(pressTimer.current)
     pressTimer.current = null
@@ -885,6 +894,7 @@ export function Dashboard() {
   }
   function onCardsTouchStart(e: React.TouchEvent) {
     if (editMode) return
+    if (Date.now() - editExitAtRef.current < HOLD_COOLDOWN_MS) return
     const t0 = e.touches[0]
     pressStart.current = { x: t0.clientX, y: t0.clientY }
     pressTimer.current = window.setTimeout(() => {
@@ -897,6 +907,13 @@ export function Dashboard() {
     const t0 = e.touches[0]
     if (Math.hypot(t0.clientX - pressStart.current.x, t0.clientY - pressStart.current.y) > 12) clearPress()
   }
+  useEffect(() => {
+    // Capture-phase so inner scroll containers cancel the hold too. clearPress
+    // only touches refs, so the first-render closure stays valid.
+    const cancel = () => clearPress()
+    window.addEventListener("scroll", cancel, { passive: true, capture: true })
+    return () => window.removeEventListener("scroll", cancel, { capture: true })
+  }, [])
 
   // Refetch never re-shows the skeleton (loading only starts true) — so reloads on
   // the closed-toggle and the global refresh signal update figures in place.

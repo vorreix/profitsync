@@ -192,6 +192,14 @@
   .ios-tap {
     -webkit-tap-highlight-color: transparent;
   }
+  /* Sonner sets touch-action:none on toasts for swipe-to-dismiss — but a
+     bottom toast spans ~92% of a phone's width exactly where the thumb starts
+     scrolling, so for its whole duration the page can't be panned from there.
+     pan-y hands vertical pans back to the browser (the page scrolls THROUGH
+     the toast) while horizontal swipe-to-dismiss keeps working. */
+  [data-sonner-toast] {
+    touch-action: pan-y !important;
+  }
   .pressable {
     transition: transform 120ms ease-out, opacity 120ms ease-out;
   }

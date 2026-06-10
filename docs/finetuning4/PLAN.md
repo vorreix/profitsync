@@ -49,6 +49,7 @@
 | 14 | `feat/ux4-14-calendar-day-figures` | Calendar: figures on every day cell + Profit | — | ✅ |
 | 15 | `feat/ux4-15-dashboard-edit-ux` | Dashboard edit UX: title button, scroll-safe drag, floating ✓ | — | ✅ |
 | 16 | `feat/ux4-16-edit-jiggle` | Dashboard edit mode: iOS jiggle + floating dimmed drag | — | ✅ |
+| 17 | `feat/ux4-17-postsave-scroll` | Fix: post-save mobile scroll blocked by the toast | — | ✅ |
 
 ## ⚠️ Corrections to research findings (re-derived by hand)
 
@@ -451,4 +452,15 @@ pointer section. **Chain complete: 14/14 branches shipped.**
   at opacity-60 + shadow-2xl + scale-1.02, still wobbling. Verified: 6 cards
   staggered (0/−137/−274/−411ms), mid-drag transform tracked the pointer 175px,
   reduced-motion → animation none, document height delta 0 (no layout shift).
-  **ux4 chain complete — 17 branches, migrations 0035–0041, all pushed.**
+- 2026-06-11 — 17 post-save scroll fix (user-reported: "after save, dashboard
+  not scrollable on mobile"). REPRODUCED with CDP touch emulation: sonner sets
+  touch-action:none on toasts for swipe-dismiss, and the save toast spans ~92%
+  of a phone's width exactly in the thumb's scroll zone — touches starting on
+  it scrolled 0px for the toast's 4s life. Fixes: global `[data-sonner-toast]
+  { touch-action: pan-y !important }` (page pans through toasts; horizontal
+  swipe-dismiss intact), the layout-saved toast shortened to 2s, a 1.2s
+  post-exit cool-down on hold-to-edit (a parked thumb can't bounce back into
+  edit mode), and any scroll event cancels a pending hold. Verified: scroll
+  through the toast 299px (was 0), immediate post-save hold does NOT re-enter,
+  hold-to-edit works again after the cool-down.
+  **ux4 chain complete — 18 branches, migrations 0035–0041, all pushed.**
