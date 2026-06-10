@@ -34,7 +34,7 @@
 |---|--------|------|-----------|--------|
 | 00 | `feat/ux4-00-plan` | This plan doc | — | ✅ |
 | 01 | `feat/ux4-01-category-delete` | T10 category delete updates in place | — | ✅ |
-| 02 | `feat/ux4-02-bank-logo-persist` | T1 bank logos persist (DB-served) | — | ⬜ |
+| 02 | `feat/ux4-02-bank-logo-persist` | T1 bank logos persist (DB-served) | — | ✅ |
 | 03 | `feat/ux4-03-bank-quota-default` | T8 crown gating + default bank | 0035 | ⬜ |
 | 04 | `feat/ux4-04-org-logo-avatar` | T2 org logo + profile picture | 0036 | ⬜ |
 | 05 | `feat/ux4-05-dodo-org-currency` | T9 checkout in org currency | 0037 | ⬜ |
@@ -115,7 +115,10 @@ from list responses).
 **Verify:** unit test for sniffing; Playwright — account card shows logo with
 `src^="data:image/"`; simulate dead URL (garbage `logo_url`) and confirm the logo
 still renders from stored bytes.
-**Status:** ⬜
+**Status:** ✅ — 15 unit tests on the sniff/data-URL helper; browser-verified: all
+bank logos render as `data:image/webp|png` URLs; simulated prod failure (blanked
+`logo_data` + dead hotlink on Intesa Sanpaolo) healed itself on the next GET
+(bytes re-fetched + dead URL replaced) and rendered from stored bytes.
 
 ## 03 · T8 — Free-plan bank gating (crown) + default bank (0035)
 
@@ -299,3 +302,6 @@ docs), and the new e2e/security gates.
 - 2026-06-10 — 01 category delete: first-access-only seeding (kills default
   resurrection) + optimistic in-place add/rename/delete on CategoriesPage and
   CategoryPicker; browser-verified incl. reload persistence.
+- 2026-06-10 — 02 bank logos: `logo_src` data URLs from stored bytes (mime
+  sniffed, 15 unit tests) + bounded lazy heal on GET; browser-verified incl.
+  dead-hotlink heal.

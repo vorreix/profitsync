@@ -127,9 +127,11 @@ export type WealthAccount = {
   current_balance: number
   icon: string
   // Brand + banking details (see migration 0027). `logo_data` (base64) is stored
-  // server-side but never sent in list responses — the UI renders `logo_url`.
+  // server-side; responses expose it as `logo_src` (a durable data: URL) which
+  // the UI prefers over the expiring hotlinked `logo_url`.
   brand_domain?: string
   logo_url?: string
+  logo_src?: string | null
   country?: string
   account_number?: string
   routing_number?: string

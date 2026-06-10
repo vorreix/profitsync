@@ -6,17 +6,18 @@ import { canDelete, canWrite, ensureDefaultClient, requireAuth } from "../../../
 import { diffFields, logAudit } from "../../../_lib/audit.js"
 import { type BankDetailInput, pickBankDetails, resolveLogoColumns } from "../../../_lib/bank-brand.js"
 import { amountExceedsLimit } from "../../../../src/lib/money.js"
+import { logoDataUrl } from "../../../../src/lib/logo-data.js"
 
 function money(value: unknown): number {
   const n = Number(value)
   return Number.isFinite(n) ? n : 0
 }
 
-// Strip the heavy base64 logo from a row before returning it to the client (the
-// UI renders logo_url, not logo_data).
-function withoutLogoData<T extends { logoData?: unknown }>(row: T) {
-  const { logoData: _omit, ...rest } = row
-  return rest
+// Swap the heavy base64 column for a durable `logo_src` data URL the client can
+// render directly (the hotlinked logo_url expires; the stored copy doesn't).
+function withLogoSrc<T extends { logoData?: unknown }>(row: T) {
+  const { logoData, ...rest } = row
+  return { ...rest, logoSrc: logoDataUrl(typeof logoData === "string" ? logoData : null) }
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -31,7 +32,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     .where(and(eq(wealthAccounts.id, id), eq(wealthAccounts.organizationId, orgId)))
   if (!account) return res.status(404).json({ error: "Not found" })
 
-  if (req.method === "GET") return res.json(serialize(withoutLogoData(account)))
+  if (req.method === "GET") return res.json(serialize(withLogoSrc(account)))
 
   if (req.method === "PATCH") {
     if (!canWrite(role)) return res.status(403).json({ error: "Forbidden" })
@@ -141,7 +142,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (Object.keys(changes).length) {
       await logAudit({ orgId, entityType: "wealth_account", entityId: id, action: archive ? "close" : restore ? "reopen" : "update", actorId: userId, changes })
     }
-    return res.json(serialize(withoutLogoData(updated)))
+    return res.json(serialize(withLogoSrc(updated)))
   }
 
   if (req.method === "DELETE") {
@@ -164,7 +165,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .where(eq(wealthAccounts.id, id))
         .returning()
       await logAudit({ orgId, entityType: "wealth_account", entityId: id, action: "close", actorId: userId })
-      return res.json(serialize(withoutLogoData(updated)))
+      return res.json(serialize(withLogoSrc(updated)))
     }
 
     await db.delete(wealthAccounts).where(eq(wealthAccounts.id, id))
