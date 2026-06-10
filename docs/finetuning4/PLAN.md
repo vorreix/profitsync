@@ -42,7 +42,7 @@
 | 07 | `feat/ux4-07-recurring-payments` | T3 recurring payments | 0039 | ✅ |
 | 08 | `feat/ux4-08-calendar` | T7 calendar visualization | — | ✅ |
 | 09 | `feat/ux4-09-custom-dashboard` | T12 custom dashboard builder | 0040 | ✅ |
-| 10 | `feat/ux4-10-e2e-ci` | T4 Playwright e2e + CI gate for main | — | ⬜ |
+| 10 | `feat/ux4-10-e2e-ci` | T4 Playwright e2e + CI gate for main | — | ✅ |
 | 11 | `feat/ux4-11-security-gate` | T5 security checks (pre-commit + CI) | — | ⬜ |
 | 12 | `feat/ux4-12-audit-fixes` | T6 deep security/perf/scale audit + fixes | — | ⬜ |
 | 13 | `feat/ux4-13-docs-skill` | Docs + subscription-system skill update | — | ⬜ |
@@ -305,7 +305,17 @@ shared dev DB hygiene). Secrets documented in the workflow header
 (CLERK keys + `E2E_DATABASE_URL` — a dedicated Neon branch, never prod). Test data
 namespaced (`e2e-…`) + cleaned in teardown.
 **Verify:** suite green locally twice consecutively (flake check) before push.
-**Status:** ⬜
+**Status:** ✅ — 10 tests green twice consecutively (~28s/run): programmatic
+Clerk auth (the UI flow is blocked by bot protection BY DESIGN — uses
+@clerk/testing tokens + password and the email_code SECOND factor with the
+fixed 424242 test code; user auto-provisioned via the Backend API; onboarding
+completed through the same API the wizard calls), dashboard/wealth/calendar/
+recurring/subscription smoke, client + transaction creation through the real
+dialogs, mobile (Pixel 7/Chromium) shell, and a cleanup spec that purges the
+namespaced data. ⚠️ The GitHub Actions run itself can't be verified until the
+branch reaches GitHub and the three secrets exist (E2E_VITE_CLERK_PUBLISHABLE_KEY,
+E2E_CLERK_SECRET_KEY, E2E_DATABASE_URL — use a DEDICATED Neon branch). The
+workflow gates PRs → main + workflow_dispatch; deliberately NOT on dev pushes.
 
 ## 11 · T5 — Security check protocols
 
@@ -379,3 +389,5 @@ docs), and the new e2e/security gates.
   per-context layouts (7 tests); edit mode with dnd-kit reorder, hide/add-back,
   undo/redo, sticky save/cancel + discard confirm, mobile press-and-hold;
   18 i18n keys × 8 locales. Browser-verified end-to-end.
+- 2026-06-10 — 10 e2e: Playwright suite (10 tests, green ×2) + @clerk/testing
+  programmatic auth + e2e.yml PR-to-main gate (secrets documented in-file).
