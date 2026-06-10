@@ -50,6 +50,7 @@
 | 15 | `feat/ux4-15-dashboard-edit-ux` | Dashboard edit UX: title button, scroll-safe drag, floating ✓ | — | ✅ |
 | 16 | `feat/ux4-16-edit-jiggle` | Dashboard edit mode: iOS jiggle + floating dimmed drag | — | ✅ |
 | 17 | `feat/ux4-17-postsave-scroll` | Fix: post-save mobile scroll blocked by the toast | — | ✅ |
+| 18 | `feat/ux4-18-calendar-modal-summary` | Calendar drill-down modal: in/out/profit/count card | — | ✅ |
 
 ## ⚠️ Corrections to research findings (re-derived by hand)
 
@@ -463,4 +464,10 @@ pointer section. **Chain complete: 14/14 branches shipped.**
   edit mode), and any scroll event cancels a pending hold. Verified: scroll
   through the toast 299px (was 0), immediate post-save hold does NOT re-enter,
   hold-to-edit works again after the cool-down.
-  **ux4 chain complete — 18 branches, migrations 0035–0041, all pushed.**
+- 2026-06-11 — 18 calendar modal summary (follow-up request): the drill-down
+  modal (day cell / week row / period card) now shows a Money in / Money out /
+  Profit / Transactions card row above the list, summed from the loaded per-day
+  AGGREGATES (not the listed rows, which cap at 50) so it always matches the
+  grid. Verified all 3 entry points (day €987,655,643/−€20/€987,655,623/3;
+  month totals matched the page summary exactly); 2×2 at 390px, no overflow.
+  **ux4 chain complete — 19 branches, migrations 0035–0041, all pushed.**
