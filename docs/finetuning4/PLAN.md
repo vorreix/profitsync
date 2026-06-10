@@ -43,7 +43,7 @@
 | 08 | `feat/ux4-08-calendar` | T7 calendar visualization | — | ✅ |
 | 09 | `feat/ux4-09-custom-dashboard` | T12 custom dashboard builder | 0040 | ✅ |
 | 10 | `feat/ux4-10-e2e-ci` | T4 Playwright e2e + CI gate for main | — | ✅ |
-| 11 | `feat/ux4-11-security-gate` | T5 security checks (pre-commit + CI) | — | ⬜ |
+| 11 | `feat/ux4-11-security-gate` | T5 security checks (pre-commit + CI) | — | ✅ |
 | 12 | `feat/ux4-12-audit-fixes` | T6 deep security/perf/scale audit + fixes | — | ⬜ |
 | 13 | `feat/ux4-13-docs-skill` | Docs + subscription-system skill update | — | ⬜ |
 
@@ -330,7 +330,17 @@ i18n in `.husky/pre-commit`; uses gitleaks automatically when installed. CI
 `requireAuth`/admin guard). `SECURITY.md` documents the model. Keep pr.yml in sync
 per CLAUDE.md rule.
 **Verify:** seeded fake secret blocks commit; CI workflow passes on clean tree.
-**Status:** ⬜
+**Status:** ✅ — staged fake `sk_live_…` BLOCKED the commit (verified); scanner
+patterns locked by 15 unit tests (placeholders like `whsec_...` stay quiet);
+route-guard sweep covers 70 handlers + confines raw-HTML to vendored ui/.
+The first full-tree scan immediately caught a REAL pre-existing leak: an
+accidentally committed scratch file (`Untitled-2`) containing a Clerk session
+JWT — removed (short-lived token, low risk, treat as burned). The new
+dependency audit also surfaced and FIXED real advisories: drizzle-orm
+SQL-identifier injection (HIGH, → 0.45.2), vite dev-server path traversal,
+postcss — npm audit (prod, high+) now exits 0; full unit suite + a complete
+e2e run green on the bumped ORM. ⚠️ The CI workflow run itself is unverifiable
+until pushed to GitHub.
 
 ## 12 · T6 — Deep security/perf/scale audit + fixes
 
@@ -391,3 +401,7 @@ docs), and the new e2e/security gates.
   18 i18n keys × 8 locales. Browser-verified end-to-end.
 - 2026-06-10 — 10 e2e: Playwright suite (10 tests, green ×2) + @clerk/testing
   programmatic auth + e2e.yml PR-to-main gate (secrets documented in-file).
+- 2026-06-10 — 11 security gate: staged secret scan in pre-commit (15 pattern
+  tests; fake-secret block verified) + security.yml (tree scan, guard sweep,
+  prod audit) + SECURITY.md. Caught + removed a real committed JWT scratch
+  file; fixed drizzle-orm SQLi (HIGH) / vite / postcss advisories.
