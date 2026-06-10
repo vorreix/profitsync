@@ -14,6 +14,7 @@ import { InstallButton } from "@/components/InstallButton"
 const LINKS = [
   { id: "features", key: "nav.features" },
   { id: "how", key: "nav.how" },
+  { id: "security", key: "nav.security" },
   { id: "pricing", key: "nav.pricing" },
   { id: "faq", key: "nav.faq" },
 ] as const

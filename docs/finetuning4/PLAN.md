@@ -52,6 +52,7 @@
 | 17 | `feat/ux4-17-postsave-scroll` | Fix: post-save mobile scroll blocked by the toast | — | ✅ |
 | 18 | `feat/ux4-18-calendar-modal-summary` | Calendar drill-down modal: in/out/profit/count card | — | ✅ |
 | 19 | `feat/ux4-19-admin-rbac` | Admin RBAC: custom roles + super-admin-only surfaces | 0042 | ✅ |
+| 20 | `feat/ux4-20-landing-security` | Landing: Security & privacy trust section | — | ✅ |
 
 ## ⚠️ Corrections to research findings (re-derived by hand)
 
@@ -491,4 +492,12 @@ pointer section. **Chain complete: 14/14 branches shipped.**
   delete super → 403, org transactions → 403 while read surfaces → 200,
   role creation → 403. 9 unit tests lock the capability model. Super view
   re-verified intact in the browser. Test data cleaned up.
-  **ux4 chain complete — 20 branches, migrations 0035–0042, all pushed.**
+- 2026-06-11 — 20 landing security (user request): new Security & privacy
+  section on the landing page (src/landing/sections/Security.tsx), placed right
+  before Pricing — emerald trust badge + 6 honest cards (TLS+at-rest
+  encryption, MoR/PCI checkout so cards never touch us, org isolation +
+  role-based access, MFA-capable auth, never-sold data, trash/restore) +
+  privacy/terms links. New "Security" navbar anchor. Copy translated across all
+  8 landing locales (parity-checked); browser-verified EN look + AR RTL render.
+  No invented certifications — every claim is true of the product.
+  **ux4 chain complete — 21 branches, migrations 0035–0042, all pushed.**
