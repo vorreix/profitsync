@@ -32,7 +32,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "sonner"
-import { ArrowLeft, Plus, Trash2, DollarSign, Building2, Mail, Phone, FileText, ArrowUpRight, ArrowDownRight, Pencil, Calendar, Paperclip, Upload, X, FolderOpen, Archive, ArchiveRestore, Eye, Wallet } from "lucide-react"
+import { ArrowLeft, Plus, Trash2, DollarSign, Building2, Mail, Phone, FileText, ArrowUpRight, ArrowDownRight, Pencil, Calendar, Paperclip, Upload, X, FolderOpen, Archive, ArchiveRestore, Eye, PiggyBank, ChevronRight } from "lucide-react"
 import { ExpandableSearch } from "@/components/ExpandableSearch"
 
 type NewTransaction = { type: "incoming" | "outgoing"; allocations: Allocation[]; description: string; category: string; date: string }
@@ -438,15 +438,24 @@ export function ClientDetailPage() {
         </div>
       </div>
 
-      {/* Budget — view / set / edit this client's expense budget. */}
-      <div className="rounded-xl border p-3 sm:p-4">
+      {/* Budget — tap to open this client's full budget history & insights; quick-edit inline. */}
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => id && navigate(`/budgets/${id}`)}
+        onKeyDown={(e) => { if ((e.key === "Enter" || e.key === " ") && id) { e.preventDefault(); navigate(`/budgets/${id}`) } }}
+        className="group w-full text-left rounded-xl border p-3 sm:p-4 cursor-pointer transition-colors hover:border-primary/40 hover:bg-accent/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
         <div className="flex items-center justify-between gap-2">
-          <p className="text-sm font-medium flex items-center gap-1.5"><Wallet className="size-4 text-muted-foreground" /> Budget</p>
-          {canModify && (
-            <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setBudgetDialogOpen(true)}>
-              {clientBudget ? <><Pencil className="size-3 mr-1" />Edit</> : <><Plus className="size-3 mr-1" />Set budget</>}
-            </Button>
-          )}
+          <p className="text-sm font-medium flex items-center gap-1.5"><PiggyBank className="size-4 text-muted-foreground" /> Budget</p>
+          <div className="flex items-center gap-0.5">
+            {canModify && (
+              <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={(e) => { e.stopPropagation(); setBudgetDialogOpen(true) }}>
+                {clientBudget ? <><Pencil className="size-3 mr-1" />Edit</> : <><Plus className="size-3 mr-1" />Set budget</>}
+              </Button>
+            )}
+            <ChevronRight className="size-4 shrink-0 text-muted-foreground/60 transition-colors group-hover:text-foreground" />
+          </div>
         </div>
         <div className="mt-3">
           {clientBudget ? (
