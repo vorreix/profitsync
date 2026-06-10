@@ -53,6 +53,7 @@
 | 18 | `feat/ux4-18-calendar-modal-summary` | Calendar drill-down modal: in/out/profit/count card | — | ✅ |
 | 19 | `feat/ux4-19-admin-rbac` | Admin RBAC: custom roles + super-admin-only surfaces | 0042 | ✅ |
 | 20 | `feat/ux4-20-landing-security` | Landing: Security & privacy trust section | — | ✅ |
+| 21 | `feat/ux4-21-navbar-avatar-refresh` | Profile photo updates the navbar/menu avatar live | — | ✅ |
 
 ## ⚠️ Corrections to research findings (re-derived by hand)
 
@@ -500,4 +501,13 @@ pointer section. **Chain complete: 14/14 branches shipped.**
   privacy/terms links. New "Security" navbar anchor. Copy translated across all
   8 landing locales (parity-checked); browser-verified EN look + AR RTL render.
   No invented certifications — every claim is true of the product.
-  **ux4 chain complete — 21 branches, migrations 0035–0042, all pushed.**
+- 2026-06-11 — 21 navbar avatar refresh (user request): uploading/removing a
+  profile photo now updates the sidebar + mobile-menu avatar instantly. Root
+  cause: OrgProvider holds `profile` in its OWN state from boot, so ProfilePage
+  saving its local copy (and clearing the GET cache) never refreshed the
+  context the navbar reads. Fix: OrgProvider exposes `updateProfile`; ProfilePage
+  pushes every successful PATCH (save + avatar set + remove) into it — in place,
+  no refetch. Browser-verified: footer avatar UklGRmo→UklGRh4 on upload (desktop
+  + mobile header), and reverted to initials on remove, both without a reload.
+  Test image cleaned out of the dev account.
+  **ux4 chain complete — 22 branches, migrations 0035–0042, all pushed.**
