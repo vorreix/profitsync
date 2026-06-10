@@ -36,21 +36,18 @@ function cleanName(raw: unknown): string {
 }
 
 async function ensureDefaultCategories(orgId: string) {
-  const existing = await db
-    .select({ name: categories.name, type: categories.type })
+  // Seed only on FIRST access (the org has no categories at all). Re-seeding the
+  // default names on every GET resurrected deleted defaults — a delete must stick.
+  const [{ total }] = await db
+    .select({ total: count() })
     .from(categories)
     .where(eq(categories.organizationId, orgId))
+  if (total > 0) return
 
-  const existingKeys = new Set(existing.map((cat) => `${cat.type}:${cat.name.toLowerCase()}`))
-  const missingRows = Object.entries(DEFAULT_CATEGORIES).flatMap(([type, names]) =>
-    names
-      .filter((name) => !existingKeys.has(`${type}:${name.toLowerCase()}`))
-      .map((name) => ({ organizationId: orgId, name, type })),
+  const rows = Object.entries(DEFAULT_CATEGORIES).flatMap(([type, names]) =>
+    names.map((name) => ({ organizationId: orgId, name, type })),
   )
-
-  if (missingRows.length > 0) {
-    await db.insert(categories).values(missingRows).onConflictDoNothing()
-  }
+  await db.insert(categories).values(rows).onConflictDoNothing()
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {

@@ -28,6 +28,12 @@ export function useCategories() {
 
   useEffect(() => { refresh() }, [refresh])
 
+  // Surgical in-place update after a mutation (optimistic add/rename/delete) so
+  // the list never refetches/flashes; callers reconcile with refresh() on failure.
+  const mutateLocal = useCallback((updater: (prev: Category[]) => Category[]) => {
+    setCategories(updater)
+  }, [])
+
   const byType = useMemo(
     () => ({
       incoming: categories.filter((c) => c.type === "incoming").map((c) => c.name),
@@ -38,5 +44,5 @@ export function useCategories() {
     [categories],
   )
 
-  return { categories, byType, loading, refresh }
+  return { categories, byType, loading, refresh, mutateLocal }
 }

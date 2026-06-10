@@ -32,8 +32,8 @@
 
 | # | Branch | Task | Migration | Status |
 |---|--------|------|-----------|--------|
-| 00 | `feat/ux4-00-plan` | This plan doc | — | 🔵 |
-| 01 | `feat/ux4-01-category-delete` | T10 category delete updates in place | — | ⬜ |
+| 00 | `feat/ux4-00-plan` | This plan doc | — | ✅ |
+| 01 | `feat/ux4-01-category-delete` | T10 category delete updates in place | — | ✅ |
 | 02 | `feat/ux4-02-bank-logo-persist` | T1 bank logos persist (DB-served) | — | ⬜ |
 | 03 | `feat/ux4-03-bank-quota-default` | T8 crown gating + default bank | 0035 | ⬜ |
 | 04 | `feat/ux4-04-org-logo-avatar` | T2 org logo + profile picture | 0036 | ⬜ |
@@ -93,7 +93,10 @@ scoped `invalidateKeys(["/api/categories"])`.
 `src/components/CategoryPicker.tsx`.
 **Verify:** Playwright — delete a default + a custom category; both disappear
 instantly and stay gone after reload.
-**Status:** ⬜
+**Status:** ✅ — browser-verified: custom ("fdklfd") + default ("Travel" expense)
+deleted instantly (header count tracked 34→33→32 with no reload) and both stayed
+gone after a full page reload. Also shipped: optimistic add/rename in place, and
+the same treatment in CategoryPicker.
 
 ## 02 · T1 — Bank logos persist (DB-served)
 
@@ -293,3 +296,6 @@ docs), and the new e2e/security gates.
 
 - 2026-06-10 — research workflow (12 agents) + infra ground-truth read complete;
   corrections recorded; plan committed as chain root `feat/ux4-00-plan`.
+- 2026-06-10 — 01 category delete: first-access-only seeding (kills default
+  resurrection) + optimistic in-place add/rename/delete on CategoriesPage and
+  CategoryPicker; browser-verified incl. reload persistence.
