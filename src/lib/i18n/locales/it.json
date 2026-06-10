@@ -1133,6 +1133,7 @@
     "noActivity": "Nessuna attività",
     "viewDayTransactions": "Vedi {{count}} transazione/i",
     "openInTransactions": "Apri in Transazioni",
-    "loadFailed": "Impossibile caricare il calendario"
+    "loadFailed": "Impossibile caricare il calendario",
+    "profit": "Profitto"
   }
 }

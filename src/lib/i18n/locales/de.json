@@ -1133,6 +1133,7 @@
     "noActivity": "Keine Aktivität",
     "viewDayTransactions": "{{count}} Transaktion(en) ansehen",
     "openInTransactions": "In Transaktionen öffnen",
-    "loadFailed": "Kalender konnte nicht geladen werden"
+    "loadFailed": "Kalender konnte nicht geladen werden",
+    "profit": "Gewinn"
   }
 }

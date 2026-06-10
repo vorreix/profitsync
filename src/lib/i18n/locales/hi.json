@@ -1133,6 +1133,7 @@
     "noActivity": "कोई गतिविधि नहीं",
     "viewDayTransactions": "{{count}} लेन-देन देखें",
     "openInTransactions": "लेन-देन में खोलें",
-    "loadFailed": "कैलेंडर लोड नहीं हो सका"
+    "loadFailed": "कैलेंडर लोड नहीं हो सका",
+    "profit": "लाभ"
   }
 }

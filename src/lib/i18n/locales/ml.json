@@ -1133,6 +1133,7 @@
     "noActivity": "പ്രവർത്തനമില്ല",
     "viewDayTransactions": "{{count}} ഇടപാടുകൾ കാണുക",
     "openInTransactions": "ഇടപാടുകളിൽ തുറക്കുക",
-    "loadFailed": "കലണ്ടർ ലോഡ് ചെയ്യാനായില്ല"
+    "loadFailed": "കലണ്ടർ ലോഡ് ചെയ്യാനായില്ല",
+    "profit": "ലാഭം"
   }
 }

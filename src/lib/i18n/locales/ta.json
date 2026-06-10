@@ -1133,6 +1133,7 @@
     "noActivity": "செயல்பாடு இல்லை",
     "viewDayTransactions": "{{count}} பரிவர்த்தனைகளைக் காண்க",
     "openInTransactions": "பரிவர்த்தனைகளில் திற",
-    "loadFailed": "நாட்காட்டியை ஏற்ற முடியவில்லை"
+    "loadFailed": "நாட்காட்டியை ஏற்ற முடியவில்லை",
+    "profit": "லாபம்"
   }
 }

@@ -1133,6 +1133,7 @@
     "noActivity": "No activity",
     "viewDayTransactions": "View {{count}} transaction(s)",
     "openInTransactions": "Open in Transactions",
-    "loadFailed": "Couldn't load the calendar"
+    "loadFailed": "Couldn't load the calendar",
+    "profit": "Profit"
   }
 }

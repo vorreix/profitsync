@@ -1133,6 +1133,7 @@
     "noActivity": "కార్యకలాపం లేదు",
     "viewDayTransactions": "{{count}} లావాదేవీలు చూడండి",
     "openInTransactions": "లావాదేవీలలో తెరవండి",
-    "loadFailed": "క్యాలెండర్ లోడ్ చేయలేకపోయాం"
+    "loadFailed": "క్యాలెండర్ లోడ్ చేయలేకపోయాం",
+    "profit": "లాభం"
   }
 }

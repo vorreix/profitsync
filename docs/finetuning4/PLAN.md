@@ -46,6 +46,7 @@
 | 11 | `feat/ux4-11-security-gate` | T5 security checks (pre-commit + CI) | — | ✅ |
 | 12 | `feat/ux4-12-audit-fixes` | T6 deep security/perf/scale audit + fixes | 0041 | ✅ |
 | 13 | `feat/ux4-13-docs-skill` | Docs + subscription-system skill update | — | ✅ |
+| 14 | `feat/ux4-14-calendar-day-figures` | Calendar: figures on every day cell + Profit | — | ✅ |
 
 ## ⚠️ Corrections to research findings (re-derived by hand)
 
@@ -425,4 +426,9 @@ pointer section. **Chain complete: 14/14 branches shipped.**
   AUDIT.md written. All gates + e2e green.
 - 2026-06-11 — 13 docs + skill: OVERVIEW.md (full plain-language explainer +
   runbooks), subscription-system skill extended, billing doc pointer added.
-  **ux4 chain complete — 14 branches, migrations 0035–0041, all pushed.**
+- 2026-06-11 — 14 calendar day figures (follow-up request): every active month
+  cell shows revenue/expense/profit + count (desktop full breakdown, mobile
+  net+count, full-value tooltip); Profit card added to the period summary
+  (verified in − out matches); week rows gained the day's net. Browser-verified
+  at 1280px + 390px; e2e suite green.
+  **ux4 chain complete — 15 branches, migrations 0035–0041, all pushed.**

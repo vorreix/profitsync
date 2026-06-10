@@ -21,6 +21,21 @@ type Granularity = "month" | "week" | "day"
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
 const parseIso = (s: string) => new Date(`${s}T00:00:00`)
 
+// Compact money for the tiny day-cell figures ("€1.2K", "€87"). Full values
+// live in the cell tooltip and the drill-down modal.
+function compactMoney(amount: number, currency: string): string {
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency,
+      notation: "compact",
+      maximumFractionDigits: 1,
+    }).format(amount)
+  } catch {
+    return String(Math.round(amount))
+  }
+}
+
 /** The Monday of the week containing `d` (ISO weeks). */
 function startOfWeek(d: Date): Date {
   const out = new Date(d)
@@ -82,10 +97,6 @@ export function CalendarPage() {
   useEffect(() => { load() }, [load])
 
   const byDate = useMemo(() => new Map((data?.days ?? []).map((d) => [d.date, d])), [data])
-  const maxDayTotal = useMemo(
-    () => Math.max(1, ...(data?.days ?? []).map((d) => d.incoming + d.outgoing)),
-    [data],
-  )
 
   // Sum the visible period (month view excludes adjacent-month edge cells).
   const periodSummary = useMemo(() => {
@@ -157,11 +168,17 @@ export function CalendarPage() {
     return Array.from({ length: 7 }, (_, i) => iso(addDays(parseIso(range.from), i)))
   }, [granularity, range])
 
+  const periodProfit = periodSummary.incoming - periodSummary.outgoing
   const summaryBar = (
-    <div className="grid grid-cols-3 gap-2">
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
       {[
         { label: t("calendar.incoming"), value: periodSummary.incoming, cls: "text-emerald-600 dark:text-emerald-400" },
         { label: t("calendar.outgoing"), value: periodSummary.outgoing, cls: "text-red-600 dark:text-red-400" },
+        {
+          label: t("calendar.profit"),
+          value: periodProfit,
+          cls: periodProfit >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400",
+        },
         { label: t("calendar.transactions"), value: periodSummary.count, cls: "", isCount: true },
       ].map((s) => (
         <button
@@ -183,10 +200,14 @@ export function CalendarPage() {
     </div>
   )
 
-  const intensity = (d: DayAgg | undefined) => {
-    if (!d || d.count === 0) return 0
-    return Math.min(1, (d.incoming + d.outgoing) / maxDayTotal)
-  }
+  // Full-figure tooltip for a day cell (the cell itself shows compact values).
+  const dayTooltip = (d: DayAgg) =>
+    [
+      `${t("calendar.incoming")}: +${formatMoney(d.incoming, currency)}`,
+      `${t("calendar.outgoing")}: −${formatMoney(d.outgoing, currency)}`,
+      `${t("calendar.profit")}: ${formatMoney(d.incoming - d.outgoing, currency)}`,
+      `${t("calendar.transactions")}: ${d.count}`,
+    ].join("\n")
 
   return (
     <div className="space-y-4 p-3 sm:space-y-6 sm:p-6">
@@ -246,30 +267,49 @@ export function CalendarPage() {
             <div className="mt-1 grid grid-cols-7 gap-1">
               {monthDays.map(({ date, inMonth }) => {
                 const d = byDate.get(date)
-                const heat = intensity(d)
+                const active = !!d && d.count > 0
+                const net = d ? d.incoming - d.outgoing : 0
                 return (
                   <button
                     key={date}
                     type="button"
                     onClick={() => openInspect(date, date, fmtDay(date))}
+                    title={active && d ? dayTooltip(d) : undefined}
                     className={cn(
-                      "flex min-h-12 flex-col items-center justify-start rounded-lg border p-1 transition-colors hover:border-primary/50 sm:min-h-16",
+                      "flex min-h-14 flex-col items-stretch rounded-lg border p-1 text-left transition-colors hover:border-primary/50 sm:min-h-[5.5rem] sm:p-1.5",
                       !inMonth && "opacity-35",
                       date === todayIso && "border-primary ring-1 ring-primary/30",
                     )}
                   >
-                    <span className="text-xs font-medium">{parseIso(date).getDate()}</span>
-                    {d && d.count > 0 && (
-                      <>
+                    <span className="flex items-baseline justify-between">
+                      <span className="text-xs font-medium">{parseIso(date).getDate()}</span>
+                      {active && d && (
+                        <span className="text-[9px] tabular-nums text-muted-foreground">{d.count}</span>
+                      )}
+                    </span>
+                    {active && d && (
+                      <span className="mt-auto flex flex-col gap-px tabular-nums leading-tight">
+                        {/* Desktop: the full breakdown. Mobile keeps only the net
+                            (7 columns at 390px can't fit three figures). */}
+                        {d.incoming > 0 && (
+                          <span className="hidden truncate text-[10px] text-emerald-600 dark:text-emerald-400 sm:block">
+                            +{compactMoney(d.incoming, currency)}
+                          </span>
+                        )}
+                        {d.outgoing > 0 && (
+                          <span className="hidden truncate text-[10px] text-red-600 dark:text-red-400 sm:block">
+                            −{compactMoney(d.outgoing, currency)}
+                          </span>
+                        )}
                         <span
-                          aria-hidden
-                          className="mt-1 size-1.5 rounded-full bg-primary"
-                          style={{ opacity: 0.35 + heat * 0.65, transform: `scale(${1 + heat})` }}
-                        />
-                        <span className="mt-1 hidden text-[10px] tabular-nums text-muted-foreground sm:block">
-                          {d.count}
+                          className={cn(
+                            "truncate text-[9px] font-semibold sm:text-[10px]",
+                            net >= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-red-700 dark:text-red-300",
+                          )}
+                        >
+                          {net >= 0 ? "+" : "−"}{compactMoney(Math.abs(net), currency)}
                         </span>
-                      </>
+                      </span>
                     )}
                   </button>
                 )
@@ -296,9 +336,16 @@ export function CalendarPage() {
                 >
                   <span className="text-sm font-medium">{fmtDay(date)}</span>
                   {d && d.count > 0 ? (
-                    <span className="flex items-center gap-3 text-sm tabular-nums">
+                    <span className="flex flex-wrap items-center justify-end gap-x-3 gap-y-0.5 text-sm tabular-nums">
                       {d.incoming > 0 && <span className="text-emerald-600 dark:text-emerald-400">+{formatMoney(d.incoming, currency)}</span>}
                       {d.outgoing > 0 && <span className="text-red-600 dark:text-red-400">−{formatMoney(d.outgoing, currency)}</span>}
+                      {/* Net for the day — only when both directions moved (it
+                          would just duplicate the single figure otherwise). */}
+                      {d.incoming > 0 && d.outgoing > 0 && (
+                        <span className={cn("font-semibold", d.incoming - d.outgoing >= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-red-700 dark:text-red-300")}>
+                          = {formatMoney(d.incoming - d.outgoing, currency)}
+                        </span>
+                      )}
                       <Badge variant="secondary" className="tabular-nums">{d.count}</Badge>
                     </span>
                   ) : (

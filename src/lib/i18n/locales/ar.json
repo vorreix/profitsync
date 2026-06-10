@@ -1133,6 +1133,7 @@
     "noActivity": "لا يوجد نشاط",
     "viewDayTransactions": "عرض {{count}} معاملة",
     "openInTransactions": "فتح في المعاملات",
-    "loadFailed": "تعذر تحميل التقويم"
+    "loadFailed": "تعذر تحميل التقويم",
+    "profit": "الربح"
   }
 }
