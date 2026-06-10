@@ -45,7 +45,7 @@
 | 10 | `feat/ux4-10-e2e-ci` | T4 Playwright e2e + CI gate for main | — | ✅ |
 | 11 | `feat/ux4-11-security-gate` | T5 security checks (pre-commit + CI) | — | ✅ |
 | 12 | `feat/ux4-12-audit-fixes` | T6 deep security/perf/scale audit + fixes | 0041 | ✅ |
-| 13 | `feat/ux4-13-docs-skill` | Docs + subscription-system skill update | — | ⬜ |
+| 13 | `feat/ux4-13-docs-skill` | Docs + subscription-system skill update | — | ✅ |
 
 ## ⚠️ Corrections to research findings (re-derived by hand)
 
@@ -369,7 +369,11 @@ everything shipped (what, why, how to operate it, env vars, runbooks). Update
 `.claude/skills/subscription-system` with: billing_currency resolution chain,
 billing_attempts lifecycle + linking, admin panel, webhook event map (from live
 docs), and the new e2e/security gates.
-**Status:** ⬜
+**Status:** ✅ — OVERVIEW.md written (12 feature explainers + env vars +
+migrations 0035–0041 + runbooks); subscription-system skill extended (currency
+chain incl. the India rule, attempts lifecycle/linking/non-fatal rules, webhook
+freshness, gate notes); docs/billing/SUBSCRIPTIONS_AND_PAYMENTS.md gained a
+pointer section. **Chain complete: 14/14 branches shipped.**
 
 ---
 
@@ -419,3 +423,6 @@ docs), and the new e2e/security gates.
   SVG exclusion, webhook replay window, indexes 0041, money-cast hardening,
   ILIKE escape, payload cap, timeout cut); 5 accepted with rationale;
   AUDIT.md written. All gates + e2e green.
+- 2026-06-11 — 13 docs + skill: OVERVIEW.md (full plain-language explainer +
+  runbooks), subscription-system skill extended, billing doc pointer added.
+  **ux4 chain complete — 14 branches, migrations 0035–0041, all pushed.**
