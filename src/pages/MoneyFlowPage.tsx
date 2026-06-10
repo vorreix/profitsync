@@ -8,6 +8,8 @@ import {
   Handle,
   Position,
   ReactFlow,
+  useEdgesState,
+  useNodesState,
   type Edge,
   type Node,
   type NodeProps,
@@ -17,12 +19,16 @@ import "@xyflow/react/dist/style.css"
 import { toast } from "sonner"
 import {
   ArrowDownRight,
+  ArrowRight,
   ArrowUpRight,
+  CalendarClock,
   ChevronDown,
   ChevronRight,
   Landmark,
   ListFilter,
+  Network,
   Repeat,
+  Search,
   Tag,
   Users,
   Wallet,
@@ -34,7 +40,16 @@ import { useCurrency } from "@/lib/currency-context"
 import { formatMoney } from "@/lib/wealth"
 import { cn } from "@/lib/utils"
 import { accountTypeAllows } from "@/lib/types"
-import { buildFlowGraph, groupKeyId, type FlowData, type FlowGroup, type FlowLeaf } from "@/lib/money-flow"
+import {
+  buildFlowGraph,
+  buildTimelineGraph,
+  groupKeyId,
+  type FlowData,
+  type FlowGroup,
+  type FlowLeaf,
+  type TimelineData,
+  type TimelinePeriod,
+} from "@/lib/money-flow"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
@@ -82,7 +97,7 @@ function RootNode({ data }: NodeProps<Node<RootData>>) {
       <button
         type="button"
         onClick={data.onToggle}
-        className="mt-3 flex w-full items-center justify-center gap-1 rounded-lg border py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted"
+        className="nodrag mt-3 flex w-full items-center justify-center gap-1 rounded-lg border py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted"
       >
         {data.collapsed ? <ChevronRight className="size-3" /> : <ChevronDown className="size-3" />}
         {data.collapsed ? t("flow.expandAll") : t("flow.collapseAll")}
@@ -123,7 +138,7 @@ function GroupNode({ data }: NodeProps<Node<GroupData>>) {
         <button
           type="button"
           onClick={data.onToggle}
-          className="mt-2.5 flex w-full items-center justify-center gap-1 rounded-lg border py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted"
+          className="nodrag mt-2.5 flex w-full items-center justify-center gap-1 rounded-lg border py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted"
         >
           {data.expanded ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
           {data.expanded ? t("flow.hideTransactions") : t("flow.showTransactions")}
@@ -134,38 +149,43 @@ function GroupNode({ data }: NodeProps<Node<GroupData>>) {
   )
 }
 
-type LeafData = FlowLeaf & { currency: string; formatDate: (d: string) => string }
+type LeafData = FlowLeaf & { currency: string; formatDate: (d: string) => string; onOpen: () => void }
 function LeafNode({ data }: NodeProps<Node<LeafData>>) {
   const { t } = useTranslation()
   const inc = data.type === "incoming"
   return (
-    <div className="w-[230px] rounded-xl border bg-card/80 p-2.5 text-xs shadow-sm">
+    // `nodrag` lets the click through (React Flow won't start a node drag here);
+    // a whole-card button opens the transaction.
+    <button
+      type="button"
+      onClick={data.onOpen}
+      title={t("flow.openTransaction")}
+      className="nodrag flex w-[230px] items-center gap-2 rounded-xl border bg-card/80 p-2.5 text-left text-xs shadow-sm transition-colors hover:border-primary/40"
+    >
       <Handle type="target" position={Position.Left} className="!size-1.5 !border !border-muted-foreground/40 !bg-background" />
-      <div className="flex items-center gap-2">
-        <span className={cn("grid size-7 shrink-0 place-items-center rounded-full", inc ? "bg-emerald-100 dark:bg-emerald-900/30" : "bg-red-100 dark:bg-red-900/30")}>
-          {inc ? <ArrowUpRight className="size-3.5 text-emerald-600 dark:text-emerald-400" /> : <ArrowDownRight className="size-3.5 text-red-600 dark:text-red-400" />}
+      <span className={cn("grid size-7 shrink-0 place-items-center rounded-full", inc ? "bg-emerald-100 dark:bg-emerald-900/30" : "bg-red-100 dark:bg-red-900/30")}>
+        {inc ? <ArrowUpRight className="size-3.5 text-emerald-600 dark:text-emerald-400" /> : <ArrowDownRight className="size-3.5 text-red-600 dark:text-red-400" />}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="flex items-center gap-1 truncate font-medium">
+          {data.description || (inc ? t("flow.income") : t("flow.expense"))}
+          {data.recurring && <Repeat className="size-3 shrink-0 text-violet-500" />}
         </span>
-        <div className="min-w-0 flex-1">
-          <p className="flex items-center gap-1 truncate font-medium">
-            {data.description || (inc ? t("flow.income") : t("flow.expense"))}
-            {data.recurring && <Repeat className="size-3 shrink-0 text-violet-500" />}
-          </p>
-          <p className="truncate text-[10px] text-muted-foreground">{data.formatDate(data.date)}{data.category ? ` · ${data.category}` : ""}</p>
-        </div>
-        <Money value={data.amount} sign={inc ? "+" : "−"} currency={data.currency} className={cn("shrink-0 font-semibold", inc ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400")} />
-      </div>
-    </div>
+        <span className="block truncate text-[10px] text-muted-foreground">{data.formatDate(data.date)}{data.category ? ` · ${data.category}` : ""}</span>
+      </span>
+      <Money value={data.amount} sign={inc ? "+" : "−"} currency={data.currency} className={cn("shrink-0 font-semibold", inc ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400")} />
+    </button>
   )
 }
 
-type MoreData = { count: number; group: FlowGroup; onOpen: () => void }
+type MoreData = { count: number; onOpen: () => void }
 function MoreNode({ data }: NodeProps<Node<MoreData>>) {
   const { t } = useTranslation()
   return (
     <button
       type="button"
       onClick={data.onOpen}
-      className="flex w-[230px] items-center justify-center gap-1.5 rounded-xl border border-dashed bg-card/60 px-2.5 py-2 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/50 hover:text-foreground"
+      className="nodrag flex w-[230px] items-center justify-center gap-1.5 rounded-xl border border-dashed bg-card/60 px-2.5 py-2 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/50 hover:text-foreground"
     >
       <Handle type="target" position={Position.Left} className="!size-1.5 !border !border-muted-foreground/40 !bg-background" />
       <ListFilter className="size-3.5" /> {t("flow.viewMore", { count: data.count })}
@@ -173,10 +193,73 @@ function MoreNode({ data }: NodeProps<Node<MoreData>>) {
   )
 }
 
-const NODE_TYPES = { root: RootNode, group: GroupNode, leaf: LeafNode, more: MoreNode }
+// ── Timeline nodes: a running-balance chain ──────────────────────────────────
+type TimelinePeriodNodeData = TimelinePeriod & { expanded: boolean; currency: string; formatPeriod: (key: string, bucket: string) => string; onToggle: () => void }
+function TimelinePeriodNode({ data }: NodeProps<Node<TimelinePeriodNodeData>>) {
+  const { t } = useTranslation()
+  return (
+    <div className="w-[268px] rounded-2xl border bg-card p-3.5 shadow-sm transition-shadow hover:shadow-md">
+      <Handle type="target" position={Position.Left} className="!size-2 !border-2 !border-muted-foreground/40 !bg-background" />
+      <div className="flex items-center gap-2">
+        <span className="grid size-8 place-items-center rounded-lg bg-primary/10 text-primary"><CalendarClock className="size-4" /></span>
+        <p className="min-w-0 flex-1 truncate text-sm font-semibold">{data.formatPeriod(data.key, data.bucket)}</p>
+        <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] tabular-nums text-muted-foreground">{data.tx_count}</span>
+      </div>
+      {/* before → net → after: the running cumulative chain */}
+      <div className="mt-2.5 flex items-center justify-between rounded-lg bg-muted/40 px-2.5 py-1.5 text-[11px]">
+        <span className="text-center"><span className="block text-[9px] uppercase text-muted-foreground">{t("flow.before")}</span><Money value={data.before} currency={data.currency} className="font-medium" /></span>
+        <ArrowRight className="size-3 shrink-0 text-muted-foreground rtl:rotate-180" />
+        <span className="text-center"><span className="block text-[9px] uppercase text-muted-foreground">{t("flow.net")}</span><Money value={data.net} sign={data.net >= 0 ? "+" : "−"} currency={data.currency} className={cn("font-semibold", data.net >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400")} /></span>
+        <ArrowRight className="size-3 shrink-0 text-muted-foreground rtl:rotate-180" />
+        <span className="text-center"><span className="block text-[9px] uppercase text-muted-foreground">{t("flow.after")}</span><Money value={data.after} currency={data.currency} className="font-bold" /></span>
+      </div>
+      <div className="mt-2 grid grid-cols-2 gap-x-3 text-[11px]">
+        <div><dt className="inline text-muted-foreground">{t("flow.in")} </dt><Money value={data.income} sign="+" currency={data.currency} className="font-medium text-emerald-600 dark:text-emerald-400" /></div>
+        <div className="text-right"><dt className="inline text-muted-foreground">{t("flow.out")} </dt><Money value={data.expense} sign="−" currency={data.currency} className="font-medium text-red-600 dark:text-red-400" /></div>
+      </div>
+      {data.tx_count > 0 && (
+        <button
+          type="button"
+          onClick={data.onToggle}
+          className="nodrag mt-2.5 flex w-full items-center justify-center gap-1 rounded-lg border py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted"
+        >
+          {data.expanded ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
+          {data.expanded ? t("flow.hideTransactions") : t("flow.showTransactions")}
+        </button>
+      )}
+      <Handle type="source" position={Position.Right} className="!size-2 !border-2 !border-muted-foreground/40 !bg-background" />
+    </div>
+  )
+}
 
-// ── Multi-select filter popover (compact, mobile-safe) ───────────────────────
-function MultiCheck({ label, options, selected, onChange }: { label: string; options: Option[]; selected: Set<string>; onChange: (s: Set<string>) => void }) {
+type TimelineFinalNodeData = TimelineData["final"] & { period_count: number; currency: string }
+function TimelineFinalNode({ data }: NodeProps<Node<TimelineFinalNodeData>>) {
+  const { t } = useTranslation()
+  return (
+    <div className="w-[240px] rounded-2xl border-2 border-primary/50 bg-card p-4 shadow-lg">
+      <Handle type="target" position={Position.Left} className="!size-2 !border-2 !border-primary !bg-background" />
+      <div className="flex items-center gap-2">
+        <span className="grid size-9 place-items-center rounded-xl bg-primary/10 text-primary"><Workflow className="size-5" /></span>
+        <div className="min-w-0">
+          <p className="truncate text-sm font-semibold">{data.label}</p>
+          <p className="text-[11px] text-muted-foreground">{t("flow.finalEntity")}</p>
+        </div>
+      </div>
+      <dl className="mt-3 space-y-1.5 text-xs">
+        <div className="flex items-center justify-between"><dt className="text-muted-foreground">{t("flow.revenue")}</dt><dd><Money value={data.total_in} sign="+" currency={data.currency} className="font-semibold text-emerald-600 dark:text-emerald-400" /></dd></div>
+        <div className="flex items-center justify-between"><dt className="text-muted-foreground">{t("flow.expenses")}</dt><dd><Money value={data.total_out} sign="−" currency={data.currency} className="font-semibold text-red-600 dark:text-red-400" /></dd></div>
+        <div className="flex items-center justify-between border-t pt-1.5"><dt className="font-medium">{t("flow.netTotal")}</dt><dd><Money value={data.total_net} currency={data.currency} className={cn("font-bold", data.total_net >= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-red-700 dark:text-red-300")} /></dd></div>
+        <div className="flex items-center justify-between"><dt className="text-muted-foreground">{t("flow.balance")}</dt><dd><Money value={data.balance} currency={data.currency} className="font-medium" /></dd></div>
+      </dl>
+    </div>
+  )
+}
+
+const NODE_TYPES = { root: RootNode, group: GroupNode, leaf: LeafNode, more: MoreNode, tlperiod: TimelinePeriodNode, tlfinal: TimelineFinalNode }
+
+// ── Searchable multi-select filter (compact, mobile-safe) ────────────────────
+function MultiCheck({ label, options, selected, onChange, searchPlaceholder }: { label: string; options: Option[]; selected: Set<string>; onChange: (s: Set<string>) => void; searchPlaceholder: string }) {
+  const [query, setQuery] = useState("")
   if (options.length === 0) return null
   const toggle = (id: string) => {
     const next = new Set(selected)
@@ -184,16 +267,35 @@ function MultiCheck({ label, options, selected, onChange }: { label: string; opt
     else next.add(id)
     onChange(next)
   }
+  const q = query.trim().toLowerCase()
+  const filtered = q ? options.filter((o) => o.label.toLowerCase().includes(q)) : options
+  // Search box appears once the list is long enough to warrant it.
+  const showSearch = options.length > 6
   return (
     <div className="space-y-1.5">
-      <Label className="text-xs">{label}</Label>
-      <div className="max-h-40 space-y-1 overflow-y-auto rounded-lg border p-2 scrollbar-thin">
-        {options.map((o) => (
-          <label key={o.id} className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 text-sm hover:bg-muted">
-            <Checkbox checked={selected.has(o.id)} onCheckedChange={() => toggle(o.id)} />
-            <span className="truncate">{o.label}</span>
-          </label>
-        ))}
+      <div className="flex items-center justify-between">
+        <Label className="text-xs">{label}</Label>
+        {selected.size > 0 && <span className="text-[10px] text-muted-foreground">{selected.size} selected</span>}
+      </div>
+      <div className="rounded-lg border">
+        {showSearch && (
+          <div className="relative border-b p-1.5">
+            <Search className="absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={searchPlaceholder} className="h-8 pl-7 text-sm" />
+          </div>
+        )}
+        <div className="max-h-40 space-y-1 overflow-y-auto p-2 scrollbar-thin">
+          {filtered.length === 0 ? (
+            <p className="px-1 py-2 text-center text-xs text-muted-foreground">No matches</p>
+          ) : (
+            filtered.map((o) => (
+              <label key={o.id} className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 text-sm hover:bg-muted">
+                <Checkbox checked={selected.has(o.id)} onCheckedChange={() => toggle(o.id)} />
+                <span className="truncate">{o.label}</span>
+              </label>
+            ))
+          )}
+        </div>
       </div>
     </div>
   )
@@ -210,8 +312,10 @@ export function MoneyFlowPage() {
   const isPersonal = activeOrg?.account_type === "personal"
   const hasClients = accountTypeAllows(activeOrg?.account_type ?? null, "clients")
 
-  const [data, setData] = useState<FlowData | null>(null)
+  const [data, setData] = useState<FlowData | TimelineData | null>(null)
   const [loading, setLoading] = useState(true)
+  const [viewMode, setViewMode] = useState<"grouped" | "timeline">("grouped")
+  const [bucket, setBucket] = useState<"day" | "week" | "month" | "year">("month")
   const [groupBy, setGroupBy] = useState<GroupBy>(isPersonal ? "category" : "client")
   const [from, setFrom] = useState("")
   const [to, setTo] = useState("")
@@ -223,6 +327,9 @@ export function MoneyFlowPage() {
   const [accountOptions, setAccountOptions] = useState<Option[]>([])
   const [rootCollapsed, setRootCollapsed] = useState(false)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  // Bumped on every successful fetch; part of the structural key that triggers
+  // a node rebuild (so drags persist between rebuilds — see the effect below).
+  const [dataVersion, setDataVersion] = useState(0)
 
   // Filter options (loaded once).
   useEffect(() => {
@@ -255,36 +362,50 @@ export function MoneyFlowPage() {
     try {
       const token = await getToken()
       if (!token) return
-      const params = new URLSearchParams({ groupBy })
+      const params = new URLSearchParams()
+      if (viewMode === "timeline") { params.set("mode", "timeline"); params.set("bucket", bucket) }
+      else params.set("groupBy", groupBy)
       if (from) params.set("from", from)
       if (to) params.set("to", to)
       if (selCats.size) params.set("category", [...selCats].join(","))
       if (selClients.size) params.set("clientId", [...selClients].join(","))
       if (selAccounts.size) params.set("accountId", [...selAccounts].join(","))
-      const resp = await apiGet<FlowData>(`/api/flow?${params}`, token)
+      const resp = await apiGet<FlowData | TimelineData>(`/api/flow?${params}`, token)
       setData(resp)
+      setDataVersion((v) => v + 1)
     } catch {
       toast.error(t("flow.loadFailed"))
     } finally {
       setLoading(false)
     }
-  }, [getToken, groupBy, from, to, selCats, selClients, selAccounts, t])
+  }, [getToken, viewMode, bucket, groupBy, from, to, selCats, selClients, selAccounts, t])
 
   useEffect(() => { load() }, [load])
 
-  // Re-frame the canvas whenever the FETCHED data changes (initial load, filter
-  // or date change, groupBy switch) — but NOT on collapse/expand, which keeps
-  // `data` identity stable, so expanding a branch never yanks the viewport.
   const flowRef = useRef<ReactFlowInstance<Node, Edge> | null>(null)
+
+  // Re-fit on viewport resize / rotation so nodes never end up stranded
+  // off-screen (React Flow doesn't auto-fit on container resize).
   useEffect(() => {
-    if (!data) return
-    const id = requestAnimationFrame(() => flowRef.current?.fitView({ padding: 0.2, maxZoom: 1, duration: 300 }))
-    return () => cancelAnimationFrame(id)
-  }, [data])
+    let raf = 0
+    const onResize = () => {
+      cancelAnimationFrame(raf)
+      raf = requestAnimationFrame(() => flowRef.current?.fitView({ padding: 0.2, maxZoom: 1 }))
+    }
+    window.addEventListener("resize", onResize)
+    return () => { window.removeEventListener("resize", onResize); cancelAnimationFrame(raf) }
+  }, [])
 
   const formatDate = useCallback((d: string) => new Date(`${d}T00:00:00`).toLocaleDateString(i18n.language, { day: "numeric", month: "short", year: "numeric" }), [i18n.language])
+  const formatPeriod = useCallback((key: string, b: string) => {
+    const d = new Date(`${key}T00:00:00`)
+    if (b === "year") return String(d.getFullYear())
+    if (b === "month") return d.toLocaleDateString(i18n.language, { month: "short", year: "numeric" })
+    if (b === "week") return `${t("flow.weekOf")} ${d.toLocaleDateString(i18n.language, { day: "numeric", month: "short" })}`
+    return d.toLocaleDateString(i18n.language, { day: "numeric", month: "short", year: "numeric" })
+  }, [i18n.language, t])
 
-  const toggleGroup = useCallback((key: string) => {
+  const toggleKey = useCallback((key: string) => {
     setExpanded((prev) => {
       const next = new Set(prev)
       if (next.has(key)) next.delete(key)
@@ -293,38 +414,73 @@ export function MoneyFlowPage() {
     })
   }, [])
 
-  // Where a group's "+N more" leaf links to (precise per dimension).
-  const openMore = useCallback((g: FlowGroup) => {
-    if (g.kind === "client" && g.key) { navigate(`/clients/${g.key}`); return }
-    if (g.kind === "account" && g.key) { navigate(`/wealth/${g.key}`); return }
+  // Where a group's "+N more" leaf links to (precise per dimension/period).
+  const openTransactions = useCallback(() => {
     const params = new URLSearchParams()
     if (from) params.set("from", from)
     if (to) params.set("to", to)
     navigate(`/transactions${params.toString() ? `?${params}` : ""}`)
   }, [navigate, from, to])
+  const openMoreForGroup = useCallback((g: FlowGroup) => {
+    if (g.kind === "client" && g.key) { navigate(`/clients/${g.key}`); return }
+    if (g.kind === "account" && g.key) { navigate(`/wealth/${g.key}`); return }
+    openTransactions()
+  }, [navigate, openTransactions])
+  const openLeaf = useCallback((id: string) => navigate(`/transactions?view=${id}`), [navigate])
 
-  // Build positioned nodes/edges, then map onto React Flow objects + inject callbacks.
-  const { rfNodes, rfEdges } = useMemo(() => {
-    if (!data) return { rfNodes: [] as Node[], rfEdges: [] as Edge[] }
-    const { nodes, edges } = buildFlowGraph(data, { rootCollapsed, expanded })
-    const rfNodes: Node[] = nodes.map((n) => {
-      if (n.type === "root") return { ...n, data: { ...n.data, currency, onToggle: () => setRootCollapsed((c) => !c) } } as Node
-      if (n.type === "group") {
-        const g = n.data as unknown as FlowGroup
-        return { ...n, data: { ...n.data, currency, onToggle: () => toggleGroup(groupKeyId(g)) } } as Node
+  // ── Controlled nodes/edges so user DRAGS persist between structural rebuilds ─
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([])
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
+
+  // Rebuild + re-fit only when the STRUCTURE changes (data fetch, mode, groupBy,
+  // bucket, collapse/expand) — NOT on drag, so dragging a node sticks until the
+  // next deliberate change. A signature string is the dependency.
+  const structuralKey = useMemo(() => {
+    if (!data) return "none"
+    return [viewMode, groupBy, bucket, dataVersion, rootCollapsed, [...expanded].sort().join(",")].join("|")
+  }, [data, viewMode, groupBy, bucket, dataVersion, rootCollapsed, expanded])
+
+  useEffect(() => {
+    if (!data) { setNodes([]); setEdges([]); return }
+    const built =
+      data.mode === "timeline"
+        ? buildTimelineGraph(data, expanded)
+        : buildFlowGraph(data, { rootCollapsed, expanded })
+    const rf: Node[] = built.nodes.map((n) => {
+      switch (n.type) {
+        case "root":
+          return { ...n, data: { ...n.data, currency, onToggle: () => setRootCollapsed((c) => !c) } } as Node
+        case "group": {
+          const g = n.data as unknown as FlowGroup
+          return { ...n, data: { ...n.data, currency, onToggle: () => toggleKey(groupKeyId(g)) } } as Node
+        }
+        case "tlperiod": {
+          const p = n.data as unknown as TimelinePeriod
+          return { ...n, data: { ...n.data, currency, formatPeriod, onToggle: () => toggleKey(p.key) } } as Node
+        }
+        case "tlfinal":
+          return { ...n, data: { ...n.data, currency } } as Node
+        case "leaf": {
+          const leaf = n.data as unknown as FlowLeaf
+          return { ...n, data: { ...n.data, currency, formatDate, onOpen: () => openLeaf(leaf.id) } } as Node
+        }
+        case "more": {
+          const g = (n.data as { group?: FlowGroup }).group
+          return { ...n, data: { ...n.data, onOpen: () => (g ? openMoreForGroup(g) : openTransactions()) } } as Node
+        }
+        default:
+          return n as Node
       }
-      if (n.type === "leaf") return { ...n, data: { ...n.data, currency, formatDate } } as Node
-      if (n.type === "more") {
-        const g = (n.data as { group: FlowGroup }).group
-        return { ...n, data: { ...n.data, onOpen: () => openMore(g) } } as Node
-      }
-      return n as Node
     })
-    return { rfNodes, rfEdges: edges as Edge[] }
-  }, [data, rootCollapsed, expanded, currency, formatDate, toggleGroup, openMore])
+    setNodes(rf)
+    setEdges(built.edges as Edge[])
+    const id = requestAnimationFrame(() => flowRef.current?.fitView({ padding: 0.2, maxZoom: 1, duration: 300 }))
+    return () => cancelAnimationFrame(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- structuralKey is the intentional trigger; callbacks/currency are stable
+  }, [structuralKey])
 
   const activeFilterCount = selCats.size + selClients.size + selAccounts.size + (from ? 1 : 0) + (to ? 1 : 0)
-  const empty = !loading && data && data.root.tx_count === 0
+  const empty = !loading && data && (data.mode === "timeline" ? data.periods.length === 0 : data.root.tx_count === 0)
 
   const filterPanel = (
     <div className="space-y-4">
@@ -338,9 +494,9 @@ export function MoneyFlowPage() {
           <Input id="flow-to" type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} className="h-9" />
         </div>
       </div>
-      <MultiCheck label={t("flow.categories")} options={catOptions} selected={selCats} onChange={setSelCats} />
-      {hasClients && <MultiCheck label={t("flow.clients")} options={clientOptions} selected={selClients} onChange={setSelClients} />}
-      <MultiCheck label={t("flow.accounts")} options={accountOptions} selected={selAccounts} onChange={setSelAccounts} />
+      <MultiCheck label={t("flow.categories")} searchPlaceholder={t("flow.searchCategories")} options={catOptions} selected={selCats} onChange={setSelCats} />
+      {hasClients && <MultiCheck label={t("flow.clients")} searchPlaceholder={t("flow.searchClients")} options={clientOptions} selected={selClients} onChange={setSelClients} />}
+      <MultiCheck label={t("flow.accounts")} searchPlaceholder={t("flow.searchAccounts")} options={accountOptions} selected={selAccounts} onChange={setSelAccounts} />
       {activeFilterCount > 0 && (
         <Button variant="ghost" size="sm" className="w-full" onClick={() => { setFrom(""); setTo(""); setSelCats(new Set()); setSelClients(new Set()); setSelAccounts(new Set()) }}>
           {t("flow.clearFilters")}
@@ -349,6 +505,8 @@ export function MoneyFlowPage() {
     </div>
   )
 
+  const BUCKETS = ["day", "week", "month", "year"] as const
+
   return (
     <div className="flex h-[calc(100svh-3.5rem)] flex-col p-3 sm:h-[calc(100svh-1rem)] sm:p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -356,23 +514,58 @@ export function MoneyFlowPage() {
           <h1 className="flex items-center gap-2 text-xl font-semibold tracking-tight sm:text-2xl">
             <Workflow className="size-5 text-primary" /> {t("flow.title")}
           </h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">{t("flow.subtitle")}</p>
+          <p className="mt-0.5 text-sm text-muted-foreground">{viewMode === "timeline" ? t("flow.timelineSubtitle") : t("flow.subtitle")}</p>
         </div>
-        <div className="flex items-center gap-2">
-          {/* Group-by segmented control */}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* View-mode toggle: grouped mind-map vs running-balance timeline */}
           <div className="flex rounded-lg border p-0.5">
-            {GROUP_BYS.filter((g) => g !== "client" || hasClients).map((g) => (
-              <button
-                key={g}
-                type="button"
-                onClick={() => { setGroupBy(g); setExpanded(new Set()); setRootCollapsed(false) }}
-                aria-pressed={groupBy === g}
-                className={cn("rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors", groupBy === g ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted")}
-              >
-                {t(`flow.by_${g}` as const)}
-              </button>
-            ))}
+            <button
+              type="button"
+              onClick={() => { setViewMode("grouped"); setExpanded(new Set()); setRootCollapsed(false) }}
+              aria-pressed={viewMode === "grouped"}
+              className={cn("flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors", viewMode === "grouped" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted")}
+            >
+              <Network className="size-3.5" /> {t("flow.viewGrouped")}
+            </button>
+            <button
+              type="button"
+              onClick={() => { setViewMode("timeline"); setExpanded(new Set()) }}
+              aria-pressed={viewMode === "timeline"}
+              className={cn("flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors", viewMode === "timeline" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted")}
+            >
+              <CalendarClock className="size-3.5" /> {t("flow.viewTimeline")}
+            </button>
           </div>
+          {/* Grouped: dimension switch. Timeline: bucket switch. */}
+          {viewMode === "grouped" ? (
+            <div className="flex rounded-lg border p-0.5">
+              {GROUP_BYS.filter((g) => g !== "client" || hasClients).map((g) => (
+                <button
+                  key={g}
+                  type="button"
+                  onClick={() => { setGroupBy(g); setExpanded(new Set()); setRootCollapsed(false) }}
+                  aria-pressed={groupBy === g}
+                  className={cn("rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors", groupBy === g ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted")}
+                >
+                  {t(`flow.by_${g}` as const)}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="flex rounded-lg border p-0.5">
+              {BUCKETS.map((b) => (
+                <button
+                  key={b}
+                  type="button"
+                  onClick={() => { setBucket(b); setExpanded(new Set()) }}
+                  aria-pressed={bucket === b}
+                  className={cn("rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors", bucket === b ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted")}
+                >
+                  {t(`flow.bucket_${b}` as const)}
+                </button>
+              ))}
+            </div>
+          )}
           <Sheet>
             <SheetTrigger asChild>
               <Button variant="outline" size="sm" className="shrink-0">
@@ -399,16 +592,18 @@ export function MoneyFlowPage() {
         ) : (
           <ReactFlow
             onInit={(inst) => { flowRef.current = inst }}
-            nodes={rfNodes}
-            edges={rfEdges}
+            nodes={nodes}
+            edges={edges}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
             nodeTypes={NODE_TYPES}
             fitView
             fitViewOptions={{ padding: 0.2, maxZoom: 1 }}
             minZoom={0.2}
             maxZoom={1.5}
-            nodesDraggable={false}
+            nodesDraggable
+            elementsSelectable
             nodesConnectable={false}
-            elementsSelectable={false}
             proOptions={{ hideAttribution: true }}
             defaultEdgeOptions={{ type: "smoothstep", style: { strokeWidth: 1.5 }, animated: false }}
             onlyRenderVisibleElements

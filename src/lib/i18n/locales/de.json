@@ -1171,6 +1171,22 @@
     "emptyHint": "Füge Transaktionen hinzu oder erweitere Zeitraum und Filter, um deinen Geldfluss zu sehen.",
     "loadFailed": "Geldfluss konnte nicht geladen werden",
     "card": "Geldfluss",
-    "cardCta": "Geldfluss öffnen"
+    "cardCta": "Geldfluss öffnen",
+    "timelineSubtitle": "Beobachte, wie sich dein Saldo über die Zeit entwickelt — davor, Veränderung und danach, Periode für Periode.",
+    "viewGrouped": "Karte",
+    "viewTimeline": "Zeitverlauf",
+    "bucket_day": "Tag",
+    "bucket_week": "Woche",
+    "bucket_month": "Monat",
+    "bucket_year": "Jahr",
+    "before": "Davor",
+    "after": "Danach",
+    "netTotal": "Netto gesamt",
+    "finalEntity": "Endsaldo",
+    "weekOf": "Woche vom",
+    "openTransaction": "Transaktion öffnen",
+    "searchCategories": "Kategorien suchen…",
+    "searchClients": "Kunden suchen…",
+    "searchAccounts": "Konten suchen…"
   }
 }

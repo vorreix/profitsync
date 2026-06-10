@@ -1171,6 +1171,22 @@
     "emptyHint": "Aggiungi transazioni o amplia l'intervallo di date e i filtri per vedere il flusso.",
     "loadFailed": "Impossibile caricare il flusso di denaro",
     "card": "Flusso di denaro",
-    "cardCta": "Apri il flusso di denaro"
+    "cardCta": "Apri il flusso di denaro",
+    "timelineSubtitle": "Osserva l'evoluzione del saldo nel tempo — prima, variazione e dopo, periodo per periodo.",
+    "viewGrouped": "Mappa",
+    "viewTimeline": "Cronologia",
+    "bucket_day": "Giorno",
+    "bucket_week": "Settimana",
+    "bucket_month": "Mese",
+    "bucket_year": "Anno",
+    "before": "Prima",
+    "after": "Dopo",
+    "netTotal": "Netto totale",
+    "finalEntity": "Saldo finale",
+    "weekOf": "Settimana del",
+    "openTransaction": "Apri transazione",
+    "searchCategories": "Cerca categorie…",
+    "searchClients": "Cerca clienti…",
+    "searchAccounts": "Cerca conti…"
   }
 }

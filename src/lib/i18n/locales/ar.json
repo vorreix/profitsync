@@ -1171,6 +1171,22 @@
     "emptyHint": "أضف بعض المعاملات، أو وسّع نطاق التاريخ وعوامل التصفية لرؤية تدفق أموالك.",
     "loadFailed": "تعذّر تحميل تدفق الأموال",
     "card": "تدفق الأموال",
-    "cardCta": "افتح تدفق الأموال"
+    "cardCta": "افتح تدفق الأموال",
+    "timelineSubtitle": "شاهد رصيدك الجاري يتطور عبر الزمن — قبل، التغيّر، وبعد، فترة بفترة.",
+    "viewGrouped": "خريطة",
+    "viewTimeline": "الخط الزمني",
+    "bucket_day": "يوم",
+    "bucket_week": "أسبوع",
+    "bucket_month": "شهر",
+    "bucket_year": "سنة",
+    "before": "قبل",
+    "after": "بعد",
+    "netTotal": "إجمالي الصافي",
+    "finalEntity": "الرصيد النهائي",
+    "weekOf": "أسبوع",
+    "openTransaction": "فتح المعاملة",
+    "searchCategories": "بحث في الفئات…",
+    "searchClients": "بحث في العملاء…",
+    "searchAccounts": "بحث في الحسابات…"
   }
 }

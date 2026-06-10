@@ -32,6 +32,7 @@ export type FlowGroup = {
 }
 
 export type FlowData = {
+  mode: "grouped"
   group_by: "account" | "client" | "category"
   personal: boolean
   range: { from: string; to: string }
@@ -39,7 +40,31 @@ export type FlowData = {
   groups: FlowGroup[]
 }
 
-export type FlowNodeType = "root" | "group" | "leaf" | "more"
+// ── Timeline mode ────────────────────────────────────────────────────────────
+export type TimelinePeriod = {
+  key: string
+  label: string
+  bucket: string
+  income: number
+  expense: number
+  net: number
+  before: number // running cumulative net BEFORE this period
+  after: number // running cumulative net AFTER this period
+  tx_count: number
+  leaves: FlowLeaf[]
+  more_count: number
+}
+
+export type TimelineData = {
+  mode: "timeline"
+  bucket: string
+  personal: boolean
+  range: { from: string; to: string }
+  periods: TimelinePeriod[]
+  final: { label: string; total_in: number; total_out: number; total_net: number; balance: number }
+}
+
+export type FlowNodeType = "root" | "group" | "leaf" | "more" | "tlperiod" | "tlfinal"
 
 export type FlowNode = {
   id: string
@@ -117,6 +142,49 @@ export function buildFlowGraph(data: FlowData, state: CollapseState): { nodes: F
 
   // Vertically center the root against the full branch column.
   root.position.y = Math.max(0, (y - LEAF_V - ROOT_H) / 2)
+
+  return { nodes, edges }
+}
+
+// Timeline layout: a horizontal chain P1 → P2 → … → final entity. Each period
+// sits in its own column; expanding a period stacks its leaves directly below
+// it (they don't push the chain — the row stays readable). The final entity is
+// one column past the last period.
+const TL_COL_W = 300
+const TL_PERIOD_H = 168
+
+export function buildTimelineGraph(data: TimelineData, expandedPeriods: Set<string>): { nodes: FlowNode[]; edges: FlowEdge[] } {
+  const nodes: FlowNode[] = []
+  const edges: FlowEdge[] = []
+
+  data.periods.forEach((p, i) => {
+    const pid = `p:${p.key}`
+    nodes.push({ id: pid, type: "tlperiod", position: { x: i * TL_COL_W, y: 0 }, data: { ...p, expanded: expandedPeriods.has(p.key) } })
+    if (i > 0) edges.push({ id: `e:${data.periods[i - 1].key}-${p.key}`, source: `p:${data.periods[i - 1].key}`, target: pid })
+
+    if (expandedPeriods.has(p.key)) {
+      let ly = TL_PERIOD_H
+      for (const leaf of p.leaves) {
+        const lid = `l:${leaf.id}`
+        nodes.push({ id: lid, type: "leaf", position: { x: i * TL_COL_W, y: ly }, data: { ...leaf } })
+        edges.push({ id: `e:${pid}-${lid}`, source: pid, target: lid })
+        ly += LEAF_V
+      }
+      if (p.more_count > 0) {
+        const mid = `m:${p.key}`
+        nodes.push({ id: mid, type: "more", position: { x: i * TL_COL_W, y: ly }, data: { count: p.more_count, period: p } })
+        edges.push({ id: `e:${pid}-${mid}`, source: pid, target: mid })
+      }
+    }
+  })
+
+  // Final entity node at the end of the chain.
+  const finalX = data.periods.length * TL_COL_W
+  nodes.push({ id: "final", type: "tlfinal", position: { x: finalX, y: 0 }, data: { ...data.final, period_count: data.periods.length } })
+  if (data.periods.length > 0) {
+    const last = data.periods[data.periods.length - 1]
+    edges.push({ id: `e:${last.key}-final`, source: `p:${last.key}`, target: "final" })
+  }
 
   return { nodes, edges }
 }

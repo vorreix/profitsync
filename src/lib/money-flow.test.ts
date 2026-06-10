@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest"
-import { buildFlowGraph, groupKeyId, type FlowData } from "./money-flow"
+import { buildFlowGraph, buildTimelineGraph, groupKeyId, type FlowData, type TimelineData } from "./money-flow"
 
 function leaf(id: string, amount = 100): FlowData["groups"][number]["leaves"][number] {
   return { id, type: "incoming", amount, description: "x", category: "Sales", date: "2026-06-01" }
 }
 
 const DATA: FlowData = {
+  mode: "grouped",
   group_by: "client",
   personal: false,
   range: { from: "2026-01-01", to: "2026-06-30" },
@@ -65,5 +66,52 @@ describe("buildFlowGraph", () => {
   it("groupKeyId disambiguates null keys by label", () => {
     expect(groupKeyId({ key: "c1", label: "Acme" })).toBe("c1")
     expect(groupKeyId({ key: null, label: "Unassigned" })).toBe("__none__:Unassigned")
+  })
+})
+
+const TIMELINE: TimelineData = {
+  mode: "timeline",
+  bucket: "month",
+  personal: false,
+  range: { from: "2026-01-01", to: "2026-03-31" },
+  periods: [
+    { key: "2026-01-01", label: "Jan", bucket: "month", income: 500, expense: 200, net: 300, before: 0, after: 300, tx_count: 3, leaves: [leaf("a"), leaf("b")], more_count: 1 },
+    { key: "2026-02-01", label: "Feb", bucket: "month", income: 100, expense: 400, net: -300, before: 300, after: 0, tx_count: 2, leaves: [leaf("c")], more_count: 0 },
+  ],
+  final: { label: "VorreiX", total_in: 600, total_out: 600, total_net: 0, balance: 1200 },
+}
+
+describe("buildTimelineGraph", () => {
+  it("chains periods left→right and ends at the final entity", () => {
+    const { nodes, edges } = buildTimelineGraph(TIMELINE, new Set())
+    const periods = nodes.filter((n) => n.type === "tlperiod")
+    expect(periods).toHaveLength(2)
+    expect(nodes.filter((n) => n.type === "tlfinal")).toHaveLength(1)
+    // P1 x < P2 x < final x
+    const xs = [...periods.map((p) => p.position.x), nodes.find((n) => n.type === "tlfinal")!.position.x]
+    for (let i = 1; i < xs.length; i++) expect(xs[i]).toBeGreaterThan(xs[i - 1])
+    // chain edges: P1→P2 and P2→final
+    expect(edges).toHaveLength(2)
+  })
+
+  it("running balance carries forward (before of P2 == after of P1)", () => {
+    expect(TIMELINE.periods[1].before).toBe(TIMELINE.periods[0].after)
+  })
+
+  it("expanding a period reveals its leaves + a 'more' node below it", () => {
+    const { nodes } = buildTimelineGraph(TIMELINE, new Set(["2026-01-01"]))
+    expect(nodes.filter((n) => n.type === "leaf")).toHaveLength(2)
+    expect(nodes.filter((n) => n.type === "more")).toHaveLength(1)
+    // leaves sit in the SAME column as their period (below it)
+    const p1x = nodes.find((n) => n.id === "p:2026-01-01")!.position.x
+    expect(nodes.filter((n) => n.type === "leaf").every((l) => l.position.x === p1x)).toBe(true)
+  })
+
+  it("handles an empty timeline (just the final node, no edges)", () => {
+    const empty: TimelineData = { ...TIMELINE, periods: [] }
+    const { nodes, edges } = buildTimelineGraph(empty, new Set())
+    expect(nodes).toHaveLength(1)
+    expect(nodes[0].type).toBe("tlfinal")
+    expect(edges).toHaveLength(0)
   })
 })
