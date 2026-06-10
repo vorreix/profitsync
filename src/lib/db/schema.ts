@@ -208,6 +208,11 @@ export const transactions = pgTable("transactions", {
 }, (table) => ({
   groupIdx: index("transactions_group_idx").on(table.groupId),
   recurringOnceIdx: uniqueIndex("transactions_recurring_once_idx").on(table.recurringRuleId, table.recurringDueDate),
+  // Hot predicates at scale: per-client lists + quota counts, per-account
+  // ledgers, and date-range scans (calendar / from-to filters).
+  clientIdx: index("transactions_client_idx").on(table.clientId),
+  accountIdx: index("transactions_account_idx").on(table.wealthAccountId),
+  dateIdx: index("transactions_date_idx").on(table.date),
 }))
 
 // ── Recurring payments ───────────────────────────────────────────────────────

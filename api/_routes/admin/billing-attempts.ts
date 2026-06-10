@@ -31,7 +31,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (from?.trim()) baseFilters.push(gte(billingAttempts.createdAt, new Date(from.trim())))
   if (to?.trim()) baseFilters.push(lte(billingAttempts.createdAt, new Date(`${to.trim()}T23:59:59.999Z`)))
   if (search?.trim()) {
-    const q = `%${search.trim()}%`
+    // Escape LIKE wildcards — Drizzle parameterizes the VALUE but % and _ are
+    // still pattern metacharacters inside it (worst case: pathological scans).
+    const escaped = search.trim().replace(/[\\%_]/g, "\\$&").slice(0, 100)
+    const q = `%${escaped}%`
     const match = or(ilike(billingAttempts.organizationName, q), ilike(billingAttempts.ownerEmail, q))
     if (match) baseFilters.push(match)
   }

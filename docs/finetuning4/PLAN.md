@@ -44,7 +44,7 @@
 | 09 | `feat/ux4-09-custom-dashboard` | T12 custom dashboard builder | 0040 | ✅ |
 | 10 | `feat/ux4-10-e2e-ci` | T4 Playwright e2e + CI gate for main | — | ✅ |
 | 11 | `feat/ux4-11-security-gate` | T5 security checks (pre-commit + CI) | — | ✅ |
-| 12 | `feat/ux4-12-audit-fixes` | T6 deep security/perf/scale audit + fixes | — | ⬜ |
+| 12 | `feat/ux4-12-audit-fixes` | T6 deep security/perf/scale audit + fixes | 0041 | ✅ |
 | 13 | `feat/ux4-13-docs-skill` | Docs + subscription-system skill update | — | ⬜ |
 
 ## ⚠️ Corrections to research findings (re-derived by hand)
@@ -350,7 +350,17 @@ authz/tenant-isolation, injection/XSS/SSRF, webhook/billing abuse, cache coheren
 serverless cold-start + connection pooling. Every finding adversarially verified
 before fixing; only verified fixes land on this branch; the rest recorded in
 `docs/finetuning4/AUDIT.md` with severity + rationale.
-**Status:** ⬜
+**Status:** ✅ — 6 lenses × adversarial verification (42 agents): 36 raw →
+13 confirmed → 23 refuted. Fixed 8: recurring mutation org-scoping
+(defense-in-depth), SVG excluded from the whole bank-logo pipeline (byte
+sniffing + data-URL refusal, test-locked), webhook replay protection (±5 min
+freshness, test-locked), 3 missing transactions indexes (migration 0041,
+verified in pg_indexes), float-noise hardening on the balance UPDATE, ILIKE
+wildcard escaping, 128KB inline-logo cap, logo-fetch timeout 4.5s→2.5s.
+5 confirmed items deliberately NOT changed with recorded rationale (incl. the
+"high" recurring-deletion claim — it's intended delete-is-final semantics).
+212 unit tests + both security sweeps + full e2e suite green after the fixes.
+Full report: docs/finetuning4/AUDIT.md.
 
 ## 13 · Docs + subscription skill
 
@@ -405,3 +415,7 @@ docs), and the new e2e/security gates.
   tests; fake-secret block verified) + security.yml (tree scan, guard sweep,
   prod audit) + SECURITY.md. Caught + removed a real committed JWT scratch
   file; fixed drizzle-orm SQLi (HIGH) / vite / postcss advisories.
+- 2026-06-11 — 12 audit: 42-agent audit+verify; 8 fixes applied (org-scoping,
+  SVG exclusion, webhook replay window, indexes 0041, money-cast hardening,
+  ILIKE escape, payload cap, timeout cut); 5 accepted with rationale;
+  AUDIT.md written. All gates + e2e green.

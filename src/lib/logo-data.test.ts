@@ -44,4 +44,16 @@ describe("logoDataUrl", () => {
     const spaced = data.slice(0, 4) + "\n" + data.slice(4)
     expect(logoDataUrl(spaced)).toBe(`data:image/jpeg;base64,${spaced.trim()}`)
   })
+
+  it("NEVER emits SVG data URLs (script-capable format), even though sniffing detects it", () => {
+    const svg = b64('<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"/>')
+    expect(sniffImageMime(svg)).toBe("image/svg+xml")
+    expect(logoDataUrl(svg)).toBeNull()
+  })
+
+  it("refuses to inline oversized payloads (falls back to the remote URL)", () => {
+    // A valid PNG header followed by >128KB of padding.
+    const big = Buffer.concat([Buffer.from(Uint8Array.from(PNG)), Buffer.alloc(200 * 1024)]).toString("base64")
+    expect(logoDataUrl(big)).toBeNull()
+  })
 })
