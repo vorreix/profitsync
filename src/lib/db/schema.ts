@@ -438,6 +438,10 @@ export const subscriptions = pgTable("subscriptions", {
   // invoice keep calling the right Dodo env even if the plan is later changed.
   // null for free/stub/legacy rows → callers fall back to "live".
   dodoEnvironment: text("dodo_environment"), // test | live | null
+  // The billing_currency the checkout was created with (org preference resolved
+  // via src/lib/billing-currency.ts). A SNAPSHOT for admin visibility — the
+  // authoritative charge currency is always invoices.currency from Dodo.
+  billingCurrency: text("billing_currency"), // ISO 4217 | null (legacy/free)
   provider: text("provider"), // dodo | stub | manual | null
   providerSubscriptionId: text("provider_subscription_id"),
   // Start of the current paid period (Dodo `previous_billing_date`). Paired with

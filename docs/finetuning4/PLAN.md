@@ -37,7 +37,7 @@
 | 02 | `feat/ux4-02-bank-logo-persist` | T1 bank logos persist (DB-served) | — | ✅ |
 | 03 | `feat/ux4-03-bank-quota-default` | T8 crown gating + default bank | 0035 | ✅ |
 | 04 | `feat/ux4-04-org-logo-avatar` | T2 org logo + profile picture | 0036 | ✅ |
-| 05 | `feat/ux4-05-dodo-org-currency` | T9 checkout in org currency | 0037 | ⬜ |
+| 05 | `feat/ux4-05-dodo-org-currency` | T9 checkout in org currency | 0037 | ✅ |
 | 06 | `feat/ux4-06-billing-attempts` | T11 attempt logging + admin panel | 0038 | ⬜ |
 | 07 | `feat/ux4-07-recurring-payments` | T3 recurring payments | 0039 | ⬜ |
 | 08 | `feat/ux4-08-calendar` | T7 calendar visualization | — | ⬜ |
@@ -179,7 +179,14 @@ currency preference. Snapshot the final currency on
 `invoices.currency` stays authoritative for what was actually charged.
 **Verify:** unit tests for the resolution chain; stub-mode + test-mode checkout
 still works end-to-end; SubscriptionPage shows org-currency price hint.
-**Status:** ⬜
+**Status:** ✅ — resolution chain locked by 10 unit tests (incl. the India rule:
+IN billing country ALWAYS bills INR — the connector failure happens at payment
+time on the hosted page, so create-time retries can't catch it; the org
+preference must never re-break it). LIVE-verified on test-mode Dodo: EUR org →
+hosted checkout priced **€4.32/mo EUR**; `subscriptions.billing_currency='EUR'`
+snapshot stored; dev sub restored to free afterwards. `FREE_RESET_FIELDS` +
+self-serve free switch clear the snapshot. Pricing endpoint now displays the
+resolved charge currency (falls back to USD base when no geo entry matches).
 
 ## 06 · T11 — Billing attempt logging + admin follow-up panel (0038)
 
@@ -323,3 +330,6 @@ docs), and the new e2e/security gates.
   fileToResizedDataUrl (≤256px webp) + server re-validation (magic-byte sniff,
   300KB cap); wired into OrgSwitcher, org cards/edit dialog, ProfilePage,
   both layout user menus. Browser-verified.
+- 2026-06-10 — 05 dodo org currency: pure resolution chain (org → country/IN →
+  omit, 10 tests) + create-time retry loop; migration 0037 snapshot column;
+  pricing display aligned. LIVE test-mode checkout in EUR verified.

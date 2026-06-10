@@ -1,10 +1,10 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { desc, eq } from "drizzle-orm"
 import { db, serialize } from "../../../src/lib/db/index.js"
-import { plans, subscriptions, userProfiles } from "../../../src/lib/db/schema.js"
+import { organizations, plans, subscriptions, userProfiles } from "../../../src/lib/db/schema.js"
 import { requireAuth } from "../../_lib/auth.js"
-import { createSubscription, isDodoConfigured, productIdForPlan, type DodoEnv } from "../../_lib/dodo.js"
-import { currencyForCountry } from "../../../src/lib/currencies.js"
+import { createSubscription, isDodoConfigured, productIdForPlan, type DodoEnv, type DodoCreateSubscriptionResult } from "../../_lib/dodo.js"
+import { billingCurrencyAttempts } from "../../../src/lib/billing-currency.js"
 
 function originFromRequest(req: VercelRequest): string {
   const host = (req.headers["x-forwarded-host"] as string | undefined) || req.headers.host || "localhost:3000"
@@ -41,6 +41,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       status: "active" as const,
       billingCycle: null,
       dodoEnvironment: null,
+      billingCurrency: null,
       provider: null,
       providerSubscriptionId: null,
       currentPeriodStart: null,
@@ -109,68 +110,86 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   // Customer details for the hosted checkout (the buyer confirms billing on Dodo's page).
-  const [profile] = await db.select().from(userProfiles).where(eq(userProfiles.id, ctx.userId))
+  const [[profile], [org]] = await Promise.all([
+    db.select().from(userProfiles).where(eq(userProfiles.id, ctx.userId)),
+    db.select({ currency: organizations.currency }).from(organizations).where(eq(organizations.id, ctx.orgId)),
+  ])
   const email = profile?.email ?? `${ctx.userId}@users.noreply.profitsync.net`
   const name = profile?.fullName?.trim() || email.split("@")[0]
   // Billing country: prefer the user's saved profile country (authoritative for
-  // billing), else Vercel's IP geo, else US. The currency is derived from it so
-  // the charge routes to a connector that supports the customer's card — this is
-  // the fix for the "Missing connector response" error on Indian cards (a USD
-  // charge has no eligible Indian-card connector; IN → INR does).
+  // billing), else Vercel's IP geo, else US.
   const profileCountry = profile?.country?.toUpperCase()
   const country =
     (profileCountry && profileCountry.length === 2 ? profileCountry : undefined) ||
     (req.headers["x-vercel-ip-country"] as string | undefined)?.toUpperCase() ||
     "US"
-  const billingCurrency = currencyForCountry(country)
+  // Charge in the ORGANIZATION's currency when Dodo can route it; the chain
+  // falls back to the country-derived currency (the Indian-card connector fix —
+  // IN always bills INR) and finally to omitting the field, so a currency
+  // preference can never break checkout. See src/lib/billing-currency.ts.
+  const attempts = billingCurrencyAttempts(org?.currency, country)
 
-  try {
-    const sub = await createSubscription({
-      productId,
-      quantity: 1,
-      customer: { email, name },
-      // Seed the full billing address from the profile so connectors that require
-      // a complete address (and tax computation) have it; the hosted page lets the
-      // buyer confirm/complete it.
-      billing: {
-        country,
-        state: profile?.state || "",
-        city: profile?.city || "",
-        street: profile?.address || "",
-        zipcode: profile?.postalCode || "",
-      },
-      billingCurrency,
-      returnUrl: `${originFromRequest(req)}/subscription?dodo=return`,
-      metadata: { organization_id: ctx.orgId, plan_key, billing_cycle: billing },
-      env: dodoEnv,
-    })
-
-    const pendingValues = {
-      planKey: plan_key,
-      status: "pending",
-      billingCycle: billing,
-      dodoEnvironment: dodoEnv,
-      provider: "dodo",
-      providerSubscriptionId: sub.subscription_id,
-      currentPeriodStart: null,
-      currentPeriodEnd: null,
-      scheduledChange: null,
-      cancelAt: null,
-      cancelledAt: null,
-      updatedAt: new Date(),
+  let sub: DodoCreateSubscriptionResult | null = null
+  let usedCurrency: string | null = null
+  let lastError: unknown = null
+  for (const attemptCurrency of attempts) {
+    try {
+      sub = await createSubscription({
+        productId,
+        quantity: 1,
+        customer: { email, name },
+        // Seed the full billing address from the profile so connectors that require
+        // a complete address (and tax computation) have it; the hosted page lets the
+        // buyer confirm/complete it.
+        billing: {
+          country,
+          state: profile?.state || "",
+          city: profile?.city || "",
+          street: profile?.address || "",
+          zipcode: profile?.postalCode || "",
+        },
+        billingCurrency: attemptCurrency,
+        returnUrl: `${originFromRequest(req)}/subscription?dodo=return`,
+        metadata: { organization_id: ctx.orgId, plan_key, billing_cycle: billing },
+        env: dodoEnv,
+      })
+      usedCurrency = attemptCurrency ?? null
+      break
+    } catch (err) {
+      lastError = err
     }
-    if (existing) {
-      await db.update(subscriptions).set(pendingValues).where(eq(subscriptions.id, existing.id))
-    } else {
-      await db.insert(subscriptions).values({ organizationId: ctx.orgId, ...pendingValues })
-    }
-
-    return res.json({
-      checkout_url: sub.payment_link,
-      provider_subscription_id: sub.subscription_id,
-      provider: "dodo",
-    })
-  } catch (err) {
-    return res.status(502).json({ error: err instanceof Error ? err.message : "Dodo Payments failure" })
   }
+
+  if (!sub) {
+    return res
+      .status(502)
+      .json({ error: lastError instanceof Error ? lastError.message : "Dodo Payments failure" })
+  }
+
+  const pendingValues = {
+    planKey: plan_key,
+    status: "pending",
+    billingCycle: billing,
+    dodoEnvironment: dodoEnv,
+    billingCurrency: usedCurrency,
+    provider: "dodo",
+    providerSubscriptionId: sub.subscription_id,
+    currentPeriodStart: null,
+    currentPeriodEnd: null,
+    scheduledChange: null,
+    cancelAt: null,
+    cancelledAt: null,
+    updatedAt: new Date(),
+  }
+  if (existing) {
+    await db.update(subscriptions).set(pendingValues).where(eq(subscriptions.id, existing.id))
+  } else {
+    await db.insert(subscriptions).values({ organizationId: ctx.orgId, ...pendingValues })
+  }
+
+  return res.json({
+    checkout_url: sub.payment_link,
+    provider_subscription_id: sub.subscription_id,
+    provider: "dodo",
+  })
 }
