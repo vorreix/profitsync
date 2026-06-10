@@ -48,6 +48,7 @@
 | 13 | `feat/ux4-13-docs-skill` | Docs + subscription-system skill update | — | ✅ |
 | 14 | `feat/ux4-14-calendar-day-figures` | Calendar: figures on every day cell + Profit | — | ✅ |
 | 15 | `feat/ux4-15-dashboard-edit-ux` | Dashboard edit UX: title button, scroll-safe drag, floating ✓ | — | ✅ |
+| 16 | `feat/ux4-16-edit-jiggle` | Dashboard edit mode: iOS jiggle + floating dimmed drag | — | ✅ |
 
 ## ⚠️ Corrections to research findings (re-derived by hand)
 
@@ -441,4 +442,13 @@ pointer section. **Chain complete: 14/14 branches shipped.**
   proven by scrolling the window 200px during a held drag and landing the card
   in the right slot; touch-action audit at 390px: zero scroll-blocking surfaces
   (only grip handles are touch-none). Browser-verified desktop + mobile.
-  **ux4 chain complete — 16 branches, migrations 0035–0041, all pushed.**
+- 2026-06-11 — 16 edit jiggle (follow-up request): iOS-home-screen wobble in
+  arrange mode — `.dash-jiggle` utility in index.css (±0.3deg rotate + 1px bob,
+  0.42s, compositor-only; per-card negative animation-delay so phases never
+  sync; `prefers-reduced-motion` stops the wobble but keeps the state). The
+  dragged card now FOLLOWS the pointer via dnd-kit's translate on the OUTER
+  shell (jiggle lives on the inner wrapper — same property, different elements)
+  at opacity-60 + shadow-2xl + scale-1.02, still wobbling. Verified: 6 cards
+  staggered (0/−137/−274/−411ms), mid-drag transform tracked the pointer 175px,
+  reduced-motion → animation none, document height delta 0 (no layout shift).
+  **ux4 chain complete — 17 branches, migrations 0035–0041, all pushed.**

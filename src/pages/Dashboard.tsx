@@ -144,13 +144,15 @@ const CARD_LABEL_KEYS: Record<DashboardCardId, string> = {
 // Wraps a dashboard card. In edit mode it shows the floating handle pill
 // (drag grip + label + hide ×), a drop-position line while another card is
 // dragged over it, and disables the card's own interactions so taps can't
-// trigger navigation mid-arrangement.
+// trigger navigation mid-arrangement. The whole card jiggles iOS-style while
+// arranging; the dragged card follows the pointer, slightly dimmed + lifted.
 function DashCardShell({
-  id, label, span, editMode, dragging, dropEdge, hideLabel, onHide, children,
+  id, label, span, index, editMode, dragging, dropEdge, hideLabel, onHide, children,
 }: {
   id: DashboardCardId
   label: string
   span: string
+  index: number
   editMode: boolean
   dragging: boolean
   dropEdge: "before" | "after" | null
@@ -163,37 +165,23 @@ function DashCardShell({
     <div
       ref={drag.setNodeRef}
       data-dash-card={id}
+      // dnd-kit's pointer translate goes on THIS element; the jiggle animates
+      // transform on the inner wrapper — same property, different elements, so
+      // the card keeps wobbling while it rides along under the finger.
+      style={
+        drag.transform
+          ? { transform: `translate3d(${drag.transform.x}px, ${drag.transform.y}px, 0) scale(1.02)` }
+          : undefined
+      }
       className={cn(
-        "relative min-w-0 transition-[opacity,box-shadow] duration-200",
+        "relative min-w-0",
         span,
-        dragging && "opacity-40",
         editMode && "rounded-2xl ring-2 ring-primary/35 ring-offset-2 ring-offset-background",
+        dragging
+          ? "z-50 opacity-60 shadow-2xl will-change-transform"
+          : "transition-[opacity,box-shadow] duration-200",
       )}
     >
-      {editMode && (
-        <div className="absolute -top-3.5 left-1/2 z-30 flex -translate-x-1/2 items-center gap-0.5 rounded-full border bg-card px-1 py-0.5 shadow-sm">
-          {/* touch-none lets the drag start on mobile instead of scrolling */}
-          <button
-            type="button"
-            ref={drag.setActivatorNodeRef}
-            {...drag.listeners}
-            {...drag.attributes}
-            aria-label={label}
-            className="flex size-8 cursor-grab touch-none items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:cursor-grabbing"
-          >
-            <GripVertical className="size-4" />
-          </button>
-          <span className="max-w-32 truncate text-[11px] font-medium text-muted-foreground">{label}</span>
-          <button
-            type="button"
-            onClick={onHide}
-            aria-label={hideLabel}
-            className="flex size-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-destructive"
-          >
-            <X className="size-3.5" />
-          </button>
-        </div>
-      )}
       {dropEdge && (
         <div
           className={cn(
@@ -202,7 +190,38 @@ function DashCardShell({
           )}
         />
       )}
-      <div className={cn("h-full", editMode && "pointer-events-none select-none")}>{children}</div>
+      <div
+        className={cn("relative h-full", editMode && "dash-jiggle")}
+        // Negative delay starts each card mid-cycle at a different phase so the
+        // wobbles never sync up (the iOS look).
+        style={editMode ? { animationDelay: `${-((index * 137) % 420)}ms` } : undefined}
+      >
+        {editMode && (
+          <div className="absolute -top-3.5 left-1/2 z-30 flex -translate-x-1/2 items-center gap-0.5 rounded-full border bg-card px-1 py-0.5 shadow-sm">
+            {/* touch-none lets the drag start on mobile instead of scrolling */}
+            <button
+              type="button"
+              ref={drag.setActivatorNodeRef}
+              {...drag.listeners}
+              {...drag.attributes}
+              aria-label={label}
+              className="flex size-8 cursor-grab touch-none items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:cursor-grabbing"
+            >
+              <GripVertical className="size-4" />
+            </button>
+            <span className="max-w-32 truncate text-[11px] font-medium text-muted-foreground">{label}</span>
+            <button
+              type="button"
+              onClick={onHide}
+              aria-label={hideLabel}
+              className="flex size-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-destructive"
+            >
+              <X className="size-3.5" />
+            </button>
+          </div>
+        )}
+        <div className={cn("h-full", editMode && "pointer-events-none select-none")}>{children}</div>
+      </div>
     </div>
   )
 }
@@ -1313,10 +1332,11 @@ export function Dashboard() {
           onTouchEnd={clearPress}
           onTouchCancel={clearPress}
         >
-          {visibleCards.map((id) => (
+          {visibleCards.map((id, index) => (
             <DashCardShell
               key={id}
               id={id}
+              index={index}
               label={t(CARD_LABEL_KEYS[id])}
               span={CARD_SPANS[id]}
               editMode={editMode}

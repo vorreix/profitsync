@@ -199,6 +199,28 @@
     transform: scale(0.97);
     opacity: 0.85;
   }
+  /* iOS-home-screen-style "jiggle" for the dashboard's arrange mode: a gentle
+     rotate + 1px float, compositor-only (transform). Cards are LARGE, so the
+     amplitude is far smaller than app icons (±0.3deg) — any more feels drunken
+     rather than alive. Stagger each card's phase with a negative inline
+     animation-delay so the wobbles don't sync up. The drag translate lives on
+     the PARENT element, so both transforms compose without fighting. */
+  .dash-jiggle {
+    animation: dash-jiggle 0.42s ease-in-out infinite;
+    transform-origin: 50% 50%;
+  }
+  @keyframes dash-jiggle {
+    0%   { transform: rotate(-0.3deg) translateY(0); }
+    25%  { transform: rotate(0.25deg) translateY(-1px); }
+    50%  { transform: rotate(-0.25deg) translateY(0.5px); }
+    75%  { transform: rotate(0.3deg) translateY(-0.5px); }
+    100% { transform: rotate(-0.3deg) translateY(0); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .dash-jiggle {
+      animation: none;
+    }
+  }
   .page-enter {
     animation: page-enter 220ms cubic-bezier(0.22, 1, 0.36, 1);
   }
