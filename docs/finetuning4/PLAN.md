@@ -1,0 +1,295 @@
+# Fine-Tuning Wave 4 (ux4) — Plan & Live Tracker
+
+> **Status legend:** ⬜ not started · 🔵 in progress · ✅ shipped (gate passed, pushed) · ⚠️ shipped with caveats (see notes)
+>
+> This is the single source of truth for the 12-task ux4 brief (2026-06-10).
+> Each task ships as one stacked branch off the previous; every branch passes the
+> full pre-commit gate (i18n → lint → typecheck → test:ci) before push.
+
+## Working conventions (apply to every branch)
+
+- **Mobile-first**: design at ~390px first; ≥44px touch targets; verify both widths.
+- **Instant data updates**: never reload a whole list for one mutation. Optimistic
+  in-place insert/replace/remove + `invalidateKeys` scoped invalidation + `{silent}`
+  reconcile refetch. No skeleton flashes after a mutation.
+- **i18n**: every user-visible string through `useTranslation()`; add to `en.json`,
+  propagate to all 7 other locales via `scripts/i18n-merge.mjs`; `npm run i18n:check` gates.
+- **Money paths**: reuse `src/lib/wealth-ledger.ts` helpers; never re-derive signs
+  inline; lock new money math with unit tests BEFORE wiring it up.
+- **Migrations**: `npm run db:generate`, then bump the new `_journal.json` `when`
+  above the previous entry (silent-skip gotcha), apply with
+  `node -r dotenv/config scripts/db-migrate.mjs dotenv_config_path=.env.local`,
+  and confirm the column exists via `information_schema.columns`.
+- **API**: org-scoped queries only, `serialize()` before `res.json`, role checks
+  (`canWrite`/`canDelete`) + quota checks before writes, `.js` import extensions.
+- **Routes**: handlers in `api/_routes/**` dispatch through the single `api/index.ts`
+  function — adding routes does NOT consume Vercel function slots.
+- **Neon HTTP driver has no multi-statement transactions** — atomicity must come
+  from single SQL statements (CASE updates), unique indexes + `onConflictDoNothing`,
+  and idempotent writes.
+
+## Branch chain (live tracker)
+
+| # | Branch | Task | Migration | Status |
+|---|--------|------|-----------|--------|
+| 00 | `feat/ux4-00-plan` | This plan doc | — | 🔵 |
+| 01 | `feat/ux4-01-category-delete` | T10 category delete updates in place | — | ⬜ |
+| 02 | `feat/ux4-02-bank-logo-persist` | T1 bank logos persist (DB-served) | — | ⬜ |
+| 03 | `feat/ux4-03-bank-quota-default` | T8 crown gating + default bank | 0035 | ⬜ |
+| 04 | `feat/ux4-04-org-logo-avatar` | T2 org logo + profile picture | 0036 | ⬜ |
+| 05 | `feat/ux4-05-dodo-org-currency` | T9 checkout in org currency | 0037 | ⬜ |
+| 06 | `feat/ux4-06-billing-attempts` | T11 attempt logging + admin panel | 0038 | ⬜ |
+| 07 | `feat/ux4-07-recurring-payments` | T3 recurring payments | 0039 | ⬜ |
+| 08 | `feat/ux4-08-calendar` | T7 calendar visualization | — | ⬜ |
+| 09 | `feat/ux4-09-custom-dashboard` | T12 custom dashboard builder | 0040 | ⬜ |
+| 10 | `feat/ux4-10-e2e-ci` | T4 Playwright e2e + CI gate for main | — | ⬜ |
+| 11 | `feat/ux4-11-security-gate` | T5 security checks (pre-commit + CI) | — | ⬜ |
+| 12 | `feat/ux4-12-audit-fixes` | T6 deep security/perf/scale audit + fixes | — | ⬜ |
+| 13 | `feat/ux4-13-docs-skill` | Docs + subscription-system skill update | — | ⬜ |
+
+## ⚠️ Corrections to research findings (re-derived by hand)
+
+1. **T1 (bank logos):** the research agent proposed `<img src="/api/wealth/logos/:id">`.
+   That would 401 — API auth is Bearer-token-only (`api/_lib/auth.ts:getUserId`),
+   and `<img>` tags can't send the header. Instead the accounts GET/detail responses
+   carry a `logo_src` **data URL** built from the stored base64 (`logo_data` already
+   exists and is populated at create/update via `resolveLogoColumns`); mime is
+   sniffed from magic bytes (no migration needed).
+2. **T10 (category delete):** agent claimed the 30s GET cache returns stale data.
+   False — `apiDelete` clears the whole cache *before* `refresh()` runs
+   (`src/lib/api.ts:127-134`). The real resurrection bug: `ensureDefaultCategories`
+   (`api/_routes/categories.ts:38-54`) re-seeds the 11 default names on **every GET**,
+   so deleting a default category brings it straight back. Fix = seed only on first
+   access (empty set), plus optimistic in-place removal for instant UX.
+3. **T3 (recurring):** agent flagged "new routes count against the 12-function cap" —
+   wrong, `_routes/**` go through the consolidated router. Also: idempotent
+   materialization can't use DB transactions (Neon HTTP) → unique index on
+   `(recurring_rule_id, due_date)` + `onConflictDoNothing().returning()`, and balance
+   deltas applied **only** for rows actually inserted.
+4. **T9 (currency):** forcing `organizations.currency` blindly can break payments —
+   the existing `billingCurrency` derivation from the billing country is the fix for
+   "Missing connector response" on Indian cards (country × currency must have a
+   connector). Docs (fetched 2026-06): `billing_currency` is honored when Adaptive
+   Currency is enabled, **ignored** when disabled, and an unsupported currency fails
+   the create call. → Fallback chain + retry on Dodo error (org currency → country
+   currency → omit), never hard-fail checkout because of a currency preference.
+5. **T12 (dashboard):** layout must be stored **per account type** (personal orgs
+   and business orgs render different card sets) — one jsonb on `user_profiles`
+   shaped `{version, contexts: {personal: {order, hidden}, business: {order, hidden}}}`.
+
+---
+
+## 01 · T10 — Category delete updates in place
+
+**Problem:** deleting a category appears to need a page refresh.
+**Verified root cause:** two parts. (a) Default-name categories are re-seeded on
+every GET (`ensureDefaultCategories`), so deleting one resurrects it on the very
+next refetch — delete looks broken. (b) The page does `await refresh()` (full
+refetch) instead of optimistic in-place removal, so even custom deletes feel slow.
+**Approach:** seed defaults only when the org has zero categories (first access);
+optimistic removal in `CategoriesPage` + `CategoryPicker` with rollback on failure;
+scoped `invalidateKeys(["/api/categories"])`.
+**Files:** `api/_routes/categories.ts`, `src/pages/CategoriesPage.tsx`,
+`src/components/CategoryPicker.tsx`.
+**Verify:** Playwright — delete a default + a custom category; both disappear
+instantly and stay gone after reload.
+**Status:** ⬜
+
+## 02 · T1 — Bank logos persist (DB-served)
+
+**Problem:** bank logos show for a few hours in prod, then vanish.
+**Verified root cause:** `WealthAccountIcon` renders the hotlinked third-party
+`logo_url` (Brandfetch CDN etc.) which expires; the base64 copy in
+`wealth_accounts.logo_data` is stored but **never served** (intentionally omitted
+from list responses).
+**Approach:** accounts GET/detail include `logo_src` = data URL from stored bytes
+(mime sniffed from magic bytes in a pure, unit-tested helper); icon prefers
+`logo_src` → `logo_url` → glyph; bounded lazy backfill on GET re-fetches missing
+`logo_data` (≤3 rows/request) so existing prod accounts heal themselves.
+**Files:** `api/_routes/wealth/accounts.ts`, `accounts/[id].ts`,
+`api/_lib/bank-brand.ts`, `src/lib/logo-data.ts` (new, +test),
+`src/components/WealthAccountIcon.tsx` + callers passing `logo_src`.
+**Verify:** unit test for sniffing; Playwright — account card shows logo with
+`src^="data:image/"`; simulate dead URL (garbage `logo_url`) and confirm the logo
+still renders from stored bytes.
+**Status:** ⬜
+
+## 03 · T8 — Free-plan bank gating (crown) + default bank (0035)
+
+**Problem:** (a) at the free-plan bank limit the Add-Account modal still opens and
+the server 402s after submit; (b) no way to mark a default bank.
+**Approach:** (a) expose `bank_quota {current, limit}` to the client; show a small
+golden crown badge on every add-account entry point when at limit (WealthPage
+button + empty state, AccountSelector "+ add"); clicking opens an Upgrade dialog
+(benefit copy + CTA → `/subscription`) instead of the form. Replace the hardcoded
+`MAX_BANKS=5` with the plan limit. (b) `is_default boolean` on `wealth_accounts` +
+partial unique index (one active default per org); atomic single-statement
+`SET is_default = (id = $X)` update; "Set as default" menu action + badge;
+`AccountSelector` preselects default → Cash → first.
+**Files:** schema + migration 0035, `api/_routes/wealth/accounts.ts` + `[id].ts`,
+`src/pages/WealthPage.tsx`, `src/components/AccountSelector.tsx`, i18n.
+**Verify:** Playwright on a free org with 1 bank: crown shows, upgrade dialog opens;
+set-default flips badge between accounts without reload.
+**Status:** ⬜
+
+## 04 · T2 — Org logo + user profile picture (0036)
+
+**Problem:** orgs and users have no visual identity; placeholders everywhere.
+**Approach:** `organizations.logo_data/logo_mime`, `user_profiles.avatar_data/avatar_mime`
+(migration 0036). Client resizes to ≤256px webp/png via canvas before upload
+(payloads stay tiny), server validates (image mime allowlist + ≤300KB + base64
+sanity via the attachments pattern). PATCH org (owner/admin) / PATCH profile accept
++ clear them. Reusable `<EntityAvatar>` renders image-or-initials; wired into
+OrgSwitcher (trigger + list), OrganizationsPage cards + edit dialog upload,
+ProfilePage avatar section, AppLayout sidebar footer, MobileAppLayout sheets.
+Org GET list + profile GET include `logo_src`/`avatar_src` data URLs.
+**Verify:** Playwright — upload logo + avatar, both appear immediately (no reload)
+in switcher/list/sidebar; remove restores initials.
+**Status:** ⬜
+
+## 05 · T9 — Dodo checkout in org currency (0037)
+
+**Problem:** hosted checkout charges by the customer's country currency; should
+follow the organization's currency, with USD fallback, without breaking payments.
+**Approach:** currency resolution chain in `create-subscription`:
+`org.currency` if in the Dodo-supported set (curated `DODO_SUPPORTED_CURRENCIES`
+list in `src/lib/currencies.ts`, from docs.dodopayments.com) → else
+`currencyForCountry(billingCountry)` → else omit. If the Dodo create call fails
+with a currency/connector error, **retry once** with the country-derived currency,
+then once with no `billing_currency` — checkout must never fail because of a
+currency preference. Snapshot the final currency on
+`subscriptions.billing_currency` (migration 0037) for admin visibility.
+`invoices.currency` stays authoritative for what was actually charged.
+**Verify:** unit tests for the resolution chain; stub-mode + test-mode checkout
+still works end-to-end; SubscriptionPage shows org-currency price hint.
+**Status:** ⬜
+
+## 06 · T11 — Billing attempt logging + admin follow-up panel (0038)
+
+**Problem:** failed/abandoned checkouts are invisible; no admin follow-up tooling.
+**Approach:** `billing_attempts` table (0038): org/user/email snapshot, plan, cycle,
+currency, status `created→redirected→completed|failed|abandoned`, Dodo ids,
+`provider_error_message`, `webhook_error_details` jsonb, admin `follow_up_status`
+(`none|contacted|resolved|paid_later`) + `follow_up_notes`, timestamps + indexes.
+Non-fatal logger `api/_lib/billing-attempts.ts` (audit pattern — never breaks the
+money path). Logging points: create-subscription (created → redirected w/
+`attempt_id` in Dodo metadata; failed w/ error in catch), webhook
+payment.failed/succeeded + subscription.active (linked via metadata.attempt_id →
+dodo_subscription_id fallback), sync reconcile completion, stale `created/redirected`
+rows older than 24h surfaced as abandoned. Admin: `/admin/billing-attempts` page +
+routes (GET list w/ filters status/plan/date/search + funnel counts; PATCH follow-up
+fields, admin-write gated).
+**Verify:** unit test status transitions; Playwright admin page renders, filters
+work, notes editable.
+**Status:** ⬜
+
+## 07 · T3 — Recurring payments (0039)
+
+**Problem:** no recurring income/expense automation.
+**Approach:** `recurring_rules` (0039): org, nullable `client_id` (business: own
+company or any client; personal: anchor client), name, type incoming/outgoing,
+amount, `frequency_unit day|week|month|year` + `interval`, `start_date`,
+nullable `end_date`, nullable `wealth_account_id` (cash/bank source), `next_due_at`
+cursor, `active`. `transactions.recurring_rule_id` + `recurring_due_date` + partial
+unique index for idempotency. Pure date math in `src/lib/recurring.ts` (month-end
+clamping, catch-up occurrence expansion, capped at 60) — unit-tested first.
+Materializer `api/_lib/recurring-materialize.ts`: expand due occurrences → quota
+check → insert with `onConflictDoNothing().returning()` → apply `balanceDelta`
+**only for inserted rows** → advance `next_due_at` (GREATEST guard). Triggered
+lazily org-wide from the transactions GET + wealth accounts GET (cheap
+short-circuit when no rule is due) so balances are correct before any list renders.
+UI: `/recurring` page (personal: simple list; business: Own company / Clients
+sections), create/edit/pause/delete sheet, next-due preview, `Repeat` icon on
+materialized transactions in lists + detail modal.
+**Verify:** vitest for date math + materializer idempotency (the money path);
+Playwright — create a backdated rule, transactions + balances materialize once,
+icon shows; re-open app → no duplicates.
+**Status:** ⬜
+
+## 08 · T7 — Calendar visualization
+
+**Problem:** no calendar view of money activity.
+**Approach:** `GET /api/calendar?from&to` returns per-day
+`{date, incoming, outgoing, count}` aggregates (org-scoped, excludes deleted +
+transfers, mirrors analytics filters). `/calendar` page with Month / Week / Day
+granularity: month grid (dots/intensity per day), week strip, day list; tapping a
+period opens a modal (reused transaction rows) with an "Open in Transactions"
+expander deep-linking `/transactions?from=…&to=…` (TransactionsPage reads URL date
+params — added). Nav entry for both desktop sidebar + mobile More menu.
+Mobile-first 44px cells; reduced-motion safe.
+**Verify:** Playwright — month renders sums matching seeded data; tap day → modal
+lists the day's transactions; expand navigates with filters applied.
+**Status:** ⬜
+
+## 09 · T12 — Custom dashboard builder (0040)
+
+**Problem:** fixed dashboard; users can't arrange/hide/add cards.
+**Approach:** card registry (`src/lib/dashboard-cards.ts`) with stable ids for the
+existing sections (kpis, budget, wealth, chart, breakdown, latest…); layout state
+`{version, contexts: {personal, business}}` on `user_profiles.dashboard_layout`
+(0040) with localStorage fast-path; edit mode via Customize button (desktop) and
+press-and-hold on a card (mobile, 500ms with move-cancel); dnd-kit reorder (already
+in repo via WealthPage pattern) + hide (×) + Add-cards panel for hidden ones;
+in-memory undo/redo stack; sticky Save/Cancel bar (Cancel = revert, confirmation
+when dirty); respects `prefers-reduced-motion`.
+**Verify:** Playwright — reorder + hide + save persists across reload; cancel
+reverts; undo/redo steps correctly; press-and-hold enters edit mode on mobile width.
+**Status:** ⬜
+
+## 10 · T4 — E2E tests + GitHub Actions gate for main
+
+**Problem:** no end-to-end coverage; regressions can merge to main unseen.
+**Approach:** Playwright (`@playwright/test`) + `e2e/` smoke suite against a
+production build served with the local API middleware (same dispatch path as
+`api/index.ts`, no Vercel needed): sign-in via Clerk test email
+(`+clerk_test` / code 424242), onboarding, dashboard renders, create client,
+create transaction (wealth balance asserts), trash restore, calendar, recurring,
+subscription page. Serial workers, retry ×2, trace/screenshot artifacts on failure.
+Workflow `.github/workflows/e2e.yml`: `pull_request → main` (the merge gate) +
+`workflow_dispatch` (runnable on dev or any branch) — NOT on every dev push (cost +
+shared dev DB hygiene). Secrets documented in the workflow header
+(CLERK keys + `E2E_DATABASE_URL` — a dedicated Neon branch, never prod). Test data
+namespaced (`e2e-…`) + cleaned in teardown.
+**Verify:** suite green locally twice consecutively (flake check) before push.
+**Status:** ⬜
+
+## 11 · T5 — Security check protocols
+
+**Problem:** no secret scanning, dependency audit, or SAST anywhere in the gate.
+**Approach:** layered. Pre-commit (fast, no network): staged-diff secret scan
+script (`scripts/secret-scan.mjs`, ~20 high-confidence patterns: live API keys,
+webhook secrets, connection strings with credentials, PEM blocks) wired before
+i18n in `.husky/pre-commit`; uses gitleaks automatically when installed. CI
+(`.github/workflows/security.yml`): gitleaks-action (full scan), `npm audit
+--audit-level=high --omit=dev` (non-flaky config), plus repo-specific greps
+(no raw-HTML injection outside vendored ui/, every `_routes` handler calls
+`requireAuth`/admin guard). `SECURITY.md` documents the model. Keep pr.yml in sync
+per CLAUDE.md rule.
+**Verify:** seeded fake secret blocks commit; CI workflow passes on clean tree.
+**Status:** ⬜
+
+## 12 · T6 — Deep security/perf/scale audit + fixes
+
+**Approach:** multi-agent Workflow over the FINAL stacked code: lenses =
+authz/tenant-isolation, injection/XSS/SSRF, webhook/billing abuse, cache coherency
+(apiGet invalidation vs mutations), N+1 + missing indexes + payload weight,
+serverless cold-start + connection pooling. Every finding adversarially verified
+before fixing; only verified fixes land on this branch; the rest recorded in
+`docs/finetuning4/AUDIT.md` with severity + rationale.
+**Status:** ⬜
+
+## 13 · Docs + subscription skill
+
+**Approach:** `docs/finetuning4/OVERVIEW.md` — plain-language explainer of
+everything shipped (what, why, how to operate it, env vars, runbooks). Update
+`.claude/skills/subscription-system` with: billing_currency resolution chain,
+billing_attempts lifecycle + linking, admin panel, webhook event map (from live
+docs), and the new e2e/security gates.
+**Status:** ⬜
+
+---
+
+## Change log
+
+- 2026-06-10 — research workflow (12 agents) + infra ground-truth read complete;
+  corrections recorded; plan committed as chain root `feat/ux4-00-plan`.
