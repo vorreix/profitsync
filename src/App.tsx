@@ -19,6 +19,7 @@ const ClosedClientsPage = lazy(() => import("@/pages/ClosedClientsPage").then((m
 const ClientDetailPage = lazy(() => import("@/pages/ClientDetailPage").then((m) => ({ default: m.ClientDetailPage })))
 const ClientFilesPage = lazy(() => import("@/pages/ClientFilesPage").then((m) => ({ default: m.ClientFilesPage })))
 const TransactionsPage = lazy(() => import("@/pages/TransactionsPage").then((m) => ({ default: m.TransactionsPage })))
+const RecurringPage = lazy(() => import("@/pages/RecurringPage").then((m) => ({ default: m.RecurringPage })))
 const WealthPage = lazy(() => import("@/pages/WealthPage").then((m) => ({ default: m.WealthPage })))
 const WealthAccountDetailPage = lazy(() => import("@/pages/WealthAccountDetailPage").then((m) => ({ default: m.WealthAccountDetailPage })))
 const CategoriesPage = lazy(() => import("@/pages/CategoriesPage").then((m) => ({ default: m.CategoriesPage })))
@@ -147,6 +148,7 @@ export function App() {
             <Route path="clients/:id" element={<BusinessOnlyRoute feature="clients"><ClientDetailPage /></BusinessOnlyRoute>} />
             <Route path="clients/:id/files" element={<BusinessOnlyRoute feature="clients"><ClientFilesPage /></BusinessOnlyRoute>} />
             <Route path="transactions" element={<TransactionsPage />} />
+            <Route path="recurring" element={<RecurringPage />} />
             <Route path="wealth" element={<WealthPage />} />
             <Route path="wealth/:id" element={<WealthAccountDetailPage />} />
             <Route path="analytics" element={<AnalyticsPage />} />

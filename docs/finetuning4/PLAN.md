@@ -39,7 +39,7 @@
 | 04 | `feat/ux4-04-org-logo-avatar` | T2 org logo + profile picture | 0036 | ✅ |
 | 05 | `feat/ux4-05-dodo-org-currency` | T9 checkout in org currency | 0037 | ✅ |
 | 06 | `feat/ux4-06-billing-attempts` | T11 attempt logging + admin panel | 0038 | ✅ |
-| 07 | `feat/ux4-07-recurring-payments` | T3 recurring payments | 0039 | ⬜ |
+| 07 | `feat/ux4-07-recurring-payments` | T3 recurring payments | 0039 | ✅ |
 | 08 | `feat/ux4-08-calendar` | T7 calendar visualization | — | ⬜ |
 | 09 | `feat/ux4-09-custom-dashboard` | T12 custom dashboard builder | 0040 | ⬜ |
 | 10 | `feat/ux4-10-e2e-ci` | T4 Playwright e2e + CI gate for main | — | ⬜ |
@@ -235,7 +235,16 @@ materialized transactions in lists + detail modal.
 **Verify:** vitest for date math + materializer idempotency (the money path);
 Playwright — create a backdated rule, transactions + balances materialize once,
 icon shows; re-open app → no duplicates.
-**Status:** ⬜
+**Status:** ✅ — date math locked by 13 unit tests (month-end clamp from the
+anchor, leap years, catch-up cap + cursor resume). Materializer DB-verified with
+a throwaway script (deleted before commit): two CONCURRENT runs raced and split
+the inserts 2+2 with exactly 4 rows total + the balance moved exactly once;
+repeat run was a no-op; cleanup restored everything. Browser-verified: backdated
+weekly rule (start −14d) created 3 transactions exactly once, Cash moved
+−3×€500, Repeat badges in the transactions list, reload → no duplicates, UI
+delete works, list shows live next-due + 3-occurrence schedule preview. Trigger
+is lazy (transactions + wealth GETs) — no cron needed; quota-blocked or
+archived-account rules pause with a visible warning instead of corrupting data.
 
 ## 08 · T7 — Calendar visualization
 
@@ -344,3 +353,7 @@ docs), and the new e2e/security gates.
   transition guards (8 tests); logging at create/stub/webhook/sync; attempt_id
   in Dodo metadata; /admin/billing-attempts page with funnel + follow-up CRM.
   Live-verified end-to-end except webhook (unit-covered).
+- 2026-06-10 — 07 recurring payments: migration 0039 (rules + tx marker cols +
+  idempotency index); pure date math (13 tests) + race-proof materializer
+  (DB-verified concurrently); /recurring page (personal + business), nav, tx
+  badges, 58 i18n keys × 8 locales. Browser-verified end-to-end.

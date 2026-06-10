@@ -191,6 +191,13 @@ export const transactions = pgTable("transactions", {
   category: text("category").default(""),
   date: date("date").notNull().defaultNow(),
   isSystem: boolean("is_system").notNull().default(false),
+  // Set when this row was auto-created by a recurring rule: the rule id (kept
+  // for the list icon; nulled if the rule is deleted) and the occurrence date.
+  // The unique index below is the materializer's idempotency key — a catch-up
+  // can never create the same occurrence twice. NULLs are distinct in Postgres,
+  // so ordinary rows (both columns NULL) never conflict.
+  recurringRuleId: uuid("recurring_rule_id"),
+  recurringDueDate: date("recurring_due_date"),
   // Soft-delete: deleted transactions move to Trash (restore/purge) instead of
   // disappearing. All financial aggregates must exclude rows where this is set.
   deletedAt: timestamp("deleted_at"),
@@ -200,6 +207,45 @@ export const transactions = pgTable("transactions", {
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => ({
   groupIdx: index("transactions_group_idx").on(table.groupId),
+  recurringOnceIdx: uniqueIndex("transactions_recurring_once_idx").on(table.recurringRuleId, table.recurringDueDate),
+}))
+
+// ── Recurring payments ───────────────────────────────────────────────────────
+// A rule describes money that repeats (rent, salary, subscription…): WHO it
+// belongs to (a client, or the org's own/anchor client when client_id is NULL),
+// WHERE it moves money (an optional wealth account), and WHEN it fires
+// (anchor start_date + unit×interval, optional inclusive end_date).
+// `next_due_at` is the cursor: the first occurrence not yet materialized. The
+// materializer (api/_lib/recurring-materialize.ts) turns due occurrences into
+// REAL transaction rows idempotently and applies wealth balance deltas only
+// for rows it actually inserted.
+export const recurringRules = pgTable("recurring_rules", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  // NULL = the org's own/internal client (personal orgs' anchor client).
+  clientId: uuid("client_id").references(() => clients.id, { onDelete: "cascade" }),
+  // The account the money comes from / goes to. Optional; archived accounts
+  // pause materialization with last_error instead of corrupting balances.
+  wealthAccountId: uuid("wealth_account_id").references(() => wealthAccounts.id, { onDelete: "set null" }),
+  name: text("name").notNull(),
+  type: text("type").notNull(), // incoming | outgoing
+  amount: numeric("amount", { precision: 20, scale: 2 }).notNull(),
+  category: text("category").notNull().default(""),
+  frequencyUnit: text("frequency_unit").notNull(), // day | week | month | year
+  frequencyInterval: integer("frequency_interval").notNull().default(1),
+  startDate: date("start_date").notNull(),
+  endDate: date("end_date"),
+  nextDueAt: date("next_due_at").notNull(),
+  active: boolean("active").notNull().default(true),
+  // Why the last materialization skipped this rule (quota, archived account…).
+  // Cleared on the next successful run; surfaced in the rules list.
+  lastError: text("last_error").notNull().default(""),
+  createdBy: text("created_by"),
+  updatedBy: text("updated_by"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  dueIdx: index("recurring_rules_due_idx").on(table.organizationId, table.active, table.nextDueAt),
 }))
 
 export const quotations = pgTable("quotations", {

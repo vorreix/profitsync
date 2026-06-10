@@ -35,6 +35,8 @@ import wealthAccountAttachments from "./_routes/wealth/accounts/[id]/attachments
 import wealthAccountAttachmentById from "./_routes/wealth-account-attachments/[id].js"
 import wealthBankSearch from "./_routes/wealth/bank-search.js"
 import wealthQuota from "./_routes/wealth/quota.js"
+import recurring from "./_routes/recurring.js"
+import recurringById from "./_routes/recurring/[id].js"
 import wealthTransfer from "./_routes/wealth/transfer.js"
 import quotations from "./_routes/quotations.js"
 import quotationsBulkDelete from "./_routes/quotations/bulk-delete.js"
@@ -118,6 +120,8 @@ const routes: RoutePattern<ApiHandler>[] = [
   { segments: ["categories", ":id"], handler: categoryById },
   { segments: ["wealth", "bank-search"], handler: wealthBankSearch },
   { segments: ["wealth", "quota"], handler: wealthQuota },
+  { segments: ["recurring"], handler: recurring },
+  { segments: ["recurring", ":id"], handler: recurringById },
   { segments: ["wealth", "transfer"], handler: wealthTransfer },
   { segments: ["wealth", "accounts"], handler: wealthAccounts },
   { segments: ["wealth", "accounts", "reorder"], handler: wealthAccountsReorder },

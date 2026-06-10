@@ -101,6 +101,9 @@ export type Transaction = {
   category: string
   date: string
   is_system?: boolean
+  // Set when this row was auto-created by a recurring rule (drives the
+  // "Recurring" badge in lists + the detail modal).
+  recurring_rule_id?: string | null
   // 'transfer' marks the two legs of an account-to-account move (shown only on
   // the account-detail list, never in the global list / analytics).
   kind?: "standard" | "transfer"
@@ -148,6 +151,30 @@ export type WealthAccount = {
   updated_at: string
   transaction_count?: number
   attachment_count?: number
+}
+
+export type RecurringRule = {
+  id: string
+  organization_id: string
+  // NULL = the org's own/internal client (the personal org's anchor).
+  client_id: string | null
+  client_name?: string | null
+  client_is_own?: boolean | null
+  wealth_account_id: string | null
+  account_name?: string | null
+  name: string
+  type: "incoming" | "outgoing"
+  amount: number | string
+  category: string
+  frequency_unit: "day" | "week" | "month" | "year"
+  frequency_interval: number
+  start_date: string
+  end_date: string | null
+  next_due_at: string
+  active: boolean
+  last_error: string
+  generated_count?: number
+  created_at: string
 }
 
 export type WealthAccountAttachment = AttachmentMeta & {

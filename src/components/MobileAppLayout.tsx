@@ -29,6 +29,7 @@ import {
   Gift,
   Landmark,
   PiggyBank,
+  Repeat,
 } from "lucide-react"
 import { useOrg } from "@/lib/org-context"
 import { useAdmin } from "@/lib/admin-context"
@@ -79,6 +80,7 @@ function buildMoreItems(activeOrgId: string | undefined, accountType: AccountTyp
     { labelKey: "nav.wealth", href: "/wealth", icon: Landmark },
     { labelKey: "nav.analytics", href: "/analytics", icon: ChartColumn },
     { labelKey: "nav.categories", href: "/categories", icon: Tag },
+    { labelKey: "nav.recurring", href: "/recurring", icon: Repeat },
     { labelKey: "nav.budgets", href: "/budgets", icon: PiggyBank },
     { labelKey: "nav.referrals", href: "/referrals", icon: Gift },
     { labelKey: "nav.organizations", href: "/organizations", icon: Building2 },
