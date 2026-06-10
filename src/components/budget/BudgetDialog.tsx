@@ -121,15 +121,29 @@ export function BudgetDialog({
             </Select>
           </div>
         </div>
-        <DialogFooter className="gap-2 sm:gap-2">
+        {/* Footer: Save is the one primary action; Remove is destructive and kept
+            visually apart (its own row under a divider on mobile, far-left on desktop)
+            so the three buttons don't read as one cluttered group. */}
+        <DialogFooter className="mt-4 gap-2 sm:items-center">
           {current && (
-            <Button variant="ghost" className="text-destructive sm:mr-auto" disabled={!!saving} onClick={() => save(true)}>
-              {saving === "remove" ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
-              {t("budget.remove")}
-            </Button>
+            <>
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={!!saving}
+                onClick={() => save(true)}
+                className="w-full justify-center text-destructive hover:bg-destructive/10 hover:text-destructive sm:mr-auto sm:w-auto"
+              >
+                {saving === "remove" ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+                {t("budget.remove")}
+              </Button>
+              <div className="h-px bg-border sm:hidden" aria-hidden />
+            </>
           )}
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={!!saving}>{t("common.cancel")}</Button>
-          <Button onClick={() => save(false)} disabled={!canSave}>
+          <Button variant="outline" className="w-full sm:w-auto" onClick={() => onOpenChange(false)} disabled={!!saving}>
+            {t("common.cancel")}
+          </Button>
+          <Button className="w-full sm:w-auto" onClick={() => save(false)} disabled={!canSave}>
             {saving === "save" ? <Loader2 className="size-4 animate-spin" /> : t("budget.save")}
           </Button>
         </DialogFooter>

@@ -550,3 +550,21 @@ export const budgets = pgTable("budgets", {
     .on(table.organizationId)
     .where(sql`client_id IS NULL`),
 }))
+
+// Append-only audit of budget changes (set / raise / lower / period change / remove).
+// Keyed by (org, client_id) — NOT a FK to budgets.id — because a budget row is deleted
+// on "remove" and the history must survive that (and a later re-set). `amount`/`period`
+// snapshot the state AFTER the change, so "the budget in effect at time T" is just the
+// latest row with created_at <= T. Drives the budget history timeline + insights.
+export const budgetHistory = pgTable("budget_history", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  clientId: uuid("client_id").references(() => clients.id, { onDelete: "cascade" }), // NULL = personal / business-default budget
+  amount: numeric("amount", { precision: 20, scale: 2 }).notNull().default("0"), // snapshot after the change (0 for "remove")
+  period: text("period").notNull(), // lifetime | monthly | weekly | daily (after the change)
+  action: text("action").notNull(), // set | raise | lower | period_change | remove
+  changedBy: text("changed_by"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  lookupIdx: index("budget_history_lookup_idx").on(table.organizationId, table.clientId, table.createdAt),
+}))

@@ -1,54 +1,12 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { and, eq, isNull, sql } from "drizzle-orm"
+import { and, eq, isNull } from "drizzle-orm"
 import { db, serialize } from "../../src/lib/db/index.js"
-import { budgets, clients, transactions } from "../../src/lib/db/schema.js"
+import { budgetHistory, budgets, clients } from "../../src/lib/db/schema.js"
 import { canWrite, isPersonalAccount, requireAuth } from "../_lib/auth.js"
 import { amountExceedsLimit } from "../../src/lib/money.js"
-import { isBudgetPeriod, periodStart, type BudgetPeriod } from "../../src/lib/budget.js"
-
-type PeriodSums = { daily: number; weekly: number; monthly: number; lifetime: number }
-
-// Per-client outgoing (expense) totals for each window, in ONE grouped query, so a
-// budget of any period just reads the matching column. Spend is derived here — the
-// budgets table only stores the target + cadence.
-async function outgoingByClient(orgId: string, now: Date): Promise<Map<string, PeriodSums>> {
-  const today = periodStart("daily", now)!
-  const weekStart = periodStart("weekly", now)!
-  const monthStart = periodStart("monthly", now)!
-  const rows = await db
-    .select({
-      clientId: transactions.clientId,
-      daily: sql<string>`coalesce(sum(${transactions.amount}::numeric) filter (where ${transactions.date} >= ${today}), 0)`,
-      weekly: sql<string>`coalesce(sum(${transactions.amount}::numeric) filter (where ${transactions.date} >= ${weekStart}), 0)`,
-      monthly: sql<string>`coalesce(sum(${transactions.amount}::numeric) filter (where ${transactions.date} >= ${monthStart}), 0)`,
-      lifetime: sql<string>`coalesce(sum(${transactions.amount}::numeric), 0)`,
-    })
-    .from(transactions)
-    .innerJoin(clients, eq(transactions.clientId, clients.id))
-    .where(
-      and(
-        eq(clients.organizationId, orgId),
-        isNull(clients.deletedAt),
-        isNull(transactions.deletedAt),
-        eq(transactions.type, "outgoing"),
-        eq(transactions.kind, "standard"),
-      ),
-    )
-    .groupBy(transactions.clientId)
-
-  const map = new Map<string, PeriodSums>()
-  for (const r of rows) {
-    map.set(r.clientId, {
-      daily: Number(r.daily),
-      weekly: Number(r.weekly),
-      monthly: Number(r.monthly),
-      lifetime: Number(r.lifetime),
-    })
-  }
-  return map
-}
-
-const spentFor = (sums: PeriodSums | undefined, period: BudgetPeriod): number => (sums ? sums[period] : 0)
+import { isBudgetPeriod, type BudgetPeriod } from "../../src/lib/budget.js"
+import { budgetChangeAction } from "../../src/lib/budget-history.js"
+import { outgoingByClient, spentFor, type PeriodSums } from "../_lib/budget-spend.js"
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ctx = await requireAuth(req, res)
@@ -117,11 +75,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     )
     const [existing] = await db.select().from(budgets).where(where)
 
+    // Append-only history snapshot (best-effort — like logAudit, a failure here must
+    // never block the budget save). Keyed by (org, client) so it survives a remove.
+    const recordHistory = (amount: string, period: string, action: string) =>
+      db.insert(budgetHistory)
+        .values({ organizationId: orgId, clientId, amount, period, action, changedBy: userId })
+        .catch((err) => { console.error("budget history insert failed", err) })
+
     // amount 0 → remove the budget (a clean "no budget" state).
     if (amt === 0) {
-      if (existing) await db.delete(budgets).where(eq(budgets.id, existing.id))
+      if (existing) {
+        await db.delete(budgets).where(eq(budgets.id, existing.id))
+        await recordHistory("0", existing.period, "remove")
+      }
       return res.json({ ok: true, removed: true })
     }
+
+    const prevSnap = existing
+      ? { amount: Number(existing.amount), period: existing.period as BudgetPeriod }
+      : null
+    const action = budgetChangeAction(prevSnap, { amount: amt, period: resolvedPeriod })
 
     const values = { period: resolvedPeriod, amount: String(amt), updatedBy: userId, updatedAt: new Date() }
     const [row] = existing
@@ -130,6 +103,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           .insert(budgets)
           .values({ organizationId: orgId, clientId, createdBy: userId, ...values })
           .returning()
+    if (action) await recordHistory(String(amt), resolvedPeriod, action)
     return res.status(existing ? 200 : 201).json(serialize(row))
   }
 
