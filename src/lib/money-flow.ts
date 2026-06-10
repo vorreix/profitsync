@@ -120,15 +120,15 @@ export function buildFlowGraph(data: FlowData, state: CollapseState): { nodes: F
 
     if (state.expanded.has(groupKeyId(g))) {
       let ly = groupY
-      for (const leaf of g.leaves) {
+      g.leaves.forEach((leaf, li) => {
         const lid = `l:${leaf.id}`
-        nodes.push({ id: lid, type: "leaf", position: { x: COL_LEAF_X, y: ly }, data: { ...leaf } })
+        nodes.push({ id: lid, type: "leaf", position: { x: COL_LEAF_X, y: ly }, data: { ...leaf, enterIndex: li } })
         edges.push({ id: `e:${gid}-${lid}`, source: gid, target: lid })
         ly += LEAF_V
-      }
+      })
       if (g.more_count > 0) {
         const mid = `m:${groupKeyId(g)}`
-        nodes.push({ id: mid, type: "more", position: { x: COL_LEAF_X, y: ly }, data: { count: g.more_count, group: g } })
+        nodes.push({ id: mid, type: "more", position: { x: COL_LEAF_X, y: ly }, data: { count: g.more_count, group: g, enterIndex: g.leaves.length } })
         edges.push({ id: `e:${gid}-${mid}`, source: gid, target: mid })
         ly += LEAF_V
       }
@@ -164,15 +164,15 @@ export function buildTimelineGraph(data: TimelineData, expandedPeriods: Set<stri
 
     if (expandedPeriods.has(p.key)) {
       let ly = TL_PERIOD_H
-      for (const leaf of p.leaves) {
+      p.leaves.forEach((leaf, li) => {
         const lid = `l:${leaf.id}`
-        nodes.push({ id: lid, type: "leaf", position: { x: i * TL_COL_W, y: ly }, data: { ...leaf } })
+        nodes.push({ id: lid, type: "leaf", position: { x: i * TL_COL_W, y: ly }, data: { ...leaf, enterIndex: li } })
         edges.push({ id: `e:${pid}-${lid}`, source: pid, target: lid })
         ly += LEAF_V
-      }
+      })
       if (p.more_count > 0) {
         const mid = `m:${p.key}`
-        nodes.push({ id: mid, type: "more", position: { x: i * TL_COL_W, y: ly }, data: { count: p.more_count, period: p } })
+        nodes.push({ id: mid, type: "more", position: { x: i * TL_COL_W, y: ly }, data: { count: p.more_count, period: p, enterIndex: p.leaves.length } })
         edges.push({ id: `e:${pid}-${mid}`, source: pid, target: mid })
       }
     }

@@ -56,6 +56,7 @@
 | 21 | `feat/ux4-21-navbar-avatar-refresh` | Profile photo updates the navbar/menu avatar live | — | ✅ |
 | 22 | `feat/ux4-22-money-flow` | Money flow mind-map (React Flow) — personal + org, filters, dashboard card | — | ✅ |
 | 23 | `feat/ux4-23-flow-timeline` | Flow: running-balance Timeline mode + interactivity fixes (drag/click/buttons) | — | ✅ |
+| 24 | `feat/ux4-24-flow-polish` | Flow: smooth expand motion + state preserved on back-nav | — | ✅ |
 
 ## ⚠️ Corrections to research findings (re-derived by hand)
 
@@ -546,4 +547,17 @@ pointer section. **Chain complete: 14/14 branches shipped.**
   it. Re-fit on resize/rotation. Browser-verified real drag/click/buttons +
   timeline chain (Day → 6 chained period nodes → final entity) desktop + mobile;
   232 unit tests + sweeps + e2e green.
-  **ux4 chain complete — 24 branches, migrations 0035–0042, all pushed.**
+- 2026-06-11 — 24 flow polish (user feedback: jank + no state restore). Used
+  the ui-ux-pro-max + transition-creator skills. Smoothness: expand/collapse no
+  longer re-fits the camera (fitView now keyed to dataVersion = fetches only,
+  not expand); a scoped `.ps-flow .react-flow__node { transition: transform }`
+  glides repositioned siblings (compositor-only, disabled on the dragged node +
+  reduced-motion); leaf/more nodes fade+slide-in staggered (40ms). State
+  preservation: viewMode/bucket/groupBy/filters/expanded/rootCollapsed + dragged
+  node positions + camera viewport all persisted to sessionStorage per org and
+  restored on remount — verified back-from-transaction restores expanded set,
+  drag position AND camera exactly. Dropped onlyRenderVisibleElements (bounded
+  node count; avoids re-animate-on-pan). Browser-verified: viewport unchanged on
+  expand, leaf enter-anim present, reduced-motion → 0s transition + no leaf anim
+  but toggle still works. 232 tests + sweeps + e2e green.
+  **ux4 chain complete — 25 branches, migrations 0035–0042, all pushed.**

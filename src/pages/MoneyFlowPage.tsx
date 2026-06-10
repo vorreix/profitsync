@@ -149,18 +149,20 @@ function GroupNode({ data }: NodeProps<Node<GroupData>>) {
   )
 }
 
-type LeafData = FlowLeaf & { currency: string; formatDate: (d: string) => string; onOpen: () => void }
+type LeafData = FlowLeaf & { currency: string; formatDate: (d: string) => string; onOpen: () => void; enterIndex?: number }
 function LeafNode({ data }: NodeProps<Node<LeafData>>) {
   const { t } = useTranslation()
   const inc = data.type === "incoming"
   return (
     // `nodrag` lets the click through (React Flow won't start a node drag here);
-    // a whole-card button opens the transaction.
+    // a whole-card button opens the transaction. Staggered fade+slide-in so
+    // expanded leaves "grow out" of the parent rather than popping.
     <button
       type="button"
       onClick={data.onOpen}
       title={t("flow.openTransaction")}
-      className="nodrag flex w-[230px] items-center gap-2 rounded-xl border bg-card/80 p-2.5 text-left text-xs shadow-sm transition-colors hover:border-primary/40"
+      style={{ animationDelay: `${Math.min(data.enterIndex ?? 0, 8) * 40}ms` }}
+      className="nodrag flex w-[230px] items-center gap-2 rounded-xl border bg-card/80 p-2.5 text-left text-xs shadow-sm transition-colors hover:border-primary/40 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-left-3 motion-safe:duration-300 motion-safe:fill-mode-both"
     >
       <Handle type="target" position={Position.Left} className="!size-1.5 !border !border-muted-foreground/40 !bg-background" />
       <span className={cn("grid size-7 shrink-0 place-items-center rounded-full", inc ? "bg-emerald-100 dark:bg-emerald-900/30" : "bg-red-100 dark:bg-red-900/30")}>
@@ -178,14 +180,15 @@ function LeafNode({ data }: NodeProps<Node<LeafData>>) {
   )
 }
 
-type MoreData = { count: number; onOpen: () => void }
+type MoreData = { count: number; onOpen: () => void; enterIndex?: number }
 function MoreNode({ data }: NodeProps<Node<MoreData>>) {
   const { t } = useTranslation()
   return (
     <button
       type="button"
       onClick={data.onOpen}
-      className="nodrag flex w-[230px] items-center justify-center gap-1.5 rounded-xl border border-dashed bg-card/60 px-2.5 py-2 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/50 hover:text-foreground"
+      style={{ animationDelay: `${Math.min(data.enterIndex ?? 0, 8) * 40}ms` }}
+      className="nodrag flex w-[230px] items-center justify-center gap-1.5 rounded-xl border border-dashed bg-card/60 px-2.5 py-2 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/50 hover:text-foreground motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-left-3 motion-safe:duration-300 motion-safe:fill-mode-both"
     >
       <Handle type="target" position={Position.Left} className="!size-1.5 !border !border-muted-foreground/40 !bg-background" />
       <ListFilter className="size-3.5" /> {t("flow.viewMore", { count: data.count })}
@@ -303,6 +306,38 @@ function MultiCheck({ label, options, selected, onChange, searchPlaceholder }: {
 
 const GROUP_BYS: GroupBy[] = ["account", "client", "category"]
 
+// ── Session persistence ──────────────────────────────────────────────────────
+type SavedFlowState = {
+  viewMode?: "grouped" | "timeline"
+  bucket?: "day" | "week" | "month" | "year"
+  groupBy?: GroupBy
+  from?: string
+  to?: string
+  cats?: string[]
+  clients?: string[]
+  accounts?: string[]
+  rootCollapsed?: boolean
+  expanded?: string[]
+  positions?: Record<string, { x: number; y: number }>
+  viewport?: { x: number; y: number; zoom: number }
+}
+
+function readSavedFlow(key: string): SavedFlowState {
+  try {
+    const raw = sessionStorage.getItem(key)
+    return raw ? (JSON.parse(raw) as SavedFlowState) : {}
+  } catch {
+    return {}
+  }
+}
+function writeSavedFlow(key: string, state: SavedFlowState) {
+  try {
+    sessionStorage.setItem(key, JSON.stringify(state))
+  } catch {
+    /* storage full / unavailable — non-fatal */
+  }
+}
+
 export function MoneyFlowPage() {
   const { t, i18n } = useTranslation()
   const navigate = useNavigate()
@@ -312,24 +347,39 @@ export function MoneyFlowPage() {
   const isPersonal = activeOrg?.account_type === "personal"
   const hasClients = accountTypeAllows(activeOrg?.account_type ?? null, "clients")
 
+  // ── State preservation across navigation (nav rule: restore on back) ────────
+  // Everything that defines "where you were" — view, filters, expanded set,
+  // dragged node positions and the camera — is snapshotted to sessionStorage
+  // keyed by org, and restored when the page remounts (e.g. back from a
+  // transaction detail). Read once, synchronously, before the first render.
+  const storageKey = `ps_flow_${activeOrg?.id ?? "none"}`
+  const saved = useMemo<SavedFlowState>(() => readSavedFlow(storageKey), [storageKey])
+
   const [data, setData] = useState<FlowData | TimelineData | null>(null)
   const [loading, setLoading] = useState(true)
-  const [viewMode, setViewMode] = useState<"grouped" | "timeline">("grouped")
-  const [bucket, setBucket] = useState<"day" | "week" | "month" | "year">("month")
-  const [groupBy, setGroupBy] = useState<GroupBy>(isPersonal ? "category" : "client")
-  const [from, setFrom] = useState("")
-  const [to, setTo] = useState("")
-  const [selCats, setSelCats] = useState<Set<string>>(new Set())
-  const [selClients, setSelClients] = useState<Set<string>>(new Set())
-  const [selAccounts, setSelAccounts] = useState<Set<string>>(new Set())
+  const [viewMode, setViewMode] = useState<"grouped" | "timeline">(saved.viewMode ?? "grouped")
+  const [bucket, setBucket] = useState<"day" | "week" | "month" | "year">(saved.bucket ?? "month")
+  const [groupBy, setGroupBy] = useState<GroupBy>(saved.groupBy ?? (isPersonal ? "category" : "client"))
+  const [from, setFrom] = useState(saved.from ?? "")
+  const [to, setTo] = useState(saved.to ?? "")
+  const [selCats, setSelCats] = useState<Set<string>>(new Set(saved.cats ?? []))
+  const [selClients, setSelClients] = useState<Set<string>>(new Set(saved.clients ?? []))
+  const [selAccounts, setSelAccounts] = useState<Set<string>>(new Set(saved.accounts ?? []))
   const [catOptions, setCatOptions] = useState<Option[]>([])
   const [clientOptions, setClientOptions] = useState<Option[]>([])
   const [accountOptions, setAccountOptions] = useState<Option[]>([])
-  const [rootCollapsed, setRootCollapsed] = useState(false)
-  const [expanded, setExpanded] = useState<Set<string>>(new Set())
-  // Bumped on every successful fetch; part of the structural key that triggers
-  // a node rebuild (so drags persist between rebuilds — see the effect below).
+  const [rootCollapsed, setRootCollapsed] = useState(saved.rootCollapsed ?? false)
+  const [expanded, setExpanded] = useState<Set<string>>(new Set(saved.expanded ?? []))
+  // Bumped on every successful fetch; the fitView trigger (NOT structuralKey,
+  // so expand/collapse never re-frames the camera).
   const [dataVersion, setDataVersion] = useState(0)
+
+  // Dragged node positions (id → {x,y}); survive rebuilds AND navigation.
+  const userPositions = useRef<Record<string, { x: number; y: number }>>(saved.positions ?? {})
+  // The restored camera; when present we skip the first auto-fit so the view
+  // lands exactly where the user left it.
+  const savedViewport = useRef(saved.viewport ?? null)
+  const skipNextFit = useRef(!!saved.viewport)
 
   // Filter options (loaded once).
   useEffect(() => {
@@ -447,37 +497,71 @@ export function MoneyFlowPage() {
         ? buildTimelineGraph(data, expanded)
         : buildFlowGraph(data, { rootCollapsed, expanded })
     const rf: Node[] = built.nodes.map((n) => {
+      // Honor a user-dragged position (persists through rebuilds + navigation).
+      const position = userPositions.current[n.id] ?? n.position
       switch (n.type) {
         case "root":
-          return { ...n, data: { ...n.data, currency, onToggle: () => setRootCollapsed((c) => !c) } } as Node
+          return { ...n, position, data: { ...n.data, currency, onToggle: () => setRootCollapsed((c) => !c) } } as Node
         case "group": {
           const g = n.data as unknown as FlowGroup
-          return { ...n, data: { ...n.data, currency, onToggle: () => toggleKey(groupKeyId(g)) } } as Node
+          return { ...n, position, data: { ...n.data, currency, onToggle: () => toggleKey(groupKeyId(g)) } } as Node
         }
         case "tlperiod": {
           const p = n.data as unknown as TimelinePeriod
-          return { ...n, data: { ...n.data, currency, formatPeriod, onToggle: () => toggleKey(p.key) } } as Node
+          return { ...n, position, data: { ...n.data, currency, formatPeriod, onToggle: () => toggleKey(p.key) } } as Node
         }
         case "tlfinal":
-          return { ...n, data: { ...n.data, currency } } as Node
+          return { ...n, position, data: { ...n.data, currency } } as Node
         case "leaf": {
           const leaf = n.data as unknown as FlowLeaf
-          return { ...n, data: { ...n.data, currency, formatDate, onOpen: () => openLeaf(leaf.id) } } as Node
+          return { ...n, position, data: { ...n.data, currency, formatDate, onOpen: () => openLeaf(leaf.id) } } as Node
         }
         case "more": {
           const g = (n.data as { group?: FlowGroup }).group
-          return { ...n, data: { ...n.data, onOpen: () => (g ? openMoreForGroup(g) : openTransactions()) } } as Node
+          return { ...n, position, data: { ...n.data, onOpen: () => (g ? openMoreForGroup(g) : openTransactions()) } } as Node
         }
         default:
-          return n as Node
+          return { ...n, position } as Node
       }
     })
     setNodes(rf)
     setEdges(built.edges as Edge[])
-    const id = requestAnimationFrame(() => flowRef.current?.fitView({ padding: 0.2, maxZoom: 1, duration: 300 }))
-    return () => cancelAnimationFrame(id)
+    // NOTE: no fitView here — expand/collapse must not move the camera. The
+    // node `transform` transition (scoped CSS) glides repositioned siblings.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- structuralKey is the intentional trigger; callbacks/currency are stable
   }, [structuralKey])
+
+  // Re-fit ONLY when the data set itself changes (fetch on mode/groupBy/bucket/
+  // filter change) — never on expand/collapse. Skipped once on mount when a
+  // camera was restored from a previous visit.
+  useEffect(() => {
+    if (dataVersion === 0) return
+    if (skipNextFit.current) { skipNextFit.current = false; return }
+    const id = requestAnimationFrame(() => flowRef.current?.fitView({ padding: 0.2, maxZoom: 1, duration: 300 }))
+    return () => cancelAnimationFrame(id)
+  }, [dataVersion])
+
+  // Persist the full "where you were" snapshot whenever it changes.
+  useEffect(() => {
+    writeSavedFlow(storageKey, {
+      viewMode, bucket, groupBy, from, to,
+      cats: [...selCats], clients: [...selClients], accounts: [...selAccounts],
+      rootCollapsed, expanded: [...expanded],
+      positions: userPositions.current,
+      viewport: savedViewport.current ?? undefined,
+    })
+  }, [storageKey, viewMode, bucket, groupBy, from, to, selCats, selClients, selAccounts, rootCollapsed, expanded])
+
+  // Record a dragged node's final position (then persist via the effect above
+  // by also writing straight through, since refs don't trigger it).
+  const onNodeDragStop = useCallback((_e: unknown, node: Node) => {
+    userPositions.current[node.id] = node.position
+    writeSavedFlow(storageKey, { ...readSavedFlow(storageKey), positions: userPositions.current })
+  }, [storageKey])
+  const onMoveEnd = useCallback((_e: unknown, vp: { x: number; y: number; zoom: number }) => {
+    savedViewport.current = vp
+    writeSavedFlow(storageKey, { ...readSavedFlow(storageKey), viewport: vp })
+  }, [storageKey])
 
   const activeFilterCount = selCats.size + selClients.size + selAccounts.size + (from ? 1 : 0) + (to ? 1 : 0)
   const empty = !loading && data && (data.mode === "timeline" ? data.periods.length === 0 : data.root.tx_count === 0)
@@ -580,7 +664,8 @@ export function MoneyFlowPage() {
         </div>
       </div>
 
-      <div className="mt-4 min-h-0 flex-1 overflow-hidden rounded-2xl border bg-muted/20">
+      {/* ps-flow scopes the node transform-transition (smooth reflow on expand) */}
+      <div className="ps-flow mt-4 min-h-0 flex-1 overflow-hidden rounded-2xl border bg-muted/20">
         {loading && !data ? (
           <div className="flex h-full items-center justify-center"><Skeleton className="h-3/4 w-11/12 rounded-xl" /></div>
         ) : empty ? (
@@ -596,8 +681,11 @@ export function MoneyFlowPage() {
             edges={edges}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
+            onNodeDragStop={onNodeDragStop}
+            onMoveEnd={onMoveEnd}
             nodeTypes={NODE_TYPES}
-            fitView
+            // Restore the camera if we have one; otherwise fit on mount.
+            {...(savedViewport.current ? { defaultViewport: savedViewport.current } : { fitView: true })}
             fitViewOptions={{ padding: 0.2, maxZoom: 1 }}
             minZoom={0.2}
             maxZoom={1.5}
@@ -606,7 +694,6 @@ export function MoneyFlowPage() {
             nodesConnectable={false}
             proOptions={{ hideAttribution: true }}
             defaultEdgeOptions={{ type: "smoothstep", style: { strokeWidth: 1.5 }, animated: false }}
-            onlyRenderVisibleElements
           >
             <Background gap={20} className="text-border" />
             <Controls showInteractive={false} className="!rounded-lg !border !shadow-sm" />
