@@ -47,6 +47,7 @@
 | 12 | `feat/ux4-12-audit-fixes` | T6 deep security/perf/scale audit + fixes | 0041 | ✅ |
 | 13 | `feat/ux4-13-docs-skill` | Docs + subscription-system skill update | — | ✅ |
 | 14 | `feat/ux4-14-calendar-day-figures` | Calendar: figures on every day cell + Profit | — | ✅ |
+| 15 | `feat/ux4-15-dashboard-edit-ux` | Dashboard edit UX: title button, scroll-safe drag, floating ✓ | — | ✅ |
 
 ## ⚠️ Corrections to research findings (re-derived by hand)
 
@@ -431,4 +432,13 @@ pointer section. **Chain complete: 14/14 branches shipped.**
   net+count, full-value tooltip); Profit card added to the period summary
   (verified in − out matches); week rows gained the day's net. Browser-verified
   at 1280px + 390px; e2e suite green.
-  **ux4 chain complete — 15 branches, migrations 0035–0041, all pushed.**
+- 2026-06-11 — 15 dashboard edit UX (follow-up request): Customize button moved
+  next to the "Dashboard" title (ghost icon, 6px gap, verified); edit-mode
+  controls became a FIXED floating top-right cluster — rounded ✓ saves (spinner
+  while saving), ✕ cancel, undo/redo beneath — replacing the sticky bottom bar;
+  drag drop-targeting switched from a rect SNAPSHOT to live per-move reads so
+  scrolling mid-drag (incl. dnd-kit edge autoscroll) keeps targeting correct —
+  proven by scrolling the window 200px during a held drag and landing the card
+  in the right slot; touch-action audit at 390px: zero scroll-blocking surfaces
+  (only grip handles are touch-none). Browser-verified desktop + mobile.
+  **ux4 chain complete — 16 branches, migrations 0035–0041, all pushed.**

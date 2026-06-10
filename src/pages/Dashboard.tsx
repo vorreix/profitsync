@@ -47,9 +47,11 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   ArrowRight,
+  Check,
   ChevronDown,
   ChevronRight,
   GripVertical,
+  Loader as Loader2,
   Search,
   SlidersHorizontal,
   Sparkles,
@@ -794,7 +796,11 @@ export function Dashboard() {
   const [dropEdge, setDropEdge] = useState<{ id: DashboardCardId; edge: "before" | "after" } | null>(null)
   const dropEdgeRef = useRef<typeof dropEdge>(null)
   const dragPointerStart = useRef<{ x: number; y: number }>({ x: 0, y: 0 })
-  const dashRects = useRef<{ id: DashboardCardId; rect: DOMRect }[]>([])
+  // Element refs captured at drag start; their rects are read FRESH on every
+  // move. That keeps drop targeting correct while the page auto-scrolls during
+  // a drag (dnd-kit scrolls near the viewport edges by default) — both the
+  // pointer (start + delta) and the rects are viewport-relative at all times.
+  const dashCardEls = useRef<{ id: DashboardCardId; el: HTMLElement }[]>([])
 
   function setDropEdgeBoth(next: typeof dropEdge) {
     dropEdgeRef.current = next
@@ -806,24 +812,25 @@ export function Dashboard() {
     const ev = e.activatorEvent as MouseEvent | TouchEvent | null
     const p = ev && "touches" in ev ? ev.touches[0] : (ev as MouseEvent | null)
     dragPointerStart.current = { x: p?.clientX ?? 0, y: p?.clientY ?? 0 }
-    dashRects.current = Array.from(document.querySelectorAll<HTMLElement>("[data-dash-card]")).map((el) => ({
+    dashCardEls.current = Array.from(document.querySelectorAll<HTMLElement>("[data-dash-card]")).map((el) => ({
       id: el.dataset.dashCard as DashboardCardId,
-      rect: el.getBoundingClientRect(),
+      el,
     }))
   }
   function onDashDragMove(e: DragMoveEvent) {
     const activeId = e.active.id as DashboardCardId
     const p = { x: dragPointerStart.current.x + e.delta.x, y: dragPointerStart.current.y + e.delta.y }
-    const others = dashRects.current.filter((c) => c.id !== activeId)
-    let best: (typeof others)[number] | undefined
+    let best: { id: DashboardCardId; rect: DOMRect } | undefined
     let bestD = Infinity
-    for (const c of others) {
-      const dx = Math.max(c.rect.left - p.x, 0, p.x - c.rect.right)
-      const dy = Math.max(c.rect.top - p.y, 0, p.y - c.rect.bottom)
+    for (const c of dashCardEls.current) {
+      if (c.id === activeId || !c.el.isConnected) continue
+      const rect = c.el.getBoundingClientRect()
+      const dx = Math.max(rect.left - p.x, 0, p.x - rect.right)
+      const dy = Math.max(rect.top - p.y, 0, p.y - rect.bottom)
       const d = dx * dx + dy * dy
       if (d < bestD) {
         bestD = d
-        best = c
+        best = { id: c.id, rect }
       }
     }
     if (!best) {
@@ -1189,7 +1196,23 @@ export function Dashboard() {
 
       <div className="flex items-start justify-between gap-2 sm:gap-4">
         <div className="min-w-0">
-          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">{t("dashboard.title")}</h1>
+          <div className="flex items-center gap-1.5">
+            <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">{t("dashboard.title")}</h1>
+            {/* Customize: enter the arrange-cards mode (mobile can also
+                press-and-hold a card). Lives next to the title by design. */}
+            {!editMode && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-8 shrink-0 text-muted-foreground hover:text-foreground"
+                aria-label={t("dashboard.customize")}
+                title={t("dashboard.customize")}
+                onClick={enterEditMode}
+              >
+                <SlidersHorizontal className="size-4" />
+              </Button>
+            )}
+          </div>
           <p className="text-sm text-muted-foreground mt-1">
             {filtersActive ? t("dashboard.filtered") : t("dashboard.overview")}
           </p>
@@ -1221,19 +1244,6 @@ export function Dashboard() {
             icon={<Tag className="size-4 opacity-60" />}
           />
         </div>
-        {/* Customize: enter the arrange-cards mode (mobile can also press-and-hold a card) */}
-        {!editMode && (
-          <Button
-            variant="outline"
-            size="icon"
-            className="shrink-0"
-            aria-label={t("dashboard.customize")}
-            title={t("dashboard.customize")}
-            onClick={enterEditMode}
-          >
-            <SlidersHorizontal className="size-4" />
-          </Button>
-        )}
         <div className="sm:hidden shrink-0">
           <FilterSheet count={appliedFilterCount} onClear={clearAllFilters}>
             {!isPersonal && (
@@ -1321,22 +1331,54 @@ export function Dashboard() {
         </div>
       </DndContext>
 
-      {/* Edit-mode toolbar: undo/redo + save/cancel */}
+      {/* Edit-mode controls: a floating cluster pinned to the top-right —
+          rounded ✓ saves, ✕ cancels, undo/redo beneath. Fixed (not sticky) so
+          it stays reachable while scrolling the arrangement, esp. on mobile. */}
       {editMode && (
-        <div className="sticky bottom-24 z-30 flex items-center justify-between gap-2 rounded-2xl border bg-card/95 p-2 shadow-lg backdrop-blur sm:bottom-4">
-          <div className="flex items-center gap-1">
-            <Button size="icon" variant="outline" onClick={undoLayout} disabled={undoStack.length === 0} aria-label={t("dashboard.undo")}>
-              <Undo2 className="size-4" />
-            </Button>
-            <Button size="icon" variant="outline" onClick={redoLayout} disabled={redoStack.length === 0} aria-label={t("dashboard.redo")}>
-              <Redo2 className="size-4" />
-            </Button>
-          </div>
-          <p className="hidden flex-1 truncate px-2 text-center text-xs text-muted-foreground sm:block">{t("dashboard.editHint")}</p>
-          <div className="flex items-center gap-1.5">
-            <Button size="sm" variant="ghost" onClick={() => cancelEditMode()} disabled={savingLayout}>{t("common.cancel")}</Button>
-            <Button size="sm" onClick={saveLayout} disabled={savingLayout}>{savingLayout ? t("common.saving") : t("common.save")}</Button>
-          </div>
+        <div className="fixed right-3 top-16 z-40 flex flex-col items-center gap-2 sm:right-6 sm:top-20">
+          <Button
+            size="icon"
+            onClick={saveLayout}
+            disabled={savingLayout}
+            aria-label={t("common.save")}
+            title={t("common.save")}
+            className="size-12 rounded-full shadow-lg"
+          >
+            {savingLayout ? <Loader2 className="size-5 animate-spin" /> : <Check className="size-5" />}
+          </Button>
+          <Button
+            size="icon"
+            variant="outline"
+            onClick={() => cancelEditMode()}
+            disabled={savingLayout}
+            aria-label={t("common.cancel")}
+            title={t("common.cancel")}
+            className="size-10 rounded-full bg-card/95 shadow-md backdrop-blur"
+          >
+            <X className="size-4" />
+          </Button>
+          <Button
+            size="icon"
+            variant="outline"
+            onClick={undoLayout}
+            disabled={undoStack.length === 0}
+            aria-label={t("dashboard.undo")}
+            title={t("dashboard.undo")}
+            className="size-10 rounded-full bg-card/95 shadow-md backdrop-blur"
+          >
+            <Undo2 className="size-4" />
+          </Button>
+          <Button
+            size="icon"
+            variant="outline"
+            onClick={redoLayout}
+            disabled={redoStack.length === 0}
+            aria-label={t("dashboard.redo")}
+            title={t("dashboard.redo")}
+            className="size-10 rounded-full bg-card/95 shadow-md backdrop-blur"
+          >
+            <Redo2 className="size-4" />
+          </Button>
         </div>
       )}
 
