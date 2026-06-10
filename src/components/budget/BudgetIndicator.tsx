@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next"
+import { PiggyBank } from "lucide-react"
 import { budgetState, type BudgetPeriod } from "@/lib/budget"
 import { formatMoney } from "@/lib/wealth"
 
@@ -31,12 +32,16 @@ export function BudgetIndicator({
   period,
   currency,
   className = "",
+  showPeriodIcon = false,
 }: {
   amount: number
   spent: number
   period: BudgetPeriod
   currency: string
   className?: string
+  /** Show a small piggy-bank icon right after the period label (opt-in; used on
+   *  the clients list where the line has no header icon of its own). */
+  showPeriodIcon?: boolean
 }) {
   const { t } = useTranslation()
   const { ratio, remaining, state } = budgetState(spent, amount)
@@ -45,7 +50,10 @@ export function BudgetIndicator({
   return (
     <div className={className} aria-label={t("budget.title")}>
       <div className="flex items-center justify-between gap-2 text-xs">
-        <span className="text-muted-foreground">{t(PERIOD_KEY[period])}</span>
+        <span className="inline-flex items-center gap-1 text-muted-foreground">
+          {t(PERIOD_KEY[period])}
+          {showPeriodIcon && <PiggyBank className="size-3 text-muted-foreground/70" />}
+        </span>
         <span className={`font-medium ${TEXT[state]}`}>
           {remaining >= 0
             ? t("budget.left", { amount: formatMoney(remaining, currency) })
