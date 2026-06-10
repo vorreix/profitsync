@@ -84,6 +84,8 @@ import adminOrgDetail from "./_routes/admin/org-detail.js"
 import adminSubscriptions from "./_routes/admin/subscriptions.js"
 import adminSubscriptionsActions from "./_routes/admin/subscriptions/actions.js"
 import adminInvoices from "./_routes/admin/invoices.js"
+import adminBillingAttempts from "./_routes/admin/billing-attempts.js"
+import adminBillingAttemptById from "./_routes/admin/billing-attempts/[id].js"
 import adminInvitations from "./_routes/admin/invitations.js"
 import adminPlans from "./_routes/admin/plans.js"
 import adminBlog from "./_routes/admin/blog.js"
@@ -188,6 +190,8 @@ const routes: RoutePattern<ApiHandler>[] = [
   { segments: ["admin", "subscriptions"], handler: adminSubscriptions },
   { segments: ["admin", "subscriptions", "actions"], handler: adminSubscriptionsActions },
   { segments: ["admin", "invoices"], handler: adminInvoices },
+  { segments: ["admin", "billing-attempts"], handler: adminBillingAttempts },
+  { segments: ["admin", "billing-attempts", ":id"], handler: adminBillingAttemptById },
   { segments: ["admin", "invitations"], handler: adminInvitations },
   { segments: ["admin", "plans"], handler: adminPlans },
   { segments: ["admin", "blog"], handler: adminBlog },

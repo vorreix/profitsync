@@ -482,6 +482,39 @@ export const invoices = pgTable("invoices", {
   providerInvoiceIdx: uniqueIndex("invoices_provider_invoice_id_key").on(table.providerInvoiceId),
 }))
 
+// ── Billing attempts ─────────────────────────────────────────────────────────
+// One row per paid-plan checkout attempt: who clicked subscribe, what happened
+// (created → redirected → completed | failed | abandoned), the Dodo error when
+// it failed, and admin-managed follow-up status + notes. Written by the
+// non-fatal logger in api/_lib/billing-attempts.ts (a logging failure must
+// never break the money path). Org/email/name are SNAPSHOTS at attempt time so
+// the admin panel can search without joins and history survives org changes.
+export const billingAttempts = pgTable("billing_attempts", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull(),
+  ownerEmail: text("owner_email").notNull().default(""),
+  organizationName: text("organization_name").notNull().default(""),
+  planKey: text("plan_key").notNull(),
+  billingCycle: text("billing_cycle"), // monthly | yearly | null
+  currency: text("currency"), // billing_currency used at checkout (null = product base)
+  provider: text("provider").notNull().default("dodo"), // dodo | stub
+  status: text("status").notNull().default("created"), // created | redirected | completed | failed | abandoned
+  dodoSubscriptionId: text("dodo_subscription_id"),
+  dodoPaymentId: text("dodo_payment_id"),
+  providerErrorMessage: text("provider_error_message").notNull().default(""),
+  webhookErrorDetails: jsonb("webhook_error_details"), // raw payment.failed payload for forensics
+  followUpStatus: text("follow_up_status").notNull().default("none"), // none | contacted | resolved | paid_later
+  followUpNotes: text("follow_up_notes").notNull().default(""),
+  completedAt: timestamp("completed_at"), // set on any terminal transition
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  orgCreatedIdx: index("billing_attempts_org_created_idx").on(table.organizationId, table.createdAt),
+  statusCreatedIdx: index("billing_attempts_status_created_idx").on(table.status, table.createdAt),
+  dodoSubIdx: index("billing_attempts_dodo_sub_idx").on(table.dodoSubscriptionId),
+}))
+
 // ── Blog ─────────────────────────────────────────────────────────────────────
 // Platform-wide marketing content authored by app admins (NOT org-scoped — it
 // follows the global `plans` / `referral_settings` pattern). Public read routes

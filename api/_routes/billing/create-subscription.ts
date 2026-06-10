@@ -5,6 +5,7 @@ import { organizations, plans, subscriptions, userProfiles } from "../../../src/
 import { requireAuth } from "../../_lib/auth.js"
 import { createSubscription, isDodoConfigured, productIdForPlan, type DodoEnv, type DodoCreateSubscriptionResult } from "../../_lib/dodo.js"
 import { billingCurrencyAttempts } from "../../../src/lib/billing-currency.js"
+import { logAttemptCreated, markAttempt } from "../../_lib/billing-attempts.js"
 
 function originFromRequest(req: VercelRequest): string {
   const host = (req.headers["x-forwarded-host"] as string | undefined) || req.headers.host || "localhost:3000"
@@ -71,6 +72,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // subscription below so cancel/sync/invoice later target the same environment.
   const dodoEnv = (plan.dodoEnvironment ?? "live") as DodoEnv
 
+  // Observability: log the attempt up front so even a crash after this point
+  // leaves a trace for the admin panel. Non-fatal by design.
+  const [attemptProfile] = await db
+    .select({ email: userProfiles.email })
+    .from(userProfiles)
+    .where(eq(userProfiles.id, ctx.userId))
+  const [attemptOrg] = await db
+    .select({ name: organizations.name })
+    .from(organizations)
+    .where(eq(organizations.id, ctx.orgId))
+  const attemptId = await logAttemptCreated({
+    orgId: ctx.orgId,
+    userId: ctx.userId,
+    ownerEmail: attemptProfile?.email ?? "",
+    organizationName: attemptOrg?.name ?? "",
+    planKey: plan_key,
+    billingCycle: billing,
+    provider: isDodoConfigured(dodoEnv) ? "dodo" : "stub",
+  })
+
   // Dev/test stub when Dodo isn't configured: mark active so quotas unlock for local testing.
   if (!isDodoConfigured(dodoEnv)) {
     const now = new Date()
@@ -94,6 +115,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ? await db.update(subscriptions).set(stubValues).where(eq(subscriptions.id, existing.id)).returning()
       : await db.insert(subscriptions).values({ organizationId: ctx.orgId, ...stubValues }).returning()
     if (!row) return res.status(500).json({ error: "Failed to update subscription" })
+    await markAttempt(attemptId, { status: "completed" })
     return res.json({
       subscription: serialize(row),
       checkout_url: null,
@@ -150,7 +172,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         },
         billingCurrency: attemptCurrency,
         returnUrl: `${originFromRequest(req)}/subscription?dodo=return`,
-        metadata: { organization_id: ctx.orgId, plan_key, billing_cycle: billing },
+        // attempt_id lets webhooks link payment outcomes back to this attempt
+        // deterministically (subscription rows get reused across checkouts).
+        metadata: { organization_id: ctx.orgId, plan_key, billing_cycle: billing, ...(attemptId ? { attempt_id: attemptId } : {}) },
         env: dodoEnv,
       })
       usedCurrency = attemptCurrency ?? null
@@ -161,10 +185,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   if (!sub) {
-    return res
-      .status(502)
-      .json({ error: lastError instanceof Error ? lastError.message : "Dodo Payments failure" })
+    const message = lastError instanceof Error ? lastError.message : "Dodo Payments failure"
+    await markAttempt(attemptId, { status: "failed", providerErrorMessage: message })
+    return res.status(502).json({ error: message })
   }
+
+  await markAttempt(attemptId, {
+    status: "redirected",
+    dodoSubscriptionId: sub.subscription_id,
+    currency: usedCurrency,
+  })
 
   const pendingValues = {
     planKey: plan_key,

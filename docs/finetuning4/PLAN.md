@@ -38,7 +38,7 @@
 | 03 | `feat/ux4-03-bank-quota-default` | T8 crown gating + default bank | 0035 | ✅ |
 | 04 | `feat/ux4-04-org-logo-avatar` | T2 org logo + profile picture | 0036 | ✅ |
 | 05 | `feat/ux4-05-dodo-org-currency` | T9 checkout in org currency | 0037 | ✅ |
-| 06 | `feat/ux4-06-billing-attempts` | T11 attempt logging + admin panel | 0038 | ⬜ |
+| 06 | `feat/ux4-06-billing-attempts` | T11 attempt logging + admin panel | 0038 | ✅ |
 | 07 | `feat/ux4-07-recurring-payments` | T3 recurring payments | 0039 | ⬜ |
 | 08 | `feat/ux4-08-calendar` | T7 calendar visualization | — | ⬜ |
 | 09 | `feat/ux4-09-custom-dashboard` | T12 custom dashboard builder | 0040 | ⬜ |
@@ -205,7 +205,14 @@ routes (GET list w/ filters status/plan/date/search + funnel counts; PATCH follo
 fields, admin-write gated).
 **Verify:** unit test status transitions; Playwright admin page renders, filters
 work, notes editable.
-**Status:** ⬜
+**Status:** ✅ — transition guard + effective-status (stale→abandoned, derived at
+read time, no mutation job) locked by 8 unit tests. LIVE-verified: a real
+test-mode checkout click logged created→redirected (EUR, Dodo sub id captured);
+/admin/billing-attempts shows the row with funnel chips; follow-up set to
+"contacted" + notes saved with an in-place row update. ⚠️ The payment.failed
+webhook path can't be reproduced locally (Dodo can't reach localhost) — its
+linking precedence (metadata.attempt_id → dodo sub id → org) and transition
+guards are unit-covered instead. Admin UI is English-only by convention.
 
 ## 07 · T3 — Recurring payments (0039)
 
@@ -333,3 +340,7 @@ docs), and the new e2e/security gates.
 - 2026-06-10 — 05 dodo org currency: pure resolution chain (org → country/IN →
   omit, 10 tests) + create-time retry loop; migration 0037 snapshot column;
   pricing display aligned. LIVE test-mode checkout in EUR verified.
+- 2026-06-10 — 06 billing attempts: migration 0038; non-fatal logger with
+  transition guards (8 tests); logging at create/stub/webhook/sync; attempt_id
+  in Dodo metadata; /admin/billing-attempts page with funnel + follow-up CRM.
+  Live-verified end-to-end except webhook (unit-covered).

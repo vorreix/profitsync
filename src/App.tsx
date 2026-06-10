@@ -58,6 +58,7 @@ const AdminOrgsPage = lazy(() => import("@/pages/admin/AdminOrgsPage").then((m) 
 const AdminOrgDetailPage = lazy(() => import("@/pages/admin/AdminOrgDetailPage").then((m) => ({ default: m.AdminOrgDetailPage })))
 const AdminSubscriptionsPage = lazy(() => import("@/pages/admin/AdminSubscriptionsPage").then((m) => ({ default: m.AdminSubscriptionsPage })))
 const AdminInvoicesPage = lazy(() => import("@/pages/admin/AdminInvoicesPage").then((m) => ({ default: m.AdminInvoicesPage })))
+const AdminBillingAttemptsPage = lazy(() => import("@/pages/admin/AdminBillingAttemptsPage").then((m) => ({ default: m.AdminBillingAttemptsPage })))
 const AdminPlansPage = lazy(() => import("@/pages/admin/AdminPlansPage").then((m) => ({ default: m.AdminPlansPage })))
 const AdminBlogPage = lazy(() => import("@/pages/admin/AdminBlogPage").then((m) => ({ default: m.AdminBlogPage })))
 const AdminReferralsPage = lazy(() => import("@/pages/admin/AdminReferralsPage").then((m) => ({ default: m.AdminReferralsPage })))
@@ -127,6 +128,7 @@ export function App() {
             <Route path="organizations/:id" element={<RequireAdminCap cap="read"><AdminOrgDetailPage /></RequireAdminCap>} />
             <Route path="subscriptions" element={<RequireAdminCap cap="read"><AdminSubscriptionsPage /></RequireAdminCap>} />
             <Route path="invoices" element={<RequireAdminCap cap="read"><AdminInvoicesPage /></RequireAdminCap>} />
+            <Route path="billing-attempts" element={<RequireAdminCap cap="read"><AdminBillingAttemptsPage /></RequireAdminCap>} />
             <Route path="plans" element={<RequireAdminCap cap="settings"><AdminPlansPage /></RequireAdminCap>} />
             <Route path="blog" element={<RequireAdminCap cap="blog"><AdminBlogPage /></RequireAdminCap>} />
             <Route path="referrals" element={<RequireAdminCap cap="read"><AdminReferralsPage /></RequireAdminCap>} />

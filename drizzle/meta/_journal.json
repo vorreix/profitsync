@@ -267,6 +267,13 @@
       "when": 1781055040698,
       "tag": "0037_overconfident_bishop",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1781055536943,
+      "tag": "0038_deep_praxagora",
+      "breakpoints": true
     }
   ]
 }
