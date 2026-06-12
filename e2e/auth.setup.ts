@@ -89,9 +89,19 @@ setup("authenticate", async ({ page }) => {
   // 4. Complete first-run onboarding through the SAME API the wizard calls
   //    (deterministic — the multi-step UI is Clerk-independent product surface
   //    covered elsewhere). Business type unlocks clients/quotations.
-  await completeOnboardingViaApi(page)
+  const businessOrgId = await completeOnboardingViaApi(page)
 
+  // 5. Pin the BUSINESS workspace as the browser's active org BEFORE saving
+  //    storage state. OrgProvider switches to it on the next boot anyway
+  //    (`profile.current_organization_id`), but `expectAppShell` resolves on the
+  //    sidebar link — which renders BEFORE that async switch completes — so
+  //    without this the saved state can pin the auto-created PERSONAL org, and
+  //    every test then runs in a personal workspace where the add-transaction
+  //    dialog has no client picker (the transaction test then can't select the
+  //    e2e client). `ps_active_org` is the localStorage key `setActiveOrgId` uses.
+  await page.evaluate((id) => localStorage.setItem("ps_active_org", id), businessOrgId)
   await page.goto("/dashboard")
+  await page.waitForFunction((id) => localStorage.getItem("ps_active_org") === id, businessOrgId, { timeout: 20_000 })
   await expectAppShell(page)
   await page.context().storageState({ path: AUTH_FILE })
 })
@@ -115,7 +125,11 @@ async function completeOnboardingViaApi(page: Page) {
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: JSON.stringify({ account_type: "business", company_name: "E2E Test Co", currency: "USD" }),
     })
-    return { ok: res.ok, error: res.ok ? undefined : `${res.status} ${await res.text()}` }
+    if (!res.ok) return { ok: false, error: `${res.status} ${await res.text()}` }
+    const body = (await res.json()) as { organization_id?: string }
+    return { ok: true, organizationId: body.organization_id }
   })
   expect(result.ok, result.error ?? "onboarding failed").toBe(true)
+  expect(result.organizationId, "onboarding did not return organization_id").toBeTruthy()
+  return result.organizationId as string
 }
