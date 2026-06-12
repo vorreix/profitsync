@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next"
 import { useNavigate, Link } from "react-router-dom"
 import { useAuth, useClerk } from "@clerk/clerk-react"
 import { apiGet, apiPatch } from "@/lib/api"
+import { useOrg } from "@/lib/org-context"
 import type { UserProfile } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -21,6 +22,9 @@ export function ProfilePage() {
   const navigate = useNavigate()
   const { getToken } = useAuth()
   const { signOut } = useClerk()
+  // Keep the shared OrgProvider profile in sync, so the sidebar/menu avatar
+  // (which reads it) updates the instant a photo is saved — no reload.
+  const { updateProfile } = useOrg()
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -76,6 +80,7 @@ export function ProfilePage() {
         phone,
       })
       setProfile(updated)
+      updateProfile(updated) // refresh the navbar/menu name in place
       toast.success(t("toast.profileUpdated"))
     } catch {
       toast.error(t("toast.profileSaveFailed"))
@@ -89,15 +94,17 @@ export function ProfilePage() {
     navigate("/login")
   }
 
-  // Avatar saves immediately on pick/remove (no separate Save step) — the PATCH
-  // returns the updated profile, which also refreshes every other surface via
-  // the cleared GET cache.
+  // Avatar saves immediately on pick/remove (no separate Save step). Pushing
+  // the result into the OrgProvider updates the sidebar/menu avatar in place —
+  // OrgProvider holds `profile` in its own state from boot, so clearing the
+  // GET cache alone would NOT refresh it without this.
   const handleAvatarChange = async (next: string | "") => {
     try {
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
       const updated = await apiPatch<UserProfile>("/api/profile", token, { avatar_data: next })
       setProfile(updated)
+      updateProfile(updated)
       toast.success(t("profile.photoUpdated"))
     } catch {
       toast.error(t("toast.profileSaveFailed"))

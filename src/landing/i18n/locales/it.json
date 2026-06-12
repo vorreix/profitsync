@@ -17,7 +17,8 @@
     "login": "Accedi",
     "getStarted": "Inizia ora",
     "openMenu": "Apri menu",
-    "closeMenu": "Chiudi menu"
+    "closeMenu": "Chiudi menu",
+    "security": "Sicurezza"
   },
   "theme": {
     "toLight": "Passa alla modalità chiara",
@@ -152,6 +153,40 @@
         "desc": "Invita il tuo team con accessi chiari basati sui ruoli fin dal primo giorno."
       }
     ]
+  },
+  "security": {
+    "badge": "Sicurezza e privacy",
+    "title": "I tuoi dati finanziari, al sicuro",
+    "subtitle": "ProfitSync è progettato con la privacy al primo posto: crittografia robusta, isolamento rigoroso e una promessa semplice — i tuoi dati finanziari appartengono solo a te.",
+    "items": [
+      {
+        "title": "Crittografia ovunque",
+        "desc": "Ogni connessione è protetta con TLS e i tuoi dati sono crittografati a riposo nel database. Niente viaggia o resta in chiaro."
+      },
+      {
+        "title": "Non vediamo mai la tua carta",
+        "desc": "I pagamenti passano da un provider conforme allo standard PCI DSS che agisce come Merchant of Record. I numeri di carta non toccano mai i nostri server."
+      },
+      {
+        "title": "Il tuo spazio è isolato",
+        "desc": "Ogni cliente, transazione e documento appartiene solo alla tua organizzazione, con accessi basati sui ruoli che controllano cosa ogni membro può vedere e fare."
+      },
+      {
+        "title": "Un accesso di cui fidarsi",
+        "desc": "L'autenticazione è gestita da un'infrastruttura di livello enterprise con supporto all'autenticazione a più fattori e sicurezza delle sessioni moderna."
+      },
+      {
+        "title": "Mai venduti, mai condivisi",
+        "desc": "I tuoi dati finanziari non sono in vendita. Non li vendiamo, non li affittiamo e non li usiamo per la pubblicità — servono solo alla tua dashboard."
+      },
+      {
+        "title": "Eliminazione a prova di errore",
+        "desc": "I record eliminati vanno in un cestino che controlli tu: ripristinali con un clic o eliminali definitivamente quando sei sicuro. Decidi tu."
+      }
+    ],
+    "legalLead": "Le clausole, in parole semplici:",
+    "privacyLink": "Informativa sulla privacy",
+    "termsLink": "Termini di servizio"
   },
   "pricing": {
     "eyebrow": "Prezzi",
