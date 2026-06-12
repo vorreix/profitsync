@@ -448,8 +448,26 @@ export const appAdmins = pgTable("app_admins", {
   userId: text("user_id").primaryKey(),
   // Platform-admin role → capability set (see src/lib/admin-roles.ts). Defaults
   // to super_admin so every pre-existing admin keeps full access on migration.
-  role: text("role").notNull().default("super_admin"), // super_admin | editor | viewer | blog_writer
+  // Either a SYSTEM role (super_admin | editor | viewer | blog_writer) or the
+  // `key` of a CUSTOM role in admin_roles below.
+  role: text("role").notNull().default("super_admin"),
   createdAt: timestamp("created_at").defaultNow(),
+})
+
+// ── Custom admin roles ───────────────────────────────────────────────────────
+// Super-admin-defined roles for the /admin console. `capabilities` may only
+// hold GRANTABLE_ADMIN_CAPS (validated on write AND re-filtered on read — the
+// super-only capabilities org_transactions / manage_super_admins / manage_roles
+// can never live here). Deleting a role in use by an app_admins row is blocked.
+export const adminRoles = pgTable("admin_roles", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  key: text("key").notNull().unique(), // slug; must not collide with system role names
+  name: text("name").notNull(),
+  description: text("description").notNull().default(""),
+  capabilities: jsonb("capabilities").notNull().default([]),
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
 })
 
 export const plans = pgTable("plans", {
