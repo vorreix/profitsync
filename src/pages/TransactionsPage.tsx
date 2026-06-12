@@ -80,8 +80,10 @@ export function TransactionsPage() {
   const [tab, setTab] = useState("all")
   const [sort, setSort] = useState("date_desc")
   const [categoryFilter, setCategoryFilter] = useState("all")
-  const [dateFrom, setDateFrom] = useState("")
-  const [dateTo, setDateTo] = useState("")
+  // Date-range filters, deep-linkable: /transactions?from=YYYY-MM-DD&to=… (the
+  // calendar's "Open in Transactions" lands here pre-filtered).
+  const [dateFrom, setDateFrom] = useState(() => searchParams.get("from") ?? "")
+  const [dateTo, setDateTo] = useState(() => searchParams.get("to") ?? "")
   const [summary, setSummary] = useState<{ incoming: number; outgoing: number }>({ incoming: 0, outgoing: 0 })
   const searchRef = useRef(search)
   searchRef.current = search

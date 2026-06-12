@@ -68,6 +68,8 @@ import {
   Landmark,
   Loader as Loader2,
   Repeat,
+  CalendarDays,
+  Network,
 } from "lucide-react"
 
 type QuickAction = {
@@ -121,6 +123,8 @@ function buildNavItems(activeOrgId: string | undefined, accountType: AccountType
     { labelKey: "nav.transactions", href: "/transactions", icon: ArrowLeftRight },
     { labelKey: "nav.wealth", href: "/wealth", icon: Landmark },
     { labelKey: "nav.recurring", href: "/recurring", icon: Repeat },
+    { labelKey: "nav.calendar", href: "/calendar", icon: CalendarDays },
+    { labelKey: "nav.flow", href: "/flow", icon: Network },
     { labelKey: "nav.analytics", href: "/analytics", icon: ChartColumn },
     accountTypeAllows(accountType, "quotations") && { labelKey: "nav.quotations", href: "/quotations", icon: FileText },
     accountTypeAllows(accountType, "members") && { labelKey: "nav.users", href: usersHref, icon: UserPlus },
