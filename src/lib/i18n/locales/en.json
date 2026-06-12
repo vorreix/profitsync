@@ -1171,6 +1171,22 @@
     "emptyHint": "Add some transactions, or widen the date range and filters, to see your money flow.",
     "loadFailed": "Couldn't load the money flow",
     "card": "Money flow",
-    "cardCta": "Open money flow"
+    "cardCta": "Open money flow",
+    "timelineSubtitle": "Watch your running balance evolve over time — before, change and after, period by period.",
+    "viewGrouped": "Map",
+    "viewTimeline": "Timeline",
+    "bucket_day": "Day",
+    "bucket_week": "Week",
+    "bucket_month": "Month",
+    "bucket_year": "Year",
+    "before": "Before",
+    "after": "After",
+    "netTotal": "Net total",
+    "finalEntity": "Final balance",
+    "weekOf": "Week of",
+    "openTransaction": "Open transaction",
+    "searchCategories": "Search categories…",
+    "searchClients": "Search clients…",
+    "searchAccounts": "Search accounts…"
   }
 }

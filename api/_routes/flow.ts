@@ -83,6 +83,110 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const expenseSum = sql<string>`coalesce(sum(case when ${transactions.type} = 'outgoing' then ${transactions.amount}::numeric else 0 end), 0)`
   const countExpr = sql<number>`count(*)::int`
 
+  // ── TIMELINE mode: a chronological chain of period buckets, each carrying a
+  // running cumulative net (before → net → after), ending at the entity. ─────
+  const mode = q.mode === "timeline" ? "timeline" : "grouped"
+  if (mode === "timeline") {
+    const BUCKETS = ["day", "week", "month", "year"] as const
+    const bucket = (BUCKETS as readonly string[]).includes(q.bucket as string) ? (q.bucket as string) : "month"
+    // Inline the bucket as a LITERAL (safe — whitelisted above): a bound param
+    // here makes Postgres treat the SELECT and GROUP BY copies of this
+    // expression as different, triggering "column date must appear in GROUP BY".
+    const periodExpr = sql<string>`to_char(date_trunc(${sql.raw(`'${bucket}'`)}, ${transactions.date}::timestamp), 'YYYY-MM-DD')`
+
+    const [periodRows, accountMetaT, ownerOrgT, leafPoolT] = await Promise.all([
+      db
+        .select({ key: periodExpr, income: incomeSum, expense: expenseSum, txCount: countExpr })
+        .from(transactions)
+        .innerJoin(clients, eq(transactions.clientId, clients.id))
+        .where(where)
+        .groupBy(periodExpr)
+        .orderBy(sql`1 asc`),
+      db
+        .select({ current: wealthAccounts.currentBalance })
+        .from(wealthAccounts)
+        .where(and(eq(wealthAccounts.organizationId, orgId), isNull(wealthAccounts.archivedAt))),
+      db.select({ name: organizations.name }).from(organizations).where(eq(organizations.id, orgId)),
+      db
+        .select({
+          id: transactions.id,
+          type: transactions.type,
+          amount: transactions.amount,
+          description: transactions.description,
+          category: transactions.category,
+          date: sql<string>`${transactions.date}::text`,
+          periodKey: periodExpr,
+          clientName: clients.name,
+          recurringRuleId: transactions.recurringRuleId,
+        })
+        .from(transactions)
+        .innerJoin(clients, eq(transactions.clientId, clients.id))
+        .where(where)
+        .orderBy(desc(transactions.date), desc(transactions.createdAt))
+        .limit(LEAF_POOL),
+    ])
+
+    const leavesByPeriod = new Map<string, typeof leafPoolT>()
+    for (const l of leafPoolT) {
+      const arr = leavesByPeriod.get(l.periodKey) ?? []
+      if (arr.length < LEAVES_PER_GROUP) arr.push(l)
+      leavesByPeriod.set(l.periodKey, arr)
+    }
+
+    let running = 0
+    let totalIn = 0
+    let totalOut = 0
+    const periods = periodRows.map((p) => {
+      const income = Number(p.income)
+      const expense = Number(p.expense)
+      const net = income - expense
+      const before = running
+      running += net
+      totalIn += income
+      totalOut += expense
+      const leaves = (leavesByPeriod.get(p.key) ?? []).map((l) => ({
+        id: l.id,
+        type: l.type,
+        amount: Number(l.amount),
+        description: l.description,
+        category: l.category,
+        date: l.date,
+        client_name: l.clientName,
+        account_name: null,
+        recurring: !!l.recurringRuleId,
+      }))
+      return {
+        key: p.key,
+        label: p.key,
+        bucket,
+        income,
+        expense,
+        net,
+        before,
+        after: running,
+        tx_count: Number(p.txCount),
+        leaves,
+        more_count: Math.max(0, Number(p.txCount) - leaves.length),
+      }
+    })
+
+    return res.json({
+      mode: "timeline",
+      bucket,
+      personal,
+      range: { from: fromDate, to: toDate },
+      periods,
+      final: {
+        label: ownerOrgT[0]?.name ?? "Workspace",
+        total_in: totalIn,
+        total_out: totalOut,
+        total_net: totalIn - totalOut,
+        balance: accountMetaT.reduce((s, a) => s + Number(a.current), 0),
+      },
+      filters: { category: categories, client_id: clientIds, account_id: accountIds },
+    })
+  }
+
   // ── Summary (root) + grouped aggregates + a recent-leaf pool, in parallel ──
   const groupKeyExpr =
     groupBy === "account"
@@ -201,6 +305,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const balance = accountMeta.reduce((sum, a) => sum + Number(a.current), 0)
 
   return res.json({
+    mode: "grouped",
     group_by: groupBy,
     personal,
     range: { from: fromDate, to: toDate },
