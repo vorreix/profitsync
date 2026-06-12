@@ -449,9 +449,13 @@ function signatureMatches(
  * the test and live signing secrets and report which one matched. Throws only
  * when neither environment has a secret configured (a misconfiguration).
  */
+/** Standard Webhooks freshness window: reject replays outside ±5 minutes. */
+export const WEBHOOK_TOLERANCE_SECONDS = 5 * 60
+
 export function verifyWebhookSignature(
   rawBody: string,
   headers: { id?: string; timestamp?: string; signature?: string },
+  now: Date = new Date(),
 ): { valid: boolean; env?: DodoEnv } {
   const candidates: Array<[DodoEnv, string]> = (["test", "live"] as const)
     .map((env): [DodoEnv, string | undefined] => [env, webhookSecretFor(env)])
@@ -460,6 +464,14 @@ export function verifyWebhookSignature(
 
   const { id, timestamp, signature } = headers
   if (!id || !timestamp || !signature) return { valid: false }
+
+  // Freshness check (Standard Webhooks spec): a signed payload replayed later
+  // must not be accepted — the timestamp is part of the signed content, so an
+  // attacker can't forge a newer one.
+  const ts = Number(timestamp)
+  if (!Number.isFinite(ts) || Math.abs(now.getTime() / 1000 - ts) > WEBHOOK_TOLERANCE_SECONDS) {
+    return { valid: false }
+  }
 
   for (const [env, secret] of candidates) {
     if (signatureMatches(rawBody, { id, timestamp, signature }, secret)) return { valid: true, env }
