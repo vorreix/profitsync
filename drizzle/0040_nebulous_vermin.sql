@@ -1,0 +1,1 @@
+ALTER TABLE "user_profiles" ADD COLUMN "dashboard_layout" jsonb DEFAULT '{}'::jsonb NOT NULL;

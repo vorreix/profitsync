@@ -191,6 +191,13 @@ export const transactions = pgTable("transactions", {
   category: text("category").default(""),
   date: date("date").notNull().defaultNow(),
   isSystem: boolean("is_system").notNull().default(false),
+  // Set when this row was auto-created by a recurring rule: the rule id (kept
+  // for the list icon; nulled if the rule is deleted) and the occurrence date.
+  // The unique index below is the materializer's idempotency key — a catch-up
+  // can never create the same occurrence twice. NULLs are distinct in Postgres,
+  // so ordinary rows (both columns NULL) never conflict.
+  recurringRuleId: uuid("recurring_rule_id"),
+  recurringDueDate: date("recurring_due_date"),
   // Soft-delete: deleted transactions move to Trash (restore/purge) instead of
   // disappearing. All financial aggregates must exclude rows where this is set.
   deletedAt: timestamp("deleted_at"),
@@ -200,6 +207,50 @@ export const transactions = pgTable("transactions", {
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => ({
   groupIdx: index("transactions_group_idx").on(table.groupId),
+  recurringOnceIdx: uniqueIndex("transactions_recurring_once_idx").on(table.recurringRuleId, table.recurringDueDate),
+  // Hot predicates at scale: per-client lists + quota counts, per-account
+  // ledgers, and date-range scans (calendar / from-to filters).
+  clientIdx: index("transactions_client_idx").on(table.clientId),
+  accountIdx: index("transactions_account_idx").on(table.wealthAccountId),
+  dateIdx: index("transactions_date_idx").on(table.date),
+}))
+
+// ── Recurring payments ───────────────────────────────────────────────────────
+// A rule describes money that repeats (rent, salary, subscription…): WHO it
+// belongs to (a client, or the org's own/anchor client when client_id is NULL),
+// WHERE it moves money (an optional wealth account), and WHEN it fires
+// (anchor start_date + unit×interval, optional inclusive end_date).
+// `next_due_at` is the cursor: the first occurrence not yet materialized. The
+// materializer (api/_lib/recurring-materialize.ts) turns due occurrences into
+// REAL transaction rows idempotently and applies wealth balance deltas only
+// for rows it actually inserted.
+export const recurringRules = pgTable("recurring_rules", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  // NULL = the org's own/internal client (personal orgs' anchor client).
+  clientId: uuid("client_id").references(() => clients.id, { onDelete: "cascade" }),
+  // The account the money comes from / goes to. Optional; archived accounts
+  // pause materialization with last_error instead of corrupting balances.
+  wealthAccountId: uuid("wealth_account_id").references(() => wealthAccounts.id, { onDelete: "set null" }),
+  name: text("name").notNull(),
+  type: text("type").notNull(), // incoming | outgoing
+  amount: numeric("amount", { precision: 20, scale: 2 }).notNull(),
+  category: text("category").notNull().default(""),
+  frequencyUnit: text("frequency_unit").notNull(), // day | week | month | year
+  frequencyInterval: integer("frequency_interval").notNull().default(1),
+  startDate: date("start_date").notNull(),
+  endDate: date("end_date"),
+  nextDueAt: date("next_due_at").notNull(),
+  active: boolean("active").notNull().default(true),
+  // Why the last materialization skipped this rule (quota, archived account…).
+  // Cleared on the next successful run; surfaced in the rules list.
+  lastError: text("last_error").notNull().default(""),
+  createdBy: text("created_by"),
+  updatedBy: text("updated_by"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  dueIdx: index("recurring_rules_due_idx").on(table.organizationId, table.active, table.nextDueAt),
 }))
 
 export const quotations = pgTable("quotations", {
@@ -322,6 +373,10 @@ export const userProfiles = pgTable("user_profiles", {
   // before upload, server re-validates). Exposed as an `avatar_src` data URL.
   avatarData: text("avatar_data").notNull().default(""),
   avatarMime: text("avatar_mime").notNull().default(""),
+  // Custom dashboard arrangement: { version, contexts: { personal, business } },
+  // each context = { order: cardId[], hidden: cardId[] }. Normalized against
+  // the card registry on read (src/lib/dashboard-layout.ts). {} = defaults.
+  dashboardLayout: jsonb("dashboard_layout").notNull().default({}),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 })
@@ -393,8 +448,26 @@ export const appAdmins = pgTable("app_admins", {
   userId: text("user_id").primaryKey(),
   // Platform-admin role → capability set (see src/lib/admin-roles.ts). Defaults
   // to super_admin so every pre-existing admin keeps full access on migration.
-  role: text("role").notNull().default("super_admin"), // super_admin | editor | viewer | blog_writer
+  // Either a SYSTEM role (super_admin | editor | viewer | blog_writer) or the
+  // `key` of a CUSTOM role in admin_roles below.
+  role: text("role").notNull().default("super_admin"),
   createdAt: timestamp("created_at").defaultNow(),
+})
+
+// ── Custom admin roles ───────────────────────────────────────────────────────
+// Super-admin-defined roles for the /admin console. `capabilities` may only
+// hold GRANTABLE_ADMIN_CAPS (validated on write AND re-filtered on read — the
+// super-only capabilities org_transactions / manage_super_admins / manage_roles
+// can never live here). Deleting a role in use by an app_admins row is blocked.
+export const adminRoles = pgTable("admin_roles", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  key: text("key").notNull().unique(), // slug; must not collide with system role names
+  name: text("name").notNull(),
+  description: text("description").notNull().default(""),
+  capabilities: jsonb("capabilities").notNull().default([]),
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
 })
 
 export const plans = pgTable("plans", {
@@ -480,6 +553,39 @@ export const invoices = pgTable("invoices", {
   // Nullable column → Postgres treats NULLs as distinct, so non-Dodo invoices
   // (no provider_invoice_id) are unaffected.
   providerInvoiceIdx: uniqueIndex("invoices_provider_invoice_id_key").on(table.providerInvoiceId),
+}))
+
+// ── Billing attempts ─────────────────────────────────────────────────────────
+// One row per paid-plan checkout attempt: who clicked subscribe, what happened
+// (created → redirected → completed | failed | abandoned), the Dodo error when
+// it failed, and admin-managed follow-up status + notes. Written by the
+// non-fatal logger in api/_lib/billing-attempts.ts (a logging failure must
+// never break the money path). Org/email/name are SNAPSHOTS at attempt time so
+// the admin panel can search without joins and history survives org changes.
+export const billingAttempts = pgTable("billing_attempts", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull(),
+  ownerEmail: text("owner_email").notNull().default(""),
+  organizationName: text("organization_name").notNull().default(""),
+  planKey: text("plan_key").notNull(),
+  billingCycle: text("billing_cycle"), // monthly | yearly | null
+  currency: text("currency"), // billing_currency used at checkout (null = product base)
+  provider: text("provider").notNull().default("dodo"), // dodo | stub
+  status: text("status").notNull().default("created"), // created | redirected | completed | failed | abandoned
+  dodoSubscriptionId: text("dodo_subscription_id"),
+  dodoPaymentId: text("dodo_payment_id"),
+  providerErrorMessage: text("provider_error_message").notNull().default(""),
+  webhookErrorDetails: jsonb("webhook_error_details"), // raw payment.failed payload for forensics
+  followUpStatus: text("follow_up_status").notNull().default("none"), // none | contacted | resolved | paid_later
+  followUpNotes: text("follow_up_notes").notNull().default(""),
+  completedAt: timestamp("completed_at"), // set on any terminal transition
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  orgCreatedIdx: index("billing_attempts_org_created_idx").on(table.organizationId, table.createdAt),
+  statusCreatedIdx: index("billing_attempts_status_created_idx").on(table.status, table.createdAt),
+  dodoSubIdx: index("billing_attempts_dodo_sub_idx").on(table.dodoSubscriptionId),
 }))
 
 // ── Blog ─────────────────────────────────────────────────────────────────────

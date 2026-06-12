@@ -8,6 +8,7 @@ import { type BankDetailInput, fetchLogoData, pickBankDetails, resolveLogoColumn
 import { amountExceedsLimit } from "../../../src/lib/money.js"
 import { logoDataUrl } from "../../../src/lib/logo-data.js"
 import { checkBankAccountQuota } from "../../_lib/quota.js"
+import { materializeDueRecurring } from "../../_lib/recurring-materialize.js"
 
 // "Cash in Hand" is the default account every workspace always has. We lazily
 // provision it on first read so existing orgs (created before wealth tracking)
@@ -87,6 +88,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method === "GET") {
     await ensureCashAccount(orgId, userId)
+    // Due recurring occurrences must hit balances before the cards render.
+    await materializeDueRecurring(orgId)
     const rows = await db
       .select({
         id: wealthAccounts.id,

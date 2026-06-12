@@ -267,6 +267,41 @@
       "when": 1781055040698,
       "tag": "0037_overconfident_bishop",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1781055536943,
+      "tag": "0038_deep_praxagora",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1781056208356,
+      "tag": "0039_fancy_the_stranger",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1781057693309,
+      "tag": "0040_nebulous_vermin",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1781061556993,
+      "tag": "0041_colossal_captain_universe",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1781085031258,
+      "tag": "0042_chunky_hydra",
+      "breakpoints": true
     }
   ]
 }

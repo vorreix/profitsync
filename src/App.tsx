@@ -19,6 +19,9 @@ const ClosedClientsPage = lazy(() => import("@/pages/ClosedClientsPage").then((m
 const ClientDetailPage = lazy(() => import("@/pages/ClientDetailPage").then((m) => ({ default: m.ClientDetailPage })))
 const ClientFilesPage = lazy(() => import("@/pages/ClientFilesPage").then((m) => ({ default: m.ClientFilesPage })))
 const TransactionsPage = lazy(() => import("@/pages/TransactionsPage").then((m) => ({ default: m.TransactionsPage })))
+const RecurringPage = lazy(() => import("@/pages/RecurringPage").then((m) => ({ default: m.RecurringPage })))
+const CalendarPage = lazy(() => import("@/pages/CalendarPage").then((m) => ({ default: m.CalendarPage })))
+const MoneyFlowPage = lazy(() => import("@/pages/MoneyFlowPage").then((m) => ({ default: m.MoneyFlowPage })))
 const WealthPage = lazy(() => import("@/pages/WealthPage").then((m) => ({ default: m.WealthPage })))
 const WealthAccountDetailPage = lazy(() => import("@/pages/WealthAccountDetailPage").then((m) => ({ default: m.WealthAccountDetailPage })))
 const CategoriesPage = lazy(() => import("@/pages/CategoriesPage").then((m) => ({ default: m.CategoriesPage })))
@@ -58,6 +61,7 @@ const AdminOrgsPage = lazy(() => import("@/pages/admin/AdminOrgsPage").then((m) 
 const AdminOrgDetailPage = lazy(() => import("@/pages/admin/AdminOrgDetailPage").then((m) => ({ default: m.AdminOrgDetailPage })))
 const AdminSubscriptionsPage = lazy(() => import("@/pages/admin/AdminSubscriptionsPage").then((m) => ({ default: m.AdminSubscriptionsPage })))
 const AdminInvoicesPage = lazy(() => import("@/pages/admin/AdminInvoicesPage").then((m) => ({ default: m.AdminInvoicesPage })))
+const AdminBillingAttemptsPage = lazy(() => import("@/pages/admin/AdminBillingAttemptsPage").then((m) => ({ default: m.AdminBillingAttemptsPage })))
 const AdminPlansPage = lazy(() => import("@/pages/admin/AdminPlansPage").then((m) => ({ default: m.AdminPlansPage })))
 const AdminBlogPage = lazy(() => import("@/pages/admin/AdminBlogPage").then((m) => ({ default: m.AdminBlogPage })))
 const AdminReferralsPage = lazy(() => import("@/pages/admin/AdminReferralsPage").then((m) => ({ default: m.AdminReferralsPage })))
@@ -127,6 +131,7 @@ export function App() {
             <Route path="organizations/:id" element={<RequireAdminCap cap="read"><AdminOrgDetailPage /></RequireAdminCap>} />
             <Route path="subscriptions" element={<RequireAdminCap cap="read"><AdminSubscriptionsPage /></RequireAdminCap>} />
             <Route path="invoices" element={<RequireAdminCap cap="read"><AdminInvoicesPage /></RequireAdminCap>} />
+            <Route path="billing-attempts" element={<RequireAdminCap cap="read"><AdminBillingAttemptsPage /></RequireAdminCap>} />
             <Route path="plans" element={<RequireAdminCap cap="settings"><AdminPlansPage /></RequireAdminCap>} />
             <Route path="blog" element={<RequireAdminCap cap="blog"><AdminBlogPage /></RequireAdminCap>} />
             <Route path="referrals" element={<RequireAdminCap cap="read"><AdminReferralsPage /></RequireAdminCap>} />
@@ -145,6 +150,9 @@ export function App() {
             <Route path="clients/:id" element={<BusinessOnlyRoute feature="clients"><ClientDetailPage /></BusinessOnlyRoute>} />
             <Route path="clients/:id/files" element={<BusinessOnlyRoute feature="clients"><ClientFilesPage /></BusinessOnlyRoute>} />
             <Route path="transactions" element={<TransactionsPage />} />
+            <Route path="recurring" element={<RecurringPage />} />
+            <Route path="calendar" element={<CalendarPage />} />
+            <Route path="flow" element={<MoneyFlowPage />} />
             <Route path="wealth" element={<WealthPage />} />
             <Route path="wealth/:id" element={<WealthAccountDetailPage />} />
             <Route path="analytics" element={<AnalyticsPage />} />
