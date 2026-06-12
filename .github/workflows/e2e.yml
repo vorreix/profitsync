@@ -1,0 +1,74 @@
+# End-to-end gate for main.
+#
+# Runs the Playwright smoke suite on every PR TARGETING MAIN (the merge gate)
+# and on demand (workflow_dispatch — usable from dev or any branch). It does
+# NOT run on every dev push: e2e is minutes-long and hits a real database.
+#
+# Required repository secrets:
+#   E2E_VITE_CLERK_PUBLISHABLE_KEY  Clerk DEV instance publishable key (pk_test_…)
+#   E2E_CLERK_SECRET_KEY            Clerk DEV instance secret key (sk_test_…)
+#   E2E_DATABASE_URL                a DEDICATED Neon branch/database for e2e —
+#                                   NEVER production (the suite writes + purges
+#                                   namespaced rows and runs migrations)
+#
+# The job applies migrations first, so the e2e database tracks the PR's schema.
+# No untrusted event data (titles/bodies/branch names) is interpolated into run
+# steps — only repository secrets and fixed strings.
+name: E2E
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  # One e2e run at a time — the suite uses a shared database + a shared test user.
+  group: e2e
+  cancel-in-progress: false
+
+jobs:
+  e2e:
+    name: playwright smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CI: "true"
+      VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.E2E_VITE_CLERK_PUBLISHABLE_KEY }}
+      CLERK_SECRET_KEY: ${{ secrets.E2E_CLERK_SECRET_KEY }}
+      DATABASE_URL: ${{ secrets.E2E_DATABASE_URL }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Guard — secrets present
+        run: |
+          if [ -z "$DATABASE_URL" ] || [ -z "$CLERK_SECRET_KEY" ]; then
+            echo "::error::E2E secrets are not configured (E2E_DATABASE_URL / E2E_CLERK_SECRET_KEY / E2E_VITE_CLERK_PUBLISHABLE_KEY)."
+            exit 1
+          fi
+
+      - name: Apply migrations to the e2e database
+        run: npm run db:migrate
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run e2e suite
+        run: npx playwright test
+
+      - name: Upload report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7

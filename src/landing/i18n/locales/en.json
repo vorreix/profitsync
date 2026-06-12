@@ -30,7 +30,8 @@
     "getStarted": "Get started",
     "goToDashboard": "Go to dashboard",
     "openMenu": "Open menu",
-    "closeMenu": "Close menu"
+    "closeMenu": "Close menu",
+    "security": "Security"
   },
   "theme": {
     "toLight": "Switch to light mode",
@@ -165,6 +166,40 @@
         "desc": "Invite your team with clear, role-based access from day one."
       }
     ]
+  },
+  "security": {
+    "badge": "Security & privacy",
+    "title": "Your money data, locked down",
+    "subtitle": "ProfitSync is built privacy-first: strong encryption, strict isolation, and a simple promise — your financial data belongs to you and no one else.",
+    "items": [
+      {
+        "title": "Encrypted everywhere",
+        "desc": "Every connection is protected with TLS, and your data is encrypted at rest in the database. Nothing travels or sleeps in plain text."
+      },
+      {
+        "title": "We never see your card",
+        "desc": "Payments run through a PCI DSS compliant payment provider acting as Merchant of Record. Card numbers never touch our servers — ever."
+      },
+      {
+        "title": "Your workspace is isolated",
+        "desc": "Every client, transaction and document belongs to your organization alone, with role-based access controlling what each team member can see and do."
+      },
+      {
+        "title": "Sign-in you can trust",
+        "desc": "Authentication is handled by enterprise-grade infrastructure with multi-factor authentication support and modern session security."
+      },
+      {
+        "title": "Never sold, never shared",
+        "desc": "Your financial data is not for sale. We don't sell it, rent it, or use it for advertising — it exists to power your dashboard, nothing else."
+      },
+      {
+        "title": "Mistake-proof deletion",
+        "desc": "Deleted records go to a trash you control: restore them in one click, or purge them permanently when you're sure. You stay in charge."
+      }
+    ],
+    "legalLead": "The fine print, in plain language:",
+    "privacyLink": "Privacy Policy",
+    "termsLink": "Terms of Service"
   },
   "pricing": {
     "eyebrow": "Pricing",

@@ -12,6 +12,12 @@ type OrgContextValue = {
   loading: boolean
   switchOrg: (id: string) => Promise<void>
   refresh: () => Promise<void>
+  /**
+   * Push a freshly-saved profile into the shared context so dependent surfaces
+   * (the sidebar/menu avatar, greeting…) update in place — no refetch, no
+   * skeleton. Call after a successful /api/profile PATCH.
+   */
+  updateProfile: (profile: UserProfile) => void
 }
 
 const OrgContext = createContext<OrgContextValue>({
@@ -22,6 +28,7 @@ const OrgContext = createContext<OrgContextValue>({
   loading: true,
   switchOrg: async () => {},
   refresh: async () => {},
+  updateProfile: () => {},
 })
 
 export function OrgProvider({ children }: { children: ReactNode }) {
@@ -109,7 +116,7 @@ export function OrgProvider({ children }: { children: ReactNode }) {
   const needsOnboarding = !!profile && !profile.onboarded_at
 
   return (
-    <OrgContext.Provider value={{ orgs, activeOrg, profile, needsOnboarding, loading, switchOrg, refresh }}>
+    <OrgContext.Provider value={{ orgs, activeOrg, profile, needsOnboarding, loading, switchOrg, refresh, updateProfile: setProfile }}>
       {children}
     </OrgContext.Provider>
   )

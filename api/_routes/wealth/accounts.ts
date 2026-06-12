@@ -4,9 +4,11 @@ import { db, serialize } from "../../../src/lib/db/index.js"
 import { transactions, wealthAccounts } from "../../../src/lib/db/schema.js"
 import { canWrite, ensureDefaultClient, requireAuth } from "../../_lib/auth.js"
 import { logAudit } from "../../_lib/audit.js"
-import { type BankDetailInput, pickBankDetails, resolveLogoColumns } from "../../_lib/bank-brand.js"
+import { type BankDetailInput, fetchLogoData, pickBankDetails, resolveLogoColumns } from "../../_lib/bank-brand.js"
 import { amountExceedsLimit } from "../../../src/lib/money.js"
+import { logoDataUrl } from "../../../src/lib/logo-data.js"
 import { checkBankAccountQuota } from "../../_lib/quota.js"
+import { materializeDueRecurring } from "../../_lib/recurring-materialize.js"
 
 // "Cash in Hand" is the default account every workspace always has. We lazily
 // provision it on first read so existing orgs (created before wealth tracking)
@@ -86,6 +88,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method === "GET") {
     await ensureCashAccount(orgId, userId)
+    // Due recurring occurrences must hit balances before the cards render.
+    await materializeDueRecurring(orgId)
     const rows = await db
       .select({
         id: wealthAccounts.id,
@@ -96,10 +100,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         openingBalance: wealthAccounts.openingBalance,
         currentBalance: wealthAccounts.currentBalance,
         icon: wealthAccounts.icon,
-        // Small brand/detail fields for the cards + detail page. logo_data
-        // (base64) is intentionally NOT selected to keep list payloads small.
+        // Brand/detail fields for the cards + detail page. logo_data (base64) is
+        // selected so the response can carry a durable `logo_src` data URL — the
+        // hotlinked logo_url expires, the stored copy doesn't. The raw column is
+        // stripped from the JSON below.
         brandDomain: wealthAccounts.brandDomain,
         logoUrl: wealthAccounts.logoUrl,
+        logoData: wealthAccounts.logoData,
         country: wealthAccounts.country,
         accountNumber: wealthAccounts.accountNumber,
         routingNumber: wealthAccounts.routingNumber,
@@ -108,6 +115,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         location: wealthAccounts.location,
         note: wealthAccounts.note,
         position: wealthAccounts.position,
+        isDefault: wealthAccounts.isDefault,
         archivedAt: wealthAccounts.archivedAt,
         createdAt: wealthAccounts.createdAt,
         updatedAt: wealthAccounts.updatedAt,
@@ -127,7 +135,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         asc(wealthAccounts.createdAt),
       )
 
-    return res.json(rows.map(serialize))
+    // Lazy heal: accounts whose logo bytes were never captured (fetch failed at
+    // create time, or rows predating logo_data) get re-fetched here — bounded to
+    // 3 per request and run in parallel so the list stays fast. Failures are
+    // silent; the next GET simply retries.
+    const missing = rows.filter((r) => !r.archivedAt && !r.logoData && (r.brandDomain || r.logoUrl)).slice(0, 3)
+    if (missing.length) {
+      await Promise.all(
+        missing.map(async (r) => {
+          const got = await fetchLogoData({ logoUrl: r.logoUrl || undefined, domain: r.brandDomain || undefined }).catch(() => null)
+          if (!got) return
+          r.logoData = got.logo_data
+          r.logoUrl = got.logo_url
+          await db
+            .update(wealthAccounts)
+            .set({ logoData: got.logo_data, logoUrl: got.logo_url, updatedAt: new Date() })
+            .where(eq(wealthAccounts.id, r.id))
+        }),
+      )
+    }
+
+    return res.json(rows.map(({ logoData, ...rest }) => serialize({ ...rest, logoSrc: logoDataUrl(logoData) })))
   }
 
   if (req.method === "POST") {
@@ -203,8 +231,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     await logAudit({ orgId, entityType: "wealth_account", entityId: row.id, action: "create", actorId: userId })
-    const { logoData: _logoData, ...safe } = row
-    return res.status(201).json(serialize(safe))
+    const { logoData, ...safe } = row
+    return res.status(201).json(serialize({ ...safe, logoSrc: logoDataUrl(logoData) }))
   }
 
   return res.status(405).json({ error: "Method not allowed" })

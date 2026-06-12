@@ -36,3 +36,8 @@ api/_ssr/index-template.html
 .mcp.json
 
 task*.png
+
+# Playwright e2e artifacts
+/playwright-report
+/test-results
+/e2e/.auth

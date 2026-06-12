@@ -6,6 +6,7 @@ import { verifyWebhookSignature, type DodoEnv, type DodoScheduledChange } from "
 import { resolveScheduledChange } from "../_lib/billing-sync.js"
 import { invoiceStatusForPayment } from "../_lib/invoice-map.js"
 import { creditReferralOnPaid } from "../_lib/referral.js"
+import { markAttemptByRef } from "../_lib/billing-attempts.js"
 
 export const config = {
   api: {
@@ -133,6 +134,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       await db.update(subscriptions).set(updates).where(eq(subscriptions.id, sub.id))
     }
+
+    // Attempt log: a now-active subscription completes its checkout attempt
+    // (linked via metadata.attempt_id, falling back to the Dodo sub id).
+    if (statusForEvent(event) === "active") {
+      await markAttemptByRef(
+        { attemptId: metadata.attempt_id, dodoSubscriptionId: subId, orgId },
+        { status: "completed" },
+      )
+    }
   }
 
   // ── Payment succeeded → record an invoice (best-effort) ───────────────────
@@ -174,6 +184,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         // Credit a pending referral for this org's owner (idempotent: only a
         // signed_up referral becomes paid, so renewals / retries don't re-credit).
         await creditReferralOnPaid(sub.organizationId, (minorAmount ?? 0) / 100, currency)
+        // Attempt log: a successful payment completes the checkout attempt.
+        await markAttemptByRef(
+          { attemptId: (data.metadata as Record<string, string> | undefined)?.attempt_id, dodoSubscriptionId: subId, orgId: sub.organizationId },
+          { status: "completed", dodoPaymentId: paymentId },
+        )
       }
     } catch {
       // Non-fatal: invoice bookkeeping failure must not 500 the webhook.
@@ -225,6 +240,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             .set({ status: "past_due", updatedAt: new Date() })
             .where(eq(subscriptions.id, sub.id))
         }
+        // Attempt log: record the failure + the raw payload for admin forensics.
+        await markAttemptByRef(
+          { attemptId: (data.metadata as Record<string, string> | undefined)?.attempt_id, dodoSubscriptionId: subId, orgId: sub.organizationId },
+          {
+            status: "failed",
+            dodoPaymentId: paymentId,
+            providerErrorMessage: String(data.error_message ?? data.failure_reason ?? data.error_code ?? "payment.failed"),
+            webhookErrorDetails: data,
+          },
+        )
       }
     } catch {
       // Non-fatal: invoice bookkeeping failure must not 500 the webhook.
