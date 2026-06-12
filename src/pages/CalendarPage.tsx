@@ -64,6 +64,22 @@ export function CalendarPage() {
   const [inspect, setInspect] = useState<{ from: string; to: string; label: string } | null>(null)
   const [inspectTx, setInspectTx] = useState<Transaction[] | null>(null)
 
+  // Money card for the inspected range, summed from the already-loaded per-day
+  // aggregates — exact even when the transaction list below caps at 50 rows.
+  const inspectSummary = useMemo(() => {
+    if (!inspect || !data) return null
+    let incoming = 0
+    let outgoing = 0
+    let count = 0
+    for (const d of data.days) {
+      if (d.date < inspect.from || d.date > inspect.to) continue
+      incoming += d.incoming
+      outgoing += d.outgoing
+      count += d.count
+    }
+    return { incoming, outgoing, count }
+  }, [inspect, data])
+
   const todayIso = iso(new Date())
 
   // The fetched range always covers the visible grid (incl. leading/trailing
@@ -377,6 +393,27 @@ export function CalendarPage() {
           <DialogHeader className="shrink-0 border-b px-5 pb-3 pt-5">
             <DialogTitle className="text-base">{inspect?.label}</DialogTitle>
           </DialogHeader>
+          {/* Period money card — summed from the calendar aggregates (NOT the
+              listed rows, which cap at 50), so it always matches the grid. */}
+          {inspectSummary && inspectSummary.count > 0 && (
+            <div className="grid shrink-0 grid-cols-2 gap-1.5 border-b bg-muted/30 p-3 sm:grid-cols-4">
+              {[
+                { label: t("calendar.incoming"), value: formatMoney(inspectSummary.incoming, currency), cls: "text-emerald-600 dark:text-emerald-400" },
+                { label: t("calendar.outgoing"), value: formatMoney(inspectSummary.outgoing, currency), cls: "text-red-600 dark:text-red-400" },
+                {
+                  label: t("calendar.profit"),
+                  value: formatMoney(inspectSummary.incoming - inspectSummary.outgoing, currency),
+                  cls: inspectSummary.incoming - inspectSummary.outgoing >= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-red-700 dark:text-red-300",
+                },
+                { label: t("calendar.transactions"), value: String(inspectSummary.count), cls: "" },
+              ].map((s) => (
+                <div key={s.label} className="min-w-0 rounded-lg border bg-card px-2 py-1.5">
+                  <p className="truncate text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{s.label}</p>
+                  <p className={cn("truncate text-sm font-bold tabular-nums", s.cls)} title={s.value}>{s.value}</p>
+                </div>
+              ))}
+            </div>
+          )}
           <div className="min-h-0 flex-1 overflow-y-auto scrollbar-thin p-3">
             {inspectTx === null ? (
               <div className="space-y-2">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-12 w-full rounded-lg" />)}</div>

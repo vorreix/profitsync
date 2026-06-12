@@ -51,6 +51,7 @@ import {
   ChevronDown,
   ChevronRight,
   GripVertical,
+  Network,
   Loader as Loader2,
   Search,
   SlidersHorizontal,
@@ -128,6 +129,7 @@ const CARD_SPANS: Record<DashboardCardId, string> = {
   kpis: "lg:col-span-5",
   budget: "lg:col-span-5",
   wealth: "lg:col-span-5",
+  flow: "lg:col-span-5",
   chart: "lg:col-span-3",
   breakdown: "lg:col-span-2",
   latest: "lg:col-span-5",
@@ -136,6 +138,7 @@ const CARD_LABEL_KEYS: Record<DashboardCardId, string> = {
   kpis: "dashboard.cardKpis",
   budget: "dashboard.cardBudget",
   wealth: "dashboard.cardWealth",
+  flow: "flow.card",
   chart: "dashboard.cardChart",
   breakdown: "dashboard.cardBreakdown",
   latest: "dashboard.cardLatest",
@@ -776,6 +779,7 @@ export function Dashboard() {
     setUndoStack([])
     setRedoStack([])
     setEditMode(false)
+    editExitAtRef.current = Date.now()
   }
   async function saveLayout() {
     setSavingLayout(true)
@@ -796,7 +800,10 @@ export function Dashboard() {
       setEditMode(false)
       setUndoStack([])
       setRedoStack([])
-      toast.success(t("dashboard.layoutSaved"))
+      editExitAtRef.current = Date.now()
+      // Short-lived: a confirmation, not information — and even with pan-y the
+      // toast sits where mobile thumbs scroll, so get out of the way quickly.
+      toast.success(t("dashboard.layoutSaved"), { duration: 2000 })
     } catch {
       toast.error(t("dashboard.layoutSaveFailed"))
     } finally {
@@ -875,9 +882,14 @@ export function Dashboard() {
   }
 
   // Mobile entry: press-and-hold any card (500ms; a >12px move cancels — that's
-  // a scroll, not a hold).
+  // a scroll, not a hold). Guards against the "broken after save" feel:
+  // a cool-down right after leaving edit mode (a thumb parked to scroll must
+  // not bounce the user straight back in), and any page scroll cancels the
+  // pending hold (slow drags can stay under the 12px threshold).
   const pressTimer = useRef<number | null>(null)
   const pressStart = useRef<{ x: number; y: number } | null>(null)
+  const editExitAtRef = useRef(0)
+  const HOLD_COOLDOWN_MS = 1200
   function clearPress() {
     if (pressTimer.current) window.clearTimeout(pressTimer.current)
     pressTimer.current = null
@@ -885,6 +897,7 @@ export function Dashboard() {
   }
   function onCardsTouchStart(e: React.TouchEvent) {
     if (editMode) return
+    if (Date.now() - editExitAtRef.current < HOLD_COOLDOWN_MS) return
     const t0 = e.touches[0]
     pressStart.current = { x: t0.clientX, y: t0.clientY }
     pressTimer.current = window.setTimeout(() => {
@@ -897,6 +910,13 @@ export function Dashboard() {
     const t0 = e.touches[0]
     if (Math.hypot(t0.clientX - pressStart.current.x, t0.clientY - pressStart.current.y) > 12) clearPress()
   }
+  useEffect(() => {
+    // Capture-phase so inner scroll containers cancel the hold too. clearPress
+    // only touches refs, so the first-render closure stays valid.
+    const cancel = () => clearPress()
+    window.addEventListener("scroll", cancel, { passive: true, capture: true })
+    return () => window.removeEventListener("scroll", cancel, { capture: true })
+  }, [])
 
   // Refetch never re-shows the skeleton (loading only starts true) — so reloads on
   // the closed-toggle and the global refresh signal update figures in place.
@@ -1092,6 +1112,42 @@ export function Dashboard() {
     ),
     budget: isPersonal ? <PersonalBudgetCard /> : ownClient ? <BusinessBudgetCard clientId={ownClient.id} clientName={ownClient.name} /> : null,
     wealth: <WealthOverview accounts={wealthAccounts} loading={loading} currency={currency} />,
+    // Lightweight teaser (no React Flow on the dashboard — keeps it fast): a
+    // tiny connected revenue→net→expenses preview that opens the full map.
+    flow: (
+      <Card className="min-w-0">
+        <CardHeader className="flex flex-row items-center justify-between gap-2">
+          <CardTitle className="flex items-center gap-1.5 text-sm font-semibold">
+            <Network className="size-4 text-primary" /> {t("flow.card")}
+          </CardTitle>
+          <Button variant="ghost" size="sm" className="text-xs shrink-0" onClick={() => navigate("/flow")}>
+            {t("flow.cardCta")} <ArrowRight className="size-3 ml-1" />
+          </Button>
+        </CardHeader>
+        <CardContent>
+          <button
+            type="button"
+            onClick={() => navigate("/flow")}
+            className="flex w-full items-center justify-between gap-2 rounded-xl border bg-muted/20 p-3 text-left transition-colors hover:border-primary/40"
+          >
+            <span className="rounded-lg border bg-card px-2.5 py-1.5 text-center">
+              <span className="block text-[10px] uppercase tracking-wide text-muted-foreground">{t("flow.revenue")}</span>
+              <span className="block text-sm font-bold tabular-nums text-emerald-600 dark:text-emerald-400">{formatCurrency(displayIncoming, currency)}</span>
+            </span>
+            <ArrowRight className="size-4 shrink-0 text-muted-foreground rtl:rotate-180" />
+            <span className="rounded-lg border-2 border-primary/40 bg-card px-2.5 py-1.5 text-center">
+              <span className="block text-[10px] uppercase tracking-wide text-muted-foreground">{t("flow.net")}</span>
+              <span className={`block text-sm font-bold tabular-nums ${netProfit >= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-destructive"}`}>{formatCurrency(netProfit, currency)}</span>
+            </span>
+            <ArrowRight className="size-4 shrink-0 text-muted-foreground rtl:rotate-180" />
+            <span className="rounded-lg border bg-card px-2.5 py-1.5 text-center">
+              <span className="block text-[10px] uppercase tracking-wide text-muted-foreground">{t("flow.expenses")}</span>
+              <span className="block text-sm font-bold tabular-nums text-red-600 dark:text-red-400">{formatCurrency(displayOutgoing, currency)}</span>
+            </span>
+          </button>
+        </CardContent>
+      </Card>
+    ),
     chart: (
         <Card className="min-w-0 h-full">
           <CardHeader className="flex flex-row items-center justify-between gap-2">

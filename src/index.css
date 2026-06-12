@@ -192,6 +192,29 @@
   .ios-tap {
     -webkit-tap-highlight-color: transparent;
   }
+  /* Money-flow canvas (/flow): glide nodes to new positions on expand/collapse
+     — compositor-only (transform), so no reflow. The actively-dragged node and
+     reduced-motion users get NO transition (drag must track the finger 1:1). */
+  .ps-flow .react-flow__node {
+    transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .ps-flow .react-flow__node.dragging,
+  .ps-flow .react-flow__node:active {
+    transition: none;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ps-flow .react-flow__node {
+      transition: none;
+    }
+  }
+  /* Sonner sets touch-action:none on toasts for swipe-to-dismiss — but a
+     bottom toast spans ~92% of a phone's width exactly where the thumb starts
+     scrolling, so for its whole duration the page can't be panned from there.
+     pan-y hands vertical pans back to the browser (the page scrolls THROUGH
+     the toast) while horizontal swipe-to-dismiss keeps working. */
+  [data-sonner-toast] {
+    touch-action: pan-y !important;
+  }
   .pressable {
     transition: transform 120ms ease-out, opacity 120ms ease-out;
   }
