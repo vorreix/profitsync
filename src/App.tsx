@@ -21,6 +21,7 @@ const ClientFilesPage = lazy(() => import("@/pages/ClientFilesPage").then((m) =>
 const TransactionsPage = lazy(() => import("@/pages/TransactionsPage").then((m) => ({ default: m.TransactionsPage })))
 const RecurringPage = lazy(() => import("@/pages/RecurringPage").then((m) => ({ default: m.RecurringPage })))
 const CalendarPage = lazy(() => import("@/pages/CalendarPage").then((m) => ({ default: m.CalendarPage })))
+const MoneyFlowPage = lazy(() => import("@/pages/MoneyFlowPage").then((m) => ({ default: m.MoneyFlowPage })))
 const WealthPage = lazy(() => import("@/pages/WealthPage").then((m) => ({ default: m.WealthPage })))
 const WealthAccountDetailPage = lazy(() => import("@/pages/WealthAccountDetailPage").then((m) => ({ default: m.WealthAccountDetailPage })))
 const CategoriesPage = lazy(() => import("@/pages/CategoriesPage").then((m) => ({ default: m.CategoriesPage })))
@@ -151,6 +152,7 @@ export function App() {
             <Route path="transactions" element={<TransactionsPage />} />
             <Route path="recurring" element={<RecurringPage />} />
             <Route path="calendar" element={<CalendarPage />} />
+            <Route path="flow" element={<MoneyFlowPage />} />
             <Route path="wealth" element={<WealthPage />} />
             <Route path="wealth/:id" element={<WealthAccountDetailPage />} />
             <Route path="analytics" element={<AnalyticsPage />} />
