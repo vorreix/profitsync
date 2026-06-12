@@ -211,3 +211,35 @@ layout · 0041 transactions hot-path indexes.
 - **Checkout shows the wrong currency** → check the org's currency
   (Organizations → edit) and remember the India-always-INR rule; the snapshot
   on the subscription row shows what was actually sent.
+
+## 13. Admin roles & permissions (`ux4-19`)
+
+The `/admin` console now has real RBAC. **Custom roles** (Admins page → Roles,
+super admins only) combine five grantable permissions — view data, edit data,
+blog, settings, manage admins — and can be assigned like the built-in roles.
+Three powers are **super-admin-exclusive and can never be granted**: seeing an
+organization's Transactions tab, managing super admins, and managing roles.
+The visibility rule is "shouldn't even see it exists": non-supers get no
+Transactions tab (the API rejects direct calls too), never see `super_admin`
+in a role picker, and super-admin rows are redacted from their admins list.
+Guard rails: only supers can grant/change/remove supers, the last super admin
+can't be demoted or deleted, role names that collide with built-ins are
+rejected, and deleting a role still assigned to anyone is blocked. Enforcement
+is server-side everywhere — hiding is UX, the 403 is the security.
+
+## 15. Money flow mind-map (`ux4-22`)
+
+A connected-node "mind map" (powered by React Flow) of where money comes from
+and goes — **Money flow** in the nav, on `/flow`. A root workspace node
+(revenue / expenses / net / balance) branches to **group nodes** by a
+switchable dimension: **Accounts** (each shows opening → current balance, the
+before/after), **Clients**, or **Categories**. Each group expands to show its
+recent transactions (who/when/amount, recurring marker) with a "+N more" deep
+link to the precise list; the root can collapse everything. Filter by date
+range, categories, clients and accounts. Pan/pinch-zoom works on touch, and the
+canvas auto-fits whenever the data changes. Personal workspaces see it as-is
+(no Clients lens); business workspaces see the whole org, and each org on the
+Organizations page has a **3-dot menu → Money flow** (which switches to that
+org, then opens the map). The dashboard carries a lightweight teaser card
+(no heavy canvas there) that opens the full map. Backed by `GET /api/flow`
+(exact SQL aggregates; recurring materialized first; org-scoped).

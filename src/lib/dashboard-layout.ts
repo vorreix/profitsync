@@ -5,7 +5,7 @@
 // fast-path; ALWAYS normalized against the registry on read so unknown ids
 // (from older/newer app versions) drop out and new cards appear at the end.
 
-export const DASHBOARD_CARD_IDS = ["kpis", "budget", "wealth", "chart", "breakdown", "latest"] as const
+export const DASHBOARD_CARD_IDS = ["kpis", "budget", "wealth", "flow", "chart", "breakdown", "latest"] as const
 export type DashboardCardId = (typeof DASHBOARD_CARD_IDS)[number]
 
 export type DashboardContext = "personal" | "business"
