@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 import path from "path"
 import { copyFileSync, existsSync, mkdirSync } from "node:fs"
 import { config as loadDotenv } from "dotenv"
@@ -102,6 +103,11 @@ function ssrTemplatePlugin() {
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [localApiPlugin(), react(), tailwindcss(), buildPwaPlugin(), ssrTemplatePlugin()],
+  // Vitest: the e2e/ directory is Playwright's (its *.spec.ts files import
+  // @playwright/test and must never run under the unit-test gate).
+  test: {
+    exclude: ["**/node_modules/**", "**/dist/**", "e2e/**"],
+  },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),

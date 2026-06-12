@@ -62,13 +62,26 @@ export function sniffImageMime(base64: string): string | null {
 }
 
 /**
+ * Mimes safe to emit as `data:` URLs into `<img src>`. SVG is deliberately
+ * EXCLUDED: it's a script-capable document format, and even though modern
+ * browsers sandbox SVG-in-img, defense-in-depth says never round-trip
+ * third-party SVG bytes back to the DOM.
+ */
+const RENDERABLE_MIMES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp", "image/x-icon", "image/avif"])
+
+/** Inline cap: ~128KB of raw bytes (≈171K base64 chars). Bigger stored logos
+ * fall back to the remote URL instead of bloating every list response. */
+const MAX_INLINE_BASE64_CHARS = 171_000
+
+/**
  * Build a `data:<mime>;base64,…` URL from stored logo bytes, or null when there
- * is nothing stored / the bytes aren't a recognizable image.
+ * is nothing stored / the bytes aren't a renderable raster image / the payload
+ * is too heavy to inline into list responses.
  */
 export function logoDataUrl(logoData: string | null | undefined): string | null {
   const data = (logoData ?? "").trim()
-  if (!data) return null
+  if (!data || data.length > MAX_INLINE_BASE64_CHARS) return null
   const mime = sniffImageMime(data)
-  if (!mime) return null
+  if (!mime || !RENDERABLE_MIMES.has(mime)) return null
   return `data:${mime};base64,${data}`
 }
