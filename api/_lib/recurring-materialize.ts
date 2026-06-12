@@ -106,7 +106,9 @@ export async function materializeDueRecurring(orgId: string): Promise<Materializ
               await db
                 .update(wealthAccounts)
                 .set({
-                  currentBalance: sql`${wealthAccounts.currentBalance} + ${String(delta)}::numeric`,
+                  // toFixed(2) — the delta derives from a 2-decimal amount; never let float
+                  // noise (e.g. "0.30000000000000004") reach the numeric cast.
+                  currentBalance: sql`${wealthAccounts.currentBalance} + ${delta.toFixed(2)}::numeric`,
                   updatedAt: new Date(),
                 })
                 .where(eq(wealthAccounts.id, rule.wealthAccountId))

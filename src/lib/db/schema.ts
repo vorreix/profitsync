@@ -208,6 +208,11 @@ export const transactions = pgTable("transactions", {
 }, (table) => ({
   groupIdx: index("transactions_group_idx").on(table.groupId),
   recurringOnceIdx: uniqueIndex("transactions_recurring_once_idx").on(table.recurringRuleId, table.recurringDueDate),
+  // Hot predicates at scale: per-client lists + quota counts, per-account
+  // ledgers, and date-range scans (calendar / from-to filters).
+  clientIdx: index("transactions_client_idx").on(table.clientId),
+  accountIdx: index("transactions_account_idx").on(table.wealthAccountId),
+  dateIdx: index("transactions_date_idx").on(table.date),
 }))
 
 // ── Recurring payments ───────────────────────────────────────────────────────
@@ -368,6 +373,10 @@ export const userProfiles = pgTable("user_profiles", {
   // before upload, server re-validates). Exposed as an `avatar_src` data URL.
   avatarData: text("avatar_data").notNull().default(""),
   avatarMime: text("avatar_mime").notNull().default(""),
+  // Custom dashboard arrangement: { version, contexts: { personal, business } },
+  // each context = { order: cardId[], hidden: cardId[] }. Normalized against
+  // the card registry on read (src/lib/dashboard-layout.ts). {} = defaults.
+  dashboardLayout: jsonb("dashboard_layout").notNull().default({}),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 })
@@ -439,8 +448,26 @@ export const appAdmins = pgTable("app_admins", {
   userId: text("user_id").primaryKey(),
   // Platform-admin role → capability set (see src/lib/admin-roles.ts). Defaults
   // to super_admin so every pre-existing admin keeps full access on migration.
-  role: text("role").notNull().default("super_admin"), // super_admin | editor | viewer | blog_writer
+  // Either a SYSTEM role (super_admin | editor | viewer | blog_writer) or the
+  // `key` of a CUSTOM role in admin_roles below.
+  role: text("role").notNull().default("super_admin"),
   createdAt: timestamp("created_at").defaultNow(),
+})
+
+// ── Custom admin roles ───────────────────────────────────────────────────────
+// Super-admin-defined roles for the /admin console. `capabilities` may only
+// hold GRANTABLE_ADMIN_CAPS (validated on write AND re-filtered on read — the
+// super-only capabilities org_transactions / manage_super_admins / manage_roles
+// can never live here). Deleting a role in use by an app_admins row is blocked.
+export const adminRoles = pgTable("admin_roles", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  key: text("key").notNull().unique(), // slug; must not collide with system role names
+  name: text("name").notNull(),
+  description: text("description").notNull().default(""),
+  capabilities: jsonb("capabilities").notNull().default([]),
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
 })
 
 export const plans = pgTable("plans", {

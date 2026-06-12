@@ -244,6 +244,8 @@ export type UserProfile = {
   phone?: string
   // Profile picture as a durable data: URL (built server-side from stored bytes).
   avatar_src?: string | null
+  // Custom dashboard arrangement (see src/lib/dashboard-layout.ts).
+  dashboard_layout?: unknown
   created_at: string
   updated_at: string
 }

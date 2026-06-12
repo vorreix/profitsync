@@ -29,7 +29,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const [updated] = await db
         .update(recurringRules)
         .set({ active: body.active, lastError: "", updatedBy: userId, updatedAt: new Date() })
-        .where(eq(recurringRules.id, id))
+        // Defense-in-depth: re-scope by org even though the load above 404s
+        // cross-org ids (matches every other [id] route's mutation pattern).
+        .where(and(eq(recurringRules.id, id), eq(recurringRules.organizationId, orgId)))
         .returning()
       if (body.active) await materializeDueRecurring(orgId)
       const [fresh] = await db.select().from(recurringRules).where(eq(recurringRules.id, id))
@@ -81,7 +83,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         updatedBy: userId,
         updatedAt: new Date(),
       })
-      .where(eq(recurringRules.id, id))
+      .where(and(eq(recurringRules.id, id), eq(recurringRules.organizationId, orgId)))
       .returning()
 
     await materializeDueRecurring(orgId)
@@ -94,7 +96,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Already-created transactions are kept (their recurring_rule_id keeps the
     // history; the FK is plain uuid, not enforced, so rows simply stop matching
     // a live rule and the icon falls back gracefully).
-    await db.delete(recurringRules).where(eq(recurringRules.id, id))
+    await db.delete(recurringRules).where(and(eq(recurringRules.id, id), eq(recurringRules.organizationId, orgId)))
     return res.status(204).end()
   }
 
