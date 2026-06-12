@@ -7,6 +7,7 @@ import { checkTransactionQuota } from "../_lib/quota.js"
 import { logAudit } from "../_lib/audit.js"
 import { balanceDelta } from "../../src/lib/wealth-ledger.js"
 import { amountExceedsLimit } from "../../src/lib/money.js"
+import { materializeDueRecurring } from "../_lib/recurring-materialize.js"
 
 const PAGE_SIZE = 20
 
@@ -41,6 +42,7 @@ const txFields = {
   category: transactions.category,
   date: transactions.date,
   isSystem: transactions.isSystem,
+  recurringRuleId: transactions.recurringRuleId,
   createdAt: transactions.createdAt,
   updatedAt: transactions.updatedAt,
   // Drives the list paperclip badge.
@@ -77,6 +79,7 @@ const groupedFields = {
   // non-grouped path (a raw max(date) comes back as a tz-shifted timestamp).
   date: sql<string>`max(${transactions.date})::text`,
   isSystem: sql<boolean>`bool_or(${transactions.isSystem})`,
+  recurringRuleId: sql<string | null>`max(${transactions.recurringRuleId}::text)`,
   createdAt: sql<string>`max(${transactions.createdAt})`,
   updatedAt: sql<string>`max(${transactions.updatedAt})`,
   attachmentCount: sql<number>`coalesce(sum((select count(*) from transaction_attachments where transaction_id = ${transactions.id})), 0)::int`,
@@ -127,6 +130,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { userId, orgId, role } = ctx
 
   if (req.method === "GET") {
+    // Materialize any due recurring occurrences BEFORE listing, so auto-created
+    // rows and their balance effects are visible on first load (lazy, indexed
+    // short-circuit when nothing is due — no cron needed).
+    await materializeDueRecurring(orgId)
+
     const { clientId, wealthAccountId, groupId, search, type, page, sort, limit, category, from, to, includeClosed } = req.query as {
       clientId?: string; wealthAccountId?: string; groupId?: string; search?: string; type?: string; page?: string; sort?: string; limit?: string; category?: string; from?: string; to?: string; includeClosed?: string
     }

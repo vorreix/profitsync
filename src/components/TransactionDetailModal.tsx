@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { useAuth } from "@clerk/clerk-react"
-import { ArrowDownRight, ArrowUpRight, Paperclip, Pencil } from "lucide-react"
+import { ArrowDownRight, ArrowUpRight, Paperclip, Pencil, Repeat } from "lucide-react"
 import type { Transaction, TransactionAttachment } from "@/lib/types"
 import { apiGet } from "@/lib/api"
 import { accountDisplayName } from "@/lib/wealth"
@@ -81,9 +81,16 @@ export function TransactionDetailModal({
                 </DialogTitle>
               </DialogHeader>
               <div className="space-y-3">
-                <p className={`text-2xl font-bold tabular-nums ${tx.type === "incoming" ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
-                  {tx.type === "incoming" ? "+" : "−"}{fmt(Number(tx.amount))}
-                </p>
+                <div className="flex items-center gap-2">
+                  <p className={`text-2xl font-bold tabular-nums ${tx.type === "incoming" ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
+                    {tx.type === "incoming" ? "+" : "−"}{fmt(Number(tx.amount))}
+                  </p>
+                  {tx.recurring_rule_id && (
+                    <Badge variant="outline" className="gap-1 border-violet-500/40 bg-violet-500/10 text-violet-700 dark:text-violet-300">
+                      <Repeat className="size-3" /> {t("recurringBadge")}
+                    </Badge>
+                  )}
+                </div>
                 <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
                   <div>
                     <p className="text-xs text-muted-foreground">{t("date")}</p>
