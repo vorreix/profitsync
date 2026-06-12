@@ -4,6 +4,7 @@ import { CURRENCY_LIST } from "../../src/lib/currencies.js"
 import { db, serialize } from "../../src/lib/db/index.js"
 import { organizations, organizationMembers, userProfiles } from "../../src/lib/db/schema.js"
 import { createOrgForUser, getUserId } from "../_lib/auth.js"
+import { imageSrc } from "../_lib/image-upload.js"
 
 const VALID_CURRENCIES = new Set(CURRENCY_LIST.map((c) => c.code))
 
@@ -48,6 +49,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         isPersonal: organizations.isPersonal,
         accountType: organizations.accountType,
         currency: organizations.currency,
+        logoData: organizations.logoData,
+        logoMime: organizations.logoMime,
         createdAt: organizations.createdAt,
         updatedAt: organizations.updatedAt,
         role: organizationMembers.role,
@@ -59,7 +62,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .where(and(eq(organizationMembers.userId, userId), searchFilter ?? undefined))
       .orderBy(asc(organizations.isPersonal), asc(organizations.name))
 
-    return res.json(rows.map(serialize))
+    return res.json(rows.map(({ logoData, logoMime, ...rest }) => serialize({ ...rest, logoSrc: imageSrc(logoData, logoMime) })))
   }
 
   if (req.method === "POST") {

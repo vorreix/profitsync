@@ -42,7 +42,7 @@ export function CategoriesPage() {
   const { activeOrg } = useOrg()
   const canWrite = canWriteRole(activeOrg?.role)
   const canDelete = canDeleteRole(activeOrg?.role)
-  const { categories, loading, refresh } = useCategories()
+  const { categories, loading, refresh, mutateLocal } = useCategories()
 
   const [search, setSearch] = useState("")
   const [typeFilter, setTypeFilter] = useState<"all" | CatType>("all")
@@ -82,11 +82,13 @@ export function CategoriesPage() {
     try {
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
-      await apiPost("/api/categories", token, { name, type: addType })
+      const created = await apiPost<Category>("/api/categories", token, { name, type: addType }, ["/api/categories"])
+      // Insert the returned row in place (dedup in case the server returned an
+      // existing row for a duplicate name) — no full-list refetch.
+      mutateLocal((prev) => [created, ...prev.filter((c) => c.id !== created.id)])
       toast.success(t("categories.created"))
       setAddOpen(false)
       setAddName("")
-      await refresh()
     } catch {
       toast.error(t("categories.createFailed"))
     } finally {
@@ -102,10 +104,10 @@ export function CategoriesPage() {
     try {
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
-      await apiPatch(`/api/categories/${editCat.id}`, token, { name })
+      const updated = await apiPatch<Category>(`/api/categories/${editCat.id}`, token, { name }, ["/api/categories", "/api/transactions"])
+      mutateLocal((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
       toast.success(t("categories.updated"))
       setEditCat(null)
-      await refresh()
     } catch {
       toast.error(t("categories.updateFailed"))
     } finally {
@@ -115,15 +117,19 @@ export function CategoriesPage() {
 
   async function handleDelete() {
     if (!deleteCat) return
+    const cat = deleteCat
+    // Optimistic: close the dialog and drop the row instantly; reconcile with a
+    // silent refetch only on failure.
+    setDeleteCat(null)
+    mutateLocal((prev) => prev.filter((c) => c.id !== cat.id))
     try {
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
-      await apiDelete(`/api/categories/${deleteCat.id}`, token)
+      await apiDelete(`/api/categories/${cat.id}`, token, undefined, ["/api/categories"])
       toast.success(t("categories.deleted"))
-      setDeleteCat(null)
-      await refresh()
     } catch {
       toast.error(t("categories.deleteFailed"))
+      await refresh()
     }
   }
 
