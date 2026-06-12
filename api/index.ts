@@ -26,6 +26,7 @@ import transactionById from "./_routes/transactions/[id].js"
 import transactionAttachments from "./_routes/transactions/[id]/attachments.js"
 import analytics from "./_routes/analytics.js"
 import calendar from "./_routes/calendar.js"
+import flow from "./_routes/flow.js"
 import audit from "./_routes/audit.js"
 import categories from "./_routes/categories.js"
 import categoryById from "./_routes/categories/[id].js"
@@ -119,6 +120,7 @@ const routes: RoutePattern<ApiHandler>[] = [
 
   { segments: ["analytics"], handler: analytics },
   { segments: ["calendar"], handler: calendar },
+  { segments: ["flow"], handler: flow },
   { segments: ["audit"], handler: audit },
   { segments: ["categories"], handler: categories },
   { segments: ["categories", ":id"], handler: categoryById },

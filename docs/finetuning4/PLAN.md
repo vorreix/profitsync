@@ -53,6 +53,10 @@
 | 18 | `feat/ux4-18-calendar-modal-summary` | Calendar drill-down modal: in/out/profit/count card | — | ✅ |
 | 19 | `feat/ux4-19-admin-rbac` | Admin RBAC: custom roles + super-admin-only surfaces | 0042 | ✅ |
 | 20 | `feat/ux4-20-landing-security` | Landing: Security & privacy trust section | — | ✅ |
+| 21 | `feat/ux4-21-navbar-avatar-refresh` | Profile photo updates the navbar/menu avatar live | — | ✅ |
+| 22 | `feat/ux4-22-money-flow` | Money flow mind-map (React Flow) — personal + org, filters, dashboard card | — | ✅ |
+| 23 | `feat/ux4-23-flow-timeline` | Flow: running-balance Timeline mode + interactivity fixes (drag/click/buttons) | — | ✅ |
+| 24 | `feat/ux4-24-flow-polish` | Flow: smooth expand motion + state preserved on back-nav | — | ✅ |
 
 ## ⚠️ Corrections to research findings (re-derived by hand)
 
@@ -500,4 +504,60 @@ pointer section. **Chain complete: 14/14 branches shipped.**
   privacy/terms links. New "Security" navbar anchor. Copy translated across all
   8 landing locales (parity-checked); browser-verified EN look + AR RTL render.
   No invented certifications — every claim is true of the product.
-  **ux4 chain complete — 21 branches, migrations 0035–0042, all pushed.**
+- 2026-06-11 — 21 navbar avatar refresh (user request): uploading/removing a
+  profile photo now updates the sidebar + mobile-menu avatar instantly. Root
+  cause: OrgProvider holds `profile` in its OWN state from boot, so ProfilePage
+  saving its local copy (and clearing the GET cache) never refreshed the
+  context the navbar reads. Fix: OrgProvider exposes `updateProfile`; ProfilePage
+  pushes every successful PATCH (save + avatar set + remove) into it — in place,
+  no refetch. Browser-verified: footer avatar UklGRmo→UklGRh4 on upload (desktop
+  + mobile header), and reverted to initials on remove, both without a reload.
+  Test image cleaned out of the dev account.
+- 2026-06-11 — 22 money flow (user request): a Miro-style mind-map of money
+  movement. NEW dep @xyflow/react (React Flow, MIT, touch-native, lazy chunk —
+  the right tool for a pannable/zoomable node canvas; prod audit clean). New
+  /api/flow endpoint (drizzle aggregates like analytics; materializes recurring
+  first; org-scoped, excludes deleted/closed/transfers). Pure builder
+  src/lib/money-flow.ts (root → group-by-dimension → capped tx leaves + "+N
+  more" deep link; left→right layout) — 7 unit tests. /flow page: switchable
+  Accounts/Clients/Categories grouping (Accounts shows opening→current balance,
+  the user's "before→after"), collapse/expand per group + collapse-all,
+  date-range + multi category/client/account filters (sheet), empty state,
+  re-fit on data change (fixed an off-screen-after-filter bug found in verify).
+  Dashboard gains a lightweight "flow" card (registry id; no React Flow on the
+  dashboard — keeps it fast). Organizations cards get a 3-dot menu
+  consolidating Money flow + Members/Edit/Delete. Nav (Network icon) desktop +
+  mobile; 34 i18n keys × 8 locales + organizations.actions. Browser-verified
+  desktop + 390px (fitView scales the whole map); 228 unit tests + sweeps +
+  e2e green.
+- 2026-06-11 — 23 flow timeline + interactivity (user request): a SECOND
+  representation — a running-balance TIMELINE. /api/flow?mode=timeline&bucket=
+  day|week|month|year returns chronological period buckets with a running
+  cumulative net (before → net → after), ending at the final entity node
+  (totals + live balance). Pure buildTimelineGraph (horizontal chain, leaves
+  expand below each period) + 4 more unit tests. FIXED the interactivity the
+  user flagged: nodes are now DRAGGABLE (useNodesState persists drags between
+  structural rebuilds via a signature key) and SELECTABLE; in-node buttons work
+  (root culprit: React Flow swallows in-node clicks without `nodrag` — my
+  earlier Playwright tests used JS .click() which bypassed the pointer sequence,
+  so I never caught it; verified now with REAL pointer clicks). Leaf nodes click
+  through to /transactions?view=id. Searchable filter multi-selects. View-mode
+  toggle (Map/Timeline) + bucket switch. SQL gotcha fixed: date_trunc bucket
+  must be an inlined literal (whitelisted), not a bind param, or GROUP BY rejects
+  it. Re-fit on resize/rotation. Browser-verified real drag/click/buttons +
+  timeline chain (Day → 6 chained period nodes → final entity) desktop + mobile;
+  232 unit tests + sweeps + e2e green.
+- 2026-06-11 — 24 flow polish (user feedback: jank + no state restore). Used
+  the ui-ux-pro-max + transition-creator skills. Smoothness: expand/collapse no
+  longer re-fits the camera (fitView now keyed to dataVersion = fetches only,
+  not expand); a scoped `.ps-flow .react-flow__node { transition: transform }`
+  glides repositioned siblings (compositor-only, disabled on the dragged node +
+  reduced-motion); leaf/more nodes fade+slide-in staggered (40ms). State
+  preservation: viewMode/bucket/groupBy/filters/expanded/rootCollapsed + dragged
+  node positions + camera viewport all persisted to sessionStorage per org and
+  restored on remount — verified back-from-transaction restores expanded set,
+  drag position AND camera exactly. Dropped onlyRenderVisibleElements (bounded
+  node count; avoids re-animate-on-pan). Browser-verified: viewport unchanged on
+  expand, leaf enter-anim present, reduced-motion → 0s transition + no leaf anim
+  but toggle still works. 232 tests + sweeps + e2e green.
+  **ux4 chain complete — 25 branches, migrations 0035–0042, all pushed.**
