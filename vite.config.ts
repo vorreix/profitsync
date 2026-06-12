@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 import path from "path"
 import { copyFileSync, existsSync, mkdirSync } from "node:fs"
 import { config as loadDotenv } from "dotenv"
@@ -102,6 +103,23 @@ function ssrTemplatePlugin() {
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [localApiPlugin(), react(), tailwindcss(), buildPwaPlugin(), ssrTemplatePlugin()],
+  // Vitest config. Two concerns:
+  //  - `env`: the committed unit suite is DB-FREE (it runs zero queries), but
+  //    some test files import modules that transitively pull in src/lib/db,
+  //    whose top-level `neon(process.env.DATABASE_URL!)` THROWS at import when
+  //    the var is unset. Locally `.env.local` provides it; CI's unit gate does
+  //    not — and shouldn't need a real database. Hand the test worker a harmless
+  //    placeholder so the Neon client can CONSTRUCT (it never connects, since no
+  //    query runs). A real DATABASE_URL always wins.
+  //  - `exclude`: keep Playwright's e2e/*.spec.ts out of the Vitest run.
+  test: {
+    env: {
+      // Not a credential — a syntactically-valid dummy so the Neon client can
+      // construct in tests; it never connects (no queries run). secret-scan:ignore
+      DATABASE_URL: process.env.DATABASE_URL || "postgresql://placeholder:placeholder@127.0.0.1:5432/placeholder", // secret-scan:ignore
+    },
+    exclude: ["**/node_modules/**", "**/dist/**", "e2e/**"],
+  },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),

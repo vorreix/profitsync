@@ -1,8 +1,9 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { asc, eq } from "drizzle-orm"
 import { db, serialize } from "../../../src/lib/db/index.js"
-import { plans, subscriptions } from "../../../src/lib/db/schema.js"
+import { organizations, plans, subscriptions } from "../../../src/lib/db/schema.js"
 import { requireAuth } from "../../_lib/auth.js"
+import { resolveBillingCurrency } from "../../../src/lib/billing-currency.js"
 
 type GeoPricingEntry = {
   currency: string
@@ -21,11 +22,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                   (req.query.country as string | undefined)?.toUpperCase() ||
                   "US"
 
-  // Plans list and the org's current subscription are independent — fetch together.
-  const [allRows, subRows] = await Promise.all([
+  // Plans list, the org's current subscription, and the org's currency are
+  // independent — fetch together.
+  const [allRows, subRows, [org]] = await Promise.all([
     db.select().from(plans).orderBy(asc(plans.key)),
     db.select().from(subscriptions).where(eq(subscriptions.organizationId, ctx.orgId)),
+    db.select({ currency: organizations.currency }).from(organizations).where(eq(organizations.id, ctx.orgId)),
   ])
+
+  // Display the same currency the checkout will charge in (org preference with
+  // the country/India safety net) so the pricing page and Dodo's hosted page
+  // never disagree. See src/lib/billing-currency.ts.
+  const resolved = resolveBillingCurrency(org?.currency, country)
 
   // Surface only the plans relevant to this workspace's account type (plus the
   // shared free tier). Account-type feature gating is enforced separately; this
@@ -36,9 +44,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const enriched = rows.map((p) => {
     const geo = (p.geoPricing as Record<string, GeoPricingEntry>) ?? {}
-    // Display fallback when a country has no explicit entry. Dodo (Merchant of Record)
-    // presents localized currency + tax at checkout regardless of this displayed value.
-    const local = geo[country] ?? geo["IN"]
+    // Pick the geo entry matching the currency the checkout will actually use:
+    // the country's own entry when it matches, else any entry priced in the
+    // resolved currency, else the legacy country/IN fallback. Dodo (Merchant of
+    // Record) computes the final localized price + tax at checkout regardless.
+    const byCountry = geo[country]
+    const local =
+      byCountry && byCountry.currency === resolved.currency
+        ? byCountry
+        : Object.values(geo).find((g) => g?.currency === resolved.currency) ??
+          (resolved.currency === "USD" ? undefined : byCountry ?? geo["IN"])
     return {
       ...serialize(p),
       country,
@@ -66,5 +81,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     plans: enriched,
     currentSubscription: currentSub ? serialize(currentSub) : null,
     detectedCountry: country,
+    // The currency the checkout will charge in (org preference, country-safe).
+    billing_currency: resolved.currency,
+    billing_currency_source: resolved.source,
   })
 }
