@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
-import { Check, ChevronDown, Plus, Split } from "lucide-react"
+import { Check, ChevronDown, Plus, Split, Star } from "lucide-react"
 import type { WealthAccount } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { accountDisplayName, currencySymbol, formatMoney } from "@/lib/wealth"
@@ -78,13 +78,16 @@ export function AccountSelector({
     const s = allocations[0]
     const cashAcc = accounts.find((a) => a.type === "cash")
     if (s && cashAcc && s.account_id !== cashAcc.id) return s.account_id
-    return accounts.find((a) => a.type === "bank")?.id ?? ""
+    // No opening selection → surface the user's default bank in the second slot.
+    return accounts.find((a) => a.type === "bank" && a.is_default)?.id ?? accounts.find((a) => a.type === "bank")?.id ?? ""
   })
 
   const selectedIds = useMemo(() => new Set(allocations.map((a) => a.account_id)), [allocations])
   const isSelected = (id: string) => selectedIds.has(id)
   const amountFor = (id: string) => allocations.find((a) => a.account_id === id)?.amount ?? ""
-  const fallbackId = () => accounts.find((a) => a.type === "cash")?.id ?? accounts[0]?.id ?? ""
+  // Preselect order: the user's chosen default account → Cash → first.
+  const fallbackId = () =>
+    accounts.find((a) => a.is_default)?.id ?? accounts.find((a) => a.type === "cash")?.id ?? accounts[0]?.id ?? ""
 
   const cash = useMemo(() => accounts.find((a) => a.type === "cash"), [accounts])
   const banks = useMemo(() => accounts.filter((a) => a.type === "bank"), [accounts])
@@ -318,11 +321,16 @@ function AccountAvatar({ account, selected }: { account: WealthAccount; selected
   return (
     <span className="relative shrink-0">
       <WealthAccountIcon account={account} className="size-8" />
-      {selected && (
+      {selected ? (
         <span className="absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full bg-primary text-primary-foreground motion-safe:animate-in motion-safe:zoom-in-50 motion-safe:duration-200">
           <Check className="size-2.5" strokeWidth={3} />
         </span>
-      )}
+      ) : account.is_default ? (
+        // The org's default account — preselected for new transactions.
+        <span className="absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full border border-amber-500/40 bg-amber-100 text-amber-600 dark:bg-amber-900/60 dark:text-amber-300">
+          <Star className="size-2.5 fill-current" />
+        </span>
+      ) : null}
     </span>
   )
 }

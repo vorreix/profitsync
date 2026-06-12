@@ -29,6 +29,9 @@ import {
   Gift,
   Landmark,
   PiggyBank,
+  Repeat,
+  CalendarDays,
+  Network,
 } from "lucide-react"
 import { useOrg } from "@/lib/org-context"
 import { useAdmin } from "@/lib/admin-context"
@@ -79,6 +82,9 @@ function buildMoreItems(activeOrgId: string | undefined, accountType: AccountTyp
     { labelKey: "nav.wealth", href: "/wealth", icon: Landmark },
     { labelKey: "nav.analytics", href: "/analytics", icon: ChartColumn },
     { labelKey: "nav.categories", href: "/categories", icon: Tag },
+    { labelKey: "nav.recurring", href: "/recurring", icon: Repeat },
+    { labelKey: "nav.calendar", href: "/calendar", icon: CalendarDays },
+    { labelKey: "nav.flow", href: "/flow", icon: Network },
     { labelKey: "nav.budgets", href: "/budgets", icon: PiggyBank },
     { labelKey: "nav.referrals", href: "/referrals", icon: Gift },
     { labelKey: "nav.organizations", href: "/organizations", icon: Building2 },
@@ -137,7 +143,7 @@ export function MobileAppLayout() {
   const location = useLocation()
   const { user } = useUser()
   const { signOut } = useClerk()
-  const { activeOrg, orgs, switchOrg, refresh, loading: orgLoading } = useOrg()
+  const { activeOrg, orgs, profile, switchOrg, refresh, loading: orgLoading } = useOrg()
   const { isAdmin } = useAdmin()
   const { currency } = useCurrency()
   const { bump } = useDataRefresh()
@@ -319,8 +325,12 @@ export function MobileAppLayout() {
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="pressable size-9 rounded-full bg-muted flex items-center justify-center shrink-0">
-                <Menu className="size-4" />
+              <button className="pressable size-9 overflow-hidden rounded-full bg-muted flex items-center justify-center shrink-0">
+                {profile?.avatar_src ? (
+                  <img src={profile.avatar_src} alt="" className="size-full object-cover" />
+                ) : (
+                  <Menu className="size-4" />
+                )}
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-60">

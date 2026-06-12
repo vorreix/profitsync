@@ -1,0 +1,39 @@
+# Security gate — mirrors the pre-commit secret scan and adds CI-only depth.
+# Runs on every PR and on pushes to main/dev (same triggers as pr.yml; keep
+# the pre-commit hook, pr.yml and this file in sync when changing the gate).
+# No untrusted event data is interpolated into run steps.
+name: Security
+
+on:
+  pull_request:
+  push:
+    branches: [main, dev]
+
+jobs:
+  security:
+    name: secrets · audit · guards
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Secret scan (full tree)
+        run: node scripts/secret-scan.mjs --all
+
+      - name: Route auth-guard + raw-HTML sweep
+        run: node scripts/check-route-guards.mjs
+
+      # Production dependencies only, high+ severity. Dev-tooling advisories are
+      # visible in Dependabot instead of failing every PR.
+      - name: Dependency audit (prod, high+)
+        run: npm audit --omit=dev --audit-level=high

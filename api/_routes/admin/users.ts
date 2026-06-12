@@ -7,8 +7,7 @@ import {
   organizations,
   userProfiles,
 } from "../../../src/lib/db/schema.js"
-import { requireAdminCap } from "../../_lib/admin.js"
-import { adminCan } from "../../../src/lib/admin-roles.js"
+import { requireAdminCap, rootAdminEmails } from "../../_lib/admin.js"
 
 const PAGE_SIZE = 30
 
@@ -104,7 +103,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (action === "promote") {
       // Granting platform-admin access is admin management, not a content write —
       // only admins who can manage admins may do it.
-      if (!adminCan(ctx.role, "manage_admins")) {
+      if (!ctx.can("manage_admins")) {
         return res.status(403).json({ error: "You don't have permission to manage admins." })
       }
       const [existing] = await db.select().from(appAdmins).where(eq(appAdmins.userId, user_id))
@@ -114,11 +113,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.json({ ok: true })
     }
     if (action === "demote") {
-      if (!adminCan(ctx.role, "manage_admins")) {
+      if (!ctx.can("manage_admins")) {
         return res.status(403).json({ error: "You don't have permission to manage admins." })
       }
       if (user_id === adminId) {
         return res.status(400).json({ error: "Cannot demote yourself" })
+      }
+      // Removing a SUPER admin (or the last one) is reserved for super admins.
+      const [targetAdmin] = await db.select().from(appAdmins).where(eq(appAdmins.userId, user_id))
+      if (targetAdmin?.role === "super_admin") {
+        if (!ctx.can("manage_super_admins")) {
+          return res.status(403).json({ error: "Only a super admin can demote a super admin." })
+        }
+        const supers = await db.select({ id: appAdmins.userId }).from(appAdmins).where(eq(appAdmins.role, "super_admin"))
+        if (supers.length <= 1 && rootAdminEmails().size === 0) {
+          return res.status(400).json({ error: "Cannot demote the last super admin." })
+        }
       }
       await db.delete(appAdmins).where(eq(appAdmins.userId, user_id))
       return res.json({ ok: true })
@@ -131,13 +141,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === "DELETE") {
     // Deleting a user account cascades all their data and drops any admin grant —
     // an admin-management-grade action, not a routine content write.
-    if (!adminCan(ctx.role, "manage_admins")) {
+    if (!ctx.can("manage_admins")) {
       return res.status(403).json({ error: "You don't have permission to delete user accounts." })
     }
     const { user_id } = req.body as { user_id?: string }
     if (!user_id) return res.status(400).json({ error: "user_id is required" })
     if (user_id === adminId) {
       return res.status(400).json({ error: "Cannot delete yourself" })
+    }
+    // Deleting a SUPER admin's account is reserved for super admins.
+    const [targetAdminRow] = await db.select().from(appAdmins).where(eq(appAdmins.userId, user_id))
+    if (targetAdminRow?.role === "super_admin" && !ctx.can("manage_super_admins")) {
+      return res.status(403).json({ error: "Only a super admin can delete a super admin's account." })
     }
 
     // Delete every org the user owns (cascades to clients/transactions/subscriptions/invoices/members/invitations).
