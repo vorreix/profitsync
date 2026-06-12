@@ -2,15 +2,15 @@ import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { createClerkClient } from "@clerk/backend"
 import { asc, eq, sql } from "drizzle-orm"
 import { db } from "../../../src/lib/db/index.js"
-import { appAdmins, userProfiles } from "../../../src/lib/db/schema.js"
+import { adminRoles, appAdmins, userProfiles } from "../../../src/lib/db/schema.js"
 import { isRootAdminEmail, requireAdminCap, rootAdminEmails } from "../../_lib/admin.js"
-import { isAdminRole, type AdminRole } from "../../../src/lib/admin-roles.js"
+import { isAdminRole } from "../../../src/lib/admin-roles.js"
 
 type AdminRow = {
   user_id: string | null
   email: string | null
   full_name: string | null
-  role: AdminRole
+  role: string // system role key OR custom role key
   is_root: boolean
   is_self: boolean
   created_at: Date | null
@@ -28,11 +28,22 @@ async function superAdminCount(): Promise<number> {
   return n
 }
 
+/** A role key is assignable when it's a system role or an existing custom role. */
+async function isAssignableRole(role: string): Promise<boolean> {
+  if (isAdminRole(role)) return true
+  const [r] = await db.select({ key: adminRoles.key }).from(adminRoles).where(eq(adminRoles.key, role))
+  return !!r
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // Only admins who can manage admins may use this route at all.
+  // Only admins who can manage admins may use this route at all. Operations
+  // touching SUPER admins additionally require the super-only
+  // `manage_super_admins` capability — non-supers must not even see that the
+  // role (or its holders) exist.
   const ctx = await requireAdminCap(req, res, "manage_admins")
   if (!ctx) return
   const adminId = ctx.userId
+  const canManageSupers = ctx.can("manage_super_admins")
 
   if (req.method === "GET") {
     const rows = await db
@@ -51,8 +62,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       user_id: r.userId,
       email: r.email,
       full_name: r.fullName,
-      // Root-email admins are always super_admin regardless of the stored value.
-      role: isRootAdminEmail(r.email) ? "super_admin" : (isAdminRole(r.role) ? r.role : "super_admin"),
+      // Root-email admins are always super_admin regardless of the stored
+      // value. Custom role keys pass through verbatim (the UI labels them via
+      // /api/admin/roles); blank legacy values mean super_admin.
+      role: isRootAdminEmail(r.email) ? "super_admin" : (r.role?.trim() || "super_admin"),
       is_root: isRootAdminEmail(r.email),
       is_self: r.userId === adminId,
       created_at: r.createdAt,
@@ -77,13 +90,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       })
     }
 
-    return res.json({ admins, current_user_id: adminId })
+    // VISIBILITY: non-supers don't see super-admin rows at all (except their
+    // own row, which they obviously know about).
+    const visible = canManageSupers ? admins : admins.filter((a) => a.role !== "super_admin" || a.is_self)
+
+    return res.json({ admins: visible, current_user_id: adminId })
   }
 
   if (req.method === "POST") {
     const { email, role } = req.body as { email?: string; role?: string }
     if (!email?.trim()) return res.status(400).json({ error: "email is required" })
-    const newRole: AdminRole = isAdminRole(role) ? role : "viewer"
+    const requestedRole = role?.trim() || "viewer"
+    if (!(await isAssignableRole(requestedRole))) return res.status(400).json({ error: "Invalid role" })
+    if (requestedRole === "super_admin" && !canManageSupers) {
+      return res.status(403).json({ error: "Only a super admin can grant the super admin role." })
+    }
     const normalized = email.trim().toLowerCase()
 
     // Resolve the user id: prefer a profile (they've signed in), else ask Clerk.
@@ -115,8 +136,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(404).json({ error: "No user found with that email. Ask them to sign up first." })
     }
 
-    // Root-email admins are always super_admin — don't let a stored role shadow that.
-    const effectiveRole: AdminRole = isRootAdminEmail(resolvedEmail) ? "super_admin" : newRole
+    // POST is an upsert: changing an EXISTING super admin's role this way is
+    // still a super-admin operation (and may not orphan the last one).
+    const [existingRow] = await db.select().from(appAdmins).where(eq(appAdmins.userId, userId))
+    if (existingRow?.role === "super_admin") {
+      if (!canManageSupers) {
+        return res.status(403).json({ error: "Only a super admin can change a super admin." })
+      }
+      if (requestedRole !== "super_admin" && rootAdminEmails().size === 0 && (await superAdminCount()) <= 1) {
+        return res.status(400).json({ error: "Can't demote the last super admin." })
+      }
+    }
+
+    // Root-email admins are always super_admin — don't let a stored role shadow
+    // that. Adding one is therefore a super-grant and gated the same way.
+    const isRoot = isRootAdminEmail(resolvedEmail)
+    if (isRoot && !canManageSupers) {
+      return res.status(403).json({ error: "Only a super admin can manage root admins." })
+    }
+    const effectiveRole = isRoot ? "super_admin" : requestedRole
 
     await db
       .insert(appAdmins)
@@ -129,7 +167,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         email: resolvedEmail,
         full_name: fullName,
         role: effectiveRole,
-        is_root: isRootAdminEmail(resolvedEmail),
+        is_root: isRoot,
         is_self: userId === adminId,
         created_at: new Date(),
       },
@@ -139,7 +177,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === "PATCH") {
     const { user_id, role } = req.body as { user_id?: string; role?: string }
     if (!user_id) return res.status(400).json({ error: "user_id is required" })
-    if (!isAdminRole(role)) return res.status(400).json({ error: "Invalid role" })
+    if (!role?.trim() || !(await isAssignableRole(role.trim()))) {
+      return res.status(400).json({ error: "Invalid role" })
+    }
+    const nextRole = role.trim()
+    if (nextRole === "super_admin" && !canManageSupers) {
+      return res.status(403).json({ error: "Only a super admin can grant the super admin role." })
+    }
 
     const [target] = await db
       .select({ email: userProfiles.email })
@@ -151,10 +195,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const [existing] = await db.select().from(appAdmins).where(eq(appAdmins.userId, user_id))
     if (!existing) return res.status(404).json({ error: "Not an admin" })
+    if (existing.role === "super_admin" && !canManageSupers) {
+      return res.status(403).json({ error: "Only a super admin can change a super admin." })
+    }
 
     // Don't let the console lock itself out: block demoting the last super_admin
     // when there is no root admin to fall back on.
-    if (existing.role === "super_admin" && role !== "super_admin" && rootAdminEmails().size === 0) {
+    if (existing.role === "super_admin" && nextRole !== "super_admin" && rootAdminEmails().size === 0) {
       if ((await superAdminCount()) <= 1) {
         return res.status(400).json({ error: "Can't demote the last super admin." })
       }
@@ -162,7 +209,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const [updated] = await db
       .update(appAdmins)
-      .set({ role })
+      .set({ role: nextRole })
       .where(eq(appAdmins.userId, user_id))
       .returning({ userId: appAdmins.userId, role: appAdmins.role })
     return res.json({ admin: updated })
@@ -184,8 +231,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const [existing] = await db.select().from(appAdmins).where(eq(appAdmins.userId, user_id))
-    if (existing?.role === "super_admin" && rootAdminEmails().size === 0) {
-      if ((await superAdminCount()) <= 1) {
+    if (existing?.role === "super_admin") {
+      if (!canManageSupers) {
+        return res.status(403).json({ error: "Only a super admin can remove a super admin." })
+      }
+      if (rootAdminEmails().size === 0 && (await superAdminCount()) <= 1) {
         return res.status(400).json({ error: "Can't remove the last super admin." })
       }
     }

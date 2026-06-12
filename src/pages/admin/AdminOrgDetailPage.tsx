@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
+import { useAdmin } from "@/lib/admin-context"
 import { toast } from "sonner"
 import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api"
 import { isPaidPlanKey } from "@/lib/types"
@@ -122,7 +123,13 @@ export function AdminOrgDetailPage() {
   const navigate = useNavigate()
   const { getToken } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
-  const tab = searchParams.get("tab") ?? "overview"
+  // The Transactions tab is a SUPER-ADMIN-ONLY surface — for everyone else it
+  // must not even appear to exist (no trigger, no content, and a forced
+  // ?tab=transactions URL falls back to Overview; the API enforces too).
+  const { can } = useAdmin()
+  const canSeeTransactions = can("org_transactions")
+  const rawTab = searchParams.get("tab") ?? "overview"
+  const tab = rawTab === "transactions" && !canSeeTransactions ? "overview" : rawTab
 
   const [detail, setDetail] = useState<OrgDetail | null>(null)
   const [loading, setLoading] = useState(true)
@@ -254,9 +261,11 @@ export function AdminOrgDetailPage() {
           <TabsTrigger value="clients">
             <Users className="size-3.5 mr-1" /> Clients
           </TabsTrigger>
-          <TabsTrigger value="transactions">
-            <CreditCard className="size-3.5 mr-1" /> Transactions
-          </TabsTrigger>
+          {canSeeTransactions && (
+            <TabsTrigger value="transactions">
+              <CreditCard className="size-3.5 mr-1" /> Transactions
+            </TabsTrigger>
+          )}
           <TabsTrigger value="subscription">
             <CreditCard className="size-3.5 mr-1" /> Subscription
           </TabsTrigger>
@@ -273,9 +282,11 @@ export function AdminOrgDetailPage() {
           <ClientsTab orgId={orgId!} currency={org.currency} />
         </TabsContent>
 
-        <TabsContent value="transactions">
-          <TransactionsTab orgId={orgId!} currency={org.currency} />
-        </TabsContent>
+        {canSeeTransactions && (
+          <TabsContent value="transactions">
+            <TransactionsTab orgId={orgId!} currency={org.currency} />
+          </TabsContent>
+        )}
 
         <TabsContent value="subscription">
           <SubscriptionTab detail={detail} onChanged={load} />

@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
-import { ArrowLeftRight, Building2, Check, ImagePlus, Loader as Loader2, Pencil, Plus, Trash2, Users, X } from "lucide-react"
+import { ArrowLeftRight, Building2, Check, ImagePlus, Loader as Loader2, MoreHorizontal, Network, Pencil, Plus, Trash2, Users, X } from "lucide-react"
 import { apiDelete, apiPatch } from "@/lib/api"
 import { useOrg } from "@/lib/org-context"
 import { fileToResizedDataUrl } from "@/lib/image-upload"
@@ -11,6 +11,13 @@ import { isPaidPlanKey, type Organization } from "@/lib/types"
 import { EntityAvatar } from "@/components/EntityAvatar"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
@@ -119,6 +126,24 @@ export function OrganizationsPage() {
     }
   }
 
+  // Money flow is always active-org-scoped (matches the whole app), so viewing
+  // a specific org's flow means switching to it first, then opening /flow.
+  const handleViewFlow = async (id: string) => {
+    if (activeOrg?.id !== id) {
+      setSwitching(id)
+      try {
+        await switchOrg(id)
+        await refresh()
+      } catch {
+        toast.error(t("organizations.failedToSwitchOrganization"))
+        setSwitching(null)
+        return
+      }
+      setSwitching(null)
+    }
+    navigate("/flow")
+  }
+
   return (
     <div className="p-3 sm:p-6 space-y-6 max-w-4xl">
       <div className="flex items-start justify-between gap-3">
@@ -203,7 +228,9 @@ export function OrganizationsPage() {
                     </div>
                   </div>
 
-                  {/* Actions — pinned to the card bottom so they align across the grid */}
+                  {/* Actions — pinned to the card bottom so they align across the grid.
+                      Switch stays primary; everything else (incl. the new Money flow)
+                      lives in the 3-dot menu to keep the card tidy. */}
                   <div className="mt-auto flex flex-wrap items-center gap-1.5 border-t pt-3">
                     {!isActive && (
                       <Button
@@ -219,42 +246,53 @@ export function OrganizationsPage() {
                         {t("organizations.switch")}
                       </Button>
                     )}
-                    {!org.is_personal && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => navigate(`/organizations/${org.id}/members`)}
-                      >
-                        <Users className="size-3.5 mr-1" /> {t("organizations.members")}
+                    {isActive && (
+                      <Button size="sm" variant="outline" onClick={() => navigate("/flow")}>
+                        <Network className="size-3.5 mr-1" /> {t("flow.card")}
                       </Button>
                     )}
-                    <div className="ml-auto flex items-center gap-1">
-                      {canManage && (
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          aria-label={t("organizations.edit")}
-                          onClick={() => {
-                            setEditTarget(org)
-                            setEditName(org.name)
-                            setEditCurrency(org.currency || "USD")
-                            setEditLogo(undefined)
-                          }}
-                        >
-                          <Pencil className="size-4" />
-                        </Button>
-                      )}
-                      {!org.is_personal && org.role === "owner" && (
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          aria-label={t("organizations.delete")}
-                          className="text-destructive hover:text-destructive"
-                          onClick={() => setDeleteTarget(org)}
-                        >
-                          <Trash2 className="size-4" />
-                        </Button>
-                      )}
+                    <div className="ml-auto">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button size="icon" variant="ghost" aria-label={t("organizations.actions")}>
+                            <MoreHorizontal className="size-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-48">
+                          {/* Money flow for THIS org — switch to it first if needed, then open. */}
+                          <DropdownMenuItem onClick={() => handleViewFlow(org.id)} disabled={switching === org.id}>
+                            <Network className="size-4" /> {t("flow.card")}
+                          </DropdownMenuItem>
+                          {!org.is_personal && (
+                            <DropdownMenuItem onClick={() => navigate(`/organizations/${org.id}/members`)}>
+                              <Users className="size-4" /> {t("organizations.members")}
+                            </DropdownMenuItem>
+                          )}
+                          {canManage && (
+                            <DropdownMenuItem
+                              onClick={() => {
+                                setEditTarget(org)
+                                setEditName(org.name)
+                                setEditCurrency(org.currency || "USD")
+                                setEditLogo(undefined)
+                              }}
+                            >
+                              <Pencil className="size-4" /> {t("organizations.edit")}
+                            </DropdownMenuItem>
+                          )}
+                          {!org.is_personal && org.role === "owner" && (
+                            <>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                variant="destructive"
+                                onClick={() => setDeleteTarget(org)}
+                              >
+                                <Trash2 className="size-4" /> {t("organizations.delete")}
+                              </DropdownMenuItem>
+                            </>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   </div>
                 </CardContent>

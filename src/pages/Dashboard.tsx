@@ -47,9 +47,12 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   ArrowRight,
+  Check,
   ChevronDown,
   ChevronRight,
   GripVertical,
+  Network,
+  Loader as Loader2,
   Search,
   SlidersHorizontal,
   Sparkles,
@@ -126,6 +129,7 @@ const CARD_SPANS: Record<DashboardCardId, string> = {
   kpis: "lg:col-span-5",
   budget: "lg:col-span-5",
   wealth: "lg:col-span-5",
+  flow: "lg:col-span-5",
   chart: "lg:col-span-3",
   breakdown: "lg:col-span-2",
   latest: "lg:col-span-5",
@@ -134,6 +138,7 @@ const CARD_LABEL_KEYS: Record<DashboardCardId, string> = {
   kpis: "dashboard.cardKpis",
   budget: "dashboard.cardBudget",
   wealth: "dashboard.cardWealth",
+  flow: "flow.card",
   chart: "dashboard.cardChart",
   breakdown: "dashboard.cardBreakdown",
   latest: "dashboard.cardLatest",
@@ -142,13 +147,15 @@ const CARD_LABEL_KEYS: Record<DashboardCardId, string> = {
 // Wraps a dashboard card. In edit mode it shows the floating handle pill
 // (drag grip + label + hide ×), a drop-position line while another card is
 // dragged over it, and disables the card's own interactions so taps can't
-// trigger navigation mid-arrangement.
+// trigger navigation mid-arrangement. The whole card jiggles iOS-style while
+// arranging; the dragged card follows the pointer, slightly dimmed + lifted.
 function DashCardShell({
-  id, label, span, editMode, dragging, dropEdge, hideLabel, onHide, children,
+  id, label, span, index, editMode, dragging, dropEdge, hideLabel, onHide, children,
 }: {
   id: DashboardCardId
   label: string
   span: string
+  index: number
   editMode: boolean
   dragging: boolean
   dropEdge: "before" | "after" | null
@@ -161,37 +168,23 @@ function DashCardShell({
     <div
       ref={drag.setNodeRef}
       data-dash-card={id}
+      // dnd-kit's pointer translate goes on THIS element; the jiggle animates
+      // transform on the inner wrapper — same property, different elements, so
+      // the card keeps wobbling while it rides along under the finger.
+      style={
+        drag.transform
+          ? { transform: `translate3d(${drag.transform.x}px, ${drag.transform.y}px, 0) scale(1.02)` }
+          : undefined
+      }
       className={cn(
-        "relative min-w-0 transition-[opacity,box-shadow] duration-200",
+        "relative min-w-0",
         span,
-        dragging && "opacity-40",
         editMode && "rounded-2xl ring-2 ring-primary/35 ring-offset-2 ring-offset-background",
+        dragging
+          ? "z-50 opacity-60 shadow-2xl will-change-transform"
+          : "transition-[opacity,box-shadow] duration-200",
       )}
     >
-      {editMode && (
-        <div className="absolute -top-3.5 left-1/2 z-30 flex -translate-x-1/2 items-center gap-0.5 rounded-full border bg-card px-1 py-0.5 shadow-sm">
-          {/* touch-none lets the drag start on mobile instead of scrolling */}
-          <button
-            type="button"
-            ref={drag.setActivatorNodeRef}
-            {...drag.listeners}
-            {...drag.attributes}
-            aria-label={label}
-            className="flex size-8 cursor-grab touch-none items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:cursor-grabbing"
-          >
-            <GripVertical className="size-4" />
-          </button>
-          <span className="max-w-32 truncate text-[11px] font-medium text-muted-foreground">{label}</span>
-          <button
-            type="button"
-            onClick={onHide}
-            aria-label={hideLabel}
-            className="flex size-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-destructive"
-          >
-            <X className="size-3.5" />
-          </button>
-        </div>
-      )}
       {dropEdge && (
         <div
           className={cn(
@@ -200,7 +193,38 @@ function DashCardShell({
           )}
         />
       )}
-      <div className={cn("h-full", editMode && "pointer-events-none select-none")}>{children}</div>
+      <div
+        className={cn("relative h-full", editMode && "dash-jiggle")}
+        // Negative delay starts each card mid-cycle at a different phase so the
+        // wobbles never sync up (the iOS look).
+        style={editMode ? { animationDelay: `${-((index * 137) % 420)}ms` } : undefined}
+      >
+        {editMode && (
+          <div className="absolute -top-3.5 left-1/2 z-30 flex -translate-x-1/2 items-center gap-0.5 rounded-full border bg-card px-1 py-0.5 shadow-sm">
+            {/* touch-none lets the drag start on mobile instead of scrolling */}
+            <button
+              type="button"
+              ref={drag.setActivatorNodeRef}
+              {...drag.listeners}
+              {...drag.attributes}
+              aria-label={label}
+              className="flex size-8 cursor-grab touch-none items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:cursor-grabbing"
+            >
+              <GripVertical className="size-4" />
+            </button>
+            <span className="max-w-32 truncate text-[11px] font-medium text-muted-foreground">{label}</span>
+            <button
+              type="button"
+              onClick={onHide}
+              aria-label={hideLabel}
+              className="flex size-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-destructive"
+            >
+              <X className="size-3.5" />
+            </button>
+          </div>
+        )}
+        <div className={cn("h-full", editMode && "pointer-events-none select-none")}>{children}</div>
+      </div>
     </div>
   )
 }
@@ -755,6 +779,7 @@ export function Dashboard() {
     setUndoStack([])
     setRedoStack([])
     setEditMode(false)
+    editExitAtRef.current = Date.now()
   }
   async function saveLayout() {
     setSavingLayout(true)
@@ -775,7 +800,10 @@ export function Dashboard() {
       setEditMode(false)
       setUndoStack([])
       setRedoStack([])
-      toast.success(t("dashboard.layoutSaved"))
+      editExitAtRef.current = Date.now()
+      // Short-lived: a confirmation, not information — and even with pan-y the
+      // toast sits where mobile thumbs scroll, so get out of the way quickly.
+      toast.success(t("dashboard.layoutSaved"), { duration: 2000 })
     } catch {
       toast.error(t("dashboard.layoutSaveFailed"))
     } finally {
@@ -794,7 +822,11 @@ export function Dashboard() {
   const [dropEdge, setDropEdge] = useState<{ id: DashboardCardId; edge: "before" | "after" } | null>(null)
   const dropEdgeRef = useRef<typeof dropEdge>(null)
   const dragPointerStart = useRef<{ x: number; y: number }>({ x: 0, y: 0 })
-  const dashRects = useRef<{ id: DashboardCardId; rect: DOMRect }[]>([])
+  // Element refs captured at drag start; their rects are read FRESH on every
+  // move. That keeps drop targeting correct while the page auto-scrolls during
+  // a drag (dnd-kit scrolls near the viewport edges by default) — both the
+  // pointer (start + delta) and the rects are viewport-relative at all times.
+  const dashCardEls = useRef<{ id: DashboardCardId; el: HTMLElement }[]>([])
 
   function setDropEdgeBoth(next: typeof dropEdge) {
     dropEdgeRef.current = next
@@ -806,24 +838,25 @@ export function Dashboard() {
     const ev = e.activatorEvent as MouseEvent | TouchEvent | null
     const p = ev && "touches" in ev ? ev.touches[0] : (ev as MouseEvent | null)
     dragPointerStart.current = { x: p?.clientX ?? 0, y: p?.clientY ?? 0 }
-    dashRects.current = Array.from(document.querySelectorAll<HTMLElement>("[data-dash-card]")).map((el) => ({
+    dashCardEls.current = Array.from(document.querySelectorAll<HTMLElement>("[data-dash-card]")).map((el) => ({
       id: el.dataset.dashCard as DashboardCardId,
-      rect: el.getBoundingClientRect(),
+      el,
     }))
   }
   function onDashDragMove(e: DragMoveEvent) {
     const activeId = e.active.id as DashboardCardId
     const p = { x: dragPointerStart.current.x + e.delta.x, y: dragPointerStart.current.y + e.delta.y }
-    const others = dashRects.current.filter((c) => c.id !== activeId)
-    let best: (typeof others)[number] | undefined
+    let best: { id: DashboardCardId; rect: DOMRect } | undefined
     let bestD = Infinity
-    for (const c of others) {
-      const dx = Math.max(c.rect.left - p.x, 0, p.x - c.rect.right)
-      const dy = Math.max(c.rect.top - p.y, 0, p.y - c.rect.bottom)
+    for (const c of dashCardEls.current) {
+      if (c.id === activeId || !c.el.isConnected) continue
+      const rect = c.el.getBoundingClientRect()
+      const dx = Math.max(rect.left - p.x, 0, p.x - rect.right)
+      const dy = Math.max(rect.top - p.y, 0, p.y - rect.bottom)
       const d = dx * dx + dy * dy
       if (d < bestD) {
         bestD = d
-        best = c
+        best = { id: c.id, rect }
       }
     }
     if (!best) {
@@ -849,9 +882,14 @@ export function Dashboard() {
   }
 
   // Mobile entry: press-and-hold any card (500ms; a >12px move cancels — that's
-  // a scroll, not a hold).
+  // a scroll, not a hold). Guards against the "broken after save" feel:
+  // a cool-down right after leaving edit mode (a thumb parked to scroll must
+  // not bounce the user straight back in), and any page scroll cancels the
+  // pending hold (slow drags can stay under the 12px threshold).
   const pressTimer = useRef<number | null>(null)
   const pressStart = useRef<{ x: number; y: number } | null>(null)
+  const editExitAtRef = useRef(0)
+  const HOLD_COOLDOWN_MS = 1200
   function clearPress() {
     if (pressTimer.current) window.clearTimeout(pressTimer.current)
     pressTimer.current = null
@@ -859,6 +897,7 @@ export function Dashboard() {
   }
   function onCardsTouchStart(e: React.TouchEvent) {
     if (editMode) return
+    if (Date.now() - editExitAtRef.current < HOLD_COOLDOWN_MS) return
     const t0 = e.touches[0]
     pressStart.current = { x: t0.clientX, y: t0.clientY }
     pressTimer.current = window.setTimeout(() => {
@@ -871,6 +910,13 @@ export function Dashboard() {
     const t0 = e.touches[0]
     if (Math.hypot(t0.clientX - pressStart.current.x, t0.clientY - pressStart.current.y) > 12) clearPress()
   }
+  useEffect(() => {
+    // Capture-phase so inner scroll containers cancel the hold too. clearPress
+    // only touches refs, so the first-render closure stays valid.
+    const cancel = () => clearPress()
+    window.addEventListener("scroll", cancel, { passive: true, capture: true })
+    return () => window.removeEventListener("scroll", cancel, { capture: true })
+  }, [])
 
   // Refetch never re-shows the skeleton (loading only starts true) — so reloads on
   // the closed-toggle and the global refresh signal update figures in place.
@@ -1066,6 +1112,42 @@ export function Dashboard() {
     ),
     budget: isPersonal ? <PersonalBudgetCard /> : ownClient ? <BusinessBudgetCard clientId={ownClient.id} clientName={ownClient.name} /> : null,
     wealth: <WealthOverview accounts={wealthAccounts} loading={loading} currency={currency} />,
+    // Lightweight teaser (no React Flow on the dashboard — keeps it fast): a
+    // tiny connected revenue→net→expenses preview that opens the full map.
+    flow: (
+      <Card className="min-w-0">
+        <CardHeader className="flex flex-row items-center justify-between gap-2">
+          <CardTitle className="flex items-center gap-1.5 text-sm font-semibold">
+            <Network className="size-4 text-primary" /> {t("flow.card")}
+          </CardTitle>
+          <Button variant="ghost" size="sm" className="text-xs shrink-0" onClick={() => navigate("/flow")}>
+            {t("flow.cardCta")} <ArrowRight className="size-3 ml-1" />
+          </Button>
+        </CardHeader>
+        <CardContent>
+          <button
+            type="button"
+            onClick={() => navigate("/flow")}
+            className="flex w-full items-center justify-between gap-2 rounded-xl border bg-muted/20 p-3 text-left transition-colors hover:border-primary/40"
+          >
+            <span className="rounded-lg border bg-card px-2.5 py-1.5 text-center">
+              <span className="block text-[10px] uppercase tracking-wide text-muted-foreground">{t("flow.revenue")}</span>
+              <span className="block text-sm font-bold tabular-nums text-emerald-600 dark:text-emerald-400">{formatCurrency(displayIncoming, currency)}</span>
+            </span>
+            <ArrowRight className="size-4 shrink-0 text-muted-foreground rtl:rotate-180" />
+            <span className="rounded-lg border-2 border-primary/40 bg-card px-2.5 py-1.5 text-center">
+              <span className="block text-[10px] uppercase tracking-wide text-muted-foreground">{t("flow.net")}</span>
+              <span className={`block text-sm font-bold tabular-nums ${netProfit >= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-destructive"}`}>{formatCurrency(netProfit, currency)}</span>
+            </span>
+            <ArrowRight className="size-4 shrink-0 text-muted-foreground rtl:rotate-180" />
+            <span className="rounded-lg border bg-card px-2.5 py-1.5 text-center">
+              <span className="block text-[10px] uppercase tracking-wide text-muted-foreground">{t("flow.expenses")}</span>
+              <span className="block text-sm font-bold tabular-nums text-red-600 dark:text-red-400">{formatCurrency(displayOutgoing, currency)}</span>
+            </span>
+          </button>
+        </CardContent>
+      </Card>
+    ),
     chart: (
         <Card className="min-w-0 h-full">
           <CardHeader className="flex flex-row items-center justify-between gap-2">
@@ -1189,7 +1271,23 @@ export function Dashboard() {
 
       <div className="flex items-start justify-between gap-2 sm:gap-4">
         <div className="min-w-0">
-          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">{t("dashboard.title")}</h1>
+          <div className="flex items-center gap-1.5">
+            <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">{t("dashboard.title")}</h1>
+            {/* Customize: enter the arrange-cards mode (mobile can also
+                press-and-hold a card). Lives next to the title by design. */}
+            {!editMode && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-8 shrink-0 text-muted-foreground hover:text-foreground"
+                aria-label={t("dashboard.customize")}
+                title={t("dashboard.customize")}
+                onClick={enterEditMode}
+              >
+                <SlidersHorizontal className="size-4" />
+              </Button>
+            )}
+          </div>
           <p className="text-sm text-muted-foreground mt-1">
             {filtersActive ? t("dashboard.filtered") : t("dashboard.overview")}
           </p>
@@ -1221,19 +1319,6 @@ export function Dashboard() {
             icon={<Tag className="size-4 opacity-60" />}
           />
         </div>
-        {/* Customize: enter the arrange-cards mode (mobile can also press-and-hold a card) */}
-        {!editMode && (
-          <Button
-            variant="outline"
-            size="icon"
-            className="shrink-0"
-            aria-label={t("dashboard.customize")}
-            title={t("dashboard.customize")}
-            onClick={enterEditMode}
-          >
-            <SlidersHorizontal className="size-4" />
-          </Button>
-        )}
         <div className="sm:hidden shrink-0">
           <FilterSheet count={appliedFilterCount} onClear={clearAllFilters}>
             {!isPersonal && (
@@ -1303,10 +1388,11 @@ export function Dashboard() {
           onTouchEnd={clearPress}
           onTouchCancel={clearPress}
         >
-          {visibleCards.map((id) => (
+          {visibleCards.map((id, index) => (
             <DashCardShell
               key={id}
               id={id}
+              index={index}
               label={t(CARD_LABEL_KEYS[id])}
               span={CARD_SPANS[id]}
               editMode={editMode}
@@ -1321,22 +1407,54 @@ export function Dashboard() {
         </div>
       </DndContext>
 
-      {/* Edit-mode toolbar: undo/redo + save/cancel */}
+      {/* Edit-mode controls: a floating cluster pinned to the top-right —
+          rounded ✓ saves, ✕ cancels, undo/redo beneath. Fixed (not sticky) so
+          it stays reachable while scrolling the arrangement, esp. on mobile. */}
       {editMode && (
-        <div className="sticky bottom-24 z-30 flex items-center justify-between gap-2 rounded-2xl border bg-card/95 p-2 shadow-lg backdrop-blur sm:bottom-4">
-          <div className="flex items-center gap-1">
-            <Button size="icon" variant="outline" onClick={undoLayout} disabled={undoStack.length === 0} aria-label={t("dashboard.undo")}>
-              <Undo2 className="size-4" />
-            </Button>
-            <Button size="icon" variant="outline" onClick={redoLayout} disabled={redoStack.length === 0} aria-label={t("dashboard.redo")}>
-              <Redo2 className="size-4" />
-            </Button>
-          </div>
-          <p className="hidden flex-1 truncate px-2 text-center text-xs text-muted-foreground sm:block">{t("dashboard.editHint")}</p>
-          <div className="flex items-center gap-1.5">
-            <Button size="sm" variant="ghost" onClick={() => cancelEditMode()} disabled={savingLayout}>{t("common.cancel")}</Button>
-            <Button size="sm" onClick={saveLayout} disabled={savingLayout}>{savingLayout ? t("common.saving") : t("common.save")}</Button>
-          </div>
+        <div className="fixed right-3 top-16 z-40 flex flex-col items-center gap-2 sm:right-6 sm:top-20">
+          <Button
+            size="icon"
+            onClick={saveLayout}
+            disabled={savingLayout}
+            aria-label={t("common.save")}
+            title={t("common.save")}
+            className="size-12 rounded-full shadow-lg"
+          >
+            {savingLayout ? <Loader2 className="size-5 animate-spin" /> : <Check className="size-5" />}
+          </Button>
+          <Button
+            size="icon"
+            variant="outline"
+            onClick={() => cancelEditMode()}
+            disabled={savingLayout}
+            aria-label={t("common.cancel")}
+            title={t("common.cancel")}
+            className="size-10 rounded-full bg-card/95 shadow-md backdrop-blur"
+          >
+            <X className="size-4" />
+          </Button>
+          <Button
+            size="icon"
+            variant="outline"
+            onClick={undoLayout}
+            disabled={undoStack.length === 0}
+            aria-label={t("dashboard.undo")}
+            title={t("dashboard.undo")}
+            className="size-10 rounded-full bg-card/95 shadow-md backdrop-blur"
+          >
+            <Undo2 className="size-4" />
+          </Button>
+          <Button
+            size="icon"
+            variant="outline"
+            onClick={redoLayout}
+            disabled={redoStack.length === 0}
+            aria-label={t("dashboard.redo")}
+            title={t("dashboard.redo")}
+            className="size-10 rounded-full bg-card/95 shadow-md backdrop-blur"
+          >
+            <Redo2 className="size-4" />
+          </Button>
         </div>
       )}
 

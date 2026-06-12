@@ -17,7 +17,8 @@
     "login": "Anmelden",
     "getStarted": "Loslegen",
     "openMenu": "Menü öffnen",
-    "closeMenu": "Menü schließen"
+    "closeMenu": "Menü schließen",
+    "security": "Sicherheit"
   },
   "theme": {
     "toLight": "Zum hellen Modus wechseln",
@@ -152,6 +153,40 @@
         "desc": "Lade dein Team mit klarem, rollenbasiertem Zugriff ab dem ersten Tag ein."
       }
     ]
+  },
+  "security": {
+    "badge": "Sicherheit & Datenschutz",
+    "title": "Deine Finanzdaten, sicher verwahrt",
+    "subtitle": "ProfitSync ist von Grund auf datenschutzfreundlich gebaut: starke Verschlüsselung, strikte Isolation und ein einfaches Versprechen — deine Finanzdaten gehören dir und niemandem sonst.",
+    "items": [
+      {
+        "title": "Überall verschlüsselt",
+        "desc": "Jede Verbindung ist mit TLS geschützt, und deine Daten sind in der Datenbank im Ruhezustand verschlüsselt. Nichts wird im Klartext übertragen oder gespeichert."
+      },
+      {
+        "title": "Wir sehen deine Karte nie",
+        "desc": "Zahlungen laufen über einen PCI-DSS-konformen Zahlungsanbieter als Merchant of Record. Kartennummern berühren unsere Server niemals."
+      },
+      {
+        "title": "Dein Arbeitsbereich ist isoliert",
+        "desc": "Jeder Kunde, jede Transaktion und jedes Dokument gehört allein deiner Organisation — rollenbasierte Zugriffe steuern, was jedes Teammitglied sehen und tun darf."
+      },
+      {
+        "title": "Anmeldung, der du vertrauen kannst",
+        "desc": "Die Authentifizierung läuft über eine Infrastruktur auf Enterprise-Niveau mit Unterstützung für Mehrfaktor-Authentifizierung und moderner Sitzungssicherheit."
+      },
+      {
+        "title": "Nie verkauft, nie weitergegeben",
+        "desc": "Deine Finanzdaten stehen nicht zum Verkauf. Wir verkaufen, vermieten oder nutzen sie nicht für Werbung — sie dienen allein deinem Dashboard."
+      },
+      {
+        "title": "Löschen ohne Reue",
+        "desc": "Gelöschte Datensätze landen in einem Papierkorb, den du kontrollierst: mit einem Klick wiederherstellen oder endgültig entfernen, wenn du sicher bist."
+      }
+    ],
+    "legalLead": "Das Kleingedruckte, in einfachen Worten:",
+    "privacyLink": "Datenschutzerklärung",
+    "termsLink": "Nutzungsbedingungen"
   },
   "pricing": {
     "eyebrow": "Preise",
