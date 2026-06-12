@@ -64,7 +64,10 @@ Dodo→ours via `mapDodoStatus`: `on_hold`/`failed`→`past_due`, `cancelled`/`e
 
 | Concern | File |
 |---|---|
-| Dodo REST client + webhook signature verify | `api/_lib/dodo.ts` |
+| Dodo REST client + webhook signature verify (incl. ±5min replay window) | `api/_lib/dodo.ts` |
+| Billing-currency resolution chain (pure, tested) | `src/lib/billing-currency.ts` |
+| Billing-attempt logger (non-fatal, transition-guarded) | `api/_lib/billing-attempts.ts` |
+| Billing-attempt admin routes + page | `api/_routes/admin/billing-attempts*.ts`, `src/pages/admin/AdminBillingAttemptsPage.tsx` |
 | Reconcile from Dodo (status/dates/invoices) | `api/_lib/billing-sync.ts` |
 | Payment → invoice mapping (pure) | `api/_lib/invoice-map.ts` |
 | Admin Dodo-aware helpers (cancel + free reset) | `api/_lib/admin-billing.ts` |
@@ -110,6 +113,47 @@ DO go through i18n.)
   independently, return per-row results; UI uses `useMultiSelect()` + a `Checkbox`
   column + a bulk bar + optimistic in-place row updates.
 
+## Billing currency (ux4)
+
+Checkout charges in the **organization's currency** when Dodo can route it.
+`resolveBillingCurrency(orgCurrency, billingCountry)` (src/lib/billing-currency.ts,
+unit-tested) implements the chain:
+
+1. org currency == country currency → use it
+2. billing country **IN → ALWAYS INR** (the Indian-card/UPI connector failure
+   happens at PAYMENT time on the hosted page — a create-time retry cannot save
+   it, so the org preference must never override India)
+3. org currency ∈ DODO_SUPPORTED_CURRENCIES → use it
+4. else country currency (→ USD fallback)
+
+`create-subscription` walks `billingCurrencyAttempts()` (resolved → country →
+omit) retrying on Dodo errors — a currency preference can never fail checkout.
+The used value is SNAPSHOTTED on `subscriptions.billing_currency` (cleared by
+`FREE_RESET_FIELDS` + the self-serve free switch); `invoices.currency` stays
+authoritative for what was actually charged. Per Dodo docs: `billing_currency`
+is honored only when Adaptive Currency is enabled on the merchant account
+(ignored otherwise — harmless), unsupported currencies fail the create call.
+
+## Billing attempts (observability, ux4)
+
+Every paid-plan subscribe click logs a `billing_attempts` row:
+`created → redirected → completed | failed` (stale in-flight rows DISPLAY as
+`abandoned` after 24h — derived at read time, no mutation job). Rules:
+
+- **Logging is non-fatal** (audit pattern): a logging failure must never break
+  the money path. All writes go through `api/_lib/billing-attempts.ts`.
+- **Transitions are guarded** (`canTransition`): idempotent webhook retries
+  can't regress a status; only `failed → completed` may leave a terminal state
+  (payment retry / dunning recovery).
+- **Linking precedence**: `metadata.attempt_id` (we put it in the Dodo checkout
+  metadata) → newest attempt by `dodo_subscription_id` → newest for the org.
+- Logging points: create-subscription (created/redirected/failed + error
+  message), stub activation, webhook payment.succeeded/failed +
+  subscription.active, and the return-from-checkout sync reconcile.
+- Admin page `/admin/billing-attempts`: funnel chips + filters + detail dialog
+  (raw payment.failed payload) + follow-up status/notes
+  (`none|contacted|resolved|paid_later`). English-only like the rest of /admin.
+
 ## Verifying changes (critical)
 
 - **The pre-commit gate (`i18n → lint → typecheck → test:ci`) is DB-FREE.** NEVER add a
@@ -134,3 +178,8 @@ DO go through i18n.)
 - `mapDodoStatus`/`statusForEvent` don't emit `trialing` — it's unused.
 - The webhook is best-effort; activation/reconcile never depends on it (return-from-
   checkout `sync` + admin "Sync from Dodo" cover the same ground via REST).
+- `verifyWebhookSignature` now also enforces a ±5 minute timestamp freshness
+  window (Standard Webhooks) — fixed-timestamp tests must pass a matching `now`.
+- The committed gate also runs a staged-diff secret scan first, and PRs to main
+  run the Playwright e2e suite (.github/workflows/e2e.yml) — billing changes
+  should keep the subscription-page smoke test green.

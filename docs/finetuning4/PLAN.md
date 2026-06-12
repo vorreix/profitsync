@@ -43,9 +43,20 @@
 | 08 | `feat/ux4-08-calendar` | T7 calendar visualization | — | ✅ |
 | 09 | `feat/ux4-09-custom-dashboard` | T12 custom dashboard builder | 0040 | ✅ |
 | 10 | `feat/ux4-10-e2e-ci` | T4 Playwright e2e + CI gate for main | — | ✅ |
-| 11 | `feat/ux4-11-security-gate` | T5 security checks (pre-commit + CI) | — | ⬜ |
-| 12 | `feat/ux4-12-audit-fixes` | T6 deep security/perf/scale audit + fixes | — | ⬜ |
-| 13 | `feat/ux4-13-docs-skill` | Docs + subscription-system skill update | — | ⬜ |
+| 11 | `feat/ux4-11-security-gate` | T5 security checks (pre-commit + CI) | — | ✅ |
+| 12 | `feat/ux4-12-audit-fixes` | T6 deep security/perf/scale audit + fixes | 0041 | ✅ |
+| 13 | `feat/ux4-13-docs-skill` | Docs + subscription-system skill update | — | ✅ |
+| 14 | `feat/ux4-14-calendar-day-figures` | Calendar: figures on every day cell + Profit | — | ✅ |
+| 15 | `feat/ux4-15-dashboard-edit-ux` | Dashboard edit UX: title button, scroll-safe drag, floating ✓ | — | ✅ |
+| 16 | `feat/ux4-16-edit-jiggle` | Dashboard edit mode: iOS jiggle + floating dimmed drag | — | ✅ |
+| 17 | `feat/ux4-17-postsave-scroll` | Fix: post-save mobile scroll blocked by the toast | — | ✅ |
+| 18 | `feat/ux4-18-calendar-modal-summary` | Calendar drill-down modal: in/out/profit/count card | — | ✅ |
+| 19 | `feat/ux4-19-admin-rbac` | Admin RBAC: custom roles + super-admin-only surfaces | 0042 | ✅ |
+| 20 | `feat/ux4-20-landing-security` | Landing: Security & privacy trust section | — | ✅ |
+| 21 | `feat/ux4-21-navbar-avatar-refresh` | Profile photo updates the navbar/menu avatar live | — | ✅ |
+| 22 | `feat/ux4-22-money-flow` | Money flow mind-map (React Flow) — personal + org, filters, dashboard card | — | ✅ |
+| 23 | `feat/ux4-23-flow-timeline` | Flow: running-balance Timeline mode + interactivity fixes (drag/click/buttons) | — | ✅ |
+| 24 | `feat/ux4-24-flow-polish` | Flow: smooth expand motion + state preserved on back-nav | — | ✅ |
 
 ## ⚠️ Corrections to research findings (re-derived by hand)
 
@@ -330,7 +341,17 @@ i18n in `.husky/pre-commit`; uses gitleaks automatically when installed. CI
 `requireAuth`/admin guard). `SECURITY.md` documents the model. Keep pr.yml in sync
 per CLAUDE.md rule.
 **Verify:** seeded fake secret blocks commit; CI workflow passes on clean tree.
-**Status:** ⬜
+**Status:** ✅ — staged fake `sk_live_…` BLOCKED the commit (verified); scanner
+patterns locked by 15 unit tests (placeholders like `whsec_...` stay quiet);
+route-guard sweep covers 70 handlers + confines raw-HTML to vendored ui/.
+The first full-tree scan immediately caught a REAL pre-existing leak: an
+accidentally committed scratch file (`Untitled-2`) containing a Clerk session
+JWT — removed (short-lived token, low risk, treat as burned). The new
+dependency audit also surfaced and FIXED real advisories: drizzle-orm
+SQL-identifier injection (HIGH, → 0.45.2), vite dev-server path traversal,
+postcss — npm audit (prod, high+) now exits 0; full unit suite + a complete
+e2e run green on the bumped ORM. ⚠️ The CI workflow run itself is unverifiable
+until pushed to GitHub.
 
 ## 12 · T6 — Deep security/perf/scale audit + fixes
 
@@ -340,7 +361,17 @@ authz/tenant-isolation, injection/XSS/SSRF, webhook/billing abuse, cache coheren
 serverless cold-start + connection pooling. Every finding adversarially verified
 before fixing; only verified fixes land on this branch; the rest recorded in
 `docs/finetuning4/AUDIT.md` with severity + rationale.
-**Status:** ⬜
+**Status:** ✅ — 6 lenses × adversarial verification (42 agents): 36 raw →
+13 confirmed → 23 refuted. Fixed 8: recurring mutation org-scoping
+(defense-in-depth), SVG excluded from the whole bank-logo pipeline (byte
+sniffing + data-URL refusal, test-locked), webhook replay protection (±5 min
+freshness, test-locked), 3 missing transactions indexes (migration 0041,
+verified in pg_indexes), float-noise hardening on the balance UPDATE, ILIKE
+wildcard escaping, 128KB inline-logo cap, logo-fetch timeout 4.5s→2.5s.
+5 confirmed items deliberately NOT changed with recorded rationale (incl. the
+"high" recurring-deletion claim — it's intended delete-is-final semantics).
+212 unit tests + both security sweeps + full e2e suite green after the fixes.
+Full report: docs/finetuning4/AUDIT.md.
 
 ## 13 · Docs + subscription skill
 
@@ -349,7 +380,11 @@ everything shipped (what, why, how to operate it, env vars, runbooks). Update
 `.claude/skills/subscription-system` with: billing_currency resolution chain,
 billing_attempts lifecycle + linking, admin panel, webhook event map (from live
 docs), and the new e2e/security gates.
-**Status:** ⬜
+**Status:** ✅ — OVERVIEW.md written (12 feature explainers + env vars +
+migrations 0035–0041 + runbooks); subscription-system skill extended (currency
+chain incl. the India rule, attempts lifecycle/linking/non-fatal rules, webhook
+freshness, gate notes); docs/billing/SUBSCRIPTIONS_AND_PAYMENTS.md gained a
+pointer section. **Chain complete: 14/14 branches shipped.**
 
 ---
 
@@ -391,3 +426,138 @@ docs), and the new e2e/security gates.
   18 i18n keys × 8 locales. Browser-verified end-to-end.
 - 2026-06-10 — 10 e2e: Playwright suite (10 tests, green ×2) + @clerk/testing
   programmatic auth + e2e.yml PR-to-main gate (secrets documented in-file).
+- 2026-06-10 — 11 security gate: staged secret scan in pre-commit (15 pattern
+  tests; fake-secret block verified) + security.yml (tree scan, guard sweep,
+  prod audit) + SECURITY.md. Caught + removed a real committed JWT scratch
+  file; fixed drizzle-orm SQLi (HIGH) / vite / postcss advisories.
+- 2026-06-11 — 12 audit: 42-agent audit+verify; 8 fixes applied (org-scoping,
+  SVG exclusion, webhook replay window, indexes 0041, money-cast hardening,
+  ILIKE escape, payload cap, timeout cut); 5 accepted with rationale;
+  AUDIT.md written. All gates + e2e green.
+- 2026-06-11 — 13 docs + skill: OVERVIEW.md (full plain-language explainer +
+  runbooks), subscription-system skill extended, billing doc pointer added.
+- 2026-06-11 — 14 calendar day figures (follow-up request): every active month
+  cell shows revenue/expense/profit + count (desktop full breakdown, mobile
+  net+count, full-value tooltip); Profit card added to the period summary
+  (verified in − out matches); week rows gained the day's net. Browser-verified
+  at 1280px + 390px; e2e suite green.
+- 2026-06-11 — 15 dashboard edit UX (follow-up request): Customize button moved
+  next to the "Dashboard" title (ghost icon, 6px gap, verified); edit-mode
+  controls became a FIXED floating top-right cluster — rounded ✓ saves (spinner
+  while saving), ✕ cancel, undo/redo beneath — replacing the sticky bottom bar;
+  drag drop-targeting switched from a rect SNAPSHOT to live per-move reads so
+  scrolling mid-drag (incl. dnd-kit edge autoscroll) keeps targeting correct —
+  proven by scrolling the window 200px during a held drag and landing the card
+  in the right slot; touch-action audit at 390px: zero scroll-blocking surfaces
+  (only grip handles are touch-none). Browser-verified desktop + mobile.
+- 2026-06-11 — 16 edit jiggle (follow-up request): iOS-home-screen wobble in
+  arrange mode — `.dash-jiggle` utility in index.css (±0.3deg rotate + 1px bob,
+  0.42s, compositor-only; per-card negative animation-delay so phases never
+  sync; `prefers-reduced-motion` stops the wobble but keeps the state). The
+  dragged card now FOLLOWS the pointer via dnd-kit's translate on the OUTER
+  shell (jiggle lives on the inner wrapper — same property, different elements)
+  at opacity-60 + shadow-2xl + scale-1.02, still wobbling. Verified: 6 cards
+  staggered (0/−137/−274/−411ms), mid-drag transform tracked the pointer 175px,
+  reduced-motion → animation none, document height delta 0 (no layout shift).
+- 2026-06-11 — 17 post-save scroll fix (user-reported: "after save, dashboard
+  not scrollable on mobile"). REPRODUCED with CDP touch emulation: sonner sets
+  touch-action:none on toasts for swipe-dismiss, and the save toast spans ~92%
+  of a phone's width exactly in the thumb's scroll zone — touches starting on
+  it scrolled 0px for the toast's 4s life. Fixes: global `[data-sonner-toast]
+  { touch-action: pan-y !important }` (page pans through toasts; horizontal
+  swipe-dismiss intact), the layout-saved toast shortened to 2s, a 1.2s
+  post-exit cool-down on hold-to-edit (a parked thumb can't bounce back into
+  edit mode), and any scroll event cancels a pending hold. Verified: scroll
+  through the toast 299px (was 0), immediate post-save hold does NOT re-enter,
+  hold-to-edit works again after the cool-down.
+- 2026-06-11 — 18 calendar modal summary (follow-up request): the drill-down
+  modal (day cell / week row / period card) now shows a Money in / Money out /
+  Profit / Transactions card row above the list, summed from the loaded per-day
+  AGGREGATES (not the listed rows, which cap at 50) so it always matches the
+  grid. Verified all 3 entry points (day €987,655,643/−€20/€987,655,623/3;
+  month totals matched the page summary exactly); 2×2 at 390px, no overflow.
+- 2026-06-11 — 19 admin RBAC (follow-up request): custom roles + permissions
+  for /admin. Three SUPER-ADMIN-EXCLUSIVE capabilities (org_transactions,
+  manage_super_admins, manage_roles) that are never grantable — enforced by a
+  grantable allowlist validated on write AND re-filtered on read (a tampered
+  row can't escalate). Custom roles live in admin_roles (migration 0042),
+  resolved with a 30s cache; the old "unknown role → super_admin" fallback is
+  GONE (unknown keys resolve to zero capabilities). Visibility model: non-supers
+  don't see the org-detail Transactions tab (URL-forcing falls back; the API
+  403s), don't see the super_admin role in any picker (catalog omits it), and
+  super-admin ROWS are redacted from their admins list. /api/admin/admins
+  gates every path that grants/edits/removes a super (incl. the POST-upsert
+  demote) + keeps last-super lockout protection; users.ts demote/delete got the
+  same gates. Roles manager UI on /admin/admins (super-only): create/edit/
+  delete custom roles from 5 permission checkboxes; delete blocked while in
+  use (409). VERIFIED with a real non-super session (e2e user + custom
+  "Support Lead" role via Clerk testing tokens): 14/14 adversarial checks
+  passed — role catalog hid super_admin, admins list redacted, grant/demote/
+  delete super → 403, org transactions → 403 while read surfaces → 200,
+  role creation → 403. 9 unit tests lock the capability model. Super view
+  re-verified intact in the browser. Test data cleaned up.
+- 2026-06-11 — 20 landing security (user request): new Security & privacy
+  section on the landing page (src/landing/sections/Security.tsx), placed right
+  before Pricing — emerald trust badge + 6 honest cards (TLS+at-rest
+  encryption, MoR/PCI checkout so cards never touch us, org isolation +
+  role-based access, MFA-capable auth, never-sold data, trash/restore) +
+  privacy/terms links. New "Security" navbar anchor. Copy translated across all
+  8 landing locales (parity-checked); browser-verified EN look + AR RTL render.
+  No invented certifications — every claim is true of the product.
+- 2026-06-11 — 21 navbar avatar refresh (user request): uploading/removing a
+  profile photo now updates the sidebar + mobile-menu avatar instantly. Root
+  cause: OrgProvider holds `profile` in its OWN state from boot, so ProfilePage
+  saving its local copy (and clearing the GET cache) never refreshed the
+  context the navbar reads. Fix: OrgProvider exposes `updateProfile`; ProfilePage
+  pushes every successful PATCH (save + avatar set + remove) into it — in place,
+  no refetch. Browser-verified: footer avatar UklGRmo→UklGRh4 on upload (desktop
+  + mobile header), and reverted to initials on remove, both without a reload.
+  Test image cleaned out of the dev account.
+- 2026-06-11 — 22 money flow (user request): a Miro-style mind-map of money
+  movement. NEW dep @xyflow/react (React Flow, MIT, touch-native, lazy chunk —
+  the right tool for a pannable/zoomable node canvas; prod audit clean). New
+  /api/flow endpoint (drizzle aggregates like analytics; materializes recurring
+  first; org-scoped, excludes deleted/closed/transfers). Pure builder
+  src/lib/money-flow.ts (root → group-by-dimension → capped tx leaves + "+N
+  more" deep link; left→right layout) — 7 unit tests. /flow page: switchable
+  Accounts/Clients/Categories grouping (Accounts shows opening→current balance,
+  the user's "before→after"), collapse/expand per group + collapse-all,
+  date-range + multi category/client/account filters (sheet), empty state,
+  re-fit on data change (fixed an off-screen-after-filter bug found in verify).
+  Dashboard gains a lightweight "flow" card (registry id; no React Flow on the
+  dashboard — keeps it fast). Organizations cards get a 3-dot menu
+  consolidating Money flow + Members/Edit/Delete. Nav (Network icon) desktop +
+  mobile; 34 i18n keys × 8 locales + organizations.actions. Browser-verified
+  desktop + 390px (fitView scales the whole map); 228 unit tests + sweeps +
+  e2e green.
+- 2026-06-11 — 23 flow timeline + interactivity (user request): a SECOND
+  representation — a running-balance TIMELINE. /api/flow?mode=timeline&bucket=
+  day|week|month|year returns chronological period buckets with a running
+  cumulative net (before → net → after), ending at the final entity node
+  (totals + live balance). Pure buildTimelineGraph (horizontal chain, leaves
+  expand below each period) + 4 more unit tests. FIXED the interactivity the
+  user flagged: nodes are now DRAGGABLE (useNodesState persists drags between
+  structural rebuilds via a signature key) and SELECTABLE; in-node buttons work
+  (root culprit: React Flow swallows in-node clicks without `nodrag` — my
+  earlier Playwright tests used JS .click() which bypassed the pointer sequence,
+  so I never caught it; verified now with REAL pointer clicks). Leaf nodes click
+  through to /transactions?view=id. Searchable filter multi-selects. View-mode
+  toggle (Map/Timeline) + bucket switch. SQL gotcha fixed: date_trunc bucket
+  must be an inlined literal (whitelisted), not a bind param, or GROUP BY rejects
+  it. Re-fit on resize/rotation. Browser-verified real drag/click/buttons +
+  timeline chain (Day → 6 chained period nodes → final entity) desktop + mobile;
+  232 unit tests + sweeps + e2e green.
+- 2026-06-11 — 24 flow polish (user feedback: jank + no state restore). Used
+  the ui-ux-pro-max + transition-creator skills. Smoothness: expand/collapse no
+  longer re-fits the camera (fitView now keyed to dataVersion = fetches only,
+  not expand); a scoped `.ps-flow .react-flow__node { transition: transform }`
+  glides repositioned siblings (compositor-only, disabled on the dragged node +
+  reduced-motion); leaf/more nodes fade+slide-in staggered (40ms). State
+  preservation: viewMode/bucket/groupBy/filters/expanded/rootCollapsed + dragged
+  node positions + camera viewport all persisted to sessionStorage per org and
+  restored on remount — verified back-from-transaction restores expanded set,
+  drag position AND camera exactly. Dropped onlyRenderVisibleElements (bounded
+  node count; avoids re-animate-on-pan). Browser-verified: viewport unchanged on
+  expand, leaf enter-anim present, reduced-motion → 0s transition + no leaf anim
+  but toggle still works. 232 tests + sweeps + e2e green.
+  **ux4 chain complete — 25 branches, migrations 0035–0042, all pushed.**
