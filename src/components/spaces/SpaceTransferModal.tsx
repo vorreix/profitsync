@@ -10,18 +10,21 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+
+type TransferState = { space: WealthAccount; mode: "fund" | "withdraw" }
 
 /**
- * Fund or withdraw a Space. Both are account↔Space transfers (kind='transfer')
- * via /api/wealth/transfer; `accounts` is the spendable (bank/cash) list. Shared
- * by the Spaces list cards and the Space detail page. Surfaces failures (quota,
- * etc.) inline rather than only as a toast.
+ * Fund or withdraw a Space — both are account↔Space transfers (kind='transfer')
+ * via /api/wealth/transfer; `accounts` is the spendable (bank/cash) list. The
+ * Dialog stays mounted and is toggled via `open` (mounting a Radix Dialog
+ * already-open races the triggering click and closes instantly). `shown` keeps
+ * the last state so the content still renders during the close animation.
  */
 export function SpaceTransferModal({
   state, accounts, currency, onClose, onDone,
 }: {
-  state: { space: WealthAccount; mode: "fund" | "withdraw" } | null
+  state: TransferState | null
   accounts: WealthAccount[]
   currency: string
   onClose: () => void
@@ -33,22 +36,22 @@ export function SpaceTransferModal({
   const [amount, setAmount] = useState("")
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [shown, setShown] = useState<TransferState | null>(state)
 
   useEffect(() => {
-    if (state) { setAccountId(accounts[0]?.id ?? ""); setAmount(""); setError(null) }
+    if (state) { setShown(state); setAccountId(accounts[0]?.id ?? ""); setAmount(""); setError(null) }
   }, [state, accounts])
 
-  if (!state) return null
-  const isFund = state.mode === "fund"
-  const balance = Number(state.space.current_balance)
+  const active = shown
+  const isFund = active?.mode === "fund"
+  const balance = active ? Number(active.space.current_balance) : 0
   const amt = Number(amount)
   const source = accounts.find((a) => a.id === accountId)
-  // When funding, the chosen account pays; show what it'll be left with so an
-  // overdraw is obvious before the user commits.
   const projected = isFund && source && amt > 0 ? Number(source.current_balance) - amt : null
   const overdraw = projected != null && projected < 0
 
   async function submit() {
+    if (!active) return
     setError(null)
     if (!accountId) { setError(t("pickAccount")); return }
     if (!(amt > 0)) { setError(t("enterAmount")); return }
@@ -58,8 +61,8 @@ export function SpaceTransferModal({
       const token = await getToken()
       if (!token) throw new Error("auth")
       const body = isFund
-        ? { from_account_id: accountId, to_account_id: state!.space.id, amount: amt }
-        : { from_account_id: state!.space.id, to_account_id: accountId, amount: amt }
+        ? { from_account_id: accountId, to_account_id: active.space.id, amount: amt }
+        : { from_account_id: active.space.id, to_account_id: accountId, amount: amt }
       await apiPost("/api/wealth/transfer", token, body, ["/api/spaces", "/api/wealth"])
       toast.success(isFund ? t("fundDone") : t("withdrawDone"))
       onDone()
@@ -71,12 +74,13 @@ export function SpaceTransferModal({
   }
 
   return (
-    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+    <Dialog open={state !== null} onOpenChange={(o) => { if (!o) onClose() }}>
       <DialogContent className="w-[92vw] max-w-sm">
         <DialogHeader>
-          <DialogTitle>{isFund ? t("fundTitle", { name: state.space.nickname }) : t("withdrawTitle", { name: state.space.nickname })}</DialogTitle>
+          <DialogTitle>{active && (isFund ? t("fundTitle", { name: active.space.nickname }) : t("withdrawTitle", { name: active.space.nickname }))}</DialogTitle>
+          <DialogDescription className="sr-only">{isFund ? t("addMoney") : t("withdraw")}</DialogDescription>
         </DialogHeader>
-        {accounts.length === 0 ? (
+        {active && (accounts.length === 0 ? (
           <p className="py-4 text-sm text-muted-foreground">{t("noSpendable")}</p>
         ) : (
           <div className="space-y-3">
@@ -107,7 +111,7 @@ export function SpaceTransferModal({
               </p>
             )}
           </div>
-        )}
+        ))}
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={busy}>{t("cancel")}</Button>
           <Button onClick={submit} disabled={busy || accounts.length === 0}>{busy ? t("saving") : isFund ? t("addMoney") : t("withdraw")}</Button>
