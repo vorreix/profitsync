@@ -5,7 +5,6 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { useDialogContainer } from "@/hooks/use-dialog-container"
 import { WealthAccountIcon } from "@/components/WealthAccountIcon"
 import { accountDisplayName, formatMoney } from "@/lib/wealth"
 import type { WealthAccount } from "@/lib/types"
@@ -28,7 +27,6 @@ export function AccountCombobox({
   balancesVisible?: boolean
 }) {
   const { t } = useTranslation("wealth")
-  const { triggerRef, container } = useDialogContainer()
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState("")
 
@@ -43,7 +41,6 @@ export function AccountCombobox({
   function close() { setOpen(false); setSearch("") }
 
   return (
-    <div ref={triggerRef} className="contents">
       <Popover open={open} onOpenChange={(o) => (o ? setOpen(true) : close())}>
         <PopoverTrigger asChild>
           <Button variant="outline" role="combobox" aria-expanded={open} className="h-10 w-full justify-between font-normal" disabled={disabled}>
@@ -60,9 +57,9 @@ export function AccountCombobox({
           </Button>
         </PopoverTrigger>
         <PopoverContent
-          container={container}
           className="flex max-h-[min(20rem,var(--radix-popover-content-available-height,20rem))] w-[var(--radix-popover-trigger-width)] min-w-[14rem] flex-col overflow-hidden p-0"
           align="start"
+          collisionPadding={12}
         >
           <div className="shrink-0 border-b p-2">
             <Input placeholder={t("searchAccounts")} value={search} onChange={(e) => setSearch(e.target.value)} className="h-8 text-sm" autoFocus />
@@ -85,6 +82,5 @@ export function AccountCombobox({
           </div>
         </PopoverContent>
       </Popover>
-    </div>
   )
 }
