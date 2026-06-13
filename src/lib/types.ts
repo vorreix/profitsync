@@ -120,10 +120,12 @@ export type Transaction = {
   legs?: TransactionLeg[]
 }
 
+export type WealthAccountType = "bank" | "cash" | "space"
+
 export type WealthAccount = {
   id: string
   organization_id: string
-  type: "bank" | "cash"
+  type: WealthAccountType
   bank_name: string
   nickname: string
   opening_balance: number
@@ -151,6 +153,10 @@ export type WealthAccount = {
   updated_at: string
   transaction_count?: number
   attachment_count?: number
+  // Savings goal (type='space' only). The monthly-contribution suggestion +
+  // progress are DERIVED (src/lib/spaces.ts), not stored.
+  goal_amount?: number | null
+  target_date?: string | null
 }
 
 export type RecurringRule = {
@@ -162,6 +168,11 @@ export type RecurringRule = {
   client_is_own?: boolean | null
   wealth_account_id: string | null
   account_name?: string | null
+  // 'standard' = normal income/outgoing rule. 'transfer' = a Space auto-save:
+  // money moves from `wealth_account_id` (source) to `to_account_id` (the Space).
+  kind?: "standard" | "transfer"
+  to_account_id?: string | null
+  to_account_name?: string | null
   name: string
   type: "incoming" | "outgoing"
   amount: number | string
@@ -267,15 +278,21 @@ export const ACCOUNT_TYPES: AccountType[] = ["personal", "business"]
  * Enforced in the UI (nav + route guards) and on the server (API authz).
  */
 export type BusinessFeature = "clients" | "quotations" | "members"
+export type PersonalFeature = "spaces"
+export type GatedFeature = BusinessFeature | PersonalFeature
 
 export function accountTypeAllows(
   accountType: AccountType | null | undefined,
-  feature: BusinessFeature,
+  feature: GatedFeature,
 ): boolean {
   const isBusinessOnly = feature === "clients" || feature === "quotations" || feature === "members"
+  // Personal-only sections (Spaces savings buckets). Legacy/unknown orgs are
+  // treated as business, so Spaces show ONLY for an explicit personal account.
+  const isPersonalOnly = feature === "spaces"
   // Unknown / legacy orgs default to the full (business) experience so we never
   // lock an existing user out of features they already use.
   if (isBusinessOnly && accountType === "personal") return false
+  if (isPersonalOnly && accountType !== "personal") return false
   return true
 }
 

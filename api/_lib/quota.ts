@@ -24,6 +24,8 @@ export type PlanLimits = {
   attachmentTotalSizeKb?: number
   // Max bank accounts (Cash in Hand is always free + doesn't count). Free = 1.
   bankAccounts?: number
+  // Max personal savings Spaces (type='space'). Free = 1, paid personal = 7.
+  spaces?: number
 }
 
 export type QuotaCheck =
@@ -39,6 +41,7 @@ const DEFAULT_FREE_LIMITS: Required<PlanLimits> = {
   noteLength: 200,
   attachmentTotalSizeKb: 50 * 1024, // 50 MB across the whole workspace
   bankAccounts: 1, // free workspaces get a single bank account (+ Cash in Hand)
+  spaces: 1, // free personal accounts get a single savings Space
 }
 
 const DEFAULT_PREMIUM_LIMITS: Required<PlanLimits> = {
@@ -50,6 +53,7 @@ const DEFAULT_PREMIUM_LIMITS: Required<PlanLimits> = {
   noteLength: 100000,
   attachmentTotalSizeKb: 5 * 1024 * 1024, // 5 GB across the whole workspace
   bankAccounts: 1000, // effectively unlimited for paid plans
+  spaces: 7, // paid personal plan includes 7 savings Spaces
 }
 
 export async function getOrgPlan(orgId: string): Promise<{ planKey: string; limits: Required<PlanLimits> }> {
@@ -91,6 +95,7 @@ export async function getOrgPlan(orgId: string): Promise<{ planKey: string; limi
       noteLength: stored.noteLength ?? fallback.noteLength,
       attachmentTotalSizeKb: stored.attachmentTotalSizeKb ?? fallback.attachmentTotalSizeKb,
       bankAccounts: stored.bankAccounts ?? fallback.bankAccounts,
+      spaces: stored.spaces ?? fallback.spaces,
     },
   }
 }
@@ -179,6 +184,30 @@ export async function checkBankAccountQuota(orgId: string): Promise<QuotaCheck> 
           ? "Free plan includes 1 bank account. Upgrade to Premium for unlimited accounts."
           : `This workspace has reached its limit of ${limits.bankAccounts} bank accounts.`,
       limit: limits.bankAccounts,
+      current,
+      upgradeHint: planKey === "free",
+    }
+  }
+  return { allowed: true }
+}
+
+// Limit the number of (active) savings Spaces per workspace. Spaces are a
+// personal-profile feature; free personal = 1, paid personal = 7. Counts only
+// active type='space' rows (archived Spaces free up a slot, like bank accounts).
+export async function checkSpaceQuota(orgId: string): Promise<QuotaCheck> {
+  const { planKey, limits } = await getOrgPlan(orgId)
+  const [{ current }] = await db
+    .select({ current: count() })
+    .from(wealthAccounts)
+    .where(and(eq(wealthAccounts.organizationId, orgId), eq(wealthAccounts.type, "space"), isNull(wealthAccounts.archivedAt)))
+  if (current >= limits.spaces) {
+    return {
+      allowed: false,
+      reason:
+        planKey === "free"
+          ? "Free plan includes 1 savings Space. Upgrade to Premium for up to 7."
+          : `This workspace has reached its limit of ${limits.spaces} Spaces.`,
+      limit: limits.spaces,
       current,
       upgradeHint: planKey === "free",
     }

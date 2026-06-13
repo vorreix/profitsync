@@ -111,7 +111,7 @@ Each branch is cut FROM the previous (stacked). Gate passes before every push.
 | # | Branch | Scope | Migration | Status |
 |---|---|---|---|---|
 | 00 | `feat/spaces-00-plan` | This PLAN.md | — | ✅ committed |
-| 01 | `feat/spaces-01-schema-lib` | Migration 0043 (goal cols + recurring kind/to_account_id), schema.ts, types.ts, quota (`spaces` limit + `checkSpaceQuota`), `accountTypeAllows` personal branch, pure `src/lib/spaces.ts` + vitest, `WealthAccountIcon` piggy branch | 0043 | ⬜ pending |
+| 01 | `feat/spaces-01-schema-lib` | Migration 0043 (goal cols + recurring kind/to_account_id), schema.ts, types.ts, quota (`spaces` limit + `checkSpaceQuota`), `accountTypeAllows` personal branch, pure `src/lib/spaces.ts` + vitest, `WealthAccountIcon` piggy branch | 0043 | ✅ pushed |
 | 02 | `feat/spaces-02-api` | `/api/spaces` CRUD+reorder (personal gate, quota, never-default), can't-pay-from-Space guard in `/api/transactions`, exclude Spaces from wealth account list, `/api/wealth/quota` space report, router wiring | — | ⬜ pending |
 | 03 | `feat/spaces-03-autosave` | Recurring transfer branch (additive) + validate, `/api/spaces/:id/auto-save` GET/PUT/DELETE, exclude `kind=transfer` from `/api/recurring` list, materialize on `/api/spaces` GET; pure test for the transfer-leg/balance builder | — | ⬜ pending |
 | 04 | `feat/spaces-04-ui` | `/spaces` list page (cards: piggy icon, balance, goal progress, suggested monthly, fund/withdraw), create/edit modal, nav + route + `PersonalOnlyRoute`, free-plan crown + upgrade gate, empty state, i18n (`spaces` ns ×8), transitions, mobile | — | ⬜ pending |
@@ -206,3 +206,9 @@ Each branch is cut FROM the previous (stacked). Gate passes before every push.
 
 ## 9. Change log
 - _(00)_ Plan written; architecture verified against money paths; chain defined.
+- _(01)_ Migration 0043 applied + columns verified in dev DB. Schema (`wealth_accounts`
+  goal_amount/target_date; `recurring_rules` kind/to_account_id), types (`WealthAccountType`
+  incl. `space`, goal fields, RecurringRule transfer fields), `accountTypeAllows` personal-only
+  branch for `spaces`, quota (`spaces` limit free 1 / premium 7 + `checkSpaceQuota`), pure
+  `src/lib/spaces.ts` (progress/suggestion/pace) locked by 19 tests, `space-icons.ts` +
+  `WealthAccountIcon` piggy branch. Gate green (261 tests).
