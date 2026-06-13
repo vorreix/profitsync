@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { useAuth } from "@clerk/clerk-react"
 import { toast } from "sonner"
-import { ArrowDownRight, ArrowLeft, ArrowUpRight, CalendarClock, Pause, Pencil, Play, Plus, Repeat, Trash2, TriangleAlert } from "lucide-react"
+import { ArrowDownRight, ArrowLeft, ArrowUpRight, CalendarClock, Pause, Pencil, Play, Plus, Repeat, Trash2, TriangleAlert, X } from "lucide-react"
 import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api"
 import { useOrg } from "@/lib/org-context"
 import { useCurrency } from "@/lib/currency-context"
@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { CategoryPicker } from "@/components/CategoryPicker"
 import { WealthAccountIcon } from "@/components/WealthAccountIcon"
+import { AccountCombobox } from "@/components/wealth/AccountCombobox"
 
 type RuleForm = {
   name: string
@@ -132,8 +133,20 @@ export function RecurringPage() {
     else navigate("/transactions")
   }
 
-  const upcoming = useMemo(() => rules.filter((r) => r.active), [rules])
-  const paused = useMemo(() => rules.filter((r) => !r.active), [rules])
+  // Optional account filter, e.g. from a wealth account's "recurring" button:
+  // /recurring?account=<id> shows only the rules tied to that account.
+  const accountFilter = searchParams.get("account")
+  const filterAccount = accountFilter ? accounts.find((a) => a.id === accountFilter) : null
+  const visibleRules = useMemo(
+    () => (accountFilter ? rules.filter((r) => r.wealth_account_id === accountFilter) : rules),
+    [rules, accountFilter],
+  )
+  function clearAccountFilter() {
+    setSearchParams((p) => { const n = new URLSearchParams(p); n.delete("account"); return n }, { replace: true })
+  }
+
+  const upcoming = useMemo(() => visibleRules.filter((r) => r.active), [visibleRules])
+  const paused = useMemo(() => visibleRules.filter((r) => !r.active), [visibleRules])
 
   function openCreate() {
     setEditing(null)
@@ -329,6 +342,17 @@ export function RecurringPage() {
         <div className="min-w-0">
           <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">{t("recurring.title")}</h1>
           <p className="mt-0.5 text-sm text-muted-foreground sm:mt-1">{t("recurring.subtitle")}</p>
+          {filterAccount && (
+            <button
+              type="button"
+              onClick={clearAccountFilter}
+              className="mt-2 inline-flex items-center gap-1.5 rounded-full border bg-muted/50 py-1 pl-1.5 pr-2.5 text-xs font-medium transition-colors hover:bg-muted"
+            >
+              <WealthAccountIcon account={filterAccount} className="size-4" />
+              <span className="truncate">{filterAccount.nickname || filterAccount.bank_name}</span>
+              <X className="size-3.5 text-muted-foreground" />
+            </button>
+          )}
         </div>
         {canWrite && (
           <Button onClick={openCreate} className="shrink-0">
@@ -409,20 +433,14 @@ export function RecurringPage() {
 
             <div className="space-y-1.5">
               <Label>{t("recurring.account")}</Label>
-              <Select value={form.wealth_account_id || "none"} onValueChange={(v) => setForm((f) => ({ ...f, wealth_account_id: v === "none" ? "" : v }))}>
-                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">{t("recurring.noAccount")}</SelectItem>
-                  {accounts.map((a) => (
-                    <SelectItem key={a.id} value={a.id}>
-                      <span className="flex items-center gap-2">
-                        <WealthAccountIcon account={a} className="size-5" />
-                        {a.nickname || a.bank_name}
-                      </span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <AccountCombobox
+                accounts={accounts}
+                value={form.wealth_account_id}
+                onChange={(v) => setForm((f) => ({ ...f, wealth_account_id: v }))}
+                currency={currency}
+                allowNone
+                noneLabel={t("recurring.noAccount")}
+              />
               <p className="text-[11px] text-muted-foreground">{t("recurring.accountHint")}</p>
             </div>
 
