@@ -1007,7 +1007,8 @@
     "noAccountFound": "لم يُعثر على حساب.",
     "bankLimitTitle": "تم بلوغ حد الحسابات",
     "bankLimitBody": "لقد بلغت الحد الأقصى {{limit}} حسابًا بنكيًا (بما في ذلك المغلقة). احذف حسابًا مغلقًا نهائيًا لإضافة آخر.",
-    "bankUsage": "{{current}} من {{limit}} حسابات"
+    "bankUsage": "{{current}} من {{limit}} حسابات",
+    "recurringForAccount": "المتكررة لهذا الحساب"
   },
   "errorBoundary": {
     "title": "حدث خطأ ما",

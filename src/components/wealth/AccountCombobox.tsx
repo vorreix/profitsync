@@ -15,7 +15,7 @@ import type { WealthAccount } from "@/lib/types"
  * modals. Dialog-aware (portals the popover into the dialog so it scrolls).
  */
 export function AccountCombobox({
-  accounts, value, onChange, currency, placeholder, disabled, excludeIds, balancesVisible = true,
+  accounts, value, onChange, currency, placeholder, disabled, excludeIds, balancesVisible = true, allowNone, noneLabel,
 }: {
   accounts: WealthAccount[]
   value: string
@@ -25,6 +25,9 @@ export function AccountCombobox({
   disabled?: boolean
   excludeIds?: string[]
   balancesVisible?: boolean
+  // When set, an explicit "no account" choice (value "") is offered at the top.
+  allowNone?: boolean
+  noneLabel?: string
 }) {
   const { t } = useTranslation("wealth")
   const [open, setOpen] = useState(false)
@@ -50,6 +53,8 @@ export function AccountCombobox({
                 <span className="truncate">{accountDisplayName(selected)}</span>
                 <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{formatMoney(Number(selected.current_balance), currency, balancesVisible)}</span>
               </span>
+            ) : allowNone ? (
+              <span className="truncate">{noneLabel ?? t("selectAccount")}</span>
             ) : (
               <span className="truncate text-muted-foreground">{placeholder ?? t("selectAccount")}</span>
             )}
@@ -65,6 +70,16 @@ export function AccountCombobox({
             <Input placeholder={t("searchAccounts")} value={search} onChange={(e) => setSearch(e.target.value)} className="h-8 text-sm" autoFocus />
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain scrollbar-thin p-1">
+            {allowNone && (
+              <button
+                type="button"
+                className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm text-muted-foreground hover:bg-accent"
+                onClick={() => { onChange(""); close() }}
+              >
+                <Check className={cn("size-4 shrink-0", value === "" ? "opacity-100" : "opacity-0")} />
+                {noneLabel ?? t("selectAccount")}
+              </button>
+            )}
             {filtered.map((a) => (
               <button
                 key={a.id}

@@ -744,7 +744,8 @@
     "noAccountFound": "No account found.",
     "bankLimitTitle": "Bank account limit reached",
     "bankLimitBody": "You have reached the maximum of {{limit}} bank accounts (including closed ones). Permanently delete a closed account to add another.",
-    "bankUsage": "{{current}} of {{limit}} banks"
+    "bankUsage": "{{current}} of {{limit}} banks",
+    "recurringForAccount": "Recurring for this account"
   },
   "clients": {
     "pageTitle": "Clients",
