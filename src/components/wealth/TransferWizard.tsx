@@ -119,7 +119,6 @@ export function TransferWizard({
           catch (e) { toast.error(e instanceof Error ? e.message : `Failed to attach ${file.name}`) }
         }
       }
-      window.dispatchEvent(new Event("wealth:accounts-changed"))
       toast.success(t("transferred"))
       onOpenChange(false)
       onDone?.()
