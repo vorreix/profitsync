@@ -65,6 +65,10 @@ export function AddTransactionDialog({
   // Load data + seed the form each time the dialog opens (mirrors the page).
   useEffect(() => {
     if (!open) return
+    // The dialog stays mounted between opens (AppLayout/FAB), so transient state
+    // must be re-armed here or a previous run leaks into this one — a stale
+    // `saving` left the Add button stuck on a spinner from the second open on.
+    setSaving(false)
     let cancelled = false
     ;(async () => {
       const token = await getToken()
@@ -174,6 +178,9 @@ export function AddTransactionDialog({
       onCreated?.({ id: firstId, type: form.type, amount: total })
     } catch {
       toast.error(t("failedToAddTransaction"))
+    } finally {
+      // Always reset — the component stays mounted after a successful close, so a
+      // missing reset here is what froze the button on the next open.
       setSaving(false)
     }
   }
