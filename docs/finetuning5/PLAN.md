@@ -150,4 +150,26 @@ its post-mutation `loadData()` silent (no full-page skeleton).
 
 ## Change log
 
-- *(updated as branches land)*
+- **2026-06-13** — all 8 branches landed + pushed (chain off `dev`, gate green on each):
+  - `01` calendar excludes trashed/closed clients (verified: API returns correct aggregates).
+  - `02` client bulk-delete reverses balances + co-trashes tx (verified end-to-end on dev DB:
+    +100/−40 → bulk-delete → baseline → restore → +60 + both tx → purge neutral).
+  - `03` AccountQuickAddSheet + RecurringPage re-arm `saving` on open (recurring dialog
+    verified: 3 open/close cycles, Save never frozen).
+  - `04` ClientDetailPage tx form + ClientsPage onboard date fresh per open.
+  - `05` central `ps:data-changed` signal from `api.ts` → DataRefreshProvider revision +
+    `wealth:accounts-changed`; Calendar/Flow/budget cards/WealthPage subscribed (verified
+    live: FAB add updates /calendar day grid and /wealth balances in place, no reload).
+  - `06` shared `useModalDraft`: dismiss keeps draft, Cancel/success clears (verified live on
+    AddTransactionDialog, QuickAddModal, QuotationsPage create, AccountQuickAddSheet; sticky
+    type still survives a successful save; AddTransactionDialog reseed-race fixed).
+  - `07` ClientDetailPage group-aware edit (verified live: 2-leg split edited as one group,
+    stayed single consistent group, balances exact, no orphans).
+  - `08` OrgMembersPage invite reset + in-place role change; ReferralPage payout-method reset.
+- Mobile sweep at 390 px after all changes: no horizontal overflow on any of
+  transactions/wealth/recurring/calendar/quotations/budgets/dashboard.
+- All Playwright test data cleaned from the e2e dev org (clients, tx, accounts, trash all clear).
+- Deferred (honest): dashboard budget-card refresh wired via the same `revision` subscription
+  proven on Calendar/Wealth but not separately screenshotted (needs a set budget + matching tx);
+  `useModalDraft` is browser-verified, not unit-tested (would need a renderHook setup the
+  DB-free unit gate doesn't currently have).
