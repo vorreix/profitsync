@@ -5,7 +5,6 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { useDialogContainer } from "@/hooks/use-dialog-container"
 import { WealthAccountIcon } from "@/components/WealthAccountIcon"
 import { accountDisplayName, formatMoney } from "@/lib/wealth"
 import type { WealthAccount } from "@/lib/types"
@@ -16,7 +15,7 @@ import type { WealthAccount } from "@/lib/types"
  * modals. Dialog-aware (portals the popover into the dialog so it scrolls).
  */
 export function AccountCombobox({
-  accounts, value, onChange, currency, placeholder, disabled, excludeIds, balancesVisible = true,
+  accounts, value, onChange, currency, placeholder, disabled, excludeIds, balancesVisible = true, allowNone, noneLabel,
 }: {
   accounts: WealthAccount[]
   value: string
@@ -26,9 +25,11 @@ export function AccountCombobox({
   disabled?: boolean
   excludeIds?: string[]
   balancesVisible?: boolean
+  // When set, an explicit "no account" choice (value "") is offered at the top.
+  allowNone?: boolean
+  noneLabel?: string
 }) {
   const { t } = useTranslation("wealth")
-  const { triggerRef, container } = useDialogContainer()
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState("")
 
@@ -43,7 +44,6 @@ export function AccountCombobox({
   function close() { setOpen(false); setSearch("") }
 
   return (
-    <div ref={triggerRef} className="contents">
       <Popover open={open} onOpenChange={(o) => (o ? setOpen(true) : close())}>
         <PopoverTrigger asChild>
           <Button variant="outline" role="combobox" aria-expanded={open} className="h-10 w-full justify-between font-normal" disabled={disabled}>
@@ -53,6 +53,8 @@ export function AccountCombobox({
                 <span className="truncate">{accountDisplayName(selected)}</span>
                 <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{formatMoney(Number(selected.current_balance), currency, balancesVisible)}</span>
               </span>
+            ) : allowNone ? (
+              <span className="truncate">{noneLabel ?? t("selectAccount")}</span>
             ) : (
               <span className="truncate text-muted-foreground">{placeholder ?? t("selectAccount")}</span>
             )}
@@ -60,14 +62,24 @@ export function AccountCombobox({
           </Button>
         </PopoverTrigger>
         <PopoverContent
-          container={container}
           className="flex max-h-[min(20rem,var(--radix-popover-content-available-height,20rem))] w-[var(--radix-popover-trigger-width)] min-w-[14rem] flex-col overflow-hidden p-0"
           align="start"
+          collisionPadding={12}
         >
           <div className="shrink-0 border-b p-2">
             <Input placeholder={t("searchAccounts")} value={search} onChange={(e) => setSearch(e.target.value)} className="h-8 text-sm" autoFocus />
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain scrollbar-thin p-1">
+            {allowNone && (
+              <button
+                type="button"
+                className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm text-muted-foreground hover:bg-accent"
+                onClick={() => { onChange(""); close() }}
+              >
+                <Check className={cn("size-4 shrink-0", value === "" ? "opacity-100" : "opacity-0")} />
+                {noneLabel ?? t("selectAccount")}
+              </button>
+            )}
             {filtered.map((a) => (
               <button
                 key={a.id}
@@ -85,6 +97,5 @@ export function AccountCombobox({
           </div>
         </PopoverContent>
       </Popover>
-    </div>
   )
 }

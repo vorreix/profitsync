@@ -13,6 +13,7 @@ import {
   MoreVertical,
   Pencil,
   Plus,
+  Repeat,
   SlidersHorizontal,
 } from "lucide-react"
 import { useTranslation } from "react-i18next"
@@ -215,6 +216,15 @@ export function WealthAccountDetailPage() {
           </div>
         </div>
         <div className="flex shrink-0 gap-2">
+          <Button
+            variant="outline"
+            size="icon"
+            aria-label={t("recurringForAccount")}
+            title={t("recurringForAccount")}
+            onClick={() => navigate(`/recurring?account=${account.id}`)}
+          >
+            <Repeat className="size-4" />
+          </Button>
           <Button
             variant="outline"
             size="icon"

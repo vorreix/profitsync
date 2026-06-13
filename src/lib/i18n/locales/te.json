@@ -1007,7 +1007,8 @@
     "noAccountFound": "ఖాతా కనుగొనబడలేదు.",
     "bankLimitTitle": "బ్యాంక్ ఖాతా పరిమితి చేరింది",
     "bankLimitBody": "మీరు గరిష్టంగా {{limit}} బ్యాంక్ ఖాతాలకు చేరుకున్నారు (మూసినవి సహా). మరొకటి జోడించడానికి ఒక మూసిన ఖాతాను శాశ్వతంగా తొలగించండి.",
-    "bankUsage": "{{limit}} లో {{current}} ఖాతాలు"
+    "bankUsage": "{{limit}} లో {{current}} ఖాతాలు",
+    "recurringForAccount": "ఈ ఖాతా పునరావృతాలు"
   },
   "errorBoundary": {
     "title": "ఏదో తప్పు జరిగింది",
