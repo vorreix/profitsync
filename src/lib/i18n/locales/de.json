@@ -1004,7 +1004,11 @@
     "availableLabel": "Verfügbar",
     "savedInSpaces": "In Sparräumen",
     "searchAccounts": "Konten suchen…",
-    "noAccountFound": "Kein Konto gefunden."
+    "noAccountFound": "Kein Konto gefunden.",
+    "bankLimitTitle": "Kontolimit erreicht",
+    "bankLimitBody": "Du hast das Maximum von {{limit}} Bankkonten erreicht (inkl. geschlossener). Lösche ein geschlossenes Konto endgültig, um ein weiteres hinzuzufügen.",
+    "bankUsage": "{{current}} von {{limit}} Konten",
+    "recurringForAccount": "Daueraufträge für dieses Konto"
   },
   "errorBoundary": {
     "title": "Etwas ist schiefgelaufen",
@@ -1289,6 +1293,7 @@
     "moveTo": "Geld verschieben auf",
     "moveAndClose": "Verschieben & schließen",
     "afterFund": "{{account}} hat danach noch {{amount}}",
-    "viewDetails": "Details ansehen"
+    "viewDetails": "Details ansehen",
+    "spaceBadge": "Sparraum"
   }
 }

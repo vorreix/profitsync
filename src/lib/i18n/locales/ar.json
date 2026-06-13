@@ -1004,7 +1004,11 @@
     "availableLabel": "المتاح",
     "savedInSpaces": "في المساحات",
     "searchAccounts": "ابحث عن الحسابات…",
-    "noAccountFound": "لم يُعثر على حساب."
+    "noAccountFound": "لم يُعثر على حساب.",
+    "bankLimitTitle": "تم بلوغ حد الحسابات",
+    "bankLimitBody": "لقد بلغت الحد الأقصى {{limit}} حسابًا بنكيًا (بما في ذلك المغلقة). احذف حسابًا مغلقًا نهائيًا لإضافة آخر.",
+    "bankUsage": "{{current}} من {{limit}} حسابات",
+    "recurringForAccount": "المتكررة لهذا الحساب"
   },
   "errorBoundary": {
     "title": "حدث خطأ ما",
@@ -1289,6 +1293,7 @@
     "moveTo": "انقل المال إلى",
     "moveAndClose": "انقل وأغلق",
     "afterFund": "سيتبقى في {{account}} مبلغ {{amount}}",
-    "viewDetails": "عرض التفاصيل"
+    "viewDetails": "عرض التفاصيل",
+    "spaceBadge": "مساحة"
   }
 }
