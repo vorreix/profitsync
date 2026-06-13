@@ -12,6 +12,7 @@ import { MAX_MONEY } from "@/lib/money"
 import { accountDisplayName, currencySymbol } from "@/lib/wealth"
 import { WealthAccountIcon } from "@/components/WealthAccountIcon"
 import { CategoryPicker } from "@/components/CategoryPicker"
+import { useModalDraft } from "@/hooks/use-modal-draft"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
@@ -73,9 +74,19 @@ export function AccountQuickAddSheet({
   })
   const { errors, validate, clearField, clearAll } = useFieldErrors(formSchema)
 
-  // On open: seed from editTx when editing, else reset to a blank add form.
+  // A draft worth keeping: anything the user typed/attached on the add form.
+  const dirty = !isEdit && !!(amount || description || category || pendingFiles.length)
+  const draft = useModalDraft({ open, dirty, contextKey: editTx?.id ?? "add" })
+
+  // On open: seed from editTx when editing, else reset to a blank add form —
+  // UNLESS a dismissed add-draft is being restored (outside-click/Esc/Back keep
+  // it; Cancel and a successful save clear it).
   useEffect(() => {
     if (!open) return
+    // Re-arm: the sheet stays mounted between opens, so a request left in flight
+    // when the user closed it must not freeze the save button on reopen.
+    setSaving(false)
+    if (!draft.shouldSeed(editTx?.id ?? "add")) return
     if (editTx) {
       setType(editTx.type)
       setAmount(String(editTx.amount))
@@ -91,6 +102,7 @@ export function AccountQuickAddSheet({
     }
     setPendingFiles([])
     clearAll()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, editTx, clearAll])
 
   // Business orgs need a client; load them lazily on open.
@@ -169,6 +181,7 @@ export function AccountQuickAddSheet({
         }
       }
       toast.success(isEdit ? t("transactionUpdated") : t("transactionAdded"))
+      draft.clearDraft()
       onOpenChange(false)
       onSaved?.(firstId)
     } catch {
@@ -308,7 +321,7 @@ export function AccountQuickAddSheet({
         </div>
 
         <DialogFooter className="shrink-0 border-t px-6 pb-6 pt-3">
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>{t("cancel")}</Button>
+          <Button variant="outline" onClick={() => { draft.clearDraft(); onOpenChange(false) }} disabled={saving}>{t("cancel")}</Button>
           <Button onClick={save} disabled={saving}>
             {isEdit ? (saving ? t("saving") : t("save")) : saving ? t("adding") : t("add")}
           </Button>
