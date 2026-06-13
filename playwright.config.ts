@@ -43,7 +43,7 @@ export default defineConfig({
       name: "chromium",
       use: { ...devices["Desktop Chrome"], storageState: "e2e/.auth/user.json" },
       dependencies: ["setup"],
-      testIgnore: /mobile\.spec\.ts/,
+      testIgnore: [/mobile\.spec\.ts/, /prod-build\.spec\.ts/],
     },
     {
       // Pixel = Chromium-based, so CI only needs the chromium download.
@@ -52,13 +52,32 @@ export default defineConfig({
       dependencies: ["setup"],
       testMatch: /mobile\.spec\.ts/,
     },
+    {
+      // PRODUCTION-BUILD smoke: boots the real `vite build` artifact (served by
+      // `vite preview`) in a browser, signed out, and fails on any boot error.
+      // The dev server can never catch build-only breakage — a circular
+      // manualChunks graph white-screened EVERY page of a build that sailed
+      // through the whole dev-server suite (2026-06-13). No auth, no DB.
+      name: "prod-build",
+      use: { ...devices["Desktop Chrome"], baseURL: "http://localhost:4317" },
+      testMatch: /prod-build\.spec\.ts/,
+    },
   ],
   webServer: process.env.PLAYWRIGHT_BASE_URL
     ? undefined
-    : {
-        command: "npm run dev -- --port 5173 --strictPort",
-        url: "http://localhost:5173",
-        reuseExistingServer: !process.env.CI,
-        timeout: 120_000,
-      },
+    : [
+        {
+          command: "npm run dev -- --port 5173 --strictPort",
+          url: "http://localhost:5173",
+          reuseExistingServer: !process.env.CI,
+          timeout: 120_000,
+        },
+        {
+          // Fresh production build for the prod-build project (no API needed).
+          command: "npm run build && npm run preview -- --port 4317 --strictPort",
+          url: "http://localhost:4317",
+          reuseExistingServer: !process.env.CI,
+          timeout: 300_000,
+        },
+      ],
 })
