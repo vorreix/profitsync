@@ -1,0 +1,70 @@
+# Post-deploy health check — the LAST line of defense.
+#
+# Every pre-deploy gate can only test what it simulates; this one probes the
+# real production domain right after Vercel reports a successful Production
+# deployment (GitHub `deployment_status` event from the Vercel integration).
+# If the live API or shell is broken, this workflow goes red within a minute of
+# the deploy — instead of users finding out first (2026-06-13: v0.4.0 shipped
+# with every /api/* route returning FUNCTION_INVOCATION_FAILED while all
+# pre-merge checks were green).
+#
+# Security note: no event-payload data is ever interpolated into run: steps
+# (only the `if:` expression reads the event); all probed URLs are hardcoded.
+#
+# On failure: rollback from the Vercel dashboard (or `vercel rollback`), then
+# fix forward.
+name: Post-deploy health
+
+on:
+  deployment_status:
+
+permissions:
+  contents: read
+
+jobs:
+  health:
+    # Only successful PRODUCTION deployments (Vercel names the environment "Production").
+    if: >-
+      github.event.deployment_status.state == 'success' &&
+      contains(github.event.deployment.environment, 'Production')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for the domain alias to settle
+        run: sleep 20
+
+      - name: API function boots and reaches the database (public endpoint)
+        run: |
+          code=$(curl -s -o /tmp/pricing.json -w '%{http_code}' --max-time 20 https://profitsync.net/api/public/pricing)
+          echo "GET /api/public/pricing -> $code"
+          [ "$code" = "200" ] || { echo '::error::public pricing endpoint is not 200 — API function is down'; cat /tmp/pricing.json; exit 1; }
+          grep -q '"plans"' /tmp/pricing.json || { echo '::error::pricing response is not the expected JSON'; cat /tmp/pricing.json; exit 1; }
+
+      - name: Authed API routes reject cleanly (401), never crash (500)
+        run: |
+          fail=0
+          for p in /api/profile /api/clients /api/transactions /api/organizations /api/recurring /api/budgets; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "https://profitsync.net$p")
+            echo "GET $p -> $code"
+            if [ "$code" != "401" ]; then echo "::error::$p returned $code (expected 401) — function crash or auth breakage"; fail=1; fi
+          done
+          exit $fail
+
+      - name: App shell and SSR pages serve
+        run: |
+          fail=0
+          for p in / /blog /privacy-policy /dashboard; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "https://profitsync.net$p")
+            echo "GET $p -> $code"
+            [ "$code" = "200" ] || { echo "::error::$p returned $code"; fail=1; }
+          done
+          exit $fail
+
+      - name: PWA artifacts serve (update flow depends on these)
+        run: |
+          fail=0
+          for p in /app-sw.js /sw.js /manifest.webmanifest; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "https://profitsync.net$p")
+            echo "GET $p -> $code"
+            [ "$code" = "200" ] || { echo "::error::$p returned $code"; fail=1; }
+          done
+          exit $fail
