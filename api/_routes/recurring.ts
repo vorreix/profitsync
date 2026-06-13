@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { and, asc, desc, eq, sql } from "drizzle-orm"
+import { and, asc, desc, eq, ne, sql } from "drizzle-orm"
 import { db, serialize } from "../../src/lib/db/index.js"
 import { clients, recurringRules, wealthAccounts } from "../../src/lib/db/schema.js"
 import { canWrite, requireAuth } from "../_lib/auth.js"
@@ -56,7 +56,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .from(recurringRules)
       .leftJoin(clients, eq(clients.id, recurringRules.clientId))
       .leftJoin(wealthAccounts, eq(wealthAccounts.id, recurringRules.wealthAccountId))
-      .where(eq(recurringRules.organizationId, orgId))
+      // Exclude Space auto-saves (kind='transfer') — those are managed on /spaces,
+      // not in the income/expense Recurring list.
+      .where(and(eq(recurringRules.organizationId, orgId), ne(recurringRules.kind, "transfer")))
       .orderBy(desc(recurringRules.active), asc(recurringRules.nextDueAt), asc(recurringRules.createdAt))
     return res.json(rows.map(serialize))
   }

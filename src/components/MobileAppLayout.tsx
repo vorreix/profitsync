@@ -79,6 +79,7 @@ function buildMoreItems(activeOrgId: string | undefined, accountType: AccountTyp
   const items: (MoreItem | false)[] = [
     accountTypeAllows(accountType, "members") && { labelKey: "nav.users", href: usersHref, icon: UserPlus },
     { labelKey: "nav.wealth", href: "/wealth", icon: Landmark },
+    accountTypeAllows(accountType, "spaces") && { labelKey: "nav.spaces", href: "/spaces", icon: PiggyBank },
     { labelKey: "nav.analytics", href: "/analytics", icon: ChartColumn },
     { labelKey: "nav.categories", href: "/categories", icon: Tag },
     { labelKey: "nav.recurring", href: "/recurring", icon: Repeat },

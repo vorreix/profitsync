@@ -32,7 +32,7 @@ import {
   Star,
   Wallet,
 } from "lucide-react"
-import { apiDelete, apiGet, apiPatch, apiPost, clearApiCache } from "@/lib/api"
+import { apiDelete, apiErrorMessage, apiGet, apiPatch, apiPost, clearApiCache } from "@/lib/api"
 import { WEALTH_CHANGED_EVENT } from "@/lib/data-events"
 import { amountExceedsLimit } from "@/lib/money"
 import type { WealthAccount } from "@/lib/types"
@@ -111,6 +111,7 @@ export function WealthPage() {
   const symbol = currencySymbol(currency)
   const { balancesVisible, setBalancesVisible } = useBalancePrivacy()
   const [accounts, setAccounts] = useState<WealthAccount[]>([])
+  const [spaces, setSpaces] = useState<WealthAccount[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
@@ -233,10 +234,19 @@ export function WealthPage() {
   }
 
   const { active, total } = useWealthSummary(accounts)
-  const bankCount = active.filter((a) => a.type === "bank").length
+  // Money parked in Spaces is still the user's money, so net worth must include
+  // it (a bank→Space transfer nets to zero). /api/spaces 403s for business orgs,
+  // so this is naturally personal-only.
+  const savedTotal = spaces.filter((s) => !s.archived_at).reduce((sum, s) => sum + Number(s.current_balance), 0)
+  const netWorth = total + savedTotal
   const archived = useMemo(() => accounts.filter((a) => a.archived_at), [accounts])
-  // Live count from the list (fresher than the snapshot in /quota) + the plan
-  // limit from the server. No quota yet → don't gate (server still enforces).
+  // Free counts only ACTIVE banks (closing frees a slot); paid counts the TOTAL
+  // incl. closed (the 20 cap includes closed accounts). Live count from the list
+  // (fresher than the /quota snapshot) measured against the plan limit.
+  const isFreePlan = (quota?.plan_key ?? "free") === "free"
+  const bankCount = isFreePlan
+    ? active.filter((a) => a.type === "bank").length
+    : accounts.filter((a) => a.type === "bank").length
   const atBankLimit = quota != null && bankCount >= quota.bank_accounts.limit
 
   async function load({ silent = false }: { silent?: boolean } = {}) {
@@ -244,11 +254,14 @@ export function WealthPage() {
     if (!token) return
     if (!silent) setLoading(true)
     try {
-      const [rows, q] = await Promise.all([
+      const [rows, q, spaceRows] = await Promise.all([
         apiGet<WealthAccount[]>("/api/wealth/accounts", token),
         apiGet<BankQuota>("/api/wealth/quota", token).catch(() => null),
+        // Personal-only; 403s for business orgs → treated as no Spaces.
+        apiGet<WealthAccount[]>("/api/spaces", token).catch(() => [] as WealthAccount[]),
       ])
       setAccounts(rows)
+      setSpaces(spaceRows)
       if (q) setQuota(q)
     } catch {
       if (!silent) toast.error(t("failedToLoad"))
@@ -355,7 +368,12 @@ export function WealthPage() {
       toast.success(t("accountRestored"))
       await load()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : t("failedToArchive"))
+      // A free user reopening a bank while already at the 1-active limit gets a
+      // 402 with upgradeHint — surface the upgrade prompt instead of a raw error.
+      let upgrade = false
+      try { upgrade = !!(JSON.parse((err as Error).message) as { upgradeHint?: boolean }).upgradeHint } catch { /* not json */ }
+      if (upgrade) setUpgradeOpen(true)
+      else toast.error(apiErrorMessage(err, t("failedToArchive")))
     } finally {
       setSaving(false)
     }
@@ -385,11 +403,27 @@ export function WealthPage() {
         {loading ? (
           <Skeleton className="mt-2 h-9 w-40" />
         ) : (
-          <p className="mt-1 text-3xl font-bold tabular-nums sm:text-4xl">{formatMoney(total, currency, balancesVisible)}</p>
+          <>
+            <p className="mt-1 text-3xl font-bold tabular-nums sm:text-4xl">{formatMoney(netWorth, currency, balancesVisible)}</p>
+            {savedTotal > 0 && (
+              <button
+                type="button"
+                onClick={() => navigate("/spaces")}
+                className="mt-1.5 inline-flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground hover:text-foreground"
+              >
+                <span className="tabular-nums">{t("availableLabel")}: {formatMoney(total, currency, balancesVisible)}</span>
+                <span aria-hidden>·</span>
+                <span className="tabular-nums text-emerald-600 dark:text-emerald-400">{t("savedInSpaces")}: {formatMoney(savedTotal, currency, balancesVisible)} →</span>
+              </button>
+            )}
+          </>
         )}
         <div className="mt-4 flex items-center justify-between gap-2">
           <p className="text-sm text-muted-foreground">
             {active.length} {active.length === 1 ? t("account") : t("accounts")}
+            {quota && (
+              <span className="ml-2 text-xs tabular-nums opacity-80">· {t("bankUsage", { current: bankCount, limit: quota.bank_accounts.limit })}</span>
+            )}
           </p>
           <div className="flex items-center gap-2">
             {active.length >= 2 && (
@@ -505,7 +539,7 @@ export function WealthPage() {
         </div>
       )}
 
-      {/* Upgrade-required dialog (free plan at its bank allowance) */}
+      {/* At the bank allowance: free → upgrade prompt; paid → "delete a closed one". */}
       <Dialog open={upgradeOpen} onOpenChange={setUpgradeOpen}>
         <DialogContent className="w-[92vw] max-w-sm">
           <DialogHeader>
@@ -513,20 +547,29 @@ export function WealthPage() {
               <span className="flex size-9 items-center justify-center rounded-full bg-amber-500/15">
                 <Crown className="size-4 text-amber-500 dark:text-amber-400" />
               </span>
-              {t("upgradeBanksTitle")}
+              {isFreePlan ? t("upgradeBanksTitle") : t("bankLimitTitle")}
             </DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            {t("upgradeBanksBody", { limit: quota?.bank_accounts.limit ?? 1 })}
+            {isFreePlan
+              ? t("upgradeBanksBody", { limit: quota?.bank_accounts.limit ?? 1 })
+              : t("bankLimitBody", { limit: quota?.bank_accounts.limit ?? 20 })}
           </p>
+          {quota && (
+            <p className="text-xs font-medium tabular-nums text-muted-foreground">
+              {t("bankUsage", { current: bankCount, limit: quota.bank_accounts.limit })}
+            </p>
+          )}
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setUpgradeOpen(false)}>{t("cancel")}</Button>
-            <Button
-              className="bg-amber-500 text-white hover:bg-amber-600 dark:bg-amber-500 dark:hover:bg-amber-400"
-              onClick={() => { setUpgradeOpen(false); navigate("/subscription") }}
-            >
-              <Sparkles className="size-4" /> {t("upgradeBanksCta")}
-            </Button>
+            {isFreePlan && (
+              <Button
+                className="bg-amber-500 text-white hover:bg-amber-600 dark:bg-amber-500 dark:hover:bg-amber-400"
+                onClick={() => { setUpgradeOpen(false); navigate("/subscription") }}
+              >
+                <Sparkles className="size-4" /> {t("upgradeBanksCta")}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

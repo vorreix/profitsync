@@ -86,8 +86,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (total >= 1) return res.status(400).json({ error: "Cash in Hand already exists" })
       }
       if (account.type === "bank") {
-        // Same plan-based allowance as creating a new bank account.
-        const quota = await checkBankAccountQuota(orgId)
+        // Reopening: free plans block if already at the 1-active limit (forcing an
+        // upgrade); paid plans always allow (the bank already counts toward 20).
+        const quota = await checkBankAccountQuota(orgId, { forRestore: true })
         if (!quota.allowed) return res.status(402).json(quota)
       }
     }
