@@ -1,3 +1,5 @@
+import { emitDataChanged } from "@/lib/data-events"
+
 const ORG_STORAGE_KEY = "ps_active_org"
 
 function readStoredOrg(): string | null {
@@ -130,6 +132,8 @@ async function mutate<T>(method: string, path: string, token: string, body?: unk
   // Pass `invalidate` to drop only the affected scopes and keep the rest warm.
   if (invalidate) invalidateKeys(invalidate)
   else clearApiCache()
+  // Notify after invalidation so listeners that refetch get fresh data.
+  emitDataChanged(path)
   return result
 }
 

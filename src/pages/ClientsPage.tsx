@@ -215,6 +215,19 @@ export function ClientsPage() {
     }
   }, [searchParams, setSearchParams])
 
+  // Keep the onboard date defaulting to *today* on every open. The form state
+  // survives outside-click closes (intentional draft behavior), so a pristine
+  // form opened the next day would otherwise still carry yesterday's date —
+  // refresh it only when the user hasn't typed anything yet.
+  useEffect(() => {
+    if (!dialogOpen) return
+    setForm((f) =>
+      f.name.trim() || f.company.trim() || f.email.trim() || f.phone.trim() || f.notes.trim()
+        ? f
+        : { ...f, onboard_date: new Date().toISOString().split("T")[0] },
+    )
+  }, [dialogOpen])
+
   async function handleCreate() {
     if (!validate(form)) return
     const token = await getToken()

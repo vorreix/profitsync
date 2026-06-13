@@ -87,11 +87,11 @@ export function WealthAccountDetailPage() {
   const fmt = (n: number) =>
     new Intl.NumberFormat("en-US", { style: "currency", currency, minimumFractionDigits: 2 }).format(n)
 
-  const load = useCallback(async () => {
+  const load = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
     if (!id) return
     const token = await getToken()
     if (!token) return
-    setLoading(true)
+    if (!silent) setLoading(true)
     try {
       const [acc, txRes] = await Promise.all([
         apiGet<WealthAccount>(`/api/wealth/accounts/${id}`, token),
@@ -106,15 +106,16 @@ export function WealthAccountDetailPage() {
       toast.error(t("accountNotFound"))
       navigate("/wealth")
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }, [id, getToken, navigate, t])
 
   useEffect(() => { load() }, [load])
 
-  // Refresh when balances change elsewhere (adjust/edit).
+  // Refresh when balances change elsewhere (any transaction/transfer/account
+  // mutation — signaled centrally from the API client). Silent: no skeleton.
   useEffect(() => {
-    const handler = () => load()
+    const handler = () => load({ silent: true })
     window.addEventListener("wealth:accounts-changed", handler)
     return () => window.removeEventListener("wealth:accounts-changed", handler)
   }, [load])
@@ -166,7 +167,6 @@ export function WealthAccountDetailPage() {
     if (!token) return
     try {
       await apiDelete(`/api/wealth/accounts/${account.id}`, token)
-      window.dispatchEvent(new Event("wealth:accounts-changed"))
       toast.success(t("accountArchived"))
       navigate("/wealth")
     } catch {
@@ -359,7 +359,7 @@ export function WealthAccountDetailPage() {
         onOpenChange={(o) => { setAddOpen(o); if (!o) setEditTx(null) }}
         currency={currency}
         isPersonal={isPersonal}
-        onSaved={load}
+        onSaved={() => void load()}
         editTx={editTx}
       />
 

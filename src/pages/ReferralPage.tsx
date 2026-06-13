@@ -184,7 +184,7 @@ export function ReferralPage() {
               {data.settings.min_payout > 0 ? `Minimum payout ${money(data.settings.min_payout, c)}.` : "Request a payout anytime."}{data.stats.outstanding > 0 ? ` ${money(data.stats.outstanding, c)} pending.` : ""}
             </p>
           </div>
-          <Button disabled={!canPayout} onClick={() => { setPayoutAmount(String(data.stats.available)); setPayoutOpen(true) }} className="shrink-0">
+          <Button disabled={!canPayout} onClick={() => { setMethod("upi"); setPayoutDetails({}); setPayoutAmount(String(data.stats.available)); setPayoutOpen(true) }} className="shrink-0">
             <Send className="size-4" /> Request payout
           </Button>
         </CardContent>

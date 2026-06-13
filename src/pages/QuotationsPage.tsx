@@ -203,6 +203,26 @@ export function QuotationsPage() {
   const [form, setForm] = useState<QuotationForm>(defaultForm())
   const [saving, setSaving] = useState(false)
 
+  // Create-dialog draft. `form` is shared with the edit dialog, so we keep the
+  // create draft in a dedicated ref (snapshotted on dismiss) to avoid edit data
+  // leaking in. Policy: dismissing the create dialog (outside-click/Esc/Back)
+  // keeps what was typed; Cancel and a successful create clear it; opening fresh
+  // with no kept draft seeds defaults (with today's date).
+  const createDraftRef = useRef<QuotationForm | null>(null)
+  const createDirty = (f: QuotationForm) =>
+    !!(f.title || f.prospect_name || f.company || f.email || f.phone || f.amount || f.notes || f.category)
+  const openCreate = () => {
+    setForm(createDraftRef.current ?? defaultForm())
+    clearAll()
+    setCreateOpen(true)
+  }
+  const closeCreate = (o: boolean) => {
+    // o=false here only via dismissal (Cancel/success route through clearAll paths
+    // that null the ref first) — snapshot the draft if it has content.
+    if (!o) createDraftRef.current = createDirty(form) ? form : null
+    setCreateOpen(o)
+  }
+
   const [attachments, setAttachments] = useState<QuotationAttachment[]>([])
   const [attachLoading, setAttachLoading] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -279,10 +299,10 @@ export function QuotationsPage() {
 
   useEffect(() => {
     if (searchParams.get("new") === "1") {
-      setForm(defaultForm())
-      setCreateOpen(true)
+      openCreate()
       setSearchParams({}, { replace: true })
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, setSearchParams])
 
   // Deep link from the client media hub: ?view=<quotationId> opens that quote.
@@ -428,6 +448,7 @@ export function QuotationsPage() {
         amount: form.amount ? parseFloat(form.amount) : 0,
       })
       toast.success(t("quotationCreated"))
+      createDraftRef.current = null // a successful create clears the kept draft
       setCreateOpen(false)
       setForm(defaultForm())
       clearAll()
@@ -596,7 +617,7 @@ export function QuotationsPage() {
               {t("multiSelect.select")}
             </Button>
           )}
-          <Button onClick={() => { setForm(defaultForm()); clearAll(); setCreateOpen(true) }} className="shrink-0">
+          <Button onClick={openCreate} className="shrink-0">
             <Plus className="size-4" />
             <span className="hidden sm:inline">{t("newQuotationBtn")}</span>
             <span className="sm:hidden">{t("newShort")}</span>
@@ -648,7 +669,7 @@ export function QuotationsPage() {
             {search || tab !== "all" || dateFrom || dateTo ? t("noQuotationsMatch") : t("noQuotationsYet")}
           </p>
           {!search && tab === "all" && !dateFrom && !dateTo && (
-            <Button className="mt-4" onClick={() => { setForm(defaultForm()); clearAll(); setCreateOpen(true) }}>
+            <Button className="mt-4" onClick={openCreate}>
               <Plus className="size-4" />
               {t("createFirstQuotation")}
             </Button>
@@ -986,13 +1007,13 @@ export function QuotationsPage() {
       </Dialog>
 
       {/* Create Dialog */}
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+      <Dialog open={createOpen} onOpenChange={closeCreate}>
         <DialogContent className="w-[92vw] max-w-md sm:max-w-md">
           <DialogHeader><DialogTitle>{t("newQuotationTitle")}</DialogTitle></DialogHeader>
           <QuotationFormFields f={form} onChange={(p) => setForm((f) => ({ ...f, ...p }))} errors={errors} clearField={clearField} />
           <DialogFooter>
             {/* Cancel = discard. */}
-            <Button variant="outline" onClick={() => { setForm(defaultForm()); clearAll(); setCreateOpen(false) }}>{t("cancelBtn")}</Button>
+            <Button variant="outline" onClick={() => { createDraftRef.current = null; setForm(defaultForm()); clearAll(); setCreateOpen(false) }}>{t("cancelBtn")}</Button>
             <Button onClick={handleCreate} disabled={saving}>{saving ? t("creating") : t("createBtn")}</Button>
           </DialogFooter>
         </DialogContent>

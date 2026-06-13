@@ -98,11 +98,15 @@ export function RecurringPage() {
   function openCreate() {
     setEditing(null)
     setForm(emptyForm())
+    // Re-arm: the dialog stays mounted between opens, so a request left in flight
+    // when the user closed it must not freeze the save button on reopen.
+    setSaving(false)
     setFormOpen(true)
   }
 
   function openEdit(rule: RecurringRule) {
     setEditing(rule)
+    setSaving(false)
     setForm({
       name: rule.name,
       type: rule.type,

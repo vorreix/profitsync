@@ -35,6 +35,7 @@ import {
   Workflow,
 } from "lucide-react"
 import { apiGet } from "@/lib/api"
+import { useDataRefresh } from "@/lib/data-refresh-context"
 import { useOrg } from "@/lib/org-context"
 import { useCurrency } from "@/lib/currency-context"
 import { formatMoney } from "@/lib/wealth"
@@ -344,6 +345,7 @@ export function MoneyFlowPage() {
   const { getToken } = useAuth()
   const { activeOrg } = useOrg()
   const { currency } = useCurrency()
+  const { revision } = useDataRefresh()
   const isPersonal = activeOrg?.account_type === "personal"
   const hasClients = accountTypeAllows(activeOrg?.account_type ?? null, "clients")
 
@@ -407,8 +409,8 @@ export function MoneyFlowPage() {
     return () => { cancelled = true }
   }, [getToken, hasClients])
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  const load = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
+    if (!silent) setLoading(true)
     try {
       const token = await getToken()
       if (!token) return
@@ -424,13 +426,20 @@ export function MoneyFlowPage() {
       setData(resp)
       setDataVersion((v) => v + 1)
     } catch {
-      toast.error(t("flow.loadFailed"))
+      if (!silent) toast.error(t("flow.loadFailed"))
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }, [getToken, viewMode, bucket, groupBy, from, to, selCats, selClients, selAccounts, t])
 
   useEffect(() => { load() }, [load])
+
+  // A transaction added/edited anywhere (e.g. the global + FAB) bumps the
+  // app-wide refresh signal — rebuild the graph in place, no skeleton.
+  useEffect(() => {
+    if (revision > 0) void load({ silent: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only react to the signal
+  }, [revision])
 
   const flowRef = useRef<ReactFlowInstance<Node, Edge> | null>(null)
 
