@@ -32,7 +32,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "sonner"
-import { ArrowLeft, Plus, Trash2, DollarSign, Building2, Mail, Phone, FileText, ArrowUpRight, ArrowDownRight, Pencil, Calendar, Paperclip, Upload, X, FolderOpen, Archive, ArchiveRestore, Eye, ChevronRight } from "lucide-react"
+import { ArrowLeft, Plus, Trash2, DollarSign, Building2, Mail, Phone, FileText, ArrowUpRight, ArrowDownRight, Pencil, Calendar, Paperclip, Upload, X, FolderOpen, Archive, ArchiveRestore, Eye, ChevronRight, Repeat } from "lucide-react"
 import { MoneyBag } from "@/components/icons/MoneyBag"
 import { ExpandableSearch } from "@/components/ExpandableSearch"
 
@@ -586,6 +586,16 @@ export function ClientDetailPage() {
                         <div className="flex items-center gap-2 mt-0.5">
                           <span className="text-xs text-muted-foreground">{formatDate(tx.date)}</span>
                           {tx.category && <Badge variant="outline" className="text-xs py-0">{tx.category}</Badge>}
+                          {tx.recurring_rule_id && (
+                            <Badge
+                              variant="secondary"
+                              className="text-[10px] py-0 shrink-0 gap-1 cursor-pointer hover:bg-secondary/80"
+                              title="Recurring"
+                              onClick={(e) => { e.stopPropagation(); navigate(`/recurring?view=${tx.recurring_rule_id}`) }}
+                            >
+                              <Repeat className="size-3" /> Recurring
+                            </Badge>
+                          )}
                           <AttachmentBadge count={tx.attachment_count} />
                         </div>
                       </div>
@@ -814,9 +824,21 @@ export function ClientDetailPage() {
                 </DialogTitle>
               </DialogHeader>
               <div className="space-y-3">
-                <p className={`text-2xl font-bold tabular-nums ${viewTx.type === "incoming" ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
-                  {viewTx.type === "incoming" ? "+" : "−"}{formatCurrency(Number(viewTx.amount))}
-                </p>
+                <div className="flex items-center gap-2">
+                  <p className={`text-2xl font-bold tabular-nums ${viewTx.type === "incoming" ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
+                    {viewTx.type === "incoming" ? "+" : "−"}{formatCurrency(Number(viewTx.amount))}
+                  </p>
+                  {viewTx.recurring_rule_id && (
+                    <Badge
+                      variant="secondary"
+                      className="gap-1 cursor-pointer hover:bg-secondary/80"
+                      title="Recurring"
+                      onClick={() => { const ruleId = viewTx.recurring_rule_id; dropModalBackEntry(); setViewTx(null); navigate(`/recurring?view=${ruleId}`) }}
+                    >
+                      <Repeat className="size-3" /> Recurring
+                    </Badge>
+                  )}
+                </div>
                 <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
                   <div><p className="text-xs text-muted-foreground">Date</p><p className="font-medium">{formatDate(viewTx.date)}</p></div>
                   {viewTx.category && <div><p className="text-xs text-muted-foreground">Category</p><Badge variant="outline">{viewTx.category}</Badge></div>}

@@ -1069,6 +1069,7 @@
   },
   "recurring": {
     "title": "Recurring payments",
+    "back": "Back",
     "subtitle": "Money that repeats on a schedule — created for you automatically.",
     "add": "Add recurring",
     "addShort": "New",
