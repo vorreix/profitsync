@@ -4,6 +4,8 @@
 // → DuckDuckGo's icon service (the last two need no key and are unlimited). Every
 // path fails soft: a missing logo never blocks creating/updating an account.
 
+import { sniffImageMime } from "../../src/lib/logo-data.js"
+
 const BRANDFETCH_KEY = process.env.BRANDFETCH_APIKEY ?? ""
 
 export type BrandResult = { name: string; domain: string; icon: string }
@@ -127,14 +129,21 @@ export async function fetchLogoData(opts: { logoUrl?: string; domain?: string })
   for (const url of candidates) {
     if (!isSafeLogoUrl(url)) continue
     try {
-      const res = await fetchWithTimeout(url, {}, 4500)
+      const res = await fetchWithTimeout(url, {}, 2500)
       if (!res.ok) continue
       const type = res.headers.get("content-type") ?? "image/png"
       if (!type.startsWith("image/")) continue
+      // SVG is a script-capable document format — never persist it as logo
+      // bytes that later round-trip into the DOM as a data: URL.
+      if (type.includes("svg")) continue
       const buf = Buffer.from(await res.arrayBuffer())
       // Skip empty responses and anything implausibly large for a logo.
       if (buf.length < 64 || buf.length > 512 * 1024) continue
-      return { logo_data: buf.toString("base64"), logo_url: url, file_type: type }
+      const base64 = buf.toString("base64")
+      // Trust the BYTES, not the header: only store recognizable raster images.
+      const sniffed = sniffImageMime(base64)
+      if (!sniffed || sniffed === "image/svg+xml") continue
+      return { logo_data: base64, logo_url: url, file_type: sniffed }
     } catch {
       /* try the next candidate */
     }

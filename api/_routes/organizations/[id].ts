@@ -4,8 +4,21 @@ import { CURRENCY_LIST } from "../../../src/lib/currencies.js"
 import { db, serialize } from "../../../src/lib/db/index.js"
 import { organizations, organizationMembers, userProfiles } from "../../../src/lib/db/schema.js"
 import { getUserId } from "../../_lib/auth.js"
+import { imageSrc, validateImageUpload } from "../../_lib/image-upload.js"
 
 const VALID_CURRENCIES = new Set(CURRENCY_LIST.map((c) => c.code))
+
+// Replace the raw logo columns with the `logo_src` data URL the UI renders.
+function withLogoSrc<T extends { logoData?: unknown; logoMime?: unknown }>(row: T) {
+  const { logoData, logoMime, ...rest } = row
+  return {
+    ...rest,
+    logoSrc: imageSrc(
+      typeof logoData === "string" ? logoData : null,
+      typeof logoMime === "string" ? logoMime : null,
+    ),
+  }
+}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const userId = await getUserId(req)
@@ -23,16 +36,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!org) return res.status(404).json({ error: "Not found" })
 
   if (req.method === "GET") {
-    return res.json(serialize({ ...org, role: member.role }))
+    return res.json(serialize(withLogoSrc({ ...org, role: member.role })))
   }
 
   if (req.method === "PATCH") {
     if (member.role !== "owner" && member.role !== "admin") {
       return res.status(403).json({ error: "Only owners and admins can edit organization settings" })
     }
-    const { name, currency } = req.body as { name?: string; currency?: string }
+    const { name, currency, logo_data } = req.body as { name?: string; currency?: string; logo_data?: string | null }
 
     const updates: Record<string, unknown> = { updatedAt: new Date() }
+
+    // Logo: a base64/data-URL string sets it (validated + mime sniffed
+    // server-side); null or "" clears it.
+    if (logo_data !== undefined) {
+      if (logo_data === null || logo_data === "") {
+        updates.logoData = ""
+        updates.logoMime = ""
+      } else {
+        const img = validateImageUpload(logo_data)
+        if (!img.ok) return res.status(400).json({ error: img.error })
+        updates.logoData = img.data
+        updates.logoMime = img.mime
+      }
+    }
 
     if (name !== undefined) {
       if (org.isPersonal) {
@@ -57,7 +84,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .set(updates)
       .where(eq(organizations.id, id))
       .returning()
-    return res.json(serialize({ ...updated, role: member.role }))
+    return res.json(serialize(withLogoSrc({ ...updated, role: member.role })))
   }
 
   if (req.method === "DELETE") {

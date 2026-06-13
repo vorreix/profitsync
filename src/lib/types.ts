@@ -101,6 +101,9 @@ export type Transaction = {
   category: string
   date: string
   is_system?: boolean
+  // Set when this row was auto-created by a recurring rule (drives the
+  // "Recurring" badge in lists + the detail modal).
+  recurring_rule_id?: string | null
   // 'transfer' marks the two legs of an account-to-account move (shown only on
   // the account-detail list, never in the global list / analytics).
   kind?: "standard" | "transfer"
@@ -127,9 +130,11 @@ export type WealthAccount = {
   current_balance: number
   icon: string
   // Brand + banking details (see migration 0027). `logo_data` (base64) is stored
-  // server-side but never sent in list responses — the UI renders `logo_url`.
+  // server-side; responses expose it as `logo_src` (a durable data: URL) which
+  // the UI prefers over the expiring hotlinked `logo_url`.
   brand_domain?: string
   logo_url?: string
+  logo_src?: string | null
   country?: string
   account_number?: string
   routing_number?: string
@@ -138,11 +143,38 @@ export type WealthAccount = {
   location?: string
   note?: string
   position?: number
+  // Exactly one ACTIVE account per org can be the default (preselected in
+  // transaction forms, badged in lists).
+  is_default?: boolean
   archived_at: string | null
   created_at: string
   updated_at: string
   transaction_count?: number
   attachment_count?: number
+}
+
+export type RecurringRule = {
+  id: string
+  organization_id: string
+  // NULL = the org's own/internal client (the personal org's anchor).
+  client_id: string | null
+  client_name?: string | null
+  client_is_own?: boolean | null
+  wealth_account_id: string | null
+  account_name?: string | null
+  name: string
+  type: "incoming" | "outgoing"
+  amount: number | string
+  category: string
+  frequency_unit: "day" | "week" | "month" | "year"
+  frequency_interval: number
+  start_date: string
+  end_date: string | null
+  next_due_at: string
+  active: boolean
+  last_error: string
+  generated_count?: number
+  created_at: string
 }
 
 export type WealthAccountAttachment = AttachmentMeta & {
@@ -210,6 +242,10 @@ export type UserProfile = {
   country?: string
   phone_country_code?: string
   phone?: string
+  // Profile picture as a durable data: URL (built server-side from stored bytes).
+  avatar_src?: string | null
+  // Custom dashboard arrangement (see src/lib/dashboard-layout.ts).
+  dashboard_layout?: unknown
   created_at: string
   updated_at: string
 }
@@ -251,6 +287,8 @@ export type Organization = {
   is_personal: boolean
   account_type: AccountType | null
   currency: string
+  // Workspace logo as a durable data: URL (built server-side from stored bytes).
+  logo_src?: string | null
   role: OrgRole
   plan_key: string | null
   plan_status: string | null

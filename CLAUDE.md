@@ -50,6 +50,12 @@ A husky **pre-commit hook** (`.husky/pre-commit`, installed via the `prepare` sc
 
 **CI mirrors the hook.** `.github/workflows/pr.yml` runs the same gate (`i18n:check` → `lint` → `typecheck` → `test:ci`) on every PR and on pushes to `main`/`dev`, so commits made with `--no-verify` (or by contributors who never ran `npm install`) are still caught server-side. `.github/CODEOWNERS` assigns review and `.github/PULL_REQUEST_TEMPLATE.md` is the PR scaffold. Keep the hook and the workflow in sync when changing the gate.
 
+**Other CI workflows.** `.github/workflows/security.yml` runs `scripts/secret-scan.mjs` (also first in the pre-commit hook), the route-guard sweep (`scripts/check-route-guards.mjs` — every `api/_routes` handler must call an auth guard), and a **prod** `npm audit --omit=dev --audit-level=high`. `.github/workflows/e2e.yml` runs the Playwright smoke suite (`e2e/`) on PRs into `main` and on manual dispatch; it needs the repo secrets `E2E_VITE_CLERK_PUBLISHABLE_KEY` / `E2E_CLERK_SECRET_KEY` (a Clerk **dev** instance — the testing tokens + `424242` code only work on dev) + `E2E_DATABASE_URL` (a **dedicated** Neon branch, never prod — the suite runs migrations + writes/purges rows).
+
+**The unit gate is DB-FREE.** Never add a committed test that opens a DB connection. `vite.config.ts` `test.env` hands the Vitest worker a placeholder `DATABASE_URL` so that importing a module which transitively pulls in `src/lib/db` (eager `neon(process.env.DATABASE_URL!)`) doesn't throw when the var is unset in CI — it only constructs, never connects (no queries run). For DB-touching behaviour, write a throwaway `*.test.ts` run with `node -r dotenv/config node_modules/.bin/vitest run <file> dotenv_config_path=.env.local` and delete it before committing.
+
+**Dependency hygiene.** Build-only tools (`vite`, `@tailwindcss/vite`, `tsx`, `esbuild`) live in **devDependencies** — otherwise their build-time advisories surface in the prod audit (`security.yml`). Vercel installs devDependencies during builds, so build plugins belong there.
+
 ## Environment
 
 The app requires these env vars in `.env.local` (never commit this file):
@@ -70,9 +76,11 @@ DODO_PRODUCT_PREMIUM_MONTHLY=...         # Dodo product id
 DODO_PRODUCT_PREMIUM_YEARLY=...          # Dodo product id
 ```
 
+The `E2E_*` secrets (`E2E_VITE_CLERK_PUBLISHABLE_KEY`, `E2E_CLERK_SECRET_KEY`, `E2E_DATABASE_URL`) are **GitHub Actions secrets for the e2e workflow only** — they do **not** go in `.env.local` or Vercel. The two Clerk ones are your existing **dev**-instance keys (same `pk_test_…`/`sk_test_…` already in `.env.local`); `E2E_DATABASE_URL` is a dedicated Neon branch. Vercel manages the running app's env separately (`vercel env`; note: `vercel dev` reads the cloud Development env, not `.env.local`).
+
 ## Architecture
 
-**Stack:** React 19 + TypeScript + Vite, Tailwind CSS v4 (via `@tailwindcss/vite` plugin), shadcn/ui (new-york style), react-router-dom v7, react-hook-form + zod, Clerk (auth), Neon (Postgres via Drizzle ORM), Vercel serverless functions (`api/` directory), recharts, i18next (8 locales), Vitest.
+**Stack:** React 19 + TypeScript + Vite, Tailwind CSS v4 (via `@tailwindcss/vite` plugin — a **devDependency**, see *Dependency hygiene*), shadcn/ui (new-york style), react-router-dom v7, react-hook-form + zod, Clerk (auth), Neon (Postgres via Drizzle ORM), Vercel serverless functions (`api/` directory), recharts, i18next (8 locales), Vitest. **Motion/graph:** `tw-animate-css` + `@formkit/auto-animate` + `vaul` (drawers) + `@dnd-kit` (drag-to-reorder) for animation; **React Flow (`@xyflow/react`)** powers the money-flow node graph (`/flow`, lazy-loaded); `embla-carousel-react` for carousels.
 
 **Path alias:** `@/` resolves to `src/`.
 
@@ -86,8 +94,8 @@ All pages are lazy-loaded (`React.lazy` + `Suspense`) for code splitting. Route 
 | Public blog | `/blog`, `/blog/:slug` | None (marketing — reuses `src/landing/` design + isolated i18n) |
 | Invitation | `/invitations/:token` | None (handles sign-in inline) |
 | Auth | `/login/*`, `/signup/*`, `/forgot-password`, `/reset-password` | None (Clerk requires `/*` glob) |
-| Admin | `/admin`, `/admin/users`, `/admin/organizations`, `/admin/organizations/:id`, `/admin/subscriptions`, `/admin/invoices`, `/admin/plans`, `/admin/blog` | `AdminLayout` |
-| App | `/dashboard`, `/clients`, `/clients/:id`, `/transactions`, `/quotations`, `/organizations`, `/organizations/:id/members`, `/subscription`, `/trash`, `/profile` | `AppLayout` |
+| Admin | `/admin`, `/admin/users`, `/admin/organizations`, `/admin/organizations/:id`, `/admin/subscriptions`, `/admin/invoices`, `/admin/billing-attempts`, `/admin/plans`, `/admin/blog`, `/admin/referrals`, `/admin/admins` | `AdminLayout` |
+| App | `/dashboard`, `/clients`, `/clients/closed`, `/clients/:id`, `/clients/:id/files`, `/transactions`, `/recurring`, `/calendar`, `/flow`, `/wealth`, `/wealth/:id`, `/analytics`, `/categories`, `/budgets`, `/budgets/:key`, `/referrals`, `/quotations`, `/organizations`, `/organizations/:id/members`, `/subscription`, `/trash`, `/profile`, `/onboarding`, `/organization-setup` | `AppLayout` |
 
 ### AppLayout (`src/components/AppLayout.tsx`)
 
@@ -129,12 +137,20 @@ The sidebar has a floating action button (FAB) for quick access to Add Client, A
 | `AppAdmin` | `app_admins` | `user_id` (Clerk userId) |
 | `LegalAcceptance` | `legal_acceptances` | `document`: `privacy_policy\|terms_of_service` |
 | `BlogPost` | `blog_posts` | **global** (not org-scoped — admin-authored), `slug` (unique), `status`: `draft\|published`, `content` (Markdown), `published_at`, `reading_time_minutes` |
+| `Category` | `categories` | `organization_id`, per-org transaction category list (seeded on first access — re-seed only when empty, never on delete) |
+| `WealthAccount` | `wealth_accounts` | `organization_id`, `type`: `cash\|bank`, `opening_balance`, `current_balance`, `is_default`, `archived_at`; `Cash` auto-provisioned + permanent |
+| `RecurringRule` | `recurring_rules` | `organization_id`, anchor + frequency; lazily **materializes** due transactions on GETs (no cron). Tx carry `recurring_rule_id` |
+| `Budget` / `BudgetHistory` | `budgets`, `budget_history` | per-client/own-company spend caps + adherence/creep history (keyed by org+client so it survives "remove") |
+| `Subscription` attempt | `billing_attempts` | who clicked checkout, status, errors, admin follow-up (status/notes); see `subscription-system` skill |
+| `Referral` family | `referrals`, `referral_codes`, `referral_settings`, `payout_requests` | credited on real paid upgrade (webhook AND reconcile); payouts via `/admin/payouts` |
+| `AdminRole` | `admin_roles` | custom platform-admin roles — `key`, `capabilities` (jsonb, grantable set only); see *Platform-admin roles* |
+| `AuditLog` | `audit_logs` | org action history (`/api/audit`) |
 
-`CURRENCIES` (ISO code list) and `LEGAL_DOC_VERSION` are exported from `src/lib/types.ts`.
+`CURRENCIES` (ISO code list) and `LEGAL_DOC_VERSION` are exported from `src/lib/types.ts`. The custom dashboard layout (rearrangeable/hideable cards, per personal/business context) lives in `user_profiles.dashboard_layout` (model: `src/lib/dashboard-layout.ts`).
 
 **Drizzle helpers:**
 - `db` and `serialize()` are in `src/lib/db/index.ts`. `serialize()` converts Drizzle's camelCase row keys to snake_case before `res.json()` — call it on every row returned from an API route.
-- Migrations are in `drizzle/` and run automatically on `vercel-build` (`scripts/db-migrate.mjs`).
+- Migrations are in `drizzle/` and run automatically on `vercel-build` (`scripts/db-migrate.mjs`). Current head is **0042**. **Journal gotcha:** a new migration can silently skip ("up to date" but column missing) when `drizzle/meta/_journal.json` `when` values were normalized — bump the new entry's `when` above the previous, then verify the column exists in `information_schema`.
 
 ### API layer — consolidated router
 
@@ -156,7 +172,15 @@ The app is a client-rendered SPA, which is invisible to crawlers/AI engines that
 - **Blog SEO/GEO:** `blog_posts` carries author E-E-A-T columns (`author_job_title`, `author_bio`, `author_url`, `author_image_url`), a dedicated `og_image_url`, and `article_section`. The SSR emits a rich `BlogPosting` (Person author + sameAs/jobTitle/image, `wordCount`, `keywords`, `dateModified`, `inLanguage`, `isAccessibleForFree`, `articleSection`) plus a visible author byline. An `## FAQ`/`## Frequently asked questions` section is auto-detected (`extractFaq` in `src/lib/blog.ts`) and emitted as FAQPage JSON-LD. Cover/OG images become `<image:image>` sitemap entries.
 - **Auto-indexing of new/edited posts:** the dedicated **default OG image** is `public/og-image.png` (1200×630; source `scripts/og-image.html`). Publishing/editing a live post pings **IndexNow** (`api/_lib/indexnow.ts`, Bing/Yandex/Naver; prod-only, fire-and-forget) and refreshes the sitemap. Key file: `public/<INDEXNOW_KEY>.txt`. `robots.txt` welcomes all major AI crawlers (training **and** retrieval — max visibility) via the `AI_CRAWLERS` list in `api/ssr.ts`; **review that list quarterly**. Seed/refresh pillar content with `npm run seed-blog` (`scripts/seed-blog.ts`, idempotent). Full plan + content playbook + keyword clusters: **`docs/seo/PLAN.md`**.
 - **Prod-only:** in `npm run dev` the public pages are served by Vite (CSR); test SSR with `vercel dev` after a build.
-- **Caveat:** Vercel may serve static `dist/index.html` for `/` before the rewrite (filesystem precedence). The landing still carries Organization/WebSite/SoftwareApplication JSON-LD baked statically into `index.html` (now with the 1200×630 OG image, dimensions, `og:locale`, canonical), so it degrades gracefully; `/blog/*` and the rest have no static collision and always SSR. The `www`→apex 301 is a Vercel **domain setting**, not code.
+- **Caveat:** Vercel may serve static `dist/index.html` for `/` before the rewrite (filesystem precedence). The landing still carries Organization/WebSite/SoftwareApplication JSON-LD baked statically into `index.html` (now with the 1200×630 OG image, dimensions, `og:locale`, canonical), so it degrades gracefully; `/blog/*` and the rest have no static collision and always SSR. The `www`→apex redirect is **code** (308 in `vercel.json`, host-conditioned, with `/sw.js` + `/api/*` carve-outs) — the apex domain must have **NO dashboard-level redirect** in Vercel project settings. ⚠️ Never configure a dashboard redirect on either domain: a domain-level redirect strands every service worker registered on that host (SW script fetches reject redirects → the worker can never update or unregister, and keeps serving its frozen precache forever — the historical permanent-white-screen bug).
+
+#### PWA / service worker (`pwa/`, `src/lib/pwa/`)
+
+- The real worker is **`/app-sw.js`** (vite-plugin-pwa `filename`); **`/sw.js` is reserved** — a vercel.json rewrite serves `public/kill-sw.js` there, a self-destroying worker that rescues every legacy registration (old clients keep polling `/sw.js`, get the kill switch, purge caches, reload fresh, re-register `/app-sw.js`). Don't rename these paths.
+- **App navigations are NetworkOnly** with `precacheFallback` to the precached shell (offline support): a cold load always gets the *current* `index.html`, so a stale-shell→missing-chunk white screen can't happen. Public pages (`/`, legal, blog, invitations, API) are denied to the SW entirely — `NAVIGATION_DENY_RE` in `pwa/sw-policy.ts` is the single source of truth (the same regex is **inlined** in `matchAppNavigation`; `sw-policy.test.ts` guards the sync — workbox stringifies the matcher into the worker, so it must stay closure-free).
+- **`skipWaiting`/`clientsClaim` stay OFF.** A new SW installs and WAITS; `onNeedRefresh` shows the `<UpdatePrompt />` banner ("Update available" → `updateSW(true)` reloads onto the new version). Update checks run hourly + on `visibilitychange`. Never force-activate without a reload.
+- Recovery ladder (shared `sessionStorage` budget across `chunk-recovery.ts`, the inline `index.html` script, and `AppErrorBoundary`): attempt 1 = cache-busted reload; attempts 2–3 = **also unregister all SWs + delete all caches** (the only escape from a zombie worker).
+- **Chunking invariant (`vite.config.ts` `manualChunks`):** the chunk graph must stay acyclic — `flow` (@xyflow) → `charts` (recharts/d3) → `vendor` (everything else incl. React). A library landing in `vendor` while its dependency sits in a leaf chunk (e.g. @xyflow's d3-zoom) creates a `vendor↔leaf` cycle and a **total white screen** at boot (`forwardRef` of undefined). After touching chunking, verify: `grep -o 'charts-[^"]*\.js' dist/assets/vendor-*.js` must be empty.
 
 #### Route table (as of current codebase)
 
@@ -205,6 +229,30 @@ The app is a client-rendered SPA, which is invisible to crawlers/AI engines that
 | `/api/admin/blog` | `_routes/admin/blog.ts` — GET all + POST (admin-only) |
 | `/api/admin/blog/:id` | `_routes/admin/blog/[id].ts` — GET + PATCH (incl. publish/unpublish) + DELETE |
 
+**Newer routes (Wave 4 / ux4):**
+
+| Path | File / purpose |
+|---|---|
+| `/api/categories` · `/api/categories/:id` | per-org transaction category list (GET/POST · PATCH/DELETE) |
+| `/api/wealth/accounts` (+ `/:id`, `/reorder`, `/:id/attachments`) | cash/bank accounts + running balance |
+| `/api/wealth/transfer` | account-to-account transfer (`kind=transfer`; excluded from income/expense) |
+| `/api/wealth/bank-search` · `/api/wealth/quota` | bank logo/name autocomplete · free-plan bank gating |
+| `/api/recurring` · `/api/recurring/:id` | recurring rules (materialize lazily on GETs) |
+| `/api/calendar` | per-day money aggregates (drives `/calendar`) |
+| `/api/flow` | money-flow graph; `?mode=timeline&bucket=…` for the running-balance chain |
+| `/api/budgets` · `/api/budgets/overview` · `/api/budgets/detail` | budgets + adherence/creep |
+| `/api/analytics` · `/api/audit` | trend/category/client aggregates · org audit log |
+| `/api/onboarding` | first-run setup (POST) |
+| `/api/referrals` (+ `/apply`, `/payouts`) | referral program |
+| `/api/transactions/group` · `/api/transactions/bulk-delete` | split groups · bulk delete |
+| `/api/clients/bulk-delete` · `/api/clients/:id/media` | bulk delete · client logo |
+| `/api/billing/change-plan` · `/resume` · `/invoices` · `/invoice-pdf` | self-serve billing |
+| `/api/public/pricing` | geo pricing (no auth) |
+| `/api/admin/roles` · `/api/admin/roles/:id` | custom admin roles (**super-admin only**) |
+| `/api/admin/billing-attempts` (+ `/:id`) | checkout-attempt log + follow-up |
+| `/api/admin/payouts` (+ `/:id`) · `/api/admin/referrals` · `/api/admin/referral-settings` | referral admin |
+| `/api/admin/subscriptions/actions` · `/api/admin/organizations/bulk-delete` | bulk admin actions |
+
 ### Auth & authorization (`api/_lib/auth.ts`)
 
 Every route calls `requireAuth(req, res)` which:
@@ -219,6 +267,12 @@ Role helpers:
 - `canDelete(role)` — `owner | admin`
 
 All DB queries are scoped by `orgId`, not `userId`. Never bypass this.
+
+### Platform-admin roles / RBAC (`src/lib/admin-roles.ts`, `api/_lib/admin.ts`)
+
+`/admin` access is gated by **capabilities**, not the role name. A platform admin is an `app_admins` row whose `role` is a SYSTEM role (`super_admin | editor | viewer | blog_writer`) or the `key` of a CUSTOM role (`admin_roles` table, mig 0042). `requireAdminCap(req, res, cap)` returns `{ userId, role, caps, can }`; gate routes/UI off `can(cap)` / the server-resolved `caps`, **never** the role name (custom roles would break). The client uses `useAdmin().can(cap)` / `caps` (from `/api/admin/me`).
+
+Capabilities: `read`, `write`, `blog`, `settings`, `manage_admins`, plus three **super-admin-EXCLUSIVE** ones excluded from `GRANTABLE_ADMIN_CAPS` — `org_transactions` (the org-detail Transactions tab + `/api/admin/transactions`), `manage_super_admins`, `manage_roles`. Custom-role capabilities are sanitized to the grantable set on **both write and read**, so a tampered row can't escalate. Visibility rule ("shouldn't even see it exists"): non-supers don't see the `super_admin` role in pickers, super-admin rows are redacted from their admins list, and the org Transactions tab is hidden. Enforcement is server-side everywhere; hiding is UX, the 403 is the security.
 
 ### Client-side API (`src/lib/api.ts`)
 
@@ -287,5 +341,10 @@ See `project_idea.md` for the full spec. Key domain concepts:
 - **Transactions** (`incoming | outgoing`) belong to a client and drive financials. Support file attachments.
 - **Quotations** (`draft | sent | accepted | rejected`) can be converted to clients via `/api/quotations/:id/convert`. Support file attachments.
 - **Plans:** `free` (limited) and `premium` (Dodo Payments subscription). Limits are stored in the `plans` table and enforced server-side via `api/_lib/quota.ts`.
-- **Admin console** (`/admin/**`) is restricted to users in the `app_admins` table. Seed via `scripts/seed-admin.ts`.
-- **Currency** is set per-org. `useCurrency()` reads `activeOrg.currency` throughout the UI.
+- **Wealth accounts** (`wealth_accounts`): per-org cash/bank accounts with a running balance; transactions post to an account, and **transfers** (`kind=transfer`) move money between accounts without counting as income/expense. Free plan is gated to one bank (golden crown + upgrade modal); `Cash` is auto-provisioned and permanent. ⚠️ A DB-direct transaction delete does **not** reverse wealth balances — recompute from the ledger.
+- **Recurring rules** (`recurring_rules`): templates that **lazily materialize** due transactions on GETs (no cron) — anchor-based date math, race-proof; delete-is-final for occurrences (intentional).
+- **Calendar** (`/calendar`) + **Money flow** (`/flow`, React Flow): visual views of transactions — a day/week/month money calendar (with per-day figures) and a node graph in two modes (grouped by account/client/category, or a running-balance **timeline** chain). Both org-scoped + filterable; canvas state persists across navigation (sessionStorage `ps_flow_<org>`).
+- **Budgets** (`budgets` + `budget_history`): per-client / own-company spend caps with adherence + creep history (`/budgets`).
+- **Referrals**: credited on a real **paid** upgrade (from BOTH the `payment.succeeded` webhook AND the reconcile path — activation never depends on webhooks), payouts approved in `/admin/payouts`. See `docs/referrals/REFERRALS.md`.
+- **Admin console** (`/admin/**`) is restricted to `app_admins` rows; access is **capability-based** with system + custom roles (see *Platform-admin roles / RBAC* above). Seed the first admin via `scripts/seed-admin.ts`.
+- **Currency** is set per-org. `useCurrency()` reads `activeOrg.currency` throughout the UI. Checkout charges in the org's currency (`src/lib/billing-currency.ts`; **India always INR**).

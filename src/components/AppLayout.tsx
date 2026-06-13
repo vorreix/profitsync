@@ -67,6 +67,9 @@ import {
   Gift,
   Landmark,
   Loader as Loader2,
+  Repeat,
+  CalendarDays,
+  Network,
 } from "lucide-react"
 
 type QuickAction = {
@@ -119,6 +122,9 @@ function buildNavItems(activeOrgId: string | undefined, accountType: AccountType
     accountTypeAllows(accountType, "clients") && { labelKey: "nav.clients", href: "/clients", icon: Users },
     { labelKey: "nav.transactions", href: "/transactions", icon: ArrowLeftRight },
     { labelKey: "nav.wealth", href: "/wealth", icon: Landmark },
+    { labelKey: "nav.recurring", href: "/recurring", icon: Repeat },
+    { labelKey: "nav.calendar", href: "/calendar", icon: CalendarDays },
+    { labelKey: "nav.flow", href: "/flow", icon: Network },
     { labelKey: "nav.analytics", href: "/analytics", icon: ChartColumn },
     accountTypeAllows(accountType, "quotations") && { labelKey: "nav.quotations", href: "/quotations", icon: FileText },
     accountTypeAllows(accountType, "members") && { labelKey: "nav.users", href: usersHref, icon: UserPlus },
@@ -140,7 +146,7 @@ function AppLayoutInner() {
   useSyncProfileLanguage()
   const { user } = useUser()
   const { signOut } = useClerk()
-  const { activeOrg, needsOnboarding, loading: orgLoading } = useOrg()
+  const { activeOrg, profile, needsOnboarding, loading: orgLoading } = useOrg()
   const { isAdmin } = useAdmin()
   const { currency } = useCurrency()
   const { bump } = useDataRefresh()
@@ -247,8 +253,12 @@ function AppLayoutInner() {
             <LanguageSwitcher variant="icon" align="start" />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="icon" className="group-data-[collapsible=icon]:size-10">
-                  <User className="size-4" />
+                <Button variant="outline" size="icon" className="overflow-hidden p-0 group-data-[collapsible=icon]:size-10">
+                  {profile?.avatar_src ? (
+                    <img src={profile.avatar_src} alt="" className="size-full object-cover" />
+                  ) : (
+                    <User className="size-4" />
+                  )}
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">

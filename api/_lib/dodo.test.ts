@@ -85,26 +85,28 @@ describe("verifyWebhookSignature — dual-secret detection", () => {
   const LIVE_SECRET = "whsec_" + Buffer.from("live-secret-bytes").toString("base64")
   const id = "msg_1"
   const timestamp = "1717200000"
+  // The freshness check compares against `now` — pin it to the signed timestamp.
+  const now = new Date(1_717_200_000 * 1000)
   const body = JSON.stringify({ type: "subscription.active" })
 
   it("returns the matched env when the test secret signed it", () => {
     process.env.DODO_PAYMENTS_WEBHOOK_SECRET_TEST = TEST_SECRET
     process.env.DODO_PAYMENTS_WEBHOOK_SECRET_LIVE = LIVE_SECRET
-    const result = verifyWebhookSignature(body, { id, timestamp, signature: signWith(TEST_SECRET, id, timestamp, body) })
+    const result = verifyWebhookSignature(body, { id, timestamp, signature: signWith(TEST_SECRET, id, timestamp, body) }, now)
     expect(result).toEqual({ valid: true, env: "test" satisfies DodoEnv })
   })
 
   it("returns the matched env when the live secret signed it", () => {
     process.env.DODO_PAYMENTS_WEBHOOK_SECRET_TEST = TEST_SECRET
     process.env.DODO_PAYMENTS_WEBHOOK_SECRET_LIVE = LIVE_SECRET
-    const result = verifyWebhookSignature(body, { id, timestamp, signature: signWith(LIVE_SECRET, id, timestamp, body) })
+    const result = verifyWebhookSignature(body, { id, timestamp, signature: signWith(LIVE_SECRET, id, timestamp, body) }, now)
     expect(result).toEqual({ valid: true, env: "live" satisfies DodoEnv })
   })
 
   it("still verifies a legacy single-secret deployment", () => {
     process.env.DODO_PAYMENTS_ENVIRONMENT = "live_mode"
     process.env.DODO_PAYMENTS_WEBHOOK_SECRET = LIVE_SECRET
-    const result = verifyWebhookSignature(body, { id, timestamp, signature: signWith(LIVE_SECRET, id, timestamp, body) })
+    const result = verifyWebhookSignature(body, { id, timestamp, signature: signWith(LIVE_SECRET, id, timestamp, body) }, now)
     expect(result).toEqual({ valid: true, env: "live" satisfies DodoEnv })
   })
 
@@ -112,16 +114,48 @@ describe("verifyWebhookSignature — dual-secret detection", () => {
     process.env.DODO_PAYMENTS_WEBHOOK_SECRET_TEST = TEST_SECRET
     process.env.DODO_PAYMENTS_WEBHOOK_SECRET_LIVE = LIVE_SECRET
     const bogus = "whsec_" + Buffer.from("someone-elses-secret").toString("base64")
-    const result = verifyWebhookSignature(body, { id, timestamp, signature: signWith(bogus, id, timestamp, body) })
+    const result = verifyWebhookSignature(body, { id, timestamp, signature: signWith(bogus, id, timestamp, body) }, now)
     expect(result).toEqual({ valid: false })
   })
 
   it("rejects when required headers are missing", () => {
     process.env.DODO_PAYMENTS_WEBHOOK_SECRET_TEST = TEST_SECRET
-    expect(verifyWebhookSignature(body, { id, timestamp })).toEqual({ valid: false })
+    expect(verifyWebhookSignature(body, { id, timestamp }, now)).toEqual({ valid: false })
+  })
+
+  it("rejects a correctly-signed but REPLAYED webhook (timestamp too old)", () => {
+    process.env.DODO_PAYMENTS_WEBHOOK_SECRET_TEST = TEST_SECRET
+    const replayedAt = new Date((1_717_200_000 + 6 * 60) * 1000) // 6 min later
+    const result = verifyWebhookSignature(
+      body,
+      { id, timestamp, signature: signWith(TEST_SECRET, id, timestamp, body) },
+      replayedAt,
+    )
+    expect(result).toEqual({ valid: false })
+  })
+
+  it("accepts small clock skew inside the tolerance window", () => {
+    process.env.DODO_PAYMENTS_WEBHOOK_SECRET_TEST = TEST_SECRET
+    const skewed = new Date((1_717_200_000 + 2 * 60) * 1000) // 2 min later
+    const result = verifyWebhookSignature(
+      body,
+      { id, timestamp, signature: signWith(TEST_SECRET, id, timestamp, body) },
+      skewed,
+    )
+    expect(result).toEqual({ valid: true, env: "test" })
+  })
+
+  it("rejects a non-numeric timestamp header", () => {
+    process.env.DODO_PAYMENTS_WEBHOOK_SECRET_TEST = TEST_SECRET
+    const result = verifyWebhookSignature(
+      body,
+      { id, timestamp: "not-a-number", signature: signWith(TEST_SECRET, id, "not-a-number", body) },
+      now,
+    )
+    expect(result).toEqual({ valid: false })
   })
 
   it("throws when no signing secret is configured at all", () => {
-    expect(() => verifyWebhookSignature(body, { id, timestamp, signature: "v1,whatever" })).toThrow(/not configured/)
+    expect(() => verifyWebhookSignature(body, { id, timestamp, signature: "v1,whatever" }, now)).toThrow(/not configured/)
   })
 })

@@ -9,7 +9,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { useDialogContainer } from "@/hooks/use-dialog-container"
 import { apiDelete, apiPatch, apiPost } from "@/lib/api"
 import { useCategories } from "@/lib/use-categories"
-import type { CategoryType } from "@/lib/types"
+import type { Category, CategoryType } from "@/lib/types"
 
 /**
  * Category picker backed by the org's managed categories for a given type
@@ -30,7 +30,7 @@ export function CategoryPicker({
 }) {
   const { t } = useTranslation()
   const { getToken } = useAuth()
-  const { categories, refresh } = useCategories()
+  const { categories, refresh, mutateLocal } = useCategories()
   const { triggerRef, container } = useDialogContainer()
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState("")
@@ -60,8 +60,8 @@ export function CategoryPicker({
     try {
       const token = await getToken()
       if (!token) return
-      await apiPost("/api/categories", token, { name, type })
-      await refresh()
+      const created = await apiPost<Category>("/api/categories", token, { name, type }, ["/api/categories"])
+      mutateLocal((prev) => [created, ...prev.filter((c) => c.id !== created.id)])
       onChange(name)
       close()
     } finally {
@@ -76,20 +76,23 @@ export function CategoryPicker({
     try {
       const token = await getToken()
       if (!token) return
-      await apiPatch(`/api/categories/${cat.id}`, token, { name })
-      await refresh()
+      const updated = await apiPatch<Category>(`/api/categories/${cat.id}`, token, { name }, ["/api/categories", "/api/transactions"])
+      mutateLocal((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
       if (value === cat.name) onChange(name)
     } catch { /* keep previous */ }
   }
 
   async function removeCat(cat: { id: string; name: string }) {
+    // Optimistic: drop the row instantly; silently restore on failure.
+    mutateLocal((prev) => prev.filter((c) => c.id !== cat.id))
+    if (value === cat.name) onChange("")
     try {
       const token = await getToken()
       if (!token) return
-      await apiDelete(`/api/categories/${cat.id}`, token)
+      await apiDelete(`/api/categories/${cat.id}`, token, undefined, ["/api/categories"])
+    } catch {
       await refresh()
-      if (value === cat.name) onChange("")
-    } catch { /* keep previous */ }
+    }
   }
 
   return (

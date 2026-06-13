@@ -22,7 +22,9 @@ const txFields = {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const ctx = await requireAdminCap(req, res, req.method === "GET" ? "read" : "write")
+  // Super-admin-only surface: regular admins must not even see org transactions
+  // (the org-detail Transactions tab is hidden for them too).
+  const ctx = await requireAdminCap(req, res, "org_transactions")
   if (!ctx) return
 
   if (req.method === "GET") {

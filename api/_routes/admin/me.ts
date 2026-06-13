@@ -1,6 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { getAdminRole } from "../../_lib/admin.js"
-import { adminCaps } from "../../../src/lib/admin-roles.js"
+import { getResolvedAdmin } from "../../_lib/admin.js"
 import { getUserId } from "../../_lib/auth.js"
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -9,8 +8,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const userId = await getUserId(req)
   if (!userId) return res.status(401).json({ error: "Unauthorized" })
 
-  const role = await getAdminRole(userId)
-  if (!role) return res.status(403).json({ error: "Forbidden" })
+  // Resolution understands custom roles (admin_roles) and returns the exact
+  // capability set — the client gates ALL admin UI off `caps`, never the role
+  // name, so custom roles work everywhere automatically.
+  const admin = await getResolvedAdmin(userId)
+  if (!admin) return res.status(403).json({ error: "Forbidden" })
 
-  return res.json({ userId, isAdmin: true, role, caps: adminCaps(role) })
+  return res.json({ userId, isAdmin: true, role: admin.role, caps: admin.caps })
 }

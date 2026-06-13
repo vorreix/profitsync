@@ -1,13 +1,15 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react"
 import { useAuth } from "@clerk/clerk-react"
 import { apiGet } from "@/lib/api"
-import { adminCan as roleCan, type AdminCapability, type AdminRole } from "@/lib/admin-roles"
+import { type AdminCapability } from "@/lib/admin-roles"
 
-type AdminMe = { userId: string; isAdmin: boolean; role: AdminRole; caps: AdminCapability[] }
+type AdminMe = { userId: string; isAdmin: boolean; role: string; caps: AdminCapability[] }
 
 type AdminContextValue = {
   isAdmin: boolean
-  role: AdminRole | null
+  // System role key OR a custom role key — gate UI off `can`/`caps`, never
+  // off the role name (custom roles would break).
+  role: string | null
   caps: AdminCapability[]
   can: (cap: AdminCapability) => boolean
   loading: boolean
@@ -23,7 +25,7 @@ const AdminContext = createContext<AdminContextValue>({
 
 export function AdminProvider({ children }: { children: ReactNode }) {
   const { getToken, isSignedIn } = useAuth()
-  const [role, setRole] = useState<AdminRole | null>(null)
+  const [role, setRole] = useState<string | null>(null)
   const [caps, setCaps] = useState<AdminCapability[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -59,7 +61,9 @@ export function AdminProvider({ children }: { children: ReactNode }) {
     }
   }, [getToken, isSignedIn])
 
-  const can = (cap: AdminCapability) => roleCan(role, cap)
+  // Membership in the SERVER-resolved capability set (covers custom roles —
+  // the static role→caps map only knows the built-in roles).
+  const can = (cap: AdminCapability) => caps.includes(cap)
 
   return (
     <AdminContext.Provider value={{ isAdmin: role !== null, role, caps, can, loading }}>

@@ -5,6 +5,7 @@ import { subscriptions } from "../../../src/lib/db/schema.js"
 import { requireAuth } from "../../_lib/auth.js"
 import { defaultDodoEnv, isDodoConfigured, type DodoEnv } from "../../_lib/dodo.js"
 import { reconcileSubscriptionFromDodo } from "../../_lib/billing-sync.js"
+import { markAttemptByRef } from "../../_lib/billing-attempts.js"
 
 /**
  * Reconcile the org's latest subscription with Dodo. Called when the user returns
@@ -35,6 +36,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const { subscription, remoteStatus } = await reconcileSubscriptionFromDodo(sub, env)
+    // Attempt log: activation never depends on webhooks, so the return-from-
+    // checkout reconcile also completes the attempt (idempotent, non-fatal).
+    if (subscription.status === "active") {
+      await markAttemptByRef(
+        { dodoSubscriptionId: subscription.providerSubscriptionId, orgId: ctx.orgId },
+        { status: "completed" },
+      )
+    }
     return res.json({ subscription: serialize(subscription), synced: true, dodo_status: remoteStatus })
   } catch (err) {
     return res.status(502).json({ error: err instanceof Error ? err.message : "Dodo sync failed" })

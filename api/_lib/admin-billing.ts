@@ -35,6 +35,7 @@ export const FREE_RESET_FIELDS = {
   status: "active",
   billingCycle: null,
   dodoEnvironment: null,
+  billingCurrency: null,
   provider: null,
   providerSubscriptionId: null,
   currentPeriodStart: null,

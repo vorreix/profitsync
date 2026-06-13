@@ -342,3 +342,25 @@ error in test mode — it's the card↔country mismatch, not the integration.
 ---
 
 See `.claude/skills/subscription-system/SKILL.md` for the AI-facing operating guide.
+
+---
+
+## ux4 additions (2026-06)
+
+Two billing capabilities were added in fine-tuning wave 4 — full explainer in
+`docs/finetuning4/OVERVIEW.md` §7–8, operating rules in the
+`subscription-system` skill:
+
+- **Org-currency checkout.** The hosted checkout charges in the organization's
+  currency when Dodo can route it, via the resolution chain in
+  `src/lib/billing-currency.ts` (org → country → omit; India is always INR).
+  The attempted currency is snapshotted on `subscriptions.billing_currency`;
+  `invoices.currency` remains authoritative for what was charged.
+- **Billing attempts.** Every subscribe click is logged to `billing_attempts`
+  (`created → redirected → completed | failed`, stale rows display as
+  abandoned) with Dodo errors and raw `payment.failed` payloads, surfaced in
+  **Admin → Billing attempts** with follow-up status + notes. Logging is
+  non-fatal and transition-guarded; webhooks link back via
+  `metadata.attempt_id`.
+- **Webhook hardening.** Signature verification now also rejects timestamps
+  outside ±5 minutes (replay protection).

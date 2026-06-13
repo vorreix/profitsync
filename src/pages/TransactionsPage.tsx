@@ -24,7 +24,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
 import { toast } from "sonner"
-import { Plus, ArrowUpRight, ArrowDownRight, DollarSign, Pencil, Trash2, Paperclip, Download, X, Eye, Tag, CheckSquare, Layers } from "lucide-react"
+import { Plus, ArrowUpRight, ArrowDownRight, DollarSign, Pencil, Trash2, Paperclip, Download, X, Eye, Tag, CheckSquare, Layers, Repeat } from "lucide-react"
 import { ExpandableSearch } from "@/components/ExpandableSearch"
 import { FilterSheet, FilterSection } from "@/components/filters/FilterSheet"
 import { AttachmentBadge } from "@/components/AttachmentBadge"
@@ -80,8 +80,10 @@ export function TransactionsPage() {
   const [tab, setTab] = useState("all")
   const [sort, setSort] = useState("date_desc")
   const [categoryFilter, setCategoryFilter] = useState("all")
-  const [dateFrom, setDateFrom] = useState("")
-  const [dateTo, setDateTo] = useState("")
+  // Date-range filters, deep-linkable: /transactions?from=YYYY-MM-DD&to=… (the
+  // calendar's "Open in Transactions" lands here pre-filtered).
+  const [dateFrom, setDateFrom] = useState(() => searchParams.get("from") ?? "")
+  const [dateTo, setDateTo] = useState(() => searchParams.get("to") ?? "")
   const [summary, setSummary] = useState<{ incoming: number; outgoing: number }>({ incoming: 0, outgoing: 0 })
   const searchRef = useRef(search)
   searchRef.current = search
@@ -702,6 +704,15 @@ export function TransactionsPage() {
                       {(tx.leg_count ?? 1) > 1 && (
                         <Badge variant="secondary" className="text-[10px] py-0 shrink-0 gap-1">
                           <Layers className="size-3" /> {t("split")}
+                        </Badge>
+                      )}
+                      {tx.recurring_rule_id && (
+                        <Badge
+                          variant="outline"
+                          className="shrink-0 gap-1 border-violet-500/40 bg-violet-500/10 py-0 text-[10px] text-violet-700 dark:text-violet-300"
+                          title={t("recurringBadge")}
+                        >
+                          <Repeat className="size-3" /> <span className="hidden sm:inline">{t("recurringBadge")}</span>
                         </Badge>
                       )}
                       {tx.category && (
