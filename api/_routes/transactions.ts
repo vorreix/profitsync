@@ -47,6 +47,10 @@ const txFields = {
   updatedAt: transactions.updatedAt,
   // Drives the list paperclip badge.
   attachmentCount: sql<number>`(select count(*)::int from transaction_attachments where transaction_id = ${transactions.id})`,
+  // For a transfer leg: the OTHER leg's account (same group_id) — id + type — so
+  // the UI can badge a transfer to/from a Space and deep-link to it.
+  counterpartAccountId: sql<string | null>`(select t2.wealth_account_id::text from transactions t2 where t2.group_id = ${transactions.groupId} and t2.id <> ${transactions.id} and ${transactions.kind} = 'transfer' limit 1)`,
+  counterpartType: sql<string | null>`(select wa.type from transactions t2 join wealth_accounts wa on wa.id = t2.wealth_account_id where t2.group_id = ${transactions.groupId} and t2.id <> ${transactions.id} and ${transactions.kind} = 'transfer' limit 1)`,
 }
 
 // A split transaction's legs share a `group_id`; everywhere that isn't scoped to
@@ -328,6 +332,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .from(wealthAccounts)
       .where(and(eq(wealthAccounts.id, wealth_account_id), eq(wealthAccounts.organizationId, orgId), isNull(wealthAccounts.archivedAt)))
     if (!account) return res.status(400).json({ error: "Select an active bank or cash account" })
+    // A Space is a savings bucket — money only ever TRANSFERS in/out of it. You
+    // can never post a standard income/expense to a Space (the security boundary;
+    // the UI also hides Spaces from the account picker).
+    if (account.type === "space") return res.status(400).json({ error: "You can't record a transaction on a Space — move money in or out with a transfer instead." })
 
     // Personal accounts have a single hidden default client that every
     // transaction anchors to; the client picker isn't shown, so resolve it here.

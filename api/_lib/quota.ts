@@ -52,7 +52,7 @@ const DEFAULT_PREMIUM_LIMITS: Required<PlanLimits> = {
   attachmentsPerTx: 10,
   noteLength: 100000,
   attachmentTotalSizeKb: 5 * 1024 * 1024, // 5 GB across the whole workspace
-  bankAccounts: 1000, // effectively unlimited for paid plans
+  bankAccounts: 20, // paid plans: up to 20 bank accounts INCLUDING closed ones
   spaces: 7, // paid personal plan includes 7 savings Spaces
 }
 
@@ -166,29 +166,50 @@ export async function checkClientQuota(orgId: string): Promise<QuotaCheck> {
   return { allowed: true }
 }
 
-// Limit the number of (active) BANK accounts per workspace. Cash in Hand is always
-// free and never counts. Free = 1 bank account; paid plans are effectively
-// unlimited. Existing accounts beyond a (tightened) limit are grandfathered — only
-// NEW creates past the limit are blocked.
-export async function checkBankAccountQuota(orgId: string): Promise<QuotaCheck> {
+/**
+ * Bank-account allowance. Cash in Hand never counts.
+ *  • FREE: 1 ACTIVE bank at a time. Closing one frees the slot (so you can add
+ *    another), but reopening a closed bank while already at the active limit is
+ *    blocked → must upgrade.
+ *  • PAID: up to 20 banks TOTAL, INCLUDING closed ones (so the full history is
+ *    kept). Reopening doesn't add to the total, so it's never blocked by the cap.
+ */
+export async function checkBankAccountQuota(orgId: string, opts: { forRestore?: boolean } = {}): Promise<QuotaCheck> {
   const { planKey, limits } = await getOrgPlan(orgId)
-  const [{ current }] = await db
-    .select({ current: count() })
-    .from(wealthAccounts)
-    .where(and(eq(wealthAccounts.organizationId, orgId), eq(wealthAccounts.type, "bank"), isNull(wealthAccounts.archivedAt)))
+  const isFree = planKey === "free"
+
+  // Paid plans cap TOTAL banks; restoring an already-counted bank can't exceed it.
+  if (!isFree && opts.forRestore) return { allowed: true }
+
+  const where = isFree
+    ? and(eq(wealthAccounts.organizationId, orgId), eq(wealthAccounts.type, "bank"), isNull(wealthAccounts.archivedAt))
+    : and(eq(wealthAccounts.organizationId, orgId), eq(wealthAccounts.type, "bank"))
+  const [{ current }] = await db.select({ current: count() }).from(wealthAccounts).where(where)
+
   if (current >= limits.bankAccounts) {
     return {
       allowed: false,
-      reason:
-        planKey === "free"
-          ? "Free plan includes 1 bank account. Upgrade to Premium for unlimited accounts."
-          : `This workspace has reached its limit of ${limits.bankAccounts} bank accounts.`,
+      reason: isFree
+        ? (opts.forRestore
+            ? "Free plan allows 1 active bank account. Upgrade to Premium to reopen this one."
+            : "Free plan includes 1 bank account. Upgrade to Premium for up to 20.")
+        : `This workspace has reached its limit of ${limits.bankAccounts} bank accounts (including closed ones).`,
       limit: limits.bankAccounts,
       current,
-      upgradeHint: planKey === "free",
+      upgradeHint: isFree,
     }
   }
   return { allowed: true }
+}
+
+/** Count of bank accounts that counts toward the plan limit (free: active; paid: total incl. closed). */
+export async function bankAccountUsage(orgId: string): Promise<{ planKey: string; current: number; limit: number }> {
+  const { planKey, limits } = await getOrgPlan(orgId)
+  const where = planKey === "free"
+    ? and(eq(wealthAccounts.organizationId, orgId), eq(wealthAccounts.type, "bank"), isNull(wealthAccounts.archivedAt))
+    : and(eq(wealthAccounts.organizationId, orgId), eq(wealthAccounts.type, "bank"))
+  const [{ current }] = await db.select({ current: count() }).from(wealthAccounts).where(where)
+  return { planKey, current, limit: limits.bankAccounts }
 }
 
 // Limit the number of (active) savings Spaces per workspace. Spaces are a
