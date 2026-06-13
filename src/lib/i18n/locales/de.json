@@ -1285,6 +1285,8 @@
     "autoSaveExplain": "Verschiebe automatisch nach Zeitplan Geld in diesen Sparraum — wie ein Dauerauftrag an dich selbst. Es wird vom gewählten Konto abgebucht; jederzeit pausierbar oder änderbar.",
     "deleteWithMoney": "Dieser Sparraum enthält noch {{amount}}. Wähle, wohin damit — dann wird der Sparraum geschlossen.",
     "moveTo": "Geld verschieben auf",
-    "moveAndClose": "Verschieben & schließen"
+    "moveAndClose": "Verschieben & schließen",
+    "afterFund": "{{account}} hat danach noch {{amount}}",
+    "viewDetails": "Details ansehen"
   }
 }

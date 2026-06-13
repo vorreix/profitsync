@@ -4,7 +4,7 @@ import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { ArrowDownToLine, ArrowLeft, ArrowUpFromLine, CalendarClock, Pencil, Repeat, Trash2 } from "lucide-react"
-import { apiDelete, apiGet, apiPost, apiPut } from "@/lib/api"
+import { apiDelete, apiErrorMessage, apiGet, apiPost, apiPut } from "@/lib/api"
 import { useOrg } from "@/lib/org-context"
 import { useCurrency } from "@/lib/currency-context"
 import { canDeleteRole, canWriteRole } from "@/lib/roles"
@@ -309,7 +309,7 @@ function AutoSaveModal({
       toast.success(t("autoSaveStarted"))
       onSaved(rule)
     } catch (err) {
-      toast.error(err instanceof Error && err.message && err.message !== "auth" ? err.message : t("saveFailed"))
+      toast.error(apiErrorMessage(err, t("saveFailed")))
     } finally {
       setBusy(false)
     }
@@ -410,7 +410,7 @@ function DeleteSpaceDialog({
       toast.success(t("deleted"))
       onDeleted()
     } catch (err) {
-      toast.error(err instanceof Error && err.message && err.message !== "auth" ? err.message : t("deleteFailed"))
+      toast.error(apiErrorMessage(err, t("deleteFailed")))
     } finally {
       setBusy(false)
     }

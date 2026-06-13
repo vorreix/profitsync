@@ -117,7 +117,8 @@ Each branch is cut FROM the previous (stacked). Gate passes before every push.
 | 04 | `feat/spaces-04-ui` | `/spaces` list page (cards: piggy icon, balance, goal progress, suggested monthly, fund/withdraw), create/edit modal, nav + route + `PersonalOnlyRoute`, free-plan crown + upgrade gate, empty state, i18n (`spaces` ns ×8), transitions, mobile | — | ✅ pushed |
 | 05 | `feat/spaces-05-detail` | `/spaces/:id` detail (hero, goal progress, **auto-save setup UI**, activity ledger), shared SpaceForm/Transfer modals, exclude Spaces from `/api/wealth/accounts` (kills all picker leaks), `/wealth` net-worth incl. savings breakdown, `apiPut`, i18n | — | ✅ pushed |
 | 06 | `feat/spaces-06-polish` | `?new=1` deep-link, **Closed-Spaces restore** lifecycle, verified flow/analytics/dashboard/transfer-wizard already correct (transfers excluded; "available" semantics), final gate | — | ✅ pushed |
-| 07 | `feat/spaces-07-feedback` | Fund/withdraw fix (native `<select>` → shadcn `Select` in dialogs), crown visibility, detail-page restructure (auto-save + delete on the main card; delete moves the money out first) | — | ✅ pushed |
+| 07 | `feat/spaces-07-feedback` | Fund/withdraw fix (native `<select>` → shadcn `Select`), crown visibility, detail-page restructure (auto-save + delete on the main card; delete moves money out first) | — | ✅ pushed |
+| 08 | `feat/spaces-08-fund-fix` | **Root cause of "add money not working": free per-client tx quota silently blocked Space funding → exempted Space transfers.** Inline error display + `apiErrorMessage` parser (was raw JSON toast), projected source balance/overdraw, special auto-save pill, card hover animation | — | ✅ pushed |
 
 ## 7. Per-branch detail
 

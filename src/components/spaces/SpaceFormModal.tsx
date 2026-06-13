@@ -2,7 +2,7 @@ import { useEffect, useState } from "react"
 import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
-import { apiPatch, apiPost } from "@/lib/api"
+import { apiErrorMessage, apiPatch, apiPost } from "@/lib/api"
 import type { WealthAccount } from "@/lib/types"
 import { SPACE_ICONS } from "@/components/wealth/space-icons"
 import { Button } from "@/components/ui/button"
@@ -57,7 +57,7 @@ export function SpaceFormModal({
       }
       onClose()
     } catch (err) {
-      toast.error(err instanceof Error && err.message && err.message !== "auth" ? err.message : t("saveFailed"))
+      toast.error(apiErrorMessage(err, t("saveFailed")))
     } finally {
       setSaving(false)
     }
