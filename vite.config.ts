@@ -143,6 +143,15 @@ export default defineConfig({
           // out of the PWA precache (see pwa/sw-policy.ts PRECACHE_GLOB_IGNORES).
           if (id.includes("/src/landing/")) return "landing"
           if (!id.includes("node_modules")) return
+          // React Flow must NOT fall through into "vendor": it depends on d3-zoom/
+          // d3-drag, which the rule below routes into "charts". With @xyflow in
+          // vendor that made vendor <-> charts circular, and the charts chunk then
+          // initialized before vendor's React was ready —
+          //   "TypeError: Cannot read properties of undefined (reading 'forwardRef')"
+          // at boot on EVERY page (vendor is eager), i.e. a total white screen.
+          // Keeping it in its own one-way leaf ("flow" -> "charts" -> "vendor")
+          // breaks the cycle, and only the lazy /flow route ever loads it.
+          if (id.includes("@xyflow")) return "flow"
           if (id.includes("recharts") || id.includes("d3-") || id.includes("victory-vendor")) return "charts"
           // The Markdown renderer (react-markdown + the remark/unified/micromark/
           // mdast/hast tree) is only used on the blog article + admin blog routes.

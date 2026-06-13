@@ -43,8 +43,9 @@ export default tseslint.config(
   },
 
   // Backend (Vercel serverless functions) + config/build files — Node runtime.
+  // pwa/ holds build-time service-worker config consumed by vite.config.ts.
   {
-    files: ["api/**/*.ts", "*.config.{ts,js}"],
+    files: ["api/**/*.ts", "pwa/**/*.ts", "*.config.{ts,js}"],
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
     languageOptions: {
       ecmaVersion: 2022,

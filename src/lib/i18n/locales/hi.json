@@ -5,7 +5,12 @@
     "installButton": "ऐप इंस्टॉल करें",
     "dismiss": "अभी नहीं",
     "iosTitle": "होम स्क्रीन पर जोड़ें",
-    "iosBody": "शेयर आइकन पर टैप करें, फिर “Add to Home Screen” चुनें।"
+    "iosBody": "शेयर आइकन पर टैप करें, फिर “Add to Home Screen” चुनें।",
+    "updateTitle": "अपडेट उपलब्ध है",
+    "updateBody": "ProfitSync का नया संस्करण तैयार है। नवीनतम सुविधाओं और सुधारों के लिए अभी अपडेट करें।",
+    "updateNow": "अपडेट करें",
+    "updateLater": "बाद में",
+    "updating": "अपडेट हो रहा है…"
   },
   "nav": {
     "dashboard": "डैशबोर्ड",

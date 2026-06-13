@@ -5,7 +5,12 @@
     "installButton": "App installieren",
     "dismiss": "Jetzt nicht",
     "iosTitle": "Zum Startbildschirm hinzufügen",
-    "iosBody": "Tippe auf das Teilen-Symbol und wähle „Zum Home-Bildschirm“."
+    "iosBody": "Tippe auf das Teilen-Symbol und wähle „Zum Home-Bildschirm“.",
+    "updateTitle": "Update verfügbar",
+    "updateBody": "Eine neue Version von ProfitSync ist bereit. Jetzt aktualisieren, um die neuesten Funktionen und Korrekturen zu erhalten.",
+    "updateNow": "Aktualisieren",
+    "updateLater": "Später",
+    "updating": "Wird aktualisiert…"
   },
   "nav": {
     "dashboard": "Dashboard",

@@ -60,13 +60,16 @@
   <div id="root"><!--SSR_ROOT--></div>
   <!--
     Stale-cache recovery. After a new deploy, a returning client can be served a
-    stale app shell (from the SW precache or HTTP cache) that points at hashed
-    chunks which no longer exist. The *entry* module script failing happens
-    before React mounts, so the in-app error boundary can't catch it — this
-    dependency-free inline script can. It reloads up to 3 times with exponential
-    backoff (0ms, 500ms, 1500ms), using a cache-bust query param to bypass any stale
-    SW precache and force Vercel to serve fresh index.html (max-age=0 must-revalidate).
-    Shares its guard key with src/lib/pwa/register-sw.ts so recovery paths cooperate.
+    stale app shell (from a service worker in a bad state, or an HTTP cache) that
+    points at hashed chunks which no longer exist. The *entry* module script
+    failing happens before React mounts, so the in-app error boundary can't catch
+    it — this dependency-free inline script can. It reloads up to 3 times with
+    backoff (0ms, 500ms, 1500ms): attempt 1 uses a cache-bust query param (forces
+    a fresh index.html past any HTTP cache); attempts 2+ first unregister every
+    service worker and delete every cache, which is the only way to escape a
+    zombie worker that keeps answering navigations with a frozen shell. Mirrors
+    src/lib/pwa/chunk-recovery.ts and shares its guard key so the recovery paths
+    cooperate.
   -->
   <script>
     (function () {
@@ -78,12 +81,37 @@
         var url = t.src || t.href || "";
         return url.indexOf("/assets/") !== -1;
       }
+      function purgeSwAndCaches() {
+        var jobs = [];
+        try {
+          if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
+            jobs.push(navigator.serviceWorker.getRegistrations().then(function (regs) {
+              return Promise.all(regs.map(function (r) { return r.unregister().catch(function () { return false; }); }));
+            }));
+          }
+        } catch (_) { /* best effort */ }
+        try {
+          if (window.caches && caches.keys) {
+            jobs.push(caches.keys().then(function (keys) {
+              return Promise.all(keys.map(function (k) { return caches.delete(k).catch(function () { return false; }); }));
+            }));
+          }
+        } catch (_) { /* best effort */ }
+        return Promise.all(jobs);
+      }
       function reloadWithCacheBust() {
+        // The counter lives in sessionStorage AND in the recovery URL: in private
+        // mode storage writes throw, and without the URL copy every reload would
+        // restart from attempt 0 — an infinite reload loop. Mirrors chunk-recovery.ts.
         var attemptCount = 0;
         try {
           var stored = sessionStorage.getItem(KEY);
           attemptCount = stored ? parseInt(stored, 10) : 0;
-        } catch (_) { /* private mode */ }
+        } catch (_) { /* private mode — URL counter below */ }
+        try {
+          var fromUrl = parseInt(new URLSearchParams(window.location.search).get("_cache_bust_n") || "0", 10) || 0;
+          if (fromUrl > attemptCount) attemptCount = fromUrl;
+        } catch (_) { /* ignore */ }
         if (attemptCount >= MAX_ATTEMPTS) return;
         attemptCount += 1;
         try {
@@ -91,18 +119,27 @@
         } catch (_) { /* private mode */ }
         var backoffMs = BACKOFF_MS[attemptCount - 1] || 0;
         var doReload = function () {
-          // Strip any prior bust param so retries never accumulate, then replace
+          // Strip any prior recovery params so retries never accumulate, then replace
           // (no junk history entry). Bypasses stale HTTP cache for a fresh shell.
           var params = new URLSearchParams(window.location.search);
           params.delete("_cache_bust");
+          params.delete("_cache_bust_n");
           params.set("_cache_bust", String(Date.now()));
+          params.set("_cache_bust_n", String(attemptCount));
           var query = params.toString();
           window.location.replace(window.location.pathname + (query ? "?" + query : "") + window.location.hash);
         };
+        var run = function () {
+          if (attemptCount >= 2) {
+            purgeSwAndCaches().then(doReload, doReload);
+          } else {
+            doReload();
+          }
+        };
         if (backoffMs > 0) {
-          window.setTimeout(doReload, backoffMs);
+          window.setTimeout(run, backoffMs);
         } else {
-          doReload();
+          run();
         }
       }
       window.addEventListener("error", function (e) {
