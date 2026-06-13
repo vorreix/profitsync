@@ -38,7 +38,9 @@ import { ExpandableSearch } from "@/components/ExpandableSearch"
 type NewTransaction = { type: "incoming" | "outgoing"; allocations: Allocation[]; description: string; category: string; date: string }
 type NewClient = { name: string; company: string; email: string; phone: string; status: "active" | "inactive" | "archived"; notes: string; category?: string; onboard_date?: string | null }
 
-const defaultTxForm: NewTransaction = { type: "incoming", allocations: [], description: "", category: "", date: new Date().toISOString().split("T")[0] }
+// A function (not a const) so `date` is evaluated per call — a module-level const
+// captures the date at chunk load and goes stale once the app stays open past midnight.
+const defaultTxForm = (): NewTransaction => ({ type: "incoming", allocations: [], description: "", category: "", date: new Date().toISOString().split("T")[0] })
 
 // Cash in Hand is the default source; fall back to the first active account.
 const defaultAccountId = (accounts: WealthAccount[]) =>
@@ -163,7 +165,7 @@ export function ClientDetailPage() {
 
   const openAddTx = useCallback(() => {
     const acc = pickDefaultAccount()
-    setTxForm({ ...defaultTxForm, allocations: acc ? [{ account_id: acc, amount: "" }] : [] })
+    setTxForm({ ...defaultTxForm(), allocations: acc ? [{ account_id: acc, amount: "" }] : [] })
     setPendingFiles([])
     setTxDialogOpen(true)
   }, [pickDefaultAccount])
@@ -256,7 +258,7 @@ export function ClientDetailPage() {
       saveLastTx({ wealth_account_id: allocs[0]?.account_id })
       toast.success(`${txForm.type === "incoming" ? "Income" : "Expense"} added`)
       setTxDialogOpen(false)
-      setTxForm(defaultTxForm)
+      setTxForm(defaultTxForm())
       setPendingFiles([])
       loadData()
     } catch {
@@ -410,7 +412,7 @@ export function ClientDetailPage() {
             >
               <Trash2 className="size-4" />
             </Button>
-            <Button className="px-2.5 sm:px-4" onClick={() => { setTxForm(defaultTxForm); setTxDialogOpen(true) }} aria-label="Add transaction">
+            <Button className="px-2.5 sm:px-4" onClick={() => { setTxForm(defaultTxForm()); setTxDialogOpen(true) }} aria-label="Add transaction">
               <Plus className="size-4" /><span className="hidden sm:inline">Add Transaction</span>
             </Button>
           </div>
@@ -514,7 +516,7 @@ export function ClientDetailPage() {
               <div className="py-16 text-center border rounded-xl">
                 <DollarSign className="size-10 mx-auto text-muted-foreground/50 mb-3" />
                 <p className="text-muted-foreground font-medium">No transactions found</p>
-                <Button className="mt-3" variant="outline" onClick={() => { setTxForm(defaultTxForm); setTxDialogOpen(true) }}><Plus className="size-4" />Add first transaction</Button>
+                <Button className="mt-3" variant="outline" onClick={() => { setTxForm(defaultTxForm()); setTxDialogOpen(true) }}><Plus className="size-4" />Add first transaction</Button>
               </div>
             ) : (
               <div className="border rounded-xl overflow-hidden">
