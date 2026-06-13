@@ -47,6 +47,10 @@ const txFields = {
   updatedAt: transactions.updatedAt,
   // Drives the list paperclip badge.
   attachmentCount: sql<number>`(select count(*)::int from transaction_attachments where transaction_id = ${transactions.id})`,
+  // For a transfer leg: the OTHER leg's account (same group_id) — id + type — so
+  // the UI can badge a transfer to/from a Space and deep-link to it.
+  counterpartAccountId: sql<string | null>`(select t2.wealth_account_id::text from transactions t2 where t2.group_id = ${transactions.groupId} and t2.id <> ${transactions.id} and ${transactions.kind} = 'transfer' limit 1)`,
+  counterpartType: sql<string | null>`(select wa.type from transactions t2 join wealth_accounts wa on wa.id = t2.wealth_account_id where t2.group_id = ${transactions.groupId} and t2.id <> ${transactions.id} and ${transactions.kind} = 'transfer' limit 1)`,
 }
 
 // A split transaction's legs share a `group_id`; everywhere that isn't scoped to
