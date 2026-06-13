@@ -115,8 +115,10 @@ Each branch is cut FROM the previous (stacked). Gate passes before every push.
 | 02 | `feat/spaces-02-api` | `/api/spaces` CRUD+reorder (personal gate, quota, never-default), can't-pay-from-Space guard in `/api/transactions`, `/api/wealth/quota` space report, router wiring | — | ✅ pushed |
 | 03 | `feat/spaces-03-autosave` | Recurring transfer branch (additive), `/api/spaces/:id/auto-save` GET/PUT/DELETE, exclude `kind=transfer` from `/api/recurring` list, materialize on `/api/spaces` GET; pure + real-DB idempotency tests | — | ✅ pushed |
 | 04 | `feat/spaces-04-ui` | `/spaces` list page (cards: piggy icon, balance, goal progress, suggested monthly, fund/withdraw), create/edit modal, nav + route + `PersonalOnlyRoute`, free-plan crown + upgrade gate, empty state, i18n (`spaces` ns ×8), transitions, mobile | — | ✅ pushed |
-| 05 | `feat/spaces-05-detail` | `/spaces/:id` detail (hero, goal viz/chart, contributions ledger, edit goal, auto-save UI), `/wealth` savings card + exclude Spaces from /wealth list & transaction pickers & dashboard, i18n | — | ⬜ pending |
-| 06 | `feat/spaces-06-polish` | Exclude Spaces from flow/analytics/transfer-wizard where needed, reached/overdue edge UX, transitions + mobile pass, i18n completeness, final gate | — | ⬜ pending |
+| 05 | `feat/spaces-05-detail` | `/spaces/:id` detail (hero, goal progress, **auto-save setup UI**, activity ledger), shared SpaceForm/Transfer modals, exclude Spaces from `/api/wealth/accounts` (kills all picker leaks), `/wealth` net-worth incl. savings breakdown, `apiPut`, i18n | — | ✅ pushed |
+| 06 | `feat/spaces-06-polish` | `?new=1` deep-link, **Closed-Spaces restore** lifecycle, verified flow/analytics/dashboard/transfer-wizard already correct (transfers excluded; "available" semantics), final gate | — | ✅ pushed |
+| 07 | `feat/spaces-07-feedback` | Fund/withdraw fix (native `<select>` → shadcn `Select`), crown visibility, detail-page restructure (auto-save + delete on the main card; delete moves money out first) | — | ✅ pushed |
+| 08 | `feat/spaces-08-fund-fix` | **Root cause of "add money not working": free per-client tx quota silently blocked Space funding → exempted Space transfers.** Inline error display + `apiErrorMessage` parser (was raw JSON toast), projected source balance/overdraw, special auto-save pill, card hover animation | — | ✅ pushed |
 
 ## 7. Per-branch detail
 
@@ -239,3 +241,42 @@ Each branch is cut FROM the previous (stacked). Gate passes before every push.
   → boot + routing + auth guard OK). Static gates green. ⚠️ Visual/Playwright check deferred:
   `/spaces` is auth + personal-account gated and the dev browser was in use by the live session;
   the page mirrors the proven WealthPage/RecurringPage patterns and is typecheck/lint-clean.
+- _(05)_ Detail + integration. `SpaceDetailPage` (`/spaces/:id`): goal hero + progress, fund/
+  withdraw, **auto-save setup UI** (`AutoSaveModal` → PUT `/api/spaces/:id/auto-save`, with
+  source account, amount, frequency, start/end; shows next-due + on-track/ahead/behind pace vs
+  the suggested monthly) + stop, and an activity ledger (account-scoped transfers). Extracted
+  shared `SpaceFormModal` + `SpaceTransferModal` (reused by the list + detail), card tap now
+  opens the detail. **Excluded Spaces from `/api/wealth/accounts`** — one server filter that
+  removes them from every spend surface (transaction pickers, transfer wizard, wealth list) at
+  once; the transfer endpoint queries the table directly so funding still works. To keep net
+  worth correct, `/wealth` now fetches Spaces and shows **net worth = available + saved** with a
+  tappable "Saved in Spaces" breakdown (auto-hidden for business via the 403). Added `apiPut`.
+  i18n: +24 detail/auto-save keys + 2 wealth keys × all 8 locales (parity green, 1200 keys).
+  Live API re-smoked (PUT auto-save / wealth / spaces:id all 401-not-500). Gate green.
+- _(06)_ Polish + lifecycle. `/spaces?new=1` deep-link opens the create modal (matches the
+  app's `?new=1` convention). **Closed-Spaces section with Reopen** — a Space with transfer
+  history that's "deleted" is archived (so the ledger survives); it now shows in a muted
+  "Closed Spaces" list with a Reopen action (re-checks quota). Verified the rest is already
+  correct without changes: flow/analytics exclude `kind='transfer'` (Spaces never appear);
+  the Dashboard "Total available" card correctly shows spendable (bank+cash) and the transfer
+  wizard now reads the space-free accounts list. +3 i18n keys × 8 locales. Gate green.
+
+- _(07)_ Live-testing feedback. **Root-caused "add money/withdraw not working"**: native
+  `<select>` inside a Radix Dialog (the app uses shadcn `Select` everywhere for exactly this) —
+  swapped to shadcn `Select` in `SpaceTransferModal` + the auto-save modal. Confirmed the backend
+  fund/withdraw path for a Space is correct via a throwaway real-DB test (cash→space and
+  space→cash both move balances). Crown on the "Add Space" button now uses the visible
+  `amber-500/400` (matching WealthPage). Detail page restructured per feedback: **auto-save and
+  delete now live on the main card** (delete was buried at the bottom); the auto-save modal opens
+  with a plain-language explanation of what it does. **Delete-with-money flow**: if the Space
+  still holds money, the delete dialog asks where to move it (default account preselected),
+  transfers it out, then closes the Space — empty Spaces just delete. +5 i18n keys × 8 locales.
+
+## ✅ Feature complete — all 8 requirements delivered
+1. Spaces in the personal profile (gated nav/route/API). 2. Recurring auto-save from an account
+into a Space (additive transfer materializer + auto-save UI). 3. Free = 1 Space, Pro = 7
+(`checkSpaceQuota` + crown/upgrade gate). 4. Withdraw Space→bank as a transfer. 5. Can't pay
+from a Space (server guard + UI exclusion). 6. Piggy-bank icon (+ a small savings icon set).
+7. Goal amount + target date + suggested monthly + on-track/ahead/behind pace. 8. Simple,
+mobile-first UX with all the info. Money paths locked by pure + real-DB tests; every branch
+passed the full gate and is pushed.

@@ -1,20 +1,20 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { useNavigate } from "react-router-dom"
+import { useNavigate, useSearchParams } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
-import { ArrowDownToLine, ArrowUpFromLine, Crown, Pencil, Plus, Target, Trash2, TrendingUp } from "lucide-react"
-import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api"
+import { ArrowDownToLine, ArrowUpFromLine, ChevronRight, Crown, Pencil, Plus, Target, Trash2, TrendingUp } from "lucide-react"
+import { apiDelete, apiErrorMessage, apiGet, apiPatch } from "@/lib/api"
 import { useOrg } from "@/lib/org-context"
 import { useCurrency } from "@/lib/currency-context"
 import { canWriteRole } from "@/lib/roles"
 import type { WealthAccount } from "@/lib/types"
 import { formatMoney } from "@/lib/wealth"
 import { spaceGoalStatus, spaceProgress } from "@/lib/spaces"
-import { SPACE_ICONS, spaceIconFor } from "@/components/wealth/space-icons"
+import { spaceIconFor } from "@/components/wealth/space-icons"
+import { SpaceTransferModal } from "@/components/spaces/SpaceTransferModal"
+import { SpaceFormModal } from "@/components/spaces/SpaceFormModal"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import {
@@ -23,10 +23,6 @@ import {
 } from "@/components/ui/alert-dialog"
 
 type SpacesQuota = { plan_key: string; spaces: { current: number; limit: number } }
-const todayIso = () => new Date().toISOString().split("T")[0]
-
-type SpaceForm = { name: string; goal: string; date: string; icon: string }
-const emptyForm = (): SpaceForm => ({ name: "", goal: "", date: "", icon: "piggy" })
 
 export function SpacesPage() {
   const { t } = useTranslation("spaces")
@@ -34,6 +30,7 @@ export function SpacesPage() {
   const { activeOrg } = useOrg()
   const { currency } = useCurrency()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const canWrite = canWriteRole(activeOrg?.role)
 
   const [spaces, setSpaces] = useState<WealthAccount[]>([])
@@ -43,8 +40,6 @@ export function SpacesPage() {
 
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<WealthAccount | null>(null)
-  const [form, setForm] = useState<SpaceForm>(emptyForm())
-  const [saving, setSaving] = useState(false)
 
   const [transfer, setTransfer] = useState<{ space: WealthAccount; mode: "fund" | "withdraw" } | null>(null)
   const [deleting, setDeleting] = useState<WealthAccount | null>(null)
@@ -72,52 +67,51 @@ export function SpacesPage() {
 
   useEffect(() => { void load() }, [load])
 
+  // Deep link / FAB: /spaces?new=1 opens the create modal once the data (and the
+  // quota gate) is ready, then strips the param.
+  useEffect(() => {
+    if (loading || searchParams.get("new") !== "1") return
+    openCreate()
+    setSearchParams((p) => { const n = new URLSearchParams(p); n.delete("new"); return n }, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, searchParams])
+
   const active = useMemo(() => spaces.filter((s) => !s.archived_at), [spaces])
+  const archived = useMemo(() => spaces.filter((s) => s.archived_at), [spaces])
   const totalSaved = useMemo(() => active.reduce((sum, s) => sum + Number(s.current_balance), 0), [active])
   const atLimit = quota != null && quota.spaces.current >= quota.spaces.limit
+
+  async function handleRestore(space: WealthAccount) {
+    if (atLimit) { setUpgradeOpen(true); return }
+    try {
+      const token = await getToken()
+      if (!token) throw new Error("auth")
+      const restored = await apiPatch<WealthAccount>(`/api/spaces/${space.id}`, token, { archived: false }, ["/api/spaces", "/api/wealth"])
+      setSpaces((prev) => prev.map((s) => (s.id === restored.id ? { ...s, ...restored } : s)))
+      setQuota((q) => (q ? { ...q, spaces: { ...q.spaces, current: q.spaces.current + 1 } } : q))
+      toast.success(t("restored"))
+    } catch (err) {
+      toast.error(apiErrorMessage(err, t("saveFailed")))
+    }
+  }
 
   function openCreate() {
     if (atLimit) { setUpgradeOpen(true); return }
     setEditing(null)
-    setForm(emptyForm())
-    setSaving(false)
     setFormOpen(true)
   }
 
   function openEdit(space: WealthAccount) {
     setEditing(space)
-    setForm({
-      name: space.nickname,
-      goal: space.goal_amount != null ? String(space.goal_amount) : "",
-      date: space.target_date ?? "",
-      icon: space.icon || "piggy",
-    })
-    setSaving(false)
     setFormOpen(true)
   }
 
-  async function handleSave() {
-    if (!form.name.trim()) { toast.error(t("nameRequired")); return }
-    setSaving(true)
-    try {
-      const token = await getToken()
-      if (!token) throw new Error("auth")
-      const body = { name: form.name.trim(), goal_amount: form.goal === "" ? null : Number(form.goal), target_date: form.date || null, icon: form.icon }
-      if (editing) {
-        const updated = await apiPatch<WealthAccount>(`/api/spaces/${editing.id}`, token, body, ["/api/spaces", "/api/wealth"])
-        setSpaces((prev) => prev.map((s) => (s.id === updated.id ? { ...s, ...updated } : s)))
-        toast.success(t("updated"))
-      } else {
-        const created = await apiPost<WealthAccount>("/api/spaces", token, body, ["/api/spaces", "/api/wealth"])
-        setSpaces((prev) => [...prev, created])
-        setQuota((q) => (q ? { ...q, spaces: { ...q.spaces, current: q.spaces.current + 1 } } : q))
-        toast.success(t("created"))
-      }
-      setFormOpen(false)
-    } catch (err) {
-      toast.error(err instanceof Error && err.message && err.message !== "auth" ? err.message : t("saveFailed"))
-    } finally {
-      setSaving(false)
+  function onSaved(saved: WealthAccount, isNew: boolean) {
+    if (isNew) {
+      setSpaces((prev) => [...prev, saved])
+      setQuota((q) => (q ? { ...q, spaces: { ...q.spaces, current: q.spaces.current + 1 } } : q))
+    } else {
+      setSpaces((prev) => prev.map((s) => (s.id === saved.id ? { ...s, ...saved } : s)))
     }
   }
 
@@ -133,7 +127,7 @@ export function SpacesPage() {
       setQuota((q) => (q ? { ...q, spaces: { ...q.spaces, current: Math.max(0, q.spaces.current - 1) } } : q))
       toast.success(t("deleted"))
     } catch (err) {
-      toast.error(err instanceof Error && err.message && err.message !== "auth" ? err.message : t("deleteFailed"))
+      toast.error(apiErrorMessage(err, t("deleteFailed")))
       void load({ silent: true })
     }
   }
@@ -159,7 +153,7 @@ export function SpacesPage() {
         </div>
         {canWrite && (
           <Button onClick={openCreate} className="shrink-0">
-            {atLimit ? <Crown className="size-4 text-amber-200" /> : <Plus className="size-4" />}
+            {atLimit ? <Crown className="size-4 text-amber-500 dark:text-amber-400" /> : <Plus className="size-4" />}
             <span className="hidden sm:inline">{t("addSpace")}</span>
             <span className="sm:hidden">{t("new")}</span>
           </Button>
@@ -195,7 +189,7 @@ export function SpacesPage() {
               space={space}
               currency={currency}
               canWrite={canWrite}
-              onOpen={() => (canWrite ? openEdit(space) : undefined)}
+              onOpen={() => navigate(`/spaces/${space.id}`)}
               onFund={() => setTransfer({ space, mode: "fund" })}
               onWithdraw={() => setTransfer({ space, mode: "withdraw" })}
               onEdit={() => openEdit(space)}
@@ -205,54 +199,34 @@ export function SpacesPage() {
         </ul>
       )}
 
-      {/* Create / edit modal (bottom sheet on mobile) */}
-      <Dialog open={formOpen} onOpenChange={setFormOpen}>
-        <DialogContent className="inset-x-0 bottom-0 top-auto flex max-h-[92svh] w-full max-w-full translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-t-2xl p-0 sm:inset-x-auto sm:bottom-auto sm:top-[7svh] sm:left-1/2 sm:max-h-[86svh] sm:w-full sm:max-w-md sm:-translate-x-1/2 sm:rounded-2xl">
-          <DialogHeader className="shrink-0 border-b px-6 pb-3 pt-6">
-            <DialogTitle>{editing ? t("editTitle") : t("newSpace")}</DialogTitle>
-          </DialogHeader>
-          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto scrollbar-thin px-6 py-4">
-            <div className="space-y-1.5">
-              <Label htmlFor="space-name">{t("nameLabel")}</Label>
-              <Input id="space-name" value={form.name} maxLength={60} placeholder={t("namePlaceholder")} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} autoFocus />
-            </div>
-            <div className="space-y-1.5">
-              <Label>{t("iconLabel")}</Label>
-              <div className="flex flex-wrap gap-2">
-                {SPACE_ICONS.map(({ key, Icon }) => (
-                  <button
-                    key={key}
-                    type="button"
-                    aria-label={key}
-                    onClick={() => setForm((f) => ({ ...f, icon: key }))}
-                    className={`flex size-11 items-center justify-center rounded-xl border transition-colors ${form.icon === key ? "border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "text-muted-foreground hover:bg-muted"}`}
-                  >
-                    <Icon className="size-5" />
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label htmlFor="space-goal">{t("goalLabel")}</Label>
-                <Input id="space-goal" type="number" inputMode="decimal" min="0" step="0.01" placeholder={t("goalOptional")} value={form.goal} onChange={(e) => setForm((f) => ({ ...f, goal: e.target.value }))} />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="space-date">{t("targetDateLabel")}</Label>
-                <Input id="space-date" type="date" min={todayIso()} value={form.date} onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))} />
-              </div>
-            </div>
-            <p className="text-[11px] text-muted-foreground">{t("goalHint")}</p>
-          </div>
-          <DialogFooter className="shrink-0 border-t px-6 pb-6 pt-3">
-            <Button variant="outline" onClick={() => setFormOpen(false)} disabled={saving}>{t("cancel")}</Button>
-            <Button onClick={handleSave} disabled={saving}>{saving ? t("saving") : editing ? t("save") : t("create")}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Closed (archived) Spaces — kept so the transfer history survives; reopen anytime */}
+      {archived.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-sm font-medium text-muted-foreground">{t("closedSpaces")}</p>
+          <ul className="space-y-2">
+            {archived.map((space) => {
+              const Icon = spaceIconFor(space.icon)
+              return (
+                <li key={space.id} className="flex items-center gap-3 rounded-xl border bg-card/60 p-3">
+                  <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+                    <Icon className="size-4" />
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">{space.nickname}</span>
+                  {canWrite && (
+                    <Button size="sm" variant="outline" className="shrink-0" onClick={() => handleRestore(space)}>{t("restore")}</Button>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+        </div>
+      )}
+
+      {/* Create / edit modal */}
+      <SpaceFormModal open={formOpen} space={editing} onClose={() => setFormOpen(false)} onSaved={onSaved} />
 
       {/* Fund / withdraw modal */}
-      <TransferModal
+      <SpaceTransferModal
         state={transfer}
         accounts={accounts}
         currency={currency}
@@ -312,9 +286,9 @@ function SpaceCard({
   const status = spaceGoalStatus(balance, space.goal_amount, space.target_date, new Date().toISOString().split("T")[0])
 
   return (
-    <li className="flex flex-col rounded-2xl border bg-card p-4 transition-shadow hover:shadow-sm">
-      <button type="button" onClick={onOpen} className="flex items-start gap-3 text-left">
-        <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+    <li className="group flex flex-col rounded-2xl border bg-card p-4 transition-all duration-200 hover:border-emerald-500/30 hover:shadow-md motion-safe:hover:-translate-y-0.5">
+      <button type="button" onClick={onOpen} className="flex items-start gap-3 text-left" title={t("viewDetails")}>
+        <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-600 transition-colors group-hover:bg-emerald-500/20 dark:text-emerald-400">
           <Icon className="size-5" />
         </span>
         <div className="min-w-0 flex-1">
@@ -324,6 +298,7 @@ function SpaceCard({
         {status.kind === "reached" && (
           <span className="shrink-0 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-300">{t("goalReached")}</span>
         )}
+        <ChevronRight className="size-4 shrink-0 self-center text-muted-foreground/30 transition-all group-hover:translate-x-0.5 group-hover:text-muted-foreground" />
       </button>
 
       {progress && (
@@ -365,90 +340,5 @@ function SpaceCard({
         </div>
       )}
     </li>
-  )
-}
-
-function TransferModal({
-  state, accounts, currency, onClose, onDone,
-}: {
-  state: { space: WealthAccount; mode: "fund" | "withdraw" } | null
-  accounts: WealthAccount[]
-  currency: string
-  onClose: () => void
-  onDone: () => void
-}) {
-  const { t } = useTranslation("spaces")
-  const { getToken } = useAuth()
-  const [accountId, setAccountId] = useState("")
-  const [amount, setAmount] = useState("")
-  const [busy, setBusy] = useState(false)
-
-  useEffect(() => {
-    if (state) { setAccountId(accounts[0]?.id ?? ""); setAmount("") }
-  }, [state, accounts])
-
-  if (!state) return null
-  const isFund = state.mode === "fund"
-  const balance = Number(state.space.current_balance)
-  const max = isFund ? undefined : balance
-
-  async function submit() {
-    const amt = Number(amount)
-    if (!accountId) { toast.error(t("pickAccount")); return }
-    if (!(amt > 0)) { toast.error(t("enterAmount")); return }
-    if (!isFund && amt > balance) { toast.error(t("withdrawTooMuch")); return }
-    setBusy(true)
-    try {
-      const token = await getToken()
-      if (!token) throw new Error("auth")
-      const body = isFund
-        ? { from_account_id: accountId, to_account_id: state!.space.id, amount: amt }
-        : { from_account_id: state!.space.id, to_account_id: accountId, amount: amt }
-      await apiPost("/api/wealth/transfer", token, body, ["/api/spaces", "/api/wealth"])
-      toast.success(isFund ? t("fundDone") : t("withdrawDone"))
-      onDone()
-    } catch (err) {
-      toast.error(err instanceof Error && err.message && err.message !== "auth" ? err.message : t("transferFailed"))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
-      <DialogContent className="w-[92vw] max-w-sm">
-        <DialogHeader>
-          <DialogTitle>{isFund ? t("fundTitle", { name: state.space.nickname }) : t("withdrawTitle", { name: state.space.nickname })}</DialogTitle>
-        </DialogHeader>
-        {accounts.length === 0 ? (
-          <p className="py-4 text-sm text-muted-foreground">{t("noSpendable")}</p>
-        ) : (
-          <div className="space-y-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="tr-account">{isFund ? t("fromAccount") : t("toAccount")}</Label>
-              <select
-                id="tr-account"
-                value={accountId}
-                onChange={(e) => setAccountId(e.target.value)}
-                className="h-10 w-full rounded-md border bg-background px-3 text-sm"
-              >
-                {accounts.map((a) => (
-                  <option key={a.id} value={a.id}>{a.nickname?.trim() || a.bank_name} — {formatMoney(Number(a.current_balance), currency)}</option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="tr-amount">{t("amount")}</Label>
-              <Input id="tr-amount" type="number" inputMode="decimal" min="0" step="0.01" max={max} placeholder="0.00" value={amount} onChange={(e) => setAmount(e.target.value)} autoFocus />
-              {!isFund && <p className="text-[11px] text-muted-foreground">{t("available", { amount: formatMoney(balance, currency) })}</p>}
-            </div>
-          </div>
-        )}
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={busy}>{t("cancel")}</Button>
-          <Button onClick={submit} disabled={busy || accounts.length === 0}>{busy ? t("saving") : isFund ? t("addMoney") : t("withdraw")}</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   )
 }
