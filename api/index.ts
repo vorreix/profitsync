@@ -40,6 +40,9 @@ import wealthQuota from "./_routes/wealth/quota.js"
 import recurring from "./_routes/recurring.js"
 import recurringById from "./_routes/recurring/[id].js"
 import wealthTransfer from "./_routes/wealth/transfer.js"
+import spaces from "./_routes/spaces.js"
+import spacesReorder from "./_routes/spaces/reorder.js"
+import spaceById from "./_routes/spaces/[id].js"
 import quotations from "./_routes/quotations.js"
 import quotationsBulkDelete from "./_routes/quotations/bulk-delete.js"
 import quotationById from "./_routes/quotations/[id].js"
@@ -129,6 +132,10 @@ const routes: RoutePattern<ApiHandler>[] = [
   { segments: ["recurring"], handler: recurring },
   { segments: ["recurring", ":id"], handler: recurringById },
   { segments: ["wealth", "transfer"], handler: wealthTransfer },
+  // Spaces (personal savings buckets). Static "reorder" before the dynamic ":id".
+  { segments: ["spaces"], handler: spaces },
+  { segments: ["spaces", "reorder"], handler: spacesReorder },
+  { segments: ["spaces", ":id"], handler: spaceById },
   { segments: ["wealth", "accounts"], handler: wealthAccounts },
   { segments: ["wealth", "accounts", "reorder"], handler: wealthAccountsReorder },
   { segments: ["wealth", "accounts", ":id"], handler: wealthAccountById },

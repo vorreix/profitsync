@@ -15,7 +15,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!ctx) return
   if (req.method !== "GET") return res.status(405).json({ error: "Method not allowed" })
 
-  const [{ planKey, limits }, [{ current }]] = await Promise.all([
+  const [{ planKey, limits }, [{ current }], [{ spaceCurrent }]] = await Promise.all([
     getOrgPlan(ctx.orgId),
     db
       .select({ current: count() })
@@ -27,10 +27,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           isNull(wealthAccounts.archivedAt),
         ),
       ),
+    db
+      .select({ spaceCurrent: count() })
+      .from(wealthAccounts)
+      .where(
+        and(
+          eq(wealthAccounts.organizationId, ctx.orgId),
+          eq(wealthAccounts.type, "space"),
+          isNull(wealthAccounts.archivedAt),
+        ),
+      ),
   ])
 
   return res.json({
     plan_key: planKey,
     bank_accounts: { current, limit: limits.bankAccounts },
+    spaces: { current: spaceCurrent, limit: limits.spaces },
   })
 }

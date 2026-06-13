@@ -328,6 +328,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .from(wealthAccounts)
       .where(and(eq(wealthAccounts.id, wealth_account_id), eq(wealthAccounts.organizationId, orgId), isNull(wealthAccounts.archivedAt)))
     if (!account) return res.status(400).json({ error: "Select an active bank or cash account" })
+    // A Space is a savings bucket — money only ever TRANSFERS in/out of it. You
+    // can never post a standard income/expense to a Space (the security boundary;
+    // the UI also hides Spaces from the account picker).
+    if (account.type === "space") return res.status(400).json({ error: "You can't record a transaction on a Space — move money in or out with a transfer instead." })
 
     // Personal accounts have a single hidden default client that every
     // transaction anchors to; the client picker isn't shown, so resolve it here.

@@ -112,7 +112,7 @@ Each branch is cut FROM the previous (stacked). Gate passes before every push.
 |---|---|---|---|---|
 | 00 | `feat/spaces-00-plan` | This PLAN.md | — | ✅ committed |
 | 01 | `feat/spaces-01-schema-lib` | Migration 0043 (goal cols + recurring kind/to_account_id), schema.ts, types.ts, quota (`spaces` limit + `checkSpaceQuota`), `accountTypeAllows` personal branch, pure `src/lib/spaces.ts` + vitest, `WealthAccountIcon` piggy branch | 0043 | ✅ pushed |
-| 02 | `feat/spaces-02-api` | `/api/spaces` CRUD+reorder (personal gate, quota, never-default), can't-pay-from-Space guard in `/api/transactions`, exclude Spaces from wealth account list, `/api/wealth/quota` space report, router wiring | — | ⬜ pending |
+| 02 | `feat/spaces-02-api` | `/api/spaces` CRUD+reorder (personal gate, quota, never-default), can't-pay-from-Space guard in `/api/transactions`, `/api/wealth/quota` space report, router wiring | — | ✅ pushed |
 | 03 | `feat/spaces-03-autosave` | Recurring transfer branch (additive) + validate, `/api/spaces/:id/auto-save` GET/PUT/DELETE, exclude `kind=transfer` from `/api/recurring` list, materialize on `/api/spaces` GET; pure test for the transfer-leg/balance builder | — | ⬜ pending |
 | 04 | `feat/spaces-04-ui` | `/spaces` list page (cards: piggy icon, balance, goal progress, suggested monthly, fund/withdraw), create/edit modal, nav + route + `PersonalOnlyRoute`, free-plan crown + upgrade gate, empty state, i18n (`spaces` ns ×8), transitions, mobile | — | ⬜ pending |
 | 05 | `feat/spaces-05-detail` | `/spaces/:id` detail (hero, goal viz/chart, contributions ledger, edit goal, auto-save UI), `/wealth` savings card + exclude Spaces from /wealth list & transaction pickers & dashboard, i18n | — | ⬜ pending |
@@ -212,3 +212,12 @@ Each branch is cut FROM the previous (stacked). Gate passes before every push.
   branch for `spaces`, quota (`spaces` limit free 1 / premium 7 + `checkSpaceQuota`), pure
   `src/lib/spaces.ts` (progress/suggestion/pace) locked by 19 tests, `space-icons.ts` +
   `WealthAccountIcon` piggy branch. Gate green (261 tests).
+- _(02)_ API: `api/_routes/spaces.ts` (GET list + POST create), `spaces/[id].ts`
+  (GET/PATCH/DELETE), `spaces/reorder.ts`, shared `api/_lib/spaces.ts` (fields +
+  validators). Personal-only gate (`isPersonalAccount`), `checkSpaceQuota` on create/restore,
+  never-default, archive/delete require an empty balance (net-worth-safe). Can't-pay-from-Space
+  guard added to `/api/transactions` POST; `/api/wealth/quota` now reports the space allowance;
+  routes wired in `api/index.ts`. **Verified the three guards against the real dev DB** (quota
+  201→402, outgoing-to-Space→400, delete-with-balance 400→204) via a throwaway test (deleted,
+  org cleaned up). Committed pure validator tests (268 total). Static + boot + route-guard +
+  ESM checks green.
