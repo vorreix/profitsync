@@ -1004,7 +1004,10 @@
     "availableLabel": "المتاح",
     "savedInSpaces": "في المساحات",
     "searchAccounts": "ابحث عن الحسابات…",
-    "noAccountFound": "لم يُعثر على حساب."
+    "noAccountFound": "لم يُعثر على حساب.",
+    "bankLimitTitle": "تم بلوغ حد الحسابات",
+    "bankLimitBody": "لقد بلغت الحد الأقصى {{limit}} حسابًا بنكيًا (بما في ذلك المغلقة). احذف حسابًا مغلقًا نهائيًا لإضافة آخر.",
+    "bankUsage": "{{current}} من {{limit}} حسابات"
   },
   "errorBoundary": {
     "title": "حدث خطأ ما",

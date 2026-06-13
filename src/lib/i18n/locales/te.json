@@ -1004,7 +1004,10 @@
     "availableLabel": "అందుబాటులో",
     "savedInSpaces": "స్పేస్‌లలో",
     "searchAccounts": "ఖాతాలను శోధించండి…",
-    "noAccountFound": "ఖాతా కనుగొనబడలేదు."
+    "noAccountFound": "ఖాతా కనుగొనబడలేదు.",
+    "bankLimitTitle": "బ్యాంక్ ఖాతా పరిమితి చేరింది",
+    "bankLimitBody": "మీరు గరిష్టంగా {{limit}} బ్యాంక్ ఖాతాలకు చేరుకున్నారు (మూసినవి సహా). మరొకటి జోడించడానికి ఒక మూసిన ఖాతాను శాశ్వతంగా తొలగించండి.",
+    "bankUsage": "{{limit}} లో {{current}} ఖాతాలు"
   },
   "errorBoundary": {
     "title": "ఏదో తప్పు జరిగింది",

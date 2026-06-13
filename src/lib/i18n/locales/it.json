@@ -1004,7 +1004,10 @@
     "availableLabel": "Disponibile",
     "savedInSpaces": "Negli Spazi",
     "searchAccounts": "Cerca conti…",
-    "noAccountFound": "Nessun conto trovato."
+    "noAccountFound": "Nessun conto trovato.",
+    "bankLimitTitle": "Limite di conti raggiunto",
+    "bankLimitBody": "Hai raggiunto il massimo di {{limit}} conti bancari (inclusi quelli chiusi). Elimina definitivamente un conto chiuso per aggiungerne un altro.",
+    "bankUsage": "{{current}} di {{limit}} conti"
   },
   "errorBoundary": {
     "title": "Qualcosa è andato storto",
