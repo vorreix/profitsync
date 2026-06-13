@@ -8,6 +8,7 @@ import { useCurrency } from "@/lib/currency-context"
 import { useOrg } from "@/lib/org-context"
 import { canWriteRole } from "@/lib/roles"
 import type { Budget } from "@/lib/types"
+import { useDataRefresh } from "@/lib/data-refresh-context"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -23,6 +24,8 @@ export function PersonalBudgetCard({ className = "" }: { className?: string }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const { getToken } = useAuth()
+  // Refetch when any mutation bumps the app-wide refresh signal (e.g. FAB add).
+  const { revision } = useDataRefresh()
   const { currency } = useCurrency()
   const { activeOrg } = useOrg()
   const canWrite = canWriteRole(activeOrg?.role)
@@ -48,7 +51,7 @@ export function PersonalBudgetCard({ className = "" }: { className?: string }) {
   useEffect(() => {
     void load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeOrg?.id])
+  }, [activeOrg?.id, revision])
 
   return (
     <Card

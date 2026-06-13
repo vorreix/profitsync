@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { useModalDraft } from "@/hooks/use-modal-draft"
 
 export type QuickAddEntity = "client" | "quotation"
 
@@ -60,15 +61,27 @@ export function QuickAddModal({ entity, onClose }: { entity: QuickAddEntity | nu
   const [qCategory, setQCategory] = useState("")
   const [qNotes, setQNotes] = useState("")
 
-  // Reset all fields whenever the modal (re)opens for a given entity.
+  // A draft worth keeping: anything the user typed into the active entity's form.
+  const dirty =
+    entity === "client"
+      ? !!(clientName || clientCompany || clientEmail || clientPhone || clientCategory || clientNotes)
+      : entity === "quotation"
+        ? !!(qTitle || qProspect || qAmount || qCompany || qEmail || qPhone || qCategory || qNotes)
+        : false
+  const draft = useModalDraft({ open: entity !== null, dirty, contextKey: entity ?? "" })
+
+  // Seed a fresh form when opening — UNLESS a dismissed draft for this entity is
+  // being restored (outside-click/Esc/Back keep it; Cancel/success clear it).
   useEffect(() => {
     if (!entity) return
     setSubmitting(false)
+    if (!draft.shouldSeed(entity)) return
     setAdvancedOpen(false)
     setClientName(""); setClientCompany(""); setClientEmail("")
     setClientPhone(""); setClientStatus("active"); setClientOnboard(todayStr()); setClientCategory(""); setClientNotes("")
     setQTitle(""); setQProspect(""); setQAmount(""); setQDate(todayStr())
     setQCompany(""); setQEmail(""); setQPhone(""); setQStatus("draft"); setQCategory(""); setQNotes("")
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entity])
 
   const title = useMemo(() => {
@@ -125,6 +138,7 @@ export function QuickAddModal({ entity, onClose }: { entity: QuickAddEntity | nu
         })
         successToast(t("quickAdd.quotationCreated", { title: created.title }), `/quotations?view=${created.id}`)
       }
+      draft.clearDraft()
       onClose()
     } catch (err) {
       // Keep the modal open with the typed data so the user can fix + retry.
@@ -290,7 +304,7 @@ export function QuickAddModal({ entity, onClose }: { entity: QuickAddEntity | nu
         </div>
 
         <DialogFooter className="shrink-0 border-t px-6 pb-6 pt-3">
-          <Button variant="outline" onClick={onClose} disabled={submitting}>{t("common.cancel")}</Button>
+          <Button variant="outline" onClick={() => { draft.clearDraft(); onClose() }} disabled={submitting}>{t("common.cancel")}</Button>
           <Button onClick={submit} disabled={!canSubmit}>
             {submitting ? <Loader2 className="size-4 animate-spin" /> : title}
           </Button>

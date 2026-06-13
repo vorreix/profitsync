@@ -5,6 +5,7 @@ import { useAuth } from "@clerk/clerk-react"
 import { toast } from "sonner"
 import { ArrowDownRight, ArrowUpRight, ChevronLeft, ChevronRight, ExternalLink, Repeat } from "lucide-react"
 import { apiGet } from "@/lib/api"
+import { useDataRefresh } from "@/lib/data-refresh-context"
 import { useCurrency } from "@/lib/currency-context"
 import { formatMoney } from "@/lib/wealth"
 import { cn } from "@/lib/utils"
@@ -54,6 +55,7 @@ export function CalendarPage() {
   const navigate = useNavigate()
   const { getToken } = useAuth()
   const { currency } = useCurrency()
+  const { revision } = useDataRefresh()
 
   const [granularity, setGranularity] = useState<Granularity>("month")
   // The anchor date the current view is centered on.
@@ -97,20 +99,27 @@ export function CalendarPage() {
     return { from: iso(anchor), to: iso(anchor) }
   }, [granularity, anchor])
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  const load = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
+    if (!silent) setLoading(true)
     try {
       const token = await getToken()
       if (!token) return
       setData(await apiGet<CalendarResponse>(`/api/calendar?from=${range.from}&to=${range.to}`, token))
     } catch {
-      toast.error(t("calendar.loadFailed"))
+      if (!silent) toast.error(t("calendar.loadFailed"))
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }, [getToken, range.from, range.to, t])
 
   useEffect(() => { load() }, [load])
+
+  // A transaction added/edited anywhere (e.g. the global + FAB) bumps the
+  // app-wide refresh signal — pull fresh day figures in place, no skeleton.
+  useEffect(() => {
+    if (revision > 0) void load({ silent: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only react to the signal
+  }, [revision])
 
   const byDate = useMemo(() => new Map((data?.days ?? []).map((d) => [d.date, d])), [data])
 

@@ -122,13 +122,16 @@ export function OrgMembersPage() {
   const handleRoleChange = async (memberId: string, role: string) => {
     if (!id) return
     setBusy(memberId + role)
+    const prev = data
+    // Update the member's role in place — no full-list refetch/flash.
+    setData((d) => (d ? { ...d, members: d.members.map((m) => (m.id === memberId ? { ...m, role } : m)) } : d))
     try {
       const token = await getToken()
       if (!token) return
       await apiPatch(`/api/organizations/${id}/members`, token, { member_id: memberId, role })
       toast.success(t("roleUpdated"))
-      await load()
     } catch (err) {
+      setData(prev) // rollback the optimistic change
       toast.error(err instanceof Error ? err.message : t("failed"))
     } finally {
       setBusy(null)
@@ -197,7 +200,7 @@ export function OrgMembersPage() {
           </p>
         </div>
         {canManage && (
-          <Button onClick={() => setInviteOpen(true)} className="shrink-0">
+          <Button onClick={() => { setInviteEmail(""); setInviteRole("editor"); setLastLink(null); setInviteOpen(true) }} className="shrink-0">
             <Plus className="size-4 sm:mr-1.5" />
             <span className="hidden sm:inline">{t("inviteMember")}</span>
             <span className="sm:hidden">{t("invite")}</span>
