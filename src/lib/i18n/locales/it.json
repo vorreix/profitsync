@@ -1069,6 +1069,7 @@
   },
   "recurring": {
     "title": "Pagamenti ricorrenti",
+    "back": "Indietro",
     "subtitle": "Denaro che si ripete secondo un programma — creato automaticamente per te.",
     "add": "Aggiungi ricorrente",
     "addShort": "Nuovo",

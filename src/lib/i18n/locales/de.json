@@ -1069,6 +1069,7 @@
   },
   "recurring": {
     "title": "Wiederkehrende Zahlungen",
+    "back": "Zurück",
     "subtitle": "Geld, das sich nach einem Zeitplan wiederholt — automatisch für dich erstellt.",
     "add": "Neu anlegen",
     "addShort": "Neu",

@@ -61,7 +61,6 @@ import {
   Building2,
   ShieldCheck,
   CreditCard,
-  PiggyBank,
   Tag,
   ChartColumn,
   Gift,
@@ -71,6 +70,7 @@ import {
   CalendarDays,
   Network,
 } from "lucide-react"
+import { MoneyBag } from "@/components/icons/MoneyBag"
 
 type QuickAction = {
   labelKey: string
@@ -129,7 +129,7 @@ function buildNavItems(activeOrgId: string | undefined, accountType: AccountType
     accountTypeAllows(accountType, "quotations") && { labelKey: "nav.quotations", href: "/quotations", icon: FileText },
     accountTypeAllows(accountType, "members") && { labelKey: "nav.users", href: usersHref, icon: UserPlus },
     { labelKey: "nav.categories", href: "/categories", icon: Tag },
-    { labelKey: "nav.budgets", href: "/budgets", icon: PiggyBank },
+    { labelKey: "nav.budgets", href: "/budgets", icon: MoneyBag },
     { labelKey: "nav.referrals", href: "/referrals", icon: Gift },
     { labelKey: "nav.organizations", href: "/organizations", icon: Building2 },
     { labelKey: "nav.subscription", href: "/subscription", icon: CreditCard },
