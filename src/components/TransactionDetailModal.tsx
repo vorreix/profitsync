@@ -10,6 +10,7 @@ import { WealthAccountIcon } from "@/components/WealthAccountIcon"
 import { AuditHistory } from "@/components/AuditHistory"
 import { AttachmentDetailModal, type AttachmentModalItem } from "@/components/AttachmentDetailModal"
 import { Badge } from "@/components/ui/badge"
+import { SpaceLinkBadge } from "@/components/spaces/SpaceLinkBadge"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 
@@ -101,6 +102,7 @@ export function TransactionDetailModal({
                       <Repeat className="size-3" /> {t("recurringBadge")}
                     </Badge>
                   )}
+                  <SpaceLinkBadge tx={tx} onNavigate={onClose} />
                 </div>
                 <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
                   <div>

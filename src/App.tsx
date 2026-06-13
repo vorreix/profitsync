@@ -6,6 +6,7 @@ import { AppLayout } from "@/components/AppLayout"
 import { AdminLayout } from "@/pages/admin/AdminLayout"
 import { RequireAdminCap } from "@/pages/admin/RequireAdminCap"
 import { BusinessOnlyRoute } from "@/components/BusinessOnlyRoute"
+import { PersonalOnlyRoute } from "@/components/PersonalOnlyRoute"
 import { Toaster } from "@/components/ui/sonner"
 import { UpdatePrompt } from "@/components/UpdatePrompt"
 import { useShouldRedirectToApp } from "@/lib/use-redirect-to-app"
@@ -25,6 +26,8 @@ const CalendarPage = lazy(() => import("@/pages/CalendarPage").then((m) => ({ de
 const MoneyFlowPage = lazy(() => import("@/pages/MoneyFlowPage").then((m) => ({ default: m.MoneyFlowPage })))
 const WealthPage = lazy(() => import("@/pages/WealthPage").then((m) => ({ default: m.WealthPage })))
 const WealthAccountDetailPage = lazy(() => import("@/pages/WealthAccountDetailPage").then((m) => ({ default: m.WealthAccountDetailPage })))
+const SpacesPage = lazy(() => import("@/pages/SpacesPage").then((m) => ({ default: m.SpacesPage })))
+const SpaceDetailPage = lazy(() => import("@/pages/SpaceDetailPage").then((m) => ({ default: m.SpaceDetailPage })))
 const CategoriesPage = lazy(() => import("@/pages/CategoriesPage").then((m) => ({ default: m.CategoriesPage })))
 const BudgetsPage = lazy(() => import("@/pages/BudgetsPage").then((m) => ({ default: m.BudgetsPage })))
 const BudgetDetailPage = lazy(() => import("@/pages/BudgetDetailPage").then((m) => ({ default: m.BudgetDetailPage })))
@@ -156,6 +159,8 @@ export function App() {
             <Route path="flow" element={<MoneyFlowPage />} />
             <Route path="wealth" element={<WealthPage />} />
             <Route path="wealth/:id" element={<WealthAccountDetailPage />} />
+            <Route path="spaces" element={<PersonalOnlyRoute feature="spaces"><SpacesPage /></PersonalOnlyRoute>} />
+            <Route path="spaces/:id" element={<PersonalOnlyRoute feature="spaces"><SpaceDetailPage /></PersonalOnlyRoute>} />
             <Route path="analytics" element={<AnalyticsPage />} />
             <Route path="categories" element={<CategoriesPage />} />
             <Route path="budgets" element={<BudgetsPage />} />

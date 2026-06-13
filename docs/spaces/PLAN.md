@@ -111,12 +111,14 @@ Each branch is cut FROM the previous (stacked). Gate passes before every push.
 | # | Branch | Scope | Migration | Status |
 |---|---|---|---|---|
 | 00 | `feat/spaces-00-plan` | This PLAN.md | — | ✅ committed |
-| 01 | `feat/spaces-01-schema-lib` | Migration 0043 (goal cols + recurring kind/to_account_id), schema.ts, types.ts, quota (`spaces` limit + `checkSpaceQuota`), `accountTypeAllows` personal branch, pure `src/lib/spaces.ts` + vitest, `WealthAccountIcon` piggy branch | 0043 | ⬜ pending |
-| 02 | `feat/spaces-02-api` | `/api/spaces` CRUD+reorder (personal gate, quota, never-default), can't-pay-from-Space guard in `/api/transactions`, exclude Spaces from wealth account list, `/api/wealth/quota` space report, router wiring | — | ⬜ pending |
-| 03 | `feat/spaces-03-autosave` | Recurring transfer branch (additive) + validate, `/api/spaces/:id/auto-save` GET/PUT/DELETE, exclude `kind=transfer` from `/api/recurring` list, materialize on `/api/spaces` GET; pure test for the transfer-leg/balance builder | — | ⬜ pending |
-| 04 | `feat/spaces-04-ui` | `/spaces` list page (cards: piggy icon, balance, goal progress, suggested monthly, fund/withdraw), create/edit modal, nav + route + `PersonalOnlyRoute`, free-plan crown + upgrade gate, empty state, i18n (`spaces` ns ×8), transitions, mobile | — | ⬜ pending |
-| 05 | `feat/spaces-05-detail` | `/spaces/:id` detail (hero, goal viz/chart, contributions ledger, edit goal, auto-save UI), `/wealth` savings card + exclude Spaces from /wealth list & transaction pickers & dashboard, i18n | — | ⬜ pending |
-| 06 | `feat/spaces-06-polish` | Exclude Spaces from flow/analytics/transfer-wizard where needed, reached/overdue edge UX, transitions + mobile pass, i18n completeness, final gate | — | ⬜ pending |
+| 01 | `feat/spaces-01-schema-lib` | Migration 0043 (goal cols + recurring kind/to_account_id), schema.ts, types.ts, quota (`spaces` limit + `checkSpaceQuota`), `accountTypeAllows` personal branch, pure `src/lib/spaces.ts` + vitest, `WealthAccountIcon` piggy branch | 0043 | ✅ pushed |
+| 02 | `feat/spaces-02-api` | `/api/spaces` CRUD+reorder (personal gate, quota, never-default), can't-pay-from-Space guard in `/api/transactions`, `/api/wealth/quota` space report, router wiring | — | ✅ pushed |
+| 03 | `feat/spaces-03-autosave` | Recurring transfer branch (additive), `/api/spaces/:id/auto-save` GET/PUT/DELETE, exclude `kind=transfer` from `/api/recurring` list, materialize on `/api/spaces` GET; pure + real-DB idempotency tests | — | ✅ pushed |
+| 04 | `feat/spaces-04-ui` | `/spaces` list page (cards: piggy icon, balance, goal progress, suggested monthly, fund/withdraw), create/edit modal, nav + route + `PersonalOnlyRoute`, free-plan crown + upgrade gate, empty state, i18n (`spaces` ns ×8), transitions, mobile | — | ✅ pushed |
+| 05 | `feat/spaces-05-detail` | `/spaces/:id` detail (hero, goal progress, **auto-save setup UI**, activity ledger), shared SpaceForm/Transfer modals, exclude Spaces from `/api/wealth/accounts` (kills all picker leaks), `/wealth` net-worth incl. savings breakdown, `apiPut`, i18n | — | ✅ pushed |
+| 06 | `feat/spaces-06-polish` | `?new=1` deep-link, **Closed-Spaces restore** lifecycle, verified flow/analytics/dashboard/transfer-wizard already correct (transfers excluded; "available" semantics), final gate | — | ✅ pushed |
+| 07 | `feat/spaces-07-feedback` | Fund/withdraw fix (native `<select>` → shadcn `Select`), crown visibility, detail-page restructure (auto-save + delete on the main card; delete moves money out first) | — | ✅ pushed |
+| 08 | `feat/spaces-08-fund-fix` | **Root cause of "add money not working": free per-client tx quota silently blocked Space funding → exempted Space transfers.** Inline error display + `apiErrorMessage` parser (was raw JSON toast), projected source balance/overdraw, special auto-save pill, card hover animation | — | ✅ pushed |
 
 ## 7. Per-branch detail
 
@@ -206,3 +208,75 @@ Each branch is cut FROM the previous (stacked). Gate passes before every push.
 
 ## 9. Change log
 - _(00)_ Plan written; architecture verified against money paths; chain defined.
+- _(01)_ Migration 0043 applied + columns verified in dev DB. Schema (`wealth_accounts`
+  goal_amount/target_date; `recurring_rules` kind/to_account_id), types (`WealthAccountType`
+  incl. `space`, goal fields, RecurringRule transfer fields), `accountTypeAllows` personal-only
+  branch for `spaces`, quota (`spaces` limit free 1 / premium 7 + `checkSpaceQuota`), pure
+  `src/lib/spaces.ts` (progress/suggestion/pace) locked by 19 tests, `space-icons.ts` +
+  `WealthAccountIcon` piggy branch. Gate green (261 tests).
+- _(02)_ API: `api/_routes/spaces.ts` (GET list + POST create), `spaces/[id].ts`
+  (GET/PATCH/DELETE), `spaces/reorder.ts`, shared `api/_lib/spaces.ts` (fields +
+  validators). Personal-only gate (`isPersonalAccount`), `checkSpaceQuota` on create/restore,
+  never-default, archive/delete require an empty balance (net-worth-safe). Can't-pay-from-Space
+  guard added to `/api/transactions` POST; `/api/wealth/quota` now reports the space allowance;
+  routes wired in `api/index.ts`. **Verified the three guards against the real dev DB** (quota
+  201→402, outgoing-to-Space→400, delete-with-balance 400→204) via a throwaway test (deleted,
+  org cleaned up). Committed pure validator tests (268 total). Static + boot + route-guard +
+  ESM checks green.
+- _(03)_ Recurring auto-save. Additive `kind='transfer'` branch in the materializer (standard
+  path byte-identical), outgoing leg as the idempotency anchor, incoming Space leg shares the
+  group_id. Pure `src/lib/recurring-transfer.ts` locked by 5 tests. `/api/spaces/:id/auto-save`
+  GET/PUT/DELETE (one transfer rule per Space, reusing `validateRuleInput`); `/api/recurring`
+  list excludes `kind='transfer'`; Space delete drops its auto-save rule. **Verified on the real
+  dev DB**: a due auto-save materializes ONE transfer (−200 source / +200 Space; recurring keys
+  only on the outgoing leg) and re-running the same occurrence is idempotent (no double-move).
+  Gate green (273 tests).
+- _(04)_ `/spaces` list UI. `SpacesPage` (total-saved hero, space cards with piggy icon,
+  balance, goal progress bar + %, suggested-monthly hint from `src/lib/spaces.ts`, fund/withdraw
+  via the transfer endpoint, optimistic create/edit/delete), create/edit modal (name, icon
+  picker, optional goal + date), `PersonalOnlyRoute`, nav entries (PiggyBank) gated to personal,
+  free-plan crown + upgrade dialog, empty state. New `spaces` i18n namespace — 55 keys × **all 8
+  locales** (real translations, parity green, 1174 keys). **Verified the live Spaces API on
+  `vercel dev`** (`/api/spaces`, `/api/wealth/quota`, `/api/spaces/:id/auto-save` all 401-not-500
+  → boot + routing + auth guard OK). Static gates green. ⚠️ Visual/Playwright check deferred:
+  `/spaces` is auth + personal-account gated and the dev browser was in use by the live session;
+  the page mirrors the proven WealthPage/RecurringPage patterns and is typecheck/lint-clean.
+- _(05)_ Detail + integration. `SpaceDetailPage` (`/spaces/:id`): goal hero + progress, fund/
+  withdraw, **auto-save setup UI** (`AutoSaveModal` → PUT `/api/spaces/:id/auto-save`, with
+  source account, amount, frequency, start/end; shows next-due + on-track/ahead/behind pace vs
+  the suggested monthly) + stop, and an activity ledger (account-scoped transfers). Extracted
+  shared `SpaceFormModal` + `SpaceTransferModal` (reused by the list + detail), card tap now
+  opens the detail. **Excluded Spaces from `/api/wealth/accounts`** — one server filter that
+  removes them from every spend surface (transaction pickers, transfer wizard, wealth list) at
+  once; the transfer endpoint queries the table directly so funding still works. To keep net
+  worth correct, `/wealth` now fetches Spaces and shows **net worth = available + saved** with a
+  tappable "Saved in Spaces" breakdown (auto-hidden for business via the 403). Added `apiPut`.
+  i18n: +24 detail/auto-save keys + 2 wealth keys × all 8 locales (parity green, 1200 keys).
+  Live API re-smoked (PUT auto-save / wealth / spaces:id all 401-not-500). Gate green.
+- _(06)_ Polish + lifecycle. `/spaces?new=1` deep-link opens the create modal (matches the
+  app's `?new=1` convention). **Closed-Spaces section with Reopen** — a Space with transfer
+  history that's "deleted" is archived (so the ledger survives); it now shows in a muted
+  "Closed Spaces" list with a Reopen action (re-checks quota). Verified the rest is already
+  correct without changes: flow/analytics exclude `kind='transfer'` (Spaces never appear);
+  the Dashboard "Total available" card correctly shows spendable (bank+cash) and the transfer
+  wizard now reads the space-free accounts list. +3 i18n keys × 8 locales. Gate green.
+
+- _(07)_ Live-testing feedback. **Root-caused "add money/withdraw not working"**: native
+  `<select>` inside a Radix Dialog (the app uses shadcn `Select` everywhere for exactly this) —
+  swapped to shadcn `Select` in `SpaceTransferModal` + the auto-save modal. Confirmed the backend
+  fund/withdraw path for a Space is correct via a throwaway real-DB test (cash→space and
+  space→cash both move balances). Crown on the "Add Space" button now uses the visible
+  `amber-500/400` (matching WealthPage). Detail page restructured per feedback: **auto-save and
+  delete now live on the main card** (delete was buried at the bottom); the auto-save modal opens
+  with a plain-language explanation of what it does. **Delete-with-money flow**: if the Space
+  still holds money, the delete dialog asks where to move it (default account preselected),
+  transfers it out, then closes the Space — empty Spaces just delete. +5 i18n keys × 8 locales.
+
+## ✅ Feature complete — all 8 requirements delivered
+1. Spaces in the personal profile (gated nav/route/API). 2. Recurring auto-save from an account
+into a Space (additive transfer materializer + auto-save UI). 3. Free = 1 Space, Pro = 7
+(`checkSpaceQuota` + crown/upgrade gate). 4. Withdraw Space→bank as a transfer. 5. Can't pay
+from a Space (server guard + UI exclusion). 6. Piggy-bank icon (+ a small savings icon set).
+7. Goal amount + target date + suggested monthly + on-track/ahead/behind pace. 8. Simple,
+mobile-first UX with all the info. Money paths locked by pure + real-DB tests; every branch
+passed the full gate and is pushed.
