@@ -15,7 +15,7 @@
 //
 // Pure + DB-free so the committed test suite can lock the chain.
 
-import { COUNTRY_TO_CURRENCY, currencyForCountry } from "./currencies"
+import { COUNTRY_TO_CURRENCY, currencyForCountry } from "./currencies.js"
 
 /**
  * Currencies we know Dodo Payments can bill subscriptions in. Dodo documents

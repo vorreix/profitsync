@@ -35,5 +35,11 @@ jobs:
       - name: Type check
         run: npm run typecheck
 
+      - name: ESM import extensions (api/ function graph)
+        run: node scripts/check-esm-extensions.mjs
+
+      - name: Functions boot under Node ESM (prod parity)
+        run: node scripts/boot-functions.mjs
+
       - name: Tests
         run: npm run test:ci
