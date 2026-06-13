@@ -66,7 +66,7 @@ export function ClientDetailPage() {
   const [editClientDialogOpen, setEditClientDialogOpen] = useState(false)
   const [editTxDialogOpen, setEditTxDialogOpen] = useState(false)
   const [txForm, setTxForm] = useState<NewTransaction>(defaultTxForm)
-  const [editTxForm, setEditTxForm] = useState<(NewTransaction & { id: string }) | null>(null)
+  const [editTxForm, setEditTxForm] = useState<(NewTransaction & { id: string; group_id?: string | null }) | null>(null)
   const [clientForm, setClientForm] = useState<NewClient | null>(null)
   const [saving, setSaving] = useState(false)
   const [deleteId, setDeleteId] = useState<string | null>(null)
@@ -120,7 +120,7 @@ export function ClientDetailPage() {
     }
   }, [id, getToken])
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
     if (!id) return
     const token = await getToken()
     if (!token) return
@@ -132,7 +132,7 @@ export function ClientDetailPage() {
     if (!clientData) { navigate("/clients"); return }
     setClient(clientData)
     setTransactions(txData)
-    setLoading(false)
+    if (!silent) setLoading(false)
   }, [id, navigate, getToken, refreshBudget])
 
   useEffect(() => { loadData() }, [loadData])
@@ -280,19 +280,73 @@ export function ClientDetailPage() {
     if (valid.length) setPendingFiles((prev) => [...prev, ...valid])
   }
 
+  // Open the edit dialog. A split (grouped) transaction is loaded as ALL its legs
+  // so it's edited as one logical entry — editing a single leg in isolation would
+  // desync the group (its type/category/date diverge from the siblings, and the
+  // collapsed group row on /transactions would then misrepresent the split).
+  const openEditTx = async (tx: Transaction) => {
+    if (tx.group_id) {
+      try {
+        const token = await getToken()
+        const legs = token ? await apiGet<Transaction[]>(`/api/transactions?groupId=${tx.group_id}`, token) : []
+        if (!legs.length) { toast.error("Failed to update transaction"); return }
+        setEditTxForm({
+          id: legs[0].id,
+          group_id: tx.group_id,
+          type: tx.type,
+          allocations: legs.map((l) => ({ account_id: l.wealth_account_id ?? "", amount: String(l.amount) })),
+          description: tx.description,
+          category: tx.category,
+          date: tx.date,
+        })
+        setEditTxDialogOpen(true)
+      } catch {
+        toast.error("Failed to update transaction")
+      }
+      return
+    }
+    setEditTxForm({
+      id: tx.id,
+      group_id: null,
+      type: tx.type,
+      allocations: [{ account_id: tx.wealth_account_id ?? defaultAccountId(accounts), amount: String(tx.amount) }],
+      description: tx.description,
+      category: tx.category,
+      date: tx.date,
+    })
+    setEditTxDialogOpen(true)
+  }
+
   const handleEditTransaction = async () => {
-    const alloc = editTxForm?.allocations[0]
-    if (!editTxForm || !alloc || !alloc.amount || isNaN(parseFloat(alloc.amount))) { toast.error("Valid amount is required"); return }
-    if (amountExceedsLimit(alloc.amount)) { toast.error("Amount is too large"); return }
+    if (!editTxForm) return
+    const allocs = editTxForm.allocations.filter((a) => a.account_id && Number(a.amount) > 0)
+    if (allocs.length === 0) { toast.error("Valid amount is required"); return }
+    if (allocs.some((a) => amountExceedsLimit(a.amount))) { toast.error("Amount is too large"); return }
     setSaving(true)
     try {
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
-      await apiPatch<Transaction>(`/api/transactions/${editTxForm.id}`, token, { type: editTxForm.type, amount: parseFloat(alloc.amount), wealth_account_id: alloc.account_id, description: editTxForm.description, category: editTxForm.category, date: editTxForm.date })
+      // A split (existing group, or a single edited into multiple accounts) is
+      // replaced wholesale: delete the old group (reverses balances) then recreate.
+      // A single→single edit stays a balance-preserving in-place PATCH.
+      if (editTxForm.group_id || allocs.length > 1) {
+        await apiDelete(`/api/transactions/${editTxForm.id}`, token)
+        await apiPost("/api/transactions/group", token, {
+          client_id: id,
+          type: editTxForm.type,
+          description: editTxForm.description,
+          category: editTxForm.category,
+          date: editTxForm.date,
+          allocations: allocs.map((a) => ({ wealth_account_id: a.account_id, amount: parseFloat(a.amount) })),
+        })
+      } else {
+        const alloc = allocs[0]
+        await apiPatch<Transaction>(`/api/transactions/${editTxForm.id}`, token, { type: editTxForm.type, amount: parseFloat(alloc.amount), wealth_account_id: alloc.account_id, description: editTxForm.description, category: editTxForm.category, date: editTxForm.date })
+      }
       toast.success("Transaction updated")
       setEditTxDialogOpen(false)
       setEditTxForm(null)
-      loadData()
+      loadData({ silent: true })
     } catch {
       toast.error("Failed to update transaction")
     } finally {
@@ -540,7 +594,7 @@ export function ClientDetailPage() {
                         </p>
                       </div>
                       <div className="flex gap-0.5 sm:gap-1 shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-                        <Button variant="ghost" size="icon-sm" onClick={(e) => { e.stopPropagation(); setEditTxForm({ id: tx.id, type: tx.type, allocations: [{ account_id: tx.wealth_account_id ?? defaultAccountId(accounts), amount: String(tx.amount) }], description: tx.description, category: tx.category, date: tx.date }); setEditTxDialogOpen(true) }}><Pencil className="size-3.5" /></Button>
+                        <Button variant="ghost" size="icon-sm" onClick={(e) => { e.stopPropagation(); void openEditTx(tx) }}><Pencil className="size-3.5" /></Button>
                         <Button variant="ghost" size="icon-sm" className="text-muted-foreground hover:text-destructive" onClick={(e) => { e.stopPropagation(); setDeleteId(tx.id); setDeleteType("transaction") }}><Trash2 className="size-3.5" /></Button>
                       </div>
                     </div>
@@ -647,7 +701,9 @@ export function ClientDetailPage() {
                 allocations={editTxForm.allocations}
                 onChange={(allocations) => setEditTxForm((f) => f ? { ...f, allocations } : null)}
                 currency={currency}
-                max={1}
+                /* A grouped (split) transaction edits as all its legs; a single
+                   transaction stays single-account. */
+                max={editTxForm.group_id ? Infinity : 1}
                 onAddAccount={() => { setEditTxDialogOpen(false); navigate("/wealth") }}
                 loading={accountsLoading}
               />
@@ -792,7 +848,7 @@ export function ClientDetailPage() {
                 </div>
               </div>
               <DialogFooter>
-                <Button variant="outline" onClick={() => { const tx = viewTx; dropModalBackEntry(); setViewTx(null); setEditTxForm({ id: tx.id, type: tx.type, allocations: [{ account_id: tx.wealth_account_id ?? defaultAccountId(accounts), amount: String(tx.amount) }], description: tx.description, category: tx.category, date: tx.date }); setEditTxDialogOpen(true) }}>
+                <Button variant="outline" onClick={() => { const tx = viewTx; dropModalBackEntry(); setViewTx(null); void openEditTx(tx) }}>
                   <Pencil className="size-3.5" /> Edit
                 </Button>
                 <Button onClick={() => setViewTx(null)}>Close</Button>
