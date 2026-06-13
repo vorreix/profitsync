@@ -114,7 +114,7 @@ Each branch is cut FROM the previous (stacked). Gate passes before every push.
 | 01 | `feat/spaces-01-schema-lib` | Migration 0043 (goal cols + recurring kind/to_account_id), schema.ts, types.ts, quota (`spaces` limit + `checkSpaceQuota`), `accountTypeAllows` personal branch, pure `src/lib/spaces.ts` + vitest, `WealthAccountIcon` piggy branch | 0043 | ✅ pushed |
 | 02 | `feat/spaces-02-api` | `/api/spaces` CRUD+reorder (personal gate, quota, never-default), can't-pay-from-Space guard in `/api/transactions`, `/api/wealth/quota` space report, router wiring | — | ✅ pushed |
 | 03 | `feat/spaces-03-autosave` | Recurring transfer branch (additive), `/api/spaces/:id/auto-save` GET/PUT/DELETE, exclude `kind=transfer` from `/api/recurring` list, materialize on `/api/spaces` GET; pure + real-DB idempotency tests | — | ✅ pushed |
-| 04 | `feat/spaces-04-ui` | `/spaces` list page (cards: piggy icon, balance, goal progress, suggested monthly, fund/withdraw), create/edit modal, nav + route + `PersonalOnlyRoute`, free-plan crown + upgrade gate, empty state, i18n (`spaces` ns ×8), transitions, mobile | — | ⬜ pending |
+| 04 | `feat/spaces-04-ui` | `/spaces` list page (cards: piggy icon, balance, goal progress, suggested monthly, fund/withdraw), create/edit modal, nav + route + `PersonalOnlyRoute`, free-plan crown + upgrade gate, empty state, i18n (`spaces` ns ×8), transitions, mobile | — | ✅ pushed |
 | 05 | `feat/spaces-05-detail` | `/spaces/:id` detail (hero, goal viz/chart, contributions ledger, edit goal, auto-save UI), `/wealth` savings card + exclude Spaces from /wealth list & transaction pickers & dashboard, i18n | — | ⬜ pending |
 | 06 | `feat/spaces-06-polish` | Exclude Spaces from flow/analytics/transfer-wizard where needed, reached/overdue edge UX, transitions + mobile pass, i18n completeness, final gate | — | ⬜ pending |
 
@@ -229,3 +229,13 @@ Each branch is cut FROM the previous (stacked). Gate passes before every push.
   dev DB**: a due auto-save materializes ONE transfer (−200 source / +200 Space; recurring keys
   only on the outgoing leg) and re-running the same occurrence is idempotent (no double-move).
   Gate green (273 tests).
+- _(04)_ `/spaces` list UI. `SpacesPage` (total-saved hero, space cards with piggy icon,
+  balance, goal progress bar + %, suggested-monthly hint from `src/lib/spaces.ts`, fund/withdraw
+  via the transfer endpoint, optimistic create/edit/delete), create/edit modal (name, icon
+  picker, optional goal + date), `PersonalOnlyRoute`, nav entries (PiggyBank) gated to personal,
+  free-plan crown + upgrade dialog, empty state. New `spaces` i18n namespace — 55 keys × **all 8
+  locales** (real translations, parity green, 1174 keys). **Verified the live Spaces API on
+  `vercel dev`** (`/api/spaces`, `/api/wealth/quota`, `/api/spaces/:id/auto-save` all 401-not-500
+  → boot + routing + auth guard OK). Static gates green. ⚠️ Visual/Playwright check deferred:
+  `/spaces` is auth + personal-account gated and the dev browser was in use by the live session;
+  the page mirrors the proven WealthPage/RecurringPage patterns and is typecheck/lint-clean.
