@@ -5,7 +5,12 @@
     "installButton": "Installa app",
     "dismiss": "Non ora",
     "iosTitle": "Aggiungi alla Home",
-    "iosBody": "Tocca l’icona Condividi, poi scegli “Aggiungi alla schermata Home”."
+    "iosBody": "Tocca l’icona Condividi, poi scegli “Aggiungi alla schermata Home”.",
+    "updateTitle": "Aggiornamento disponibile",
+    "updateBody": "È pronta una nuova versione di ProfitSync. Aggiorna ora per avere le ultime novità e correzioni.",
+    "updateNow": "Aggiorna",
+    "updateLater": "Più tardi",
+    "updating": "Aggiornamento…"
   },
   "nav": {
     "dashboard": "Dashboard",

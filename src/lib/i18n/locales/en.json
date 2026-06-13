@@ -5,7 +5,12 @@
     "installButton": "Install app",
     "dismiss": "Not now",
     "iosTitle": "Add to Home Screen",
-    "iosBody": "Tap the Share icon, then choose “Add to Home Screen”."
+    "iosBody": "Tap the Share icon, then choose “Add to Home Screen”.",
+    "updateTitle": "Update available",
+    "updateBody": "A new version of ProfitSync is ready. Update now to get the latest features and fixes.",
+    "updateNow": "Update",
+    "updateLater": "Later",
+    "updating": "Updating…"
   },
   "errorBoundary": {
     "title": "Something went wrong",
