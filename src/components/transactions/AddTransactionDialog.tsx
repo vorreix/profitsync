@@ -11,6 +11,7 @@ import { useCurrency } from "@/lib/currency-context"
 import { useOrg } from "@/lib/org-context"
 import { useCategories } from "@/lib/use-categories"
 import { loadLastTx, saveLastTx } from "@/lib/last-tx"
+import { useModalDraft } from "@/hooks/use-modal-draft"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
@@ -62,6 +63,13 @@ export function AddTransactionDialog({
   const [saving, setSaving] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
+  // A draft worth keeping: anything the user actually typed/attached.
+  const dirty =
+    form.description.trim() !== "" ||
+    form.allocations.some((a) => a.amount !== "") ||
+    pendingFiles.length > 0
+  const draft = useModalDraft({ open, dirty, contextKey: presetClientId ?? "" })
+
   // Load data + seed the form each time the dialog opens (mirrors the page).
   useEffect(() => {
     if (!open) return
@@ -69,11 +77,28 @@ export function AddTransactionDialog({
     // must be re-armed here or a previous run leaks into this one — a stale
     // `saving` left the Add button stuck on a spinner from the second open on.
     setSaving(false)
+    // A dismissal (outside-click/Esc/Back) keeps the draft: skip re-seeding so
+    // the user's typed data is exactly where they left it. Cancel/save cleared
+    // the draft, so those re-seed fresh (sticky defaults + today's date).
+    const seeding = draft.shouldSeed()
+    if (seeding) {
+      // Seed SYNCHRONOUSLY (sticky fields live in localStorage) so the form
+      // never shows the previous run's values while the network loads — the old
+      // async seed both flashed stale data and could clobber early typing.
+      const last = loadLastTx()
+      setForm({
+        ...defaultTxForm(),
+        client_id: presetClientId ?? last.client_id ?? "",
+        type: last.type ?? "incoming",
+        category: last.category ?? "",
+        allocations: [],
+      })
+      setPendingFiles([])
+    }
     let cancelled = false
     ;(async () => {
       const token = await getToken()
       if (!token) return
-      const last = loadLastTx()
       const [accs, cls, bdg] = await Promise.all([
         apiGet<WealthAccount[]>("/api/wealth/accounts", token).catch(() => [] as WealthAccount[]),
         !isPersonal
@@ -90,18 +115,18 @@ export function AddTransactionDialog({
       const m = new Map<string, Budget>()
       for (const b of bdg.budgets ?? []) m.set(b.client_id ?? "", b)
       setBudgetMap(m)
-      const acctId =
-        last.wealth_account_id && active.some((a) => a.id === last.wealth_account_id)
-          ? last.wealth_account_id
-          : defaultAccountId(active)
-      setForm({
-        ...defaultTxForm(),
-        client_id: presetClientId ?? last.client_id ?? "",
-        type: last.type ?? "incoming",
-        category: last.category ?? "",
-        allocations: acctId ? [{ account_id: acctId, amount: "" }] : [],
-      })
-      setPendingFiles([])
+      if (seeding) {
+        // Fill in only the remembered source account — and never clobber an
+        // allocation the user already started while the request was in flight.
+        const last = loadLastTx()
+        const acctId =
+          last.wealth_account_id && active.some((a) => a.id === last.wealth_account_id)
+            ? last.wealth_account_id
+            : defaultAccountId(active)
+        setForm((prev) =>
+          prev.allocations.length > 0 || !acctId ? prev : { ...prev, allocations: [{ account_id: acctId, amount: "" }] },
+        )
+      }
     })()
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -174,6 +199,8 @@ export function AddTransactionDialog({
       }
       saveLastTx({ client_id: form.client_id, type: form.type, category: form.category, wealth_account_id: allocs[0]?.account_id })
       const total = allocs.reduce((s, a) => s + Number(a.amount), 0)
+      draft.clearDraft()
+      setPendingFiles([])
       onOpenChange(false)
       onCreated?.({ id: firstId, type: form.type, amount: total })
     } catch {
@@ -185,8 +212,10 @@ export function AddTransactionDialog({
     }
   }
 
+  // Dismissals (outside-click/Esc/Back) keep the draft incl. attached files;
+  // only Cancel and a successful add reset it (via clearDraft).
   return (
-    <Dialog open={open} onOpenChange={(o) => { if (!o) setPendingFiles([]); onOpenChange(o) }}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="inset-x-0 bottom-0 top-auto flex max-h-[92svh] w-full max-w-full translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-t-2xl p-0 sm:inset-x-auto sm:bottom-auto sm:top-[7svh] sm:left-1/2 sm:max-h-[86svh] sm:w-full sm:max-w-md sm:-translate-x-1/2 sm:rounded-2xl">
         <DialogHeader className="shrink-0 border-b px-6 pb-3 pt-6"><DialogTitle>{t("addTransaction")}</DialogTitle></DialogHeader>
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto scrollbar-thin px-6 py-1">
@@ -234,7 +263,7 @@ export function AddTransactionDialog({
           </div>
         </div>
         <DialogFooter className="shrink-0 border-t px-6 pb-6 pt-3">
-          <Button variant="outline" onClick={() => { onOpenChange(false); setPendingFiles([]) }}>{t("cancel")}</Button>
+          <Button variant="outline" onClick={() => { draft.clearDraft(); setPendingFiles([]); onOpenChange(false) }}>{t("cancel")}</Button>
           <Button onClick={handleAdd} disabled={saving}>{saving ? <Loader2 className="size-4 animate-spin" /> : t("add")}</Button>
         </DialogFooter>
       </DialogContent>

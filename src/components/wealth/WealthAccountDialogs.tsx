@@ -73,7 +73,6 @@ export function WealthAccountDialogs({
       if (!token) throw new Error("Not authenticated")
       await apiPatch<WealthAccount>(`/api/wealth/accounts/${id}`, token, body)
       clearApiCache()
-      window.dispatchEvent(new Event("wealth:accounts-changed"))
       toast.success(success)
       onDone()
       onChanged()
