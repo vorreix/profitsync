@@ -1,45 +1,66 @@
 import { VitePWA } from "vite-plugin-pwa"
 
 import { manifest } from "./manifest"
-import { NAVIGATE_FALLBACK_DENYLIST, PRECACHE_GLOB_IGNORES } from "./sw-policy"
+import { matchAppNavigation, PRECACHE_GLOB_IGNORES } from "./sw-policy"
 
-// registerType:'prompt' + injectRegister:null means the plugin never auto-injects a
-// registration script; we register manually (every route) in
-// src/lib/pwa/register-sw.ts and apply updates silently there without reloading the
-// page — so an in-progress form is never interrupted.
+// ────────────────────────────────────────────────────────────────────────────
+// The post-deploy white-screen problem, and how this config prevents it
 //
-// skipWaiting + clientsClaim are OFF — this is the fix for the post-deploy "white
-// screen requiring multiple reloads" bug.
+// A white screen happens when a page (the "shell") references content-hashed
+// chunks that no longer exist — a stale shell after a deploy. Two rules make
+// that structurally impossible here:
 //
-//   Previously (ON), a freshly deployed SW activated and claimed already-open tabs
-//   BEFORE its new precache was ready, while cleanupOutdatedCaches deleted the OLD
-//   hashed chunks. The running page (still the old app) then lazy-loaded an old chunk
-//   that had just been deleted and no longer existed on the server → 404 → blank
-//   screen the reload guards couldn't escape (the SW kept serving the stale shell).
+// 1. Navigations are NETWORK-ONLY (with the precached shell as offline/timeout
+//    fallback). A cold load therefore always gets the CURRENT index.html, whose
+//    hashed assets exist on the server by definition. Only when the network is
+//    unreachable (or slower than the timeout) does the SW serve its own
+//    precached shell — and that shell's chunks are in the same precache, so it
+//    is self-consistent too.
 //
-//   With both OFF, a new SW INSTALLS but WAITS. The old SW keeps serving its own
-//   intact precache, so every open tab stays fully consistent (old shell + old chunks)
-//   — no 404, no white screen, no interrupted form. The new SW activates only at a
-//   clean boundary: the next cold load when no old tab is controlling, where shell and
-//   chunks are guaranteed to match. register-sw.ts must therefore NOT force-activate it
-//   (no updateSW on onNeedRefresh); it only keeps a bounded cache-bust reload as a
-//   defensive net for any residual stale-HTTP-cache case.
+// 2. skipWaiting + clientsClaim are OFF. A new SW installs and WAITS; the old
+//    SW's precache stays intact, so pages running the old version keep finding
+//    their chunks. The waiting SW activates only when the user accepts the
+//    in-app update prompt (src/lib/pwa/register-sw.ts calls updateSW(true),
+//    which reloads onto the new version) or at the next cold start. Never
+//    force-activate it without a reload — that is the historical bug where the
+//    new SW deleted the running page's chunks mid-session.
 //
-//   Tradeoff: an already-open tab keeps running the version it loaded with until its
-//   next cold start (or the hourly update check + reopen). Acceptable: no interruption,
-//   and never a white screen.
+// registerType:'prompt' + injectRegister:null means the plugin never auto-
+// injects a registration script; we register manually in register-sw.ts.
+//
+// filename is "app-sw.js", NOT "sw.js": /sw.js is reserved (vercel.json) for a
+// tiny self-destroying worker (public/kill-sw.js) that rescues every legacy
+// registration — old clients keep polling /sw.js, receive the kill switch,
+// purge their caches, reload fresh, and re-register this worker at /app-sw.js.
+// ────────────────────────────────────────────────────────────────────────────
 export function buildPwaPlugin() {
   return VitePWA({
     registerType: "prompt",
     injectRegister: null,
     strategies: "generateSW",
+    filename: "app-sw.js",
     manifest,
     includeAssets: ["favicon.ico", "favicon-96x96.png", "apple-touch-icon.png"],
     workbox: {
       globPatterns: ["**/*.{js,css,html,svg,png,ico,woff,woff2}"],
       globIgnores: PRECACHE_GLOB_IGNORES,
-      navigateFallback: "/index.html",
-      navigateFallbackDenylist: NAVIGATE_FALLBACK_DENYLIST,
+      // Explicit null: vite-plugin-pwa otherwise injects its default
+      // navigateFallback ("index.html"), whose NavigationRoute would be
+      // registered BEFORE the runtimeCaching route below and answer every
+      // navigation with the precached (i.e. potentially stale) shell.
+      navigateFallback: null,
+      runtimeCaching: [
+        {
+          urlPattern: matchAppNavigation,
+          handler: "NetworkOnly",
+          options: {
+            // Offline (or any network failure): fall back to the self-consistent
+            // precached shell. No artificial timeout — a slow network behaves
+            // like any plain website would.
+            precacheFallback: { fallbackURL: "/index.html" },
+          },
+        },
+      ],
       cleanupOutdatedCaches: true,
       clientsClaim: false,
       skipWaiting: false,

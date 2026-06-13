@@ -7,6 +7,7 @@ import { AdminLayout } from "@/pages/admin/AdminLayout"
 import { RequireAdminCap } from "@/pages/admin/RequireAdminCap"
 import { BusinessOnlyRoute } from "@/components/BusinessOnlyRoute"
 import { Toaster } from "@/components/ui/sonner"
+import { UpdatePrompt } from "@/components/UpdatePrompt"
 import { useShouldRedirectToApp } from "@/lib/use-redirect-to-app"
 import { isStandalonePwa } from "@/lib/pwa/is-standalone"
 
@@ -171,6 +172,7 @@ export function App() {
       </Suspense>
       </AppErrorBoundary>
       <Toaster />
+      <UpdatePrompt />
     </BrowserRouter>
   )
 }
