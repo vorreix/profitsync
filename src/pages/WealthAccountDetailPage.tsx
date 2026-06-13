@@ -13,6 +13,7 @@ import {
   MoreVertical,
   Pencil,
   Plus,
+  Repeat,
   SlidersHorizontal,
 } from "lucide-react"
 import { useTranslation } from "react-i18next"
@@ -39,6 +40,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { AttachmentBadge } from "@/components/AttachmentBadge"
+import { SpaceLinkBadge } from "@/components/spaces/SpaceLinkBadge"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -217,6 +219,15 @@ export function WealthAccountDetailPage() {
           <Button
             variant="outline"
             size="icon"
+            aria-label={t("recurringForAccount")}
+            title={t("recurringForAccount")}
+            onClick={() => navigate(`/recurring?account=${account.id}`)}
+          >
+            <Repeat className="size-4" />
+          </Button>
+          <Button
+            variant="outline"
+            size="icon"
             aria-label={balancesVisible ? t("hideBalances") : t("showBalances")}
             onClick={() => setBalancesVisible((v) => !v)}
           >
@@ -312,6 +323,7 @@ export function WealthAccountDetailPage() {
                     <p className="truncate text-sm font-medium">{tx.description || (tx.type === "incoming" ? t("income") : t("expenses"))}</p>
                     <div className="mt-0.5 flex items-center gap-2">
                       <span className="text-xs text-muted-foreground">{formatDate(tx.date)}</span>
+                      <SpaceLinkBadge tx={tx} />
                       {tx.category && <Badge variant="outline" className="hidden py-0 text-xs sm:inline-flex">{tx.category}</Badge>}
                       <AttachmentBadge count={tx.attachment_count} />
                     </div>

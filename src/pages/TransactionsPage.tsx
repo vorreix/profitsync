@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from "react"
-import { useNavigate, useSearchParams } from "react-router-dom"
+import { useNavigate, useNavigationType, useSearchParams } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
 import { apiGet, apiPost, apiPatch, apiDelete } from "@/lib/api"
@@ -50,6 +50,7 @@ const formatDate = (d: string) =>
 export function TransactionsPage() {
   const { t } = useTranslation("transactions")
   const navigate = useNavigate()
+  const navType = useNavigationType()
   const [searchParams, setSearchParams] = useSearchParams()
   // ?view=<txId> drives the detail modal; useUrlModal makes browser/OS back
   // close it (and keeps it deep-linkable) instead of leaving the page.
@@ -256,6 +257,18 @@ export function TransactionsPage() {
     })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view.value, transactions])
+
+  // Returning from a recurring-rule deep link (back button / browser back): the
+  // row badge stashed which transaction we left from, so scroll it back into view
+  // at the exact spot once the list has rendered. Only on a real back (POP).
+  useEffect(() => {
+    if (loading || transactions.length === 0) return
+    const fromTxId = sessionStorage.getItem("tx-return-scroll")
+    if (!fromTxId) return
+    sessionStorage.removeItem("tx-return-scroll")
+    if (navType !== "POP") return
+    document.getElementById(`tx-row-${fromTxId}`)?.scrollIntoView({ block: "center" })
+  }, [loading, transactions, navType])
 
   const handleLoadMore = async () => {
     const token = await getToken()
@@ -668,6 +681,7 @@ export function TransactionsPage() {
               {transactions.map((tx) => (
                 <div
                   key={tx.id}
+                  id={`tx-row-${tx.id}`}
                   className={`flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-3 hover:bg-muted/50 transition-colors group cursor-pointer ${sel.isSelected(tx.id) ? "bg-primary/5" : ""}`}
                   onClick={() => {
                     if (sel.selectionMode) { sel.toggle(tx.id); return }
@@ -708,9 +722,15 @@ export function TransactionsPage() {
                       )}
                       {tx.recurring_rule_id && (
                         <Badge
-                          variant="outline"
-                          className="shrink-0 gap-1 border-violet-500/40 bg-violet-500/10 py-0 text-[10px] text-violet-700 dark:text-violet-300"
+                          variant="secondary"
+                          className="text-[10px] py-0 shrink-0 gap-1 cursor-pointer hover:bg-secondary/80"
                           title={t("recurringBadge")}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            // Remember where we left so Back returns to this exact row.
+                            sessionStorage.setItem("tx-return-scroll", tx.id)
+                            navigate(`/recurring?view=${tx.recurring_rule_id}`)
+                          }}
                         >
                           <Repeat className="size-3" /> <span className="hidden sm:inline">{t("recurringBadge")}</span>
                         </Badge>
@@ -822,6 +842,23 @@ export function TransactionsPage() {
                       {viewTx.type === "incoming" ? t("income") : t("expense")}
                     </Badge>
                   </div>
+                  {viewTx.recurring_rule_id && (
+                    <div>
+                      <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">{t("recurringBadge")}</p>
+                      <Badge
+                        variant="secondary"
+                        className="mt-0.5 gap-1 cursor-pointer hover:bg-secondary/80"
+                        title={t("recurringBadge")}
+                        onClick={() => {
+                          // Keep the ?view=<txId> entry in history (don't strip it) so
+                          // browser/Back returns straight to this open modal, unchanged.
+                          navigate(`/recurring?view=${viewTx.recurring_rule_id}`)
+                        }}
+                      >
+                        <Repeat className="size-3" /> {t("recurringBadge")}
+                      </Badge>
+                    </div>
+                  )}
                   {!isPersonal && (
                     <div>
                       <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">{t("client")}</p>

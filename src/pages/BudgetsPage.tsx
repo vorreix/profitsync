@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
-import { ChevronRight, PiggyBank, TrendingUp, Plus } from "lucide-react"
+import { ChevronRight, TrendingUp, Plus } from "lucide-react"
+import { MoneyBag } from "@/components/icons/MoneyBag"
 import { apiGet } from "@/lib/api"
 import { useCurrency } from "@/lib/currency-context"
 import { useOrg } from "@/lib/org-context"
@@ -75,7 +76,7 @@ export function BudgetsPage() {
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <h1 className="text-xl sm:text-2xl font-semibold tracking-tight flex items-center gap-2">
-            <PiggyBank className="size-5 text-muted-foreground shrink-0" /> {t("budgetsPage.title")}
+            <MoneyBag className="size-5 text-muted-foreground shrink-0" /> {t("budgetsPage.title")}
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">{t("budgetsPage.subtitle")}</p>
         </div>
@@ -90,7 +91,7 @@ export function BudgetsPage() {
         </div>
       ) : !data || data.budgets.length === 0 ? (
         <div className="rounded-2xl border border-dashed py-16 text-center">
-          <PiggyBank className="size-10 mx-auto text-muted-foreground/50 mb-3" />
+          <MoneyBag className="size-10 mx-auto text-muted-foreground/50 mb-3" />
           <p className="text-sm font-medium">{t("budgetsPage.empty")}</p>
           <p className="text-xs text-muted-foreground mt-1 px-6">{t("budgetsPage.emptyHint")}</p>
           {canWrite && (

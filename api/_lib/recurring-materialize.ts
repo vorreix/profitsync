@@ -15,10 +15,12 @@
 // short-circuit when nothing is due), so lists and balances are correct before
 // they render — no cron required.
 
+import { randomUUID } from "node:crypto"
 import { and, eq, lte, sql } from "drizzle-orm"
 import { db } from "../../src/lib/db/index.js"
 import { recurringRules, transactions, wealthAccounts } from "../../src/lib/db/schema.js"
 import { balanceDelta } from "../../src/lib/wealth-ledger.js"
+import { buildRecurringTransferLegs } from "../../src/lib/recurring-transfer.js"
 import { occurrencesDue, ruleExhausted, todayIso, type Frequency, type FrequencyUnit } from "../../src/lib/recurring.js"
 import { ensureDefaultClient } from "./auth.js"
 import { checkTransactionQuota } from "./quota.js"
@@ -53,15 +55,23 @@ export async function materializeDueRecurring(orgId: string): Promise<Materializ
       })
 
       if (due.length > 0) {
-        // The source/target account must still be active — materializing onto an
-        // archived account would silently corrupt a balance nobody looks at.
+        // The source/target account(s) must still be active — materializing onto
+        // an archived account would silently corrupt a balance nobody looks at. A
+        // transfer (Space auto-save) needs BOTH the source and the destination.
+        const isTransfer = rule.kind === "transfer"
+        if (isTransfer && (!rule.wealthAccountId || !rule.toAccountId)) {
+          await setRuleError(rule.id, "Auto-save needs both a source account and a Space")
+          result.skipped.push(rule.name)
+          continue
+        }
+        const accountIds = [rule.wealthAccountId, isTransfer ? rule.toAccountId : null].filter((x): x is string => !!x)
         let accountOk = true
-        if (rule.wealthAccountId) {
+        for (const acctId of accountIds) {
           const [account] = await db
             .select({ id: wealthAccounts.id, archivedAt: wealthAccounts.archivedAt })
             .from(wealthAccounts)
-            .where(and(eq(wealthAccounts.id, rule.wealthAccountId), eq(wealthAccounts.organizationId, orgId)))
-          accountOk = !!account && !account.archivedAt
+            .where(and(eq(wealthAccounts.id, acctId), eq(wealthAccounts.organizationId, orgId)))
+          if (!account || account.archivedAt) { accountOk = false; break }
         }
         if (!accountOk) {
           await setRuleError(rule.id, "Account is archived or missing — pick another account")
@@ -81,6 +91,40 @@ export async function materializeDueRecurring(orgId: string): Promise<Materializ
         }
 
         for (const dueDate of due) {
+          if (isTransfer && rule.wealthAccountId && rule.toAccountId) {
+            // Auto-save → a two-leg transfer. The OUTGOING leg is the idempotency
+            // anchor (carries the recurring keys); the incoming Space leg + both
+            // balance updates only fire when that insert actually returns a row,
+            // so a repeated/concurrent catch-up can't double-move money.
+            const groupId = randomUUID()
+            const legs = buildRecurringTransferLegs(
+              { id: rule.id, wealthAccountId: rule.wealthAccountId, toAccountId: rule.toAccountId, amount: rule.amount, name: rule.name, createdBy: rule.createdBy },
+              clientId,
+              dueDate,
+              groupId,
+            )
+            const inserted = await db
+              .insert(transactions)
+              .values(legs.outLeg)
+              .onConflictDoNothing({ target: [transactions.recurringRuleId, transactions.recurringDueDate] })
+              .returning({ id: transactions.id })
+            if (inserted.length > 0) {
+              result.created++
+              const [inLeg] = await db.insert(transactions).values(legs.inLeg).returning({ id: transactions.id })
+              await db
+                .update(wealthAccounts)
+                .set({ currentBalance: sql`${wealthAccounts.currentBalance} + ${legs.sourceDelta.toFixed(2)}::numeric`, updatedAt: new Date() })
+                .where(eq(wealthAccounts.id, rule.wealthAccountId))
+              await db
+                .update(wealthAccounts)
+                .set({ currentBalance: sql`${wealthAccounts.currentBalance} + ${legs.destDelta.toFixed(2)}::numeric`, updatedAt: new Date() })
+                .where(eq(wealthAccounts.id, rule.toAccountId))
+              await logAudit({ orgId, entityType: "transaction", entityId: inserted[0].id, action: "create", actorId: rule.createdBy })
+              if (inLeg) await logAudit({ orgId, entityType: "transaction", entityId: inLeg.id, action: "create", actorId: rule.createdBy })
+            }
+            continue
+          }
+
           const inserted = await db
             .insert(transactions)
             .values({

@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { Banknote, BriefcaseBusiness, Building2, CreditCard, Landmark, Star, Wallet } from "lucide-react"
 import type { WealthAccount } from "@/lib/types"
+import { spaceIconFor } from "@/components/wealth/space-icons"
 
 const bankIconClass = "size-4"
 
@@ -33,7 +34,9 @@ export function WealthAccountIcon({
   }
 
   const Icon =
-    account.type === "cash"
+    account.type === "space"
+      ? spaceIconFor(account.icon)
+      : account.type === "cash"
       ? Wallet
       : account.icon === "building"
         ? Building2
