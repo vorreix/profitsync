@@ -12,7 +12,8 @@ const MAX_RANGE_DAYS = 400 // a year view + slack; keeps the scan bounded
  * GET /api/calendar?from=YYYY-MM-DD&to=YYYY-MM-DD — per-day money activity for
  * the calendar view: incoming/outgoing sums + transaction count per day, plus
  * range totals. Mirrors the global transactions list's scope (org-scoped via
- * the client join, excludes soft-deleted rows and transfer legs).
+ * the client join, excludes soft-deleted rows, trashed/closed clients, and
+ * transfer legs — same filters as flow.ts/analytics.ts).
  */
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ctx = await requireAuth(req, res)
@@ -42,6 +43,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     .where(
       and(
         eq(clients.organizationId, ctx.orgId),
+        isNull(clients.deletedAt),
+        isNull(clients.closedAt),
         isNull(transactions.deletedAt),
         ne(transactions.kind, "transfer"),
         gte(transactions.date, from),
