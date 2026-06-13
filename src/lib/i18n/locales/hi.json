@@ -1000,7 +1000,9 @@
     "removeDefault": "डिफ़ॉल्ट हटाएँ",
     "upgradeBanksTitle": "और बैंक जोड़ने के लिए अपग्रेड करें",
     "upgradeBanksBody": "आपके मौजूदा प्लान में {{limit}} बैंक खाता शामिल है। असीमित बैंक खातों के लिए प्रीमियम में अपग्रेड करें।",
-    "upgradeBanksCta": "प्लान देखें"
+    "upgradeBanksCta": "प्लान देखें",
+    "availableLabel": "उपलब्ध",
+    "savedInSpaces": "स्पेस में बचत"
   },
   "errorBoundary": {
     "title": "कुछ ग़लत हो गया",
@@ -1251,6 +1253,30 @@
     "saveFailed": "सहेजा नहीं जा सका। पुनः प्रयास करें।",
     "deleteFailed": "हटाया नहीं जा सका। पुनः प्रयास करें।",
     "loadFailed": "आपके स्पेस लोड नहीं हो सके।",
-    "nameRequired": "कृपया अपने स्पेस को नाम दें।"
+    "nameRequired": "कृपया अपने स्पेस को नाम दें।",
+    "suggestLine": "{{date}} तक पहुँचने के लिए {{amount}}/माह बचाएँ",
+    "autoSaveTitle": "स्वतः बचत",
+    "fromShort": "से",
+    "nextOn": "अगला {{date}} को",
+    "pace_ahead": "तय समय से आगे",
+    "pace_on_track": "सही राह पर",
+    "pace_behind": "लक्ष्य से पीछे",
+    "editAutoSave": "संपादित करें",
+    "stopAutoSave": "रोकें",
+    "autoSaveOffHint": "किसी खाते से तय समय पर अपने आप बचत करें।",
+    "setupAutoSave": "स्वतः बचत सेट करें",
+    "activity": "गतिविधि",
+    "noActivity": "अभी तक कोई पैसा नहीं आया-गया।",
+    "moneyIn": "जोड़ा गया",
+    "moneyOut": "निकाला गया",
+    "deleteSpace": "स्पेस हटाएँ",
+    "autoSaveStarted": "स्वतः बचत सेट हो गई",
+    "autoSaveStopped": "स्वतः बचत रोक दी गई",
+    "sourceAccount": "किससे बचाएँ",
+    "frequency": "दोहराव",
+    "every": "हर",
+    "startsOn": "शुरू तिथि",
+    "endsOn": "समाप्ति तिथि",
+    "endsOptional": "वैकल्पिक — जारी रखने के लिए खाली छोड़ें।"
   }
 }

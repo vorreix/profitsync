@@ -1000,7 +1000,9 @@
     "removeDefault": "Standard entfernen",
     "upgradeBanksTitle": "Upgrade für weitere Banken",
     "upgradeBanksBody": "Dein aktueller Tarif umfasst {{limit}} Bankkonto. Upgrade auf Premium für unbegrenzte Bankkonten.",
-    "upgradeBanksCta": "Tarife ansehen"
+    "upgradeBanksCta": "Tarife ansehen",
+    "availableLabel": "Verfügbar",
+    "savedInSpaces": "In Sparräumen"
   },
   "errorBoundary": {
     "title": "Etwas ist schiefgelaufen",
@@ -1251,6 +1253,30 @@
     "saveFailed": "Speichern fehlgeschlagen. Bitte erneut versuchen.",
     "deleteFailed": "Löschen fehlgeschlagen. Bitte erneut versuchen.",
     "loadFailed": "Deine Sparräume konnten nicht geladen werden.",
-    "nameRequired": "Bitte benenne deinen Sparraum."
+    "nameRequired": "Bitte benenne deinen Sparraum.",
+    "suggestLine": "Spare {{amount}}/Mon., um es bis {{date}} zu erreichen",
+    "autoSaveTitle": "Automatisches Sparen",
+    "fromShort": "von",
+    "nextOn": "Nächste am {{date}}",
+    "pace_ahead": "Dem Plan voraus",
+    "pace_on_track": "Im Plan",
+    "pace_behind": "Unter dem Ziel",
+    "editAutoSave": "Bearbeiten",
+    "stopAutoSave": "Stoppen",
+    "autoSaveOffHint": "Spare automatisch von einem Konto nach einem Zeitplan.",
+    "setupAutoSave": "Automatisches Sparen einrichten",
+    "activity": "Aktivität",
+    "noActivity": "Bisher wurde kein Geld bewegt.",
+    "moneyIn": "Hinzugefügt",
+    "moneyOut": "Abgehoben",
+    "deleteSpace": "Sparraum löschen",
+    "autoSaveStarted": "Automatisches Sparen eingerichtet",
+    "autoSaveStopped": "Automatisches Sparen gestoppt",
+    "sourceAccount": "Sparen von",
+    "frequency": "Wiederholt sich",
+    "every": "Alle",
+    "startsOn": "Beginnt am",
+    "endsOn": "Endet am",
+    "endsOptional": "Optional — leer lassen, um fortzufahren."
   }
 }

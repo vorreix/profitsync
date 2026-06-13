@@ -1000,7 +1000,9 @@
     "removeDefault": "Rimuovi predefinito",
     "upgradeBanksTitle": "Passa a un piano superiore per più banche",
     "upgradeBanksBody": "Il tuo piano attuale include {{limit}} conto bancario. Passa a Premium per conti bancari illimitati.",
-    "upgradeBanksCta": "Vedi i piani"
+    "upgradeBanksCta": "Vedi i piani",
+    "availableLabel": "Disponibile",
+    "savedInSpaces": "Negli Spazi"
   },
   "errorBoundary": {
     "title": "Qualcosa è andato storto",
@@ -1251,6 +1253,30 @@
     "saveFailed": "Salvataggio non riuscito. Riprova.",
     "deleteFailed": "Eliminazione non riuscita. Riprova.",
     "loadFailed": "Impossibile caricare i tuoi Spazi.",
-    "nameRequired": "Dai un nome al tuo Spazio."
+    "nameRequired": "Dai un nome al tuo Spazio.",
+    "suggestLine": "Risparmia {{amount}}/mese per arrivarci entro il {{date}}",
+    "autoSaveTitle": "Risparmio automatico",
+    "fromShort": "da",
+    "nextOn": "Prossimo il {{date}}",
+    "pace_ahead": "In anticipo",
+    "pace_on_track": "In linea",
+    "pace_behind": "Sotto l'obiettivo",
+    "editAutoSave": "Modifica",
+    "stopAutoSave": "Interrompi",
+    "autoSaveOffHint": "Risparmia automaticamente da un conto secondo una pianificazione.",
+    "setupAutoSave": "Imposta risparmio automatico",
+    "activity": "Attività",
+    "noActivity": "Nessun movimento di denaro finora.",
+    "moneyIn": "Aggiunto",
+    "moneyOut": "Prelevato",
+    "deleteSpace": "Elimina Spazio",
+    "autoSaveStarted": "Risparmio automatico impostato",
+    "autoSaveStopped": "Risparmio automatico interrotto",
+    "sourceAccount": "Risparmia da",
+    "frequency": "Si ripete",
+    "every": "Ogni",
+    "startsOn": "Inizia il",
+    "endsOn": "Termina il",
+    "endsOptional": "Facoltativo — lascia vuoto per continuare."
   }
 }

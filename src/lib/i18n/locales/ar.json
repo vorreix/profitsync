@@ -1000,7 +1000,9 @@
     "removeDefault": "إزالة الافتراضي",
     "upgradeBanksTitle": "قم بالترقية لإضافة المزيد من البنوك",
     "upgradeBanksBody": "تتضمن خطتك الحالية {{limit}} حساب بنكي. قم بالترقية إلى بريميوم للحصول على حسابات بنكية غير محدودة.",
-    "upgradeBanksCta": "عرض الخطط"
+    "upgradeBanksCta": "عرض الخطط",
+    "availableLabel": "المتاح",
+    "savedInSpaces": "في المساحات"
   },
   "errorBoundary": {
     "title": "حدث خطأ ما",
@@ -1251,6 +1253,30 @@
     "saveFailed": "تعذّر الحفظ. حاول مرة أخرى.",
     "deleteFailed": "تعذّر الحذف. حاول مرة أخرى.",
     "loadFailed": "تعذّر تحميل مساحاتك.",
-    "nameRequired": "يرجى تسمية مساحتك."
+    "nameRequired": "يرجى تسمية مساحتك.",
+    "suggestLine": "وفّر {{amount}}/شهر للوصول بحلول {{date}}",
+    "autoSaveTitle": "الادخار التلقائي",
+    "fromShort": "من",
+    "nextOn": "التالي في {{date}}",
+    "pace_ahead": "متقدّم على الجدول",
+    "pace_on_track": "في المسار الصحيح",
+    "pace_behind": "دون الهدف",
+    "editAutoSave": "تعديل",
+    "stopAutoSave": "إيقاف",
+    "autoSaveOffHint": "وفّر تلقائيًا من حساب وفق جدول زمني.",
+    "setupAutoSave": "إعداد الادخار التلقائي",
+    "activity": "النشاط",
+    "noActivity": "لم تتحرّك أي أموال بعد.",
+    "moneyIn": "أُضيف",
+    "moneyOut": "سُحب",
+    "deleteSpace": "حذف المساحة",
+    "autoSaveStarted": "تم إعداد الادخار التلقائي",
+    "autoSaveStopped": "تم إيقاف الادخار التلقائي",
+    "sourceAccount": "الادخار من",
+    "frequency": "يتكرّر",
+    "every": "كل",
+    "startsOn": "يبدأ في",
+    "endsOn": "ينتهي في",
+    "endsOptional": "اختياري — اتركه فارغًا للاستمرار."
   }
 }

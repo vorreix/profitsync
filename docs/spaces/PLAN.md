@@ -115,7 +115,7 @@ Each branch is cut FROM the previous (stacked). Gate passes before every push.
 | 02 | `feat/spaces-02-api` | `/api/spaces` CRUD+reorder (personal gate, quota, never-default), can't-pay-from-Space guard in `/api/transactions`, `/api/wealth/quota` space report, router wiring | — | ✅ pushed |
 | 03 | `feat/spaces-03-autosave` | Recurring transfer branch (additive), `/api/spaces/:id/auto-save` GET/PUT/DELETE, exclude `kind=transfer` from `/api/recurring` list, materialize on `/api/spaces` GET; pure + real-DB idempotency tests | — | ✅ pushed |
 | 04 | `feat/spaces-04-ui` | `/spaces` list page (cards: piggy icon, balance, goal progress, suggested monthly, fund/withdraw), create/edit modal, nav + route + `PersonalOnlyRoute`, free-plan crown + upgrade gate, empty state, i18n (`spaces` ns ×8), transitions, mobile | — | ✅ pushed |
-| 05 | `feat/spaces-05-detail` | `/spaces/:id` detail (hero, goal viz/chart, contributions ledger, edit goal, auto-save UI), `/wealth` savings card + exclude Spaces from /wealth list & transaction pickers & dashboard, i18n | — | ⬜ pending |
+| 05 | `feat/spaces-05-detail` | `/spaces/:id` detail (hero, goal progress, **auto-save setup UI**, activity ledger), shared SpaceForm/Transfer modals, exclude Spaces from `/api/wealth/accounts` (kills all picker leaks), `/wealth` net-worth incl. savings breakdown, `apiPut`, i18n | — | ✅ pushed |
 | 06 | `feat/spaces-06-polish` | Exclude Spaces from flow/analytics/transfer-wizard where needed, reached/overdue edge UX, transitions + mobile pass, i18n completeness, final gate | — | ⬜ pending |
 
 ## 7. Per-branch detail
@@ -239,3 +239,15 @@ Each branch is cut FROM the previous (stacked). Gate passes before every push.
   → boot + routing + auth guard OK). Static gates green. ⚠️ Visual/Playwright check deferred:
   `/spaces` is auth + personal-account gated and the dev browser was in use by the live session;
   the page mirrors the proven WealthPage/RecurringPage patterns and is typecheck/lint-clean.
+- _(05)_ Detail + integration. `SpaceDetailPage` (`/spaces/:id`): goal hero + progress, fund/
+  withdraw, **auto-save setup UI** (`AutoSaveModal` → PUT `/api/spaces/:id/auto-save`, with
+  source account, amount, frequency, start/end; shows next-due + on-track/ahead/behind pace vs
+  the suggested monthly) + stop, and an activity ledger (account-scoped transfers). Extracted
+  shared `SpaceFormModal` + `SpaceTransferModal` (reused by the list + detail), card tap now
+  opens the detail. **Excluded Spaces from `/api/wealth/accounts`** — one server filter that
+  removes them from every spend surface (transaction pickers, transfer wizard, wealth list) at
+  once; the transfer endpoint queries the table directly so funding still works. To keep net
+  worth correct, `/wealth` now fetches Spaces and shows **net worth = available + saved** with a
+  tappable "Saved in Spaces" breakdown (auto-hidden for business via the 403). Added `apiPut`.
+  i18n: +24 detail/auto-save keys + 2 wealth keys × all 8 locales (parity green, 1200 keys).
+  Live API re-smoked (PUT auto-save / wealth / spaces:id all 401-not-500). Gate green.

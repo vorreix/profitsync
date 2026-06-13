@@ -111,6 +111,7 @@ export function WealthPage() {
   const symbol = currencySymbol(currency)
   const { balancesVisible, setBalancesVisible } = useBalancePrivacy()
   const [accounts, setAccounts] = useState<WealthAccount[]>([])
+  const [spaces, setSpaces] = useState<WealthAccount[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
@@ -233,6 +234,11 @@ export function WealthPage() {
   }
 
   const { active, total } = useWealthSummary(accounts)
+  // Money parked in Spaces is still the user's money, so net worth must include
+  // it (a bank→Space transfer nets to zero). /api/spaces 403s for business orgs,
+  // so this is naturally personal-only.
+  const savedTotal = spaces.filter((s) => !s.archived_at).reduce((sum, s) => sum + Number(s.current_balance), 0)
+  const netWorth = total + savedTotal
   const bankCount = active.filter((a) => a.type === "bank").length
   const archived = useMemo(() => accounts.filter((a) => a.archived_at), [accounts])
   // Live count from the list (fresher than the snapshot in /quota) + the plan
@@ -244,11 +250,14 @@ export function WealthPage() {
     if (!token) return
     if (!silent) setLoading(true)
     try {
-      const [rows, q] = await Promise.all([
+      const [rows, q, spaceRows] = await Promise.all([
         apiGet<WealthAccount[]>("/api/wealth/accounts", token),
         apiGet<BankQuota>("/api/wealth/quota", token).catch(() => null),
+        // Personal-only; 403s for business orgs → treated as no Spaces.
+        apiGet<WealthAccount[]>("/api/spaces", token).catch(() => [] as WealthAccount[]),
       ])
       setAccounts(rows)
+      setSpaces(spaceRows)
       if (q) setQuota(q)
     } catch {
       if (!silent) toast.error(t("failedToLoad"))
@@ -385,7 +394,20 @@ export function WealthPage() {
         {loading ? (
           <Skeleton className="mt-2 h-9 w-40" />
         ) : (
-          <p className="mt-1 text-3xl font-bold tabular-nums sm:text-4xl">{formatMoney(total, currency, balancesVisible)}</p>
+          <>
+            <p className="mt-1 text-3xl font-bold tabular-nums sm:text-4xl">{formatMoney(netWorth, currency, balancesVisible)}</p>
+            {savedTotal > 0 && (
+              <button
+                type="button"
+                onClick={() => navigate("/spaces")}
+                className="mt-1.5 inline-flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground hover:text-foreground"
+              >
+                <span className="tabular-nums">{t("availableLabel")}: {formatMoney(total, currency, balancesVisible)}</span>
+                <span aria-hidden>·</span>
+                <span className="tabular-nums text-emerald-600 dark:text-emerald-400">{t("savedInSpaces")}: {formatMoney(savedTotal, currency, balancesVisible)} →</span>
+              </button>
+            )}
+          </>
         )}
         <div className="mt-4 flex items-center justify-between gap-2">
           <p className="text-sm text-muted-foreground">

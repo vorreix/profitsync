@@ -142,5 +142,7 @@ export const apiPost = <T>(path: string, token: string, body: unknown, invalidat
   mutate<T>("POST", path, token, body, invalidate)
 export const apiPatch = <T>(path: string, token: string, body: unknown, invalidate?: string[]) =>
   mutate<T>("PATCH", path, token, body, invalidate)
+export const apiPut = <T>(path: string, token: string, body: unknown, invalidate?: string[]) =>
+  mutate<T>("PUT", path, token, body, invalidate)
 export const apiDelete = <T = void>(path: string, token: string, body?: unknown, invalidate?: string[]) =>
   mutate<T>("DELETE", path, token, body, invalidate)
