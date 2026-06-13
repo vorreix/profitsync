@@ -13,6 +13,9 @@ fi
 echo "→ secret scan (staged diff)..."
 node scripts/secret-scan.mjs || { echo "✗ secret scan failed — remove the credential (rotate it if it was real) or mark a safe example with secret-scan:ignore"; exit 1; }
 
+echo "→ ESM import extensions (api/ function graph)..."
+node scripts/check-esm-extensions.mjs || { echo "✗ ESM extension check failed — add the .js extension (extensionless relative imports crash every /api route in production)"; exit 1; }
+
 echo "→ i18n parity (all locales must match en.json)..."
 npm run i18n:check || { echo "✗ i18n parity check failed — add the missing translations to every locale in src/lib/i18n/locales/"; exit 1; }
 
