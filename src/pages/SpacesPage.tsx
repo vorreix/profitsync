@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { useNavigate } from "react-router-dom"
+import { useNavigate, useSearchParams } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
-import { ArrowDownToLine, ArrowUpFromLine, Crown, Pencil, Plus, Target, Trash2, TrendingUp } from "lucide-react"
-import { apiDelete, apiGet } from "@/lib/api"
+import { ArrowDownToLine, ArrowUpFromLine, ChevronRight, Crown, Pencil, Plus, Target, Trash2, TrendingUp } from "lucide-react"
+import { apiDelete, apiErrorMessage, apiGet, apiPatch } from "@/lib/api"
 import { useOrg } from "@/lib/org-context"
 import { useCurrency } from "@/lib/currency-context"
 import { canWriteRole } from "@/lib/roles"
@@ -30,6 +30,7 @@ export function SpacesPage() {
   const { activeOrg } = useOrg()
   const { currency } = useCurrency()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const canWrite = canWriteRole(activeOrg?.role)
 
   const [spaces, setSpaces] = useState<WealthAccount[]>([])
@@ -66,9 +67,33 @@ export function SpacesPage() {
 
   useEffect(() => { void load() }, [load])
 
+  // Deep link / FAB: /spaces?new=1 opens the create modal once the data (and the
+  // quota gate) is ready, then strips the param.
+  useEffect(() => {
+    if (loading || searchParams.get("new") !== "1") return
+    openCreate()
+    setSearchParams((p) => { const n = new URLSearchParams(p); n.delete("new"); return n }, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, searchParams])
+
   const active = useMemo(() => spaces.filter((s) => !s.archived_at), [spaces])
+  const archived = useMemo(() => spaces.filter((s) => s.archived_at), [spaces])
   const totalSaved = useMemo(() => active.reduce((sum, s) => sum + Number(s.current_balance), 0), [active])
   const atLimit = quota != null && quota.spaces.current >= quota.spaces.limit
+
+  async function handleRestore(space: WealthAccount) {
+    if (atLimit) { setUpgradeOpen(true); return }
+    try {
+      const token = await getToken()
+      if (!token) throw new Error("auth")
+      const restored = await apiPatch<WealthAccount>(`/api/spaces/${space.id}`, token, { archived: false }, ["/api/spaces", "/api/wealth"])
+      setSpaces((prev) => prev.map((s) => (s.id === restored.id ? { ...s, ...restored } : s)))
+      setQuota((q) => (q ? { ...q, spaces: { ...q.spaces, current: q.spaces.current + 1 } } : q))
+      toast.success(t("restored"))
+    } catch (err) {
+      toast.error(apiErrorMessage(err, t("saveFailed")))
+    }
+  }
 
   function openCreate() {
     if (atLimit) { setUpgradeOpen(true); return }
@@ -102,7 +127,7 @@ export function SpacesPage() {
       setQuota((q) => (q ? { ...q, spaces: { ...q.spaces, current: Math.max(0, q.spaces.current - 1) } } : q))
       toast.success(t("deleted"))
     } catch (err) {
-      toast.error(err instanceof Error && err.message && err.message !== "auth" ? err.message : t("deleteFailed"))
+      toast.error(apiErrorMessage(err, t("deleteFailed")))
       void load({ silent: true })
     }
   }
@@ -128,7 +153,7 @@ export function SpacesPage() {
         </div>
         {canWrite && (
           <Button onClick={openCreate} className="shrink-0">
-            {atLimit ? <Crown className="size-4 text-amber-200" /> : <Plus className="size-4" />}
+            {atLimit ? <Crown className="size-4 text-amber-500 dark:text-amber-400" /> : <Plus className="size-4" />}
             <span className="hidden sm:inline">{t("addSpace")}</span>
             <span className="sm:hidden">{t("new")}</span>
           </Button>
@@ -172,6 +197,29 @@ export function SpacesPage() {
             />
           ))}
         </ul>
+      )}
+
+      {/* Closed (archived) Spaces — kept so the transfer history survives; reopen anytime */}
+      {archived.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-sm font-medium text-muted-foreground">{t("closedSpaces")}</p>
+          <ul className="space-y-2">
+            {archived.map((space) => {
+              const Icon = spaceIconFor(space.icon)
+              return (
+                <li key={space.id} className="flex items-center gap-3 rounded-xl border bg-card/60 p-3">
+                  <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+                    <Icon className="size-4" />
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">{space.nickname}</span>
+                  {canWrite && (
+                    <Button size="sm" variant="outline" className="shrink-0" onClick={() => handleRestore(space)}>{t("restore")}</Button>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+        </div>
       )}
 
       {/* Create / edit modal */}
@@ -238,9 +286,9 @@ function SpaceCard({
   const status = spaceGoalStatus(balance, space.goal_amount, space.target_date, new Date().toISOString().split("T")[0])
 
   return (
-    <li className="flex flex-col rounded-2xl border bg-card p-4 transition-shadow hover:shadow-sm">
-      <button type="button" onClick={onOpen} className="flex items-start gap-3 text-left">
-        <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+    <li className="group flex flex-col rounded-2xl border bg-card p-4 transition-all duration-200 hover:border-emerald-500/30 hover:shadow-md motion-safe:hover:-translate-y-0.5">
+      <button type="button" onClick={onOpen} className="flex items-start gap-3 text-left" title={t("viewDetails")}>
+        <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-600 transition-colors group-hover:bg-emerald-500/20 dark:text-emerald-400">
           <Icon className="size-5" />
         </span>
         <div className="min-w-0 flex-1">
@@ -250,6 +298,7 @@ function SpaceCard({
         {status.kind === "reached" && (
           <span className="shrink-0 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-300">{t("goalReached")}</span>
         )}
+        <ChevronRight className="size-4 shrink-0 self-center text-muted-foreground/30 transition-all group-hover:translate-x-0.5 group-hover:text-muted-foreground" />
       </button>
 
       {progress && (

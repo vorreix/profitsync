@@ -1002,7 +1002,13 @@
     "upgradeBanksBody": "تتضمن خطتك الحالية {{limit}} حساب بنكي. قم بالترقية إلى بريميوم للحصول على حسابات بنكية غير محدودة.",
     "upgradeBanksCta": "عرض الخطط",
     "availableLabel": "المتاح",
-    "savedInSpaces": "في المساحات"
+    "savedInSpaces": "في المساحات",
+    "searchAccounts": "ابحث عن الحسابات…",
+    "noAccountFound": "لم يُعثر على حساب.",
+    "bankLimitTitle": "تم بلوغ حد الحسابات",
+    "bankLimitBody": "لقد بلغت الحد الأقصى {{limit}} حسابًا بنكيًا (بما في ذلك المغلقة). احذف حسابًا مغلقًا نهائيًا لإضافة آخر.",
+    "bankUsage": "{{current}} من {{limit}} حسابات",
+    "recurringForAccount": "المتكررة لهذا الحساب"
   },
   "errorBoundary": {
     "title": "حدث خطأ ما",
@@ -1277,6 +1283,17 @@
     "every": "كل",
     "startsOn": "يبدأ في",
     "endsOn": "ينتهي في",
-    "endsOptional": "اختياري — اتركه فارغًا للاستمرار."
+    "endsOptional": "اختياري — اتركه فارغًا للاستمرار.",
+    "closedSpaces": "المساحات المغلقة",
+    "restore": "إعادة فتح",
+    "restored": "تمت إعادة فتح المساحة",
+    "autoSaveOn": "ادخار تلقائي {{amount}} {{freq}} من {{account}}",
+    "autoSaveExplain": "انقل المال إلى هذه المساحة تلقائيًا وفق جدول — مثل أمر دائم لنفسك. يُخصم من الحساب الذي تختاره؛ يمكنك إيقافه أو تغييره في أي وقت.",
+    "deleteWithMoney": "لا تزال هذه المساحة تحتوي على {{amount}}. اختر أين تنقله — ثم تُغلق المساحة.",
+    "moveTo": "انقل المال إلى",
+    "moveAndClose": "انقل وأغلق",
+    "afterFund": "سيتبقى في {{account}} مبلغ {{amount}}",
+    "viewDetails": "عرض التفاصيل",
+    "spaceBadge": "مساحة"
   }
 }
