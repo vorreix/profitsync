@@ -110,7 +110,7 @@ export const categories = pgTable("categories", {
 export const wealthAccounts = pgTable("wealth_accounts", {
   id: uuid("id").primaryKey().defaultRandom(),
   organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
-  type: text("type").notNull(), // bank | cash
+  type: text("type").notNull(), // bank | cash | space (space = a personal savings bucket)
   bankName: text("bank_name").notNull().default(""),
   nickname: text("nickname").notNull().default(""),
   openingBalance: numeric("opening_balance", { precision: 20, scale: 2 }).notNull().default("0"),
@@ -132,6 +132,11 @@ export const wealthAccounts = pgTable("wealth_accounts", {
   address: text("address").notNull().default(""),
   location: text("location").notNull().default(""), // city / branch label
   note: text("note").notNull().default(""),
+  // ── Savings goal (type='space' only; NULL for bank/cash) ──────────────────
+  // A Space can carry an optional target amount + date; the monthly-contribution
+  // SUGGESTION is computed (src/lib/spaces.ts), never stored, so it can't drift.
+  goalAmount: numeric("goal_amount", { precision: 20, scale: 2 }),
+  targetDate: date("target_date"),
   // User-defined card order within the org (lower = earlier). Set via the
   // drag-to-reorder UI; ties fall back to createdAt so pre-existing rows keep
   // their original order until first reordered.
@@ -232,8 +237,15 @@ export const recurringRules = pgTable("recurring_rules", {
   // The account the money comes from / goes to. Optional; archived accounts
   // pause materialization with last_error instead of corrupting balances.
   wealthAccountId: uuid("wealth_account_id").references(() => wealthAccounts.id, { onDelete: "set null" }),
+  // 'standard' = a normal income/outgoing occurrence (the original behaviour).
+  // 'transfer' = a recurring auto-save: each occurrence materializes a TWO-LEG
+  // transfer (outgoing from `wealthAccountId` → incoming to `toAccountId`, a
+  // Space). Idempotency anchors on the OUTGOING leg only, so the unique index on
+  // (recurring_rule_id, recurring_due_date) never double-conflicts.
+  kind: text("kind").notNull().default("standard"), // standard | transfer
+  toAccountId: uuid("to_account_id").references(() => wealthAccounts.id, { onDelete: "set null" }),
   name: text("name").notNull(),
-  type: text("type").notNull(), // incoming | outgoing
+  type: text("type").notNull(), // incoming | outgoing (for a transfer: the source-leg direction, always 'outgoing')
   amount: numeric("amount", { precision: 20, scale: 2 }).notNull(),
   category: text("category").notNull().default(""),
   frequencyUnit: text("frequency_unit").notNull(), // day | week | month | year
