@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { and, count, eq, isNull } from "drizzle-orm"
 import { db, serialize } from "../../../src/lib/db/index.js"
-import { transactions, wealthAccountAttachments, wealthAccounts } from "../../../src/lib/db/schema.js"
+import { recurringRules, transactions, wealthAccountAttachments, wealthAccounts } from "../../../src/lib/db/schema.js"
 import { canDelete, canWrite, isPersonalAccount, requireAuth } from "../../_lib/auth.js"
 import { logAudit } from "../../_lib/audit.js"
 import { checkSpaceQuota } from "../../_lib/quota.js"
@@ -98,6 +98,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!isEmpty(space.currentBalance)) {
       return res.status(400).json({ error: "Withdraw the remaining balance before deleting this Space." })
     }
+    // Drop the Space's auto-save rule (kind='transfer' → toAccountId) so it can't
+    // keep firing at a deleted/archived destination.
+    await db.delete(recurringRules).where(and(eq(recurringRules.organizationId, orgId), eq(recurringRules.kind, "transfer"), eq(recurringRules.toAccountId, id)))
     const [{ txCount }] = await db
       .select({ txCount: count() })
       .from(transactions)
