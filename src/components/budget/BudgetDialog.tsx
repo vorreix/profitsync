@@ -4,6 +4,8 @@ import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { Loader as Loader2, Trash2 } from "lucide-react"
 import { apiPost } from "@/lib/api"
+import { useCurrency } from "@/lib/currency-context"
+import { currencySymbol } from "@/lib/wealth"
 import { BUDGET_PERIODS, type BudgetPeriod } from "@/lib/budget"
 import type { Budget } from "@/lib/types"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -44,6 +46,8 @@ export function BudgetDialog({
 }) {
   const { t } = useTranslation()
   const { getToken } = useAuth()
+  const { currency } = useCurrency()
+  const symbol = currencySymbol(currency)
   const [amount, setAmount] = useState("")
   const [period, setPeriod] = useState<BudgetPeriod>("monthly")
   const [saving, setSaving] = useState<"save" | "remove" | null>(null)
@@ -99,15 +103,18 @@ export function BudgetDialog({
         <div className="space-y-3 mt-1">
           <div className="space-y-1.5">
             <Label htmlFor="budget-amount">{t("budget.amountLabel")}</Label>
-            <Input
-              id="budget-amount"
-              inputMode="decimal"
-              value={amount}
-              autoFocus
-              onChange={(e) => setAmount(e.target.value)}
-              placeholder="0.00"
-              className="h-11"
-            />
+            <div className="relative">
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">{symbol}</span>
+              <Input
+                id="budget-amount"
+                inputMode="decimal"
+                value={amount}
+                autoFocus
+                onChange={(e) => setAmount(e.target.value)}
+                placeholder="0.00"
+                className="h-11 pl-8"
+              />
+            </div>
           </div>
           <div className="space-y-1.5">
             <Label>{t("budget.periodLabel")}</Label>

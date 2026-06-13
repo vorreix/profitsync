@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react"
+import { useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { useAuth } from "@clerk/clerk-react"
 import { ArrowDownRight, ArrowUpRight, Paperclip, Pencil, Repeat } from "lucide-react"
@@ -9,6 +10,7 @@ import { WealthAccountIcon } from "@/components/WealthAccountIcon"
 import { AuditHistory } from "@/components/AuditHistory"
 import { AttachmentDetailModal, type AttachmentModalItem } from "@/components/AttachmentDetailModal"
 import { Badge } from "@/components/ui/badge"
+import { SpaceLinkBadge } from "@/components/spaces/SpaceLinkBadge"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 
@@ -43,6 +45,7 @@ export function TransactionDetailModal({
 }) {
   const { t } = useTranslation("transactions")
   const { getToken } = useAuth()
+  const navigate = useNavigate()
   const [attachments, setAttachments] = useState<TransactionAttachment[]>([])
   const [viewAttachment, setViewAttachment] = useState<AttachmentModalItem | null>(null)
   const fmt = (n: number) =>
@@ -86,10 +89,20 @@ export function TransactionDetailModal({
                     {tx.type === "incoming" ? "+" : "−"}{fmt(Number(tx.amount))}
                   </p>
                   {tx.recurring_rule_id && (
-                    <Badge variant="outline" className="gap-1 border-violet-500/40 bg-violet-500/10 text-violet-700 dark:text-violet-300">
+                    <Badge
+                      variant="secondary"
+                      className="gap-1 cursor-pointer hover:bg-secondary/80"
+                      title={t("recurringBadge")}
+                      onClick={() => {
+                        const ruleId = tx.recurring_rule_id
+                        onClose()
+                        navigate(`/recurring?view=${ruleId}`)
+                      }}
+                    >
                       <Repeat className="size-3" /> {t("recurringBadge")}
                     </Badge>
                   )}
+                  <SpaceLinkBadge tx={tx} onNavigate={onClose} />
                 </div>
                 <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
                   <div>

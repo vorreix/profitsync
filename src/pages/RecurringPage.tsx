@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { useNavigate, useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { useAuth } from "@clerk/clerk-react"
 import { toast } from "sonner"
-import { ArrowDownRight, ArrowUpRight, CalendarClock, Pause, Pencil, Play, Plus, Repeat, Trash2, TriangleAlert } from "lucide-react"
+import { ArrowDownRight, ArrowLeft, ArrowUpRight, CalendarClock, Pause, Pencil, Play, Plus, Repeat, Trash2, TriangleAlert, X } from "lucide-react"
 import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api"
 import { useOrg } from "@/lib/org-context"
 import { useCurrency } from "@/lib/currency-context"
@@ -23,6 +24,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { CategoryPicker } from "@/components/CategoryPicker"
 import { WealthAccountIcon } from "@/components/WealthAccountIcon"
+import { AccountCombobox } from "@/components/wealth/AccountCombobox"
 
 type RuleForm = {
   name: string
@@ -92,8 +94,59 @@ export function RecurringPage() {
 
   useEffect(() => { load() }, [load])
 
-  const upcoming = useMemo(() => rules.filter((r) => r.active), [rules])
-  const paused = useMemo(() => rules.filter((r) => !r.active), [rules])
+  // Deep link from a transaction's recurring badge: /recurring?view=<ruleId>.
+  // Once the rules are loaded, scroll the matching rule into view and pulse a
+  // highlight ring, then strip the param so back-nav / re-renders don't re-fire.
+  const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const viewRuleId = searchParams.get("view")
+  const [highlightId, setHighlightId] = useState<string | null>(null)
+  // Arrived here from a transaction's recurring badge? Remember it for the whole
+  // visit (the ?view param gets stripped after the highlight) so the Back button
+  // stays available to return to exactly where the user was.
+  const [cameFromTxn, setCameFromTxn] = useState(false)
+  useEffect(() => {
+    if (searchParams.get("view")) setCameFromTxn(true)
+    // mount-only: capture the entry param before the highlight effect strips it
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+  useEffect(() => {
+    if (loading || !viewRuleId || !rules.some((r) => r.id === viewRuleId)) return
+    document.getElementById(`rule-${viewRuleId}`)?.scrollIntoView({ behavior: "smooth", block: "center" })
+    setHighlightId(viewRuleId)
+    const timer = setTimeout(() => {
+      setHighlightId(null)
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev)
+        next.delete("view")
+        return next
+      }, { replace: true })
+    }, 2200)
+    return () => clearTimeout(timer)
+  }, [loading, viewRuleId, rules, setSearchParams])
+
+  // Real browser back lands on the exact prior entry (reopens the transaction
+  // modal / restores the list scroll). Fall back to the list if opened cold.
+  function goBack() {
+    const idx = (window.history.state as { idx?: number } | null)?.idx ?? 0
+    if (idx > 0) navigate(-1)
+    else navigate("/transactions")
+  }
+
+  // Optional account filter, e.g. from a wealth account's "recurring" button:
+  // /recurring?account=<id> shows only the rules tied to that account.
+  const accountFilter = searchParams.get("account")
+  const filterAccount = accountFilter ? accounts.find((a) => a.id === accountFilter) : null
+  const visibleRules = useMemo(
+    () => (accountFilter ? rules.filter((r) => r.wealth_account_id === accountFilter) : rules),
+    [rules, accountFilter],
+  )
+  function clearAccountFilter() {
+    setSearchParams((p) => { const n = new URLSearchParams(p); n.delete("account"); return n }, { replace: true })
+  }
+
+  const upcoming = useMemo(() => visibleRules.filter((r) => r.active), [visibleRules])
+  const paused = useMemo(() => visibleRules.filter((r) => !r.active), [visibleRules])
 
   function openCreate() {
     setEditing(null)
@@ -218,7 +271,13 @@ export function RecurringPage() {
   }
 
   const renderRule = (rule: RecurringRule) => (
-    <li key={rule.id} className="flex items-center gap-3 rounded-xl border bg-card p-3 sm:p-4">
+    <li
+      key={rule.id}
+      id={`rule-${rule.id}`}
+      className={`flex items-center gap-3 rounded-xl border bg-card p-3 transition-shadow sm:p-4 ${
+        highlightId === rule.id ? "ring-2 ring-primary ring-offset-2 ring-offset-background" : ""
+      }`}
+    >
       <div className={`flex size-10 shrink-0 items-center justify-center rounded-full ${
         rule.type === "incoming" ? "bg-emerald-100 dark:bg-emerald-900/30" : "bg-red-100 dark:bg-red-900/30"
       }`}>
@@ -274,10 +333,26 @@ export function RecurringPage() {
 
   return (
     <div className="space-y-4 p-3 sm:space-y-6 sm:p-6">
+      {cameFromTxn && (
+        <Button variant="ghost" size="sm" className="-ml-2 h-8 gap-1.5 text-muted-foreground" onClick={goBack}>
+          <ArrowLeft className="size-4" /> {t("recurring.back")}
+        </Button>
+      )}
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">{t("recurring.title")}</h1>
           <p className="mt-0.5 text-sm text-muted-foreground sm:mt-1">{t("recurring.subtitle")}</p>
+          {filterAccount && (
+            <button
+              type="button"
+              onClick={clearAccountFilter}
+              className="mt-2 inline-flex items-center gap-1.5 rounded-full border bg-muted/50 py-1 pl-1.5 pr-2.5 text-xs font-medium transition-colors hover:bg-muted"
+            >
+              <WealthAccountIcon account={filterAccount} className="size-4" />
+              <span className="truncate">{filterAccount.nickname || filterAccount.bank_name}</span>
+              <X className="size-3.5 text-muted-foreground" />
+            </button>
+          )}
         </div>
         {canWrite && (
           <Button onClick={openCreate} className="shrink-0">
@@ -358,20 +433,14 @@ export function RecurringPage() {
 
             <div className="space-y-1.5">
               <Label>{t("recurring.account")}</Label>
-              <Select value={form.wealth_account_id || "none"} onValueChange={(v) => setForm((f) => ({ ...f, wealth_account_id: v === "none" ? "" : v }))}>
-                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">{t("recurring.noAccount")}</SelectItem>
-                  {accounts.map((a) => (
-                    <SelectItem key={a.id} value={a.id}>
-                      <span className="flex items-center gap-2">
-                        <WealthAccountIcon account={a} className="size-5" />
-                        {a.nickname || a.bank_name}
-                      </span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <AccountCombobox
+                accounts={accounts}
+                value={form.wealth_account_id}
+                onChange={(v) => setForm((f) => ({ ...f, wealth_account_id: v }))}
+                currency={currency}
+                allowNone
+                noneLabel={t("recurring.noAccount")}
+              />
               <p className="text-[11px] text-muted-foreground">{t("recurring.accountHint")}</p>
             </div>
 

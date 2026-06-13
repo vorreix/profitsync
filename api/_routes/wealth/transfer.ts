@@ -52,9 +52,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const clientId = await ensureDefaultClient(orgId, userId)
 
   // A transfer is two transactions; on the free plan both legs must fit under the
-  // per-client limit (otherwise transfers would be a quota bypass).
+  // per-client limit (otherwise transfers would be a quota bypass). EXCEPTION:
+  // moving money in/out of a Space (savings bucket) is internal, off-P&L money
+  // movement — a free user must always be able to fund/empty their Space, so it
+  // is exempt from the per-client transaction quota.
+  const involvesSpace = from.type === "space" || to.type === "space"
   const { planKey, limits } = await getOrgPlan(orgId)
-  if (planKey === "free") {
+  if (planKey === "free" && !involvesSpace) {
     const [{ current }] = await db
       .select({ current: count() })
       .from(transactions)

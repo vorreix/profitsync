@@ -39,9 +39,10 @@ import {
 } from "@/components/ui/select"
 import { toast } from "sonner"
 import {
-  Plus, Users, Building2, Mail, Phone, ChevronRight, Eye, PiggyBank, Pencil,
+  Plus, Users, Building2, Mail, Phone, ChevronRight, Eye, Pencil,
   TrendingUp, TrendingDown, DollarSign, LayoutGrid, LayoutList, CheckSquare, Archive,
 } from "lucide-react"
+import { MoneyBag } from "@/components/icons/MoneyBag"
 import { ExpandableSearch } from "@/components/ExpandableSearch"
 import { FilterSheet, FilterSection } from "@/components/filters/FilterSheet"
 import { AttachmentBadge } from "@/components/AttachmentBadge"
@@ -528,7 +529,7 @@ export function ClientsPage() {
                           className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
                           onClick={(e) => { e.stopPropagation(); setBudgetClient(client) }}
                         >
-                          <PiggyBank className="size-3" /> {t("budget.set", { ns: "translation" })}
+                          <MoneyBag className="size-3" /> {t("budget.set", { ns: "translation" })}
                         </button>
                       )
                     })()}

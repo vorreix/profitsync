@@ -33,6 +33,7 @@ import {
   CalendarDays,
   Network,
 } from "lucide-react"
+import { MoneyBag } from "@/components/icons/MoneyBag"
 import { useOrg } from "@/lib/org-context"
 import { useAdmin } from "@/lib/admin-context"
 import { usePageFilterState } from "@/lib/page-filter-context"
@@ -79,12 +80,13 @@ function buildMoreItems(activeOrgId: string | undefined, accountType: AccountTyp
   const items: (MoreItem | false)[] = [
     accountTypeAllows(accountType, "members") && { labelKey: "nav.users", href: usersHref, icon: UserPlus },
     { labelKey: "nav.wealth", href: "/wealth", icon: Landmark },
+    accountTypeAllows(accountType, "spaces") && { labelKey: "nav.spaces", href: "/spaces", icon: PiggyBank },
     { labelKey: "nav.analytics", href: "/analytics", icon: ChartColumn },
     { labelKey: "nav.categories", href: "/categories", icon: Tag },
     { labelKey: "nav.recurring", href: "/recurring", icon: Repeat },
     { labelKey: "nav.calendar", href: "/calendar", icon: CalendarDays },
     { labelKey: "nav.flow", href: "/flow", icon: Network },
-    { labelKey: "nav.budgets", href: "/budgets", icon: PiggyBank },
+    { labelKey: "nav.budgets", href: "/budgets", icon: MoneyBag },
     { labelKey: "nav.referrals", href: "/referrals", icon: Gift },
     { labelKey: "nav.organizations", href: "/organizations", icon: Building2 },
     { labelKey: "nav.subscription", href: "/subscription", icon: CreditCard },

@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next"
-import { PiggyBank } from "lucide-react"
+import { MoneyBag } from "@/components/icons/MoneyBag"
 import { budgetState, type BudgetPeriod } from "@/lib/budget"
 import { formatMoney } from "@/lib/wealth"
 
@@ -52,7 +52,7 @@ export function BudgetIndicator({
       <div className="flex items-center justify-between gap-2 text-xs">
         <span className="inline-flex items-center gap-1 text-muted-foreground">
           {t(PERIOD_KEY[period])}
-          {showPeriodIcon && <PiggyBank className="size-3 text-muted-foreground/70" />}
+          {showPeriodIcon && <MoneyBag className="size-4 text-muted-foreground/70" />}
         </span>
         <span className={`font-medium ${TEXT[state]}`}>
           {remaining >= 0

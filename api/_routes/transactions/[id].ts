@@ -23,9 +23,55 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!row || row.clientOrgId !== orgId) return res.status(404).json({ error: "Not found" })
 
   if (req.method === "GET") {
-    const [tx] = await db.select().from(transactions).where(eq(transactions.id, id))
+    // Enrich exactly like the list row (join client + wealth account, count
+    // attachments) so a deep link / back-nav fetch shows real names instead of
+    // raw FK UUIDs in the detail modal.
+    const [tx] = await db
+      .select({
+        id: transactions.id,
+        clientId: transactions.clientId,
+        clientName: clients.name,
+        wealthAccountId: transactions.wealthAccountId,
+        wealthAccountName: wealthAccounts.nickname,
+        wealthAccountBankName: wealthAccounts.bankName,
+        wealthAccountType: wealthAccounts.type,
+        wealthAccountIcon: wealthAccounts.icon,
+        groupId: transactions.groupId,
+        kind: transactions.kind,
+        type: transactions.type,
+        amount: transactions.amount,
+        description: transactions.description,
+        category: transactions.category,
+        date: transactions.date,
+        isSystem: transactions.isSystem,
+        recurringRuleId: transactions.recurringRuleId,
+        createdAt: transactions.createdAt,
+        updatedAt: transactions.updatedAt,
+        attachmentCount: sql<number>`(select count(*)::int from transaction_attachments where transaction_id = ${transactions.id})`,
+        // Transfer counterpart (the other leg's account) → drives the Space badge.
+        counterpartAccountId: sql<string | null>`(select t2.wealth_account_id::text from transactions t2 where t2.group_id = ${transactions.groupId} and t2.id <> ${transactions.id} and ${transactions.kind} = 'transfer' limit 1)`,
+        counterpartType: sql<string | null>`(select wa.type from transactions t2 join wealth_accounts wa on wa.id = t2.wealth_account_id where t2.group_id = ${transactions.groupId} and t2.id <> ${transactions.id} and ${transactions.kind} = 'transfer' limit 1)`,
+      })
+      .from(transactions)
+      .innerJoin(clients, eq(transactions.clientId, clients.id))
+      .leftJoin(wealthAccounts, eq(transactions.wealthAccountId, wealthAccounts.id))
+      .where(eq(transactions.id, id))
     if (!tx) return res.status(404).json({ error: "Not found" })
-    return res.json(serialize(tx))
+
+    // For a split (group), surface the group totals the modal needs to show the
+    // breakdown — leg/account counts and the summed amount, matching the list.
+    if (tx.groupId) {
+      const [agg] = await db
+        .select({
+          legCount: sql<number>`count(*)::int`,
+          accountCount: sql<number>`count(distinct ${transactions.wealthAccountId})::int`,
+          amount: sql<string>`sum(${transactions.amount}::numeric)`,
+        })
+        .from(transactions)
+        .where(and(eq(transactions.groupId, tx.groupId), isNull(transactions.deletedAt)))
+      return res.json(serialize({ ...tx, legCount: agg?.legCount ?? 1, accountCount: agg?.accountCount ?? 1, amount: agg?.amount ?? tx.amount }))
+    }
+    return res.json(serialize({ ...tx, legCount: 1, accountCount: 1 }))
   }
 
   if (req.method === "PATCH") {
