@@ -1277,6 +1277,9 @@
     "every": "Ogni",
     "startsOn": "Inizia il",
     "endsOn": "Termina il",
-    "endsOptional": "Facoltativo — lascia vuoto per continuare."
+    "endsOptional": "Facoltativo — lascia vuoto per continuare.",
+    "closedSpaces": "Spazi chiusi",
+    "restore": "Riapri",
+    "restored": "Spazio riaperto"
   }
 }

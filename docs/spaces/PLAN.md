@@ -116,7 +116,7 @@ Each branch is cut FROM the previous (stacked). Gate passes before every push.
 | 03 | `feat/spaces-03-autosave` | Recurring transfer branch (additive), `/api/spaces/:id/auto-save` GET/PUT/DELETE, exclude `kind=transfer` from `/api/recurring` list, materialize on `/api/spaces` GET; pure + real-DB idempotency tests | — | ✅ pushed |
 | 04 | `feat/spaces-04-ui` | `/spaces` list page (cards: piggy icon, balance, goal progress, suggested monthly, fund/withdraw), create/edit modal, nav + route + `PersonalOnlyRoute`, free-plan crown + upgrade gate, empty state, i18n (`spaces` ns ×8), transitions, mobile | — | ✅ pushed |
 | 05 | `feat/spaces-05-detail` | `/spaces/:id` detail (hero, goal progress, **auto-save setup UI**, activity ledger), shared SpaceForm/Transfer modals, exclude Spaces from `/api/wealth/accounts` (kills all picker leaks), `/wealth` net-worth incl. savings breakdown, `apiPut`, i18n | — | ✅ pushed |
-| 06 | `feat/spaces-06-polish` | Exclude Spaces from flow/analytics/transfer-wizard where needed, reached/overdue edge UX, transitions + mobile pass, i18n completeness, final gate | — | ⬜ pending |
+| 06 | `feat/spaces-06-polish` | `?new=1` deep-link, **Closed-Spaces restore** lifecycle, verified flow/analytics/dashboard/transfer-wizard already correct (transfers excluded; "available" semantics), final gate | — | ✅ pushed |
 
 ## 7. Per-branch detail
 
@@ -251,3 +251,19 @@ Each branch is cut FROM the previous (stacked). Gate passes before every push.
   tappable "Saved in Spaces" breakdown (auto-hidden for business via the 403). Added `apiPut`.
   i18n: +24 detail/auto-save keys + 2 wealth keys × all 8 locales (parity green, 1200 keys).
   Live API re-smoked (PUT auto-save / wealth / spaces:id all 401-not-500). Gate green.
+- _(06)_ Polish + lifecycle. `/spaces?new=1` deep-link opens the create modal (matches the
+  app's `?new=1` convention). **Closed-Spaces section with Reopen** — a Space with transfer
+  history that's "deleted" is archived (so the ledger survives); it now shows in a muted
+  "Closed Spaces" list with a Reopen action (re-checks quota). Verified the rest is already
+  correct without changes: flow/analytics exclude `kind='transfer'` (Spaces never appear);
+  the Dashboard "Total available" card correctly shows spendable (bank+cash) and the transfer
+  wizard now reads the space-free accounts list. +3 i18n keys × 8 locales. Gate green.
+
+## ✅ Feature complete — all 8 requirements delivered
+1. Spaces in the personal profile (gated nav/route/API). 2. Recurring auto-save from an account
+into a Space (additive transfer materializer + auto-save UI). 3. Free = 1 Space, Pro = 7
+(`checkSpaceQuota` + crown/upgrade gate). 4. Withdraw Space→bank as a transfer. 5. Can't pay
+from a Space (server guard + UI exclusion). 6. Piggy-bank icon (+ a small savings icon set).
+7. Goal amount + target date + suggested monthly + on-track/ahead/behind pace. 8. Simple,
+mobile-first UX with all the info. Money paths locked by pure + real-DB tests; every branch
+passed the full gate and is pushed.

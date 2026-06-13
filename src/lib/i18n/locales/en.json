@@ -1277,6 +1277,9 @@
     "every": "Every",
     "startsOn": "Starts on",
     "endsOn": "Ends on",
-    "endsOptional": "Optional — leave blank to keep going."
+    "endsOptional": "Optional — leave blank to keep going.",
+    "closedSpaces": "Closed Spaces",
+    "restore": "Reopen",
+    "restored": "Space reopened"
   }
 }

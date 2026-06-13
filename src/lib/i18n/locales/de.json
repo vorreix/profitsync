@@ -1277,6 +1277,9 @@
     "every": "Alle",
     "startsOn": "Beginnt am",
     "endsOn": "Endet am",
-    "endsOptional": "Optional — leer lassen, um fortzufahren."
+    "endsOptional": "Optional — leer lassen, um fortzufahren.",
+    "closedSpaces": "Geschlossene Sparräume",
+    "restore": "Wieder öffnen",
+    "restored": "Sparraum wieder geöffnet"
   }
 }
