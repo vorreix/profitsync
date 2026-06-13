@@ -33,6 +33,7 @@ import {
   Wallet,
 } from "lucide-react"
 import { apiDelete, apiGet, apiPatch, apiPost, clearApiCache } from "@/lib/api"
+import { WEALTH_CHANGED_EVENT } from "@/lib/data-events"
 import { amountExceedsLimit } from "@/lib/money"
 import type { WealthAccount } from "@/lib/types"
 import { cn } from "@/lib/utils"
@@ -219,7 +220,6 @@ export function WealthPage() {
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
       await apiPost("/api/wealth/accounts/reorder", token, { ids })
-      window.dispatchEvent(new Event("wealth:accounts-changed"))
     } catch {
       toast.error(t("couldNotUpdate"))
       await load()
@@ -239,10 +239,10 @@ export function WealthPage() {
   // limit from the server. No quota yet → don't gate (server still enforces).
   const atBankLimit = quota != null && bankCount >= quota.bank_accounts.limit
 
-  async function load() {
+  async function load({ silent = false }: { silent?: boolean } = {}) {
     const token = await getToken()
     if (!token) return
-    setLoading(true)
+    if (!silent) setLoading(true)
     try {
       const [rows, q] = await Promise.all([
         apiGet<WealthAccount[]>("/api/wealth/accounts", token),
@@ -251,14 +251,23 @@ export function WealthPage() {
       setAccounts(rows)
       if (q) setQuota(q)
     } catch {
-      toast.error(t("failedToLoad"))
+      if (!silent) toast.error(t("failedToLoad"))
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }
 
   useEffect(() => {
     load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Balances move on ANY transaction/transfer mutation (now signaled centrally
+  // from the API client) — refresh the visible cards in place, no skeleton.
+  useEffect(() => {
+    const onChanged = () => void load({ silent: true })
+    window.addEventListener(WEALTH_CHANGED_EVENT, onChanged)
+    return () => window.removeEventListener(WEALTH_CHANGED_EVENT, onChanged)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -282,7 +291,6 @@ export function WealthPage() {
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
       await apiPatch(`/api/wealth/accounts/${account.id}`, token, { set_default: next }, ["/api/wealth"])
-      window.dispatchEvent(new Event("wealth:accounts-changed"))
     } catch {
       toast.error(t("couldNotUpdate"))
       await load()
@@ -311,7 +319,6 @@ export function WealthPage() {
         ...bankDetailsPayload(form),
       })
       clearApiCache()
-      window.dispatchEvent(new Event("wealth:accounts-changed"))
       toast.success(t("accountAdded"))
       setCreateOpen(false)
       await load()
@@ -329,7 +336,6 @@ export function WealthPage() {
       if (!token) throw new Error("Not authenticated")
       await apiDelete(`/api/wealth/accounts/${account.id}`, token)
       clearApiCache()
-      window.dispatchEvent(new Event("wealth:accounts-changed"))
       toast.success((account.transaction_count ?? 0) > 0 ? t("accountArchived") : t("accountRemoved"))
       await load()
     } catch {
@@ -346,7 +352,6 @@ export function WealthPage() {
       if (!token) throw new Error("Not authenticated")
       await apiPatch(`/api/wealth/accounts/${account.id}`, token, { restore: true })
       clearApiCache()
-      window.dispatchEvent(new Event("wealth:accounts-changed"))
       toast.success(t("accountRestored"))
       await load()
     } catch (err) {
