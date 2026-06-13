@@ -91,6 +91,9 @@ export function AccountQuickAddSheet({
     }
     setPendingFiles([])
     clearAll()
+    // Re-arm: the sheet stays mounted between opens, so a request left in flight
+    // when the user closed it must not freeze the save button on reopen.
+    setSaving(false)
   }, [open, editTx, clearAll])
 
   // Business orgs need a client; load them lazily on open.
