@@ -43,6 +43,7 @@ import wealthTransfer from "./_routes/wealth/transfer.js"
 import spaces from "./_routes/spaces.js"
 import spacesReorder from "./_routes/spaces/reorder.js"
 import spaceById from "./_routes/spaces/[id].js"
+import spaceAutoSave from "./_routes/spaces/[id]/auto-save.js"
 import quotations from "./_routes/quotations.js"
 import quotationsBulkDelete from "./_routes/quotations/bulk-delete.js"
 import quotationById from "./_routes/quotations/[id].js"
@@ -136,6 +137,7 @@ const routes: RoutePattern<ApiHandler>[] = [
   { segments: ["spaces"], handler: spaces },
   { segments: ["spaces", "reorder"], handler: spacesReorder },
   { segments: ["spaces", ":id"], handler: spaceById },
+  { segments: ["spaces", ":id", "auto-save"], handler: spaceAutoSave },
   { segments: ["wealth", "accounts"], handler: wealthAccounts },
   { segments: ["wealth", "accounts", "reorder"], handler: wealthAccountsReorder },
   { segments: ["wealth", "accounts", ":id"], handler: wealthAccountById },

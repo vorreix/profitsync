@@ -113,7 +113,7 @@ Each branch is cut FROM the previous (stacked). Gate passes before every push.
 | 00 | `feat/spaces-00-plan` | This PLAN.md | — | ✅ committed |
 | 01 | `feat/spaces-01-schema-lib` | Migration 0043 (goal cols + recurring kind/to_account_id), schema.ts, types.ts, quota (`spaces` limit + `checkSpaceQuota`), `accountTypeAllows` personal branch, pure `src/lib/spaces.ts` + vitest, `WealthAccountIcon` piggy branch | 0043 | ✅ pushed |
 | 02 | `feat/spaces-02-api` | `/api/spaces` CRUD+reorder (personal gate, quota, never-default), can't-pay-from-Space guard in `/api/transactions`, `/api/wealth/quota` space report, router wiring | — | ✅ pushed |
-| 03 | `feat/spaces-03-autosave` | Recurring transfer branch (additive) + validate, `/api/spaces/:id/auto-save` GET/PUT/DELETE, exclude `kind=transfer` from `/api/recurring` list, materialize on `/api/spaces` GET; pure test for the transfer-leg/balance builder | — | ⬜ pending |
+| 03 | `feat/spaces-03-autosave` | Recurring transfer branch (additive), `/api/spaces/:id/auto-save` GET/PUT/DELETE, exclude `kind=transfer` from `/api/recurring` list, materialize on `/api/spaces` GET; pure + real-DB idempotency tests | — | ✅ pushed |
 | 04 | `feat/spaces-04-ui` | `/spaces` list page (cards: piggy icon, balance, goal progress, suggested monthly, fund/withdraw), create/edit modal, nav + route + `PersonalOnlyRoute`, free-plan crown + upgrade gate, empty state, i18n (`spaces` ns ×8), transitions, mobile | — | ⬜ pending |
 | 05 | `feat/spaces-05-detail` | `/spaces/:id` detail (hero, goal viz/chart, contributions ledger, edit goal, auto-save UI), `/wealth` savings card + exclude Spaces from /wealth list & transaction pickers & dashboard, i18n | — | ⬜ pending |
 | 06 | `feat/spaces-06-polish` | Exclude Spaces from flow/analytics/transfer-wizard where needed, reached/overdue edge UX, transitions + mobile pass, i18n completeness, final gate | — | ⬜ pending |
@@ -221,3 +221,11 @@ Each branch is cut FROM the previous (stacked). Gate passes before every push.
   201→402, outgoing-to-Space→400, delete-with-balance 400→204) via a throwaway test (deleted,
   org cleaned up). Committed pure validator tests (268 total). Static + boot + route-guard +
   ESM checks green.
+- _(03)_ Recurring auto-save. Additive `kind='transfer'` branch in the materializer (standard
+  path byte-identical), outgoing leg as the idempotency anchor, incoming Space leg shares the
+  group_id. Pure `src/lib/recurring-transfer.ts` locked by 5 tests. `/api/spaces/:id/auto-save`
+  GET/PUT/DELETE (one transfer rule per Space, reusing `validateRuleInput`); `/api/recurring`
+  list excludes `kind='transfer'`; Space delete drops its auto-save rule. **Verified on the real
+  dev DB**: a due auto-save materializes ONE transfer (−200 source / +200 Space; recurring keys
+  only on the outgoing leg) and re-running the same occurrence is idempotent (no double-move).
+  Gate green (273 tests).
