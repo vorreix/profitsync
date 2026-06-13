@@ -736,10 +736,16 @@
     "setAsDefault": "Set as default",
     "removeDefault": "Remove default",
     "upgradeBanksTitle": "Upgrade to add more banks",
-    "upgradeBanksBody": "Your current plan includes {{limit}} bank account. Upgrade to Premium for unlimited bank accounts.",
+    "upgradeBanksBody": "Free plans include {{limit}} bank account. Upgrade to Premium for up to 20 — closed accounts kept too.",
     "upgradeBanksCta": "See plans",
     "availableLabel": "Available",
-    "savedInSpaces": "Saved in Spaces"
+    "savedInSpaces": "Saved in Spaces",
+    "searchAccounts": "Search accounts…",
+    "noAccountFound": "No account found.",
+    "bankLimitTitle": "Bank account limit reached",
+    "bankLimitBody": "You have reached the maximum of {{limit}} bank accounts (including closed ones). Permanently delete a closed account to add another.",
+    "bankUsage": "{{current}} of {{limit}} banks",
+    "recurringForAccount": "Recurring for this account"
   },
   "clients": {
     "pageTitle": "Clients",
@@ -1287,6 +1293,7 @@
     "moveTo": "Move money to",
     "moveAndClose": "Move money & close",
     "afterFund": "{{account}} will have {{amount}} left",
-    "viewDetails": "View details"
+    "viewDetails": "View details",
+    "spaceBadge": "Space"
   }
 }

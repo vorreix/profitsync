@@ -9,7 +9,7 @@ import { formatMoney } from "@/lib/wealth"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { AccountCombobox } from "@/components/wealth/AccountCombobox"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 
 type TransferState = { space: WealthAccount; mode: "fund" | "withdraw" }
@@ -86,14 +86,7 @@ export function SpaceTransferModal({
           <div className="space-y-3">
             <div className="space-y-1.5">
               <Label>{isFund ? t("fromAccount") : t("toAccount")}</Label>
-              <Select value={accountId} onValueChange={(v) => { setAccountId(v); setError(null) }}>
-                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {accounts.map((a) => (
-                    <SelectItem key={a.id} value={a.id}>{a.nickname?.trim() || a.bank_name} — {formatMoney(Number(a.current_balance), currency)}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <AccountCombobox accounts={accounts} value={accountId} onChange={(v) => { setAccountId(v); setError(null) }} currency={currency} />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="tr-amount">{t("amount")}</Label>

@@ -4,6 +4,8 @@ import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { apiErrorMessage, apiPatch, apiPost } from "@/lib/api"
 import type { WealthAccount } from "@/lib/types"
+import { useCurrency } from "@/lib/currency-context"
+import { currencySymbol } from "@/lib/wealth"
 import { SPACE_ICONS } from "@/components/wealth/space-icons"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -28,6 +30,8 @@ export function SpaceFormModal({
 }) {
   const { t } = useTranslation("spaces")
   const { getToken } = useAuth()
+  const { currency } = useCurrency()
+  const symbol = currencySymbol(currency)
   const [form, setForm] = useState<SpaceForm>({ name: "", goal: "", date: "", icon: "piggy" })
   const [saving, setSaving] = useState(false)
 
@@ -93,7 +97,10 @@ export function SpaceFormModal({
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="space-goal">{t("goalLabel")}</Label>
-              <Input id="space-goal" type="number" inputMode="decimal" min="0" step="0.01" placeholder={t("goalOptional")} value={form.goal} onChange={(e) => setForm((f) => ({ ...f, goal: e.target.value }))} />
+              <div className="relative">
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">{symbol}</span>
+                <Input id="space-goal" type="number" inputMode="decimal" min="0" step="0.01" className="pl-8" placeholder={t("goalOptional")} value={form.goal} onChange={(e) => setForm((f) => ({ ...f, goal: e.target.value }))} />
+              </div>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="space-date">{t("targetDateLabel")}</Label>

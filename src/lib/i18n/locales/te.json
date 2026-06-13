@@ -1002,7 +1002,13 @@
     "upgradeBanksBody": "మీ ప్రస్తుత ప్లాన్‌లో {{limit}} బ్యాంక్ ఖాతా ఉంటుంది. అపరిమిత బ్యాంక్ ఖాతాల కోసం ప్రీమియంకు అప్‌గ్రేడ్ చేయండి.",
     "upgradeBanksCta": "ప్లాన్‌లను చూడండి",
     "availableLabel": "అందుబాటులో",
-    "savedInSpaces": "స్పేస్‌లలో"
+    "savedInSpaces": "స్పేస్‌లలో",
+    "searchAccounts": "ఖాతాలను శోధించండి…",
+    "noAccountFound": "ఖాతా కనుగొనబడలేదు.",
+    "bankLimitTitle": "బ్యాంక్ ఖాతా పరిమితి చేరింది",
+    "bankLimitBody": "మీరు గరిష్టంగా {{limit}} బ్యాంక్ ఖాతాలకు చేరుకున్నారు (మూసినవి సహా). మరొకటి జోడించడానికి ఒక మూసిన ఖాతాను శాశ్వతంగా తొలగించండి.",
+    "bankUsage": "{{limit}} లో {{current}} ఖాతాలు",
+    "recurringForAccount": "ఈ ఖాతా పునరావృతాలు"
   },
   "errorBoundary": {
     "title": "ఏదో తప్పు జరిగింది",
@@ -1287,6 +1293,7 @@
     "moveTo": "డబ్బును తరలించు",
     "moveAndClose": "తరలించి మూసివేయి",
     "afterFund": "{{account}} లో {{amount}} మిగులుతుంది",
-    "viewDetails": "వివరాలు చూడండి"
+    "viewDetails": "వివరాలు చూడండి",
+    "spaceBadge": "స్పేస్"
   }
 }
