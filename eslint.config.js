@@ -12,6 +12,8 @@ export default tseslint.config(
       "build",
       "coverage",
       "node_modules",
+      // Vercel build output (vercel build / boot-functions) — generated, never linted.
+      ".vercel",
       // shadcn/ui is vendored (see CLAUDE.md) — treat it as third-party.
       "src/components/ui/**",
       // Stray scratch files left in the repo, not part of the app.
