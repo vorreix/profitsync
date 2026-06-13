@@ -4,7 +4,7 @@ import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { ArrowDownToLine, ArrowLeft, ArrowUpFromLine, CalendarClock, Pencil, Repeat, Trash2 } from "lucide-react"
-import { apiDelete, apiGet, apiPost, apiPut } from "@/lib/api"
+import { apiDelete, apiErrorMessage, apiGet, apiPost, apiPut } from "@/lib/api"
 import { useOrg } from "@/lib/org-context"
 import { useCurrency } from "@/lib/currency-context"
 import { canDeleteRole, canWriteRole } from "@/lib/roles"
@@ -14,6 +14,7 @@ import { autoSavePace, spaceGoalStatus, spaceProgress, suggestedMonthly } from "
 import { spaceIconFor } from "@/components/wealth/space-icons"
 import { SpaceTransferModal } from "@/components/spaces/SpaceTransferModal"
 import { SpaceFormModal } from "@/components/spaces/SpaceFormModal"
+import { AccountCombobox } from "@/components/wealth/AccountCombobox"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -309,7 +310,7 @@ function AutoSaveModal({
       toast.success(t("autoSaveStarted"))
       onSaved(rule)
     } catch (err) {
-      toast.error(err instanceof Error && err.message && err.message !== "auth" ? err.message : t("saveFailed"))
+      toast.error(apiErrorMessage(err, t("saveFailed")))
     } finally {
       setBusy(false)
     }
@@ -323,12 +324,7 @@ function AutoSaveModal({
           <p className="rounded-lg bg-muted/60 p-3 text-xs text-muted-foreground">{t("autoSaveExplain")}</p>
           <div className="space-y-1.5">
             <Label>{t("sourceAccount")}</Label>
-            <Select value={accountId} onValueChange={setAccountId}>
-              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {accounts.map((a) => <SelectItem key={a.id} value={a.id}>{a.nickname?.trim() || a.bank_name} — {formatMoney(Number(a.current_balance), currency)}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            <AccountCombobox accounts={accounts} value={accountId} onChange={setAccountId} currency={currency} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
@@ -410,7 +406,7 @@ function DeleteSpaceDialog({
       toast.success(t("deleted"))
       onDeleted()
     } catch (err) {
-      toast.error(err instanceof Error && err.message && err.message !== "auth" ? err.message : t("deleteFailed"))
+      toast.error(apiErrorMessage(err, t("deleteFailed")))
     } finally {
       setBusy(false)
     }
@@ -425,12 +421,7 @@ function DeleteSpaceDialog({
             <p className="text-sm text-muted-foreground">{t("deleteWithMoney", { amount: formatMoney(balance, currency) })}</p>
             <div className="space-y-1.5">
               <Label>{t("moveTo")}</Label>
-              <Select value={destId} onValueChange={setDestId}>
-                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {accounts.map((a) => <SelectItem key={a.id} value={a.id}>{a.nickname?.trim() || a.bank_name} — {formatMoney(Number(a.current_balance), currency)}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <AccountCombobox accounts={accounts} value={destId} onChange={setDestId} currency={currency} />
             </div>
           </div>
         ) : (

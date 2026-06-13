@@ -137,6 +137,28 @@ async function mutate<T>(method: string, path: string, token: string, body?: unk
   return result
 }
 
+/**
+ * Turn a thrown API error into a human message. `request` throws the raw
+ * response body, which for our handlers is JSON like `{"reason":…}` (quota) or
+ * `{"error":…}` (validation). Extract the readable bit; fall back otherwise.
+ */
+export function apiErrorMessage(err: unknown, fallback: string): string {
+  if (err instanceof Error && err.message) {
+    const m = err.message.trim()
+    if (m === "auth") return fallback
+    if (m.startsWith("{")) {
+      try {
+        const j = JSON.parse(m) as { reason?: string; error?: string }
+        return j.reason || j.error || fallback
+      } catch {
+        /* not JSON — fall through */
+      }
+    }
+    return m
+  }
+  return fallback
+}
+
 export const apiGet = <T>(path: string, token: string) => get<T>(path, token)
 export const apiPost = <T>(path: string, token: string, body: unknown, invalidate?: string[]) =>
   mutate<T>("POST", path, token, body, invalidate)

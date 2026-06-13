@@ -107,6 +107,10 @@ export type Transaction = {
   // 'transfer' marks the two legs of an account-to-account move (shown only on
   // the account-detail list, never in the global list / analytics).
   kind?: "standard" | "transfer"
+  // For a transfer leg: the OTHER leg's account (id + type) — lets the UI badge a
+  // transfer to/from a Space and deep-link to it.
+  counterpart_account_id?: string | null
+  counterpart_type?: "bank" | "cash" | "space" | null
   created_at: string
   updated_at: string
   attachment_count?: number

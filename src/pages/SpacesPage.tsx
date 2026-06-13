@@ -3,8 +3,8 @@ import { useNavigate, useSearchParams } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
-import { ArrowDownToLine, ArrowUpFromLine, Crown, Pencil, Plus, Target, Trash2, TrendingUp } from "lucide-react"
-import { apiDelete, apiGet, apiPatch } from "@/lib/api"
+import { ArrowDownToLine, ArrowUpFromLine, ChevronRight, Crown, Pencil, Plus, Target, Trash2, TrendingUp } from "lucide-react"
+import { apiDelete, apiErrorMessage, apiGet, apiPatch } from "@/lib/api"
 import { useOrg } from "@/lib/org-context"
 import { useCurrency } from "@/lib/currency-context"
 import { canWriteRole } from "@/lib/roles"
@@ -91,7 +91,7 @@ export function SpacesPage() {
       setQuota((q) => (q ? { ...q, spaces: { ...q.spaces, current: q.spaces.current + 1 } } : q))
       toast.success(t("restored"))
     } catch (err) {
-      toast.error(err instanceof Error && err.message && err.message !== "auth" ? err.message : t("saveFailed"))
+      toast.error(apiErrorMessage(err, t("saveFailed")))
     }
   }
 
@@ -127,7 +127,7 @@ export function SpacesPage() {
       setQuota((q) => (q ? { ...q, spaces: { ...q.spaces, current: Math.max(0, q.spaces.current - 1) } } : q))
       toast.success(t("deleted"))
     } catch (err) {
-      toast.error(err instanceof Error && err.message && err.message !== "auth" ? err.message : t("deleteFailed"))
+      toast.error(apiErrorMessage(err, t("deleteFailed")))
       void load({ silent: true })
     }
   }
@@ -286,9 +286,9 @@ function SpaceCard({
   const status = spaceGoalStatus(balance, space.goal_amount, space.target_date, new Date().toISOString().split("T")[0])
 
   return (
-    <li className="flex flex-col rounded-2xl border bg-card p-4 transition-shadow hover:shadow-sm">
-      <button type="button" onClick={onOpen} className="flex items-start gap-3 text-left">
-        <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+    <li className="group flex flex-col rounded-2xl border bg-card p-4 transition-all duration-200 hover:border-emerald-500/30 hover:shadow-md motion-safe:hover:-translate-y-0.5">
+      <button type="button" onClick={onOpen} className="flex items-start gap-3 text-left" title={t("viewDetails")}>
+        <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-600 transition-colors group-hover:bg-emerald-500/20 dark:text-emerald-400">
           <Icon className="size-5" />
         </span>
         <div className="min-w-0 flex-1">
@@ -298,6 +298,7 @@ function SpaceCard({
         {status.kind === "reached" && (
           <span className="shrink-0 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-300">{t("goalReached")}</span>
         )}
+        <ChevronRight className="size-4 shrink-0 self-center text-muted-foreground/30 transition-all group-hover:translate-x-0.5 group-hover:text-muted-foreground" />
       </button>
 
       {progress && (

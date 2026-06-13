@@ -1002,7 +1002,13 @@
     "upgradeBanksBody": "Il tuo piano attuale include {{limit}} conto bancario. Passa a Premium per conti bancari illimitati.",
     "upgradeBanksCta": "Vedi i piani",
     "availableLabel": "Disponibile",
-    "savedInSpaces": "Negli Spazi"
+    "savedInSpaces": "Negli Spazi",
+    "searchAccounts": "Cerca conti…",
+    "noAccountFound": "Nessun conto trovato.",
+    "bankLimitTitle": "Limite di conti raggiunto",
+    "bankLimitBody": "Hai raggiunto il massimo di {{limit}} conti bancari (inclusi quelli chiusi). Elimina definitivamente un conto chiuso per aggiungerne un altro.",
+    "bankUsage": "{{current}} di {{limit}} conti",
+    "recurringForAccount": "Ricorrenti per questo conto"
   },
   "errorBoundary": {
     "title": "Qualcosa è andato storto",
@@ -1285,6 +1291,9 @@
     "autoSaveExplain": "Sposta denaro in questo Spazio automaticamente secondo una pianificazione — come un bonifico permanente verso te stesso. Preleva dal conto che scegli; puoi sospenderlo o modificarlo quando vuoi.",
     "deleteWithMoney": "Questo Spazio contiene ancora {{amount}}. Scegli dove spostarlo — poi lo Spazio verrà chiuso.",
     "moveTo": "Sposta il denaro su",
-    "moveAndClose": "Sposta e chiudi"
+    "moveAndClose": "Sposta e chiudi",
+    "afterFund": "A {{account}} resteranno {{amount}}",
+    "viewDetails": "Vedi dettagli",
+    "spaceBadge": "Spazio"
   }
 }
