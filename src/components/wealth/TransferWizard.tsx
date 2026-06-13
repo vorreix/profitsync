@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { AccountCombobox } from "@/components/wealth/AccountCombobox"
 
 const today = () => new Date().toISOString().split("T")[0]
 const formatFileSize = (b: number) => (b < 1024 ? `${b} B` : b < 1024 * 1024 ? `${(b / 1024).toFixed(1)} KB` : `${(b / (1024 * 1024)).toFixed(1)} MB`)
@@ -141,22 +141,12 @@ export function TransferWizard({
           <div className="mb-4 flex items-center gap-2">
             <div className="min-w-0 flex-1 space-y-1">
               <Label className="text-xs text-muted-foreground">{t("fromAccount")}</Label>
-              <Select value={fromId} onValueChange={setFromId}>
-                <SelectTrigger className="w-full"><SelectValue placeholder={t("selectAccount")} /></SelectTrigger>
-                <SelectContent>
-                  {active.map((a) => <SelectItem key={a.id} value={a.id} disabled={a.id === toId}>{accountDisplayName(a)}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <AccountCombobox accounts={active} value={fromId} onChange={setFromId} currency={currency} excludeIds={[toId]} />
             </div>
             <ArrowRight className="mt-5 size-4 shrink-0 text-muted-foreground rtl:rotate-180" />
             <div className="min-w-0 flex-1 space-y-1">
               <Label className="text-xs text-muted-foreground">{t("toAccount")}</Label>
-              <Select value={toId} onValueChange={setToId}>
-                <SelectTrigger className="w-full"><SelectValue placeholder={t("selectAccount")} /></SelectTrigger>
-                <SelectContent>
-                  {active.map((a) => <SelectItem key={a.id} value={a.id} disabled={a.id === fromId}>{accountDisplayName(a)}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <AccountCombobox accounts={active} value={toId} onChange={setToId} currency={currency} excludeIds={[fromId]} />
             </div>
           </div>
 
