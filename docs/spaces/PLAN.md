@@ -117,6 +117,7 @@ Each branch is cut FROM the previous (stacked). Gate passes before every push.
 | 04 | `feat/spaces-04-ui` | `/spaces` list page (cards: piggy icon, balance, goal progress, suggested monthly, fund/withdraw), create/edit modal, nav + route + `PersonalOnlyRoute`, free-plan crown + upgrade gate, empty state, i18n (`spaces` ns ×8), transitions, mobile | — | ✅ pushed |
 | 05 | `feat/spaces-05-detail` | `/spaces/:id` detail (hero, goal progress, **auto-save setup UI**, activity ledger), shared SpaceForm/Transfer modals, exclude Spaces from `/api/wealth/accounts` (kills all picker leaks), `/wealth` net-worth incl. savings breakdown, `apiPut`, i18n | — | ✅ pushed |
 | 06 | `feat/spaces-06-polish` | `?new=1` deep-link, **Closed-Spaces restore** lifecycle, verified flow/analytics/dashboard/transfer-wizard already correct (transfers excluded; "available" semantics), final gate | — | ✅ pushed |
+| 07 | `feat/spaces-07-feedback` | Fund/withdraw fix (native `<select>` → shadcn `Select` in dialogs), crown visibility, detail-page restructure (auto-save + delete on the main card; delete moves the money out first) | — | ✅ pushed |
 
 ## 7. Per-branch detail
 
@@ -258,6 +259,17 @@ Each branch is cut FROM the previous (stacked). Gate passes before every push.
   correct without changes: flow/analytics exclude `kind='transfer'` (Spaces never appear);
   the Dashboard "Total available" card correctly shows spendable (bank+cash) and the transfer
   wizard now reads the space-free accounts list. +3 i18n keys × 8 locales. Gate green.
+
+- _(07)_ Live-testing feedback. **Root-caused "add money/withdraw not working"**: native
+  `<select>` inside a Radix Dialog (the app uses shadcn `Select` everywhere for exactly this) —
+  swapped to shadcn `Select` in `SpaceTransferModal` + the auto-save modal. Confirmed the backend
+  fund/withdraw path for a Space is correct via a throwaway real-DB test (cash→space and
+  space→cash both move balances). Crown on the "Add Space" button now uses the visible
+  `amber-500/400` (matching WealthPage). Detail page restructured per feedback: **auto-save and
+  delete now live on the main card** (delete was buried at the bottom); the auto-save modal opens
+  with a plain-language explanation of what it does. **Delete-with-money flow**: if the Space
+  still holds money, the delete dialog asks where to move it (default account preselected),
+  transfers it out, then closes the Space — empty Spaces just delete. +5 i18n keys × 8 locales.
 
 ## ✅ Feature complete — all 8 requirements delivered
 1. Spaces in the personal profile (gated nav/route/API). 2. Recurring auto-save from an account

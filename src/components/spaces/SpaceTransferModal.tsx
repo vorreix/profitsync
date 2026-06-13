@@ -8,6 +8,7 @@ import { formatMoney } from "@/lib/wealth"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 
 /**
@@ -71,17 +72,15 @@ export function SpaceTransferModal({
         ) : (
           <div className="space-y-3">
             <div className="space-y-1.5">
-              <Label htmlFor="tr-account">{isFund ? t("fromAccount") : t("toAccount")}</Label>
-              <select
-                id="tr-account"
-                value={accountId}
-                onChange={(e) => setAccountId(e.target.value)}
-                className="h-10 w-full rounded-md border bg-background px-3 text-sm"
-              >
-                {accounts.map((a) => (
-                  <option key={a.id} value={a.id}>{a.nickname?.trim() || a.bank_name} — {formatMoney(Number(a.current_balance), currency)}</option>
-                ))}
-              </select>
+              <Label>{isFund ? t("fromAccount") : t("toAccount")}</Label>
+              <Select value={accountId} onValueChange={setAccountId}>
+                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {accounts.map((a) => (
+                    <SelectItem key={a.id} value={a.id}>{a.nickname?.trim() || a.bank_name} — {formatMoney(Number(a.current_balance), currency)}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="tr-amount">{t("amount")}</Label>

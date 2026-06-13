@@ -153,7 +153,7 @@ export function SpacesPage() {
         </div>
         {canWrite && (
           <Button onClick={openCreate} className="shrink-0">
-            {atLimit ? <Crown className="size-4 text-amber-200" /> : <Plus className="size-4" />}
+            {atLimit ? <Crown className="size-4 text-amber-500 dark:text-amber-400" /> : <Plus className="size-4" />}
             <span className="hidden sm:inline">{t("addSpace")}</span>
             <span className="sm:hidden">{t("new")}</span>
           </Button>

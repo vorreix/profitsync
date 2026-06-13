@@ -1280,6 +1280,11 @@
     "endsOptional": "Facoltativo — lascia vuoto per continuare.",
     "closedSpaces": "Spazi chiusi",
     "restore": "Riapri",
-    "restored": "Spazio riaperto"
+    "restored": "Spazio riaperto",
+    "autoSaveOn": "Risparmio automatico di {{amount}} {{freq}} da {{account}}",
+    "autoSaveExplain": "Sposta denaro in questo Spazio automaticamente secondo una pianificazione — come un bonifico permanente verso te stesso. Preleva dal conto che scegli; puoi sospenderlo o modificarlo quando vuoi.",
+    "deleteWithMoney": "Questo Spazio contiene ancora {{amount}}. Scegli dove spostarlo — poi lo Spazio verrà chiuso.",
+    "moveTo": "Sposta il denaro su",
+    "moveAndClose": "Sposta e chiudi"
   }
 }

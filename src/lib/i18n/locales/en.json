@@ -1280,6 +1280,11 @@
     "endsOptional": "Optional — leave blank to keep going.",
     "closedSpaces": "Closed Spaces",
     "restore": "Reopen",
-    "restored": "Space reopened"
+    "restored": "Space reopened",
+    "autoSaveOn": "Auto-saving {{amount}} {{freq}} from {{account}}",
+    "autoSaveExplain": "Move money into this Space automatically on a schedule — like a standing order to yourself. It transfers from the account you choose; pause or change it anytime.",
+    "deleteWithMoney": "This Space still holds {{amount}}. Choose where to move it — then the Space will be closed.",
+    "moveTo": "Move money to",
+    "moveAndClose": "Move money & close"
   }
 }
