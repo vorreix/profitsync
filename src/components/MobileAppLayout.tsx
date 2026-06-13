@@ -28,7 +28,6 @@ import {
   ChartColumn,
   Gift,
   Landmark,
-  PiggyBank,
   Repeat,
   CalendarDays,
   Network,

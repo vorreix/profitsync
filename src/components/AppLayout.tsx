@@ -61,7 +61,6 @@ import {
   Building2,
   ShieldCheck,
   CreditCard,
-  PiggyBank,
   Tag,
   ChartColumn,
   Gift,
