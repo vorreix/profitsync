@@ -129,16 +129,31 @@ export function SpaceDetailPage() {
             <h1 className="truncate text-lg font-semibold tracking-tight">{space.nickname}</h1>
             <p className="mt-0.5 text-3xl font-bold tabular-nums">{formatMoney(balance, currency)}</p>
           </div>
-          {canWrite && (
-            <Button size="icon" variant="ghost" className="size-9 shrink-0 text-muted-foreground" aria-label={t("edit")} onClick={() => setEditOpen(true)}>
-              <Pencil className="size-4" />
-            </Button>
-          )}
-          {canDelete && (
-            <Button size="icon" variant="ghost" className="size-9 shrink-0 text-muted-foreground hover:text-destructive" aria-label={t("deleteSpace")} onClick={() => setDeleteOpen(true)}>
-              <Trash2 className="size-4" />
-            </Button>
-          )}
+          <div className="flex shrink-0 items-center gap-1">
+            {/* Special "Set up auto-save" affordance — the standout action on this card. */}
+            {canWrite && !autoSave && (
+              <button
+                type="button"
+                onClick={() => setAutoOpen(true)}
+                disabled={accounts.length === 0}
+                title={t("setupAutoSave")}
+                className="group inline-flex items-center gap-1.5 rounded-full border border-emerald-500/50 bg-gradient-to-r from-emerald-500/20 to-emerald-500/5 px-3 py-1.5 text-xs font-semibold text-emerald-700 shadow-sm transition-all hover:from-emerald-500/30 hover:to-emerald-500/10 hover:shadow disabled:opacity-50 dark:text-emerald-300"
+              >
+                <Repeat className="size-3.5 transition-transform group-hover:rotate-180" />
+                {t("autoSaveTitle")}
+              </button>
+            )}
+            {canWrite && (
+              <Button size="icon" variant="ghost" className="size-9 text-muted-foreground" aria-label={t("edit")} onClick={() => setEditOpen(true)}>
+                <Pencil className="size-4" />
+              </Button>
+            )}
+            {canDelete && (
+              <Button size="icon" variant="ghost" className="size-9 text-muted-foreground hover:text-destructive" aria-label={t("deleteSpace")} onClick={() => setDeleteOpen(true)}>
+                <Trash2 className="size-4" />
+              </Button>
+            )}
+          </div>
         </div>
 
         {progress && status && (
@@ -168,33 +183,28 @@ export function SpaceDetailPage() {
           </div>
         )}
 
-        {/* Auto-save lives on the main card */}
-        <div className="mt-4 border-t pt-4">
-          {autoSave ? (
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="min-w-0">
-                <p className="flex items-center gap-1.5 text-sm font-medium">
-                  <Repeat className="size-4 text-emerald-600 dark:text-emerald-400" />
-                  {t("autoSaveOn", { amount: formatMoney(Number(autoSave.amount), currency), freq: freqLabel(t, autoSave.frequency_unit, autoSave.frequency_interval), account: accountName(autoSave.wealth_account_id) })}
-                </p>
-                <p className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <CalendarClock className="size-3.5" /> {t("nextOn", { date: fmtDate(autoSave.next_due_at) })}
-                  {pace && <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${pace === "behind" ? "bg-amber-500/15 text-amber-700 dark:text-amber-300" : "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"}`}>{t(`pace_${pace}`)}</span>}
-                </p>
-              </div>
-              {canWrite && (
-                <div className="flex shrink-0 gap-1">
-                  <Button size="sm" variant="outline" onClick={() => setAutoOpen(true)}>{t("editAutoSave")}</Button>
-                  <Button size="sm" variant="ghost" className="text-muted-foreground hover:text-destructive" onClick={stopAutoSave}>{t("stopAutoSave")}</Button>
-                </div>
-              )}
+        {/* Active auto-save status lives at the foot of the main card (the
+            set-up affordance for the OFF state is the special pill up top). */}
+        {autoSave && (
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t pt-4">
+            <div className="min-w-0">
+              <p className="flex items-center gap-1.5 text-sm font-medium">
+                <Repeat className="size-4 text-emerald-600 dark:text-emerald-400" />
+                {t("autoSaveOn", { amount: formatMoney(Number(autoSave.amount), currency), freq: freqLabel(t, autoSave.frequency_unit, autoSave.frequency_interval), account: accountName(autoSave.wealth_account_id) })}
+              </p>
+              <p className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+                <CalendarClock className="size-3.5" /> {t("nextOn", { date: fmtDate(autoSave.next_due_at) })}
+                {pace && <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${pace === "behind" ? "bg-amber-500/15 text-amber-700 dark:text-amber-300" : "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"}`}>{t(`pace_${pace}`)}</span>}
+              </p>
             </div>
-          ) : canWrite ? (
-            <Button variant="secondary" className="w-full" onClick={() => setAutoOpen(true)} disabled={accounts.length === 0}>
-              <Repeat className="size-4" /> {t("setupAutoSave")}
-            </Button>
-          ) : null}
-        </div>
+            {canWrite && (
+              <div className="flex shrink-0 gap-1">
+                <Button size="sm" variant="outline" onClick={() => setAutoOpen(true)}>{t("editAutoSave")}</Button>
+                <Button size="sm" variant="ghost" className="text-muted-foreground hover:text-destructive" onClick={stopAutoSave}>{t("stopAutoSave")}</Button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Activity */}
