@@ -1292,6 +1292,7 @@
     "moveTo": "Move money to",
     "moveAndClose": "Move money & close",
     "afterFund": "{{account}} will have {{amount}} left",
-    "viewDetails": "View details"
+    "viewDetails": "View details",
+    "spaceBadge": "Space"
   }
 }

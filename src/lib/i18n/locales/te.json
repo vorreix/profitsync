@@ -1292,6 +1292,7 @@
     "moveTo": "డబ్బును తరలించు",
     "moveAndClose": "తరలించి మూసివేయి",
     "afterFund": "{{account}} లో {{amount}} మిగులుతుంది",
-    "viewDetails": "వివరాలు చూడండి"
+    "viewDetails": "వివరాలు చూడండి",
+    "spaceBadge": "స్పేస్"
   }
 }

@@ -1292,6 +1292,7 @@
     "moveTo": "पैसे यहाँ भेजें",
     "moveAndClose": "भेजें और बंद करें",
     "afterFund": "{{account}} में {{amount}} बचेंगे",
-    "viewDetails": "विवरण देखें"
+    "viewDetails": "विवरण देखें",
+    "spaceBadge": "स्पेस"
   }
 }

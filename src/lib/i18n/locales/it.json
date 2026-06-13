@@ -1292,6 +1292,7 @@
     "moveTo": "Sposta il denaro su",
     "moveAndClose": "Sposta e chiudi",
     "afterFund": "A {{account}} resteranno {{amount}}",
-    "viewDetails": "Vedi dettagli"
+    "viewDetails": "Vedi dettagli",
+    "spaceBadge": "Spazio"
   }
 }

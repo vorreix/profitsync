@@ -1292,6 +1292,7 @@
     "moveTo": "Geld verschieben auf",
     "moveAndClose": "Verschieben & schließen",
     "afterFund": "{{account}} hat danach noch {{amount}}",
-    "viewDetails": "Details ansehen"
+    "viewDetails": "Details ansehen",
+    "spaceBadge": "Sparraum"
   }
 }

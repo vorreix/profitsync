@@ -1292,6 +1292,7 @@
     "moveTo": "பணத்தை நகர்த்து",
     "moveAndClose": "நகர்த்தி மூடு",
     "afterFund": "{{account}} இல் {{amount}} மீதமிருக்கும்",
-    "viewDetails": "விவரங்களைக் காண்க"
+    "viewDetails": "விவரங்களைக் காண்க",
+    "spaceBadge": "ஸ்பேஸ்"
   }
 }

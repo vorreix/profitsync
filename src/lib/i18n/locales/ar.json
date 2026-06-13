@@ -1292,6 +1292,7 @@
     "moveTo": "انقل المال إلى",
     "moveAndClose": "انقل وأغلق",
     "afterFund": "سيتبقى في {{account}} مبلغ {{amount}}",
-    "viewDetails": "عرض التفاصيل"
+    "viewDetails": "عرض التفاصيل",
+    "spaceBadge": "مساحة"
   }
 }

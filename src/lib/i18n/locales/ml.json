@@ -1292,6 +1292,7 @@
     "moveTo": "പണം നീക്കേണ്ടത്",
     "moveAndClose": "നീക്കി അടയ്ക്കുക",
     "afterFund": "{{account}} ൽ {{amount}} ബാക്കിയുണ്ടാകും",
-    "viewDetails": "വിശദാംശങ്ങൾ കാണുക"
+    "viewDetails": "വിശദാംശങ്ങൾ കാണുക",
+    "spaceBadge": "സ്‌പേസ്"
   }
 }

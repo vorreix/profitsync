@@ -48,6 +48,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         createdAt: transactions.createdAt,
         updatedAt: transactions.updatedAt,
         attachmentCount: sql<number>`(select count(*)::int from transaction_attachments where transaction_id = ${transactions.id})`,
+        // Transfer counterpart (the other leg's account) → drives the Space badge.
+        counterpartAccountId: sql<string | null>`(select t2.wealth_account_id::text from transactions t2 where t2.group_id = ${transactions.groupId} and t2.id <> ${transactions.id} and ${transactions.kind} = 'transfer' limit 1)`,
+        counterpartType: sql<string | null>`(select wa.type from transactions t2 join wealth_accounts wa on wa.id = t2.wealth_account_id where t2.group_id = ${transactions.groupId} and t2.id <> ${transactions.id} and ${transactions.kind} = 'transfer' limit 1)`,
       })
       .from(transactions)
       .innerJoin(clients, eq(transactions.clientId, clients.id))
