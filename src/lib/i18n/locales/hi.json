@@ -1002,7 +1002,9 @@
     "upgradeBanksBody": "आपके मौजूदा प्लान में {{limit}} बैंक खाता शामिल है। असीमित बैंक खातों के लिए प्रीमियम में अपग्रेड करें।",
     "upgradeBanksCta": "प्लान देखें",
     "availableLabel": "उपलब्ध",
-    "savedInSpaces": "स्पेस में बचत"
+    "savedInSpaces": "स्पेस में बचत",
+    "searchAccounts": "खाते खोजें…",
+    "noAccountFound": "कोई खाता नहीं मिला।"
   },
   "errorBoundary": {
     "title": "कुछ ग़लत हो गया",

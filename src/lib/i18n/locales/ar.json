@@ -1002,7 +1002,9 @@
     "upgradeBanksBody": "تتضمن خطتك الحالية {{limit}} حساب بنكي. قم بالترقية إلى بريميوم للحصول على حسابات بنكية غير محدودة.",
     "upgradeBanksCta": "عرض الخطط",
     "availableLabel": "المتاح",
-    "savedInSpaces": "في المساحات"
+    "savedInSpaces": "في المساحات",
+    "searchAccounts": "ابحث عن الحسابات…",
+    "noAccountFound": "لم يُعثر على حساب."
   },
   "errorBoundary": {
     "title": "حدث خطأ ما",

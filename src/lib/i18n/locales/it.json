@@ -1002,7 +1002,9 @@
     "upgradeBanksBody": "Il tuo piano attuale include {{limit}} conto bancario. Passa a Premium per conti bancari illimitati.",
     "upgradeBanksCta": "Vedi i piani",
     "availableLabel": "Disponibile",
-    "savedInSpaces": "Negli Spazi"
+    "savedInSpaces": "Negli Spazi",
+    "searchAccounts": "Cerca conti…",
+    "noAccountFound": "Nessun conto trovato."
   },
   "errorBoundary": {
     "title": "Qualcosa è andato storto",

@@ -739,7 +739,9 @@
     "upgradeBanksBody": "Your current plan includes {{limit}} bank account. Upgrade to Premium for unlimited bank accounts.",
     "upgradeBanksCta": "See plans",
     "availableLabel": "Available",
-    "savedInSpaces": "Saved in Spaces"
+    "savedInSpaces": "Saved in Spaces",
+    "searchAccounts": "Search accounts…",
+    "noAccountFound": "No account found."
   },
   "clients": {
     "pageTitle": "Clients",

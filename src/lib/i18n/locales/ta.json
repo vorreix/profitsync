@@ -1002,7 +1002,9 @@
     "upgradeBanksBody": "உங்கள் தற்போதைய திட்டத்தில் {{limit}} வங்கிக் கணக்கு உள்ளது. வரம்பற்ற வங்கிக் கணக்குகளுக்கு பிரீமியத்திற்கு மேம்படுத்தவும்.",
     "upgradeBanksCta": "திட்டங்களைக் காண்க",
     "availableLabel": "கிடைக்கும்",
-    "savedInSpaces": "ஸ்பேஸ்களில்"
+    "savedInSpaces": "ஸ்பேஸ்களில்",
+    "searchAccounts": "கணக்குகளைத் தேடு…",
+    "noAccountFound": "கணக்கு கிடைக்கவில்லை."
   },
   "errorBoundary": {
     "title": "ஏதோ தவறு நடந்தது",
