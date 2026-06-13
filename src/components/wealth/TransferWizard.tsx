@@ -79,6 +79,9 @@ export function TransferWizard({
     setDate(today())
     setNote("")
     setPendingFiles([])
+    // Re-arm: the wizard stays mounted between opens, so a request left in flight
+    // when the user closed it must not freeze the confirm button on reopen.
+    setSaving(false)
   }, [open, initialFromId, initialToId])
 
   const from = active.find((a) => a.id === fromId)

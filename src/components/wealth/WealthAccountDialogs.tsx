@@ -53,11 +53,17 @@ export function WealthAccountDialogs({
         ...editing,
         icon: editing.icon || (editing.type === "cash" ? "wallet" : "bank"),
       }))
+      // Re-arm: the dialogs stay mounted between opens, so a request left in
+      // flight when the user closed one must not freeze the button on reopen.
+      setSaving(false)
     }
   }, [editing])
 
   useEffect(() => {
-    if (adjusting) setAdjustBalance(String(adjusting.current_balance))
+    if (adjusting) {
+      setAdjustBalance(String(adjusting.current_balance))
+      setSaving(false)
+    }
   }, [adjusting])
 
   async function patchAccount(id: string, body: Record<string, unknown>, success: string, onDone: () => void) {
