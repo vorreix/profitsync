@@ -8,6 +8,7 @@ import { isPaidPlanKey } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { EntityAvatar } from "@/components/EntityAvatar"
 
 export function OrgSwitcher() {
   const navigate = useNavigate()
@@ -47,9 +48,12 @@ export function OrgSwitcher() {
           aria-label="Switch organization"
         >
           <div className="flex items-center gap-2 min-w-0">
-            <div className="flex size-7 shrink-0 items-center justify-center rounded-md border bg-muted text-muted-foreground">
-              <Building2 className="size-3.5" />
-            </div>
+            <EntityAvatar
+              name={activeOrg?.name ?? "Personal"}
+              src={activeOrg?.logo_src}
+              className="size-7 text-xs"
+              fallbackIcon={<Building2 className="size-3.5" />}
+            />
             <div className="text-left min-w-0 group-data-[collapsible=icon]:hidden">
               <div className="flex items-center gap-1.5">
                 <p className="text-xs font-medium leading-tight truncate">{activeOrg?.name ?? "Personal"}</p>
@@ -99,9 +103,12 @@ export function OrgSwitcher() {
                   onClick={() => handleSwitch(org.id)}
                   className="w-full flex items-center gap-2 px-2 py-2 rounded-md hover:bg-accent text-left"
                 >
-                  <div className="flex size-7 shrink-0 items-center justify-center rounded-md border bg-muted text-muted-foreground">
-                    <Building2 className="size-3.5" />
-                  </div>
+                  <EntityAvatar
+                    name={org.name}
+                    src={org.logo_src}
+                    className="size-7 text-xs"
+                    fallbackIcon={<Building2 className="size-3.5" />}
+                  />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
                       <p className="text-sm font-medium truncate">{org.name}</p>

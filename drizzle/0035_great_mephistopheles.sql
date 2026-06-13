@@ -1,0 +1,2 @@
+ALTER TABLE "wealth_accounts" ADD COLUMN "is_default" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+CREATE UNIQUE INDEX "wealth_accounts_one_default_idx" ON "wealth_accounts" USING btree ("organization_id") WHERE is_default = true AND archived_at IS NULL;

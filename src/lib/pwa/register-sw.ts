@@ -2,11 +2,14 @@ import { registerSW } from "virtual:pwa-register"
 
 import { ensureInstallListener } from "./use-install-prompt"
 import { reloadWithCacheBust, settleChunkRecovery } from "./chunk-recovery"
+import { offerUpdate } from "./update-prompt-store"
 
 let registered = false
 
 const CHUNK_ERROR_RE =
   /loading (?:css )?chunk|dynamically imported module|importing a module script failed|failed to fetch dynamically/i
+
+const UPDATE_CHECK_INTERVAL_MS = 60 * 60 * 1000
 
 // After a deploy, an old tab may try to lazy-load a hashed chunk that no longer
 // exists. Vite fires `vite:preloadError`; some failures surface only as an
@@ -38,24 +41,53 @@ export function initPwa(): void {
   ensureInstallListener()
   installChunkErrorReload()
 
-  registerSW({
+  let swRegistration: ServiceWorkerRegistration | undefined
+
+  const updateSW = registerSW({
     immediate: true,
     onRegisteredSW(_swUrl, registration) {
       if (!registration) return
-      // Hourly check: a new SW installs and then WAITS (skipWaiting is off in
-      // pwa/vite-pwa.ts). This tab keeps running the version it loaded with — fully
-      // consistent, never a white screen — and converges to the new SW on its next
-      // cold start, when no old tab is controlling.
-      window.setInterval(() => {
-        void registration.update()
-      }, 60 * 60 * 1000)
+      swRegistration = registration
+      // A new SW installs and then WAITS (skipWaiting is off in pwa/vite-pwa.ts);
+      // onNeedRefresh below surfaces it as an update prompt. Check hourly and
+      // whenever the app returns to the foreground — installed PWAs on phones can
+      // stay "running" for days, and the visibility check is what lets them see a
+      // release without a full relaunch.
+      const check = () => {
+        registration.update().catch(() => {
+          /* offline / transient — the next check will succeed */
+        })
+      }
+      window.setInterval(check, UPDATE_CHECK_INTERVAL_MS)
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") check()
+      })
     },
     onNeedRefresh() {
-      // A new version is WAITING. We deliberately DO NOT activate it on the running
-      // tab. Forcing skipWaiting here (the old `updateSW(false)` call) let the new SW
-      // delete this page's still-needed hashed chunks mid-session and white-screen it
-      // — the exact post-deploy bug we are fixing. It activates safely on the next
-      // cold load. See the rationale in pwa/vite-pwa.ts.
+      // A new version is WAITING. Never force-activate it behind the page's back —
+      // activating deletes the old precache while the running page still needs its
+      // chunks (the historical post-deploy white-screen bug). Instead:
+      //
+      //  - If the incumbent worker is the legacy kill switch (script URL /sw.js —
+      //    see public/kill-sw.js), there is nothing to break: activate + reload
+      //    immediately so the user never sees a prompt during legacy recovery.
+      //  - Otherwise show the update banner; accepting calls updateSW(true), which
+      //    posts SKIP_WAITING and reloads this tab onto the new version.
+      const activeUrl = swRegistration?.active?.scriptURL ?? ""
+      const incumbentIsKillSwitch = /\/(?:kill-)?sw\.js$/.test(activeUrl) && !activeUrl.endsWith("/app-sw.js")
+      if (incumbentIsKillSwitch) {
+        void updateSW(true)
+        return
+      }
+      offerUpdate(() => {
+        void updateSW(true)
+        // Fail-safe: if the waiting worker vanished (e.g. yet another deploy landed
+        // in between) controllerchange may never fire — fall back to a hard reload,
+        // which the network-only navigation strategy turns into a fresh shell.
+        window.setTimeout(() => {
+          window.location.reload()
+        }, 10000)
+      })
     },
   })
 }

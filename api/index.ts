@@ -25,6 +25,8 @@ import transactionsBulkDelete from "./_routes/transactions/bulk-delete.js"
 import transactionById from "./_routes/transactions/[id].js"
 import transactionAttachments from "./_routes/transactions/[id]/attachments.js"
 import analytics from "./_routes/analytics.js"
+import calendar from "./_routes/calendar.js"
+import flow from "./_routes/flow.js"
 import audit from "./_routes/audit.js"
 import categories from "./_routes/categories.js"
 import categoryById from "./_routes/categories/[id].js"
@@ -34,6 +36,9 @@ import wealthAccountById from "./_routes/wealth/accounts/[id].js"
 import wealthAccountAttachments from "./_routes/wealth/accounts/[id]/attachments.js"
 import wealthAccountAttachmentById from "./_routes/wealth-account-attachments/[id].js"
 import wealthBankSearch from "./_routes/wealth/bank-search.js"
+import wealthQuota from "./_routes/wealth/quota.js"
+import recurring from "./_routes/recurring.js"
+import recurringById from "./_routes/recurring/[id].js"
 import wealthTransfer from "./_routes/wealth/transfer.js"
 import quotations from "./_routes/quotations.js"
 import quotationsBulkDelete from "./_routes/quotations/bulk-delete.js"
@@ -72,6 +77,8 @@ import billingInvoicePdf from "./_routes/billing/invoice-pdf.js"
 // route serves /api/billing/webhook before the catch-all rewrite reaches this.
 import adminMe from "./_routes/admin/me.js"
 import adminAdmins from "./_routes/admin/admins.js"
+import adminRolesRoute from "./_routes/admin/roles.js"
+import adminRoleById from "./_routes/admin/roles/[id].js"
 import adminStats from "./_routes/admin/stats.js"
 import adminUsers from "./_routes/admin/users.js"
 import adminUserDetail from "./_routes/admin/user-detail.js"
@@ -83,6 +90,8 @@ import adminOrgDetail from "./_routes/admin/org-detail.js"
 import adminSubscriptions from "./_routes/admin/subscriptions.js"
 import adminSubscriptionsActions from "./_routes/admin/subscriptions/actions.js"
 import adminInvoices from "./_routes/admin/invoices.js"
+import adminBillingAttempts from "./_routes/admin/billing-attempts.js"
+import adminBillingAttemptById from "./_routes/admin/billing-attempts/[id].js"
 import adminInvitations from "./_routes/admin/invitations.js"
 import adminPlans from "./_routes/admin/plans.js"
 import adminBlog from "./_routes/admin/blog.js"
@@ -110,10 +119,15 @@ const routes: RoutePattern<ApiHandler>[] = [
   { segments: ["clients", ":id", "media"], handler: clientMedia },
 
   { segments: ["analytics"], handler: analytics },
+  { segments: ["calendar"], handler: calendar },
+  { segments: ["flow"], handler: flow },
   { segments: ["audit"], handler: audit },
   { segments: ["categories"], handler: categories },
   { segments: ["categories", ":id"], handler: categoryById },
   { segments: ["wealth", "bank-search"], handler: wealthBankSearch },
+  { segments: ["wealth", "quota"], handler: wealthQuota },
+  { segments: ["recurring"], handler: recurring },
+  { segments: ["recurring", ":id"], handler: recurringById },
   { segments: ["wealth", "transfer"], handler: wealthTransfer },
   { segments: ["wealth", "accounts"], handler: wealthAccounts },
   { segments: ["wealth", "accounts", "reorder"], handler: wealthAccountsReorder },
@@ -175,6 +189,8 @@ const routes: RoutePattern<ApiHandler>[] = [
 
   { segments: ["admin", "me"], handler: adminMe },
   { segments: ["admin", "admins"], handler: adminAdmins },
+  { segments: ["admin", "roles"], handler: adminRolesRoute },
+  { segments: ["admin", "roles", ":id"], handler: adminRoleById },
   { segments: ["admin", "stats"], handler: adminStats },
   { segments: ["admin", "users"], handler: adminUsers },
   { segments: ["admin", "user-detail"], handler: adminUserDetail },
@@ -186,6 +202,8 @@ const routes: RoutePattern<ApiHandler>[] = [
   { segments: ["admin", "subscriptions"], handler: adminSubscriptions },
   { segments: ["admin", "subscriptions", "actions"], handler: adminSubscriptionsActions },
   { segments: ["admin", "invoices"], handler: adminInvoices },
+  { segments: ["admin", "billing-attempts"], handler: adminBillingAttempts },
+  { segments: ["admin", "billing-attempts", ":id"], handler: adminBillingAttemptById },
   { segments: ["admin", "invitations"], handler: adminInvitations },
   { segments: ["admin", "plans"], handler: adminPlans },
   { segments: ["admin", "blog"], handler: adminBlog },

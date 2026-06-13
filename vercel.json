@@ -4,10 +4,28 @@
       "includeFiles": "{api/_ssr/index-template.html,src/landing/i18n/locales/en.json}"
     }
   },
+  "redirects": [
+    {
+      "source": "/:path((?!sw\\.js$|api/).*)",
+      "has": [{ "type": "host", "value": "www.profitsync.net" }],
+      "destination": "https://profitsync.net/:path",
+      "permanent": true
+    },
+    {
+      "source": "/",
+      "has": [{ "type": "host", "value": "www.profitsync.net" }],
+      "destination": "https://profitsync.net/",
+      "permanent": true
+    }
+  ],
   "rewrites": [
     {
       "source": "/api/(.*)",
       "destination": "/api/index?__apipath=$1"
+    },
+    {
+      "source": "/sw.js",
+      "destination": "/kill-sw.js"
     },
     {
       "source": "/robots.txt",
@@ -65,6 +83,18 @@
     },
     {
       "source": "/sw.js",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }
+      ]
+    },
+    {
+      "source": "/app-sw.js",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }
+      ]
+    },
+    {
+      "source": "/kill-sw.js",
       "headers": [
         { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }
       ]
