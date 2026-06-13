@@ -28,11 +28,11 @@ import {
   ChartColumn,
   Gift,
   Landmark,
-  PiggyBank,
   Repeat,
   CalendarDays,
   Network,
 } from "lucide-react"
+import { MoneyBag } from "@/components/icons/MoneyBag"
 import { useOrg } from "@/lib/org-context"
 import { useAdmin } from "@/lib/admin-context"
 import { usePageFilterState } from "@/lib/page-filter-context"
@@ -84,7 +84,7 @@ function buildMoreItems(activeOrgId: string | undefined, accountType: AccountTyp
     { labelKey: "nav.recurring", href: "/recurring", icon: Repeat },
     { labelKey: "nav.calendar", href: "/calendar", icon: CalendarDays },
     { labelKey: "nav.flow", href: "/flow", icon: Network },
-    { labelKey: "nav.budgets", href: "/budgets", icon: PiggyBank },
+    { labelKey: "nav.budgets", href: "/budgets", icon: MoneyBag },
     { labelKey: "nav.referrals", href: "/referrals", icon: Gift },
     { labelKey: "nav.organizations", href: "/organizations", icon: Building2 },
     { labelKey: "nav.subscription", href: "/subscription", icon: CreditCard },

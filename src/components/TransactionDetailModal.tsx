@@ -86,7 +86,7 @@ export function TransactionDetailModal({
                     {tx.type === "incoming" ? "+" : "−"}{fmt(Number(tx.amount))}
                   </p>
                   {tx.recurring_rule_id && (
-                    <Badge variant="outline" className="gap-1 border-violet-500/40 bg-violet-500/10 text-violet-700 dark:text-violet-300">
+                    <Badge variant="secondary" className="gap-1">
                       <Repeat className="size-3" /> {t("recurringBadge")}
                     </Badge>
                   )}

@@ -707,11 +707,7 @@ export function TransactionsPage() {
                         </Badge>
                       )}
                       {tx.recurring_rule_id && (
-                        <Badge
-                          variant="outline"
-                          className="shrink-0 gap-1 border-violet-500/40 bg-violet-500/10 py-0 text-[10px] text-violet-700 dark:text-violet-300"
-                          title={t("recurringBadge")}
-                        >
+                        <Badge variant="secondary" className="text-[10px] py-0 shrink-0 gap-1" title={t("recurringBadge")}>
                           <Repeat className="size-3" /> <span className="hidden sm:inline">{t("recurringBadge")}</span>
                         </Badge>
                       )}

@@ -32,7 +32,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "sonner"
-import { ArrowLeft, Plus, Trash2, DollarSign, Building2, Mail, Phone, FileText, ArrowUpRight, ArrowDownRight, Pencil, Calendar, Paperclip, Upload, X, FolderOpen, Archive, ArchiveRestore, Eye, PiggyBank, ChevronRight } from "lucide-react"
+import { ArrowLeft, Plus, Trash2, DollarSign, Building2, Mail, Phone, FileText, ArrowUpRight, ArrowDownRight, Pencil, Calendar, Paperclip, Upload, X, FolderOpen, Archive, ArchiveRestore, Eye, ChevronRight } from "lucide-react"
+import { MoneyBag } from "@/components/icons/MoneyBag"
 import { ExpandableSearch } from "@/components/ExpandableSearch"
 
 type NewTransaction = { type: "incoming" | "outgoing"; allocations: Allocation[]; description: string; category: string; date: string }
@@ -503,7 +504,7 @@ export function ClientDetailPage() {
         className="group w-full text-left rounded-xl border p-3 sm:p-4 cursor-pointer transition-colors hover:border-primary/40 hover:bg-accent/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         <div className="flex items-center justify-between gap-2">
-          <p className="text-sm font-medium flex items-center gap-1.5"><PiggyBank className="size-4 text-muted-foreground" /> Budget</p>
+          <p className="text-sm font-medium flex items-center gap-1.5"><MoneyBag className="size-4 text-muted-foreground" /> Budget</p>
           <div className="flex items-center gap-0.5">
             {canModify && (
               <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={(e) => { e.stopPropagation(); setBudgetDialogOpen(true) }}>

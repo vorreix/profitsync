@@ -2,7 +2,8 @@ import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
-import { Plus, PiggyBank, ChevronRight } from "lucide-react"
+import { Plus, ChevronRight } from "lucide-react"
+import { MoneyBag } from "@/components/icons/MoneyBag"
 import { apiGet } from "@/lib/api"
 import { useCurrency } from "@/lib/currency-context"
 import { useOrg } from "@/lib/org-context"
@@ -75,7 +76,7 @@ export function BusinessBudgetCard({
       <CardContent className="p-4">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 text-sm font-medium min-w-0">
-            <PiggyBank className="size-4 text-muted-foreground shrink-0" />
+            <MoneyBag className="size-5 text-muted-foreground shrink-0" />
             <span className="truncate">{t("dashboard.ownCompanyBudget")}</span>
           </div>
           <div className="flex items-center gap-0.5 shrink-0">
