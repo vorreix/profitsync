@@ -82,6 +82,20 @@ exponential-backoff retries, and dead-lettering after `max_attempts`.
 | `GET /healthz` | none | liveness (pings the queue DB) |
 | `POST /v1/jobs` | bearer | enqueue `{ type, payload?, run_at?, priority?, dedupe_key?, max_attempts? }` |
 | `POST /v1/schedules` | bearer | upsert `{ name, type, cron, timezone?, payload?, enabled? }` |
+| `GET /v1/stats` | bearer | job counts per status (admin dashboard) |
+| `GET /v1/jobs?status=&type=&limit=&offset=` | bearer | list recent jobs (admin) |
+| `POST /v1/jobs/{id}/retry` | bearer | re-queue a failed/dead/cancelled job |
+| `POST /v1/jobs/{id}/cancel` | bearer | cancel a still-queued job |
+
+The `/v1/stats` + `/v1/jobs` + retry/cancel endpoints back the ProfitSync
+**/admin** worker panel via a server-side proxy (the bearer token never reaches
+the browser), so admins see queue depth, recent jobs, failures, and can
+retry/cancel.
+
+**Reliability:** a crashed worker's in-flight jobs aren't lost — the scheduler
+reaps jobs stuck in `running` past `WORKER_VISIBILITY_TIMEOUT` and requeues them
+(or dead-letters past `max_attempts`); on `SIGTERM` the process drains in-flight
+jobs (up to `WORKER_SHUTDOWN_GRACE`) before exiting.
 
 Example — schedule notification dispatch every 5 minutes (the app would call this
 once at deploy/bootstrap):

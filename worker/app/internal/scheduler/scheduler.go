@@ -55,6 +55,14 @@ func (s *Scheduler) Run(ctx context.Context) {
 }
 
 func (s *Scheduler) evaluate(ctx context.Context, now time.Time) error {
+	// Crash-safety: rescue jobs orphaned in 'running' by a crashed worker before
+	// looking at schedules. Cheap (indexed, usually 0 rows).
+	if n, err := s.st.Reap(ctx, s.cfg.VisibilityTimeout); err != nil {
+		s.log.Error("reap orphaned jobs", "err", err)
+	} else if n > 0 {
+		s.log.Warn("reaped orphaned jobs", "count", n)
+	}
+
 	due, err := s.st.DueSchedules(ctx, now)
 	if err != nil {
 		return err

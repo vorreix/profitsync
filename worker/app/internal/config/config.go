@@ -18,10 +18,12 @@ type Config struct {
 	DatabaseURL string
 
 	// Engine
-	Concurrency  int           // number of parallel job workers
-	PollInterval time.Duration // how often to poll for ready jobs
-	JobTimeout   time.Duration // hard cap per job execution
-	MaxAttempts  int           // default retry attempts before a job is "dead"
+	Concurrency       int           // number of parallel job workers
+	PollInterval      time.Duration // how often to poll for ready jobs
+	JobTimeout        time.Duration // hard cap per job execution
+	MaxAttempts       int           // default retry attempts before a job is "dead"
+	VisibilityTimeout time.Duration // a 'running' job idle this long is reaped (worker crashed)
+	ShutdownGrace     time.Duration // max wait for in-flight jobs to drain on shutdown
 
 	// ProfitSync app callback (for trigger-style jobs that run app logic).
 	ProfitSyncBaseURL      string
@@ -50,6 +52,8 @@ func Load() (Config, error) {
 		PollInterval:           envDuration("WORKER_POLL_INTERVAL", 2*time.Second),
 		JobTimeout:             envDuration("WORKER_JOB_TIMEOUT", 5*time.Minute),
 		MaxAttempts:            envInt("WORKER_MAX_ATTEMPTS", 5),
+		VisibilityTimeout:      envDuration("WORKER_VISIBILITY_TIMEOUT", 10*time.Minute),
+		ShutdownGrace:          envDuration("WORKER_SHUTDOWN_GRACE", 30*time.Second),
 		ProfitSyncBaseURL:      os.Getenv("PROFITSYNC_BASE_URL"),
 		ProfitSyncServiceToken: os.Getenv("PROFITSYNC_SERVICE_TOKEN"),
 		S3Endpoint:             os.Getenv("S3_ENDPOINT"),

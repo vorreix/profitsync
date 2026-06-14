@@ -216,6 +216,113 @@ func (s *Store) AdvanceSchedule(ctx context.Context, id string, next time.Time) 
 	return err
 }
 
+// Reap rescues jobs stuck in 'running' longer than the visibility timeout (the
+// worker that claimed them crashed mid-job). Past max_attempts → 'dead', else
+// re-queued. Returns how many were reaped. This is the safety net that makes the
+// queue crash-safe — without it a crashed worker would orphan its jobs forever.
+func (s *Store) Reap(ctx context.Context, visibilityTimeout time.Duration) (int64, error) {
+	tag, err := s.pool.Exec(ctx,
+		`UPDATE jobs SET
+		   status = CASE WHEN attempts >= max_attempts THEN 'dead' ELSE 'queued' END,
+		   last_error = CASE WHEN attempts >= max_attempts THEN 'orphaned: worker crashed mid-job' ELSE last_error END,
+		   run_at = now(), locked_at = NULL, locked_by = NULL, updated_at = now()
+		 WHERE status = 'running' AND locked_at < now() - make_interval(secs => $1)`,
+		visibilityTimeout.Seconds(),
+	)
+	if err != nil {
+		return 0, fmt.Errorf("reap: %w", err)
+	}
+	return tag.RowsAffected(), nil
+}
+
+// Stats returns a count of jobs per status (for the admin dashboard).
+func (s *Store) Stats(ctx context.Context) (map[string]int, error) {
+	rows, err := s.pool.Query(ctx, `SELECT status, count(*)::int FROM jobs GROUP BY status`)
+	if err != nil {
+		return nil, fmt.Errorf("stats: %w", err)
+	}
+	defer rows.Close()
+	out := map[string]int{}
+	for rows.Next() {
+		var status string
+		var n int
+		if err := rows.Scan(&status, &n); err != nil {
+			return nil, err
+		}
+		out[status] = n
+	}
+	return out, rows.Err()
+}
+
+// JobView is a job summary for the admin list (omits large payload/result blobs).
+type JobView struct {
+	ID          string    `json:"id"`
+	Type        string    `json:"type"`
+	Status      string    `json:"status"`
+	Priority    int       `json:"priority"`
+	Attempts    int       `json:"attempts"`
+	MaxAttempts int       `json:"max_attempts"`
+	LastError   string    `json:"last_error"`
+	RunAt       time.Time `json:"run_at"`
+	LockedBy    *string   `json:"locked_by"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+// ListJobs returns recent jobs, optionally filtered by status and/or type.
+func (s *Store) ListJobs(ctx context.Context, status, jobType string, limit, offset int) ([]JobView, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	rows, err := s.pool.Query(ctx,
+		`SELECT id, type, status, priority, attempts, max_attempts, last_error, run_at, locked_by, created_at, updated_at
+		 FROM jobs
+		 WHERE ($1 = '' OR status = $1) AND ($2 = '' OR type = $2)
+		 ORDER BY created_at DESC
+		 LIMIT $3 OFFSET $4`,
+		status, jobType, limit, offset,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list jobs: %w", err)
+	}
+	defer rows.Close()
+	out := []JobView{}
+	for rows.Next() {
+		var j JobView
+		if err := rows.Scan(&j.ID, &j.Type, &j.Status, &j.Priority, &j.Attempts, &j.MaxAttempts, &j.LastError, &j.RunAt, &j.LockedBy, &j.CreatedAt, &j.UpdatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, j)
+	}
+	return out, rows.Err()
+}
+
+// RetryJob re-queues a failed/dead/cancelled job (attempts reset). Returns false
+// if no such job exists in a retryable state.
+func (s *Store) RetryJob(ctx context.Context, id string) (bool, error) {
+	tag, err := s.pool.Exec(ctx,
+		`UPDATE jobs SET status='queued', attempts=0, run_at=now(), last_error='', locked_at=NULL, locked_by=NULL, updated_at=now()
+		 WHERE id=$1 AND status IN ('failed','dead','cancelled')`,
+		id,
+	)
+	if err != nil {
+		return false, fmt.Errorf("retry job: %w", err)
+	}
+	return tag.RowsAffected() > 0, nil
+}
+
+// CancelJob marks a still-queued job cancelled. Returns false if it isn't queued.
+func (s *Store) CancelJob(ctx context.Context, id string) (bool, error) {
+	tag, err := s.pool.Exec(ctx,
+		`UPDATE jobs SET status='cancelled', updated_at=now() WHERE id=$1 AND status='queued'`,
+		id,
+	)
+	if err != nil {
+		return false, fmt.Errorf("cancel job: %w", err)
+	}
+	return tag.RowsAffected() > 0, nil
+}
+
 // UpsertSchedule creates or updates a schedule by name (the natural key from the
 // app). next_run_at is reset so the scheduler recomputes it on its next tick.
 func (s *Store) UpsertSchedule(ctx context.Context, sc Schedule) (string, error) {
