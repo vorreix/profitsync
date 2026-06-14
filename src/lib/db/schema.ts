@@ -789,3 +789,82 @@ export const pushSubscriptions = pgTable("push_subscriptions", {
   userIdx: index("push_subscriptions_user_idx").on(table.userId),
   endpointUnique: uniqueIndex("push_subscriptions_endpoint_unique").on(table.endpoint),
 }))
+
+// ── Notification reminders (#6) ────────────────────────────────────────────────
+// User-defined "remind me to add transactions" schedules. The worker-driven cron
+// (POST /api/cron/notifications) materializes a reminder notification when a slot
+// is due. `schedule` holds { times: ["09:00","18:00"], weekdays: [1..7], timezone }
+// evaluated in the stored tz. `organization_id` is the org the reminder belongs to
+// (so the deep-linked Add-Transaction opens in the right workspace); NULL = follow
+// the user's active org. Delete-is-final.
+export const notificationReminders = pgTable("notification_reminders", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: text("user_id").notNull(), // owner (Clerk userId)
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }),
+  enabled: boolean("enabled").notNull().default(true),
+  label: text("label").notNull(),
+  // { times: string[] ("HH:mm"), weekdays: number[] (1=Mon..7=Sun), timezone: string }
+  schedule: jsonb("schedule").notNull().default({}),
+  lastFiredAt: timestamp("last_fired_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  userIdx: index("notification_reminders_user_idx").on(table.userId),
+  // One reminder per (user, label) so the settings list stays clean.
+  userLabelUnique: uniqueIndex("notification_reminders_user_label_unique").on(table.userId, table.label),
+}))
+
+// ── Admin broadcasts (#7) ──────────────────────────────────────────────────────
+// Admin-composed notifications fanned out to an audience. `audience` =
+// { type: 'all'|'push_enabled'|'users'|'group', userIds?: string[], groupId?: uuid }.
+// `schedule` = { type: 'now'|'at'|'recurring', at?: ISO, recurring?: { freq, interval, until? } }.
+// `importance=true` bypasses the recipient's category mute (always bells, attempts push).
+// `link_type` = 'internal' (an app route) | 'external' (a full URL). `stats` accrues
+// { delivered, push_sent } as the broadcast fans out. status: draft|scheduled|sending|sent|cancelled.
+export const broadcasts = pgTable("broadcasts", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  createdBy: text("created_by").notNull(), // admin Clerk userId
+  title: text("title").notNull(),
+  body: text("body").notNull().default(""),
+  imageUrl: text("image_url"), // optional hosted image URL (shown in push + bell)
+  link: text("link"), // route (internal) or full URL (external) opened on click
+  linkType: text("link_type").notNull().default("internal"), // internal | external
+  category: text("category").notNull().default("system"),
+  importance: boolean("importance").notNull().default(false),
+  audience: jsonb("audience").notNull().default({}),
+  schedule: jsonb("schedule").notNull().default({}),
+  status: text("status").notNull().default("draft"), // draft|scheduled|sending|sent|cancelled
+  nextFireAt: timestamp("next_fire_at"), // when the scheduler should next deliver it
+  sentAt: timestamp("sent_at"),
+  stats: jsonb("stats").notNull().default({}),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  createdByIdx: index("broadcasts_created_by_idx").on(table.createdBy, table.createdAt),
+  // The scheduler's hot query: which scheduled broadcasts are due.
+  dueIdx: index("broadcasts_due_idx").on(table.status, table.nextFireAt),
+}))
+
+// ── Saved user groups (#8) ─────────────────────────────────────────────────────
+// Reusable broadcast audiences. A group + its members are owned by the admin who
+// created it. Members are Clerk userIds (platform-wide, not org-scoped — broadcasts
+// are a platform feature).
+export const userGroups = pgTable("user_groups", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull(),
+  createdBy: text("created_by").notNull(), // admin Clerk userId
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  ownerNameUnique: uniqueIndex("user_groups_owner_name_unique").on(table.createdBy, table.name),
+}))
+
+export const userGroupMembers = pgTable("user_group_members", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  groupId: uuid("group_id").notNull().references(() => userGroups.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull(), // member (Clerk userId)
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  groupIdx: index("user_group_members_group_idx").on(table.groupId),
+  groupUserUnique: uniqueIndex("user_group_members_group_user_unique").on(table.groupId, table.userId),
+}))

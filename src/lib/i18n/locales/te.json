@@ -1412,6 +1412,13 @@
       "space_autosaved": {
         "title": "మీ Spaceలో ఆటోమేటిక్‌గా సేవ్ అయింది",
         "body": "{{space}}కి డబ్బు తరలించబడింది"
+      },
+      "add_transaction_reminder": {
+        "title": "మీ లావాదేవీలను జోడించే సమయం",
+        "body": "నేటి ఆదాయం మరియు ఖర్చులను నమోదు చేయడం మర్చిపోవద్దు."
+      },
+      "admin_broadcast": {
+        "title": "ప్రకటన"
       }
     },
     "client": {

@@ -1412,6 +1412,13 @@
       "space_autosaved": {
         "title": "تم الادخار تلقائيًا في مساحتك",
         "body": "تم نقل الأموال إلى {{space}}"
+      },
+      "add_transaction_reminder": {
+        "title": "حان وقت إضافة معاملاتك",
+        "body": "لا تنسَ تسجيل دخل ومصروفات اليوم."
+      },
+      "admin_broadcast": {
+        "title": "إعلان"
       }
     },
     "client": {

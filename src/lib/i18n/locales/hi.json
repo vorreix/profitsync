@@ -1412,6 +1412,13 @@
       "space_autosaved": {
         "title": "आपके Space में अपने आप सेव हुआ",
         "body": "{{space}} में पैसे डाले गए"
+      },
+      "add_transaction_reminder": {
+        "title": "अपने लेन-देन जोड़ने का समय",
+        "body": "आज की आय और व्यय दर्ज करना न भूलें।"
+      },
+      "admin_broadcast": {
+        "title": "घोषणा"
       }
     },
     "client": {

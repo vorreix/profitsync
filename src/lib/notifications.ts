@@ -45,8 +45,10 @@ export const NOTIFICATION_TYPES = {
   budget_exceeded: { category: "budget", i18nKey: "types.budget_exceeded" },
   recurring_posted: { category: "transactions", i18nKey: "types.recurring_posted" },
   space_autosaved: { category: "transactions", i18nKey: "types.space_autosaved" },
+  add_transaction_reminder: { category: "transactions", i18nKey: "types.add_transaction_reminder" },
   quotation_accepted: { category: "clients", i18nKey: "types.quotation_accepted" },
   system_announcement: { category: "system", i18nKey: "types.system_announcement" },
+  admin_broadcast: { category: "system", i18nKey: "types.admin_broadcast" },
 } as const satisfies Record<string, NotificationTypeDef>
 
 export type NotificationType = keyof typeof NOTIFICATION_TYPES

@@ -1412,6 +1412,13 @@
       "space_autosaved": {
         "title": "Auto-saved to your Space",
         "body": "Money moved into {{space}}"
+      },
+      "add_transaction_reminder": {
+        "title": "Time to add your transactions",
+        "body": "Don't forget to record today's income and expenses."
+      },
+      "admin_broadcast": {
+        "title": "Announcement"
       }
     },
     "client": {

@@ -1412,6 +1412,13 @@
       "space_autosaved": {
         "title": "Risparmio automatico nello Spazio",
         "body": "Denaro spostato in {{space}}"
+      },
+      "add_transaction_reminder": {
+        "title": "È ora di aggiungere le tue transazioni",
+        "body": "Non dimenticare di registrare le entrate e le uscite di oggi."
+      },
+      "admin_broadcast": {
+        "title": "Annuncio"
       }
     },
     "client": {
