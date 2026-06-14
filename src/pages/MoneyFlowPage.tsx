@@ -316,6 +316,7 @@ function MoreNode({ id, data }: NodeProps<Node<MoreData>>) {
           type="button"
           onClick={data.onOpenList}
           title={t("flow.viewInList")}
+          aria-label={t("flow.viewInList")}
           className={cn(
             "nodrag flex items-center justify-center gap-1 rounded-lg border bg-background/70 py-1.5 font-medium transition-colors hover:bg-muted hover:text-foreground",
             data.exhausted ? "flex-1" : "px-2.5",
@@ -608,6 +609,13 @@ export function MoneyFlowPage() {
   const userPositions = useRef<Record<string, { x: number; y: number }>>(saved.positions ?? {})
   const savedViewport = useRef(saved.viewport ?? null)
   const skipNextFit = useRef(!!saved.viewport)
+  // dataVersion mirror so an in-flight "load more" can detect that a fresh
+  // dataset (filter/mode change) landed mid-fetch and discard its stale page.
+  const dataVersionRef = useRef(0)
+  dataVersionRef.current = dataVersion
+  // Which "+N more" nodes have a load in flight — read during rebuilds so an
+  // unrelated rebuild (expanding another group) doesn't wipe the spinner.
+  const loadingKeysRef = useRef<Set<string>>(new Set())
 
   // Filter options (loaded once).
   useEffect(() => {
@@ -650,9 +658,11 @@ export function MoneyFlowPage() {
       if (selAccounts.size) params.set("accountId", [...selAccounts].join(","))
       const resp = await apiGet<FlowData | TimelineData>(`/api/flow?${params}`, token)
       setData(resp)
-      // Fresh dataset → drop any inline-loaded leaves from the previous query.
+      // Fresh dataset → drop any inline-loaded leaves + spinners from the
+      // previous query (a still-in-flight load-more is discarded on arrival).
       setExtraLeaves({})
       setExhausted(new Set())
+      loadingKeysRef.current.clear()
       setDataVersion((v) => v + 1)
     } catch {
       if (!silent) toast.error(t("flow.loadFailed"))
@@ -698,15 +708,19 @@ export function MoneyFlowPage() {
     })
   }, [])
 
-  const openTransactions = useCallback(() => {
+  const openTransactions = useCallback((category?: string) => {
     const params = new URLSearchParams()
     if (from) params.set("from", from)
     if (to) params.set("to", to)
+    if (category) params.set("category", category)
     navigate(`/transactions${params.toString() ? `?${params}` : ""}`)
   }, [navigate, from, to])
   const openMoreForGroup = useCallback((g: FlowGroup) => {
     if (g.kind === "client" && g.key) { navigate(`/clients/${g.key}`); return }
     if (g.kind === "account" && g.key) { navigate(`/wealth/${g.key}`); return }
+    // Category groups carry their filter through to the list (Uncategorized has
+    // no concrete category value, so it just opens the date-filtered list).
+    if (g.kind === "category" && g.key && g.key !== "Uncategorized") { openTransactions(g.key); return }
     openTransactions()
   }, [navigate, openTransactions])
   const openLeaf = useCallback((id: string) => navigate(`/transactions?view=${id}`), [navigate])
@@ -715,8 +729,11 @@ export function MoneyFlowPage() {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
 
-  // Flip a single "+N more" node's spinner without a full graph rebuild.
+  // Flip a single "+N more" node's spinner: update the in-flight set (so
+  // rebuilds preserve it) AND patch the live node (so it shows without a rebuild).
   const markLoading = useCallback((mkey: string, isLoading: boolean) => {
+    if (isLoading) loadingKeysRef.current.add(mkey)
+    else loadingKeysRef.current.delete(mkey)
     setNodes((nds) => nds.map((n) => (n.type === "more" && (n.data as { mkey?: string }).mkey === mkey ? { ...n, data: { ...n.data, loading: isLoading } } : n)))
   }, [setNodes])
 
@@ -724,6 +741,7 @@ export function MoneyFlowPage() {
   // mkey; the rebuild this triggers grows the leaf stack inline. No camera move.
   const loadMore = useCallback(async (info: { mkey: string; rawKey: string; offset: number; isTimeline: boolean }) => {
     markLoading(info.mkey, true)
+    const rev = dataVersionRef.current // detect a fresh dataset landing mid-fetch
     try {
       const token = await getToken()
       if (!token) { markLoading(info.mkey, false); return }
@@ -740,14 +758,17 @@ export function MoneyFlowPage() {
       if (selClients.size) params.set("clientId", [...selClients].join(","))
       if (selAccounts.size) params.set("accountId", [...selAccounts].join(","))
       const resp = await apiGet<{ leaves: FlowLeaf[]; has_more: boolean }>(`/api/flow?${params}`, token)
+      // Filters/mode changed while this was in flight → the page belongs to a
+      // stale query; drop it rather than merging mismatched leaves.
+      if (rev !== dataVersionRef.current) { markLoading(info.mkey, false); return }
       if (resp.leaves.length === 0) {
         setExhausted((prev) => new Set(prev).add(info.mkey))
         markLoading(info.mkey, false)
         return
       }
+      markLoading(info.mkey, false) // clear the spinner; the rebuild below shows the new leaves
       setExtraLeaves((prev) => ({ ...prev, [info.mkey]: [...(prev[info.mkey] ?? []), ...resp.leaves] }))
       if (!resp.has_more) setExhausted((prev) => new Set(prev).add(info.mkey))
-      // the spinner clears via the structural rebuild setExtraLeaves triggers
     } catch {
       toast.error(t("flow.loadFailed"))
       markLoading(info.mkey, false)
@@ -801,7 +822,8 @@ export function MoneyFlowPage() {
             position,
             data: {
               ...n.data,
-              loading: false,
+              // preserve an in-flight spinner across unrelated rebuilds
+              loading: loadingKeysRef.current.has(md.mkey),
               exhausted: exhausted.has(md.mkey),
               onLoadMore: () => loadMore({ mkey: md.mkey, rawKey: g ? (g.key ?? "__none__") : p ? p.key : "", offset: shown, isTimeline: !!p }),
               onOpenList: () => (g ? openMoreForGroup(g) : openTransactions()),

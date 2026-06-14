@@ -89,7 +89,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // offset/limit so the graph grows on demand instead of shipping everything.
   if (q.leaves) {
     const limit = Math.min(40, Math.max(1, Number.parseInt(String(q.limit ?? "12"), 10) || 12))
-    const offset = Math.max(0, Number.parseInt(String(q.offset ?? "0"), 10) || 0)
+    // Clamp the offset: it's deep-pagination of ONE group, so a sane ceiling
+    // (50k ≈ 4000 pages) is plenty and stops a crafted ?offset=1e9 from making
+    // Postgres skip-scan millions of rows. Offset pagination is safe to use here
+    // because any mutation triggers a silent flow refresh that resets paging.
+    const offset = Math.min(50000, Math.max(0, Number.parseInt(String(q.offset ?? "0"), 10) || 0))
     const key = typeof q.key === "string" ? q.key : ""
     let extra: SQL
     if (q.mode === "timeline") {
