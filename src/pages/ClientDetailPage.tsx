@@ -28,11 +28,13 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "sonner"
-import { ArrowLeft, Plus, Trash2, DollarSign, Building2, Mail, Phone, FileText, ArrowUpRight, ArrowDownRight, Pencil, Calendar, Paperclip, Upload, X, FolderOpen, Archive, ArchiveRestore, Eye, ChevronRight, Repeat } from "lucide-react"
+import { ArrowLeft, Plus, Trash2, DollarSign, Building2, Mail, Phone, FileText, ArrowUpRight, ArrowDownRight, Pencil, Calendar, Paperclip, Upload, X, FolderOpen, Archive, ArchiveRestore, Eye, ChevronRight, Repeat, Bell } from "lucide-react"
+import { useTranslation } from "react-i18next"
+import { NotificationPreferencesForm } from "@/components/notifications/NotificationPreferencesForm"
 import { MoneyBag } from "@/components/icons/MoneyBag"
 import { ExpandableSearch } from "@/components/ExpandableSearch"
 
@@ -86,9 +88,11 @@ export function ClientDetailPage() {
   const [defaultBudget, setDefaultBudget] = useState<Budget | null>(null)
   const [budgetDialogOpen, setBudgetDialogOpen] = useState(false)
 
+  const { t } = useTranslation()
   const { activeOrg } = useOrg()
   const canModify = canWriteRole(activeOrg?.role)
   const canRemove = canDeleteRole(activeOrg?.role)
+  const [notifOpen, setNotifOpen] = useState(false)
 
   const loadViewTxAtt = useCallback(async (txId: string) => {
     setViewTxAtt([])
@@ -456,6 +460,7 @@ export function ClientDetailPage() {
               {client.closed_at ? <ArchiveRestore className="size-4" /> : <Archive className="size-4" />}
             </Button>
             <Button variant="outline" size="icon" onClick={() => setOverviewOpen(true)} aria-label="View client"><Eye className="size-4" /></Button>
+            <Button variant="outline" size="icon" onClick={() => setNotifOpen(true)} aria-label={t("notifications:settings.title")} title={t("notifications:settings.title")}><Bell className="size-4" /></Button>
             <Button
               variant="outline"
               size="icon"
@@ -735,6 +740,17 @@ export function ClientDetailPage() {
             <Button variant="outline" onClick={() => setEditTxDialogOpen(false)}>Cancel</Button>
             <Button onClick={handleEditTransaction} disabled={saving}>{saving ? "Saving..." : "Save"}</Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Client notification settings */}
+      <Dialog open={notifOpen} onOpenChange={setNotifOpen}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{t("notifications:settings.title")}</DialogTitle>
+            <DialogDescription>{t("notifications:settings.client_description")}</DialogDescription>
+          </DialogHeader>
+          {client && <NotificationPreferencesForm scope="client" clientId={client.id} canEdit={canModify} />}
         </DialogContent>
       </Dialog>
 

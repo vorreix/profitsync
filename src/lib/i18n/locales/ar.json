@@ -207,7 +207,11 @@
     "removePhoto": "إزالة",
     "photoHint": "الصورة المربعة هي الأفضل. PNG أو JPG أو WebP.",
     "photoUpdated": "تم تحديث صورة الملف الشخصي",
-    "photoInvalid": "تعذرت قراءة الصورة — جرب ملفًا آخر"
+    "photoInvalid": "تعذرت قراءة الصورة — جرب ملفًا آخر",
+    "tabs": {
+      "profile": "الملف الشخصي",
+      "preferences": "التفضيلات"
+    }
   },
   "toast": {
     "profileLoadFailed": "فشل تحميل الملف الشخصي",
@@ -1321,68 +1325,90 @@
     "spaceBadge": "مساحة"
   },
   "notifications": {
-    "title": "Notifications",
-    "bell_label": "Notifications",
-    "empty": "You're all caught up",
-    "empty_hint": "New notifications will show up here.",
-    "mark_all_read": "Mark all as read",
-    "view_all": "View all",
-    "mark_read": "Mark as read",
-    "mark_unread": "Mark as unread",
-    "delete": "Delete",
-    "deleted": "Notification deleted",
-    "load_more": "Load more",
+    "title": "الإشعارات",
+    "bell_label": "الإشعارات",
+    "empty": "لا توجد إشعارات جديدة",
+    "empty_hint": "ستظهر الإشعارات الجديدة هنا.",
+    "mark_all_read": "تحديد الكل كمقروء",
+    "view_all": "عرض الكل",
+    "mark_read": "تحديد كمقروء",
+    "mark_unread": "تحديد كغير مقروء",
+    "delete": "حذف",
+    "deleted": "تم حذف الإشعار",
+    "load_more": "تحميل المزيد",
     "filter": {
-      "all": "All",
-      "unread": "Unread"
+      "all": "الكل",
+      "unread": "غير مقروء"
     },
     "categories": {
-      "team": "Team",
-      "billing": "Billing",
-      "budget": "Budgets",
-      "transactions": "Transactions",
-      "clients": "Clients",
-      "system": "System"
+      "team": "الفريق",
+      "billing": "الفواتير",
+      "budget": "الميزانيات",
+      "transactions": "العمليات",
+      "clients": "العملاء",
+      "system": "النظام"
     },
     "channels": {
-      "in_app": "In-app",
-      "web_push": "Push"
+      "in_app": "داخل التطبيق",
+      "web_push": "إشعار فوري"
     },
     "time": {
-      "just_now": "Just now",
-      "minutes": "{{count}}m ago",
-      "hours": "{{count}}h ago",
-      "days": "{{count}}d ago"
+      "just_now": "الآن",
+      "minutes": "منذ {{count}} دقيقة",
+      "hours": "منذ {{count}} ساعة",
+      "days": "منذ {{count}} يوم"
     },
     "settings": {
-      "title": "Notifications",
-      "description": "Choose what you get notified about and where.",
-      "user_description": "Your personal notification preferences across all workspaces.",
-      "org_description": "Organization-wide notification policy for this workspace.",
-      "client_description": "Notification settings just for this client.",
-      "mute_all": "Pause all notifications",
-      "mute_all_hint": "Turn off every notification at this level.",
-      "channel_in_app": "In-app",
-      "channel_push": "Push",
-      "saved": "Notification settings saved",
-      "save": "Save",
-      "saving": "Saving…",
-      "manage_link": "Manage notifications",
-      "category_hint_team": "Invitations, members and role changes",
-      "category_hint_billing": "Payments, subscription and plan changes",
-      "category_hint_budget": "Budget warnings and overspend alerts",
-      "category_hint_transactions": "Recurring transactions and activity",
-      "category_hint_clients": "Quotations and client updates",
-      "category_hint_system": "Product and account announcements"
+      "title": "الإشعارات",
+      "description": "اختر ما تريد الإشعار عنه وأين.",
+      "user_description": "تفضيلاتك الشخصية للإشعارات عبر جميع المساحات.",
+      "org_description": "سياسة الإشعارات على مستوى المؤسسة لهذه المساحة.",
+      "client_description": "إعدادات الإشعارات لهذا العميل فقط.",
+      "mute_all": "إيقاف جميع الإشعارات",
+      "mute_all_hint": "أوقف كل الإشعارات على هذا المستوى.",
+      "channel_in_app": "داخل التطبيق",
+      "channel_push": "إشعار فوري",
+      "saved": "تم حفظ إعدادات الإشعارات",
+      "save": "حفظ",
+      "saving": "جاري الحفظ…",
+      "manage_link": "إدارة الإشعارات",
+      "category_hint_team": "الدعوات وتغييرات الأعضاء والأدوار",
+      "category_hint_billing": "الدفعات وتغييرات الاشتراك والخطة",
+      "category_hint_budget": "تنبيهات الميزانية والإنفاق الزائد",
+      "category_hint_transactions": "العمليات المتكررة والنشاط",
+      "category_hint_clients": "الاقتباسات وتحديثات العملاء",
+      "category_hint_system": "إعلانات المنتج والحساب"
     },
     "push": {
-      "enable": "Enable push notifications",
-      "enabled": "Push notifications enabled",
-      "disable": "Disable push notifications",
-      "disabled": "Push notifications disabled",
-      "blocked": "Notifications are blocked in your browser settings",
-      "unsupported": "Push notifications aren't supported on this device",
-      "description": "Get notified even when ProfitSync isn't open."
+      "enable": "تفعيل الإشعارات الفورية",
+      "enabled": "الإشعارات الفورية مفعلة",
+      "disable": "تعطيل الإشعارات الفورية",
+      "disabled": "الإشعارات الفورية معطلة",
+      "blocked": "الإشعارات محظورة في إعدادات متصفحك",
+      "unsupported": "الإشعارات الفورية غير مدعومة على هذا الجهاز",
+      "description": "احصل على إشعارات حتى عندما لا يكون ProfitSync مفتوحًا."
+    },
+    "types": {
+      "invitation_accepted": {
+        "title": "تم قبول الدعوة",
+        "body": "انضم {{name}} إلى {{org}}"
+      },
+      "role_changed": {
+        "title": "تم تغيير دورك",
+        "body": "أنت الآن {{role}} في {{org}}"
+      },
+      "member_removed": {
+        "title": "تم إزالتك من المؤسسة",
+        "body": "تم إزالتك من {{org}}"
+      },
+      "payment_failed": {
+        "title": "فشل الدفع",
+        "body": "لم نتمكن من معالجة آخر دفعة لك. حدث بيانات الفواتير للحفاظ على Premium."
+      },
+      "budget_exceeded": {
+        "title": "تجاوز الميزانية",
+        "body": "تجاوزت {{name}} ميزانية {{period}}."
+      }
     }
   }
 }
