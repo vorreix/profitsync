@@ -1361,8 +1361,8 @@
     "settings": {
       "title": "Benachrichtigungen",
       "description": "Wähle aus, worüber und wo du benachrichtigt werden möchtest.",
-      "user_description": "Deine persönlichen Benachrichtigungseinstellungen für alle Arbeitsbereiche.",
-      "org_description": "Organisationsweite Benachrichtigungsrichtlinie für diesen Arbeitsbereich.",
+      "user_description": "Deine Standard-Benachrichtigungseinstellungen. Organisationen können sie für ihre Aktivität überschreiben.",
+      "org_description": "Überschreibt die persönlichen Standardeinstellungen jedes Mitglieds für diesen Arbeitsbereich.",
       "client_description": "Benachrichtigungseinstellungen nur für diesen Kunden.",
       "mute_all": "Alle Benachrichtigungen pausieren",
       "mute_all_hint": "Deaktiviere alle Benachrichtigungen auf dieser Ebene.",
@@ -1408,6 +1408,25 @@
       "budget_exceeded": {
         "title": "Budget überschritten",
         "body": "{{name}} hat sein {{period}}-Budget überschritten."
+      },
+      "space_autosaved": {
+        "title": "Automatisch in deinen Space gespart",
+        "body": "Geld nach {{space}} verschoben"
+      }
+    },
+    "client": {
+      "mute": "Benachrichtigungen für diesen Kunden stummschalten",
+      "mute_hint": "Alle Benachrichtigungen zu diesem Kunden ausschalten.",
+      "notify_about": "Benachrichtige mich über",
+      "triggers": {
+        "budget": "Budgetüberschreitung",
+        "transactions": "Transaktionsaktivität",
+        "clients": "Angebote & Updates"
+      },
+      "trigger_hints": {
+        "budget": "Wenn dieser Kunde das Budget überschreitet",
+        "transactions": "Wiederkehrende und wichtige Transaktionen",
+        "clients": "Angebotsstatus und Kundenänderungen"
       }
     }
   }
