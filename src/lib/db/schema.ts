@@ -705,3 +705,87 @@ export const budgetHistory = pgTable("budget_history", {
 }, (table) => ({
   lookupIdx: index("budget_history_lookup_idx").on(table.organizationId, table.clientId, table.createdAt),
 }))
+
+// ── Notifications ─────────────────────────────────────────────────────────────
+// Persisted, per-recipient notifications. Platform-agnostic: any client (web,
+// PWA, future native app / wearable) reads these via /api/notifications, so the
+// bell + history are just a view over these rows. `organization_id` is NULL for
+// account-level notifications (e.g. a cross-org invitation) so they surface
+// regardless of the active org.
+export const notifications = pgTable("notifications", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: text("user_id").notNull(), // recipient (Clerk userId)
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }),
+  type: text("type").notNull(), // see NOTIFICATION_TYPES in src/lib/notifications.ts
+  category: text("category").notNull().default("system"), // grouping for preferences
+  title: text("title").notNull(), // English fallback; client prefers data.i18nKey
+  body: text("body").notNull().default(""),
+  // i18n + navigation payload: { i18nKey?, i18nParams?, ... }. The client renders
+  // data.i18nKey in the user's language when present, falling back to title/body.
+  data: jsonb("data").notNull().default({}),
+  link: text("link"), // in-app route to open on click
+  actorUserId: text("actor_user_id"), // who triggered it, if applicable
+  clientId: uuid("client_id").references(() => clients.id, { onDelete: "cascade" }),
+  // Set for event-sourced notifications to make repeated webhooks / lazy GETs
+  // idempotent (see onePerDedupe).
+  dedupeKey: text("dedupe_key"),
+  readAt: timestamp("read_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  // The bell/history query: a recipient's rows, newest first.
+  recipientIdx: index("notifications_recipient_idx").on(table.userId, table.organizationId, table.createdAt),
+  // Cheap unread-count lookups.
+  unreadIdx: index("notifications_unread_idx").on(table.userId, table.readAt),
+  // At most one notification per (recipient, dedupe_key): webhook retries and
+  // repeated lazy materialization can't double-notify.
+  onePerDedupe: uniqueIndex("notifications_user_dedupe_unique")
+    .on(table.userId, table.dedupeKey)
+    .where(sql`dedupe_key IS NOT NULL`),
+}))
+
+// ── Notification preferences ──────────────────────────────────────────────────
+// One polymorphic row per (scope, target): scope='user' → user_id; 'organization'
+// → organization_id; 'client' → (organization_id, client_id). `preferences` holds
+// the NotificationPreferences shape from src/lib/notifications.ts (per-category
+// channel toggles + a master mute). Resolution cascades client → org → user →
+// system defaults.
+export const notificationPreferences = pgTable("notification_preferences", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  scope: text("scope").notNull(), // user | organization | client
+  userId: text("user_id"), // set when scope='user'
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }),
+  clientId: uuid("client_id").references(() => clients.id, { onDelete: "cascade" }),
+  preferences: jsonb("preferences").notNull().default({}),
+  updatedBy: text("updated_by"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  // At most one row per scope target (NULL columns are excluded by the partial
+  // predicate so the unique key never spans irrelevant nulls).
+  userScopeUnique: uniqueIndex("notif_prefs_user_unique").on(table.userId).where(sql`scope = 'user'`),
+  orgScopeUnique: uniqueIndex("notif_prefs_org_unique").on(table.organizationId).where(sql`scope = 'organization'`),
+  clientScopeUnique: uniqueIndex("notif_prefs_client_unique")
+    .on(table.organizationId, table.clientId)
+    .where(sql`scope = 'client'`),
+}))
+
+// ── Push subscriptions ────────────────────────────────────────────────────────
+// Delivery endpoints for push channels. `channel='web_push'` rows store the Web
+// Push endpoint + VAPID keys. Future native channels (fcm/apns for
+// android/ios/wearables) add rows with a different channel and the device token
+// in `endpoint` — no schema change needed.
+export const pushSubscriptions = pgTable("push_subscriptions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: text("user_id").notNull(),
+  channel: text("channel").notNull().default("web_push"), // web_push | fcm | apns
+  endpoint: text("endpoint").notNull(),
+  p256dh: text("p256dh").notNull().default(""), // web push public key
+  auth: text("auth").notNull().default(""), // web push auth secret
+  platform: text("platform").notNull().default("web"), // web | android | ios | wearable
+  userAgent: text("user_agent").notNull().default(""),
+  createdAt: timestamp("created_at").defaultNow(),
+  lastSeenAt: timestamp("last_seen_at").defaultNow(),
+}, (table) => ({
+  userIdx: index("push_subscriptions_user_idx").on(table.userId),
+  endpointUnique: uniqueIndex("push_subscriptions_endpoint_unique").on(table.endpoint),
+}))

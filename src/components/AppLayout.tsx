@@ -34,6 +34,8 @@ import { OrgProvider, useOrg } from "@/lib/org-context"
 import { AdminProvider, useAdmin } from "@/lib/admin-context"
 import { PageFilterProvider } from "@/lib/page-filter-context"
 import { DataRefreshProvider } from "@/lib/data-refresh-context"
+import { NotificationProvider } from "@/lib/notification-context"
+import { NotificationBell } from "@/components/notifications/NotificationBell"
 import { accountTypeAllows, type AccountType } from "@/lib/types"
 import { OrgSwitcher } from "@/components/OrgSwitcher"
 import { MobileAppLayout } from "@/components/MobileAppLayout"
@@ -309,6 +311,7 @@ function AppLayoutInner() {
             })()}
           </span>
           <div className="ml-auto flex items-center gap-3">
+            <NotificationBell />
             <InstallButton
               label={t("pwa.installButton")}
               iosTitle={t("pwa.iosTitle")}
@@ -401,9 +404,11 @@ export function AppLayout() {
       <AdminProvider>
         <CurrencyProvider>
           <DataRefreshProvider>
-            <PageFilterProvider>
-              <AppLayoutInner />
-            </PageFilterProvider>
+            <NotificationProvider>
+              <PageFilterProvider>
+                <AppLayoutInner />
+              </PageFilterProvider>
+            </NotificationProvider>
           </DataRefreshProvider>
         </CurrencyProvider>
       </AdminProvider>

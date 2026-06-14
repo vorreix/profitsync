@@ -14,6 +14,12 @@ import { matchRoute, type RoutePattern } from "../src/lib/api-router.js"
 
 import profile from "./_routes/profile.js"
 import onboarding from "./_routes/onboarding.js"
+import notificationsList from "./_routes/notifications.js"
+import notificationsUnreadCount from "./_routes/notifications/unread-count.js"
+import notificationsReadAll from "./_routes/notifications/read-all.js"
+import notificationsPreferences from "./_routes/notifications/preferences.js"
+import notificationsPush from "./_routes/notifications/push.js"
+import notificationById from "./_routes/notifications/[id].js"
 import clients from "./_routes/clients.js"
 import clientsBulkDelete from "./_routes/clients/bulk-delete.js"
 import clientById from "./_routes/clients/[id].js"
@@ -115,6 +121,15 @@ type ApiHandler = (req: VercelRequest, res: VercelResponse) => unknown | Promise
 const routes: RoutePattern<ApiHandler>[] = [
   { segments: ["profile"], handler: profile },
   { segments: ["onboarding"], handler: onboarding },
+
+  // Notifications. Static length-2 routes before the dynamic ":id". (preferences
+  // and push routes are added in later branches and also precede ":id".)
+  { segments: ["notifications"], handler: notificationsList },
+  { segments: ["notifications", "unread-count"], handler: notificationsUnreadCount },
+  { segments: ["notifications", "read-all"], handler: notificationsReadAll },
+  { segments: ["notifications", "preferences"], handler: notificationsPreferences },
+  { segments: ["notifications", "push"], handler: notificationsPush },
+  { segments: ["notifications", ":id"], handler: notificationById },
 
   { segments: ["clients"], handler: clients },
   { segments: ["clients", "bulk-delete"], handler: clientsBulkDelete },
