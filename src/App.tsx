@@ -36,6 +36,7 @@ const ReferralPage = lazy(() => import("@/pages/ReferralPage").then((m) => ({ de
 const QuotationsPage = lazy(() => import("@/pages/QuotationsPage").then((m) => ({ default: m.QuotationsPage })))
 const TrashPage = lazy(() => import("@/pages/TrashPage").then((m) => ({ default: m.TrashPage })))
 const ProfilePage = lazy(() => import("@/pages/ProfilePage").then((m) => ({ default: m.ProfilePage })))
+const NotificationsPage = lazy(() => import("@/pages/NotificationsPage").then((m) => ({ default: m.NotificationsPage })))
 const OrganizationsPage = lazy(() => import("@/pages/OrganizationsPage").then((m) => ({ default: m.OrganizationsPage })))
 const OrgMembersPage = lazy(() => import("@/pages/OrgMembersPage").then((m) => ({ default: m.OrgMembersPage })))
 const SubscriptionPage = lazy(() => import("@/pages/SubscriptionPage").then((m) => ({ default: m.SubscriptionPage })))
@@ -171,6 +172,7 @@ export function App() {
             <Route path="organizations/:id/members" element={<BusinessOnlyRoute feature="members"><OrgMembersPage /></BusinessOnlyRoute>} />
             <Route path="subscription" element={<SubscriptionPage />} />
             <Route path="trash" element={<TrashPage />} />
+            <Route path="notifications" element={<NotificationsPage />} />
             <Route path="profile" element={<ProfilePage />} />
           </Route>
         </Routes>

@@ -44,6 +44,10 @@ export function buildPwaPlugin() {
     workbox: {
       globPatterns: ["**/*.{js,css,html,svg,png,ico,woff,woff2}"],
       globIgnores: PRECACHE_GLOB_IGNORES,
+      // Pull our push + notificationclick handlers into the generated worker.
+      // public/push-sw.js is served at /push-sw.js and kept out of the precache
+      // (see PRECACHE_GLOB_IGNORES) so it can be importScripts()'d at install.
+      importScripts: ["/push-sw.js"],
       // Explicit null: vite-plugin-pwa otherwise injects its default
       // navigateFallback ("index.html"), whose NavigationRoute would be
       // registered BEFORE the runtimeCaching route below and answer every

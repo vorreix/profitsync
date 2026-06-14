@@ -8,6 +8,7 @@ import { logAudit } from "../_lib/audit.js"
 import { balanceDelta } from "../../src/lib/wealth-ledger.js"
 import { amountExceedsLimit } from "../../src/lib/money.js"
 import { materializeDueRecurring } from "../_lib/recurring-materialize.js"
+import { notifyIfBudgetExceeded } from "../_lib/notify-budget.js"
 
 const PAGE_SIZE = 20
 
@@ -377,6 +378,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .set({ currentBalance: String(nextBalance), updatedBy: userId, updatedAt: new Date() })
       .where(eq(wealthAccounts.id, wealth_account_id))
     await logAudit({ orgId, entityType: "transaction", entityId: row.id, action: "create", actorId: userId })
+    // Budget-exceeded alert (fire-and-forget): never blocks or fails the write.
+    if (type === "outgoing") void notifyIfBudgetExceeded(orgId, clientId, userId).catch(() => {})
     return res.status(201).json(serialize(row))
   }
 

@@ -207,7 +207,11 @@
     "removePhoto": "Rimuovi",
     "photoHint": "Un'immagine quadrata funziona meglio. PNG, JPG o WebP.",
     "photoUpdated": "Foto profilo aggiornata",
-    "photoInvalid": "Impossibile leggere l'immagine — prova con un altro file"
+    "photoInvalid": "Impossibile leggere l'immagine — prova con un altro file",
+    "tabs": {
+      "profile": "Profilo",
+      "preferences": "Preferenze"
+    }
   },
   "toast": {
     "profileLoadFailed": "Impossibile caricare il profilo",
@@ -1319,5 +1323,92 @@
     "afterFund": "A {{account}} resteranno {{amount}}",
     "viewDetails": "Vedi dettagli",
     "spaceBadge": "Spazio"
+  },
+  "notifications": {
+    "title": "Notifiche",
+    "bell_label": "Notifiche",
+    "empty": "Sei al corrente",
+    "empty_hint": "Le nuove notifiche appariranno qui.",
+    "mark_all_read": "Segna tutto come letto",
+    "view_all": "Visualizza tutto",
+    "mark_read": "Segna come letto",
+    "mark_unread": "Segna come non letto",
+    "delete": "Elimina",
+    "deleted": "Notifica eliminata",
+    "load_more": "Carica altre",
+    "filter": {
+      "all": "Tutte",
+      "unread": "Non lette"
+    },
+    "categories": {
+      "team": "Team",
+      "billing": "Fatturazione",
+      "budget": "Budget",
+      "transactions": "Transazioni",
+      "clients": "Client",
+      "system": "Sistema"
+    },
+    "channels": {
+      "in_app": "In-app",
+      "web_push": "Push"
+    },
+    "time": {
+      "just_now": "Proprio ora",
+      "minutes": "{{count}}m fa",
+      "hours": "{{count}}h fa",
+      "days": "{{count}}g fa"
+    },
+    "settings": {
+      "title": "Notifiche",
+      "description": "Scegli di cosa vuoi ricevere notifiche e dove.",
+      "user_description": "Le tue preferenze di notifica personali su tutti gli spazi di lavoro.",
+      "org_description": "Politica di notifica a livello organizzativo per questo spazio di lavoro.",
+      "client_description": "Impostazioni di notifica solo per questo client.",
+      "mute_all": "Pausa tutte le notifiche",
+      "mute_all_hint": "Disattiva ogni notifica a questo livello.",
+      "channel_in_app": "In-app",
+      "channel_push": "Push",
+      "saved": "Impostazioni di notifica salvate",
+      "save": "Salva",
+      "saving": "Salvataggio…",
+      "manage_link": "Gestisci notifiche",
+      "category_hint_team": "Inviti, membri e cambi di ruolo",
+      "category_hint_billing": "Pagamenti, sottoscrizione e cambi di piano",
+      "category_hint_budget": "Avvisi di budget e notifiche di sforamento",
+      "category_hint_transactions": "Transazioni ricorrenti e attività",
+      "category_hint_clients": "Preventivi e aggiornamenti client",
+      "category_hint_system": "Annunci di prodotto e account"
+    },
+    "push": {
+      "enable": "Abilita notifiche push",
+      "enabled": "Notifiche push abilitate",
+      "disable": "Disabilita notifiche push",
+      "disabled": "Notifiche push disabilitate",
+      "blocked": "Le notifiche sono bloccate nelle impostazioni del browser",
+      "unsupported": "Le notifiche push non sono supportate su questo dispositivo",
+      "description": "Ricevi notifiche anche quando ProfitSync non è aperto."
+    },
+    "types": {
+      "invitation_accepted": {
+        "title": "Invito accettato",
+        "body": "{{name}} si è unito a {{org}}"
+      },
+      "role_changed": {
+        "title": "Il tuo ruolo è cambiato",
+        "body": "Ora sei {{role}} in {{org}}"
+      },
+      "member_removed": {
+        "title": "Rimosso dall'organizzazione",
+        "body": "Sei stato rimosso da {{org}}"
+      },
+      "payment_failed": {
+        "title": "Pagamento non riuscito",
+        "body": "Non abbiamo potuto elaborare il tuo ultimo pagamento. Aggiorna la tua fatturazione per mantenere Premium."
+      },
+      "budget_exceeded": {
+        "title": "Budget superato",
+        "body": "{{name}} ha superato il suo budget {{period}}."
+      }
+    }
   }
 }

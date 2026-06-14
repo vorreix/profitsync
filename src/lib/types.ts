@@ -378,3 +378,47 @@ export type BlogPostSummary = Omit<
   BlogPost,
   "content" | "author_user_id" | "seo_title" | "seo_description" | "author_bio"
 >
+
+// ── Notifications ─────────────────────────────────────────────────────────────
+// API row shapes (snake_case, as returned by serialize()). The preference shape
+// and the category/channel enums live in src/lib/notifications.ts (dependency-free,
+// shared with the API + vitest). Named `AppNotification` to avoid colliding with
+// the DOM `Notification` global.
+export type NotificationData = {
+  i18nKey?: string
+  i18nParams?: Record<string, string | number>
+  [key: string]: unknown
+}
+
+export type AppNotification = {
+  id: string
+  user_id: string
+  organization_id: string | null
+  type: string
+  category: string
+  title: string
+  body: string
+  data: NotificationData
+  link: string | null
+  actor_user_id: string | null
+  client_id: string | null
+  read_at: string | null
+  created_at: string
+}
+
+export type NotificationListResponse = {
+  notifications: AppNotification[]
+  next_cursor: string | null
+  unread_count: number
+}
+
+export type PushSubscriptionRow = {
+  id: string
+  user_id: string
+  channel: string
+  endpoint: string
+  platform: string
+  user_agent: string
+  created_at: string
+  last_seen_at: string
+}
