@@ -1321,68 +1321,90 @@
     "spaceBadge": "स्पेस"
   },
   "notifications": {
-    "title": "Notifications",
-    "bell_label": "Notifications",
-    "empty": "You're all caught up",
-    "empty_hint": "New notifications will show up here.",
-    "mark_all_read": "Mark all as read",
-    "view_all": "View all",
-    "mark_read": "Mark as read",
-    "mark_unread": "Mark as unread",
-    "delete": "Delete",
-    "deleted": "Notification deleted",
-    "load_more": "Load more",
+    "title": "सूचनाएँ",
+    "bell_label": "सूचनाएँ",
+    "empty": "आप सब कुछ अपडेट हैं",
+    "empty_hint": "नई सूचनाएँ यहाँ दिखाई देंगी।",
+    "mark_all_read": "सभी को पढ़ा हुआ चिह्नित करें",
+    "view_all": "सभी देखें",
+    "mark_read": "पढ़ा हुआ चिह्नित करें",
+    "mark_unread": "अपठित चिह्नित करें",
+    "delete": "हटाएँ",
+    "deleted": "सूचना हटा दी गई",
+    "load_more": "और लोड करें",
     "filter": {
-      "all": "All",
-      "unread": "Unread"
+      "all": "सभी",
+      "unread": "अपठित"
     },
     "categories": {
-      "team": "Team",
-      "billing": "Billing",
-      "budget": "Budgets",
-      "transactions": "Transactions",
-      "clients": "Clients",
-      "system": "System"
+      "team": "टीम",
+      "billing": "बिलिंग",
+      "budget": "बजट",
+      "transactions": "लेन-देन",
+      "clients": "क्लाइंट",
+      "system": "सिस्टम"
     },
     "channels": {
-      "in_app": "In-app",
-      "web_push": "Push"
+      "in_app": "इन-ऐप",
+      "web_push": "पुश"
     },
     "time": {
-      "just_now": "Just now",
-      "minutes": "{{count}}m ago",
-      "hours": "{{count}}h ago",
-      "days": "{{count}}d ago"
+      "just_now": "अभी",
+      "minutes": "{{count}}मि पहले",
+      "hours": "{{count}}घं पहले",
+      "days": "{{count}}दि पहले"
     },
     "settings": {
-      "title": "Notifications",
-      "description": "Choose what you get notified about and where.",
-      "user_description": "Your personal notification preferences across all workspaces.",
-      "org_description": "Organization-wide notification policy for this workspace.",
-      "client_description": "Notification settings just for this client.",
-      "mute_all": "Pause all notifications",
-      "mute_all_hint": "Turn off every notification at this level.",
-      "channel_in_app": "In-app",
-      "channel_push": "Push",
-      "saved": "Notification settings saved",
-      "save": "Save",
-      "saving": "Saving…",
-      "manage_link": "Manage notifications",
-      "category_hint_team": "Invitations, members and role changes",
-      "category_hint_billing": "Payments, subscription and plan changes",
-      "category_hint_budget": "Budget warnings and overspend alerts",
-      "category_hint_transactions": "Recurring transactions and activity",
-      "category_hint_clients": "Quotations and client updates",
-      "category_hint_system": "Product and account announcements"
+      "title": "सूचनाएँ",
+      "description": "चुनें कि आप किस बारे में और कहाँ सूचित होना चाहते हैं।",
+      "user_description": "सभी वर्कस्पेस में आपकी व्यक्तिगत सूचना वरीयताएँ।",
+      "org_description": "इस वर्कस्पेस के लिए संगठन-व्यापी सूचना नीति।",
+      "client_description": "केवल इस क्लाइंट के लिए सूचना सेटिंग।",
+      "mute_all": "सभी सूचनाएँ रोकें",
+      "mute_all_hint": "इस स्तर पर हर सूचना बंद करें।",
+      "channel_in_app": "इन-ऐप",
+      "channel_push": "पुश",
+      "saved": "सूचना सेटिंग सहेजी गई",
+      "save": "सहेजें",
+      "saving": "सहेज रहे हैं…",
+      "manage_link": "सूचनाएँ प्रबंधित करें",
+      "category_hint_team": "आमंत्रण, सदस्य और भूमिका परिवर्तन",
+      "category_hint_billing": "भुगतान, सदस्यता और योजना परिवर्तन",
+      "category_hint_budget": "बजट चेतावनी और ओवरस्पेंड सचेतन",
+      "category_hint_transactions": "आवर्ती लेन-देन और गतिविधि",
+      "category_hint_clients": "उद्धरण और क्लाइंट अपडेट",
+      "category_hint_system": "उत्पाद और खाता घोषणाएँ"
     },
     "push": {
-      "enable": "Enable push notifications",
-      "enabled": "Push notifications enabled",
-      "disable": "Disable push notifications",
-      "disabled": "Push notifications disabled",
-      "blocked": "Notifications are blocked in your browser settings",
-      "unsupported": "Push notifications aren't supported on this device",
-      "description": "Get notified even when ProfitSync isn't open."
+      "enable": "पुश सूचनाएँ सक्षम करें",
+      "enabled": "पुश सूचनाएँ सक्षम",
+      "disable": "पुश सूचनाएँ अक्षम करें",
+      "disabled": "पुश सूचनाएँ अक्षम",
+      "blocked": "आपकी ब्राउज़र सेटिंग में सूचनाएँ अवरुद्ध हैं",
+      "unsupported": "इस डिवाइस पर पुश सूचनाएँ समर्थित नहीं हैं",
+      "description": "ProfitSync खुला न होने पर भी सूचित रहें।"
+    },
+    "types": {
+      "invitation_accepted": {
+        "title": "आमंत्रण स्वीकृत",
+        "body": "{{name}} {{org}} में शामिल हुए"
+      },
+      "role_changed": {
+        "title": "आपकी भूमिका बदल गई",
+        "body": "आप अब {{org}} में {{role}} हैं"
+      },
+      "member_removed": {
+        "title": "संगठन से हटाया गया",
+        "body": "आप {{org}} से हटा दिए गए"
+      },
+      "payment_failed": {
+        "title": "भुगतान विफल",
+        "body": "हम आपके नवीनतम भुगतान को प्रोसेस नहीं कर सके। प्रीमियम रखने के लिए अपनी बिलिंग अपडेट करें।"
+      },
+      "budget_exceeded": {
+        "title": "बजट अतिक्रमण",
+        "body": "{{name}} अपने {{period}} बजट से अधिक हो गया है।"
+      }
     }
   }
 }

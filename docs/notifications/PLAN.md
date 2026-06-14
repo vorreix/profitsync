@@ -69,19 +69,31 @@ client(O,K)  ?? org(O)  ?? user(U)  ?? system default
 
 | # | Branch | Scope | Status |
 |---|--------|-------|--------|
-| 00 | `feat/notif-00-plan` | This doc + dependency-free `src/lib/notifications.ts` (types, categories, channels, type registry, default prefs, pure cascade resolver) + vitest | ⏳ in progress |
-| 01 | `feat/notif-01-schema` | `notifications`, `notification_preferences`, `push_subscriptions` tables; migration 0044; `src/lib/types.ts` | ⬜ todo |
-| 02 | `feat/notif-02-api-core` | `api/_lib/notifications.ts` (createNotification, notifyOrgMembers, server cascade resolve, dedup); routes: list (paginated), unread-count, mark read, read-all, delete | ⬜ todo |
-| 03 | `feat/notif-03-preferences-api` | `GET/PUT /api/notifications/preferences?scope=user|organization|client` + role checks + upsert | ⬜ todo |
-| 04 | `feat/notif-04-bell-ui` | `notification-context.tsx` (lazy unread polling + focus), Bell + badge (desktop + mobile), dropdown panel (lazy list), `notifications` i18n ns | ⬜ todo |
-| 05 | `feat/notif-05-history-page` | lazy `/notifications` page, pagination, filters, mark read/delete/read-all | ⬜ todo |
-| 06 | `feat/notif-06-profile-settings` | reusable `<NotificationPreferencesForm>`; user scope in ProfilePage | ⬜ todo |
-| 07 | `feat/notif-07-org-settings` | org scope (owner/admin) in OrganizationsPage | ⬜ todo |
-| 08 | `feat/notif-08-client-settings` | client scope on ClientDetailPage | ⬜ todo |
-| 09 | `feat/notif-09-web-push` | VAPID env, `push_subscriptions` register/unregister API, `public/push-sw.js` + workbox `importScripts`, subscribe UI, `web-push` sender (isolated, best-effort) | ⬜ todo |
-| 10 | `feat/notif-10-event-hooks` | wire real domain events → createNotification (invitations, members, roles, payment failed/succeeded, budget exceeded, recurring posted, quotation accepted); final real i18n translations; review | ⬜ todo |
+| 00 | `feat/notif-00-plan` | This doc + dependency-free `src/lib/notifications.ts` (types, categories, channels, type registry, default prefs, pure cascade resolver) + vitest | ✅ pushed |
+| 01 | `feat/notif-01-schema` | `notifications`, `notification_preferences`, `push_subscriptions` tables; migration 0044 (applied + verified); `src/lib/types.ts` | ✅ pushed |
+| 02 | `feat/notif-02-api-core` | `api/_lib/notifications.ts` (createNotification, notifyOrgMembers, cascade resolve, dedup); routes: list, unread-count, read-all, `:id` patch/delete | ✅ pushed (DB-verified) |
+| 03 | `feat/notif-03-preferences-api` | `GET/PUT /api/notifications/preferences?scope=user\|organization\|client` + role checks + upsert | ✅ pushed (DB-verified) |
+| 04 | `feat/notif-04-bell-ui` | `notification-context.tsx` (lazy unread polling), Bell + badge (desktop + mobile), dropdown panel (lazy), `notifications` i18n ns | ✅ pushed (browser-verified) |
+| 05 | `feat/notif-05-history-page` | lazy `/notifications` page, pagination, filters, mark read/delete/read-all | ✅ pushed (browser-verified) |
+| 06 | `feat/notif-06-profile-settings` | reusable `<NotificationPreferencesForm>`; user scope in ProfilePage | ✅ pushed (browser-verified) |
+| 07 | `feat/notif-07-org-settings` | org scope (owner/admin, per-org orgId) in OrganizationsPage | ✅ pushed (browser-verified) |
+| 08 | `feat/notif-08-client-settings` | client scope on ClientDetailPage | ✅ pushed (browser-verified) |
+| 09 | `feat/notif-09-web-push` | VAPID env, push register/unregister API, `public/push-sw.js` + workbox `importScripts`, subscribe UI, `web-push` sender (isolated, best-effort) | ✅ pushed (build+boot+DB-verified; live delivery deferred) |
+| 10 | `feat/notif-10-event-hooks` | wire real events → createNotification (invitation accepted, role changed, member removed, payment failed, budget exceeded); real i18n translations; finalize | ⏳ in progress |
 
 Status legend: ⬜ todo · ⏳ in progress · ✅ pushed & gate-green · ⚠️ partial/deferred (see notes).
+
+### Wired event sources (branch 10)
+- **invitation_accepted** → notifies the inviter (`api/_routes/invitations/[token].ts`).
+- **role_changed** → notifies the member (`members.ts` PATCH).
+- **member_removed** → notifies the removed member, account-level (`members.ts` DELETE).
+- **payment_failed** → notifies org owners/admins, deduped on payment id (`api/billing/webhook.ts`).
+- **budget_exceeded** → per-client, notifies editing members once per budget window (`api/_lib/notify-budget.ts`, fired from `transactions.ts` POST).
+
+### Deferred / documented follow-ups
+- **Live web-push delivery** — needs prod HTTPS + an active SW (disabled in dev) + VAPID in the cloud env. All plumbing is shipped + build/boot/DB-verified; only the over-the-wire delivery is unexercised locally.
+- **More event hooks** — `recurring_posted`, `quotation_accepted`, `payment_succeeded`, `system_announcement` types exist in the registry; their hooks are intentionally not wired yet (lazy-GET noise / self-action). The `createNotification` pattern makes adding them a one-liner per site.
+- **Personal/org-default budget alerts** — only client-specific budgets alert today.
 
 ---
 

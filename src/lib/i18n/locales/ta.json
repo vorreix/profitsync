@@ -1321,68 +1321,90 @@
     "spaceBadge": "ஸ்பேஸ்"
   },
   "notifications": {
-    "title": "Notifications",
-    "bell_label": "Notifications",
-    "empty": "You're all caught up",
-    "empty_hint": "New notifications will show up here.",
-    "mark_all_read": "Mark all as read",
-    "view_all": "View all",
-    "mark_read": "Mark as read",
-    "mark_unread": "Mark as unread",
-    "delete": "Delete",
-    "deleted": "Notification deleted",
-    "load_more": "Load more",
+    "title": "அறிவிப்புகள்",
+    "bell_label": "அறிவிப்புகள்",
+    "empty": "நீங்கள் முடிந்துவிட்டீர்கள்",
+    "empty_hint": "புதிய அறிவிப்புகள் இங்கே தோன்றும்.",
+    "mark_all_read": "அனைத்தையும் படிக்க குறிப்பிடவும்",
+    "view_all": "அனைத்தையும் பார்க்கவும்",
+    "mark_read": "படிக்க குறிப்பிடவும்",
+    "mark_unread": "படிக்காமல் குறிப்பிடவும்",
+    "delete": "நீக்குக",
+    "deleted": "அறிவிப்பு நீக்கப்பட்டது",
+    "load_more": "மேலும் ஏற்றவும்",
     "filter": {
-      "all": "All",
-      "unread": "Unread"
+      "all": "அனைத்து",
+      "unread": "படிக்காத"
     },
     "categories": {
-      "team": "Team",
-      "billing": "Billing",
-      "budget": "Budgets",
-      "transactions": "Transactions",
-      "clients": "Clients",
-      "system": "System"
+      "team": "குழு",
+      "billing": "பணம் செலுத்துதல்",
+      "budget": "பட்ജெட்",
+      "transactions": "பரிவர்த்தனைகள்",
+      "clients": "வாடிக்கையாளர்கள்",
+      "system": "கணினி"
     },
     "channels": {
-      "in_app": "In-app",
-      "web_push": "Push"
+      "in_app": "অ্যাপ्লিকেশনের ভিতরে",
+      "web_push": "தள্ளுதல்"
     },
     "time": {
-      "just_now": "Just now",
-      "minutes": "{{count}}m ago",
-      "hours": "{{count}}h ago",
-      "days": "{{count}}d ago"
+      "just_now": "இப்போதுதான்",
+      "minutes": "{{count}}நிமிஷம் முன்",
+      "hours": "{{count}}மணிநேரம் முன்",
+      "days": "{{count}}நாட்கள் முன்"
     },
     "settings": {
-      "title": "Notifications",
-      "description": "Choose what you get notified about and where.",
-      "user_description": "Your personal notification preferences across all workspaces.",
-      "org_description": "Organization-wide notification policy for this workspace.",
-      "client_description": "Notification settings just for this client.",
-      "mute_all": "Pause all notifications",
-      "mute_all_hint": "Turn off every notification at this level.",
-      "channel_in_app": "In-app",
-      "channel_push": "Push",
-      "saved": "Notification settings saved",
-      "save": "Save",
-      "saving": "Saving…",
-      "manage_link": "Manage notifications",
-      "category_hint_team": "Invitations, members and role changes",
-      "category_hint_billing": "Payments, subscription and plan changes",
-      "category_hint_budget": "Budget warnings and overspend alerts",
-      "category_hint_transactions": "Recurring transactions and activity",
-      "category_hint_clients": "Quotations and client updates",
-      "category_hint_system": "Product and account announcements"
+      "title": "அறிவிப்புகள்",
+      "description": "நீங்கள் என்ன குறித்து அறிவிப்புகளைப் பெற விரும்புகிறீர்கள் என்பதையும் எங்கே என்பதையும் தேர்வு செய்யவும்.",
+      "user_description": "அனைத்து பணிப்பகங்கள் முழுவதும் உங்கள் ব்যক்তিগত அறிவிப்பு পছন்দங்கள்.",
+      "org_description": "இந்த பணிப்பகத்திற்கான সংস্থা-ব்যাপী அறிவிப்பு নীति.",
+      "client_description": "இந்த வாடிக்கையாளரের জন்য மட்டும் அறிவிப்பு அமைப்பு.",
+      "mute_all": "அனைத்து அறிவிப்புகளையும் இடைநிறுத்தவும்",
+      "mute_all_hint": "இந்த স்তரে ஒவ்வொரு அறிவிப்பையும் அணைக்கவும்.",
+      "channel_in_app": "অ্যাপ্লিকেশনের ভিতরে",
+      "channel_push": "தள்ளுதல்",
+      "saved": "அறிவிப்பு அமைப்பு சংরক্ষிக்கப்பட்டது",
+      "save": "சேமிக்கவும்",
+      "saving": "சேமிக்கிறது…",
+      "manage_link": "அறிவிப்புகளை நிர்வகிக்கவும்",
+      "category_hint_team": "ஆட்சேர்ப்பு, உறுப்பினர்கள் மற்றும் பாத்திரம் மாற்றம்",
+      "category_hint_billing": "பணம் செலுத்துதல், சந்தா மற்றும் திட்ட மாற்றம்",
+      "category_hint_budget": "பட்ജெட் எச்சரிக்கைகள் மற்றும் அதிக செலவு விழிப்பூட்டல்",
+      "category_hint_transactions": "மீண்டும் மீண்டும் செய்யும் பரிவர்த்தனைகள் மற்றும் செயல்பாடு",
+      "category_hint_clients": "மேற்கோள்கள் மற்றும் வாடிக்கையாளர் புதுப்பிப்புகள்",
+      "category_hint_system": "தயாரிப்பு மற்றும் கணக்கு அறிவிப்புகள்"
     },
     "push": {
-      "enable": "Enable push notifications",
-      "enabled": "Push notifications enabled",
-      "disable": "Disable push notifications",
-      "disabled": "Push notifications disabled",
-      "blocked": "Notifications are blocked in your browser settings",
-      "unsupported": "Push notifications aren't supported on this device",
-      "description": "Get notified even when ProfitSync isn't open."
+      "enable": "தள்ளுதல் அறிவிப்புகளை இயக்கவும்",
+      "enabled": "தள்ளுதல் அறிவிப்புகள் இயக்கப்பட்டுள்ளன",
+      "disable": "தள்ளுதல் அறிவிப்புகளை முடக்கவும்",
+      "disabled": "தள்ளுதல் அறிவிப்புகள் முடக்கப்பட்டுள்ளன",
+      "blocked": "உங்கள் உலாவி அமைப்புகளில் அறிவிப்புகள் தடுக்கப்பட்டுள்ளன",
+      "unsupported": "இந்த சாதனத்தில் தள்ளுதல் அறிவிப்புகள் ஆதரிக்கப்படவில்லை",
+      "description": "ProfitSync திறக்கப்படாத நேரத்திலும் அறிவிப்புகளைப் பெறுங்கள்."
+    },
+    "types": {
+      "invitation_accepted": {
+        "title": "ஆட்சேர்ப்பு ஏற்றுக்கொள்ளப்பட்டது",
+        "body": "{{name}} {{org}} இல் சேர்ந்துவிட்டது"
+      },
+      "role_changed": {
+        "title": "உங்கள் பாத்திரம் மாறிவிட்டது",
+        "body": "நீங்கள் இப்போது {{org}} இல் {{role}} ஆக இருக்கிறீர்கள்"
+      },
+      "member_removed": {
+        "title": "संगठन से हटाया गया",
+        "body": "நீங்கள் {{org}} இலிருந்து நீக்கப்பட்டீர்கள்"
+      },
+      "payment_failed": {
+        "title": "பணம் செலுத்துதல் தோல்வியடைந்தது",
+        "body": "நாங்கள் உங்கள் சமீபத்திய பணம் செலுத்துதல்ஐ செயல்படுத்த முடியவில்லை. பிரিமியம் வைத்திருக்க உங்கள் பணம் செலுத்துதலை புதுப்பிக்கவும்."
+      },
+      "budget_exceeded": {
+        "title": "பட்ജெட் மீறப்பட்டது",
+        "body": "{{name}} அதன் {{period}} பட்ஜெட்டை மீறிவிட்டது."
+      }
     }
   }
 }

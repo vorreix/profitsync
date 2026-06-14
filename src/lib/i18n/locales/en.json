@@ -1383,6 +1383,28 @@
       "blocked": "Notifications are blocked in your browser settings",
       "unsupported": "Push notifications aren't supported on this device",
       "description": "Get notified even when ProfitSync isn't open."
+    },
+    "types": {
+      "invitation_accepted": {
+        "title": "Invitation accepted",
+        "body": "{{name}} joined {{org}}"
+      },
+      "role_changed": {
+        "title": "Your role changed",
+        "body": "You're now {{role}} in {{org}}"
+      },
+      "member_removed": {
+        "title": "Removed from organization",
+        "body": "You were removed from {{org}}"
+      },
+      "payment_failed": {
+        "title": "Payment failed",
+        "body": "We couldn't process your latest payment. Update your billing to keep Premium."
+      },
+      "budget_exceeded": {
+        "title": "Budget exceeded",
+        "body": "{{name}} has gone over its {{period}} budget."
+      }
     }
   }
 }
