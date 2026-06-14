@@ -24,6 +24,24 @@ const LEAVES_PER_GROUP = 8
 // Ceiling on the recent-transactions pool we bucket leaves from. Aggregates are
 // never capped by this; only the sampled leaves are.
 const LEAF_POOL = 600
+// A split's legs are created atomically (shared date + creation time), so they
+// are always CONSECUTIVE in our `date desc, createdAt desc` ordering. A flat row
+// cap — the LEAF_POOL pool, or a load-more page — can still slice through the
+// middle of one split at the boundary, leaving the canvas a partial split it
+// would mis-render as a lone transaction (with a wrong total). We over-fetch by
+// this many rows so the boundary split's trailing legs are on hand to swallow.
+const SPLIT_BUFFER = 16
+
+// Given rows fetched with a buffer past `keep`, return an end index ≥ keep that
+// extends to include every leg of the split straddling the `keep` boundary, so
+// a split is always fully IN or fully OUT of the returned slice. Relies on legs
+// being consecutive (above); a non-matching group_id stops the extension.
+function completeBoundarySplit(rows: { groupId: string | null }[], keep: number): number {
+  let end = Math.min(keep, rows.length)
+  const gid = end > 0 ? rows[end - 1]!.groupId : null
+  if (gid) while (end < rows.length && rows[end]!.groupId === gid) end++
+  return end
+}
 
 function csv(v: string | string[] | undefined): string[] {
   if (!v) return []
@@ -116,7 +134,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     } else {
       extra = sql`coalesce(nullif(${transactions.category}, ''), 'Uncategorized') = ${key}`
     }
-    // Fetch limit+1 so we know whether another page exists without a count query.
+    // Fetch limit+1 so we know whether another page exists without a count
+    // query; the extra SPLIT_BUFFER rows let us finish a split straddling the
+    // page boundary (a page must never end mid-split — see completeBoundarySplit).
     const rows = await db
       .select({
         id: transactions.id,
@@ -135,10 +155,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .leftJoin(wealthAccounts, eq(transactions.wealthAccountId, wealthAccounts.id))
       .where(and(where, extra))
       .orderBy(desc(transactions.date), desc(transactions.createdAt))
-      .limit(limit + 1)
+      .limit(limit + 1 + SPLIT_BUFFER)
       .offset(offset)
-    const hasMore = rows.length > limit
-    const leaves = rows.slice(0, limit).map((l) => ({
+    // Extend the page to swallow a split cut by the limit; the client advances
+    // its offset by the returned leaf count, so a variable page size is safe.
+    const end = completeBoundarySplit(rows, limit)
+    const hasMore = rows.length > end
+    const leaves = rows.slice(0, end).map((l) => ({
       id: l.id,
       type: l.type,
       amount: Number(l.amount),
@@ -196,13 +219,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .leftJoin(wealthAccounts, eq(transactions.wealthAccountId, wealthAccounts.id))
         .where(where)
         .orderBy(desc(transactions.date), desc(transactions.createdAt))
-        .limit(LEAF_POOL),
+        .limit(LEAF_POOL + SPLIT_BUFFER),
     ])
 
+    // Trim the over-fetched pool back to LEAF_POOL, but never cut the split that
+    // straddles the boundary — otherwise its tail legs are dropped below the cap.
+    const poolT = leafPoolT.slice(0, completeBoundarySplit(leafPoolT, LEAF_POOL))
+
     // Cap at LEAVES_PER_GROUP *logical* txs per period; keep all legs of a split.
-    const leavesByPeriod = new Map<string, typeof leafPoolT>()
+    const leavesByPeriod = new Map<string, typeof poolT>()
     const logicalByPeriod = new Map<string, Set<string>>()
-    for (const l of leafPoolT) {
+    for (const l of poolT) {
       const logical = l.groupId ?? l.id
       const seen = logicalByPeriod.get(l.periodKey) ?? new Set<string>()
       if (!seen.has(logical) && seen.size >= LEAVES_PER_GROUP) continue
@@ -276,7 +303,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ? sql<string | null>`${transactions.clientId}::text`
         : sql<string | null>`coalesce(nullif(${transactions.category}, ''), 'Uncategorized')`
 
-  const [summaryRows, groupRows, accountMeta, ownerOrg, leafPool] = await Promise.all([
+  const [summaryRows, groupRows, accountMeta, ownerOrg, leafPoolRaw] = await Promise.all([
     db
       .select({ income: incomeSum, expense: expenseSum, txCount: countExpr })
       .from(transactions)
@@ -322,9 +349,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .innerJoin(clients, eq(transactions.clientId, clients.id))
       .where(where)
       .orderBy(desc(transactions.date), desc(transactions.createdAt))
-      .limit(LEAF_POOL),
+      .limit(LEAF_POOL + SPLIT_BUFFER),
   ])
 
+  // Trim the over-fetched pool back to LEAF_POOL without cutting the split that
+  // straddles the boundary (its tail legs would otherwise drop below the cap).
+  const leafPool = leafPoolRaw.slice(0, completeBoundarySplit(leafPoolRaw, LEAF_POOL))
   const accById = new Map(accountMeta.map((a) => [a.id, a]))
   const clientNameByLeaf = new Map(leafPool.map((l) => [l.clientId, l.clientName]))
 
