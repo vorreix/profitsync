@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { NotificationPreferencesForm } from "@/components/notifications/NotificationPreferencesForm"
 import { Skeleton } from "@/components/ui/skeleton"
 import { LanguageSwitcher } from "@/components/LanguageSwitcher"
 import { CountryCombobox, CountryCodeCombobox } from "@/components/CountryCombobox"
@@ -268,6 +269,16 @@ export function ProfilePage() {
               {t("org.manageOrganizations")}
             </Link>
           </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">{t("notifications:settings.title")}</CardTitle>
+          <p className="text-sm text-muted-foreground">{t("notifications:settings.user_description")}</p>
+        </CardHeader>
+        <CardContent>
+          <NotificationPreferencesForm scope="user" />
         </CardContent>
       </Card>
 
