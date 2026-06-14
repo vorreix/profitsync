@@ -76,6 +76,13 @@ DODO_PAYMENTS_WEBHOOK_SECRET=whsec_...
 DODO_PAYMENTS_ENVIRONMENT=test_mode      # or live_mode
 DODO_PRODUCT_PREMIUM_MONTHLY=...         # Dodo product id
 DODO_PRODUCT_PREMIUM_YEARLY=...          # Dodo product id
+
+# Web Push (notification system — OPTIONAL; push silently disabled if absent).
+# Generate a keypair with: npx web-push generate-vapid-keys
+VAPID_PUBLIC_KEY=B...                     # server
+VAPID_PRIVATE_KEY=...                     # server-only — never expose to browser
+VAPID_SUBJECT=mailto:support@profitsync.app
+VITE_VAPID_PUBLIC_KEY=B...                # browser (same value as VAPID_PUBLIC_KEY)
 ```
 
 The `E2E_*` secrets (`E2E_VITE_CLERK_PUBLISHABLE_KEY`, `E2E_CLERK_SECRET_KEY`, `E2E_DATABASE_URL`) are **GitHub Actions secrets for the e2e workflow only** — they do **not** go in `.env.local` or Vercel. The two Clerk ones are your existing **dev**-instance keys (same `pk_test_…`/`sk_test_…` already in `.env.local`); `E2E_DATABASE_URL` is a dedicated Neon branch. Vercel manages the running app's env separately (`vercel env`; note: `vercel dev` reads the cloud Development env, not `.env.local`).
