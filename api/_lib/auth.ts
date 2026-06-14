@@ -5,13 +5,63 @@ import { db } from "../../src/lib/db/index.js"
 import { clients, organizations, organizationMembers, subscriptions, userProfiles } from "../../src/lib/db/schema.js"
 import type { AccountType } from "../../src/lib/types.js"
 
+type AuthDebugEvent = "missing-token" | "verify-token-success" | "verify-token-failure"
+
+function secretFamily(secret: string | undefined): "live" | "test" | "missing" | "unknown" {
+  if (!secret) return "missing"
+  if (secret.startsWith("sk_live_")) return "live"
+  if (secret.startsWith("sk_test_")) return "test"
+  return "unknown"
+}
+
+function decodeJwtPayload(token: string): Record<string, unknown> | null {
+  try {
+    const part = token.split(".")[1]
+    if (!part) return null
+    const normalized = part.replace(/-/g, "+").replace(/_/g, "/")
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=")
+    return JSON.parse(Buffer.from(padded, "base64").toString("utf8")) as Record<string, unknown>
+  } catch {
+    return null
+  }
+}
+
+function authDebug(req: VercelRequest, event: AuthDebugEvent, token?: string, error?: unknown) {
+  const payload = token ? decodeJwtPayload(token) : null
+  const issuer = typeof payload?.iss === "string" ? payload.iss : null
+  const audience = typeof payload?.aud === "string" ? payload.aud : Array.isArray(payload?.aud) ? "array" : null
+  const subjectPresent = typeof payload?.sub === "string" && payload.sub.length > 0
+
+  console.info(
+    "[ProfitSync Backend Auth Debug]",
+    JSON.stringify({
+      event,
+      method: req.method,
+      path: req.url ?? null,
+      hasAuthorizationHeader: !!req.headers.authorization,
+      authorizationPrefix: req.headers.authorization?.split(/\s+/, 1)[0] ?? null,
+      hasOrgIdHeader: !!req.headers["x-org-id"],
+      tokenIssuer: issuer,
+      tokenAudience: audience,
+      tokenSubjectPresent: subjectPresent,
+      clerkSecretFamily: secretFamily(process.env.CLERK_SECRET_KEY),
+      errorMessage: error instanceof Error ? error.message : error ? String(error) : null,
+    }),
+  )
+}
+
 export async function getUserId(req: VercelRequest): Promise<string | null> {
   const token = req.headers.authorization?.replace("Bearer ", "")
-  if (!token) return null
+  if (!token) {
+    authDebug(req, "missing-token")
+    return null
+  }
   try {
     const payload = await verifyToken(token, { secretKey: process.env.CLERK_SECRET_KEY! })
+    authDebug(req, "verify-token-success", token)
     return payload.sub
-  } catch {
+  } catch (error) {
+    authDebug(req, "verify-token-failure", token, error)
     return null
   }
 }
@@ -248,3 +298,4 @@ export function requireBusinessFeature(
   }
   return true
 }
+

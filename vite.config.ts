@@ -1,4 +1,4 @@
-/// <reference types="vitest/config" />
+﻿/// <reference types="vitest/config" />
 import path from "path"
 import { copyFileSync, existsSync, mkdirSync } from "node:fs"
 import { config as loadDotenv } from "dotenv"
@@ -9,8 +9,18 @@ import type { IncomingMessage, ServerResponse } from "node:http"
 
 import { buildPwaPlugin } from "./pwa/vite-pwa"
 
-loadDotenv({ path: ".env.local" })
-loadDotenv()
+const viteModeEqualsArg = process.argv.find((arg) => arg.startsWith("--mode="))
+const viteModeFlagIndex = process.argv.indexOf("--mode")
+const viteMode = viteModeEqualsArg?.split("=", 2)[1] ?? (viteModeFlagIndex >= 0 ? process.argv[viteModeFlagIndex + 1] : undefined) ?? process.env.NODE_ENV
+
+if (viteMode === "android-local") {
+  loadDotenv({ path: ".env.android.local", override: true })
+} else if (viteMode === "android") {
+  loadDotenv({ path: ".env.android", override: true })
+} else {
+  loadDotenv({ path: ".env.local" })
+  loadDotenv()
+}
 
 async function readJsonBody(req: IncomingMessage): Promise<unknown> {
   if (req.method === "GET" || req.method === "HEAD") return undefined
@@ -108,13 +118,13 @@ export default defineConfig({
   //    some test files import modules that transitively pull in src/lib/db,
   //    whose top-level `neon(process.env.DATABASE_URL!)` THROWS at import when
   //    the var is unset. Locally `.env.local` provides it; CI's unit gate does
-  //    not — and shouldn't need a real database. Hand the test worker a harmless
+  //    not â€” and shouldn't need a real database. Hand the test worker a harmless
   //    placeholder so the Neon client can CONSTRUCT (it never connects, since no
   //    query runs). A real DATABASE_URL always wins.
   //  - `exclude`: keep Playwright's e2e/*.spec.ts out of the Vitest run.
   test: {
     env: {
-      // Not a credential — a syntactically-valid dummy so the Neon client can
+      // Not a credential â€” a syntactically-valid dummy so the Neon client can
       // construct in tests; it never connects (no queries run). secret-scan:ignore
       DATABASE_URL: process.env.DATABASE_URL || "postgresql://placeholder:placeholder@127.0.0.1:5432/placeholder", // secret-scan:ignore
     },
@@ -128,7 +138,7 @@ export default defineConfig({
   build: {
     // Split only the heavy charting libs (recharts/d3) into their own one-way
     // leaf chunk so they load lazily with the routes that use them. Everything
-    // else — INCLUDING React — stays in a single "vendor" chunk.
+    // else â€” INCLUDING React â€” stays in a single "vendor" chunk.
     //
     // Do NOT isolate react/react-dom into its own chunk: that created a circular
     // dependency (vendor <-> react) which Rollup warned about and which broke the
@@ -146,7 +156,7 @@ export default defineConfig({
           // React Flow must NOT fall through into "vendor": it depends on d3-zoom/
           // d3-drag, which the rule below routes into "charts". With @xyflow in
           // vendor that made vendor <-> charts circular, and the charts chunk then
-          // initialized before vendor's React was ready —
+          // initialized before vendor's React was ready â€”
           //   "TypeError: Cannot read properties of undefined (reading 'forwardRef')"
           // at boot on EVERY page (vendor is eager), i.e. a total white screen.
           // Keeping it in its own one-way leaf ("flow" -> "charts" -> "vendor")
@@ -180,3 +190,6 @@ export default defineConfig({
     chunkSizeWarningLimit: 900,
   },
 })
+
+
+
