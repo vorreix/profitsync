@@ -90,6 +90,7 @@ import adminAdmins from "./_routes/admin/admins.js"
 import adminRolesRoute from "./_routes/admin/roles.js"
 import adminRoleById from "./_routes/admin/roles/[id].js"
 import adminStats from "./_routes/admin/stats.js"
+import adminWorker from "./_routes/admin/worker.js"
 import adminUsers from "./_routes/admin/users.js"
 import adminUserDetail from "./_routes/admin/user-detail.js"
 import adminClients from "./_routes/admin/clients.js"
@@ -216,6 +217,7 @@ const routes: RoutePattern<ApiHandler>[] = [
   { segments: ["admin", "roles"], handler: adminRolesRoute },
   { segments: ["admin", "roles", ":id"], handler: adminRoleById },
   { segments: ["admin", "stats"], handler: adminStats },
+  { segments: ["admin", "worker"], handler: adminWorker },
   { segments: ["admin", "users"], handler: adminUsers },
   { segments: ["admin", "user-detail"], handler: adminUserDetail },
   { segments: ["admin", "clients"], handler: adminClients },

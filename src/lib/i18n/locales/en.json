@@ -1361,8 +1361,8 @@
     "settings": {
       "title": "Notifications",
       "description": "Choose what you get notified about and where.",
-      "user_description": "Your personal notification preferences across all workspaces.",
-      "org_description": "Organization-wide notification policy for this workspace.",
+      "user_description": "Your default notification preferences. Organizations can override these for their own activity.",
+      "org_description": "Overrides each member's personal defaults for this workspace.",
       "client_description": "Notification settings just for this client.",
       "mute_all": "Pause all notifications",
       "mute_all_hint": "Turn off every notification at this level.",
@@ -1408,6 +1408,25 @@
       "budget_exceeded": {
         "title": "Budget exceeded",
         "body": "{{name}} has gone over its {{period}} budget."
+      },
+      "space_autosaved": {
+        "title": "Auto-saved to your Space",
+        "body": "Money moved into {{space}}"
+      }
+    },
+    "client": {
+      "mute": "Mute notifications for this client",
+      "mute_hint": "Turn off every notification about this client.",
+      "notify_about": "Notify me about",
+      "triggers": {
+        "budget": "Budget overspending",
+        "transactions": "Transaction activity",
+        "clients": "Quotations & updates"
+      },
+      "trigger_hints": {
+        "budget": "When this client goes over budget",
+        "transactions": "Recurring posts and notable transactions",
+        "clients": "Quotation status and client changes"
       }
     }
   }
