@@ -1319,5 +1319,70 @@
     "afterFund": "A {{account}} resteranno {{amount}}",
     "viewDetails": "Vedi dettagli",
     "spaceBadge": "Spazio"
+  },
+  "notifications": {
+    "title": "Notifications",
+    "bell_label": "Notifications",
+    "empty": "You're all caught up",
+    "empty_hint": "New notifications will show up here.",
+    "mark_all_read": "Mark all as read",
+    "view_all": "View all",
+    "mark_read": "Mark as read",
+    "mark_unread": "Mark as unread",
+    "delete": "Delete",
+    "deleted": "Notification deleted",
+    "load_more": "Load more",
+    "filter": {
+      "all": "All",
+      "unread": "Unread"
+    },
+    "categories": {
+      "team": "Team",
+      "billing": "Billing",
+      "budget": "Budgets",
+      "transactions": "Transactions",
+      "clients": "Clients",
+      "system": "System"
+    },
+    "channels": {
+      "in_app": "In-app",
+      "web_push": "Push"
+    },
+    "time": {
+      "just_now": "Just now",
+      "minutes": "{{count}}m ago",
+      "hours": "{{count}}h ago",
+      "days": "{{count}}d ago"
+    },
+    "settings": {
+      "title": "Notifications",
+      "description": "Choose what you get notified about and where.",
+      "user_description": "Your personal notification preferences across all workspaces.",
+      "org_description": "Organization-wide notification policy for this workspace.",
+      "client_description": "Notification settings just for this client.",
+      "mute_all": "Pause all notifications",
+      "mute_all_hint": "Turn off every notification at this level.",
+      "channel_in_app": "In-app",
+      "channel_push": "Push",
+      "saved": "Notification settings saved",
+      "save": "Save",
+      "saving": "Saving…",
+      "manage_link": "Manage notifications",
+      "category_hint_team": "Invitations, members and role changes",
+      "category_hint_billing": "Payments, subscription and plan changes",
+      "category_hint_budget": "Budget warnings and overspend alerts",
+      "category_hint_transactions": "Recurring transactions and activity",
+      "category_hint_clients": "Quotations and client updates",
+      "category_hint_system": "Product and account announcements"
+    },
+    "push": {
+      "enable": "Enable push notifications",
+      "enabled": "Push notifications enabled",
+      "disable": "Disable push notifications",
+      "disabled": "Push notifications disabled",
+      "blocked": "Notifications are blocked in your browser settings",
+      "unsupported": "Push notifications aren't supported on this device",
+      "description": "Get notified even when ProfitSync isn't open."
+    }
   }
 }
