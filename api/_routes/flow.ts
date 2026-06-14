@@ -4,6 +4,11 @@ import { db } from "../../src/lib/db/index.js"
 import { clients, organizations, transactions, wealthAccounts } from "../../src/lib/db/schema.js"
 import { isPersonalAccount, requireAuth } from "../_lib/auth.js"
 import { materializeDueRecurring } from "../_lib/recurring-materialize.js"
+import { logoDataUrl } from "../../src/lib/logo-data.js"
+
+// SQL for "the account's display name" — reused to label leaves with the
+// account the money moved through (to/from).
+const accountLabelSql = sql<string | null>`coalesce(nullif(${wealthAccounts.nickname}, ''), nullif(${wealthAccounts.bankName}, ''))`
 
 const isDate = (v: string | undefined): v is string => !!v && /^\d{4}-\d{2}-\d{2}$/.test(v)
 const fmt = (d: Date) => d.toISOString().slice(0, 10)
@@ -19,6 +24,24 @@ const LEAVES_PER_GROUP = 8
 // Ceiling on the recent-transactions pool we bucket leaves from. Aggregates are
 // never capped by this; only the sampled leaves are.
 const LEAF_POOL = 600
+// A split's legs are created atomically (shared date + creation time), so they
+// are always CONSECUTIVE in our `date desc, createdAt desc` ordering. A flat row
+// cap — the LEAF_POOL pool, or a load-more page — can still slice through the
+// middle of one split at the boundary, leaving the canvas a partial split it
+// would mis-render as a lone transaction (with a wrong total). We over-fetch by
+// this many rows so the boundary split's trailing legs are on hand to swallow.
+const SPLIT_BUFFER = 16
+
+// Given rows fetched with a buffer past `keep`, return an end index ≥ keep that
+// extends to include every leg of the split straddling the `keep` boundary, so
+// a split is always fully IN or fully OUT of the returned slice. Relies on legs
+// being consecutive (above); a non-matching group_id stops the extension.
+function completeBoundarySplit(rows: { groupId: string | null }[], keep: number): number {
+  let end = Math.min(keep, rows.length)
+  const gid = end > 0 ? rows[end - 1]!.groupId : null
+  if (gid) while (end < rows.length && rows[end]!.groupId === gid) end++
+  return end
+}
 
 function csv(v: string | string[] | undefined): string[] {
   if (!v) return []
@@ -81,7 +104,77 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const incomeSum = sql<string>`coalesce(sum(case when ${transactions.type} = 'incoming' then ${transactions.amount}::numeric else 0 end), 0)`
   const expenseSum = sql<string>`coalesce(sum(case when ${transactions.type} = 'outgoing' then ${transactions.amount}::numeric else 0 end), 0)`
-  const countExpr = sql<number>`count(*)::int`
+  // Count LOGICAL transactions: a split (shared group_id) counts once, matching
+  // how the canvas collapses its legs into a single node.
+  const countExpr = sql<number>`count(distinct coalesce(${transactions.groupId}::text, ${transactions.id}::text))::int`
+
+  // ── Paginated leaves for ONE group/period (the canvas "load more" action) ───
+  // Returns the next page of transaction leaves for a single group key (account/
+  // client/category) or timeline period, honoring the same filters. Bounded by
+  // offset/limit so the graph grows on demand instead of shipping everything.
+  if (q.leaves) {
+    const limit = Math.min(40, Math.max(1, Number.parseInt(String(q.limit ?? "12"), 10) || 12))
+    // Clamp the offset: it's deep-pagination of ONE group, so a sane ceiling
+    // (50k ≈ 4000 pages) is plenty and stops a crafted ?offset=1e9 from making
+    // Postgres skip-scan millions of rows. Offset pagination is safe to use here
+    // because any mutation triggers a silent flow refresh that resets paging.
+    const offset = Math.min(50000, Math.max(0, Number.parseInt(String(q.offset ?? "0"), 10) || 0))
+    const key = typeof q.key === "string" ? q.key : ""
+    let extra: SQL
+    if (q.mode === "timeline") {
+      const BUCKETS = ["day", "week", "month", "year"] as const
+      const bucket = (BUCKETS as readonly string[]).includes(q.bucket as string) ? (q.bucket as string) : "month"
+      // bucket is whitelisted → safe to inline as a literal (a bound param makes
+      // Postgres treat the two date_trunc copies as distinct; see timeline mode).
+      extra = sql`to_char(date_trunc(${sql.raw(`'${bucket}'`)}, ${transactions.date}::timestamp), 'YYYY-MM-DD') = ${key}`
+    } else if (groupBy === "account") {
+      extra = key && key !== "__none__" ? eq(transactions.wealthAccountId, key) : isNull(transactions.wealthAccountId)
+    } else if (groupBy === "client") {
+      extra = eq(transactions.clientId, key)
+    } else {
+      extra = sql`coalesce(nullif(${transactions.category}, ''), 'Uncategorized') = ${key}`
+    }
+    // Fetch limit+1 so we know whether another page exists without a count
+    // query; the extra SPLIT_BUFFER rows let us finish a split straddling the
+    // page boundary (a page must never end mid-split — see completeBoundarySplit).
+    const rows = await db
+      .select({
+        id: transactions.id,
+        type: transactions.type,
+        amount: transactions.amount,
+        description: transactions.description,
+        category: transactions.category,
+        date: sql<string>`${transactions.date}::text`,
+        clientName: clients.name,
+        accountName: accountLabelSql,
+        groupId: transactions.groupId,
+        recurringRuleId: transactions.recurringRuleId,
+      })
+      .from(transactions)
+      .innerJoin(clients, eq(transactions.clientId, clients.id))
+      .leftJoin(wealthAccounts, eq(transactions.wealthAccountId, wealthAccounts.id))
+      .where(and(where, extra))
+      .orderBy(desc(transactions.date), desc(transactions.createdAt))
+      .limit(limit + 1 + SPLIT_BUFFER)
+      .offset(offset)
+    // Extend the page to swallow a split cut by the limit; the client advances
+    // its offset by the returned leaf count, so a variable page size is safe.
+    const end = completeBoundarySplit(rows, limit)
+    const hasMore = rows.length > end
+    const leaves = rows.slice(0, end).map((l) => ({
+      id: l.id,
+      type: l.type,
+      amount: Number(l.amount),
+      description: l.description,
+      category: l.category,
+      date: l.date,
+      client_name: l.clientName,
+      account_name: l.accountName,
+      group_id: l.groupId,
+      recurring: !!l.recurringRuleId,
+    }))
+    return res.json({ leaves, has_more: hasMore })
+  }
 
   // ── TIMELINE mode: a chronological chain of period buckets, each carrying a
   // running cumulative net (before → net → after), ending at the entity. ─────
@@ -117,19 +210,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           date: sql<string>`${transactions.date}::text`,
           periodKey: periodExpr,
           clientName: clients.name,
+          accountName: accountLabelSql,
+          groupId: transactions.groupId,
           recurringRuleId: transactions.recurringRuleId,
         })
         .from(transactions)
         .innerJoin(clients, eq(transactions.clientId, clients.id))
+        .leftJoin(wealthAccounts, eq(transactions.wealthAccountId, wealthAccounts.id))
         .where(where)
         .orderBy(desc(transactions.date), desc(transactions.createdAt))
-        .limit(LEAF_POOL),
+        .limit(LEAF_POOL + SPLIT_BUFFER),
     ])
 
-    const leavesByPeriod = new Map<string, typeof leafPoolT>()
-    for (const l of leafPoolT) {
+    // Trim the over-fetched pool back to LEAF_POOL, but never cut the split that
+    // straddles the boundary — otherwise its tail legs are dropped below the cap.
+    const poolT = leafPoolT.slice(0, completeBoundarySplit(leafPoolT, LEAF_POOL))
+
+    // Cap at LEAVES_PER_GROUP *logical* txs per period; keep all legs of a split.
+    const leavesByPeriod = new Map<string, typeof poolT>()
+    const logicalByPeriod = new Map<string, Set<string>>()
+    for (const l of poolT) {
+      const logical = l.groupId ?? l.id
+      const seen = logicalByPeriod.get(l.periodKey) ?? new Set<string>()
+      if (!seen.has(logical) && seen.size >= LEAVES_PER_GROUP) continue
+      seen.add(logical)
+      logicalByPeriod.set(l.periodKey, seen)
       const arr = leavesByPeriod.get(l.periodKey) ?? []
-      if (arr.length < LEAVES_PER_GROUP) arr.push(l)
+      arr.push(l)
       leavesByPeriod.set(l.periodKey, arr)
     }
 
@@ -152,7 +259,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         category: l.category,
         date: l.date,
         client_name: l.clientName,
-        account_name: null,
+        account_name: l.accountName,
+        group_id: l.groupId,
         recurring: !!l.recurringRuleId,
       }))
       return {
@@ -166,7 +274,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         after: running,
         tx_count: Number(p.txCount),
         leaves,
-        more_count: Math.max(0, Number(p.txCount) - leaves.length),
+        more_count: Math.max(0, Number(p.txCount) - (logicalByPeriod.get(p.key)?.size ?? 0)),
       }
     })
 
@@ -195,7 +303,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ? sql<string | null>`${transactions.clientId}::text`
         : sql<string | null>`coalesce(nullif(${transactions.category}, ''), 'Uncategorized')`
 
-  const [summaryRows, groupRows, accountMeta, ownerOrg, leafPool] = await Promise.all([
+  const [summaryRows, groupRows, accountMeta, ownerOrg, leafPoolRaw] = await Promise.all([
     db
       .select({ income: incomeSum, expense: expenseSum, txCount: countExpr })
       .from(transactions)
@@ -217,6 +325,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         icon: wealthAccounts.icon,
         opening: wealthAccounts.openingBalance,
         current: wealthAccounts.currentBalance,
+        logoUrl: wealthAccounts.logoUrl,
+        logoData: wealthAccounts.logoData,
       })
       .from(wealthAccounts)
       .where(and(eq(wealthAccounts.organizationId, orgId), isNull(wealthAccounts.archivedAt))),
@@ -232,19 +342,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         clientId: transactions.clientId,
         clientName: clients.name,
         accountId: transactions.wealthAccountId,
+        groupId: transactions.groupId,
         recurringRuleId: transactions.recurringRuleId,
       })
       .from(transactions)
       .innerJoin(clients, eq(transactions.clientId, clients.id))
       .where(where)
       .orderBy(desc(transactions.date), desc(transactions.createdAt))
-      .limit(LEAF_POOL),
+      .limit(LEAF_POOL + SPLIT_BUFFER),
   ])
 
+  // Trim the over-fetched pool back to LEAF_POOL without cutting the split that
+  // straddles the boundary (its tail legs would otherwise drop below the cap).
+  const leafPool = leafPoolRaw.slice(0, completeBoundarySplit(leafPoolRaw, LEAF_POOL))
   const accById = new Map(accountMeta.map((a) => [a.id, a]))
   const clientNameByLeaf = new Map(leafPool.map((l) => [l.clientId, l.clientName]))
 
-  // Bucket the recent-leaf pool by the active group key.
+  // Bucket the recent-leaf pool by the active group key. We cap at
+  // LEAVES_PER_GROUP *logical* transactions (a split counts once) and always
+  // keep ALL legs of an included split, so the client can collapse them cleanly.
   const leafKeyOf = (l: (typeof leafPool)[number]): string | null =>
     groupBy === "account"
       ? l.accountId
@@ -252,10 +368,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ? l.clientId
         : (l.category?.trim() || "Uncategorized")
   const leavesByKey = new Map<string, typeof leafPool>()
+  const logicalByKey = new Map<string, Set<string>>()
   for (const l of leafPool) {
     const k = leafKeyOf(l) ?? "__none__"
+    const logical = l.groupId ?? l.id
+    const seen = logicalByKey.get(k) ?? new Set<string>()
+    if (!seen.has(logical) && seen.size >= LEAVES_PER_GROUP) continue
+    seen.add(logical)
+    logicalByKey.set(k, seen)
     const arr = leavesByKey.get(k) ?? []
-    if (arr.length < LEAVES_PER_GROUP) arr.push(l)
+    arr.push(l)
     leavesByKey.set(k, arr)
   }
 
@@ -279,6 +401,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       date: l.date,
       client_name: l.clientName,
       account_name: l.accountId ? (accById.get(l.accountId)?.label ?? null) : null,
+      group_id: l.groupId,
       recurring: !!l.recurringRuleId,
     }))
     const acc = groupBy === "account" && g.key ? accById.get(g.key) : undefined
@@ -287,6 +410,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       kind: groupBy,
       label: labelForGroup(g.key),
       icon: acc?.icon ?? null,
+      logo_src: acc ? logoDataUrl(acc.logoData) || acc.logoUrl || null : null,
       account_type: acc?.type ?? null,
       income,
       expense,
@@ -295,7 +419,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       opening_balance: acc ? Number(acc.opening) : null,
       current_balance: acc ? Number(acc.current) : null,
       leaves,
-      more_count: Math.max(0, count - leaves.length),
+      // count is logical txs; subtract the logical txs already sampled (a split
+      // is one), not the raw leg count.
+      more_count: Math.max(0, count - (logicalByKey.get(bucketKey)?.size ?? 0)),
     }
   })
 

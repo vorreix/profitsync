@@ -207,6 +207,86 @@
       transition: none;
     }
   }
+  /* Money-flow edge palette (drives the gradient "pipes" + minimap). Tones read
+     as income (emerald), expense (rose), neutral (slate); dark gets brighter
+     stops so the curves stay legible on the dark canvas. */
+  .ps-flow {
+    --mf-income: #10b981;
+    --mf-expense: #f43f5e;
+    --mf-neutral: #94a3b8;
+    --mf-minimap-mask: rgb(241 245 249 / 0.55);
+    /* dot grid colour for the canvas Background */
+    --xy-background-pattern-color: color-mix(in oklch, var(--muted-foreground) 22%, transparent);
+    --xy-background-pattern-color-default: color-mix(in oklch, var(--muted-foreground) 22%, transparent);
+  }
+  .dark .ps-flow {
+    --mf-income: #34d399;
+    --mf-expense: #fb7185;
+    --mf-neutral: #64748b;
+    --mf-minimap-mask: rgb(2 6 23 / 0.6);
+  }
+  /* Flowing-dash layers on the ONE connection line. Both use dasharray "6 12"
+     (period 18). IN (income) glides target → source (offset increasing); OUT
+     (expense) glides source → target (decreasing) AND starts half a period out
+     of phase (9) so the green and red dashes interleave along the single line
+     instead of colliding. Paused for reduced-motion users (the coloured dashes
+     still show which directions carry money, just static). */
+  .ps-flow .ps-flow-edge-in {
+    stroke-dashoffset: 0;
+  }
+  .ps-flow .ps-flow-edge-out {
+    stroke-dashoffset: 9;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .ps-flow .ps-flow-edge-out {
+      animation: ps-flow-out 1.3s linear infinite;
+    }
+    .ps-flow .ps-flow-edge-in {
+      animation: ps-flow-in 1.3s linear infinite;
+    }
+  }
+  .ps-flow .ps-flow-edge--active {
+    filter: saturate(1.35);
+  }
+  @keyframes ps-flow-out {
+    from {
+      stroke-dashoffset: 9;
+    }
+    to {
+      stroke-dashoffset: -9;
+    }
+  }
+  @keyframes ps-flow-in {
+    from {
+      stroke-dashoffset: 0;
+    }
+    to {
+      stroke-dashoffset: 18;
+    }
+  }
+  /* Canvas chrome polish — Controls + MiniMap inherit the app surface so they
+     stay legible in both themes (colorMode already swaps the --xy-* base). */
+  .ps-flow .react-flow__controls-button {
+    background: var(--card);
+    border-bottom: 1px solid var(--border);
+    color: var(--foreground);
+    fill: var(--foreground);
+  }
+  .ps-flow .react-flow__controls-button:hover {
+    background: var(--muted);
+  }
+  /* React Flow reads these vars for the minimap fill/mask — overriding the var
+     (not just `background`) wins over RF's colorMode defaults reliably. */
+  .ps-flow {
+    --xy-minimap-background-color: color-mix(in oklch, var(--card) 92%, transparent);
+    --xy-minimap-background-color-default: color-mix(in oklch, var(--card) 92%, transparent);
+  }
+  .ps-flow .react-flow__minimap {
+    border-radius: 0.75rem;
+  }
+  .ps-flow .react-flow__attribution {
+    display: none;
+  }
   /* Sonner sets touch-action:none on toasts for swipe-to-dismiss — but a
      bottom toast spans ~92% of a phone's width exactly where the thumb starts
      scrolling, so for its whole duration the page can't be panned from there.
