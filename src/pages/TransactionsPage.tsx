@@ -80,7 +80,9 @@ export function TransactionsPage() {
   const [search, setSearch] = useState("")
   const [tab, setTab] = useState("all")
   const [sort, setSort] = useState("date_desc")
-  const [categoryFilter, setCategoryFilter] = useState("all")
+  // Deep-linkable category filter: /transactions?category=… (the money-flow
+  // "View in list" on a category group lands here pre-filtered).
+  const [categoryFilter, setCategoryFilter] = useState(() => searchParams.get("category") ?? "all")
   // Date-range filters, deep-linkable: /transactions?from=YYYY-MM-DD&to=… (the
   // calendar's "Open in Transactions" lands here pre-filtered).
   const [dateFrom, setDateFrom] = useState(() => searchParams.get("from") ?? "")
