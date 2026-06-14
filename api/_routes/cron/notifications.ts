@@ -35,7 +35,9 @@ export async function runNotificationTick(now: Date = new Date()): Promise<{ rem
       title: "Time to add your transactions",
       body: "Don't forget to record today's income and expenses.",
       data: { i18nKey: "types.add_transaction_reminder" },
-      link: "/transactions?add=1",
+      // Reuse the existing Add-Transaction deep link (?new=1) so clicking the
+      // reminder opens the Add Transaction dialog on the Transactions page.
+      link: "/transactions?new=1",
       dedupeKey: `reminder:${r.id}:${slot}`,
     })
     await db

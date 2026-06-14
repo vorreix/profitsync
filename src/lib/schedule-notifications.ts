@@ -103,6 +103,32 @@ export function reminderDueSlot(
   return `${today}T${latest}`
 }
 
+/**
+ * Validate/normalize an untrusted reminder schedule (from a request body or a DB
+ * jsonb column) into a clean ReminderSchedule: well-formed "HH:mm" times, weekdays
+ * in 1..7, and a supported IANA timezone. Drops anything malformed so a tampered
+ * payload can never widen the shape.
+ */
+export function sanitizeReminderSchedule(input: unknown): ReminderSchedule {
+  const obj = input && typeof input === "object" ? (input as Record<string, unknown>) : {}
+  const times = Array.isArray(obj.times)
+    ? Array.from(
+        new Set(
+          obj.times.filter(
+            (t): t is string => typeof t === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(t),
+          ),
+        ),
+      ).sort()
+    : []
+  const weekdays = Array.isArray(obj.weekdays)
+    ? Array.from(
+        new Set(obj.weekdays.filter((d): d is number => typeof d === "number" && Number.isInteger(d) && d >= 1 && d <= 7)),
+      ).sort((a, b) => a - b)
+    : []
+  const timezone = safeTimezone(typeof obj.timezone === "string" ? obj.timezone : "UTC")
+  return { times, weekdays, timezone }
+}
+
 /** Human summary of a reminder schedule, e.g. "Mon–Fri at 09:00, 18:00". */
 export function describeReminderSchedule(schedule: ReminderSchedule): string {
   const times = (schedule.times ?? []).join(", ") || "—"
