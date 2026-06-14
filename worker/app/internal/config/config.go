@@ -25,6 +25,16 @@ type Config struct {
 	VisibilityTimeout time.Duration // a 'running' job idle this long is reaped (worker crashed)
 	ShutdownGrace     time.Duration // max wait for in-flight jobs to drain on shutdown
 
+	// Logging. Logs ALWAYS go to stdout (so `docker compose logs` works); when
+	// LogDir is set they ALSO go to a size-rotated file under that dir (mount a
+	// volume there to persist + rotate across restarts).
+	LogLevel      string // debug | info | warn | error
+	LogDir        string // empty = stdout only; e.g. /app/logs to also write a file
+	LogMaxSizeMB  int    // rotate after a file reaches this size (MB)
+	LogMaxBackups int    // how many rotated files to keep
+	LogMaxAgeDays int    // delete rotated files older than this (days)
+	LogCompress   bool   // gzip rotated files
+
 	// ProfitSync app callback (for trigger-style jobs that run app logic).
 	ProfitSyncBaseURL      string
 	ProfitSyncServiceToken string
@@ -54,6 +64,12 @@ func Load() (Config, error) {
 		MaxAttempts:            envInt("WORKER_MAX_ATTEMPTS", 5),
 		VisibilityTimeout:      envDuration("WORKER_VISIBILITY_TIMEOUT", 10*time.Minute),
 		ShutdownGrace:          envDuration("WORKER_SHUTDOWN_GRACE", 30*time.Second),
+		LogLevel:               env("WORKER_LOG_LEVEL", "info"),
+		LogDir:                 os.Getenv("WORKER_LOG_DIR"),
+		LogMaxSizeMB:           envInt("WORKER_LOG_MAX_SIZE_MB", 50),
+		LogMaxBackups:          envInt("WORKER_LOG_MAX_BACKUPS", 10),
+		LogMaxAgeDays:          envInt("WORKER_LOG_MAX_AGE_DAYS", 30),
+		LogCompress:            envBool("WORKER_LOG_COMPRESS", true),
 		ProfitSyncBaseURL:      os.Getenv("PROFITSYNC_BASE_URL"),
 		ProfitSyncServiceToken: os.Getenv("PROFITSYNC_SERVICE_TOKEN"),
 		S3Endpoint:             os.Getenv("S3_ENDPOINT"),

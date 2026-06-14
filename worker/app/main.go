@@ -25,6 +25,7 @@ import (
 	"github.com/vorreix/profitsync-worker/internal/config"
 	"github.com/vorreix/profitsync-worker/internal/httpapi"
 	"github.com/vorreix/profitsync-worker/internal/jobs"
+	"github.com/vorreix/profitsync-worker/internal/logging"
 	"github.com/vorreix/profitsync-worker/internal/profitsync"
 	"github.com/vorreix/profitsync-worker/internal/scheduler"
 	"github.com/vorreix/profitsync-worker/internal/storage"
@@ -36,13 +37,19 @@ import (
 var migrationsFS embed.FS
 
 func main() {
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
-
 	cfg, err := config.Load()
 	if err != nil {
-		logger.Error("invalid configuration", "err", err)
+		slog.New(slog.NewJSONHandler(os.Stderr, nil)).Error("invalid configuration", "err", err)
 		os.Exit(1)
 	}
+
+	// Structured logger: JSON to stdout, plus a rotating file when WORKER_LOG_DIR
+	// is set (see internal/logging).
+	logger, logCloser := logging.New(cfg)
+	if logCloser != nil {
+		defer logCloser.Close()
+	}
+	logger.Info("logging configured", "level", cfg.LogLevel, "to_file", cfg.LogDir != "", "dir", cfg.LogDir)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -64,7 +71,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	ps := profitsync.New(cfg.ProfitSyncBaseURL, cfg.ProfitSyncServiceToken)
+	ps := profitsync.New(cfg.ProfitSyncBaseURL, cfg.ProfitSyncServiceToken, logger)
 	var s3 *storage.Client
 	if cfg.S3Configured() {
 		if s3, err = storage.New(cfg); err != nil {
