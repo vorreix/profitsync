@@ -101,6 +101,27 @@ pr: ## Full pre-commit gate: conflict markers → i18n parity → format → lin
 	@echo "✓ all checks passed"
 
 # ----------------------------------------------------------------------------
+# Background worker (worker/ — docker-compose, project: profitsync-worker)
+# Delegates to worker/Makefile. Run `make -C worker help` for all worker targets.
+# ----------------------------------------------------------------------------
+
+.PHONY: worker-up
+worker-up: ## Build + start the background worker (docker, project profitsync-worker)
+	@$(MAKE) -C worker up
+
+.PHONY: worker-down
+worker-down: ## Stop + remove the worker containers (keeps volumes)
+	@$(MAKE) -C worker down
+
+.PHONY: worker-logs
+worker-logs: ## Follow the worker's logs
+	@$(MAKE) -C worker logs
+
+.PHONY: worker-ps
+worker-ps: ## Show the worker stack status
+	@$(MAKE) -C worker ps
+
+# ----------------------------------------------------------------------------
 # Help
 # ----------------------------------------------------------------------------
 
