@@ -72,6 +72,7 @@ const AdminBlogPage = lazy(() => import("@/pages/admin/AdminBlogPage").then((m) 
 const AdminReferralsPage = lazy(() => import("@/pages/admin/AdminReferralsPage").then((m) => ({ default: m.AdminReferralsPage })))
 const AdminAdminsPage = lazy(() => import("@/pages/admin/AdminAdminsPage").then((m) => ({ default: m.AdminAdminsPage })))
 const AdminWorkerPage = lazy(() => import("@/pages/admin/AdminWorkerPage").then((m) => ({ default: m.AdminWorkerPage })))
+const AdminUserGroupsPage = lazy(() => import("@/pages/admin/AdminUserGroupsPage").then((m) => ({ default: m.AdminUserGroupsPage })))
 
 function RouteFallback() {
   return (
@@ -142,6 +143,7 @@ export function App() {
             <Route path="blog" element={<RequireAdminCap cap="blog"><AdminBlogPage /></RequireAdminCap>} />
             <Route path="referrals" element={<RequireAdminCap cap="read"><AdminReferralsPage /></RequireAdminCap>} />
             <Route path="worker" element={<RequireAdminCap cap="read"><AdminWorkerPage /></RequireAdminCap>} />
+            <Route path="user-groups" element={<RequireAdminCap cap="broadcast"><AdminUserGroupsPage /></RequireAdminCap>} />
             <Route path="admins" element={<RequireAdminCap cap="manage_admins"><AdminAdminsPage /></RequireAdminCap>} />
           </Route>
 
