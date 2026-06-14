@@ -17,6 +17,7 @@ import onboarding from "./_routes/onboarding.js"
 import notificationsList from "./_routes/notifications.js"
 import notificationsUnreadCount from "./_routes/notifications/unread-count.js"
 import notificationsReadAll from "./_routes/notifications/read-all.js"
+import notificationsPreferences from "./_routes/notifications/preferences.js"
 import notificationById from "./_routes/notifications/[id].js"
 import clients from "./_routes/clients.js"
 import clientsBulkDelete from "./_routes/clients/bulk-delete.js"
@@ -125,6 +126,7 @@ const routes: RoutePattern<ApiHandler>[] = [
   { segments: ["notifications"], handler: notificationsList },
   { segments: ["notifications", "unread-count"], handler: notificationsUnreadCount },
   { segments: ["notifications", "read-all"], handler: notificationsReadAll },
+  { segments: ["notifications", "preferences"], handler: notificationsPreferences },
   { segments: ["notifications", ":id"], handler: notificationById },
 
   { segments: ["clients"], handler: clients },
