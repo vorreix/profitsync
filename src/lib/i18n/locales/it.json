@@ -1408,6 +1408,10 @@
       "budget_exceeded": {
         "title": "Budget superato",
         "body": "{{name}} ha superato il suo budget {{period}}."
+      },
+      "space_autosaved": {
+        "title": "Risparmio automatico nello Spazio",
+        "body": "Denaro spostato in {{space}}"
       }
     }
   }

@@ -44,6 +44,7 @@ export const NOTIFICATION_TYPES = {
   budget_warning: { category: "budget", i18nKey: "types.budget_warning" },
   budget_exceeded: { category: "budget", i18nKey: "types.budget_exceeded" },
   recurring_posted: { category: "transactions", i18nKey: "types.recurring_posted" },
+  space_autosaved: { category: "transactions", i18nKey: "types.space_autosaved" },
   quotation_accepted: { category: "clients", i18nKey: "types.quotation_accepted" },
   system_announcement: { category: "system", i18nKey: "types.system_announcement" },
 } as const satisfies Record<string, NotificationTypeDef>

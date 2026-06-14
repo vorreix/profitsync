@@ -1408,6 +1408,10 @@
       "budget_exceeded": {
         "title": "تجاوز الميزانية",
         "body": "تجاوزت {{name}} ميزانية {{period}}."
+      },
+      "space_autosaved": {
+        "title": "تم الادخار تلقائيًا في مساحتك",
+        "body": "تم نقل الأموال إلى {{space}}"
       }
     }
   }

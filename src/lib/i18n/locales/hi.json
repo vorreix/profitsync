@@ -1408,6 +1408,10 @@
       "budget_exceeded": {
         "title": "बजट अतिक्रमण",
         "body": "{{name}} अपने {{period}} बजट से अधिक हो गया है।"
+      },
+      "space_autosaved": {
+        "title": "आपके Space में अपने आप सेव हुआ",
+        "body": "{{space}} में पैसे डाले गए"
       }
     }
   }
