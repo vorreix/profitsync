@@ -20,6 +20,7 @@ import notificationsReadAll from "./_routes/notifications/read-all.js"
 import notificationsPreferences from "./_routes/notifications/preferences.js"
 import notificationsPush from "./_routes/notifications/push.js"
 import notificationById from "./_routes/notifications/[id].js"
+import cronNotifications from "./_routes/cron/notifications.js"
 import clients from "./_routes/clients.js"
 import clientsBulkDelete from "./_routes/clients/bulk-delete.js"
 import clientById from "./_routes/clients/[id].js"
@@ -131,6 +132,7 @@ const routes: RoutePattern<ApiHandler>[] = [
   { segments: ["notifications", "preferences"], handler: notificationsPreferences },
   { segments: ["notifications", "push"], handler: notificationsPush },
   { segments: ["notifications", ":id"], handler: notificationById },
+  { segments: ["cron", "notifications"], handler: cronNotifications },
 
   { segments: ["clients"], handler: clients },
   { segments: ["clients", "bulk-delete"], handler: clientsBulkDelete },
