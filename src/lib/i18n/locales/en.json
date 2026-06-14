@@ -444,7 +444,11 @@
     "removePhoto": "Remove",
     "photoHint": "Square image works best. PNG, JPG or WebP.",
     "photoUpdated": "Profile photo updated",
-    "photoInvalid": "Couldn't read that image — try a different file"
+    "photoInvalid": "Couldn't read that image — try a different file",
+    "tabs": {
+      "profile": "Profile",
+      "preferences": "Preferences"
+    }
   },
   "toast": {
     "profileLoadFailed": "Failed to load profile",

@@ -207,7 +207,11 @@
     "removePhoto": "Rimuovi",
     "photoHint": "Un'immagine quadrata funziona meglio. PNG, JPG o WebP.",
     "photoUpdated": "Foto profilo aggiornata",
-    "photoInvalid": "Impossibile leggere l'immagine — prova con un altro file"
+    "photoInvalid": "Impossibile leggere l'immagine — prova con un altro file",
+    "tabs": {
+      "profile": "Profilo",
+      "preferences": "Preferenze"
+    }
   },
   "toast": {
     "profileLoadFailed": "Impossibile caricare il profilo",

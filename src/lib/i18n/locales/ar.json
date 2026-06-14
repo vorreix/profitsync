@@ -207,7 +207,11 @@
     "removePhoto": "إزالة",
     "photoHint": "الصورة المربعة هي الأفضل. PNG أو JPG أو WebP.",
     "photoUpdated": "تم تحديث صورة الملف الشخصي",
-    "photoInvalid": "تعذرت قراءة الصورة — جرب ملفًا آخر"
+    "photoInvalid": "تعذرت قراءة الصورة — جرب ملفًا آخر",
+    "tabs": {
+      "profile": "الملف الشخصي",
+      "preferences": "التفضيلات"
+    }
   },
   "toast": {
     "profileLoadFailed": "فشل تحميل الملف الشخصي",
