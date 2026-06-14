@@ -54,6 +54,7 @@ import { LanguageSwitcher } from "@/components/LanguageSwitcher"
 import { InstallAppBanner } from "@/components/InstallAppBanner"
 import { InstallButton } from "@/components/InstallButton"
 import { ReferralBanner } from "@/components/ReferralBanner"
+import { NotificationBell } from "@/components/notifications/NotificationBell"
 import { QuickAddModal, type QuickAddEntity } from "@/components/QuickAddModal"
 import { AddTransactionDialog, type CreatedTxInfo } from "@/components/transactions/AddTransactionDialog"
 import { useCurrency } from "@/lib/currency-context"
@@ -313,6 +314,8 @@ export function MobileAppLayout() {
               </ScrollArea>
             </SheetContent>
           </Sheet>
+
+          <NotificationBell />
 
           <InstallButton
             label={null}
