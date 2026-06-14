@@ -264,6 +264,14 @@ function BroadcastComposer({
 }) {
   const { getToken } = useAuth()
 
+  // Open AFTER mount (false → true) so the shared Dialog's useBackClose sees a real
+  // open transition. Mounting already-open makes its StrictMode effect cleanup run
+  // history.back() and immediately close the modal.
+  const [open, setOpen] = useState(false)
+  useEffect(() => {
+    setOpen(true)
+  }, [])
+
   const [title, setTitle] = useState(broadcast?.title ?? "")
   const [body, setBody] = useState(broadcast?.body ?? "")
   const [imageUrl, setImageUrl] = useState(broadcast?.image_url ?? "")
@@ -379,7 +387,7 @@ function BroadcastComposer({
   const editingSent = broadcast?.status === "sent" || broadcast?.status === "sending"
 
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose() }}>
       <DialogContent className="max-h-[92svh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>{broadcast ? "Edit broadcast" : "New broadcast"}</DialogTitle>

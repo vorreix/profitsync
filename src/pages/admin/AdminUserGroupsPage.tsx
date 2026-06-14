@@ -150,6 +150,12 @@ function GroupEditor({
   onSaved: () => void
 }) {
   const { getToken } = useAuth()
+  // Open AFTER mount (false → true) so the shared Dialog's useBackClose sees a real
+  // open transition — mounting already-open makes its StrictMode cleanup close it.
+  const [open, setOpen] = useState(false)
+  useEffect(() => {
+    setOpen(true)
+  }, [])
   const [name, setName] = useState(group?.name ?? "")
   const [members, setMembers] = useState<Member[]>([])
   const [loadingMembers, setLoadingMembers] = useState(!!group)
@@ -234,7 +240,7 @@ function GroupEditor({
   }
 
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose() }}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{group ? "Manage group" : "New group"}</DialogTitle>
