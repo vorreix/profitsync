@@ -9,6 +9,7 @@ import {
   userProfiles,
 } from "../../../src/lib/db/schema.js"
 import { getUserId } from "../../_lib/auth.js"
+import { createNotification } from "../../_lib/notifications.js"
 
 const clerk = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY! })
 
@@ -116,6 +117,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     .set({ acceptedAt: new Date() })
     .where(eq(organizationInvitations.id, invitation.id))
     .returning()
+
+  // Notify the inviter that their invitation was accepted (best-effort).
+  const accepterName = clerkUser.fullName || userEmail
+  void createNotification({
+    userId: invitation.invitedByUserId,
+    organizationId: invitation.organizationId,
+    type: "invitation_accepted",
+    title: "Invitation accepted",
+    body: `${accepterName} joined ${org?.name ?? "your organization"}`,
+    data: {
+      i18nKey: "types.invitation_accepted.title",
+      i18nBodyKey: "types.invitation_accepted.body",
+      i18nParams: { name: accepterName, org: org?.name ?? "" },
+    },
+    link: `/organizations/${invitation.organizationId}/members`,
+    actorUserId: userId,
+    dedupeKey: `inv_accepted:${invitation.id}`,
+  }).catch(() => {})
 
   return res.json({ invitation: serialize(accepted), organization: org })
 }
