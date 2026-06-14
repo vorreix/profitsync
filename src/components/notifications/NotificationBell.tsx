@@ -143,6 +143,19 @@ export function NotificationBell({ className }: { className?: string }) {
             </div>
           </ScrollArea>
         )}
+
+        <div className="border-t p-1">
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(false)
+              navigate("/notifications")
+            }}
+            className="w-full rounded-md px-3 py-2 text-center text-sm font-medium text-primary hover:bg-accent"
+          >
+            {t("view_all")}
+          </button>
+        </div>
       </PopoverContent>
     </Popover>
   )
