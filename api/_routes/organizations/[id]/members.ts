@@ -10,6 +10,7 @@ import {
 } from "../../../../src/lib/db/schema.js"
 import { getUserId } from "../../../_lib/auth.js"
 import { sendInvitationEmail } from "../../../_lib/email.js"
+import { createNotification } from "../../../_lib/notifications.js"
 
 const VALID_ROLES = ["owner", "admin", "editor", "viewer"]
 
@@ -223,6 +224,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .set({ role })
       .where(eq(organizationMembers.id, member_id))
       .returning()
+
+    // Notify the affected member their role changed (skip self-changes).
+    if (target.userId !== userId) {
+      const [orgRow] = await db.select({ name: organizations.name }).from(organizations).where(eq(organizations.id, id))
+      void createNotification({
+        userId: target.userId,
+        organizationId: id,
+        type: "role_changed",
+        title: "Your role changed",
+        body: `You're now ${role} in ${orgRow?.name ?? "the organization"}`,
+        data: {
+          i18nKey: "types.role_changed.title",
+          i18nBodyKey: "types.role_changed.body",
+          i18nParams: { role, org: orgRow?.name ?? "" },
+        },
+        link: `/organizations/${id}/members`,
+        actorUserId: userId,
+      }).catch(() => {})
+    }
     return res.json(serialize(updated))
   }
 
@@ -271,6 +291,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     await db.delete(organizationMembers).where(eq(organizationMembers.id, member_id))
+
+    // Notify a removed member (not a self-leave). Account-level (organizationId
+    // null) so it surfaces even though they can no longer see that org's scope.
+    if (target.userId !== userId) {
+      const [orgRow] = await db.select({ name: organizations.name }).from(organizations).where(eq(organizations.id, id))
+      void createNotification({
+        userId: target.userId,
+        organizationId: null,
+        type: "member_removed",
+        title: "Removed from organization",
+        body: `You were removed from ${orgRow?.name ?? "an organization"}`,
+        data: {
+          i18nKey: "types.member_removed.title",
+          i18nBodyKey: "types.member_removed.body",
+          i18nParams: { org: orgRow?.name ?? "" },
+        },
+        actorUserId: userId,
+      }).catch(() => {})
+    }
     return res.status(204).end()
   }
 
