@@ -1203,7 +1203,10 @@
     "searchCategories": "Search categories…",
     "searchClients": "Search clients…",
     "searchAccounts": "Search accounts…",
-    "legendThickness": "Thicker lines carry more money"
+    "legendThickness": "Thicker lines carry more money",
+    "loadMore": "Load more",
+    "loadingMore": "Loading…",
+    "viewInList": "View in list"
   },
   "spaces": {
     "title": "Spaces",

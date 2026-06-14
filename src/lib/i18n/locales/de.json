@@ -1203,7 +1203,10 @@
     "searchCategories": "Kategorien suchen…",
     "searchClients": "Kunden suchen…",
     "searchAccounts": "Konten suchen…",
-    "legendThickness": "Dickere Linien stehen für mehr Geld"
+    "legendThickness": "Dickere Linien stehen für mehr Geld",
+    "loadMore": "Mehr laden",
+    "loadingMore": "Wird geladen…",
+    "viewInList": "In Liste ansehen"
   },
   "spaces": {
     "title": "Sparräume",

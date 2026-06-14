@@ -180,7 +180,7 @@ export function buildFlowGraph(data: FlowData, state: CollapseState): { nodes: F
       })
       if (g.more_count > 0) {
         const mid = `m:${key}`
-        nodes.push({ id: mid, type: "more", position: { x: COL_LEAF_X, y: ly }, data: { count: g.more_count, group: g, enterIndex: g.leaves.length } })
+        nodes.push({ id: mid, type: "more", position: { x: COL_LEAF_X, y: ly }, data: { count: g.more_count, group: g, mkey: key, enterIndex: g.leaves.length } })
         edges.push({ id: `e:${gid}-${mid}`, source: gid, target: mid, data: { tone: "neutral", weight: 0.15, kind: "leaf", animated: false } })
       }
     }
@@ -237,7 +237,7 @@ export function buildTimelineGraph(data: TimelineData, expandedPeriods: Set<stri
       })
       if (p.more_count > 0) {
         const mid = `m:${p.key}`
-        nodes.push({ id: mid, type: "more", position: { x: i * TL_COL_W, y: ly }, data: { count: p.more_count, period: p, enterIndex: p.leaves.length } })
+        nodes.push({ id: mid, type: "more", position: { x: i * TL_COL_W, y: ly }, data: { count: p.more_count, period: p, mkey: p.key, enterIndex: p.leaves.length } })
         edges.push({ id: `e:${pid}-${mid}`, source: pid, target: mid, data: { tone: "neutral", weight: 0.15, kind: "leaf", animated: false } })
       }
     }
@@ -257,4 +257,45 @@ export function buildTimelineGraph(data: TimelineData, expandedPeriods: Set<stri
   }
 
   return { nodes, edges }
+}
+
+// ── Inline "load more" ───────────────────────────────────────────────────────
+// When the user expands a group's "+N more" into the canvas, the page fetches
+// the next batch of leaves and stashes them under the group's key. This merges
+// those extra leaves into the data (deduped by id) and recomputes `more_count`
+// so the builder renders the larger leaf stack and shrinks/drops the more-node.
+// Pure + immutable so it stays unit-testable and never mutates server data.
+function dedupeLeaves(leaves: FlowLeaf[]): FlowLeaf[] {
+  const seen = new Set<string>()
+  const out: FlowLeaf[] = []
+  for (const l of leaves) {
+    if (seen.has(l.id)) continue
+    seen.add(l.id)
+    out.push(l)
+  }
+  return out
+}
+
+export function applyExtraLeaves<T extends FlowData | TimelineData>(data: T, extra: Record<string, FlowLeaf[]>): T {
+  if (!extra || Object.keys(extra).length === 0) return data
+  if (data.mode === "timeline") {
+    return {
+      ...data,
+      periods: data.periods.map((p) => {
+        const ex = extra[p.key]
+        if (!ex || ex.length === 0) return p
+        const leaves = dedupeLeaves([...p.leaves, ...ex])
+        return { ...p, leaves, more_count: Math.max(0, p.tx_count - leaves.length) }
+      }),
+    }
+  }
+  return {
+    ...data,
+    groups: data.groups.map((g) => {
+      const ex = extra[groupKeyId(g)]
+      if (!ex || ex.length === 0) return g
+      const leaves = dedupeLeaves([...g.leaves, ...ex])
+      return { ...g, leaves, more_count: Math.max(0, g.tx_count - leaves.length) }
+    }),
+  }
 }

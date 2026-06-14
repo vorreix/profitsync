@@ -32,7 +32,9 @@ import {
   ChevronRight,
   Landmark,
   ListFilter,
+  Loader2,
   Network,
+  Plus,
   Repeat,
   Search,
   Sparkles,
@@ -52,6 +54,7 @@ import { formatMoney } from "@/lib/wealth"
 import { cn } from "@/lib/utils"
 import { accountTypeAllows } from "@/lib/types"
 import {
+  applyExtraLeaves,
   buildFlowGraph,
   buildTimelineGraph,
   groupKeyId,
@@ -279,23 +282,50 @@ function LeafNode({ id, data }: NodeProps<Node<LeafData>>) {
   )
 }
 
-type MoreData = { count: number; onOpen: () => void; enterIndex?: number }
+// The "+N more" node offers two ways to see the rest: LOAD MORE pulls the next
+// page of transactions in as nodes on the canvas; VIEW IN LIST jumps to the
+// filtered list page (the original behaviour). The card body drags; the two
+// buttons are `nodrag` so they click cleanly.
+type MoreData = { count: number; loading?: boolean; exhausted?: boolean; onLoadMore: () => void; onOpenList: () => void; enterIndex?: number }
 function MoreNode({ id, data }: NodeProps<Node<MoreData>>) {
   const { t } = useTranslation()
   const focus = useFocus(id)
   return (
-    <button
-      type="button"
-      onClick={(e) => { if (e.detail === 0) data.onOpen() }}
+    <div
       style={{ animationDelay: `${Math.min(data.enterIndex ?? 0, 8) * 45}ms` }}
       className={cn(
-        "flex w-[236px] cursor-grab items-center justify-center gap-1.5 rounded-2xl border border-dashed bg-card/70 px-2.5 py-2 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/50 hover:text-foreground active:cursor-grabbing motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-left-3 motion-safe:duration-300 motion-safe:fill-mode-both",
+        "flex w-[236px] cursor-grab flex-col gap-2 rounded-2xl border border-dashed bg-card/70 p-2.5 text-xs text-muted-foreground shadow-sm active:cursor-grabbing motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-left-3 motion-safe:duration-300 motion-safe:fill-mode-both",
         nodeFx(focus),
       )}
     >
       <Handle type="target" position={Position.Left} className={HANDLE_CLS} />
-      <ListFilter className="size-3.5" /> {t("flow.viewMore", { count: data.count })}
-    </button>
+      <p className="text-center font-medium">{t("flow.viewMore", { count: data.count })}</p>
+      <div className="flex gap-1.5">
+        {!data.exhausted && (
+          <button
+            type="button"
+            onClick={data.onLoadMore}
+            disabled={data.loading}
+            className="nodrag flex flex-1 items-center justify-center gap-1 rounded-lg border bg-background/70 py-1.5 font-medium transition-colors hover:bg-muted hover:text-foreground disabled:cursor-default disabled:opacity-60"
+          >
+            {data.loading ? <Loader2 className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />}
+            {data.loading ? t("flow.loadingMore") : t("flow.loadMore")}
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={data.onOpenList}
+          title={t("flow.viewInList")}
+          className={cn(
+            "nodrag flex items-center justify-center gap-1 rounded-lg border bg-background/70 py-1.5 font-medium transition-colors hover:bg-muted hover:text-foreground",
+            data.exhausted ? "flex-1" : "px-2.5",
+          )}
+        >
+          <ListFilter className="size-3.5" />
+          {data.exhausted && t("flow.viewInList")}
+        </button>
+      </div>
+    </div>
   )
 }
 
@@ -568,6 +598,11 @@ export function MoneyFlowPage() {
   const [rootCollapsed, setRootCollapsed] = useState(saved.rootCollapsed ?? false)
   const [expanded, setExpanded] = useState<Set<string>>(new Set(saved.expanded ?? []))
   const [dataVersion, setDataVersion] = useState(0)
+  // Inline "load more": extra leaf batches fetched on demand, keyed by group/
+  // period mkey; `exhausted` marks keys with no further pages to fetch. Both
+  // reset whenever a fresh dataset arrives (they belong to the previous query).
+  const [extraLeaves, setExtraLeaves] = useState<Record<string, FlowLeaf[]>>({})
+  const [exhausted, setExhausted] = useState<Set<string>>(new Set())
 
   // Dragged node positions (id → {x,y}); survive rebuilds AND navigation.
   const userPositions = useRef<Record<string, { x: number; y: number }>>(saved.positions ?? {})
@@ -615,6 +650,9 @@ export function MoneyFlowPage() {
       if (selAccounts.size) params.set("accountId", [...selAccounts].join(","))
       const resp = await apiGet<FlowData | TimelineData>(`/api/flow?${params}`, token)
       setData(resp)
+      // Fresh dataset → drop any inline-loaded leaves from the previous query.
+      setExtraLeaves({})
+      setExhausted(new Set())
       setDataVersion((v) => v + 1)
     } catch {
       if (!silent) toast.error(t("flow.loadFailed"))
@@ -677,18 +715,61 @@ export function MoneyFlowPage() {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
 
-  // Rebuild + re-fit only when the STRUCTURE changes — NOT on drag/hover.
+  // Flip a single "+N more" node's spinner without a full graph rebuild.
+  const markLoading = useCallback((mkey: string, isLoading: boolean) => {
+    setNodes((nds) => nds.map((n) => (n.type === "more" && (n.data as { mkey?: string }).mkey === mkey ? { ...n, data: { ...n.data, loading: isLoading } } : n)))
+  }, [setNodes])
+
+  // Fetch the NEXT page of leaves for one group/period and stash it under its
+  // mkey; the rebuild this triggers grows the leaf stack inline. No camera move.
+  const loadMore = useCallback(async (info: { mkey: string; rawKey: string; offset: number; isTimeline: boolean }) => {
+    markLoading(info.mkey, true)
+    try {
+      const token = await getToken()
+      if (!token) { markLoading(info.mkey, false); return }
+      const params = new URLSearchParams()
+      params.set("leaves", "1")
+      if (info.isTimeline) { params.set("mode", "timeline"); params.set("bucket", bucket) }
+      else params.set("groupBy", groupBy)
+      params.set("key", info.rawKey)
+      params.set("offset", String(info.offset))
+      params.set("limit", "12")
+      if (from) params.set("from", from)
+      if (to) params.set("to", to)
+      if (selCats.size) params.set("category", [...selCats].join(","))
+      if (selClients.size) params.set("clientId", [...selClients].join(","))
+      if (selAccounts.size) params.set("accountId", [...selAccounts].join(","))
+      const resp = await apiGet<{ leaves: FlowLeaf[]; has_more: boolean }>(`/api/flow?${params}`, token)
+      if (resp.leaves.length === 0) {
+        setExhausted((prev) => new Set(prev).add(info.mkey))
+        markLoading(info.mkey, false)
+        return
+      }
+      setExtraLeaves((prev) => ({ ...prev, [info.mkey]: [...(prev[info.mkey] ?? []), ...resp.leaves] }))
+      if (!resp.has_more) setExhausted((prev) => new Set(prev).add(info.mkey))
+      // the spinner clears via the structural rebuild setExtraLeaves triggers
+    } catch {
+      toast.error(t("flow.loadFailed"))
+      markLoading(info.mkey, false)
+    }
+  }, [markLoading, getToken, bucket, groupBy, from, to, selCats, selClients, selAccounts, t])
+
+  // Rebuild + re-fit only when the STRUCTURE changes — NOT on drag/hover. The
+  // extra-leaf and exhausted signatures are folded in so inline "load more"
+  // rebuilds the graph (but, like expand/collapse, never re-frames the camera).
+  const extraSig = useMemo(() => Object.entries(extraLeaves).map(([k, v]) => `${k}:${v.length}`).sort().join(","), [extraLeaves])
   const structuralKey = useMemo(() => {
     if (!data) return "none"
-    return [viewMode, groupBy, bucket, dataVersion, rootCollapsed, [...expanded].sort().join(",")].join("|")
-  }, [data, viewMode, groupBy, bucket, dataVersion, rootCollapsed, expanded])
+    return [viewMode, groupBy, bucket, dataVersion, rootCollapsed, [...expanded].sort().join(","), extraSig, [...exhausted].sort().join(",")].join("|")
+  }, [data, viewMode, groupBy, bucket, dataVersion, rootCollapsed, expanded, extraSig, exhausted])
 
   useEffect(() => {
     if (!data) { setNodes([]); setEdges([]); return }
+    const augmented = applyExtraLeaves(data, extraLeaves)
     const built =
-      data.mode === "timeline"
-        ? buildTimelineGraph(data, expanded)
-        : buildFlowGraph(data, { rootCollapsed, expanded })
+      augmented.mode === "timeline"
+        ? buildTimelineGraph(augmented, expanded)
+        : buildFlowGraph(augmented, { rootCollapsed, expanded })
     const rf: Node[] = built.nodes.map((n) => {
       const position = userPositions.current[n.id] ?? n.position
       switch (n.type) {
@@ -709,8 +790,23 @@ export function MoneyFlowPage() {
           return { ...n, position, data: { ...n.data, currency, formatDate, onOpen: () => openLeaf(leaf.id) } } as Node
         }
         case "more": {
-          const g = (n.data as { group?: FlowGroup }).group
-          return { ...n, position, data: { ...n.data, onOpen: () => (g ? openMoreForGroup(g) : openTransactions()) } } as Node
+          const md = n.data as { group?: FlowGroup; period?: TimelinePeriod; mkey: string }
+          const g = md.group
+          const p = md.period
+          // The group/period here is already augmented, so its leaf count IS the
+          // number currently on-canvas → the offset for the next page.
+          const shown = g ? g.leaves.length : p ? p.leaves.length : 0
+          return {
+            ...n,
+            position,
+            data: {
+              ...n.data,
+              loading: false,
+              exhausted: exhausted.has(md.mkey),
+              onLoadMore: () => loadMore({ mkey: md.mkey, rawKey: g ? (g.key ?? "__none__") : p ? p.key : "", offset: shown, isTimeline: !!p }),
+              onOpenList: () => (g ? openMoreForGroup(g) : openTransactions()),
+            },
+          } as Node
         }
         default:
           return { ...n, position } as Node
@@ -776,14 +872,14 @@ export function MoneyFlowPage() {
   }, [canHover])
   const onNodeMouseLeave = useCallback(() => setFocus(null), [])
 
-  // Mouse-open for the now-draggable leaf / "+N more" nodes. We open only on a
-  // real click that did NOT just conclude a drag (see lastDragEndRef). detail
-  // === 0 (keyboard) is handled by the node's own button, so we skip it here to
-  // avoid a double-open.
+  // Mouse-open for the now-draggable leaf nodes. We open only on a real click
+  // that did NOT just conclude a drag (see lastDragEndRef). detail === 0
+  // (keyboard) is handled by the node's own button, so we skip it here to avoid
+  // a double-open. The "+N more" node has its own buttons, so it's not handled.
   const onNodeClick = useCallback((e: { detail: number }, node: Node) => {
     if (e.detail === 0) return
     if (performance.now() - lastDragEndRef.current < 250) return
-    if (node.type === "leaf" || node.type === "more") {
+    if (node.type === "leaf") {
       ;(node.data as { onOpen?: () => void }).onOpen?.()
     }
   }, [])

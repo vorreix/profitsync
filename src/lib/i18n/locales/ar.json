@@ -1203,7 +1203,10 @@
     "searchCategories": "بحث في الفئات…",
     "searchClients": "بحث في العملاء…",
     "searchAccounts": "بحث في الحسابات…",
-    "legendThickness": "الخطوط الأكثر سُمكًا تمثّل أموالًا أكثر"
+    "legendThickness": "الخطوط الأكثر سُمكًا تمثّل أموالًا أكثر",
+    "loadMore": "تحميل المزيد",
+    "loadingMore": "جارٍ التحميل…",
+    "viewInList": "عرض في القائمة"
   },
   "spaces": {
     "title": "مساحات الادخار",

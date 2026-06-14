@@ -1203,7 +1203,10 @@
     "searchCategories": "श्रेणियाँ खोजें…",
     "searchClients": "ग्राहक खोजें…",
     "searchAccounts": "खाते खोजें…",
-    "legendThickness": "मोटी रेखाएँ अधिक पैसे को दर्शाती हैं"
+    "legendThickness": "मोटी रेखाएँ अधिक पैसे को दर्शाती हैं",
+    "loadMore": "और दिखाएँ",
+    "loadingMore": "लोड हो रहा है…",
+    "viewInList": "सूची में देखें"
   },
   "spaces": {
     "title": "स्पेस",

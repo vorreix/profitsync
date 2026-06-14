@@ -1203,7 +1203,10 @@
     "searchCategories": "வகைகளைத் தேடு…",
     "searchClients": "வாடிக்கையாளர்களைத் தேடு…",
     "searchAccounts": "கணக்குகளைத் தேடு…",
-    "legendThickness": "தடிமனான கோடுகள் அதிக பணத்தைக் குறிக்கின்றன"
+    "legendThickness": "தடிமனான கோடுகள் அதிக பணத்தைக் குறிக்கின்றன",
+    "loadMore": "மேலும் காட்டு",
+    "loadingMore": "ஏற்றுகிறது…",
+    "viewInList": "பட்டியலில் காண்க"
   },
   "spaces": {
     "title": "ஸ்பேஸ்கள்",

@@ -1203,7 +1203,10 @@
     "searchCategories": "వర్గాలను శోధించు…",
     "searchClients": "క్లయింట్లను శోధించు…",
     "searchAccounts": "ఖాతాలను శోధించు…",
-    "legendThickness": "మందమైన గీతలు ఎక్కువ డబ్బును సూచిస్తాయి"
+    "legendThickness": "మందమైన గీతలు ఎక్కువ డబ్బును సూచిస్తాయి",
+    "loadMore": "మరిన్ని చూపు",
+    "loadingMore": "లోడ్ అవుతోంది…",
+    "viewInList": "జాబితాలో చూడండి"
   },
   "spaces": {
     "title": "స్పేస్‌లు",

@@ -83,6 +83,61 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const expenseSum = sql<string>`coalesce(sum(case when ${transactions.type} = 'outgoing' then ${transactions.amount}::numeric else 0 end), 0)`
   const countExpr = sql<number>`count(*)::int`
 
+  // ── Paginated leaves for ONE group/period (the canvas "load more" action) ───
+  // Returns the next page of transaction leaves for a single group key (account/
+  // client/category) or timeline period, honoring the same filters. Bounded by
+  // offset/limit so the graph grows on demand instead of shipping everything.
+  if (q.leaves) {
+    const limit = Math.min(40, Math.max(1, Number.parseInt(String(q.limit ?? "12"), 10) || 12))
+    const offset = Math.max(0, Number.parseInt(String(q.offset ?? "0"), 10) || 0)
+    const key = typeof q.key === "string" ? q.key : ""
+    let extra: SQL
+    if (q.mode === "timeline") {
+      const BUCKETS = ["day", "week", "month", "year"] as const
+      const bucket = (BUCKETS as readonly string[]).includes(q.bucket as string) ? (q.bucket as string) : "month"
+      // bucket is whitelisted → safe to inline as a literal (a bound param makes
+      // Postgres treat the two date_trunc copies as distinct; see timeline mode).
+      extra = sql`to_char(date_trunc(${sql.raw(`'${bucket}'`)}, ${transactions.date}::timestamp), 'YYYY-MM-DD') = ${key}`
+    } else if (groupBy === "account") {
+      extra = key && key !== "__none__" ? eq(transactions.wealthAccountId, key) : isNull(transactions.wealthAccountId)
+    } else if (groupBy === "client") {
+      extra = eq(transactions.clientId, key)
+    } else {
+      extra = sql`coalesce(nullif(${transactions.category}, ''), 'Uncategorized') = ${key}`
+    }
+    // Fetch limit+1 so we know whether another page exists without a count query.
+    const rows = await db
+      .select({
+        id: transactions.id,
+        type: transactions.type,
+        amount: transactions.amount,
+        description: transactions.description,
+        category: transactions.category,
+        date: sql<string>`${transactions.date}::text`,
+        clientName: clients.name,
+        recurringRuleId: transactions.recurringRuleId,
+      })
+      .from(transactions)
+      .innerJoin(clients, eq(transactions.clientId, clients.id))
+      .where(and(where, extra))
+      .orderBy(desc(transactions.date), desc(transactions.createdAt))
+      .limit(limit + 1)
+      .offset(offset)
+    const hasMore = rows.length > limit
+    const leaves = rows.slice(0, limit).map((l) => ({
+      id: l.id,
+      type: l.type,
+      amount: Number(l.amount),
+      description: l.description,
+      category: l.category,
+      date: l.date,
+      client_name: l.clientName,
+      account_name: null,
+      recurring: !!l.recurringRuleId,
+    }))
+    return res.json({ leaves, has_more: hasMore })
+  }
+
   // ── TIMELINE mode: a chronological chain of period buckets, each carrying a
   // running cumulative net (before → net → after), ending at the entity. ─────
   const mode = q.mode === "timeline" ? "timeline" : "grouped"

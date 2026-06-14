@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { buildFlowGraph, buildTimelineGraph, groupKeyId, type FlowData, type TimelineData } from "./money-flow"
+import { applyExtraLeaves, buildFlowGraph, buildTimelineGraph, groupKeyId, type FlowData, type FlowLeaf, type TimelineData } from "./money-flow"
 
 function leaf(id: string, amount = 100): FlowData["groups"][number]["leaves"][number] {
   return { id, type: "incoming", amount, description: "x", category: "Sales", date: "2026-06-01" }
@@ -94,6 +94,48 @@ describe("buildFlowGraph", () => {
     expect(leafEdges.length).toBeGreaterThan(0)
     // leaf() helper produces incoming transactions.
     expect(leafEdges.every((e) => e.data.tone === "income")).toBe(true)
+  })
+
+  it("the 'more' node carries the group's mkey so the page can paginate it", () => {
+    const { nodes } = buildFlowGraph(DATA, { rootCollapsed: false, expanded: new Set(["c1"]) })
+    const more = nodes.find((n) => n.type === "more")!
+    expect((more.data as { mkey: string }).mkey).toBe("c1")
+  })
+})
+
+describe("applyExtraLeaves", () => {
+  const extra = (id: string): FlowLeaf => ({ id, type: "incoming", amount: 50, description: "more", category: "Sales", date: "2026-05-01" })
+
+  it("returns the same data when there are no extras", () => {
+    expect(applyExtraLeaves(DATA, {})).toBe(DATA)
+  })
+
+  it("appends extra leaves to the matching group and shrinks more_count", () => {
+    const out = applyExtraLeaves(DATA, { c1: [extra("x1"), extra("x2")] })
+    const acme = out.groups.find((g) => g.key === "c1")!
+    expect(acme.leaves.map((l) => l.id)).toEqual(["t1", "t2", "x1", "x2"])
+    // tx_count 4 − 4 shown = 0 → more-node disappears
+    expect(acme.more_count).toBe(0)
+    // other groups untouched
+    expect(out.groups.find((g) => g.label === "Unassigned")!.leaves).toHaveLength(1)
+  })
+
+  it("dedupes extras that overlap with already-shown leaves", () => {
+    const out = applyExtraLeaves(DATA, { c1: [extra("t1"), extra("x9")] })
+    const acme = out.groups.find((g) => g.key === "c1")!
+    expect(acme.leaves.map((l) => l.id)).toEqual(["t1", "t2", "x9"])
+  })
+
+  it("clamps more_count at zero even if extras exceed the remaining count", () => {
+    const out = applyExtraLeaves(DATA, { c1: [extra("x1"), extra("x2"), extra("x3"), extra("x4")] })
+    expect(out.groups.find((g) => g.key === "c1")!.more_count).toBe(0)
+  })
+
+  it("merges into timeline periods by period key", () => {
+    const out = applyExtraLeaves(TIMELINE, { "2026-01-01": [extra("z1")] })
+    const jan = out.periods.find((p) => p.key === "2026-01-01")!
+    expect(jan.leaves.map((l) => l.id)).toEqual(["a", "b", "z1"])
+    expect(jan.more_count).toBe(0) // tx_count 3 − 3 shown
   })
 })
 

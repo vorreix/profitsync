@@ -1203,7 +1203,10 @@
     "searchCategories": "Cerca categorie…",
     "searchClients": "Cerca clienti…",
     "searchAccounts": "Cerca conti…",
-    "legendThickness": "Le linee più spesse trasportano più denaro"
+    "legendThickness": "Le linee più spesse trasportano più denaro",
+    "loadMore": "Carica altro",
+    "loadingMore": "Caricamento…",
+    "viewInList": "Vedi nell'elenco"
   },
   "spaces": {
     "title": "Spazi",
