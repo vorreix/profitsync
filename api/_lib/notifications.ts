@@ -19,6 +19,7 @@ import {
   type NotificationPreferences,
 } from "../../src/lib/notifications.js"
 import type { NotificationData } from "../../src/lib/types.js"
+import { sendWebPushToUser } from "./push.js"
 
 export type CreateNotificationInput = {
   /** Recipient (Clerk userId). */
@@ -89,15 +90,17 @@ export async function createNotification(input: CreateNotificationInput): Promis
   const category = input.category ?? categoryForType(input.type)
   const cascade = await loadPreferenceCascade(input.userId, input.organizationId, input.clientId)
 
-  // in_app controls persistence (the bell/history). web_push delivery is added
-  // in branch notif-09 and reads the same cascade for the web_push channel.
+  // in_app controls persistence (the bell/history); web_push controls whether we
+  // also deliver a browser/PWA push — both resolved from the same cascade.
   const showInApp = resolveChannelEnabled(cascade, category, "in_app")
-  if (!showInApp) return null
+  const showPush = resolveChannelEnabled(cascade, category, "web_push")
+  if (!showInApp && !showPush) return null
 
   // Dedupe for event-sourced notifications. A pre-check keeps the common path
-  // simple; the partial unique index (user_id, dedupe_key) is the DB-level
-  // backstop against a concurrent double-insert, caught below. (ON CONFLICT on a
-  // partial index can't be inferred reliably here, hence the explicit path.)
+  // simple AND prevents a repeated event from re-pushing; the partial unique
+  // index (user_id, dedupe_key) is the DB-level backstop against a concurrent
+  // double-insert, caught below. (ON CONFLICT on a partial index can't be
+  // inferred reliably here, hence the explicit path.)
   if (input.dedupeKey) {
     const [existing] = await db
       .select({ id: notifications.id })
@@ -106,6 +109,18 @@ export async function createNotification(input: CreateNotificationInput): Promis
       .limit(1)
     if (existing) return null
   }
+
+  // Best-effort push (fire-and-forget): the in-app write below is the source of
+  // truth and never waits on or fails because of push.
+  if (showPush) {
+    void sendWebPushToUser(input.userId, {
+      title: input.title,
+      body: input.body || undefined,
+      url: input.link || undefined,
+    }).catch(() => {})
+  }
+
+  if (!showInApp) return null
 
   try {
     const [row] = await db

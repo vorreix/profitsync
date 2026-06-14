@@ -22,4 +22,6 @@ export const matchAppNavigation = (ctx: { request: Request; url: URL }): boolean
 //    so landing assets are never cached;
 //  - kill-sw.js, the legacy-recovery worker served at /sw.js (see vercel.json) — it
 //    must never be treated as an app asset.
-export const PRECACHE_GLOB_IGNORES: string[] = ["**/landing-*.js", "**/landing-*.css", "kill-sw.js"]
+//  - push-sw.js, importScripts()'d into the generated worker (see vite-pwa.ts) — it
+//    is loaded by the SW itself, not precached as an app asset.
+export const PRECACHE_GLOB_IGNORES: string[] = ["**/landing-*.js", "**/landing-*.css", "kill-sw.js", "push-sw.js"]
