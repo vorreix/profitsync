@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { NotificationPreferencesForm } from "@/components/notifications/NotificationPreferencesForm"
+import { PushToggle } from "@/components/notifications/PushToggle"
 import { Skeleton } from "@/components/ui/skeleton"
 import { LanguageSwitcher } from "@/components/LanguageSwitcher"
 import { CountryCombobox, CountryCodeCombobox } from "@/components/CountryCombobox"
@@ -277,7 +278,8 @@ export function ProfilePage() {
           <CardTitle className="text-base">{t("notifications:settings.title")}</CardTitle>
           <p className="text-sm text-muted-foreground">{t("notifications:settings.user_description")}</p>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-5">
+          <PushToggle />
           <NotificationPreferencesForm scope="user" />
         </CardContent>
       </Card>
