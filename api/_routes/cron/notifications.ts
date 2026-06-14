@@ -53,17 +53,23 @@ export async function runNotificationTick(now: Date = new Date()): Promise<{ rem
     .from(broadcasts)
     .where(and(eq(broadcasts.status, "scheduled"), lte(broadcasts.nextFireAt, now)))
   for (const b of due) {
-    const result = await deliverBroadcast({
-      id: b.id,
-      title: b.title,
-      body: b.body,
-      imageUrl: b.imageUrl,
-      link: b.link,
-      linkType: b.linkType,
-      category: b.category,
-      importance: b.importance,
-      audience: b.audience as BroadcastAudience,
-    })
+    // Occurrence = this fire's scheduled instant: stable across retries of the
+    // same tick, distinct for the next recurrence (so each occurrence delivers).
+    const occurrence = (b.nextFireAt ?? now).toISOString()
+    const result = await deliverBroadcast(
+      {
+        id: b.id,
+        title: b.title,
+        body: b.body,
+        imageUrl: b.imageUrl,
+        link: b.link,
+        linkType: b.linkType,
+        category: b.category,
+        importance: b.importance,
+        audience: b.audience as BroadcastAudience,
+      },
+      { occurrence },
+    )
     const prev = (b.stats ?? {}) as BroadcastStats
     const stats: BroadcastStats = { delivered: (prev.delivered ?? 0) + result.delivered }
 

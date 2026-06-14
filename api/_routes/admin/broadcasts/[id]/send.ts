@@ -30,16 +30,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   await db.update(broadcasts).set({ status: "sending", updatedAt: new Date() }).where(eq(broadcasts.id, id))
   try {
-    const result = await deliverBroadcast({
-      id: row.id,
-      title: row.title,
-      body: row.body,
-      imageUrl: row.imageUrl,
-      link: row.link,
-      linkType: row.linkType,
-      importance: row.importance,
-      audience: row.audience as BroadcastAudience,
-    })
+    const result = await deliverBroadcast(
+      {
+        id: row.id,
+        title: row.title,
+        body: row.body,
+        imageUrl: row.imageUrl,
+        link: row.link,
+        linkType: row.linkType,
+        importance: row.importance,
+        audience: row.audience as BroadcastAudience,
+      },
+      { occurrence: "manual" },
+    )
     const prev = (row.stats ?? {}) as BroadcastStats
     const [updated] = await db
       .update(broadcasts)

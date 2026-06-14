@@ -275,7 +275,12 @@ function BroadcastComposer({
   const initAud = broadcast?.audience ?? { type: "all" as const }
   const [audType, setAudType] = useState<BroadcastAudience["type"]>(initAud.type)
   const [groupId, setGroupId] = useState(initAud.type === "group" ? initAud.groupId : "")
-  const [pickedUsers, setPickedUsers] = useState<UserRow[]>([])
+  // Hydrate the picked-users selection when editing a "specific users" broadcast so
+  // saving doesn't wipe the stored list. We only have the ids (no batch user-by-id
+  // endpoint), so chips fall back to showing the id until the admin searches.
+  const [pickedUsers, setPickedUsers] = useState<UserRow[]>(() =>
+    initAud.type === "users" ? initAud.userIds.map((id) => ({ id, email: "", fullName: null })) : [],
+  )
   const [groups, setGroups] = useState<Group[]>([])
 
   // Schedule
@@ -460,7 +465,7 @@ function BroadcastComposer({
                   <div className="flex flex-wrap gap-1.5 rounded-md border p-2">
                     {pickedUsers.map((u) => (
                       <Badge key={u.id} variant="secondary" className="gap-1 pr-1">
-                        <span className="max-w-[12rem] truncate">{u.fullName || u.email}</span>
+                        <span className="max-w-[12rem] truncate">{u.fullName || u.email || u.id}</span>
                         <button type="button" onClick={() => setPickedUsers((p) => p.filter((x) => x.id !== u.id))} aria-label="Remove"><X className="size-3" /></button>
                       </Badge>
                     ))}
