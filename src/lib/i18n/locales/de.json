@@ -207,7 +207,11 @@
     "removePhoto": "Entfernen",
     "photoHint": "Ein quadratisches Bild eignet sich am besten. PNG, JPG oder WebP.",
     "photoUpdated": "Profilfoto aktualisiert",
-    "photoInvalid": "Bild konnte nicht gelesen werden — versuche eine andere Datei"
+    "photoInvalid": "Bild konnte nicht gelesen werden — versuche eine andere Datei",
+    "tabs": {
+      "profile": "Profil",
+      "preferences": "Einstellungen"
+    }
   },
   "toast": {
     "profileLoadFailed": "Profil konnte nicht geladen werden",
@@ -1321,68 +1325,90 @@
     "spaceBadge": "Sparraum"
   },
   "notifications": {
-    "title": "Notifications",
-    "bell_label": "Notifications",
-    "empty": "You're all caught up",
-    "empty_hint": "New notifications will show up here.",
-    "mark_all_read": "Mark all as read",
-    "view_all": "View all",
-    "mark_read": "Mark as read",
-    "mark_unread": "Mark as unread",
-    "delete": "Delete",
-    "deleted": "Notification deleted",
-    "load_more": "Load more",
+    "title": "Benachrichtigungen",
+    "bell_label": "Benachrichtigungen",
+    "empty": "Du bist auf dem neuesten Stand",
+    "empty_hint": "Neue Benachrichtigungen erscheinen hier.",
+    "mark_all_read": "Alle als gelesen markieren",
+    "view_all": "Alle anzeigen",
+    "mark_read": "Als gelesen markieren",
+    "mark_unread": "Als ungelesen markieren",
+    "delete": "Löschen",
+    "deleted": "Benachrichtigung gelöscht",
+    "load_more": "Mehr laden",
     "filter": {
-      "all": "All",
-      "unread": "Unread"
+      "all": "Alle",
+      "unread": "Ungelesen"
     },
     "categories": {
       "team": "Team",
-      "billing": "Billing",
+      "billing": "Abrechnung",
       "budget": "Budgets",
-      "transactions": "Transactions",
-      "clients": "Clients",
+      "transactions": "Transaktionen",
+      "clients": "Kunden",
       "system": "System"
     },
     "channels": {
-      "in_app": "In-app",
+      "in_app": "In der App",
       "web_push": "Push"
     },
     "time": {
-      "just_now": "Just now",
-      "minutes": "{{count}}m ago",
-      "hours": "{{count}}h ago",
-      "days": "{{count}}d ago"
+      "just_now": "Gerade eben",
+      "minutes": "vor {{count}}m",
+      "hours": "vor {{count}}h",
+      "days": "vor {{count}}T"
     },
     "settings": {
-      "title": "Notifications",
-      "description": "Choose what you get notified about and where.",
-      "user_description": "Your personal notification preferences across all workspaces.",
-      "org_description": "Organization-wide notification policy for this workspace.",
-      "client_description": "Notification settings just for this client.",
-      "mute_all": "Pause all notifications",
-      "mute_all_hint": "Turn off every notification at this level.",
-      "channel_in_app": "In-app",
+      "title": "Benachrichtigungen",
+      "description": "Wähle aus, worüber und wo du benachrichtigt werden möchtest.",
+      "user_description": "Deine persönlichen Benachrichtigungseinstellungen für alle Arbeitsbereiche.",
+      "org_description": "Organisationsweite Benachrichtigungsrichtlinie für diesen Arbeitsbereich.",
+      "client_description": "Benachrichtigungseinstellungen nur für diesen Kunden.",
+      "mute_all": "Alle Benachrichtigungen pausieren",
+      "mute_all_hint": "Deaktiviere alle Benachrichtigungen auf dieser Ebene.",
+      "channel_in_app": "In der App",
       "channel_push": "Push",
-      "saved": "Notification settings saved",
-      "save": "Save",
-      "saving": "Saving…",
-      "manage_link": "Manage notifications",
-      "category_hint_team": "Invitations, members and role changes",
-      "category_hint_billing": "Payments, subscription and plan changes",
-      "category_hint_budget": "Budget warnings and overspend alerts",
-      "category_hint_transactions": "Recurring transactions and activity",
-      "category_hint_clients": "Quotations and client updates",
-      "category_hint_system": "Product and account announcements"
+      "saved": "Benachrichtigungseinstellungen gespeichert",
+      "save": "Speichern",
+      "saving": "Wird gespeichert …",
+      "manage_link": "Benachrichtigungen verwalten",
+      "category_hint_team": "Einladungen, Mitglieder und Rollenwechsel",
+      "category_hint_billing": "Zahlungen, Abonnement und Planwechsel",
+      "category_hint_budget": "Budgetwarnungen und Overspend-Alarme",
+      "category_hint_transactions": "Wiederkehrende Transaktionen und Aktivität",
+      "category_hint_clients": "Angebote und Kundenaktualisierungen",
+      "category_hint_system": "Produkt- und Kontomitteilungen"
     },
     "push": {
-      "enable": "Enable push notifications",
-      "enabled": "Push notifications enabled",
-      "disable": "Disable push notifications",
-      "disabled": "Push notifications disabled",
-      "blocked": "Notifications are blocked in your browser settings",
-      "unsupported": "Push notifications aren't supported on this device",
-      "description": "Get notified even when ProfitSync isn't open."
+      "enable": "Push-Benachrichtigungen aktivieren",
+      "enabled": "Push-Benachrichtigungen aktiviert",
+      "disable": "Push-Benachrichtigungen deaktivieren",
+      "disabled": "Push-Benachrichtigungen deaktiviert",
+      "blocked": "Benachrichtigungen sind in deinen Browsereinstellungen blockiert",
+      "unsupported": "Push-Benachrichtigungen werden auf diesem Gerät nicht unterstützt",
+      "description": "Erhalte Benachrichtigungen, auch wenn ProfitSync nicht offen ist."
+    },
+    "types": {
+      "invitation_accepted": {
+        "title": "Einladung angenommen",
+        "body": "{{name}} ist {{org}} beigetreten"
+      },
+      "role_changed": {
+        "title": "Deine Rolle hat sich geändert",
+        "body": "Du bist nun {{role}} in {{org}}"
+      },
+      "member_removed": {
+        "title": "Aus der Organisation entfernt",
+        "body": "Du wurdest aus {{org}} entfernt"
+      },
+      "payment_failed": {
+        "title": "Zahlung fehlgeschlagen",
+        "body": "Wir konnten deine letzte Zahlung nicht verarbeiten. Aktualisiere deine Abrechnung, um Premium zu behalten."
+      },
+      "budget_exceeded": {
+        "title": "Budget überschritten",
+        "body": "{{name}} hat sein {{period}}-Budget überschritten."
+      }
     }
   }
 }

@@ -20,6 +20,9 @@ import { categoryIcon, categoryTone } from "./notification-ui"
 
 type Props = {
   scope: PreferenceScope
+  /** Target org for scope="organization" (defaults to the active org server-side). */
+  orgId?: string
+  /** Target client for scope="client". */
   clientId?: string
   /** When false the controls are read-only (e.g. a non-admin viewing org policy). */
   canEdit?: boolean
@@ -43,14 +46,17 @@ function mergeStored(stored: NotificationPreferences): FullNotificationPreferenc
 // Reusable per-scope notification settings: a master mute plus per-category
 // in-app / push toggles. Used by the profile (user), organization and client
 // settings surfaces.
-export function NotificationPreferencesForm({ scope, clientId, canEdit = true }: Props) {
+export function NotificationPreferencesForm({ scope, orgId, clientId, canEdit = true }: Props) {
   const { t } = useTranslation("notifications")
   const { getToken } = useAuth()
   const [prefs, setPrefs] = useState<FullNotificationPreferences | null>(null)
   const [saving, setSaving] = useState(false)
   const [dirty, setDirty] = useState(false)
 
-  const query = `/api/notifications/preferences?scope=${scope}${clientId ? `&clientId=${clientId}` : ""}`
+  const params = new URLSearchParams({ scope })
+  if (scope === "organization" && orgId) params.set("orgId", orgId)
+  if (scope === "client" && clientId) params.set("clientId", clientId)
+  const query = `/api/notifications/preferences?${params.toString()}`
 
   useEffect(() => {
     let cancelled = false
