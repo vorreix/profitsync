@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">ProfitSync</string>
+    <string name="title_activity_main">ProfitSync</string>
+    <string name="package_name">com.vorreix.profitsync</string>
+    <string name="custom_url_scheme">com.vorreix.profitsync</string>
+</resources>
