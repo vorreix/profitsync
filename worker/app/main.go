@@ -14,7 +14,9 @@ import (
 	"os"
 	"os/signal"
 	"sort"
+	"sync"
 	"syscall"
+	"time"
 
 	// Embed the timezone database so cron schedules resolve timezones on any base
 	// image (no OS tzdata package required).
@@ -79,12 +81,16 @@ func main() {
 	sch := scheduler.New(st, cfg, logger)
 	srv := httpapi.New(st, cfg, logger)
 
-	go wkr.Run(ctx)
-	go sch.Run(ctx)
+	// Run the three loops, tracked so shutdown can WAIT for them to drain.
+	var wg sync.WaitGroup
+	wg.Add(3)
+	go func() { defer wg.Done(); wkr.Run(ctx) }()
+	go func() { defer wg.Done(); sch.Run(ctx) }()
 	go func() {
+		defer wg.Done()
 		if err := srv.Run(ctx); err != nil {
 			logger.Error("http server", "err", err)
-			stop()
+			stop() // a fatal HTTP error triggers a full shutdown
 		}
 	}()
 
@@ -97,10 +103,18 @@ func main() {
 	)
 
 	<-ctx.Done()
-	logger.Info("shutdown signal received; draining")
-	// worker.Run and srv.Run observe ctx and drain/stop themselves; give a brief
-	// grace window for goroutines to finish before the process exits.
-	stop()
+	logger.Info("shutdown signal received; draining in-flight jobs", "grace", cfg.ShutdownGrace.String())
+
+	// Wait for the worker pool (and the HTTP server + scheduler) to finish, but
+	// don't hang forever if a job is stuck — bound by the shutdown grace.
+	drained := make(chan struct{})
+	go func() { wg.Wait(); close(drained) }()
+	select {
+	case <-drained:
+		logger.Info("clean shutdown — all in-flight jobs drained")
+	case <-time.After(cfg.ShutdownGrace):
+		logger.Warn("shutdown grace exceeded; exiting with jobs still in flight (they will be reaped)")
+	}
 }
 
 // readMigrations concatenates the embedded *.sql files in lexical order.

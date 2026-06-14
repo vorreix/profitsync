@@ -9,6 +9,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/vorreix/profitsync-worker/internal/config"
@@ -33,6 +34,12 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("GET /healthz", s.handleHealth)
 	mux.Handle("POST /v1/jobs", s.auth(http.HandlerFunc(s.handleEnqueue)))
 	mux.Handle("POST /v1/schedules", s.auth(http.HandlerFunc(s.handleUpsertSchedule)))
+	// Observability (consumed by the ProfitSync /admin worker panel via a server
+	// -side proxy — all bearer-authed).
+	mux.Handle("GET /v1/stats", s.auth(http.HandlerFunc(s.handleStats)))
+	mux.Handle("GET /v1/jobs", s.auth(http.HandlerFunc(s.handleListJobs)))
+	mux.Handle("POST /v1/jobs/{id}/retry", s.auth(http.HandlerFunc(s.handleRetry)))
+	mux.Handle("POST /v1/jobs/{id}/cancel", s.auth(http.HandlerFunc(s.handleCancel)))
 
 	srv := &http.Server{
 		Addr:              ":" + s.cfg.Port,
@@ -156,6 +163,57 @@ func (s *Server) handleUpsertSchedule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"id": id})
+}
+
+func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
+	stats, err := s.st.Stats(r.Context())
+	if err != nil {
+		s.log.Error("stats", "err", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "stats failed"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"counts": stats})
+}
+
+func (s *Server) handleListJobs(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	limit, _ := strconv.Atoi(q.Get("limit"))
+	offset, _ := strconv.Atoi(q.Get("offset"))
+	jobs, err := s.st.ListJobs(r.Context(), q.Get("status"), q.Get("type"), limit, offset)
+	if err != nil {
+		s.log.Error("list jobs", "err", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "list failed"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"jobs": jobs})
+}
+
+func (s *Server) handleRetry(w http.ResponseWriter, r *http.Request) {
+	ok, err := s.st.RetryJob(r.Context(), r.PathValue("id"))
+	if err != nil {
+		s.log.Error("retry", "err", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "retry failed"})
+		return
+	}
+	if !ok {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found or not retryable"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+func (s *Server) handleCancel(w http.ResponseWriter, r *http.Request) {
+	ok, err := s.st.CancelJob(r.Context(), r.PathValue("id"))
+	if err != nil {
+		s.log.Error("cancel", "err", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "cancel failed"})
+		return
+	}
+	if !ok {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found or not cancellable"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
 func writeJSON(w http.ResponseWriter, status int, body any) {
