@@ -1202,7 +1202,8 @@
     "openTransaction": "लेन-देन खोलें",
     "searchCategories": "श्रेणियाँ खोजें…",
     "searchClients": "ग्राहक खोजें…",
-    "searchAccounts": "खाते खोजें…"
+    "searchAccounts": "खाते खोजें…",
+    "legendThickness": "मोटी रेखाएँ अधिक पैसे को दर्शाती हैं"
   },
   "spaces": {
     "title": "स्पेस",

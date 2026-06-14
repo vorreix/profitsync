@@ -1,7 +1,13 @@
 // Pure builder: turns the /api/flow payload + a collapse state into positioned
-// nodes and edges for a left→right "mind map". Framework-agnostic (no React,
-// no React Flow imports) so it's fully unit-testable; the page maps these onto
-// React Flow node/edge objects and renders custom components by `type`.
+// nodes and edges for a left→right money-flow graph. Framework-agnostic (no
+// React, no React Flow imports) so it's fully unit-testable; the page maps these
+// onto React Flow node/edge objects and renders custom components by `type`.
+//
+// Edges carry `data` (tone + normalized weight) so the canvas can draw smooth,
+// gradient-coloured bezier "pipes" whose THICKNESS encodes how much money moves
+// through each branch (Sankey-style) and whose COLOUR encodes direction
+// (money in vs money out). The layout centres every parent against its children
+// so the result reads like a balanced flow map rather than a stack of boxes.
 
 export type FlowLeaf = {
   id: string
@@ -64,7 +70,10 @@ export type TimelineData = {
   final: { label: string; total_in: number; total_out: number; total_net: number; balance: number }
 }
 
-export type FlowNodeType = "root" | "group" | "leaf" | "more" | "tlperiod" | "tlfinal"
+// NB: "group" is a RESERVED React Flow built-in node type (it ships default
+// background/border/width styling for `.react-flow__node-group`). We call ours
+// "branch" so RF doesn't paint a ghost box behind our card or clamp its width.
+export type FlowNodeType = "root" | "branch" | "leaf" | "more" | "tlperiod" | "tlfinal"
 
 export type FlowNode = {
   id: string
@@ -72,7 +81,21 @@ export type FlowNode = {
   position: { x: number; y: number }
   data: Record<string, unknown>
 }
-export type FlowEdge = { id: string; source: string; target: string }
+
+// ── Edge encoding ────────────────────────────────────────────────────────────
+// `tone` drives the gradient colour, `weight` (0–1) drives the stroke thickness
+// so fat pipes = big money. `kind` lets the edge component pick a base style.
+export type EdgeTone = "income" | "expense" | "neutral"
+export type FlowEdgeKind = "branch" | "leaf" | "chain" | "final"
+export type FlowEdgeData = {
+  tone: EdgeTone
+  /** 0–1, normalized money volume through this edge → stroke width. */
+  weight: number
+  kind: FlowEdgeKind
+  /** Whether the flowing-dash animation should run on this edge. */
+  animated: boolean
+}
+export type FlowEdge = { id: string; source: string; target: string; data: FlowEdgeData }
 
 export type CollapseState = {
   /** When true, the root hides all group branches. */
@@ -81,12 +104,18 @@ export type CollapseState = {
   expanded: Set<string>
 }
 
-// Layout constants — left→right columns + vertical rhythm.
-const COL_GROUP_X = 360
-const COL_LEAF_X = 720
-const GROUP_V = 150 // vertical space a collapsed group occupies
-const LEAF_V = 80
-const ROOT_H = 200
+// Layout constants — left→right columns + vertical rhythm. Heights are tuned to
+// the rendered node DOM so nothing overlaps and edges meet handles cleanly.
+const COL_GROUP_X = 380
+const COL_LEAF_X = 760
+const GROUP_H = 172 // a collapsed group's vertical footprint (account variant is tallest)
+const GROUP_GAP = 36 // breathing room between group blocks
+const LEAF_V = 78 // vertical pitch of a stacked leaf
+const ROOT_H = 232
+
+const tone = (net: number): EdgeTone => (net >= 0 ? "income" : "expense")
+const leafTone = (l: FlowLeaf): EdgeTone => (l.type === "incoming" ? "income" : "expense")
+const norm = (v: number, max: number): number => (max > 0 ? Math.min(1, v / max) : 0)
 
 /** Stable id for a group whose API key may be null (e.g. "Unassigned"). */
 export function groupKeyId(g: Pick<FlowGroup, "key" | "label">): string {
@@ -106,42 +135,62 @@ export function buildFlowGraph(data: FlowData, state: CollapseState): { nodes: F
   nodes.push(root)
 
   if (state.rootCollapsed) {
-    // Center the lone root against a nominal height.
     root.position.y = 0
     return { nodes, edges }
   }
 
+  // Normalize branch thickness against the busiest group (income + expense).
+  const maxGroupVol = data.groups.reduce((m, g) => Math.max(m, g.income + g.expense), 0)
+
   let y = 0
   for (const g of data.groups) {
-    const gid = `g:${groupKeyId(g)}`
-    const groupY = y
-    nodes.push({ id: gid, type: "group", position: { x: COL_GROUP_X, y: groupY }, data: { ...g, expanded: state.expanded.has(groupKeyId(g)) } })
-    edges.push({ id: `e:root-${gid}`, source: "root", target: gid })
+    const key = groupKeyId(g)
+    const gid = `g:${key}`
+    const isOpen = state.expanded.has(key)
 
-    if (state.expanded.has(groupKeyId(g))) {
-      let ly = groupY
+    const leafCount = isOpen ? g.leaves.length + (g.more_count > 0 ? 1 : 0) : 0
+    const stackH = leafCount * LEAF_V
+    // The block this group occupies: tall enough for its leaf stack when open.
+    const blockH = Math.max(GROUP_H, stackH)
+    // Centre the group node and its leaf stack vertically within the block, so
+    // the parent sits level with the middle of its children (balanced tree).
+    const groupY = y + (blockH - GROUP_H) / 2
+
+    nodes.push({ id: gid, type: "branch", position: { x: COL_GROUP_X, y: groupY }, data: { ...g, expanded: isOpen } })
+    edges.push({
+      id: `e:root-${gid}`,
+      source: "root",
+      target: gid,
+      data: { tone: tone(g.net), weight: norm(g.income + g.expense, maxGroupVol), kind: "branch", animated: true },
+    })
+
+    if (isOpen) {
+      const maxLeafAmt = g.leaves.reduce((m, l) => Math.max(m, l.amount), 0)
+      let ly = y + (blockH - stackH) / 2
       g.leaves.forEach((leaf, li) => {
         const lid = `l:${leaf.id}`
         nodes.push({ id: lid, type: "leaf", position: { x: COL_LEAF_X, y: ly }, data: { ...leaf, enterIndex: li } })
-        edges.push({ id: `e:${gid}-${lid}`, source: gid, target: lid })
+        edges.push({
+          id: `e:${gid}-${lid}`,
+          source: gid,
+          target: lid,
+          data: { tone: leafTone(leaf), weight: 0.15 + norm(leaf.amount, maxLeafAmt) * 0.35, kind: "leaf", animated: true },
+        })
         ly += LEAF_V
       })
       if (g.more_count > 0) {
-        const mid = `m:${groupKeyId(g)}`
+        const mid = `m:${key}`
         nodes.push({ id: mid, type: "more", position: { x: COL_LEAF_X, y: ly }, data: { count: g.more_count, group: g, enterIndex: g.leaves.length } })
-        edges.push({ id: `e:${gid}-${mid}`, source: gid, target: mid })
-        ly += LEAF_V
+        edges.push({ id: `e:${gid}-${mid}`, source: gid, target: mid, data: { tone: "neutral", weight: 0.15, kind: "leaf", animated: false } })
       }
-      const leafCount = g.leaves.length + (g.more_count > 0 ? 1 : 0)
-      // Advance past whichever is taller: the group block or its leaf stack.
-      y = groupY + Math.max(GROUP_V, leafCount * LEAF_V + 24)
-    } else {
-      y = groupY + GROUP_V
     }
+
+    y += blockH + GROUP_GAP
   }
 
-  // Vertically center the root against the full branch column.
-  root.position.y = Math.max(0, (y - LEAF_V - ROOT_H) / 2)
+  // Vertically centre the root against the full branch column.
+  const totalH = Math.max(0, y - GROUP_GAP)
+  root.position.y = Math.max(0, (totalH - ROOT_H) / 2)
 
   return { nodes, edges }
 }
@@ -150,30 +199,46 @@ export function buildFlowGraph(data: FlowData, state: CollapseState): { nodes: F
 // sits in its own column; expanding a period stacks its leaves directly below
 // it (they don't push the chain — the row stays readable). The final entity is
 // one column past the last period.
-const TL_COL_W = 300
-const TL_PERIOD_H = 168
+const TL_COL_W = 320
+const TL_PERIOD_H = 200
 
 export function buildTimelineGraph(data: TimelineData, expandedPeriods: Set<string>): { nodes: FlowNode[]; edges: FlowEdge[] } {
   const nodes: FlowNode[] = []
   const edges: FlowEdge[] = []
 
+  const maxPeriodVol = data.periods.reduce((m, p) => Math.max(m, p.income + p.expense), 0)
+
   data.periods.forEach((p, i) => {
     const pid = `p:${p.key}`
     nodes.push({ id: pid, type: "tlperiod", position: { x: i * TL_COL_W, y: 0 }, data: { ...p, expanded: expandedPeriods.has(p.key) } })
-    if (i > 0) edges.push({ id: `e:${data.periods[i - 1].key}-${p.key}`, source: `p:${data.periods[i - 1].key}`, target: pid })
+    if (i > 0) {
+      const prev = data.periods[i - 1]
+      edges.push({
+        id: `e:${prev.key}-${p.key}`,
+        source: `p:${prev.key}`,
+        target: pid,
+        data: { tone: tone(p.net), weight: norm(p.income + p.expense, maxPeriodVol), kind: "chain", animated: true },
+      })
+    }
 
     if (expandedPeriods.has(p.key)) {
+      const maxLeafAmt = p.leaves.reduce((m, l) => Math.max(m, l.amount), 0)
       let ly = TL_PERIOD_H
       p.leaves.forEach((leaf, li) => {
         const lid = `l:${leaf.id}`
         nodes.push({ id: lid, type: "leaf", position: { x: i * TL_COL_W, y: ly }, data: { ...leaf, enterIndex: li } })
-        edges.push({ id: `e:${pid}-${lid}`, source: pid, target: lid })
+        edges.push({
+          id: `e:${pid}-${lid}`,
+          source: pid,
+          target: lid,
+          data: { tone: leafTone(leaf), weight: 0.15 + norm(leaf.amount, maxLeafAmt) * 0.35, kind: "leaf", animated: true },
+        })
         ly += LEAF_V
       })
       if (p.more_count > 0) {
         const mid = `m:${p.key}`
         nodes.push({ id: mid, type: "more", position: { x: i * TL_COL_W, y: ly }, data: { count: p.more_count, period: p, enterIndex: p.leaves.length } })
-        edges.push({ id: `e:${pid}-${mid}`, source: pid, target: mid })
+        edges.push({ id: `e:${pid}-${mid}`, source: pid, target: mid, data: { tone: "neutral", weight: 0.15, kind: "leaf", animated: false } })
       }
     }
   })
@@ -183,7 +248,12 @@ export function buildTimelineGraph(data: TimelineData, expandedPeriods: Set<stri
   nodes.push({ id: "final", type: "tlfinal", position: { x: finalX, y: 0 }, data: { ...data.final, period_count: data.periods.length } })
   if (data.periods.length > 0) {
     const last = data.periods[data.periods.length - 1]
-    edges.push({ id: `e:${last.key}-final`, source: `p:${last.key}`, target: "final" })
+    edges.push({
+      id: `e:${last.key}-final`,
+      source: `p:${last.key}`,
+      target: "final",
+      data: { tone: tone(data.final.total_net), weight: 1, kind: "final", animated: true },
+    })
   }
 
   return { nodes, edges }

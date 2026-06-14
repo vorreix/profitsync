@@ -1202,7 +1202,8 @@
     "openTransaction": "Transaktion öffnen",
     "searchCategories": "Kategorien suchen…",
     "searchClients": "Kunden suchen…",
-    "searchAccounts": "Konten suchen…"
+    "searchAccounts": "Konten suchen…",
+    "legendThickness": "Dickere Linien stehen für mehr Geld"
   },
   "spaces": {
     "title": "Sparräume",

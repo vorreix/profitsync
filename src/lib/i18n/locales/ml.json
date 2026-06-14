@@ -1202,7 +1202,8 @@
     "openTransaction": "ഇടപാട് തുറക്കുക",
     "searchCategories": "വിഭാഗങ്ങൾ തിരയുക…",
     "searchClients": "ക്ലയന്റുകൾ തിരയുക…",
-    "searchAccounts": "അക്കൗണ്ടുകൾ തിരയുക…"
+    "searchAccounts": "അക്കൗണ്ടുകൾ തിരയുക…",
+    "legendThickness": "കട്ടി കൂടിയ വരകൾ കൂടുതൽ പണത്തെ സൂചിപ്പിക്കുന്നു"
   },
   "spaces": {
     "title": "സ്‌പേസുകൾ",

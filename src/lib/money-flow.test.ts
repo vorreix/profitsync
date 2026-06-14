@@ -28,7 +28,7 @@ describe("buildFlowGraph", () => {
   it("groups collapsed: root + one node per group, one edge each", () => {
     const { nodes, edges } = buildFlowGraph(DATA, { rootCollapsed: false, expanded: new Set() })
     expect(nodes.filter((n) => n.type === "root")).toHaveLength(1)
-    expect(nodes.filter((n) => n.type === "group")).toHaveLength(2)
+    expect(nodes.filter((n) => n.type === "branch")).toHaveLength(2)
     expect(nodes.filter((n) => n.type === "leaf")).toHaveLength(0)
     expect(edges).toHaveLength(2) // root → each group
   })
@@ -50,13 +50,13 @@ describe("buildFlowGraph", () => {
 
   it("never overlaps: group node y-positions are strictly increasing", () => {
     const { nodes } = buildFlowGraph(DATA, { rootCollapsed: false, expanded: new Set(["c1"]) })
-    const groupYs = nodes.filter((n) => n.type === "group").map((n) => n.position.y)
+    const groupYs = nodes.filter((n) => n.type === "branch").map((n) => n.position.y)
     for (let i = 1; i < groupYs.length; i++) expect(groupYs[i]).toBeGreaterThan(groupYs[i - 1])
   })
 
   it("puts groups and leaves in distinct left→right columns", () => {
     const { nodes } = buildFlowGraph(DATA, { rootCollapsed: false, expanded: new Set(["c1"]) })
-    const gx = nodes.find((n) => n.type === "group")!.position.x
+    const gx = nodes.find((n) => n.type === "branch")!.position.x
     const lx = nodes.find((n) => n.type === "leaf")!.position.x
     expect(nodes.find((n) => n.type === "root")!.position.x).toBe(0)
     expect(gx).toBeGreaterThan(0)
@@ -66,6 +66,34 @@ describe("buildFlowGraph", () => {
   it("groupKeyId disambiguates null keys by label", () => {
     expect(groupKeyId({ key: "c1", label: "Acme" })).toBe("c1")
     expect(groupKeyId({ key: null, label: "Unassigned" })).toBe("__none__:Unassigned")
+  })
+
+  it("branch edges carry a tone (by net sign) and a normalized weight (0–1)", () => {
+    const { edges } = buildFlowGraph(DATA, { rootCollapsed: false, expanded: new Set() })
+    const branches = edges.filter((e) => e.data.kind === "branch")
+    expect(branches).toHaveLength(2)
+    // Both groups are net-positive here → income tone.
+    expect(branches.every((e) => e.data.tone === "income")).toBe(true)
+    // Equal volume (600 each) → both at the max weight of 1.
+    expect(branches.every((e) => e.data.weight === 1)).toBe(true)
+    expect(branches.every((e) => e.data.weight >= 0 && e.data.weight <= 1)).toBe(true)
+  })
+
+  it("expense-heavy branches get an expense tone", () => {
+    const data: FlowData = {
+      ...DATA,
+      groups: [{ ...DATA.groups[0], income: 10, expense: 400, net: -390 }],
+    }
+    const { edges } = buildFlowGraph(data, { rootCollapsed: false, expanded: new Set() })
+    expect(edges.find((e) => e.data.kind === "branch")!.data.tone).toBe("expense")
+  })
+
+  it("leaf edges are toned by the transaction type", () => {
+    const { edges } = buildFlowGraph(DATA, { rootCollapsed: false, expanded: new Set(["c1"]) })
+    const leafEdges = edges.filter((e) => e.data.kind === "leaf" && e.target.startsWith("l:"))
+    expect(leafEdges.length).toBeGreaterThan(0)
+    // leaf() helper produces incoming transactions.
+    expect(leafEdges.every((e) => e.data.tone === "income")).toBe(true)
   })
 })
 
@@ -113,5 +141,15 @@ describe("buildTimelineGraph", () => {
     expect(nodes).toHaveLength(1)
     expect(nodes[0].type).toBe("tlfinal")
     expect(edges).toHaveLength(0)
+  })
+
+  it("chain edges are toned by period net; the final edge is a full-weight 'final'", () => {
+    const { edges } = buildTimelineGraph(TIMELINE, new Set())
+    const chain = edges.find((e) => e.data.kind === "chain")!
+    // P2 is net-negative (income 100, expense 400) → expense tone.
+    expect(chain.data.tone).toBe("expense")
+    const final = edges.find((e) => e.data.kind === "final")!
+    expect(final.data.weight).toBe(1)
+    expect(final.target).toBe("final")
   })
 })

@@ -1202,7 +1202,8 @@
     "openTransaction": "فتح المعاملة",
     "searchCategories": "بحث في الفئات…",
     "searchClients": "بحث في العملاء…",
-    "searchAccounts": "بحث في الحسابات…"
+    "searchAccounts": "بحث في الحسابات…",
+    "legendThickness": "الخطوط الأكثر سُمكًا تمثّل أموالًا أكثر"
   },
   "spaces": {
     "title": "مساحات الادخار",

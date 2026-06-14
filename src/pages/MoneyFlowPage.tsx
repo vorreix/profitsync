@@ -1,16 +1,22 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { createContext, memo, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { useNavigate } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import {
   Background,
+  BackgroundVariant,
   Controls,
+  getBezierPath,
   Handle,
+  MiniMap,
+  Panel,
   Position,
   ReactFlow,
   useEdgesState,
   useNodesState,
+  type ColorMode,
   type Edge,
+  type EdgeProps,
   type Node,
   type NodeProps,
   type ReactFlowInstance,
@@ -29,15 +35,19 @@ import {
   Network,
   Repeat,
   Search,
+  Sparkles,
   Tag,
+  TrendingDown,
+  TrendingUp,
   Users,
   Wallet,
-  Workflow,
 } from "lucide-react"
 import { apiGet } from "@/lib/api"
 import { useDataRefresh } from "@/lib/data-refresh-context"
 import { useOrg } from "@/lib/org-context"
 import { useCurrency } from "@/lib/currency-context"
+import { useTheme } from "@/components/theme-provider"
+import { useIsMobile } from "@/hooks/use-mobile"
 import { formatMoney } from "@/lib/wealth"
 import { cn } from "@/lib/utils"
 import { accountTypeAllows } from "@/lib/types"
@@ -45,7 +55,9 @@ import {
   buildFlowGraph,
   buildTimelineGraph,
   groupKeyId,
+  type EdgeTone,
   type FlowData,
+  type FlowEdgeData,
   type FlowGroup,
   type FlowLeaf,
   type TimelineData,
@@ -62,48 +74,111 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 type GroupBy = "account" | "client" | "category"
 type Option = { id: string; label: string }
 
-// ── Custom node components ───────────────────────────────────────────────────
-// React Flow renders these by `type`. Each reads typed data injected by the
-// page below; currency formatting + the toggle callback are passed through data.
+// ── Hover focus ──────────────────────────────────────────────────────────────
+// When a node is hovered we light up that node + the edges/nodes it touches and
+// dim everything else, so a busy graph collapses into "just this money path".
+// Shared through context so nodes/edges self-style without rebuilding state.
+type FocusState = { active: Set<string>; edges: Set<string> } | null
+const FocusContext = createContext<FocusState>(null)
+function useFocus(id: string, isEdge = false): "active" | "dim" | "none" {
+  const focus = useContext(FocusContext)
+  if (!focus) return "none"
+  return (isEdge ? focus.edges : focus.active).has(id) ? "active" : "dim"
+}
 
+// ── Money + ratio primitives ─────────────────────────────────────────────────
 function Money({ value, sign, currency, className }: { value: number; sign?: "+" | "−"; currency: string; className?: string }) {
+  // When an explicit sign is supplied, show the magnitude so a negative value
+  // can't render a double minus (e.g. net −$6,000, not "−-$6,000").
   return (
     <span className={cn("tabular-nums", className)}>
-      {sign}{formatMoney(value, currency)}
+      {sign}{formatMoney(sign ? Math.abs(value) : value, currency)}
     </span>
   )
 }
+
+// A slim in/out proportion bar — instant read of how balanced a node is.
+function RatioBar({ income, expense, className }: { income: number; expense: number; className?: string }) {
+  const total = income + expense
+  const inPct = total > 0 ? (income / total) * 100 : 0
+  return (
+    <div className={cn("flex h-1.5 w-full overflow-hidden rounded-full bg-muted", className)}>
+      {total > 0 ? (
+        <>
+          <span className="h-full bg-emerald-500/80 dark:bg-emerald-400/80" style={{ width: `${inPct}%` }} />
+          <span className="h-full bg-rose-500/80 dark:bg-rose-400/80" style={{ width: `${100 - inPct}%` }} />
+        </>
+      ) : null}
+    </div>
+  )
+}
+
+// Theme-aware glow + dim shared by every node card.
+function nodeFx(state: "active" | "dim" | "none") {
+  return cn(
+    "transition-[opacity,box-shadow,transform] duration-200 motion-reduce:transition-none",
+    state === "dim" && "opacity-40 saturate-50",
+    state === "active" && "opacity-100",
+  )
+}
+
+// ── Custom node components ───────────────────────────────────────────────────
+const HANDLE_CLS = "!size-2 !rounded-full !border-2 !border-background !bg-muted-foreground/40 !transition-colors"
+const HANDLE_PRIMARY = "!size-2.5 !rounded-full !border-2 !border-background !bg-primary"
 
 type RootData = {
   label: string; income: number; expense: number; net: number; tx_count: number; balance: number
   collapsed: boolean; currency: string; onToggle: () => void
 }
-function RootNode({ data }: NodeProps<Node<RootData>>) {
+function RootNode({ id, data }: NodeProps<Node<RootData>>) {
   const { t } = useTranslation()
+  const focus = useFocus(id)
+  const pos = data.net >= 0
   return (
-    <div className="w-[240px] rounded-2xl border-2 border-primary/50 bg-card p-4 shadow-lg">
-      <div className="flex items-center gap-2">
-        <span className="grid size-9 place-items-center rounded-xl bg-primary/10 text-primary"><Workflow className="size-5" /></span>
+    <div
+      className={cn(
+        "group relative w-[256px] overflow-hidden rounded-[1.75rem] border border-primary/30 bg-gradient-to-br from-card via-card to-primary/[0.06] p-4 shadow-[0_8px_30px_-12px] shadow-primary/30 backdrop-blur-sm",
+        nodeFx(focus),
+      )}
+    >
+      <span aria-hidden className="pointer-events-none absolute -right-10 -top-10 size-28 rounded-full bg-primary/15 blur-2xl" />
+      <div className="relative flex items-center gap-2.5">
+        <span className="grid size-10 place-items-center rounded-2xl bg-gradient-to-br from-primary to-primary/70 text-primary-foreground shadow-sm">
+          <Sparkles className="size-5" />
+        </span>
         <div className="min-w-0">
-          <p className="truncate text-sm font-semibold">{data.label}</p>
+          <p className="truncate text-sm font-semibold tracking-tight">{data.label}</p>
           <p className="text-[11px] text-muted-foreground">{t("flow.workspaceTotals")}</p>
         </div>
       </div>
-      <dl className="mt-3 space-y-1.5 text-xs">
-        <div className="flex items-center justify-between"><dt className="text-muted-foreground">{t("flow.revenue")}</dt><dd><Money value={data.income} sign="+" currency={data.currency} className="font-semibold text-emerald-600 dark:text-emerald-400" /></dd></div>
-        <div className="flex items-center justify-between"><dt className="text-muted-foreground">{t("flow.expenses")}</dt><dd><Money value={data.expense} sign="−" currency={data.currency} className="font-semibold text-red-600 dark:text-red-400" /></dd></div>
-        <div className="flex items-center justify-between border-t pt-1.5"><dt className="font-medium">{t("flow.net")}</dt><dd><Money value={data.net} currency={data.currency} className={cn("font-bold", data.net >= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-red-700 dark:text-red-300")} /></dd></div>
-        <div className="flex items-center justify-between"><dt className="text-muted-foreground">{t("flow.balance")}</dt><dd><Money value={data.balance} currency={data.currency} className="font-medium" /></dd></div>
-      </dl>
+
+      <div className="relative mt-3.5 rounded-2xl bg-muted/40 p-3">
+        <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{t("flow.net")}</p>
+        <p className={cn("text-xl font-bold leading-tight", pos ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400")}>
+          <Money value={data.net} sign={pos ? "+" : "−"} currency={data.currency} />
+        </p>
+        <RatioBar income={data.income} expense={data.expense} className="mt-2.5" />
+        <dl className="mt-2 flex items-center justify-between text-[11px]">
+          <dt aria-label={t("flow.revenue")} className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400"><TrendingUp aria-hidden className="size-3" /><Money value={data.income} sign="+" currency={data.currency} className="font-semibold" /></dt>
+          <dd aria-label={t("flow.expenses")} className="flex items-center gap-1 text-rose-600 dark:text-rose-400"><Money value={data.expense} sign="−" currency={data.currency} className="font-semibold" /><TrendingDown aria-hidden className="size-3" /></dd>
+        </dl>
+      </div>
+
+      <div className="relative mt-2.5 flex items-center justify-between px-1 text-xs">
+        <span className="text-muted-foreground">{t("flow.balance")}</span>
+        <Money value={data.balance} currency={data.currency} className="font-semibold" />
+      </div>
+
       <button
         type="button"
         onClick={data.onToggle}
-        className="nodrag mt-3 flex w-full items-center justify-center gap-1 rounded-lg border py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted"
+        aria-expanded={!data.collapsed}
+        className="nodrag relative mt-3 flex w-full items-center justify-center gap-1 rounded-xl border bg-background/60 py-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
       >
         {data.collapsed ? <ChevronRight className="size-3" /> : <ChevronDown className="size-3" />}
         {data.collapsed ? t("flow.expandAll") : t("flow.collapseAll")}
       </button>
-      <Handle type="source" position={Position.Right} className="!size-2 !border-2 !border-primary !bg-background" />
+      <Handle type="source" position={Position.Right} className={HANDLE_PRIMARY} />
     </div>
   )
 }
@@ -111,63 +186,86 @@ function RootNode({ data }: NodeProps<Node<RootData>>) {
 const GROUP_ICON = { account: Landmark, client: Users, category: Tag } as const
 
 type GroupData = FlowGroup & { expanded: boolean; currency: string; onToggle: () => void }
-function GroupNode({ data }: NodeProps<Node<GroupData>>) {
+function GroupNode({ id, data }: NodeProps<Node<GroupData>>) {
   const { t } = useTranslation()
+  const focus = useFocus(id)
   const Icon = data.kind === "account" ? (data.account_type === "cash" ? Wallet : Landmark) : GROUP_ICON[data.kind]
   const showBalances = data.kind === "account" && data.current_balance != null
+  const pos = data.net >= 0
   return (
-    <div className="w-[256px] rounded-2xl border bg-card p-3.5 shadow-sm transition-shadow hover:shadow-md">
-      <Handle type="target" position={Position.Left} className="!size-2 !border-2 !border-muted-foreground/40 !bg-background" />
-      <div className="flex items-center gap-2">
-        <span className="grid size-8 place-items-center rounded-lg bg-muted text-muted-foreground"><Icon className="size-4" /></span>
-        <p className="min-w-0 flex-1 truncate text-sm font-semibold" title={data.label}>{data.label}</p>
-        <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] tabular-nums text-muted-foreground">{data.tx_count}</span>
+    <div
+      className={cn(
+        "group w-[260px] rounded-3xl border bg-gradient-to-br from-card to-muted/30 p-3.5 shadow-sm transition-shadow hover:shadow-lg hover:shadow-black/5",
+        nodeFx(focus),
+      )}
+    >
+      <Handle type="target" position={Position.Left} className={HANDLE_CLS} />
+      <div className="flex items-center gap-2.5">
+        <span className={cn("grid size-9 shrink-0 place-items-center rounded-2xl bg-gradient-to-br ring-1 ring-inset", pos ? "from-emerald-500/15 to-emerald-500/5 text-emerald-600 ring-emerald-500/20 dark:text-emerald-400" : "from-rose-500/15 to-rose-500/5 text-rose-600 ring-rose-500/20 dark:text-rose-400")}>
+          <Icon className="size-[18px]" />
+        </span>
+        <p className="min-w-0 flex-1 truncate text-sm font-semibold tracking-tight" title={data.label}>{data.label}</p>
+        <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground">{data.tx_count}</span>
       </div>
-      <dl className="mt-2.5 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
-        <div><dt className="text-muted-foreground">{t("flow.in")}</dt><dd><Money value={data.income} sign="+" currency={data.currency} className="font-medium text-emerald-600 dark:text-emerald-400" /></dd></div>
-        <div><dt className="text-muted-foreground">{t("flow.out")}</dt><dd><Money value={data.expense} sign="−" currency={data.currency} className="font-medium text-red-600 dark:text-red-400" /></dd></div>
-        {showBalances ? (
-          <>
-            <div><dt className="text-muted-foreground">{t("flow.opening")}</dt><dd><Money value={data.opening_balance ?? 0} currency={data.currency} /></dd></div>
-            <div><dt className="text-muted-foreground">{t("flow.current")}</dt><dd><Money value={data.current_balance ?? 0} currency={data.currency} className="font-medium" /></dd></div>
-          </>
-        ) : (
-          <div className="col-span-2 border-t pt-1"><dt className="text-muted-foreground">{t("flow.net")}</dt><dd className="inline"> <Money value={data.net} currency={data.currency} className={cn("font-semibold", data.net >= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-red-700 dark:text-red-300")} /></dd></div>
-        )}
+
+      <RatioBar income={data.income} expense={data.expense} className="mt-3" />
+      <dl className="mt-2 flex items-center justify-between text-[11px]">
+        <dt aria-label={t("flow.in")} className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400"><ArrowUpRight aria-hidden className="size-3" /><Money value={data.income} sign="+" currency={data.currency} className="font-semibold" /></dt>
+        <dd aria-label={t("flow.out")} className="flex items-center gap-1 text-rose-600 dark:text-rose-400"><Money value={data.expense} sign="−" currency={data.currency} className="font-semibold" /><ArrowDownRight aria-hidden className="size-3" /></dd>
       </dl>
+
+      {showBalances ? (
+        <div className="mt-2.5 grid grid-cols-2 gap-2 rounded-xl bg-muted/40 px-2.5 py-1.5 text-[11px]">
+          <div><dt className="text-[9px] uppercase text-muted-foreground">{t("flow.opening")}</dt><dd><Money value={data.opening_balance ?? 0} currency={data.currency} /></dd></div>
+          <div className="text-right"><dt className="text-[9px] uppercase text-muted-foreground">{t("flow.current")}</dt><dd><Money value={data.current_balance ?? 0} currency={data.currency} className="font-semibold" /></dd></div>
+        </div>
+      ) : (
+        <div className="mt-2.5 flex items-center justify-between rounded-xl bg-muted/40 px-2.5 py-1.5 text-[11px]">
+          <span className="text-muted-foreground">{t("flow.net")}</span>
+          <Money value={data.net} sign={pos ? "+" : "−"} currency={data.currency} className={cn("font-bold", pos ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400")} />
+        </div>
+      )}
+
       {data.tx_count > 0 && (
         <button
           type="button"
           onClick={data.onToggle}
-          className="nodrag mt-2.5 flex w-full items-center justify-center gap-1 rounded-lg border py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted"
+          aria-expanded={data.expanded}
+          className="nodrag mt-2.5 flex w-full items-center justify-center gap-1 rounded-xl border bg-background/60 py-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         >
           {data.expanded ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
           {data.expanded ? t("flow.hideTransactions") : t("flow.showTransactions")}
         </button>
       )}
-      <Handle type="source" position={Position.Right} className="!size-2 !border-2 !border-muted-foreground/40 !bg-background" />
+      <Handle type="source" position={Position.Right} className={HANDLE_CLS} />
     </div>
   )
 }
 
 type LeafData = FlowLeaf & { currency: string; formatDate: (d: string) => string; onOpen: () => void; enterIndex?: number }
-function LeafNode({ data }: NodeProps<Node<LeafData>>) {
+function LeafNode({ id, data }: NodeProps<Node<LeafData>>) {
   const { t } = useTranslation()
+  const focus = useFocus(id)
   const inc = data.type === "incoming"
   return (
-    // `nodrag` lets the click through (React Flow won't start a node drag here);
-    // a whole-card button opens the transaction. Staggered fade+slide-in so
-    // expanded leaves "grow out" of the parent rather than popping.
+    // The leaf is DRAGGABLE (no `nodrag`) yet still opens its transaction. To
+    // avoid a drag accidentally opening it, mouse-open goes through React Flow's
+    // drag-aware `onNodeClick` (suppressed after a real drag) — so the button's
+    // own onClick only handles KEYBOARD activation (Enter/Space → detail === 0).
+    // Staggered fade+slide-in so expanded leaves "grow out" of the parent.
     <button
       type="button"
-      onClick={data.onOpen}
+      onClick={(e) => { if (e.detail === 0) data.onOpen() }}
       title={t("flow.openTransaction")}
-      style={{ animationDelay: `${Math.min(data.enterIndex ?? 0, 8) * 40}ms` }}
-      className="nodrag flex w-[230px] items-center gap-2 rounded-xl border bg-card/80 p-2.5 text-left text-xs shadow-sm transition-colors hover:border-primary/40 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-left-3 motion-safe:duration-300 motion-safe:fill-mode-both"
+      style={{ animationDelay: `${Math.min(data.enterIndex ?? 0, 8) * 45}ms` }}
+      className={cn(
+        "flex w-[236px] cursor-grab items-center gap-2.5 rounded-2xl border bg-card p-2.5 text-left text-xs shadow-sm transition-[colors,box-shadow,transform] hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md active:cursor-grabbing motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-left-3 motion-safe:duration-300 motion-safe:fill-mode-both",
+        nodeFx(focus),
+      )}
     >
-      <Handle type="target" position={Position.Left} className="!size-1.5 !border !border-muted-foreground/40 !bg-background" />
-      <span className={cn("grid size-7 shrink-0 place-items-center rounded-full", inc ? "bg-emerald-100 dark:bg-emerald-900/30" : "bg-red-100 dark:bg-red-900/30")}>
-        {inc ? <ArrowUpRight className="size-3.5 text-emerald-600 dark:text-emerald-400" /> : <ArrowDownRight className="size-3.5 text-red-600 dark:text-red-400" />}
+      <Handle type="target" position={Position.Left} className={HANDLE_CLS} />
+      <span className={cn("grid size-8 shrink-0 place-items-center rounded-full ring-1 ring-inset", inc ? "bg-emerald-500/10 text-emerald-600 ring-emerald-500/20 dark:text-emerald-400" : "bg-rose-500/10 text-rose-600 ring-rose-500/20 dark:text-rose-400")}>
+        {inc ? <ArrowUpRight className="size-4" /> : <ArrowDownRight className="size-4" />}
       </span>
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-1 truncate font-medium">
@@ -176,22 +274,26 @@ function LeafNode({ data }: NodeProps<Node<LeafData>>) {
         </span>
         <span className="block truncate text-[10px] text-muted-foreground">{data.formatDate(data.date)}{data.category ? ` · ${data.category}` : ""}</span>
       </span>
-      <Money value={data.amount} sign={inc ? "+" : "−"} currency={data.currency} className={cn("shrink-0 font-semibold", inc ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400")} />
+      <Money value={data.amount} sign={inc ? "+" : "−"} currency={data.currency} className={cn("shrink-0 font-semibold", inc ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400")} />
     </button>
   )
 }
 
 type MoreData = { count: number; onOpen: () => void; enterIndex?: number }
-function MoreNode({ data }: NodeProps<Node<MoreData>>) {
+function MoreNode({ id, data }: NodeProps<Node<MoreData>>) {
   const { t } = useTranslation()
+  const focus = useFocus(id)
   return (
     <button
       type="button"
-      onClick={data.onOpen}
-      style={{ animationDelay: `${Math.min(data.enterIndex ?? 0, 8) * 40}ms` }}
-      className="nodrag flex w-[230px] items-center justify-center gap-1.5 rounded-xl border border-dashed bg-card/60 px-2.5 py-2 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/50 hover:text-foreground motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-left-3 motion-safe:duration-300 motion-safe:fill-mode-both"
+      onClick={(e) => { if (e.detail === 0) data.onOpen() }}
+      style={{ animationDelay: `${Math.min(data.enterIndex ?? 0, 8) * 45}ms` }}
+      className={cn(
+        "flex w-[236px] cursor-grab items-center justify-center gap-1.5 rounded-2xl border border-dashed bg-card/70 px-2.5 py-2 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/50 hover:text-foreground active:cursor-grabbing motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-left-3 motion-safe:duration-300 motion-safe:fill-mode-both",
+        nodeFx(focus),
+      )}
     >
-      <Handle type="target" position={Position.Left} className="!size-1.5 !border !border-muted-foreground/40 !bg-background" />
+      <Handle type="target" position={Position.Left} className={HANDLE_CLS} />
       <ListFilter className="size-3.5" /> {t("flow.viewMore", { count: data.count })}
     </button>
   )
@@ -199,67 +301,155 @@ function MoreNode({ data }: NodeProps<Node<MoreData>>) {
 
 // ── Timeline nodes: a running-balance chain ──────────────────────────────────
 type TimelinePeriodNodeData = TimelinePeriod & { expanded: boolean; currency: string; formatPeriod: (key: string, bucket: string) => string; onToggle: () => void }
-function TimelinePeriodNode({ data }: NodeProps<Node<TimelinePeriodNodeData>>) {
+function TimelinePeriodNode({ id, data }: NodeProps<Node<TimelinePeriodNodeData>>) {
   const { t } = useTranslation()
+  const focus = useFocus(id)
+  const pos = data.net >= 0
   return (
-    <div className="w-[268px] rounded-2xl border bg-card p-3.5 shadow-sm transition-shadow hover:shadow-md">
-      <Handle type="target" position={Position.Left} className="!size-2 !border-2 !border-muted-foreground/40 !bg-background" />
-      <div className="flex items-center gap-2">
-        <span className="grid size-8 place-items-center rounded-lg bg-primary/10 text-primary"><CalendarClock className="size-4" /></span>
-        <p className="min-w-0 flex-1 truncate text-sm font-semibold">{data.formatPeriod(data.key, data.bucket)}</p>
-        <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] tabular-nums text-muted-foreground">{data.tx_count}</span>
+    <div className={cn("group w-[276px] rounded-3xl border bg-gradient-to-br from-card to-muted/30 p-3.5 shadow-sm transition-shadow hover:shadow-lg hover:shadow-black/5", nodeFx(focus))}>
+      <Handle type="target" position={Position.Left} className={HANDLE_CLS} />
+      <div className="flex items-center gap-2.5">
+        <span className="grid size-9 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-primary/15 to-primary/5 text-primary ring-1 ring-inset ring-primary/20"><CalendarClock className="size-[18px]" /></span>
+        <p className="min-w-0 flex-1 truncate text-sm font-semibold tracking-tight">{data.formatPeriod(data.key, data.bucket)}</p>
+        <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground">{data.tx_count}</span>
       </div>
+
       {/* before → net → after: the running cumulative chain */}
-      <div className="mt-2.5 flex items-center justify-between rounded-lg bg-muted/40 px-2.5 py-1.5 text-[11px]">
+      <div className="mt-3 flex items-center justify-between rounded-2xl bg-muted/40 px-3 py-2 text-[11px]">
         <span className="text-center"><span className="block text-[9px] uppercase text-muted-foreground">{t("flow.before")}</span><Money value={data.before} currency={data.currency} className="font-medium" /></span>
-        <ArrowRight className="size-3 shrink-0 text-muted-foreground rtl:rotate-180" />
-        <span className="text-center"><span className="block text-[9px] uppercase text-muted-foreground">{t("flow.net")}</span><Money value={data.net} sign={data.net >= 0 ? "+" : "−"} currency={data.currency} className={cn("font-semibold", data.net >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400")} /></span>
-        <ArrowRight className="size-3 shrink-0 text-muted-foreground rtl:rotate-180" />
+        <ArrowRight className="size-3.5 shrink-0 text-muted-foreground/60 rtl:rotate-180" />
+        <span className="text-center"><span className="block text-[9px] uppercase text-muted-foreground">{t("flow.net")}</span><Money value={data.net} sign={pos ? "+" : "−"} currency={data.currency} className={cn("font-semibold", pos ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400")} /></span>
+        <ArrowRight className="size-3.5 shrink-0 text-muted-foreground/60 rtl:rotate-180" />
         <span className="text-center"><span className="block text-[9px] uppercase text-muted-foreground">{t("flow.after")}</span><Money value={data.after} currency={data.currency} className="font-bold" /></span>
       </div>
-      <div className="mt-2 grid grid-cols-2 gap-x-3 text-[11px]">
-        <div><dt className="inline text-muted-foreground">{t("flow.in")} </dt><Money value={data.income} sign="+" currency={data.currency} className="font-medium text-emerald-600 dark:text-emerald-400" /></div>
-        <div className="text-right"><dt className="inline text-muted-foreground">{t("flow.out")} </dt><Money value={data.expense} sign="−" currency={data.currency} className="font-medium text-red-600 dark:text-red-400" /></div>
-      </div>
+
+      <RatioBar income={data.income} expense={data.expense} className="mt-2.5" />
+      <dl className="mt-2 flex items-center justify-between text-[11px]">
+        <dt aria-label={t("flow.in")} className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400"><ArrowUpRight aria-hidden className="size-3" /><Money value={data.income} sign="+" currency={data.currency} className="font-semibold" /></dt>
+        <dd aria-label={t("flow.out")} className="flex items-center gap-1 text-rose-600 dark:text-rose-400"><Money value={data.expense} sign="−" currency={data.currency} className="font-semibold" /><ArrowDownRight aria-hidden className="size-3" /></dd>
+      </dl>
+
       {data.tx_count > 0 && (
         <button
           type="button"
           onClick={data.onToggle}
-          className="nodrag mt-2.5 flex w-full items-center justify-center gap-1 rounded-lg border py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted"
+          aria-expanded={data.expanded}
+          className="nodrag mt-2.5 flex w-full items-center justify-center gap-1 rounded-xl border bg-background/60 py-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         >
           {data.expanded ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
           {data.expanded ? t("flow.hideTransactions") : t("flow.showTransactions")}
         </button>
       )}
-      <Handle type="source" position={Position.Right} className="!size-2 !border-2 !border-muted-foreground/40 !bg-background" />
+      <Handle type="source" position={Position.Right} className={HANDLE_CLS} />
     </div>
   )
 }
 
 type TimelineFinalNodeData = TimelineData["final"] & { period_count: number; currency: string }
-function TimelineFinalNode({ data }: NodeProps<Node<TimelineFinalNodeData>>) {
+function TimelineFinalNode({ id, data }: NodeProps<Node<TimelineFinalNodeData>>) {
   const { t } = useTranslation()
+  const focus = useFocus(id)
+  const pos = data.total_net >= 0
   return (
-    <div className="w-[240px] rounded-2xl border-2 border-primary/50 bg-card p-4 shadow-lg">
-      <Handle type="target" position={Position.Left} className="!size-2 !border-2 !border-primary !bg-background" />
-      <div className="flex items-center gap-2">
-        <span className="grid size-9 place-items-center rounded-xl bg-primary/10 text-primary"><Workflow className="size-5" /></span>
+    <div className={cn("group relative w-[256px] overflow-hidden rounded-[1.75rem] border border-primary/30 bg-gradient-to-br from-card via-card to-primary/[0.06] p-4 shadow-[0_8px_30px_-12px] shadow-primary/30 backdrop-blur-sm", nodeFx(focus))}>
+      <span aria-hidden className="pointer-events-none absolute -right-10 -top-10 size-28 rounded-full bg-primary/15 blur-2xl" />
+      <Handle type="target" position={Position.Left} className={HANDLE_PRIMARY} />
+      <div className="relative flex items-center gap-2.5">
+        <span className="grid size-10 place-items-center rounded-2xl bg-gradient-to-br from-primary to-primary/70 text-primary-foreground shadow-sm"><Sparkles className="size-5" /></span>
         <div className="min-w-0">
-          <p className="truncate text-sm font-semibold">{data.label}</p>
+          <p className="truncate text-sm font-semibold tracking-tight">{data.label}</p>
           <p className="text-[11px] text-muted-foreground">{t("flow.finalEntity")}</p>
         </div>
       </div>
-      <dl className="mt-3 space-y-1.5 text-xs">
-        <div className="flex items-center justify-between"><dt className="text-muted-foreground">{t("flow.revenue")}</dt><dd><Money value={data.total_in} sign="+" currency={data.currency} className="font-semibold text-emerald-600 dark:text-emerald-400" /></dd></div>
-        <div className="flex items-center justify-between"><dt className="text-muted-foreground">{t("flow.expenses")}</dt><dd><Money value={data.total_out} sign="−" currency={data.currency} className="font-semibold text-red-600 dark:text-red-400" /></dd></div>
-        <div className="flex items-center justify-between border-t pt-1.5"><dt className="font-medium">{t("flow.netTotal")}</dt><dd><Money value={data.total_net} currency={data.currency} className={cn("font-bold", data.total_net >= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-red-700 dark:text-red-300")} /></dd></div>
-        <div className="flex items-center justify-between"><dt className="text-muted-foreground">{t("flow.balance")}</dt><dd><Money value={data.balance} currency={data.currency} className="font-medium" /></dd></div>
-      </dl>
+      <div className="relative mt-3.5 rounded-2xl bg-muted/40 p-3">
+        <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{t("flow.netTotal")}</p>
+        <p className={cn("text-xl font-bold leading-tight", pos ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400")}>
+          <Money value={data.total_net} sign={pos ? "+" : "−"} currency={data.currency} />
+        </p>
+        <RatioBar income={data.total_in} expense={data.total_out} className="mt-2.5" />
+        <dl className="mt-2 flex items-center justify-between text-[11px]">
+          <dt aria-label={t("flow.revenue")} className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400"><TrendingUp aria-hidden className="size-3" /><Money value={data.total_in} sign="+" currency={data.currency} className="font-semibold" /></dt>
+          <dd aria-label={t("flow.expenses")} className="flex items-center gap-1 text-rose-600 dark:text-rose-400"><Money value={data.total_out} sign="−" currency={data.currency} className="font-semibold" /><TrendingDown aria-hidden className="size-3" /></dd>
+        </dl>
+      </div>
+      <div className="relative mt-2.5 flex items-center justify-between px-1 text-xs">
+        <span className="text-muted-foreground">{t("flow.balance")}</span>
+        <Money value={data.balance} currency={data.currency} className="font-semibold" />
+      </div>
     </div>
   )
 }
 
-const NODE_TYPES = { root: RootNode, group: GroupNode, leaf: LeafNode, more: MoreNode, tlperiod: TimelinePeriodNode, tlfinal: TimelineFinalNode }
+// ── Custom edge: a smooth, gradient-coloured bezier "pipe" ───────────────────
+// Thickness ∝ money volume (data.weight); colour ∝ direction (data.tone); a
+// flowing dash overlay animates money travelling from source → target (paused
+// for reduced-motion users via CSS). Dims when another node is focused.
+const TONE_VAR: Record<EdgeTone, string> = { income: "var(--mf-income)", expense: "var(--mf-expense)", neutral: "var(--mf-neutral)" }
+
+function FlowEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, data }: EdgeProps<Edge<FlowEdgeData>>) {
+  const [path] = getBezierPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, curvature: 0.4 })
+  const focus = useFocus(id, true)
+  const d = data ?? { tone: "neutral", weight: 0.2, kind: "branch", animated: false }
+  const color = TONE_VAR[d.tone]
+  const base = d.kind === "leaf" ? 1.2 + d.weight * 2 : 2 + d.weight * 5
+  const width = focus === "active" ? base + 1 : base
+  const dim = focus === "dim"
+  const gradId = `mf-grad-${id}`
+
+  return (
+    <>
+      <defs>
+        <linearGradient id={gradId} gradientUnits="userSpaceOnUse" x1={sourceX} y1={sourceY} x2={targetX} y2={targetY}>
+          <stop offset="0%" style={{ stopColor: color, stopOpacity: 0.25 }} />
+          <stop offset="100%" style={{ stopColor: color, stopOpacity: 0.95 }} />
+        </linearGradient>
+      </defs>
+      {/* base pipe */}
+      <path
+        d={path}
+        fill="none"
+        stroke={`url(#${gradId})`}
+        strokeWidth={width}
+        strokeLinecap="round"
+        strokeOpacity={dim ? 0.12 : 1}
+        className={cn("ps-flow-edge", focus === "active" && "ps-flow-edge--active")}
+        style={{ transition: "stroke-opacity 200ms, stroke-width 200ms" }}
+      />
+      {/* flowing dash overlay (money in motion) */}
+      {d.animated && !dim && (
+        <path
+          d={path}
+          fill="none"
+          stroke={color}
+          strokeWidth={Math.max(1.4, width * 0.5)}
+          strokeLinecap="round"
+          strokeDasharray="0.5 14"
+          strokeOpacity={0.95}
+          className="ps-flow-edge-flow"
+        />
+      )}
+    </>
+  )
+}
+
+// memo() so a node/edge re-renders only when ITS data or focus changes — not on
+// every pan/zoom/select/drag of an unrelated node (React Flow re-renders the
+// canvas often; the bounded graph still stays smooth).
+const NODE_TYPES = { root: memo(RootNode), branch: memo(GroupNode), leaf: memo(LeafNode), more: memo(MoreNode), tlperiod: memo(TimelinePeriodNode), tlfinal: memo(TimelineFinalNode) }
+const EDGE_TYPES = { flow: memo(FlowEdge) }
+
+// Minimap node fills are set as SVG `fill` attributes, where CSS var() does NOT
+// resolve — so the dot colours must be concrete hex, picked by the theme.
+const MINIMAP_COLORS = {
+  light: { income: "#10b981", expense: "#f43f5e" },
+  dark: { income: "#34d399", expense: "#fb7185" },
+} as const
+function minimapNodeColor(mode: ColorMode, n: Node): string {
+  const c = MINIMAP_COLORS[mode === "dark" ? "dark" : "light"]
+  const d = n.data as { type?: string; net?: number; total_net?: number }
+  const positive = n.type === "leaf" ? d.type === "incoming" : (d.net ?? d.total_net ?? 0) >= 0
+  return positive ? c.income : c.expense
+}
 
 // ── Searchable multi-select filter (compact, mobile-safe) ────────────────────
 function MultiCheck({ label, options, selected, onChange, searchPlaceholder }: { label: string; options: Option[]; selected: Set<string>; onChange: (s: Set<string>) => void; searchPlaceholder: string }) {
@@ -273,7 +463,6 @@ function MultiCheck({ label, options, selected, onChange, searchPlaceholder }: {
   }
   const q = query.trim().toLowerCase()
   const filtered = q ? options.filter((o) => o.label.toLowerCase().includes(q)) : options
-  // Search box appears once the list is long enough to warrant it.
   const showSearch = options.length > 6
   return (
     <div className="space-y-1.5">
@@ -346,14 +535,20 @@ export function MoneyFlowPage() {
   const { activeOrg } = useOrg()
   const { currency } = useCurrency()
   const { revision } = useDataRefresh()
+  const { theme } = useTheme()
+  const isMobile = useIsMobile()
   const isPersonal = activeOrg?.account_type === "personal"
   const hasClients = accountTypeAllows(activeOrg?.account_type ?? null, "clients")
 
+  // React Flow themes its chrome (controls/minimap/background) from colorMode.
+  // Resolve "system" so it always matches the app's actual light/dark state.
+  const colorMode: ColorMode = useMemo(() => {
+    if (theme === "light" || theme === "dark") return theme
+    if (typeof window !== "undefined" && window.matchMedia?.("(prefers-color-scheme: dark)").matches) return "dark"
+    return "light"
+  }, [theme])
+
   // ── State preservation across navigation (nav rule: restore on back) ────────
-  // Everything that defines "where you were" — view, filters, expanded set,
-  // dragged node positions and the camera — is snapshotted to sessionStorage
-  // keyed by org, and restored when the page remounts (e.g. back from a
-  // transaction detail). Read once, synchronously, before the first render.
   const storageKey = `ps_flow_${activeOrg?.id ?? "none"}`
   const saved = useMemo<SavedFlowState>(() => readSavedFlow(storageKey), [storageKey])
 
@@ -372,14 +567,10 @@ export function MoneyFlowPage() {
   const [accountOptions, setAccountOptions] = useState<Option[]>([])
   const [rootCollapsed, setRootCollapsed] = useState(saved.rootCollapsed ?? false)
   const [expanded, setExpanded] = useState<Set<string>>(new Set(saved.expanded ?? []))
-  // Bumped on every successful fetch; the fitView trigger (NOT structuralKey,
-  // so expand/collapse never re-frames the camera).
   const [dataVersion, setDataVersion] = useState(0)
 
   // Dragged node positions (id → {x,y}); survive rebuilds AND navigation.
   const userPositions = useRef<Record<string, { x: number; y: number }>>(saved.positions ?? {})
-  // The restored camera; when present we skip the first auto-fit so the view
-  // lands exactly where the user left it.
   const savedViewport = useRef(saved.viewport ?? null)
   const skipNextFit = useRef(!!saved.viewport)
 
@@ -434,8 +625,6 @@ export function MoneyFlowPage() {
 
   useEffect(() => { load() }, [load])
 
-  // A transaction added/edited anywhere (e.g. the global + FAB) bumps the
-  // app-wide refresh signal — rebuild the graph in place, no skeleton.
   useEffect(() => {
     if (revision > 0) void load({ silent: true })
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only react to the signal
@@ -443,8 +632,6 @@ export function MoneyFlowPage() {
 
   const flowRef = useRef<ReactFlowInstance<Node, Edge> | null>(null)
 
-  // Re-fit on viewport resize / rotation so nodes never end up stranded
-  // off-screen (React Flow doesn't auto-fit on container resize).
   useEffect(() => {
     let raf = 0
     const onResize = () => {
@@ -473,7 +660,6 @@ export function MoneyFlowPage() {
     })
   }, [])
 
-  // Where a group's "+N more" leaf links to (precise per dimension/period).
   const openTransactions = useCallback(() => {
     const params = new URLSearchParams()
     if (from) params.set("from", from)
@@ -491,9 +677,7 @@ export function MoneyFlowPage() {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
 
-  // Rebuild + re-fit only when the STRUCTURE changes (data fetch, mode, groupBy,
-  // bucket, collapse/expand) — NOT on drag, so dragging a node sticks until the
-  // next deliberate change. A signature string is the dependency.
+  // Rebuild + re-fit only when the STRUCTURE changes — NOT on drag/hover.
   const structuralKey = useMemo(() => {
     if (!data) return "none"
     return [viewMode, groupBy, bucket, dataVersion, rootCollapsed, [...expanded].sort().join(",")].join("|")
@@ -506,12 +690,11 @@ export function MoneyFlowPage() {
         ? buildTimelineGraph(data, expanded)
         : buildFlowGraph(data, { rootCollapsed, expanded })
     const rf: Node[] = built.nodes.map((n) => {
-      // Honor a user-dragged position (persists through rebuilds + navigation).
       const position = userPositions.current[n.id] ?? n.position
       switch (n.type) {
         case "root":
           return { ...n, position, data: { ...n.data, currency, onToggle: () => setRootCollapsed((c) => !c) } } as Node
-        case "group": {
+        case "branch": {
           const g = n.data as unknown as FlowGroup
           return { ...n, position, data: { ...n.data, currency, onToggle: () => toggleKey(groupKeyId(g)) } } as Node
         }
@@ -534,23 +717,18 @@ export function MoneyFlowPage() {
       }
     })
     setNodes(rf)
-    setEdges(built.edges as Edge[])
-    // NOTE: no fitView here — expand/collapse must not move the camera. The
-    // node `transform` transition (scoped CSS) glides repositioned siblings.
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- structuralKey is the intentional trigger; callbacks/currency are stable
+    setEdges(built.edges.map((e) => ({ ...e, type: "flow" })) as Edge[])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- structuralKey is the intentional trigger
   }, [structuralKey])
 
-  // Re-fit ONLY when the data set itself changes (fetch on mode/groupBy/bucket/
-  // filter change) — never on expand/collapse. Skipped once on mount when a
-  // camera was restored from a previous visit.
+  // Re-fit ONLY when the data set itself changes — never on expand/collapse.
   useEffect(() => {
     if (dataVersion === 0) return
     if (skipNextFit.current) { skipNextFit.current = false; return }
-    const id = requestAnimationFrame(() => flowRef.current?.fitView({ padding: 0.2, maxZoom: 1, duration: 300 }))
+    const id = requestAnimationFrame(() => flowRef.current?.fitView({ padding: 0.2, maxZoom: 1, duration: 400 }))
     return () => cancelAnimationFrame(id)
   }, [dataVersion])
 
-  // Persist the full "where you were" snapshot whenever it changes.
   useEffect(() => {
     writeSavedFlow(storageKey, {
       viewMode, bucket, groupBy, from, to,
@@ -561,9 +739,13 @@ export function MoneyFlowPage() {
     })
   }, [storageKey, viewMode, bucket, groupBy, from, to, selCats, selClients, selAccounts, rootCollapsed, expanded])
 
-  // Record a dragged node's final position (then persist via the effect above
-  // by also writing straight through, since refs don't trigger it).
+  // Timestamp of the last drag end. A dragged node tracks the cursor, so
+  // pointerdown and pointerup land on the same card and the browser CAN emit a
+  // trailing `click` — which would wrongly open the transaction. We suppress any
+  // click that lands within a short window after a drag.
+  const lastDragEndRef = useRef(0)
   const onNodeDragStop = useCallback((_e: unknown, node: Node) => {
+    lastDragEndRef.current = performance.now()
     userPositions.current[node.id] = node.position
     writeSavedFlow(storageKey, { ...readSavedFlow(storageKey), positions: userPositions.current })
   }, [storageKey])
@@ -571,6 +753,40 @@ export function MoneyFlowPage() {
     savedViewport.current = vp
     writeSavedFlow(storageKey, { ...readSavedFlow(storageKey), viewport: vp })
   }, [storageKey])
+
+  // ── Hover focus: light up a node's money path, dim the rest ─────────────────
+  const canHover = useMemo(() => typeof window !== "undefined" && window.matchMedia?.("(hover: hover)").matches, [])
+  const [focus, setFocus] = useState<FocusState>(null)
+  // Read the latest edges through a ref so the handler stays stable (deps:
+  // [canHover]) yet never closes over a stale edge set after a rebuild.
+  const edgesRef = useRef(edges)
+  edgesRef.current = edges
+  const onNodeMouseEnter = useCallback((_e: unknown, node: Node) => {
+    if (!canHover) return
+    const active = new Set<string>([node.id])
+    const edgeIds = new Set<string>()
+    for (const e of edgesRef.current) {
+      if (e.source === node.id || e.target === node.id) {
+        edgeIds.add(e.id)
+        active.add(e.source)
+        active.add(e.target)
+      }
+    }
+    setFocus({ active, edges: edgeIds })
+  }, [canHover])
+  const onNodeMouseLeave = useCallback(() => setFocus(null), [])
+
+  // Mouse-open for the now-draggable leaf / "+N more" nodes. We open only on a
+  // real click that did NOT just conclude a drag (see lastDragEndRef). detail
+  // === 0 (keyboard) is handled by the node's own button, so we skip it here to
+  // avoid a double-open.
+  const onNodeClick = useCallback((e: { detail: number }, node: Node) => {
+    if (e.detail === 0) return
+    if (performance.now() - lastDragEndRef.current < 250) return
+    if (node.type === "leaf" || node.type === "more") {
+      ;(node.data as { onOpen?: () => void }).onOpen?.()
+    }
+  }, [])
 
   const activeFilterCount = selCats.size + selClients.size + selAccounts.size + (from ? 1 : 0) + (to ? 1 : 0)
   const empty = !loading && data && (data.mode === "timeline" ? data.periods.length === 0 : data.root.tx_count === 0)
@@ -605,18 +821,19 @@ export function MoneyFlowPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <h1 className="flex items-center gap-2 text-xl font-semibold tracking-tight sm:text-2xl">
-            <Workflow className="size-5 text-primary" /> {t("flow.title")}
+            <span className="grid size-8 place-items-center rounded-xl bg-gradient-to-br from-primary to-primary/70 text-primary-foreground shadow-sm"><Sparkles className="size-4" /></span>
+            {t("flow.title")}
           </h1>
           <p className="mt-0.5 text-sm text-muted-foreground">{viewMode === "timeline" ? t("flow.timelineSubtitle") : t("flow.subtitle")}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {/* View-mode toggle: grouped mind-map vs running-balance timeline */}
-          <div className="flex rounded-lg border p-0.5">
+          <div className="flex rounded-xl border bg-card p-0.5 shadow-sm">
             <button
               type="button"
               onClick={() => { setViewMode("grouped"); setExpanded(new Set()); setRootCollapsed(false) }}
               aria-pressed={viewMode === "grouped"}
-              className={cn("flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors", viewMode === "grouped" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted")}
+              className={cn("flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors", viewMode === "grouped" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-muted")}
             >
               <Network className="size-3.5" /> {t("flow.viewGrouped")}
             </button>
@@ -624,35 +841,35 @@ export function MoneyFlowPage() {
               type="button"
               onClick={() => { setViewMode("timeline"); setExpanded(new Set()) }}
               aria-pressed={viewMode === "timeline"}
-              className={cn("flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors", viewMode === "timeline" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted")}
+              className={cn("flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors", viewMode === "timeline" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-muted")}
             >
               <CalendarClock className="size-3.5" /> {t("flow.viewTimeline")}
             </button>
           </div>
           {/* Grouped: dimension switch. Timeline: bucket switch. */}
           {viewMode === "grouped" ? (
-            <div className="flex rounded-lg border p-0.5">
+            <div className="flex rounded-xl border bg-card p-0.5 shadow-sm">
               {GROUP_BYS.filter((g) => g !== "client" || hasClients).map((g) => (
                 <button
                   key={g}
                   type="button"
                   onClick={() => { setGroupBy(g); setExpanded(new Set()); setRootCollapsed(false) }}
                   aria-pressed={groupBy === g}
-                  className={cn("rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors", groupBy === g ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted")}
+                  className={cn("rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors", groupBy === g ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-muted")}
                 >
                   {t(`flow.by_${g}` as const)}
                 </button>
               ))}
             </div>
           ) : (
-            <div className="flex rounded-lg border p-0.5">
+            <div className="flex rounded-xl border bg-card p-0.5 shadow-sm">
               {BUCKETS.map((b) => (
                 <button
                   key={b}
                   type="button"
                   onClick={() => { setBucket(b); setExpanded(new Set()) }}
                   aria-pressed={bucket === b}
-                  className={cn("rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors", bucket === b ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted")}
+                  className={cn("rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors", bucket === b ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-muted")}
                 >
                   {t(`flow.bucket_${b}` as const)}
                 </button>
@@ -661,7 +878,7 @@ export function MoneyFlowPage() {
           )}
           <Sheet>
             <SheetTrigger asChild>
-              <Button variant="outline" size="sm" className="shrink-0">
+              <Button variant="outline" size="sm" className="shrink-0 rounded-xl">
                 <ListFilter className="size-4" /> {t("flow.filters")}{activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}
               </Button>
             </SheetTrigger>
@@ -673,40 +890,68 @@ export function MoneyFlowPage() {
         </div>
       </div>
 
-      {/* ps-flow scopes the node transform-transition (smooth reflow on expand) */}
-      <div className="ps-flow mt-4 min-h-0 flex-1 overflow-hidden rounded-2xl border bg-muted/20">
+      {/* ps-flow scopes the node transform-transition + canvas theming */}
+      <div className="ps-flow mt-4 min-h-0 flex-1 overflow-hidden rounded-3xl border bg-muted/20 shadow-inner">
         {loading && !data ? (
-          <div className="flex h-full items-center justify-center"><Skeleton className="h-3/4 w-11/12 rounded-xl" /></div>
+          <div className="flex h-full items-center justify-center"><Skeleton className="h-3/4 w-11/12 rounded-2xl" /></div>
         ) : empty ? (
-          <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-muted-foreground">
-            <Workflow className="size-8 opacity-40" />
+          <div className="flex h-full flex-col items-center justify-center gap-3 text-center text-muted-foreground">
+            <span className="grid size-14 place-items-center rounded-2xl bg-muted/60"><Sparkles className="size-7 opacity-50" /></span>
             <p className="text-sm font-medium">{t("flow.empty")}</p>
             <p className="max-w-xs text-xs">{t("flow.emptyHint")}</p>
           </div>
         ) : (
-          <ReactFlow
-            onInit={(inst) => { flowRef.current = inst }}
-            nodes={nodes}
-            edges={edges}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
-            onNodeDragStop={onNodeDragStop}
-            onMoveEnd={onMoveEnd}
-            nodeTypes={NODE_TYPES}
-            // Restore the camera if we have one; otherwise fit on mount.
-            {...(savedViewport.current ? { defaultViewport: savedViewport.current } : { fitView: true })}
-            fitViewOptions={{ padding: 0.2, maxZoom: 1 }}
-            minZoom={0.2}
-            maxZoom={1.5}
-            nodesDraggable
-            elementsSelectable
-            nodesConnectable={false}
-            proOptions={{ hideAttribution: true }}
-            defaultEdgeOptions={{ type: "smoothstep", style: { strokeWidth: 1.5 }, animated: false }}
-          >
-            <Background gap={20} className="text-border" />
-            <Controls showInteractive={false} className="!rounded-lg !border !shadow-sm" />
-          </ReactFlow>
+          <FocusContext.Provider value={focus}>
+            <ReactFlow
+              onInit={(inst) => { flowRef.current = inst }}
+              nodes={nodes}
+              edges={edges}
+              onNodesChange={onNodesChange}
+              onEdgesChange={onEdgesChange}
+              onNodeDragStop={onNodeDragStop}
+              onMoveEnd={onMoveEnd}
+              onNodeMouseEnter={onNodeMouseEnter}
+              onNodeMouseLeave={onNodeMouseLeave}
+              onNodeClick={onNodeClick}
+              nodeTypes={NODE_TYPES}
+              edgeTypes={EDGE_TYPES}
+              colorMode={colorMode}
+              {...(savedViewport.current ? { defaultViewport: savedViewport.current } : { fitView: true })}
+              fitViewOptions={{ padding: 0.2, maxZoom: 1 }}
+              minZoom={0.2}
+              maxZoom={1.5}
+              nodeDragThreshold={3}
+              nodesDraggable
+              elementsSelectable
+              nodesConnectable={false}
+              proOptions={{ hideAttribution: true }}
+              defaultEdgeOptions={{ type: "flow" }}
+            >
+              <Background variant={BackgroundVariant.Dots} gap={26} size={1.5} />
+              <Controls showInteractive={false} className="!rounded-xl !border !shadow-lg" />
+              {!isMobile && (
+                <MiniMap
+                  pannable
+                  zoomable
+                  className="!rounded-xl !border !shadow-lg"
+                  maskColor="var(--mf-minimap-mask)"
+                  nodeColor={(n) => minimapNodeColor(colorMode, n)}
+                  nodeStrokeWidth={0}
+                  nodeBorderRadius={8}
+                />
+              )}
+              {!isMobile && (
+                <Panel position="top-left" className="!m-3">
+                  <div className="flex items-center gap-3 rounded-xl border bg-card/80 px-3 py-1.5 text-[11px] shadow-sm backdrop-blur-sm">
+                    <span className="flex items-center gap-1.5"><span className="h-1.5 w-4 rounded-full bg-emerald-500" />{t("flow.in")}</span>
+                    <span className="flex items-center gap-1.5"><span className="h-1.5 w-4 rounded-full bg-rose-500" />{t("flow.out")}</span>
+                    <span className="hidden text-muted-foreground sm:inline">·</span>
+                    <span className="hidden text-muted-foreground sm:inline">{t("flow.legendThickness")}</span>
+                  </div>
+                </Panel>
+              )}
+            </ReactFlow>
+          </FocusContext.Provider>
         )}
       </div>
     </div>

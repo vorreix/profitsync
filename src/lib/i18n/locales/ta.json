@@ -1202,7 +1202,8 @@
     "openTransaction": "பரிவர்த்தனையைத் திற",
     "searchCategories": "வகைகளைத் தேடு…",
     "searchClients": "வாடிக்கையாளர்களைத் தேடு…",
-    "searchAccounts": "கணக்குகளைத் தேடு…"
+    "searchAccounts": "கணக்குகளைத் தேடு…",
+    "legendThickness": "தடிமனான கோடுகள் அதிக பணத்தைக் குறிக்கின்றன"
   },
   "spaces": {
     "title": "ஸ்பேஸ்கள்",

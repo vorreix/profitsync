@@ -207,6 +207,66 @@
       transition: none;
     }
   }
+  /* Money-flow edge palette (drives the gradient "pipes" + minimap). Tones read
+     as income (emerald), expense (rose), neutral (slate); dark gets brighter
+     stops so the curves stay legible on the dark canvas. */
+  .ps-flow {
+    --mf-income: #10b981;
+    --mf-expense: #f43f5e;
+    --mf-neutral: #94a3b8;
+    --mf-minimap-mask: rgb(241 245 249 / 0.55);
+    /* dot grid colour for the canvas Background */
+    --xy-background-pattern-color: color-mix(in oklch, var(--muted-foreground) 22%, transparent);
+    --xy-background-pattern-color-default: color-mix(in oklch, var(--muted-foreground) 22%, transparent);
+  }
+  .dark .ps-flow {
+    --mf-income: #34d399;
+    --mf-expense: #fb7185;
+    --mf-neutral: #64748b;
+    --mf-minimap-mask: rgb(2 6 23 / 0.6);
+  }
+  /* The flowing-dash overlay: money visibly travels source → target. Decreasing
+     (negative) dashoffset moves the dots toward the path's end. Paused entirely
+     for reduced-motion users (the static gradient pipe still shows direction). */
+  .ps-flow .ps-flow-edge-flow {
+    stroke-dashoffset: 0;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .ps-flow .ps-flow-edge-flow {
+      animation: ps-flow-dash 1.2s linear infinite;
+    }
+  }
+  .ps-flow .ps-flow-edge--active {
+    filter: saturate(1.35);
+  }
+  @keyframes ps-flow-dash {
+    to {
+      stroke-dashoffset: -14.5;
+    }
+  }
+  /* Canvas chrome polish — Controls + MiniMap inherit the app surface so they
+     stay legible in both themes (colorMode already swaps the --xy-* base). */
+  .ps-flow .react-flow__controls-button {
+    background: var(--card);
+    border-bottom: 1px solid var(--border);
+    color: var(--foreground);
+    fill: var(--foreground);
+  }
+  .ps-flow .react-flow__controls-button:hover {
+    background: var(--muted);
+  }
+  /* React Flow reads these vars for the minimap fill/mask — overriding the var
+     (not just `background`) wins over RF's colorMode defaults reliably. */
+  .ps-flow {
+    --xy-minimap-background-color: color-mix(in oklch, var(--card) 92%, transparent);
+    --xy-minimap-background-color-default: color-mix(in oklch, var(--card) 92%, transparent);
+  }
+  .ps-flow .react-flow__minimap {
+    border-radius: 0.75rem;
+  }
+  .ps-flow .react-flow__attribution {
+    display: none;
+  }
   /* Sonner sets touch-action:none on toasts for swipe-to-dismiss — but a
      bottom toast spans ~92% of a phone's width exactly where the thumb starts
      scrolling, so for its whole duration the page can't be panned from there.
