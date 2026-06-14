@@ -1224,7 +1224,9 @@
     "kindClient": "Cliente",
     "kindCategory": "Categoria",
     "kindPeriod": "Periodo",
-    "kindWorkspace": "Spazio di lavoro"
+    "kindWorkspace": "Spazio di lavoro",
+    "splitAccounts": "Diviso · {{count}} conti",
+    "unassignedAccount": "Non assegnato"
   },
   "spaces": {
     "title": "Spazi",

@@ -41,6 +41,7 @@ import {
   Repeat,
   Search,
   Sparkles,
+  Split,
   Tag,
   TrendingDown,
   TrendingUp,
@@ -284,11 +285,12 @@ function GroupNode({ id, data }: NodeProps<Node<GroupData>>) {
   )
 }
 
-type LeafData = FlowLeaf & { currency: string; formatDate: (d: string) => string; onOpen: () => void; enterIndex?: number }
+type LeafData = FlowLeaf & { currency: string; formatDate: (d: string) => string; onOpen: () => void; enterIndex?: number; splitExpanded?: boolean }
 function LeafNode({ id, data }: NodeProps<Node<LeafData>>) {
   const { t } = useTranslation()
   const focus = useFocus(id)
   const inc = data.type === "incoming"
+  const isSplit = (data.leg_count ?? 1) > 1
   return (
     // The leaf is DRAGGABLE (no `nodrag`) yet still opens its transaction. To
     // avoid a drag accidentally opening it, mouse-open goes through React Flow's
@@ -301,30 +303,54 @@ function LeafNode({ id, data }: NodeProps<Node<LeafData>>) {
       title={t("flow.openTransaction")}
       style={{ animationDelay: `${Math.min(data.enterIndex ?? 0, 8) * 45}ms` }}
       className={cn(
-        "flex w-[236px] cursor-grab items-center gap-2.5 rounded-2xl border bg-card p-2.5 text-left text-xs shadow-sm transition-[colors,box-shadow,transform] hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md active:cursor-grabbing motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-left-3 motion-safe:duration-300 motion-safe:fill-mode-both",
+        "flex w-[236px] cursor-grab flex-col gap-1.5 rounded-2xl border bg-card p-2.5 text-left text-xs shadow-sm transition-[colors,box-shadow,transform] hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md active:cursor-grabbing motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-left-3 motion-safe:duration-300 motion-safe:fill-mode-both",
         nodeFx(focus),
       )}
     >
       <Handle type="target" position={Position.Left} className={HANDLE_CLS} />
-      <span className={cn("grid size-8 shrink-0 place-items-center rounded-full ring-1 ring-inset", inc ? "bg-emerald-500/10 text-emerald-600 ring-emerald-500/20 dark:text-emerald-400" : "bg-rose-500/10 text-rose-600 ring-rose-500/20 dark:text-rose-400")}>
-        {inc ? <ArrowUpRight className="size-4" /> : <ArrowDownRight className="size-4" />}
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="flex items-center gap-1 truncate font-medium">
-          {data.description || (inc ? t("flow.income") : t("flow.expense"))}
-          {data.recurring && <Repeat className="size-3 shrink-0 text-violet-500" />}
+      <span className="flex w-full items-center gap-2.5">
+        <span className={cn("grid size-8 shrink-0 place-items-center rounded-full ring-1 ring-inset", inc ? "bg-emerald-500/10 text-emerald-600 ring-emerald-500/20 dark:text-emerald-400" : "bg-rose-500/10 text-rose-600 ring-rose-500/20 dark:text-rose-400")}>
+          {inc ? <ArrowUpRight className="size-4" /> : <ArrowDownRight className="size-4" />}
         </span>
-        <span className="block truncate text-[10px] text-muted-foreground">{data.formatDate(data.date)}{data.category ? ` · ${data.category}` : ""}</span>
-        {data.account_name && (
-          // Which account the money moved through — "to" when it landed in the
-          // account (incoming), "from" when it left it (outgoing).
-          <span className="flex items-center gap-1 truncate text-[10px] text-muted-foreground">
-            <Landmark className="size-2.5 shrink-0" />
-            <span className="truncate">{inc ? t("flow.dirTo") : t("flow.dirFrom")} {data.account_name}</span>
+        <span className="min-w-0 flex-1">
+          <span className="flex items-center gap-1 truncate font-medium">
+            {data.description || (inc ? t("flow.income") : t("flow.expense"))}
+            {data.recurring && <Repeat className="size-3 shrink-0 text-violet-500" />}
           </span>
-        )}
+          <span className="block truncate text-[10px] text-muted-foreground">{data.formatDate(data.date)}{data.category ? ` · ${data.category}` : ""}</span>
+          {isSplit ? (
+            // A split: one logical transaction across N accounts. The badge counts
+            // them and the chevron shows it's expandable; legs reveal below.
+            <span className={cn("mt-0.5 flex w-fit items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium ring-1 ring-inset", inc ? "bg-emerald-500/10 text-emerald-700 ring-emerald-500/20 dark:text-emerald-300" : "bg-rose-500/10 text-rose-700 ring-rose-500/20 dark:text-rose-300")}>
+              <Split className="size-2.5 shrink-0" />
+              {t("flow.splitAccounts", { count: data.leg_count })}
+              {data.splitExpanded ? <ChevronDown className="size-3 shrink-0" /> : <ChevronRight className="size-3 shrink-0" />}
+            </span>
+          ) : data.account_name ? (
+            // Which account the money moved through — "to" when it landed in the
+            // account (incoming), "from" when it left it (outgoing).
+            <span className={cn("mt-0.5 flex w-fit max-w-full items-center gap-1 truncate rounded-md px-1.5 py-0.5 text-[10px] font-medium ring-1 ring-inset", inc ? "bg-emerald-500/10 text-emerald-700 ring-emerald-500/20 dark:text-emerald-300" : "bg-rose-500/10 text-rose-700 ring-rose-500/20 dark:text-rose-300")}>
+              <Landmark className="size-2.5 shrink-0" />
+              <span className="truncate">{inc ? t("flow.dirTo") : t("flow.dirFrom")} {data.account_name}</span>
+            </span>
+          ) : null}
+        </span>
+        <Money value={data.amount} sign={inc ? "+" : "−"} currency={data.currency} className={cn("shrink-0 self-start font-semibold", inc ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400")} />
       </span>
-      <Money value={data.amount} sign={inc ? "+" : "−"} currency={data.currency} className={cn("shrink-0 self-start font-semibold", inc ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400")} />
+      {/* full-width legs breakdown (each account's share of the split) */}
+      {isSplit && data.splitExpanded && data.legs && (
+        <span className="block space-y-1 border-t pt-1.5 text-[10px]">
+          {data.legs.map((leg, i) => (
+            <span key={i} className="flex items-center justify-between gap-2">
+              <span className="flex min-w-0 flex-1 items-center gap-1 text-muted-foreground">
+                <Landmark className="size-2.5 shrink-0" />
+                <span className="truncate">{leg.account_name || t("flow.unassignedAccount")}</span>
+              </span>
+              <Money value={leg.amount} sign={inc ? "+" : "−"} currency={data.currency} className={cn("shrink-0 font-medium tabular-nums", inc ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400")} />
+            </span>
+          ))}
+        </span>
+      )}
     </button>
   )
 }
@@ -720,6 +746,7 @@ type SavedFlowState = {
   // restores the exact canvas (expanded transactions) you left.
   extra?: Record<string, FlowLeaf[]>
   exhausted?: string[]
+  expandedSplit?: string | null
 }
 
 function readSavedFlow(key: string): SavedFlowState {
@@ -790,6 +817,8 @@ export function MoneyFlowPage() {
   const [selectedTx, setSelectedTx] = useState<FlowLeaf | null>(null)
   // The node whose Info button was tapped → its detail modal (transient).
   const [detailNode, setDetailNode] = useState<NodeDetail | null>(null)
+  // The one split leaf whose per-account legs are revealed on the canvas.
+  const [expandedSplit, setExpandedSplit] = useState<string | null>(saved.expandedSplit ?? null)
 
   // Dragged node positions (id → {x,y}); survive rebuilds AND navigation.
   const userPositions = useRef<Record<string, { x: number; y: number }>>(saved.positions ?? {})
@@ -872,6 +901,7 @@ export function MoneyFlowPage() {
     prevQuerySig.current = querySig
     setExtraLeaves({})
     setExhausted(new Set())
+    setExpandedSplit(null)
     loadingKeysRef.current.clear()
   }, [querySig])
 
@@ -923,6 +953,8 @@ export function MoneyFlowPage() {
   // Clicking a transaction pops its details up ON the canvas (no navigation) so
   // you keep your place; the popup's "View full details" deep-links to the list.
   const openLeaf = useCallback((leaf: FlowLeaf) => setSelectedTx(leaf), [])
+  // A split leaf toggles its legs open ON the canvas instead (one split at a time).
+  const toggleSplit = useCallback((id: string) => setExpandedSplit((prev) => (prev === id ? null : id)), [])
   const closeTx = useCallback(() => setSelectedTx(null), [])
   const viewTxDetails = useCallback((id: string) => navigate(`/transactions?view=${id}`), [navigate])
   // Workspace node → the dashboard (its "entity").
@@ -1076,16 +1108,16 @@ export function MoneyFlowPage() {
   const extraSig = useMemo(() => Object.entries(extraLeaves).map(([k, v]) => `${k}:${v.length}`).sort().join(","), [extraLeaves])
   const structuralKey = useMemo(() => {
     if (!data) return "none"
-    return [viewMode, groupBy, bucket, dataVersion, rootCollapsed, [...expanded].sort().join(","), extraSig, [...exhausted].sort().join(",")].join("|")
-  }, [data, viewMode, groupBy, bucket, dataVersion, rootCollapsed, expanded, extraSig, exhausted])
+    return [viewMode, groupBy, bucket, dataVersion, rootCollapsed, [...expanded].sort().join(","), extraSig, [...exhausted].sort().join(","), expandedSplit ?? ""].join("|")
+  }, [data, viewMode, groupBy, bucket, dataVersion, rootCollapsed, expanded, extraSig, exhausted, expandedSplit])
 
   useEffect(() => {
     if (!data) { setNodes([]); setEdges([]); return }
     const augmented = applyExtraLeaves(data, extraLeaves)
     const built =
       augmented.mode === "timeline"
-        ? buildTimelineGraph(augmented, expanded)
-        : buildFlowGraph(augmented, { rootCollapsed, expanded })
+        ? buildTimelineGraph(augmented, expanded, expandedSplit)
+        : buildFlowGraph(augmented, { rootCollapsed, expanded, expandedSplit })
     const rf: Node[] = built.nodes.map((n) => {
       const position = userPositions.current[n.id] ?? n.position
       switch (n.type) {
@@ -1111,7 +1143,9 @@ export function MoneyFlowPage() {
         }
         case "leaf": {
           const leaf = n.data as unknown as FlowLeaf
-          return { ...n, position, data: { ...n.data, currency, formatDate, onOpen: () => openLeaf(leaf) } } as Node
+          // A split toggles its legs open on the canvas; a single tx opens the popup.
+          const isSplit = (leaf.leg_count ?? 1) > 1
+          return { ...n, position, data: { ...n.data, currency, formatDate, onOpen: isSplit ? () => toggleSplit(leaf.id) : () => openLeaf(leaf) } } as Node
         }
         case "more": {
           const md = n.data as { group?: FlowGroup; period?: TimelinePeriod; mkey: string }
@@ -1157,9 +1191,9 @@ export function MoneyFlowPage() {
       rootCollapsed, expanded: [...expanded],
       positions: userPositions.current,
       viewport: savedViewport.current ?? undefined,
-      extra: extraLeaves, exhausted: [...exhausted],
+      extra: extraLeaves, exhausted: [...exhausted], expandedSplit,
     })
-  }, [storageKey, viewMode, bucket, groupBy, from, to, selCats, selClients, selAccounts, rootCollapsed, expanded, extraLeaves, exhausted])
+  }, [storageKey, viewMode, bucket, groupBy, from, to, selCats, selClients, selAccounts, rootCollapsed, expanded, extraLeaves, exhausted, expandedSplit])
 
   // Timestamp of the last drag end. A dragged node tracks the cursor, so
   // pointerdown and pointerup land on the same card and the browser CAN emit a

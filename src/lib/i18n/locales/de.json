@@ -1224,7 +1224,9 @@
     "kindClient": "Kunde",
     "kindCategory": "Kategorie",
     "kindPeriod": "Zeitraum",
-    "kindWorkspace": "Arbeitsbereich"
+    "kindWorkspace": "Arbeitsbereich",
+    "splitAccounts": "Aufgeteilt · {{count}} Konten",
+    "unassignedAccount": "Nicht zugewiesen"
   },
   "spaces": {
     "title": "Sparräume",

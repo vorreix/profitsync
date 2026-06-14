@@ -1224,7 +1224,9 @@
     "kindClient": "ग्राहक",
     "kindCategory": "श्रेणी",
     "kindPeriod": "अवधि",
-    "kindWorkspace": "वर्कस्पेस"
+    "kindWorkspace": "वर्कस्पेस",
+    "splitAccounts": "विभाजित · {{count}} खाते",
+    "unassignedAccount": "अनिर्धारित"
   },
   "spaces": {
     "title": "स्पेस",

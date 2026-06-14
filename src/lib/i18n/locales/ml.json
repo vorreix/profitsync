@@ -1224,7 +1224,9 @@
     "kindClient": "ക്ലയന്റ്",
     "kindCategory": "വിഭാഗം",
     "kindPeriod": "കാലയളവ്",
-    "kindWorkspace": "വർക്ക്സ്പേസ്"
+    "kindWorkspace": "വർക്ക്സ്പേസ്",
+    "splitAccounts": "വിഭജിച്ചത് · {{count}} അക്കൗണ്ടുകൾ",
+    "unassignedAccount": "നിയോഗിക്കാത്തത്"
   },
   "spaces": {
     "title": "സ്‌പേസുകൾ",

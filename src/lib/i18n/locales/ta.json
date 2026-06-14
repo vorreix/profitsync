@@ -1224,7 +1224,9 @@
     "kindClient": "வாடிக்கையாளர்",
     "kindCategory": "வகை",
     "kindPeriod": "காலம்",
-    "kindWorkspace": "பணியிடம்"
+    "kindWorkspace": "பணியிடம்",
+    "splitAccounts": "பிரிப்பு · {{count}} கணக்குகள்",
+    "unassignedAccount": "ஒதுக்கப்படவில்லை"
   },
   "spaces": {
     "title": "ஸ்பேஸ்கள்",

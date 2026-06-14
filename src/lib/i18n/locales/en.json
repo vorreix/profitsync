@@ -1224,7 +1224,9 @@
     "kindClient": "Client",
     "kindCategory": "Category",
     "kindPeriod": "Period",
-    "kindWorkspace": "Workspace"
+    "kindWorkspace": "Workspace",
+    "splitAccounts": "Split · {{count}} accounts",
+    "unassignedAccount": "Unassigned"
   },
   "spaces": {
     "title": "Spaces",

@@ -1224,7 +1224,9 @@
     "kindClient": "عميل",
     "kindCategory": "فئة",
     "kindPeriod": "فترة",
-    "kindWorkspace": "مساحة العمل"
+    "kindWorkspace": "مساحة العمل",
+    "splitAccounts": "مقسّم · {{count}} حسابات",
+    "unassignedAccount": "غير مُعيّن"
   },
   "spaces": {
     "title": "مساحات الادخار",

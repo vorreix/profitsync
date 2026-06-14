@@ -19,6 +19,12 @@ export type FlowLeaf = {
   client_name?: string | null
   account_name?: string | null
   recurring?: boolean
+  /** Split transactions share a group_id across their per-account legs. */
+  group_id?: string | null
+  /** >1 ⇒ this leaf is a SPLIT (a single transaction across N accounts). */
+  leg_count?: number
+  /** The per-account legs of a split (set only when leg_count > 1). */
+  legs?: { account_name: string | null; amount: number }[]
 }
 
 export type FlowGroup = {
@@ -110,6 +116,8 @@ export type CollapseState = {
   rootCollapsed: boolean
   /** Group keys (by `groupKeyId`) whose leaves are shown. */
   expanded: Set<string>
+  /** The single split-leaf id whose per-account legs are revealed (one at a time). */
+  expandedSplit?: string | null
 }
 
 // Layout constants — left→right columns + vertical rhythm. Heights are tuned to
@@ -121,7 +129,12 @@ const LEAF_COL_STEP = LEAF_W + 30 // horizontal pitch between leaf grid columns
 const GROUP_H = 172 // a collapsed group's vertical footprint (account variant is tallest)
 const GROUP_GAP = 40 // breathing room between group blocks
 const LEAF_V = 80 // vertical pitch of a stacked leaf
+const SPLIT_LEG_H = 22 // extra height an expanded split reserves per leg row
 const ROOT_H = 232
+
+/** Extra vertical space an expanded split leaf needs for its inline legs. */
+const splitExtra = (leaf: FlowLeaf | undefined, expandedSplit?: string | null): number =>
+  leaf && (leaf.leg_count ?? 1) > 1 && leaf.id === expandedSplit ? (leaf.leg_count ?? 0) * SPLIT_LEG_H + 6 : 0
 
 const norm = (v: number, max: number): number => (max > 0 ? Math.min(1, v / max) : 0)
 // Map a money amount to a stroke width (px); 0 stays 0 so an empty direction
@@ -143,6 +156,43 @@ function gridCols(n: number): number {
 /** Stable id for a group whose API key may be null (e.g. "Unassigned"). */
 export function groupKeyId(g: Pick<FlowGroup, "key" | "label">): string {
   return g.key ?? `__none__:${g.label}`
+}
+
+/** Distinct LOGICAL transactions in a leaf list (a split's legs count once). */
+export function logicalCount(leaves: FlowLeaf[]): number {
+  const seen = new Set<string>()
+  for (const l of leaves) seen.add(l.group_id ?? l.id)
+  return seen.size
+}
+
+/**
+ * Collapse split legs into one node. Legs sharing a `group_id` (the same logical
+ * transaction paid across N accounts) merge into a single "split" leaf carrying
+ * the summed amount + the per-account breakdown (`legs`, `leg_count`). Plain
+ * transactions and lone legs (e.g. the one leg that lands in a given account)
+ * pass through unchanged. First-appearance order is preserved (date-desc).
+ */
+export function collapseLegs(leaves: FlowLeaf[]): FlowLeaf[] {
+  const groups = new Map<string, FlowLeaf[]>()
+  const order: (FlowLeaf | string)[] = []
+  for (const l of leaves) {
+    if (!l.group_id) { order.push(l); continue }
+    if (!groups.has(l.group_id)) { groups.set(l.group_id, []); order.push(l.group_id) }
+    groups.get(l.group_id)!.push(l)
+  }
+  return order.map((item) => {
+    if (typeof item !== "string") return item
+    const legs = groups.get(item)!
+    if (legs.length === 1) return { ...legs[0] } // lone leg → a normal single tx
+    return {
+      ...legs[0],
+      id: item,
+      amount: legs.reduce((s, l) => s + l.amount, 0),
+      account_name: null,
+      leg_count: legs.length,
+      legs: legs.map((l) => ({ account_name: l.account_name ?? null, amount: l.amount })),
+    }
+  })
 }
 
 export function buildFlowGraph(data: FlowData, state: CollapseState): { nodes: FlowNode[]; edges: FlowEdge[] } {
@@ -172,14 +222,27 @@ export function buildFlowGraph(data: FlowData, state: CollapseState): { nodes: F
     const gid = `g:${key}`
     const isOpen = state.expanded.has(key)
 
-    const slotCount = isOpen ? g.leaves.length + (g.more_count > 0 ? 1 : 0) : 0
+    // Collapse split legs into single nodes before laying anything out.
+    const leaves = isOpen ? collapseLegs(g.leaves) : []
+    const hasMore = isOpen && g.more_count > 0
+    const slotCount = leaves.length + (hasMore ? 1 : 0)
     const cols = gridCols(slotCount)
     const rows = slotCount > 0 ? Math.ceil(slotCount / cols) : 0
-    const gridH = rows * LEAF_V
-    // The block this group occupies: tall enough for its leaf grid when open.
+
+    // Variable-height column-major grid: an expanded split reserves room for its
+    // inline legs, so we accumulate heights per column instead of a fixed pitch.
+    const colTop = new Array(Math.max(1, cols)).fill(0)
+    const placed: { x: number; y: number }[] = []
+    for (let idx = 0; idx < slotCount; idx++) {
+      const col = Math.floor(idx / rows)
+      placed[idx] = { x: COL_LEAF_X + col * LEAF_COL_STEP, y: colTop[col] }
+      colTop[col] += LEAF_V + splitExtra(leaves[idx], state.expandedSplit)
+    }
+    const gridH = Math.max(0, ...colTop)
     const blockH = Math.max(GROUP_H, gridH)
-    // Centre the group node and its leaf grid vertically within the block.
     const groupY = y + (blockH - GROUP_H) / 2
+    const startY = y + (blockH - gridH) / 2
+    const at = (idx: number) => ({ x: placed[idx].x, y: startY + placed[idx].y })
 
     nodes.push({ id: gid, type: "branch", position: { x: COL_GROUP_X, y: groupY }, data: { ...g, expanded: isOpen } })
     edges.push({
@@ -190,16 +253,11 @@ export function buildFlowGraph(data: FlowData, state: CollapseState): { nodes: F
     })
 
     if (isOpen) {
-      const maxLeafAmt = g.leaves.reduce((m, l) => Math.max(m, l.amount), 0)
-      const startY = y + (blockH - gridH) / 2
-      // Column-major: column 0 fills top→bottom (most-recent first), then column 1…
-      const place = (idx: number) => ({
-        x: COL_LEAF_X + Math.floor(idx / rows) * LEAF_COL_STEP,
-        y: startY + (idx % rows) * LEAF_V,
-      })
-      g.leaves.forEach((leaf, li) => {
+      const maxLeafAmt = leaves.reduce((m, l) => Math.max(m, l.amount), 0)
+      leaves.forEach((leaf, li) => {
         const lid = `l:${leaf.id}`
-        nodes.push({ id: lid, type: "leaf", position: place(li), data: { ...leaf, enterIndex: li } })
+        const splitExpanded = (leaf.leg_count ?? 1) > 1 && leaf.id === state.expandedSplit
+        nodes.push({ id: lid, type: "leaf", position: at(li), data: { ...leaf, enterIndex: li, splitExpanded } })
         const inc = leaf.type === "incoming"
         edges.push({
           id: `e:${gid}-${lid}`,
@@ -208,9 +266,9 @@ export function buildFlowGraph(data: FlowData, state: CollapseState): { nodes: F
           data: { income: inc ? leaf.amount : 0, expense: inc ? 0 : leaf.amount, inWidth: inc ? widthFor(leaf.amount, maxLeafAmt) : 0, outWidth: inc ? 0 : widthFor(leaf.amount, maxLeafAmt), kind: "leaf", animated: true },
         })
       })
-      if (g.more_count > 0) {
+      if (hasMore) {
         const mid = `m:${key}`
-        nodes.push({ id: mid, type: "more", position: place(g.leaves.length), data: { count: g.more_count, group: g, mkey: key, enterIndex: g.leaves.length } })
+        nodes.push({ id: mid, type: "more", position: at(leaves.length), data: { count: g.more_count, group: g, mkey: key, enterIndex: leaves.length } })
         edges.push({ id: `e:${gid}-${mid}`, source: gid, target: mid, data: { income: 0, expense: 0, inWidth: 0, outWidth: 0, kind: "more", animated: false } })
       }
     }
@@ -232,7 +290,7 @@ export function buildFlowGraph(data: FlowData, state: CollapseState): { nodes: F
 const TL_COL_W = 320
 const TL_PERIOD_H = 200
 
-export function buildTimelineGraph(data: TimelineData, expandedPeriods: Set<string>): { nodes: FlowNode[]; edges: FlowEdge[] } {
+export function buildTimelineGraph(data: TimelineData, expandedPeriods: Set<string>, expandedSplit?: string | null): { nodes: FlowNode[]; edges: FlowEdge[] } {
   const nodes: FlowNode[] = []
   const edges: FlowEdge[] = []
 
@@ -252,11 +310,13 @@ export function buildTimelineGraph(data: TimelineData, expandedPeriods: Set<stri
     }
 
     if (expandedPeriods.has(p.key)) {
-      const maxLeafAmt = p.leaves.reduce((m, l) => Math.max(m, l.amount), 0)
+      const leaves = collapseLegs(p.leaves)
+      const maxLeafAmt = leaves.reduce((m, l) => Math.max(m, l.amount), 0)
       let ly = TL_PERIOD_H
-      p.leaves.forEach((leaf, li) => {
+      leaves.forEach((leaf, li) => {
         const lid = `l:${leaf.id}`
-        nodes.push({ id: lid, type: "leaf", position: { x: i * TL_COL_W, y: ly }, data: { ...leaf, enterIndex: li } })
+        const splitExpanded = (leaf.leg_count ?? 1) > 1 && leaf.id === expandedSplit
+        nodes.push({ id: lid, type: "leaf", position: { x: i * TL_COL_W, y: ly }, data: { ...leaf, enterIndex: li, splitExpanded } })
         const inc = leaf.type === "incoming"
         edges.push({
           id: `e:${pid}-${lid}`,
@@ -264,11 +324,11 @@ export function buildTimelineGraph(data: TimelineData, expandedPeriods: Set<stri
           target: lid,
           data: { income: inc ? leaf.amount : 0, expense: inc ? 0 : leaf.amount, inWidth: inc ? widthFor(leaf.amount, maxLeafAmt) : 0, outWidth: inc ? 0 : widthFor(leaf.amount, maxLeafAmt), kind: "leaf", animated: true },
         })
-        ly += LEAF_V
+        ly += LEAF_V + splitExtra(leaf, expandedSplit)
       })
       if (p.more_count > 0) {
         const mid = `m:${p.key}`
-        nodes.push({ id: mid, type: "more", position: { x: i * TL_COL_W, y: ly }, data: { count: p.more_count, period: p, mkey: p.key, enterIndex: p.leaves.length } })
+        nodes.push({ id: mid, type: "more", position: { x: i * TL_COL_W, y: ly }, data: { count: p.more_count, period: p, mkey: p.key, enterIndex: leaves.length } })
         edges.push({ id: `e:${pid}-${mid}`, source: pid, target: mid, data: { income: 0, expense: 0, inWidth: 0, outWidth: 0, kind: "more", animated: false } })
       }
     }
@@ -317,7 +377,8 @@ export function applyExtraLeaves<T extends FlowData | TimelineData>(data: T, ext
         const ex = extra[p.key]
         if (!ex || ex.length === 0) return p
         const leaves = dedupeLeaves([...p.leaves, ...ex])
-        return { ...p, leaves, more_count: Math.max(0, p.tx_count - leaves.length) }
+        // tx_count is logical; compare against logical leaves shown (splits as 1).
+        return { ...p, leaves, more_count: Math.max(0, p.tx_count - logicalCount(leaves)) }
       }),
     }
   }
@@ -327,7 +388,7 @@ export function applyExtraLeaves<T extends FlowData | TimelineData>(data: T, ext
       const ex = extra[groupKeyId(g)]
       if (!ex || ex.length === 0) return g
       const leaves = dedupeLeaves([...g.leaves, ...ex])
-      return { ...g, leaves, more_count: Math.max(0, g.tx_count - leaves.length) }
+      return { ...g, leaves, more_count: Math.max(0, g.tx_count - logicalCount(leaves)) }
     }),
   }
 }

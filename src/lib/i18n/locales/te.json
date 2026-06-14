@@ -1224,7 +1224,9 @@
     "kindClient": "క్లయింట్",
     "kindCategory": "వర్గం",
     "kindPeriod": "వ్యవధి",
-    "kindWorkspace": "వర్క్‌స్పేస్"
+    "kindWorkspace": "వర్క్‌స్పేస్",
+    "splitAccounts": "విభజన · {{count}} ఖాతాలు",
+    "unassignedAccount": "కేటాయించబడలేదు"
   },
   "spaces": {
     "title": "స్పేస్‌లు",

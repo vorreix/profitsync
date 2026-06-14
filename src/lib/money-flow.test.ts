@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { applyExtraLeaves, buildFlowGraph, buildTimelineGraph, groupKeyId, type FlowData, type FlowLeaf, type TimelineData } from "./money-flow"
+import { applyExtraLeaves, buildFlowGraph, buildTimelineGraph, collapseLegs, groupKeyId, logicalCount, type FlowData, type FlowLeaf, type TimelineData } from "./money-flow"
 
 function leaf(id: string, amount = 100): FlowData["groups"][number]["leaves"][number] {
   return { id, type: "incoming", amount, description: "x", category: "Sales", date: "2026-06-01" }
@@ -114,6 +114,68 @@ describe("buildFlowGraph", () => {
     const { nodes } = buildFlowGraph(DATA, { rootCollapsed: false, expanded: new Set(["c1"]) })
     const more = nodes.find((n) => n.type === "more")!
     expect((more.data as { mkey: string }).mkey).toBe("c1")
+  })
+})
+
+describe("collapseLegs (split transactions)", () => {
+  const leg = (id: string, gid: string | null, amount: number, account: string): FlowLeaf => ({ id, group_id: gid, type: "outgoing", amount, description: "Rent", category: "Housing", date: "2026-06-01", account_name: account })
+
+  it("merges legs sharing a group_id into one split leaf with the summed total", () => {
+    const out = collapseLegs([leg("l1", "g1", 60, "Cash"), leg("l2", "g1", 40, "Bank"), leaf("single")])
+    expect(out).toHaveLength(2)
+    const split = out.find((l) => l.id === "g1")!
+    expect(split.amount).toBe(100)
+    expect(split.leg_count).toBe(2)
+    expect(split.legs).toEqual([{ account_name: "Cash", amount: 60 }, { account_name: "Bank", amount: 40 }])
+    expect(split.account_name).toBeNull()
+  })
+
+  it("leaves a lone leg of a split as a normal single transaction", () => {
+    const out = collapseLegs([leg("l1", "g1", 60, "Cash")])
+    expect(out).toHaveLength(1)
+    expect(out[0].leg_count).toBeUndefined()
+    expect(out[0].account_name).toBe("Cash")
+  })
+
+  it("preserves order and passes plain transactions through", () => {
+    const out = collapseLegs([leaf("a"), leg("l1", "g1", 60, "Cash"), leg("l2", "g1", 40, "Bank"), leaf("b")])
+    expect(out.map((l) => l.id)).toEqual(["a", "g1", "b"])
+  })
+
+  it("logicalCount counts a split once", () => {
+    expect(logicalCount([leg("l1", "g1", 60, "Cash"), leg("l2", "g1", 40, "Bank"), leaf("x")])).toBe(2)
+  })
+})
+
+describe("buildFlowGraph split layout", () => {
+  const split = (gid: string, amount: number, account: string): FlowLeaf => ({ id: `s-${account}`, group_id: gid, type: "outgoing", amount, description: "Rent", category: "Housing", date: "2026-06-01", account_name: account })
+  const SPLIT_DATA: FlowData = {
+    ...DATA,
+    groups: [{ ...DATA.groups[0], tx_count: 2, more_count: 0, leaves: [split("g1", 60, "Cash"), split("g1", 40, "Bank"), leaf("t9")] }],
+  }
+
+  it("renders one leaf node per split (legs collapsed), not one per leg", () => {
+    const { nodes } = buildFlowGraph(SPLIT_DATA, { rootCollapsed: false, expanded: new Set(["c1"]) })
+    const leaves = nodes.filter((n) => n.type === "leaf")
+    // 1 split (g1) + 1 single (t9) = 2 leaf nodes, NOT 3
+    expect(leaves).toHaveLength(2)
+    const splitNode = leaves.find((n) => n.id === "l:g1")!
+    expect((splitNode.data as { leg_count?: number }).leg_count).toBe(2)
+  })
+
+  it("reserves extra vertical space for the one expanded split", () => {
+    const collapsedH = (() => {
+      const { nodes } = buildFlowGraph(SPLIT_DATA, { rootCollapsed: false, expanded: new Set(["c1"]) })
+      const ys = nodes.filter((n) => n.type === "leaf").map((n) => n.position.y)
+      return Math.max(...ys) - Math.min(...ys)
+    })()
+    const expandedH = (() => {
+      const { nodes } = buildFlowGraph(SPLIT_DATA, { rootCollapsed: false, expanded: new Set(["c1"]), expandedSplit: "g1" })
+      const ys = nodes.filter((n) => n.type === "leaf").map((n) => n.position.y)
+      return Math.max(...ys) - Math.min(...ys)
+    })()
+    // expanding the split pushes the sibling leaf further down
+    expect(expandedH).toBeGreaterThan(collapsedH)
   })
 })
 
