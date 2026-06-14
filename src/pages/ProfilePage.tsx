@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react"
 import { useTranslation } from "react-i18next"
-import { useNavigate, Link } from "react-router-dom"
+import { useNavigate, Link, useSearchParams } from "react-router-dom"
 import { useAuth, useClerk } from "@clerk/clerk-react"
 import { apiGet, apiPatch } from "@/lib/api"
 import { useOrg } from "@/lib/org-context"
@@ -43,6 +43,21 @@ export function ProfilePage() {
   const [phone, setPhone] = useState("")
   const [showContact, setShowContact] = useState(false)
   const [contactRef] = useAutoAnimate<HTMLDivElement>()
+
+  // Tabs are reflected in the URL (?tab=) so they're deep-linkable and shareable.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const PROFILE_TABS = ["profile", "preferences", "notifications", "account"]
+  const tabParam = searchParams.get("tab")
+  const activeTab = tabParam && PROFILE_TABS.includes(tabParam) ? tabParam : "profile"
+  const setActiveTab = (tab: string) =>
+    setSearchParams(
+      (prev) => {
+        if (tab === "profile") prev.delete("tab")
+        else prev.set("tab", tab)
+        return prev
+      },
+      { replace: true },
+    )
 
   useEffect(() => {
     loadProfile()
@@ -187,7 +202,7 @@ export function ProfilePage() {
         </div>
       </div>
 
-      <Tabs defaultValue="profile">
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="profile" className="gap-1.5">
             <UserRound className="size-4 shrink-0" />

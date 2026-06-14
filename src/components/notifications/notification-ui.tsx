@@ -1,15 +1,16 @@
 import type { ComponentType } from "react"
-import { Users, CreditCard, PiggyBank, ArrowLeftRight, FileText, Bell } from "lucide-react"
+import { Users, CreditCard, ArrowLeftRight, FileText, Bell } from "lucide-react"
 import type { TFunction } from "i18next"
 import type { AppNotification } from "@/lib/types"
 import type { NotificationCategory } from "@/lib/notifications"
+import { MoneyBag } from "@/components/icons/MoneyBag"
 
 // Category → icon + tone, used by the bell dropdown and the history page so a
 // notification looks the same everywhere.
 const CATEGORY_ICON: Record<NotificationCategory, ComponentType<{ className?: string }>> = {
   team: Users,
   billing: CreditCard,
-  budget: PiggyBank,
+  budget: MoneyBag,
   transactions: ArrowLeftRight,
   clients: FileText,
   system: Bell,

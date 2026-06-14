@@ -1,0 +1,10 @@
+# Secrets
+deploy/.env
+deploy/*.env
+!deploy/.env.example
+
+# Go build output
+app/worker
+app/bin/
+*.test
+*.out

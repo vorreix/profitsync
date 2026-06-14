@@ -1361,8 +1361,8 @@
     "settings": {
       "title": "Notifiche",
       "description": "Scegli di cosa vuoi ricevere notifiche e dove.",
-      "user_description": "Le tue preferenze di notifica personali su tutti gli spazi di lavoro.",
-      "org_description": "Politica di notifica a livello organizzativo per questo spazio di lavoro.",
+      "user_description": "Le tue preferenze di notifica predefinite. Le organizzazioni possono sovrascriverle per la loro attività.",
+      "org_description": "Sovrascrive le impostazioni predefinite personali di ogni membro per questo spazio di lavoro.",
       "client_description": "Impostazioni di notifica solo per questo client.",
       "mute_all": "Pausa tutte le notifiche",
       "mute_all_hint": "Disattiva ogni notifica a questo livello.",
@@ -1408,6 +1408,25 @@
       "budget_exceeded": {
         "title": "Budget superato",
         "body": "{{name}} ha superato il suo budget {{period}}."
+      },
+      "space_autosaved": {
+        "title": "Risparmio automatico nello Spazio",
+        "body": "Denaro spostato in {{space}}"
+      }
+    },
+    "client": {
+      "mute": "Silenzia le notifiche per questo cliente",
+      "mute_hint": "Disattiva tutte le notifiche su questo cliente.",
+      "notify_about": "Notificami per",
+      "triggers": {
+        "budget": "Sforamento del budget",
+        "transactions": "Attività delle transazioni",
+        "clients": "Preventivi e aggiornamenti"
+      },
+      "trigger_hints": {
+        "budget": "Quando questo cliente supera il budget",
+        "transactions": "Transazioni ricorrenti e rilevanti",
+        "clients": "Stato dei preventivi e modifiche al cliente"
       }
     }
   }

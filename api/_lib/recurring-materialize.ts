@@ -25,6 +25,7 @@ import { occurrencesDue, ruleExhausted, todayIso, type Frequency, type Frequency
 import { ensureDefaultClient } from "./auth.js"
 import { checkTransactionQuota } from "./quota.js"
 import { logAudit } from "./audit.js"
+import { createNotification } from "./notifications.js"
 
 export type MaterializeResult = { created: number; skipped: string[] }
 
@@ -59,6 +60,7 @@ export async function materializeDueRecurring(orgId: string): Promise<Materializ
         // an archived account would silently corrupt a balance nobody looks at. A
         // transfer (Space auto-save) needs BOTH the source and the destination.
         const isTransfer = rule.kind === "transfer"
+        let transferCreatedCount = 0
         if (isTransfer && (!rule.wealthAccountId || !rule.toAccountId)) {
           await setRuleError(rule.id, "Auto-save needs both a source account and a Space")
           result.skipped.push(rule.name)
@@ -110,6 +112,7 @@ export async function materializeDueRecurring(orgId: string): Promise<Materializ
               .returning({ id: transactions.id })
             if (inserted.length > 0) {
               result.created++
+              transferCreatedCount++
               const [inLeg] = await db.insert(transactions).values(legs.inLeg).returning({ id: transactions.id })
               await db
                 .update(wealthAccounts)
@@ -159,6 +162,35 @@ export async function materializeDueRecurring(orgId: string): Promise<Materializ
             }
             await logAudit({ orgId, entityType: "transaction", entityId: inserted[0].id, action: "create", actorId: rule.createdBy })
           }
+        }
+
+        // Personal "auto-saved to your Space" notification — best-effort, once per
+        // batch, only when at least one auto-save actually posted. Off the response
+        // path (void) so it never blocks or fails materialization.
+        if (isTransfer && transferCreatedCount > 0 && rule.createdBy && rule.toAccountId) {
+          const toAccountId = rule.toAccountId
+          const recipient = rule.createdBy
+          const cursor = nextCursor
+          void (async () => {
+            const [space] = await db
+              .select({ name: wealthAccounts.nickname })
+              .from(wealthAccounts)
+              .where(eq(wealthAccounts.id, toAccountId))
+            await createNotification({
+              userId: recipient,
+              organizationId: orgId,
+              type: "space_autosaved",
+              title: "Auto-saved to your Space",
+              body: `Money moved into ${space?.name ?? "your Space"}`,
+              data: {
+                i18nKey: "types.space_autosaved.title",
+                i18nBodyKey: "types.space_autosaved.body",
+                i18nParams: { space: space?.name ?? "" },
+              },
+              link: `/spaces/${toAccountId}`,
+              dedupeKey: `space_autosave:${rule.id}:${cursor}`,
+            })
+          })().catch(() => {})
         }
       }
 
