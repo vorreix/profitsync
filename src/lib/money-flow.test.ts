@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { buildFlowGraph, buildTimelineGraph, groupKeyId, type FlowData, type TimelineData } from "./money-flow"
+import { applyExtraLeaves, buildFlowGraph, buildTimelineGraph, collapseLegs, groupKeyId, logicalCount, type FlowData, type FlowLeaf, type TimelineData } from "./money-flow"
 
 function leaf(id: string, amount = 100): FlowData["groups"][number]["leaves"][number] {
   return { id, type: "incoming", amount, description: "x", category: "Sales", date: "2026-06-01" }
@@ -28,7 +28,7 @@ describe("buildFlowGraph", () => {
   it("groups collapsed: root + one node per group, one edge each", () => {
     const { nodes, edges } = buildFlowGraph(DATA, { rootCollapsed: false, expanded: new Set() })
     expect(nodes.filter((n) => n.type === "root")).toHaveLength(1)
-    expect(nodes.filter((n) => n.type === "group")).toHaveLength(2)
+    expect(nodes.filter((n) => n.type === "branch")).toHaveLength(2)
     expect(nodes.filter((n) => n.type === "leaf")).toHaveLength(0)
     expect(edges).toHaveLength(2) // root → each group
   })
@@ -50,22 +50,168 @@ describe("buildFlowGraph", () => {
 
   it("never overlaps: group node y-positions are strictly increasing", () => {
     const { nodes } = buildFlowGraph(DATA, { rootCollapsed: false, expanded: new Set(["c1"]) })
-    const groupYs = nodes.filter((n) => n.type === "group").map((n) => n.position.y)
+    const groupYs = nodes.filter((n) => n.type === "branch").map((n) => n.position.y)
     for (let i = 1; i < groupYs.length; i++) expect(groupYs[i]).toBeGreaterThan(groupYs[i - 1])
   })
 
   it("puts groups and leaves in distinct left→right columns", () => {
     const { nodes } = buildFlowGraph(DATA, { rootCollapsed: false, expanded: new Set(["c1"]) })
-    const gx = nodes.find((n) => n.type === "group")!.position.x
+    const gx = nodes.find((n) => n.type === "branch")!.position.x
     const lx = nodes.find((n) => n.type === "leaf")!.position.x
     expect(nodes.find((n) => n.type === "root")!.position.x).toBe(0)
     expect(gx).toBeGreaterThan(0)
     expect(lx).toBeGreaterThan(gx)
   })
 
+  it("lays many leaves out in a multi-column grid (not one tall column)", () => {
+    const many = Array.from({ length: 12 }, (_, i) => leaf(`m${i}`))
+    const data: FlowData = {
+      ...DATA,
+      groups: [{ ...DATA.groups[0], tx_count: 12, more_count: 0, leaves: many }],
+    }
+    const { nodes } = buildFlowGraph(data, { rootCollapsed: false, expanded: new Set(["c1"]) })
+    const leafXs = new Set(nodes.filter((n) => n.type === "leaf").map((n) => n.position.x))
+    // 12 leaves → 2 columns → two distinct x positions.
+    expect(leafXs.size).toBe(2)
+  })
+
   it("groupKeyId disambiguates null keys by label", () => {
     expect(groupKeyId({ key: "c1", label: "Acme" })).toBe("c1")
     expect(groupKeyId({ key: null, label: "Unassigned" })).toBe("__none__:Unassigned")
+  })
+
+  it("branch edges carry per-direction income/expense + stroke widths", () => {
+    const { edges } = buildFlowGraph(DATA, { rootCollapsed: false, expanded: new Set() })
+    const branches = edges.filter((e) => e.data.kind === "branch")
+    expect(branches).toHaveLength(2)
+    // Acme: income 500, expense 100 → both layers present, green wider than red.
+    const acme = edges.find((e) => e.target === "g:c1")!
+    expect(acme.data.income).toBe(500)
+    expect(acme.data.expense).toBe(100)
+    expect(acme.data.inWidth).toBeGreaterThan(acme.data.outWidth)
+    expect(acme.data.outWidth).toBeGreaterThan(0)
+  })
+
+  it("a direction with no money has zero width (no phantom layer)", () => {
+    const data: FlowData = {
+      ...DATA,
+      groups: [{ ...DATA.groups[0], income: 0, expense: 400, net: -400 }],
+    }
+    const e = buildFlowGraph(data, { rootCollapsed: false, expanded: new Set() }).edges.find((x) => x.data.kind === "branch")!
+    expect(e.data.inWidth).toBe(0)
+    expect(e.data.outWidth).toBeGreaterThan(0)
+  })
+
+  it("leaf edges carry the transaction's single direction", () => {
+    const { edges } = buildFlowGraph(DATA, { rootCollapsed: false, expanded: new Set(["c1"]) })
+    const leafEdges = edges.filter((e) => e.data.kind === "leaf" && e.target.startsWith("l:"))
+    expect(leafEdges.length).toBeGreaterThan(0)
+    // leaf() helper produces incoming transactions → green only.
+    expect(leafEdges.every((e) => e.data.inWidth > 0 && e.data.outWidth === 0)).toBe(true)
+  })
+
+  it("the 'more' node carries the group's mkey so the page can paginate it", () => {
+    const { nodes } = buildFlowGraph(DATA, { rootCollapsed: false, expanded: new Set(["c1"]) })
+    const more = nodes.find((n) => n.type === "more")!
+    expect((more.data as { mkey: string }).mkey).toBe("c1")
+  })
+})
+
+describe("collapseLegs (split transactions)", () => {
+  const leg = (id: string, gid: string | null, amount: number, account: string): FlowLeaf => ({ id, group_id: gid, type: "outgoing", amount, description: "Rent", category: "Housing", date: "2026-06-01", account_name: account })
+
+  it("merges legs sharing a group_id into one split leaf with the summed total", () => {
+    const out = collapseLegs([leg("l1", "g1", 60, "Cash"), leg("l2", "g1", 40, "Bank"), leaf("single")])
+    expect(out).toHaveLength(2)
+    const split = out.find((l) => l.id === "g1")!
+    expect(split.amount).toBe(100)
+    expect(split.leg_count).toBe(2)
+    expect(split.legs).toEqual([{ account_name: "Cash", amount: 60 }, { account_name: "Bank", amount: 40 }])
+    expect(split.account_name).toBeNull()
+  })
+
+  it("leaves a lone leg of a split as a normal single transaction", () => {
+    const out = collapseLegs([leg("l1", "g1", 60, "Cash")])
+    expect(out).toHaveLength(1)
+    expect(out[0].leg_count).toBeUndefined()
+    expect(out[0].account_name).toBe("Cash")
+  })
+
+  it("preserves order and passes plain transactions through", () => {
+    const out = collapseLegs([leaf("a"), leg("l1", "g1", 60, "Cash"), leg("l2", "g1", 40, "Bank"), leaf("b")])
+    expect(out.map((l) => l.id)).toEqual(["a", "g1", "b"])
+  })
+
+  it("logicalCount counts a split once", () => {
+    expect(logicalCount([leg("l1", "g1", 60, "Cash"), leg("l2", "g1", 40, "Bank"), leaf("x")])).toBe(2)
+  })
+})
+
+describe("buildFlowGraph split layout", () => {
+  const split = (gid: string, amount: number, account: string): FlowLeaf => ({ id: `s-${account}`, group_id: gid, type: "outgoing", amount, description: "Rent", category: "Housing", date: "2026-06-01", account_name: account })
+  const SPLIT_DATA: FlowData = {
+    ...DATA,
+    groups: [{ ...DATA.groups[0], tx_count: 2, more_count: 0, leaves: [split("g1", 60, "Cash"), split("g1", 40, "Bank"), leaf("t9")] }],
+  }
+
+  it("renders one leaf node per split (legs collapsed), not one per leg", () => {
+    const { nodes } = buildFlowGraph(SPLIT_DATA, { rootCollapsed: false, expanded: new Set(["c1"]) })
+    const leaves = nodes.filter((n) => n.type === "leaf")
+    // 1 split (g1) + 1 single (t9) = 2 leaf nodes, NOT 3
+    expect(leaves).toHaveLength(2)
+    const splitNode = leaves.find((n) => n.id === "l:g1")!
+    expect((splitNode.data as { leg_count?: number }).leg_count).toBe(2)
+  })
+
+  it("reserves extra vertical space for the one expanded split", () => {
+    const collapsedH = (() => {
+      const { nodes } = buildFlowGraph(SPLIT_DATA, { rootCollapsed: false, expanded: new Set(["c1"]) })
+      const ys = nodes.filter((n) => n.type === "leaf").map((n) => n.position.y)
+      return Math.max(...ys) - Math.min(...ys)
+    })()
+    const expandedH = (() => {
+      const { nodes } = buildFlowGraph(SPLIT_DATA, { rootCollapsed: false, expanded: new Set(["c1"]), expandedSplit: "g1" })
+      const ys = nodes.filter((n) => n.type === "leaf").map((n) => n.position.y)
+      return Math.max(...ys) - Math.min(...ys)
+    })()
+    // expanding the split pushes the sibling leaf further down
+    expect(expandedH).toBeGreaterThan(collapsedH)
+  })
+})
+
+describe("applyExtraLeaves", () => {
+  const extra = (id: string): FlowLeaf => ({ id, type: "incoming", amount: 50, description: "more", category: "Sales", date: "2026-05-01" })
+
+  it("returns the same data when there are no extras", () => {
+    expect(applyExtraLeaves(DATA, {})).toBe(DATA)
+  })
+
+  it("appends extra leaves to the matching group and shrinks more_count", () => {
+    const out = applyExtraLeaves(DATA, { c1: [extra("x1"), extra("x2")] })
+    const acme = out.groups.find((g) => g.key === "c1")!
+    expect(acme.leaves.map((l) => l.id)).toEqual(["t1", "t2", "x1", "x2"])
+    // tx_count 4 − 4 shown = 0 → more-node disappears
+    expect(acme.more_count).toBe(0)
+    // other groups untouched
+    expect(out.groups.find((g) => g.label === "Unassigned")!.leaves).toHaveLength(1)
+  })
+
+  it("dedupes extras that overlap with already-shown leaves", () => {
+    const out = applyExtraLeaves(DATA, { c1: [extra("t1"), extra("x9")] })
+    const acme = out.groups.find((g) => g.key === "c1")!
+    expect(acme.leaves.map((l) => l.id)).toEqual(["t1", "t2", "x9"])
+  })
+
+  it("clamps more_count at zero even if extras exceed the remaining count", () => {
+    const out = applyExtraLeaves(DATA, { c1: [extra("x1"), extra("x2"), extra("x3"), extra("x4")] })
+    expect(out.groups.find((g) => g.key === "c1")!.more_count).toBe(0)
+  })
+
+  it("merges into timeline periods by period key", () => {
+    const out = applyExtraLeaves(TIMELINE, { "2026-01-01": [extra("z1")] })
+    const jan = out.periods.find((p) => p.key === "2026-01-01")!
+    expect(jan.leaves.map((l) => l.id)).toEqual(["a", "b", "z1"])
+    expect(jan.more_count).toBe(0) // tx_count 3 − 3 shown
   })
 })
 
@@ -113,5 +259,15 @@ describe("buildTimelineGraph", () => {
     expect(nodes).toHaveLength(1)
     expect(nodes[0].type).toBe("tlfinal")
     expect(edges).toHaveLength(0)
+  })
+
+  it("chain edges carry per-direction widths; the final edge ends at 'final'", () => {
+    const { edges } = buildTimelineGraph(TIMELINE, new Set())
+    const chain = edges.find((e) => e.data.kind === "chain")!
+    // P2 (income 100, expense 400) → red layer wider than green.
+    expect(chain.data.outWidth).toBeGreaterThan(chain.data.inWidth)
+    const final = edges.find((e) => e.data.kind === "final")!
+    expect(final.target).toBe("final")
+    expect(final.data.inWidth).toBeGreaterThan(0)
   })
 })
