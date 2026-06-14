@@ -1214,7 +1214,17 @@
     "viewDetails": "Alle Details ansehen",
     "loadingFlow": "Geldfluss wird erstellt…",
     "dateRange": "Zeitraum",
-    "noMatches": "Keine Treffer"
+    "noMatches": "Keine Treffer",
+    "nodeDetails": "Details",
+    "txCount": "Transaktionen",
+    "openPage": "Seite öffnen",
+    "viewTransactions": "Transaktionen ansehen",
+    "openDashboard": "Dashboard öffnen",
+    "kindAccount": "Konto",
+    "kindClient": "Kunde",
+    "kindCategory": "Kategorie",
+    "kindPeriod": "Zeitraum",
+    "kindWorkspace": "Arbeitsbereich"
   },
   "spaces": {
     "title": "Sparräume",

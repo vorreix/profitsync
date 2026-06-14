@@ -1214,7 +1214,17 @@
     "viewDetails": "View full details",
     "loadingFlow": "Building your money flow…",
     "dateRange": "Date range",
-    "noMatches": "No matches"
+    "noMatches": "No matches",
+    "nodeDetails": "Details",
+    "txCount": "Transactions",
+    "openPage": "Open page",
+    "viewTransactions": "View transactions",
+    "openDashboard": "Open dashboard",
+    "kindAccount": "Account",
+    "kindClient": "Client",
+    "kindCategory": "Category",
+    "kindPeriod": "Period",
+    "kindWorkspace": "Workspace"
   },
   "spaces": {
     "title": "Spaces",

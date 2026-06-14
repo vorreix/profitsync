@@ -1214,7 +1214,17 @@
     "viewDetails": "പൂർണ്ണ വിശദാംശങ്ങൾ കാണുക",
     "loadingFlow": "നിങ്ങളുടെ മണി ഫ്ലോ തയ്യാറാക്കുന്നു…",
     "dateRange": "തീയതി പരിധി",
-    "noMatches": "പൊരുത്തങ്ങളൊന്നുമില്ല"
+    "noMatches": "പൊരുത്തങ്ങളൊന്നുമില്ല",
+    "nodeDetails": "വിശദാംശങ്ങൾ",
+    "txCount": "ഇടപാടുകൾ",
+    "openPage": "പേജ് തുറക്കുക",
+    "viewTransactions": "ഇടപാടുകൾ കാണുക",
+    "openDashboard": "ഡാഷ്ബോർഡ് തുറക്കുക",
+    "kindAccount": "അക്കൗണ്ട്",
+    "kindClient": "ക്ലയന്റ്",
+    "kindCategory": "വിഭാഗം",
+    "kindPeriod": "കാലയളവ്",
+    "kindWorkspace": "വർക്ക്സ്പേസ്"
   },
   "spaces": {
     "title": "സ്‌പേസുകൾ",

@@ -225,35 +225,43 @@
     --mf-neutral: #64748b;
     --mf-minimap-mask: rgb(2 6 23 / 0.6);
   }
-  /* Flowing-dash layers: money visibly travels along the pipe. OUT (expense)
-     runs source → target (dashoffset decreasing); IN (income) runs target →
-     source (increasing) — so on a branch the green dots head toward the
-     workspace and the red dots head outward. Paused for reduced-motion users
-     (the coloured pipe still shows which directions carry money). dasharray
-     total is 13.5, so the loop distance matches for a seamless cycle. */
-  .ps-flow .ps-flow-edge-in,
-  .ps-flow .ps-flow-edge-out {
+  /* Flowing-dash layers on the ONE connection line. Both use dasharray "6 12"
+     (period 18). IN (income) glides target → source (offset increasing); OUT
+     (expense) glides source → target (decreasing) AND starts half a period out
+     of phase (9) so the green and red dashes interleave along the single line
+     instead of colliding. Paused for reduced-motion users (the coloured dashes
+     still show which directions carry money, just static). */
+  .ps-flow .ps-flow-edge-in {
     stroke-dashoffset: 0;
+  }
+  .ps-flow .ps-flow-edge-out {
+    stroke-dashoffset: 9;
   }
   @media (prefers-reduced-motion: no-preference) {
     .ps-flow .ps-flow-edge-out {
-      animation: ps-flow-out 1.1s linear infinite;
+      animation: ps-flow-out 1.3s linear infinite;
     }
     .ps-flow .ps-flow-edge-in {
-      animation: ps-flow-in 1.1s linear infinite;
+      animation: ps-flow-in 1.3s linear infinite;
     }
   }
   .ps-flow .ps-flow-edge--active {
-    filter: saturate(1.4);
+    filter: saturate(1.35);
   }
   @keyframes ps-flow-out {
+    from {
+      stroke-dashoffset: 9;
+    }
     to {
-      stroke-dashoffset: -13.5;
+      stroke-dashoffset: -9;
     }
   }
   @keyframes ps-flow-in {
+    from {
+      stroke-dashoffset: 0;
+    }
     to {
-      stroke-dashoffset: 13.5;
+      stroke-dashoffset: 18;
     }
   }
   /* Canvas chrome polish — Controls + MiniMap inherit the app surface so they

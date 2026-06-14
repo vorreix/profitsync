@@ -1214,7 +1214,17 @@
     "viewDetails": "عرض التفاصيل الكاملة",
     "loadingFlow": "جارٍ إنشاء تدفق أموالك…",
     "dateRange": "النطاق الزمني",
-    "noMatches": "لا توجد نتائج"
+    "noMatches": "لا توجد نتائج",
+    "nodeDetails": "التفاصيل",
+    "txCount": "المعاملات",
+    "openPage": "فتح الصفحة",
+    "viewTransactions": "عرض المعاملات",
+    "openDashboard": "فتح لوحة التحكم",
+    "kindAccount": "حساب",
+    "kindClient": "عميل",
+    "kindCategory": "فئة",
+    "kindPeriod": "فترة",
+    "kindWorkspace": "مساحة العمل"
   },
   "spaces": {
     "title": "مساحات الادخار",

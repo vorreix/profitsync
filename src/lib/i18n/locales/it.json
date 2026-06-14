@@ -1214,7 +1214,17 @@
     "viewDetails": "Vedi tutti i dettagli",
     "loadingFlow": "Creazione del flusso di denaro…",
     "dateRange": "Intervallo di date",
-    "noMatches": "Nessun risultato"
+    "noMatches": "Nessun risultato",
+    "nodeDetails": "Dettagli",
+    "txCount": "Transazioni",
+    "openPage": "Apri pagina",
+    "viewTransactions": "Vedi transazioni",
+    "openDashboard": "Apri dashboard",
+    "kindAccount": "Conto",
+    "kindClient": "Cliente",
+    "kindCategory": "Categoria",
+    "kindPeriod": "Periodo",
+    "kindWorkspace": "Spazio di lavoro"
   },
   "spaces": {
     "title": "Spazi",

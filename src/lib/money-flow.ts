@@ -125,9 +125,10 @@ const ROOT_H = 232
 
 const norm = (v: number, max: number): number => (max > 0 ? Math.min(1, v / max) : 0)
 // Map a money amount to a stroke width (px); 0 stays 0 so an empty direction
-// draws nothing. A small floor keeps tiny-but-present flows visible.
-const MIN_W = 1.6
-const MAX_W = 7.5
+// draws nothing. Kept deliberately THIN with a hard cap — the connection should
+// read as a slim line whose weight only subtly reflects the money, never a slab.
+const MIN_W = 1.1
+const MAX_W = 3
 const widthFor = (amount: number, max: number): number => (amount > 0 ? MIN_W + norm(amount, max) * (MAX_W - MIN_W) : 0)
 
 // Lay leaves out in a tidy grid (columns fill top→bottom) so a big expansion

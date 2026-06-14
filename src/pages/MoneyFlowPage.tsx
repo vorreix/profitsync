@@ -30,6 +30,7 @@ import {
   CalendarClock,
   ChevronDown,
   ChevronRight,
+  Info,
   Landmark,
   ListFilter,
   Loader2,
@@ -131,6 +132,8 @@ function nodeFx(state: "active" | "dim" | "none") {
 // else the gradient-chip glyph — falling back to the glyph if the image fails.
 function NodeLogo({ src, fallback, chipClass, className = "size-9" }: { src?: string | null; fallback: ReactNode; chipClass: string; className?: string }) {
   const [failed, setFailed] = useState(false)
+  // Retry when the logo URL changes (e.g. the user uploads a new one mid-session).
+  useEffect(() => { setFailed(false) }, [src])
   if (src && !failed) {
     return (
       <span className={cn("grid shrink-0 place-items-center overflow-hidden rounded-2xl border bg-card", className)}>
@@ -141,13 +144,30 @@ function NodeLogo({ src, fallback, chipClass, className = "size-9" }: { src?: st
   return <span className={cn("grid shrink-0 place-items-center rounded-2xl", chipClass, className)}>{fallback}</span>
 }
 
+// The small corner button that opens a node's detail modal. `nodrag` + a
+// stopPropagation click so it never starts a drag or toggles the card.
+function DetailButton({ onClick }: { onClick?: () => void }) {
+  const { t } = useTranslation()
+  return (
+    <button
+      type="button"
+      aria-label={t("flow.nodeDetails")}
+      title={t("flow.nodeDetails")}
+      onClick={(e) => { e.stopPropagation(); onClick?.() }}
+      className="nodrag grid size-6 shrink-0 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+    >
+      <Info className="size-3.5" />
+    </button>
+  )
+}
+
 // ── Custom node components ───────────────────────────────────────────────────
 const HANDLE_CLS = "!size-2 !rounded-full !border-2 !border-background !bg-muted-foreground/40 !transition-colors"
 const HANDLE_PRIMARY = "!size-2.5 !rounded-full !border-2 !border-background !bg-primary"
 
 type RootData = {
   label: string; income: number; expense: number; net: number; tx_count: number; balance: number
-  collapsed: boolean; currency: string; logo_src?: string | null; onToggle: () => void
+  collapsed: boolean; currency: string; logo_src?: string | null; onToggle: () => void; onDetail?: () => void
 }
 function RootNode({ id, data }: NodeProps<Node<RootData>>) {
   const { t } = useTranslation()
@@ -156,17 +176,18 @@ function RootNode({ id, data }: NodeProps<Node<RootData>>) {
   return (
     <div
       className={cn(
-        "group relative w-[256px] overflow-hidden rounded-[1.75rem] border border-primary/30 bg-gradient-to-br from-card via-card to-primary/[0.06] p-4 shadow-[0_8px_30px_-12px] shadow-primary/30 backdrop-blur-sm",
+        "group relative w-[256px] cursor-pointer overflow-hidden rounded-[1.75rem] border border-primary/30 bg-gradient-to-br from-card via-card to-primary/[0.06] p-4 shadow-[0_8px_30px_-12px] shadow-primary/30 backdrop-blur-sm",
         nodeFx(focus),
       )}
     >
       <span aria-hidden className="pointer-events-none absolute -right-10 -top-10 size-28 rounded-full bg-primary/15 blur-2xl" />
       <div className="relative flex items-center gap-2.5">
         <NodeLogo src={data.logo_src} className="size-10" chipClass="bg-gradient-to-br from-primary to-primary/70 text-primary-foreground shadow-sm" fallback={<Sparkles className="size-5" />} />
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold tracking-tight">{data.label}</p>
           <p className="text-[11px] text-muted-foreground">{t("flow.workspaceTotals")}</p>
         </div>
+        <DetailButton onClick={data.onDetail} />
       </div>
 
       <div className="relative mt-3.5 rounded-2xl bg-muted/40 p-3">
@@ -188,7 +209,7 @@ function RootNode({ id, data }: NodeProps<Node<RootData>>) {
 
       <button
         type="button"
-        onClick={data.onToggle}
+        onClick={(e) => { e.stopPropagation(); data.onToggle() }}
         aria-expanded={!data.collapsed}
         className="nodrag relative mt-3 flex w-full items-center justify-center gap-1 rounded-xl border bg-background/60 py-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
       >
@@ -202,7 +223,7 @@ function RootNode({ id, data }: NodeProps<Node<RootData>>) {
 
 const GROUP_ICON = { account: Landmark, client: Users, category: Tag } as const
 
-type GroupData = FlowGroup & { expanded: boolean; currency: string; onToggle: () => void }
+type GroupData = FlowGroup & { expanded: boolean; currency: string; onToggle: () => void; onDetail?: () => void }
 function GroupNode({ id, data }: NodeProps<Node<GroupData>>) {
   const { t } = useTranslation()
   const focus = useFocus(id)
@@ -212,7 +233,7 @@ function GroupNode({ id, data }: NodeProps<Node<GroupData>>) {
   return (
     <div
       className={cn(
-        "group w-[260px] rounded-3xl border bg-gradient-to-br from-card to-muted/30 p-3.5 shadow-sm transition-shadow hover:shadow-lg hover:shadow-black/5",
+        "group w-[260px] cursor-pointer rounded-3xl border bg-gradient-to-br from-card to-muted/30 p-3.5 shadow-sm transition-shadow hover:shadow-lg hover:shadow-black/5",
         nodeFx(focus),
       )}
     >
@@ -226,6 +247,7 @@ function GroupNode({ id, data }: NodeProps<Node<GroupData>>) {
         />
         <p className="min-w-0 flex-1 truncate text-sm font-semibold tracking-tight" title={data.label}>{data.label}</p>
         <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground">{data.tx_count}</span>
+        <DetailButton onClick={data.onDetail} />
       </div>
 
       <RatioBar income={data.income} expense={data.expense} className="mt-3" />
@@ -249,7 +271,7 @@ function GroupNode({ id, data }: NodeProps<Node<GroupData>>) {
       {data.tx_count > 0 && (
         <button
           type="button"
-          onClick={data.onToggle}
+          onClick={(e) => { e.stopPropagation(); data.onToggle() }}
           aria-expanded={data.expanded}
           className="nodrag mt-2.5 flex w-full items-center justify-center gap-1 rounded-xl border bg-background/60 py-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         >
@@ -356,18 +378,19 @@ function MoreNode({ id, data }: NodeProps<Node<MoreData>>) {
 }
 
 // ── Timeline nodes: a running-balance chain ──────────────────────────────────
-type TimelinePeriodNodeData = TimelinePeriod & { expanded: boolean; currency: string; formatPeriod: (key: string, bucket: string) => string; onToggle: () => void }
+type TimelinePeriodNodeData = TimelinePeriod & { expanded: boolean; currency: string; formatPeriod: (key: string, bucket: string) => string; onToggle: () => void; onDetail?: () => void }
 function TimelinePeriodNode({ id, data }: NodeProps<Node<TimelinePeriodNodeData>>) {
   const { t } = useTranslation()
   const focus = useFocus(id)
   const pos = data.net >= 0
   return (
-    <div className={cn("group w-[276px] rounded-3xl border bg-gradient-to-br from-card to-muted/30 p-3.5 shadow-sm transition-shadow hover:shadow-lg hover:shadow-black/5", nodeFx(focus))}>
+    <div className={cn("group w-[276px] cursor-pointer rounded-3xl border bg-gradient-to-br from-card to-muted/30 p-3.5 shadow-sm transition-shadow hover:shadow-lg hover:shadow-black/5", nodeFx(focus))}>
       <Handle type="target" position={Position.Left} className={HANDLE_CLS} />
       <div className="flex items-center gap-2.5">
         <span className="grid size-9 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-primary/15 to-primary/5 text-primary ring-1 ring-inset ring-primary/20"><CalendarClock className="size-[18px]" /></span>
         <p className="min-w-0 flex-1 truncate text-sm font-semibold tracking-tight">{data.formatPeriod(data.key, data.bucket)}</p>
         <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground">{data.tx_count}</span>
+        <DetailButton onClick={data.onDetail} />
       </div>
 
       {/* before → net → after: the running cumulative chain */}
@@ -388,7 +411,7 @@ function TimelinePeriodNode({ id, data }: NodeProps<Node<TimelinePeriodNodeData>
       {data.tx_count > 0 && (
         <button
           type="button"
-          onClick={data.onToggle}
+          onClick={(e) => { e.stopPropagation(); data.onToggle() }}
           aria-expanded={data.expanded}
           className="nodrag mt-2.5 flex w-full items-center justify-center gap-1 rounded-xl border bg-background/60 py-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         >
@@ -401,21 +424,22 @@ function TimelinePeriodNode({ id, data }: NodeProps<Node<TimelinePeriodNodeData>
   )
 }
 
-type TimelineFinalNodeData = TimelineData["final"] & { period_count: number; currency: string; logo_src?: string | null }
+type TimelineFinalNodeData = TimelineData["final"] & { period_count: number; currency: string; logo_src?: string | null; onDetail?: () => void }
 function TimelineFinalNode({ id, data }: NodeProps<Node<TimelineFinalNodeData>>) {
   const { t } = useTranslation()
   const focus = useFocus(id)
   const pos = data.total_net >= 0
   return (
-    <div className={cn("group relative w-[256px] overflow-hidden rounded-[1.75rem] border border-primary/30 bg-gradient-to-br from-card via-card to-primary/[0.06] p-4 shadow-[0_8px_30px_-12px] shadow-primary/30 backdrop-blur-sm", nodeFx(focus))}>
+    <div className={cn("group relative w-[256px] cursor-pointer overflow-hidden rounded-[1.75rem] border border-primary/30 bg-gradient-to-br from-card via-card to-primary/[0.06] p-4 shadow-[0_8px_30px_-12px] shadow-primary/30 backdrop-blur-sm", nodeFx(focus))}>
       <span aria-hidden className="pointer-events-none absolute -right-10 -top-10 size-28 rounded-full bg-primary/15 blur-2xl" />
       <Handle type="target" position={Position.Left} className={HANDLE_PRIMARY} />
       <div className="relative flex items-center gap-2.5">
         <NodeLogo src={data.logo_src} className="size-10" chipClass="bg-gradient-to-br from-primary to-primary/70 text-primary-foreground shadow-sm" fallback={<Sparkles className="size-5" />} />
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold tracking-tight">{data.label}</p>
           <p className="text-[11px] text-muted-foreground">{t("flow.finalEntity")}</p>
         </div>
+        <DetailButton onClick={data.onDetail} />
       </div>
       <div className="relative mt-3.5 rounded-2xl bg-muted/40 p-3">
         <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{t("flow.netTotal")}</p>
@@ -436,62 +460,64 @@ function TimelineFinalNode({ id, data }: NodeProps<Node<TimelineFinalNodeData>>)
   )
 }
 
-// ── Custom edge: a bidirectional, two-layer flow "pipe" ──────────────────────
-// An edge carries money both ways. We draw a faint base pipe, then up to two
-// animated dash layers on it: GREEN dots flowing toward the workspace (income)
-// and RED dots flowing outward (expense). Each layer's thickness comes from the
-// money it carries (data.inWidth / outWidth). When both are present they're
-// nudged to opposite sides of the pipe so you read two distinct streams moving
-// in opposite directions. Dims/saturates with the hover focus.
+// ── Custom edge: ONE slim connection with two-way flow ───────────────────────
+// A single thin connection line. Money in motion rides on that same line as
+// short, thin dashes — GREEN gliding toward the workspace (income) and RED
+// gliding outward (expense), phase-offset so the two streams interleave rather
+// than stack into two fat parallel lines. Stroke weight nudges subtly with the
+// money (hard-capped, never a slab). Dims/saturates with the hover focus.
 function FlowEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, data }: EdgeProps<Edge<FlowEdgeData>>) {
   const focus = useFocus(id, true)
   const dim = focus === "dim"
-  const boost = focus === "active" ? 0.8 : 0
+  const boost = focus === "active" ? 0.5 : 0
   const d = data ?? { income: 0, expense: 0, inWidth: 0, outWidth: 0, kind: "more" as const, animated: false }
-  const bez = (dy: number) => getBezierPath({ sourceX, sourceY: sourceY + dy, targetX, targetY: targetY + dy, sourcePosition, targetPosition, curvature: 0.4 })[0]
+  const [path] = getBezierPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, curvature: 0.35 })
 
   const hasIn = d.inWidth > 0
   const hasOut = d.outWidth > 0
-  const both = hasIn && hasOut
-  // Perpendicular nudge so the two streams sit side-by-side instead of overlapping.
-  const sep = both ? Math.max(2, (d.inWidth + d.outWidth) / 2 + 0.5) : 0
   const isMore = d.kind === "more"
-  const baseW = Math.max(d.inWidth, d.outWidth, isMore ? 1.2 : 1.6)
+  // ONE slim base line (hard-capped); the flow dashes sit a touch thinner on top.
+  const baseW = Math.min(3, Math.max(d.inWidth, d.outWidth, isMore ? 1 : 1.2))
+  const inW = Math.min(2.4, d.inWidth) + boost
+  const outW = Math.min(2.4, d.outWidth) + boost
 
   return (
     <>
-      {/* faint base pipe — keeps the connection visible at rest + behind the gaps */}
+      {/* the single connection line (subtle, neutral) */}
       <path
-        d={bez(0)}
+        d={path}
         fill="none"
         stroke="var(--mf-neutral)"
-        strokeWidth={baseW + 0.5}
+        strokeWidth={baseW}
         strokeLinecap="round"
-        strokeOpacity={dim ? 0.07 : isMore ? 0.32 : 0.16}
+        strokeOpacity={dim ? 0.08 : isMore ? 0.3 : 0.24}
         strokeDasharray={isMore ? "1 6" : undefined}
         style={{ transition: "stroke-opacity 200ms" }}
       />
+      {/* income — thin green dashes gliding toward the workspace */}
       {hasIn && (
         <path
-          d={bez(both ? -sep : 0)}
+          d={path}
           fill="none"
           stroke="var(--mf-income)"
-          strokeWidth={d.inWidth + boost}
+          strokeWidth={inW}
           strokeLinecap="round"
-          strokeDasharray="0.5 13"
-          strokeOpacity={dim ? 0.1 : 0.95}
+          strokeDasharray="6 12"
+          strokeOpacity={dim ? 0.12 : 0.9}
           className={cn("ps-flow-edge-in", focus === "active" && "ps-flow-edge--active")}
         />
       )}
+      {/* expense — thin red dashes gliding outward, phase-offset so the two
+          streams interleave along the single line instead of overlapping */}
       {hasOut && (
         <path
-          d={bez(both ? sep : 0)}
+          d={path}
           fill="none"
           stroke="var(--mf-expense)"
-          strokeWidth={d.outWidth + boost}
+          strokeWidth={outW}
           strokeLinecap="round"
-          strokeDasharray="0.5 13"
-          strokeOpacity={dim ? 0.1 : 0.95}
+          strokeDasharray="6 12"
+          strokeOpacity={dim ? 0.12 : 0.9}
           className={cn("ps-flow-edge-out", focus === "active" && "ps-flow-edge--active")}
         />
       )}
@@ -572,39 +598,102 @@ function MultiCheck({ label, options, selected, onChange, searchPlaceholder }: {
 function TxPopup({ leaf, currency, formatDate, onViewDetails, onClose }: { leaf: FlowLeaf; currency: string; formatDate: (d: string) => string; onViewDetails: (id: string) => void; onClose: () => void }) {
   const { t } = useTranslation()
   const inc = leaf.type === "incoming"
+  // Esc dismisses (matches the X + device-back affordances).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose() }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [onClose])
   return (
-    <div className="absolute inset-x-3 bottom-3 z-20 sm:inset-x-auto sm:bottom-4 sm:right-4 sm:w-[22rem]">
-      <div className="overflow-hidden rounded-2xl border bg-card/95 shadow-2xl shadow-black/20 backdrop-blur-md motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-4 motion-safe:duration-300">
-        <div className="flex items-start gap-3 p-4">
-          <span className={cn("grid size-10 shrink-0 place-items-center rounded-full ring-1 ring-inset", inc ? "bg-emerald-500/10 text-emerald-600 ring-emerald-500/20 dark:text-emerald-400" : "bg-rose-500/10 text-rose-600 ring-rose-500/20 dark:text-rose-400")}>
-            {inc ? <ArrowUpRight className="size-5" /> : <ArrowDownRight className="size-5" />}
+    <div
+      role="dialog"
+      aria-modal="false"
+      aria-live="polite"
+      aria-label={leaf.description || (inc ? t("flow.income") : t("flow.expense"))}
+      className="absolute inset-x-3 bottom-3 z-20 sm:inset-x-0 sm:bottom-4 sm:mx-auto sm:w-72"
+    >
+      <div className="overflow-hidden rounded-2xl border bg-card/95 shadow-xl shadow-black/25 backdrop-blur-md motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-2 motion-safe:duration-200">
+        <div className="flex items-start gap-2.5 p-3">
+          <span className={cn("grid size-8 shrink-0 place-items-center rounded-full ring-1 ring-inset", inc ? "bg-emerald-500/10 text-emerald-600 ring-emerald-500/20 dark:text-emerald-400" : "bg-rose-500/10 text-rose-600 ring-rose-500/20 dark:text-rose-400")}>
+            {inc ? <ArrowUpRight className="size-4" /> : <ArrowDownRight className="size-4" />}
           </span>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold">{leaf.description || (inc ? t("flow.income") : t("flow.expense"))}</p>
-            <p className="text-xs text-muted-foreground">{formatDate(leaf.date)}</p>
+          <div className="min-w-0 flex-1 space-y-0.5">
+            <p className="flex items-center gap-1 truncate text-[13px] font-semibold leading-tight">
+              {leaf.description || (inc ? t("flow.income") : t("flow.expense"))}
+              {leaf.recurring && <Repeat className="size-3 shrink-0 text-violet-500" />}
+            </p>
+            <p className="truncate text-[11px] text-muted-foreground">{formatDate(leaf.date)}{leaf.category ? ` · ${leaf.category}` : ""}</p>
+            {leaf.account_name && (
+              <p className="flex items-center gap-1 truncate text-[11px] text-muted-foreground">
+                <Landmark className="size-2.5 shrink-0" /><span className="truncate">{inc ? t("flow.dirTo") : t("flow.dirFrom")} {leaf.account_name}</span>
+              </p>
+            )}
           </div>
-          <button type="button" onClick={onClose} aria-label={t("flow.close")} className="rounded-lg p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
-            <X className="size-4" />
+          <button type="button" onClick={onClose} aria-label={t("flow.close")} className="-mr-1 -mt-1 rounded-lg p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
+            <X className="size-3.5" />
           </button>
         </div>
-        <p className={cn("px-4 text-2xl font-bold tabular-nums", inc ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400")}>
-          {inc ? "+" : "−"}{formatMoney(Math.abs(leaf.amount), currency)}
-        </p>
-        <dl className="mt-3 space-y-1.5 px-4 pb-3 text-xs">
-          {leaf.category && (
-            <div className="flex items-center gap-2 text-muted-foreground"><Tag className="size-3.5 shrink-0" /><span className="truncate text-foreground">{leaf.category}</span></div>
-          )}
-          {leaf.account_name && (
-            <div className="flex items-center gap-2 text-muted-foreground"><Landmark className="size-3.5 shrink-0" /><span className="truncate"><span className="text-muted-foreground">{inc ? t("flow.dirTo") : t("flow.dirFrom")} </span><span className="text-foreground">{leaf.account_name}</span></span></div>
-          )}
-          {leaf.recurring && (
-            <div className="flex items-center gap-2 text-violet-500"><Repeat className="size-3.5 shrink-0" /><span>{t("flow.recurring")}</span></div>
-          )}
+        <div className="flex items-center justify-between gap-2 border-t px-3 py-2">
+          <span className={cn("truncate text-base font-bold tabular-nums", inc ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400")}>
+            {inc ? "+" : "−"}{formatMoney(Math.abs(leaf.amount), currency)}
+          </span>
+          <Button size="sm" variant="outline" className="h-7 shrink-0 px-2.5 text-xs" onClick={() => onViewDetails(leaf.id)}>
+            {t("flow.viewDetails")} <ArrowUpRight className="size-3.5" />
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Node detail modal ────────────────────────────────────────────────────────
+// Opened from a node's corner Info button. Shows that node's figures and a
+// "go to its page" action (so the card itself stays an expand/collapse toggle).
+type DetailRow = { label: string; value: string; tone?: "income" | "expense" }
+type NodeDetail = {
+  title: string
+  kindLabel: string
+  logo_src?: string | null
+  variant: "workspace" | "account" | "client" | "category" | "period"
+  account_type?: string | null
+  rows: DetailRow[]
+  goLabel: string
+  onGo: () => void
+}
+function NodeDetailModal({ detail, onClose }: { detail: NodeDetail; onClose: () => void }) {
+  const { t } = useTranslation()
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose() }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [onClose])
+  const Glyph =
+    detail.variant === "account" ? (detail.account_type === "cash" ? Wallet : Landmark)
+    : detail.variant === "client" ? Users
+    : detail.variant === "category" ? Tag
+    : detail.variant === "period" ? CalendarClock
+    : Sparkles
+  return (
+    <div role="dialog" aria-modal="true" aria-label={detail.title} onClick={onClose} className="absolute inset-0 z-30 flex items-end justify-center bg-background/50 p-4 backdrop-blur-[2px] sm:items-center">
+      <div onClick={(e) => e.stopPropagation()} className="w-full max-w-sm overflow-hidden rounded-2xl border bg-card shadow-2xl motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-95 motion-safe:duration-200">
+        <div className="flex items-start gap-3 border-b p-4">
+          <NodeLogo src={detail.logo_src} className="size-11" chipClass="bg-gradient-to-br from-primary/15 to-primary/5 text-primary ring-1 ring-inset ring-primary/20" fallback={<Glyph className="size-5" />} />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-base font-semibold">{detail.title}</p>
+            <p className="text-xs text-muted-foreground">{detail.kindLabel}</p>
+          </div>
+          <button type="button" onClick={onClose} aria-label={t("flow.close")} className="-mr-1 -mt-1 rounded-lg p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"><X className="size-4" /></button>
+        </div>
+        <dl className="divide-y">
+          {detail.rows.map((r) => (
+            <div key={r.label} className="flex items-center justify-between px-4 py-2.5 text-sm">
+              <dt className="text-muted-foreground">{r.label}</dt>
+              <dd className={cn("font-semibold tabular-nums", r.tone === "income" && "text-emerald-600 dark:text-emerald-400", r.tone === "expense" && "text-rose-600 dark:text-rose-400")}>{r.value}</dd>
+            </div>
+          ))}
         </dl>
         <div className="border-t p-3">
-          <Button size="sm" className="w-full" onClick={() => onViewDetails(leaf.id)}>
-            {t("flow.viewDetails")} <ArrowUpRight className="size-4" />
-          </Button>
+          <Button className="w-full" onClick={detail.onGo}>{detail.goLabel} <ArrowUpRight className="size-4" /></Button>
         </div>
       </div>
     </div>
@@ -627,11 +716,10 @@ type SavedFlowState = {
   expanded?: string[]
   positions?: Record<string, { x: number; y: number }>
   viewport?: { x: number; y: number; zoom: number }
-  // Inline "load more" pages + the open transaction popup — so a reload (or a
-  // round-trip to the detail page) restores the exact canvas you left.
+  // Inline "load more" pages — so a reload (or a round-trip to the detail page)
+  // restores the exact canvas (expanded transactions) you left.
   extra?: Record<string, FlowLeaf[]>
   exhausted?: string[]
-  selected?: FlowLeaf | null
 }
 
 function readSavedFlow(key: string): SavedFlowState {
@@ -696,10 +784,12 @@ export function MoneyFlowPage() {
   // EXCEPT the very first load after a restore — see skipFirstExtraClear.
   const [extraLeaves, setExtraLeaves] = useState<Record<string, FlowLeaf[]>>(saved.extra ?? {})
   const [exhausted, setExhausted] = useState<Set<string>>(new Set(saved.exhausted ?? []))
-  // The transaction shown in the in-canvas detail popup (null = closed).
-  const [selectedTx, setSelectedTx] = useState<FlowLeaf | null>(saved.selected ?? null)
-  // Keep the first restore-load from wiping inline-loaded leaves we just rehydrated.
-  const skipFirstExtraClear = useRef(!!(saved.extra && Object.keys(saved.extra).length))
+  // The transaction shown in the in-canvas detail popup (null = closed). Kept
+  // transient (NOT persisted) so a reload never reopens a stale/deleted-tx
+  // snapshot — the canvas position/state it sat over is what persists.
+  const [selectedTx, setSelectedTx] = useState<FlowLeaf | null>(null)
+  // The node whose Info button was tapped → its detail modal (transient).
+  const [detailNode, setDetailNode] = useState<NodeDetail | null>(null)
 
   // Dragged node positions (id → {x,y}); survive rebuilds AND navigation.
   const userPositions = useRef<Record<string, { x: number; y: number }>>(saved.positions ?? {})
@@ -754,16 +844,6 @@ export function MoneyFlowPage() {
       if (selAccounts.size) params.set("accountId", [...selAccounts].join(","))
       const resp = await apiGet<FlowData | TimelineData>(`/api/flow?${params}`, token)
       setData(resp)
-      // Fresh dataset → drop any inline-loaded leaves + spinners from the
-      // previous query (a still-in-flight load-more is discarded on arrival).
-      // The first load after a restore keeps the rehydrated pages.
-      if (skipFirstExtraClear.current) {
-        skipFirstExtraClear.current = false
-      } else {
-        setExtraLeaves({})
-        setExhausted(new Set())
-        loadingKeysRef.current.clear()
-      }
       setDataVersion((v) => v + 1)
     } catch {
       if (!silent) toast.error(t("flow.loadFailed"))
@@ -778,6 +858,22 @@ export function MoneyFlowPage() {
     if (revision > 0) void load({ silent: true })
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only react to the signal
   }, [revision])
+
+  // Inline-loaded pages belong to ONE query. Drop them only when the query
+  // itself changes (filters/mode/groupBy/bucket) — NOT on mount, remount, or a
+  // same-query silent refresh — so a restored/expanded canvas survives a reload.
+  const querySig = useMemo(
+    () => [viewMode, groupBy, bucket, from, to, [...selCats].sort().join(","), [...selClients].sort().join(","), [...selAccounts].sort().join(",")].join("|"),
+    [viewMode, groupBy, bucket, from, to, selCats, selClients, selAccounts],
+  )
+  const prevQuerySig = useRef(querySig)
+  useEffect(() => {
+    if (prevQuerySig.current === querySig) return
+    prevQuerySig.current = querySig
+    setExtraLeaves({})
+    setExhausted(new Set())
+    loadingKeysRef.current.clear()
+  }, [querySig])
 
   const flowRef = useRef<ReactFlowInstance<Node, Edge> | null>(null)
 
@@ -829,9 +925,100 @@ export function MoneyFlowPage() {
   const openLeaf = useCallback((leaf: FlowLeaf) => setSelectedTx(leaf), [])
   const closeTx = useCallback(() => setSelectedTx(null), [])
   const viewTxDetails = useCallback((id: string) => navigate(`/transactions?view=${id}`), [navigate])
+  // Workspace node → the dashboard (its "entity").
+  const openWorkspace = useCallback(() => navigate("/dashboard"), [navigate])
+  // Timeline period node → the transactions list scoped to that period's dates.
+  const openPeriod = useCallback((p: TimelinePeriod) => {
+    const start = new Date(`${p.key}T00:00:00`)
+    const end = new Date(start)
+    if (p.bucket === "week") end.setDate(start.getDate() + 6)
+    else if (p.bucket === "month") { end.setMonth(start.getMonth() + 1); end.setDate(0) }
+    else if (p.bucket === "year") { end.setMonth(11); end.setDate(31) }
+    const pad = (n: number) => String(n).padStart(2, "0")
+    const iso = (x: Date) => `${x.getFullYear()}-${pad(x.getMonth() + 1)}-${pad(x.getDate())}`
+    navigate(`/transactions?from=${p.key}&to=${iso(end)}`)
+  }, [navigate])
   // Device/browser Back closes the popup without leaving /flow (and the flow
   // state persists, so a later Back from the detail page restores this exact view).
   useBackClose(!!selectedTx, closeTx)
+  const closeDetail = useCallback(() => setDetailNode(null), [])
+  useBackClose(!!detailNode, closeDetail)
+
+  // Build the detail-modal content for a node (figures + a "go to its page" action).
+  const buildDetail = useCallback((n: { type?: string; data: Record<string, unknown> }): NodeDetail | null => {
+    const money = (v: number) => formatMoney(v, currency)
+    const signed = (v: number) => `${v >= 0 ? "+" : "−"}${formatMoney(Math.abs(v), currency)}`
+    const tone = (v: number): "income" | "expense" => (v >= 0 ? "income" : "expense")
+    switch (n.type) {
+      case "branch": {
+        const g = n.data as unknown as FlowGroup
+        const acc = g.kind === "account" && g.current_balance != null
+        return {
+          title: g.label,
+          kindLabel: g.kind === "account" ? t("flow.kindAccount") : g.kind === "client" ? t("flow.kindClient") : t("flow.kindCategory"),
+          logo_src: g.logo_src,
+          variant: g.kind,
+          account_type: g.account_type,
+          rows: [
+            { label: t("flow.revenue"), value: `+${money(g.income)}`, tone: "income" },
+            { label: t("flow.expenses"), value: `−${money(g.expense)}`, tone: "expense" },
+            { label: t("flow.net"), value: signed(g.net), tone: tone(g.net) },
+            { label: t("flow.txCount"), value: String(g.tx_count) },
+            ...(acc ? [{ label: t("flow.opening"), value: money(g.opening_balance ?? 0) }, { label: t("flow.current"), value: money(g.current_balance ?? 0) }] : []),
+          ],
+          goLabel: g.kind === "category" ? t("flow.viewTransactions") : t("flow.openPage"),
+          onGo: () => openMoreForGroup(g),
+        }
+      }
+      case "tlperiod": {
+        const p = n.data as unknown as TimelinePeriod
+        return {
+          title: formatPeriod(p.key, p.bucket),
+          kindLabel: t("flow.kindPeriod"),
+          variant: "period",
+          rows: [
+            { label: t("flow.before"), value: money(p.before) },
+            { label: t("flow.in"), value: `+${money(p.income)}`, tone: "income" },
+            { label: t("flow.out"), value: `−${money(p.expense)}`, tone: "expense" },
+            { label: t("flow.net"), value: signed(p.net), tone: tone(p.net) },
+            { label: t("flow.after"), value: money(p.after) },
+            { label: t("flow.txCount"), value: String(p.tx_count) },
+          ],
+          goLabel: t("flow.viewTransactions"),
+          onGo: () => openPeriod(p),
+        }
+      }
+      case "root": {
+        const r = n.data as { label: string; income: number; expense: number; net: number; tx_count: number; balance: number }
+        return {
+          title: r.label, kindLabel: t("flow.kindWorkspace"), variant: "workspace", logo_src: activeOrg?.logo_src ?? null,
+          rows: [
+            { label: t("flow.revenue"), value: `+${money(r.income)}`, tone: "income" },
+            { label: t("flow.expenses"), value: `−${money(r.expense)}`, tone: "expense" },
+            { label: t("flow.net"), value: signed(r.net), tone: tone(r.net) },
+            { label: t("flow.balance"), value: money(r.balance) },
+            { label: t("flow.txCount"), value: String(r.tx_count) },
+          ],
+          goLabel: t("flow.openDashboard"), onGo: openWorkspace,
+        }
+      }
+      case "tlfinal": {
+        const f = n.data as TimelineData["final"]
+        return {
+          title: f.label, kindLabel: t("flow.kindWorkspace"), variant: "workspace", logo_src: activeOrg?.logo_src ?? null,
+          rows: [
+            { label: t("flow.revenue"), value: `+${money(f.total_in)}`, tone: "income" },
+            { label: t("flow.expenses"), value: `−${money(f.total_out)}`, tone: "expense" },
+            { label: t("flow.netTotal"), value: signed(f.total_net), tone: tone(f.total_net) },
+            { label: t("flow.balance"), value: money(f.balance) },
+          ],
+          goLabel: t("flow.openDashboard"), onGo: openWorkspace,
+        }
+      }
+      default:
+        return null
+    }
+  }, [currency, t, formatPeriod, openMoreForGroup, openPeriod, openWorkspace, activeOrg])
 
   // ── Controlled nodes/edges so user DRAGS persist between structural rebuilds ─
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([])
@@ -902,18 +1089,26 @@ export function MoneyFlowPage() {
     const rf: Node[] = built.nodes.map((n) => {
       const position = userPositions.current[n.id] ?? n.position
       switch (n.type) {
-        case "root":
-          return { ...n, position, data: { ...n.data, currency, logo_src: activeOrg?.logo_src ?? null, onToggle: () => setRootCollapsed((c) => !c) } } as Node
+        case "root": {
+          const toggle = () => setRootCollapsed((c) => !c)
+          // card click toggles collapse-all; the Info button opens the detail modal
+          return { ...n, position, data: { ...n.data, currency, logo_src: activeOrg?.logo_src ?? null, onToggle: toggle, onOpen: toggle, onDetail: () => { const d = buildDetail(n); if (d) setDetailNode(d) } } } as Node
+        }
         case "branch": {
           const g = n.data as unknown as FlowGroup
-          return { ...n, position, data: { ...n.data, currency, onToggle: () => toggleKey(groupKeyId(g)) } } as Node
+          const toggle = () => toggleKey(groupKeyId(g))
+          return { ...n, position, data: { ...n.data, currency, onToggle: toggle, onOpen: toggle, onDetail: () => { const d = buildDetail(n); if (d) setDetailNode(d) } } } as Node
         }
         case "tlperiod": {
           const p = n.data as unknown as TimelinePeriod
-          return { ...n, position, data: { ...n.data, currency, formatPeriod, onToggle: () => toggleKey(p.key) } } as Node
+          const toggle = () => toggleKey(p.key)
+          return { ...n, position, data: { ...n.data, currency, formatPeriod, onToggle: toggle, onOpen: toggle, onDetail: () => { const d = buildDetail(n); if (d) setDetailNode(d) } } } as Node
         }
-        case "tlfinal":
-          return { ...n, position, data: { ...n.data, currency, logo_src: activeOrg?.logo_src ?? null } } as Node
+        case "tlfinal": {
+          // not expandable → a card click opens its detail modal too
+          const openDetail = () => { const d = buildDetail(n); if (d) setDetailNode(d) }
+          return { ...n, position, data: { ...n.data, currency, logo_src: activeOrg?.logo_src ?? null, onOpen: openDetail, onDetail: openDetail } } as Node
+        }
         case "leaf": {
           const leaf = n.data as unknown as FlowLeaf
           return { ...n, position, data: { ...n.data, currency, formatDate, onOpen: () => openLeaf(leaf) } } as Node
@@ -962,9 +1157,9 @@ export function MoneyFlowPage() {
       rootCollapsed, expanded: [...expanded],
       positions: userPositions.current,
       viewport: savedViewport.current ?? undefined,
-      extra: extraLeaves, exhausted: [...exhausted], selected: selectedTx,
+      extra: extraLeaves, exhausted: [...exhausted],
     })
-  }, [storageKey, viewMode, bucket, groupBy, from, to, selCats, selClients, selAccounts, rootCollapsed, expanded, extraLeaves, exhausted, selectedTx])
+  }, [storageKey, viewMode, bucket, groupBy, from, to, selCats, selClients, selAccounts, rootCollapsed, expanded, extraLeaves, exhausted])
 
   // Timestamp of the last drag end. A dragged node tracks the cursor, so
   // pointerdown and pointerup land on the same card and the browser CAN emit a
@@ -1003,16 +1198,15 @@ export function MoneyFlowPage() {
   }, [canHover])
   const onNodeMouseLeave = useCallback(() => setFocus(null), [])
 
-  // Mouse-open for the now-draggable leaf nodes. We open only on a real click
-  // that did NOT just conclude a drag (see lastDragEndRef). detail === 0
-  // (keyboard) is handled by the node's own button, so we skip it here to avoid
-  // a double-open. The "+N more" node has its own buttons, so it's not handled.
+  // Clicking ANY node opens its entity (leaf → tx popup; account/client/category
+  // → that page; period → its transactions; workspace → dashboard). We act only
+  // on a real click that did NOT just conclude a drag. detail === 0 (keyboard)
+  // is handled by the leaf's own button; the "+N more" node has its own buttons.
   const onNodeClick = useCallback((e: { detail: number }, node: Node) => {
     if (e.detail === 0) return
+    if (node.type === "more") return
     if (performance.now() - lastDragEndRef.current < 250) return
-    if (node.type === "leaf") {
-      ;(node.data as { onOpen?: () => void }).onOpen?.()
-    }
+    ;(node.data as { onOpen?: () => void }).onOpen?.()
   }, [])
 
   const activeFilterCount = selCats.size + selClients.size + selAccounts.size + (from ? 1 : 0) + (to ? 1 : 0)
@@ -1220,6 +1414,7 @@ export function MoneyFlowPage() {
         {selectedTx && (
           <TxPopup leaf={selectedTx} currency={currency} formatDate={formatDate} onViewDetails={viewTxDetails} onClose={closeTx} />
         )}
+        {detailNode && <NodeDetailModal detail={detailNode} onClose={closeDetail} />}
       </div>
     </div>
   )

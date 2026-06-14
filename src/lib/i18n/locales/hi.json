@@ -1214,7 +1214,17 @@
     "viewDetails": "पूरा विवरण देखें",
     "loadingFlow": "आपका मनी फ़्लो बन रहा है…",
     "dateRange": "तिथि सीमा",
-    "noMatches": "कोई मिलान नहीं"
+    "noMatches": "कोई मिलान नहीं",
+    "nodeDetails": "विवरण",
+    "txCount": "लेन-देन",
+    "openPage": "पेज खोलें",
+    "viewTransactions": "लेन-देन देखें",
+    "openDashboard": "डैशबोर्ड खोलें",
+    "kindAccount": "खाता",
+    "kindClient": "ग्राहक",
+    "kindCategory": "श्रेणी",
+    "kindPeriod": "अवधि",
+    "kindWorkspace": "वर्कस्पेस"
   },
   "spaces": {
     "title": "स्पेस",

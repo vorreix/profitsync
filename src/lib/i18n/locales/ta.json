@@ -1214,7 +1214,17 @@
     "viewDetails": "முழு விவரங்களைக் காண்க",
     "loadingFlow": "உங்கள் பண ஓட்டம் தயாராகிறது…",
     "dateRange": "தேதி வரம்பு",
-    "noMatches": "பொருத்தம் இல்லை"
+    "noMatches": "பொருத்தம் இல்லை",
+    "nodeDetails": "விவரங்கள்",
+    "txCount": "பரிவர்த்தனைகள்",
+    "openPage": "பக்கத்தைத் திற",
+    "viewTransactions": "பரிவர்த்தனைகளைக் காண்க",
+    "openDashboard": "டாஷ்போர்டைத் திற",
+    "kindAccount": "கணக்கு",
+    "kindClient": "வாடிக்கையாளர்",
+    "kindCategory": "வகை",
+    "kindPeriod": "காலம்",
+    "kindWorkspace": "பணியிடம்"
   },
   "spaces": {
     "title": "ஸ்பேஸ்கள்",

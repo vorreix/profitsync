@@ -1214,7 +1214,17 @@
     "viewDetails": "పూర్తి వివరాలు చూడండి",
     "loadingFlow": "మీ మనీ ఫ్లో సిద్ధమవుతోంది…",
     "dateRange": "తేదీ పరిధి",
-    "noMatches": "సరిపోలికలు లేవు"
+    "noMatches": "సరిపోలికలు లేవు",
+    "nodeDetails": "వివరాలు",
+    "txCount": "లావాదేవీలు",
+    "openPage": "పేజీని తెరువు",
+    "viewTransactions": "లావాదేవీలను చూడండి",
+    "openDashboard": "డాష్‌బోర్డ్ తెరువు",
+    "kindAccount": "ఖాతా",
+    "kindClient": "క్లయింట్",
+    "kindCategory": "వర్గం",
+    "kindPeriod": "వ్యవధి",
+    "kindWorkspace": "వర్క్‌స్పేస్"
   },
   "spaces": {
     "title": "స్పేస్‌లు",
