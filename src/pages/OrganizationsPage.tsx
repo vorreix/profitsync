@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
-import { ArrowLeftRight, Building2, Check, ImagePlus, Loader as Loader2, MoreHorizontal, Network, Pencil, Plus, Trash2, Users, X } from "lucide-react"
+import { ArrowLeftRight, Bell, Building2, Check, ImagePlus, Loader as Loader2, MoreHorizontal, Network, Pencil, Plus, Trash2, Users, X } from "lucide-react"
 import { apiDelete, apiPatch } from "@/lib/api"
 import { useOrg } from "@/lib/org-context"
 import { fileToResizedDataUrl } from "@/lib/image-upload"
@@ -26,10 +26,12 @@ import { CurrencyCombobox } from "@/components/CurrencyCombobox"
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { NotificationPreferencesForm } from "@/components/notifications/NotificationPreferencesForm"
 
 export function OrganizationsPage() {
   const navigate = useNavigate()
@@ -47,6 +49,9 @@ export function OrganizationsPage() {
 
   const [deleteTarget, setDeleteTarget] = useState<Organization | null>(null)
   const [deleting, setDeleting] = useState(false)
+
+  // Org-level notification settings dialog (per org).
+  const [notifTarget, setNotifTarget] = useState<Organization | null>(null)
 
   const [switching, setSwitching] = useState<string | null>(null)
 
@@ -280,6 +285,11 @@ export function OrganizationsPage() {
                               <Pencil className="size-4" /> {t("organizations.edit")}
                             </DropdownMenuItem>
                           )}
+                          {canManage && (
+                            <DropdownMenuItem onClick={() => setNotifTarget(org)}>
+                              <Bell className="size-4" /> {t("notifications:settings.title")}
+                            </DropdownMenuItem>
+                          )}
                           {!org.is_personal && org.role === "owner" && (
                             <>
                               <DropdownMenuSeparator />
@@ -369,6 +379,16 @@ export function OrganizationsPage() {
               {t("organizations.saveChanges")}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!notifTarget} onOpenChange={(o) => { if (!o) setNotifTarget(null) }}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{t("notifications:settings.title")}</DialogTitle>
+            <DialogDescription>{t("notifications:settings.org_description")}</DialogDescription>
+          </DialogHeader>
+          {notifTarget && <NotificationPreferencesForm scope="organization" orgId={notifTarget.id} />}
         </DialogContent>
       </Dialog>
 
