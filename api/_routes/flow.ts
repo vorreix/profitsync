@@ -4,6 +4,11 @@ import { db } from "../../src/lib/db/index.js"
 import { clients, organizations, transactions, wealthAccounts } from "../../src/lib/db/schema.js"
 import { isPersonalAccount, requireAuth } from "../_lib/auth.js"
 import { materializeDueRecurring } from "../_lib/recurring-materialize.js"
+import { logoDataUrl } from "../../src/lib/logo-data.js"
+
+// SQL for "the account's display name" — reused to label leaves with the
+// account the money moved through (to/from).
+const accountLabelSql = sql<string | null>`coalesce(nullif(${wealthAccounts.nickname}, ''), nullif(${wealthAccounts.bankName}, ''))`
 
 const isDate = (v: string | undefined): v is string => !!v && /^\d{4}-\d{2}-\d{2}$/.test(v)
 const fmt = (d: Date) => d.toISOString().slice(0, 10)
@@ -119,10 +124,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         category: transactions.category,
         date: sql<string>`${transactions.date}::text`,
         clientName: clients.name,
+        accountName: accountLabelSql,
         recurringRuleId: transactions.recurringRuleId,
       })
       .from(transactions)
       .innerJoin(clients, eq(transactions.clientId, clients.id))
+      .leftJoin(wealthAccounts, eq(transactions.wealthAccountId, wealthAccounts.id))
       .where(and(where, extra))
       .orderBy(desc(transactions.date), desc(transactions.createdAt))
       .limit(limit + 1)
@@ -136,7 +143,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       category: l.category,
       date: l.date,
       client_name: l.clientName,
-      account_name: null,
+      account_name: l.accountName,
       recurring: !!l.recurringRuleId,
     }))
     return res.json({ leaves, has_more: hasMore })
@@ -176,10 +183,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           date: sql<string>`${transactions.date}::text`,
           periodKey: periodExpr,
           clientName: clients.name,
+          accountName: accountLabelSql,
           recurringRuleId: transactions.recurringRuleId,
         })
         .from(transactions)
         .innerJoin(clients, eq(transactions.clientId, clients.id))
+        .leftJoin(wealthAccounts, eq(transactions.wealthAccountId, wealthAccounts.id))
         .where(where)
         .orderBy(desc(transactions.date), desc(transactions.createdAt))
         .limit(LEAF_POOL),
@@ -211,7 +220,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         category: l.category,
         date: l.date,
         client_name: l.clientName,
-        account_name: null,
+        account_name: l.accountName,
         recurring: !!l.recurringRuleId,
       }))
       return {
@@ -276,6 +285,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         icon: wealthAccounts.icon,
         opening: wealthAccounts.openingBalance,
         current: wealthAccounts.currentBalance,
+        logoUrl: wealthAccounts.logoUrl,
+        logoData: wealthAccounts.logoData,
       })
       .from(wealthAccounts)
       .where(and(eq(wealthAccounts.organizationId, orgId), isNull(wealthAccounts.archivedAt))),
@@ -346,6 +357,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       kind: groupBy,
       label: labelForGroup(g.key),
       icon: acc?.icon ?? null,
+      logo_src: acc ? logoDataUrl(acc.logoData) || acc.logoUrl || null : null,
       account_type: acc?.type ?? null,
       income,
       expense,

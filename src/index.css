@@ -225,23 +225,35 @@
     --mf-neutral: #64748b;
     --mf-minimap-mask: rgb(2 6 23 / 0.6);
   }
-  /* The flowing-dash overlay: money visibly travels source → target. Decreasing
-     (negative) dashoffset moves the dots toward the path's end. Paused entirely
-     for reduced-motion users (the static gradient pipe still shows direction). */
-  .ps-flow .ps-flow-edge-flow {
+  /* Flowing-dash layers: money visibly travels along the pipe. OUT (expense)
+     runs source → target (dashoffset decreasing); IN (income) runs target →
+     source (increasing) — so on a branch the green dots head toward the
+     workspace and the red dots head outward. Paused for reduced-motion users
+     (the coloured pipe still shows which directions carry money). dasharray
+     total is 13.5, so the loop distance matches for a seamless cycle. */
+  .ps-flow .ps-flow-edge-in,
+  .ps-flow .ps-flow-edge-out {
     stroke-dashoffset: 0;
   }
   @media (prefers-reduced-motion: no-preference) {
-    .ps-flow .ps-flow-edge-flow {
-      animation: ps-flow-dash 1.2s linear infinite;
+    .ps-flow .ps-flow-edge-out {
+      animation: ps-flow-out 1.1s linear infinite;
+    }
+    .ps-flow .ps-flow-edge-in {
+      animation: ps-flow-in 1.1s linear infinite;
     }
   }
   .ps-flow .ps-flow-edge--active {
-    filter: saturate(1.35);
+    filter: saturate(1.4);
   }
-  @keyframes ps-flow-dash {
+  @keyframes ps-flow-out {
     to {
-      stroke-dashoffset: -14.5;
+      stroke-dashoffset: -13.5;
+    }
+  }
+  @keyframes ps-flow-in {
+    to {
+      stroke-dashoffset: 13.5;
     }
   }
   /* Canvas chrome polish — Controls + MiniMap inherit the app surface so they

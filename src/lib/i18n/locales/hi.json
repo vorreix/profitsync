@@ -1206,7 +1206,15 @@
     "legendThickness": "मोटी रेखाएँ अधिक पैसे को दर्शाती हैं",
     "loadMore": "और दिखाएँ",
     "loadingMore": "लोड हो रहा है…",
-    "viewInList": "सूची में देखें"
+    "viewInList": "सूची में देखें",
+    "dirTo": "को",
+    "dirFrom": "से",
+    "close": "बंद करें",
+    "recurring": "आवर्ती",
+    "viewDetails": "पूरा विवरण देखें",
+    "loadingFlow": "आपका मनी फ़्लो बन रहा है…",
+    "dateRange": "तिथि सीमा",
+    "noMatches": "कोई मिलान नहीं"
   },
   "spaces": {
     "title": "स्पेस",

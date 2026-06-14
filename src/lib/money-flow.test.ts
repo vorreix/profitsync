@@ -63,37 +63,51 @@ describe("buildFlowGraph", () => {
     expect(lx).toBeGreaterThan(gx)
   })
 
+  it("lays many leaves out in a multi-column grid (not one tall column)", () => {
+    const many = Array.from({ length: 12 }, (_, i) => leaf(`m${i}`))
+    const data: FlowData = {
+      ...DATA,
+      groups: [{ ...DATA.groups[0], tx_count: 12, more_count: 0, leaves: many }],
+    }
+    const { nodes } = buildFlowGraph(data, { rootCollapsed: false, expanded: new Set(["c1"]) })
+    const leafXs = new Set(nodes.filter((n) => n.type === "leaf").map((n) => n.position.x))
+    // 12 leaves → 2 columns → two distinct x positions.
+    expect(leafXs.size).toBe(2)
+  })
+
   it("groupKeyId disambiguates null keys by label", () => {
     expect(groupKeyId({ key: "c1", label: "Acme" })).toBe("c1")
     expect(groupKeyId({ key: null, label: "Unassigned" })).toBe("__none__:Unassigned")
   })
 
-  it("branch edges carry a tone (by net sign) and a normalized weight (0–1)", () => {
+  it("branch edges carry per-direction income/expense + stroke widths", () => {
     const { edges } = buildFlowGraph(DATA, { rootCollapsed: false, expanded: new Set() })
     const branches = edges.filter((e) => e.data.kind === "branch")
     expect(branches).toHaveLength(2)
-    // Both groups are net-positive here → income tone.
-    expect(branches.every((e) => e.data.tone === "income")).toBe(true)
-    // Equal volume (600 each) → both at the max weight of 1.
-    expect(branches.every((e) => e.data.weight === 1)).toBe(true)
-    expect(branches.every((e) => e.data.weight >= 0 && e.data.weight <= 1)).toBe(true)
+    // Acme: income 500, expense 100 → both layers present, green wider than red.
+    const acme = edges.find((e) => e.target === "g:c1")!
+    expect(acme.data.income).toBe(500)
+    expect(acme.data.expense).toBe(100)
+    expect(acme.data.inWidth).toBeGreaterThan(acme.data.outWidth)
+    expect(acme.data.outWidth).toBeGreaterThan(0)
   })
 
-  it("expense-heavy branches get an expense tone", () => {
+  it("a direction with no money has zero width (no phantom layer)", () => {
     const data: FlowData = {
       ...DATA,
-      groups: [{ ...DATA.groups[0], income: 10, expense: 400, net: -390 }],
+      groups: [{ ...DATA.groups[0], income: 0, expense: 400, net: -400 }],
     }
-    const { edges } = buildFlowGraph(data, { rootCollapsed: false, expanded: new Set() })
-    expect(edges.find((e) => e.data.kind === "branch")!.data.tone).toBe("expense")
+    const e = buildFlowGraph(data, { rootCollapsed: false, expanded: new Set() }).edges.find((x) => x.data.kind === "branch")!
+    expect(e.data.inWidth).toBe(0)
+    expect(e.data.outWidth).toBeGreaterThan(0)
   })
 
-  it("leaf edges are toned by the transaction type", () => {
+  it("leaf edges carry the transaction's single direction", () => {
     const { edges } = buildFlowGraph(DATA, { rootCollapsed: false, expanded: new Set(["c1"]) })
     const leafEdges = edges.filter((e) => e.data.kind === "leaf" && e.target.startsWith("l:"))
     expect(leafEdges.length).toBeGreaterThan(0)
-    // leaf() helper produces incoming transactions.
-    expect(leafEdges.every((e) => e.data.tone === "income")).toBe(true)
+    // leaf() helper produces incoming transactions → green only.
+    expect(leafEdges.every((e) => e.data.inWidth > 0 && e.data.outWidth === 0)).toBe(true)
   })
 
   it("the 'more' node carries the group's mkey so the page can paginate it", () => {
@@ -185,13 +199,13 @@ describe("buildTimelineGraph", () => {
     expect(edges).toHaveLength(0)
   })
 
-  it("chain edges are toned by period net; the final edge is a full-weight 'final'", () => {
+  it("chain edges carry per-direction widths; the final edge ends at 'final'", () => {
     const { edges } = buildTimelineGraph(TIMELINE, new Set())
     const chain = edges.find((e) => e.data.kind === "chain")!
-    // P2 is net-negative (income 100, expense 400) → expense tone.
-    expect(chain.data.tone).toBe("expense")
+    // P2 (income 100, expense 400) → red layer wider than green.
+    expect(chain.data.outWidth).toBeGreaterThan(chain.data.inWidth)
     const final = edges.find((e) => e.data.kind === "final")!
-    expect(final.data.weight).toBe(1)
     expect(final.target).toBe("final")
+    expect(final.data.inWidth).toBeGreaterThan(0)
   })
 })

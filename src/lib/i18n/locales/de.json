@@ -1206,7 +1206,15 @@
     "legendThickness": "Dickere Linien stehen für mehr Geld",
     "loadMore": "Mehr laden",
     "loadingMore": "Wird geladen…",
-    "viewInList": "In Liste ansehen"
+    "viewInList": "In Liste ansehen",
+    "dirTo": "an",
+    "dirFrom": "von",
+    "close": "Schließen",
+    "recurring": "Wiederkehrend",
+    "viewDetails": "Alle Details ansehen",
+    "loadingFlow": "Geldfluss wird erstellt…",
+    "dateRange": "Zeitraum",
+    "noMatches": "Keine Treffer"
   },
   "spaces": {
     "title": "Sparräume",

@@ -1206,7 +1206,15 @@
     "legendThickness": "Le linee più spesse trasportano più denaro",
     "loadMore": "Carica altro",
     "loadingMore": "Caricamento…",
-    "viewInList": "Vedi nell'elenco"
+    "viewInList": "Vedi nell'elenco",
+    "dirTo": "a",
+    "dirFrom": "da",
+    "close": "Chiudi",
+    "recurring": "Ricorrente",
+    "viewDetails": "Vedi tutti i dettagli",
+    "loadingFlow": "Creazione del flusso di denaro…",
+    "dateRange": "Intervallo di date",
+    "noMatches": "Nessun risultato"
   },
   "spaces": {
     "title": "Spazi",

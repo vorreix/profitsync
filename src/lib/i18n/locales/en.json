@@ -1206,7 +1206,15 @@
     "legendThickness": "Thicker lines carry more money",
     "loadMore": "Load more",
     "loadingMore": "Loading…",
-    "viewInList": "View in list"
+    "viewInList": "View in list",
+    "dirTo": "to",
+    "dirFrom": "from",
+    "close": "Close",
+    "recurring": "Recurring",
+    "viewDetails": "View full details",
+    "loadingFlow": "Building your money flow…",
+    "dateRange": "Date range",
+    "noMatches": "No matches"
   },
   "spaces": {
     "title": "Spaces",

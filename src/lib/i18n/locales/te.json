@@ -1206,7 +1206,15 @@
     "legendThickness": "మందమైన గీతలు ఎక్కువ డబ్బును సూచిస్తాయి",
     "loadMore": "మరిన్ని చూపు",
     "loadingMore": "లోడ్ అవుతోంది…",
-    "viewInList": "జాబితాలో చూడండి"
+    "viewInList": "జాబితాలో చూడండి",
+    "dirTo": "కు",
+    "dirFrom": "నుండి",
+    "close": "మూసివేయి",
+    "recurring": "పునరావృతం",
+    "viewDetails": "పూర్తి వివరాలు చూడండి",
+    "loadingFlow": "మీ మనీ ఫ్లో సిద్ధమవుతోంది…",
+    "dateRange": "తేదీ పరిధి",
+    "noMatches": "సరిపోలికలు లేవు"
   },
   "spaces": {
     "title": "స్పేస్‌లు",

@@ -1206,7 +1206,15 @@
     "legendThickness": "الخطوط الأكثر سُمكًا تمثّل أموالًا أكثر",
     "loadMore": "تحميل المزيد",
     "loadingMore": "جارٍ التحميل…",
-    "viewInList": "عرض في القائمة"
+    "viewInList": "عرض في القائمة",
+    "dirTo": "إلى",
+    "dirFrom": "من",
+    "close": "إغلاق",
+    "recurring": "متكرر",
+    "viewDetails": "عرض التفاصيل الكاملة",
+    "loadingFlow": "جارٍ إنشاء تدفق أموالك…",
+    "dateRange": "النطاق الزمني",
+    "noMatches": "لا توجد نتائج"
   },
   "spaces": {
     "title": "مساحات الادخار",
