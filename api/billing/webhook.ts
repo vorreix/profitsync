@@ -7,6 +7,7 @@ import { resolveScheduledChange } from "../_lib/billing-sync.js"
 import { invoiceStatusForPayment } from "../_lib/invoice-map.js"
 import { creditReferralOnPaid } from "../_lib/referral.js"
 import { markAttemptByRef } from "../_lib/billing-attempts.js"
+import { notifyOrgMembers } from "../_lib/notifications.js"
 
 export const config = {
   api: {
@@ -250,6 +251,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             webhookErrorDetails: data,
           },
         )
+        // Alert org owners/admins so they can fix billing before access lapses.
+        // dedupeKey on paymentId keeps webhook retries from double-notifying.
+        await notifyOrgMembers(
+          sub.organizationId,
+          {
+            type: "payment_failed",
+            title: "Payment failed",
+            body: "We couldn't process your latest payment. Update your billing to keep Premium.",
+            data: {
+              i18nKey: "types.payment_failed.title",
+              i18nBodyKey: "types.payment_failed.body",
+            },
+            link: "/subscription",
+            dedupeKey: paymentId ? `payment_failed:${paymentId}` : null,
+          },
+          { roles: ["owner", "admin"] },
+        ).catch(() => {})
       }
     } catch {
       // Non-fatal: invoice bookkeeping failure must not 500 the webhook.

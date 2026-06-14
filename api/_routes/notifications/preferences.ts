@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { and, eq, isNull } from "drizzle-orm"
 import { db, serialize } from "../../../src/lib/db/index.js"
-import { clients, notificationPreferences } from "../../../src/lib/db/schema.js"
+import { clients, notificationPreferences, organizationMembers } from "../../../src/lib/db/schema.js"
 import { requireAuth } from "../../_lib/auth.js"
 import { sanitizePreferences, type PreferenceScope } from "../../../src/lib/notifications.js"
 
@@ -34,17 +34,36 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Resolve the target columns for the chosen scope, validating ownership.
   let lookup
   let writeAllowed = true
+  // For org/client scope these hold the resolved target ids used on insert.
+  let targetOrgId = ctx.orgId
+  let targetClientId: string | undefined
   if (scope === "user") {
     lookup = and(eq(notificationPreferences.scope, "user"), eq(notificationPreferences.userId, ctx.userId))
   } else if (scope === "organization") {
+    // Org policy may be edited for ANY org the caller belongs to (e.g. from the
+    // organizations list), not only the active one — so the orgId can be passed
+    // explicitly and the caller's role is checked against THAT org.
+    const explicitOrgId = single(req.query.orgId) ?? single((req.body as { organization_id?: string })?.organization_id)
+    targetOrgId = explicitOrgId ?? ctx.orgId
+    if (targetOrgId === ctx.orgId) {
+      writeAllowed = canManageOrg
+    } else {
+      const [member] = await db
+        .select({ role: organizationMembers.role })
+        .from(organizationMembers)
+        .where(and(eq(organizationMembers.organizationId, targetOrgId), eq(organizationMembers.userId, ctx.userId)))
+        .limit(1)
+      if (!member) return res.status(404).json({ error: "Organization not found" })
+      writeAllowed = member.role === "owner" || member.role === "admin"
+    }
     lookup = and(
       eq(notificationPreferences.scope, "organization"),
-      eq(notificationPreferences.organizationId, ctx.orgId),
+      eq(notificationPreferences.organizationId, targetOrgId),
     )
-    writeAllowed = canManageOrg
   } else {
     const clientId = single(req.query.clientId) ?? single((req.body as { client_id?: string })?.client_id)
     if (!clientId) return res.status(400).json({ error: "Missing clientId for client scope" })
+    targetClientId = clientId
     // The client must belong to the active org (and not be trashed).
     const [client] = await db
       .select({ id: clients.id })
@@ -79,14 +98,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.json(serialize(updated))
     }
 
-    const clientId = single(req.query.clientId) ?? single((req.body as { client_id?: string })?.client_id)
     const [created] = await db
       .insert(notificationPreferences)
       .values({
         scope,
         userId: scope === "user" ? ctx.userId : null,
-        organizationId: scope === "user" ? null : ctx.orgId,
-        clientId: scope === "client" ? clientId : null,
+        organizationId: scope === "user" ? null : targetOrgId,
+        clientId: scope === "client" ? targetClientId : null,
         preferences: clean,
         updatedBy: ctx.userId,
       })
