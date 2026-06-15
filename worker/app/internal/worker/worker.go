@@ -55,6 +55,9 @@ func (w *Worker) Run(ctx context.Context) {
 				}
 				continue
 			}
+			if len(claimed) > 0 {
+				w.log.Debug("claimed jobs", "count", len(claimed))
+			}
 			for _, j := range claimed {
 				sem <- struct{}{}
 				wg.Add(1)
@@ -77,6 +80,8 @@ func (w *Worker) process(ctx context.Context, j store.Job) {
 	jobCtx, cancel := context.WithTimeout(ctx, w.cfg.JobTimeout)
 	defer cancel()
 
+	w.log.Debug("job start", "id", j.ID, "type", j.Type, "attempt", j.Attempts)
+	start := time.Now()
 	result, err := run(jobCtx, h, j.Payload)
 	if err != nil {
 		w.log.Warn("job failed", "id", j.ID, "type", j.Type, "attempt", j.Attempts, "err", err)
@@ -89,7 +94,7 @@ func (w *Worker) process(ctx context.Context, j store.Job) {
 		w.log.Error("mark complete", "id", j.ID, "err", cerr)
 		return
 	}
-	w.log.Info("job done", "id", j.ID, "type", j.Type)
+	w.log.Info("job done", "id", j.ID, "type", j.Type, "attempt", j.Attempts, "dur_ms", time.Since(start).Milliseconds())
 }
 
 // run executes a handler, converting a panic into an error.

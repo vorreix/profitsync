@@ -18,9 +18,12 @@ RUN go mod tidy && \
 # ── Runtime ──────────────────────────────────────────────────────────────────
 FROM alpine:3.20
 RUN apk add --no-cache ca-certificates && adduser -D -u 10001 app
-USER app
 WORKDIR /app
 COPY --from=build /out/worker /app/worker
+# Log dir (WORKER_LOG_DIR=/app/logs). Owned by the unprivileged user so a mounted
+# volume inherits that ownership and the worker can write rotated log files.
+RUN mkdir -p /app/logs && chown -R app:app /app
+USER app
 
 EXPOSE 8080
 # Liveness: the service exposes GET /healthz.

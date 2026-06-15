@@ -59,13 +59,16 @@ Design source of truth: `docs/notifications/V2_ROADMAP.md` (the original designs
 
 | # | Branch | Scope | Status |
 |---|--------|-------|--------|
-| 00 | `feat/notif3-00-plan` | this tracking doc | ⏳ |
-| 01 | `feat/notif3-01-foundation` | mig 0045 (4 tables) + types + new notif types + i18n (8) + `important` flag + `broadcast` cap | ⏳ |
-| 02 | `feat/notif3-02-scheduler-core` | `requireServiceToken` + pure `schedule-notifications.ts` (+vitest) + `/api/cron/notifications` + fan-out lib + `.env.example` | ⏳ |
-| 03 | `feat/notif3-03-reminders` | reminders CRUD API + `ReminderForm` + Profile card + `?add=1` deep-link (#6) | ⏳ |
-| 04 | `feat/notif3-04-user-groups` | groups CRUD API + `UserGroupsPage` + nav + route (#8) | ⏳ |
-| 05 | `feat/notif3-05-broadcasts` | broadcasts CRUD + send + `BroadcastStudioPage` + composer + nav + route + "Run due now" (#7) | ⏳ |
-| 06 | `feat/notif3-06-richmedia-setup` | push image/click-action + `push-sw.js` + worker schedule bootstrap + docs/skill | ⏳ |
+| 00 | `feat/notif3-00-plan` | this tracking doc | ✅ pushed |
+| 01 | `feat/notif3-01-foundation` | mig 0045 (4 tables) + types + new notif types + i18n (8) + `important` flag + `broadcast` cap | ✅ pushed |
+| 02 | `feat/notif3-02-scheduler-core` | `requireServiceToken` + pure `schedule-notifications.ts` (+17 vitest) + `/api/cron/notifications` + fan-out lib + `.env.example` | ✅ pushed |
+| 03 | `feat/notif3-03-reminders` | reminders CRUD API + `RemindersCard` + Profile card + `?new=1` deep-link (#6) | ✅ pushed |
+| 04 | `feat/notif3-04-user-groups` | groups CRUD API + `AdminUserGroupsPage` + nav + route (#8) | ✅ pushed |
+| 05 | `feat/notif3-05-broadcasts` | broadcasts CRUD + send + `AdminBroadcastStudioPage` + composer + nav + route + "Run due now" (#7) | ✅ pushed |
+| 06 | `feat/notif3-06-richmedia-setup` | push image/click-action + `push-sw.js` + external-link handling + worker schedule bootstrap + docs | ✅ pushed |
+
+**Note (#6 deep-link):** reused the existing `/transactions?new=1` handler instead of
+adding a parallel `?add=1` — no TransactionsPage change needed.
 
 ## Per-task notes
 
@@ -106,3 +109,18 @@ Design source of truth: `docs/notifications/V2_ROADMAP.md` (the original designs
 
 - 2026-06-14: Audit complete (6-reader workflow). Items 1–5, 9 verified shipped; 6–8 missing.
   Plan + branch chain authored.
+- 2026-06-14: Built + pushed the full chain notif3-00..06. #6 reminders, #7 broadcast
+  studio, #8 user groups complete. Each branch passed the gate (i18n → lint → typecheck →
+  test:ci, + esm/boot/build on the API/UI branches). Scheduler doc: `SCHEDULER.md`.
+  **Verified:** unit (318 tests incl. 17 new scheduling tests), typecheck, lint, prod
+  build, ESM-extension + boot prod-parity. **Deferred:** live browser walkthrough of the
+  new UIs (needs `vercel dev` + Clerk login + DB) and an end-to-end cron→push delivery
+  test (needs VAPID + the worker/pinger live) — both to do on a deploy.
+- 2026-06-14: Adversarial review (4-dimension workflow + per-finding verification).
+  Branch `notif3-07-review-fixes` fixes the 3 confirmed real bugs: (A) recurring
+  broadcasts only delivered once — the per-user dedupe key now includes the occurrence
+  (cron passes the scheduled fire instant); (B) the user-group members PUT could empty a
+  group on a partial write — now insert-first (onConflictDoNothing) then prune; (C)
+  editing a "specific users" broadcast wiped the selection — now hydrated from the stored
+  ids. Two flagged items were false positives (a Date/string type confusion disproved by
+  typecheck; a missing-404 already covered by the ownership pre-check).

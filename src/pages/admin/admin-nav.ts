@@ -10,6 +10,8 @@ import {
   Newspaper,
   Activity,
   ServerCog,
+  UsersRound,
+  Megaphone,
   type LucideIcon,
 } from "lucide-react"
 import type { AdminCapability } from "@/lib/admin-roles"
@@ -35,6 +37,8 @@ export const ADMIN_NAV: AdminNavItem[] = [
   { label: "Blog", href: "/admin/blog", icon: Newspaper, cap: "blog" },
   { label: "Referrals", href: "/admin/referrals", icon: Gift, cap: "read" },
   { label: "Worker", href: "/admin/worker", icon: ServerCog, cap: "read" },
+  { label: "Broadcasts", href: "/admin/broadcasts", icon: Megaphone, cap: "broadcast" },
+  { label: "User groups", href: "/admin/user-groups", icon: UsersRound, cap: "broadcast" },
   { label: "Admins", href: "/admin/admins", icon: UserCog, cap: "manage_admins" },
 ]
 

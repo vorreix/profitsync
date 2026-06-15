@@ -26,6 +26,7 @@ const AUTH_MARKERS = [
   "requireAuth(",
   "requireAdminCap(",
   "getUserId(", // low-level helper (profile/organizations routes)
+  "requireServiceToken(", // shared-secret guard for worker-driven cron (POST /api/cron/*)
 ]
 
 let failures = 0
