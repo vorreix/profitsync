@@ -246,6 +246,9 @@ export type UserProfile = {
   currency: string
   language: string
   current_organization_id: string | null
+  // The family workspace this user belongs to (account_type='family' org), or
+  // null. A user can belong to at most one family.
+  family_org_id: string | null
   terms_accepted_at: string | null
   onboarded_at: string | null
   company_upsell_dismissed_at: string | null
@@ -272,10 +275,13 @@ export type OrgRole = "owner" | "admin" | "editor" | "viewer"
  * stored on the organization. Drives feature gating across UI and API:
  *   - personal: solo finance tracking — no Clients, Quotations, or members
  *   - business: full experience
+ *   - family:   a shared household workspace — members + Spaces + the Family hub,
+ *               but no Clients/Quotations. Each member also keeps a private
+ *               personal account in a separate org (never shared).
  */
-export type AccountType = "personal" | "business"
+export type AccountType = "personal" | "business" | "family"
 
-export const ACCOUNT_TYPES: AccountType[] = ["personal", "business"]
+export const ACCOUNT_TYPES: AccountType[] = ["personal", "business", "family"]
 
 /**
  * Single source of truth for which sections an account type can access.
@@ -283,21 +289,32 @@ export const ACCOUNT_TYPES: AccountType[] = ["personal", "business"]
  */
 export type BusinessFeature = "clients" | "quotations" | "members"
 export type PersonalFeature = "spaces"
-export type GatedFeature = BusinessFeature | PersonalFeature
+export type FamilyFeature = "family"
+export type GatedFeature = BusinessFeature | PersonalFeature | FamilyFeature
 
 export function accountTypeAllows(
   accountType: AccountType | null | undefined,
   feature: GatedFeature,
 ): boolean {
-  const isBusinessOnly = feature === "clients" || feature === "quotations" || feature === "members"
-  // Personal-only sections (Spaces savings buckets). Legacy/unknown orgs are
-  // treated as business, so Spaces show ONLY for an explicit personal account.
-  const isPersonalOnly = feature === "spaces"
-  // Unknown / legacy orgs default to the full (business) experience so we never
-  // lock an existing user out of features they already use.
-  if (isBusinessOnly && accountType === "personal") return false
-  if (isPersonalOnly && accountType !== "personal") return false
-  return true
+  // Unknown / legacy (null) orgs default to the full (business) experience so we
+  // never lock an existing user out of features they already use.
+  switch (feature) {
+    // Business-only sections — hidden for personal AND family accounts.
+    case "clients":
+    case "quotations":
+      return accountType !== "personal" && accountType !== "family"
+    // Member management: business teams AND families both manage members.
+    case "members":
+      return accountType !== "personal"
+    // Savings Spaces: personal accounts and families (shared family spaces).
+    case "spaces":
+      return accountType === "personal" || accountType === "family"
+    // The Family hub: family accounts only.
+    case "family":
+      return accountType === "family"
+    default:
+      return true
+  }
 }
 
 export type Organization = {
