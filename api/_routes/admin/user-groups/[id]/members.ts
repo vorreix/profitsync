@@ -3,7 +3,7 @@
 //
 // Relative imports keep the `.js` extension (unbundled ESM on @vercel/node).
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { eq } from "drizzle-orm"
+import { and, eq, notInArray } from "drizzle-orm"
 import { db } from "../../../../../src/lib/db/index.js"
 import { userGroupMembers, userGroups, userProfiles } from "../../../../../src/lib/db/schema.js"
 import { requireAdminCap } from "../../../../_lib/admin.js"
@@ -42,11 +42,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const userIds = Array.isArray(raw)
       ? Array.from(new Set(raw.filter((u): u is string => typeof u === "string" && u.length > 0))).slice(0, MAX_MEMBERS)
       : []
-    // Replace the whole set: clear then re-insert. (Neon HTTP has no multi-statement
-    // transaction; an admin re-save is the recovery path if a write is interrupted.)
-    await db.delete(userGroupMembers).where(eq(userGroupMembers.groupId, id))
-    if (userIds.length > 0) {
-      await db.insert(userGroupMembers).values(userIds.map((userId) => ({ groupId: id, userId })))
+    // Replace the whole set. Neon HTTP has no multi-statement transaction, so order
+    // matters: ADD the new members first (idempotent via the (group_id, user_id)
+    // unique index), THEN prune the ones no longer in the set. If the insert fails
+    // the group keeps its previous members (no data loss); if the prune fails the
+    // group is merely over-inclusive — never silently emptied.
+    if (userIds.length === 0) {
+      await db.delete(userGroupMembers).where(eq(userGroupMembers.groupId, id))
+    } else {
+      await db
+        .insert(userGroupMembers)
+        .values(userIds.map((userId) => ({ groupId: id, userId })))
+        .onConflictDoNothing()
+      await db
+        .delete(userGroupMembers)
+        .where(and(eq(userGroupMembers.groupId, id), notInArray(userGroupMembers.userId, userIds)))
     }
     await db.update(userGroups).set({ updatedAt: new Date() }).where(eq(userGroups.id, id))
     return res.json({ ok: true, count: userIds.length })

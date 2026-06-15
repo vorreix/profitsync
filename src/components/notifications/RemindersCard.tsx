@@ -220,6 +220,13 @@ function ReminderDialog({
   const { getToken } = useAuth()
   const weekdayNames = useWeekdayNames()
 
+  // Open AFTER mount (false → true) so the shared Dialog's useBackClose sees a real
+  // open transition — mounting already-open makes its StrictMode cleanup close it.
+  const [open, setOpen] = useState(false)
+  useEffect(() => {
+    setOpen(true)
+  }, [])
+
   const [label, setLabel] = useState(reminder?.label ?? "")
   const [enabled, setEnabled] = useState(reminder?.enabled ?? true)
   const [times, setTimes] = useState<string[]>(reminder?.schedule?.times?.length ? reminder.schedule.times : ["09:00"])
@@ -261,7 +268,7 @@ function ReminderDialog({
   }
 
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose() }}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{reminder ? t("reminders.edit_reminder") : t("reminders.new_reminder")}</DialogTitle>

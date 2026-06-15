@@ -116,3 +116,11 @@ adding a parallel `?add=1` — no TransactionsPage change needed.
   build, ESM-extension + boot prod-parity. **Deferred:** live browser walkthrough of the
   new UIs (needs `vercel dev` + Clerk login + DB) and an end-to-end cron→push delivery
   test (needs VAPID + the worker/pinger live) — both to do on a deploy.
+- 2026-06-14: Adversarial review (4-dimension workflow + per-finding verification).
+  Branch `notif3-07-review-fixes` fixes the 3 confirmed real bugs: (A) recurring
+  broadcasts only delivered once — the per-user dedupe key now includes the occurrence
+  (cron passes the scheduled fire instant); (B) the user-group members PUT could empty a
+  group on a partial write — now insert-first (onConflictDoNothing) then prune; (C)
+  editing a "specific users" broadcast wiped the selection — now hydrated from the stored
+  ids. Two flagged items were false positives (a Date/string type confusion disproved by
+  typecheck; a missing-404 already covered by the ownership pre-check).
