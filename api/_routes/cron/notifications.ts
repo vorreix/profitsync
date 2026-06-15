@@ -53,38 +53,57 @@ export async function runNotificationTick(now: Date = new Date()): Promise<{ rem
     .from(broadcasts)
     .where(and(eq(broadcasts.status, "scheduled"), lte(broadcasts.nextFireAt, now)))
   for (const b of due) {
-    const result = await deliverBroadcast({
-      id: b.id,
-      title: b.title,
-      body: b.body,
-      imageUrl: b.imageUrl,
-      link: b.link,
-      linkType: b.linkType,
-      category: b.category,
-      importance: b.importance,
-      audience: b.audience as BroadcastAudience,
-    })
-    const prev = (b.stats ?? {}) as BroadcastStats
-    const stats: BroadcastStats = { delivered: (prev.delivered ?? 0) + result.delivered }
+    // Atomically CLAIM the broadcast (scheduled → sending) before delivering.
+    // If 0 rows update, it was cancelled or deleted between the select above and
+    // now — so a broadcast the admin cancels/deletes right up to its trigger is
+    // NEVER sent. The guard is the WHERE status='scheduled'.
+    const [claimed] = await db
+      .update(broadcasts)
+      .set({ status: "sending", updatedAt: now })
+      .where(and(eq(broadcasts.id, b.id), eq(broadcasts.status, "scheduled")))
+      .returning()
+    if (!claimed) continue // cancelled/deleted concurrently → skip
 
-    const schedule = b.schedule as BroadcastSchedule
-    if (schedule.type === "recurring") {
-      const next = nextRecurringFire(schedule.recurring, b.nextFireAt ?? now)
-      if (next) {
-        await db.update(broadcasts).set({ nextFireAt: next, stats, sentAt: now, updatedAt: now }).where(eq(broadcasts.id, b.id))
+    const schedule = claimed.schedule as BroadcastSchedule
+    // Occurrence = this fire's scheduled instant: stable across retries of the
+    // same tick, distinct for the next recurrence (so each occurrence delivers).
+    const occurrence = (claimed.nextFireAt ?? now).toISOString()
+    try {
+      const result = await deliverBroadcast(
+        {
+          id: claimed.id,
+          title: claimed.title,
+          body: claimed.body,
+          imageUrl: claimed.imageUrl,
+          link: claimed.link,
+          linkType: claimed.linkType,
+          category: claimed.category,
+          importance: claimed.importance,
+          audience: claimed.audience as BroadcastAudience,
+        },
+        { occurrence },
+      )
+      const prev = (claimed.stats ?? {}) as BroadcastStats
+      const stats: BroadcastStats = { delivered: (prev.delivered ?? 0) + result.delivered }
+
+      if (schedule.type === "recurring") {
+        const next = nextRecurringFire(schedule.recurring, claimed.nextFireAt ?? now)
+        if (next) {
+          // Re-arm for the next occurrence (back to scheduled).
+          await db.update(broadcasts).set({ status: "scheduled", nextFireAt: next, stats, sentAt: now, updatedAt: now }).where(eq(broadcasts.id, claimed.id))
+        } else {
+          await db.update(broadcasts).set({ status: "sent", nextFireAt: null, sentAt: now, stats, updatedAt: now }).where(eq(broadcasts.id, claimed.id))
+        }
       } else {
-        await db
-          .update(broadcasts)
-          .set({ status: "sent", nextFireAt: null, sentAt: now, stats, updatedAt: now })
-          .where(eq(broadcasts.id, b.id))
+        await db.update(broadcasts).set({ status: "sent", nextFireAt: null, sentAt: now, stats, updatedAt: now }).where(eq(broadcasts.id, claimed.id))
       }
-    } else {
-      await db
-        .update(broadcasts)
-        .set({ status: "sent", nextFireAt: null, sentAt: now, stats, updatedAt: now })
-        .where(eq(broadcasts.id, b.id))
+      firedBroadcasts++
+    } catch (err) {
+      // Delivery failed — re-arm so the next tick retries (per-user dedupe makes
+      // re-delivery safe). Never leave it stuck in 'sending'.
+      console.error("[cron/notifications] broadcast delivery failed", claimed.id, err)
+      await db.update(broadcasts).set({ status: "scheduled", updatedAt: now }).where(eq(broadcasts.id, claimed.id))
     }
-    firedBroadcasts++
   }
 
   return { reminders: firedReminders, broadcasts: firedBroadcasts }

@@ -97,6 +97,10 @@ import adminWorker from "./_routes/admin/worker.js"
 import adminUserGroups from "./_routes/admin/user-groups.js"
 import adminUserGroupById from "./_routes/admin/user-groups/[id].js"
 import adminUserGroupMembers from "./_routes/admin/user-groups/[id]/members.js"
+import adminBroadcasts from "./_routes/admin/broadcasts.js"
+import adminBroadcastRunDue from "./_routes/admin/broadcasts/run-due.js"
+import adminBroadcastById from "./_routes/admin/broadcasts/[id].js"
+import adminBroadcastSend from "./_routes/admin/broadcasts/[id]/send.js"
 import adminUsers from "./_routes/admin/users.js"
 import adminUserDetail from "./_routes/admin/user-detail.js"
 import adminClients from "./_routes/admin/clients.js"
@@ -230,6 +234,10 @@ const routes: RoutePattern<ApiHandler>[] = [
   { segments: ["admin", "user-groups"], handler: adminUserGroups },
   { segments: ["admin", "user-groups", ":id"], handler: adminUserGroupById },
   { segments: ["admin", "user-groups", ":id", "members"], handler: adminUserGroupMembers },
+  { segments: ["admin", "broadcasts"], handler: adminBroadcasts },
+  { segments: ["admin", "broadcasts", "run-due"], handler: adminBroadcastRunDue },
+  { segments: ["admin", "broadcasts", ":id"], handler: adminBroadcastById },
+  { segments: ["admin", "broadcasts", ":id", "send"], handler: adminBroadcastSend },
   { segments: ["admin", "users"], handler: adminUsers },
   { segments: ["admin", "user-detail"], handler: adminUserDetail },
   { segments: ["admin", "clients"], handler: adminClients },
