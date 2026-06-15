@@ -53,6 +53,16 @@ restart: ## Restart just the worker service
 rebuild: ## Rebuild the image + recreate the containers
 	$(call compose, up -d --build --force-recreate)
 
+.PHONY: up-proxy
+up-proxy: env ## Start the stack WITH the Caddy HTTPS proxy (prod; needs WORKER_DOMAIN + DNS + ports 80/443)
+	@echo "→ starting $(WORKER_PROJECT) + Caddy TLS proxy..."
+	$(call compose, --profile proxy up -d --build)
+	@echo "✓ up — Caddy is fronting https://$$(grep -E '^WORKER_DOMAIN=' $(DEPLOY_DIR)/.env | cut -d= -f2 || echo worker.profitsync.net)"
+
+.PHONY: proxy-logs
+proxy-logs: ## Follow the Caddy reverse-proxy logs (cert issuance, requests)
+	$(call compose, --profile proxy logs -f caddy)
+
 .PHONY: nuke
 nuke: ## Stop + remove containers AND volumes (DESTROYS the queue DB + logs)
 	$(call compose, down -v)

@@ -72,18 +72,27 @@ curl localhost:8080/healthz             # {"status":"ok"}
 On first boot the worker runs its migrations (jobs + schedules tables) and starts
 the worker pool, scheduler, and HTTP API.
 
-## 5. Put it behind TLS (recommended)
+## 5. Put it behind TLS — bundled Caddy (recommended)
 
-Front the worker with a reverse proxy so it's reachable at a real host over HTTPS.
-**Caddy** is the least effort (automatic certs):
-```caddyfile
-# /etc/caddy/Caddyfile
-worker.profitsync.net {
-    reverse_proxy 127.0.0.1:8080
-}
-```
-Your `WORKER_BASE_URL` is then `https://worker.profitsync.net`. (Traefik/nginx work
-too.) Point the subdomain's DNS at the host first.
+A **Caddy** reverse proxy is bundled in the compose under an opt-in `proxy` profile
+(`worker/deploy/Caddyfile`). It terminates HTTPS for your domain and **auto-obtains +
+auto-renews** the Let's Encrypt cert — no certbot, no renewal cron (this is why Caddy
+is preferred over a hand-rolled nginx).
+
+1. Point DNS: an **A/AAAA record** for `worker.profitsync.net` → this host. Open
+   inbound **80 + 443**.
+2. In `deploy/.env` set `WORKER_DOMAIN=worker.profitsync.net` (and optionally
+   `CADDY_ACME_EMAIL=you@…`).
+3. Start the stack **with** the proxy:
+   ```bash
+   make -C worker up-proxy        # or: docker compose --profile proxy up -d --build
+   ```
+   Caddy issues the cert on first boot (`make -C worker proxy-logs` to watch it).
+4. Your `WORKER_BASE_URL` is then `https://worker.profitsync.net`.
+
+Caddy reaches the worker over the compose network (`worker:8080`), so once it's up,
+**firewall the public `8656`** (`ufw deny 8656`) — the worker should only be reachable
+via HTTPS. (Prefer nginx/Traefik? They work too, but you manage certs yourself.)
 
 ## 6. Connect the app (Vercel)
 
@@ -151,13 +160,35 @@ comfortably **above** `WORKER_JOB_TIMEOUT`.
 
 ## 10. Security checklist
 
-- [ ] Worker reached over **HTTPS** only (TLS reverse proxy); bearer never on plain HTTP.
-- [ ] `WORKER_API_TOKEN` + `PROFITSYNC_SERVICE_TOKEN` are long random secrets, not committed.
-- [ ] The worker's `:8080` is **not** open to the public — only the reverse proxy
-      (and ideally only Vercel's egress / your IPs) can reach it. Firewall the rest.
-- [ ] The worker DB (`postgres`) is **not** published to the host's public interface
-      (it isn't, by default — it's only on the compose network).
+**Ports (what's exposed where):**
+
+| Service | Host exposure | Notes |
+|---|---|---|
+| `caddy` | **80 + 443 public** (proxy profile) | Required — the HTTPS front door. Keep 80 (below). |
+| `worker` | **`127.0.0.1:8656` only** (default `WORKER_BIND`) | NOT internet-facing; Caddy reaches it over the compose network. |
+| `postgres` | **none** (compose network only) | Never published to the host. |
+
+- [ ] Worker reached over **HTTPS** only (Caddy); the worker port binds to
+      `127.0.0.1` (`WORKER_BIND` default) — don't set it to `0.0.0.0` behind the proxy.
+- [ ] `WORKER_API_TOKEN` + `PROFITSYNC_SERVICE_TOKEN` are long random secrets (`openssl
+      rand -hex 32`), identical on the worker and Vercel, never committed.
+- [ ] **Firewall (ufw):** allow only `22` (SSH), `80`, `443`; deny the rest. Even though
+      the worker binds to localhost, an explicit `ufw deny 8656` is good defense-in-depth.
+      ```bash
+      sudo ufw allow 22 && sudo ufw allow 80 && sudo ufw allow 443 && sudo ufw enable
+      ```
+- [ ] The worker DB (`postgres`) is **not** published to the host (it isn't, by default).
 - [ ] `.env` is `chmod 600` and gitignored.
+- [ ] Only `/healthz` is unauthenticated (harmless `{"status":"ok"}`); every `/v1/*`
+      route is bearer-authed with a constant-time compare.
+
+**Do you need port 80?** Keep it. Caddy uses `:80` for (1) the HTTP→HTTPS redirect and
+(2) the Let's Encrypt **HTTP-01** challenge (the most reliable cert path). With 80
+closed Caddy must fall back to **TLS-ALPN-01** on 443 — workable but more fragile, and
+anyone hitting `http://` gets a connection error instead of a redirect. Port 80 here
+serves *only* a redirect + the ACME challenge path, so it's not a meaningful attack
+surface. (Optional extra hardening: Caddy `rate_limit`/security-headers — needs a custom
+Caddy build; the worker's bearer auth + bounded pool already bound abuse.)
 
 ## 11. Troubleshooting
 
