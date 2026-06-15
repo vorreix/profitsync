@@ -350,6 +350,21 @@ export type FamilyHub = {
   }
 }
 
+/** Payload from GET /api/family/contributions — household funding by member. */
+export type FamilyContributions = {
+  members: Array<{
+    user_id: string
+    full_name: string | null
+    email: string | null
+    avatar_src?: string | null
+    contributed: number
+    received: number
+    net: number
+  }>
+  total_contributed: number
+  total_disbursed: number
+}
+
 export type Organization = {
   id: string
   owner_user_id: string

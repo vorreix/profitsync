@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { and, eq, inArray } from "drizzle-orm"
 import { db } from "../../../src/lib/db/index.js"
 import { wealthAccounts } from "../../../src/lib/db/schema.js"
-import { canWrite, isPersonalAccount, requireAuth } from "../../_lib/auth.js"
+import { canWrite, canUseSpaces, requireAuth } from "../../_lib/auth.js"
 
 // POST /api/spaces/reorder — persist the drag-to-reorder Space order.
 // Body: { ids: string[] } in display order; each id's `position` is set to its
@@ -14,7 +14,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { userId, orgId, role } = ctx
 
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" })
-  if (!isPersonalAccount(ctx)) return res.status(403).json({ error: "Spaces are available on personal accounts only" })
+  if (!canUseSpaces(ctx)) return res.status(403).json({ error: "Spaces aren't available on this account type" })
   if (!canWrite(role)) return res.status(403).json({ error: "Forbidden" })
 
   const body = req.body as { ids?: unknown }
