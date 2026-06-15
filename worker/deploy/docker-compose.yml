@@ -74,7 +74,8 @@ services:
       - caddy_data:/data # persists issued certs across restarts (avoid re-issue rate limits)
       - caddy_config:/config
     depends_on:
-      - worker
+      worker:
+        condition: service_healthy
 
 volumes:
   worker_pgdata:
