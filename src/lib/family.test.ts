@@ -5,6 +5,7 @@ import {
   orgRoleForFamilyRole,
   isHead,
   sumContributionsByMember,
+  maxByKey,
 } from "./family"
 
 describe("accountTypeAllows — family", () => {
@@ -73,5 +74,19 @@ describe("sumContributionsByMember", () => {
 
   it("returns empty for no attributed legs", () => {
     expect(sumContributionsByMember([{ familyPartyUserId: null, type: "incoming", amount: 5 }])).toEqual([])
+  })
+})
+
+describe("maxByKey (premium cascade merge)", () => {
+  it("takes the higher limit per key (family paid beats own free)", () => {
+    const free = { bankAccounts: 1, spaces: 1, clients: 10 }
+    const paid = { bankAccounts: 20, spaces: 7, clients: 1000 }
+    expect(maxByKey(free, paid)).toEqual({ bankAccounts: 20, spaces: 7, clients: 1000 })
+  })
+
+  it("never lowers a value the member already had", () => {
+    const own = { a: 5, b: 100 }
+    const family = { a: 20, b: 2 }
+    expect(maxByKey(own, family)).toEqual({ a: 20, b: 100 })
   })
 })
