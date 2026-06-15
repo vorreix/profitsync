@@ -317,6 +317,39 @@ export function accountTypeAllows(
   }
 }
 
+export type FamilyMember = {
+  id: string
+  user_id: string
+  role: OrgRole
+  family_role: "head" | "member" | "viewer"
+  email: string | null
+  full_name: string | null
+  avatar_src?: string | null
+  created_at: string
+}
+
+/** Payload from GET /api/family — the active family workspace's hub. */
+export type FamilyHub = {
+  family: {
+    id: string
+    name: string
+    slug: string
+    currency: string
+    logo_src?: string | null
+    role: OrgRole
+  }
+  is_head: boolean
+  members: FamilyMember[]
+  summary: {
+    available: number
+    saved: number
+    net_worth: number
+    bank_count: number
+    space_count: number
+    member_count: number
+  }
+}
+
 export type Organization = {
   id: string
   owner_user_id: string
