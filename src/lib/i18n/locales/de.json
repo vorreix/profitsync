@@ -60,7 +60,15 @@
     "upgradeTitle": "Auf Premium upgraden",
     "upgradeSubtitle": "Mehr Kunden, Anhänge & Speicher",
     "createOrganization": "Organisation erstellen",
-    "manageOrganizations": "Organisationen verwalten"
+    "manageOrganizations": "Organisationen verwalten",
+    "loading": "Loading…",
+    "switchOrganization": "Switch organization",
+    "searchOrganizations": "Search organizations…",
+    "noOrganizationsMatch": "No organizations match",
+    "roleOwner": "owner",
+    "roleAdmin": "admin",
+    "roleEditor": "editor",
+    "roleViewer": "viewer"
   },
   "forgotPassword": {
     "linkLabel": "Passwort vergessen?",
@@ -170,7 +178,8 @@
     "cardWealth": "Vermögensübersicht",
     "cardChart": "Diagramm",
     "cardBreakdown": "Top-Aufschlüsselung",
-    "cardLatest": "Neueste Transaktionen"
+    "cardLatest": "Neueste Transaktionen",
+    "openFilters": "Open dashboard filters"
   },
   "chart": {
     "incoming": "Eingang",

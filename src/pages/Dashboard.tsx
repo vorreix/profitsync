@@ -1323,7 +1323,7 @@ export function Dashboard() {
           <FilterSheet
             count={appliedFilterCount}
             onClear={clearAllFilters}
-            triggerLabel="Open dashboard filters"
+            triggerLabel={t("dashboard.openFilters")}
           >
             {!isPersonal && (
               <FilterSection label={t("filters.client")}>

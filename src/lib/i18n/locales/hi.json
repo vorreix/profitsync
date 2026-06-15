@@ -60,7 +60,15 @@
     "upgradeTitle": "प्रीमियम में अपग्रेड करें",
     "upgradeSubtitle": "अधिक ग्राहक, अटैचमेंट और स्टोरेज",
     "createOrganization": "संगठन बनाएं",
-    "manageOrganizations": "संगठन प्रबंधित करें"
+    "manageOrganizations": "संगठन प्रबंधित करें",
+    "loading": "Loading…",
+    "switchOrganization": "Switch organization",
+    "searchOrganizations": "Search organizations…",
+    "noOrganizationsMatch": "No organizations match",
+    "roleOwner": "owner",
+    "roleAdmin": "admin",
+    "roleEditor": "editor",
+    "roleViewer": "viewer"
   },
   "forgotPassword": {
     "linkLabel": "अपना पासवर्ड भूल गए?",
@@ -170,7 +178,8 @@
     "cardWealth": "संपत्ति अवलोकन",
     "cardChart": "चार्ट",
     "cardBreakdown": "शीर्ष विवरण",
-    "cardLatest": "हाल के लेन-देन"
+    "cardLatest": "हाल के लेन-देन",
+    "openFilters": "Open dashboard filters"
   },
   "chart": {
     "incoming": "आवक",

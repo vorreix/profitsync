@@ -60,7 +60,15 @@
     "upgradeTitle": "الترقية إلى بريميوم",
     "upgradeSubtitle": "المزيد من العملاء والمرفقات والتخزين",
     "createOrganization": "إنشاء مؤسسة",
-    "manageOrganizations": "إدارة المؤسسات"
+    "manageOrganizations": "إدارة المؤسسات",
+    "loading": "Loading…",
+    "switchOrganization": "Switch organization",
+    "searchOrganizations": "Search organizations…",
+    "noOrganizationsMatch": "No organizations match",
+    "roleOwner": "owner",
+    "roleAdmin": "admin",
+    "roleEditor": "editor",
+    "roleViewer": "viewer"
   },
   "forgotPassword": {
     "linkLabel": "هل نسيت كلمة المرور؟",
@@ -170,7 +178,8 @@
     "cardWealth": "نظرة عامة على الثروة",
     "cardChart": "الرسم البياني",
     "cardBreakdown": "أهم البنود",
-    "cardLatest": "أحدث المعاملات"
+    "cardLatest": "أحدث المعاملات",
+    "openFilters": "Open dashboard filters"
   },
   "chart": {
     "incoming": "وارد",

@@ -60,7 +60,15 @@
     "upgradeTitle": "பிரீமியத்திற்கு மேம்படுத்து",
     "upgradeSubtitle": "அதிக வாடிக்கையாளர்கள், இணைப்புகள் & சேமிப்பகம்",
     "createOrganization": "நிறுவனம் உருவாக்கு",
-    "manageOrganizations": "நிறுவனங்களை நிர்வகி"
+    "manageOrganizations": "நிறுவனங்களை நிர்வகி",
+    "loading": "Loading…",
+    "switchOrganization": "Switch organization",
+    "searchOrganizations": "Search organizations…",
+    "noOrganizationsMatch": "No organizations match",
+    "roleOwner": "owner",
+    "roleAdmin": "admin",
+    "roleEditor": "editor",
+    "roleViewer": "viewer"
   },
   "forgotPassword": {
     "linkLabel": "உங்கள் கடவுடை மறந்துவிட்டீர்களா?",
@@ -170,7 +178,8 @@
     "cardWealth": "சொத்து மேலோட்டம்",
     "cardChart": "விளக்கப்படம்",
     "cardBreakdown": "முக்கிய பிரிவுகள்",
-    "cardLatest": "சமீபத்திய பரிவர்த்தனைகள்"
+    "cardLatest": "சமீபத்திய பரிவர்த்தனைகள்",
+    "openFilters": "Open dashboard filters"
   },
   "chart": {
     "incoming": "வரவு",
