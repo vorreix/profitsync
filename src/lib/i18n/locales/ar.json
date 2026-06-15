@@ -275,7 +275,15 @@
     "cashQuestionBusiness": "كم من النقد المتوفر لدى الشركة؟",
     "cashHintBusiness": "النقد المتوفر لدى شركتك.",
     "newOrgTitle": "إنشاء شركة جديدة",
-    "newOrgSubtitle": "أعطها اسمًا واختر عملة — يمكنك تغييرها لاحقًا."
+    "newOrgSubtitle": "أعطها اسمًا واختر عملة — يمكنك تغييرها لاحقًا.",
+    "familyTitle": "Family",
+    "familyTagline": "Share a household, keep your money private",
+    "familyPoint1": "Shared household accounts & spaces",
+    "familyPoint2": "Everyone contributes — see who paid what",
+    "familyPoint3": "Your personal accounts stay private",
+    "familyNameLabel": "Family name",
+    "familyNamePlaceholder": "The Smiths",
+    "familyNameOptional": "You can change this later"
   },
   "transactions": {
     "add": "إضافة",

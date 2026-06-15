@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { Navigate, useNavigate } from "react-router-dom"
+import { Navigate, useNavigate, useSearchParams } from "react-router-dom"
 import { useAuth, useUser } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
@@ -63,11 +63,17 @@ function OnboardingInner() {
   const { t } = useTranslation()
   const { user } = useUser()
   const { getToken } = useAuth()
+  const navigate = useNavigate()
   useSyncProfileLanguage()
   const { profile, needsOnboarding, loading, refresh } = useOrg()
 
-  const [phase, setPhase] = useState<Phase>("type")
-  const [accountType, setAccountType] = useState<AccountType | null>(null)
+  // Existing (already-onboarded) users reach the family flow via `?family=1` from
+  // the org switcher — preselect Family and jump straight to its details.
+  const [searchParams] = useSearchParams()
+  const familyMode = searchParams.get("family") === "1"
+
+  const [phase, setPhase] = useState<Phase>(familyMode ? "details" : "type")
+  const [accountType, setAccountType] = useState<AccountType | null>(familyMode ? "family" : null)
   const [companyName, setCompanyName] = useState("")
   const [submitting, setSubmitting] = useState(false)
   const [currency, setCurrency] = useState(() => detectDefaultCurrency())
@@ -84,7 +90,7 @@ function OnboardingInner() {
       if (!token) return
       const result = await apiPost<{ organization_id: string; account_type: AccountType }>("/api/onboarding", token, {
         account_type: accountType,
-        company_name: accountType === "business" ? companyName : undefined,
+        company_name: accountType === "business" || accountType === "family" ? companyName : undefined,
         currency,
       })
       setActiveOrgId(result.organization_id)
@@ -104,8 +110,10 @@ function OnboardingInner() {
       </div>
     )
   }
-  // Already onboarded and not mid-flow → bounce out (no flash) before the form shows.
-  if (profile && !needsOnboarding && phase === "type") return <Navigate to="/dashboard" replace />
+  // Already onboarded and not mid-flow → bounce out (no flash) before the form
+  // shows. Family-mode re-entry is exempt: an onboarded user is intentionally
+  // here to start a family.
+  if (profile && !needsOnboarding && phase === "type" && !familyMode) return <Navigate to="/dashboard" replace />
 
   return (
     <OnboardingShell progress={PROGRESS[phase]}>
@@ -117,8 +125,8 @@ function OnboardingInner() {
             </p>
             <h1 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">{t("onboarding.q1Title")}</h1>
             <p className="mt-1.5 text-sm text-muted-foreground sm:text-base">{t("onboarding.q1Subtitle")}</p>
-            <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
-              {(["personal", "business"] as AccountType[]).map((type, i) => (
+            <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
+              {(["personal", "business", "family"] as AccountType[]).map((type, i) => (
                 <div key={type} className="motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-4 motion-safe:duration-500" style={{ animationDelay: `${120 + i * 90}ms`, animationFillMode: "backwards" }}>
                   <ChoiceCard type={type} selected={accountType === type} onSelect={() => setAccountType(type)} />
                 </div>
@@ -139,11 +147,22 @@ function OnboardingInner() {
             <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{t("onboarding.detailsTitle")}</h1>
             <p className="mt-1.5 text-sm text-muted-foreground sm:text-base">{t("onboarding.detailsSubtitle")}</p>
             <div className="mt-6 space-y-5">
-              {accountType === "business" && (
+              {(accountType === "business" || accountType === "family") && (
                 <div>
-                  <label htmlFor="companyName" className="text-sm font-medium">{t("onboarding.companyNameLabel")}</label>
-                  <Input id="companyName" value={companyName} autoFocus onChange={(e) => setCompanyName(e.target.value)} placeholder={t("onboarding.companyNamePlaceholder")} className="mt-1.5 h-11" />
-                  <p className="mt-1 text-xs text-muted-foreground">{t("onboarding.companyNameOptional")}</p>
+                  <label htmlFor="companyName" className="text-sm font-medium">
+                    {accountType === "family" ? t("onboarding.familyNameLabel") : t("onboarding.companyNameLabel")}
+                  </label>
+                  <Input
+                    id="companyName"
+                    value={companyName}
+                    autoFocus
+                    onChange={(e) => setCompanyName(e.target.value)}
+                    placeholder={accountType === "family" ? t("onboarding.familyNamePlaceholder") : t("onboarding.companyNamePlaceholder")}
+                    className="mt-1.5 h-11"
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {accountType === "family" ? t("onboarding.familyNameOptional") : t("onboarding.companyNameOptional")}
+                  </p>
                 </div>
               )}
               <div>
@@ -159,7 +178,7 @@ function OnboardingInner() {
             <Button size="lg" className="h-12 w-full text-base" disabled={submitting} onClick={createWorkspace}>
               {submitting ? <Loader2 className="size-4 animate-spin" /> : <>{t("onboarding.continue")} <ArrowRight className="size-4" /></>}
             </Button>
-            <button type="button" onClick={() => setPhase("type")} disabled={submitting} className="pressable mx-auto inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+            <button type="button" onClick={() => (familyMode ? navigate("/dashboard") : setPhase("type"))} disabled={submitting} className="pressable mx-auto inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
               <ArrowLeft className="size-4" /> {t("onboarding.back")}
             </button>
           </div>
@@ -171,7 +190,7 @@ function OnboardingInner() {
       )}
 
       {phase === "plan" && accountType && (
-        <PlanStep accountType={accountType} onBack={() => setPhase("money")} redirectTo="/dashboard" />
+        <PlanStep accountType={accountType} onBack={() => setPhase("money")} redirectTo={accountType === "family" ? "/family" : "/dashboard"} />
       )}
     </OnboardingShell>
   )

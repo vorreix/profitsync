@@ -275,7 +275,15 @@
     "cashQuestionBusiness": "ബിസിനസിന്റെ കൈയിൽ എത്ര പണമുണ്ട്?",
     "cashHintBusiness": "നിങ്ങളുടെ കമ്പനിയുടെ കൈയിലുള്ള പണം.",
     "newOrgTitle": "ഒരു പുതിയ കമ്പനി സൃഷ്ടിക്കുക",
-    "newOrgSubtitle": "പേര് നൽകി ഒരു കറൻസി തിരഞ്ഞെടുക്കുക — പിന്നീട് മാറ്റാം."
+    "newOrgSubtitle": "പേര് നൽകി ഒരു കറൻസി തിരഞ്ഞെടുക്കുക — പിന്നീട് മാറ്റാം.",
+    "familyTitle": "Family",
+    "familyTagline": "Share a household, keep your money private",
+    "familyPoint1": "Shared household accounts & spaces",
+    "familyPoint2": "Everyone contributes — see who paid what",
+    "familyPoint3": "Your personal accounts stay private",
+    "familyNameLabel": "Family name",
+    "familyNamePlaceholder": "The Smiths",
+    "familyNameOptional": "You can change this later"
   },
   "transactions": {
     "add": "ചേർക്കുക",

@@ -3,7 +3,7 @@ import { and, asc, eq } from "drizzle-orm"
 import { CURRENCY_LIST } from "../../src/lib/currencies.js"
 import { db } from "../../src/lib/db/index.js"
 import { organizations, userProfiles } from "../../src/lib/db/schema.js"
-import { createOrgForUser, ensurePersonalOrg, getUserId } from "../_lib/auth.js"
+import { createOrgForUser, ensurePersonalOrg, getUserFamilyOrgId, getUserId } from "../_lib/auth.js"
 
 const VALID_CURRENCIES = new Set(CURRENCY_LIST.map((c) => c.code))
 
@@ -37,8 +37,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     company_name?: string
     currency?: string
   }
-  if (account_type !== "personal" && account_type !== "business") {
-    return res.status(400).json({ error: "account_type must be 'personal' or 'business'" })
+  if (account_type !== "personal" && account_type !== "business" && account_type !== "family") {
+    return res.status(400).json({ error: "account_type must be 'personal', 'business', or 'family'" })
   }
   const resolvedCurrency = currency?.toUpperCase()
   if (resolvedCurrency !== undefined && !VALID_CURRENCIES.has(resolvedCurrency)) {
@@ -52,6 +52,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     orgId = await ensurePersonalOrg(userId)
     if (resolvedCurrency) {
       await db.update(organizations).set({ currency: resolvedCurrency, updatedAt: new Date() }).where(eq(organizations.id, orgId))
+    }
+  } else if (account_type === "family") {
+    // A family member keeps a PRIVATE personal account (created here) plus the
+    // shared family workspace. If already in a family, just finish into it.
+    const existingFamily = await getUserFamilyOrgId(userId)
+    if (existingFamily) {
+      orgId = existingFamily
+    } else {
+      await ensurePersonalOrg(userId)
+      const name = company_name?.trim() || "My Family"
+      const created = await createOrgForUser({
+        userId,
+        name,
+        slug: slugify(name),
+        isPersonal: false,
+        accountType: "family",
+        currency: resolvedCurrency,
+      })
+      orgId = created.id
+      await db.update(userProfiles).set({ familyOrgId: orgId, updatedAt: new Date() }).where(eq(userProfiles.id, userId))
     }
   } else {
     // Reuse the user's existing business workspace if they have one.
