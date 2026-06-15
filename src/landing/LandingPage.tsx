@@ -7,6 +7,7 @@ import { Features } from "./sections/Features"
 import { HowItWorks } from "./sections/HowItWorks"
 import { AnalyticsTeaser } from "./sections/AnalyticsTeaser"
 import { ValueBand } from "./sections/ValueBand"
+import { Family } from "./sections/Family"
 import { Security } from "./sections/Security"
 import { Pricing } from "./sections/Pricing"
 import { Referral } from "./sections/Referral"
@@ -36,6 +37,7 @@ export function LandingPage() {
         <HowItWorks />
         <AnalyticsTeaser />
         <ValueBand />
+        <Family />
         <Security />
         <Pricing />
         <Referral />
