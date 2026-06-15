@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { and, asc, count, eq, isNull, max, sql } from "drizzle-orm"
 import { db, serialize } from "../../src/lib/db/index.js"
 import { transactions, wealthAccounts } from "../../src/lib/db/schema.js"
-import { canWrite, isPersonalAccount, requireAuth } from "../_lib/auth.js"
+import { canWrite, canUseSpaces, requireAuth } from "../_lib/auth.js"
 import { logAudit } from "../_lib/audit.js"
 import { checkSpaceQuota } from "../_lib/quota.js"
 import { materializeDueRecurring } from "../_lib/recurring-materialize.js"
@@ -19,8 +19,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!ctx) return
   const { userId, orgId, role } = ctx
 
-  // Spaces are a personal-profile feature; business workspaces never have them.
-  if (!isPersonalAccount(ctx)) return res.status(403).json({ error: "Spaces are available on personal accounts only" })
+  // Spaces are a savings feature for personal accounts and families (shared
+  // family spaces). Business workspaces never have them.
+  if (!canUseSpaces(ctx)) return res.status(403).json({ error: "Spaces aren't available on this account type" })
 
   if (req.method === "GET") {
     // Materialize any due auto-save (recurring transfer) occurrences first, so a

@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { and, count, eq, isNull } from "drizzle-orm"
 import { db, serialize } from "../../../src/lib/db/index.js"
 import { recurringRules, transactions, wealthAccountAttachments, wealthAccounts } from "../../../src/lib/db/schema.js"
-import { canDelete, canWrite, isPersonalAccount, requireAuth } from "../../_lib/auth.js"
+import { canDelete, canWrite, canUseSpaces, requireAuth } from "../../_lib/auth.js"
 import { logAudit } from "../../_lib/audit.js"
 import { checkSpaceQuota } from "../../_lib/quota.js"
 import { parseGoal, parseTargetDate, spaceFields } from "../../_lib/spaces.js"
@@ -18,7 +18,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { userId, orgId, role } = ctx
   const { id } = req.query as { id: string }
 
-  if (!isPersonalAccount(ctx)) return res.status(403).json({ error: "Spaces are available on personal accounts only" })
+  if (!canUseSpaces(ctx)) return res.status(403).json({ error: "Spaces aren't available on this account type" })
 
   const [space] = await db
     .select()

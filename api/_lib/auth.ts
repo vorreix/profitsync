@@ -4,7 +4,7 @@ import { verifyToken } from "@clerk/backend"
 import { and, asc, eq, isNull } from "drizzle-orm"
 import { db } from "../../src/lib/db/index.js"
 import { clients, organizations, organizationMembers, subscriptions, userProfiles } from "../../src/lib/db/schema.js"
-import type { AccountType } from "../../src/lib/types.js"
+import { accountTypeAllows, type AccountType } from "../../src/lib/types.js"
 
 export async function getUserId(req: VercelRequest): Promise<string | null> {
   const token = req.headers.authorization?.replace("Bearer ", "")
@@ -241,6 +241,14 @@ export function canDelete(role: string): boolean {
 /** A personal-account org cannot use business-only sections (clients, quotations, members). */
 export function isPersonalAccount(ctx: OrgAuth): boolean {
   return ctx.accountType === "personal"
+}
+
+/**
+ * Savings Spaces are available on personal accounts AND families (shared family
+ * spaces). Single source of truth: the account-type gate in src/lib/types.
+ */
+export function canUseSpaces(ctx: OrgAuth): boolean {
+  return accountTypeAllows(ctx.accountType, "spaces")
 }
 
 /**
