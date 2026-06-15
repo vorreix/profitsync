@@ -29,7 +29,12 @@ services:
       postgres:
         condition: service_healthy
     ports:
-      - "${WORKER_PORT:-8080}:8080"
+      # Bind to LOCALHOST by default — the worker is NOT exposed to the internet.
+      # Caddy (proxy profile) reaches it over the compose network (worker:8080),
+      # not this host port, so HTTPS still works. The 127.0.0.1 mapping is only for
+      # on-host debugging (curl 127.0.0.1:8656). To expose it directly without the
+      # proxy (NOT recommended), set WORKER_BIND=0.0.0.0 in .env + firewall the port.
+      - "${WORKER_BIND:-127.0.0.1}:${WORKER_PORT:-8080}:8080"
     volumes:
       # Persist + rotate logs across restarts (inspect: docker compose exec worker ls -la /app/logs).
       - worker_logs:/app/logs
