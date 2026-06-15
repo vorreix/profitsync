@@ -275,7 +275,15 @@
     "cashQuestionBusiness": "வணிகத்திடம் எவ்வளவு பணம் உள்ளது?",
     "cashHintBusiness": "உங்கள் நிறுவனத்தின் கையிருப்பு பணம்.",
     "newOrgTitle": "புதிய நிறுவனத்தை உருவாக்கவும்",
-    "newOrgSubtitle": "பெயரிட்டு ஒரு நாணயத்தைத் தேர்வுசெய்யவும் — பின்னர் மாற்றலாம்."
+    "newOrgSubtitle": "பெயரிட்டு ஒரு நாணயத்தைத் தேர்வுசெய்யவும் — பின்னர் மாற்றலாம்.",
+    "familyTitle": "Family",
+    "familyTagline": "Share a household, keep your money private",
+    "familyPoint1": "Shared household accounts & spaces",
+    "familyPoint2": "Everyone contributes — see who paid what",
+    "familyPoint3": "Your personal accounts stay private",
+    "familyNameLabel": "Family name",
+    "familyNamePlaceholder": "The Smiths",
+    "familyNameOptional": "You can change this later"
   },
   "transactions": {
     "add": "சேர்க்கவும்",

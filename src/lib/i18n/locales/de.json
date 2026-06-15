@@ -275,7 +275,15 @@
     "cashQuestionBusiness": "Wie viel Bargeld hat das Unternehmen zur Hand?",
     "cashHintBusiness": "Das Bargeld deines Unternehmens.",
     "newOrgTitle": "Neues Unternehmen erstellen",
-    "newOrgSubtitle": "Benenne es und wähle eine Währung — später änderbar."
+    "newOrgSubtitle": "Benenne es und wähle eine Währung — später änderbar.",
+    "familyTitle": "Family",
+    "familyTagline": "Share a household, keep your money private",
+    "familyPoint1": "Shared household accounts & spaces",
+    "familyPoint2": "Everyone contributes — see who paid what",
+    "familyPoint3": "Your personal accounts stay private",
+    "familyNameLabel": "Family name",
+    "familyNamePlaceholder": "The Smiths",
+    "familyNameOptional": "You can change this later"
   },
   "transactions": {
     "add": "Hinzufügen",

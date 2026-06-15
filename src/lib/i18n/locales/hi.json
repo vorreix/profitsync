@@ -275,7 +275,15 @@
     "cashQuestionBusiness": "व्यवसाय के पास कितनी नकदी उपलब्ध है?",
     "cashHintBusiness": "आपकी कंपनी की नकदी।",
     "newOrgTitle": "नई कंपनी बनाएं",
-    "newOrgSubtitle": "नाम दें और मुद्रा चुनें — आप इन्हें बाद में बदल सकते हैं।"
+    "newOrgSubtitle": "नाम दें और मुद्रा चुनें — आप इन्हें बाद में बदल सकते हैं।",
+    "familyTitle": "Family",
+    "familyTagline": "Share a household, keep your money private",
+    "familyPoint1": "Shared household accounts & spaces",
+    "familyPoint2": "Everyone contributes — see who paid what",
+    "familyPoint3": "Your personal accounts stay private",
+    "familyNameLabel": "Family name",
+    "familyNamePlaceholder": "The Smiths",
+    "familyNameOptional": "You can change this later"
   },
   "transactions": {
     "add": "जोड़ें",

@@ -2,7 +2,7 @@ import { useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
-import { Building2, Check, ChevronsUpDown, Plus, Search, Loader as Loader2, Sparkles } from "lucide-react"
+import { Building2, Check, ChevronsUpDown, HeartHandshake, Plus, Search, Loader as Loader2, Sparkles } from "lucide-react"
 import { useOrg } from "@/lib/org-context"
 import { isPaidPlanKey } from "@/lib/types"
 import { Button } from "@/components/ui/button"
@@ -13,7 +13,7 @@ import { EntityAvatar } from "@/components/EntityAvatar"
 export function OrgSwitcher() {
   const navigate = useNavigate()
   const { t } = useTranslation()
-  const { orgs, activeOrg, switchOrg, refresh, loading } = useOrg()
+  const { orgs, activeOrg, profile, switchOrg, refresh, loading } = useOrg()
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState("")
 
@@ -150,6 +150,12 @@ export function OrgSwitcher() {
             <Plus className="size-4" />
             <span className="text-sm">Create organization</span>
           </Button>
+          {profile && !profile.family_org_id && (
+            <Button variant="ghost" className="justify-start gap-2 px-2" onClick={() => { setOpen(false); navigate("/onboarding?family=1") }}>
+              <HeartHandshake className="size-4" />
+              <span className="text-sm">Start a family</span>
+            </Button>
+          )}
           <Button variant="ghost" className="justify-start gap-2 px-2" onClick={() => { setOpen(false); navigate("/organizations") }}>
             <Building2 className="size-4" />
             <span className="text-sm">Manage organizations</span>

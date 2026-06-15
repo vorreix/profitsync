@@ -275,7 +275,15 @@
     "cashQuestionBusiness": "Quanto contante ha l'azienda a disposizione?",
     "cashHintBusiness": "Il contante della tua azienda.",
     "newOrgTitle": "Crea una nuova azienda",
-    "newOrgSubtitle": "Dai un nome e scegli una valuta — puoi cambiarli in seguito."
+    "newOrgSubtitle": "Dai un nome e scegli una valuta — puoi cambiarli in seguito.",
+    "familyTitle": "Family",
+    "familyTagline": "Share a household, keep your money private",
+    "familyPoint1": "Shared household accounts & spaces",
+    "familyPoint2": "Everyone contributes — see who paid what",
+    "familyPoint3": "Your personal accounts stay private",
+    "familyNameLabel": "Family name",
+    "familyNamePlaceholder": "The Smiths",
+    "familyNameOptional": "You can change this later"
   },
   "transactions": {
     "add": "Aggiungi",
