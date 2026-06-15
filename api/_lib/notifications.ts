@@ -46,6 +46,13 @@ export type CreateNotificationInput = {
    * override a device that never subscribed or revoked permission).
    */
   important?: boolean
+  /**
+   * Default the web_push channel ON for this send when the cascade has no explicit
+   * opinion (still honours mute + an explicit opt-out). Used for admin broadcasts
+   * and a user's own reminders, which should push by default even though their
+   * category's push default is off.
+   */
+  pushDefault?: boolean
   /** Optional image URL forwarded to the push payload (broadcasts). */
   imageUrl?: string | null
 }
@@ -104,7 +111,7 @@ export async function createNotification(input: CreateNotificationInput): Promis
   // `important` notification (admin broadcast) bypasses the cascade entirely so a
   // muted recipient still gets it (at minimum in the bell).
   const showInApp = input.important || resolveChannelEnabled(cascade, category, "in_app")
-  const showPush = input.important || resolveChannelEnabled(cascade, category, "web_push")
+  const showPush = input.important || resolveChannelEnabled(cascade, category, "web_push", input.pushDefault)
   if (!showInApp && !showPush) return null
 
   // Dedupe for event-sourced notifications. A pre-check keeps the common path

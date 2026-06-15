@@ -38,6 +38,9 @@ export async function runNotificationTick(now: Date = new Date()): Promise<{ rem
       // Reuse the existing Add-Transaction deep link (?new=1) so clicking the
       // reminder opens the Add Transaction dialog on the Transactions page.
       link: "/transactions?new=1",
+      // The user explicitly created this reminder — push it by default (honours
+      // mute + an explicit opt-out).
+      pushDefault: true,
       dedupeKey: `reminder:${r.id}:${slot}`,
     })
     await db

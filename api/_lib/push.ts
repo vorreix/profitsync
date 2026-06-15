@@ -40,26 +40,37 @@ async function getWebPush(): Promise<typeof WebPushType> {
  * endpoints (404/410) are pruned. Never throws — push is best-effort.
  */
 export async function sendWebPushToUser(userId: string, payload: PushPayload): Promise<void> {
-  if (!isWebPushConfigured()) return
+  if (!isWebPushConfigured()) {
+    console.warn("[push] skipped: VAPID not configured (set VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY)")
+    return
+  }
   let subs
   try {
     subs = await db
       .select()
       .from(pushSubscriptions)
       .where(and(eq(pushSubscriptions.userId, userId), eq(pushSubscriptions.channel, "web_push")))
-  } catch {
+  } catch (err) {
+    console.error("[push] failed to load subscriptions", { userId, err: String(err) })
     return
   }
-  if (subs.length === 0) return
+  if (subs.length === 0) {
+    console.log("[push] no web_push subscriptions for user (device not opted in?)", { userId })
+    return
+  }
 
   let webpush: typeof WebPushType
   try {
     webpush = await getWebPush()
-  } catch {
+  } catch (err) {
+    console.error("[push] web-push module/VAPID init failed", { err: String(err) })
     return
   }
 
   const body = JSON.stringify(payload)
+  let ok = 0
+  let failed = 0
+  let pruned = 0
   await Promise.all(
     subs.map(async (s) => {
       try {
@@ -67,12 +78,18 @@ export async function sendWebPushToUser(userId: string, payload: PushPayload): P
           { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
           body,
         )
+        ok++
       } catch (err) {
+        failed++
         const code = (err as { statusCode?: number }).statusCode
         if (code === 404 || code === 410) {
+          pruned++
           await db.delete(pushSubscriptions).where(eq(pushSubscriptions.id, s.id)).catch(() => {})
+        } else {
+          console.error("[push] send error", { userId, statusCode: code, err: String((err as Error)?.message ?? err) })
         }
       }
     }),
   )
+  console.log("[push] delivered", { userId, subscriptions: subs.length, ok, failed, pruned })
 }
