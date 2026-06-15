@@ -72,18 +72,27 @@ curl localhost:8080/healthz             # {"status":"ok"}
 On first boot the worker runs its migrations (jobs + schedules tables) and starts
 the worker pool, scheduler, and HTTP API.
 
-## 5. Put it behind TLS (recommended)
+## 5. Put it behind TLS — bundled Caddy (recommended)
 
-Front the worker with a reverse proxy so it's reachable at a real host over HTTPS.
-**Caddy** is the least effort (automatic certs):
-```caddyfile
-# /etc/caddy/Caddyfile
-worker.profitsync.net {
-    reverse_proxy 127.0.0.1:8080
-}
-```
-Your `WORKER_BASE_URL` is then `https://worker.profitsync.net`. (Traefik/nginx work
-too.) Point the subdomain's DNS at the host first.
+A **Caddy** reverse proxy is bundled in the compose under an opt-in `proxy` profile
+(`worker/deploy/Caddyfile`). It terminates HTTPS for your domain and **auto-obtains +
+auto-renews** the Let's Encrypt cert — no certbot, no renewal cron (this is why Caddy
+is preferred over a hand-rolled nginx).
+
+1. Point DNS: an **A/AAAA record** for `worker.profitsync.net` → this host. Open
+   inbound **80 + 443**.
+2. In `deploy/.env` set `WORKER_DOMAIN=worker.profitsync.net` (and optionally
+   `CADDY_ACME_EMAIL=you@…`).
+3. Start the stack **with** the proxy:
+   ```bash
+   make -C worker up-proxy        # or: docker compose --profile proxy up -d --build
+   ```
+   Caddy issues the cert on first boot (`make -C worker proxy-logs` to watch it).
+4. Your `WORKER_BASE_URL` is then `https://worker.profitsync.net`.
+
+Caddy reaches the worker over the compose network (`worker:8080`), so once it's up,
+**firewall the public `8656`** (`ufw deny 8656`) — the worker should only be reachable
+via HTTPS. (Prefer nginx/Traefik? They work too, but you manage certs yourself.)
 
 ## 6. Connect the app (Vercel)
 
