@@ -67,6 +67,7 @@ func (s *Scheduler) evaluate(ctx context.Context, now time.Time) error {
 	if err != nil {
 		return err
 	}
+	s.log.Debug("scheduler tick", "due_schedules", len(due))
 	for _, sc := range due {
 		next, err := s.nextRun(sc.Cron, sc.Timezone, now)
 		if err != nil {

@@ -33,6 +33,32 @@ export function categoryTone(category: string): string {
   return CATEGORY_TONE[category as NotificationCategory] ?? CATEGORY_TONE.system
 }
 
+// Optional image attached to a notification (admin broadcasts carry an imageUrl
+// in `data`). Returns null when absent.
+export function notificationImage(n: AppNotification): string | null {
+  const url = (n.data as { imageUrl?: unknown })?.imageUrl
+  return typeof url === "string" && url ? url : null
+}
+
+// A broadcast click action can be an EXTERNAL URL (open in a new tab) rather than
+// an in-app route (react-router navigate). Detect it from the stored link type or
+// an absolute http(s) link.
+export function isExternalNotificationLink(n: AppNotification): boolean {
+  const linkType = (n.data as { linkType?: unknown })?.linkType
+  if (linkType === "external") return true
+  return /^https?:\/\//i.test(n.link ?? "")
+}
+
+/** Open a notification's link correctly (external → new tab, internal → router). */
+export function openNotificationLink(n: AppNotification, navigate: (to: string) => void): void {
+  if (!n.link) return
+  if (isExternalNotificationLink(n)) {
+    window.open(n.link, "_blank", "noopener,noreferrer")
+  } else {
+    navigate(n.link)
+  }
+}
+
 // Title/body rendering: prefer the row's i18nKey (rendered in the user's
 // language) and fall back to the server-stored English title/body. The i18nKey
 // is namespaced under `notifications` (e.g. "types.member_invited").

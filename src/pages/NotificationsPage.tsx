@@ -10,6 +10,7 @@ import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api"
 import { useNotifications } from "@/lib/notification-context"
 import type { AppNotification, NotificationListResponse } from "@/lib/types"
 import { NotificationItem } from "@/components/notifications/NotificationItem"
+import { openNotificationLink } from "@/components/notifications/notification-ui"
 
 const PAGE_SIZE = 20
 
@@ -68,7 +69,7 @@ export function NotificationsPage() {
           refresh()
         }
       }
-      if (n.link) navigate(n.link)
+      if (n.link) openNotificationLink(n, navigate)
     },
     [getToken, navigate, setUnreadCount, refresh],
   )

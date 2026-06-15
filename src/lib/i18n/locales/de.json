@@ -1412,6 +1412,13 @@
       "space_autosaved": {
         "title": "Automatisch in deinen Space gespart",
         "body": "Geld nach {{space}} verschoben"
+      },
+      "add_transaction_reminder": {
+        "title": "Zeit, deine Transaktionen einzutragen",
+        "body": "Vergiss nicht, die heutigen Einnahmen und Ausgaben zu erfassen."
+      },
+      "admin_broadcast": {
+        "title": "Ankündigung"
       }
     },
     "client": {
@@ -1428,6 +1435,36 @@
         "transactions": "Wiederkehrende und wichtige Transaktionen",
         "clients": "Angebotsstatus und Kundenänderungen"
       }
+    },
+    "reminders": {
+      "title": "Transaktions-Erinnerungen",
+      "description": "Lass dich daran erinnern, Einnahmen und Ausgaben zu erfassen. Ein Tippen öffnet das Formular „Transaktion hinzufügen“.",
+      "add": "Erinnerung hinzufügen",
+      "none": "Noch keine Erinnerungen",
+      "none_hint": "Füge eine hinzu, um ans Erfassen deiner Transaktionen erinnert zu werden.",
+      "name": "Name",
+      "name_placeholder": "z. B. Morgens erfassen",
+      "enabled": "Aktiv",
+      "times": "Uhrzeiten",
+      "add_time": "Uhrzeit hinzufügen",
+      "days": "Tage",
+      "everyday": "Jeden Tag",
+      "weekdays": "Wochentags",
+      "custom": "Benutzerdefiniert",
+      "timezone": "Zeitzone",
+      "timezone_hint": "Erinnerungen werden in dieser Zeitzone ausgelöst.",
+      "save": "Erinnerung speichern",
+      "saving": "Speichern…",
+      "saved": "Erinnerung gespeichert",
+      "deleted": "Erinnerung gelöscht",
+      "delete_confirm": "Diese Erinnerung löschen?",
+      "edit": "Bearbeiten",
+      "delete": "Löschen",
+      "cancel": "Abbrechen",
+      "error": "Erinnerung konnte nicht gespeichert werden",
+      "need_time": "Füge mindestens eine Uhrzeit hinzu.",
+      "new_reminder": "Neue Erinnerung",
+      "edit_reminder": "Erinnerung bearbeiten"
     }
   }
 }
