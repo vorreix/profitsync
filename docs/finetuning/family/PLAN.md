@@ -25,8 +25,8 @@ Single source of truth for the Family epic. Detailed design: `docs/superpowers/s
 | 04 | `feat/family-04-transfer` | `POST/DELETE /api/family/transfer` (contribute/withdraw/disburse); cross-org two-leg + reversal; generic tx PATCH/DELETE 409-guarded | ✅ done (money path DB-verified: both balances move + reverse) |
 | 05 | `feat/family-05-hub-nav` | `/family` hub UI + nav (sidebar+mobile) + `FamilyOnlyRoute`; GET /api/family/accounts; Contribute/Disburse flows; family i18n ns (8 locales) | ✅ done (typecheck/lint/gate green; browser verification deferred) |
 | 06 | `feat/family-06-onboarding` | third ChoiceCard + family details; api/onboarding family create; `/onboarding?family=1` re-entry; OrgSwitcher "Start a family" | ✅ done |
-| 07 | `feat/family-07-landing` | Personal·Business·Family pillar; family section; family plan card; FAQ (+ landing i18n) | ⏳ remaining |
-| 08 | i18n (folded into 05/06) | family namespace + onboarding keys already across 8 locales (English placeholders for non-en). REMAINING: landing strings (with 07) + professional translation of placeholders | ◻ partial |
+| 07 | `feat/family-07-landing` | "Built for your whole family" landing section + CTA (+ familyLanding i18n) | ✅ done |
+| 08 | i18n (folded into 05/06/07) | family namespace + onboarding + landing keys across all 8 locales. REMAINING: professional translation of the English placeholders in non-en locales (content task, not code) | ✅ done (placeholders) |
 | 09 | `feat/family-09-worker-e2e` | worker allowances/auto-contrib/digests (enhancement); Playwright e2e; final review; create `family` plan row in /admin/plans | ⏳ remaining |
 
 ## Verified facts / corrections (auditable)
@@ -48,6 +48,13 @@ Single source of truth for the Family epic. Detailed design: `docs/superpowers/s
 - 08 i18n: `family` namespace across 8 locales (en source) + onboarding/landing keys.
 - 09 worker: scheduled allowances (head→member) + auto-contributions via recurring (cross-org); family digests; Playwright e2e; final review. NOTE: also create the `family` plan row in /admin/plans for paid family checkout.
 
+## Adversarial review outcome (money/privacy path)
+
+A code-review agent validated the cross-org transfer math, balance reversals, recipient-account resolution (disburse never reads the recipient's accounts), authorization, and the premium cascade as **correct**. Two findings, assessed:
+
+- **Cross-currency `dest_amount` uncapped** — NOT a bug. `transfer.ts` already calls `amountExceedsLimit(destAmt)` (same MAX_MONEY cap as all money); "no silent FX" (user enters both amounts) is intentional per spec. Reviewer self-downgraded.
+- **One-family race** (a user concurrently POSTing /api/family create AND accepting a family invite could end up a member of two family orgs) — REAL but low-likelihood (self-inflicted concurrent requests), recoverable (leave one). ⚠️ **Correction:** the reviewer's proposed fix (a `UNIQUE` index on `user_profiles.family_org_id`) is WRONG — that column is a shared FK (every member of one family holds the same value), so a unique index would forbid multi-member families. Correct fix (deferred, low risk): a compare-and-swap that claims the pointer atomically (`UPDATE … SET family_org_id=$new WHERE id=$user AND family_org_id IS NULL`, reject/rollback on 0 rows) in BOTH the create and invite-accept paths; or a denormalized `account_type` column on `organization_members` with a partial unique index `(user_id) WHERE account_type='family'`. App-level guards cover the non-concurrent case today.
+
 ## Change log
 
 - 2026-06-15 — Spec + plan committed on `feature/family_1_maqbool`. **Backend 00–04 shipped + pushed** (each green through the full gate):
@@ -56,3 +63,8 @@ Single source of truth for the Family epic. Detailed design: `docs/superpowers/s
   - 02 cascade: whole-family premium via getOrgPlan + familyMembers quota; maxByKey unit-tested.
   - 03 household: Spaces enabled for family; contributions attribution API.
   - 04 transfer: cross-org contribute/withdraw/disburse + reversal; generic tx mutate guarded; **money path DB-verified** (balances move + reverse, ownership enforced).
+  - 05 hub/nav: /family route + FamilyOnlyRoute + sidebar/mobile nav; FamilyPage (balances, members, contributions, Contribute/Disburse); GET /api/family/accounts; family i18n ns (8 locales).
+  - 06 onboarding: 3rd choice card + family create; /onboarding?family=1 re-entry; OrgSwitcher "Start a family"; onboarding i18n (8 locales).
+  - 07 landing: "Built for your whole family" section + familyLanding i18n (8 locales).
+  - Adversarial review of money/privacy path: critical paths validated correct; one low-likelihood one-family race documented (reviewer's unique-index fix corrected — would break multi-member families).
+  - **Remaining (family-09): worker scheduling (allowances/auto-contrib/digests — enhancement, feature works without it), Playwright e2e, create the `family` plan row in /admin/plans for paid checkout, and (optional) the one-family-race CAS hardening + pro translation of i18n placeholders.**
