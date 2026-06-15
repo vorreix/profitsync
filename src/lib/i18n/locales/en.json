@@ -117,7 +117,15 @@
     "upgradeTitle": "Upgrade to Premium",
     "upgradeSubtitle": "More clients, attachments & storage",
     "createOrganization": "Create organization",
-    "manageOrganizations": "Manage organizations"
+    "manageOrganizations": "Manage organizations",
+    "loading": "Loading…",
+    "switchOrganization": "Switch organization",
+    "searchOrganizations": "Search organizations…",
+    "noOrganizationsMatch": "No organizations match",
+    "roleOwner": "owner",
+    "roleAdmin": "admin",
+    "roleEditor": "editor",
+    "roleViewer": "viewer"
   },
   "forgotPassword": {
     "linkLabel": "Forgot your password?",
@@ -380,7 +388,8 @@
     "transactionsTotal_one": "{{count}} total",
     "transactionsTotal_other": "{{count}} total",
     "revenueVsCategories": "Revenue vs Expenses by Category",
-    "topCategories": "Top Categories"
+    "topCategories": "Top Categories",
+    "openFilters": "Open dashboard filters"
   },
   "chart": {
     "incoming": "Incoming",

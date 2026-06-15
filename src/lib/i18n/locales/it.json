@@ -51,7 +51,15 @@
     "upgradeTitle": "Passa a Premium",
     "upgradeSubtitle": "Più clienti, allegati e spazio",
     "createOrganization": "Crea organizzazione",
-    "manageOrganizations": "Gestisci organizzazioni"
+    "manageOrganizations": "Gestisci organizzazioni",
+    "loading": "Caricamento…",
+    "switchOrganization": "Cambia organizzazione",
+    "searchOrganizations": "Cerca organizzazioni…",
+    "noOrganizationsMatch": "Nessuna organizzazione corrisponde",
+    "roleOwner": "proprietario",
+    "roleAdmin": "admin",
+    "roleEditor": "editor",
+    "roleViewer": "visualizzatore"
   },
   "forgotPassword": {
     "linkLabel": "Password dimenticata?",
@@ -143,7 +151,8 @@
     "description": "Descrizione",
     "openTransaction": "Apri transazione",
     "openClient": "Apri cliente",
-    "ownCompanyBudget": "Budget aziendale"
+    "ownCompanyBudget": "Budget aziendale",
+    "openFilters": "Apri filtri dashboard"
   },
   "chart": {
     "incoming": "Entrate",

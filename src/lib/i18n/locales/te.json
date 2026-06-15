@@ -51,7 +51,15 @@
     "upgradeTitle": "ప్రీమియంకు అప్‌గ్రేడ్ చేయండి",
     "upgradeSubtitle": "మరిన్ని క్లయింట్‌లు, అటాచ్‌మెంట్‌లు & నిల్వ",
     "createOrganization": "సంస్థను సృష్టించు",
-    "manageOrganizations": "సంస్థలను నిర్వహించు"
+    "manageOrganizations": "సంస్థలను నిర్వహించు",
+    "loading": "Loading…",
+    "switchOrganization": "Switch organization",
+    "searchOrganizations": "Search organizations…",
+    "noOrganizationsMatch": "No organizations match",
+    "roleOwner": "owner",
+    "roleAdmin": "admin",
+    "roleEditor": "editor",
+    "roleViewer": "viewer"
   },
   "forgotPassword": {
     "linkLabel": "మీ పాస్‌వర్డ్ మర్చిపోయారా?",
@@ -143,7 +151,8 @@
     "description": "వివరణ",
     "openTransaction": "లావాదేవీని తెరవండి",
     "openClient": "క్లయింట్‌ను తెరవండి",
-    "ownCompanyBudget": "కంపెనీ బడ్జెట్"
+    "ownCompanyBudget": "కంపెనీ బడ్జెట్",
+    "openFilters": "Open dashboard filters"
   },
   "chart": {
     "incoming": "రాబడి",
