@@ -23,7 +23,12 @@ async function workerFetch(method: string, path: string): Promise<{ ok: boolean;
   try {
     const res = await fetch(`${BASE!.replace(/\/$/, "")}${path}`, {
       method,
-      headers: { Authorization: `Bearer ${TOKEN}` },
+      headers: {
+        Authorization: `Bearer ${TOKEN}`,
+        // Bypass ngrok's free-tier browser-warning interstitial (which would
+        // return HTML and break JSON parsing). Harmless against a real worker.
+        "ngrok-skip-browser-warning": "true",
+      },
       signal: controller.signal,
     })
     const text = await res.text()

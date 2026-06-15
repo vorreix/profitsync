@@ -78,6 +78,18 @@ describe("resolveChannelEnabled — cascade", () => {
     // a muted client mutes even when the user is not muted
     expect(resolveChannelEnabled([{ muted: true }, {}], "billing", "in_app")).toBe(false)
   })
+
+  it("defaultOverride flips the fallback ON (broadcasts/reminders) but mute + explicit opt-out still win", () => {
+    // system web_push defaults OFF — without an override a broadcast wouldn't push.
+    expect(resolveChannelEnabled([], "system", "web_push")).toBe(false)
+    // defaultOverride=true pushes by default when there's no explicit opinion.
+    expect(resolveChannelEnabled([{}], "system", "web_push", true)).toBe(true)
+    // an explicit user opt-out still wins over the override.
+    const optedOut: NotificationPreferences = { categories: { system: { web_push: false } } }
+    expect(resolveChannelEnabled([optedOut], "system", "web_push", true)).toBe(false)
+    // mute still wins over the override.
+    expect(resolveChannelEnabled([{ muted: true }], "system", "web_push", true)).toBe(false)
+  })
 })
 
 describe("resolveAnyChannel", () => {

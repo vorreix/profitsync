@@ -90,6 +90,10 @@ export async function deliverBroadcast(
           imageUrl: b.imageUrl ?? null,
           category: "system",
           important: b.importance,
+          // A broadcast is a push-style announcement: attempt push by default for
+          // everyone with a subscription (still honours mute + explicit opt-out).
+          // `importance` escalates further (bypasses mute entirely).
+          pushDefault: true,
           dedupeKey: `broadcast:${b.id}:${occurrence}:${userId}`,
         }).catch(() => null),
       ),
