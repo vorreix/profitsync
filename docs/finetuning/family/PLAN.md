@@ -23,11 +23,11 @@ Single source of truth for the Family epic. Detailed design: `docs/superpowers/s
 | 02 | `feat/family-02-premium-cascade` | `getOrgPlan` whole-family premium cascade (maxByKey); `checkFamilyMemberQuota`; invite-path gating. NOTE: family plan ROW is an /admin/plans data task (no code seed) | ✅ done |
 | 03 | `feat/family-03-household` | spaces enabled for family (canUseSpaces); `GET /api/family/contributions` attribution | ✅ done |
 | 04 | `feat/family-04-transfer` | `POST/DELETE /api/family/transfer` (contribute/withdraw/disburse); cross-org two-leg + reversal; generic tx PATCH/DELETE 409-guarded | ✅ done (money path DB-verified: both balances move + reverse) |
-| 05 | `feat/family-05-hub-nav` | `/family` hub UI + nav/FAB + `FamilyOnlyRoute`; OrgSwitcher start/join; personal "Contribute" entry; motion | ⏳ next (UI) |
-| 06 | `feat/family-06-onboarding` | third ChoiceCard; create/join sub-flows; accents; MoneyWizard household; PlanStep family | pending |
-| 07 | `feat/family-07-landing` | Personal·Business·Family pillar; family section; family plan card; FAQ | pending |
-| 08 | `feat/family-08-i18n` | `family` namespace across 8 locales + onboarding/landing keys | pending |
-| 09 | `feat/family-09-worker-e2e` | worker allowances/auto-contrib/digests (enhancement); Playwright e2e; final review | pending |
+| 05 | `feat/family-05-hub-nav` | `/family` hub UI + nav (sidebar+mobile) + `FamilyOnlyRoute`; GET /api/family/accounts; Contribute/Disburse flows; family i18n ns (8 locales) | ✅ done (typecheck/lint/gate green; browser verification deferred) |
+| 06 | `feat/family-06-onboarding` | third ChoiceCard + family details; api/onboarding family create; `/onboarding?family=1` re-entry; OrgSwitcher "Start a family" | ✅ done |
+| 07 | `feat/family-07-landing` | Personal·Business·Family pillar; family section; family plan card; FAQ (+ landing i18n) | ⏳ remaining |
+| 08 | i18n (folded into 05/06) | family namespace + onboarding keys already across 8 locales (English placeholders for non-en). REMAINING: landing strings (with 07) + professional translation of placeholders | ◻ partial |
+| 09 | `feat/family-09-worker-e2e` | worker allowances/auto-contrib/digests (enhancement); Playwright e2e; final review; create `family` plan row in /admin/plans | ⏳ remaining |
 
 ## Verified facts / corrections (auditable)
 

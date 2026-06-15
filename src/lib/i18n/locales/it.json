@@ -1508,5 +1508,29 @@
     "sentToast": "Money sent",
     "loadFailed": "Couldn't load your family",
     "actionFailed": "Something went wrong"
+  },
+  "familyLanding": {
+    "badge": "New · Family",
+    "title": "Built for your whole family",
+    "subtitle": "A shared household for the money you manage together — while everyone's personal accounts stay completely private.",
+    "items": [
+      {
+        "title": "Shared household",
+        "desc": "Joint accounts and family spaces everyone can see and fund together."
+      },
+      {
+        "title": "Everyone chips in",
+        "desc": "Contribute from your own account — and always see who paid what."
+      },
+      {
+        "title": "Your money stays yours",
+        "desc": "Personal accounts are never shared. Send money to the family only when you choose."
+      },
+      {
+        "title": "One plan for all",
+        "desc": "The head's subscription upgrades the whole family — including each member's personal account."
+      }
+    ],
+    "cta": "Start your family"
   }
 }
