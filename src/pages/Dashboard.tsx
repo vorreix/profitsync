@@ -1320,7 +1320,11 @@ export function Dashboard() {
           />
         </div>
         <div className="sm:hidden shrink-0">
-          <FilterSheet count={appliedFilterCount} onClear={clearAllFilters}>
+          <FilterSheet
+            count={appliedFilterCount}
+            onClear={clearAllFilters}
+            triggerLabel="Open dashboard filters"
+          >
             {!isPersonal && (
               <FilterSection label={t("filters.client")}>
                 <MultiSelectFilter
