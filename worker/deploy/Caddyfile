@@ -1,0 +1,16 @@
+# Caddy reverse proxy for the ProfitSync worker.
+#
+# Terminates TLS for WORKER_DOMAIN (auto-obtains + auto-renews a Let's Encrypt
+# certificate) and forwards to the worker container over the compose network.
+# Started only via the `proxy` compose profile (see docker-compose.yml).
+#
+# Prereqs on the host: DNS A/AAAA for WORKER_DOMAIN → this server, ports 80 + 443
+# open. Set WORKER_DOMAIN in deploy/.env.
+#
+# Want Let's Encrypt expiry notices? Add a global block above the site:
+#   { email you@example.com }
+
+{$WORKER_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy worker:8080
+}
