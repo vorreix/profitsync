@@ -32,6 +32,7 @@ import {
   Repeat,
   CalendarDays,
   Network,
+  HeartHandshake,
 } from "lucide-react"
 import { MoneyBag } from "@/components/icons/MoneyBag"
 import { useOrg } from "@/lib/org-context"
@@ -67,6 +68,7 @@ type TabItem = { labelKey: string; href: string; icon: typeof LayoutDashboard }
 function buildPrimaryTabs(accountType: AccountType | null | undefined): TabItem[] {
   const items: (TabItem | false)[] = [
     { labelKey: "nav.home", href: "/dashboard", icon: LayoutDashboard },
+    accountTypeAllows(accountType, "family") && { labelKey: "nav.family", href: "/family", icon: HeartHandshake },
     accountTypeAllows(accountType, "clients") && { labelKey: "nav.clients", href: "/clients", icon: Users },
     { labelKey: "nav.transactions", href: "/transactions", icon: ArrowLeftRight },
     accountTypeAllows(accountType, "quotations") && { labelKey: "nav.quotes", href: "/quotations", icon: FileText },

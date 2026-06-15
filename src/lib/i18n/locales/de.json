@@ -38,7 +38,8 @@
     "recurring": "Daueraufträge",
     "calendar": "Kalender",
     "flow": "Geldfluss",
-    "spaces": "Sparräume"
+    "spaces": "Sparräume",
+    "family": "Familie"
   },
   "actions": {
     "addClient": "Kunde hinzufügen",
@@ -1466,5 +1467,38 @@
       "new_reminder": "Neue Erinnerung",
       "edit_reminder": "Erinnerung bearbeiten"
     }
+  },
+  "family": {
+    "title": "Family",
+    "available": "Available",
+    "saved": "Saved",
+    "netWorth": "Net worth",
+    "memberCount": "{{n}} members",
+    "contribute": "Contribute",
+    "sendToMember": "Send to member",
+    "familySpaces": "Family spaces",
+    "members": "Members",
+    "manageMembers": "Manage",
+    "memberFallback": "Member",
+    "head": "Head",
+    "contributedAmount": "Contributed {{amount}}",
+    "contributeTitle": "Contribute to your family",
+    "disburseTitle": "Send money to a member",
+    "fromAccount": "From your account",
+    "fromFamilyAccount": "From family account",
+    "toFamilyAccount": "To family account",
+    "toMember": "To member",
+    "amount": "Amount",
+    "destAmount": "Amount received ({{currency}})",
+    "note": "Note",
+    "notePlaceholder": "What's this for? (optional)",
+    "cancel": "Cancel",
+    "send": "Send",
+    "sending": "Sending…",
+    "enterAmount": "Enter an amount",
+    "contributedToast": "Contribution sent to your family",
+    "sentToast": "Money sent",
+    "loadFailed": "Couldn't load your family",
+    "actionFailed": "Something went wrong"
   }
 }

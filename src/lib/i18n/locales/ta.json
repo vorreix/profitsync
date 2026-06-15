@@ -38,7 +38,8 @@
     "recurring": "தொடர்",
     "calendar": "நாட்காட்டி",
     "flow": "பண ஓட்டம்",
-    "spaces": "ஸ்பேஸ்கள்"
+    "spaces": "ஸ்பேஸ்கள்",
+    "family": "குடும்பம்"
   },
   "actions": {
     "addClient": "வாடிக்கையாளரைச் சேர்",
@@ -1466,5 +1467,38 @@
       "new_reminder": "புதிய நினைவூட்டல்",
       "edit_reminder": "நினைவூட்டலைத் திருத்து"
     }
+  },
+  "family": {
+    "title": "Family",
+    "available": "Available",
+    "saved": "Saved",
+    "netWorth": "Net worth",
+    "memberCount": "{{n}} members",
+    "contribute": "Contribute",
+    "sendToMember": "Send to member",
+    "familySpaces": "Family spaces",
+    "members": "Members",
+    "manageMembers": "Manage",
+    "memberFallback": "Member",
+    "head": "Head",
+    "contributedAmount": "Contributed {{amount}}",
+    "contributeTitle": "Contribute to your family",
+    "disburseTitle": "Send money to a member",
+    "fromAccount": "From your account",
+    "fromFamilyAccount": "From family account",
+    "toFamilyAccount": "To family account",
+    "toMember": "To member",
+    "amount": "Amount",
+    "destAmount": "Amount received ({{currency}})",
+    "note": "Note",
+    "notePlaceholder": "What's this for? (optional)",
+    "cancel": "Cancel",
+    "send": "Send",
+    "sending": "Sending…",
+    "enterAmount": "Enter an amount",
+    "contributedToast": "Contribution sent to your family",
+    "sentToast": "Money sent",
+    "loadFailed": "Couldn't load your family",
+    "actionFailed": "Something went wrong"
   }
 }

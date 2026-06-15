@@ -19,7 +19,7 @@ export const WEALTH_CHANGED_EVENT = "wealth:accounts-changed"
 export type DataChangedDetail = { path: string }
 
 // Paths whose mutations can change a wealth account balance.
-const WEALTH_AFFECTING = /^\/api\/(transactions|wealth|trash|recurring|clients)\b/
+const WEALTH_AFFECTING = /^\/api\/(transactions|wealth|trash|recurring|clients|family)\b/
 
 export function emitDataChanged(path: string): void {
   if (typeof window === "undefined") return

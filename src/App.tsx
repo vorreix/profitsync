@@ -7,6 +7,7 @@ import { AdminLayout } from "@/pages/admin/AdminLayout"
 import { RequireAdminCap } from "@/pages/admin/RequireAdminCap"
 import { BusinessOnlyRoute } from "@/components/BusinessOnlyRoute"
 import { PersonalOnlyRoute } from "@/components/PersonalOnlyRoute"
+import { FamilyOnlyRoute } from "@/components/FamilyOnlyRoute"
 import { Toaster } from "@/components/ui/sonner"
 import { UpdatePrompt } from "@/components/UpdatePrompt"
 import { useShouldRedirectToApp } from "@/lib/use-redirect-to-app"
@@ -27,6 +28,7 @@ const MoneyFlowPage = lazy(() => import("@/pages/MoneyFlowPage").then((m) => ({ 
 const WealthPage = lazy(() => import("@/pages/WealthPage").then((m) => ({ default: m.WealthPage })))
 const WealthAccountDetailPage = lazy(() => import("@/pages/WealthAccountDetailPage").then((m) => ({ default: m.WealthAccountDetailPage })))
 const SpacesPage = lazy(() => import("@/pages/SpacesPage").then((m) => ({ default: m.SpacesPage })))
+const FamilyPage = lazy(() => import("@/pages/FamilyPage").then((m) => ({ default: m.FamilyPage })))
 const SpaceDetailPage = lazy(() => import("@/pages/SpaceDetailPage").then((m) => ({ default: m.SpaceDetailPage })))
 const CategoriesPage = lazy(() => import("@/pages/CategoriesPage").then((m) => ({ default: m.CategoriesPage })))
 const BudgetsPage = lazy(() => import("@/pages/BudgetsPage").then((m) => ({ default: m.BudgetsPage })))
@@ -156,6 +158,7 @@ export function App() {
           {/* App Routes — pathless layout so /dashboard, /clients, … keep working. */}
           <Route element={<AppLayout />}>
             <Route path="dashboard" element={<Dashboard />} />
+            <Route path="family" element={<FamilyOnlyRoute><FamilyPage /></FamilyOnlyRoute>} />
             <Route path="clients" element={<BusinessOnlyRoute feature="clients"><ClientsPage /></BusinessOnlyRoute>} />
             <Route path="clients/closed" element={<BusinessOnlyRoute feature="clients"><ClosedClientsPage /></BusinessOnlyRoute>} />
             <Route path="clients/:id" element={<BusinessOnlyRoute feature="clients"><ClientDetailPage /></BusinessOnlyRoute>} />

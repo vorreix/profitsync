@@ -65,6 +65,7 @@ import organizationMembers from "./_routes/organizations/[id]/members.js"
 import family from "./_routes/family.js"
 import familyContributions from "./_routes/family/contributions.js"
 import familyTransfer from "./_routes/family/transfer.js"
+import familyAccounts from "./_routes/family/accounts.js"
 import attachmentById from "./_routes/attachments/[id].js"
 import quotationAttachmentById from "./_routes/quotation-attachments/[id].js"
 import clientAttachmentById from "./_routes/client-attachments/[id].js"
@@ -201,6 +202,7 @@ const routes: RoutePattern<ApiHandler>[] = [
   { segments: ["family"], handler: family },
   { segments: ["family", "contributions"], handler: familyContributions },
   { segments: ["family", "transfer"], handler: familyTransfer },
+  { segments: ["family", "accounts"], handler: familyAccounts },
 
   { segments: ["attachments", ":id"], handler: attachmentById },
   { segments: ["quotation-attachments", ":id"], handler: quotationAttachmentById },
