@@ -104,11 +104,15 @@ export function fullDefaultPreferences(): FullNotificationPreferences {
 //   1. If any level is muted → not delivered.
 //   2. Otherwise the most-specific level with an explicit boolean for this
 //      (category, channel) wins.
-//   3. Otherwise fall back to the system default.
+//   3. Otherwise fall back to `defaultOverride` when given, else the system
+//      default. `defaultOverride` lets a specific send (e.g. an admin broadcast,
+//      or a user's own reminder) opt the channel ON by default while still
+//      honouring mute and an explicit user opt-out.
 export function resolveChannelEnabled(
   cascade: ReadonlyArray<NotificationPreferences | null | undefined>,
   category: NotificationCategory,
   channel: NotificationChannel,
+  defaultOverride?: boolean,
 ): boolean {
   for (const level of cascade) {
     if (level?.muted) return false
@@ -117,7 +121,7 @@ export function resolveChannelEnabled(
     const explicit = level?.categories?.[category]?.[channel]
     if (typeof explicit === "boolean") return explicit
   }
-  return defaultChannelEnabled(category, channel)
+  return defaultOverride ?? defaultChannelEnabled(category, channel)
 }
 
 /** Convenience: is this (category) delivered on ANY channel given the cascade? */
