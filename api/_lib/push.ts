@@ -13,7 +13,7 @@ import { and, eq } from "drizzle-orm"
 import { db } from "../../src/lib/db/index.js"
 import { pushSubscriptions } from "../../src/lib/db/schema.js"
 
-export type PushPayload = { title: string; body?: string; url?: string; tag?: string }
+export type PushPayload = { title: string; body?: string; url?: string; tag?: string; image?: string }
 
 /** True when VAPID keys are configured — the precondition for any web push. */
 export function isWebPushConfigured(): boolean {

@@ -1,11 +1,11 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { and, eq, isNull, or } from "drizzle-orm"
+import { and, eq, isNull } from "drizzle-orm"
 import { db } from "../../../src/lib/db/index.js"
 import { notifications } from "../../../src/lib/db/schema.js"
 import { requireAuth } from "../../_lib/auth.js"
 
-// Mark every unread notification (in the recipient's active-org scope) as read.
-// Optional body { category } limits it to one category.
+// Mark every unread notification as read (personal inbox — across all the
+// recipient's orgs). Optional body { category } limits it to one category.
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ctx = await requireAuth(req, res)
   if (!ctx) return
@@ -17,7 +17,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const conditions = [
     eq(notifications.userId, ctx.userId),
-    or(eq(notifications.organizationId, ctx.orgId), isNull(notifications.organizationId)),
     isNull(notifications.readAt),
   ]
   if (category) conditions.push(eq(notifications.category, category))

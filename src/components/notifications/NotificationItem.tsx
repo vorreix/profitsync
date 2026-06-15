@@ -2,7 +2,7 @@ import { useTranslation } from "react-i18next"
 import { Trash2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { AppNotification } from "@/lib/types"
-import { categoryIcon, categoryTone, notificationBody, notificationTitle, relativeTime } from "./notification-ui"
+import { categoryIcon, categoryTone, notificationBody, notificationImage, notificationTitle, relativeTime } from "./notification-ui"
 
 type Props = {
   notification: AppNotification
@@ -18,6 +18,7 @@ export function NotificationItem({ notification: n, onClick, onDelete, className
   const unread = !n.read_at
   const title = notificationTitle(n, t)
   const body = notificationBody(n, t)
+  const image = notificationImage(n)
 
   return (
     <div
@@ -47,6 +48,17 @@ export function NotificationItem({ notification: n, onClick, onDelete, className
       <div className="min-w-0 flex-1">
         <p className={cn("truncate text-sm", unread ? "font-semibold" : "font-medium")}>{title}</p>
         {body && <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{body}</p>}
+        {image && (
+          <img
+            src={image}
+            alt=""
+            loading="lazy"
+            className="mt-1.5 max-h-28 w-full rounded-md border object-cover"
+            onError={(e) => {
+              e.currentTarget.style.display = "none"
+            }}
+          />
+        )}
         <p className="mt-1 text-[11px] text-muted-foreground">{relativeTime(n.created_at, t, i18n.language)}</p>
       </div>
       {unread && <span className="mt-1.5 size-2 shrink-0 rounded-full bg-primary" aria-hidden />}

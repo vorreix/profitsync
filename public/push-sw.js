@@ -4,7 +4,7 @@
  * notificationclick listeners — it does not touch caching, skipWaiting or the
  * navigation strategy, so the white-screen-safe SW pipeline is unaffected.
  *
- * Payload shape (see api/_lib/push.ts): { title, body?, url?, tag? }
+ * Payload shape (see api/_lib/push.ts): { title, body?, url?, tag?, image? }
  */
 /* global self, clients */
 self.addEventListener("push", (event) => {
@@ -20,6 +20,9 @@ self.addEventListener("push", (event) => {
     icon: "/favicon-96x96.png",
     badge: "/favicon-96x96.png",
     tag: data.tag || undefined,
+    // `image` shows a large hero image (admin broadcasts) where the platform
+    // supports it; ignored gracefully where it doesn't.
+    image: data.image || undefined,
     data: { url: data.url || "/notifications" },
   }
   event.waitUntil(self.registration.showNotification(title, options))

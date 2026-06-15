@@ -1,15 +1,28 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { and, count, desc, eq, ilike, or, sql } from "drizzle-orm"
+import { and, count, desc, eq, exists, gte, ilike, inArray, lte, ne, not, or, sql } from "drizzle-orm"
 import { db, serialize } from "../../../src/lib/db/index.js"
 import {
   appAdmins,
   organizationMembers,
   organizations,
+  subscriptions,
   userProfiles,
 } from "../../../src/lib/db/schema.js"
 import { requireAdminCap, rootAdminEmails } from "../../_lib/admin.js"
 
 const PAGE_SIZE = 30
+const IDS_CAP = 10000
+
+function single(v: string | string[] | undefined): string | undefined {
+  return Array.isArray(v) ? v[0] : v
+}
+
+// Parse a comma-separated query param into a de-duped, trimmed, capped list. The
+// values flow into parameterized inArray() — never string-concatenated into SQL.
+function listParam(v: string | string[] | undefined, cap: number): string[] {
+  const raw = Array.isArray(v) ? v.join(",") : v ?? ""
+  return Array.from(new Set(raw.split(",").map((s) => s.trim()).filter(Boolean))).slice(0, cap)
+}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ctx = await requireAdminCap(req, res, req.method === "GET" ? "read" : "write")
@@ -17,15 +30,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const adminId = ctx.userId
 
   if (req.method === "GET") {
-    const { search, page, banned } = req.query as { search?: string; page?: string; banned?: string }
-    const pageNum = Math.max(1, parseInt(page ?? "1", 10) || 1)
-    const offset = (pageNum - 1) * PAGE_SIZE
+    // meta mode: distinct countries + languages to populate the audience filters.
+    if (single(req.query.meta) === "1") {
+      const [countryRows, langRows] = await Promise.all([
+        db.selectDistinct({ v: userProfiles.country }).from(userProfiles),
+        db.selectDistinct({ v: userProfiles.language }).from(userProfiles),
+      ])
+      const clean = (rows: { v: string | null }[]) =>
+        Array.from(new Set(rows.map((r) => (r.v ?? "").trim()).filter(Boolean))).sort()
+      return res.json({ countries: clean(countryRows), languages: clean(langRows) })
+    }
 
-    const searchFilter = search?.trim()
+    const search = single(req.query.search)?.trim()
+    const banned = single(req.query.banned)
+    const plan = single(req.query.plan)
+    const admin = single(req.query.admin)
+    const joinedFrom = single(req.query.joinedFrom)
+    const joinedTo = single(req.query.joinedTo)
+    const orgIds = listParam(req.query.orgIds, 200)
+    const countries = listParam(req.query.countries, 300)
+    const languages = listParam(req.query.languages, 50)
+
+    const searchFilter = search
       ? or(
-          ilike(userProfiles.email, `%${search.trim()}%`),
-          ilike(userProfiles.fullName, `%${search.trim()}%`),
-          ilike(userProfiles.id, `%${search.trim()}%`),
+          ilike(userProfiles.email, `%${search}%`),
+          ilike(userProfiles.fullName, `%${search}%`),
+          ilike(userProfiles.id, `%${search}%`),
         )
       : undefined
 
@@ -36,12 +66,69 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           ? sql`${userProfiles.bannedAt} IS NULL`
           : undefined
 
-    const whereClause = and(searchFilter, bannedFilter)
+    // Member of ANY selected org.
+    const orgFilter = orgIds.length
+      ? exists(
+          db
+            .select({ one: sql`1` })
+            .from(organizationMembers)
+            .where(and(eq(organizationMembers.userId, userProfiles.id), inArray(organizationMembers.organizationId, orgIds))),
+        )
+      : undefined
 
-    const [{ total }] = await db
-      .select({ total: count() })
-      .from(userProfiles)
-      .where(whereClause)
+    // Premium = belongs to an org with a live paid subscription.
+    const premiumExists = exists(
+      db
+        .select({ one: sql`1` })
+        .from(subscriptions)
+        .innerJoin(organizationMembers, eq(organizationMembers.organizationId, subscriptions.organizationId))
+        .where(
+          and(
+            eq(organizationMembers.userId, userProfiles.id),
+            ne(subscriptions.planKey, "free"),
+            inArray(subscriptions.status, ["active", "past_due", "trialing"]),
+          ),
+        ),
+    )
+    const planFilter = plan === "premium" ? premiumExists : plan === "free" ? not(premiumExists) : undefined
+
+    const adminFilter =
+      admin === "true"
+        ? exists(db.select({ one: sql`1` }).from(appAdmins).where(eq(appAdmins.userId, userProfiles.id)))
+        : undefined
+
+    const joinedFromFilter = joinedFrom ? gte(userProfiles.createdAt, new Date(`${joinedFrom}T00:00:00.000Z`)) : undefined
+    const joinedToFilter = joinedTo ? lte(userProfiles.createdAt, new Date(`${joinedTo}T23:59:59.999Z`)) : undefined
+    const countryFilter = countries.length ? inArray(userProfiles.country, countries) : undefined
+    const langFilter = languages.length ? inArray(userProfiles.language, languages) : undefined
+
+    const whereClause = and(
+      searchFilter,
+      bannedFilter,
+      orgFilter,
+      planFilter,
+      adminFilter,
+      joinedFromFilter,
+      joinedToFilter,
+      countryFilter,
+      langFilter,
+    )
+
+    // ids mode: ALL matching user ids (capped) — powers "select all matching".
+    if (single(req.query.format) === "ids") {
+      const idRows = await db
+        .select({ id: userProfiles.id })
+        .from(userProfiles)
+        .where(whereClause)
+        .orderBy(desc(userProfiles.createdAt))
+        .limit(IDS_CAP)
+      return res.json({ ids: idRows.map((r) => r.id), total: idRows.length, capped: idRows.length >= IDS_CAP })
+    }
+
+    const pageNum = Math.max(1, parseInt(single(req.query.page) ?? "1", 10) || 1)
+    const offset = (pageNum - 1) * PAGE_SIZE
+
+    const [{ total }] = await db.select({ total: count() }).from(userProfiles).where(whereClause)
 
     const rows = await db
       .select({
@@ -49,6 +136,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         email: userProfiles.email,
         fullName: userProfiles.fullName,
         currency: userProfiles.currency,
+        language: userProfiles.language,
+        country: userProfiles.country,
         currentOrganizationId: userProfiles.currentOrganizationId,
         termsAcceptedAt: userProfiles.termsAcceptedAt,
         bannedAt: userProfiles.bannedAt,

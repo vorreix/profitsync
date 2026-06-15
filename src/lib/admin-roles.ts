@@ -14,6 +14,7 @@ export type AdminCapability =
   | "read"
   | "write"
   | "blog"
+  | "broadcast" // compose/send push broadcasts + manage saved user groups
   | "settings"
   | "manage_admins"
   // ── super-admin-EXCLUSIVE capabilities (never grantable to other roles) ──
@@ -31,8 +32,8 @@ export type AdminCapability =
 // `super_admin` is the default for every EXISTING admin (the migration defaults
 // the new column to it) and for root-email admins, so nobody loses access.
 export const ADMIN_ROLE_CAPS: Record<AdminRole, AdminCapability[]> = {
-  super_admin: ["read", "write", "blog", "settings", "manage_admins", "org_transactions", "manage_super_admins", "manage_roles"],
-  editor: ["read", "write", "blog"],
+  super_admin: ["read", "write", "blog", "broadcast", "settings", "manage_admins", "org_transactions", "manage_super_admins", "manage_roles"],
+  editor: ["read", "write", "blog", "broadcast"],
   viewer: ["read"],
   blog_writer: ["blog"],
 }
@@ -44,7 +45,7 @@ export const ADMIN_ROLE_CAPS: Record<AdminRole, AdminCapability[]> = {
  * manage_super_admins / manage_roles stay super_admin-exclusive by design:
  * non-supers must not even see those surfaces exist.
  */
-export const GRANTABLE_ADMIN_CAPS: readonly AdminCapability[] = ["read", "write", "blog", "settings", "manage_admins"]
+export const GRANTABLE_ADMIN_CAPS: readonly AdminCapability[] = ["read", "write", "blog", "broadcast", "settings", "manage_admins"]
 
 /** Keep only grantable capabilities (resolution-time defense for custom roles). */
 export function sanitizeGrantableCaps(raw: unknown): AdminCapability[] {
@@ -63,6 +64,7 @@ export const ADMIN_CAP_META: Record<string, { label: string; description: string
   read: { label: "View data", description: "See stats, users, organizations, subscriptions, invoices, billing attempts and referrals." },
   write: { label: "Edit data", description: "Edit organizations, subscriptions, invoices, users, invitations and billing follow-ups." },
   blog: { label: "Blog", description: "Create, edit and publish blog posts." },
+  broadcast: { label: "Broadcasts", description: "Compose and send push notifications to users, and manage saved user groups." },
   settings: { label: "Settings", description: "Plans, referral settings and payout approvals." },
   manage_admins: { label: "Manage admins", description: "Add or remove admins and change their roles (never super admins)." },
 }

@@ -1361,8 +1361,8 @@
     "settings": {
       "title": "Notifiche",
       "description": "Scegli di cosa vuoi ricevere notifiche e dove.",
-      "user_description": "Le tue preferenze di notifica personali su tutti gli spazi di lavoro.",
-      "org_description": "Politica di notifica a livello organizzativo per questo spazio di lavoro.",
+      "user_description": "Le tue preferenze di notifica predefinite. Le organizzazioni possono sovrascriverle per la loro attività.",
+      "org_description": "Sovrascrive le impostazioni predefinite personali di ogni membro per questo spazio di lavoro.",
       "client_description": "Impostazioni di notifica solo per questo client.",
       "mute_all": "Pausa tutte le notifiche",
       "mute_all_hint": "Disattiva ogni notifica a questo livello.",
@@ -1408,7 +1408,63 @@
       "budget_exceeded": {
         "title": "Budget superato",
         "body": "{{name}} ha superato il suo budget {{period}}."
+      },
+      "space_autosaved": {
+        "title": "Risparmio automatico nello Spazio",
+        "body": "Denaro spostato in {{space}}"
+      },
+      "add_transaction_reminder": {
+        "title": "È ora di aggiungere le tue transazioni",
+        "body": "Non dimenticare di registrare le entrate e le uscite di oggi."
+      },
+      "admin_broadcast": {
+        "title": "Annuncio"
       }
+    },
+    "client": {
+      "mute": "Silenzia le notifiche per questo cliente",
+      "mute_hint": "Disattiva tutte le notifiche su questo cliente.",
+      "notify_about": "Notificami per",
+      "triggers": {
+        "budget": "Sforamento del budget",
+        "transactions": "Attività delle transazioni",
+        "clients": "Preventivi e aggiornamenti"
+      },
+      "trigger_hints": {
+        "budget": "Quando questo cliente supera il budget",
+        "transactions": "Transazioni ricorrenti e rilevanti",
+        "clients": "Stato dei preventivi e modifiche al cliente"
+      }
+    },
+    "reminders": {
+      "title": "Promemoria transazioni",
+      "description": "Ricevi un promemoria per registrare entrate e uscite. Toccandolo si apre il modulo Aggiungi transazione.",
+      "add": "Aggiungi promemoria",
+      "none": "Ancora nessun promemoria",
+      "none_hint": "Aggiungine uno per ricordarti di registrare le transazioni.",
+      "name": "Nome",
+      "name_placeholder": "es. Registro mattutino",
+      "enabled": "Attivo",
+      "times": "Orari",
+      "add_time": "Aggiungi orario",
+      "days": "Giorni",
+      "everyday": "Ogni giorno",
+      "weekdays": "Giorni feriali",
+      "custom": "Personalizzato",
+      "timezone": "Fuso orario",
+      "timezone_hint": "I promemoria si attivano in questo fuso orario.",
+      "save": "Salva promemoria",
+      "saving": "Salvataggio…",
+      "saved": "Promemoria salvato",
+      "deleted": "Promemoria eliminato",
+      "delete_confirm": "Eliminare questo promemoria?",
+      "edit": "Modifica",
+      "delete": "Elimina",
+      "cancel": "Annulla",
+      "error": "Impossibile salvare il promemoria",
+      "need_time": "Aggiungi almeno un orario.",
+      "new_reminder": "Nuovo promemoria",
+      "edit_reminder": "Modifica promemoria"
     }
   }
 }

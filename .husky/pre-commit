@@ -19,6 +19,9 @@ node scripts/check-esm-extensions.mjs || { echo "✗ ESM extension check failed 
 echo "→ functions boot under Node ESM (prod parity)..."
 node scripts/boot-functions.mjs || { echo "✗ a serverless function fails to load exactly as it would in production (FUNCTION_INVOCATION_FAILED) — fix the import/module-scope error above"; exit 1; }
 
+echo "→ route auth guards + raw-HTML sweep..."
+node scripts/check-route-guards.mjs || { echo "✗ route-guard sweep failed — every api/_routes handler must call an auth guard (requireAuth/requireAdminCap/getUserId/requireServiceToken)"; exit 1; }
+
 echo "→ i18n parity (all locales must match en.json)..."
 npm run i18n:check || { echo "✗ i18n parity check failed — add the missing translations to every locale in src/lib/i18n/locales/"; exit 1; }
 
