@@ -1435,6 +1435,36 @@
         "transactions": "Transazioni ricorrenti e rilevanti",
         "clients": "Stato dei preventivi e modifiche al cliente"
       }
+    },
+    "reminders": {
+      "title": "Promemoria transazioni",
+      "description": "Ricevi un promemoria per registrare entrate e uscite. Toccandolo si apre il modulo Aggiungi transazione.",
+      "add": "Aggiungi promemoria",
+      "none": "Ancora nessun promemoria",
+      "none_hint": "Aggiungine uno per ricordarti di registrare le transazioni.",
+      "name": "Nome",
+      "name_placeholder": "es. Registro mattutino",
+      "enabled": "Attivo",
+      "times": "Orari",
+      "add_time": "Aggiungi orario",
+      "days": "Giorni",
+      "everyday": "Ogni giorno",
+      "weekdays": "Giorni feriali",
+      "custom": "Personalizzato",
+      "timezone": "Fuso orario",
+      "timezone_hint": "I promemoria si attivano in questo fuso orario.",
+      "save": "Salva promemoria",
+      "saving": "Salvataggio…",
+      "saved": "Promemoria salvato",
+      "deleted": "Promemoria eliminato",
+      "delete_confirm": "Eliminare questo promemoria?",
+      "edit": "Modifica",
+      "delete": "Elimina",
+      "cancel": "Annulla",
+      "error": "Impossibile salvare il promemoria",
+      "need_time": "Aggiungi almeno un orario.",
+      "new_reminder": "Nuovo promemoria",
+      "edit_reminder": "Modifica promemoria"
     }
   }
 }

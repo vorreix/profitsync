@@ -1435,6 +1435,36 @@
         "transactions": "Recurring posts and notable transactions",
         "clients": "Quotation status and client changes"
       }
+    },
+    "reminders": {
+      "title": "Transaction reminders",
+      "description": "Get a nudge to record your income and expenses. Tapping the reminder opens the Add Transaction form.",
+      "add": "Add reminder",
+      "none": "No reminders yet",
+      "none_hint": "Add one to get a nudge to record your transactions.",
+      "name": "Name",
+      "name_placeholder": "e.g. Morning log",
+      "enabled": "Enabled",
+      "times": "Times",
+      "add_time": "Add time",
+      "days": "Days",
+      "everyday": "Every day",
+      "weekdays": "Weekdays",
+      "custom": "Custom",
+      "timezone": "Timezone",
+      "timezone_hint": "Reminders fire in this timezone.",
+      "save": "Save reminder",
+      "saving": "Saving…",
+      "saved": "Reminder saved",
+      "deleted": "Reminder deleted",
+      "delete_confirm": "Delete this reminder?",
+      "edit": "Edit",
+      "delete": "Delete",
+      "cancel": "Cancel",
+      "error": "Couldn't save the reminder",
+      "need_time": "Add at least one time.",
+      "new_reminder": "New reminder",
+      "edit_reminder": "Edit reminder"
     }
   }
 }

@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -19,15 +20,20 @@ type Client struct {
 	baseURL string
 	token   string
 	http    *http.Client
+	log     *slog.Logger
 }
 
 // New returns a client. If baseURL/token are empty the client is considered
 // unconfigured and Call returns an error (callers should check Configured()).
-func New(baseURL, token string) *Client {
+func New(baseURL, token string, log *slog.Logger) *Client {
+	if log == nil {
+		log = slog.Default()
+	}
 	return &Client{
 		baseURL: strings.TrimRight(baseURL, "/"),
 		token:   token,
 		http:    &http.Client{Timeout: 30 * time.Second},
+		log:     log,
 	}
 }
 
@@ -58,14 +64,26 @@ func (c *Client) Call(ctx context.Context, method, path string, body []byte) ([]
 	if len(body) > 0 {
 		req.Header.Set("Content-Type", "application/json")
 	}
+	start := time.Now()
 	resp, err := c.http.Do(req)
 	if err != nil {
+		c.log.Error("profitsync callback failed", "method", method, "path", path, "err", err, "dur_ms", time.Since(start).Milliseconds())
 		return nil, err
 	}
 	defer resp.Body.Close()
 	out, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	durMs := time.Since(start).Milliseconds()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		c.log.Error("profitsync callback non-2xx", "method", method, "path", path, "status", resp.StatusCode, "dur_ms", durMs, "body", truncate(string(out), 300))
 		return nil, fmt.Errorf("profitsync %s %s -> %d: %s", method, path, resp.StatusCode, string(out))
 	}
+	c.log.Info("profitsync callback ok", "method", method, "path", path, "status", resp.StatusCode, "dur_ms", durMs)
 	return out, nil
+}
+
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "…"
 }
