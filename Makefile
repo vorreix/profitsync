@@ -94,11 +94,34 @@ pr: ## Full pre-commit gate: conflict markers → i18n parity → format → lin
 	@npx eslint . || (echo "✗ lint failed" && exit 1)
 	@echo "→ type check..."
 	@npm run typecheck || (echo "✗ type check failed" && exit 1)
+	@echo "→ route auth guards + raw-HTML sweep..."
+	@node scripts/check-route-guards.mjs || (echo "✗ route-guard sweep failed — every api/_routes handler must call an auth guard (requireAuth/requireAdminCap/getUserId/requireServiceToken)" && exit 1)
 	@echo "→ i18n parity (all locales must match en.json)..."
 	@npm run i18n:check || (echo "✗ i18n parity check failed — add the missing translations to every locale in src/lib/i18n/locales/" && exit 1)
 	@echo "→ tests..."
 	@npm run test:ci || (echo "✗ tests failed" && exit 1)
 	@echo "✓ all checks passed"
+
+# ----------------------------------------------------------------------------
+# Background worker (worker/ — docker-compose, project: profitsync-worker)
+# Delegates to worker/Makefile. Run `make -C worker help` for all worker targets.
+# ----------------------------------------------------------------------------
+
+.PHONY: worker-up
+worker-up: ## Build + start the background worker (docker, project profitsync-worker)
+	@$(MAKE) -C worker up
+
+.PHONY: worker-down
+worker-down: ## Stop + remove the worker containers (keeps volumes)
+	@$(MAKE) -C worker down
+
+.PHONY: worker-logs
+worker-logs: ## Follow the worker's logs
+	@$(MAKE) -C worker logs
+
+.PHONY: worker-ps
+worker-ps: ## Show the worker stack status
+	@$(MAKE) -C worker ps
 
 # ----------------------------------------------------------------------------
 # Help

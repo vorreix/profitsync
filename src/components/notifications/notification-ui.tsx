@@ -1,15 +1,16 @@
 import type { ComponentType } from "react"
-import { Users, CreditCard, PiggyBank, ArrowLeftRight, FileText, Bell } from "lucide-react"
+import { Users, CreditCard, ArrowLeftRight, FileText, Bell } from "lucide-react"
 import type { TFunction } from "i18next"
 import type { AppNotification } from "@/lib/types"
 import type { NotificationCategory } from "@/lib/notifications"
+import { MoneyBag } from "@/components/icons/MoneyBag"
 
 // Category → icon + tone, used by the bell dropdown and the history page so a
 // notification looks the same everywhere.
 const CATEGORY_ICON: Record<NotificationCategory, ComponentType<{ className?: string }>> = {
   team: Users,
   billing: CreditCard,
-  budget: PiggyBank,
+  budget: MoneyBag,
   transactions: ArrowLeftRight,
   clients: FileText,
   system: Bell,
@@ -30,6 +31,32 @@ export function categoryIcon(category: string): ComponentType<{ className?: stri
 
 export function categoryTone(category: string): string {
   return CATEGORY_TONE[category as NotificationCategory] ?? CATEGORY_TONE.system
+}
+
+// Optional image attached to a notification (admin broadcasts carry an imageUrl
+// in `data`). Returns null when absent.
+export function notificationImage(n: AppNotification): string | null {
+  const url = (n.data as { imageUrl?: unknown })?.imageUrl
+  return typeof url === "string" && url ? url : null
+}
+
+// A broadcast click action can be an EXTERNAL URL (open in a new tab) rather than
+// an in-app route (react-router navigate). Detect it from the stored link type or
+// an absolute http(s) link.
+export function isExternalNotificationLink(n: AppNotification): boolean {
+  const linkType = (n.data as { linkType?: unknown })?.linkType
+  if (linkType === "external") return true
+  return /^https?:\/\//i.test(n.link ?? "")
+}
+
+/** Open a notification's link correctly (external → new tab, internal → router). */
+export function openNotificationLink(n: AppNotification, navigate: (to: string) => void): void {
+  if (!n.link) return
+  if (isExternalNotificationLink(n)) {
+    window.open(n.link, "_blank", "noopener,noreferrer")
+  } else {
+    navigate(n.link)
+  }
 }
 
 // Title/body rendering: prefer the row's i18nKey (rendered in the user's

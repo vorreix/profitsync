@@ -422,3 +422,77 @@ export type PushSubscriptionRow = {
   created_at: string
   last_seen_at: string
 }
+
+// ── Notification reminders (#6) ────────────────────────────────────────────────
+// A user's "remind me to add transactions" schedule. `weekdays` use 1=Mon..7=Sun.
+// `times` are "HH:mm" in the stored IANA `timezone`. An empty `weekdays` means
+// every day.
+export type ReminderSchedule = {
+  times: string[]
+  weekdays: number[]
+  timezone: string
+}
+export type NotificationReminder = {
+  id: string
+  user_id: string
+  organization_id: string | null
+  enabled: boolean
+  label: string
+  schedule: ReminderSchedule
+  last_fired_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+// ── Admin broadcasts (#7) ──────────────────────────────────────────────────────
+export type BroadcastAudience =
+  | { type: "all" }
+  | { type: "push_enabled" }
+  | { type: "users"; userIds: string[] }
+  | { type: "group"; groupId: string }
+export type BroadcastRecurrence = {
+  freq: "daily" | "weekly" | "monthly"
+  interval: number
+  until?: string | null
+}
+export type BroadcastSchedule =
+  | { type: "now" }
+  | { type: "at"; at: string }
+  | { type: "recurring"; at: string; recurring: BroadcastRecurrence }
+export type BroadcastStatus = "draft" | "scheduled" | "sending" | "sent" | "cancelled"
+export type BroadcastStats = { delivered?: number; push_sent?: number }
+export type Broadcast = {
+  id: string
+  created_by: string
+  title: string
+  body: string
+  image_url: string | null
+  link: string | null
+  link_type: "internal" | "external"
+  category: string
+  importance: boolean
+  audience: BroadcastAudience
+  schedule: BroadcastSchedule
+  status: BroadcastStatus
+  next_fire_at: string | null
+  sent_at: string | null
+  stats: BroadcastStats
+  created_at: string
+  updated_at: string
+}
+
+// ── Saved user groups (#8) ─────────────────────────────────────────────────────
+export type UserGroup = {
+  id: string
+  name: string
+  created_by: string
+  member_count: number
+  created_at: string
+  updated_at: string
+}
+export type UserGroupMember = {
+  user_id: string
+  email: string | null
+  name: string | null
+  avatar_url: string | null
+}

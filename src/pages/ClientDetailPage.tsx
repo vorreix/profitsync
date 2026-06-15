@@ -34,7 +34,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "sonner"
 import { ArrowLeft, Plus, Trash2, DollarSign, Building2, Mail, Phone, FileText, ArrowUpRight, ArrowDownRight, Pencil, Calendar, Paperclip, Upload, X, FolderOpen, Archive, ArchiveRestore, Eye, ChevronRight, Repeat, Bell } from "lucide-react"
 import { useTranslation } from "react-i18next"
-import { NotificationPreferencesForm } from "@/components/notifications/NotificationPreferencesForm"
+import { ClientNotificationForm } from "@/components/notifications/ClientNotificationForm"
 import { MoneyBag } from "@/components/icons/MoneyBag"
 import { ExpandableSearch } from "@/components/ExpandableSearch"
 
@@ -750,7 +750,7 @@ export function ClientDetailPage() {
             <DialogTitle>{t("notifications:settings.title")}</DialogTitle>
             <DialogDescription>{t("notifications:settings.client_description")}</DialogDescription>
           </DialogHeader>
-          {client && <NotificationPreferencesForm scope="client" clientId={client.id} canEdit={canModify} />}
+          {client && <ClientNotificationForm clientId={client.id} canEdit={canModify} />}
         </DialogContent>
       </Dialog>
 
