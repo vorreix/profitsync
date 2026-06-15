@@ -292,6 +292,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     await db.delete(organizationMembers).where(eq(organizationMembers.id, member_id))
 
+    // Leaving / being removed from a family clears the one-family pointer so the
+    // user can join another family. (Family deletion is covered by the FK's ON
+    // DELETE SET NULL; this handles the single-member case.)
+    const [removedOrg] = await db
+      .select({ accountType: organizations.accountType })
+      .from(organizations)
+      .where(eq(organizations.id, id))
+    if (removedOrg?.accountType === "family") {
+      await db
+        .update(userProfiles)
+        .set({ familyOrgId: null, updatedAt: new Date() })
+        .where(and(eq(userProfiles.id, target.userId), eq(userProfiles.familyOrgId, id)))
+    }
+
     // Notify a removed member (not a self-leave). Account-level (organizationId
     // null) so it surfaces even though they can no longer see that org's scope.
     if (target.userId !== userId) {

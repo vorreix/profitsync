@@ -62,6 +62,7 @@ import organizations from "./_routes/organizations.js"
 import organizationSwitch from "./_routes/organizations/switch.js"
 import organizationById from "./_routes/organizations/[id].js"
 import organizationMembers from "./_routes/organizations/[id]/members.js"
+import family from "./_routes/family.js"
 import attachmentById from "./_routes/attachments/[id].js"
 import quotationAttachmentById from "./_routes/quotation-attachments/[id].js"
 import clientAttachmentById from "./_routes/client-attachments/[id].js"
@@ -195,6 +196,7 @@ const routes: RoutePattern<ApiHandler>[] = [
   { segments: ["organizations", "switch"], handler: organizationSwitch },
   { segments: ["organizations", ":id"], handler: organizationById },
   { segments: ["organizations", ":id", "members"], handler: organizationMembers },
+  { segments: ["family"], handler: family },
 
   { segments: ["attachments", ":id"], handler: attachmentById },
   { segments: ["quotation-attachments", ":id"], handler: quotationAttachmentById },

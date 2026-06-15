@@ -8,7 +8,7 @@ import {
   organizations,
   userProfiles,
 } from "../../../src/lib/db/schema.js"
-import { getUserId } from "../../_lib/auth.js"
+import { getUserFamilyOrgId, getUserId } from "../../_lib/auth.js"
 import { createNotification } from "../../_lib/notifications.js"
 
 const clerk = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY! })
@@ -29,7 +29,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const [org] = await db
-    .select({ id: organizations.id, name: organizations.name, slug: organizations.slug })
+    .select({
+      id: organizations.id,
+      name: organizations.name,
+      slug: organizations.slug,
+      accountType: organizations.accountType,
+    })
     .from(organizations)
     .where(eq(organizations.id, invitation.organizationId))
 
@@ -67,7 +72,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.json(serialize(declined))
   }
 
-  // POST = accept
+  // POST = accept. One family per user: block accepting a family invite while
+  // already in a different family (the head must remove you, or you leave first).
+  if (org?.accountType === "family") {
+    const currentFamily = await getUserFamilyOrgId(userId)
+    if (currentFamily && currentFamily !== invitation.organizationId) {
+      return res.status(409).json({
+        error: "You already belong to a family. Leave it before joining another.",
+        code: "already_in_family",
+      })
+    }
+  }
+
   const [existing] = await db
     .select()
     .from(organizationMembers)
@@ -91,6 +107,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // workspace they just joined.
   const [profile] = await db.select().from(userProfiles).where(eq(userProfiles.id, userId))
   const now = new Date()
+  // When the joined org is a family, point the member's profile at it too so the
+  // "one family per user" invariant and the personal-workspace "contribute" entry
+  // both have a single source of truth.
+  const familyPointer = org?.accountType === "family" ? { familyOrgId: invitation.organizationId } : {}
   if (!profile) {
     await db.insert(userProfiles).values({
       id: userId,
@@ -98,6 +118,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       fullName: clerkUser.fullName ?? "",
       currentOrganizationId: invitation.organizationId,
       onboardedAt: now,
+      ...familyPointer,
     })
   } else {
     await db
@@ -106,6 +127,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         currentOrganizationId: invitation.organizationId,
         onboardedAt: profile.onboardedAt ?? now,
         updatedAt: now,
+        ...familyPointer,
       })
       .where(eq(userProfiles.id, userId))
   }
