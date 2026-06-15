@@ -76,16 +76,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (mode === "send") {
       const [row] = await db.insert(broadcasts).values({ ...base, status: "sending" }).returning()
-      const result = await deliverBroadcast({
-        id: row.id,
-        title,
-        body,
-        imageUrl,
-        link,
-        linkType,
-        importance,
-        audience,
-      })
+      const result = await deliverBroadcast(
+        { id: row.id, title, body, imageUrl, link, linkType, importance, audience },
+        { occurrence: "manual" },
+      )
       const [updated] = await db
         .update(broadcasts)
         .set({ status: "sent", sentAt: new Date(), stats: { delivered: result.delivered }, updatedAt: new Date() })

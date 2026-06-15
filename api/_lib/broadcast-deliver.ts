@@ -60,8 +60,18 @@ const CHUNK = 100
  * double-tick) a no-op. Inserts are chunked so a huge audience doesn't open
  * thousands of concurrent writes. Returns how many bell rows were written.
  */
-export async function deliverBroadcast(b: DeliverableBroadcast): Promise<{ delivered: number; recipients: number }> {
+export async function deliverBroadcast(
+  b: DeliverableBroadcast,
+  opts: { occurrence?: string } = {},
+): Promise<{ delivered: number; recipients: number }> {
   const userIds = await resolveAudience(b.audience)
+  // The dedupe key MUST include the occurrence: a recurring broadcast reuses the
+  // same broadcast id every fire, so without an occurrence discriminator the
+  // per-user key would be identical across occurrences and the cascade dedupe
+  // would suppress every fire after the first. The cron passes the scheduled fire
+  // instant (stable across retries of that occurrence); a manual send passes a
+  // fixed token (the status guard already prevents re-sending a sent broadcast).
+  const occurrence = opts.occurrence ?? "once"
   let delivered = 0
   for (let i = 0; i < userIds.length; i += CHUNK) {
     const slice = userIds.slice(i, i + CHUNK)
@@ -80,7 +90,7 @@ export async function deliverBroadcast(b: DeliverableBroadcast): Promise<{ deliv
           imageUrl: b.imageUrl ?? null,
           category: "system",
           important: b.importance,
-          dedupeKey: `broadcast:${b.id}:${userId}`,
+          dedupeKey: `broadcast:${b.id}:${occurrence}:${userId}`,
         }).catch(() => null),
       ),
     )
