@@ -72,6 +72,7 @@ import {
   Repeat,
   CalendarDays,
   Network,
+  HeartHandshake,
 } from "lucide-react"
 import { MoneyBag } from "@/components/icons/MoneyBag"
 
@@ -122,6 +123,7 @@ function buildNavItems(activeOrgId: string | undefined, accountType: AccountType
   const usersHref = activeOrgId ? `/organizations/${activeOrgId}/members` : "/organizations"
   const items: (NavItem | false)[] = [
     { labelKey: "nav.dashboard", href: "/dashboard", icon: LayoutDashboard },
+    accountTypeAllows(accountType, "family") && { labelKey: "nav.family", href: "/family", icon: HeartHandshake },
     accountTypeAllows(accountType, "clients") && { labelKey: "nav.clients", href: "/clients", icon: Users },
     { labelKey: "nav.transactions", href: "/transactions", icon: ArrowLeftRight },
     { labelKey: "nav.wealth", href: "/wealth", icon: Landmark },
