@@ -121,8 +121,15 @@ added with the reminder/broadcast features — see `docs/notifications/V2_ROADMA
 - **/admin → Worker** (in the app): status counts (queued/running/done/failed/dead/
   cancelled), recent jobs with last error, and retry/cancel. Backed by a
   super-admin server-side proxy that holds the worker token.
-- **Logs:** `docker compose logs -f worker` (structured JSON — job done/failed,
-  reaped orphans, schedule fires, shutdown).
+- **Logs (stdout):** `docker compose logs -f worker` — structured JSON for every
+  HTTP request (method/path/status/duration), job start/done/failed, app callbacks
+  (status + duration), schedule fires, reaped orphans, and shutdown. Set
+  `WORKER_LOG_LEVEL=debug` to also see each scheduler tick + job claim.
+- **Logs (file + rotation):** with `WORKER_LOG_DIR=/app/logs` (set by compose, on
+  the `worker_logs` volume) the same logs are written to `/app/logs/worker.log`,
+  size-rotated by lumberjack (`WORKER_LOG_MAX_SIZE_MB`/`MAX_BACKUPS`/`MAX_AGE_DAYS`/
+  `COMPRESS`). Tail it: `docker compose exec worker tail -f /app/logs/worker.log`;
+  copy out: `docker compose cp worker:/app/logs ./worker-logs`.
 - **Direct API:** `GET /v1/stats`, `GET /v1/jobs?status=failed`.
 
 ## 9. Operations

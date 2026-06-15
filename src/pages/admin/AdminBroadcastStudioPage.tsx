@@ -80,6 +80,28 @@ function fromLocalInput(v: string): string | null {
   return isNaN(d.getTime()) ? null : d.toISOString()
 }
 
+const SCHEDULE_DEFAULT_AHEAD_MS = 6 * 60 * 60 * 1000 // default a new schedule 6h out
+function defaultScheduleAtLocal(): string {
+  return toLocalInput(new Date(Date.now() + SCHEDULE_DEFAULT_AHEAD_MS).toISOString())
+}
+function localTimezone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"
+  } catch {
+    return "UTC"
+  }
+}
+function formatLocal(d: Date): string {
+  return d.toLocaleString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  })
+}
+
 export function AdminBroadcastStudioPage() {
   const { getToken } = useAuth()
   const [list, setList] = useState<Broadcast[] | null>(null)
@@ -264,6 +286,14 @@ function BroadcastComposer({
 }) {
   const { getToken } = useAuth()
 
+  // Open AFTER mount (false → true) so the shared Dialog's useBackClose sees a real
+  // open transition. Mounting already-open makes its StrictMode effect cleanup run
+  // history.back() and immediately close the modal.
+  const [open, setOpen] = useState(false)
+  useEffect(() => {
+    setOpen(true)
+  }, [])
+
   const [title, setTitle] = useState(broadcast?.title ?? "")
   const [body, setBody] = useState(broadcast?.body ?? "")
   const [imageUrl, setImageUrl] = useState(broadcast?.image_url ?? "")
@@ -283,13 +313,22 @@ function BroadcastComposer({
   )
   const [groups, setGroups] = useState<Group[]>([])
 
-  // Schedule
+  // Schedule. A NEW schedule defaults to 6h from now; an existing one keeps its time.
   const initSched = broadcast?.schedule ?? { type: "now" as const }
   const [schedType, setSchedType] = useState<ScheduleType>(initSched.type)
-  const [at, setAt] = useState(toLocalInput(initSched.type !== "now" ? initSched.at : null))
+  const [at, setAt] = useState(initSched.type !== "now" ? toLocalInput(initSched.at) : defaultScheduleAtLocal())
   const [freq, setFreq] = useState<BroadcastRecurrence["freq"]>(initSched.type === "recurring" ? initSched.recurring.freq : "daily")
   const [interval, setInterval] = useState(initSched.type === "recurring" ? initSched.recurring.interval : 1)
   const [until, setUntil] = useState(toLocalInput(initSched.type === "recurring" ? initSched.recurring.until : null))
+
+  // Live "now" so the displayed current time + the min-selectable time stay fresh.
+  // (window.setInterval — the local `setInterval` name is the recurrence state setter.)
+  const [now, setNow] = useState<Date>(() => new Date())
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(new Date()), 30_000)
+    return () => window.clearInterval(id)
+  }, [])
+  const minAtLocal = toLocalInput(now.toISOString())
 
   const [saving, setSaving] = useState<null | "draft" | "schedule" | "send">(null)
 
@@ -349,7 +388,16 @@ function BroadcastComposer({
     if (!title.trim()) return toast.error("A title is required.")
     if (audType === "users" && pickedUsers.length === 0) return toast.error("Select at least one user.")
     if (audType === "group" && !groupId) return toast.error("Choose a group.")
-    if ((mode === "schedule") && schedType !== "now" && !at) return toast.error("Pick a date and time.")
+    if (mode === "schedule" && schedType !== "now") {
+      if (!at) return toast.error("Pick a date and time.")
+      const atMs = new Date(at).getTime()
+      if (Number.isNaN(atMs)) return toast.error("Pick a valid date and time.")
+      if (atMs <= Date.now()) return toast.error("Pick a time in the future.")
+      if (until) {
+        const untilMs = new Date(until).getTime()
+        if (!Number.isNaN(untilMs) && untilMs <= atMs) return toast.error("The end time must be after the start time.")
+      }
+    }
     setSaving(mode)
     try {
       const token = await getToken()
@@ -379,7 +427,7 @@ function BroadcastComposer({
   const editingSent = broadcast?.status === "sent" || broadcast?.status === "sending"
 
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose() }}>
       <DialogContent className="max-h-[92svh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>{broadcast ? "Edit broadcast" : "New broadcast"}</DialogTitle>
@@ -504,10 +552,15 @@ function BroadcastComposer({
               ))}
             </div>
             {schedType !== "now" && (
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-3">
+                <p className="text-xs text-muted-foreground">
+                  Your current time: <span className="font-medium text-foreground">{formatLocal(now)}</span> ({localTimezone()}).
+                  Times are in your local timezone; the broadcast fires at that exact moment regardless of where the server is.
+                </p>
+                <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label htmlFor="bc-at" className="text-xs">{schedType === "recurring" ? "Starting" : "Date & time"}</Label>
-                  <Input id="bc-at" type="datetime-local" value={at} onChange={(e) => setAt(e.target.value)} />
+                  <Input id="bc-at" type="datetime-local" min={minAtLocal} value={at} onChange={(e) => setAt(e.target.value)} />
                 </div>
                 {schedType === "recurring" && (
                   <>
@@ -524,10 +577,11 @@ function BroadcastComposer({
                     </div>
                     <div className="space-y-1.5">
                       <Label htmlFor="bc-until" className="text-xs">Until <span className="text-muted-foreground">(optional)</span></Label>
-                      <Input id="bc-until" type="datetime-local" value={until} onChange={(e) => setUntil(e.target.value)} />
+                      <Input id="bc-until" type="datetime-local" min={at || minAtLocal} value={until} onChange={(e) => setUntil(e.target.value)} />
                     </div>
                   </>
                 )}
+                </div>
               </div>
             )}
           </div>

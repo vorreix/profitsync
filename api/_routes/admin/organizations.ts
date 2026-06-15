@@ -39,6 +39,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!ctx) return
 
   if (req.method === "GET") {
+    // options mode: a flat id/name list of ALL orgs (capped) for filter pickers.
+    if ((Array.isArray(req.query.options) ? req.query.options[0] : req.query.options) === "1") {
+      const opts = await db
+        .select({ id: organizations.id, name: organizations.name, isPersonal: organizations.isPersonal })
+        .from(organizations)
+        .orderBy(organizations.name)
+        .limit(2000)
+      return res.json({ options: opts.map(serialize) })
+    }
+
     const { search, page, type } = req.query as { search?: string; page?: string; type?: string }
     const pageNum = Math.max(1, parseInt(page ?? "1", 10) || 1)
     const offset = (pageNum - 1) * PAGE_SIZE
