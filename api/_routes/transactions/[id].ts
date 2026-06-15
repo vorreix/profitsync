@@ -15,12 +15,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   // Verify ownership via client.organization_id
   const [row] = await db
-    .select({ clientOrgId: clients.organizationId })
+    .select({ clientOrgId: clients.organizationId, familyTransfer: transactions.familyTransfer })
     .from(transactions)
     .innerJoin(clients, eq(transactions.clientId, clients.id))
     .where(eq(transactions.id, id))
 
   if (!row || row.clientOrgId !== orgId) return res.status(404).json({ error: "Not found" })
+
+  // A cross-org family contribution/disbursement leg must be undone as a unit via
+  // the family hub (which reverses BOTH legs across BOTH orgs). Editing or deleting
+  // a single leg here would desync the pair and tangle the other member's Trash.
+  // Reads stay allowed.
+  if (req.method !== "GET" && row.familyTransfer) {
+    return res.status(409).json({
+      error: "Manage this from the Family hub — it moves money between a personal account and the family.",
+      code: "family_transfer_locked",
+    })
+  }
 
   if (req.method === "GET") {
     // Enrich exactly like the list row (join client + wealth account, count
