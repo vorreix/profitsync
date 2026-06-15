@@ -136,6 +136,19 @@ export async function ensurePersonalOrg(userId: string): Promise<string> {
   return id
 }
 
+/**
+ * The family workspace (an account_type='family' org id) a user belongs to, or
+ * null. Single source of truth for the "one family per user" invariant — read it
+ * before creating/joining a family, and clear it on leave/remove.
+ */
+export async function getUserFamilyOrgId(userId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ familyOrgId: userProfiles.familyOrgId })
+    .from(userProfiles)
+    .where(eq(userProfiles.id, userId))
+  return row?.familyOrgId ?? null
+}
+
 // Short-lived in-process cache for org resolution. requireAuth runs on every API
 // call, and resolving the org otherwise costs a membership round-trip to the DB
 // (in eu-central-1) each time. Membership/role rarely changes within a session,

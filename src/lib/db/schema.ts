@@ -203,6 +203,15 @@ export const transactions = pgTable("transactions", {
   // so ordinary rows (both columns NULL) never conflict.
   recurringRuleId: uuid("recurring_rule_id"),
   recurringDueDate: date("recurring_due_date"),
+  // Cross-org family flow. True when this leg is one side of a contribution
+  // (member personal → family household) or a disbursement (family → member).
+  // The sibling leg lives in the OTHER org and shares group_id; both legs are
+  // kind='transfer' (excluded from P&L). family_party_user_id is the member the
+  // flow is attributed to (contributor for inflows, beneficiary for outflows) —
+  // it is ONLY a Clerk user id, never a personal-account reference, so the
+  // household can render "Alex contributed" without ever touching a private acct.
+  familyTransfer: boolean("family_transfer").notNull().default(false),
+  familyPartyUserId: text("family_party_user_id"),
   // Soft-delete: deleted transactions move to Trash (restore/purge) instead of
   // disappearing. All financial aggregates must exclude rows where this is set.
   deletedAt: timestamp("deleted_at"),
@@ -363,6 +372,10 @@ export const userProfiles = pgTable("user_profiles", {
   currency: text("currency").default("USD"),
   language: text("language").default("en"),
   currentOrganizationId: uuid("current_organization_id"),
+  // The single family workspace this user belongs to (an account_type='family'
+  // org), or null. One profile row per user ⇒ a user can be in at most one
+  // family. Kept in sync on family create/join/leave/remove.
+  familyOrgId: uuid("family_org_id").references(() => organizations.id, { onDelete: "set null" }),
   termsAcceptedAt: timestamp("terms_accepted_at"),
   // Set the first time a user completes the Personal/Business onboarding flow.
   // Null → the onboarding screen is shown on next app load.

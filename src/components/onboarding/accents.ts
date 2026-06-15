@@ -1,4 +1,4 @@
-import { Building2, User } from "lucide-react"
+import { Building2, HeartHandshake, User } from "lucide-react"
 import type { AccountType } from "@/lib/types"
 
 /** Per-account-type visual treatment, shared across onboarding surfaces. */
@@ -19,5 +19,12 @@ export const ACCENTS: Record<
     chip: "bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 border-indigo-500/30",
     glow: "from-indigo-500/20",
     dot: "bg-indigo-500",
+  },
+  family: {
+    icon: HeartHandshake,
+    ring: "ring-rose-500/60 border-rose-500/50",
+    chip: "bg-rose-500/10 text-rose-700 dark:text-rose-300 border-rose-500/30",
+    glow: "from-rose-500/20",
+    dot: "bg-rose-500",
   },
 }

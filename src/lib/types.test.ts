@@ -23,8 +23,17 @@ describe("accountTypeAllows", () => {
     }
   })
 
-  it("exposes exactly the two supported account types", () => {
-    expect(ACCOUNT_TYPES).toEqual(["personal", "business"])
+  it("exposes the three supported account types", () => {
+    expect(ACCOUNT_TYPES).toEqual(["personal", "business", "family"])
+  })
+
+  // Family-account gating is covered in depth in family.test.ts; assert the
+  // headline rule here so this file stays the canonical account-type contract.
+  it("family accounts get members + spaces but not clients/quotations", () => {
+    expect(accountTypeAllows("family", "members")).toBe(true)
+    expect(accountTypeAllows("family", "spaces")).toBe(true)
+    expect(accountTypeAllows("family", "clients")).toBe(false)
+    expect(accountTypeAllows("family", "quotations")).toBe(false)
   })
 })
 
