@@ -94,6 +94,8 @@ pr: ## Full pre-commit gate: conflict markers → i18n parity → format → lin
 	@npx eslint . || (echo "✗ lint failed" && exit 1)
 	@echo "→ type check..."
 	@npm run typecheck || (echo "✗ type check failed" && exit 1)
+	@echo "→ route auth guards + raw-HTML sweep..."
+	@node scripts/check-route-guards.mjs || (echo "✗ route-guard sweep failed — every api/_routes handler must call an auth guard (requireAuth/requireAdminCap/getUserId/requireServiceToken)" && exit 1)
 	@echo "→ i18n parity (all locales must match en.json)..."
 	@npm run i18n:check || (echo "✗ i18n parity check failed — add the missing translations to every locale in src/lib/i18n/locales/" && exit 1)
 	@echo "→ tests..."
