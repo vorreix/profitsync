@@ -1,6 +1,6 @@
 ---
 name: notification-system
-description: Use when working on ProfitSync notifications — the bell, the /notifications history page, notification preferences (user/organization/client), web push / VAPID / the service worker, the notifications/notification_preferences/push_subscriptions tables, or emitting a notification from a domain event (invitation, role change, payment, budget, etc.). Establishes the platform-agnostic-data / pluggable-channels model and the invariants that keep in-app and push correct.
+description: Use when working on ProfitSync notifications — the bell, the /notifications history page, notification preferences (user/organization/client), reminders, admin broadcasts + saved user groups, the notification scheduler/cron, web push / VAPID / the service worker, the notifications/notification_preferences/push_subscriptions/notification_reminders/broadcasts/user_groups tables, or emitting a notification from a domain event (invitation, role change, payment, budget, etc.). Establishes the platform-agnostic-data / pluggable-channels model and the invariants that keep in-app and push correct.
 ---
 
 # ProfitSync Notification System
@@ -63,7 +63,29 @@ changes safely. Future work is designed in `docs/notifications/V2_ROADMAP.md`.
   `src/pages/NotificationsPage.tsx`.
 - SW push: `public/push-sw.js` (pulled in via workbox `importScripts` in `pwa/vite-pwa.ts`,
   kept out of precache).
-- Schema: `src/lib/db/schema.ts`; migration `drizzle/0044_*`.
+- Schema: `src/lib/db/schema.ts`; migrations `drizzle/0044_*` (v1), `0045_*` (V2 tables).
+
+## V2 surfaces (reminders #6, broadcasts #7, user groups #8)
+
+- **Reminders** (`notification_reminders`): per-user "add transactions" schedules
+  (times/weekdays/tz). UI `src/components/notifications/RemindersCard.tsx` (in Profile →
+  Notifications). API `api/_routes/notifications/reminders{,/[id]}.ts`. The cron fires an
+  `add_transaction_reminder` linking to `/transactions?new=1`.
+- **Broadcasts** (`broadcasts`): admin-composed fan-out. Studio
+  `src/pages/admin/AdminBroadcastStudioPage.tsx`; API `api/_routes/admin/broadcasts*`;
+  delivery `api/_lib/broadcast-deliver.ts` (audience resolve + chunked fan-out + per-user
+  dedupe); shape validation `api/_lib/broadcast-validate.ts`. `important: true` on
+  `createNotification` **bypasses the cascade** (always bells, attempts push).
+- **User groups** (`user_groups` + `user_group_members`): reusable audiences. Page
+  `src/pages/admin/AdminUserGroupsPage.tsx`; API `api/_routes/admin/user-groups*`.
+- **Scheduler** (`docs/notifications/SCHEDULER.md`): the worker-driven, scheduler-agnostic
+  `POST /api/cron/notifications` (`requireServiceToken`) runs `runNotificationTick` —
+  delivers due reminders + scheduled/recurring broadcasts. Pure tz/recurrence math lives
+  in `src/lib/schedule-notifications.ts` (+ `.test.ts`, DB-free). Also drivable by an
+  external pinger, Vercel Cron, or the admin **"Run due now"** button. See [[worker-service]].
+- **Admin gating:** the studio + groups require the **`broadcast`** capability (grantable;
+  in `src/lib/admin-roles.ts` + `GRANTABLE_ADMIN_CAPS`). The whole `/admin` console is
+  English-only (no i18n) — keep new admin UI English. Reminders (user-facing) ARE i18n'd.
 
 ## Adding a notification (recipe)
 
