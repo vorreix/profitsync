@@ -22,11 +22,17 @@ services:
       # the ProfitSync app database (data isolation). App data is reached via the
       # authenticated PROFITSYNC_* callback API and results are stored in S3.
       DATABASE_URL: "postgres://worker:${POSTGRES_PASSWORD:-worker}@postgres:5432/worker?sslmode=disable"
+      # Write rotated log files here (also still logged to stdout for
+      # `docker compose logs`). Tune rotation with the WORKER_LOG_* vars in .env.
+      WORKER_LOG_DIR: /app/logs
     depends_on:
       postgres:
         condition: service_healthy
     ports:
       - "${WORKER_PORT:-8080}:8080"
+    volumes:
+      # Persist + rotate logs across restarts (inspect: docker compose exec worker ls -la /app/logs).
+      - worker_logs:/app/logs
 
   postgres:
     image: postgres:16-alpine
@@ -45,3 +51,4 @@ services:
 
 volumes:
   worker_pgdata:
+  worker_logs:

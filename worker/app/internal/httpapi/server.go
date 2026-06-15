@@ -43,7 +43,7 @@ func (s *Server) Run(ctx context.Context) error {
 
 	srv := &http.Server{
 		Addr:              ":" + s.cfg.Port,
-		Handler:           mux,
+		Handler:           s.logRequests(mux),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
@@ -63,6 +63,54 @@ func (s *Server) Run(ctx context.Context) error {
 	case err := <-errCh:
 		return err
 	}
+}
+
+// statusRecorder captures the response status + byte count for access logging.
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+	bytes  int
+}
+
+func (r *statusRecorder) WriteHeader(code int) {
+	r.status = code
+	r.ResponseWriter.WriteHeader(code)
+}
+
+func (r *statusRecorder) Write(b []byte) (int, error) {
+	if r.status == 0 {
+		r.status = http.StatusOK
+	}
+	n, err := r.ResponseWriter.Write(b)
+	r.bytes += n
+	return n, err
+}
+
+// logRequests logs every HTTP request (method, path, status, size, duration).
+// Health checks are logged at DEBUG to keep the stream readable; 4xx→WARN, 5xx→ERROR.
+func (s *Server) logRequests(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		rec := &statusRecorder{ResponseWriter: w}
+		next.ServeHTTP(rec, r)
+		lvl := slog.LevelInfo
+		switch {
+		case r.URL.Path == "/healthz":
+			lvl = slog.LevelDebug
+		case rec.status >= 500:
+			lvl = slog.LevelError
+		case rec.status >= 400:
+			lvl = slog.LevelWarn
+		}
+		s.log.Log(r.Context(), lvl, "http request",
+			"method", r.Method,
+			"path", r.URL.Path,
+			"status", rec.status,
+			"bytes", rec.bytes,
+			"dur_ms", time.Since(start).Milliseconds(),
+			"remote", r.RemoteAddr,
+		)
+	})
 }
 
 // auth enforces a bearer token (constant-time compare) on protected routes.

@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { NotificationPreferencesForm } from "@/components/notifications/NotificationPreferencesForm"
 import { PushToggle } from "@/components/notifications/PushToggle"
+import { RemindersCard } from "@/components/notifications/RemindersCard"
 import { Skeleton } from "@/components/ui/skeleton"
 import { LanguageSwitcher } from "@/components/LanguageSwitcher"
 import { CountryCombobox, CountryCodeCombobox } from "@/components/CountryCombobox"
@@ -344,6 +345,7 @@ export function ProfilePage() {
             <CardContent className="space-y-5">
               <PushToggle />
               <NotificationPreferencesForm scope="user" />
+              <RemindersCard />
             </CardContent>
           </Card>
         </TabsContent>
