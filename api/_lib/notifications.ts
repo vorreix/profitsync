@@ -39,6 +39,15 @@ export type CreateNotificationInput = {
   dedupeKey?: string | null
   /** Optional category override; defaults to categoryForType(type). */
   category?: NotificationCategory
+  /**
+   * Important notification (admin broadcasts marked "important"): bypasses the
+   * recipient's preference cascade so it is ALWAYS written to the bell and a push
+   * is ALWAYS attempted (the OS-level push permission still applies — we can't
+   * override a device that never subscribed or revoked permission).
+   */
+  important?: boolean
+  /** Optional image URL forwarded to the push payload (broadcasts). */
+  imageUrl?: string | null
 }
 
 /**
@@ -91,9 +100,11 @@ export async function createNotification(input: CreateNotificationInput): Promis
   const cascade = await loadPreferenceCascade(input.userId, input.organizationId, input.clientId)
 
   // in_app controls persistence (the bell/history); web_push controls whether we
-  // also deliver a browser/PWA push — both resolved from the same cascade.
-  const showInApp = resolveChannelEnabled(cascade, category, "in_app")
-  const showPush = resolveChannelEnabled(cascade, category, "web_push")
+  // also deliver a browser/PWA push — both resolved from the same cascade. An
+  // `important` notification (admin broadcast) bypasses the cascade entirely so a
+  // muted recipient still gets it (at minimum in the bell).
+  const showInApp = input.important || resolveChannelEnabled(cascade, category, "in_app")
+  const showPush = input.important || resolveChannelEnabled(cascade, category, "web_push")
   if (!showInApp && !showPush) return null
 
   // Dedupe for event-sourced notifications. A pre-check keeps the common path
@@ -117,6 +128,7 @@ export async function createNotification(input: CreateNotificationInput): Promis
       title: input.title,
       body: input.body || undefined,
       url: input.link || undefined,
+      image: input.imageUrl || undefined,
     }).catch(() => {})
   }
 

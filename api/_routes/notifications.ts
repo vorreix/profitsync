@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { and, count, desc, eq, isNull, or, sql } from "drizzle-orm"
+import { and, count, desc, eq, isNull, sql } from "drizzle-orm"
 import { db, serialize } from "../../src/lib/db/index.js"
 import { notifications } from "../../src/lib/db/schema.js"
 import { requireAuth } from "../_lib/auth.js"
@@ -36,12 +36,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const category = single(req.query.category)
   const cursorRaw = single(req.query.cursor)
 
-  // A recipient sees their own rows in the active org, plus account-level
-  // (organization_id IS NULL) ones regardless of the active org.
-  const scope = and(
-    eq(notifications.userId, ctx.userId),
-    or(eq(notifications.organizationId, ctx.orgId), isNull(notifications.organizationId)),
-  )
+  // The bell is a PERSONAL inbox: a recipient sees ALL their own notifications
+  // across every org they belong to, plus account-level (org-less) ones — never
+  // filtered by the org they happen to be viewing. (Org-scoped filtering hid
+  // cross-org events like a role change in a non-active org.)
+  const scope = eq(notifications.userId, ctx.userId)
 
   const listConditions = [scope]
   if (filter === "unread") listConditions.push(isNull(notifications.readAt))

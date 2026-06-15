@@ -11,6 +11,7 @@ import { apiGet, apiPatch, apiPost } from "@/lib/api"
 import { useNotifications } from "@/lib/notification-context"
 import type { AppNotification, NotificationListResponse } from "@/lib/types"
 import { NotificationItem } from "./NotificationItem"
+import { openNotificationLink } from "./notification-ui"
 
 const PANEL_LIMIT = 8
 
@@ -78,7 +79,7 @@ export function NotificationBell({ className }: { className?: string }) {
       void markRead(n)
       if (n.link) {
         setOpen(false)
-        navigate(n.link)
+        openNotificationLink(n, navigate)
       }
     },
     [markRead, navigate],
