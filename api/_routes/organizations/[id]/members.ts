@@ -11,6 +11,7 @@ import {
 import { getUserId } from "../../../_lib/auth.js"
 import { sendInvitationEmail } from "../../../_lib/email.js"
 import { createNotification } from "../../../_lib/notifications.js"
+import { checkFamilyMemberQuota } from "../../../_lib/quota.js"
 
 const VALID_ROLES = ["owner", "admin", "editor", "viewer"]
 
@@ -153,6 +154,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       invite = updated
       statusCode = 200
     } else {
+      // A brand-new seat: family workspaces cap members (head + members) by plan.
+      // (Refreshing an existing pending invite above doesn't add a seat.)
+      const [inviteOrg] = await db
+        .select({ accountType: organizations.accountType })
+        .from(organizations)
+        .where(eq(organizations.id, id))
+      if (inviteOrg?.accountType === "family") {
+        const seat = await checkFamilyMemberQuota(id)
+        if (!seat.allowed) {
+          return res
+            .status(403)
+            .json({ error: seat.reason, code: "family_member_limit", limit: seat.limit, current: seat.current })
+        }
+      }
+
       const [created] = await db
         .insert(organizationInvitations)
         .values({

@@ -3,15 +3,20 @@ import { db } from "../../src/lib/db/index.js"
 import {
   clientAttachments,
   clients,
+  organizations,
+  organizationInvitations,
+  organizationMembers,
   plans,
   quotationAttachments,
   quotations,
   subscriptions,
   transactionAttachments,
   transactions,
+  userProfiles,
   wealthAccountAttachments,
   wealthAccounts,
 } from "../../src/lib/db/schema.js"
+import { maxByKey } from "../../src/lib/family.js"
 
 export type PlanLimits = {
   clients?: number
@@ -26,6 +31,8 @@ export type PlanLimits = {
   bankAccounts?: number
   // Max personal savings Spaces (type='space'). Free = 1, paid personal = 7.
   spaces?: number
+  // Max members in a family workspace (head + members). Free = 2, paid = 8.
+  familyMembers?: number
 }
 
 export type QuotaCheck =
@@ -42,6 +49,7 @@ const DEFAULT_FREE_LIMITS: Required<PlanLimits> = {
   attachmentTotalSizeKb: 50 * 1024, // 50 MB across the whole workspace
   bankAccounts: 1, // free workspaces get a single bank account (+ Cash in Hand)
   spaces: 1, // free personal accounts get a single savings Space
+  familyMembers: 2, // free family = head + 1 (encourages the family upgrade)
 }
 
 const DEFAULT_PREMIUM_LIMITS: Required<PlanLimits> = {
@@ -54,9 +62,14 @@ const DEFAULT_PREMIUM_LIMITS: Required<PlanLimits> = {
   attachmentTotalSizeKb: 5 * 1024 * 1024, // 5 GB across the whole workspace
   bankAccounts: 20, // paid plans: up to 20 bank accounts INCLUDING closed ones
   spaces: 7, // paid personal plan includes 7 savings Spaces
+  familyMembers: 8, // premium family supports up to 8 members
 }
 
-export async function getOrgPlan(orgId: string): Promise<{ planKey: string; limits: Required<PlanLimits> }> {
+/**
+ * The plan resolved from an org's OWN subscription (no family cascade). Use
+ * getOrgPlan() for the effective plan a member experiences.
+ */
+async function resolveOrgOwnPlan(orgId: string): Promise<{ planKey: string; limits: Required<PlanLimits> }> {
   // The plan that applies depends on the subscription's plan_key, but the plans
   // table is tiny (free/premium), so fetch the subscription and all plans
   // concurrently and resolve in memory — one parallel batch instead of two
@@ -96,8 +109,80 @@ export async function getOrgPlan(orgId: string): Promise<{ planKey: string; limi
       attachmentTotalSizeKb: stored.attachmentTotalSizeKb ?? fallback.attachmentTotalSizeKb,
       bankAccounts: stored.bankAccounts ?? fallback.bankAccounts,
       spaces: stored.spaces ?? fallback.spaces,
+      familyMembers: stored.familyMembers ?? fallback.familyMembers,
     },
   }
+}
+
+/**
+ * The EFFECTIVE plan for an org, including the whole-family premium cascade:
+ * a member's PERSONAL account inherits its family's paid limits (per-key "better
+ * of") while that family has an active paid subscription. Business orgs and the
+ * family org itself use their own plan unchanged. The cascade only does extra
+ * work for free personal orgs (members), short-circuiting otherwise.
+ */
+export async function getOrgPlan(orgId: string): Promise<{ planKey: string; limits: Required<PlanLimits> }> {
+  const own = await resolveOrgOwnPlan(orgId)
+  if (own.planKey !== "free") return own
+
+  const [org] = await db
+    .select({
+      accountType: organizations.accountType,
+      isPersonal: organizations.isPersonal,
+      ownerUserId: organizations.ownerUserId,
+    })
+    .from(organizations)
+    .where(eq(organizations.id, orgId))
+  // Cascade applies only to a personal account (a family member's private org).
+  if (!org || !(org.isPersonal || org.accountType === "personal")) return own
+
+  const [profile] = await db
+    .select({ familyOrgId: userProfiles.familyOrgId })
+    .from(userProfiles)
+    .where(eq(userProfiles.id, org.ownerUserId))
+  if (!profile?.familyOrgId) return own
+
+  const family = await resolveOrgOwnPlan(profile.familyOrgId)
+  if (family.planKey === "free") return own
+
+  // Family is paid → grant the better of (own free, family paid) per field.
+  return { planKey: family.planKey, limits: maxByKey(own.limits, family.limits) }
+}
+
+/**
+ * Family workspaces cap their member count (head + members): free family = 2,
+ * premium = 8. Counts current members PLUS pending (unaccepted/undeclined)
+ * invites so an invite can't be sent that would overflow the plan once accepted.
+ */
+export async function checkFamilyMemberQuota(familyOrgId: string): Promise<QuotaCheck> {
+  const { planKey, limits } = await getOrgPlan(familyOrgId)
+  const [memberRows, inviteRows] = await Promise.all([
+    db.select({ c: count() }).from(organizationMembers).where(eq(organizationMembers.organizationId, familyOrgId)),
+    db
+      .select({ c: count() })
+      .from(organizationInvitations)
+      .where(
+        and(
+          eq(organizationInvitations.organizationId, familyOrgId),
+          isNull(organizationInvitations.acceptedAt),
+          isNull(organizationInvitations.declinedAt),
+        ),
+      ),
+  ])
+  const current = (memberRows[0]?.c ?? 0) + (inviteRows[0]?.c ?? 0)
+  if (current >= limits.familyMembers) {
+    return {
+      allowed: false,
+      reason:
+        planKey === "free"
+          ? `Your free family includes ${limits.familyMembers} members. Upgrade to add up to 8.`
+          : `This family has reached its limit of ${limits.familyMembers} members.`,
+      limit: limits.familyMembers,
+      current,
+      upgradeHint: planKey === "free",
+    }
+  }
+  return { allowed: true }
 }
 
 // Org-wide guard: the combined size of ALL attachments (client docs +

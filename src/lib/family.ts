@@ -7,7 +7,7 @@
 //   member = editor  (contributes, manages the shared household, self-withdraws)
 //   viewer = viewer  (reserved for a future view-only / kid tier)
 
-import type { OrgRole } from "./types"
+import type { OrgRole } from "./types.js"
 
 export type FamilyRole = "head" | "member" | "viewer"
 
@@ -28,6 +28,19 @@ export function orgRoleForFamilyRole(role: FamilyRole): OrgRole {
 /** True if the org role is the family head (manages members + billing). */
 export function isHead(role: string): boolean {
   return role === "owner" || role === "admin"
+}
+
+/**
+ * Per-key maximum of two numeric records — the "better of" merge used by the
+ * whole-family premium cascade so a member's personal account, when their family
+ * is paid, never loses a limit it already had. Pure + unit-tested.
+ */
+export function maxByKey<T extends Record<string, number>>(a: T, b: T): T {
+  const out = { ...a }
+  for (const k of Object.keys(b) as (keyof T)[]) {
+    out[k] = Math.max(Number(a[k] ?? 0), Number(b[k] ?? 0)) as T[keyof T]
+  }
+  return out
 }
 
 export type ContributionLeg = {
