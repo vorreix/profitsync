@@ -1386,7 +1386,13 @@
       "disabled": "Notifiche push disabilitate",
       "blocked": "Le notifiche sono bloccate nelle impostazioni del browser",
       "unsupported": "Le notifiche push non sono supportate su questo dispositivo",
-      "description": "Ricevi notifiche anche quando ProfitSync non è aperto."
+      "description": "Ricevi notifiche anche quando ProfitSync non è aperto.",
+      "test": "Invia una notifica di prova",
+      "test_sent": "Prova inviata a {{count}} dispositivo/i. Se non la vedi, controlla le impostazioni di notifica di questo dispositivo.",
+      "test_no_subs": "Questo dispositivo non è ancora iscritto — attiva prima l'interruttore qui sopra.",
+      "test_not_configured": "Le notifiche push non sono ancora configurate sul server.",
+      "test_failed": "Invio non riuscito{{code}} — la tua iscrizione potrebbe essere scaduta. Disattiva e riattiva le notifiche push.",
+      "test_error": "Impossibile inviare una prova in questo momento. Riprova."
     },
     "types": {
       "invitation_accepted": {
