@@ -19,6 +19,7 @@ import notificationsUnreadCount from "./_routes/notifications/unread-count.js"
 import notificationsReadAll from "./_routes/notifications/read-all.js"
 import notificationsPreferences from "./_routes/notifications/preferences.js"
 import notificationsPush from "./_routes/notifications/push.js"
+import notificationsTestPush from "./_routes/notifications/test-push.js"
 import notificationsReminders from "./_routes/notifications/reminders.js"
 import notificationReminderById from "./_routes/notifications/reminders/[id].js"
 import notificationById from "./_routes/notifications/[id].js"
@@ -140,6 +141,7 @@ const routes: RoutePattern<ApiHandler>[] = [
   { segments: ["notifications", "read-all"], handler: notificationsReadAll },
   { segments: ["notifications", "preferences"], handler: notificationsPreferences },
   { segments: ["notifications", "push"], handler: notificationsPush },
+  { segments: ["notifications", "test-push"], handler: notificationsTestPush },
   { segments: ["notifications", "reminders"], handler: notificationsReminders },
   { segments: ["notifications", "reminders", ":id"], handler: notificationReminderById },
   { segments: ["notifications", ":id"], handler: notificationById },

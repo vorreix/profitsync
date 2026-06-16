@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { toast } from "sonner"
-import { RefreshCw, RotateCcw, X, ServerCog, AlertTriangle } from "lucide-react"
+import { RefreshCw, RotateCcw, X, ServerCog, AlertTriangle, CalendarClock, Wrench, CheckCircle2 } from "lucide-react"
 
 type JobView = {
   id: string
@@ -19,12 +19,29 @@ type JobView = {
   run_at: string
   updated_at: string
 }
+type ScheduleView = {
+  id: string
+  name: string
+  type: string
+  cron: string
+  timezone: string
+  enabled: boolean
+  next_run_at: string | null
+  last_run_at: string | null
+  updated_at: string
+}
 type WorkerData = {
   configured: boolean
   reachable: boolean
   counts: Record<string, number>
   jobs: JobView[]
+  schedules: ScheduleView[]
+  schedulesSupported: boolean
 }
+
+// The schedule that drives reminders + scheduled/recurring broadcasts. If it's
+// missing, timed notifications never fire (the worker is a clock with no alarm).
+const DISPATCH_SCHEDULE = "notifications-dispatch"
 
 const STATUS_ORDER = ["queued", "running", "done", "failed", "dead", "cancelled"]
 const STATUS_STYLE: Record<string, string> = {
@@ -53,7 +70,7 @@ export function AdminWorkerPage() {
       const res = await apiGet<WorkerData>(`/api/admin/worker${filter ? `?status=${filter}` : ""}`, token)
       setData(res)
     } catch {
-      setData({ configured: true, reachable: false, counts: {}, jobs: [] })
+      setData({ configured: true, reachable: false, counts: {}, jobs: [], schedules: [], schedulesSupported: false })
     } finally {
       setLoading(false)
     }
@@ -80,6 +97,24 @@ export function AdminWorkerPage() {
     },
     [getToken, load],
   )
+
+  const repairSchedule = useCallback(async () => {
+    setBusy("register")
+    try {
+      const token = await getToken()
+      if (!token) return
+      await apiPost("/api/admin/worker", token, { action: "register-notifications" })
+      toast.success("Notification schedule registered — reminders & scheduled broadcasts will now fire.")
+      await load()
+    } catch {
+      toast.error("Couldn't register the schedule — is the worker reachable?")
+    } finally {
+      setBusy(null)
+    }
+  }, [getToken, load])
+
+  const dispatchMissing =
+    !!data?.schedulesSupported && !data.schedules.some((s) => s.name === DISPATCH_SCHEDULE && s.enabled)
 
   return (
     <div className="p-3 sm:p-6 space-y-6">
@@ -122,6 +157,69 @@ export function AdminWorkerPage() {
               </Card>
             ))}
           </div>
+
+          {/* Scheduler — the cron that fires reminders + scheduled broadcasts */}
+          <Card className="p-4 space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <p className="flex items-center gap-2 font-medium">
+                <CalendarClock className="size-4 text-muted-foreground" /> Scheduler
+              </p>
+              {canManage && (
+                <Button size="sm" variant={dispatchMissing ? "default" : "outline"} disabled={busy === "register"} onClick={repairSchedule}>
+                  <Wrench className={`size-3.5 ${busy === "register" ? "animate-pulse" : ""}`} />
+                  {dispatchMissing ? "Register notification schedule" : "Re-register"}
+                </Button>
+              )}
+            </div>
+
+            {!data.schedulesSupported ? (
+              <p className="text-sm text-muted-foreground">
+                This worker build can’t list schedules yet. Rebuild it (<code className="rounded bg-muted px-1">docker compose up -d --build</code>)
+                to see them here. You can still use the button above to (re)register the notification schedule.
+              </p>
+            ) : dispatchMissing ? (
+              <p className="flex items-start gap-2 rounded-md bg-amber-500/10 p-2.5 text-sm text-amber-700 dark:text-amber-300">
+                <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+                The <code className="rounded bg-amber-500/15 px-1">{DISPATCH_SCHEDULE}</code> schedule isn’t registered — timed
+                reminders and scheduled/recurring broadcasts will NOT fire. Click “Register notification schedule”.
+              </p>
+            ) : (
+              <p className="flex items-center gap-2 text-sm text-emerald-600 dark:text-emerald-400">
+                <CheckCircle2 className="size-4" /> Notification dispatch is active.
+              </p>
+            )}
+
+            {data.schedulesSupported && data.schedules.length > 0 && (
+              <div className="overflow-x-auto rounded-lg border">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/50 text-left text-xs text-muted-foreground">
+                    <tr>
+                      <th className="px-3 py-2 font-medium">Name</th>
+                      <th className="px-3 py-2 font-medium">Cron</th>
+                      <th className="px-3 py-2 font-medium">Enabled</th>
+                      <th className="px-3 py-2 font-medium">Next run</th>
+                      <th className="px-3 py-2 font-medium">Last run</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {data.schedules.map((s) => (
+                      <tr key={s.id}>
+                        <td className="px-3 py-2 font-medium">{s.name}</td>
+                        <td className="px-3 py-2 font-mono text-xs text-muted-foreground">{s.cron} <span className="opacity-60">{s.timezone}</span></td>
+                        <td className="px-3 py-2">
+                          <Badge variant="secondary" className={s.enabled ? STATUS_STYLE.done : STATUS_STYLE.cancelled}>
+                            {s.enabled ? "yes" : "no"}
+                          </Badge>
+                        </td>
+                        <td className="px-3 py-2 whitespace-nowrap text-muted-foreground">{s.next_run_at ? new Date(s.next_run_at).toLocaleString() : "—"}</td>
+                        <td className="px-3 py-2 whitespace-nowrap text-muted-foreground">{s.last_run_at ? new Date(s.last_run_at).toLocaleString() : "never"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Card>
 
           {/* Filter */}
           <div className="flex flex-wrap gap-1.5">

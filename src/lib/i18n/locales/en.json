@@ -1386,7 +1386,13 @@
       "disabled": "Push notifications disabled",
       "blocked": "Notifications are blocked in your browser settings",
       "unsupported": "Push notifications aren't supported on this device",
-      "description": "Get notified even when ProfitSync isn't open."
+      "description": "Get notified even when ProfitSync isn't open.",
+      "test": "Send a test notification",
+      "test_sent": "Test sent to {{count}} device(s). If you don't see it, check this device's notification settings.",
+      "test_no_subs": "This device isn't subscribed yet — turn the switch above on first.",
+      "test_not_configured": "Push isn't set up on the server yet.",
+      "test_failed": "Delivery failed{{code}} — your subscription may be stale. Turn push off and back on.",
+      "test_error": "Couldn't send a test right now. Please try again."
     },
     "types": {
       "invitation_accepted": {

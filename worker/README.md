@@ -41,7 +41,7 @@ worker/
 ```
                  ┌──────────────────────── ProfitSync (Vercel) ───────────────────────┐
                  │  enqueues jobs / upserts schedules  ──HTTP+bearer──►  Worker /v1/*   │
-                 │  exposes /api/internal/*  ◄──HTTP+service token──  trigger-style jobs │
+                 │  exposes /api/cron/*      ◄──HTTP+service token──  trigger-style jobs │
                  └────────────────────────────────────────────────────────────────────┘
                                               │                         │
                           (worker's OWN DB)   ▼                         ▼  (results)
@@ -66,7 +66,8 @@ data/logic two ways:
 
 Security: the control API requires a bearer token (`WORKER_API_TOKEN`); the
 app-callback uses a separate `PROFITSYNC_SERVICE_TOKEN`; S3 creds live only here.
-Put the worker behind TLS (Caddy/Traefik/nginx) and restrict ingress.
+Put the worker behind TLS with a host nginx + certbot (see
+`docs/worker/DEPLOYMENT.md` §5 + `deploy/nginx-worker.conf.example`) and restrict ingress.
 
 ## The queue
 
@@ -82,6 +83,7 @@ exponential-backoff retries, and dead-lettering after `max_attempts`.
 | `GET /healthz` | none | liveness (pings the queue DB) |
 | `POST /v1/jobs` | bearer | enqueue `{ type, payload?, run_at?, priority?, dedupe_key?, max_attempts? }` |
 | `POST /v1/schedules` | bearer | upsert `{ name, type, cron, timezone?, payload?, enabled? }` |
+| `GET /v1/schedules` | bearer | list registered schedules (admin panel — see whether the clock is wired) |
 | `GET /v1/stats` | bearer | job counts per status (admin dashboard) |
 | `GET /v1/jobs?status=&type=&limit=&offset=` | bearer | list recent jobs (admin) |
 | `POST /v1/jobs/{id}/retry` | bearer | re-queue a failed/dead/cancelled job |
@@ -107,11 +109,11 @@ curl -X POST "$WORKER_URL/v1/schedules" -H "Authorization: Bearer $WORKER_API_TO
     "type": "app.trigger",
     "cron": "*/5 * * * *",
     "timezone": "UTC",
-    "payload": { "path": "/api/internal/cron/notifications" }
+    "payload": { "path": "/api/cron/notifications" }
   }'
 ```
 
-When that fires, the worker `POST`s to `https://profitsync.net/api/internal/cron/notifications`
+When that fires, the worker `POST`s to `https://profitsync.net/api/cron/notifications`
 with the service token; ProfitSync then delivers due reminders / scheduled
 broadcasts using its existing notification service.
 
@@ -127,7 +129,7 @@ curl localhost:8080/healthz   # {"status":"ok"}
 ## ProfitSync side (to wire next)
 
 Add internal endpoints the worker triggers (protected by `PROFITSYNC_SERVICE_TOKEN`),
-e.g. `POST /api/internal/cron/notifications`, and a tiny client that POSTs to the
+e.g. `POST /api/cron/notifications`, and a tiny client that POSTs to the
 worker's `/v1/jobs` for on-demand work (PDF/CSV/export). These live in the main
 repo and are tracked in `docs/notifications/V2_ROADMAP.md`.
 
