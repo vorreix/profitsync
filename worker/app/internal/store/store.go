@@ -347,3 +347,40 @@ func (s *Store) UpsertSchedule(ctx context.Context, sc Schedule) (string, error)
 	}
 	return id, nil
 }
+
+// ScheduleView is a schedule summary for the admin panel (so an operator can SEE
+// whether the notification clock is wired). Timestamps are nullable: a freshly
+// upserted schedule has no run history yet.
+type ScheduleView struct {
+	ID        string     `json:"id"`
+	Name      string     `json:"name"`
+	Type      string     `json:"type"`
+	Cron      string     `json:"cron"`
+	Timezone  string     `json:"timezone"`
+	Enabled   bool       `json:"enabled"`
+	NextRunAt *time.Time `json:"next_run_at"`
+	LastRunAt *time.Time `json:"last_run_at"`
+	UpdatedAt time.Time  `json:"updated_at"`
+}
+
+// ListSchedules returns all registered schedules, newest-first.
+func (s *Store) ListSchedules(ctx context.Context) ([]ScheduleView, error) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT id, name, type, cron, timezone, enabled, next_run_at, last_run_at, updated_at
+		 FROM schedules
+		 ORDER BY name ASC`,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list schedules: %w", err)
+	}
+	defer rows.Close()
+	out := []ScheduleView{}
+	for rows.Next() {
+		var sc ScheduleView
+		if err := rows.Scan(&sc.ID, &sc.Name, &sc.Type, &sc.Cron, &sc.Timezone, &sc.Enabled, &sc.NextRunAt, &sc.LastRunAt, &sc.UpdatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, sc)
+	}
+	return out, rows.Err()
+}

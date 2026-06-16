@@ -15,7 +15,7 @@ it to the ProfitSync app, and operate it. For *what it is and why* read
 | Token | Direction | Set on |
 |---|---|---|
 | `WORKER_API_TOKEN` | **app → worker** (the bearer the worker checks on `/v1/*`) | worker `.env` **and** Vercel — *same value* |
-| `PROFITSYNC_SERVICE_TOKEN` | **worker → app** (the bearer the app checks on `/api/internal/*`) | worker `.env` **and** Vercel — *same value* |
+| `PROFITSYNC_SERVICE_TOKEN` | **worker → app** (the bearer the app checks on `/api/cron/*`) | worker `.env` **and** Vercel — *same value* |
 
 Generate each (run twice, once per token):
 ```bash
@@ -121,19 +121,32 @@ stats. Smoke-test the link both ways:
 curl https://worker.profitsync.net/v1/stats -H "Authorization: Bearer $WORKER_API_TOKEN"
 ```
 
-## 7. Register schedules
+## 7. Register schedules ⚠️ REQUIRED for timed notifications
 
-The worker is the clock. Register a schedule once (e.g. dispatch due notifications
-every 5 min — drives reminders/broadcasts):
-```bash
-curl -X POST https://worker.profitsync.net/v1/schedules \
-  -H "Authorization: Bearer $WORKER_API_TOKEN" -H 'Content-Type: application/json' \
-  -d '{ "name":"notifications-dispatch", "type":"app.trigger", "cron":"*/5 * * * *",
-        "timezone":"UTC", "payload":{ "path":"/api/internal/cron/notifications" } }'
-```
-When it fires, the worker POSTs to `PROFITSYNC_BASE_URL/api/internal/cron/notifications`
-with the service token; the app runs the logic. (Those internal endpoints are
-added with the reminder/broadcast features — see `docs/notifications/V2_ROADMAP.md`.)
+The worker is the clock, but **a fresh worker has no schedules** — until the
+`notifications-dispatch` schedule is registered, reminders and scheduled/recurring
+broadcasts **never fire** (they sit in `scheduled` forever). This is a one-time step
+per environment. Three equivalent ways — pick one:
+
+1. **Admin panel (easiest, no shell):** open **/admin → Worker → Scheduler** and click
+   **"Register notification schedule"**. The app holds the worker token and upserts the
+   schedule for you; the panel then shows it (green "Notification dispatch is active").
+   *(The schedule **list** needs a worker built from this version — `docker compose up -d
+   --build`; the register button works against any worker.)*
+2. **Makefile (on the worker host):** `cd worker && make register` (uses `curl` + the
+   token in `deploy/.env`; no Node needed).
+3. **curl directly:**
+   ```bash
+   curl -X POST https://worker.profitsync.net/v1/schedules \
+     -H "Authorization: Bearer $WORKER_API_TOKEN" -H 'Content-Type: application/json' \
+     -d '{ "name":"notifications-dispatch", "type":"app.trigger", "cron":"*/5 * * * *",
+           "timezone":"UTC", "payload":{ "path":"/api/cron/notifications" } }'
+   ```
+
+When it fires, the worker POSTs to `PROFITSYNC_BASE_URL/api/cron/notifications` with the
+service token; the app runs `runNotificationTick()` (due reminders + scheduled
+broadcasts). Verify with `docker compose logs -f worker` — you should see
+`profitsync callback ok … /api/cron/notifications`.
 
 ---
 
