@@ -94,6 +94,23 @@ Caddy reaches the worker over the compose network (`worker:8080`), so once it's 
 **firewall the public `8656`** (`ufw deny 8656`) — the worker should only be reachable
 via HTTPS. (Prefer nginx/Traefik? They work too, but you manage certs yourself.)
 
+### 5b. Shared host (an existing nginx/Apache already owns 80/443)
+
+If the server already runs a web server on 80/443 (other sites), the bundled Caddy
+**can't bind those ports** — you'll see `failed to bind host port 0.0.0.0:80: address
+already in use`. Don't run the proxy profile here. Instead let the **existing host
+proxy** front the worker (which stays private on `127.0.0.1:8656`):
+
+1. Run the worker WITHOUT the proxy: `make -C worker up` (worker + postgres only).
+2. Add a vhost to the host nginx — copy `worker/deploy/nginx-worker.conf.example` to
+   `/etc/nginx/sites-available/worker.profitsync.net`, symlink it into `sites-enabled/`,
+   `sudo nginx -t && sudo systemctl reload nginx`.
+3. Issue the cert + add the redirect: `sudo certbot --nginx -d worker.profitsync.net`.
+
+The host nginx reaches the worker at `127.0.0.1:8656` (so keep `WORKER_BIND=127.0.0.1`).
+`WORKER_BASE_URL` is still `https://worker.profitsync.net`. (Find what holds the port:
+`sudo ss -tlnp '( sport = :80 or sport = :443 )'`.)
+
 ## 6. Connect the app (Vercel)
 
 Set the app-side env and redeploy:
