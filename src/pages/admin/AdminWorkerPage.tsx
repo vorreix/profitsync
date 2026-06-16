@@ -115,6 +115,10 @@ export function AdminWorkerPage() {
 
   const dispatchMissing =
     !!data?.schedulesSupported && !data.schedules.some((s) => s.name === DISPATCH_SCHEDULE && s.enabled)
+  // Prompt the primary "Register" action when the schedule is known-missing OR when
+  // we can't confirm it exists (older worker can't list schedules). Only a confirmed
+  // active dispatch downgrades the button to the subtle "Re-register".
+  const scheduleNeedsAction = dispatchMissing || (!!data && !data.schedulesSupported)
 
   return (
     <div className="p-3 sm:p-6 space-y-6">
@@ -165,9 +169,9 @@ export function AdminWorkerPage() {
                 <CalendarClock className="size-4 text-muted-foreground" /> Scheduler
               </p>
               {canManage && (
-                <Button size="sm" variant={dispatchMissing ? "default" : "outline"} disabled={busy === "register"} onClick={repairSchedule}>
+                <Button size="sm" variant={scheduleNeedsAction ? "default" : "outline"} disabled={busy === "register"} onClick={repairSchedule}>
                   <Wrench className={`size-3.5 ${busy === "register" ? "animate-pulse" : ""}`} />
-                  {dispatchMissing ? "Register notification schedule" : "Re-register"}
+                  {scheduleNeedsAction ? "Register notification schedule" : "Re-register"}
                 </Button>
               )}
             </div>
