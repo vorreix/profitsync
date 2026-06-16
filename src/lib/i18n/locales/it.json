@@ -1481,5 +1481,44 @@
       "new_reminder": "Nuovo promemoria",
       "edit_reminder": "Modifica promemoria"
     }
+  },
+  "featureHelp": {
+    "open": "Apri la guida per {{feature}}",
+    "includes": "Include",
+    "why": "Perché è importante",
+    "tip": "Suggerimento",
+    "wealth": {
+      "title": "Patrimonio",
+      "body": "Una vista rapida del denaro disponibile negli account che monitori.",
+      "includes": {
+        "cash": "Account cassa",
+        "bank": "Account bancari",
+        "active": "Solo account attivi e non archiviati"
+      },
+      "why": "Mostra la liquidità reale prima di decidere spese o trasferimenti.",
+      "tip": "Aggiorna i saldi dopo ogni modifica manuale."
+    },
+    "netProfit": {
+      "title": "Utile netto",
+      "body": "Il profitto residuo dopo le uscite in questa vista della dashboard.",
+      "includes": {
+        "incoming": "Transazioni in entrata",
+        "outgoing": "Transazioni in uscita",
+        "filters": "Filtri cliente e categoria correnti"
+      },
+      "why": "Mostra se il lavoro selezionato guadagna davvero piu di quanto costa.",
+      "tip": "Cambia i filtri per isolare il profitto per cliente, categoria o periodo."
+    },
+    "moneyFlow": {
+      "title": "Flusso di denaro",
+      "body": "Un confronto compatto tra entrate e uscite nella vista corrente.",
+      "includes": {
+        "incoming": "Volume in entrata",
+        "outgoing": "Volume in uscita",
+        "grouping": "Raggruppamento per cliente nel business, per categoria nel personale"
+      },
+      "why": "Evidenzia dove il denaro entra, esce o si concentra.",
+      "tip": "Usalo con Utile netto per individuare lavori ad alto volume ma con margini deboli."
+    }
   }
 }
