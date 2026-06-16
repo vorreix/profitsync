@@ -63,6 +63,36 @@ services:
       timeout: 5s
       retries: 10
 
+  # ── TLS reverse proxy (OPT-IN) ───────────────────────────────────────────────
+  # Fronts the worker at https://${WORKER_DOMAIN} with automatic Let's Encrypt
+  # certificates (auto-renew). Only starts with the `proxy` profile, so the plain
+  # `docker compose up` (and `make up`) is unchanged.
+  #
+  #   docker compose --profile proxy up -d        (or: make -C worker up-proxy)
+  #
+  # Requires, on this host: an A/AAAA DNS record for WORKER_DOMAIN → this server,
+  # and inbound ports 80 + 443 open. Caddy reaches the worker over the compose
+  # network (worker:8080), so once this is up you can firewall the public 8656.
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    profiles: ["proxy"]
+    environment:
+      WORKER_DOMAIN: "${WORKER_DOMAIN:-worker.profitsync.net}"
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp" # HTTP/3
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data # persists issued certs across restarts (avoid re-issue rate limits)
+      - caddy_config:/config
+    depends_on:
+      worker:
+        condition: service_healthy
+
 volumes:
   worker_pgdata:
   worker_logs:
+  caddy_data:
+  caddy_config:
