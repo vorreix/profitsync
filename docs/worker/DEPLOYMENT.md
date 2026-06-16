@@ -15,7 +15,7 @@ it to the ProfitSync app, and operate it. For *what it is and why* read
 | Token | Direction | Set on |
 |---|---|---|
 | `WORKER_API_TOKEN` | **app → worker** (the bearer the worker checks on `/v1/*`) | worker `.env` **and** Vercel — *same value* |
-| `PROFITSYNC_SERVICE_TOKEN` | **worker → app** (the bearer the app checks on `/api/internal/*`) | worker `.env` **and** Vercel — *same value* |
+| `PROFITSYNC_SERVICE_TOKEN` | **worker → app** (the bearer the app checks on `/api/cron/*`) | worker `.env` **and** Vercel — *same value* |
 
 Generate each (run twice, once per token):
 ```bash
@@ -72,27 +72,39 @@ curl localhost:8080/healthz             # {"status":"ok"}
 On first boot the worker runs its migrations (jobs + schedules tables) and starts
 the worker pool, scheduler, and HTTP API.
 
-## 5. Put it behind TLS — bundled Caddy (recommended)
+## 5. Put it behind TLS — host nginx + certbot
 
-A **Caddy** reverse proxy is bundled in the compose under an opt-in `proxy` profile
-(`worker/deploy/Caddyfile`). It terminates HTTPS for your domain and **auto-obtains +
-auto-renews** the Let's Encrypt cert — no certbot, no renewal cron (this is why Caddy
-is preferred over a hand-rolled nginx).
+The worker stays private on `127.0.0.1:${WORKER_PORT}` (default `8656`); a **host
+nginx** terminates HTTPS for `worker.profitsync.net` and reverse-proxies to it.
+certbot runs on the host (its DNS works), so there's no container-DNS dependency for
+the cert.
 
-1. Point DNS: an **A/AAAA record** for `worker.profitsync.net` → this host. Open
-   inbound **80 + 443**.
-2. In `deploy/.env` set `WORKER_DOMAIN=worker.profitsync.net` (and optionally
-   `CADDY_ACME_EMAIL=you@…`).
-3. Start the stack **with** the proxy:
+1. **DNS:** an A/AAAA record for `worker.profitsync.net` → this host. Open inbound
+   **80 + 443** (cloud security group / firewall).
+2. **Install nginx + certbot** (if not present): `sudo apt install -y nginx certbot
+   python3-certbot-nginx` and `sudo systemctl enable --now nginx`.
+3. **Remove the stock default site** — Ubuntu's `sites-enabled/default` is a catch-all
+   that otherwise grabs the domain (certbot deploys the cert to it → you get nginx's
+   **404 instead of the worker**, plus a "conflicting server name … ignored" warning):
    ```bash
-   make -C worker up-proxy        # or: docker compose --profile proxy up -d --build
+   sudo rm -f /etc/nginx/sites-enabled/default
    ```
-   Caddy issues the cert on first boot (`make -C worker proxy-logs` to watch it).
-4. Your `WORKER_BASE_URL` is then `https://worker.profitsync.net`.
+4. **Add the vhost** — copy the template and enable it:
+   ```bash
+   sudo cp worker/deploy/nginx-worker.conf.example /etc/nginx/sites-available/worker.profitsync.net
+   sudo ln -s /etc/nginx/sites-available/worker.profitsync.net /etc/nginx/sites-enabled/
+   sudo nginx -t && sudo systemctl reload nginx
+   ```
+5. **Issue the cert + redirect:** `sudo certbot --nginx -d worker.profitsync.net`
+   (auto-adds the 443 block to THIS vhost + HTTP→HTTPS; auto-renews via the certbot timer).
+6. **Verify:** `curl https://worker.profitsync.net/healthz` → `{"status":"ok"}`.
+   - 404 from nginx? The default site is back / still enabled, or certbot attached the
+     cert to the wrong block — `sudo rm -f /etc/nginx/sites-enabled/default`, then
+     `sudo certbot --nginx -d worker.profitsync.net` (reinstall) + reload.
 
-Caddy reaches the worker over the compose network (`worker:8080`), so once it's up,
-**firewall the public `8656`** (`ufw deny 8656`) — the worker should only be reachable
-via HTTPS. (Prefer nginx/Traefik? They work too, but you manage certs yourself.)
+Your `WORKER_BASE_URL` is then `https://worker.profitsync.net`. nginx reaches the
+worker at `127.0.0.1:8656`, so keep `WORKER_BIND=127.0.0.1` and **firewall the public
+`8656`** — the worker should only be reachable via HTTPS.
 
 ## 6. Connect the app (Vercel)
 
@@ -109,19 +121,32 @@ stats. Smoke-test the link both ways:
 curl https://worker.profitsync.net/v1/stats -H "Authorization: Bearer $WORKER_API_TOKEN"
 ```
 
-## 7. Register schedules
+## 7. Register schedules ⚠️ REQUIRED for timed notifications
 
-The worker is the clock. Register a schedule once (e.g. dispatch due notifications
-every 5 min — drives reminders/broadcasts):
-```bash
-curl -X POST https://worker.profitsync.net/v1/schedules \
-  -H "Authorization: Bearer $WORKER_API_TOKEN" -H 'Content-Type: application/json' \
-  -d '{ "name":"notifications-dispatch", "type":"app.trigger", "cron":"*/5 * * * *",
-        "timezone":"UTC", "payload":{ "path":"/api/internal/cron/notifications" } }'
-```
-When it fires, the worker POSTs to `PROFITSYNC_BASE_URL/api/internal/cron/notifications`
-with the service token; the app runs the logic. (Those internal endpoints are
-added with the reminder/broadcast features — see `docs/notifications/V2_ROADMAP.md`.)
+The worker is the clock, but **a fresh worker has no schedules** — until the
+`notifications-dispatch` schedule is registered, reminders and scheduled/recurring
+broadcasts **never fire** (they sit in `scheduled` forever). This is a one-time step
+per environment. Three equivalent ways — pick one:
+
+1. **Admin panel (easiest, no shell):** open **/admin → Worker → Scheduler** and click
+   **"Register notification schedule"**. The app holds the worker token and upserts the
+   schedule for you; the panel then shows it (green "Notification dispatch is active").
+   *(The schedule **list** needs a worker built from this version — `docker compose up -d
+   --build`; the register button works against any worker.)*
+2. **Makefile (on the worker host):** `cd worker && make register` (uses `curl` + the
+   token in `deploy/.env`; no Node needed).
+3. **curl directly:**
+   ```bash
+   curl -X POST https://worker.profitsync.net/v1/schedules \
+     -H "Authorization: Bearer $WORKER_API_TOKEN" -H 'Content-Type: application/json' \
+     -d '{ "name":"notifications-dispatch", "type":"app.trigger", "cron":"*/5 * * * *",
+           "timezone":"UTC", "payload":{ "path":"/api/cron/notifications" } }'
+   ```
+
+When it fires, the worker POSTs to `PROFITSYNC_BASE_URL/api/cron/notifications` with the
+service token; the app runs `runNotificationTick()` (due reminders + scheduled
+broadcasts). Verify with `docker compose logs -f worker` — you should see
+`profitsync callback ok … /api/cron/notifications`.
 
 ---
 
@@ -164,31 +189,32 @@ comfortably **above** `WORKER_JOB_TIMEOUT`.
 
 | Service | Host exposure | Notes |
 |---|---|---|
-| `caddy` | **80 + 443 public** (proxy profile) | Required — the HTTPS front door. Keep 80 (below). |
-| `worker` | **`127.0.0.1:8656` only** (default `WORKER_BIND`) | NOT internet-facing; Caddy reaches it over the compose network. |
-| `postgres` | **none** (compose network only) | Never published to the host. |
+| host **nginx** | **80 + 443 public** | The HTTPS front door (TLS via certbot). Keep 80 (below). |
+| `worker` (container) | **`127.0.0.1:8656` only** (default `WORKER_BIND`) | NOT internet-facing; nginx proxies to it on localhost. |
+| `postgres` (container) | **none** (compose network only) | Never published to the host. |
 
-- [ ] Worker reached over **HTTPS** only (Caddy); the worker port binds to
-      `127.0.0.1` (`WORKER_BIND` default) — don't set it to `0.0.0.0` behind the proxy.
+- [ ] Worker reached over **HTTPS** only (host nginx); the worker port binds to
+      `127.0.0.1` (`WORKER_BIND` default) — don't set it to `0.0.0.0`.
 - [ ] `WORKER_API_TOKEN` + `PROFITSYNC_SERVICE_TOKEN` are long random secrets (`openssl
       rand -hex 32`), identical on the worker and Vercel, never committed.
-- [ ] **Firewall (ufw):** allow only `22` (SSH), `80`, `443`; deny the rest. Even though
-      the worker binds to localhost, an explicit `ufw deny 8656` is good defense-in-depth.
+- [ ] **Firewall:** allow only `22` (SSH), `80`, `443`; deny the rest. Even though the
+      worker binds to localhost, explicitly blocking `8656` is good defense-in-depth.
       ```bash
-      sudo ufw allow 22 && sudo ufw allow 80 && sudo ufw allow 443 && sudo ufw enable
+      # ufw (install with `sudo apt install ufw` if missing):
+      sudo ufw allow 22 && sudo ufw allow 80 && sudo ufw allow 443 && sudo ufw deny 8656 && sudo ufw enable
+      # No ufw? Use the cloud provider's security group to allow only 22/80/443 inbound.
       ```
 - [ ] The worker DB (`postgres`) is **not** published to the host (it isn't, by default).
 - [ ] `.env` is `chmod 600` and gitignored.
 - [ ] Only `/healthz` is unauthenticated (harmless `{"status":"ok"}`); every `/v1/*`
       route is bearer-authed with a constant-time compare.
 
-**Do you need port 80?** Keep it. Caddy uses `:80` for (1) the HTTP→HTTPS redirect and
-(2) the Let's Encrypt **HTTP-01** challenge (the most reliable cert path). With 80
-closed Caddy must fall back to **TLS-ALPN-01** on 443 — workable but more fragile, and
-anyone hitting `http://` gets a connection error instead of a redirect. Port 80 here
-serves *only* a redirect + the ACME challenge path, so it's not a meaningful attack
-surface. (Optional extra hardening: Caddy `rate_limit`/security-headers — needs a custom
-Caddy build; the worker's bearer auth + bounded pool already bound abuse.)
+**Do you need port 80?** Keep it. nginx uses `:80` for (1) the HTTP→HTTPS redirect
+certbot adds, and (2) the Let's Encrypt **HTTP-01** challenge (cert issuance + renewal).
+Port 80 then serves *only* a redirect + the ACME challenge path, so it's not a
+meaningful attack surface. (Optional extra hardening in the nginx vhost:
+`limit_req` rate limiting + security headers; the worker's bearer auth + bounded
+pool already bound abuse.)
 
 ## 11. Troubleshooting
 

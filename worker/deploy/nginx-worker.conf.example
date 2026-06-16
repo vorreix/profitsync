@@ -1,0 +1,34 @@
+# Host-nginx reverse proxy for the ProfitSync worker.
+#
+# The worker runs in Docker bound to 127.0.0.1:8656 (WORKER_BIND default, NOT public);
+# this host nginx terminates TLS for worker.profitsync.net and forwards to it.
+#
+# Install:
+#   sudo rm -f /etc/nginx/sites-enabled/default     # IMPORTANT: the stock catch-all
+#                                                   # otherwise grabs the domain → 404
+#   sudo cp nginx-worker.conf.example /etc/nginx/sites-available/worker.profitsync.net
+#   sudo ln -s /etc/nginx/sites-available/worker.profitsync.net /etc/nginx/sites-enabled/
+#   sudo nginx -t && sudo systemctl reload nginx
+#   sudo certbot --nginx -d worker.profitsync.net   # adds the TLS (443) block + HTTP->HTTPS redirect
+#
+# Prereqs: DNS A/AAAA for worker.profitsync.net -> this host; ports 80 + 443 open; the
+#   worker running via `make -C worker up`.
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name worker.profitsync.net;
+
+    # API only; raise if you ever enqueue large job payloads through it.
+    client_max_body_size 5m;
+
+    location / {
+        proxy_pass         http://127.0.0.1:8656;
+        proxy_http_version 1.1;
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+        proxy_read_timeout 60s;
+    }
+}

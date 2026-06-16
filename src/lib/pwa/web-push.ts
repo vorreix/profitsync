@@ -94,6 +94,48 @@ export async function subscribeToPush(getToken: () => Promise<string | null>): P
   }
 }
 
+export type TestPushResult = {
+  configured: boolean
+  subscriptions: number
+  ok: number
+  failed: number
+  pruned: number
+  errors: string[]
+}
+
+/**
+ * Re-register the browser's CURRENT subscription with the server (idempotent
+ * upsert by endpoint). Self-heals the case where the server lost the row (e.g. a
+ * failed POST during the original opt-in) while the browser is still subscribed —
+ * without this, every send would find no subscription and silently no-op. No-op
+ * when the browser has no subscription.
+ */
+export async function ensureSubscriptionSynced(getToken: () => Promise<string | null>): Promise<void> {
+  const sub = await getExistingSubscription()
+  if (!sub) return
+  const token = await getToken()
+  if (!token) return
+  const json = sub.toJSON()
+  await apiPost("/api/notifications/push", token, {
+    endpoint: sub.endpoint,
+    keys: json.keys,
+    platform: "web",
+  }).catch(() => {})
+}
+
+/**
+ * Fire a real test push to the user's own devices and return the precise outcome
+ * (configured? how many subs? delivered/failed?). Re-syncs the subscription first
+ * so a lost server row doesn't show a false "no devices". Returns null on auth
+ * failure / network error.
+ */
+export async function sendTestPush(getToken: () => Promise<string | null>): Promise<TestPushResult | null> {
+  await ensureSubscriptionSynced(getToken)
+  const token = await getToken()
+  if (!token) return null
+  return apiPost<TestPushResult>("/api/notifications/test-push", token, {}).catch(() => null)
+}
+
 export async function unsubscribeFromPush(getToken: () => Promise<string | null>): Promise<void> {
   const sub = await getExistingSubscription()
   if (!sub) return
