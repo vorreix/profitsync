@@ -66,7 +66,8 @@ data/logic two ways:
 
 Security: the control API requires a bearer token (`WORKER_API_TOKEN`); the
 app-callback uses a separate `PROFITSYNC_SERVICE_TOKEN`; S3 creds live only here.
-Put the worker behind TLS (Caddy/Traefik/nginx) and restrict ingress.
+Put the worker behind TLS with a host nginx + certbot (see
+`docs/worker/DEPLOYMENT.md` §5 + `deploy/nginx-worker.conf.example`) and restrict ingress.
 
 ## The queue
 

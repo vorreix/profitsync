@@ -1,17 +1,18 @@
 # Host-nginx reverse proxy for the ProfitSync worker.
 #
-# Use this when the server ALREADY runs nginx on ports 80/443 (other sites), so the
-# bundled Caddy `proxy` profile can't bind those ports. The worker stays private on
-# 127.0.0.1:8656 (WORKER_BIND default) and your existing host nginx fronts it.
+# The worker runs in Docker bound to 127.0.0.1:8656 (WORKER_BIND default, NOT public);
+# this host nginx terminates TLS for worker.profitsync.net and forwards to it.
 #
 # Install:
+#   sudo rm -f /etc/nginx/sites-enabled/default     # IMPORTANT: the stock catch-all
+#                                                   # otherwise grabs the domain → 404
 #   sudo cp nginx-worker.conf.example /etc/nginx/sites-available/worker.profitsync.net
 #   sudo ln -s /etc/nginx/sites-available/worker.profitsync.net /etc/nginx/sites-enabled/
 #   sudo nginx -t && sudo systemctl reload nginx
 #   sudo certbot --nginx -d worker.profitsync.net   # adds the TLS (443) block + HTTP->HTTPS redirect
 #
-# Prereqs: DNS A/AAAA for worker.profitsync.net -> this host; the worker running via
-#   `make -C worker up`  (NOT up-proxy — nginx is the proxy here, not Caddy).
+# Prereqs: DNS A/AAAA for worker.profitsync.net -> this host; ports 80 + 443 open; the
+#   worker running via `make -C worker up`.
 
 server {
     listen 80;
