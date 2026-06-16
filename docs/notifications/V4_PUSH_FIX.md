@@ -64,8 +64,8 @@ browser subscription.
 | # | Branch | Delivers | Status |
 |---|---|---|---|
 | 00 | `feat/notif4-00-plan` | this doc | ✅ |
-| 01 | `feat/notif4-01-push-diagnostics` | `sendWebPushToUser` returns result; `POST /api/notifications/test-push`; PushToggle "Send test" + self-heal resync; i18n ×8 | ⏳ |
-| 02 | `feat/notif4-02-worker-schedule-visibility` | worker `GET /v1/schedules`; admin worker route schedules + "Repair notification schedule" action; AdminWorkerPage schedules panel + missing-schedule banner; `make register` via curl (no node dep); doc path fix | ⏳ |
+| 01 | `feat/notif4-01-push-diagnostics` | `sendWebPushToUser` returns result; `POST /api/notifications/test-push`; PushToggle "Send test" + self-heal resync; i18n ×8 | ✅ pushed |
+| 02 | `feat/notif4-02-worker-schedule-visibility` | worker `GET /v1/schedules`; admin worker route schedules + "Repair notification schedule" action; AdminWorkerPage schedules panel + missing-schedule banner; `make register` via curl (no node dep); doc path fix | ✅ |
 
 ## Verification plan
 

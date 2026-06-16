@@ -34,6 +34,7 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("GET /healthz", s.handleHealth)
 	mux.Handle("POST /v1/jobs", s.auth(http.HandlerFunc(s.handleEnqueue)))
 	mux.Handle("POST /v1/schedules", s.auth(http.HandlerFunc(s.handleUpsertSchedule)))
+	mux.Handle("GET /v1/schedules", s.auth(http.HandlerFunc(s.handleListSchedules)))
 	// Observability (consumed by the ProfitSync /admin worker panel via a server
 	// -side proxy — all bearer-authed).
 	mux.Handle("GET /v1/stats", s.auth(http.HandlerFunc(s.handleStats)))
@@ -211,6 +212,16 @@ func (s *Server) handleUpsertSchedule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"id": id})
+}
+
+func (s *Server) handleListSchedules(w http.ResponseWriter, r *http.Request) {
+	schedules, err := s.st.ListSchedules(r.Context())
+	if err != nil {
+		s.log.Error("list schedules", "err", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "list failed"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"schedules": schedules})
 }
 
 func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
