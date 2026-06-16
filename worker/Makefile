@@ -107,10 +107,12 @@ psql: ## Open psql on the worker's own queue database
 	$(call compose, exec postgres psql -U worker -d worker)
 
 .PHONY: register
-register: ## Register the notification cron schedule on the worker (reads deploy/.env)
+register: ## Register the notification cron schedule on the worker (curl; reads deploy/.env)
 	@cd $(DEPLOY_DIR) && set -a && . ./.env && set +a && \
-		WORKER_BASE_URL=http://localhost:$${WORKER_PORT:-8080} \
-		npx --yes tsx ../../scripts/register-worker-schedules.ts
+		curl -fsS -X POST "http://localhost:$${WORKER_PORT:-8080}/v1/schedules" \
+			-H "Authorization: Bearer $$WORKER_API_TOKEN" -H 'Content-Type: application/json' \
+			-d '{"name":"notifications-dispatch","type":"app.trigger","cron":"*/5 * * * *","timezone":"UTC","payload":{"path":"/api/cron/notifications"}}' \
+		&& echo "  ✓ notifications-dispatch registered (the worker now drives reminders + scheduled broadcasts)"
 
 .PHONY: env
 env: ## Verify deploy/.env exists (copy from .env.example if missing)
