@@ -112,20 +112,24 @@ export function PushToggle() {
         />
       </div>
 
-      {subscribed && (
-        <div className="flex flex-wrap items-center gap-2 px-1">
-          <Button type="button" variant="outline" size="sm" onClick={onTest} disabled={testing}>
-            <Send className={`size-3.5 ${testing ? "animate-pulse" : ""}`} />
-            {t("push.test")}
-          </Button>
-          {testStatus && (
-            <span
-              className={`text-xs ${testStatus.kind === "ok" ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}
-            >
-              {testStatus.text}
-            </span>
-          )}
-        </div>
+      {/* Always available — also works as a diagnostic when NOT subscribed (it
+          reports "this device isn't subscribed"), so push problems are visible on
+          the exact device instead of failing silently. */}
+      <div className="flex flex-wrap items-center gap-2 px-1">
+        <Button type="button" variant="outline" size="sm" onClick={onTest} disabled={testing}>
+          <Send className={`size-3.5 ${testing ? "animate-pulse" : ""}`} />
+          {t("push.test")}
+        </Button>
+        <span className="text-xs text-muted-foreground">
+          {subscribed ? t("push.subscribed_here") : t("push.not_subscribed_here")}
+        </span>
+      </div>
+      {testStatus && (
+        <p
+          className={`px-1 text-xs ${testStatus.kind === "ok" ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}
+        >
+          {testStatus.text}
+        </p>
       )}
     </div>
   )

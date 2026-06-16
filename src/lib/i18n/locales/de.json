@@ -1392,7 +1392,9 @@
       "test_no_subs": "Dieses Gerät ist noch nicht angemeldet — aktiviere zuerst den Schalter oben.",
       "test_not_configured": "Push ist auf dem Server noch nicht eingerichtet.",
       "test_failed": "Zustellung fehlgeschlagen{{code}} — dein Abo ist möglicherweise veraltet. Schalte Push aus und wieder ein.",
-      "test_error": "Test konnte gerade nicht gesendet werden. Bitte versuche es erneut."
+      "test_error": "Test konnte gerade nicht gesendet werden. Bitte versuche es erneut.",
+      "subscribed_here": "Auf diesem Gerät angemeldet",
+      "not_subscribed_here": "Auf diesem Gerät nicht angemeldet"
     },
     "types": {
       "invitation_accepted": {
