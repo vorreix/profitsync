@@ -1386,7 +1386,13 @@
       "disabled": "Push-Benachrichtigungen deaktiviert",
       "blocked": "Benachrichtigungen sind in deinen Browsereinstellungen blockiert",
       "unsupported": "Push-Benachrichtigungen werden auf diesem Gerät nicht unterstützt",
-      "description": "Erhalte Benachrichtigungen, auch wenn ProfitSync nicht offen ist."
+      "description": "Erhalte Benachrichtigungen, auch wenn ProfitSync nicht offen ist.",
+      "test": "Testbenachrichtigung senden",
+      "test_sent": "Test an {{count}} Gerät(e) gesendet. Falls du sie nicht siehst, prüfe die Benachrichtigungseinstellungen dieses Geräts.",
+      "test_no_subs": "Dieses Gerät ist noch nicht angemeldet — aktiviere zuerst den Schalter oben.",
+      "test_not_configured": "Push ist auf dem Server noch nicht eingerichtet.",
+      "test_failed": "Zustellung fehlgeschlagen{{code}} — dein Abo ist möglicherweise veraltet. Schalte Push aus und wieder ein.",
+      "test_error": "Test konnte gerade nicht gesendet werden. Bitte versuche es erneut."
     },
     "types": {
       "invitation_accepted": {
