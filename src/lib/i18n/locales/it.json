@@ -1392,7 +1392,9 @@
       "test_no_subs": "Questo dispositivo non è ancora iscritto — attiva prima l'interruttore qui sopra.",
       "test_not_configured": "Le notifiche push non sono ancora configurate sul server.",
       "test_failed": "Invio non riuscito{{code}} — la tua iscrizione potrebbe essere scaduta. Disattiva e riattiva le notifiche push.",
-      "test_error": "Impossibile inviare una prova in questo momento. Riprova."
+      "test_error": "Impossibile inviare una prova in questo momento. Riprova.",
+      "subscribed_here": "Iscritto su questo dispositivo",
+      "not_subscribed_here": "Non iscritto su questo dispositivo"
     },
     "types": {
       "invitation_accepted": {
