@@ -4,6 +4,8 @@
 # this host nginx terminates TLS for worker.profitsync.net and forwards to it.
 #
 # Install:
+#   sudo rm -f /etc/nginx/sites-enabled/default     # IMPORTANT: the stock catch-all
+#                                                   # otherwise grabs the domain → 404
 #   sudo cp nginx-worker.conf.example /etc/nginx/sites-available/worker.profitsync.net
 #   sudo ln -s /etc/nginx/sites-available/worker.profitsync.net /etc/nginx/sites-enabled/
 #   sudo nginx -t && sudo systemctl reload nginx

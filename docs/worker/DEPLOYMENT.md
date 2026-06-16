@@ -83,15 +83,24 @@ the cert.
    **80 + 443** (cloud security group / firewall).
 2. **Install nginx + certbot** (if not present): `sudo apt install -y nginx certbot
    python3-certbot-nginx` and `sudo systemctl enable --now nginx`.
-3. **Add the vhost** — copy the template and enable it:
+3. **Remove the stock default site** — Ubuntu's `sites-enabled/default` is a catch-all
+   that otherwise grabs the domain (certbot deploys the cert to it → you get nginx's
+   **404 instead of the worker**, plus a "conflicting server name … ignored" warning):
+   ```bash
+   sudo rm -f /etc/nginx/sites-enabled/default
+   ```
+4. **Add the vhost** — copy the template and enable it:
    ```bash
    sudo cp worker/deploy/nginx-worker.conf.example /etc/nginx/sites-available/worker.profitsync.net
    sudo ln -s /etc/nginx/sites-available/worker.profitsync.net /etc/nginx/sites-enabled/
    sudo nginx -t && sudo systemctl reload nginx
    ```
-4. **Issue the cert + redirect:** `sudo certbot --nginx -d worker.profitsync.net`
-   (auto-adds the 443 block + HTTP→HTTPS; auto-renews via the certbot timer).
-5. **Verify:** `curl https://worker.profitsync.net/healthz` → `{"status":"ok"}`.
+5. **Issue the cert + redirect:** `sudo certbot --nginx -d worker.profitsync.net`
+   (auto-adds the 443 block to THIS vhost + HTTP→HTTPS; auto-renews via the certbot timer).
+6. **Verify:** `curl https://worker.profitsync.net/healthz` → `{"status":"ok"}`.
+   - 404 from nginx? The default site is back / still enabled, or certbot attached the
+     cert to the wrong block — `sudo rm -f /etc/nginx/sites-enabled/default`, then
+     `sudo certbot --nginx -d worker.profitsync.net` (reinstall) + reload.
 
 Your `WORKER_BASE_URL` is then `https://worker.profitsync.net`. nginx reaches the
 worker at `127.0.0.1:8656`, so keep `WORKER_BIND=127.0.0.1` and **firewall the public
