@@ -72,44 +72,30 @@ curl localhost:8080/healthz             # {"status":"ok"}
 On first boot the worker runs its migrations (jobs + schedules tables) and starts
 the worker pool, scheduler, and HTTP API.
 
-## 5. Put it behind TLS — bundled Caddy (recommended)
+## 5. Put it behind TLS — host nginx + certbot
 
-A **Caddy** reverse proxy is bundled in the compose under an opt-in `proxy` profile
-(`worker/deploy/Caddyfile`). It terminates HTTPS for your domain and **auto-obtains +
-auto-renews** the Let's Encrypt cert — no certbot, no renewal cron (this is why Caddy
-is preferred over a hand-rolled nginx).
+The worker stays private on `127.0.0.1:${WORKER_PORT}` (default `8656`); a **host
+nginx** terminates HTTPS for `worker.profitsync.net` and reverse-proxies to it.
+certbot runs on the host (its DNS works), so there's no container-DNS dependency for
+the cert.
 
-1. Point DNS: an **A/AAAA record** for `worker.profitsync.net` → this host. Open
-   inbound **80 + 443**.
-2. In `deploy/.env` set `WORKER_DOMAIN=worker.profitsync.net` (and optionally
-   `CADDY_ACME_EMAIL=you@…`).
-3. Start the stack **with** the proxy:
+1. **DNS:** an A/AAAA record for `worker.profitsync.net` → this host. Open inbound
+   **80 + 443** (cloud security group / firewall).
+2. **Install nginx + certbot** (if not present): `sudo apt install -y nginx certbot
+   python3-certbot-nginx` and `sudo systemctl enable --now nginx`.
+3. **Add the vhost** — copy the template and enable it:
    ```bash
-   make -C worker up-proxy        # or: docker compose --profile proxy up -d --build
+   sudo cp worker/deploy/nginx-worker.conf.example /etc/nginx/sites-available/worker.profitsync.net
+   sudo ln -s /etc/nginx/sites-available/worker.profitsync.net /etc/nginx/sites-enabled/
+   sudo nginx -t && sudo systemctl reload nginx
    ```
-   Caddy issues the cert on first boot (`make -C worker proxy-logs` to watch it).
-4. Your `WORKER_BASE_URL` is then `https://worker.profitsync.net`.
+4. **Issue the cert + redirect:** `sudo certbot --nginx -d worker.profitsync.net`
+   (auto-adds the 443 block + HTTP→HTTPS; auto-renews via the certbot timer).
+5. **Verify:** `curl https://worker.profitsync.net/healthz` → `{"status":"ok"}`.
 
-Caddy reaches the worker over the compose network (`worker:8080`), so once it's up,
-**firewall the public `8656`** (`ufw deny 8656`) — the worker should only be reachable
-via HTTPS. (Prefer nginx/Traefik? They work too, but you manage certs yourself.)
-
-### 5b. Shared host (an existing nginx/Apache already owns 80/443)
-
-If the server already runs a web server on 80/443 (other sites), the bundled Caddy
-**can't bind those ports** — you'll see `failed to bind host port 0.0.0.0:80: address
-already in use`. Don't run the proxy profile here. Instead let the **existing host
-proxy** front the worker (which stays private on `127.0.0.1:8656`):
-
-1. Run the worker WITHOUT the proxy: `make -C worker up` (worker + postgres only).
-2. Add a vhost to the host nginx — copy `worker/deploy/nginx-worker.conf.example` to
-   `/etc/nginx/sites-available/worker.profitsync.net`, symlink it into `sites-enabled/`,
-   `sudo nginx -t && sudo systemctl reload nginx`.
-3. Issue the cert + add the redirect: `sudo certbot --nginx -d worker.profitsync.net`.
-
-The host nginx reaches the worker at `127.0.0.1:8656` (so keep `WORKER_BIND=127.0.0.1`).
-`WORKER_BASE_URL` is still `https://worker.profitsync.net`. (Find what holds the port:
-`sudo ss -tlnp '( sport = :80 or sport = :443 )'`.)
+Your `WORKER_BASE_URL` is then `https://worker.profitsync.net`. nginx reaches the
+worker at `127.0.0.1:8656`, so keep `WORKER_BIND=127.0.0.1` and **firewall the public
+`8656`** — the worker should only be reachable via HTTPS.
 
 ## 6. Connect the app (Vercel)
 
@@ -181,31 +167,32 @@ comfortably **above** `WORKER_JOB_TIMEOUT`.
 
 | Service | Host exposure | Notes |
 |---|---|---|
-| `caddy` | **80 + 443 public** (proxy profile) | Required — the HTTPS front door. Keep 80 (below). |
-| `worker` | **`127.0.0.1:8656` only** (default `WORKER_BIND`) | NOT internet-facing; Caddy reaches it over the compose network. |
-| `postgres` | **none** (compose network only) | Never published to the host. |
+| host **nginx** | **80 + 443 public** | The HTTPS front door (TLS via certbot). Keep 80 (below). |
+| `worker` (container) | **`127.0.0.1:8656` only** (default `WORKER_BIND`) | NOT internet-facing; nginx proxies to it on localhost. |
+| `postgres` (container) | **none** (compose network only) | Never published to the host. |
 
-- [ ] Worker reached over **HTTPS** only (Caddy); the worker port binds to
-      `127.0.0.1` (`WORKER_BIND` default) — don't set it to `0.0.0.0` behind the proxy.
+- [ ] Worker reached over **HTTPS** only (host nginx); the worker port binds to
+      `127.0.0.1` (`WORKER_BIND` default) — don't set it to `0.0.0.0`.
 - [ ] `WORKER_API_TOKEN` + `PROFITSYNC_SERVICE_TOKEN` are long random secrets (`openssl
       rand -hex 32`), identical on the worker and Vercel, never committed.
-- [ ] **Firewall (ufw):** allow only `22` (SSH), `80`, `443`; deny the rest. Even though
-      the worker binds to localhost, an explicit `ufw deny 8656` is good defense-in-depth.
+- [ ] **Firewall:** allow only `22` (SSH), `80`, `443`; deny the rest. Even though the
+      worker binds to localhost, explicitly blocking `8656` is good defense-in-depth.
       ```bash
-      sudo ufw allow 22 && sudo ufw allow 80 && sudo ufw allow 443 && sudo ufw enable
+      # ufw (install with `sudo apt install ufw` if missing):
+      sudo ufw allow 22 && sudo ufw allow 80 && sudo ufw allow 443 && sudo ufw deny 8656 && sudo ufw enable
+      # No ufw? Use the cloud provider's security group to allow only 22/80/443 inbound.
       ```
 - [ ] The worker DB (`postgres`) is **not** published to the host (it isn't, by default).
 - [ ] `.env` is `chmod 600` and gitignored.
 - [ ] Only `/healthz` is unauthenticated (harmless `{"status":"ok"}`); every `/v1/*`
       route is bearer-authed with a constant-time compare.
 
-**Do you need port 80?** Keep it. Caddy uses `:80` for (1) the HTTP→HTTPS redirect and
-(2) the Let's Encrypt **HTTP-01** challenge (the most reliable cert path). With 80
-closed Caddy must fall back to **TLS-ALPN-01** on 443 — workable but more fragile, and
-anyone hitting `http://` gets a connection error instead of a redirect. Port 80 here
-serves *only* a redirect + the ACME challenge path, so it's not a meaningful attack
-surface. (Optional extra hardening: Caddy `rate_limit`/security-headers — needs a custom
-Caddy build; the worker's bearer auth + bounded pool already bound abuse.)
+**Do you need port 80?** Keep it. nginx uses `:80` for (1) the HTTP→HTTPS redirect
+certbot adds, and (2) the Let's Encrypt **HTTP-01** challenge (cert issuance + renewal).
+Port 80 then serves *only* a redirect + the ACME challenge path, so it's not a
+meaningful attack surface. (Optional extra hardening in the nginx vhost:
+`limit_req` rate limiting + security headers; the worker's bearer auth + bounded
+pool already bound abuse.)
 
 ## 11. Troubleshooting
 

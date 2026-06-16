@@ -1,13 +1,22 @@
 # ProfitSync worker — deploy on a dedicated host (isolated from the app).
 #
 #   cp .env.example .env   # then fill in secrets
-#   docker compose up -d --build
+#   docker compose up -d --build       (or: make -C worker up)
 #
-# Exposes the worker's HTTP control API on ${WORKER_PORT:-8080}. Put it behind a
-# reverse proxy with TLS (Caddy/Traefik/nginx) in production and restrict access
-# to ProfitSync's egress + your scheduler.
+# The worker binds to 127.0.0.1:${WORKER_PORT} (private). Front it with the HOST's
+# nginx (TLS via certbot) — see worker/deploy/nginx-worker.conf.example and
+# docs/worker/DEPLOYMENT.md §5.
 
 name: profitsync-worker
+
+# Containers need a resolver that works INSIDE the container. On hosts running
+# systemd-resolved, the inherited resolver can be the 127.0.0.53 stub — which only
+# exists on the host, so containers can't resolve anything (the worker's app
+# callback then fails with "connection refused" on 127.0.0.53:53). Pin public
+# resolvers. Override per-host with WORKER_DNS1/WORKER_DNS2 in .env if needed.
+x-container-dns: &container-dns
+  - "${WORKER_DNS1:-1.1.1.1}"
+  - "${WORKER_DNS2:-8.8.8.8}"
 
 services:
   worker:
@@ -15,6 +24,7 @@ services:
       context: ../app
       dockerfile: build/Dockerfile
     restart: unless-stopped
+    dns: *container-dns
     env_file:
       - .env
     environment:
@@ -30,10 +40,9 @@ services:
         condition: service_healthy
     ports:
       # Bind to LOCALHOST by default — the worker is NOT exposed to the internet.
-      # Caddy (proxy profile) reaches it over the compose network (worker:8080),
-      # not this host port, so HTTPS still works. The 127.0.0.1 mapping is only for
-      # on-host debugging (curl 127.0.0.1:8656). To expose it directly without the
-      # proxy (NOT recommended), set WORKER_BIND=0.0.0.0 in .env + firewall the port.
+      # The host nginx reverse-proxies to it at 127.0.0.1:${WORKER_PORT} (TLS there).
+      # To expose it directly without a proxy (NOT recommended), set WORKER_BIND=0.0.0.0
+      # in .env and firewall the port.
       - "${WORKER_BIND:-127.0.0.1}:${WORKER_PORT:-8080}:8080"
     volumes:
       # Persist + rotate logs across restarts (inspect: docker compose exec worker ls -la /app/logs).
@@ -54,36 +63,6 @@ services:
       timeout: 5s
       retries: 10
 
-  # ── TLS reverse proxy (OPT-IN) ───────────────────────────────────────────────
-  # Fronts the worker at https://${WORKER_DOMAIN} with automatic Let's Encrypt
-  # certificates (auto-renew). Only starts with the `proxy` profile, so the plain
-  # `docker compose up` (and `make up`) is unchanged.
-  #
-  #   docker compose --profile proxy up -d        (or: make -C worker up-proxy)
-  #
-  # Requires, on this host: an A/AAAA DNS record for WORKER_DOMAIN → this server,
-  # and inbound ports 80 + 443 open. Caddy reaches the worker over the compose
-  # network (worker:8080), so once this is up you can firewall the public 8656.
-  caddy:
-    image: caddy:2-alpine
-    restart: unless-stopped
-    profiles: ["proxy"]
-    environment:
-      WORKER_DOMAIN: "${WORKER_DOMAIN:-worker.profitsync.net}"
-    ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp" # HTTP/3
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data # persists issued certs across restarts (avoid re-issue rate limits)
-      - caddy_config:/config
-    depends_on:
-      worker:
-        condition: service_healthy
-
 volumes:
   worker_pgdata:
   worker_logs:
-  caddy_data:
-  caddy_config:
