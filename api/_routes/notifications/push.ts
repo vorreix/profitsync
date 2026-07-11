@@ -3,6 +3,7 @@ import { and, eq } from "drizzle-orm"
 import { db } from "../../../src/lib/db/index.js"
 import { pushSubscriptions } from "../../../src/lib/db/schema.js"
 import { requireAuth } from "../../_lib/auth.js"
+import { rateLimit } from "../../_lib/rate-limit.js"
 
 // Register / unregister a push subscription for the calling user.
 //   POST { endpoint, keys: { p256dh, auth }, platform? }          → web push (default)
@@ -15,6 +16,12 @@ import { requireAuth } from "../../_lib/auth.js"
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ctx = await requireAuth(req, res)
   if (!ctx) return
+
+  // Legit traffic is one upsert per app boot + rare toggles; a runaway or
+  // hostile client shouldn't be able to churn subscription rows freely.
+  if (!rateLimit(`push-sub:${ctx.userId}`, 60, 60 * 60 * 1000)) {
+    return res.status(429).json({ error: "Too many subscription updates — try again later" })
+  }
 
   if (req.method === "POST") {
     const body = (req.body ?? {}) as {

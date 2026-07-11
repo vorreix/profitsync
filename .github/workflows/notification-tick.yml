@@ -30,7 +30,11 @@ jobs:
           TOKEN: ${{ secrets.PROFITSYNC_CRON_TOKEN }}
         run: |
           if [ -z "$TOKEN" ]; then
-            echo "PROFITSYNC_CRON_TOKEN secret not set — skipping (worker remains the only driver)."
+            echo "::warning::PROFITSYNC_CRON_TOKEN secret not set — the fallback is INACTIVE; the worker is the only scheduler."
+            {
+              echo "### ⚠️ Notification fallback is inactive"
+              echo "Set the repo secret \`PROFITSYNC_CRON_TOKEN\` (same value as the app's \`CRON_FALLBACK_TOKEN\` Vercel env) to activate this redundancy."
+            } >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
           code=$(curl -sS -X POST \
@@ -41,3 +45,23 @@ jobs:
           echo "HTTP $code"
           cat /tmp/body
           [ "$code" = "200" ]
+
+      # The worker ticks every ~5 min; this fallback every 30. If the tick BEFORE
+      # ours was >25 min ago, nothing but this fallback has been ticking — the
+      # worker is down or lost its schedule (the June'26 failure mode). Fail the
+      # run so GitHub emails about it; it self-resolves once the worker ticks.
+      - name: Alert when the primary scheduler (worker) looks dead
+        env:
+          TOKEN: ${{ secrets.PROFITSYNC_CRON_TOKEN }}
+        run: |
+          [ -z "$TOKEN" ] && exit 0
+          age=$(jq -r '.previous_tick_age_seconds // empty' /tmp/body 2>/dev/null || true)
+          if [ -n "$age" ] && [ "$age" -gt 1500 ]; then
+            echo "::error::Previous scheduler tick was ${age}s ago (>25 min) — the Go worker looks DOWN. This fallback still delivered, but fix the worker: /admin → Worker → 'Register notification schedule', or restart it (docs/notifications/SCHEDULER.md)."
+            {
+              echo "### 🔴 Primary scheduler (worker) looks down"
+              echo "The heartbeat before this tick was **${age}s** old. Reminders/broadcasts are riding the 30-min fallback only."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo "Primary scheduler healthy (previous tick ${age:-n/a}s ago)."
