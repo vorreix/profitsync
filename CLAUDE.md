@@ -77,6 +77,12 @@ DODO_PAYMENTS_ENVIRONMENT=test_mode      # or live_mode
 DODO_PRODUCT_PREMIUM_MONTHLY=...         # Dodo product id
 DODO_PRODUCT_PREMIUM_YEARLY=...          # Dodo product id
 
+# Platform admin bootstrap (OPTIONAL) — comma-separated emails that are ALWAYS
+# super_admin without an app_admins row (api/_lib/admin.ts rootAdminEmails()).
+# This is how the FIRST admin gets access in an environment whose DB was never
+# seeded (prod Clerk user ids differ from dev, so dev seeds don't carry over).
+ROOT_ADMIN_EMAILS=owner@example.com
+
 # Web Push (notification system — OPTIONAL; push silently disabled if absent).
 # Generate a keypair with: npx web-push generate-vapid-keys
 VAPID_PUBLIC_KEY=B...                     # server
