@@ -40,6 +40,8 @@ import calendar from "./_routes/calendar.js"
 import flow from "./_routes/flow.js"
 import audit from "./_routes/audit.js"
 import categories from "./_routes/categories.js"
+import categoriesCombined from "./_routes/categories/combined.js"
+import categoryEntities from "./_routes/categories/entities.js"
 import categoryById from "./_routes/categories/[id].js"
 import tagsList from "./_routes/tags.js"
 import tagEntities from "./_routes/tags/entities.js"
@@ -163,6 +165,8 @@ const routes: RoutePattern<ApiHandler>[] = [
   { segments: ["flow"], handler: flow },
   { segments: ["audit"], handler: audit },
   { segments: ["categories"], handler: categories },
+  { segments: ["categories", "combined"], handler: categoriesCombined },
+  { segments: ["categories", "entities"], handler: categoryEntities },
   { segments: ["categories", ":id"], handler: categoryById },
   { segments: ["tags"], handler: tagsList },
   { segments: ["tags", "entities"], handler: tagEntities },
