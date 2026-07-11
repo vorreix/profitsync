@@ -5,6 +5,7 @@ import { clients, transactions } from "../../src/lib/db/schema.js"
 import { canWrite, ensureDefaultClient, requireAuth, requireBusinessFeature } from "../_lib/auth.js"
 import { checkClientQuota, checkNoteLength } from "../_lib/quota.js"
 import { logAudit } from "../_lib/audit.js"
+import { cleanTags, normalizeTagName } from "../../src/lib/tags.js"
 
 const VALID_STATUSES = ["active", "inactive", "archived"]
 const PAGE_SIZE = 20
@@ -19,8 +20,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // or the business own-company client). Make sure it exists before listing.
     await ensureDefaultClient(orgId, userId)
 
-    const { search, sort, page, closed, includeClosed } = req.query as {
-      search?: string; sort?: string; page?: string; closed?: string; includeClosed?: string
+    const { search, sort, page, closed, includeClosed, tag } = req.query as {
+      search?: string; sort?: string; page?: string; closed?: string; includeClosed?: string; tag?: string
     }
 
     const searchFilter = search?.trim()
@@ -30,6 +31,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           ilike(clients.email, `%${search.trim()}%`),
         )
       : undefined
+
+    // `?tag=#x` → jsonb containment on the GIN-indexed tags array (normalized so
+    // the query spelling always matches the stored one).
+    const normalizedTag = tag ? normalizeTagName(tag) : ""
+    const tagFilter = normalizedTag ? sql`${clients.tags} @> ${JSON.stringify([normalizedTag])}::jsonb` : undefined
 
     // Closed filtering: by default only active (closed_at IS NULL). `?closed=1`
     // returns only closed (the list's "Closed" section); `?includeClosed=1`
@@ -46,6 +52,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       isNull(clients.deletedAt),
       closedFilter,
       searchFilter,
+      tagFilter,
     )
 
     const orderBy = (() => {
@@ -68,6 +75,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       status: clients.status,
       notes: clients.notes,
       category: clients.category,
+      tags: clients.tags,
       isOwn: clients.isOwn,
       onboardDate: clients.onboardDate,
       deletedAt: clients.deletedAt,
@@ -116,9 +124,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Personal accounts can't manage clients — they get exactly one default client.
     if (!requireBusinessFeature(res, ctx, "clients")) return
     if (!canWrite(role)) return res.status(403).json({ error: "Forbidden" })
-    const { name, company, email, phone, status, notes, onboard_date, category } = req.body as {
+    const { name, company, email, phone, status, notes, onboard_date, category, tags } = req.body as {
       name: string; company?: string; email?: string
-      phone?: string; status?: string; notes?: string; onboard_date?: string; category?: string
+      phone?: string; status?: string; notes?: string; onboard_date?: string; category?: string; tags?: unknown
     }
     if (!name?.trim()) return res.status(400).json({ error: "name is required" })
     const normalizedStatus = status ?? "active"
@@ -141,6 +149,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         status: normalizedStatus,
         notes: notes ?? "",
         category: typeof category === "string" ? category.trim().slice(0, 60) : "",
+        tags: cleanTags(tags),
         onboardDate: onboard_date ?? null,
         createdBy: userId,
         updatedBy: userId,

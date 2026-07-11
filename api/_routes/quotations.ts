@@ -6,6 +6,7 @@ import { canWrite, requireAuth, requireBusinessFeature } from "../_lib/auth.js"
 import { checkNoteLength, checkQuotationQuota } from "../_lib/quota.js"
 import { logAudit } from "../_lib/audit.js"
 import { amountExceedsLimit } from "../../src/lib/money.js"
+import { cleanTags, normalizeTagName } from "../../src/lib/tags.js"
 
 const VALID_STATUSES = ["draft", "sent", "accepted", "rejected"]
 const PAGE_SIZE = 20
@@ -20,9 +21,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { userId, orgId, role } = ctx
 
   if (req.method === "GET") {
-    const { search, status, page, dateFrom, dateTo, closed, includeClosed } = req.query as {
-      search?: string; status?: string; page?: string; dateFrom?: string; dateTo?: string; closed?: string; includeClosed?: string
+    const { search, status, page, dateFrom, dateTo, closed, includeClosed, tag } = req.query as {
+      search?: string; status?: string; page?: string; dateFrom?: string; dateTo?: string; closed?: string; includeClosed?: string; tag?: string
     }
+
+    // `?tag=#x` → jsonb containment on the GIN-indexed tags array (normalized).
+    const normalizedTag = tag ? normalizeTagName(tag) : ""
+    const tagFilter = normalizedTag ? sql`${quotations.tags} @> ${JSON.stringify([normalizedTag])}::jsonb` : undefined
 
     const closedFilter =
       closed === "1"
@@ -57,6 +62,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       statusFilter,
       dateFromFilter,
       dateToFilter,
+      tagFilter,
     )
 
     // All quotation columns + a direct attachment count for the list badge.
@@ -94,9 +100,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method === "POST") {
     if (!canWrite(role)) return res.status(403).json({ error: "Forbidden" })
-    const { title, prospect_name, company, email, phone, amount, date, status, notes, category } = req.body as {
+    const { title, prospect_name, company, email, phone, amount, date, status, notes, category, tags } = req.body as {
       title: string; prospect_name: string; company?: string; email?: string
-      phone?: string; amount?: number; date?: string; status?: string; notes?: string; category?: string
+      phone?: string; amount?: number; date?: string; status?: string; notes?: string; category?: string; tags?: unknown
     }
     if (!title?.trim()) return res.status(400).json({ error: "title is required" })
     if (!prospect_name?.trim()) return res.status(400).json({ error: "prospect_name is required" })
@@ -124,6 +130,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         status: normalizedStatus,
         notes: notes ?? "",
         category: typeof category === "string" ? category.trim().slice(0, 60) : "",
+        tags: cleanTags(tags),
         createdBy: userId,
         updatedBy: userId,
       })
