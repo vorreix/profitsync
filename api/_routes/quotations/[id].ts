@@ -6,6 +6,7 @@ import { canDelete, canWrite, requireAuth, requireBusinessFeature } from "../../
 import { checkNoteLength } from "../../_lib/quota.js"
 import { diffFields, logAudit } from "../../_lib/audit.js"
 import { amountExceedsLimit } from "../../../src/lib/money.js"
+import { cleanTags } from "../../../src/lib/tags.js"
 
 const VALID_STATUSES = ["draft", "sent", "accepted", "rejected"]
 
@@ -29,9 +30,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method === "PATCH") {
     if (!canWrite(role)) return res.status(403).json({ error: "Forbidden" })
-    const { title, prospect_name, company, email, phone, amount, date, status, notes, closed, category } = req.body as {
+    const { title, prospect_name, company, email, phone, amount, date, status, notes, closed, category, tags } = req.body as {
       title?: string; prospect_name?: string; company?: string; email?: string
-      phone?: string; amount?: number; date?: string; status?: string; notes?: string; closed?: boolean; category?: string
+      phone?: string; amount?: number; date?: string; status?: string; notes?: string; closed?: boolean; category?: string; tags?: unknown
     }
     if (status !== undefined && !VALID_STATUSES.includes(status)) {
       return res.status(400).json({ error: "status must be draft, sent, accepted, or rejected" })
@@ -58,6 +59,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ...(status !== undefined ? { status } : {}),
         ...(notes !== undefined ? { notes } : {}),
         ...(category !== undefined ? { category: category.trim().slice(0, 60) } : {}),
+        ...(tags !== undefined ? { tags: cleanTags(tags) } : {}),
         ...(closed !== undefined ? { closedAt: closed ? new Date() : null } : {}),
         updatedBy: userId,
         updatedAt: new Date(),
@@ -71,7 +73,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const changes = diffFields(
         before as Record<string, unknown>,
         updated as Record<string, unknown>,
-        ["title", "prospectName", "company", "email", "phone", "amount", "status", "notes", "category"],
+        ["title", "prospectName", "company", "email", "phone", "amount", "status", "notes", "category", "tags"],
       )
       if (Object.keys(changes).length) await logAudit({ orgId, entityType: "quotation", entityId: id, action: "update", actorId: userId, changes })
     }

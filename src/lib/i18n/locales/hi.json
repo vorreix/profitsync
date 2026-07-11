@@ -38,7 +38,8 @@
     "recurring": "आवर्ती",
     "calendar": "कैलेंडर",
     "flow": "धन प्रवाह",
-    "spaces": "स्पेस"
+    "spaces": "स्पेस",
+    "categoryTags": "श्रेणी और टैग"
   },
   "actions": {
     "addClient": "ग्राहक जोड़ें",
@@ -60,7 +61,15 @@
     "upgradeTitle": "प्रीमियम में अपग्रेड करें",
     "upgradeSubtitle": "अधिक ग्राहक, अटैचमेंट और स्टोरेज",
     "createOrganization": "संगठन बनाएं",
-    "manageOrganizations": "संगठन प्रबंधित करें"
+    "manageOrganizations": "संगठन प्रबंधित करें",
+    "loading": "Loading…",
+    "switchOrganization": "Switch organization",
+    "searchOrganizations": "Search organizations…",
+    "noOrganizationsMatch": "No organizations match",
+    "roleOwner": "owner",
+    "roleAdmin": "admin",
+    "roleEditor": "editor",
+    "roleViewer": "viewer"
   },
   "forgotPassword": {
     "linkLabel": "अपना पासवर्ड भूल गए?",
@@ -170,7 +179,8 @@
     "cardWealth": "संपत्ति अवलोकन",
     "cardChart": "चार्ट",
     "cardBreakdown": "शीर्ष विवरण",
-    "cardLatest": "हाल के लेन-देन"
+    "cardLatest": "हाल के लेन-देन",
+    "openFilters": "Open dashboard filters"
   },
   "chart": {
     "incoming": "आवक",
@@ -382,7 +392,12 @@
     "splitHint": "प्रत्येक खाता अपने स्वयं के लेन-देन के रूप में सहेजा जाता है।",
     "account_one": "{{count}} खाता",
     "account_other": "{{count}} खाते",
-    "recurringBadge": "आवर्ती"
+    "recurringBadge": "आवर्ती",
+    "tags": "टैग",
+    "tagsPlaceholder": "#business #travel जैसे टैग जोड़ें",
+    "tagsUpgrade": "अधिक टैग के लिए अपग्रेड करें",
+    "tagsLimitReached": "आप अपने प्लान की टैग सीमा तक पहुँच गए हैं।",
+    "removeTag": "{{tag}} हटाएं"
   },
   "clients": {
     "pageTitle": "ग्राहक",
@@ -818,7 +833,15 @@
     "deleteFailed": "श्रेणी हटाने में विफल",
     "deleteTitle": "श्रेणी हटाएं?",
     "deleteBody": "\"{{name}}\" को आपकी श्रेणी सूची से हटा दिया जाएगा। मौजूदा लेन-देन अपना लेबल बनाए रखते हैं।",
-    "renameHint": "नाम बदलने से मिलान करने वाले लेन-देन पर भी लेबल अपडेट हो जाता है।"
+    "renameHint": "नाम बदलने से मिलान करने वाले लेन-देन पर भी लेबल अपडेट हो जाता है।",
+    "appliesTo": "यहाँ लागू",
+    "appliesToHint": "चुनें कि यह श्रेणी किन सूचियों में दिखे।",
+    "selectTypeRequired": "कम से कम एक प्रकार चुनें",
+    "color": "रंग",
+    "colorNone": "कोई रंग नहीं",
+    "nameExists": "उस नाम की श्रेणी पहले से मौजूद है",
+    "viewEntities": "{{name}} में आइटम देखें",
+    "dialogDescription": "आय, व्यय, ग्राहकों और कोटेशन को एक ही नाम के अंतर्गत समूहित करें।"
   },
   "attachments": {
     "attachments": "संलग्नक",
@@ -1472,5 +1495,106 @@
       "new_reminder": "नया अनुस्मारक",
       "edit_reminder": "अनुस्मारक संपादित करें"
     }
+  },
+  "featureHelp": {
+    "open": "Open help for {{feature}}",
+    "includes": "Includes",
+    "why": "Why it matters",
+    "tip": "Tip",
+    "wealth": {
+      "title": "Wealth",
+      "body": "A quick view of money currently available in your tracked accounts.",
+      "includes": {
+        "cash": "Cash accounts",
+        "bank": "Bank accounts",
+        "active": "Only active, non-archived accounts"
+      },
+      "why": "It shows your real liquidity before you make spending or transfer decisions.",
+      "tip": "Keep account balances updated after manual adjustments."
+    },
+    "netProfit": {
+      "title": "Net Profit",
+      "body": "Your remaining profit after outgoing transactions in this dashboard view.",
+      "includes": {
+        "incoming": "Incoming transactions",
+        "outgoing": "Outgoing transactions",
+        "filters": "Current client and category filters"
+      },
+      "why": "It shows whether the selected work is actually earning more than it costs.",
+      "tip": "Change filters to isolate profit by client, category, or period."
+    },
+    "moneyFlow": {
+      "title": "Money Flow",
+      "body": "A compact comparison of incoming and outgoing money in the current view.",
+      "includes": {
+        "incoming": "Incoming volume",
+        "outgoing": "Outgoing volume",
+        "grouping": "Client grouping for business, category grouping for personal"
+      },
+      "why": "It highlights where cash is entering, leaving, or getting concentrated.",
+      "tip": "Use it with Net Profit to spot high-volume work with weak margins."
+    }
+  },
+  "categoryTags": {
+    "title": "श्रेणी और टैग",
+    "subtitle": "श्रेणियों और टैग के साथ अपने पैसे को व्यवस्थित करें",
+    "categoryTab": "श्रेणियाँ",
+    "tagsTab": "टैग"
+  },
+  "tags": {
+    "loading": "लोड हो रहा है…",
+    "count_one": "{{count}} टैग",
+    "count_other": "{{count}} टैग",
+    "searchPlaceholder": "टैग खोजें…",
+    "addTag": "टैग जोड़ें",
+    "newShort": "नया",
+    "editTag": "टैग संपादित करें",
+    "dialogDescription": "लेन-देन, क्लाइंट और कोटेशन को पूरे वर्कस्पेस में समूहित करने के लिए टैग करें.",
+    "name": "नाम",
+    "namePlaceholder": "जैसे travel, urgent, q3",
+    "nameRequired": "नाम आवश्यक है",
+    "nameHint": "स्पेस डैश बन जाते हैं और # स्वतः जुड़ जाता है.",
+    "color": "रंग",
+    "colorNone": "कोई रंग नहीं",
+    "edit": "संपादित करें",
+    "delete": "हटाएँ",
+    "empty": "अभी कोई टैग नहीं.",
+    "noMatch": "आपकी खोज से कोई टैग मेल नहीं खाता.",
+    "created": "टैग बनाया गया",
+    "createFailed": "टैग बनाने में विफल",
+    "updated": "टैग अपडेट किया गया",
+    "updateFailed": "टैग अपडेट करने में विफल",
+    "deleted": "टैग हटाया गया",
+    "deletedWithRecords_one": "टैग और {{count}} रिकॉर्ड हटाए गए",
+    "deletedWithRecords_other": "टैग और {{count}} रिकॉर्ड हटाए गए",
+    "deleteFailed": "टैग हटाने में विफल",
+    "nameExists": "इस नाम का टैग पहले से मौजूद है",
+    "viewEntities": "{{name}} से टैग की गई वस्तुएँ देखें",
+    "transactions": "लेन-देन",
+    "clients": "क्लाइंट",
+    "quotations": "कोटेशन",
+    "unused": "अप्रयुक्त",
+    "sortMostUsed": "सर्वाधिक उपयोग",
+    "sortLeastUsed": "सबसे कम उपयोग",
+    "sortNameAsc": "नाम (A–Z)",
+    "sortNameDesc": "नाम (Z–A)",
+    "deleteTitle": "टैग हटाएँ?",
+    "deleteChoosePrompt": "आप {{name}} को कैसे हटाना चाहते हैं?",
+    "deleteTagOnly": "केवल टैग हटाएँ",
+    "deleteTagOnlyHint": "रिकॉर्ड अपना डेटा रखते हैं — केवल टैग हटाया जाता है.",
+    "deleteWithRecords": "टैग और रिकॉर्ड हटाएँ",
+    "deleteWithRecordsHint_one": "{{count}} टैग किए गए रिकॉर्ड को भी ट्रैश में ले जाएँ (वापस लाने योग्य).",
+    "deleteWithRecordsHint_other": "{{count}} टैग किए गए रिकॉर्ड को भी ट्रैश में ले जाएँ (वापस लाने योग्य)."
+  },
+  "drilldown": {
+    "loading": "लोड हो रहा है…",
+    "itemCount_one": "{{count}} आइटम",
+    "itemCount_other": "{{count}} आइटम",
+    "empty": "इन फ़िल्टर से कुछ मेल नहीं खाता।",
+    "sortNewest": "नवीनतम",
+    "sortOldest": "सबसे पुराना",
+    "sortAmountHigh": "सर्वाधिक राशि",
+    "sortAmountLow": "न्यूनतम राशि",
+    "sortName": "नाम"
   }
 }

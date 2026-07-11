@@ -1,4 +1,4 @@
-import { lazy, Suspense } from "react"
+import { lazy, Suspense, useEffect } from "react"
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom"
 import { Loader as Loader2 } from "lucide-react"
 import { AppErrorBoundary } from "@/components/AppErrorBoundary"
@@ -9,6 +9,7 @@ import { BusinessOnlyRoute } from "@/components/BusinessOnlyRoute"
 import { PersonalOnlyRoute } from "@/components/PersonalOnlyRoute"
 import { Toaster } from "@/components/ui/sonner"
 import { UpdatePrompt } from "@/components/UpdatePrompt"
+import { isNativeAndroid, nativeAuthLog, nativeAuthUrlLog, toInternalOAuthCallbackPath } from "@/lib/native-auth"
 import { useShouldRedirectToApp } from "@/lib/use-redirect-to-app"
 import { isStandalonePwa } from "@/lib/pwa/is-standalone"
 
@@ -28,7 +29,7 @@ const WealthPage = lazy(() => import("@/pages/WealthPage").then((m) => ({ defaul
 const WealthAccountDetailPage = lazy(() => import("@/pages/WealthAccountDetailPage").then((m) => ({ default: m.WealthAccountDetailPage })))
 const SpacesPage = lazy(() => import("@/pages/SpacesPage").then((m) => ({ default: m.SpacesPage })))
 const SpaceDetailPage = lazy(() => import("@/pages/SpaceDetailPage").then((m) => ({ default: m.SpaceDetailPage })))
-const CategoriesPage = lazy(() => import("@/pages/CategoriesPage").then((m) => ({ default: m.CategoriesPage })))
+const CategoryTagsPage = lazy(() => import("@/pages/CategoryTagsPage").then((m) => ({ default: m.CategoryTagsPage })))
 const BudgetsPage = lazy(() => import("@/pages/BudgetsPage").then((m) => ({ default: m.BudgetsPage })))
 const BudgetDetailPage = lazy(() => import("@/pages/BudgetDetailPage").then((m) => ({ default: m.BudgetDetailPage })))
 const AnalyticsPage = lazy(() => import("@/pages/AnalyticsPage").then((m) => ({ default: m.AnalyticsPage })))
@@ -59,6 +60,7 @@ const LoginPage = lazy(() => import("@/pages/LoginPage").then((m) => ({ default:
 const SignupPage = lazy(() => import("@/pages/SignupPage").then((m) => ({ default: m.SignupPage })))
 const ForgotPasswordPage = lazy(() => import("@/pages/ForgotPasswordPage").then((m) => ({ default: m.ForgotPasswordPage })))
 const ResetPasswordPage = lazy(() => import("@/pages/ResetPasswordPage").then((m) => ({ default: m.ResetPasswordPage })))
+const OAuthCallbackPage = lazy(() => import("@/pages/OAuthCallbackPage").then((m) => ({ default: m.OAuthCallbackPage })))
 
 const AdminOverviewPage = lazy(() => import("@/pages/admin/AdminOverviewPage").then((m) => ({ default: m.AdminOverviewPage })))
 const AdminUsersPage = lazy(() => import("@/pages/admin/AdminUsersPage").then((m) => ({ default: m.AdminUsersPage })))
@@ -103,6 +105,50 @@ function LandingRoute() {
 }
 
 export function App() {
+  useEffect(() => {
+    let removeListener: (() => void) | undefined
+
+    async function installNativeUrlListener() {
+      // Web never needs the deep-link listener — bail before the dynamic
+      // imports so browsers don't fetch the capacitor chunk at all.
+      if (!isNativeAndroid()) return
+      try {
+        const [{ App: CapacitorApp }, { Browser }] = await Promise.all([
+          import("@capacitor/app"),
+          import("@capacitor/browser"),
+        ])
+
+        const handle = await CapacitorApp.addListener("appUrlOpen", async ({ url }) => {
+          nativeAuthUrlLog("callback_url_received", url)
+          const callbackPath = toInternalOAuthCallbackPath(url)
+          if (!callbackPath) return
+
+          try {
+            await Browser.close()
+          } catch (cause) {
+            nativeAuthLog("browser_close_failed", { message: cause instanceof Error ? cause.message : String(cause) })
+          }
+
+          nativeAuthLog("callback_route_navigation", { to: callbackPath })
+          window.history.replaceState(null, "", callbackPath)
+          window.dispatchEvent(new PopStateEvent("popstate"))
+        })
+
+        removeListener = () => {
+          void handle.remove()
+        }
+      } catch (cause) {
+        nativeAuthLog("app_url_listener_install_failed", { message: cause instanceof Error ? cause.message : String(cause) })
+      }
+    }
+
+    void installNativeUrlListener()
+
+    return () => {
+      removeListener?.()
+    }
+  }, [])
+
   return (
     <BrowserRouter>
       <AppErrorBoundary>
@@ -125,6 +171,7 @@ export function App() {
           <Route path="signup/*" element={<SignupPage />} />
           <Route path="forgot-password" element={<ForgotPasswordPage />} />
           <Route path="reset-password" element={<ResetPasswordPage />} />
+          <Route path="sso-callback" element={<OAuthCallbackPage />} />
 
           {/* Onboarding — full-screen, no app shell. Shown until account type is chosen. */}
           <Route path="onboarding" element={<OnboardingPage />} />
@@ -169,7 +216,7 @@ export function App() {
             <Route path="spaces" element={<PersonalOnlyRoute feature="spaces"><SpacesPage /></PersonalOnlyRoute>} />
             <Route path="spaces/:id" element={<PersonalOnlyRoute feature="spaces"><SpaceDetailPage /></PersonalOnlyRoute>} />
             <Route path="analytics" element={<AnalyticsPage />} />
-            <Route path="categories" element={<CategoriesPage />} />
+            <Route path="categories" element={<CategoryTagsPage />} />
             <Route path="budgets" element={<BudgetsPage />} />
             <Route path="budgets/:key" element={<BudgetDetailPage />} />
             <Route path="referrals" element={<ReferralPage />} />

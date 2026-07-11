@@ -38,7 +38,8 @@
     "recurring": "పునరావృతం",
     "calendar": "క్యాలెండర్",
     "flow": "నగదు ప్రవాహం",
-    "spaces": "స్పేస్‌లు"
+    "spaces": "స్పేస్‌లు",
+    "categoryTags": "వర్గం & ట్యాగ్‌లు"
   },
   "actions": {
     "addClient": "క్లయింట్‌ను జోడించు",
@@ -60,7 +61,15 @@
     "upgradeTitle": "ప్రీమియంకు అప్‌గ్రేడ్ చేయండి",
     "upgradeSubtitle": "మరిన్ని క్లయింట్‌లు, అటాచ్‌మెంట్‌లు & నిల్వ",
     "createOrganization": "సంస్థను సృష్టించు",
-    "manageOrganizations": "సంస్థలను నిర్వహించు"
+    "manageOrganizations": "సంస్థలను నిర్వహించు",
+    "loading": "Loading…",
+    "switchOrganization": "Switch organization",
+    "searchOrganizations": "Search organizations…",
+    "noOrganizationsMatch": "No organizations match",
+    "roleOwner": "owner",
+    "roleAdmin": "admin",
+    "roleEditor": "editor",
+    "roleViewer": "viewer"
   },
   "forgotPassword": {
     "linkLabel": "మీ పాస్‌వర్డ్ మర్చిపోయారా?",
@@ -170,7 +179,8 @@
     "cardWealth": "సంపద అవలోకనం",
     "cardChart": "చార్ట్",
     "cardBreakdown": "టాప్ విభజన",
-    "cardLatest": "తాజా లావాదేవీలు"
+    "cardLatest": "తాజా లావాదేవీలు",
+    "openFilters": "Open dashboard filters"
   },
   "chart": {
     "incoming": "రాబడి",
@@ -382,7 +392,12 @@
     "splitHint": "ప్రతి ఖాతా దాని స్వంత లావాదేవీగా సేవ్ చేయబడుతుంది.",
     "account_one": "{{count}} ఖాతా",
     "account_other": "{{count}} ఖాతాలు",
-    "recurringBadge": "పునరావృతం"
+    "recurringBadge": "పునరావృతం",
+    "tags": "ట్యాగ్‌లు",
+    "tagsPlaceholder": "#business #travel వంటి ట్యాగ్‌లను జోడించండి",
+    "tagsUpgrade": "మరిన్ని ట్యాగ్‌ల కోసం అప్‌గ్రేడ్ చేయండి",
+    "tagsLimitReached": "మీ ప్లాన్ ట్యాగ్ పరిమితిని చేరుకున్నారు.",
+    "removeTag": "{{tag}} తీసివేయండి"
   },
   "clients": {
     "pageTitle": "క్లయింట్‌లు",
@@ -818,7 +833,15 @@
     "deleteFailed": "విభాగం తొలగించడం విఫలమైంది",
     "deleteTitle": "విభాగాన్ని తొలగించాలా?",
     "deleteBody": "\"{{name}}\" మీ విభాగ జాబితా నుండి తీసివేయబడుతుంది. ఉన్న లావాదేవీలు వాటి లేబుల్‌ను ఇంచుమించు ఉంచుకుంటాయి.",
-    "renameHint": "పేరు మార్పు చేయడం సరిపోయే లావాదేవీలపై లేబుల్‌ను కూడా నవీకరిస్తుంది."
+    "renameHint": "పేరు మార్పు చేయడం సరిపోయే లావాదేవీలపై లేబుల్‌ను కూడా నవీకరిస్తుంది.",
+    "appliesTo": "వర్తిస్తుంది",
+    "appliesToHint": "ఈ వర్గం ఏ జాబితాల్లో కనిపించాలో ఎంచుకోండి.",
+    "selectTypeRequired": "కనీసం ఒక రకాన్ని ఎంచుకోండి",
+    "color": "రంగు",
+    "colorNone": "రంగు లేదు",
+    "nameExists": "ఆ పేరుతో ఒక వర్గం ఇప్పటికే ఉంది",
+    "viewEntities": "{{name}} లోని అంశాలను చూడండి",
+    "dialogDescription": "ఆదాయం, ఖర్చులు, క్లయింట్లు మరియు కొటేషన్లను ఒకే పేరు కింద సమూహపరచండి."
   },
   "attachments": {
     "attachments": "జతలు",
@@ -1472,5 +1495,106 @@
       "new_reminder": "కొత్త రిమైండర్",
       "edit_reminder": "రిమైండర్ సవరించు"
     }
+  },
+  "featureHelp": {
+    "open": "Open help for {{feature}}",
+    "includes": "Includes",
+    "why": "Why it matters",
+    "tip": "Tip",
+    "wealth": {
+      "title": "Wealth",
+      "body": "A quick view of money currently available in your tracked accounts.",
+      "includes": {
+        "cash": "Cash accounts",
+        "bank": "Bank accounts",
+        "active": "Only active, non-archived accounts"
+      },
+      "why": "It shows your real liquidity before you make spending or transfer decisions.",
+      "tip": "Keep account balances updated after manual adjustments."
+    },
+    "netProfit": {
+      "title": "Net Profit",
+      "body": "Your remaining profit after outgoing transactions in this dashboard view.",
+      "includes": {
+        "incoming": "Incoming transactions",
+        "outgoing": "Outgoing transactions",
+        "filters": "Current client and category filters"
+      },
+      "why": "It shows whether the selected work is actually earning more than it costs.",
+      "tip": "Change filters to isolate profit by client, category, or period."
+    },
+    "moneyFlow": {
+      "title": "Money Flow",
+      "body": "A compact comparison of incoming and outgoing money in the current view.",
+      "includes": {
+        "incoming": "Incoming volume",
+        "outgoing": "Outgoing volume",
+        "grouping": "Client grouping for business, category grouping for personal"
+      },
+      "why": "It highlights where cash is entering, leaving, or getting concentrated.",
+      "tip": "Use it with Net Profit to spot high-volume work with weak margins."
+    }
+  },
+  "categoryTags": {
+    "title": "వర్గం & ట్యాగ్‌లు",
+    "subtitle": "వర్గాలు మరియు ట్యాగ్‌లతో మీ డబ్బును నిర్వహించండి",
+    "categoryTab": "వర్గాలు",
+    "tagsTab": "ట్యాగ్‌లు"
+  },
+  "tags": {
+    "loading": "లోడ్ అవుతోంది…",
+    "count_one": "{{count}} ట్యాగ్",
+    "count_other": "{{count}} ట్యాగ్‌లు",
+    "searchPlaceholder": "ట్యాగ్‌లను వెతకండి…",
+    "addTag": "ట్యాగ్ జోడించు",
+    "newShort": "కొత్తది",
+    "editTag": "ట్యాగ్ సవరించు",
+    "dialogDescription": "లావాదేవీలు, క్లయింట్లు, కొటేషన్లను వర్క్‌స్పేస్ అంతటా సమూహపరచడానికి ట్యాగ్ చేయండి.",
+    "name": "పేరు",
+    "namePlaceholder": "ఉదా. travel, urgent, q3",
+    "nameRequired": "పేరు అవసరం",
+    "nameHint": "ఖాళీలు డాష్‌లుగా మారతాయి, # స్వయంచాలకంగా జోడించబడుతుంది.",
+    "color": "రంగు",
+    "colorNone": "రంగు లేదు",
+    "edit": "సవరించు",
+    "delete": "తొలగించు",
+    "empty": "ఇంకా ట్యాగ్‌లు లేవు.",
+    "noMatch": "మీ శోధనకు ఏ ట్యాగ్ సరిపోలలేదు.",
+    "created": "ట్యాగ్ సృష్టించబడింది",
+    "createFailed": "ట్యాగ్ సృష్టించడం విఫలమైంది",
+    "updated": "ట్యాగ్ నవీకరించబడింది",
+    "updateFailed": "ట్యాగ్ నవీకరించడం విఫలమైంది",
+    "deleted": "ట్యాగ్ తొలగించబడింది",
+    "deletedWithRecords_one": "ట్యాగ్ మరియు {{count}} రికార్డ్ తొలగించబడ్డాయి",
+    "deletedWithRecords_other": "ట్యాగ్ మరియు {{count}} రికార్డులు తొలగించబడ్డాయి",
+    "deleteFailed": "ట్యాగ్ తొలగించడం విఫలమైంది",
+    "nameExists": "ఆ పేరుతో ఒక ట్యాగ్ ఇప్పటికే ఉంది",
+    "viewEntities": "{{name}} ట్యాగ్ చేసిన అంశాలను చూడండి",
+    "transactions": "లావాదేవీలు",
+    "clients": "క్లయింట్లు",
+    "quotations": "కొటేషన్లు",
+    "unused": "వాడనిది",
+    "sortMostUsed": "అత్యధికంగా వాడినవి",
+    "sortLeastUsed": "అతి తక్కువగా వాడినవి",
+    "sortNameAsc": "పేరు (A–Z)",
+    "sortNameDesc": "పేరు (Z–A)",
+    "deleteTitle": "ట్యాగ్ తొలగించాలా?",
+    "deleteChoosePrompt": "{{name}} ను ఎలా తొలగించాలనుకుంటున్నారు?",
+    "deleteTagOnly": "ట్యాగ్ మాత్రమే తీసివేయి",
+    "deleteTagOnlyHint": "రికార్డులు తమ డేటాను ఉంచుకుంటాయి — ట్యాగ్ మాత్రమే తీసివేయబడుతుంది.",
+    "deleteWithRecords": "ట్యాగ్ మరియు రికార్డులను తొలగించు",
+    "deleteWithRecordsHint_one": "ట్యాగ్ చేసిన {{count}} రికార్డును కూడా ట్రాష్‌కు తరలించు (తిరిగి పొందవచ్చు).",
+    "deleteWithRecordsHint_other": "ట్యాగ్ చేసిన {{count}} రికార్డులను కూడా ట్రాష్‌కు తరలించు (తిరిగి పొందవచ్చు)."
+  },
+  "drilldown": {
+    "loading": "లోడ్ అవుతోంది…",
+    "itemCount_one": "{{count}} అంశం",
+    "itemCount_other": "{{count}} అంశాలు",
+    "empty": "ఈ ఫిల్టర్‌లకు ఏదీ సరిపోలడం లేదు.",
+    "sortNewest": "కొత్తవి",
+    "sortOldest": "పాతవి",
+    "sortAmountHigh": "అత్యధిక మొత్తం",
+    "sortAmountLow": "అత్యల్ప మొత్తం",
+    "sortName": "పేరు"
   }
 }

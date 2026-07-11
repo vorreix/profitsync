@@ -83,7 +83,7 @@ function buildMoreItems(activeOrgId: string | undefined, accountType: AccountTyp
     { labelKey: "nav.wealth", href: "/wealth", icon: Landmark },
     accountTypeAllows(accountType, "spaces") && { labelKey: "nav.spaces", href: "/spaces", icon: PiggyBank },
     { labelKey: "nav.analytics", href: "/analytics", icon: ChartColumn },
-    { labelKey: "nav.categories", href: "/categories", icon: Tag },
+    { labelKey: "nav.categoryTags", href: "/categories", icon: Tag },
     { labelKey: "nav.recurring", href: "/recurring", icon: Repeat },
     { labelKey: "nav.calendar", href: "/calendar", icon: CalendarDays },
     { labelKey: "nav.flow", href: "/flow", icon: Network },
@@ -218,7 +218,7 @@ export function MobileAppLayout() {
           <button
             onClick={() => navigate("/dashboard")}
             className="pressable flex items-center gap-1.5 shrink-0"
-            aria-label="Home"
+            aria-label={t("nav.home")}
           >
             <div className="flex size-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
               <TrendingUp className="size-3.5" />

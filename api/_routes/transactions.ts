@@ -3,12 +3,13 @@ import { and, asc, count, desc, eq, gte, ilike, isNull, lte, ne, or, sql } from 
 import { db, serialize } from "../../src/lib/db/index.js"
 import { clients, transactions, wealthAccounts } from "../../src/lib/db/schema.js"
 import { canWrite, ensureDefaultClient, isPersonalAccount, requireAuth } from "../_lib/auth.js"
-import { checkTransactionQuota } from "../_lib/quota.js"
+import { checkTransactionQuota, checkTransactionTagQuota } from "../_lib/quota.js"
 import { logAudit } from "../_lib/audit.js"
 import { balanceDelta } from "../../src/lib/wealth-ledger.js"
 import { amountExceedsLimit } from "../../src/lib/money.js"
 import { materializeDueRecurring } from "../_lib/recurring-materialize.js"
 import { notifyIfBudgetExceeded } from "../_lib/notify-budget.js"
+import { cleanTransactionTags } from "../../src/lib/transaction-tags.js"
 
 const PAGE_SIZE = 20
 
@@ -41,6 +42,7 @@ const txFields = {
   amount: transactions.amount,
   description: transactions.description,
   category: transactions.category,
+  tags: transactions.tags,
   date: transactions.date,
   isSystem: transactions.isSystem,
   recurringRuleId: transactions.recurringRuleId,
@@ -80,6 +82,8 @@ const groupedFields = {
   amount: sql<string>`sum(${transactions.amount}::numeric)`,
   description: sql<string>`max(${transactions.description})`,
   category: sql<string>`max(${transactions.category})`,
+  // Group-level metadata: every leg carries the same tags, take the first leg's.
+  tags: sql<string[]>`(array_agg(${transactions.tags} order by ${transactions.createdAt} asc, ${transactions.id} asc))[1]`,
   // Cast to text so the grouped row returns a plain 'YYYY-MM-DD' like the
   // non-grouped path (a raw max(date) comes back as a tz-shifted timestamp).
   date: sql<string>`max(${transactions.date})::text`,
@@ -140,8 +144,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // short-circuit when nothing is due — no cron needed).
     await materializeDueRecurring(orgId)
 
-    const { clientId, wealthAccountId, groupId, search, type, page, sort, limit, category, from, to, includeClosed } = req.query as {
-      clientId?: string; wealthAccountId?: string; groupId?: string; search?: string; type?: string; page?: string; sort?: string; limit?: string; category?: string; from?: string; to?: string; includeClosed?: string
+    const { clientId, wealthAccountId, groupId, search, type, page, sort, limit, category, tag, from, to, includeClosed } = req.query as {
+      clientId?: string; wealthAccountId?: string; groupId?: string; search?: string; type?: string; page?: string; sort?: string; limit?: string; category?: string; tag?: string; from?: string; to?: string; includeClosed?: string
     }
 
     // Fetch every leg of one split group (drives the detail breakdown). Always
@@ -202,6 +206,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ? or(
           ilike(transactions.description, `%${search.trim()}%`),
           ilike(transactions.category, `%${search.trim()}%`),
+          sql`${transactions.tags}::text ilike ${`%${search.trim()}%`}`,
           ilike(clients.name, `%${search.trim()}%`),
         )
       : undefined
@@ -212,6 +217,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const categoryFilter = category?.trim()
       ? eq(transactions.category, category.trim())
+      : undefined
+    // Exact tag containment (normalized to the stored "#tag" form); GIN-indexed.
+    const normalizedTag = tag?.trim() ? (tag.trim().startsWith("#") ? tag.trim() : `#${tag.trim()}`) : ""
+    const tagFilter = normalizedTag
+      ? sql`${transactions.tags} @> ${JSON.stringify([normalizedTag])}::jsonb`
       : undefined
 
     const whereClause = and(
@@ -224,6 +234,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       searchFilter,
       typeFilter,
       categoryFilter,
+      tagFilter,
       dateFromFilter,
       dateToFilter,
     )
@@ -244,6 +255,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ne(transactions.kind, "transfer"),
         searchFilter,
         categoryFilter,
+        tagFilter,
         dateFromFilter,
         dateToFilter,
       )
@@ -319,9 +331,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method === "POST") {
     if (!canWrite(role)) return res.status(403).json({ error: "Forbidden" })
-    const { client_id, type, amount, description, category, date, wealth_account_id, is_system } = req.body as {
+    const { client_id, type, amount, description, category, tags, date, wealth_account_id } = req.body as {
       client_id: string; type: string; amount: number
-      description?: string; category?: string; date?: string; wealth_account_id?: string; is_system?: boolean
+      description?: string; category?: string; tags?: unknown; date?: string; wealth_account_id?: string
     }
 
     if (!amount || isNaN(Number(amount))) return res.status(400).json({ error: "amount is required" })
@@ -356,6 +368,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const quota = await checkTransactionQuota(orgId, clientId)
     if (!quota.allowed) return res.status(402).json(quota)
 
+    // Per-plan tag ceiling — dedup/normalize first, then gate the real count.
+    const cleanedTags = cleanTransactionTags(tags)
+    const tagQuota = await checkTransactionTagQuota(orgId, cleanedTags.length)
+    if (!tagQuota.allowed) return res.status(402).json(tagQuota)
+
     const today = new Date().toISOString().split("T")[0]
     const [row] = await db
       .insert(transactions)
@@ -366,8 +383,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         amount: String(amount),
         description: description ?? "",
         category: category ?? "",
+        tags: cleanedTags,
         date: date ?? today,
-        isSystem: !!is_system,
+        // isSystem is server-only: user-created transactions are never system rows.
         createdBy: userId,
         updatedBy: userId,
       })
