@@ -1,61 +1,26 @@
-// Transaction tags — shared, dependency-free helpers (safe for API + frontend
-// + vitest). A tag is a short `#hashtag` string stored as a jsonb string array
-// on the transaction row; normalization is identical everywhere so the API
-// filter (`tags @> '["#x"]'`), the form input and suggestions always agree.
+// Transaction tags — historical entry point. The logic now lives in the generic
+// `src/lib/tags.ts` (shared across transactions, clients and quotations); this
+// module re-exports it under the original transaction-specific names so existing
+// call sites (tx form, API routes, tests) keep working unchanged.
 
-export const MAX_TRANSACTION_TAGS = 20
-export const MAX_TRANSACTION_TAG_LENGTH = 40
+import {
+  MAX_TAGS,
+  MAX_TAG_LENGTH,
+  normalizeTag,
+  cleanTags,
+  parseTagDraft,
+  mergeTags,
+  entityTags,
+} from "./tags.js"
 
-/** "#  Foo  Bar " → "#Foo-Bar"; strips extra #, collapses spaces, caps length. */
-export function normalizeTransactionTag(raw: string): string {
-  const text = raw.trim().replace(/^#+/, "")
-  if (!text) return ""
-  return `#${text.replace(/\s+/g, "-").slice(0, MAX_TRANSACTION_TAG_LENGTH)}`
-}
+export const MAX_TRANSACTION_TAGS = MAX_TAGS
+export const MAX_TRANSACTION_TAG_LENGTH = MAX_TAG_LENGTH
 
-/**
- * Sanitize an untrusted tags payload (POST/PATCH body) into a clean, deduped
- * (case-insensitive), capped string array. Non-arrays and non-string entries
- * are dropped rather than erroring — tags are never worth failing a save over.
- */
-export function cleanTransactionTags(input: unknown): string[] {
-  if (!Array.isArray(input)) return []
-  const seen = new Set<string>()
-  const tags: string[] = []
+/** @deprecated use normalizeTag from ./tags */
+export const normalizeTransactionTag = normalizeTag
+/** @deprecated use cleanTags from ./tags */
+export const cleanTransactionTags = cleanTags
+/** @deprecated use entityTags from ./tags */
+export const txTags = entityTags
 
-  for (const raw of input) {
-    if (typeof raw !== "string") continue
-    const tag = normalizeTransactionTag(raw)
-    if (!tag || seen.has(tag.toLowerCase())) continue
-    seen.add(tag.toLowerCase())
-    tags.push(tag)
-    if (tags.length >= MAX_TRANSACTION_TAGS) break
-  }
-
-  return tags
-}
-
-/** Split a free-typed draft ("food, #travel  wife") into normalized tags. */
-export function parseTagDraft(raw: string): string[] {
-  return raw
-    .split(/[,\s]+/)
-    .map(normalizeTransactionTag)
-    .filter(Boolean)
-}
-
-/** Existing tags + a draft, deduped case-insensitively, first spelling wins. */
-export function mergeTags(tags: string[], draft: string): string[] {
-  const next: string[] = []
-  const seen = new Set<string>()
-  for (const tag of [...tags, ...parseTagDraft(draft)]) {
-    if (seen.has(tag.toLowerCase())) continue
-    seen.add(tag.toLowerCase())
-    next.push(tag)
-  }
-  return next
-}
-
-/** A row's tags, defensively (older rows predate the column). */
-export function txTags(tx: { tags?: unknown }): string[] {
-  return Array.isArray(tx.tags) ? tx.tags.filter((t): t is string => typeof t === "string") : []
-}
+export { parseTagDraft, mergeTags }
