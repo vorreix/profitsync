@@ -56,6 +56,24 @@ export type Tag = {
 // The entity kinds a tag/category drilldown can surface.
 export type TaggableEntityType = "transaction" | "client" | "quotation"
 
+// One flattened row in a tag/category "show me every entity matching X"
+// drilldown. Mirrors the server shape in api/_lib/entity-drilldown.ts.
+export type DrilldownItem = {
+  entity_type: TaggableEntityType
+  id: string
+  title: string
+  subtitle: string
+  amount: string | null
+  tx_type: string | null // "incoming" | "outgoing" for transactions
+  status: string | null
+  date: string | null
+  category: string
+  tags: string[]
+  link: string
+}
+
+export type DrilldownSort = "date_desc" | "date_asc" | "amount_desc" | "amount_asc" | "name_asc"
+
 // Editable metadata shared by all attachment kinds (see the attachment tables).
 export type AttachmentMeta = {
   display_name?: string | null
