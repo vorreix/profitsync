@@ -38,6 +38,42 @@ Debug APK output: `android/app/build/outputs/apk/debug/app-debug.apk`
 (unsigned — install for testing via `adb install`). Release signing is NOT
 configured yet; set up a keystore + `signingConfigs` before any store upload.
 
+## Branding — launcher icon & splash screen
+
+The launcher icons (all `mipmap-*` densities + adaptive icon) and splash
+screens (all `drawable-*` variants, incl. night) are generated from the brand
+sources in `assets/` — never hand-edit the generated PNGs. To regenerate
+(e.g. after a logo change):
+
+```bash
+node scripts/android-brand-assets.mjs   # rebuilds assets/ from public/logo.png
+npx @capacitor/assets generate --android \
+  --iconBackgroundColor '#ffffff' --iconBackgroundColorDark '#ffffff' \
+  --splashBackgroundColor '#ffffff' --splashBackgroundColorDark '#ffffff'
+git checkout android/app/src/main/AndroidManifest.xml  # generator only reformats it
+```
+
+The script crops the P/S mark out of the full lockup at high res for the
+icon (a launcher icon with the wordmark would be illegible) and centers the
+full lockup for the splash. The adaptive icon uses PNG layers
+(`@mipmap/ic_launcher_background` + `@mipmap/ic_launcher_foreground`); the
+Capacitor template's vector drawables were deleted.
+
+## Shipping an app update (keep the APK in sync with the web app)
+
+The APK ships a frozen copy of the web bundle — deploying the website does
+NOT update installed apps. To cut an updated app:
+
+1. Bump `versionCode` (+1, always) and `versionName` in
+   `android/app/build.gradle`.
+2. `npm run cap:build:android` — rebuilds the web bundle (`--mode android`),
+   copies it into the shell (`cap sync`), and assembles the APK.
+3. Install/distribute `android/app/build/outputs/apk/debug/app-debug.apk`
+   (`adb install -r …` keeps app data).
+
+The in-app service worker is intentionally disabled in the WebView (see
+below), so there is no self-update path — rebuilding is the only way.
+
 ## How the native pieces fit (and what NOT to break)
 
 - **API base rewrite** (`src/lib/api-base.ts`, installed in `main.tsx`): no-ops
