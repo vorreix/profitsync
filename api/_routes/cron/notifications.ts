@@ -11,7 +11,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { and, eq, lte } from "drizzle-orm"
 import { db } from "../../../src/lib/db/index.js"
-import { broadcasts, notificationReminders } from "../../../src/lib/db/schema.js"
+import { broadcasts, notificationReminders, notificationSchedulerState } from "../../../src/lib/db/schema.js"
 import { requireServiceToken } from "../../_lib/auth.js"
 import { createNotification } from "../../_lib/notifications.js"
 import { deliverBroadcast } from "../../_lib/broadcast-deliver.js"
@@ -110,6 +110,22 @@ export async function runNotificationTick(now: Date = new Date()): Promise<{ rem
       console.error("[cron/notifications] broadcast delivery failed", claimed.id, err)
       await db.update(broadcasts).set({ status: "scheduled", updatedAt: now }).where(eq(broadcasts.id, claimed.id))
     }
+  }
+
+  // ── Heartbeat ────────────────────────────────────────────────────────────────
+  // Recorded on EVERY tick (even zero-work ones) so liveness is observable in
+  // the admin Worker panel. Best-effort: a heartbeat failure must never fail
+  // the tick itself.
+  try {
+    await db
+      .insert(notificationSchedulerState)
+      .values({ id: "default", lastTickAt: now, lastReminders: firedReminders, lastBroadcasts: firedBroadcasts, updatedAt: now })
+      .onConflictDoUpdate({
+        target: notificationSchedulerState.id,
+        set: { lastTickAt: now, lastReminders: firedReminders, lastBroadcasts: firedBroadcasts, updatedAt: now },
+      })
+  } catch (err) {
+    console.error("[cron/notifications] heartbeat write failed", err)
   }
 
   return { reminders: firedReminders, broadcasts: firedBroadcasts }
