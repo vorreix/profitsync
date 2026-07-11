@@ -61,6 +61,7 @@ export async function materializeDueRecurring(orgId: string): Promise<Materializ
         // transfer (Space auto-save) needs BOTH the source and the destination.
         const isTransfer = rule.kind === "transfer"
         let transferCreatedCount = 0
+        let regularCreatedCount = 0
         if (isTransfer && (!rule.wealthAccountId || !rule.toAccountId)) {
           await setRuleError(rule.id, "Auto-save needs both a source account and a Space")
           result.skipped.push(rule.name)
@@ -148,6 +149,7 @@ export async function materializeDueRecurring(orgId: string): Promise<Materializ
 
           if (inserted.length > 0) {
             result.created++
+            regularCreatedCount++
             if (rule.wealthAccountId) {
               const delta = balanceDelta(rule.type, rule.amount)
               await db
@@ -191,6 +193,28 @@ export async function materializeDueRecurring(orgId: string): Promise<Materializ
               dedupeKey: `space_autosave:${rule.id}:${cursor}`,
             })
           })().catch(() => {})
+        }
+
+        // Regular recurring rules tell their creator what posted — best-effort,
+        // once per rule per batch (count carries how many occurrences landed).
+        if (!isTransfer && regularCreatedCount > 0 && rule.createdBy) {
+          void createNotification({
+            userId: rule.createdBy,
+            organizationId: orgId,
+            type: "recurring_posted",
+            title: "Recurring transaction posted",
+            body:
+              regularCreatedCount === 1
+                ? `"${rule.name}" was added automatically.`
+                : `"${rule.name}" added ${regularCreatedCount} transactions.`,
+            data: {
+              i18nKey: "types.recurring_posted.title",
+              i18nBodyKey: regularCreatedCount === 1 ? "types.recurring_posted.body" : "types.recurring_posted.body_many",
+              i18nParams: { name: rule.name, count: regularCreatedCount },
+            },
+            link: "/recurring",
+            dedupeKey: `recurring_posted:${rule.id}:${nextCursor}`,
+          }).catch(() => {})
         }
       }
 

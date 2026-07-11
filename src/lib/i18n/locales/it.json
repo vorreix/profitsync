@@ -1447,9 +1447,28 @@
         "body_active": "La tua organizzazione ora è sul piano {{plan}}.",
         "body_cancelled": "Il tuo abbonamento {{plan}} è stato annullato."
       },
+      "referral_credited": {
+        "title": "Premio referral accreditato",
+        "body": "Il tuo invitato è passato a un piano a pagamento — {{amount}} è in arrivo."
+      },
+      "referral_payout": {
+        "title": "Aggiornamento pagamento",
+        "body_approved": "Il tuo pagamento di {{amount}} è stato approvato.",
+        "body_paid": "Il tuo pagamento di {{amount}} è stato inviato.",
+        "body_rejected": "La tua richiesta di pagamento di {{amount}} è stata rifiutata."
+      },
+      "budget_warning": {
+        "title": "Budget quasi esaurito",
+        "body": "{{name}} ha usato il {{percent}}% del suo budget {{period}}."
+      },
       "budget_exceeded": {
         "title": "Budget superato",
         "body": "{{name}} ha superato il suo budget {{period}}."
+      },
+      "recurring_posted": {
+        "title": "Transazione ricorrente registrata",
+        "body": "“{{name}}” è stata aggiunta automaticamente.",
+        "body_many": "“{{name}}” ha aggiunto {{count}} transazioni."
       },
       "space_autosaved": {
         "title": "Risparmio automatico nello Spazio",
