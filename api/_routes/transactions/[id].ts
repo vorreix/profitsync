@@ -4,6 +4,7 @@ import { db, serialize } from "../../../src/lib/db/index.js"
 import { clients, transactions, wealthAccounts } from "../../../src/lib/db/schema.js"
 import { canDelete, canWrite, requireAuth } from "../../_lib/auth.js"
 import { diffFields, logAudit } from "../../_lib/audit.js"
+import { checkTransactionTagQuota } from "../../_lib/quota.js"
 import { balanceDelta } from "../../../src/lib/wealth-ledger.js"
 import { amountExceedsLimit } from "../../../src/lib/money.js"
 import { cleanTransactionTags } from "../../../src/lib/transaction-tags.js"
@@ -88,6 +89,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
     if (amount !== undefined && amountExceedsLimit(amount)) return res.status(400).json({ error: "Amount is too large" })
     const [before] = await db.select().from(transactions).where(eq(transactions.id, id))
+    // Per-plan tag ceiling. Only gate when tags are actually being changed, and
+    // grandfather an existing over-limit set (previousCount) so editing anything
+    // else on a legacy transaction never trips it — only *adding* tags is blocked.
+    let cleanedTags: string[] | undefined
+    if (tags !== undefined) {
+      cleanedTags = cleanTransactionTags(tags)
+      const previousCount = Array.isArray(before?.tags) ? before.tags.length : 0
+      const tagQuota = await checkTransactionTagQuota(orgId, cleanedTags.length, { previousCount })
+      if (!tagQuota.allowed) return res.status(402).json(tagQuota)
+    }
     const nextAccountId = wealth_account_id !== undefined ? wealth_account_id : before.wealthAccountId
     if (nextAccountId) {
       const [account] = await db
@@ -106,7 +117,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ...(amount !== undefined ? { amount: String(amount) } : {}),
         ...(description !== undefined ? { description } : {}),
         ...(category !== undefined ? { category } : {}),
-        ...(tags !== undefined ? { tags: cleanTransactionTags(tags) } : {}),
+        ...(cleanedTags !== undefined ? { tags: cleanedTags } : {}),
         ...(date !== undefined ? { date } : {}),
         updatedBy: userId,
         updatedAt: new Date(),

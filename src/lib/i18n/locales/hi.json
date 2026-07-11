@@ -395,6 +395,8 @@
     "recurringBadge": "आवर्ती",
     "tags": "टैग",
     "tagsPlaceholder": "#business #travel जैसे टैग जोड़ें",
+    "tagsUpgrade": "अधिक टैग के लिए अपग्रेड करें",
+    "tagsLimitReached": "आप अपने प्लान की टैग सीमा तक पहुँच गए हैं।",
     "removeTag": "{{tag}} हटाएं"
   },
   "clients": {

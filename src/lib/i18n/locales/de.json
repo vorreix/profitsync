@@ -395,6 +395,8 @@
     "recurringBadge": "Wiederkehrend",
     "tags": "Tags",
     "tagsPlaceholder": "Tags wie #business #travel hinzufügen",
+    "tagsUpgrade": "Upgrade für mehr Tags",
+    "tagsLimitReached": "Du hast das Tag-Limit deines Tarifs erreicht.",
     "removeTag": "{{tag}} entfernen"
   },
   "clients": {

@@ -41,6 +41,7 @@ async function main() {
       attachmentSizeKb: 1024,
       attachmentsPerTx: 1,
       noteLength: 200,
+      tagsPerTransaction: 1,
     },
     premium: {
       clients: 1000,
@@ -49,6 +50,7 @@ async function main() {
       attachmentSizeKb: 10240,
       attachmentsPerTx: 10,
       noteLength: 100000,
+      tagsPerTransaction: 3,
     },
   }
 

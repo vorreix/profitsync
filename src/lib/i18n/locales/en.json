@@ -618,6 +618,8 @@
     "category": "Category",
     "tags": "Tags",
     "tagsPlaceholder": "Add tags like #business #travel",
+    "tagsUpgrade": "Upgrade for more tags",
+    "tagsLimitReached": "You've reached your plan's tag limit.",
     "removeTag": "Remove {{tag}}",
     "client": "Client",
     "clientIsRequired": "Client is required",

@@ -395,6 +395,8 @@
     "recurringBadge": "పునరావృతం",
     "tags": "ట్యాగ్‌లు",
     "tagsPlaceholder": "#business #travel వంటి ట్యాగ్‌లను జోడించండి",
+    "tagsUpgrade": "మరిన్ని ట్యాగ్‌ల కోసం అప్‌గ్రేడ్ చేయండి",
+    "tagsLimitReached": "మీ ప్లాన్ ట్యాగ్ పరిమితిని చేరుకున్నారు.",
     "removeTag": "{{tag}} తీసివేయండి"
   },
   "clients": {
