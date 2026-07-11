@@ -1,0 +1,14 @@
+{
+	"appId": "com.vorreix.profitsync",
+	"appName": "ProfitSync",
+	"webDir": "dist",
+	"backgroundColor": "#ffffff",
+	"server": {
+		"androidScheme": "https"
+	},
+	"plugins": {
+		"CapacitorHttp": {
+			"enabled": true
+		}
+	}
+}

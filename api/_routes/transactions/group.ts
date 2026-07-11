@@ -7,6 +7,7 @@ import { canWrite, ensureDefaultClient, isPersonalAccount, requireAuth } from ".
 import { getOrgPlan } from "../../_lib/quota.js"
 import { logAudit } from "../../_lib/audit.js"
 import { balanceDelta } from "../../../src/lib/wealth-ledger.js"
+import { cleanTransactionTags } from "../../../src/lib/transaction-tags.js"
 import { amountExceedsLimit } from "../../../src/lib/money.js"
 
 type AllocationInput = { wealth_account_id?: string; account_id?: string; amount?: number | string }
@@ -28,15 +29,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" })
   if (!canWrite(role)) return res.status(403).json({ error: "Forbidden" })
 
-  const { client_id, type, description, category, date, is_system, allocations } = req.body as {
+  const { client_id, type, description, category, tags, date, is_system, allocations } = req.body as {
     client_id?: string
     type?: string
     description?: string
     category?: string
+    tags?: unknown
     date?: string
     is_system?: boolean
     allocations?: AllocationInput[]
   }
+  // Group-level metadata, like description/category: every leg carries it.
+  const cleanTags = cleanTransactionTags(tags)
 
   if (!type || !["incoming", "outgoing"].includes(type)) {
     return res.status(400).json({ error: "type must be incoming or outgoing" })
@@ -117,6 +121,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         amount: String(leg.amount),
         description: description ?? "",
         category: category ?? "",
+        tags: cleanTags,
         date: date ?? today,
         isSystem: !!is_system,
         createdBy: userId,

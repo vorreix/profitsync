@@ -382,7 +382,10 @@
     "splitHint": "ప్రతి ఖాతా దాని స్వంత లావాదేవీగా సేవ్ చేయబడుతుంది.",
     "account_one": "{{count}} ఖాతా",
     "account_other": "{{count}} ఖాతాలు",
-    "recurringBadge": "పునరావృతం"
+    "recurringBadge": "పునరావృతం",
+    "tags": "ట్యాగ్‌లు",
+    "tagsPlaceholder": "#business #travel వంటి ట్యాగ్‌లను జోడించండి",
+    "removeTag": "{{tag}} తీసివేయండి"
   },
   "clients": {
     "pageTitle": "క్లయింట్‌లు",

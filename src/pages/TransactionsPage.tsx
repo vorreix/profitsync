@@ -37,6 +37,7 @@ import { WealthAccountIcon } from "@/components/WealthAccountIcon"
 import { useUrlModal } from "@/hooks/use-url-modal"
 import { TxFormFields } from "@/components/transactions/tx-form"
 import { allocationFor, formatFileSize, type TxForm } from "@/components/transactions/tx-form-utils"
+import { mergeTags, txTags } from "@/lib/transaction-tags"
 import { AddTransactionDialog } from "@/components/transactions/AddTransactionDialog"
 
 type PaginatedResponse<T> = { data: T[]; total: number; summary?: { incoming: number; outgoing: number } }
@@ -488,6 +489,14 @@ export function TransactionsPage() {
     return [...set].filter(Boolean).sort((a, b) => a.localeCompare(b))
   }, [categories, transactions])
 
+  // Tag suggestions = every tag on the loaded transactions (covers tags created
+  // on other devices without a dedicated endpoint).
+  const allTagOptions = useMemo(() => {
+    const set = new Set<string>()
+    for (const tx of transactions) for (const tag of txTags(tx)) if (tag.trim()) set.add(tag.trim())
+    return [...set].sort((a, b) => a.localeCompare(b))
+  }, [transactions])
+
   // Open the edit dialog. For a split (grouped) row we load every leg so the user
   // edits the whole split; a single-account row prefills one allocation.
   async function openEditTx(tx: Transaction) {
@@ -505,7 +514,8 @@ export function TransactionsPage() {
           group_id: tx.group_id,
           client_id: tx.client_id,
           allocations: legs.map((l) => ({ account_id: l.wealth_account_id ?? "", amount: String(l.amount) })),
-          type: tx.type, description: tx.description, category: tx.category, date: tx.date,
+          type: tx.type, description: tx.description, category: tx.category,
+          tags: txTags(legs[0]), tag_draft: "", date: tx.date,
         })
         setEditOpen(true)
       } catch {
@@ -515,7 +525,8 @@ export function TransactionsPage() {
     }
     setEditForm({
       id: tx.id, group_id: tx.group_id ?? null, client_id: tx.client_id,
-      allocations: allocationFor(tx, accounts), type: tx.type, description: tx.description, category: tx.category, date: tx.date,
+      allocations: allocationFor(tx, accounts), type: tx.type, description: tx.description, category: tx.category,
+      tags: txTags(tx), tag_draft: "", date: tx.date,
     })
     setEditOpen(true)
   }
@@ -539,6 +550,7 @@ export function TransactionsPage() {
           type: editForm.type,
           description: editForm.description,
           category: editForm.category,
+          tags: mergeTags(editForm.tags, editForm.tag_draft),
           date: editForm.date,
           allocations: allocs.map((a) => ({ wealth_account_id: a.account_id, amount: parseFloat(a.amount) })),
         })
@@ -550,6 +562,7 @@ export function TransactionsPage() {
           amount: parseFloat(alloc.amount),
           description: editForm.description,
           category: editForm.category,
+          tags: mergeTags(editForm.tags, editForm.tag_draft),
           date: editForm.date,
         })
       }
@@ -970,6 +983,16 @@ export function TransactionsPage() {
                       <p className="mt-0.5">{viewTx.category}</p>
                     </div>
                   )}
+                  {txTags(viewTx).length > 0 && (
+                    <div className="col-span-2">
+                      <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">{t("tags")}</p>
+                      <div className="mt-1 flex flex-wrap gap-1.5">
+                        {txTags(viewTx).map((tag) => (
+                          <Badge key={tag} variant="secondary">{tag}</Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   {(viewTx.leg_count ?? 1) > 1 ? (
                     <div className="col-span-2">
                       <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
@@ -1088,6 +1111,7 @@ export function TransactionsPage() {
         open={addOpen}
         onOpenChange={setAddOpen}
         onCreated={() => fetchPage1({ silent: true })}
+        tagSuggestions={allTagOptions}
       />
 
       {/* Edit Dialog */}
@@ -1104,6 +1128,7 @@ export function TransactionsPage() {
               accounts={accounts}
               accountsLoading={accountsLoading}
               categories={categories}
+              tagSuggestions={allTagOptions}
               onChangeCats={handleChangeCats}
               onAddAccount={() => { setEditOpen(false); navigate("/wealth") }}
               currency={currency}

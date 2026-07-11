@@ -382,7 +382,10 @@
     "splitHint": "ഓരോ അക്കൗണ്ടും സ്വന്തം ലെൻഡൻ കൂടി സംരക്ഷിക്കപ്പെടുന്നു.",
     "account_one": "{{count}} അക്കൗണ്ട്",
     "account_other": "{{count}} അക്കൗണ്ടുകൾ",
-    "recurringBadge": "ആവർത്തനം"
+    "recurringBadge": "ആവർത്തനം",
+    "tags": "ടാഗുകൾ",
+    "tagsPlaceholder": "#business #travel പോലുള്ള ടാഗുകൾ ചേർക്കുക",
+    "removeTag": "{{tag}} നീക്കം ചെയ്യുക"
   },
   "clients": {
     "pageTitle": "ക്ലയന്റുകൾ",

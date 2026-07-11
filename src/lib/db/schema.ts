@@ -197,6 +197,10 @@ export const transactions = pgTable("transactions", {
   amount: numeric("amount", { precision: 20, scale: 2 }).notNull().default("0"),
   description: text("description").default(""),
   category: text("category").default(""),
+  // User hashtags ("#business", "#travel"): jsonb string array, normalized and
+  // deduped by src/lib/transaction-tags.ts. GIN-indexed for the `?tag=` filter
+  // (`tags @> '["#x"]'`).
+  tags: jsonb("tags").notNull().default([]),
   date: date("date").notNull().defaultNow(),
   isSystem: boolean("is_system").notNull().default(false),
   // Set when this row was auto-created by a recurring rule: the rule id (kept
@@ -224,6 +228,8 @@ export const transactions = pgTable("transactions", {
   clientDateIdx: index("transactions_client_date_idx").on(table.clientId, table.date),
   accountIdx: index("transactions_account_idx").on(table.wealthAccountId),
   dateIdx: index("transactions_date_idx").on(table.date),
+  // Containment lookups for the `?tag=` filter.
+  tagsIdx: index("transactions_tags_idx").using("gin", table.tags),
 }))
 
 // ── Recurring payments ───────────────────────────────────────────────────────

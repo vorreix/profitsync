@@ -382,7 +382,10 @@
     "splitHint": "प्रत्येक खाता अपने स्वयं के लेन-देन के रूप में सहेजा जाता है।",
     "account_one": "{{count}} खाता",
     "account_other": "{{count}} खाते",
-    "recurringBadge": "आवर्ती"
+    "recurringBadge": "आवर्ती",
+    "tags": "टैग",
+    "tagsPlaceholder": "#business #travel जैसे टैग जोड़ें",
+    "removeTag": "{{tag}} हटाएं"
   },
   "clients": {
     "pageTitle": "ग्राहक",

@@ -6,6 +6,7 @@ import { canDelete, canWrite, requireAuth } from "../../_lib/auth.js"
 import { diffFields, logAudit } from "../../_lib/audit.js"
 import { balanceDelta } from "../../../src/lib/wealth-ledger.js"
 import { amountExceedsLimit } from "../../../src/lib/money.js"
+import { cleanTransactionTags } from "../../../src/lib/transaction-tags.js"
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ctx = await requireAuth(req, res)
@@ -42,6 +43,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         amount: transactions.amount,
         description: transactions.description,
         category: transactions.category,
+        tags: transactions.tags,
         date: transactions.date,
         isSystem: transactions.isSystem,
         recurringRuleId: transactions.recurringRuleId,
@@ -76,8 +78,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method === "PATCH") {
     if (!canWrite(role)) return res.status(403).json({ error: "Forbidden" })
-    const { type, amount, description, category, date, wealth_account_id } = req.body as {
-      type?: string; amount?: number; description?: string; category?: string; date?: string; wealth_account_id?: string | null
+    const { type, amount, description, category, tags, date, wealth_account_id } = req.body as {
+      type?: string; amount?: number; description?: string; category?: string; tags?: unknown; date?: string; wealth_account_id?: string | null
     }
     if (type !== undefined && !["incoming", "outgoing"].includes(type)) {
       return res.status(400).json({ error: "type must be incoming or outgoing" })
@@ -102,6 +104,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ...(amount !== undefined ? { amount: String(amount) } : {}),
         ...(description !== undefined ? { description } : {}),
         ...(category !== undefined ? { category } : {}),
+        ...(tags !== undefined ? { tags: cleanTransactionTags(tags) } : {}),
         ...(date !== undefined ? { date } : {}),
         updatedBy: userId,
         updatedAt: new Date(),
@@ -132,7 +135,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const changes = diffFields(
       before as Record<string, unknown>,
       updated as Record<string, unknown>,
-      ["type", "amount", "description", "category", "date", "wealthAccountId"],
+      ["type", "amount", "description", "category", "tags", "date", "wealthAccountId"],
     )
     if (Object.keys(changes).length) await logAudit({ orgId, entityType: "transaction", entityId: id, action: "update", actorId: userId, changes })
     return res.json(serialize(updated))

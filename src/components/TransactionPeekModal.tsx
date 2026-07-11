@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { txTags } from "@/lib/transaction-tags"
 import type { Transaction } from "@/lib/types"
 
 const formatDate = (d: string) =>
@@ -68,6 +69,16 @@ export function TransactionPeekModal({
               <div>
                 <p className="text-xs text-muted-foreground">{t("filters.category")}</p>
                 <Badge variant="outline">{tx.category}</Badge>
+              </div>
+            )}
+            {txTags(tx).length > 0 && (
+              <div className="col-span-2">
+                <p className="text-xs text-muted-foreground">{t("transactions.tags")}</p>
+                <div className="mt-1 flex flex-wrap gap-1.5">
+                  {txTags(tx).map((tag) => (
+                    <Badge key={tag} variant="secondary">{tag}</Badge>
+                  ))}
+                </div>
               </div>
             )}
             {showClient && tx.client_name && (

@@ -382,7 +382,10 @@
     "splitHint": "Jedes Konto wird als eigene Transaktion gespeichert.",
     "account_one": "{{count}} Konto",
     "account_other": "{{count}} Konten",
-    "recurringBadge": "Wiederkehrend"
+    "recurringBadge": "Wiederkehrend",
+    "tags": "Tags",
+    "tagsPlaceholder": "Tags wie #business #travel hinzufügen",
+    "removeTag": "{{tag}} entfernen"
   },
   "clients": {
     "pageTitle": "Klienten",
