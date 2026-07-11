@@ -395,6 +395,8 @@
     "recurringBadge": "ആവർത്തനം",
     "tags": "ടാഗുകൾ",
     "tagsPlaceholder": "#business #travel പോലുള്ള ടാഗുകൾ ചേർക്കുക",
+    "tagsUpgrade": "കൂടുതൽ ടാഗുകൾക്കായി അപ്‌ഗ്രേഡ് ചെയ്യുക",
+    "tagsLimitReached": "നിങ്ങളുടെ പ്ലാനിന്റെ ടാഗ് പരിധിയിൽ എത്തി.",
     "removeTag": "{{tag}} നീക്കം ചെയ്യുക"
   },
   "clients": {

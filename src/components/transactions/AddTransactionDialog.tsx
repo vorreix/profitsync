@@ -4,9 +4,10 @@ import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { Loader as Loader2, Paperclip, X } from "lucide-react"
-import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api"
+import { apiDelete, apiErrorUpgradeHint, apiGet, apiPatch, apiPost } from "@/lib/api"
 import { amountExceedsLimit } from "@/lib/money"
-import type { Budget, Client, WealthAccount } from "@/lib/types"
+import { isPaidPlanKey, type Budget, type Client, type WealthAccount } from "@/lib/types"
+import { tagLimitForPlan } from "@/lib/tags"
 import { useCurrency } from "@/lib/currency-context"
 import { useOrg } from "@/lib/org-context"
 import { useCategories } from "@/lib/use-categories"
@@ -55,6 +56,10 @@ export function AddTransactionDialog({
   const { currency } = useCurrency()
   const { activeOrg } = useOrg()
   const isPersonal = activeOrg?.account_type === "personal"
+  // Per-plan tag ceiling (free = 1, paid = 3). Clicking the premium chip closes
+  // the form (draft is kept) and sends the user to upgrade.
+  const tagLimit = tagLimitForPlan(isPaidPlanKey(activeOrg?.plan_key))
+  const goUpgrade = () => { onOpenChange(false); navigate("/subscription") }
   const { categories: catRows, byType: categories, refresh: refreshCats } = useCategories()
 
   const [form, setForm] = useState<TxForm>(defaultTxForm)
@@ -208,7 +213,9 @@ export function AddTransactionDialog({
       setPendingFiles([])
       onOpenChange(false)
       onCreated?.({ id: firstId, type: form.type, amount: total })
-    } catch {
+    } catch (err) {
+      // A tag/quota 402 → route to upgrade instead of a generic failure toast.
+      if (apiErrorUpgradeHint(err)) { toast.info(t("tagsLimitReached")); goUpgrade(); return }
       toast.error(t("failedToAddTransaction"))
     } finally {
       // Always reset — the component stays mounted after a successful close, so a
@@ -233,6 +240,8 @@ export function AddTransactionDialog({
             accountsLoading={accountsLoading}
             categories={categories}
             tagSuggestions={tagSuggestions}
+            tagLimit={tagLimit}
+            onTagUpgrade={goUpgrade}
             onChangeCats={handleChangeCats}
             onAddAccount={() => { onOpenChange(false); navigate("/wealth") }}
             currency={currency}

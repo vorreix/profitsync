@@ -8,6 +8,20 @@
 export const MAX_TAGS = 20
 export const MAX_TAG_LENGTH = 40
 
+// Per-transaction tag ceiling by plan. The free tier gets a single tag; paid
+// plans get a few. These are the ONE source of truth: the client reads them to
+// gate the tag input + show the upgrade chip, and the server (api/_lib/quota.ts)
+// seeds its DEFAULT plan limits from them, so the UI and the 402 always agree.
+// (The global MAX_TAGS above is the hard safety ceiling — the plan limit is the
+// stricter, user-facing cap.)
+export const FREE_TAGS_PER_TX = 1
+export const PREMIUM_TAGS_PER_TX = 3
+
+/** Per-transaction tag limit for the plan (pass `isPaidPlanKey(plan_key)`). */
+export function tagLimitForPlan(isPaid: boolean): number {
+  return isPaid ? PREMIUM_TAGS_PER_TX : FREE_TAGS_PER_TX
+}
+
 /** "#  Foo  Bar " → "#Foo-Bar"; strips extra #, collapses spaces, caps length. */
 export function normalizeTag(raw: string): string {
   // Trim again after dropping the leading '#'(es) so "#  Foo" can't leave a

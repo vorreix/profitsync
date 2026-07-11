@@ -3,7 +3,7 @@ import { and, asc, count, desc, eq, gte, ilike, isNull, lte, ne, or, sql } from 
 import { db, serialize } from "../../src/lib/db/index.js"
 import { clients, transactions, wealthAccounts } from "../../src/lib/db/schema.js"
 import { canWrite, ensureDefaultClient, isPersonalAccount, requireAuth } from "../_lib/auth.js"
-import { checkTransactionQuota } from "../_lib/quota.js"
+import { checkTransactionQuota, checkTransactionTagQuota } from "../_lib/quota.js"
 import { logAudit } from "../_lib/audit.js"
 import { balanceDelta } from "../../src/lib/wealth-ledger.js"
 import { amountExceedsLimit } from "../../src/lib/money.js"
@@ -368,6 +368,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const quota = await checkTransactionQuota(orgId, clientId)
     if (!quota.allowed) return res.status(402).json(quota)
 
+    // Per-plan tag ceiling — dedup/normalize first, then gate the real count.
+    const cleanedTags = cleanTransactionTags(tags)
+    const tagQuota = await checkTransactionTagQuota(orgId, cleanedTags.length)
+    if (!tagQuota.allowed) return res.status(402).json(tagQuota)
+
     const today = new Date().toISOString().split("T")[0]
     const [row] = await db
       .insert(transactions)
@@ -378,7 +383,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         amount: String(amount),
         description: description ?? "",
         category: category ?? "",
-        tags: cleanTransactionTags(tags),
+        tags: cleanedTags,
         date: date ?? today,
         isSystem: !!is_system,
         createdBy: userId,

@@ -3,9 +3,10 @@ import { useAutoAnimate } from "@formkit/auto-animate/react"
 import { useNavigate, useNavigationType, useSearchParams } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
-import { apiGet, apiPost, apiPatch, apiDelete } from "@/lib/api"
+import { apiGet, apiPost, apiPatch, apiDelete, apiErrorUpgradeHint } from "@/lib/api"
 import { amountExceedsLimit } from "@/lib/money"
-import type { Client, Transaction, TransactionAttachment, WealthAccount } from "@/lib/types"
+import { isPaidPlanKey, type Client, type Transaction, type TransactionAttachment, type WealthAccount } from "@/lib/types"
+import { tagLimitForPlan } from "@/lib/tags"
 import { useCurrency } from "@/lib/currency-context"
 import { useOrg } from "@/lib/org-context"
 import { useCategories } from "@/lib/use-categories"
@@ -218,6 +219,8 @@ export function TransactionsPage() {
   const isPersonal = activeOrg?.account_type === "personal"
   const canDelete = canDeleteRole(activeOrg?.role)
   const canWrite = canWriteRole(activeOrg?.role)
+  // Per-plan tag ceiling for the edit form's TagsInput (free = 1, paid = 3).
+  const tagLimit = tagLimitForPlan(isPaidPlanKey(activeOrg?.plan_key))
   const sel = useMultiSelect()
   const longPress = useLongPress()
   const [bulkDeleting, setBulkDeleting] = useState(false)
@@ -570,7 +573,9 @@ export function TransactionsPage() {
       setEditOpen(false)
       setEditForm(null)
       fetchPage1({ silent: true })
-    } catch {
+    } catch (err) {
+      // A tag/quota 402 → route to upgrade instead of a generic failure toast.
+      if (apiErrorUpgradeHint(err)) { toast.info(t("tagsLimitReached")); setEditOpen(false); navigate("/subscription"); return }
       toast.error(t("failedToUpdateTransaction"))
     } finally {
       setSaving(false)
@@ -1129,6 +1134,8 @@ export function TransactionsPage() {
               accountsLoading={accountsLoading}
               categories={categories}
               tagSuggestions={allTagOptions}
+              tagLimit={tagLimit}
+              onTagUpgrade={() => { setEditOpen(false); navigate("/subscription") }}
               onChangeCats={handleChangeCats}
               onAddAccount={() => { setEditOpen(false); navigate("/wealth") }}
               currency={currency}

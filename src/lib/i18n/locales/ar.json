@@ -395,6 +395,8 @@
     "recurringBadge": "متكرر",
     "tags": "الوسوم",
     "tagsPlaceholder": "أضف وسومًا مثل #business #travel",
+    "tagsUpgrade": "الترقية لمزيد من الوسوم",
+    "tagsLimitReached": "لقد وصلت إلى حد الوسوم في باقتك.",
     "removeTag": "إزالة {{tag}}"
   },
   "clients": {
