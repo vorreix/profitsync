@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { timingSafeEqual } from "node:crypto"
+import { createHash, timingSafeEqual } from "node:crypto"
 import { verifyToken } from "@clerk/backend"
 import { and, asc, eq, isNull } from "drizzle-orm"
 import { db } from "../../src/lib/db/index.js"
@@ -325,14 +325,13 @@ export function requireServiceToken(req: VercelRequest, res: VercelResponse): bo
     return false
   }
   const provided = req.headers.authorization?.replace("Bearer ", "") ?? ""
-  const a = Buffer.from(provided)
-  // timingSafeEqual throws on length mismatch — guard it, but still do the compare
-  // on equal-length inputs so the timing doesn't reveal whether the length matched.
-  // `some` compares every candidate the same way (at most two).
-  const ok = expected.some((token) => {
-    const b = Buffer.from(token)
-    return a.length === b.length && timingSafeEqual(a, b)
-  })
+  // Compare SHA-256 digests, not the raw strings. Digests are always 32 bytes, so
+  // timingSafeEqual never sees a length mismatch — this removes the length/short-
+  // circuit side-channel (the previous `a.length === b.length && …` leaked, via
+  // timing, whether a candidate matched the token's length). `some` runs the same
+  // constant-time compare for every candidate (at most two).
+  const a = createHash("sha256").update(provided).digest()
+  const ok = expected.some((token) => timingSafeEqual(a, createHash("sha256").update(token).digest()))
   if (!ok) {
     res.status(401).json({ error: "Unauthorized" })
     return false

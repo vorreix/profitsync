@@ -62,7 +62,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const [{ current }] = await db
       .select({ current: count() })
       .from(transactions)
-      .where(and(eq(transactions.clientId, clientId), isNull(transactions.deletedAt)))
+      // Exclude internal system rows, consistent with checkTransactionQuota.
+      .where(
+        and(eq(transactions.clientId, clientId), isNull(transactions.deletedAt), eq(transactions.isSystem, false)),
+      )
     if (current + 2 > limits.transactionsPerClient) {
       return res.status(402).json({
         allowed: false,
