@@ -59,6 +59,11 @@ No user input available during the wave — decisions are recorded here.
 - ⚠️ Recurring-materializer changes (bulk loads / batched balance updates) touch
   the **money path** — out of scope for this wave; not worth the risk for a
   per-org, already-short-circuited code path.
+- ❌ "Exclude `content` from the admin blog LIST endpoint" — the editor populates
+  its form from the **list row** (`AdminBlogPage.tsx` `openEdit` → `post.content`);
+  trimming it would open every post with empty content and could WIPE the post on
+  save. Safe only after refactoring the editor to fetch `/api/admin/blog/:id` —
+  low-value admin-only path, skipped.
 
 ## Decision record — Firebase/FCM vs existing VAPID web-push
 
@@ -83,7 +88,7 @@ relevant only if native mobile apps ship; the channel model
 | `feat/maqbool-03-admin-bootstrap` | ROOT_ADMIN_EMAILS docs + ops (env set in prod/dev/preview ✅; prod redeploy at wave end) | — | ✅ pushed |
 | `feat/maqbool-04-scheduler-reliability` | Tick heartbeat + admin diagnostics + stale detection + auto-repair + GitHub Actions fallback pinger | 0046 | ✅ pushed (tick+heartbeat verified vs dev DB; healthy + stale panel states Playwright-verified; found & fixed the 502-drops-heartbeat bug) |
 | `feat/maqbool-05-push-hardening` | push_events outcome log + `pushsubscriptionchange` SW listener + rotate endpoint + diagnostics surfacing + decision doc | 0047 | ✅ pushed (rotate endpoint curl-tested; event logging verified vs dev DB) |
-| `feat/maqbool-06-db-perf` | Verified indexes + over-fetch trims (EXPLAIN-checked on dev DB) | 0048 | ⏳ |
+| `feat/maqbool-06-db-perf` | Indexes: `transaction_attachments(tx)`, `quotation_attachments(quotation)`, `transactions(client,date)`, `org_members(org,user)` (redundant left-prefix singles dropped) + attachment routes never load base64 except on download | 0048 | ✅ pushed (indexes confirmed in pg_indexes; dev-DB EXPLAIN still seq-scans at toy size — win is at prod scale; honest note) |
 | `feat/maqbool-07-ui-perf` | Context memoization + row memo + auto-animate + lazy locales + motion-reduce sweep | — | ⏳ |
 
 > Migration numbering: `dev` head is 0045. The unmerged `feat/family-*` chain also
