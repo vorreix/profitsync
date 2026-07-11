@@ -9,20 +9,21 @@ import {
 import { canDelete, canWrite, requireAuth } from "../../_lib/auth.js"
 import { sanitizeAttachmentMeta, setDownloadHeaders } from "../../_lib/attachments.js"
 
-function metaOf(a: typeof transactionAttachments.$inferSelect) {
-  return {
-    id: a.id,
-    transactionId: a.transactionId,
-    userId: a.userId,
-    fileName: a.fileName,
-    fileType: a.fileType,
-    fileSize: a.fileSize,
-    displayName: a.displayName,
-    tags: a.tags,
-    category: a.category,
-    createdAt: a.createdAt,
-    updatedAt: a.updatedAt,
-  }
+// Metadata projection — everything EXCEPT file_data. The base64 blob (often
+// megabytes) is selected only on the actual download path, so metadata reads,
+// renames and deletes never drag it out of the database.
+const metaColumns = {
+  id: transactionAttachments.id,
+  transactionId: transactionAttachments.transactionId,
+  userId: transactionAttachments.userId,
+  fileName: transactionAttachments.fileName,
+  fileType: transactionAttachments.fileType,
+  fileSize: transactionAttachments.fileSize,
+  displayName: transactionAttachments.displayName,
+  tags: transactionAttachments.tags,
+  category: transactionAttachments.category,
+  createdAt: transactionAttachments.createdAt,
+  updatedAt: transactionAttachments.updatedAt,
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -32,10 +33,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const { id } = req.query as { id: string }
 
-  // Resolve attachment and confirm it belongs to this org
+  // Resolve attachment METADATA and confirm it belongs to this org (file_data
+  // deliberately excluded — see metaColumns).
   const [row] = await db
     .select({
-      attachment: transactionAttachments,
+      attachment: metaColumns,
       clientOrgId: clients.organizationId,
     })
     .from(transactionAttachments)
@@ -66,9 +68,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // `?metadata=1` returns the row's metadata as JSON (never the file bytes);
     // otherwise the file is streamed as a forced download.
     if (req.query.metadata === "1") {
-      return res.json(serialize(metaOf(attachment)))
+      return res.json(serialize(attachment))
     }
-    const buffer = Buffer.from(attachment.fileData, "base64")
+    // Download path: fetch the blob only now that we know it's wanted.
+    const [file] = await db
+      .select({ fileData: transactionAttachments.fileData })
+      .from(transactionAttachments)
+      .where(eq(transactionAttachments.id, id))
+    if (!file) return res.status(404).json({ error: "Not found" })
+    const buffer = Buffer.from(file.fileData, "base64")
     setDownloadHeaders(res, attachment.fileName, buffer.length)
     return res.send(buffer)
   }
@@ -80,9 +88,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .update(transactionAttachments)
       .set({ ...updates, updatedAt: new Date() })
       .where(orgScoped)
-      .returning()
+      .returning(metaColumns)
     if (!updated) return res.status(404).json({ error: "Not found" })
-    return res.json(serialize(metaOf(updated)))
+    return res.json(serialize(updated))
   }
 
   if (req.method === "DELETE") {
