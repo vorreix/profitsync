@@ -8,6 +8,7 @@ import { getOrgPlan } from "../../_lib/quota.js"
 import { logAudit } from "../../_lib/audit.js"
 import { balanceDelta } from "../../../src/lib/wealth-ledger.js"
 import { cleanTransactionTags } from "../../../src/lib/transaction-tags.js"
+import { PREMIUM_TAGS_PER_TX } from "../../../src/lib/tags.js"
 import { amountExceedsLimit } from "../../../src/lib/money.js"
 
 type AllocationInput = { wealth_account_id?: string; account_id?: string; amount?: number | string }
@@ -84,6 +85,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   // Quota: the whole group must fit under the per-client transaction limit.
   const { planKey, limits } = await getOrgPlan(orgId)
+  // Per-plan tag ceiling (free = 1, paid = 3). Every leg shares the group's tags,
+  // so one check on the deduped set covers the whole split.
+  if (cleanTags.length > limits.tagsPerTransaction) {
+    return res.status(402).json({
+      allowed: false,
+      reason:
+        planKey === "free"
+          ? `Free plan allows ${limits.tagsPerTransaction} tag${limits.tagsPerTransaction === 1 ? "" : "s"} per transaction. Upgrade to Premium for up to ${PREMIUM_TAGS_PER_TX}.`
+          : `This plan allows ${limits.tagsPerTransaction} tags per transaction.`,
+      limit: limits.tagsPerTransaction,
+      current: cleanTags.length,
+      upgradeHint: planKey === "free",
+    })
+  }
   if (planKey === "free") {
     const [{ current }] = await db
       .select({ current: count() })

@@ -159,6 +159,22 @@ export function apiErrorMessage(err: unknown, fallback: string): string {
   return fallback
 }
 
+/**
+ * True when a thrown API error is a quota rejection that hints an upgrade
+ * (`{ upgradeHint: true }`, our 402 shape). Lets a caller route the user to the
+ * upgrade flow instead of showing a generic error toast.
+ */
+export function apiErrorUpgradeHint(err: unknown): boolean {
+  if (err instanceof Error && err.message.trim().startsWith("{")) {
+    try {
+      return (JSON.parse(err.message) as { upgradeHint?: boolean }).upgradeHint === true
+    } catch {
+      /* not JSON */
+    }
+  }
+  return false
+}
+
 export const apiGet = <T>(path: string, token: string) => get<T>(path, token)
 export const apiPost = <T>(path: string, token: string, body: unknown, invalidate?: string[]) =>
   mutate<T>("POST", path, token, body, invalidate)

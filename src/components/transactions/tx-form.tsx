@@ -214,7 +214,7 @@ function CategoryCombobox({ categories, value, onChangeCategories, onChange }: {
 // ─── Transaction form fields ──────────────────────────────────────────────────
 
 export function TxFormFields({
-  f, onChange, showClient, clients, accounts, accountsLoading, categories, onChangeCats, onAddAccount, currency, singleAccount = false, budget = null, tagSuggestions = [],
+  f, onChange, showClient, clients, accounts, accountsLoading, categories, onChangeCats, onAddAccount, currency, singleAccount = false, budget = null, tagSuggestions = [], tagLimit, onTagUpgrade,
 }: {
   f: TxForm
   onChange: (patch: Partial<TxForm>) => void
@@ -232,6 +232,9 @@ export function TxFormFields({
   budget?: Budget | null
   // Tags already used elsewhere (drives the TagsInput suggestion chips).
   tagSuggestions?: string[]
+  // Per-plan tag ceiling + the "go upgrade" handler (shows a premium chip at cap).
+  tagLimit?: number
+  onTagUpgrade?: () => void
 }) {
   const { t } = useTranslation("transactions")
   const cats = f.type === "incoming" ? categories.incoming : categories.outgoing
@@ -299,6 +302,8 @@ export function TxFormFields({
           value={f.tags}
           draft={f.tag_draft}
           suggestions={tagSuggestions}
+          maxTags={tagLimit}
+          onUpgrade={onTagUpgrade}
           onDraftChange={(tag_draft) => onChange({ tag_draft })}
           onChange={(tags) => onChange({ tags })}
         />

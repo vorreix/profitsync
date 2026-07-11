@@ -395,6 +395,8 @@
     "recurringBadge": "Ricorrente",
     "tags": "Tag",
     "tagsPlaceholder": "Aggiungi tag come #business #travel",
+    "tagsUpgrade": "Passa a Premium per più tag",
+    "tagsLimitReached": "Hai raggiunto il limite di tag del tuo piano.",
     "removeTag": "Rimuovi {{tag}}"
   },
   "clients": {
