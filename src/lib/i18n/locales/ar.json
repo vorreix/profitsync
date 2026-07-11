@@ -831,7 +831,15 @@
     "deleteFailed": "فشل حذف الفئة",
     "deleteTitle": "حذف الفئة؟",
     "deleteBody": "سيتم إزالة \"{{name}}\" من قائمة الفئات. المعاملات الموجودة تحتفظ بتسميتها.",
-    "renameHint": "إعادة التسمية تحدّث أيضاً التسمية على المعاملات المطابقة."
+    "renameHint": "إعادة التسمية تحدّث أيضاً التسمية على المعاملات المطابقة.",
+    "appliesTo": "ينطبق على",
+    "appliesToHint": "اختر القوائم التي تظهر فيها هذه الفئة.",
+    "selectTypeRequired": "اختر نوعًا واحدًا على الأقل",
+    "color": "اللون",
+    "colorNone": "بدون لون",
+    "nameExists": "توجد فئة بهذا الاسم بالفعل",
+    "viewEntities": "عرض العناصر في {{name}}",
+    "dialogDescription": "اجمع الإيرادات والمصروفات والعملاء وعروض الأسعار تحت اسم واحد."
   },
   "attachments": {
     "attachments": "المرفقات",
@@ -1533,5 +1541,16 @@
   },
   "tags": {
     "panelStub": "إدارة الوسوم ستتوفر هنا قريبًا."
+  },
+  "drilldown": {
+    "loading": "جارٍ التحميل…",
+    "itemCount_one": "{{count}} عنصر",
+    "itemCount_other": "{{count}} عناصر",
+    "empty": "لا شيء يطابق هذه المرشحات بعد.",
+    "sortNewest": "الأحدث",
+    "sortOldest": "الأقدم",
+    "sortAmountHigh": "أعلى مبلغ",
+    "sortAmountLow": "أقل مبلغ",
+    "sortName": "الاسم"
   }
 }
