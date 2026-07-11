@@ -26,10 +26,10 @@
     "e2e:ui": "playwright test --ui",
     "cap:sync:android": "npm run build:android && cap sync android",
     "cap:open:android": "npm run cap:sync:android && cap open android",
-    "cap:build:android": "npm run cap:sync:android && cd android && gradlew.bat assembleDebug",
+    "cap:build:android": "npm run cap:sync:android && node scripts/android-gradle.mjs assembleDebug",
     "cap:build:android:clean": "npm run cap:sync:android && powershell -ExecutionPolicy Bypass -File scripts/clean-android-build.ps1 && cd android && gradlew.bat assembleDebug",
     "cap:sync:android:local": "npm run build:android:local && cap sync android",
-    "cap:build:android:local": "npm run cap:sync:android:local && cd android && gradlew.bat assembleDebug"
+    "cap:build:android:local": "npm run cap:sync:android:local && node scripts/android-gradle.mjs assembleDebug"
   },
   "dependencies": {
     "@clerk/clerk-react": "^5.0.0",
