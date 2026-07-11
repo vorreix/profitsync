@@ -33,6 +33,7 @@ import { accountDisplayName, formatMoney, useBalancePrivacy, useWealthOverviewCo
 import { WealthAccountIcon } from "@/components/WealthAccountIcon"
 import { PersonalBudgetCard } from "@/components/budget/PersonalBudgetCard"
 import { BusinessBudgetCard } from "@/components/budget/BusinessBudgetCard"
+import { FeatureHelp } from "@/components/help/FeatureHelp"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { FitText } from "@/components/FitText"
 import { Badge } from "@/components/ui/badge"
@@ -234,7 +235,7 @@ function DashCardShell({
 function StatCard({
   label, value, valueClass = "", hint, loading,
 }: {
-  label: string
+  label: ReactNode
   value: string
   valueClass?: string
   hint?: ReactNode
@@ -242,9 +243,9 @@ function StatCard({
 }) {
   return (
     <div className="rounded-xl border bg-card px-3 py-2.5 sm:px-4 sm:py-3.5">
-      <p className="text-[10px] sm:text-xs font-medium text-muted-foreground uppercase tracking-wide truncate">
+      <div className="flex min-h-6 items-center gap-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground sm:text-xs">
         {label}
-      </p>
+      </div>
       {loading ? (
         <Skeleton className="h-6 sm:h-8 w-20 sm:w-28 mt-1.5" />
       ) : (
@@ -550,6 +551,7 @@ function WealthOverview({
       <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
         <CardTitle className="flex items-center gap-2 text-sm font-semibold">
           {t("wealth.title")}
+          <FeatureHelp feature="wealth" className="-ml-1" />
           {active.length > 0 && (
             <span className="rounded-full border px-2 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground">
               {active.length}
@@ -1088,7 +1090,12 @@ export function Dashboard() {
         />
         <StatCard
           loading={loading}
-          label={t("dashboard.netProfit")}
+          label={
+            <>
+              <span className="truncate">{t("dashboard.netProfit")}</span>
+              <FeatureHelp feature="netProfit" className="-my-1" />
+            </>
+          }
           value={formatCurrency(netProfit, currency)}
           valueClass={netProfit >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"}
           hint={t("dashboard.margin", { value: profitMargin })}
@@ -1151,8 +1158,11 @@ export function Dashboard() {
     chart: (
         <Card className="min-w-0 h-full">
           <CardHeader className="flex flex-row items-center justify-between gap-2">
-            <CardTitle className="text-sm font-semibold">
-              {isPersonal ? t("dashboard.revenueVsCategories") : t("dashboard.revenueVsExpenses")}
+            <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+              <span className="truncate">
+                {isPersonal ? t("dashboard.revenueVsCategories") : t("dashboard.revenueVsExpenses")}
+              </span>
+              <FeatureHelp feature="moneyFlow" className="-ml-1" />
             </CardTitle>
             <Button
               variant="ghost"
@@ -1320,7 +1330,11 @@ export function Dashboard() {
           />
         </div>
         <div className="sm:hidden shrink-0">
-          <FilterSheet count={appliedFilterCount} onClear={clearAllFilters}>
+          <FilterSheet
+            count={appliedFilterCount}
+            onClear={clearAllFilters}
+            triggerLabel={t("dashboard.openFilters")}
+          >
             {!isPersonal && (
               <FilterSection label={t("filters.client")}>
                 <MultiSelectFilter
