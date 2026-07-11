@@ -1,4 +1,4 @@
-import { StrictMode } from "react"
+﻿import { StrictMode } from "react"
 import { createRoot } from "react-dom/client"
 import { ClerkProvider } from "@clerk/clerk-react"
 import { I18nextProvider } from "react-i18next"
@@ -14,13 +14,13 @@ import { initPwa } from "@/lib/pwa/register-sw"
 const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY
 
 if (!PUBLISHABLE_KEY) {
-  throw new Error("Missing VITE_CLERK_PUBLISHABLE_KEY in the frontend environment")
+  throw new Error("Missing VITE_CLERK_PUBLISHABLE_KEY in Vite env")
 }
 
 installApiBaseFetchRewrite()
 
-// Capture a referral code (?r=CODE) on first load — anywhere, including the
-// landing — so it survives the hop to signup (read there from localStorage).
+// Capture a referral code (?r=CODE) on first load - anywhere, including the
+// landing - so it survives the hop to signup (read there from localStorage).
 try {
   const r = new URLSearchParams(window.location.search).get("r")
   if (r) localStorage.setItem("ps_ref", r.trim().toUpperCase())
@@ -33,7 +33,7 @@ createRoot(document.getElementById("root")!).render(
         {/* Bind the app subtree to its own i18next instance explicitly. The
             landing mounts a separate i18next instance (createInstance), and
             whichever instance initializes last would otherwise become
-            react-i18next's global default — so once the lazy landing chunk
+            react-i18next's global default - so once the lazy landing chunk
             loads, app routes reached via client-side navigation could resolve
             against the landing's resources and render raw keys. This provider
             pins the app to `i18n`; the landing's own <I18nextProvider> overrides

@@ -41,3 +41,6 @@ task*.png
 /playwright-report
 /test-results
 /e2e/.auth
+
+.npm-cache/
+.codex_tmp/

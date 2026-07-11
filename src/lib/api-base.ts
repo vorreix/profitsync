@@ -1,38 +1,38 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.trim()
+﻿export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/+$/, "")
 
-let installed = false
-
-function shouldRewrite(input: RequestInfo | URL): boolean {
-  if (typeof input === "string") return input.startsWith("/api/")
-  if (input instanceof URL) return input.origin === window.location.origin && input.pathname.startsWith("/api/")
-  if (input instanceof Request) {
-    const url = new URL(input.url)
-    return url.origin === window.location.origin && url.pathname.startsWith("/api/")
-  }
-  return false
+export function apiUrl(path: string): string {
+  if (!API_BASE_URL) return path
+  return `${API_BASE_URL}${path.startsWith("/") ? path : `/${path}`}`
 }
 
-function rewriteUrl(input: string | URL): string {
-  const base = new URL(API_BASE_URL!)
-  const url = new URL(input.toString(), window.location.origin)
-  url.protocol = base.protocol
-  url.host = base.host
-  return url.toString()
-}
-
-function rewriteRequest(input: Request): Request {
-  return new Request(rewriteUrl(input.url), input)
+function shouldRewriteUrl(url: URL): boolean {
+  if (!API_BASE_URL || !url.pathname.startsWith("/api")) return false
+  return url.protocol === "capacitor:" || url.protocol === "ionic:" || url.protocol === "file:" || url.origin === window.location.origin
 }
 
 export function installApiBaseFetchRewrite() {
-  if (installed || !API_BASE_URL || typeof window === "undefined") return
+  if (typeof window === "undefined" || !API_BASE_URL) return
 
   const originalFetch = window.fetch.bind(window)
-  window.fetch = (input, init) => {
-    if (!shouldRewrite(input)) return originalFetch(input, init)
 
-    if (input instanceof Request) return originalFetch(rewriteRequest(input), init)
-    return originalFetch(rewriteUrl(input), init)
+  window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+    let finalInput = input
+
+    if (typeof input === "string") {
+      finalInput = input.startsWith("/api") ? apiUrl(input) : input
+    } else if (input instanceof URL) {
+      finalInput = shouldRewriteUrl(input) ? apiUrl(input.pathname + input.search + input.hash) : input
+    } else {
+      try {
+        const url = new URL(input.url)
+        if (shouldRewriteUrl(url)) {
+          finalInput = new Request(apiUrl(url.pathname + url.search + url.hash), input)
+        }
+      } catch {
+        // Leave unusual Request URLs untouched.
+      }
+    }
+
+    return originalFetch(finalInput, init)
   }
-  installed = true
 }
