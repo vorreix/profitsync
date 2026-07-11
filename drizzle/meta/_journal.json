@@ -337,6 +337,13 @@
       "when": 1783737084953,
       "tag": "0047_loose_glorian",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1783737417701,
+      "tag": "0048_rainy_roland_deschain",
+      "breakpoints": true
     }
   ]
 }
