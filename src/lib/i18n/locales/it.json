@@ -38,7 +38,8 @@
     "recurring": "Ricorrenti",
     "calendar": "Calendario",
     "flow": "Flusso di denaro",
-    "spaces": "Spazi"
+    "spaces": "Spazi",
+    "categoryTags": "Categorie e Tag"
   },
   "actions": {
     "addClient": "Aggiungi cliente",
@@ -1523,5 +1524,14 @@
       "why": "Evidenzia dove il denaro entra, esce o si concentra.",
       "tip": "Usalo con Utile netto per individuare lavori ad alto volume ma con margini deboli."
     }
+  },
+  "categoryTags": {
+    "title": "Categorie e Tag",
+    "subtitle": "Organizza le tue finanze con categorie e tag",
+    "categoryTab": "Categorie",
+    "tagsTab": "Tag"
+  },
+  "tags": {
+    "panelStub": "La gestione dei tag arriverà qui a breve."
   }
 }

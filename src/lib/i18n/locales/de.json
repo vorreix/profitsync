@@ -38,7 +38,8 @@
     "recurring": "Daueraufträge",
     "calendar": "Kalender",
     "flow": "Geldfluss",
-    "spaces": "Sparräume"
+    "spaces": "Sparräume",
+    "categoryTags": "Kategorien & Tags"
   },
   "actions": {
     "addClient": "Kunde hinzufügen",
@@ -1523,5 +1524,14 @@
       "why": "It highlights where cash is entering, leaving, or getting concentrated.",
       "tip": "Use it with Net Profit to spot high-volume work with weak margins."
     }
+  },
+  "categoryTags": {
+    "title": "Kategorien & Tags",
+    "subtitle": "Organisiere dein Geld mit Kategorien und Tags",
+    "categoryTab": "Kategorien",
+    "tagsTab": "Tags"
+  },
+  "tags": {
+    "panelStub": "Die Tag-Verwaltung kommt bald hierher."
   }
 }

@@ -132,7 +132,7 @@ function buildNavItems(activeOrgId: string | undefined, accountType: AccountType
     { labelKey: "nav.analytics", href: "/analytics", icon: ChartColumn },
     accountTypeAllows(accountType, "quotations") && { labelKey: "nav.quotations", href: "/quotations", icon: FileText },
     accountTypeAllows(accountType, "members") && { labelKey: "nav.users", href: usersHref, icon: UserPlus },
-    { labelKey: "nav.categories", href: "/categories", icon: Tag },
+    { labelKey: "nav.categoryTags", href: "/categories", icon: Tag },
     { labelKey: "nav.budgets", href: "/budgets", icon: MoneyBag },
     { labelKey: "nav.referrals", href: "/referrals", icon: Gift },
     { labelKey: "nav.organizations", href: "/organizations", icon: Building2 },

@@ -38,7 +38,8 @@
     "recurring": "పునరావృతం",
     "calendar": "క్యాలెండర్",
     "flow": "నగదు ప్రవాహం",
-    "spaces": "స్పేస్‌లు"
+    "spaces": "స్పేస్‌లు",
+    "categoryTags": "వర్గం & ట్యాగ్‌లు"
   },
   "actions": {
     "addClient": "క్లయింట్‌ను జోడించు",
@@ -1523,5 +1524,14 @@
       "why": "It highlights where cash is entering, leaving, or getting concentrated.",
       "tip": "Use it with Net Profit to spot high-volume work with weak margins."
     }
+  },
+  "categoryTags": {
+    "title": "వర్గం & ట్యాగ్‌లు",
+    "subtitle": "వర్గాలు మరియు ట్యాగ్‌లతో మీ డబ్బును నిర్వహించండి",
+    "categoryTab": "వర్గాలు",
+    "tagsTab": "ట్యాగ్‌లు"
+  },
+  "tags": {
+    "panelStub": "ట్యాగ్ నిర్వహణ త్వరలో ఇక్కడ వస్తుంది."
   }
 }
