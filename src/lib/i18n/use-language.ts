@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next"
 import { useAuth } from "@clerk/clerk-react"
 import { apiGet, apiPatch } from "@/lib/api"
 import { SUPPORTED_LANGUAGES, getLanguage } from "./languages"
-import { LANGUAGE_STORAGE_KEY } from "./index"
+import { LANGUAGE_STORAGE_KEY, setAppLanguage } from "./index"
 
 // Single entry point for switching the UI language. Changing it via i18next
 // updates the active translation, persists to localStorage (handled by the
@@ -18,7 +18,9 @@ export function useLanguage() {
   const changeLanguage = useCallback(
     async (code: string) => {
       if (code === i18n.language) return
-      await i18n.changeLanguage(code)
+      // Loads the locale chunk BEFORE activating, so the switch never flashes
+      // fallback English (locales are code-split — see i18n/index.ts).
+      await setAppLanguage(code)
       try {
         const token = await getToken()
         if (token) await apiPatch("/api/profile", token, { language: code })
@@ -49,7 +51,7 @@ export function useSyncProfileLanguage() {
         if (!token) return
         const profile = await apiGet<{ language?: string }>("/api/profile", token)
         if (!cancelled && profile.language && profile.language !== i18n.language) {
-          await i18n.changeLanguage(profile.language)
+          await setAppLanguage(profile.language)
         }
       } catch {
         // Ignore — fall back to the locally detected language.

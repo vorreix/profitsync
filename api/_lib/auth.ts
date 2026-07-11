@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
+import { timingSafeEqual } from "node:crypto"
 import { verifyToken } from "@clerk/backend"
 import { and, asc, eq, isNull } from "drizzle-orm"
 import { db } from "../../src/lib/db/index.js"
@@ -26,7 +27,13 @@ function decodeJwtPayload(token: string): Record<string, unknown> | null {
   }
 }
 
+// Verbose auth diagnostics for debugging native (Capacitor) token flows.
+// OPT-IN via AUTH_DEBUG=1: it fires on EVERY request (including successes), so
+// leaving it unconditional would flood prod function logs.
+const AUTH_DEBUG = process.env.AUTH_DEBUG === "1"
+
 function authDebug(req: VercelRequest, event: AuthDebugEvent, token?: string, error?: unknown) {
+  if (!AUTH_DEBUG) return
   const payload = token ? decodeJwtPayload(token) : null
   const issuer = typeof payload?.iss === "string" ? payload.iss : null
   const audience = typeof payload?.aud === "string" ? payload.aud : Array.isArray(payload?.aud) ? "array" : null
@@ -299,3 +306,36 @@ export function requireBusinessFeature(
   return true
 }
 
+/**
+ * Guard for server-to-server (worker / scheduler) endpoints. Verifies the
+ * `Authorization: Bearer <token>` matches `PROFITSYNC_SERVICE_TOKEN` — or
+ * `CRON_FALLBACK_TOKEN`, a second accepted token so an external pinger (the
+ * GitHub Actions fallback cron) can drive /api/cron/* without sharing or
+ * rotating the worker's token — using a constant-time compare (no early-out on
+ * length/content, to avoid leaking the secret via timing). The browser never
+ * holds these tokens. Returns true on success, otherwise writes a 401/503 and
+ * returns false.
+ */
+export function requireServiceToken(req: VercelRequest, res: VercelResponse): boolean {
+  const expected = [process.env.PROFITSYNC_SERVICE_TOKEN, process.env.CRON_FALLBACK_TOKEN].filter(
+    (t): t is string => !!t,
+  )
+  if (expected.length === 0) {
+    res.status(503).json({ error: "Service token not configured" })
+    return false
+  }
+  const provided = req.headers.authorization?.replace("Bearer ", "") ?? ""
+  const a = Buffer.from(provided)
+  // timingSafeEqual throws on length mismatch — guard it, but still do the compare
+  // on equal-length inputs so the timing doesn't reveal whether the length matched.
+  // `some` compares every candidate the same way (at most two).
+  const ok = expected.some((token) => {
+    const b = Buffer.from(token)
+    return a.length === b.length && timingSafeEqual(a, b)
+  })
+  if (!ok) {
+    res.status(401).json({ error: "Unauthorized" })
+    return false
+  }
+  return true
+}

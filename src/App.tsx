@@ -37,6 +37,7 @@ const ReferralPage = lazy(() => import("@/pages/ReferralPage").then((m) => ({ de
 const QuotationsPage = lazy(() => import("@/pages/QuotationsPage").then((m) => ({ default: m.QuotationsPage })))
 const TrashPage = lazy(() => import("@/pages/TrashPage").then((m) => ({ default: m.TrashPage })))
 const ProfilePage = lazy(() => import("@/pages/ProfilePage").then((m) => ({ default: m.ProfilePage })))
+const NotificationsPage = lazy(() => import("@/pages/NotificationsPage").then((m) => ({ default: m.NotificationsPage })))
 const OrganizationsPage = lazy(() => import("@/pages/OrganizationsPage").then((m) => ({ default: m.OrganizationsPage })))
 const OrgMembersPage = lazy(() => import("@/pages/OrgMembersPage").then((m) => ({ default: m.OrgMembersPage })))
 const SubscriptionPage = lazy(() => import("@/pages/SubscriptionPage").then((m) => ({ default: m.SubscriptionPage })))
@@ -72,6 +73,9 @@ const AdminPlansPage = lazy(() => import("@/pages/admin/AdminPlansPage").then((m
 const AdminBlogPage = lazy(() => import("@/pages/admin/AdminBlogPage").then((m) => ({ default: m.AdminBlogPage })))
 const AdminReferralsPage = lazy(() => import("@/pages/admin/AdminReferralsPage").then((m) => ({ default: m.AdminReferralsPage })))
 const AdminAdminsPage = lazy(() => import("@/pages/admin/AdminAdminsPage").then((m) => ({ default: m.AdminAdminsPage })))
+const AdminWorkerPage = lazy(() => import("@/pages/admin/AdminWorkerPage").then((m) => ({ default: m.AdminWorkerPage })))
+const AdminUserGroupsPage = lazy(() => import("@/pages/admin/AdminUserGroupsPage").then((m) => ({ default: m.AdminUserGroupsPage })))
+const AdminBroadcastStudioPage = lazy(() => import("@/pages/admin/AdminBroadcastStudioPage").then((m) => ({ default: m.AdminBroadcastStudioPage })))
 
 function RouteFallback() {
   return (
@@ -183,6 +187,9 @@ export function App() {
             <Route path="plans" element={<RequireAdminCap cap="settings"><AdminPlansPage /></RequireAdminCap>} />
             <Route path="blog" element={<RequireAdminCap cap="blog"><AdminBlogPage /></RequireAdminCap>} />
             <Route path="referrals" element={<RequireAdminCap cap="read"><AdminReferralsPage /></RequireAdminCap>} />
+            <Route path="worker" element={<RequireAdminCap cap="read"><AdminWorkerPage /></RequireAdminCap>} />
+            <Route path="broadcasts" element={<RequireAdminCap cap="broadcast"><AdminBroadcastStudioPage /></RequireAdminCap>} />
+            <Route path="user-groups" element={<RequireAdminCap cap="broadcast"><AdminUserGroupsPage /></RequireAdminCap>} />
             <Route path="admins" element={<RequireAdminCap cap="manage_admins"><AdminAdminsPage /></RequireAdminCap>} />
           </Route>
 
@@ -215,6 +222,7 @@ export function App() {
             <Route path="organizations/:id/members" element={<BusinessOnlyRoute feature="members"><OrgMembersPage /></BusinessOnlyRoute>} />
             <Route path="subscription" element={<SubscriptionPage />} />
             <Route path="trash" element={<TrashPage />} />
+            <Route path="notifications" element={<NotificationsPage />} />
             <Route path="profile" element={<ProfilePage />} />
           </Route>
         </Routes>

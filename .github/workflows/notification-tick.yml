@@ -1,0 +1,43 @@
+# Fallback driver for the notification scheduler.
+#
+# The PRIMARY driver is the self-hosted Go worker (every 5 min → POST
+# /api/cron/notifications). This cron is redundancy: if the worker host is down
+# or its schedule table was wiped by a redeploy (the June'26 silent outage),
+# reminders and scheduled broadcasts still fire — at worst 30 minutes late.
+# Running both drivers is safe by design: every notification the tick creates
+# carries a dedupe key, so double ticks never double-send.
+#
+# Setup (one-time): add the repo secret PROFITSYNC_CRON_TOKEN with the same
+# value as the app's CRON_FALLBACK_TOKEN Vercel env var (an additional token
+# accepted by requireServiceToken — the worker's PROFITSYNC_SERVICE_TOKEN stays
+# private to the worker). Until the secret is set, this workflow no-ops.
+name: notification-tick-fallback
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch: {}
+
+permissions: {}
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: POST /api/cron/notifications
+        env:
+          TOKEN: ${{ secrets.PROFITSYNC_CRON_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "PROFITSYNC_CRON_TOKEN secret not set — skipping (worker remains the only driver)."
+            exit 0
+          fi
+          code=$(curl -sS -X POST \
+            -H "Authorization: Bearer $TOKEN" \
+            -o /tmp/body -w "%{http_code}" \
+            --max-time 60 \
+            https://profitsync.net/api/cron/notifications)
+          echo "HTTP $code"
+          cat /tmp/body
+          [ "$code" = "200" ]

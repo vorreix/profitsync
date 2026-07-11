@@ -29,7 +29,10 @@ export const organizationMembers = pgTable("organization_members", {
   role: text("role").notNull().default("owner"), // owner | admin | editor | viewer
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => ({
-  orgIdx: index("organization_members_org_idx").on(table.organizationId),
+  // (organization_id, user_id) serves the requireAuth membership lookup (both
+  // columns) in one index probe AND org-side member lists via its left prefix,
+  // so a separate single-column org index would be redundant.
+  orgUserIdx: index("organization_members_org_user_idx").on(table.organizationId, table.userId),
   userIdx: index("organization_members_user_idx").on(table.userId),
 }))
 
@@ -214,8 +217,11 @@ export const transactions = pgTable("transactions", {
   groupIdx: index("transactions_group_idx").on(table.groupId),
   recurringOnceIdx: uniqueIndex("transactions_recurring_once_idx").on(table.recurringRuleId, table.recurringDueDate),
   // Hot predicates at scale: per-client lists + quota counts, per-account
-  // ledgers, and date-range scans (calendar / from-to filters).
-  clientIdx: index("transactions_client_idx").on(table.clientId),
+  // ledgers, and date-range scans (calendar / analytics / from-to filters).
+  // (client_id, date) serves both client-only lookups (left prefix) AND the
+  // org-scoped date-range joins (clients-by-org → transactions by client+date),
+  // so a separate single-column client index would be redundant.
+  clientDateIdx: index("transactions_client_date_idx").on(table.clientId, table.date),
   accountIdx: index("transactions_account_idx").on(table.wealthAccountId),
   dateIdx: index("transactions_date_idx").on(table.date),
 }))
@@ -322,7 +328,12 @@ export const transactionAttachments = pgTable("transaction_attachments", {
   category: text("category").notNull().default(""),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-})
+}, (table) => ({
+  // The transactions list computes an attachment count PER ROW via a correlated
+  // subquery — without this FK index each count is a full scan of a table full
+  // of base64 blobs.
+  txIdx: index("transaction_attachments_tx_idx").on(table.transactionId),
+}))
 
 export const quotationAttachments = pgTable("quotation_attachments", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -337,7 +348,10 @@ export const quotationAttachments = pgTable("quotation_attachments", {
   category: text("category").notNull().default(""),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-})
+}, (table) => ({
+  // Same per-row count-subquery pattern as transaction_attachments.
+  quotationIdx: index("quotation_attachments_quotation_idx").on(table.quotationId),
+}))
 
 export const clientAttachments = pgTable("client_attachments", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -704,4 +718,202 @@ export const budgetHistory = pgTable("budget_history", {
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => ({
   lookupIdx: index("budget_history_lookup_idx").on(table.organizationId, table.clientId, table.createdAt),
+}))
+
+// ── Push delivery log ──────────────────────────────────────────────────────────
+// One row per sendWebPushToUser fan-out (aggregate counts, not per-device), so
+// admins can see WHETHER pushes go out and WHY they fail without prod console
+// access. Written best-effort by the sender — logging can never affect delivery.
+export const pushEvents = pgTable("push_events", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: text("user_id").notNull(),
+  /** What triggered the send — a notification type or 'test'. */
+  source: text("source").notNull().default(""),
+  outcome: text("outcome").notNull(), // ok | partial | failed | no_subs | unconfigured
+  subscriptions: integer("subscriptions").notNull().default(0),
+  ok: integer("ok").notNull().default(0),
+  failed: integer("failed").notNull().default(0),
+  pruned: integer("pruned").notNull().default(0),
+  /** First distinct error summaries, comma-joined (diagnostics only). */
+  errors: text("errors").notNull().default(""),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  createdIdx: index("push_events_created_idx").on(table.createdAt),
+}))
+
+// ── Notification scheduler heartbeat ──────────────────────────────────────────
+// Single-row liveness record: runNotificationTick upserts it on EVERY tick (even
+// zero-work ones), so the admin panel can tell "the scheduler is running" apart
+// from "nothing was due" — and flag a dead driver instead of silently dropping
+// reminders/broadcasts (the June'26 outage mode: the worker stopped and nothing
+// noticed for days).
+export const notificationSchedulerState = pgTable("notification_scheduler_state", {
+  id: text("id").primaryKey().default("default"),
+  lastTickAt: timestamp("last_tick_at").notNull().defaultNow(),
+  lastReminders: integer("last_reminders").notNull().default(0),
+  lastBroadcasts: integer("last_broadcasts").notNull().default(0),
+  updatedAt: timestamp("updated_at").defaultNow(),
+})
+
+// ── Notifications ─────────────────────────────────────────────────────────────
+// Persisted, per-recipient notifications. Platform-agnostic: any client (web,
+// PWA, future native app / wearable) reads these via /api/notifications, so the
+// bell + history are just a view over these rows. `organization_id` is NULL for
+// account-level notifications (e.g. a cross-org invitation) so they surface
+// regardless of the active org.
+export const notifications = pgTable("notifications", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: text("user_id").notNull(), // recipient (Clerk userId)
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }),
+  type: text("type").notNull(), // see NOTIFICATION_TYPES in src/lib/notifications.ts
+  category: text("category").notNull().default("system"), // grouping for preferences
+  title: text("title").notNull(), // English fallback; client prefers data.i18nKey
+  body: text("body").notNull().default(""),
+  // i18n + navigation payload: { i18nKey?, i18nParams?, ... }. The client renders
+  // data.i18nKey in the user's language when present, falling back to title/body.
+  data: jsonb("data").notNull().default({}),
+  link: text("link"), // in-app route to open on click
+  actorUserId: text("actor_user_id"), // who triggered it, if applicable
+  clientId: uuid("client_id").references(() => clients.id, { onDelete: "cascade" }),
+  // Set for event-sourced notifications to make repeated webhooks / lazy GETs
+  // idempotent (see onePerDedupe).
+  dedupeKey: text("dedupe_key"),
+  readAt: timestamp("read_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  // The bell/history query: a recipient's rows, newest first.
+  recipientIdx: index("notifications_recipient_idx").on(table.userId, table.organizationId, table.createdAt),
+  // Cheap unread-count lookups.
+  unreadIdx: index("notifications_unread_idx").on(table.userId, table.readAt),
+  // At most one notification per (recipient, dedupe_key): webhook retries and
+  // repeated lazy materialization can't double-notify.
+  onePerDedupe: uniqueIndex("notifications_user_dedupe_unique")
+    .on(table.userId, table.dedupeKey)
+    .where(sql`dedupe_key IS NOT NULL`),
+}))
+
+// ── Notification preferences ──────────────────────────────────────────────────
+// One polymorphic row per (scope, target): scope='user' → user_id; 'organization'
+// → organization_id; 'client' → (organization_id, client_id). `preferences` holds
+// the NotificationPreferences shape from src/lib/notifications.ts (per-category
+// channel toggles + a master mute). Resolution cascades client → org → user →
+// system defaults.
+export const notificationPreferences = pgTable("notification_preferences", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  scope: text("scope").notNull(), // user | organization | client
+  userId: text("user_id"), // set when scope='user'
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }),
+  clientId: uuid("client_id").references(() => clients.id, { onDelete: "cascade" }),
+  preferences: jsonb("preferences").notNull().default({}),
+  updatedBy: text("updated_by"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  // At most one row per scope target (NULL columns are excluded by the partial
+  // predicate so the unique key never spans irrelevant nulls).
+  userScopeUnique: uniqueIndex("notif_prefs_user_unique").on(table.userId).where(sql`scope = 'user'`),
+  orgScopeUnique: uniqueIndex("notif_prefs_org_unique").on(table.organizationId).where(sql`scope = 'organization'`),
+  clientScopeUnique: uniqueIndex("notif_prefs_client_unique")
+    .on(table.organizationId, table.clientId)
+    .where(sql`scope = 'client'`),
+}))
+
+// ── Push subscriptions ────────────────────────────────────────────────────────
+// Delivery endpoints for push channels. `channel='web_push'` rows store the Web
+// Push endpoint + VAPID keys. Future native channels (fcm/apns for
+// android/ios/wearables) add rows with a different channel and the device token
+// in `endpoint` — no schema change needed.
+export const pushSubscriptions = pgTable("push_subscriptions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: text("user_id").notNull(),
+  channel: text("channel").notNull().default("web_push"), // web_push | fcm | apns
+  endpoint: text("endpoint").notNull(),
+  p256dh: text("p256dh").notNull().default(""), // web push public key
+  auth: text("auth").notNull().default(""), // web push auth secret
+  platform: text("platform").notNull().default("web"), // web | android | ios | wearable
+  userAgent: text("user_agent").notNull().default(""),
+  createdAt: timestamp("created_at").defaultNow(),
+  lastSeenAt: timestamp("last_seen_at").defaultNow(),
+}, (table) => ({
+  userIdx: index("push_subscriptions_user_idx").on(table.userId),
+  endpointUnique: uniqueIndex("push_subscriptions_endpoint_unique").on(table.endpoint),
+}))
+
+// ── Notification reminders (#6) ────────────────────────────────────────────────
+// User-defined "remind me to add transactions" schedules. The worker-driven cron
+// (POST /api/cron/notifications) materializes a reminder notification when a slot
+// is due. `schedule` holds { times: ["09:00","18:00"], weekdays: [1..7], timezone }
+// evaluated in the stored tz. `organization_id` is the org the reminder belongs to
+// (so the deep-linked Add-Transaction opens in the right workspace); NULL = follow
+// the user's active org. Delete-is-final.
+export const notificationReminders = pgTable("notification_reminders", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: text("user_id").notNull(), // owner (Clerk userId)
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }),
+  enabled: boolean("enabled").notNull().default(true),
+  label: text("label").notNull(),
+  // { times: string[] ("HH:mm"), weekdays: number[] (1=Mon..7=Sun), timezone: string }
+  schedule: jsonb("schedule").notNull().default({}),
+  lastFiredAt: timestamp("last_fired_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  userIdx: index("notification_reminders_user_idx").on(table.userId),
+  // One reminder per (user, label) so the settings list stays clean.
+  userLabelUnique: uniqueIndex("notification_reminders_user_label_unique").on(table.userId, table.label),
+}))
+
+// ── Admin broadcasts (#7) ──────────────────────────────────────────────────────
+// Admin-composed notifications fanned out to an audience. `audience` =
+// { type: 'all'|'push_enabled'|'users'|'group', userIds?: string[], groupId?: uuid }.
+// `schedule` = { type: 'now'|'at'|'recurring', at?: ISO, recurring?: { freq, interval, until? } }.
+// `importance=true` bypasses the recipient's category mute (always bells, attempts push).
+// `link_type` = 'internal' (an app route) | 'external' (a full URL). `stats` accrues
+// { delivered, push_sent } as the broadcast fans out. status: draft|scheduled|sending|sent|cancelled.
+export const broadcasts = pgTable("broadcasts", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  createdBy: text("created_by").notNull(), // admin Clerk userId
+  title: text("title").notNull(),
+  body: text("body").notNull().default(""),
+  imageUrl: text("image_url"), // optional hosted image URL (shown in push + bell)
+  link: text("link"), // route (internal) or full URL (external) opened on click
+  linkType: text("link_type").notNull().default("internal"), // internal | external
+  category: text("category").notNull().default("system"),
+  importance: boolean("importance").notNull().default(false),
+  audience: jsonb("audience").notNull().default({}),
+  schedule: jsonb("schedule").notNull().default({}),
+  status: text("status").notNull().default("draft"), // draft|scheduled|sending|sent|cancelled
+  nextFireAt: timestamp("next_fire_at"), // when the scheduler should next deliver it
+  sentAt: timestamp("sent_at"),
+  stats: jsonb("stats").notNull().default({}),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  createdByIdx: index("broadcasts_created_by_idx").on(table.createdBy, table.createdAt),
+  // The scheduler's hot query: which scheduled broadcasts are due.
+  dueIdx: index("broadcasts_due_idx").on(table.status, table.nextFireAt),
+}))
+
+// ── Saved user groups (#8) ─────────────────────────────────────────────────────
+// Reusable broadcast audiences. A group + its members are owned by the admin who
+// created it. Members are Clerk userIds (platform-wide, not org-scoped — broadcasts
+// are a platform feature).
+export const userGroups = pgTable("user_groups", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull(),
+  createdBy: text("created_by").notNull(), // admin Clerk userId
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  ownerNameUnique: uniqueIndex("user_groups_owner_name_unique").on(table.createdBy, table.name),
+}))
+
+export const userGroupMembers = pgTable("user_group_members", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  groupId: uuid("group_id").notNull().references(() => userGroups.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull(), // member (Clerk userId)
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  groupIdx: index("user_group_members_group_idx").on(table.groupId),
+  groupUserUnique: uniqueIndex("user_group_members_group_user_unique").on(table.groupId, table.userId),
 }))

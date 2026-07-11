@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react"
 import { useTranslation } from "react-i18next"
-import { useNavigate, Link } from "react-router-dom"
+import { useNavigate, Link, useSearchParams } from "react-router-dom"
 import { useAuth, useClerk } from "@clerk/clerk-react"
 import { apiGet, apiPatch } from "@/lib/api"
 import { useOrg } from "@/lib/org-context"
@@ -9,13 +9,19 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { NotificationPreferencesForm } from "@/components/notifications/NotificationPreferencesForm"
+import { PushToggle } from "@/components/notifications/PushToggle"
+import { RemindersCard } from "@/components/notifications/RemindersCard"
 import { Skeleton } from "@/components/ui/skeleton"
 import { LanguageSwitcher } from "@/components/LanguageSwitcher"
 import { CountryCombobox, CountryCodeCombobox } from "@/components/CountryCombobox"
 import { toast } from "sonner"
-import { ArrowLeft, Building2, FileText, ImagePlus, Loader as Loader2, LogOut, ScrollText, ShieldCheck, UserRound, X } from "lucide-react"
+import { ArrowLeft, Bell, Building2, ChevronDown, FileText, ImagePlus, Loader as Loader2, LogOut, ScrollText, ShieldCheck, SlidersHorizontal, UserRound } from "lucide-react"
 import { EntityAvatar } from "@/components/EntityAvatar"
 import { fileToResizedDataUrl } from "@/lib/image-upload"
+import { useAutoAnimate } from "@formkit/auto-animate/react"
+import { cn } from "@/lib/utils"
 
 export function ProfilePage() {
   const { t } = useTranslation()
@@ -36,6 +42,23 @@ export function ProfilePage() {
   const [country, setCountry] = useState("")
   const [phoneCode, setPhoneCode] = useState("")
   const [phone, setPhone] = useState("")
+  const [showContact, setShowContact] = useState(false)
+  const [contactRef] = useAutoAnimate<HTMLDivElement>()
+
+  // Tabs are reflected in the URL (?tab=) so they're deep-linkable and shareable.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const PROFILE_TABS = ["profile", "preferences", "notifications", "account"]
+  const tabParam = searchParams.get("tab")
+  const activeTab = tabParam && PROFILE_TABS.includes(tabParam) ? tabParam : "profile"
+  const setActiveTab = (tab: string) =>
+    setSearchParams(
+      (prev) => {
+        if (tab === "profile") prev.delete("tab")
+        else prev.set("tab", tab)
+        return prev
+      },
+      { replace: true },
+    )
 
   useEffect(() => {
     loadProfile()
@@ -56,6 +79,10 @@ export function ProfilePage() {
       setCountry(data.country || "")
       setPhoneCode(data.phone_country_code || "")
       setPhone(data.phone || "")
+      // Expand the contact section if the user already has details saved.
+      setShowContact(
+        !!(data.phone || data.address || data.city || data.state || data.postal_code || data.country),
+      )
     } catch {
       toast.error(t("toast.profileLoadFailed"))
     } finally {
@@ -137,178 +164,234 @@ export function ProfilePage() {
         <ArrowLeft className="size-4" />
       </Button>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>{t("profile.title")}</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          {/* Profile photo */}
-          <div className="flex items-center gap-4">
-            <EntityAvatar
-              name={fullName || profile.email}
-              src={profile.avatar_src}
-              className="size-16 text-xl"
-              rounded="rounded-full"
-              fallbackIcon={<UserRound className="size-7" />}
+      {/* Identity hero — avatar (with inline change/remove) + name + email */}
+      <div className="flex items-center gap-4">
+        <div className="relative shrink-0">
+          <EntityAvatar
+            name={fullName || profile.email}
+            src={profile.avatar_src}
+            className="size-20 text-2xl"
+            rounded="rounded-full"
+            fallbackIcon={<UserRound className="size-8" />}
+          />
+          <label
+            className="absolute -bottom-1 -right-1 flex size-7 cursor-pointer items-center justify-center rounded-full border bg-background shadow-sm transition-colors hover:bg-accent"
+            aria-label={t("profile.uploadPhoto")}
+            title={t("profile.uploadPhoto")}
+          >
+            <ImagePlus className="size-3.5" />
+            <input
+              type="file"
+              accept="image/*"
+              className="sr-only"
+              onChange={(e) => { handlePickAvatar(e.target.files?.[0]); e.target.value = "" }}
             />
-            <div className="space-y-1.5">
-              <div className="flex flex-wrap items-center gap-2">
-                <Button asChild size="sm" variant="outline">
-                  <label className="cursor-pointer">
-                    <ImagePlus className="size-4" /> {t("profile.uploadPhoto")}
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="sr-only"
-                      onChange={(e) => { handlePickAvatar(e.target.files?.[0]); e.target.value = "" }}
-                    />
-                  </label>
-                </Button>
-                {profile.avatar_src && (
-                  <Button size="sm" variant="ghost" className="text-muted-foreground" onClick={() => handleAvatarChange("")}>
-                    <X className="size-4" /> {t("profile.removePhoto")}
-                  </Button>
-                )}
-              </div>
-              <p className="text-[11px] text-muted-foreground">{t("profile.photoHint")}</p>
-            </div>
-          </div>
+          </label>
+        </div>
+        <div className="min-w-0">
+          <h1 className="truncate text-xl font-semibold tracking-tight">{fullName || t("profile.yourName")}</h1>
+          <p className="truncate text-sm text-muted-foreground">{profile.email}</p>
+          {profile.avatar_src && (
+            <button
+              type="button"
+              onClick={() => handleAvatarChange("")}
+              className="mt-1 text-xs text-muted-foreground transition-colors hover:text-destructive"
+            >
+              {t("profile.removePhoto")}
+            </button>
+          )}
+        </div>
+      </div>
 
-          <div className="space-y-2">
-            <Label>{t("profile.email")}</Label>
-            <div className="px-3 py-2 rounded-md border bg-muted text-sm">{profile.email}</div>
-            <p className="text-xs text-muted-foreground">{t("profile.emailCannotChange")}</p>
-          </div>
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList className="grid w-full grid-cols-4">
+          <TabsTrigger value="profile" className="gap-1.5">
+            <UserRound className="size-4 shrink-0" />
+            <span className="hidden sm:inline">{t("profile.tabs.profile")}</span>
+          </TabsTrigger>
+          <TabsTrigger value="preferences" className="gap-1.5">
+            <SlidersHorizontal className="size-4 shrink-0" />
+            <span className="hidden sm:inline">{t("profile.tabs.preferences")}</span>
+          </TabsTrigger>
+          <TabsTrigger value="notifications" className="gap-1.5">
+            <Bell className="size-4 shrink-0" />
+            <span className="hidden sm:inline">{t("notifications:settings.title")}</span>
+          </TabsTrigger>
+          <TabsTrigger value="account" className="gap-1.5">
+            <ShieldCheck className="size-4 shrink-0" />
+            <span className="hidden sm:inline">{t("account.title")}</span>
+          </TabsTrigger>
+        </TabsList>
 
-          <div className="space-y-2">
-            <Label htmlFor="fullName">{t("profile.fullName")}</Label>
-            <Input
-              id="fullName"
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              placeholder={t("profile.yourName")}
-              disabled={saving}
-            />
-          </div>
-
-          {/* Contact details — all optional. */}
-          <div className="space-y-4 border-t pt-4">
-            <p className="text-sm font-medium">{t("profile.contactDetails")} <span className="text-xs font-normal text-muted-foreground">({t("profile.optional")})</span></p>
-
-            <div className="space-y-2">
-              <Label>{t("profile.phone")}</Label>
-              <div className="flex gap-2">
-                <CountryCodeCombobox value={phoneCode} onValueChange={setPhoneCode} disabled={saving} />
+        {/* ── Profile ── */}
+        <TabsContent value="profile" className="mt-4">
+          <Card>
+            <CardContent className="space-y-5 pt-6">
+              <div className="space-y-2">
+                <Label htmlFor="fullName">{t("profile.fullName")}</Label>
                 <Input
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  placeholder={t("profile.phonePlaceholder")}
-                  inputMode="tel"
+                  id="fullName"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  placeholder={t("profile.yourName")}
                   disabled={saving}
                 />
               </div>
-            </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="address">{t("profile.address")}</Label>
-              <Input id="address" value={address} onChange={(e) => setAddress(e.target.value)} placeholder={t("profile.addressPlaceholder")} disabled={saving} />
-            </div>
+              {/* Contact details — optional, collapsed by default (progressive disclosure) */}
+              <div ref={contactRef} className="border-t pt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowContact((s) => !s)}
+                  className="flex w-full items-center justify-between text-left"
+                  aria-expanded={showContact}
+                >
+                  <span className="text-sm font-medium">
+                    {t("profile.contactDetails")}{" "}
+                    <span className="text-xs font-normal text-muted-foreground">({t("profile.optional")})</span>
+                  </span>
+                  <ChevronDown className={cn("size-4 shrink-0 text-muted-foreground transition-transform", showContact && "rotate-180")} />
+                </button>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <Label htmlFor="city">{t("profile.city")}</Label>
-                <Input id="city" value={city} onChange={(e) => setCity(e.target.value)} disabled={saving} />
+                {showContact && (
+                  <div className="space-y-4 pt-4">
+                    <div className="space-y-2">
+                      <Label>{t("profile.phone")}</Label>
+                      <div className="flex gap-2">
+                        <CountryCodeCombobox value={phoneCode} onValueChange={setPhoneCode} disabled={saving} />
+                        <Input
+                          value={phone}
+                          onChange={(e) => setPhone(e.target.value)}
+                          placeholder={t("profile.phonePlaceholder")}
+                          inputMode="tel"
+                          disabled={saving}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="address">{t("profile.address")}</Label>
+                      <Input id="address" value={address} onChange={(e) => setAddress(e.target.value)} placeholder={t("profile.addressPlaceholder")} disabled={saving} />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="space-y-2">
+                        <Label htmlFor="city">{t("profile.city")}</Label>
+                        <Input id="city" value={city} onChange={(e) => setCity(e.target.value)} disabled={saving} />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="state">{t("profile.state")}</Label>
+                        <Input id="state" value={stateRegion} onChange={(e) => setStateRegion(e.target.value)} disabled={saving} />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="space-y-2">
+                        <Label htmlFor="postal">{t("profile.postalCode")}</Label>
+                        <Input id="postal" value={postalCode} onChange={(e) => setPostalCode(e.target.value)} disabled={saving} />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>{t("profile.country")}</Label>
+                        <CountryCombobox value={country} onValueChange={setCountry} disabled={saving} placeholder={t("profile.selectCountry")} />
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="state">{t("profile.state")}</Label>
-                <Input id="state" value={stateRegion} onChange={(e) => setStateRegion(e.target.value)} disabled={saving} />
-              </div>
-            </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <Label htmlFor="postal">{t("profile.postalCode")}</Label>
-                <Input id="postal" value={postalCode} onChange={(e) => setPostalCode(e.target.value)} disabled={saving} />
-              </div>
-              <div className="space-y-2">
-                <Label>{t("profile.country")}</Label>
-                <CountryCombobox value={country} onValueChange={setCountry} disabled={saving} placeholder={t("profile.selectCountry")} />
-              </div>
-            </div>
-          </div>
+              <Button onClick={handleSave} className="w-full" disabled={saving}>
+                {saving ? <Loader2 className="size-4 animate-spin mr-2" /> : null}
+                {saving ? t("common.saving") : t("common.save")}
+              </Button>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
-          <Button onClick={handleSave} className="w-full" disabled={saving}>
-            {saving ? <Loader2 className="size-4 animate-spin mr-2" /> : null}
-            {saving ? t("common.saving") : t("common.save")}
-          </Button>
-        </CardContent>
-      </Card>
+        {/* ── Preferences ── */}
+        <TabsContent value="preferences" className="mt-4 space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">{t("language.title")}</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <p className="text-sm text-muted-foreground">{t("language.description")}</p>
+              <LanguageSwitcher variant="full" align="start" />
+            </CardContent>
+          </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">{t("language.title")}</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <p className="text-sm text-muted-foreground">{t("language.description")}</p>
-          <LanguageSwitcher variant="full" align="start" />
-        </CardContent>
-      </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">{t("profile.currency")}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground mb-3">{t("profile.currencyDescription")}</p>
+              <Button asChild variant="outline" className="w-full">
+                <Link to="/organizations">
+                  <Building2 className="size-4 mr-2" />
+                  {t("org.manageOrganizations")}
+                </Link>
+              </Button>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">{t("profile.currency")}</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground mb-3">
-            {t("profile.currencyDescription")}
-          </p>
-          <Button asChild variant="outline" className="w-full">
-            <Link to="/organizations">
-              <Building2 className="size-4 mr-2" />
-              {t("org.manageOrganizations")}
-            </Link>
-          </Button>
-        </CardContent>
-      </Card>
+        {/* ── Notifications ── */}
+        <TabsContent value="notifications" className="mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">{t("notifications:settings.title")}</CardTitle>
+              <p className="text-sm text-muted-foreground">{t("notifications:settings.user_description")}</p>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <PushToggle />
+              <NotificationPreferencesForm scope="user" />
+              <RemindersCard />
+            </CardContent>
+          </Card>
+        </TabsContent>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">{t("profile.legalTitle")}</CardTitle>
-        </CardHeader>
-        <CardContent className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-          <Button asChild variant="outline" className="justify-start">
-            <Link to="/privacy-policy">
-              <ShieldCheck className="size-4 mr-2" />
-              {t("nav.privacyPolicy")}
-            </Link>
-          </Button>
-          <Button asChild variant="outline" className="justify-start">
-            <Link to="/terms-of-service">
-              <ScrollText className="size-4 mr-2" />
-              {t("nav.termsOfService")}
-            </Link>
-          </Button>
-          <Button asChild variant="outline" className="justify-start">
-            <Link to="/refund-policy">
-              <FileText className="size-4 mr-2" />
-              {t("nav.refundPolicy")}
-            </Link>
-          </Button>
-        </CardContent>
-      </Card>
+        {/* ── Account ── */}
+        <TabsContent value="account" className="mt-4 space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">{t("profile.legalTitle")}</CardTitle>
+            </CardHeader>
+            <CardContent className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+              <Button asChild variant="outline" className="justify-start">
+                <Link to="/privacy-policy">
+                  <ShieldCheck className="size-4 mr-2" />
+                  {t("nav.privacyPolicy")}
+                </Link>
+              </Button>
+              <Button asChild variant="outline" className="justify-start">
+                <Link to="/terms-of-service">
+                  <ScrollText className="size-4 mr-2" />
+                  {t("nav.termsOfService")}
+                </Link>
+              </Button>
+              <Button asChild variant="outline" className="justify-start">
+                <Link to="/refund-policy">
+                  <FileText className="size-4 mr-2" />
+                  {t("nav.refundPolicy")}
+                </Link>
+              </Button>
+            </CardContent>
+          </Card>
 
-      <Card className="border-destructive/20 bg-destructive/5">
-        <CardHeader>
-          <CardTitle className="text-destructive">{t("profile.logoutTitle")}</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground mb-4">{t("profile.logoutDescription")}</p>
-          <Button variant="destructive" onClick={handleLogout} className="w-full">
-            <LogOut className="size-4 mr-2" />
-            {t("profile.logoutTitle")}
-          </Button>
-        </CardContent>
-      </Card>
+          <Card className="border-destructive/20 bg-destructive/5">
+            <CardHeader>
+              <CardTitle className="text-destructive">{t("profile.logoutTitle")}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground mb-4">{t("profile.logoutDescription")}</p>
+              <Button variant="destructive" onClick={handleLogout} className="w-full">
+                <LogOut className="size-4 mr-2" />
+                {t("profile.logoutTitle")}
+              </Button>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }

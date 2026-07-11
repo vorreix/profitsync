@@ -20,12 +20,17 @@ function git(args) {
 const PUBLIC_ROUTES = [
   /^api\/_routes\/public\//, // published blog + public pricing
   /^api\/_routes\/invitations\//, // token-authenticated invitation flow
+  // SW pushsubscriptionchange rotation: fires inside the service worker where no
+  // Clerk session exists; authorization is the OLD push endpoint itself (an
+  // unguessable capability URL that must already exist in push_subscriptions).
+  /^api\/_routes\/notifications\/push\/rotate\.ts$/,
 ]
 
 const AUTH_MARKERS = [
   "requireAuth(",
   "requireAdminCap(",
   "getUserId(", // low-level helper (profile/organizations routes)
+  "requireServiceToken(", // shared-secret guard for worker-driven cron (POST /api/cron/*)
 ]
 
 let failures = 0

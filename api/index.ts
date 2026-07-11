@@ -14,6 +14,17 @@ import { matchRoute, type RoutePattern } from "../src/lib/api-router.js"
 
 import profile from "./_routes/profile.js"
 import onboarding from "./_routes/onboarding.js"
+import notificationsList from "./_routes/notifications.js"
+import notificationsUnreadCount from "./_routes/notifications/unread-count.js"
+import notificationsReadAll from "./_routes/notifications/read-all.js"
+import notificationsPreferences from "./_routes/notifications/preferences.js"
+import notificationsPush from "./_routes/notifications/push.js"
+import notificationsPushRotate from "./_routes/notifications/push/rotate.js"
+import notificationsTestPush from "./_routes/notifications/test-push.js"
+import notificationsReminders from "./_routes/notifications/reminders.js"
+import notificationReminderById from "./_routes/notifications/reminders/[id].js"
+import notificationById from "./_routes/notifications/[id].js"
+import cronNotifications from "./_routes/cron/notifications.js"
 import clients from "./_routes/clients.js"
 import clientsBulkDelete from "./_routes/clients/bulk-delete.js"
 import clientById from "./_routes/clients/[id].js"
@@ -84,6 +95,14 @@ import adminAdmins from "./_routes/admin/admins.js"
 import adminRolesRoute from "./_routes/admin/roles.js"
 import adminRoleById from "./_routes/admin/roles/[id].js"
 import adminStats from "./_routes/admin/stats.js"
+import adminWorker from "./_routes/admin/worker.js"
+import adminUserGroups from "./_routes/admin/user-groups.js"
+import adminUserGroupById from "./_routes/admin/user-groups/[id].js"
+import adminUserGroupMembers from "./_routes/admin/user-groups/[id]/members.js"
+import adminBroadcasts from "./_routes/admin/broadcasts.js"
+import adminBroadcastRunDue from "./_routes/admin/broadcasts/run-due.js"
+import adminBroadcastById from "./_routes/admin/broadcasts/[id].js"
+import adminBroadcastSend from "./_routes/admin/broadcasts/[id]/send.js"
 import adminUsers from "./_routes/admin/users.js"
 import adminUserDetail from "./_routes/admin/user-detail.js"
 import adminClients from "./_routes/admin/clients.js"
@@ -115,6 +134,20 @@ type ApiHandler = (req: VercelRequest, res: VercelResponse) => unknown | Promise
 const routes: RoutePattern<ApiHandler>[] = [
   { segments: ["profile"], handler: profile },
   { segments: ["onboarding"], handler: onboarding },
+
+  // Notifications. Static length-2 routes before the dynamic ":id". (preferences
+  // and push routes are added in later branches and also precede ":id".)
+  { segments: ["notifications"], handler: notificationsList },
+  { segments: ["notifications", "unread-count"], handler: notificationsUnreadCount },
+  { segments: ["notifications", "read-all"], handler: notificationsReadAll },
+  { segments: ["notifications", "preferences"], handler: notificationsPreferences },
+  { segments: ["notifications", "push"], handler: notificationsPush },
+  { segments: ["notifications", "push", "rotate"], handler: notificationsPushRotate },
+  { segments: ["notifications", "test-push"], handler: notificationsTestPush },
+  { segments: ["notifications", "reminders"], handler: notificationsReminders },
+  { segments: ["notifications", "reminders", ":id"], handler: notificationReminderById },
+  { segments: ["notifications", ":id"], handler: notificationById },
+  { segments: ["cron", "notifications"], handler: cronNotifications },
 
   { segments: ["clients"], handler: clients },
   { segments: ["clients", "bulk-delete"], handler: clientsBulkDelete },
@@ -201,6 +234,14 @@ const routes: RoutePattern<ApiHandler>[] = [
   { segments: ["admin", "roles"], handler: adminRolesRoute },
   { segments: ["admin", "roles", ":id"], handler: adminRoleById },
   { segments: ["admin", "stats"], handler: adminStats },
+  { segments: ["admin", "worker"], handler: adminWorker },
+  { segments: ["admin", "user-groups"], handler: adminUserGroups },
+  { segments: ["admin", "user-groups", ":id"], handler: adminUserGroupById },
+  { segments: ["admin", "user-groups", ":id", "members"], handler: adminUserGroupMembers },
+  { segments: ["admin", "broadcasts"], handler: adminBroadcasts },
+  { segments: ["admin", "broadcasts", "run-due"], handler: adminBroadcastRunDue },
+  { segments: ["admin", "broadcasts", ":id"], handler: adminBroadcastById },
+  { segments: ["admin", "broadcasts", ":id", "send"], handler: adminBroadcastSend },
   { segments: ["admin", "users"], handler: adminUsers },
   { segments: ["admin", "user-detail"], handler: adminUserDetail },
   { segments: ["admin", "clients"], handler: adminClients },
