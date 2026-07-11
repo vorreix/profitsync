@@ -15,14 +15,24 @@ import {
   subscribeToPush,
   unsubscribeFromPush,
 } from "@/lib/pwa/web-push"
+import {
+  disableNativePush,
+  enableNativePush,
+  ensureNativePushSynced,
+  isNativePushEnabled,
+  isNativePushSupported,
+  nativePushPermission,
+} from "@/lib/native-push"
 
-// Per-device push opt-in. Reflects the BROWSER subscription state (not a stored
-// preference) — toggling subscribes/unsubscribes this device. Hidden when push
-// is unsupported or no VAPID public key is configured.
+// Per-device push opt-in. Reflects THIS DEVICE's subscription state (not a
+// stored preference) — toggling subscribes/unsubscribes it. In the browser it
+// drives Web Push (hidden when unsupported or no VAPID key); in the native
+// Android app the same switch drives the FCM registration instead.
 export function PushToggle() {
   const { t } = useTranslation("notifications")
   const { getToken } = useAuth()
-  const [supported] = useState(() => isPushSupported() && isPushConfigured())
+  const [native] = useState(() => isNativePushSupported())
+  const [supported] = useState(() => isNativePushSupported() || (isPushSupported() && isPushConfigured()))
   const [subscribed, setSubscribed] = useState(false)
   const [busy, setBusy] = useState(false)
   const [testing, setTesting] = useState(false)
@@ -31,6 +41,15 @@ export function PushToggle() {
 
   useEffect(() => {
     if (!supported) return
+    if (native) {
+      void nativePushPermission().then((p) => setBlocked(p === "denied"))
+      void isNativePushEnabled().then((on) => {
+        setSubscribed(on)
+        // Self-heal the server row from the device's current FCM token.
+        if (on) void ensureNativePushSynced(getToken)
+      })
+      return
+    }
     setBlocked(pushPermission() === "denied")
     void isSubscribed().then((sub) => {
       setSubscribed(sub)
@@ -38,7 +57,7 @@ export function PushToggle() {
       // the row (a lost row is the most common reason pushes silently never arrive).
       if (sub) void ensureSubscriptionSynced(getToken)
     })
-  }, [supported, getToken])
+  }, [supported, native, getToken])
 
   const onToggle = useCallback(
     async (on: boolean) => {
@@ -46,7 +65,7 @@ export function PushToggle() {
       setTestStatus(null)
       try {
         if (on) {
-          const res = await subscribeToPush(getToken)
+          const res = native ? await enableNativePush(getToken) : await subscribeToPush(getToken)
           if (res.ok) {
             setSubscribed(true)
             toast.success(t("push.enabled"))
@@ -57,7 +76,8 @@ export function PushToggle() {
             toast.error(t("push.unsupported"))
           }
         } else {
-          await unsubscribeFromPush(getToken)
+          if (native) await disableNativePush(getToken)
+          else await unsubscribeFromPush(getToken)
           setSubscribed(false)
           toast.success(t("push.disabled"))
         }
@@ -65,13 +85,16 @@ export function PushToggle() {
         setBusy(false)
       }
     },
-    [getToken, t],
+    [getToken, native, t],
   )
 
   const onTest = useCallback(async () => {
     setTesting(true)
     setTestStatus(null)
     try {
+      // sendTestPush self-heals the WEB subscription; on native the FCM row is
+      // re-synced here instead. The server fans the test out to both channels.
+      if (native) await ensureNativePushSynced(getToken)
       const res = await sendTestPush(getToken)
       if (!res) {
         setTestStatus({ kind: "error", text: t("push.test_error") })
@@ -90,7 +113,7 @@ export function PushToggle() {
     } finally {
       setTesting(false)
     }
-  }, [getToken, t])
+  }, [getToken, native, t])
 
   if (!supported) return null
 

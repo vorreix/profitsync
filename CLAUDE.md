@@ -89,6 +89,11 @@ VAPID_PUBLIC_KEY=B...                     # server
 VAPID_PRIVATE_KEY=...                     # server-only — never expose to browser
 VAPID_SUBJECT=mailto:support@profitsync.app
 VITE_VAPID_PUBLIC_KEY=B...                # browser (same value as VAPID_PUBLIC_KEY)
+
+# Native (Android/iOS) push via FCM HTTP v1 (OPTIONAL; the fcm channel silently
+# no-ops if absent). Firebase service-account key: raw JSON or base64 of it.
+# Setup: docs/native/ANDROID.md → "Push notifications (FCM)".
+FCM_SERVICE_ACCOUNT_JSON=...              # server-only — never expose to browser
 ```
 
 The `E2E_*` secrets (`E2E_VITE_CLERK_PUBLISHABLE_KEY`, `E2E_CLERK_SECRET_KEY`, `E2E_DATABASE_URL`) are **GitHub Actions secrets for the e2e workflow only** — they do **not** go in `.env.local` or Vercel. The two Clerk ones are your existing **dev**-instance keys (same `pk_test_…`/`sk_test_…` already in `.env.local`); `E2E_DATABASE_URL` is a dedicated Neon branch. Vercel manages the running app's env separately (`vercel env`; note: `vercel dev` reads the cloud Development env, not `.env.local`).
