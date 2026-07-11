@@ -391,7 +391,10 @@
     "splitHint": "ஒவ்வொரு கணக்கும் அதன் சொந்த பரிவர்த்தனையாக சேமிக்கப்படுகிறது.",
     "account_one": "{{count}} கணக்கு",
     "account_other": "{{count}} கணக்குகள்",
-    "recurringBadge": "தொடர்"
+    "recurringBadge": "தொடர்",
+    "tags": "குறிச்சொற்கள்",
+    "tagsPlaceholder": "#business #travel போன்ற குறிச்சொற்களைச் சேர்க்கவும்",
+    "removeTag": "{{tag}} அகற்று"
   },
   "clients": {
     "pageTitle": "வாடிக்கையாளர்கள்",

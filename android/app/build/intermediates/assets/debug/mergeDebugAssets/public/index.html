@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <!-- Brand favicon set (realfavicongenerator). /favicon.ico (sizes="any") is the
+       path Google fetches first for the search-result icon; the 96px PNG is the
+       higher-res modern fallback. The 1MB favicon.svg is intentionally NOT linked
+       (perf), and the 192/512 app icons live in the PWA manifest. -->
+  <link rel="icon" href="/favicon.ico" sizes="any" />
+  <link rel="icon" type="image/png" href="/favicon-96x96.png" sizes="96x96" />
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="ProfitSync" />
+  <!--
+    Everything between the SSR_HEAD markers is the DEFAULT (static-shell) SEO
+    block. The server-render function (api/ssr.ts) replaces this whole block with
+    per-page title/description/canonical/OG/Twitter/JSON-LD for public pages
+    (/, /blog, /blog/:slug, legal). App routes (/dashboard, /admin, …) keep this
+    default; they're additionally disallowed in robots.txt so they're not indexed.
+  -->
+  <!--SSR_HEAD_START-->
+  <title>ProfitSync — Know your profit. Sync your business.</title>
+  <meta name="description"
+    content="ProfitSync brings your clients, cash flow, and quotations into one clean workspace — so you always know exactly where your money stands." />
+  <meta name="robots" content="index, follow" />
+  <link rel="canonical" href="https://profitsync.net/" />
+  <link rel="alternate" hreflang="en" href="https://profitsync.net/" />
+  <link rel="alternate" hreflang="x-default" href="https://profitsync.net/" />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="ProfitSync" />
+  <meta property="og:title" content="ProfitSync — Know your profit. Sync your business." />
+  <meta property="og:description"
+    content="ProfitSync brings your clients, cash flow, and quotations into one clean workspace — so you always know exactly where your money stands." />
+  <meta property="og:url" content="https://profitsync.net/" />
+  <meta property="og:locale" content="en_US" />
+  <meta property="og:image" content="https://profitsync.net/og-image.png" />
+  <meta property="og:image:type" content="image/png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="ProfitSync — know your profit, sync your business" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="ProfitSync — Know your profit. Sync your business." />
+  <meta name="twitter:description"
+    content="ProfitSync brings your clients, cash flow, and quotations into one clean workspace — so you always know exactly where your money stands." />
+  <meta name="twitter:image" content="https://profitsync.net/og-image.png" />
+  <meta name="twitter:image:alt" content="ProfitSync — know your profit, sync your business" />
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"Organization","name":"ProfitSync","url":"https://profitsync.net","logo":"https://profitsync.net/logo.png","description":"ProfitSync brings your clients, cash flow, and quotations into one clean workspace — so you always know exactly where your money stands."}</script>
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","name":"ProfitSync","url":"https://profitsync.net"}</script>
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"ProfitSync","applicationCategory":"FinanceApplication","applicationSubCategory":"Accounting & Expense Management","operatingSystem":"Web, iOS, Android","url":"https://profitsync.net","description":"ProfitSync brings your clients, cash flow, and quotations into one clean workspace — so you always know exactly where your money stands.","image":"https://profitsync.net/og-image.png","featureList":["Client and customer management","Income and expense tracking","Expense categorization","Quotations and proposals (convert to clients)","Multi-currency workspaces","Live profit and cash-flow dashboard","Receipt and document attachments","Team organizations with role-based access"],"publisher":{"@type":"Organization","name":"ProfitSync","url":"https://profitsync.net"},"offers":{"@type":"Offer","price":"0","priceCurrency":"USD","description":"Free plan, forever — upgrade to Premium any time."}}</script>
+  <!--SSR_HEAD_END-->
+  <script type="module" crossorigin src="/assets/index-DX83Aj5l.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/vendor-DXA3AY70.js">
+  <link rel="modulepreload" crossorigin href="/assets/native-CUGMQmF0.js">
+  <link rel="modulepreload" crossorigin href="/assets/charts-7eRAyptc.js">
+  <link rel="modulepreload" crossorigin href="/assets/markdown-C7pbZT9X.js">
+  <link rel="modulepreload" crossorigin href="/assets/landing-TbUezZgt.js">
+  <link rel="stylesheet" crossorigin href="/assets/landing-54opT6m6.css">
+  <link rel="stylesheet" crossorigin href="/assets/index-X1fn1djL.css">
+<link rel="manifest" href="/manifest.webmanifest"></head>
+
+<body>
+  <div id="root"><!--SSR_ROOT--></div>
+  <!--
+    Stale-cache recovery. After a new deploy, a returning client can be served a
+    stale app shell (from a service worker in a bad state, or an HTTP cache) that
+    points at hashed chunks which no longer exist. The *entry* module script
+    failing happens before React mounts, so the in-app error boundary can't catch
+    it — this dependency-free inline script can. It reloads up to 3 times with
+    backoff (0ms, 500ms, 1500ms): attempt 1 uses a cache-bust query param (forces
+    a fresh index.html past any HTTP cache); attempts 2+ first unregister every
+    service worker and delete every cache, which is the only way to escape a
+    zombie worker that keeps answering navigations with a frozen shell. Mirrors
+    src/lib/pwa/chunk-recovery.ts and shares its guard key so the recovery paths
+    cooperate.
+  -->
+  <script>
+    (function () {
+      var KEY = "profitsync-chunk-reload";
+      var MAX_ATTEMPTS = 3;
+      var BACKOFF_MS = [0, 500, 1500];
+      function isAssetLoadError(t) {
+        if (!t || (t.tagName !== "SCRIPT" && t.tagName !== "LINK")) return false;
+        var url = t.src || t.href || "";
+        return url.indexOf("/assets/") !== -1;
+      }
+      function purgeSwAndCaches() {
+        var jobs = [];
+        try {
+          if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
+            jobs.push(navigator.serviceWorker.getRegistrations().then(function (regs) {
+              return Promise.all(regs.map(function (r) { return r.unregister().catch(function () { return false; }); }));
+            }));
+          }
+        } catch (_) { /* best effort */ }
+        try {
+          if (window.caches && caches.keys) {
+            jobs.push(caches.keys().then(function (keys) {
+              return Promise.all(keys.map(function (k) { return caches.delete(k).catch(function () { return false; }); }));
+            }));
+          }
+        } catch (_) { /* best effort */ }
+        return Promise.all(jobs);
+      }
+      function reloadWithCacheBust() {
+        // The counter lives in sessionStorage AND in the recovery URL: in private
+        // mode storage writes throw, and without the URL copy every reload would
+        // restart from attempt 0 — an infinite reload loop. Mirrors chunk-recovery.ts.
+        var attemptCount = 0;
+        try {
+          var stored = sessionStorage.getItem(KEY);
+          attemptCount = stored ? parseInt(stored, 10) : 0;
+        } catch (_) { /* private mode — URL counter below */ }
+        try {
+          var fromUrl = parseInt(new URLSearchParams(window.location.search).get("_cache_bust_n") || "0", 10) || 0;
+          if (fromUrl > attemptCount) attemptCount = fromUrl;
+        } catch (_) { /* ignore */ }
+        if (attemptCount >= MAX_ATTEMPTS) return;
+        attemptCount += 1;
+        try {
+          sessionStorage.setItem(KEY, String(attemptCount));
+        } catch (_) { /* private mode */ }
+        var backoffMs = BACKOFF_MS[attemptCount - 1] || 0;
+        var doReload = function () {
+          // Strip any prior recovery params so retries never accumulate, then replace
+          // (no junk history entry). Bypasses stale HTTP cache for a fresh shell.
+          var params = new URLSearchParams(window.location.search);
+          params.delete("_cache_bust");
+          params.delete("_cache_bust_n");
+          params.set("_cache_bust", String(Date.now()));
+          params.set("_cache_bust_n", String(attemptCount));
+          var query = params.toString();
+          window.location.replace(window.location.pathname + (query ? "?" + query : "") + window.location.hash);
+        };
+        var run = function () {
+          if (attemptCount >= 2) {
+            purgeSwAndCaches().then(doReload, doReload);
+          } else {
+            doReload();
+          }
+        };
+        if (backoffMs > 0) {
+          window.setTimeout(run, backoffMs);
+        } else {
+          run();
+        }
+      }
+      window.addEventListener("error", function (e) {
+        if (!isAssetLoadError(e.target)) return;
+        reloadWithCacheBust();
+      }, true);
+      window.addEventListener("load", function () {
+        window.setTimeout(function () {
+          try { sessionStorage.removeItem(KEY); } catch (_) { /* ignore */ }
+        }, 30000); // Extended from 10s to 30s to allow multiple retries with backoff
+      });
+    })();
+  </script>
+</body>
+
+</html>

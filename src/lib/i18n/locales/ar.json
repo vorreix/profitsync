@@ -391,7 +391,10 @@
     "splitHint": "كل حساب يتم حفظه كمعاملة منفصلة.",
     "account_one": "{{count}} حساب",
     "account_other": "{{count}} حسابات",
-    "recurringBadge": "متكرر"
+    "recurringBadge": "متكرر",
+    "tags": "الوسوم",
+    "tagsPlaceholder": "أضف وسومًا مثل #business #travel",
+    "removeTag": "إزالة {{tag}}"
   },
   "clients": {
     "pageTitle": "العملاء",

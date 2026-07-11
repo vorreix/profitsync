@@ -1,0 +1,192 @@
+1<?xml version="1.0" encoding="utf-8"?>
+2<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+3    package="com.vorreix.profitsync"
+4    android:versionCode="1"
+5    android:versionName="1.0" >
+6
+7    <uses-sdk
+8        android:minSdkVersion="24"
+9        android:targetSdkVersion="36" />
+10    <!-- Permissions -->
+11    <uses-permission android:name="android.permission.INTERNET" />
+11-->/Users/maqbool/Desktop/mtt_projects/vorreix/profitsync/android/app/src/main/AndroidManifest.xml:51:5-67
+11-->/Users/maqbool/Desktop/mtt_projects/vorreix/profitsync/android/app/src/main/AndroidManifest.xml:51:22-64
+12
+13    <queries>
+13-->[:capacitor-browser] /Users/maqbool/Desktop/mtt_projects/vorreix/profitsync/node_modules/@capacitor/browser/android/build/intermediates/merged_manifest/debug/processDebugManifest/AndroidManifest.xml:7:5-11:15
+14        <intent>
+14-->[:capacitor-browser] /Users/maqbool/Desktop/mtt_projects/vorreix/profitsync/node_modules/@capacitor/browser/android/build/intermediates/merged_manifest/debug/processDebugManifest/AndroidManifest.xml:8:9-10:18
+15            <action android:name="android.support.customtabs.action.CustomTabsService" />
+15-->[:capacitor-browser] /Users/maqbool/Desktop/mtt_projects/vorreix/profitsync/node_modules/@capacitor/browser/android/build/intermediates/merged_manifest/debug/processDebugManifest/AndroidManifest.xml:9:13-90
+15-->[:capacitor-browser] /Users/maqbool/Desktop/mtt_projects/vorreix/profitsync/node_modules/@capacitor/browser/android/build/intermediates/merged_manifest/debug/processDebugManifest/AndroidManifest.xml:9:21-87
+16        </intent>
+17    </queries>
+18
+19    <permission
+19-->[androidx.core:core:1.17.0] /Users/maqbool/.gradle/caches/8.14.3/transforms/11094a199bb7945826b161d8a9c17beb/transformed/core-1.17.0/AndroidManifest.xml:22:5-24:47
+20        android:name="com.vorreix.profitsync.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+20-->[androidx.core:core:1.17.0] /Users/maqbool/.gradle/caches/8.14.3/transforms/11094a199bb7945826b161d8a9c17beb/transformed/core-1.17.0/AndroidManifest.xml:23:9-81
+21        android:protectionLevel="signature" />
+21-->[androidx.core:core:1.17.0] /Users/maqbool/.gradle/caches/8.14.3/transforms/11094a199bb7945826b161d8a9c17beb/transformed/core-1.17.0/AndroidManifest.xml:24:9-44
+22
+23    <uses-permission android:name="com.vorreix.profitsync.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" />
+23-->[androidx.core:core:1.17.0] /Users/maqbool/.gradle/caches/8.14.3/transforms/11094a199bb7945826b161d8a9c17beb/transformed/core-1.17.0/AndroidManifest.xml:26:5-97
+23-->[androidx.core:core:1.17.0] /Users/maqbool/.gradle/caches/8.14.3/transforms/11094a199bb7945826b161d8a9c17beb/transformed/core-1.17.0/AndroidManifest.xml:26:22-94
+24
+25    <application
+25-->/Users/maqbool/Desktop/mtt_projects/vorreix/profitsync/android/app/src/main/AndroidManifest.xml:4:5-47:19
+26        android:allowBackup="true"
+26-->/Users/maqbool/Desktop/mtt_projects/vorreix/profitsync/android/app/src/main/AndroidManifest.xml:5:9-35
+27        android:appComponentFactory="androidx.core.app.CoreComponentFactory"
+27-->[androidx.core:core:1.17.0] /Users/maqbool/.gradle/caches/8.14.3/transforms/11094a199bb7945826b161d8a9c17beb/transformed/core-1.17.0/AndroidManifest.xml:28:18-86
+28        android:debuggable="true"
+29        android:extractNativeLibs="false"
+30        android:icon="@mipmap/ic_launcher"
+30-->/Users/maqbool/Desktop/mtt_projects/vorreix/profitsync/android/app/src/main/AndroidManifest.xml:6:9-43
+31        android:label="@string/app_name"
+31-->/Users/maqbool/Desktop/mtt_projects/vorreix/profitsync/android/app/src/main/AndroidManifest.xml:7:9-41
+32        android:networkSecurityConfig="@xml/debug_network_security_config"
+32-->/Users/maqbool/Desktop/mtt_projects/vorreix/profitsync/android/app/src/debug/AndroidManifest.xml:4:9-75
+33        android:roundIcon="@mipmap/ic_launcher_round"
+33-->/Users/maqbool/Desktop/mtt_projects/vorreix/profitsync/android/app/src/main/AndroidManifest.xml:8:9-54
+34        android:supportsRtl="true"
+34-->/Users/maqbool/Desktop/mtt_projects/vorreix/profitsync/android/app/src/main/AndroidManifest.xml:9:9-35
+35        android:theme="@style/AppTheme"
+35-->/Users/maqbool/Desktop/mtt_projects/vorreix/profitsync/android/app/src/main/AndroidManifest.xml:10:9-40
+36        android:usesCleartextTraffic="true" >
+36-->/Users/maqbool/Desktop/mtt_projects/vorreix/profitsync/android/app/src/debug/AndroidManifest.xml:5:9-44
+37        <activity
+37-->/Users/maqbool/Desktop/mtt_projects/vorreix/profitsync/android/app/src/main/AndroidManifest.xml:12:9-36:20
+38            android:name="com.vorreix.profitsync.MainActivity"
+38-->/Users/maqbool/Desktop/mtt_projects/vorreix/profitsync/android/app/src/main/AndroidManifest.xml:14:13-41
+39            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"
+39-->/Users/maqbool/Desktop/mtt_projects/vorreix/profitsync/android/app/src/main/AndroidManifest.xml:13:13-148
+40            android:exported="true"
+40-->/Users/maqbool/Desktop/mtt_projects/vorreix/profitsync/android/app/src/main/AndroidManifest.xml:18:13-36
+41            android:label="@string/title_activity_main"
+41-->/Users/maqbool/Desktop/mtt_projects/vorreix/profitsync/android/app/src/main/AndroidManifest.xml:15:13-56
+42            android:launchMode="singleTask"
+42-->/Users/maqbool/Desktop/mtt_projects/vorreix/profitsync/android/app/src/main/AndroidManifest.xml:17:13-44
+43            android:theme="@style/AppTheme.NoActionBarLaunch" >
+43-->/Users/maqbool/Desktop/mtt_projects/vorreix/profitsync/android/app/src/main/AndroidManifest.xml:16:13-62
+44            <intent-filter>
+44-->/Users/maqbool/Desktop/mtt_projects/vorreix/profitsync/android/app/src/main/AndroidManifest.xml:20:13-23:29
+45                <action android:name="android.intent.action.MAIN" />
+45-->/Users/maqbool/Desktop/mtt_projects/vorreix/profitsync/android/app/src/main/AndroidManifest.xml:21:17-69
+45-->/Users/maqbool/Desktop/mtt_projects/vorreix/profitsync/android/app/src/main/AndroidManifest.xml:21:25-66
+46
+47                <category android:name="android.intent.category.LAUNCHER" />
+47-->/Users/maqbool/Desktop/mtt_projects/vorreix/profitsync/android/app/src/main/AndroidManifest.xml:22:17-77
+47-->/Users/maqbool/Desktop/mtt_projects/vorreix/profitsync/android/app/src/main/AndroidManifest.xml:22:27-74
+48            </intent-filter>
+49            <intent-filter>
+49-->/Users/maqbool/Desktop/mtt_projects/vorreix/profitsync/android/app/src/main/AndroidManifest.xml:25:13-34:29
+50                <action android:name="android.intent.action.VIEW" />
+50-->/Users/maqbool/Desktop/mtt_projects/vorreix/profitsync/android/app/src/main/AndroidManifest.xml:26:17-69
+50-->/Users/maqbool/Desktop/mtt_projects/vorreix/profitsync/android/app/src/main/AndroidManifest.xml:26:25-66
+51
+52                <category android:name="android.intent.category.DEFAULT" />
+52-->/Users/maqbool/Desktop/mtt_projects/vorreix/profitsync/android/app/src/main/AndroidManifest.xml:28:17-76
+52-->/Users/maqbool/Desktop/mtt_projects/vorreix/profitsync/android/app/src/main/AndroidManifest.xml:28:27-73
+53                <category android:name="android.intent.category.BROWSABLE" />
+53-->/Users/maqbool/Desktop/mtt_projects/vorreix/profitsync/android/app/src/main/AndroidManifest.xml:29:17-78
+53-->/Users/maqbool/Desktop/mtt_projects/vorreix/profitsync/android/app/src/main/AndroidManifest.xml:29:27-75
+54
+55                <data
+55-->/Users/maqbool/Desktop/mtt_projects/vorreix/profitsync/android/app/src/main/AndroidManifest.xml:31:17-33:53
+56                    android:host="oauth-callback"
+56-->/Users/maqbool/Desktop/mtt_projects/vorreix/profitsync/android/app/src/main/AndroidManifest.xml:33:21-50
+57                    android:scheme="com.vorreix.profitsync" />
+57-->/Users/maqbool/Desktop/mtt_projects/vorreix/profitsync/android/app/src/main/AndroidManifest.xml:32:21-60
+58            </intent-filter>
+59        </activity>
+60
+61        <provider
+62            android:name="androidx.core.content.FileProvider"
+63            android:authorities="com.vorreix.profitsync.fileprovider"
+64            android:exported="false"
+65            android:grantUriPermissions="true" >
+66            <meta-data
+67                android:name="android.support.FILE_PROVIDER_PATHS"
+68                android:resource="@xml/file_paths" />
+69        </provider>
+70
+71        <activity
+71-->[:capacitor-browser] /Users/maqbool/Desktop/mtt_projects/vorreix/profitsync/node_modules/@capacitor/browser/android/build/intermediates/merged_manifest/debug/processDebugManifest/AndroidManifest.xml:14:9-18:75
+72            android:name="com.capacitorjs.plugins.browser.BrowserControllerActivity"
+72-->[:capacitor-browser] /Users/maqbool/Desktop/mtt_projects/vorreix/profitsync/node_modules/@capacitor/browser/android/build/intermediates/merged_manifest/debug/processDebugManifest/AndroidManifest.xml:15:13-85
+73            android:exported="false"
+73-->[:capacitor-browser] /Users/maqbool/Desktop/mtt_projects/vorreix/profitsync/node_modules/@capacitor/browser/android/build/intermediates/merged_manifest/debug/processDebugManifest/AndroidManifest.xml:16:13-37
+74            android:launchMode="singleTask"
+74-->[:capacitor-browser] /Users/maqbool/Desktop/mtt_projects/vorreix/profitsync/node_modules/@capacitor/browser/android/build/intermediates/merged_manifest/debug/processDebugManifest/AndroidManifest.xml:17:13-44
+75            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+75-->[:capacitor-browser] /Users/maqbool/Desktop/mtt_projects/vorreix/profitsync/node_modules/@capacitor/browser/android/build/intermediates/merged_manifest/debug/processDebugManifest/AndroidManifest.xml:18:13-72
+76
+77        <provider
+77-->[androidx.emoji2:emoji2:1.3.0] /Users/maqbool/.gradle/caches/8.14.3/transforms/353d69426d62513a7e19e841051a3a44/transformed/emoji2-1.3.0/AndroidManifest.xml:24:9-32:20
+78            android:name="androidx.startup.InitializationProvider"
+78-->[androidx.emoji2:emoji2:1.3.0] /Users/maqbool/.gradle/caches/8.14.3/transforms/353d69426d62513a7e19e841051a3a44/transformed/emoji2-1.3.0/AndroidManifest.xml:25:13-67
+79            android:authorities="com.vorreix.profitsync.androidx-startup"
+79-->[androidx.emoji2:emoji2:1.3.0] /Users/maqbool/.gradle/caches/8.14.3/transforms/353d69426d62513a7e19e841051a3a44/transformed/emoji2-1.3.0/AndroidManifest.xml:26:13-68
+80            android:exported="false" >
+80-->[androidx.emoji2:emoji2:1.3.0] /Users/maqbool/.gradle/caches/8.14.3/transforms/353d69426d62513a7e19e841051a3a44/transformed/emoji2-1.3.0/AndroidManifest.xml:27:13-37
+81            <meta-data
+81-->[androidx.emoji2:emoji2:1.3.0] /Users/maqbool/.gradle/caches/8.14.3/transforms/353d69426d62513a7e19e841051a3a44/transformed/emoji2-1.3.0/AndroidManifest.xml:29:13-31:52
+82                android:name="androidx.emoji2.text.EmojiCompatInitializer"
+82-->[androidx.emoji2:emoji2:1.3.0] /Users/maqbool/.gradle/caches/8.14.3/transforms/353d69426d62513a7e19e841051a3a44/transformed/emoji2-1.3.0/AndroidManifest.xml:30:17-75
+83                android:value="androidx.startup" />
+83-->[androidx.emoji2:emoji2:1.3.0] /Users/maqbool/.gradle/caches/8.14.3/transforms/353d69426d62513a7e19e841051a3a44/transformed/emoji2-1.3.0/AndroidManifest.xml:31:17-49
+84            <meta-data
+84-->[androidx.lifecycle:lifecycle-process:2.6.2] /Users/maqbool/.gradle/caches/8.14.3/transforms/14a3b51da1167f75215e7e32d2231e74/transformed/lifecycle-process-2.6.2/AndroidManifest.xml:29:13-31:52
+85                android:name="androidx.lifecycle.ProcessLifecycleInitializer"
+85-->[androidx.lifecycle:lifecycle-process:2.6.2] /Users/maqbool/.gradle/caches/8.14.3/transforms/14a3b51da1167f75215e7e32d2231e74/transformed/lifecycle-process-2.6.2/AndroidManifest.xml:30:17-78
+86                android:value="androidx.startup" />
+86-->[androidx.lifecycle:lifecycle-process:2.6.2] /Users/maqbool/.gradle/caches/8.14.3/transforms/14a3b51da1167f75215e7e32d2231e74/transformed/lifecycle-process-2.6.2/AndroidManifest.xml:31:17-49
+87            <meta-data
+87-->[androidx.profileinstaller:profileinstaller:1.4.0] /Users/maqbool/.gradle/caches/8.14.3/transforms/f95ab50c54d3211c648684c462933e30/transformed/profileinstaller-1.4.0/AndroidManifest.xml:29:13-31:52
+88                android:name="androidx.profileinstaller.ProfileInstallerInitializer"
+88-->[androidx.profileinstaller:profileinstaller:1.4.0] /Users/maqbool/.gradle/caches/8.14.3/transforms/f95ab50c54d3211c648684c462933e30/transformed/profileinstaller-1.4.0/AndroidManifest.xml:30:17-85
+89                android:value="androidx.startup" />
+89-->[androidx.profileinstaller:profileinstaller:1.4.0] /Users/maqbool/.gradle/caches/8.14.3/transforms/f95ab50c54d3211c648684c462933e30/transformed/profileinstaller-1.4.0/AndroidManifest.xml:31:17-49
+90        </provider>
+91
+92        <receiver
+92-->[androidx.profileinstaller:profileinstaller:1.4.0] /Users/maqbool/.gradle/caches/8.14.3/transforms/f95ab50c54d3211c648684c462933e30/transformed/profileinstaller-1.4.0/AndroidManifest.xml:34:9-52:20
+93            android:name="androidx.profileinstaller.ProfileInstallReceiver"
+93-->[androidx.profileinstaller:profileinstaller:1.4.0] /Users/maqbool/.gradle/caches/8.14.3/transforms/f95ab50c54d3211c648684c462933e30/transformed/profileinstaller-1.4.0/AndroidManifest.xml:35:13-76
+94            android:directBootAware="false"
+94-->[androidx.profileinstaller:profileinstaller:1.4.0] /Users/maqbool/.gradle/caches/8.14.3/transforms/f95ab50c54d3211c648684c462933e30/transformed/profileinstaller-1.4.0/AndroidManifest.xml:36:13-44
+95            android:enabled="true"
+95-->[androidx.profileinstaller:profileinstaller:1.4.0] /Users/maqbool/.gradle/caches/8.14.3/transforms/f95ab50c54d3211c648684c462933e30/transformed/profileinstaller-1.4.0/AndroidManifest.xml:37:13-35
+96            android:exported="true"
+96-->[androidx.profileinstaller:profileinstaller:1.4.0] /Users/maqbool/.gradle/caches/8.14.3/transforms/f95ab50c54d3211c648684c462933e30/transformed/profileinstaller-1.4.0/AndroidManifest.xml:38:13-36
+97            android:permission="android.permission.DUMP" >
+97-->[androidx.profileinstaller:profileinstaller:1.4.0] /Users/maqbool/.gradle/caches/8.14.3/transforms/f95ab50c54d3211c648684c462933e30/transformed/profileinstaller-1.4.0/AndroidManifest.xml:39:13-57
+98            <intent-filter>
+98-->[androidx.profileinstaller:profileinstaller:1.4.0] /Users/maqbool/.gradle/caches/8.14.3/transforms/f95ab50c54d3211c648684c462933e30/transformed/profileinstaller-1.4.0/AndroidManifest.xml:40:13-42:29
+99                <action android:name="androidx.profileinstaller.action.INSTALL_PROFILE" />
+99-->[androidx.profileinstaller:profileinstaller:1.4.0] /Users/maqbool/.gradle/caches/8.14.3/transforms/f95ab50c54d3211c648684c462933e30/transformed/profileinstaller-1.4.0/AndroidManifest.xml:41:17-91
+99-->[androidx.profileinstaller:profileinstaller:1.4.0] /Users/maqbool/.gradle/caches/8.14.3/transforms/f95ab50c54d3211c648684c462933e30/transformed/profileinstaller-1.4.0/AndroidManifest.xml:41:25-88
+100            </intent-filter>
+101            <intent-filter>
+101-->[androidx.profileinstaller:profileinstaller:1.4.0] /Users/maqbool/.gradle/caches/8.14.3/transforms/f95ab50c54d3211c648684c462933e30/transformed/profileinstaller-1.4.0/AndroidManifest.xml:43:13-45:29
+102                <action android:name="androidx.profileinstaller.action.SKIP_FILE" />
+102-->[androidx.profileinstaller:profileinstaller:1.4.0] /Users/maqbool/.gradle/caches/8.14.3/transforms/f95ab50c54d3211c648684c462933e30/transformed/profileinstaller-1.4.0/AndroidManifest.xml:44:17-85
+102-->[androidx.profileinstaller:profileinstaller:1.4.0] /Users/maqbool/.gradle/caches/8.14.3/transforms/f95ab50c54d3211c648684c462933e30/transformed/profileinstaller-1.4.0/AndroidManifest.xml:44:25-82
+103            </intent-filter>
+104            <intent-filter>
+104-->[androidx.profileinstaller:profileinstaller:1.4.0] /Users/maqbool/.gradle/caches/8.14.3/transforms/f95ab50c54d3211c648684c462933e30/transformed/profileinstaller-1.4.0/AndroidManifest.xml:46:13-48:29
+105                <action android:name="androidx.profileinstaller.action.SAVE_PROFILE" />
+105-->[androidx.profileinstaller:profileinstaller:1.4.0] /Users/maqbool/.gradle/caches/8.14.3/transforms/f95ab50c54d3211c648684c462933e30/transformed/profileinstaller-1.4.0/AndroidManifest.xml:47:17-88
+105-->[androidx.profileinstaller:profileinstaller:1.4.0] /Users/maqbool/.gradle/caches/8.14.3/transforms/f95ab50c54d3211c648684c462933e30/transformed/profileinstaller-1.4.0/AndroidManifest.xml:47:25-85
+106            </intent-filter>
+107            <intent-filter>
+107-->[androidx.profileinstaller:profileinstaller:1.4.0] /Users/maqbool/.gradle/caches/8.14.3/transforms/f95ab50c54d3211c648684c462933e30/transformed/profileinstaller-1.4.0/AndroidManifest.xml:49:13-51:29
+108                <action android:name="androidx.profileinstaller.action.BENCHMARK_OPERATION" />
+108-->[androidx.profileinstaller:profileinstaller:1.4.0] /Users/maqbool/.gradle/caches/8.14.3/transforms/f95ab50c54d3211c648684c462933e30/transformed/profileinstaller-1.4.0/AndroidManifest.xml:50:17-95
+108-->[androidx.profileinstaller:profileinstaller:1.4.0] /Users/maqbool/.gradle/caches/8.14.3/transforms/f95ab50c54d3211c648684c462933e30/transformed/profileinstaller-1.4.0/AndroidManifest.xml:50:25-92
+109            </intent-filter>
+110        </receiver>
+111    </application>
+112
+113</manifest>

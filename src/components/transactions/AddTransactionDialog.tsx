@@ -17,6 +17,7 @@ import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { TxFormFields } from "@/components/transactions/tx-form"
+import { mergeTags } from "@/lib/transaction-tags"
 import {
   defaultAccountId,
   defaultTxForm,
@@ -40,11 +41,13 @@ export function AddTransactionDialog({
   onOpenChange,
   onCreated,
   presetClientId,
+  tagSuggestions,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   onCreated?: (info: CreatedTxInfo) => void
   presetClientId?: string
+  tagSuggestions?: string[]
 }) {
   const { t } = useTranslation("transactions")
   const navigate = useNavigate()
@@ -187,6 +190,8 @@ export function AddTransactionDialog({
         type: form.type,
         description: form.description,
         category: form.category,
+        // Commit any un-entered draft too, so a typed-but-not-Entered tag isn't lost.
+        tags: mergeTags(form.tags, form.tag_draft),
         date: form.date,
         allocations: allocs.map((a) => ({ wealth_account_id: a.account_id, amount: parseFloat(a.amount) })),
       })
@@ -227,6 +232,7 @@ export function AddTransactionDialog({
             accounts={accounts}
             accountsLoading={accountsLoading}
             categories={categories}
+            tagSuggestions={tagSuggestions}
             onChangeCats={handleChangeCats}
             onAddAccount={() => { onOpenChange(false); navigate("/wealth") }}
             currency={currency}

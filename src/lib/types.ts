@@ -99,6 +99,8 @@ export type Transaction = {
   amount: number
   description: string
   category: string
+  // User hashtags ("#business") — normalized by src/lib/transaction-tags.ts.
+  tags?: string[]
   date: string
   is_system?: boolean
   // Set when this row was auto-created by a recurring rule (drives the
