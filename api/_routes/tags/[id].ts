@@ -2,14 +2,14 @@ import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { and, eq, ne, sql } from "drizzle-orm"
 import { db, serialize } from "../../../src/lib/db/index.js"
 import { tags } from "../../../src/lib/db/schema.js"
-import { canWrite, requireAuth } from "../../_lib/auth.js"
+import { canDelete, canWrite, requireAuth } from "../../_lib/auth.js"
 import { normalizeTagName } from "../../../src/lib/tags.js"
-import { renameTagEverywhere } from "../../_lib/tag-ops.js"
+import { removeTagEverywhere, renameTagEverywhere, softDeleteByTag } from "../../_lib/tag-ops.js"
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ctx = await requireAuth(req, res)
   if (!ctx) return
-  const { orgId, role } = ctx
+  const { userId, orgId, role } = ctx
   const { id } = req.query as { id: string }
 
   const [tag] = await db
@@ -46,6 +46,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .where(and(eq(tags.id, id), eq(tags.organizationId, orgId)))
       .returning()
     return res.json(serialize(updated))
+  }
+
+  if (req.method === "DELETE") {
+    if (!canDelete(role)) return res.status(403).json({ error: "Forbidden" })
+    // Delete-with-choice: `mode=tag_only` (default) just strips the tag from every
+    // entity (records survive); `mode=with_records` soft-deletes the tagged records
+    // to Trash (reversible) with wealth-balance reversal. The registry row is
+    // removed either way.
+    const mode = (req.query as { mode?: string }).mode === "with_records" ? "with_records" : "tag_only"
+    let counts = { transactions: 0, clients: 0, quotations: 0 }
+    if (mode === "with_records") {
+      counts = await softDeleteByTag(orgId, tag.name, userId)
+      // Also strip the now-orphaned tag string from any records that carried it
+      // but weren't deleted (e.g. a tagged transaction whose client stayed).
+      await removeTagEverywhere(orgId, tag.name)
+    } else {
+      await removeTagEverywhere(orgId, tag.name)
+    }
+    await db.delete(tags).where(and(eq(tags.id, id), eq(tags.organizationId, orgId)))
+    return res.json({ ok: true, mode, deleted: counts })
   }
 
   return res.status(405).json({ error: "Method not allowed" })
