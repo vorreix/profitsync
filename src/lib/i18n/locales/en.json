@@ -28,6 +28,7 @@
     "subscription": "Subscription",
     "trash": "Trash",
     "categories": "Categories",
+    "categoryTags": "Category & Tags",
     "budgets": "Budgets",
     "analytics": "Analytics",
     "referrals": "Refer & earn",
@@ -245,6 +246,15 @@
     "actionFailed": "Action failed",
     "closedCount_one": "{{count}} closed",
     "closedCount_other": "{{count}} closed"
+  },
+  "categoryTags": {
+    "title": "Category & Tags",
+    "subtitle": "Organize your money with categories and tags",
+    "categoryTab": "Categories",
+    "tagsTab": "Tags"
+  },
+  "tags": {
+    "panelStub": "Tag management is coming here soon."
   },
   "categories": {
     "title": "Categories",
