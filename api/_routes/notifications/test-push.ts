@@ -17,11 +17,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!ctx) return
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" })
 
-  const result = await sendWebPushToUser(ctx.userId, {
-    title: "ProfitSync test notification",
-    body: "If you can see this, push notifications are working on this device. 🎉",
-    url: "/notifications",
-    tag: "ps-test-push",
-  })
+  const result = await sendWebPushToUser(
+    ctx.userId,
+    {
+      title: "ProfitSync test notification",
+      body: "If you can see this, push notifications are working on this device. 🎉",
+      url: "/notifications",
+      tag: "ps-test-push",
+    },
+    "test",
+  )
   return res.json(result)
 }

@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { eq } from "drizzle-orm"
+import { desc, eq } from "drizzle-orm"
 import { db, serialize } from "../../../src/lib/db/index.js"
-import { notificationSchedulerState } from "../../../src/lib/db/schema.js"
+import { notificationSchedulerState, pushEvents } from "../../../src/lib/db/schema.js"
 import { requireAdminCap } from "../../_lib/admin.js"
 
 // Admin-only proxy to the background worker's observability API. The worker's
@@ -80,12 +80,23 @@ async function tickHeartbeat(): Promise<Record<string, unknown> | null> {
   }
 }
 
+// Recent push fan-out outcomes (push_events, written by sendWebPushToUser) so
+// "did the push actually go out, and why not" is answerable from the panel.
+async function recentPushEvents(): Promise<Record<string, unknown>[]> {
+  try {
+    const rows = await db.select().from(pushEvents).orderBy(desc(pushEvents.createdAt)).limit(10)
+    return rows.map(serialize)
+  } catch {
+    return []
+  }
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === "GET") {
     const ctx = await requireAdminCap(req, res, "read")
     if (!ctx) return
-    const heartbeat = await tickHeartbeat()
-    if (!configured()) return res.json({ configured: false, reachable: false, counts: {}, jobs: [], schedules: [], schedulesSupported: false, heartbeat })
+    const [heartbeat, push_events] = await Promise.all([tickHeartbeat(), recentPushEvents()])
+    if (!configured()) return res.json({ configured: false, reachable: false, counts: {}, jobs: [], schedules: [], schedulesSupported: false, heartbeat, push_events })
     try {
       const status = single(req.query.status)
       const type = single(req.query.type)
@@ -102,7 +113,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // Status reports return 200 even when the worker is down — a 502 makes the
       // client's apiGet throw and DROP the payload, hiding the tick heartbeat
       // exactly when it matters most (worker outage).
-      if (!stats.ok || !jobs.ok) return res.json({ configured: true, reachable: false, counts: {}, jobs: [], schedules: [], schedulesSupported: false, heartbeat })
+      if (!stats.ok || !jobs.ok) return res.json({ configured: true, reachable: false, counts: {}, jobs: [], schedules: [], schedulesSupported: false, heartbeat, push_events })
       return res.json({
         configured: true,
         reachable: true,
@@ -111,9 +122,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         schedules: schedules.ok ? (schedules.json.schedules ?? []) : [],
         schedulesSupported: schedules.ok,
         heartbeat,
+        push_events,
       })
     } catch {
-      return res.json({ configured: true, reachable: false, counts: {}, jobs: [], schedules: [], schedulesSupported: false, heartbeat })
+      return res.json({ configured: true, reachable: false, counts: {}, jobs: [], schedules: [], schedulesSupported: false, heartbeat, push_events })
     }
   }
 

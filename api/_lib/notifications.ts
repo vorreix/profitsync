@@ -131,12 +131,16 @@ export async function createNotification(input: CreateNotificationInput): Promis
   // Best-effort push (fire-and-forget): the in-app write below is the source of
   // truth and never waits on or fails because of push.
   if (showPush) {
-    void sendWebPushToUser(input.userId, {
-      title: input.title,
-      body: input.body || undefined,
-      url: input.link || undefined,
-      image: input.imageUrl || undefined,
-    }).catch(() => {})
+    void sendWebPushToUser(
+      input.userId,
+      {
+        title: input.title,
+        body: input.body || undefined,
+        url: input.link || undefined,
+        image: input.imageUrl || undefined,
+      },
+      input.type,
+    ).catch(() => {})
   }
 
   if (!showInApp) return null

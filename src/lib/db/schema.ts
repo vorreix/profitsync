@@ -706,6 +706,27 @@ export const budgetHistory = pgTable("budget_history", {
   lookupIdx: index("budget_history_lookup_idx").on(table.organizationId, table.clientId, table.createdAt),
 }))
 
+// ── Push delivery log ──────────────────────────────────────────────────────────
+// One row per sendWebPushToUser fan-out (aggregate counts, not per-device), so
+// admins can see WHETHER pushes go out and WHY they fail without prod console
+// access. Written best-effort by the sender — logging can never affect delivery.
+export const pushEvents = pgTable("push_events", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: text("user_id").notNull(),
+  /** What triggered the send — a notification type or 'test'. */
+  source: text("source").notNull().default(""),
+  outcome: text("outcome").notNull(), // ok | partial | failed | no_subs | unconfigured
+  subscriptions: integer("subscriptions").notNull().default(0),
+  ok: integer("ok").notNull().default(0),
+  failed: integer("failed").notNull().default(0),
+  pruned: integer("pruned").notNull().default(0),
+  /** First distinct error summaries, comma-joined (diagnostics only). */
+  errors: text("errors").notNull().default(""),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  createdIdx: index("push_events_created_idx").on(table.createdAt),
+}))
+
 // ── Notification scheduler heartbeat ──────────────────────────────────────────
 // Single-row liveness record: runNotificationTick upserts it on EVERY tick (even
 // zero-work ones), so the admin panel can tell "the scheduler is running" apart
