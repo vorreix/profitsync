@@ -9,6 +9,7 @@ export type Client = {
   status: "active" | "inactive" | "archived"
   notes: string
   category?: string
+  tags?: string[]
   is_own?: boolean
   onboard_date?: string | null
   deleted_at: string | null
@@ -31,6 +32,29 @@ export type Category = {
   created_at: string
   updated_at: string
 }
+
+// A "logical" category: all category rows sharing a name in an org, folded into
+// one entry whose `types` is the set across those rows. This is the shape the
+// Category & Tags manager works with (no schema change — see docs/cattags/PLAN.md).
+export type CombinedCategory = {
+  name: string
+  color: string
+  types: CategoryType[]
+}
+
+// Registry row for a tag (source of truth for the tag manager: stable color +
+// rename target). Entities store the tag *string* in their own `tags` jsonb.
+export type Tag = {
+  id: string
+  organization_id: string
+  name: string
+  color: string
+  created_at: string
+  updated_at: string
+}
+
+// The entity kinds a tag/category drilldown can surface.
+export type TaggableEntityType = "transaction" | "client" | "quotation"
 
 // Editable metadata shared by all attachment kinds (see the attachment tables).
 export type AttachmentMeta = {
@@ -218,6 +242,7 @@ export type Quotation = {
   status: "draft" | "sent" | "accepted" | "rejected"
   notes: string
   category?: string
+  tags?: string[]
   linked_client_id: string | null
   deleted_at: string | null
   closed_at?: string | null
