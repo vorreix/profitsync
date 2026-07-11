@@ -85,10 +85,10 @@ A **logical category** = all `categories` rows sharing `(org, name)`; its type-s
 | # | Branch | Delivers | Status |
 |---|--------|----------|--------|
 | 00 | `feat/cattags-00-plan` | This PLAN.md on the root branch | ✅ done |
-| 01 | `feat/cattags-01-schema` | mig 0050: tags on clients+quotations (+GIN), `tags` registry; schema.ts + types.ts | ⬜ |
-| 02 | `feat/cattags-02-tags-lib-api` | generalize tags lib; clients/quotations tag read/write + `?tag=`; registry CRUD + rename cascade | ⬜ |
-| 03 | `feat/cattags-03-tags-entities-delete` | `/api/tags/entities` drilldown; delete-with-choice (tag_only / with_records soft-delete + balance reversal) | ⬜ |
-| 04 | `feat/cattags-04-categories-api` | combined create/edit/delete (multi-type, rename cascade to clients+quotations); `/api/categories/entities` drilldown | ⬜ |
+| 01 | `feat/cattags-01-schema` | mig 0050: tags on clients+quotations (+GIN), `tags` registry; schema.ts + types.ts | ✅ done |
+| 02 | `feat/cattags-02-tags-lib-api` | generalize tags lib; clients/quotations tag read/write + `?tag=`; registry CRUD + rename cascade | ✅ done |
+| 03 | `feat/cattags-03-tags-entities-delete` | `/api/tags/entities` drilldown; delete-with-choice (tag_only / with_records soft-delete + balance reversal) | ✅ done |
+| 04 | `feat/cattags-04-categories-api` | combined create/edit/delete (multi-type, rename cascade to clients+quotations); `/api/categories/entities` drilldown | ✅ done |
 | 05 | `feat/cattags-05-sidebar-tabs` | nav rename; `/categories` → tabbed `CategoryTagsPage` shell; i18n | ⬜ |
 | 06 | `feat/cattags-06-categories-ui` | Category tab: combined list, multi-select create/edit, delete; drilldown w/ filter+date+sort+nav | ⬜ |
 | 07 | `feat/cattags-07-tags-ui` | Tags tab: list/search/create/edit/delete-with-choice; drilldown | ⬜ |
@@ -98,3 +98,5 @@ need the migration), then the shell, then the two UI tabs. Each branch passes th
 
 ## Change log
 - **2026-07-11** — Plan committed on `feat/cattags-00-plan`.
+- **2026-07-11** — Branches 01–03 shipped: mig 0050 (tags on clients+quotations + `tags` registry), generalized `src/lib/tags.ts`, tag read/write + `?tag=` filter on clients/quotations, `/api/tags` registry CRUD + rename cascade, `/api/tags/entities` drilldown, and delete-with-choice (`tag_only` / `with_records` soft-delete with ledger balance reversal — DB-verified 1119→999 exact). Gate green each.
+- **2026-07-11** — Branch 04 shipped: combined categories API — multi-type `POST /api/categories` (`types[]`, collision 409, per-org cap), `PUT /api/categories/combined` (add/remove/rename per-type rows + cascade rename to transactions/clients/quotations free-text), `DELETE ?name=` (logical, orphan-safe), and `GET /api/categories/entities` drilldown (CategoryType→table + tx.type mapping, filter/date/sort/deep-links). DB-verified: drilldown counts + rename cascade across all three tables, sibling categories untouched. Gate green.
