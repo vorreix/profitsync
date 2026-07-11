@@ -9,7 +9,7 @@ import { BusinessOnlyRoute } from "@/components/BusinessOnlyRoute"
 import { PersonalOnlyRoute } from "@/components/PersonalOnlyRoute"
 import { Toaster } from "@/components/ui/sonner"
 import { UpdatePrompt } from "@/components/UpdatePrompt"
-import { nativeAuthLog, nativeAuthUrlLog, toInternalOAuthCallbackPath } from "@/lib/native-auth"
+import { isNativeAndroid, nativeAuthLog, nativeAuthUrlLog, toInternalOAuthCallbackPath } from "@/lib/native-auth"
 import { useShouldRedirectToApp } from "@/lib/use-redirect-to-app"
 import { isStandalonePwa } from "@/lib/pwa/is-standalone"
 
@@ -109,6 +109,9 @@ export function App() {
     let removeListener: (() => void) | undefined
 
     async function installNativeUrlListener() {
+      // Web never needs the deep-link listener — bail before the dynamic
+      // imports so browsers don't fetch the capacitor chunk at all.
+      if (!isNativeAndroid()) return
       try {
         const [{ App: CapacitorApp }, { Browser }] = await Promise.all([
           import("@capacitor/app"),

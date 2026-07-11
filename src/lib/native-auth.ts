@@ -1,5 +1,3 @@
-import { Capacitor } from "@capacitor/core"
-
 export const NATIVE_OAUTH_REDIRECT_URL = "com.vorreix.profitsync://oauth-callback"
 export const OAUTH_CALLBACK_PATH = "/sso-callback"
 
@@ -20,7 +18,12 @@ function redactUrl(value: string | URL): string {
 }
 
 export function isNativeAndroid(): boolean {
-  return Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android"
+  // Runtime global check instead of importing @capacitor/core: this module is
+  // statically imported by App.tsx (and the auth pages), so a static capacitor
+  // import would drag the Capacitor runtime into the WEB bundle. Inside the
+  // native WebView the bridge always defines window.Capacitor.
+  const cap = (window as { Capacitor?: { isNativePlatform?: () => boolean; getPlatform?: () => string } }).Capacitor
+  return !!cap?.isNativePlatform?.() && cap.getPlatform?.() === "android"
 }
 
 export function nativeAuthLog(event: string, details: AuthLogDetails = {}) {

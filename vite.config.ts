@@ -183,6 +183,11 @@ export default defineConfig({
           ) {
             return "markdown"
           }
+          // Capacitor bridge modules: only the native WebView ever loads them
+          // (App.tsx guards the dynamic import with isNativeAndroid), so keep
+          // them out of the eager web "vendor" chunk. One-way leaf — they
+          // import nothing from our other chunks, so the graph stays acyclic.
+          if (id.includes("@capacitor/")) return "native"
           return "vendor"
         },
       },
