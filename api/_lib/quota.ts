@@ -239,10 +239,17 @@ export async function checkSpaceQuota(orgId: string): Promise<QuotaCheck> {
 export async function checkTransactionQuota(orgId: string, clientId: string): Promise<QuotaCheck> {
   const { planKey, limits } = await getOrgPlan(orgId)
   if (planKey !== "free") return { allowed: true }
+  // Count only user-created transactions. System rows (wealth opening-balance and
+  // balance-adjustment ledger entries — `isSystem = true`, set server-side only)
+  // are internal, off-P&L bookkeeping and are exempt from the per-client quota,
+  // matching the Space-transfer exemption in wealth/transfer.ts. Counting them
+  // both let a free org self-lock-out and made the limit inconsistent.
   const [{ current }] = await db
     .select({ current: count() })
     .from(transactions)
-    .where(and(eq(transactions.clientId, clientId), isNull(transactions.deletedAt)))
+    .where(
+      and(eq(transactions.clientId, clientId), isNull(transactions.deletedAt), eq(transactions.isSystem, false)),
+    )
   if (current >= limits.transactionsPerClient) {
     return {
       allowed: false,
