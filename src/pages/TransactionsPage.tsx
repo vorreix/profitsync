@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState, useCallback, useRef } from "react"
+import { memo, useEffect, useMemo, useState, useCallback, useRef } from "react"
+import { useAutoAnimate } from "@formkit/auto-animate/react"
 import { useNavigate, useNavigationType, useSearchParams } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
@@ -44,6 +45,159 @@ const PAGE_SIZE = 20
 
 const formatDate = (d: string) =>
   new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+
+// ─── List row ─────────────────────────────────────────────────────────────────
+// Memoized so page-level state changes that don't touch a row (search
+// keystrokes, filter/tab switches, other rows' selection) skip its re-render —
+// with ~20 rows of badges/buttons each, that was the page's biggest render
+// cost. Every callback prop is identity-stable (latest-ref wrappers in the
+// page; useMultiSelect/useLongPress are stable by construction), so the default
+// shallow compare works.
+
+type TransactionRowProps = {
+  tx: Transaction
+  selected: boolean
+  selectionMode: boolean
+  isPersonal: boolean
+  isOwn: boolean
+  canDelete: boolean
+  currency: string
+  onOpen: (tx: Transaction) => void
+  onEdit: (tx: Transaction) => void
+  onDelete: (tx: Transaction) => void
+  onToggle: (id: string) => void
+  onEnterSelection: (id: string) => void
+  bind: ReturnType<typeof useLongPress>["bind"]
+  didLongPress: () => boolean
+}
+
+const TransactionRow = memo(function TransactionRow({
+  tx, selected, selectionMode, isPersonal, isOwn, canDelete, currency,
+  onOpen, onEdit, onDelete, onToggle, onEnterSelection, bind, didLongPress,
+}: TransactionRowProps) {
+  const { t } = useTranslation("transactions")
+  const navigate = useNavigate()
+  const fmt = (n: number) =>
+    new Intl.NumberFormat("en-US", { style: "currency", currency, minimumFractionDigits: 2 }).format(n)
+
+  return (
+    <div
+      id={`tx-row-${tx.id}`}
+      className={`flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-3 hover:bg-muted/50 transition-colors group cursor-pointer ${selected ? "bg-primary/5" : ""}`}
+      onClick={() => {
+        if (selectionMode) { onToggle(tx.id); return }
+        if (didLongPress()) return
+        onOpen(tx)
+      }}
+      {...(canDelete ? bind(() => onEnterSelection(tx.id)) : {})}
+    >
+      {selectionMode ? (
+        <Checkbox
+          checked={selected}
+          onClick={(e) => e.stopPropagation()}
+          onCheckedChange={() => onToggle(tx.id)}
+          className="shrink-0"
+          aria-label="Select transaction"
+        />
+      ) : (
+        <div className={`size-9 rounded-full flex items-center justify-center shrink-0 ${
+          tx.type === "incoming" ? "bg-emerald-100 dark:bg-emerald-900/30" : "bg-red-100 dark:bg-red-900/30"
+        }`}>
+          {tx.type === "incoming"
+            ? <ArrowUpRight className="size-4 text-emerald-600 dark:text-emerald-400" />
+            : <ArrowDownRight className="size-4 text-red-600 dark:text-red-400" />}
+        </div>
+      )}
+
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 min-w-0">
+          <p className="text-sm font-medium truncate min-w-0 flex-1">
+            {tx.description
+              ? tx.description.length > 60 ? tx.description.slice(0, 60) + "…" : tx.description
+              : (tx.type === "incoming" ? t("income") : t("expense"))}
+          </p>
+          {(tx.leg_count ?? 1) > 1 && (
+            <Badge variant="secondary" className="text-[10px] py-0 shrink-0 gap-1">
+              <Layers className="size-3" /> {t("split")}
+            </Badge>
+          )}
+          {tx.recurring_rule_id && (
+            <Badge
+              variant="secondary"
+              className="text-[10px] py-0 shrink-0 gap-1 cursor-pointer hover:bg-secondary/80"
+              title={t("recurringBadge")}
+              onClick={(e) => {
+                e.stopPropagation()
+                // Remember where we left so Back returns to this exact row.
+                sessionStorage.setItem("tx-return-scroll", tx.id)
+                navigate(`/recurring?view=${tx.recurring_rule_id}`)
+              }}
+            >
+              <Repeat className="size-3" /> <span className="hidden sm:inline">{t("recurringBadge")}</span>
+            </Badge>
+          )}
+          {tx.category && (
+            <Badge variant="outline" className="text-xs py-0 shrink-0 hidden sm:inline-flex">{tx.category}</Badge>
+          )}
+          <AttachmentBadge count={tx.attachment_count} />
+        </div>
+        <div className="flex items-center gap-2 mt-0.5 min-w-0">
+          {!isPersonal && (
+            <>
+              <button
+                className="text-xs text-primary hover:underline truncate min-w-0"
+                onClick={(e) => { e.stopPropagation(); navigate(`/clients/${tx.client_id}`) }}
+              >
+                {tx.client_name ?? tx.client_id}
+              </button>
+              {isOwn && (
+                <Badge variant="outline" className="text-[10px] py-0 shrink-0">Own</Badge>
+              )}
+              <span className="text-xs text-muted-foreground shrink-0">·</span>
+            </>
+          )}
+          <span className="text-xs text-muted-foreground shrink-0">{formatDate(tx.date)}</span>
+          {(tx.leg_count ?? 1) > 1 ? (
+            <>
+              <span className="hidden text-xs text-muted-foreground shrink-0 sm:inline">·</span>
+              <span className="hidden text-xs text-muted-foreground shrink-0 sm:inline">
+                {t("splitAccounts", { count: tx.account_count ?? tx.leg_count })}
+              </span>
+            </>
+          ) : (tx.wealth_account_name || tx.wealth_account_bank_name) ? (
+            <>
+              <span className="hidden text-xs text-muted-foreground shrink-0 sm:inline">·</span>
+              <span className="hidden min-w-0 max-w-[10rem] truncate text-xs text-muted-foreground sm:inline">
+                {accountDisplayName({ bank_name: tx.wealth_account_bank_name ?? "", nickname: tx.wealth_account_name ?? "" })}
+              </span>
+            </>
+          ) : null}
+        </div>
+      </div>
+
+      <p className={`text-sm font-semibold shrink-0 tabular-nums text-right ${
+        tx.type === "incoming" ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"
+      }`}>
+        {tx.type === "incoming" ? "+" : "−"}{fmt(Number(tx.amount))}
+      </p>
+
+      <div className={`hidden sm:flex gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity ${selectionMode ? "sm:hidden" : ""}`}>
+        <Button variant="ghost" size="icon" className="size-8 sm:size-9" onClick={(e) => { e.stopPropagation(); onOpen(tx) }}>
+          <Eye className="size-3.5" />
+        </Button>
+        <Button variant="ghost" size="icon" className="size-8 sm:size-9" onClick={(e) => {
+          e.stopPropagation()
+          onEdit(tx)
+        }}>
+          <Pencil className="size-3.5" />
+        </Button>
+        <Button variant="ghost" size="icon" className="size-8 sm:size-9 text-muted-foreground hover:text-destructive" onClick={(e) => { e.stopPropagation(); onDelete(tx) }}>
+          <Trash2 className="size-3.5" />
+        </Button>
+      </div>
+    </div>
+  )
+})
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
@@ -299,6 +453,33 @@ export function TransactionsPage() {
   const totalIncoming = summary.incoming
   const totalOutgoing = summary.outgoing
   const ownClientIds = useMemo(() => new Set(clients.filter((c) => c.is_own).map((c) => c.id)), [clients])
+
+  // Identity-stable row callbacks (latest-ref pattern) so the memoized
+  // TransactionRow's shallow compare holds across page re-renders. The ref is
+  // re-pointed every render, so the wrappers always call the current closures.
+  const rowActionsRef = useRef({
+    open: (tx: Transaction) => void openViewModal(tx),
+    edit: (tx: Transaction) => void openEditTx(tx),
+    del: (tx: Transaction) => {
+      setDeleteLegCount(tx.leg_count ?? 1)
+      setDeleteId(tx.id)
+    },
+  })
+  rowActionsRef.current = {
+    open: (tx: Transaction) => void openViewModal(tx),
+    edit: (tx: Transaction) => void openEditTx(tx),
+    del: (tx: Transaction) => {
+      setDeleteLegCount(tx.leg_count ?? 1)
+      setDeleteId(tx.id)
+    },
+  }
+  const onRowOpen = useCallback((tx: Transaction) => rowActionsRef.current.open(tx), [])
+  const onRowEdit = useCallback((tx: Transaction) => rowActionsRef.current.edit(tx), [])
+  const onRowDelete = useCallback((tx: Transaction) => rowActionsRef.current.del(tx), [])
+
+  // Animate row add/remove (delete, bulk delete, load-more) — same pattern the
+  // Dashboard/Wealth grids already use; auto-animate respects reduced motion.
+  const [txListRef] = useAutoAnimate<HTMLDivElement>()
   // Filter options = the user's defined categories plus any category that appears
   // in the loaded transactions (covers ones added on another device).
   const allCategoryOptions = useMemo(() => {
@@ -679,124 +860,25 @@ export function TransactionsPage() {
       ) : (
         <>
           <div className="border rounded-xl overflow-hidden">
-            <div className="divide-y">
+            <div className="divide-y" ref={txListRef}>
               {transactions.map((tx) => (
-                <div
+                <TransactionRow
                   key={tx.id}
-                  id={`tx-row-${tx.id}`}
-                  className={`flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-3 hover:bg-muted/50 transition-colors group cursor-pointer ${sel.isSelected(tx.id) ? "bg-primary/5" : ""}`}
-                  onClick={() => {
-                    if (sel.selectionMode) { sel.toggle(tx.id); return }
-                    if (longPress.didLongPress()) return
-                    openViewModal(tx)
-                  }}
-                  {...(canDelete ? longPress.bind(() => sel.enterSelection(tx.id)) : {})}
-                >
-                  {sel.selectionMode ? (
-                    <Checkbox
-                      checked={sel.isSelected(tx.id)}
-                      onClick={(e) => e.stopPropagation()}
-                      onCheckedChange={() => sel.toggle(tx.id)}
-                      className="shrink-0"
-                      aria-label="Select transaction"
-                    />
-                  ) : (
-                    <div className={`size-9 rounded-full flex items-center justify-center shrink-0 ${
-                      tx.type === "incoming" ? "bg-emerald-100 dark:bg-emerald-900/30" : "bg-red-100 dark:bg-red-900/30"
-                    }`}>
-                      {tx.type === "incoming"
-                        ? <ArrowUpRight className="size-4 text-emerald-600 dark:text-emerald-400" />
-                        : <ArrowDownRight className="size-4 text-red-600 dark:text-red-400" />}
-                    </div>
-                  )}
-
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <p className="text-sm font-medium truncate min-w-0 flex-1">
-                        {tx.description
-                          ? tx.description.length > 60 ? tx.description.slice(0, 60) + "…" : tx.description
-                          : (tx.type === "incoming" ? t("income") : t("expense"))}
-                      </p>
-                      {(tx.leg_count ?? 1) > 1 && (
-                        <Badge variant="secondary" className="text-[10px] py-0 shrink-0 gap-1">
-                          <Layers className="size-3" /> {t("split")}
-                        </Badge>
-                      )}
-                      {tx.recurring_rule_id && (
-                        <Badge
-                          variant="secondary"
-                          className="text-[10px] py-0 shrink-0 gap-1 cursor-pointer hover:bg-secondary/80"
-                          title={t("recurringBadge")}
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            // Remember where we left so Back returns to this exact row.
-                            sessionStorage.setItem("tx-return-scroll", tx.id)
-                            navigate(`/recurring?view=${tx.recurring_rule_id}`)
-                          }}
-                        >
-                          <Repeat className="size-3" /> <span className="hidden sm:inline">{t("recurringBadge")}</span>
-                        </Badge>
-                      )}
-                      {tx.category && (
-                        <Badge variant="outline" className="text-xs py-0 shrink-0 hidden sm:inline-flex">{tx.category}</Badge>
-                      )}
-                      <AttachmentBadge count={tx.attachment_count} />
-                    </div>
-                    <div className="flex items-center gap-2 mt-0.5 min-w-0">
-                      {!isPersonal && (
-                        <>
-                          <button
-                            className="text-xs text-primary hover:underline truncate min-w-0"
-                            onClick={(e) => { e.stopPropagation(); navigate(`/clients/${tx.client_id}`) }}
-                          >
-                            {tx.client_name ?? tx.client_id}
-                          </button>
-                          {ownClientIds.has(tx.client_id) && (
-                            <Badge variant="outline" className="text-[10px] py-0 shrink-0">Own</Badge>
-                          )}
-                          <span className="text-xs text-muted-foreground shrink-0">·</span>
-                        </>
-                      )}
-                      <span className="text-xs text-muted-foreground shrink-0">{formatDate(tx.date)}</span>
-                      {(tx.leg_count ?? 1) > 1 ? (
-                        <>
-                          <span className="hidden text-xs text-muted-foreground shrink-0 sm:inline">·</span>
-                          <span className="hidden text-xs text-muted-foreground shrink-0 sm:inline">
-                            {t("splitAccounts", { count: tx.account_count ?? tx.leg_count })}
-                          </span>
-                        </>
-                      ) : (tx.wealth_account_name || tx.wealth_account_bank_name) ? (
-                        <>
-                          <span className="hidden text-xs text-muted-foreground shrink-0 sm:inline">·</span>
-                          <span className="hidden min-w-0 max-w-[10rem] truncate text-xs text-muted-foreground sm:inline">
-                            {accountDisplayName({ bank_name: tx.wealth_account_bank_name ?? "", nickname: tx.wealth_account_name ?? "" })}
-                          </span>
-                        </>
-                      ) : null}
-                    </div>
-                  </div>
-
-                  <p className={`text-sm font-semibold shrink-0 tabular-nums text-right ${
-                    tx.type === "incoming" ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"
-                  }`}>
-                    {tx.type === "incoming" ? "+" : "−"}{fmt(Number(tx.amount))}
-                  </p>
-
-                  <div className={`hidden sm:flex gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity ${sel.selectionMode ? "sm:hidden" : ""}`}>
-                    <Button variant="ghost" size="icon" className="size-8 sm:size-9" onClick={(e) => { e.stopPropagation(); openViewModal(tx) }}>
-                      <Eye className="size-3.5" />
-                    </Button>
-                    <Button variant="ghost" size="icon" className="size-8 sm:size-9" onClick={(e) => {
-                      e.stopPropagation()
-                      openEditTx(tx)
-                    }}>
-                      <Pencil className="size-3.5" />
-                    </Button>
-                    <Button variant="ghost" size="icon" className="size-8 sm:size-9 text-muted-foreground hover:text-destructive" onClick={(e) => { e.stopPropagation(); setDeleteLegCount(tx.leg_count ?? 1); setDeleteId(tx.id) }}>
-                      <Trash2 className="size-3.5" />
-                    </Button>
-                  </div>
-                </div>
+                  tx={tx}
+                  selected={sel.isSelected(tx.id)}
+                  selectionMode={sel.selectionMode}
+                  isPersonal={isPersonal}
+                  isOwn={ownClientIds.has(tx.client_id)}
+                  canDelete={canDelete}
+                  currency={currency}
+                  onOpen={onRowOpen}
+                  onEdit={onRowEdit}
+                  onDelete={onRowDelete}
+                  onToggle={sel.toggle}
+                  onEnterSelection={sel.enterSelection}
+                  bind={longPress.bind}
+                  didLongPress={longPress.didLongPress}
+                />
               ))}
             </div>
           </div>
