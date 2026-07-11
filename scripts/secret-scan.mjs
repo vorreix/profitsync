@@ -1,5 +1,4 @@
-#!/usr/bin/env node
-// Secret scanner — the first stop in the pre-commit gate and a CI job.
+﻿// Secret scanner â€” the first stop in the pre-commit gate and a CI job.
 //
 //   node scripts/secret-scan.mjs            scan the STAGED diff (pre-commit)
 //   node scripts/secret-scan.mjs --all      scan the working tree (CI)
@@ -8,13 +7,13 @@
 // placeholders like `whsec_...` in docs never trip it. Suppress a known-safe
 // line with `secret-scan:ignore` in a trailing comment.
 // Uses gitleaks instead when it's installed locally (better coverage).
-// All child-process calls use execFileSync with FIXED argument lists — no
+// All child-process calls use execFileSync with FIXED argument lists â€” no
 // shell, no interpolation.
 
 import { execFileSync } from "node:child_process"
 import { readFileSync } from "node:fs"
 
-/** [name, regex] — each must identify a REAL credential, not a placeholder. */
+/** [name, regex] â€” each must identify a REAL credential, not a placeholder. */
 export const SECRET_PATTERNS = [
   ["Clerk/Stripe-style live secret key", /\bsk_live_[A-Za-z0-9]{16,}/],
   ["Clerk/Stripe-style test secret key", /\bsk_test_[A-Za-z0-9]{16,}/],
@@ -68,7 +67,7 @@ function main() {
       execFileSync("gitleaks", ["version"], { stdio: "ignore" })
       hasGitleaks = true
     } catch {
-      /* not installed → use the built-in scanner */
+      /* not installed â†’ use the built-in scanner */
     }
     if (hasGitleaks) {
       try {
@@ -108,12 +107,12 @@ function main() {
   }
 
   if (findings.length > 0) {
-    console.error("✗ possible secrets detected — commit blocked:\n")
-    for (const f of findings) console.error(`  ${f.path}:${f.line}  →  ${f.name}`)
+    console.error("âœ— possible secrets detected â€” commit blocked:\n")
+    for (const f of findings) console.error(`  ${f.path}:${f.line}  â†’  ${f.name}`)
     console.error(`\nIf a line is a known-safe example, add a trailing "${IGNORE_MARK}" comment.`)
     process.exit(1)
   }
-  console.log(`✓ secret scan clean (${all ? "full tree" : "staged diff"})`)
+  console.log(`âœ“ secret scan clean (${all ? "full tree" : "staged diff"})`)
 }
 
 // Only run as a CLI (vitest imports the pure pieces above).
