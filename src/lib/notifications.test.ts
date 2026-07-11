@@ -6,8 +6,10 @@ import {
   resolveChannelEnabled,
   resolveAnyChannel,
   sanitizePreferences,
+  notificationRenderKeys,
   NOTIFICATION_CATEGORIES,
   NOTIFICATION_CHANNELS,
+  type NotificationKeyKind,
   type NotificationPreferences,
 } from "./notifications"
 
@@ -127,5 +129,70 @@ describe("sanitizePreferences", () => {
 
   it("omits categories entirely when nothing valid is present", () => {
     expect(sanitizePreferences({ categories: { junk: {} } })).toEqual({})
+  })
+})
+
+describe("notificationRenderKeys", () => {
+  // Simulates the en resource tree: bare type keys are objects, their members
+  // are strings — exactly the shape locale parity enforces.
+  const tree: Record<string, NotificationKeyKind> = {
+    "types.add_transaction_reminder": "object",
+    "types.add_transaction_reminder.title": "string",
+    "types.add_transaction_reminder.body": "string",
+    "types.role_changed.title": "string",
+    "types.role_changed.body": "string",
+    "types.admin_broadcast": "object",
+    "types.admin_broadcast.title": "string",
+  }
+  const kindOf = (key: string): NotificationKeyKind => tree[key] ?? "missing"
+
+  it("rewrites a legacy bare type key to its .title/.body members", () => {
+    expect(notificationRenderKeys({ i18nKey: "types.add_transaction_reminder" }, kindOf)).toEqual({
+      titleKey: "types.add_transaction_reminder.title",
+      bodyKey: "types.add_transaction_reminder.body",
+    })
+  })
+
+  it("keeps well-formed .title keys and derives the sibling .body", () => {
+    expect(notificationRenderKeys({ i18nKey: "types.role_changed.title" }, kindOf)).toEqual({
+      titleKey: "types.role_changed.title",
+      bodyKey: "types.role_changed.body",
+    })
+  })
+
+  it("prefers an explicit i18nBodyKey over any derivation", () => {
+    expect(
+      notificationRenderKeys(
+        { i18nKey: "types.add_transaction_reminder", i18nBodyKey: "types.role_changed.body" },
+        kindOf,
+      ),
+    ).toEqual({
+      titleKey: "types.add_transaction_reminder.title",
+      bodyKey: "types.role_changed.body",
+    })
+  })
+
+  it("never invents members that don't exist (object without .body)", () => {
+    expect(notificationRenderKeys({ i18nKey: "types.admin_broadcast" }, kindOf)).toEqual({
+      titleKey: "types.admin_broadcast.title",
+      bodyKey: null,
+    })
+  })
+
+  it("passes unknown keys through unchanged (defaultValue handles the fallback)", () => {
+    expect(notificationRenderKeys({ i18nKey: "types.unknown.title" }, kindOf)).toEqual({
+      titleKey: "types.unknown.title",
+      bodyKey: null,
+    })
+  })
+
+  it("handles empty/missing data", () => {
+    expect(notificationRenderKeys(null, kindOf)).toEqual({ titleKey: null, bodyKey: null })
+    expect(notificationRenderKeys({}, kindOf)).toEqual({ titleKey: null, bodyKey: null })
+    expect(notificationRenderKeys({ i18nKey: 42 }, kindOf)).toEqual({ titleKey: null, bodyKey: null })
+    expect(notificationRenderKeys({ i18nBodyKey: "types.role_changed.body" }, kindOf)).toEqual({
+      titleKey: null,
+      bodyKey: "types.role_changed.body",
+    })
   })
 })

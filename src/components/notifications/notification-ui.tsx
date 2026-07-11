@@ -1,8 +1,9 @@
 import type { ComponentType } from "react"
 import { Users, CreditCard, ArrowLeftRight, FileText, Bell } from "lucide-react"
 import type { TFunction } from "i18next"
+import i18n from "@/lib/i18n"
 import type { AppNotification } from "@/lib/types"
-import type { NotificationCategory } from "@/lib/notifications"
+import { notificationRenderKeys, type NotificationCategory, type NotificationKeyKind } from "@/lib/notifications"
 import { MoneyBag } from "@/components/icons/MoneyBag"
 
 // Category → icon + tone, used by the bell dropdown and the history page so a
@@ -61,22 +62,33 @@ export function openNotificationLink(n: AppNotification, navigate: (to: string) 
 
 // Title/body rendering: prefer the row's i18nKey (rendered in the user's
 // language) and fall back to the server-stored English title/body. The i18nKey
-// is namespaced under `notifications` (e.g. "types.member_invited").
+// is namespaced under `notifications` (e.g. "types.member_invited.title").
+// Stored keys are data — legacy rows carry the bare type key (an object in the
+// resource tree), so keys go through notificationRenderKeys, which checks the
+// `en` bundle (locale parity is CI-enforced, so `en` decides every language's
+// shape) and only addresses `.title`/`.body` members that actually exist.
+function resourceKind(key: string): NotificationKeyKind {
+  const v = i18n.getResource("en", "notifications", key)
+  if (typeof v === "string") return "string"
+  return v && typeof v === "object" ? "object" : "missing"
+}
+
 export function notificationTitle(n: AppNotification, t: TFunction): string {
-  const key = n.data?.i18nKey
-  if (key) {
+  const { titleKey } = notificationRenderKeys(n.data, resourceKind)
+  if (titleKey) {
     const params = (n.data?.i18nParams ?? {}) as Record<string, unknown>
-    const translated = t(key, { ns: "notifications", defaultValue: n.title, ...params })
-    if (translated) return translated
+    const translated = t(titleKey, { ns: "notifications", defaultValue: n.title, ...params })
+    if (typeof translated === "string" && translated) return translated
   }
   return n.title
 }
 
 export function notificationBody(n: AppNotification, t: TFunction): string {
-  const key = n.data?.i18nBodyKey as string | undefined
-  if (key) {
+  const { bodyKey } = notificationRenderKeys(n.data, resourceKind)
+  if (bodyKey) {
     const params = (n.data?.i18nParams ?? {}) as Record<string, unknown>
-    return t(key, { ns: "notifications", defaultValue: n.body, ...params })
+    const translated = t(bodyKey, { ns: "notifications", defaultValue: n.body, ...params })
+    if (typeof translated === "string" && translated) return translated
   }
   return n.body
 }
