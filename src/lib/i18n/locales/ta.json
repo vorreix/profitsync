@@ -38,7 +38,8 @@
     "recurring": "தொடர்",
     "calendar": "நாட்காட்டி",
     "flow": "பண ஓட்டம்",
-    "spaces": "ஸ்பேஸ்கள்"
+    "spaces": "ஸ்பேஸ்கள்",
+    "categoryTags": "வகை & குறிச்சொற்கள்"
   },
   "actions": {
     "addClient": "வாடிக்கையாளரைச் சேர்",
@@ -1523,5 +1524,14 @@
       "why": "It highlights where cash is entering, leaving, or getting concentrated.",
       "tip": "Use it with Net Profit to spot high-volume work with weak margins."
     }
+  },
+  "categoryTags": {
+    "title": "வகை & குறிச்சொற்கள்",
+    "subtitle": "வகைகள் மற்றும் குறிச்சொற்களுடன் உங்கள் பணத்தை ஒழுங்கமைக்கவும்",
+    "categoryTab": "வகைகள்",
+    "tagsTab": "குறிச்சொற்கள்"
+  },
+  "tags": {
+    "panelStub": "குறிச்சொல் மேலாண்மை விரைவில் இங்கே வரும்."
   }
 }

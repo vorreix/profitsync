@@ -38,7 +38,8 @@
     "recurring": "متكرر",
     "calendar": "التقويم",
     "flow": "تدفق الأموال",
-    "spaces": "مساحات الادخار"
+    "spaces": "مساحات الادخار",
+    "categoryTags": "الفئات والوسوم"
   },
   "actions": {
     "addClient": "إضافة عميل",
@@ -1523,5 +1524,14 @@
       "why": "It highlights where cash is entering, leaving, or getting concentrated.",
       "tip": "Use it with Net Profit to spot high-volume work with weak margins."
     }
+  },
+  "categoryTags": {
+    "title": "الفئات والوسوم",
+    "subtitle": "نظّم أموالك باستخدام الفئات والوسوم",
+    "categoryTab": "الفئات",
+    "tagsTab": "الوسوم"
+  },
+  "tags": {
+    "panelStub": "إدارة الوسوم ستتوفر هنا قريبًا."
   }
 }

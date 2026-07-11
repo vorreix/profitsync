@@ -38,7 +38,8 @@
     "recurring": "आवर्ती",
     "calendar": "कैलेंडर",
     "flow": "धन प्रवाह",
-    "spaces": "स्पेस"
+    "spaces": "स्पेस",
+    "categoryTags": "श्रेणी और टैग"
   },
   "actions": {
     "addClient": "ग्राहक जोड़ें",
@@ -1523,5 +1524,14 @@
       "why": "It highlights where cash is entering, leaving, or getting concentrated.",
       "tip": "Use it with Net Profit to spot high-volume work with weak margins."
     }
+  },
+  "categoryTags": {
+    "title": "श्रेणी और टैग",
+    "subtitle": "श्रेणियों और टैग के साथ अपने पैसे को व्यवस्थित करें",
+    "categoryTab": "श्रेणियाँ",
+    "tagsTab": "टैग"
+  },
+  "tags": {
+    "panelStub": "टैग प्रबंधन जल्द ही यहाँ आ रहा है।"
   }
 }

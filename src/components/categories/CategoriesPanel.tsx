@@ -36,7 +36,12 @@ const typeLabelKey = (t: CatType) =>
   : t === "client" ? "categories.client"
   : "categories.quotation"
 
-export function CategoriesPage() {
+/**
+ * Category management, extracted from the old standalone page so it can live
+ * inside the Category & Tags tabbed shell. The shell owns the page container +
+ * title; this panel provides only the toolbar, list and its dialogs.
+ */
+export function CategoriesPanel() {
   const { t } = useTranslation()
   const { getToken } = useAuth()
   const { activeOrg } = useOrg()
@@ -134,15 +139,12 @@ export function CategoriesPage() {
   }
 
   return (
-    <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
-      {/* Header */}
+    <div className="space-y-4">
+      {/* Toolbar */}
       <div className="flex items-center justify-between gap-2">
-        <div className="min-w-0">
-          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">{t("categories.title")}</h1>
-          <p className="text-sm text-muted-foreground mt-0.5 sm:mt-1">
-            {loading ? t("categories.loading") : t("categories.count", { count: categories.length })}
-          </p>
-        </div>
+        <p className="text-sm text-muted-foreground min-w-0 truncate">
+          {loading ? t("categories.loading") : t("categories.count", { count: categories.length })}
+        </p>
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           <ExpandableSearch value={search} onChange={setSearch} placeholder={t("categories.searchPlaceholder")} expandedClassName="w-36 sm:w-64" />
           <FilterSheet count={appliedCount} onClear={() => { setTypeFilter("all"); setSort("name_asc") }}>

@@ -29,7 +29,7 @@ const WealthPage = lazy(() => import("@/pages/WealthPage").then((m) => ({ defaul
 const WealthAccountDetailPage = lazy(() => import("@/pages/WealthAccountDetailPage").then((m) => ({ default: m.WealthAccountDetailPage })))
 const SpacesPage = lazy(() => import("@/pages/SpacesPage").then((m) => ({ default: m.SpacesPage })))
 const SpaceDetailPage = lazy(() => import("@/pages/SpaceDetailPage").then((m) => ({ default: m.SpaceDetailPage })))
-const CategoriesPage = lazy(() => import("@/pages/CategoriesPage").then((m) => ({ default: m.CategoriesPage })))
+const CategoryTagsPage = lazy(() => import("@/pages/CategoryTagsPage").then((m) => ({ default: m.CategoryTagsPage })))
 const BudgetsPage = lazy(() => import("@/pages/BudgetsPage").then((m) => ({ default: m.BudgetsPage })))
 const BudgetDetailPage = lazy(() => import("@/pages/BudgetDetailPage").then((m) => ({ default: m.BudgetDetailPage })))
 const AnalyticsPage = lazy(() => import("@/pages/AnalyticsPage").then((m) => ({ default: m.AnalyticsPage })))
@@ -216,7 +216,7 @@ export function App() {
             <Route path="spaces" element={<PersonalOnlyRoute feature="spaces"><SpacesPage /></PersonalOnlyRoute>} />
             <Route path="spaces/:id" element={<PersonalOnlyRoute feature="spaces"><SpaceDetailPage /></PersonalOnlyRoute>} />
             <Route path="analytics" element={<AnalyticsPage />} />
-            <Route path="categories" element={<CategoriesPage />} />
+            <Route path="categories" element={<CategoryTagsPage />} />
             <Route path="budgets" element={<BudgetsPage />} />
             <Route path="budgets/:key" element={<BudgetDetailPage />} />
             <Route path="referrals" element={<ReferralPage />} />
