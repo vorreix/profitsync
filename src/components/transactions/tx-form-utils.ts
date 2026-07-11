@@ -9,6 +9,9 @@ export type TxForm = {
   type: "incoming" | "outgoing"
   description: string
   category: string
+  // Committed tags + the free-typed draft (committed on Enter/comma/blur/save).
+  tags: string[]
+  tag_draft: string
   date: string
 }
 
@@ -18,6 +21,8 @@ export const defaultTxForm = (): TxForm => ({
   type: "incoming",
   description: "",
   category: "",
+  tags: [],
+  tag_draft: "",
   date: new Date().toISOString().split("T")[0],
 })
 
