@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react"
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react"
 import { useAuth } from "@clerk/clerk-react"
 import { apiGet } from "@/lib/api"
 import { type AdminCapability } from "@/lib/admin-roles"
@@ -62,14 +62,20 @@ export function AdminProvider({ children }: { children: ReactNode }) {
   }, [getToken, isSignedIn])
 
   // Membership in the SERVER-resolved capability set (covers custom roles —
-  // the static role→caps map only knows the built-in roles).
-  const can = (cap: AdminCapability) => caps.includes(cap)
-
-  return (
-    <AdminContext.Provider value={{ isAdmin: role !== null, role, caps, can, loading }}>
-      {children}
-    </AdminContext.Provider>
+  // the static role→caps map only knows the built-in roles). Memoized so
+  // consumers only re-render when the resolved admin state actually changes.
+  const value = useMemo<AdminContextValue>(
+    () => ({
+      isAdmin: role !== null,
+      role,
+      caps,
+      can: (cap: AdminCapability) => caps.includes(cap),
+      loading,
+    }),
+    [role, caps, loading],
   )
+
+  return <AdminContext.Provider value={value}>{children}</AdminContext.Provider>
 }
 
 export const useAdmin = () => useContext(AdminContext)

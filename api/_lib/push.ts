@@ -11,7 +11,7 @@
 import type * as WebPushType from "web-push"
 import { and, eq } from "drizzle-orm"
 import { db } from "../../src/lib/db/index.js"
-import { pushSubscriptions } from "../../src/lib/db/schema.js"
+import { pushEvents, pushSubscriptions } from "../../src/lib/db/schema.js"
 
 export type PushPayload = { title: string; body?: string; url?: string; tag?: string; image?: string }
 
@@ -57,10 +57,47 @@ async function getWebPush(): Promise<typeof WebPushType> {
 }
 
 /**
+ * Persist the outcome of a fan-out so admins can see whether pushes go out and
+ * why they fail (push_events, surfaced in /admin → Worker). Fire-and-forget:
+ * logging can never affect delivery.
+ */
+function logPushEvent(userId: string, source: string, r: PushSendResult): void {
+  const outcome = !r.configured
+    ? "unconfigured"
+    : r.subscriptions === 0
+      ? "no_subs"
+      : r.failed === 0 && r.ok > 0
+        ? "ok"
+        : r.ok > 0
+          ? "partial"
+          : "failed"
+  void db
+    .insert(pushEvents)
+    .values({
+      userId,
+      source,
+      outcome,
+      subscriptions: r.subscriptions,
+      ok: r.ok,
+      failed: r.failed,
+      pruned: r.pruned,
+      errors: r.errors.join(",").slice(0, 300),
+    })
+    .catch(() => {})
+}
+
+/**
  * Send a push to every web_push subscription a user has registered. Dead
  * endpoints (404/410) are pruned. Never throws — push is best-effort.
+ * `source` (a notification type, or "test") is recorded in the push_events log.
  */
-export async function sendWebPushToUser(userId: string, payload: PushPayload): Promise<PushSendResult> {
+export async function sendWebPushToUser(userId: string, payload: PushPayload, source = ""): Promise<PushSendResult> {
+  const result = await doSendWebPush(userId, payload)
+  logPushEvent(userId, source, result)
+  return result
+}
+
+async function doSendWebPush(userId: string, payload: PushPayload): Promise<PushSendResult> {
   const result: PushSendResult = { configured: true, subscriptions: 0, ok: 0, failed: 0, pruned: 0, errors: [] }
   if (!isWebPushConfigured()) {
     console.warn("[push] skipped: VAPID not configured (set VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY)")
