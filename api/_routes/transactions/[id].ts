@@ -58,7 +58,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .from(transactions)
       .innerJoin(clients, eq(transactions.clientId, clients.id))
       .leftJoin(wealthAccounts, eq(transactions.wealthAccountId, wealthAccounts.id))
-      .where(eq(transactions.id, id))
+      // Org scope is redundant with the ownership check above (client_id is
+      // immutable), but re-asserting it keeps this enrichment query self-defending.
+      .where(and(eq(transactions.id, id), eq(clients.organizationId, orgId)))
     if (!tx) return res.status(404).json({ error: "Not found" })
 
     // For a split (group), surface the group totals the modal needs to show the

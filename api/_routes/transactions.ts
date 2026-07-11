@@ -331,9 +331,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method === "POST") {
     if (!canWrite(role)) return res.status(403).json({ error: "Forbidden" })
-    const { client_id, type, amount, description, category, tags, date, wealth_account_id, is_system } = req.body as {
+    const { client_id, type, amount, description, category, tags, date, wealth_account_id } = req.body as {
       client_id: string; type: string; amount: number
-      description?: string; category?: string; tags?: unknown; date?: string; wealth_account_id?: string; is_system?: boolean
+      description?: string; category?: string; tags?: unknown; date?: string; wealth_account_id?: string
     }
 
     if (!amount || isNaN(Number(amount))) return res.status(400).json({ error: "amount is required" })
@@ -385,7 +385,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         category: category ?? "",
         tags: cleanedTags,
         date: date ?? today,
-        isSystem: !!is_system,
+        // isSystem is server-only: user-created transactions are never system rows.
         createdBy: userId,
         updatedBy: userId,
       })
