@@ -1,10 +1,13 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
+import { eq } from "drizzle-orm"
+import { db, serialize } from "../../../src/lib/db/index.js"
+import { notificationSchedulerState } from "../../../src/lib/db/schema.js"
 import { requireAdminCap } from "../../_lib/admin.js"
 
 // Admin-only proxy to the background worker's observability API. The worker's
 // bearer token (WORKER_API_TOKEN) is held server-side and NEVER sent to the
 // browser; the worker need not be publicly exposed beyond this egress.
-//   GET  /api/admin/worker            → { configured, reachable, counts, jobs, schedules, schedulesSupported }
+//   GET  /api/admin/worker            → { configured, reachable, counts, jobs, schedules, schedulesSupported, heartbeat }
 //   POST /api/admin/worker {action,id} → retry | cancel a job | register-notifications
 const BASE = process.env.WORKER_BASE_URL
 const TOKEN = process.env.WORKER_API_TOKEN
@@ -61,11 +64,28 @@ async function workerFetch(
   }
 }
 
+// The scheduler-tick heartbeat lives in OUR db (written by runNotificationTick),
+// so it is readable even when the worker itself is down or unconfigured — that
+// is the whole point: it proves whether ANY driver (worker or the fallback
+// cron) is actually ticking. Best-effort: never let it break the panel.
+async function tickHeartbeat(): Promise<Record<string, unknown> | null> {
+  try {
+    const [row] = await db
+      .select()
+      .from(notificationSchedulerState)
+      .where(eq(notificationSchedulerState.id, "default"))
+    return row ? serialize(row) : null
+  } catch {
+    return null
+  }
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === "GET") {
     const ctx = await requireAdminCap(req, res, "read")
     if (!ctx) return
-    if (!configured()) return res.json({ configured: false, reachable: false, counts: {}, jobs: [], schedules: [], schedulesSupported: false })
+    const heartbeat = await tickHeartbeat()
+    if (!configured()) return res.json({ configured: false, reachable: false, counts: {}, jobs: [], schedules: [], schedulesSupported: false, heartbeat })
     try {
       const status = single(req.query.status)
       const type = single(req.query.type)
@@ -79,7 +99,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           () => ({ ok: false, status: 0, json: {} as Record<string, unknown> }),
         ),
       ])
-      if (!stats.ok || !jobs.ok) return res.status(502).json({ configured: true, reachable: false, counts: {}, jobs: [], schedules: [], schedulesSupported: false })
+      // Status reports return 200 even when the worker is down — a 502 makes the
+      // client's apiGet throw and DROP the payload, hiding the tick heartbeat
+      // exactly when it matters most (worker outage).
+      if (!stats.ok || !jobs.ok) return res.json({ configured: true, reachable: false, counts: {}, jobs: [], schedules: [], schedulesSupported: false, heartbeat })
       return res.json({
         configured: true,
         reachable: true,
@@ -87,9 +110,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         jobs: jobs.json.jobs ?? [],
         schedules: schedules.ok ? (schedules.json.schedules ?? []) : [],
         schedulesSupported: schedules.ok,
+        heartbeat,
       })
     } catch {
-      return res.status(502).json({ configured: true, reachable: false, counts: {}, jobs: [], schedules: [], schedulesSupported: false })
+      return res.json({ configured: true, reachable: false, counts: {}, jobs: [], schedules: [], schedulesSupported: false, heartbeat })
     }
   }
 

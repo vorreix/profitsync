@@ -81,7 +81,7 @@ relevant only if native mobile apps ship; the channel model
 | `feat/maqbool-01-notif-i18n` | Fix reminder i18n keys + defensive render for existing prod rows + call-site sweep + unit tests | — | ✅ pushed (unit-tested; legacy-row render verified in browser) |
 | `feat/maqbool-02-bell-ux` | Bell layout fix (footer overlap) + instant cached open + design/animation polish + mobile drawer | — | ✅ pushed (Playwright-verified 1280px + 390px) |
 | `feat/maqbool-03-admin-bootstrap` | ROOT_ADMIN_EMAILS docs + ops (env set in prod/dev/preview ✅; prod redeploy at wave end) | — | ✅ pushed |
-| `feat/maqbool-04-scheduler-reliability` | Tick heartbeat + admin diagnostics + stale detection + auto-repair + GitHub Actions fallback pinger | 0046 | ⏳ |
+| `feat/maqbool-04-scheduler-reliability` | Tick heartbeat + admin diagnostics + stale detection + auto-repair + GitHub Actions fallback pinger | 0046 | ✅ pushed (tick+heartbeat verified vs dev DB; healthy + stale panel states Playwright-verified; found & fixed the 502-drops-heartbeat bug) |
 | `feat/maqbool-05-push-hardening` | push_events outcome log + `pushsubscriptionchange` SW listener + diagnostics surfacing + decision doc | 0047 | ⏳ |
 | `feat/maqbool-06-db-perf` | Verified indexes + over-fetch trims (EXPLAIN-checked on dev DB) | 0048 | ⏳ |
 | `feat/maqbool-07-ui-perf` | Context memoization + row memo + auto-animate + lazy locales + motion-reduce sweep | — | ⏳ |

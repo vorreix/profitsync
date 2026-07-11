@@ -252,24 +252,31 @@ export function requireBusinessFeature(
 
 /**
  * Guard for server-to-server (worker / scheduler) endpoints. Verifies the
- * `Authorization: Bearer <token>` matches `PROFITSYNC_SERVICE_TOKEN` using a
- * constant-time compare (no early-out on length/content, to avoid leaking the
- * secret via timing). Used by the worker-driven cron (POST /api/cron/*); the
- * browser never holds this token. Returns true on success, otherwise writes a
- * 401/503 and returns false.
+ * `Authorization: Bearer <token>` matches `PROFITSYNC_SERVICE_TOKEN` — or
+ * `CRON_FALLBACK_TOKEN`, a second accepted token so an external pinger (the
+ * GitHub Actions fallback cron) can drive /api/cron/* without sharing or
+ * rotating the worker's token — using a constant-time compare (no early-out on
+ * length/content, to avoid leaking the secret via timing). The browser never
+ * holds these tokens. Returns true on success, otherwise writes a 401/503 and
+ * returns false.
  */
 export function requireServiceToken(req: VercelRequest, res: VercelResponse): boolean {
-  const expected = process.env.PROFITSYNC_SERVICE_TOKEN
-  if (!expected) {
+  const expected = [process.env.PROFITSYNC_SERVICE_TOKEN, process.env.CRON_FALLBACK_TOKEN].filter(
+    (t): t is string => !!t,
+  )
+  if (expected.length === 0) {
     res.status(503).json({ error: "Service token not configured" })
     return false
   }
   const provided = req.headers.authorization?.replace("Bearer ", "") ?? ""
   const a = Buffer.from(provided)
-  const b = Buffer.from(expected)
   // timingSafeEqual throws on length mismatch — guard it, but still do the compare
   // on equal-length inputs so the timing doesn't reveal whether the length matched.
-  const ok = a.length === b.length && timingSafeEqual(a, b)
+  // `some` compares every candidate the same way (at most two).
+  const ok = expected.some((token) => {
+    const b = Buffer.from(token)
+    return a.length === b.length && timingSafeEqual(a, b)
+  })
   if (!ok) {
     res.status(401).json({ error: "Unauthorized" })
     return false

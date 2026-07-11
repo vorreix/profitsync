@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { useAuth } from "@clerk/clerk-react"
 import { apiGet, apiPost } from "@/lib/api"
 import { useAdmin } from "@/lib/admin-context"
@@ -30,6 +30,11 @@ type ScheduleView = {
   last_run_at: string | null
   updated_at: string
 }
+type TickHeartbeat = {
+  last_tick_at: string
+  last_reminders: number
+  last_broadcasts: number
+}
 type WorkerData = {
   configured: boolean
   reachable: boolean
@@ -37,7 +42,12 @@ type WorkerData = {
   jobs: JobView[]
   schedules: ScheduleView[]
   schedulesSupported: boolean
+  heartbeat?: TickHeartbeat | null
 }
+
+// The tick runs every ~5 min; past this gap the scheduler is presumed dead
+// (worker down AND no fallback pinger reaching /api/cron/notifications).
+const TICK_STALE_MINUTES = 15
 
 // The schedule that drives reminders + scheduled/recurring broadcasts. If it's
 // missing, timed notifications never fire (the worker is a clock with no alarm).
@@ -116,6 +126,23 @@ export function AdminWorkerPage() {
   const dispatchMissing =
     !!data?.schedulesSupported && !data.schedules.some((s) => s.name === DISPATCH_SCHEDULE && s.enabled)
 
+  // Self-heal: a worker redeploy can wipe its schedule table (the June'26
+  // outage). If the worker is reachable but the dispatch schedule is missing,
+  // re-register it automatically on panel load — once, not in a loop.
+  const autoRepaired = useRef(false)
+  useEffect(() => {
+    if (!canManage || autoRepaired.current) return
+    if (data?.reachable && data.schedulesSupported && dispatchMissing) {
+      autoRepaired.current = true
+      void repairSchedule()
+    }
+  }, [data, dispatchMissing, canManage, repairSchedule])
+
+  const tickAgeMinutes = data?.heartbeat
+    ? Math.max(0, Math.floor((Date.now() - new Date(data.heartbeat.last_tick_at).getTime()) / 60_000))
+    : null
+  const tickStale = tickAgeMinutes !== null && tickAgeMinutes > TICK_STALE_MINUTES
+
   return (
     <div className="p-3 sm:p-6 space-y-6">
       <div className="flex items-start justify-between gap-3">
@@ -129,6 +156,40 @@ export function AdminWorkerPage() {
           <RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} /> Refresh
         </Button>
       </div>
+
+      {/* Tick heartbeat — from OUR db, so it renders even when the worker is
+          down/unconfigured. This is the "are notifications actually firing"
+          signal that was missing during the June'26 silent outage. */}
+      {data && (
+        <Card className="p-4">
+          {!data.heartbeat ? (
+            <p className="flex items-center gap-2 text-sm text-muted-foreground">
+              <AlertTriangle className="size-4 text-amber-500" />
+              No notification tick recorded yet — the scheduler has never run against this database (or predates heartbeat tracking).
+            </p>
+          ) : tickStale ? (
+            <div className="flex items-start gap-2 text-sm">
+              <AlertTriangle className="mt-0.5 size-4 shrink-0 text-rose-500" />
+              <div>
+                <p className="font-medium text-rose-600 dark:text-rose-400">
+                  Notification scheduler looks DOWN — last tick {tickAgeMinutes! >= 120 ? `${Math.floor(tickAgeMinutes! / 60)}h` : `${tickAgeMinutes}m`} ago.
+                </p>
+                <p className="mt-0.5 text-muted-foreground">
+                  Reminders and scheduled broadcasts are not firing. Check the worker below (and the GitHub Actions fallback cron), or use “Run due now” in the Broadcast studio.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <p className="flex items-center gap-2 text-sm text-emerald-600 dark:text-emerald-400">
+              <CheckCircle2 className="size-4" />
+              Notification tick healthy — last ran {tickAgeMinutes === 0 ? "under a minute" : `${tickAgeMinutes}m`} ago
+              <span className="text-muted-foreground">
+                · {data.heartbeat.last_reminders} reminder{data.heartbeat.last_reminders === 1 ? "" : "s"}, {data.heartbeat.last_broadcasts} broadcast{data.heartbeat.last_broadcasts === 1 ? "" : "s"} on that tick
+              </span>
+            </p>
+          )}
+        </Card>
+      )}
 
       {loading && !data ? (
         <Skeleton className="h-40 w-full" />
