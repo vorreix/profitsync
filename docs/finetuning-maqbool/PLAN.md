@@ -89,7 +89,7 @@ relevant only if native mobile apps ship; the channel model
 | `feat/maqbool-04-scheduler-reliability` | Tick heartbeat + admin diagnostics + stale detection + auto-repair + GitHub Actions fallback pinger | 0046 | ✅ pushed (tick+heartbeat verified vs dev DB; healthy + stale panel states Playwright-verified; found & fixed the 502-drops-heartbeat bug) |
 | `feat/maqbool-05-push-hardening` | push_events outcome log + `pushsubscriptionchange` SW listener + rotate endpoint + diagnostics surfacing + decision doc | 0047 | ✅ pushed (rotate endpoint curl-tested; event logging verified vs dev DB) |
 | `feat/maqbool-06-db-perf` | Indexes: `transaction_attachments(tx)`, `quotation_attachments(quotation)`, `transactions(client,date)`, `org_members(org,user)` (redundant left-prefix singles dropped) + attachment routes never load base64 except on download | 0048 | ✅ pushed (indexes confirmed in pg_indexes; dev-DB EXPLAIN still seq-scans at toy size — win is at prod scale; honest note) |
-| `feat/maqbool-07-ui-perf` | Context memoization + row memo + auto-animate + lazy locales + motion-reduce sweep | — | ⏳ |
+| `feat/maqbool-07-ui-perf` | Currency/Admin context memoization + memo'd TransactionRow (latest-ref callbacks) + auto-animate list + lazy-loaded locales (~580 KB off boot) | — | ✅ pushed (Playwright: add/delete in place, Italian+Arabic lazy load w/ RTL, chunk-cycle grep clean) |
 
 > Migration numbering: `dev` head is 0045. The unmerged `feat/family-*` chain also
 > claims 0046 — whichever chain merges second must renumber (journal `when` +
@@ -166,14 +166,28 @@ active/selected locale, `addResourceBundle`, then `changeLanguage`); targeted
 
 ## Ops runbook (executed at wave end; honest status recorded)
 
-1. `vercel env add ROOT_ADMIN_EMAILS production` → `maqboolthoufeeq.t@gmail.com` — [ ]
-2. `vercel env add CRON_FALLBACK_TOKEN production` → generated secret — [ ]
-3. GitHub repo secret `PROFITSYNC_CRON_TOKEN` = same value — **operator step** — [ ]
-4. Prod redeploy (env changes take effect on next deployment) — [ ]
-5. Restart/verify the Go worker on its host + confirm schedule registered from the
-   admin panel (operator; panel now shows staleness + auto-repairs) — [ ]
+1. `vercel env add ROOT_ADMIN_EMAILS production` → `maqboolthoufeeq.t@gmail.com` — [x] done
+   (also present in Development — it already was — and added to Preview)
+2. `vercel env add CRON_FALLBACK_TOKEN production` → generated secret — [x] done
+   (value delivered to the operator in the wave summary; not committed anywhere)
+3. GitHub repo secret `PROFITSYNC_CRON_TOKEN` = same value — **operator step, still
+   open** (gh CLI is not authenticated on this machine; the workflow no-ops
+   harmlessly until the secret exists) — [ ]
+4. Prod redeploy so the env vars take effect (same code, new env) — [x] done
+5. Restart/verify the Go worker on its host; the admin panel now shows the tick
+   heartbeat, warns when stale, and auto-re-registers a missing schedule —
+   **operator step** (needs SSH to the worker host) — [ ]
 
 ## Change log
 
 - 2026-07-11 — Wave started: research (6-agent workflow) + adversarial verification
   complete; plan committed on `feat/maqbool-00-plan`.
+- 2026-07-11 — All 8 branches implemented, verified and pushed. Test data
+  (Clerk dev user, seeded notifications, temp admin row, test transaction)
+  fully cleaned from the dev DB. Observed in passing: `clients.organization_id`
+  does NOT cascade on org delete (one orphaned client found + removed) — worth a
+  follow-up FK review, deliberately not changed in this wave.
+- Merge order: `feat/maqbool-00-plan` → … → `feat/maqbool-07-ui-perf` into `dev`
+  (each branch contains all previous ones). Migrations 0046–0048 auto-apply on
+  deploy; if the unmerged `feat/family-*` chain (which claims 0046) merges after
+  this wave, IT must renumber.
