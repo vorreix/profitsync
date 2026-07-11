@@ -1,1 +1,5 @@
 worker/
+
+# Native app project — never needed in a Vercel (web) build.
+/android
+/ios
