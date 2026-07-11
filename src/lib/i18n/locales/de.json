@@ -831,7 +831,15 @@
     "deleteFailed": "Fehler beim Löschen der Kategorie",
     "deleteTitle": "Kategorie löschen?",
     "deleteBody": "\"{{name}}\" wird aus Ihrer Kategorienliste entfernt. Bestehende Transaktionen behalten ihr Label.",
-    "renameHint": "Das Umbenennen aktualisiert auch das Label für übereinstimmende Transaktionen."
+    "renameHint": "Das Umbenennen aktualisiert auch das Label für übereinstimmende Transaktionen.",
+    "appliesTo": "Gilt für",
+    "appliesToHint": "Wähle, in welchen Listen diese Kategorie erscheint.",
+    "selectTypeRequired": "Wähle mindestens einen Typ",
+    "color": "Farbe",
+    "colorNone": "Keine Farbe",
+    "nameExists": "Eine Kategorie mit diesem Namen existiert bereits",
+    "viewEntities": "Einträge in {{name}} anzeigen",
+    "dialogDescription": "Fasse Einnahmen, Ausgaben, Kunden und Angebote unter einem Namen zusammen."
   },
   "attachments": {
     "attachments": "Anhänge",
@@ -1533,5 +1541,16 @@
   },
   "tags": {
     "panelStub": "Die Tag-Verwaltung kommt bald hierher."
+  },
+  "drilldown": {
+    "loading": "Wird geladen…",
+    "itemCount_one": "{{count}} Eintrag",
+    "itemCount_other": "{{count}} Einträge",
+    "empty": "Nichts entspricht diesen Filtern.",
+    "sortNewest": "Neueste",
+    "sortOldest": "Älteste",
+    "sortAmountHigh": "Höchster Betrag",
+    "sortAmountLow": "Niedrigster Betrag",
+    "sortName": "Name"
   }
 }

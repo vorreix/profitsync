@@ -264,6 +264,7 @@
     "addCategory": "Add Category",
     "newShort": "New",
     "editCategory": "Edit Category",
+    "dialogDescription": "Group income, expenses, clients and quotations under one name.",
     "name": "Name",
     "namePlaceholder": "e.g. Software, Salary, Retainer",
     "nameRequired": "Name is required",
@@ -290,7 +291,25 @@
     "deleteFailed": "Failed to delete category",
     "deleteTitle": "Delete category?",
     "deleteBody": "\"{{name}}\" will be removed from your category list. Existing transactions keep their label.",
-    "renameHint": "Renaming also updates the label on matching transactions."
+    "renameHint": "Renaming also updates the label on matching transactions.",
+    "appliesTo": "Applies to",
+    "appliesToHint": "Pick which lists this category appears in.",
+    "selectTypeRequired": "Select at least one type",
+    "color": "Color",
+    "colorNone": "No color",
+    "nameExists": "A category with that name already exists",
+    "viewEntities": "View items in {{name}}"
+  },
+  "drilldown": {
+    "loading": "Loading…",
+    "itemCount_one": "{{count}} item",
+    "itemCount_other": "{{count}} items",
+    "empty": "Nothing matches these filters yet.",
+    "sortNewest": "Newest",
+    "sortOldest": "Oldest",
+    "sortAmountHigh": "Highest amount",
+    "sortAmountLow": "Lowest amount",
+    "sortName": "Name"
   },
   "attachments": {
     "attachments": "Attachments",

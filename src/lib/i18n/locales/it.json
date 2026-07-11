@@ -831,7 +831,15 @@
     "deleteFailed": "Impossibile eliminare la categoria",
     "deleteTitle": "Eliminare la categoria?",
     "deleteBody": "\"{{name}}\" verrà rimossa dall'elenco categorie. Le transazioni esistenti mantengono l'etichetta.",
-    "renameHint": "Rinominare aggiorna anche l'etichetta sulle transazioni corrispondenti."
+    "renameHint": "Rinominare aggiorna anche l'etichetta sulle transazioni corrispondenti.",
+    "appliesTo": "Si applica a",
+    "appliesToHint": "Scegli in quali elenchi appare questa categoria.",
+    "selectTypeRequired": "Seleziona almeno un tipo",
+    "color": "Colore",
+    "colorNone": "Nessun colore",
+    "nameExists": "Esiste già una categoria con quel nome",
+    "viewEntities": "Vedi elementi in {{name}}",
+    "dialogDescription": "Raggruppa entrate, spese, clienti e preventivi sotto un unico nome."
   },
   "attachments": {
     "attachments": "Allegati",
@@ -1533,5 +1541,16 @@
   },
   "tags": {
     "panelStub": "La gestione dei tag arriverà qui a breve."
+  },
+  "drilldown": {
+    "loading": "Caricamento…",
+    "itemCount_one": "{{count}} elemento",
+    "itemCount_other": "{{count}} elementi",
+    "empty": "Nessun risultato per questi filtri.",
+    "sortNewest": "Più recenti",
+    "sortOldest": "Meno recenti",
+    "sortAmountHigh": "Importo più alto",
+    "sortAmountLow": "Importo più basso",
+    "sortName": "Nome"
   }
 }
