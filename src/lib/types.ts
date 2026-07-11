@@ -53,6 +53,19 @@ export type Tag = {
   updated_at: string
 }
 
+// One row from GET /api/tags: a registry tag merged with its live per-entity usage
+// counts. `id` is null for an inline tag that exists on entities but has no registry
+// row yet (materialize one via POST before editing/deleting it).
+export type TagUsage = {
+  id: string | null
+  name: string
+  color: string
+  transactions: number
+  clients: number
+  quotations: number
+  total: number
+}
+
 // The entity kinds a tag/category drilldown can surface.
 export type TaggableEntityType = "transaction" | "client" | "quotation"
 
