@@ -1434,6 +1434,15 @@
         "title": "فشل الدفع",
         "body": "لم نتمكن من معالجة آخر دفعة لك. حدث بيانات الفواتير للحفاظ على Premium."
       },
+      "payment_succeeded": {
+        "title": "تم استلام الدفعة",
+        "body": "تمت عملية دفع {{amount}} بنجاح."
+      },
+      "subscription_changed": {
+        "title": "تم تحديث الاشتراك",
+        "body_active": "مؤسستك الآن على خطة {{plan}}.",
+        "body_cancelled": "تم إلغاء اشتراك {{plan}} الخاص بك."
+      },
       "budget_exceeded": {
         "title": "تجاوز الميزانية",
         "body": "تجاوزت {{name}} ميزانية {{period}}."

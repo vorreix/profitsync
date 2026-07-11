@@ -1496,6 +1496,15 @@
         "title": "Payment failed",
         "body": "We couldn't process your latest payment. Update your billing to keep Premium."
       },
+      "payment_succeeded": {
+        "title": "Payment received",
+        "body": "Your {{amount}} payment was successful."
+      },
+      "subscription_changed": {
+        "title": "Subscription updated",
+        "body_active": "Your organization is now on {{plan}}.",
+        "body_cancelled": "Your {{plan}} subscription was cancelled."
+      },
       "budget_exceeded": {
         "title": "Budget exceeded",
         "body": "{{name}} has gone over its {{period}} budget."
