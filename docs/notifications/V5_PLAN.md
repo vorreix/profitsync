@@ -32,7 +32,7 @@ Status: **in progress** · Started 2026-07-11 · Chain root: `feat/notif5-00-pla
 | 01 | `feat/notif5-01-events-billing` | `payment_succeeded` + `subscription_changed` fired from webhook AND reconcile (+ admin transitions) | ✅ pushed |
 | 02 | `feat/notif5-02-events-team` | `member_invited` (admins), org-wide join fan-out, `quotation_accepted` | ✅ pushed |
 | 03 | `feat/notif5-03-events-money` | `budget_warning` @80%, `recurring_posted`, `referral_credited`/`referral_payout` (new types) | ✅ pushed |
-| 04 | `feat/notif5-04-fcm-server` | FCM HTTP v1 sender (node:crypto JWT, lazy, no-op w/o env), channel-aware `POST /api/notifications/push`, `mobile_push` preference channel | ⏳ |
+| 04 | `feat/notif5-04-fcm-server` | FCM HTTP v1 sender (node:crypto JWT, no-op w/o env), channel-aware `POST /api/notifications/push`, `mobile_push` preference channel + 3-column prefs UI | ✅ pushed |
 | 05 | `feat/notif5-05-fcm-client` | `@capacitor-firebase/messaging`, native token registration, Mobile-push toggle UI, conditional gradle wiring, docs | ⏳ |
 | 06 | `feat/notif5-06-reliability` | GH tick workflow fails loud on stale heartbeat, worker-deploy schedule registration, rate-limit on subscription POST, ops checklist | ⏳ |
 
@@ -184,3 +184,20 @@ Status: **in progress** · Started 2026-07-11 · Chain root: `feat/notif5-00-pla
   synthetic org (credit once / notify once / replay silent; cleaned up).
   recurring_posted verified by typecheck + pattern-parity with space_autosaved
   (materializer setup too heavy for a throwaway test — noted honestly).
+- 2026-07-12 (04): FCM server channel. `mobile_push` joined NOTIFICATION_CHANNELS
+  (defaults mirror web_push: on for team/billing/budget; sanitize/cascade pick it
+  up structurally). `api/_lib/push-fcm.ts`: FCM HTTP v1 sender with a hand-rolled
+  RS256 service-account JWT via node:crypto (NO new dependency), env
+  `FCM_SERVICE_ACCOUNT_JSON` (raw or base64 JSON), ~1h token cache keyed by
+  client_email, dead-token pruning (404/UNREGISTERED/INVALID_ARGUMENT), outcomes
+  logged to push_events with an `fcm:` source prefix. createNotification resolves
+  web_push and mobile_push INDEPENDENTLY and fans out to both senders.
+  POST /api/notifications/push accepts `channel:"fcm"` (device token in
+  endpoint, keys empty — schema already defaulted them). Prefs UI: the grid is
+  now channel-driven (In-app | Web | Phone, `settings.channel_mobile_push` ×8;
+  channel_push relabelled "Web"); the simplified per-client form drives all
+  three channels together. Committed DB-free tests: SA parsing (raw/base64/
+  garbage), JWT verified against a throwaway RSA keypair (claims + signature),
+  unconfigured no-op. Browser-verified on :3001: 3-column grid renders with
+  correct defaults, and a Phone toggle round-trips through PUT→sanitize→DB
+  (`mobile_push:true` persisted, then test data reverted).

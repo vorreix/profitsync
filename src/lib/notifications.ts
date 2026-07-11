@@ -22,9 +22,12 @@ export type NotificationCategory = (typeof NOTIFICATION_CATEGORIES)[number]
 
 // ── Channels ─────────────────────────────────────────────────────────────────
 // `in_app` is always delivered (the bell + history). `web_push` is the optional
-// PWA/browser push enhancement. Future native channels (fcm/apns for
-// android/ios/wearables) extend this list without any data-model change.
-export const NOTIFICATION_CHANNELS = ["in_app", "web_push"] as const
+// PWA/browser push enhancement. `mobile_push` is the native-app push toggle —
+// ONE user-facing switch covering the device transports (FCM today, and FCM
+// wraps APNs when the iOS shell lands), mapping to push_subscriptions rows with
+// channel='fcm'. Preference channels are user intent; subscription channels are
+// transports.
+export const NOTIFICATION_CHANNELS = ["in_app", "web_push", "mobile_push"] as const
 export type NotificationChannel = (typeof NOTIFICATION_CHANNELS)[number]
 
 // ── Type registry ────────────────────────────────────────────────────────────
@@ -80,7 +83,7 @@ const DEFAULT_PUSH_ON: ReadonlySet<NotificationCategory> = new Set(["team", "bil
 
 export function defaultChannelEnabled(category: NotificationCategory, channel: NotificationChannel): boolean {
   if (channel === "in_app") return true
-  if (channel === "web_push") return DEFAULT_PUSH_ON.has(category)
+  if (channel === "web_push" || channel === "mobile_push") return DEFAULT_PUSH_ON.has(category)
   return false
 }
 

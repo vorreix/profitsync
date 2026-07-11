@@ -20,6 +20,7 @@ import {
 } from "../../src/lib/notifications.js"
 import type { NotificationData } from "../../src/lib/types.js"
 import { sendWebPushToUser } from "./push.js"
+import { sendFcmToUser } from "./push-fcm.js"
 
 export type CreateNotificationInput = {
   /** Recipient (Clerk userId). */
@@ -106,12 +107,15 @@ export async function createNotification(input: CreateNotificationInput): Promis
   const category = input.category ?? categoryForType(input.type)
   const cascade = await loadPreferenceCascade(input.userId, input.organizationId, input.clientId)
 
-  // in_app controls persistence (the bell/history); web_push controls whether we
-  // also deliver a browser/PWA push — both resolved from the same cascade. An
-  // `important` notification (admin broadcast) bypasses the cascade entirely so a
-  // muted recipient still gets it (at minimum in the bell).
+  // in_app controls persistence (the bell/history); web_push / mobile_push
+  // control whether we also deliver a browser / native-device push — all
+  // resolved from the same cascade, independently (a user may want phone pings
+  // but not browser ones). An `important` notification (admin broadcast)
+  // bypasses the cascade entirely so a muted recipient still gets it.
   const showInApp = input.important || resolveChannelEnabled(cascade, category, "in_app")
-  const showPush = input.important || resolveChannelEnabled(cascade, category, "web_push", input.pushDefault)
+  const showWebPush = input.important || resolveChannelEnabled(cascade, category, "web_push", input.pushDefault)
+  const showMobilePush = input.important || resolveChannelEnabled(cascade, category, "mobile_push", input.pushDefault)
+  const showPush = showWebPush || showMobilePush
   if (!showInApp && !showPush) return null
 
   // Dedupe for event-sourced notifications. A pre-check keeps the common path
@@ -130,18 +134,14 @@ export async function createNotification(input: CreateNotificationInput): Promis
 
   // Best-effort push (fire-and-forget): the in-app write below is the source of
   // truth and never waits on or fails because of push.
-  if (showPush) {
-    void sendWebPushToUser(
-      input.userId,
-      {
-        title: input.title,
-        body: input.body || undefined,
-        url: input.link || undefined,
-        image: input.imageUrl || undefined,
-      },
-      input.type,
-    ).catch(() => {})
+  const pushPayload = {
+    title: input.title,
+    body: input.body || undefined,
+    url: input.link || undefined,
+    image: input.imageUrl || undefined,
   }
+  if (showWebPush) void sendWebPushToUser(input.userId, pushPayload, input.type).catch(() => {})
+  if (showMobilePush) void sendFcmToUser(input.userId, pushPayload, input.type).catch(() => {})
 
   if (!showInApp) return null
 
