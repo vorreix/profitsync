@@ -3,6 +3,7 @@ import { and, eq, isNull } from "drizzle-orm"
 import { db, serialize } from "../../../../src/lib/db/index.js"
 import { clients, quotations } from "../../../../src/lib/db/schema.js"
 import { canWrite, requireAuth, requireBusinessFeature } from "../../../_lib/auth.js"
+import { notifyQuotationAccepted } from "../../../_lib/notify-quotation.js"
 import { checkClientQuota } from "../../../_lib/quota.js"
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -45,6 +46,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     .update(quotations)
     .set({ linkedClientId: newClient.id, status: "accepted", updatedAt: new Date() })
     .where(eq(quotations.id, id))
+
+  // Converting implies acceptance — the shared dedupe key collapses this with a
+  // prior explicit accept, so accept-then-convert notifies exactly once.
+  void notifyQuotationAccepted(
+    orgId,
+    { id: quotation.id, title: quotation.title, userId: quotation.userId },
+    userId,
+  ).catch(() => {})
 
   return res.status(201).json(serialize(newClient))
 }

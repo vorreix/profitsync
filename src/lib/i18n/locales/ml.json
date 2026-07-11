@@ -1418,6 +1418,10 @@
       "test_error": "ഇപ്പോൾ ടെസ്റ്റ് അയയ്ക്കാനായില്ല. വീണ്ടും ശ്രമിക്കുക."
     },
     "types": {
+      "member_invited": {
+        "title": "പുതിയ അംഗത്തെ ക്ഷണിച്ചു",
+        "body": "{{email}}-നെ {{org}}-ലേക്ക് {{role}} ആയി ക്ഷണിച്ചു"
+      },
       "invitation_accepted": {
         "title": "ക്ഷണം അംഗീകരിച്ചു",
         "body": "{{name}} {{org}} ൽ ചേർന്നു"
@@ -1450,6 +1454,10 @@
       "space_autosaved": {
         "title": "നിങ്ങളുടെ Space-ലേക്ക് സ്വയമേവ സേവ് ചെയ്തു",
         "body": "{{space}}-ലേക്ക് പണം മാറ്റി"
+      },
+      "quotation_accepted": {
+        "title": "ക്വട്ടേഷൻ സ്വീകരിച്ചു",
+        "body": "“{{title}}” സ്വീകരിച്ചു."
       },
       "add_transaction_reminder": {
         "title": "നിങ്ങളുടെ ഇടപാടുകൾ ചേർക്കാൻ സമയമായി",

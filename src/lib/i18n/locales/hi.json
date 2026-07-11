@@ -1418,6 +1418,10 @@
       "test_error": "अभी परीक्षण नहीं भेजा जा सका। कृपया पुनः प्रयास करें।"
     },
     "types": {
+      "member_invited": {
+        "title": "नया सदस्य आमंत्रित",
+        "body": "{{email}} को {{org}} में {{role}} के रूप में आमंत्रित किया गया"
+      },
       "invitation_accepted": {
         "title": "आमंत्रण स्वीकृत",
         "body": "{{name}} {{org}} में शामिल हुए"
@@ -1450,6 +1454,10 @@
       "space_autosaved": {
         "title": "आपके Space में अपने आप सेव हुआ",
         "body": "{{space}} में पैसे डाले गए"
+      },
+      "quotation_accepted": {
+        "title": "कोटेशन स्वीकृत",
+        "body": "“{{title}}” स्वीकार कर लिया गया।"
       },
       "add_transaction_reminder": {
         "title": "अपने लेन-देन जोड़ने का समय",
