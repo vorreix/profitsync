@@ -35,6 +35,18 @@ type TickHeartbeat = {
   last_reminders: number
   last_broadcasts: number
 }
+type PushEventView = {
+  id: string
+  user_id: string
+  source: string
+  outcome: string
+  subscriptions: number
+  ok: number
+  failed: number
+  pruned: number
+  errors: string
+  created_at: string
+}
 type WorkerData = {
   configured: boolean
   reachable: boolean
@@ -43,6 +55,15 @@ type WorkerData = {
   schedules: ScheduleView[]
   schedulesSupported: boolean
   heartbeat?: TickHeartbeat | null
+  push_events?: PushEventView[]
+}
+
+const PUSH_OUTCOME_STYLE: Record<string, string> = {
+  ok: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-300",
+  partial: "bg-amber-500/10 text-amber-600 dark:text-amber-300",
+  failed: "bg-rose-500/10 text-rose-600 dark:text-rose-300",
+  no_subs: "bg-muted text-muted-foreground",
+  unconfigured: "bg-rose-600/15 text-rose-700 dark:text-rose-300",
 }
 
 // The tick runs every ~5 min; past this gap the scheduler is presumed dead
@@ -187,6 +208,37 @@ export function AdminWorkerPage() {
                 · {data.heartbeat.last_reminders} reminder{data.heartbeat.last_reminders === 1 ? "" : "s"}, {data.heartbeat.last_broadcasts} broadcast{data.heartbeat.last_broadcasts === 1 ? "" : "s"} on that tick
               </span>
             </p>
+          )}
+
+          {!!data.push_events?.length && (
+            <div className="mt-3 overflow-x-auto rounded-lg border">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/50 text-left text-xs text-muted-foreground">
+                  <tr>
+                    <th className="px-3 py-2 font-medium">Recent push sends</th>
+                    <th className="px-3 py-2 font-medium">Source</th>
+                    <th className="px-3 py-2 font-medium">Outcome</th>
+                    <th className="px-3 py-2 font-medium">ok / fail / pruned</th>
+                    <th className="px-3 py-2 font-medium">Errors</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {data.push_events.map((e) => (
+                    <tr key={e.id}>
+                      <td className="px-3 py-2 whitespace-nowrap text-muted-foreground">{new Date(e.created_at).toLocaleString()}</td>
+                      <td className="px-3 py-2 font-mono text-xs">{e.source || "—"}</td>
+                      <td className="px-3 py-2">
+                        <Badge variant="secondary" className={PUSH_OUTCOME_STYLE[e.outcome] ?? PUSH_OUTCOME_STYLE.no_subs}>
+                          {e.outcome}
+                        </Badge>
+                      </td>
+                      <td className="px-3 py-2 tabular-nums text-muted-foreground">{e.ok} / {e.failed} / {e.pruned}</td>
+                      <td className="max-w-[16rem] truncate px-3 py-2 font-mono text-xs text-muted-foreground">{e.errors || "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </Card>
       )}
