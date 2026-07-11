@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react"
 import { useTranslation } from "react-i18next"
 import { Trash2 } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -9,10 +10,11 @@ type Props = {
   onClick?: (n: AppNotification) => void
   onDelete?: (n: AppNotification) => void
   className?: string
+  style?: CSSProperties
 }
 
 // A single notification row, shared by the bell dropdown and the history page.
-export function NotificationItem({ notification: n, onClick, onDelete, className }: Props) {
+export function NotificationItem({ notification: n, onClick, onDelete, className, style }: Props) {
   const { t, i18n } = useTranslation("notifications")
   const Icon = categoryIcon(n.category)
   const unread = !n.read_at
@@ -28,6 +30,7 @@ export function NotificationItem({ notification: n, onClick, onDelete, className
         unread && "bg-primary/5",
         className,
       )}
+      style={style}
       onClick={onClick ? () => onClick(n) : undefined}
       role={onClick ? "button" : undefined}
       tabIndex={onClick ? 0 : undefined}

@@ -28,6 +28,33 @@ self.addEventListener("push", (event) => {
   event.waitUntil(self.registration.showNotification(title, options))
 })
 
+// Browsers occasionally rotate a push subscription (key/endpoint change). If we
+// don't rebind, the server keeps sending to a dead endpoint and this device
+// goes silent until the next page load's ensureSubscriptionSynced. Re-subscribe
+// with the same VAPID key and tell the server to retarget the OLD endpoint's
+// row (capability-authorized — no user session exists inside a SW).
+self.addEventListener("pushsubscriptionchange", (event) => {
+  event.waitUntil(
+    (async () => {
+      try {
+        const oldSub = event.oldSubscription
+        const key = oldSub && oldSub.options ? oldSub.options.applicationServerKey : null
+        if (!oldSub || !key) return
+        const newSub =
+          event.newSubscription ||
+          (await self.registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key }))
+        await fetch("/api/notifications/push/rotate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ old_endpoint: oldSub.endpoint, subscription: newSub.toJSON() }),
+        })
+      } catch (e) {
+        /* best-effort — the next page load re-syncs the subscription */
+      }
+    })(),
+  )
+})
+
 self.addEventListener("notificationclick", (event) => {
   event.notification.close()
   const targetUrl = (event.notification.data && event.notification.data.url) || "/notifications"

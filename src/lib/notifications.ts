@@ -132,6 +132,47 @@ export function resolveAnyChannel(
   return NOTIFICATION_CHANNELS.some((ch) => resolveChannelEnabled(cascade, category, ch))
 }
 
+/** What an i18n key resolves to in the resource tree (checked against `en`). */
+export type NotificationKeyKind = "string" | "object" | "missing"
+
+/**
+ * Effective i18n keys for rendering a stored notification's title/body.
+ *
+ * The stored payload is DATA, not code — rows created before a fix keep their
+ * old shape forever, so rendering must tolerate every shape ever written:
+ * - Correct rows: `i18nKey: "types.x.title"` (+ optional `i18nBodyKey`).
+ * - Legacy reminder rows: `i18nKey: "types.add_transaction_reminder"` — a key
+ *   that resolves to an OBJECT `{title, body}`; rendering it directly makes
+ *   i18next return its "returned an object instead of string" error text.
+ *
+ * `kindOf` reports what a key resolves to (the caller checks the `en` bundle —
+ * locale parity is CI-enforced, so `en` decides the shape for every language).
+ * Keys are only rewritten when the rewritten key actually resolves to a string,
+ * so behaviour for well-formed rows is unchanged.
+ */
+export function notificationRenderKeys(
+  data: Record<string, unknown> | null | undefined,
+  kindOf: (key: string) => NotificationKeyKind,
+): { titleKey: string | null; bodyKey: string | null } {
+  const raw = typeof data?.i18nKey === "string" && data.i18nKey ? data.i18nKey : null
+  const rawBody = typeof data?.i18nBodyKey === "string" && data.i18nBodyKey ? data.i18nBodyKey : null
+
+  if (!raw) return { titleKey: null, bodyKey: rawBody }
+
+  if (kindOf(raw) === "object") {
+    // Legacy bare type key → address its members (only when they exist).
+    const titleKey = kindOf(`${raw}.title`) === "string" ? `${raw}.title` : null
+    const bodyKey = rawBody ?? (kindOf(`${raw}.body`) === "string" ? `${raw}.body` : null)
+    return { titleKey, bodyKey }
+  }
+
+  // A `.title` key with no explicit body key: use the sibling `.body` when it
+  // exists so the body is localized too (falls back to the stored English).
+  const derivedBody = raw.endsWith(".title") ? raw.replace(/\.title$/, ".body") : null
+  const bodyKey = rawBody ?? (derivedBody && kindOf(derivedBody) === "string" ? derivedBody : null)
+  return { titleKey: raw, bodyKey }
+}
+
 // Validate/normalize an untrusted preferences payload (from a PUT body or a DB
 // jsonb column) into a clean NotificationPreferences — drops unknown categories
 // and channels so a tampered row/body can never widen the shape.

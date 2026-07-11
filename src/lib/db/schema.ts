@@ -29,7 +29,10 @@ export const organizationMembers = pgTable("organization_members", {
   role: text("role").notNull().default("owner"), // owner | admin | editor | viewer
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => ({
-  orgIdx: index("organization_members_org_idx").on(table.organizationId),
+  // (organization_id, user_id) serves the requireAuth membership lookup (both
+  // columns) in one index probe AND org-side member lists via its left prefix,
+  // so a separate single-column org index would be redundant.
+  orgUserIdx: index("organization_members_org_user_idx").on(table.organizationId, table.userId),
   userIdx: index("organization_members_user_idx").on(table.userId),
 }))
 
@@ -214,8 +217,11 @@ export const transactions = pgTable("transactions", {
   groupIdx: index("transactions_group_idx").on(table.groupId),
   recurringOnceIdx: uniqueIndex("transactions_recurring_once_idx").on(table.recurringRuleId, table.recurringDueDate),
   // Hot predicates at scale: per-client lists + quota counts, per-account
-  // ledgers, and date-range scans (calendar / from-to filters).
-  clientIdx: index("transactions_client_idx").on(table.clientId),
+  // ledgers, and date-range scans (calendar / analytics / from-to filters).
+  // (client_id, date) serves both client-only lookups (left prefix) AND the
+  // org-scoped date-range joins (clients-by-org → transactions by client+date),
+  // so a separate single-column client index would be redundant.
+  clientDateIdx: index("transactions_client_date_idx").on(table.clientId, table.date),
   accountIdx: index("transactions_account_idx").on(table.wealthAccountId),
   dateIdx: index("transactions_date_idx").on(table.date),
 }))
@@ -322,7 +328,12 @@ export const transactionAttachments = pgTable("transaction_attachments", {
   category: text("category").notNull().default(""),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-})
+}, (table) => ({
+  // The transactions list computes an attachment count PER ROW via a correlated
+  // subquery — without this FK index each count is a full scan of a table full
+  // of base64 blobs.
+  txIdx: index("transaction_attachments_tx_idx").on(table.transactionId),
+}))
 
 export const quotationAttachments = pgTable("quotation_attachments", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -337,7 +348,10 @@ export const quotationAttachments = pgTable("quotation_attachments", {
   category: text("category").notNull().default(""),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-})
+}, (table) => ({
+  // Same per-row count-subquery pattern as transaction_attachments.
+  quotationIdx: index("quotation_attachments_quotation_idx").on(table.quotationId),
+}))
 
 export const clientAttachments = pgTable("client_attachments", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -705,6 +719,41 @@ export const budgetHistory = pgTable("budget_history", {
 }, (table) => ({
   lookupIdx: index("budget_history_lookup_idx").on(table.organizationId, table.clientId, table.createdAt),
 }))
+
+// ── Push delivery log ──────────────────────────────────────────────────────────
+// One row per sendWebPushToUser fan-out (aggregate counts, not per-device), so
+// admins can see WHETHER pushes go out and WHY they fail without prod console
+// access. Written best-effort by the sender — logging can never affect delivery.
+export const pushEvents = pgTable("push_events", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: text("user_id").notNull(),
+  /** What triggered the send — a notification type or 'test'. */
+  source: text("source").notNull().default(""),
+  outcome: text("outcome").notNull(), // ok | partial | failed | no_subs | unconfigured
+  subscriptions: integer("subscriptions").notNull().default(0),
+  ok: integer("ok").notNull().default(0),
+  failed: integer("failed").notNull().default(0),
+  pruned: integer("pruned").notNull().default(0),
+  /** First distinct error summaries, comma-joined (diagnostics only). */
+  errors: text("errors").notNull().default(""),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  createdIdx: index("push_events_created_idx").on(table.createdAt),
+}))
+
+// ── Notification scheduler heartbeat ──────────────────────────────────────────
+// Single-row liveness record: runNotificationTick upserts it on EVERY tick (even
+// zero-work ones), so the admin panel can tell "the scheduler is running" apart
+// from "nothing was due" — and flag a dead driver instead of silently dropping
+// reminders/broadcasts (the June'26 outage mode: the worker stopped and nothing
+// noticed for days).
+export const notificationSchedulerState = pgTable("notification_scheduler_state", {
+  id: text("id").primaryKey().default("default"),
+  lastTickAt: timestamp("last_tick_at").notNull().defaultNow(),
+  lastReminders: integer("last_reminders").notNull().default(0),
+  lastBroadcasts: integer("last_broadcasts").notNull().default(0),
+  updatedAt: timestamp("updated_at").defaultNow(),
+})
 
 // ── Notifications ─────────────────────────────────────────────────────────────
 // Persisted, per-recipient notifications. Platform-agnostic: any client (web,
