@@ -4,6 +4,7 @@ import { SignIn } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
 
 import { InstallAppBanner } from "@/components/InstallAppBanner"
+import { NativeGoogleAuthButton } from "@/components/NativeGoogleAuthButton"
 import { initPwa } from "@/lib/pwa/register-sw"
 import { safeRedirect } from "@/lib/safe-redirect"
 
@@ -25,6 +26,7 @@ export function LoginPage() {
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-muted/30 p-4 gap-4">
+      <NativeGoogleAuthButton mode="sign-in" completeUrl={target} />
       <SignIn
         path="/login"
         routing="path"

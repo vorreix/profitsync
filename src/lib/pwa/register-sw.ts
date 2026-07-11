@@ -36,6 +36,12 @@ function installChunkErrorReload(): void {
 export function initPwa(): void {
   if (registered) return
   if (typeof window === "undefined" || !("serviceWorker" in navigator)) return
+  // Native (Capacitor) WebViews bundle the app locally and update through the
+  // store / app updates — a web service worker there would only fight the
+  // native update model and precache a copy nobody serves. Runtime global
+  // check (no @capacitor import) so the web bundle stays capacitor-free.
+  const cap = (window as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor
+  if (cap?.isNativePlatform?.()) return
   registered = true
 
   ensureInstallListener()
