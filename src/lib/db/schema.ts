@@ -74,6 +74,9 @@ export const clients = pgTable("clients", {
   status: text("status").default("active"),
   notes: text("notes").default(""),
   category: text("category").notNull().default(""), // optional category label (type "client")
+  // User hashtags for clients: jsonb string array, normalized/deduped by
+  // src/lib/tags.ts (shared with transactions/quotations). GIN-indexed for `?tag=`.
+  tags: jsonb("tags").notNull().default([]),
   // The workspace's own/internal client — the company (or person) itself. Used to
   // record own expenses (rent, utilities, salaries). Exactly one per org; shown
   // first and badged distinctly in lists/pickers. Personal orgs use it as their
@@ -91,6 +94,8 @@ export const clients = pgTable("clients", {
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => ({
   orgIdx: index("clients_org_idx").on(table.organizationId),
+  // Containment lookups for the `?tag=` filter.
+  tagsIdx: index("clients_tags_idx").using("gin", table.tags),
 }))
 
 // Org-scoped, managed transaction categories. Transactions still store the
@@ -108,6 +113,24 @@ export const categories = pgTable("categories", {
 }, (table) => ({
   orgTypeIdx: index("categories_org_type_idx").on(table.organizationId, table.type),
   orgNameTypeUnique: uniqueIndex("categories_org_name_type_unique").on(table.organizationId, table.type, table.name),
+}))
+
+// Org-scoped tag registry. Entities (transactions/clients/quotations) store the
+// tag *string* in their `tags` jsonb array; this table is the source of truth for
+// the tag manager UI (stable color, rename target). A tag can exist on entities
+// without a registry row (created inline) — the list endpoint unions both — but
+// creating/editing via the manager always keeps a row here. Names are normalized
+// the same way as entity tags (leading '#', lowercased, capped) by src/lib/tags.ts.
+export const tags = pgTable("tags", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  color: text("color").notNull().default(""),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  orgIdx: index("tags_org_idx").on(table.organizationId),
+  orgNameUnique: uniqueIndex("tags_org_name_unique").on(table.organizationId, table.name),
 }))
 
 export const wealthAccounts = pgTable("wealth_accounts", {
@@ -292,6 +315,9 @@ export const quotations = pgTable("quotations", {
   status: text("status").default("draft"), // draft | sent | accepted | rejected
   notes: text("notes").default(""),
   category: text("category").notNull().default(""), // optional category label (type "quotation")
+  // User hashtags for quotations: jsonb string array, normalized/deduped by
+  // src/lib/tags.ts (shared with transactions/clients). GIN-indexed for `?tag=`.
+  tags: jsonb("tags").notNull().default([]),
   linkedClientId: uuid("linked_client_id"), // set when converted to a client
   deletedAt: timestamp("deleted_at"),
   // When set, the quotation is "closed": excluded from the default list, shown in
@@ -303,6 +329,8 @@ export const quotations = pgTable("quotations", {
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => ({
   orgIdx: index("quotations_org_idx").on(table.organizationId),
+  // Containment lookups for the `?tag=` filter.
+  tagsIdx: index("quotations_tags_idx").using("gin", table.tags),
 }))
 
 // Append-only change history for the main entities. `changes` holds a
