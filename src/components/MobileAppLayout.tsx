@@ -218,7 +218,7 @@ export function MobileAppLayout() {
           <button
             onClick={() => navigate("/dashboard")}
             className="pressable flex items-center gap-1.5 shrink-0"
-            aria-label="Home"
+            aria-label={t("nav.home")}
           >
             <div className="flex size-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
               <TrendingUp className="size-3.5" />

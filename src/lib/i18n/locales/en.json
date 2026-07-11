@@ -126,7 +126,15 @@
     "upgradeTitle": "Upgrade to Premium",
     "upgradeSubtitle": "More clients, attachments & storage",
     "createOrganization": "Create organization",
-    "manageOrganizations": "Manage organizations"
+    "manageOrganizations": "Manage organizations",
+    "loading": "Loading…",
+    "switchOrganization": "Switch organization",
+    "searchOrganizations": "Search organizations…",
+    "noOrganizationsMatch": "No organizations match",
+    "roleOwner": "owner",
+    "roleAdmin": "admin",
+    "roleEditor": "editor",
+    "roleViewer": "viewer"
   },
   "forgotPassword": {
     "linkLabel": "Forgot your password?",
@@ -407,7 +415,8 @@
     "cardWealth": "Wealth overview",
     "cardChart": "Chart",
     "cardBreakdown": "Top breakdown",
-    "cardLatest": "Latest transactions"
+    "cardLatest": "Latest transactions",
+    "openFilters": "Open dashboard filters"
   },
   "chart": {
     "incoming": "Incoming",
@@ -1471,6 +1480,45 @@
       "need_time": "Add at least one time.",
       "new_reminder": "New reminder",
       "edit_reminder": "Edit reminder"
+    }
+  },
+  "featureHelp": {
+    "open": "Open help for {{feature}}",
+    "includes": "Includes",
+    "why": "Why it matters",
+    "tip": "Tip",
+    "wealth": {
+      "title": "Wealth",
+      "body": "A quick view of money currently available in your tracked accounts.",
+      "includes": {
+        "cash": "Cash accounts",
+        "bank": "Bank accounts",
+        "active": "Only active, non-archived accounts"
+      },
+      "why": "It shows your real liquidity before you make spending or transfer decisions.",
+      "tip": "Keep account balances updated after manual adjustments."
+    },
+    "netProfit": {
+      "title": "Net Profit",
+      "body": "Your remaining profit after outgoing transactions in this dashboard view.",
+      "includes": {
+        "incoming": "Incoming transactions",
+        "outgoing": "Outgoing transactions",
+        "filters": "Current client and category filters"
+      },
+      "why": "It shows whether the selected work is actually earning more than it costs.",
+      "tip": "Change filters to isolate profit by client, category, or period."
+    },
+    "moneyFlow": {
+      "title": "Money Flow",
+      "body": "A compact comparison of incoming and outgoing money in the current view.",
+      "includes": {
+        "incoming": "Incoming volume",
+        "outgoing": "Outgoing volume",
+        "grouping": "Client grouping for business, category grouping for personal"
+      },
+      "why": "It highlights where cash is entering, leaving, or getting concentrated.",
+      "tip": "Use it with Net Profit to spot high-volume work with weak margins."
     }
   }
 }

@@ -10,6 +10,13 @@ import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { EntityAvatar } from "@/components/EntityAvatar"
 
+const ROLE_LABEL_KEYS: Record<string, string> = {
+  owner: "org.roleOwner",
+  admin: "org.roleAdmin",
+  editor: "org.roleEditor",
+  viewer: "org.roleViewer",
+}
+
 export function OrgSwitcher() {
   const navigate = useNavigate()
   const { t } = useTranslation()
@@ -26,15 +33,21 @@ export function OrgSwitcher() {
       setOpen(false)
       navigate("/dashboard")
     } catch {
-      toast.error("Failed to switch organization")
+      toast.error(t("organizations.failedToSwitchOrganization"))
     }
+  }
+
+  const roleLabel = (role: string | null | undefined) => {
+    if (!role) return t("org.roleOwner")
+    const key = ROLE_LABEL_KEYS[role]
+    return key ? t(key) : role
   }
 
   if (loading && !activeOrg) {
     return (
       <div className="px-2 py-2 flex items-center gap-2 text-xs text-muted-foreground">
         <Loader2 className="size-3 animate-spin" />
-        <span className="group-data-[collapsible=icon]:hidden">Loading…</span>
+        <span className="group-data-[collapsible=icon]:hidden">{t("org.loading")}</span>
       </div>
     )
   }
@@ -45,7 +58,7 @@ export function OrgSwitcher() {
         <Button
           variant="ghost"
           className="w-full justify-between px-2 h-auto py-2 hover:bg-accent group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:size-10 group-data-[collapsible=icon]:justify-center"
-          aria-label="Switch organization"
+          aria-label={t("org.switchOrganization")}
         >
           <div className="flex items-center gap-2 min-w-0">
             <EntityAvatar
@@ -56,7 +69,7 @@ export function OrgSwitcher() {
             />
             <div className="text-left min-w-0 group-data-[collapsible=icon]:hidden">
               <div className="flex items-center gap-1.5">
-                <p className="text-xs font-medium leading-tight truncate">{activeOrg?.name ?? "Personal"}</p>
+                <p className="text-xs font-medium leading-tight truncate">{activeOrg?.name ?? t("org.personal")}</p>
                 {activeOrg && (
                   <span
                     className={`text-[9px] uppercase tracking-wider px-1 py-0.5 rounded-sm border shrink-0 leading-none ${
@@ -69,7 +82,7 @@ export function OrgSwitcher() {
                   </span>
                 )}
               </div>
-              <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{activeOrg?.role ?? "owner"}</p>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{roleLabel(activeOrg?.role)}</p>
             </div>
           </div>
           <ChevronsUpDown className="size-3.5 opacity-50 group-data-[collapsible=icon]:hidden" />
@@ -80,7 +93,7 @@ export function OrgSwitcher() {
           <div className="relative">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
             <Input
-              placeholder="Search organizations…"
+              placeholder={t("org.searchOrganizations")}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="pl-8 h-8 text-sm"
@@ -94,7 +107,7 @@ export function OrgSwitcher() {
         <div className="min-h-0 flex-1 overflow-y-auto scrollbar-thin">
           <div className="p-1">
             {filtered.length === 0 ? (
-              <div className="px-2 py-6 text-center text-xs text-muted-foreground">No organizations match</div>
+              <div className="px-2 py-6 text-center text-xs text-muted-foreground">{t("org.noOrganizationsMatch")}</div>
             ) : (
               filtered.map((org) => (
                 <button
@@ -113,7 +126,7 @@ export function OrgSwitcher() {
                     <div className="flex items-center gap-1.5">
                       <p className="text-sm font-medium truncate">{org.name}</p>
                       {org.is_personal && (
-                        <span className="text-[10px] uppercase tracking-wide text-muted-foreground border rounded-sm px-1">Personal</span>
+                        <span className="text-[10px] uppercase tracking-wide text-muted-foreground border rounded-sm px-1">{t("org.personal")}</span>
                       )}
                       <span
                         className={`text-[10px] uppercase tracking-wide px-1 rounded-sm border ${
@@ -125,7 +138,7 @@ export function OrgSwitcher() {
                         {isPaidPlanKey(org.plan_key) ? t("org.pro") : t("org.free")}
                       </span>
                     </div>
-                    <p className="text-[11px] text-muted-foreground uppercase tracking-wide">{org.role}</p>
+                    <p className="text-[11px] text-muted-foreground uppercase tracking-wide">{roleLabel(org.role)}</p>
                   </div>
                   {org.id === activeOrg?.id && <Check className="size-4 text-primary" />}
                 </button>
@@ -148,11 +161,11 @@ export function OrgSwitcher() {
               Back/Skip buttons there have real meaning. */}
           <Button variant="ghost" className="justify-start gap-2 px-2" onClick={() => { setOpen(false); navigate("/organization-setup") }}>
             <Plus className="size-4" />
-            <span className="text-sm">Create organization</span>
+            <span className="text-sm">{t("org.createOrganization")}</span>
           </Button>
           <Button variant="ghost" className="justify-start gap-2 px-2" onClick={() => { setOpen(false); navigate("/organizations") }}>
             <Building2 className="size-4" />
-            <span className="text-sm">Manage organizations</span>
+            <span className="text-sm">{t("org.manageOrganizations")}</span>
           </Button>
         </div>
       </PopoverContent>

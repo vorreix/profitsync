@@ -29,6 +29,7 @@ export function FilterSheet({
   onClear,
   children,
   title,
+  triggerLabel,
   triggerClassName,
   align = "end",
   registerFloating = true,
@@ -37,6 +38,7 @@ export function FilterSheet({
   onClear: () => void
   children: ReactNode
   title?: string
+  triggerLabel?: string
   triggerClassName?: string
   align?: "start" | "center" | "end"
   /** When false, no floating shortcut is registered for the mobile FAB. */
@@ -70,6 +72,7 @@ export function FilterSheet({
       <>
         <FilterTriggerButton
           count={count}
+          label={triggerLabel}
           className={triggerClassName}
           onClick={() => setOpen(true)}
         />
@@ -91,7 +94,7 @@ export function FilterSheet({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <FilterTriggerButton count={count} className={triggerClassName} />
+        <FilterTriggerButton count={count} label={triggerLabel} className={triggerClassName} />
       </PopoverTrigger>
       <PopoverContent align={align} className="w-72">
         <div className="space-y-4">
@@ -106,16 +109,19 @@ export function FilterSheet({
 /** The trigger button shown in a page toolbar: filter icon + count badge. */
 export function FilterTriggerButton({
   count,
+  label,
   className,
   ...props
-}: { count: number; className?: string } & React.ComponentProps<typeof Button>) {
+}: { count: number; label?: string; className?: string } & React.ComponentProps<typeof Button>) {
   const { t } = useTranslation()
+  const accessibleLabel = label ?? t("filters.filters")
   return (
     <Button
       type="button"
       variant="outline"
       size="sm"
-      aria-label={t("filters.filters")}
+      aria-label={accessibleLabel}
+      title={accessibleLabel}
       className={cn("relative h-9 gap-1.5", className)}
       {...props}
     >
