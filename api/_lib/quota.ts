@@ -1,5 +1,6 @@
 import { and, count, desc, eq, isNull, sql } from "drizzle-orm"
 import { db } from "../../src/lib/db/index.js"
+import { FREE_TAGS_PER_TX, PREMIUM_TAGS_PER_TX } from "../../src/lib/tags.js"
 import {
   clientAttachments,
   clients,
@@ -26,6 +27,8 @@ export type PlanLimits = {
   bankAccounts?: number
   // Max personal savings Spaces (type='space'). Free = 1, paid personal = 7.
   spaces?: number
+  // Max #hashtag tags per transaction. Free = 1, paid = 3 (defaults from tags.ts).
+  tagsPerTransaction?: number
 }
 
 export type QuotaCheck =
@@ -42,6 +45,7 @@ const DEFAULT_FREE_LIMITS: Required<PlanLimits> = {
   attachmentTotalSizeKb: 50 * 1024, // 50 MB across the whole workspace
   bankAccounts: 1, // free workspaces get a single bank account (+ Cash in Hand)
   spaces: 1, // free personal accounts get a single savings Space
+  tagsPerTransaction: FREE_TAGS_PER_TX, // free: a single tag per transaction
 }
 
 const DEFAULT_PREMIUM_LIMITS: Required<PlanLimits> = {
@@ -54,6 +58,7 @@ const DEFAULT_PREMIUM_LIMITS: Required<PlanLimits> = {
   attachmentTotalSizeKb: 5 * 1024 * 1024, // 5 GB across the whole workspace
   bankAccounts: 20, // paid plans: up to 20 bank accounts INCLUDING closed ones
   spaces: 7, // paid personal plan includes 7 savings Spaces
+  tagsPerTransaction: PREMIUM_TAGS_PER_TX, // paid: up to 3 tags per transaction
 }
 
 export async function getOrgPlan(orgId: string): Promise<{ planKey: string; limits: Required<PlanLimits> }> {
@@ -96,6 +101,7 @@ export async function getOrgPlan(orgId: string): Promise<{ planKey: string; limi
       attachmentTotalSizeKb: stored.attachmentTotalSizeKb ?? fallback.attachmentTotalSizeKb,
       bankAccounts: stored.bankAccounts ?? fallback.bankAccounts,
       spaces: stored.spaces ?? fallback.spaces,
+      tagsPerTransaction: stored.tagsPerTransaction ?? fallback.tagsPerTransaction,
     },
   }
 }
@@ -239,10 +245,17 @@ export async function checkSpaceQuota(orgId: string): Promise<QuotaCheck> {
 export async function checkTransactionQuota(orgId: string, clientId: string): Promise<QuotaCheck> {
   const { planKey, limits } = await getOrgPlan(orgId)
   if (planKey !== "free") return { allowed: true }
+  // Count only user-created transactions. System rows (wealth opening-balance and
+  // balance-adjustment ledger entries — `isSystem = true`, set server-side only)
+  // are internal, off-P&L bookkeeping and are exempt from the per-client quota,
+  // matching the Space-transfer exemption in wealth/transfer.ts. Counting them
+  // both let a free org self-lock-out and made the limit inconsistent.
   const [{ current }] = await db
     .select({ current: count() })
     .from(transactions)
-    .where(and(eq(transactions.clientId, clientId), isNull(transactions.deletedAt)))
+    .where(
+      and(eq(transactions.clientId, clientId), isNull(transactions.deletedAt), eq(transactions.isSystem, false)),
+    )
   if (current >= limits.transactionsPerClient) {
     return {
       allowed: false,
@@ -325,6 +338,36 @@ export async function checkNoteLength(orgId: string, content: string | undefined
     reason: `${planKey === "free" ? "Free" : "Premium"} plan allows ${limits.noteLength} characters per note. Yours has ${content.length}.`,
     limit: limits.noteLength,
     current: content.length,
+    upgradeHint: planKey === "free",
+  }
+}
+
+/**
+ * Per-transaction tag ceiling (free = 1, paid = 3). Pass the ALREADY-cleaned tag
+ * count (dedup/normalize first via cleanTags, so duplicates can't bypass it).
+ *
+ * `previousCount` grandfathers edits: a transaction that already carries more
+ * tags than the current plan allows (e.g. a free user who tagged it before this
+ * limit landed, or after a downgrade) can still be edited as long as the tag
+ * count isn't *increased* — so changing the amount never gets blocked by a legacy
+ * over-limit tag set. New tags beyond the limit are still refused.
+ */
+export async function checkTransactionTagQuota(
+  orgId: string,
+  tagCount: number,
+  opts: { previousCount?: number } = {},
+): Promise<QuotaCheck> {
+  const { planKey, limits } = await getOrgPlan(orgId)
+  const max = limits.tagsPerTransaction
+  if (tagCount <= max || tagCount <= (opts.previousCount ?? 0)) return { allowed: true }
+  return {
+    allowed: false,
+    reason:
+      planKey === "free"
+        ? `Free plan allows ${max} tag${max === 1 ? "" : "s"} per transaction. Upgrade to Premium for up to ${PREMIUM_TAGS_PER_TX}.`
+        : `This plan allows ${max} tags per transaction.`,
+    limit: max,
+    current: tagCount,
     upgradeHint: planKey === "free",
   }
 }

@@ -38,7 +38,8 @@
     "recurring": "தொடர்",
     "calendar": "நாட்காட்டி",
     "flow": "பண ஓட்டம்",
-    "spaces": "ஸ்பேஸ்கள்"
+    "spaces": "ஸ்பேஸ்கள்",
+    "categoryTags": "வகை & குறிச்சொற்கள்"
   },
   "actions": {
     "addClient": "வாடிக்கையாளரைச் சேர்",
@@ -60,7 +61,15 @@
     "upgradeTitle": "பிரீமியத்திற்கு மேம்படுத்து",
     "upgradeSubtitle": "அதிக வாடிக்கையாளர்கள், இணைப்புகள் & சேமிப்பகம்",
     "createOrganization": "நிறுவனம் உருவாக்கு",
-    "manageOrganizations": "நிறுவனங்களை நிர்வகி"
+    "manageOrganizations": "நிறுவனங்களை நிர்வகி",
+    "loading": "Loading…",
+    "switchOrganization": "Switch organization",
+    "searchOrganizations": "Search organizations…",
+    "noOrganizationsMatch": "No organizations match",
+    "roleOwner": "owner",
+    "roleAdmin": "admin",
+    "roleEditor": "editor",
+    "roleViewer": "viewer"
   },
   "forgotPassword": {
     "linkLabel": "உங்கள் கடவுடை மறந்துவிட்டீர்களா?",
@@ -170,7 +179,8 @@
     "cardWealth": "சொத்து மேலோட்டம்",
     "cardChart": "விளக்கப்படம்",
     "cardBreakdown": "முக்கிய பிரிவுகள்",
-    "cardLatest": "சமீபத்திய பரிவர்த்தனைகள்"
+    "cardLatest": "சமீபத்திய பரிவர்த்தனைகள்",
+    "openFilters": "Open dashboard filters"
   },
   "chart": {
     "incoming": "வரவு",
@@ -382,7 +392,12 @@
     "splitHint": "ஒவ்வொரு கணக்கும் அதன் சொந்த பரிவர்த்தனையாக சேமிக்கப்படுகிறது.",
     "account_one": "{{count}} கணக்கு",
     "account_other": "{{count}} கணக்குகள்",
-    "recurringBadge": "தொடர்"
+    "recurringBadge": "தொடர்",
+    "tags": "குறிச்சொற்கள்",
+    "tagsPlaceholder": "#business #travel போன்ற குறிச்சொற்களைச் சேர்க்கவும்",
+    "tagsUpgrade": "மேலும் குறிச்சொற்களுக்கு மேம்படுத்துங்கள்",
+    "tagsLimitReached": "உங்கள் திட்டத்தின் குறிச்சொல் வரம்பை அடைந்துவிட்டீர்கள்.",
+    "removeTag": "{{tag}} அகற்று"
   },
   "clients": {
     "pageTitle": "வாடிக்கையாளர்கள்",
@@ -818,7 +833,15 @@
     "deleteFailed": "வகை நீக்க முடியவில்லை",
     "deleteTitle": "வகை நீக்கவா?",
     "deleteBody": "\"{{name}}\" உங்கள் வகை பட்டியலிலிருந்து நீக்கப்படும். மொத்த பரிவர்த்தனைகள் அவற்றின் பெயரை வைத்துக்கொள்ளும்.",
-    "renameHint": "பெயர் மாற்றுதல் பொருந்தும் பரிவர்த்தனைகளின் பெயரையும் புதுப்பிக்கிறது."
+    "renameHint": "பெயர் மாற்றுதல் பொருந்தும் பரிவர்த்தனைகளின் பெயரையும் புதுப்பிக்கிறது.",
+    "appliesTo": "எதற்கு பொருந்தும்",
+    "appliesToHint": "இந்த வகை எந்தப் பட்டியல்களில் தோன்ற வேண்டும் என்பதைத் தேர்வுசெய்யவும்.",
+    "selectTypeRequired": "குறைந்தது ஒரு வகையைத் தேர்ந்தெடுக்கவும்",
+    "color": "நிறம்",
+    "colorNone": "நிறம் இல்லை",
+    "nameExists": "அந்தப் பெயரில் ஒரு வகை ஏற்கனவே உள்ளது",
+    "viewEntities": "{{name}} இல் உள்ள உருப்படிகளைக் காண்க",
+    "dialogDescription": "வருமானம், செலவுகள், வாடிக்கையாளர்கள் மற்றும் மேற்கோள்களை ஒரே பெயரின் கீழ் தொகுக்கவும்."
   },
   "attachments": {
     "attachments": "இணைப்புகள்",
@@ -1472,5 +1495,106 @@
       "new_reminder": "புதிய நினைவூட்டல்",
       "edit_reminder": "நினைவூட்டலைத் திருத்து"
     }
+  },
+  "featureHelp": {
+    "open": "Open help for {{feature}}",
+    "includes": "Includes",
+    "why": "Why it matters",
+    "tip": "Tip",
+    "wealth": {
+      "title": "Wealth",
+      "body": "A quick view of money currently available in your tracked accounts.",
+      "includes": {
+        "cash": "Cash accounts",
+        "bank": "Bank accounts",
+        "active": "Only active, non-archived accounts"
+      },
+      "why": "It shows your real liquidity before you make spending or transfer decisions.",
+      "tip": "Keep account balances updated after manual adjustments."
+    },
+    "netProfit": {
+      "title": "Net Profit",
+      "body": "Your remaining profit after outgoing transactions in this dashboard view.",
+      "includes": {
+        "incoming": "Incoming transactions",
+        "outgoing": "Outgoing transactions",
+        "filters": "Current client and category filters"
+      },
+      "why": "It shows whether the selected work is actually earning more than it costs.",
+      "tip": "Change filters to isolate profit by client, category, or period."
+    },
+    "moneyFlow": {
+      "title": "Money Flow",
+      "body": "A compact comparison of incoming and outgoing money in the current view.",
+      "includes": {
+        "incoming": "Incoming volume",
+        "outgoing": "Outgoing volume",
+        "grouping": "Client grouping for business, category grouping for personal"
+      },
+      "why": "It highlights where cash is entering, leaving, or getting concentrated.",
+      "tip": "Use it with Net Profit to spot high-volume work with weak margins."
+    }
+  },
+  "categoryTags": {
+    "title": "வகை & குறிச்சொற்கள்",
+    "subtitle": "வகைகள் மற்றும் குறிச்சொற்களுடன் உங்கள் பணத்தை ஒழுங்கமைக்கவும்",
+    "categoryTab": "வகைகள்",
+    "tagsTab": "குறிச்சொற்கள்"
+  },
+  "tags": {
+    "loading": "ஏற்றுகிறது…",
+    "count_one": "{{count}} குறிச்சொல்",
+    "count_other": "{{count}} குறிச்சொற்கள்",
+    "searchPlaceholder": "குறிச்சொற்களைத் தேடு…",
+    "addTag": "குறிச்சொல் சேர்",
+    "newShort": "புதியது",
+    "editTag": "குறிச்சொல்லைத் திருத்து",
+    "dialogDescription": "பரிவர்த்தனைகள், வாடிக்கையாளர்கள், மேற்கோள்களை பணியிடம் முழுவதும் குழுவாக்க குறிச்சொல் இடு.",
+    "name": "பெயர்",
+    "namePlaceholder": "எ.கா. travel, urgent, q3",
+    "nameRequired": "பெயர் தேவை",
+    "nameHint": "இடைவெளிகள் கோடுகளாகும், # தானாகச் சேர்க்கப்படும்.",
+    "color": "நிறம்",
+    "colorNone": "நிறம் இல்லை",
+    "edit": "திருத்து",
+    "delete": "நீக்கு",
+    "empty": "இன்னும் குறிச்சொற்கள் இல்லை.",
+    "noMatch": "உங்கள் தேடலுக்கு எந்த குறிச்சொல்லும் பொருந்தவில்லை.",
+    "created": "குறிச்சொல் உருவாக்கப்பட்டது",
+    "createFailed": "குறிச்சொல்லை உருவாக்க முடியவில்லை",
+    "updated": "குறிச்சொல் புதுப்பிக்கப்பட்டது",
+    "updateFailed": "குறிச்சொல்லைப் புதுப்பிக்க முடியவில்லை",
+    "deleted": "குறிச்சொல் நீக்கப்பட்டது",
+    "deletedWithRecords_one": "குறிச்சொல் மற்றும் {{count}} பதிவு நீக்கப்பட்டது",
+    "deletedWithRecords_other": "குறிச்சொல் மற்றும் {{count}} பதிவுகள் நீக்கப்பட்டன",
+    "deleteFailed": "குறிச்சொல்லை நீக்க முடியவில்லை",
+    "nameExists": "அந்தப் பெயரில் ஒரு குறிச்சொல் ஏற்கனவே உள்ளது",
+    "viewEntities": "{{name}} குறிச்சொல் இடப்பட்ட உருப்படிகளைக் காண்க",
+    "transactions": "பரிவர்த்தனைகள்",
+    "clients": "வாடிக்கையாளர்கள்",
+    "quotations": "மேற்கோள்கள்",
+    "unused": "பயன்படுத்தாதது",
+    "sortMostUsed": "அதிகம் பயன்படுத்தியது",
+    "sortLeastUsed": "குறைவாகப் பயன்படுத்தியது",
+    "sortNameAsc": "பெயர் (A–Z)",
+    "sortNameDesc": "பெயர் (Z–A)",
+    "deleteTitle": "குறிச்சொல்லை நீக்கவா?",
+    "deleteChoosePrompt": "{{name}} ஐ எப்படி நீக்க விரும்புகிறீர்கள்?",
+    "deleteTagOnly": "குறிச்சொல்லை மட்டும் அகற்று",
+    "deleteTagOnlyHint": "பதிவுகள் தங்கள் தரவை வைத்திருக்கும் — குறிச்சொல் மட்டும் அகற்றப்படும்.",
+    "deleteWithRecords": "குறிச்சொல் மற்றும் பதிவுகளை நீக்கு",
+    "deleteWithRecordsHint_one": "குறிச்சொல் இடப்பட்ட {{count}} பதிவையும் குப்பைக்கு நகர்த்தும் (மீட்டெடுக்கலாம்).",
+    "deleteWithRecordsHint_other": "குறிச்சொல் இடப்பட்ட {{count}} பதிவுகளையும் குப்பைக்கு நகர்த்தும் (மீட்டெடுக்கலாம்)."
+  },
+  "drilldown": {
+    "loading": "ஏற்றுகிறது…",
+    "itemCount_one": "{{count}} உருப்படி",
+    "itemCount_other": "{{count}} உருப்படிகள்",
+    "empty": "இந்த வடிகட்டிகளுக்கு எதுவும் பொருந்தவில்லை.",
+    "sortNewest": "புதியவை",
+    "sortOldest": "பழையவை",
+    "sortAmountHigh": "அதிக தொகை",
+    "sortAmountLow": "குறைந்த தொகை",
+    "sortName": "பெயர்"
   }
 }

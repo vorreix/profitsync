@@ -28,6 +28,7 @@
     "subscription": "Subscription",
     "trash": "Trash",
     "categories": "Categories",
+    "categoryTags": "Category & Tags",
     "budgets": "Budgets",
     "analytics": "Analytics",
     "referrals": "Refer & earn",
@@ -126,7 +127,15 @@
     "upgradeTitle": "Upgrade to Premium",
     "upgradeSubtitle": "More clients, attachments & storage",
     "createOrganization": "Create organization",
-    "manageOrganizations": "Manage organizations"
+    "manageOrganizations": "Manage organizations",
+    "loading": "Loading…",
+    "switchOrganization": "Switch organization",
+    "searchOrganizations": "Search organizations…",
+    "noOrganizationsMatch": "No organizations match",
+    "roleOwner": "owner",
+    "roleAdmin": "admin",
+    "roleEditor": "editor",
+    "roleViewer": "viewer"
   },
   "forgotPassword": {
     "linkLabel": "Forgot your password?",
@@ -238,6 +247,57 @@
     "closedCount_one": "{{count}} closed",
     "closedCount_other": "{{count}} closed"
   },
+  "categoryTags": {
+    "title": "Category & Tags",
+    "subtitle": "Organize your money with categories and tags",
+    "categoryTab": "Categories",
+    "tagsTab": "Tags"
+  },
+  "tags": {
+    "loading": "Loading…",
+    "count_one": "{{count}} tag",
+    "count_other": "{{count}} tags",
+    "searchPlaceholder": "Search tags…",
+    "addTag": "Add Tag",
+    "newShort": "New",
+    "editTag": "Edit Tag",
+    "dialogDescription": "Tag transactions, clients and quotations to group them across your workspace.",
+    "name": "Name",
+    "namePlaceholder": "e.g. travel, urgent, q3",
+    "nameRequired": "Name is required",
+    "nameHint": "Spaces become dashes and a # is added automatically.",
+    "color": "Color",
+    "colorNone": "No color",
+    "edit": "Edit",
+    "delete": "Delete",
+    "empty": "No tags yet.",
+    "noMatch": "No tags match your search.",
+    "created": "Tag created",
+    "createFailed": "Failed to create tag",
+    "updated": "Tag updated",
+    "updateFailed": "Failed to update tag",
+    "deleted": "Tag deleted",
+    "deletedWithRecords_one": "Tag and {{count}} record deleted",
+    "deletedWithRecords_other": "Tag and {{count}} records deleted",
+    "deleteFailed": "Failed to delete tag",
+    "nameExists": "A tag with that name already exists",
+    "viewEntities": "View items tagged {{name}}",
+    "transactions": "Transactions",
+    "clients": "Clients",
+    "quotations": "Quotations",
+    "unused": "Unused",
+    "sortMostUsed": "Most used",
+    "sortLeastUsed": "Least used",
+    "sortNameAsc": "Name (A–Z)",
+    "sortNameDesc": "Name (Z–A)",
+    "deleteTitle": "Delete tag?",
+    "deleteChoosePrompt": "How do you want to delete {{name}}?",
+    "deleteTagOnly": "Remove tag only",
+    "deleteTagOnlyHint": "Records keep their data — only the tag is removed.",
+    "deleteWithRecords": "Delete tag & records",
+    "deleteWithRecordsHint_one": "Also move {{count}} tagged record to Trash (reversible).",
+    "deleteWithRecordsHint_other": "Also move {{count}} tagged records to Trash (reversible)."
+  },
   "categories": {
     "title": "Categories",
     "loading": "Loading…",
@@ -246,6 +306,7 @@
     "addCategory": "Add Category",
     "newShort": "New",
     "editCategory": "Edit Category",
+    "dialogDescription": "Group income, expenses, clients and quotations under one name.",
     "name": "Name",
     "namePlaceholder": "e.g. Software, Salary, Retainer",
     "nameRequired": "Name is required",
@@ -272,7 +333,25 @@
     "deleteFailed": "Failed to delete category",
     "deleteTitle": "Delete category?",
     "deleteBody": "\"{{name}}\" will be removed from your category list. Existing transactions keep their label.",
-    "renameHint": "Renaming also updates the label on matching transactions."
+    "renameHint": "Renaming also updates the label on matching transactions.",
+    "appliesTo": "Applies to",
+    "appliesToHint": "Pick which lists this category appears in.",
+    "selectTypeRequired": "Select at least one type",
+    "color": "Color",
+    "colorNone": "No color",
+    "nameExists": "A category with that name already exists",
+    "viewEntities": "View items in {{name}}"
+  },
+  "drilldown": {
+    "loading": "Loading…",
+    "itemCount_one": "{{count}} item",
+    "itemCount_other": "{{count}} items",
+    "empty": "Nothing matches these filters yet.",
+    "sortNewest": "Newest",
+    "sortOldest": "Oldest",
+    "sortAmountHigh": "Highest amount",
+    "sortAmountLow": "Lowest amount",
+    "sortName": "Name"
   },
   "attachments": {
     "attachments": "Attachments",
@@ -407,7 +486,8 @@
     "cardWealth": "Wealth overview",
     "cardChart": "Chart",
     "cardBreakdown": "Top breakdown",
-    "cardLatest": "Latest transactions"
+    "cardLatest": "Latest transactions",
+    "openFilters": "Open dashboard filters"
   },
   "chart": {
     "incoming": "Incoming",
@@ -536,6 +616,11 @@
     "attachments": "Attachments",
     "cancel": "Cancel",
     "category": "Category",
+    "tags": "Tags",
+    "tagsPlaceholder": "Add tags like #business #travel",
+    "tagsUpgrade": "Upgrade for more tags",
+    "tagsLimitReached": "You've reached your plan's tag limit.",
+    "removeTag": "Remove {{tag}}",
     "client": "Client",
     "clientIsRequired": "Client is required",
     "clientRequired": "Client *",
@@ -1471,6 +1556,45 @@
       "need_time": "Add at least one time.",
       "new_reminder": "New reminder",
       "edit_reminder": "Edit reminder"
+    }
+  },
+  "featureHelp": {
+    "open": "Open help for {{feature}}",
+    "includes": "Includes",
+    "why": "Why it matters",
+    "tip": "Tip",
+    "wealth": {
+      "title": "Wealth",
+      "body": "A quick view of money currently available in your tracked accounts.",
+      "includes": {
+        "cash": "Cash accounts",
+        "bank": "Bank accounts",
+        "active": "Only active, non-archived accounts"
+      },
+      "why": "It shows your real liquidity before you make spending or transfer decisions.",
+      "tip": "Keep account balances updated after manual adjustments."
+    },
+    "netProfit": {
+      "title": "Net Profit",
+      "body": "Your remaining profit after outgoing transactions in this dashboard view.",
+      "includes": {
+        "incoming": "Incoming transactions",
+        "outgoing": "Outgoing transactions",
+        "filters": "Current client and category filters"
+      },
+      "why": "It shows whether the selected work is actually earning more than it costs.",
+      "tip": "Change filters to isolate profit by client, category, or period."
+    },
+    "moneyFlow": {
+      "title": "Money Flow",
+      "body": "A compact comparison of incoming and outgoing money in the current view.",
+      "includes": {
+        "incoming": "Incoming volume",
+        "outgoing": "Outgoing volume",
+        "grouping": "Client grouping for business, category grouping for personal"
+      },
+      "why": "It highlights where cash is entering, leaving, or getting concentrated.",
+      "tip": "Use it with Net Profit to spot high-volume work with weak margins."
     }
   }
 }

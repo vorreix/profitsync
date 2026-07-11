@@ -4,9 +4,10 @@ import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { Loader as Loader2, Paperclip, X } from "lucide-react"
-import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api"
+import { apiDelete, apiErrorUpgradeHint, apiGet, apiPatch, apiPost } from "@/lib/api"
 import { amountExceedsLimit } from "@/lib/money"
-import type { Budget, Client, WealthAccount } from "@/lib/types"
+import { isPaidPlanKey, type Budget, type Client, type WealthAccount } from "@/lib/types"
+import { tagLimitForPlan } from "@/lib/tags"
 import { useCurrency } from "@/lib/currency-context"
 import { useOrg } from "@/lib/org-context"
 import { useCategories } from "@/lib/use-categories"
@@ -17,6 +18,7 @@ import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { TxFormFields } from "@/components/transactions/tx-form"
+import { mergeTags } from "@/lib/transaction-tags"
 import {
   defaultAccountId,
   defaultTxForm,
@@ -40,11 +42,13 @@ export function AddTransactionDialog({
   onOpenChange,
   onCreated,
   presetClientId,
+  tagSuggestions,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   onCreated?: (info: CreatedTxInfo) => void
   presetClientId?: string
+  tagSuggestions?: string[]
 }) {
   const { t } = useTranslation("transactions")
   const navigate = useNavigate()
@@ -52,6 +56,10 @@ export function AddTransactionDialog({
   const { currency } = useCurrency()
   const { activeOrg } = useOrg()
   const isPersonal = activeOrg?.account_type === "personal"
+  // Per-plan tag ceiling (free = 1, paid = 3). Clicking the premium chip closes
+  // the form (draft is kept) and sends the user to upgrade.
+  const tagLimit = tagLimitForPlan(isPaidPlanKey(activeOrg?.plan_key))
+  const goUpgrade = () => { onOpenChange(false); navigate("/subscription") }
   const { categories: catRows, byType: categories, refresh: refreshCats } = useCategories()
 
   const [form, setForm] = useState<TxForm>(defaultTxForm)
@@ -187,6 +195,8 @@ export function AddTransactionDialog({
         type: form.type,
         description: form.description,
         category: form.category,
+        // Commit any un-entered draft too, so a typed-but-not-Entered tag isn't lost.
+        tags: mergeTags(form.tags, form.tag_draft),
         date: form.date,
         allocations: allocs.map((a) => ({ wealth_account_id: a.account_id, amount: parseFloat(a.amount) })),
       })
@@ -203,7 +213,9 @@ export function AddTransactionDialog({
       setPendingFiles([])
       onOpenChange(false)
       onCreated?.({ id: firstId, type: form.type, amount: total })
-    } catch {
+    } catch (err) {
+      // A tag/quota 402 → route to upgrade instead of a generic failure toast.
+      if (apiErrorUpgradeHint(err)) { toast.info(t("tagsLimitReached")); goUpgrade(); return }
       toast.error(t("failedToAddTransaction"))
     } finally {
       // Always reset — the component stays mounted after a successful close, so a
@@ -227,6 +239,9 @@ export function AddTransactionDialog({
             accounts={accounts}
             accountsLoading={accountsLoading}
             categories={categories}
+            tagSuggestions={tagSuggestions}
+            tagLimit={tagLimit}
+            onTagUpgrade={goUpgrade}
             onChangeCats={handleChangeCats}
             onAddAccount={() => { onOpenChange(false); navigate("/wealth") }}
             currency={currency}

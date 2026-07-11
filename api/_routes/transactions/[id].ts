@@ -4,8 +4,10 @@ import { db, serialize } from "../../../src/lib/db/index.js"
 import { clients, transactions, wealthAccounts } from "../../../src/lib/db/schema.js"
 import { canDelete, canWrite, requireAuth } from "../../_lib/auth.js"
 import { diffFields, logAudit } from "../../_lib/audit.js"
+import { checkTransactionTagQuota } from "../../_lib/quota.js"
 import { balanceDelta } from "../../../src/lib/wealth-ledger.js"
 import { amountExceedsLimit } from "../../../src/lib/money.js"
+import { cleanTransactionTags } from "../../../src/lib/transaction-tags.js"
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ctx = await requireAuth(req, res)
@@ -42,6 +44,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         amount: transactions.amount,
         description: transactions.description,
         category: transactions.category,
+        tags: transactions.tags,
         date: transactions.date,
         isSystem: transactions.isSystem,
         recurringRuleId: transactions.recurringRuleId,
@@ -55,7 +58,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .from(transactions)
       .innerJoin(clients, eq(transactions.clientId, clients.id))
       .leftJoin(wealthAccounts, eq(transactions.wealthAccountId, wealthAccounts.id))
-      .where(eq(transactions.id, id))
+      // Org scope is redundant with the ownership check above (client_id is
+      // immutable), but re-asserting it keeps this enrichment query self-defending.
+      .where(and(eq(transactions.id, id), eq(clients.organizationId, orgId)))
     if (!tx) return res.status(404).json({ error: "Not found" })
 
     // For a split (group), surface the group totals the modal needs to show the
@@ -76,14 +81,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method === "PATCH") {
     if (!canWrite(role)) return res.status(403).json({ error: "Forbidden" })
-    const { type, amount, description, category, date, wealth_account_id } = req.body as {
-      type?: string; amount?: number; description?: string; category?: string; date?: string; wealth_account_id?: string | null
+    const { type, amount, description, category, tags, date, wealth_account_id } = req.body as {
+      type?: string; amount?: number; description?: string; category?: string; tags?: unknown; date?: string; wealth_account_id?: string | null
     }
     if (type !== undefined && !["incoming", "outgoing"].includes(type)) {
       return res.status(400).json({ error: "type must be incoming or outgoing" })
     }
     if (amount !== undefined && amountExceedsLimit(amount)) return res.status(400).json({ error: "Amount is too large" })
     const [before] = await db.select().from(transactions).where(eq(transactions.id, id))
+    // Per-plan tag ceiling. Only gate when tags are actually being changed, and
+    // grandfather an existing over-limit set (previousCount) so editing anything
+    // else on a legacy transaction never trips it — only *adding* tags is blocked.
+    let cleanedTags: string[] | undefined
+    if (tags !== undefined) {
+      cleanedTags = cleanTransactionTags(tags)
+      const previousCount = Array.isArray(before?.tags) ? before.tags.length : 0
+      const tagQuota = await checkTransactionTagQuota(orgId, cleanedTags.length, { previousCount })
+      if (!tagQuota.allowed) return res.status(402).json(tagQuota)
+    }
     const nextAccountId = wealth_account_id !== undefined ? wealth_account_id : before.wealthAccountId
     if (nextAccountId) {
       const [account] = await db
@@ -102,6 +117,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ...(amount !== undefined ? { amount: String(amount) } : {}),
         ...(description !== undefined ? { description } : {}),
         ...(category !== undefined ? { category } : {}),
+        ...(cleanedTags !== undefined ? { tags: cleanedTags } : {}),
         ...(date !== undefined ? { date } : {}),
         updatedBy: userId,
         updatedAt: new Date(),
@@ -132,7 +148,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const changes = diffFields(
       before as Record<string, unknown>,
       updated as Record<string, unknown>,
-      ["type", "amount", "description", "category", "date", "wealthAccountId"],
+      ["type", "amount", "description", "category", "tags", "date", "wealthAccountId"],
     )
     if (Object.keys(changes).length) await logAudit({ orgId, entityType: "transaction", entityId: id, action: "update", actorId: userId, changes })
     return res.json(serialize(updated))

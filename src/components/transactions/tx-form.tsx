@@ -7,6 +7,7 @@ import { formatMoney } from "@/lib/wealth"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { TagsInput } from "@/components/transactions/TagsInput"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -213,7 +214,7 @@ function CategoryCombobox({ categories, value, onChangeCategories, onChange }: {
 // ─── Transaction form fields ──────────────────────────────────────────────────
 
 export function TxFormFields({
-  f, onChange, showClient, clients, accounts, accountsLoading, categories, onChangeCats, onAddAccount, currency, singleAccount = false, budget = null,
+  f, onChange, showClient, clients, accounts, accountsLoading, categories, onChangeCats, onAddAccount, currency, singleAccount = false, budget = null, tagSuggestions = [], tagLimit, onTagUpgrade,
 }: {
   f: TxForm
   onChange: (patch: Partial<TxForm>) => void
@@ -229,6 +230,11 @@ export function TxFormFields({
   // The resolved expense budget for the current client (or personal/org budget),
   // used to show the live "x left after this expense" impact on outgoing.
   budget?: Budget | null
+  // Tags already used elsewhere (drives the TagsInput suggestion chips).
+  tagSuggestions?: string[]
+  // Per-plan tag ceiling + the "go upgrade" handler (shows a premium chip at cap).
+  tagLimit?: number
+  onTagUpgrade?: () => void
 }) {
   const { t } = useTranslation("transactions")
   const cats = f.type === "incoming" ? categories.incoming : categories.outgoing
@@ -288,6 +294,18 @@ export function TxFormFields({
           onChange={(e) => onChange({ description: e.target.value })}
           rows={3}
           className="resize-none"
+        />
+      </div>
+      <div className="space-y-1.5">
+        <Label>{t("tags")}</Label>
+        <TagsInput
+          value={f.tags}
+          draft={f.tag_draft}
+          suggestions={tagSuggestions}
+          maxTags={tagLimit}
+          onUpgrade={onTagUpgrade}
+          onDraftChange={(tag_draft) => onChange({ tag_draft })}
+          onChange={(tags) => onChange({ tags })}
         />
       </div>
       <div className="grid grid-cols-2 gap-3">

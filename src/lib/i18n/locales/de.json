@@ -38,7 +38,8 @@
     "recurring": "Daueraufträge",
     "calendar": "Kalender",
     "flow": "Geldfluss",
-    "spaces": "Sparräume"
+    "spaces": "Sparräume",
+    "categoryTags": "Kategorien & Tags"
   },
   "actions": {
     "addClient": "Kunde hinzufügen",
@@ -60,7 +61,15 @@
     "upgradeTitle": "Auf Premium upgraden",
     "upgradeSubtitle": "Mehr Kunden, Anhänge & Speicher",
     "createOrganization": "Organisation erstellen",
-    "manageOrganizations": "Organisationen verwalten"
+    "manageOrganizations": "Organisationen verwalten",
+    "loading": "Loading…",
+    "switchOrganization": "Switch organization",
+    "searchOrganizations": "Search organizations…",
+    "noOrganizationsMatch": "No organizations match",
+    "roleOwner": "owner",
+    "roleAdmin": "admin",
+    "roleEditor": "editor",
+    "roleViewer": "viewer"
   },
   "forgotPassword": {
     "linkLabel": "Passwort vergessen?",
@@ -170,7 +179,8 @@
     "cardWealth": "Vermögensübersicht",
     "cardChart": "Diagramm",
     "cardBreakdown": "Top-Aufschlüsselung",
-    "cardLatest": "Neueste Transaktionen"
+    "cardLatest": "Neueste Transaktionen",
+    "openFilters": "Open dashboard filters"
   },
   "chart": {
     "incoming": "Eingang",
@@ -382,7 +392,12 @@
     "splitHint": "Jedes Konto wird als eigene Transaktion gespeichert.",
     "account_one": "{{count}} Konto",
     "account_other": "{{count}} Konten",
-    "recurringBadge": "Wiederkehrend"
+    "recurringBadge": "Wiederkehrend",
+    "tags": "Tags",
+    "tagsPlaceholder": "Tags wie #business #travel hinzufügen",
+    "tagsUpgrade": "Upgrade für mehr Tags",
+    "tagsLimitReached": "Du hast das Tag-Limit deines Tarifs erreicht.",
+    "removeTag": "{{tag}} entfernen"
   },
   "clients": {
     "pageTitle": "Klienten",
@@ -818,7 +833,15 @@
     "deleteFailed": "Fehler beim Löschen der Kategorie",
     "deleteTitle": "Kategorie löschen?",
     "deleteBody": "\"{{name}}\" wird aus Ihrer Kategorienliste entfernt. Bestehende Transaktionen behalten ihr Label.",
-    "renameHint": "Das Umbenennen aktualisiert auch das Label für übereinstimmende Transaktionen."
+    "renameHint": "Das Umbenennen aktualisiert auch das Label für übereinstimmende Transaktionen.",
+    "appliesTo": "Gilt für",
+    "appliesToHint": "Wähle, in welchen Listen diese Kategorie erscheint.",
+    "selectTypeRequired": "Wähle mindestens einen Typ",
+    "color": "Farbe",
+    "colorNone": "Keine Farbe",
+    "nameExists": "Eine Kategorie mit diesem Namen existiert bereits",
+    "viewEntities": "Einträge in {{name}} anzeigen",
+    "dialogDescription": "Fasse Einnahmen, Ausgaben, Kunden und Angebote unter einem Namen zusammen."
   },
   "attachments": {
     "attachments": "Anhänge",
@@ -1472,5 +1495,106 @@
       "new_reminder": "Neue Erinnerung",
       "edit_reminder": "Erinnerung bearbeiten"
     }
+  },
+  "featureHelp": {
+    "open": "Open help for {{feature}}",
+    "includes": "Includes",
+    "why": "Why it matters",
+    "tip": "Tip",
+    "wealth": {
+      "title": "Wealth",
+      "body": "A quick view of money currently available in your tracked accounts.",
+      "includes": {
+        "cash": "Cash accounts",
+        "bank": "Bank accounts",
+        "active": "Only active, non-archived accounts"
+      },
+      "why": "It shows your real liquidity before you make spending or transfer decisions.",
+      "tip": "Keep account balances updated after manual adjustments."
+    },
+    "netProfit": {
+      "title": "Net Profit",
+      "body": "Your remaining profit after outgoing transactions in this dashboard view.",
+      "includes": {
+        "incoming": "Incoming transactions",
+        "outgoing": "Outgoing transactions",
+        "filters": "Current client and category filters"
+      },
+      "why": "It shows whether the selected work is actually earning more than it costs.",
+      "tip": "Change filters to isolate profit by client, category, or period."
+    },
+    "moneyFlow": {
+      "title": "Money Flow",
+      "body": "A compact comparison of incoming and outgoing money in the current view.",
+      "includes": {
+        "incoming": "Incoming volume",
+        "outgoing": "Outgoing volume",
+        "grouping": "Client grouping for business, category grouping for personal"
+      },
+      "why": "It highlights where cash is entering, leaving, or getting concentrated.",
+      "tip": "Use it with Net Profit to spot high-volume work with weak margins."
+    }
+  },
+  "categoryTags": {
+    "title": "Kategorien & Tags",
+    "subtitle": "Organisiere dein Geld mit Kategorien und Tags",
+    "categoryTab": "Kategorien",
+    "tagsTab": "Tags"
+  },
+  "tags": {
+    "loading": "Wird geladen…",
+    "count_one": "{{count}} Tag",
+    "count_other": "{{count}} Tags",
+    "searchPlaceholder": "Tags suchen…",
+    "addTag": "Tag hinzufügen",
+    "newShort": "Neu",
+    "editTag": "Tag bearbeiten",
+    "dialogDescription": "Versieh Transaktionen, Kunden und Angebote mit Tags, um sie im gesamten Workspace zu gruppieren.",
+    "name": "Name",
+    "namePlaceholder": "z. B. reise, dringend, q3",
+    "nameRequired": "Name ist erforderlich",
+    "nameHint": "Leerzeichen werden zu Bindestrichen und ein # wird automatisch hinzugefügt.",
+    "color": "Farbe",
+    "colorNone": "Keine Farbe",
+    "edit": "Bearbeiten",
+    "delete": "Löschen",
+    "empty": "Noch keine Tags.",
+    "noMatch": "Keine Tags passen zu deiner Suche.",
+    "created": "Tag erstellt",
+    "createFailed": "Tag konnte nicht erstellt werden",
+    "updated": "Tag aktualisiert",
+    "updateFailed": "Tag konnte nicht aktualisiert werden",
+    "deleted": "Tag gelöscht",
+    "deletedWithRecords_one": "Tag und {{count}} Datensatz gelöscht",
+    "deletedWithRecords_other": "Tag und {{count}} Datensätze gelöscht",
+    "deleteFailed": "Tag konnte nicht gelöscht werden",
+    "nameExists": "Ein Tag mit diesem Namen existiert bereits",
+    "viewEntities": "Einträge mit Tag {{name}} anzeigen",
+    "transactions": "Transaktionen",
+    "clients": "Kunden",
+    "quotations": "Angebote",
+    "unused": "Ungenutzt",
+    "sortMostUsed": "Meist genutzt",
+    "sortLeastUsed": "Am wenigsten genutzt",
+    "sortNameAsc": "Name (A–Z)",
+    "sortNameDesc": "Name (Z–A)",
+    "deleteTitle": "Tag löschen?",
+    "deleteChoosePrompt": "Wie möchtest du {{name}} löschen?",
+    "deleteTagOnly": "Nur Tag entfernen",
+    "deleteTagOnlyHint": "Datensätze behalten ihre Daten — nur der Tag wird entfernt.",
+    "deleteWithRecords": "Tag und Datensätze löschen",
+    "deleteWithRecordsHint_one": "Außerdem {{count}} getaggten Datensatz in den Papierkorb verschieben (umkehrbar).",
+    "deleteWithRecordsHint_other": "Außerdem {{count}} getaggte Datensätze in den Papierkorb verschieben (umkehrbar)."
+  },
+  "drilldown": {
+    "loading": "Wird geladen…",
+    "itemCount_one": "{{count}} Eintrag",
+    "itemCount_other": "{{count}} Einträge",
+    "empty": "Nichts entspricht diesen Filtern.",
+    "sortNewest": "Neueste",
+    "sortOldest": "Älteste",
+    "sortAmountHigh": "Höchster Betrag",
+    "sortAmountLow": "Niedrigster Betrag",
+    "sortName": "Name"
   }
 }

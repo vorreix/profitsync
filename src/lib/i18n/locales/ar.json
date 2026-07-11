@@ -38,7 +38,8 @@
     "recurring": "متكرر",
     "calendar": "التقويم",
     "flow": "تدفق الأموال",
-    "spaces": "مساحات الادخار"
+    "spaces": "مساحات الادخار",
+    "categoryTags": "الفئات والوسوم"
   },
   "actions": {
     "addClient": "إضافة عميل",
@@ -60,7 +61,15 @@
     "upgradeTitle": "الترقية إلى بريميوم",
     "upgradeSubtitle": "المزيد من العملاء والمرفقات والتخزين",
     "createOrganization": "إنشاء مؤسسة",
-    "manageOrganizations": "إدارة المؤسسات"
+    "manageOrganizations": "إدارة المؤسسات",
+    "loading": "Loading…",
+    "switchOrganization": "Switch organization",
+    "searchOrganizations": "Search organizations…",
+    "noOrganizationsMatch": "No organizations match",
+    "roleOwner": "owner",
+    "roleAdmin": "admin",
+    "roleEditor": "editor",
+    "roleViewer": "viewer"
   },
   "forgotPassword": {
     "linkLabel": "هل نسيت كلمة المرور؟",
@@ -170,7 +179,8 @@
     "cardWealth": "نظرة عامة على الثروة",
     "cardChart": "الرسم البياني",
     "cardBreakdown": "أهم البنود",
-    "cardLatest": "أحدث المعاملات"
+    "cardLatest": "أحدث المعاملات",
+    "openFilters": "Open dashboard filters"
   },
   "chart": {
     "incoming": "وارد",
@@ -382,7 +392,12 @@
     "splitHint": "كل حساب يتم حفظه كمعاملة منفصلة.",
     "account_one": "{{count}} حساب",
     "account_other": "{{count}} حسابات",
-    "recurringBadge": "متكرر"
+    "recurringBadge": "متكرر",
+    "tags": "الوسوم",
+    "tagsPlaceholder": "أضف وسومًا مثل #business #travel",
+    "tagsUpgrade": "الترقية لمزيد من الوسوم",
+    "tagsLimitReached": "لقد وصلت إلى حد الوسوم في باقتك.",
+    "removeTag": "إزالة {{tag}}"
   },
   "clients": {
     "pageTitle": "العملاء",
@@ -818,7 +833,15 @@
     "deleteFailed": "فشل حذف الفئة",
     "deleteTitle": "حذف الفئة؟",
     "deleteBody": "سيتم إزالة \"{{name}}\" من قائمة الفئات. المعاملات الموجودة تحتفظ بتسميتها.",
-    "renameHint": "إعادة التسمية تحدّث أيضاً التسمية على المعاملات المطابقة."
+    "renameHint": "إعادة التسمية تحدّث أيضاً التسمية على المعاملات المطابقة.",
+    "appliesTo": "ينطبق على",
+    "appliesToHint": "اختر القوائم التي تظهر فيها هذه الفئة.",
+    "selectTypeRequired": "اختر نوعًا واحدًا على الأقل",
+    "color": "اللون",
+    "colorNone": "بدون لون",
+    "nameExists": "توجد فئة بهذا الاسم بالفعل",
+    "viewEntities": "عرض العناصر في {{name}}",
+    "dialogDescription": "اجمع الإيرادات والمصروفات والعملاء وعروض الأسعار تحت اسم واحد."
   },
   "attachments": {
     "attachments": "المرفقات",
@@ -1472,5 +1495,106 @@
       "new_reminder": "تذكير جديد",
       "edit_reminder": "تعديل التذكير"
     }
+  },
+  "featureHelp": {
+    "open": "Open help for {{feature}}",
+    "includes": "Includes",
+    "why": "Why it matters",
+    "tip": "Tip",
+    "wealth": {
+      "title": "Wealth",
+      "body": "A quick view of money currently available in your tracked accounts.",
+      "includes": {
+        "cash": "Cash accounts",
+        "bank": "Bank accounts",
+        "active": "Only active, non-archived accounts"
+      },
+      "why": "It shows your real liquidity before you make spending or transfer decisions.",
+      "tip": "Keep account balances updated after manual adjustments."
+    },
+    "netProfit": {
+      "title": "Net Profit",
+      "body": "Your remaining profit after outgoing transactions in this dashboard view.",
+      "includes": {
+        "incoming": "Incoming transactions",
+        "outgoing": "Outgoing transactions",
+        "filters": "Current client and category filters"
+      },
+      "why": "It shows whether the selected work is actually earning more than it costs.",
+      "tip": "Change filters to isolate profit by client, category, or period."
+    },
+    "moneyFlow": {
+      "title": "Money Flow",
+      "body": "A compact comparison of incoming and outgoing money in the current view.",
+      "includes": {
+        "incoming": "Incoming volume",
+        "outgoing": "Outgoing volume",
+        "grouping": "Client grouping for business, category grouping for personal"
+      },
+      "why": "It highlights where cash is entering, leaving, or getting concentrated.",
+      "tip": "Use it with Net Profit to spot high-volume work with weak margins."
+    }
+  },
+  "categoryTags": {
+    "title": "الفئات والوسوم",
+    "subtitle": "نظّم أموالك باستخدام الفئات والوسوم",
+    "categoryTab": "الفئات",
+    "tagsTab": "الوسوم"
+  },
+  "tags": {
+    "loading": "جارٍ التحميل…",
+    "count_one": "وسم واحد",
+    "count_other": "{{count}} وسم",
+    "searchPlaceholder": "ابحث عن الوسوم…",
+    "addTag": "إضافة وسم",
+    "newShort": "جديد",
+    "editTag": "تعديل الوسم",
+    "dialogDescription": "ضع وسومًا على المعاملات والعملاء وعروض الأسعار لتجميعها عبر مساحة العمل.",
+    "name": "الاسم",
+    "namePlaceholder": "مثل travel، urgent، q3",
+    "nameRequired": "الاسم مطلوب",
+    "nameHint": "تتحول المسافات إلى شرطات ويُضاف # تلقائيًا.",
+    "color": "اللون",
+    "colorNone": "بدون لون",
+    "edit": "تعديل",
+    "delete": "حذف",
+    "empty": "لا توجد وسوم بعد.",
+    "noMatch": "لا يوجد وسم يطابق بحثك.",
+    "created": "تم إنشاء الوسم",
+    "createFailed": "فشل إنشاء الوسم",
+    "updated": "تم تحديث الوسم",
+    "updateFailed": "فشل تحديث الوسم",
+    "deleted": "تم حذف الوسم",
+    "deletedWithRecords_one": "تم حذف الوسم و{{count}} سجل",
+    "deletedWithRecords_other": "تم حذف الوسم و{{count}} سجل",
+    "deleteFailed": "فشل حذف الوسم",
+    "nameExists": "يوجد وسم بهذا الاسم بالفعل",
+    "viewEntities": "عرض العناصر الموسومة بـ {{name}}",
+    "transactions": "المعاملات",
+    "clients": "العملاء",
+    "quotations": "عروض الأسعار",
+    "unused": "غير مستخدم",
+    "sortMostUsed": "الأكثر استخدامًا",
+    "sortLeastUsed": "الأقل استخدامًا",
+    "sortNameAsc": "الاسم (أ–ي)",
+    "sortNameDesc": "الاسم (ي–أ)",
+    "deleteTitle": "حذف الوسم؟",
+    "deleteChoosePrompt": "كيف تريد حذف {{name}}؟",
+    "deleteTagOnly": "إزالة الوسم فقط",
+    "deleteTagOnlyHint": "تحتفظ السجلات ببياناتها — يُزال الوسم فقط.",
+    "deleteWithRecords": "حذف الوسم والسجلات",
+    "deleteWithRecordsHint_one": "انقل أيضًا {{count}} سجل موسوم إلى سلة المهملات (قابل للاسترجاع).",
+    "deleteWithRecordsHint_other": "انقل أيضًا {{count}} سجل موسوم إلى سلة المهملات (قابل للاسترجاع)."
+  },
+  "drilldown": {
+    "loading": "جارٍ التحميل…",
+    "itemCount_one": "{{count}} عنصر",
+    "itemCount_other": "{{count}} عناصر",
+    "empty": "لا شيء يطابق هذه المرشحات بعد.",
+    "sortNewest": "الأحدث",
+    "sortOldest": "الأقدم",
+    "sortAmountHigh": "أعلى مبلغ",
+    "sortAmountLow": "أقل مبلغ",
+    "sortName": "الاسم"
   }
 }

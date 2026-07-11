@@ -38,7 +38,8 @@
     "recurring": "Ricorrenti",
     "calendar": "Calendario",
     "flow": "Flusso di denaro",
-    "spaces": "Spazi"
+    "spaces": "Spazi",
+    "categoryTags": "Categorie e Tag"
   },
   "actions": {
     "addClient": "Aggiungi cliente",
@@ -60,7 +61,15 @@
     "upgradeTitle": "Passa a Premium",
     "upgradeSubtitle": "Più clienti, allegati e spazio",
     "createOrganization": "Crea organizzazione",
-    "manageOrganizations": "Gestisci organizzazioni"
+    "manageOrganizations": "Gestisci organizzazioni",
+    "loading": "Caricamento…",
+    "switchOrganization": "Cambia organizzazione",
+    "searchOrganizations": "Cerca organizzazioni…",
+    "noOrganizationsMatch": "Nessuna organizzazione corrisponde",
+    "roleOwner": "proprietario",
+    "roleAdmin": "admin",
+    "roleEditor": "editor",
+    "roleViewer": "visualizzatore"
   },
   "forgotPassword": {
     "linkLabel": "Password dimenticata?",
@@ -170,7 +179,8 @@
     "cardWealth": "Panoramica patrimonio",
     "cardChart": "Grafico",
     "cardBreakdown": "Migliori voci",
-    "cardLatest": "Ultime transazioni"
+    "cardLatest": "Ultime transazioni",
+    "openFilters": "Apri filtri dashboard"
   },
   "chart": {
     "incoming": "Entrate",
@@ -382,7 +392,12 @@
     "splitHint": "Ogni conto viene salvato come transazione separata.",
     "account_one": "{{count}} conto",
     "account_other": "{{count}} conti",
-    "recurringBadge": "Ricorrente"
+    "recurringBadge": "Ricorrente",
+    "tags": "Tag",
+    "tagsPlaceholder": "Aggiungi tag come #business #travel",
+    "tagsUpgrade": "Passa a Premium per più tag",
+    "tagsLimitReached": "Hai raggiunto il limite di tag del tuo piano.",
+    "removeTag": "Rimuovi {{tag}}"
   },
   "clients": {
     "pageTitle": "Clienti",
@@ -818,7 +833,15 @@
     "deleteFailed": "Impossibile eliminare la categoria",
     "deleteTitle": "Eliminare la categoria?",
     "deleteBody": "\"{{name}}\" verrà rimossa dall'elenco categorie. Le transazioni esistenti mantengono l'etichetta.",
-    "renameHint": "Rinominare aggiorna anche l'etichetta sulle transazioni corrispondenti."
+    "renameHint": "Rinominare aggiorna anche l'etichetta sulle transazioni corrispondenti.",
+    "appliesTo": "Si applica a",
+    "appliesToHint": "Scegli in quali elenchi appare questa categoria.",
+    "selectTypeRequired": "Seleziona almeno un tipo",
+    "color": "Colore",
+    "colorNone": "Nessun colore",
+    "nameExists": "Esiste già una categoria con quel nome",
+    "viewEntities": "Vedi elementi in {{name}}",
+    "dialogDescription": "Raggruppa entrate, spese, clienti e preventivi sotto un unico nome."
   },
   "attachments": {
     "attachments": "Allegati",
@@ -1472,5 +1495,106 @@
       "new_reminder": "Nuovo promemoria",
       "edit_reminder": "Modifica promemoria"
     }
+  },
+  "featureHelp": {
+    "open": "Apri la guida per {{feature}}",
+    "includes": "Include",
+    "why": "Perché è importante",
+    "tip": "Suggerimento",
+    "wealth": {
+      "title": "Patrimonio",
+      "body": "Una vista rapida del denaro disponibile negli account che monitori.",
+      "includes": {
+        "cash": "Account cassa",
+        "bank": "Account bancari",
+        "active": "Solo account attivi e non archiviati"
+      },
+      "why": "Mostra la liquidità reale prima di decidere spese o trasferimenti.",
+      "tip": "Aggiorna i saldi dopo ogni modifica manuale."
+    },
+    "netProfit": {
+      "title": "Utile netto",
+      "body": "Il profitto residuo dopo le uscite in questa vista della dashboard.",
+      "includes": {
+        "incoming": "Transazioni in entrata",
+        "outgoing": "Transazioni in uscita",
+        "filters": "Filtri cliente e categoria correnti"
+      },
+      "why": "Mostra se il lavoro selezionato guadagna davvero piu di quanto costa.",
+      "tip": "Cambia i filtri per isolare il profitto per cliente, categoria o periodo."
+    },
+    "moneyFlow": {
+      "title": "Flusso di denaro",
+      "body": "Un confronto compatto tra entrate e uscite nella vista corrente.",
+      "includes": {
+        "incoming": "Volume in entrata",
+        "outgoing": "Volume in uscita",
+        "grouping": "Raggruppamento per cliente nel business, per categoria nel personale"
+      },
+      "why": "Evidenzia dove il denaro entra, esce o si concentra.",
+      "tip": "Usalo con Utile netto per individuare lavori ad alto volume ma con margini deboli."
+    }
+  },
+  "categoryTags": {
+    "title": "Categorie e Tag",
+    "subtitle": "Organizza le tue finanze con categorie e tag",
+    "categoryTab": "Categorie",
+    "tagsTab": "Tag"
+  },
+  "tags": {
+    "loading": "Caricamento…",
+    "count_one": "{{count}} tag",
+    "count_other": "{{count}} tag",
+    "searchPlaceholder": "Cerca tag…",
+    "addTag": "Aggiungi tag",
+    "newShort": "Nuovo",
+    "editTag": "Modifica tag",
+    "dialogDescription": "Applica tag a transazioni, clienti e preventivi per raggrupparli in tutto il workspace.",
+    "name": "Nome",
+    "namePlaceholder": "es. viaggio, urgente, q3",
+    "nameRequired": "Il nome è obbligatorio",
+    "nameHint": "Gli spazi diventano trattini e il # viene aggiunto automaticamente.",
+    "color": "Colore",
+    "colorNone": "Nessun colore",
+    "edit": "Modifica",
+    "delete": "Elimina",
+    "empty": "Nessun tag ancora.",
+    "noMatch": "Nessun tag corrisponde alla ricerca.",
+    "created": "Tag creato",
+    "createFailed": "Creazione del tag non riuscita",
+    "updated": "Tag aggiornato",
+    "updateFailed": "Aggiornamento del tag non riuscito",
+    "deleted": "Tag eliminato",
+    "deletedWithRecords_one": "Tag e {{count}} record eliminati",
+    "deletedWithRecords_other": "Tag e {{count}} record eliminati",
+    "deleteFailed": "Eliminazione del tag non riuscita",
+    "nameExists": "Esiste già un tag con questo nome",
+    "viewEntities": "Vedi gli elementi con tag {{name}}",
+    "transactions": "Transazioni",
+    "clients": "Clienti",
+    "quotations": "Preventivi",
+    "unused": "Non usato",
+    "sortMostUsed": "Più usati",
+    "sortLeastUsed": "Meno usati",
+    "sortNameAsc": "Nome (A–Z)",
+    "sortNameDesc": "Nome (Z–A)",
+    "deleteTitle": "Eliminare il tag?",
+    "deleteChoosePrompt": "Come vuoi eliminare {{name}}?",
+    "deleteTagOnly": "Rimuovi solo il tag",
+    "deleteTagOnlyHint": "I record mantengono i loro dati — viene rimosso solo il tag.",
+    "deleteWithRecords": "Elimina tag e record",
+    "deleteWithRecordsHint_one": "Sposta anche {{count}} record con tag nel Cestino (reversibile).",
+    "deleteWithRecordsHint_other": "Sposta anche {{count}} record con tag nel Cestino (reversibile)."
+  },
+  "drilldown": {
+    "loading": "Caricamento…",
+    "itemCount_one": "{{count}} elemento",
+    "itemCount_other": "{{count}} elementi",
+    "empty": "Nessun risultato per questi filtri.",
+    "sortNewest": "Più recenti",
+    "sortOldest": "Meno recenti",
+    "sortAmountHigh": "Importo più alto",
+    "sortAmountLow": "Importo più basso",
+    "sortName": "Nome"
   }
 }

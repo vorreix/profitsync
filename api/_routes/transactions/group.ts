@@ -7,6 +7,8 @@ import { canWrite, ensureDefaultClient, isPersonalAccount, requireAuth } from ".
 import { getOrgPlan } from "../../_lib/quota.js"
 import { logAudit } from "../../_lib/audit.js"
 import { balanceDelta } from "../../../src/lib/wealth-ledger.js"
+import { cleanTransactionTags } from "../../../src/lib/transaction-tags.js"
+import { PREMIUM_TAGS_PER_TX } from "../../../src/lib/tags.js"
 import { amountExceedsLimit } from "../../../src/lib/money.js"
 
 type AllocationInput = { wealth_account_id?: string; account_id?: string; amount?: number | string }
@@ -28,15 +30,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" })
   if (!canWrite(role)) return res.status(403).json({ error: "Forbidden" })
 
-  const { client_id, type, description, category, date, is_system, allocations } = req.body as {
+  const { client_id, type, description, category, tags, date, allocations } = req.body as {
     client_id?: string
     type?: string
     description?: string
     category?: string
+    tags?: unknown
     date?: string
-    is_system?: boolean
     allocations?: AllocationInput[]
   }
+  // Group-level metadata, like description/category: every leg carries it.
+  const cleanTags = cleanTransactionTags(tags)
 
   if (!type || !["incoming", "outgoing"].includes(type)) {
     return res.status(400).json({ error: "type must be incoming or outgoing" })
@@ -81,6 +85,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   // Quota: the whole group must fit under the per-client transaction limit.
   const { planKey, limits } = await getOrgPlan(orgId)
+  // Per-plan tag ceiling (free = 1, paid = 3). Every leg shares the group's tags,
+  // so one check on the deduped set covers the whole split.
+  if (cleanTags.length > limits.tagsPerTransaction) {
+    return res.status(402).json({
+      allowed: false,
+      reason:
+        planKey === "free"
+          ? `Free plan allows ${limits.tagsPerTransaction} tag${limits.tagsPerTransaction === 1 ? "" : "s"} per transaction. Upgrade to Premium for up to ${PREMIUM_TAGS_PER_TX}.`
+          : `This plan allows ${limits.tagsPerTransaction} tags per transaction.`,
+      limit: limits.tagsPerTransaction,
+      current: cleanTags.length,
+      upgradeHint: planKey === "free",
+    })
+  }
   if (planKey === "free") {
     const [{ current }] = await db
       .select({ current: count() })
@@ -117,8 +135,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         amount: String(leg.amount),
         description: description ?? "",
         category: category ?? "",
+        tags: cleanTags,
         date: date ?? today,
-        isSystem: !!is_system,
+        // isSystem is server-only: user-created split legs are never system rows.
         createdBy: userId,
         updatedBy: userId,
       })
