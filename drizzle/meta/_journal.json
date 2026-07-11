@@ -330,6 +330,13 @@
       "when": 1783736445961,
       "tag": "0046_tiresome_sasquatch",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1783737084953,
+      "tag": "0047_loose_glorian",
+      "breakpoints": true
     }
   ]
 }
