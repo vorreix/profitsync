@@ -706,6 +706,20 @@ export const budgetHistory = pgTable("budget_history", {
   lookupIdx: index("budget_history_lookup_idx").on(table.organizationId, table.clientId, table.createdAt),
 }))
 
+// ── Notification scheduler heartbeat ──────────────────────────────────────────
+// Single-row liveness record: runNotificationTick upserts it on EVERY tick (even
+// zero-work ones), so the admin panel can tell "the scheduler is running" apart
+// from "nothing was due" — and flag a dead driver instead of silently dropping
+// reminders/broadcasts (the June'26 outage mode: the worker stopped and nothing
+// noticed for days).
+export const notificationSchedulerState = pgTable("notification_scheduler_state", {
+  id: text("id").primaryKey().default("default"),
+  lastTickAt: timestamp("last_tick_at").notNull().defaultNow(),
+  lastReminders: integer("last_reminders").notNull().default(0),
+  lastBroadcasts: integer("last_broadcasts").notNull().default(0),
+  updatedAt: timestamp("updated_at").defaultNow(),
+})
+
 // ── Notifications ─────────────────────────────────────────────────────────────
 // Persisted, per-recipient notifications. Platform-agnostic: any client (web,
 // PWA, future native app / wearable) reads these via /api/notifications, so the
