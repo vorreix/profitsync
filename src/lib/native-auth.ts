@@ -17,18 +17,32 @@ function redactUrl(value: string | URL): string {
   }
 }
 
-export function isNativeAndroid(): boolean {
-  // Runtime global check instead of importing @capacitor/core: this module is
-  // statically imported by App.tsx (and the auth pages), so a static capacitor
-  // import would drag the Capacitor runtime into the WEB bundle. Inside the
-  // native WebView the bridge always defines window.Capacitor.
+// Reads the window.Capacitor bridge global instead of importing @capacitor/core:
+// this module is statically imported by App.tsx (and the auth pages), so a static
+// capacitor import would drag the Capacitor runtime into the WEB bundle. Inside
+// the native WebView the bridge always defines window.Capacitor.
+export function nativePlatform(): "android" | "ios" | null {
   const cap = (window as { Capacitor?: { isNativePlatform?: () => boolean; getPlatform?: () => string } }).Capacitor
-  return !!cap?.isNativePlatform?.() && cap.getPlatform?.() === "android"
+  if (!cap?.isNativePlatform?.()) return null
+  const platform = cap.getPlatform?.()
+  return platform === "android" || platform === "ios" ? platform : null
+}
+
+// Generic native check covering EVERY Capacitor platform (android + ios). Prefer
+// this at shared call sites — routing, the OAuth deep-link listener, native push,
+// reminders — so iOS is covered without touching each site again. Reserve
+// isNativeAndroid() for genuinely Android-only branches.
+export function isNativeApp(): boolean {
+  return nativePlatform() !== null
+}
+
+export function isNativeAndroid(): boolean {
+  return nativePlatform() === "android"
 }
 
 export function nativeAuthLog(event: string, details: AuthLogDetails = {}) {
-  if (!isNativeAndroid()) return
-  console.info("[ProfitSync Android Auth]", JSON.stringify({ event, ...details }))
+  if (!isNativeApp()) return
+  console.info("[ProfitSync Native Auth]", JSON.stringify({ event, ...details }))
 }
 
 export function nativeAuthUrlLog(event: string, url: string | URL, details: AuthLogDetails = {}) {
