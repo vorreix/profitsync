@@ -63,3 +63,19 @@ is missing (a worker redeploy can wipe its schedule table).
 
 If `PROFITSYNC_SERVICE_TOKEN` is unset, the endpoint returns **503** and timed
 delivery is simply off — in-app notifications and immediate broadcasts still work.
+
+## One-look health checklist (V5)
+
+Alerting is now active in three layers — each self-resolves once fixed:
+
+| Signal | Where | Meaning |
+|---|---|---|
+| Heartbeat age | `/admin → Worker` | > 15 min stale = nothing is ticking at all |
+| 🔴 red `notification-tick-fallback` run | GitHub Actions (emails you) | the tick BEFORE the fallback's was > 25 min old — the WORKER is down or lost its schedule, only the 30-min fallback is delivering. Fix: `/admin → Worker → Register notification schedule`, or restart the worker |
+| ⚠️ "fallback inactive" summary | the same workflow's run summary | `PROFITSYNC_CRON_TOKEN` repo secret still unset — no redundancy behind the worker |
+
+Deploy-time protection: `make up` / `make rebuild` / `make up-proxy` now chain
+`make register` (with boot retries) and FAIL LOUD if the schedule can't be
+registered — a worker redeploy can no longer silently forget its schedule
+(the June 2026 outage). The cron route reports `previous_tick_at` /
+`previous_tick_age_seconds` for any external monitor to consume.

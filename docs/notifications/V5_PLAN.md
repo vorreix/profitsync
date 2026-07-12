@@ -34,7 +34,7 @@ Status: **in progress** · Started 2026-07-11 · Chain root: `feat/notif5-00-pla
 | 03 | `feat/notif5-03-events-money` | `budget_warning` @80%, `recurring_posted`, `referral_credited`/`referral_payout` (new types) | ✅ pushed |
 | 04 | `feat/notif5-04-fcm-server` | FCM HTTP v1 sender (node:crypto JWT, no-op w/o env), channel-aware `POST /api/notifications/push`, `mobile_push` preference channel + 3-column prefs UI | ✅ pushed |
 | 05 | `feat/notif5-05-fcm-client` | `@capacitor-firebase/messaging`, native token registration + tap deep-link, dual-mode PushToggle, docs | ✅ pushed |
-| 06 | `feat/notif5-06-reliability` | GH tick workflow fails loud on stale heartbeat, worker-deploy schedule registration, rate-limit on subscription POST, ops checklist | ⏳ |
+| 06 | `feat/notif5-06-reliability` | GH tick workflow fails loud on stale heartbeat, worker-deploy schedule registration, rate-limit on subscription POST, ops checklist | ✅ pushed |
 
 ## Ground truth (audited 2026-07-11, 4-agent fan-out with file:line evidence)
 
@@ -220,3 +220,17 @@ Status: **in progress** · Started 2026-07-11 · Chain root: `feat/notif5-00-pla
   google-services.json — no crash, app fully usable (screenshot; test install
   removed, emulator shut down). ⚠️ Full push round-trip still needs the
   Firebase project (user must `firebase login` or use the console).
+- 2026-07-12 (06): reliability. The cron tick now reads the heartbeat BEFORE
+  overwriting it and the route returns `previous_tick_at`/`_age_seconds`; the
+  GH fallback workflow (a) posts a visible run-summary warning while the
+  `PROFITSYNC_CRON_TOKEN` secret is unset, and (b) FAILS the run (→ GitHub
+  email) when the pre-tick heartbeat is >25 min old — i.e. the worker is dead
+  and only the fallback is delivering; self-resolves when the worker returns.
+  `make up`/`rebuild`/`up-proxy` chain `make register` (10×3s boot retries,
+  fails loud) so a worker redeploy can't silently lose its schedule again.
+  `api/_lib/rate-limit.ts` (in-process fixed window, committed fake-timer
+  tests) guards POST/DELETE /api/notifications/push at 60/hour/user.
+  SCHEDULER.md gains the one-look health checklist. Tick heartbeat exposure
+  DB-verified with a throwaway test (previousTickAt returned + advances).
+  ⚠️ Open user actions: set the PROFITSYNC_CRON_TOKEN repo secret; create the
+  Firebase project + FCM_SERVICE_ACCOUNT_JSON (see ANDROID.md).
