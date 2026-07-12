@@ -77,10 +77,10 @@ Naming: `feat/views-NN-<task>-maqbool`, each cut from the previous.
 
 | NN | Branch | Scope | Depends | Status |
 |----|--------|-------|---------|--------|
-| 00 | `feat/views-00-plan-maqbool` | This plan doc | dev | ⬜ todo |
-| 01 | `feat/views-01-primitives-maqbool` | `useViewMode`, `useInfiniteScroll`, `<ViewToggle>`, shared `view.*` i18n ×8, unit tests | 00 | ⬜ todo |
-| 02 | `feat/views-02-quotations-maqbool` | Quotations API `sort` + page: ViewToggle, List + Table (sortable), infinite scroll, memoized Card/Row, Map lookup, persist view; i18n | 01 | ⬜ todo |
-| 03 | `feat/views-03-clients-maqbool` | Clients API income/expense/profit sorts + page: persist view, add Table, infinite scroll, memoized Card/Row, ClosedClientsPage parity; i18n | 02 | ⬜ todo |
+| 00 | `feat/views-00-plan-maqbool` | This plan doc | dev | ✅ done |
+| 01 | `feat/views-01-primitives-maqbool` | `useViewMode`, `useInfiniteScroll`, `<ViewToggle>`, shared `view.*` i18n ×8, unit tests | 00 | ✅ done |
+| 02 | `feat/views-02-quotations-maqbool` | Quotations API `sort` + page: ViewToggle, List + Table (sortable), infinite scroll, memoized Card/Row, Map lookup, persist view; i18n | 01 | ✅ done |
+| 03 | `feat/views-03-clients-maqbool` | Clients API income/expense/profit sorts + page: persist view, add Table, infinite scroll, memoized Card/Row, ClosedClientsPage parity (Card+List); i18n | 02 | ✅ done (static gate) |
 | 04 | `feat/views-04-native-parity-maqbool` | Mobile/native verification + responsive fixes (Table overflow, mobile toggle, safe-area/44 px), `cap sync` android+ios | 03 | ⬜ todo |
 | 05 | `feat/views-05-docs-rule-maqbool` | CLAUDE.md parity rule + section, docs/native cross-ref, feature doc, memory note | 04 | ⬜ todo |
 
@@ -106,14 +106,17 @@ route-guards → i18n:check → lint → typecheck → test:ci (husky pre-commit
 
 | Check | Status |
 |---|---|
-| `useViewMode` / `useInfiniteScroll` unit tests | ⬜ |
-| Quotations sort param (typecheck + boot-functions) | ⬜ |
-| Clients stat sorts (typecheck + boot-functions) | ⬜ |
-| Browser: toggle + all 3 views + infinite scroll (desktop + 390 px) | ⬜ |
-| Full pre-commit gate per branch | ⬜ |
-| `cap sync` android + ios (pipeline intact) | ⬜ deferred if SDK/env missing |
+| `useViewMode` / `useInfiniteScroll` unit tests | ✅ 389 tests pass (10 new pure-predicate tests) |
+| Quotations sort param (typecheck + boot-functions) | ✅ boots, 177 modules |
+| Clients stat sorts (typecheck + boot-functions) | ✅ boots, 177 modules |
+| Browser: toggle + all 3 views + infinite scroll (desktop + 390 px) | ⬜ branch 04 |
+| Full pre-commit gate per branch | ✅ 01·02·03 (typecheck + lint + i18n + tests + ESM + boot) |
+| `cap sync` android + ios (pipeline intact) | ⬜ branch 04 (deferred if SDK/env missing) |
 | On-device Android/iOS visual check | ⛔ deferred (no emulator/SDK here) |
 | PR creation | ⛔ deferred (`gh` not authed → `pull/new/...` URLs) |
 
 ## 7. Change log
 - 2026-07-12 — Plan authored; decisions locked (infinite scroll + Card/List/Table); chain-root created.
+- 2026-07-12 — **01** shipped: `useViewMode` (localStorage `ps_view_*`, legacy `grid`→`card`), `useInfiniteScroll` (IntersectionObserver + `shouldLoadMore` predicate), `<ViewToggle>` (radiogroup, mobile-visible), shared `view.*` i18n ×8, 10 unit tests.
+- 2026-07-12 — **02** shipped: Quotations API `sort` (created/date/amount/title/prospect/status, id tiebreaker); page rewired to Card/List/Table with click-to-sort headers, auto infinite scroll (sentinel + Load-More fallback), memoized `QuotationCard/ListRow/Table`, O(1) `clientMap` lookup, persisted view; `quotation-display.ts` extracted; `quotations.table.*` i18n ×8.
+- 2026-07-12 — **03** shipped (static gate): Clients API income/expense/profit + company/name/date sorts (aggregate `sum(...)` server-side, `is_own` pinned, `id` tiebreaker); `client-views.tsx` (memoized `ClientCard/ListRow/Table` + `ClientActions`/`ClientColumn`/`ClientWithStats`); ClientsPage rewired (ViewToggle, 3 views, budget-aware sort select +6 options, `budgetFor`/`handleSort`/latest-ref actions, infinite scroll); ClosedClientsPage parity (Card+List toggle, key `clients-closed`, infinite scroll); `clients.table.*` + 6 sort labels i18n ×8. Browser + native verification → branch 04.

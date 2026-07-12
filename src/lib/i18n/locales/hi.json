@@ -442,7 +442,23 @@
     "clientCreated": "ग्राहक बनाया गया",
     "createClientFailed": "ग्राहक बनाने में विफल",
     "clientCount_one": "{{count}} ग्राहक",
-    "clientCount_other": "{{count}} ग्राहक"
+    "clientCount_other": "{{count}} ग्राहक",
+    "sortIncomeDesc": "आय (अधिक → कम)",
+    "sortIncomeAsc": "आय (कम → अधिक)",
+    "sortExpenseDesc": "व्यय (अधिक → कम)",
+    "sortExpenseAsc": "व्यय (कम → अधिक)",
+    "sortProfitDesc": "लाभ (अधिक → कम)",
+    "sortProfitAsc": "लाभ (कम → अधिक)",
+    "table": {
+      "name": "नाम",
+      "company": "कंपनी",
+      "income": "आय",
+      "expense": "व्यय",
+      "profit": "लाभ",
+      "date": "तारीख",
+      "actions": "क्रियाएँ",
+      "sortBy": "{{column}} के अनुसार क्रमबद्ध करें"
+    }
   },
   "quotations": {
     "titleLabel": "शीर्षक *",

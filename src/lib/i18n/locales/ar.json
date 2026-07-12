@@ -442,7 +442,23 @@
     "clientCreated": "تم إنشاء العميل",
     "createClientFailed": "فشل إنشاء العميل",
     "clientCount_one": "{{count}} عميل",
-    "clientCount_other": "{{count}} عملاء"
+    "clientCount_other": "{{count}} عملاء",
+    "sortIncomeDesc": "الدخل (من الأعلى إلى الأدنى)",
+    "sortIncomeAsc": "الدخل (من الأدنى إلى الأعلى)",
+    "sortExpenseDesc": "المصروفات (من الأعلى إلى الأدنى)",
+    "sortExpenseAsc": "المصروفات (من الأدنى إلى الأعلى)",
+    "sortProfitDesc": "الربح (من الأعلى إلى الأدنى)",
+    "sortProfitAsc": "الربح (من الأدنى إلى الأعلى)",
+    "table": {
+      "name": "الاسم",
+      "company": "الشركة",
+      "income": "الدخل",
+      "expense": "المصروفات",
+      "profit": "الربح",
+      "date": "التاريخ",
+      "actions": "الإجراءات",
+      "sortBy": "الترتيب حسب {{column}}"
+    }
   },
   "quotations": {
     "titleLabel": "العنوان *",
