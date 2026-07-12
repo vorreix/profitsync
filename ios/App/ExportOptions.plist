@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Template for `xcodebuild -exportArchive -exportOptionsPlist`. This produces an
+  App Store-ready .ipa from an .xcarchive. Fill in <teamID> with your Apple
+  Developer Team ID (developer.apple.com → Membership) before use.
+
+  Full archive + export flow (also in docs/native/SIGNING.md):
+
+    npm run cap:sync:ios
+    xcodebuild -project ios/App/App.xcodeproj -scheme App \
+      -configuration Release -sdk iphoneos \
+      -archivePath ios/build/App.xcarchive archive
+    xcodebuild -exportArchive \
+      -archivePath ios/build/App.xcarchive \
+      -exportOptionsPlist ios/App/ExportOptions.plist \
+      -exportPath ios/build/export
+
+  With automatic signing Xcode manages the distribution certificate + provisioning
+  profile for you (you must be signed into your Apple Developer account in Xcode).
+  For TestFlight, upload ios/build/export/App.ipa via Xcode Organizer, Transporter,
+  or `xcrun altool`/`notarytool`.
+-->
+<plist version="1.0">
+<dict>
+    <key>method</key>
+    <string>app-store-connect</string>
+    <key>teamID</key>
+    <string>YOUR_TEAM_ID</string>
+    <key>signingStyle</key>
+    <string>automatic</string>
+    <key>uploadSymbols</key>
+    <true/>
+    <key>destination</key>
+    <string>export</string>
+</dict>
+</plist>

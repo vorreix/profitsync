@@ -1634,5 +1634,10 @@
     "sortAmountHigh": "அதிக தொகை",
     "sortAmountLow": "குறைந்த தொகை",
     "sortName": "பெயர்"
+  },
+  "auth": {
+    "continueWithGoogle": "Google உடன் தொடரவும்",
+    "continueWithApple": "Apple உடன் தொடரவும்",
+    "oauthError": "உள்நுழைவைத் தொடங்க முடியவில்லை. மீண்டும் முயற்சிக்கவும்."
   }
 }
