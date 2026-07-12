@@ -1434,6 +1434,15 @@
         "title": "Pagamento non riuscito",
         "body": "Non abbiamo potuto elaborare il tuo ultimo pagamento. Aggiorna la tua fatturazione per mantenere Premium."
       },
+      "payment_succeeded": {
+        "title": "Pagamento ricevuto",
+        "body": "Il tuo pagamento di {{amount}} è andato a buon fine."
+      },
+      "subscription_changed": {
+        "title": "Abbonamento aggiornato",
+        "body_active": "La tua organizzazione ora è sul piano {{plan}}.",
+        "body_cancelled": "Il tuo abbonamento {{plan}} è stato annullato."
+      },
       "budget_exceeded": {
         "title": "Budget superato",
         "body": "{{name}} ha superato il suo budget {{period}}."
