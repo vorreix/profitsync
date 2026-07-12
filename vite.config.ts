@@ -17,6 +17,10 @@ if (viteMode === "android-local") {
   loadDotenv({ path: ".env.android.local", override: true })
 } else if (viteMode === "android") {
   loadDotenv({ path: ".env.android", override: true })
+} else if (viteMode === "ios-local") {
+  loadDotenv({ path: ".env.ios.local", override: true })
+} else if (viteMode === "ios") {
+  loadDotenv({ path: ".env.ios", override: true })
 } else {
   loadDotenv({ path: ".env.local" })
   loadDotenv()

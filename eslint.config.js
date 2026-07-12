@@ -16,6 +16,9 @@ export default tseslint.config(
       ".npm-cache/**",
       "android/app/build/**",
       "android/build/**",
+      // iOS Capacitor project — Swift + generated JS (cap-synced bundle, SPM
+      // artifacts under DerivedData). None of it is app source we lint.
+      "ios/**",
       // Vercel build output (vercel build / boot-functions) â€” generated, never linted.
       ".vercel",
       // shadcn/ui is vendored (see CLAUDE.md) â€” treat it as third-party.

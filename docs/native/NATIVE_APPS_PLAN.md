@@ -90,12 +90,12 @@ is world-readable once shipped; treat it as public.
 
 | # | Branch | Delivers | Status |
 |---|--------|----------|--------|
-| 00 | `feat/native-00-plan-maqbool` | This plan | 🚧 in progress |
-| 01 | `feat/native-01-login-first-maqbool` | `isNativeApp()`; PWA + native boot to `/login` / `/dashboard`, never the landing | ⏳ |
-| 02 | `feat/native-02-native-shell-maqbool` | StatusBar/Keyboard/Haptics/Splash + hardware-back + native CSS polish | ⏳ |
-| 03 | `feat/native-03-transitions-maqbool` | Direction-aware native page transitions | ⏳ |
-| 04 | `feat/native-04-apple-oauth-maqbool` | Sign in with Apple (web + native), i18n'd auth buttons | ⏳ |
-| 05 | `feat/native-05-ios-platform-maqbool` | Add + configure the iOS platform; build + boot in the simulator | ⏳ |
+| 00 | `feat/native-00-plan-maqbool` | This plan | ✅ pushed |
+| 01 | `feat/native-01-login-first-maqbool` | `isNativeApp()`; PWA + native boot to `/login` / `/dashboard`, never the landing | ✅ pushed |
+| 02 | `feat/native-02-native-shell-maqbool` | StatusBar/Keyboard/Haptics/Splash + hardware-back + native CSS polish | ✅ pushed |
+| 03 | `feat/native-03-transitions-maqbool` | Direction-aware native page transitions | ✅ pushed |
+| 04 | `feat/native-04-apple-oauth-maqbool` | Sign in with Apple (web + native), i18n'd auth buttons | ✅ pushed |
+| 05 | `feat/native-05-ios-platform-maqbool` | Add + configure the iOS platform; build + boot in the simulator | ✅ simulator-verified |
 | 06 | `feat/native-06-release-signing-maqbool` | Android release signing + iOS export config + build pipeline | ⏳ |
 | 07 | `feat/native-07-publishing-docs-maqbool` | Play Store + App Store publishing/testing guides | ⏳ |
 
@@ -153,15 +153,32 @@ is world-readable once shipped; treat it as public.
 - **Verify:** web button renders when the connection is on; native button compiles + is gated;
   gate. Live native Apple sign-in verified on device once the portal steps are done.
 
-### 05 — iOS platform
-- `npm i -D @capacitor/ios`; `npx cap add ios`; `.env.ios` / `.env.ios.local`; vite mode
-  wiring (`--mode ios|ios-local`); `build:ios*` / `cap:*:ios` scripts; iOS deployment target;
-  Info.plist (`CFBundleURLTypes` = `com.vorreix.profitsync`, `ITSAppUsesNonExemptEncryption=false`,
-  camera/photo-library privacy strings for attachments); iOS app icon + launch screen via
-  `@capacitor/assets`; `ios/credentials/` + gitignore; `pod install`.
-- **Verify (real):** `npm run cap:sync:ios` then build + boot in the **iOS Simulator** (Xcode /
-  `xcodebuild`) — the app compiles, launches, and lands on `/login`. Push/Apple/APNs need a real
-  device + portal config (documented).
+### 05 — iOS platform ✅
+- Added `@capacitor/ios@^8`; `npx cap add ios` (SPM, **not** CocoaPods — Xcode 26 scaffolds
+  `ios/App/CapApp-SPM/Package.swift`, no `Podfile`); `.env.ios` / `.env.ios.local` (copies of the
+  Android ones — same backend/Clerk/app-id); vite mode wiring (`--mode ios|ios-local`);
+  `build:ios*` + `cap:*:ios` npm scripts (+ `scripts/ios-xcodebuild.mjs` headless simulator build);
+  deployment target 15.0; Info.plist (`CFBundleURLTypes` = `com.vorreix.profitsync`,
+  `ITSAppUsesNonExemptEncryption=false`, **`NSCameraUsageDescription` + `NSPhotoLibraryUsageDescription`**
+  for attachment uploads); app icon + launch splash; `docs/native/IOS.md` dev guide.
+- **Firebase crash guard:** the FCM plugin force-configures Firebase at load and crashes with no
+  `GoogleService-Info.plist`. `AppDelegate.configureFirebaseIfNeeded()` configures an **inert
+  placeholder** app first, so the app boots + signs in with **zero** credentials; a real plist (added
+  when push is provisioned) takes over with no code change. Best respects "no secrets in the app."
+- **Deviations from the pre-build plan (auditable):**
+  - Icons come from **`scripts/ios-brand-assets.mjs`** (`sharp`, reads the shared `assets/` sources),
+    **not** `@capacitor/assets` — the latter isn't installed and `sharp` already is; reusing the same
+    `assets/` that Android consumes keeps the two apps' branding on one source of truth. The modern
+    single-1024 universal icon is used (opaque, alpha stripped — iOS rejects alpha icons).
+  - `GoogleService-Info.plist` goes in the **app target** (`ios/App/App/`, gitignored) rather than a
+    separate `ios/credentials/` dir, because iOS needs it inside the bundle for `Bundle.main` lookup.
+    No `pod install` (SPM handles deps).
+- **Verify (real):** built with `xcodebuild -sdk iphonesimulator` and booted on **iPhone 17
+  simulator** — the `--mode ios` **production** bundle (live Clerk + `https://profitsync.net` API base)
+  compiles, launches, and lands **login-first** with the native Apple + Google buttons above the Clerk
+  card; live Clerk renders on the `capacitor://` origin (no origin error), no Firebase crash, native
+  status bar / Dynamic Island respected. Push / live Apple sign-in / APNs need a real device + portal
+  config (documented in IOS.md + APPLE_OAUTH.md).
 
 ### 06 — release signing + build pipeline
 - Android: `signingConfigs { release }` in `android/app/build.gradle` reading a **gitignored**
@@ -216,3 +233,8 @@ is world-readable once shipped; treat it as public.
   native shell, iOS readiness, build/secrets); findings cross-verified against first-hand reads;
   four research claims corrected (above). Environment confirmed: Xcode 26.4.1 + CocoaPods 1.16.2
   present (real iOS simulator build is possible), Capacitor CLI 8.4.1, Java 22, `gh` unauthenticated.
+- 2026-07-12: branches 01–04 implemented, gated, and pushed (login-first entry, native shell,
+  page transitions, Apple OAuth). Branch 05 (iOS platform) implemented + **simulator-verified**
+  (login-first boot with Apple + Google buttons, no Firebase crash). iOS uses **SPM** not CocoaPods
+  (Xcode 26); brand assets via a new `scripts/ios-brand-assets.mjs` reusing the shared `assets/`;
+  `IOS.md` written. Next: 06 (release signing) → 07 (publishing docs).
