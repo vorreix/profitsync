@@ -11,6 +11,19 @@ This is the operating doc (mental model, invariants, where things live, how to r
 it). For the design rationale and the branch-by-branch build log, see
 [`PLAN.md`](./PLAN.md).
 
+> **⚠️ v2 — explicit generation + history (mig 0052, branch `feat/qpdf-history`) supersedes the
+> auto-enqueue flow described below.** Source of truth moved from the single
+> `quotations.pdf_*` columns to a **`quotation_pdfs` table** (up to **5** PDFs/quotation,
+> backfilled from the old columns). **`GET /api/quotations/:id/pdf` is now READ-ONLY** — it
+> returns the presigned history + `generating`/`latest_stale` flags and **never enqueues**,
+> so opening the modal no longer hits the worker. Generation is explicit: **`POST` the same
+> route** (Generate/Regenerate) creates a new generation with a **unique per-row object key**
+> (`gen-<rowId>.pdf`, not the content hash) and enqueues it; the `pdf-ready` callback marks
+> that row ready and **prunes to the newest 5** (deleting older rows + their S3 objects via
+> `deleteObject`). The worker Go code is unchanged — the app owns the key and maps the
+> callback by it. The content hash now only drives the "content changed since last PDF"
+> hint. Pure prune/stale logic: `src/lib/quotation-pdf-history.ts` (unit-tested).
+
 ---
 
 ## Mental model (internalize first)
