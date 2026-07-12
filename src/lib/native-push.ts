@@ -22,14 +22,18 @@ export function isNativePushSupported(): boolean {
   return isNativeAndroid()
 }
 
+// ⚠️ Capacitor plugin objects are Proxies that forward EVERY property access —
+// including `then` — to a native call. Resolving a promise WITH the proxy makes
+// the promise machinery invoke proxy.then() → "not implemented" native error and
+// an await that never settles. Always hand the proxy back inside a wrapper.
 async function messaging() {
   const mod = await import("@capacitor-firebase/messaging")
-  return mod.FirebaseMessaging
+  return { fm: mod.FirebaseMessaging }
 }
 
 export async function nativePushPermission(): Promise<"granted" | "denied" | "prompt"> {
   try {
-    const fm = await messaging()
+    const { fm } = await messaging()
     const { receive } = await fm.checkPermissions()
     if (receive === "granted") return "granted"
     if (receive === "denied") return "denied"
@@ -46,7 +50,7 @@ export async function isNativePushEnabled(): Promise<boolean> {
 }
 
 async function registerCurrentToken(getToken: () => Promise<string | null>): Promise<NativeSubscribeResult> {
-  const fm = await messaging()
+  const { fm } = await messaging()
   let deviceToken: string
   try {
     const res = await fm.getToken()
@@ -73,7 +77,7 @@ async function registerCurrentToken(getToken: () => Promise<string | null>): Pro
 export async function enableNativePush(getToken: () => Promise<string | null>): Promise<NativeSubscribeResult> {
   if (!isNativePushSupported()) return { ok: false, reason: "unsupported" }
   try {
-    const fm = await messaging()
+    const { fm } = await messaging()
     const { receive } = await fm.requestPermissions()
     if (receive !== "granted") {
       return { ok: false, reason: receive === "denied" ? "blocked" : "dismissed" }
@@ -90,7 +94,7 @@ export async function disableNativePush(getToken: () => Promise<string | null>):
   localStorage.removeItem(ENABLED_KEY)
   if (!isNativePushSupported()) return
   try {
-    const fm = await messaging()
+    const { fm } = await messaging()
     const { token: deviceToken } = await fm.getToken().catch(() => ({ token: "" }))
     await fm.deleteToken().catch(() => {})
     if (deviceToken) {
@@ -125,7 +129,7 @@ export async function initNativePush(
 ): Promise<() => void> {
   if (!isNativePushSupported()) return () => {}
   try {
-    const fm = await messaging()
+    const { fm } = await messaging()
     const tap = await fm.addListener("notificationActionPerformed", (event) => {
       const url = (event.notification?.data as Record<string, string> | undefined)?.url
       if (url && url.startsWith("/")) navigate(url)
