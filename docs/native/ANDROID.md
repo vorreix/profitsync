@@ -74,9 +74,11 @@ One-time setup (~10 min, needs `firebase login` / console access):
    `profitsync-app`). No Blaze upgrade needed — FCM is free on Spark.
 2. **Android app**: add an Android app with package
    `com.vorreix.profitsync`, download **`google-services.json`** into
-   `android/app/`. It's gitignored — each machine that builds release APKs
-   places its own copy. The gradle hook auto-applies the plugin when the file
-   exists (stock Capacitor behavior, already wired).
+   **`android/credentials/`** (template: `google.services.example.json` in the
+   same folder). It's gitignored — each machine that builds release APKs
+   places its own copy. The build mirrors it into `android/app/` and
+   auto-applies the google-services plugin when it exists; without it the
+   app still builds, push is simply off.
 3. **Server key**: Project settings → Service accounts → *Generate new private
    key* (a JSON file). Set it on Vercel as **`FCM_SERVICE_ACCOUNT_JSON`**
    (paste raw JSON or base64 of it) for Production (+ Preview if wanted):
