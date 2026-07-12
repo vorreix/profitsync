@@ -348,15 +348,18 @@ export function ClientsPage() {
   return (
     <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
       {/* Header — on mobile the search + filter sit right next to "+ New"
-          (sort lives inside the filter); on desktop the view toggle joins them. */}
-      <div className="flex items-center justify-between gap-2">
+          (sort lives inside the filter); the view toggle joins them. The row
+          WRAPS (flex-wrap + ml-auto): when the search expands on a narrow phone
+          the toggle/actions drop to a second right-aligned line instead of
+          overflowing the viewport (no horizontal scroll — a11y CRITICAL). */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="min-w-0">
           <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">{t("pageTitle")}</h1>
           <p className="text-sm text-muted-foreground mt-0.5 sm:mt-1">
             {loading ? t("loading") : t("clientCount", { count: total })}
           </p>
         </div>
-        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+        <div className="flex flex-wrap items-center justify-end gap-1.5 sm:gap-2 ml-auto">
           <ExpandableSearch
             value={search}
             onChange={setSearch}
