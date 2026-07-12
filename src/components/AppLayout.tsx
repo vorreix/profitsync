@@ -178,6 +178,23 @@ function AppLayoutInner() {
     setFabOpen(false)
   }, [location.pathname])
 
+  // Native (Android) push: attach the notification-tap deep-link + token
+  // rotation listeners and self-heal this device's FCM registration. No-ops on
+  // the web (isNativePushSupported gate; the plugin itself loads lazily). Runs
+  // on mobile too — this hook sits above the MobileAppLayout early return.
+  const { getToken } = useAuth()
+  useEffect(() => {
+    let cleanup: (() => void) | undefined
+    void (async () => {
+      const { ensureNativePushSynced, initNativePush, isNativePushSupported } = await import("@/lib/native-push")
+      if (!isNativePushSupported()) return
+      cleanup = await initNativePush(getToken, navigate)
+      void ensureNativePushSynced(getToken)
+    })()
+    return () => cleanup?.()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // New (or not-yet-chosen) users must pick an account type first.
   if (!orgLoading && needsOnboarding) {
     return <Navigate to="/onboarding" replace />

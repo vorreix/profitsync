@@ -22,8 +22,11 @@ Two ideas carry the whole design:
      every device that runs the app. **Has no dependency on push.**
    - **`web_push`** — browser/PWA push via the Web Push standard + VAPID. An *enhancement*
      layered on top.
-   - **future `fcm` / `apns`** — Android / iOS / wearables. Adding them is a new
-     `push_subscriptions.channel` value + a sender. **No schema change, no API change.**
+   - **`mobile_push`** (V5) — the native-app push toggle. ONE user-facing preference
+     channel covering the device transports: `push_subscriptions.channel='fcm'` rows sent
+     via FCM HTTP v1 (`api/_lib/push-fcm.ts`; FCM wraps APNs when the iOS shell lands).
+     Setup + client wiring: `docs/native/ANDROID.md` → *Push notifications (FCM)*.
+     No-ops entirely without the `FCM_SERVICE_ACCOUNT_JSON` env.
 
 **The in-app system is completely independent of web push.** The bell works via lightweight
 polling. Push is best-effort and isolated — a missing `web-push` dep, missing VAPID env, or
@@ -39,6 +42,7 @@ EVENT (e.g. role change, payment failed, budget exceeded)
   │     1. resolve the recipient's preference cascade (client → org → user → default)
   │     2. if in_app enabled for the category → INSERT a notifications row
   │     3. if web_push enabled for the category → sendWebPushToUser() (best-effort)
+  │     4. if mobile_push enabled for the category → sendFcmToUser() (best-effort)
   ▼
 IN-APP                                WEB PUSH (optional)
   bell polls /unread-count (60s)        api/_lib/push.ts (lazy-loads `web-push`)

@@ -33,7 +33,7 @@ Status: **in progress** · Started 2026-07-11 · Chain root: `feat/notif5-00-pla
 | 02 | `feat/notif5-02-events-team` | `member_invited` (admins), org-wide join fan-out, `quotation_accepted` | ✅ pushed |
 | 03 | `feat/notif5-03-events-money` | `budget_warning` @80%, `recurring_posted`, `referral_credited`/`referral_payout` (new types) | ✅ pushed |
 | 04 | `feat/notif5-04-fcm-server` | FCM HTTP v1 sender (node:crypto JWT, no-op w/o env), channel-aware `POST /api/notifications/push`, `mobile_push` preference channel + 3-column prefs UI | ✅ pushed |
-| 05 | `feat/notif5-05-fcm-client` | `@capacitor-firebase/messaging`, native token registration, Mobile-push toggle UI, conditional gradle wiring, docs | ⏳ |
+| 05 | `feat/notif5-05-fcm-client` | `@capacitor-firebase/messaging`, native token registration + tap deep-link, dual-mode PushToggle, docs | ✅ pushed |
 | 06 | `feat/notif5-06-reliability` | GH tick workflow fails loud on stale heartbeat, worker-deploy schedule registration, rate-limit on subscription POST, ops checklist | ⏳ |
 
 ## Ground truth (audited 2026-07-11, 4-agent fan-out with file:line evidence)
@@ -201,3 +201,22 @@ Status: **in progress** · Started 2026-07-11 · Chain root: `feat/notif5-00-pla
   unconfigured no-op. Browser-verified on :3001: 3-column grid renders with
   correct defaults, and a Phone toggle round-trips through PUT→sanitize→DB
   (`mobile_push:true` persisted, then test data reverted).
+- 2026-07-12 (05): FCM client. `@capacitor-firebase/messaging@8.3.0` (native
+  chunk; its web impl's `firebase/messaging` optional peer is ALIASED to a
+  stub in vite.config — do NOT install the firebase JS SDK).
+  `src/lib/native-push.ts` mirrors web-push.ts: enable (requestPermissions →
+  getToken → POST channel:"fcm"), disable (deleteToken + DELETE), boot
+  self-heal `ensureNativePushSynced` (localStorage intent flag + permission),
+  `initNativePush` tap→`data.url` deep-link + token-rotation re-register
+  (attached in AppLayout, above the mobile early-return so it runs there too).
+  PushToggle is dual-mode (native drives FCM, web drives VAPID — same switch,
+  same copy); /api/notifications/test-push now fans out to BOTH channels and
+  returns merged counts. Firebase CLI is NOT authenticated → project
+  provisioning documented instead (ANDROID.md "Push notifications (FCM)": 
+  console steps, google-services.json placement — gradle hook already stock —
+  FCM_SERVICE_ACCOUNT_JSON Vercel env, iOS .p8 note; env stub in CLAUDE.md).
+  Verified: chunk graph still acyclic (no native/charts leak into vendor);
+  FCM-enabled APK built and BOOTED on the API 34 emulator WITHOUT
+  google-services.json — no crash, app fully usable (screenshot; test install
+  removed, emulator shut down). ⚠️ Full push round-trip still needs the
+  Firebase project (user must `firebase login` or use the console).
