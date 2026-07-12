@@ -3,7 +3,7 @@ import { useSignIn, useSignUp } from "@clerk/clerk-react"
 import { Loader2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import { isNativeAndroid, nativeAuthLog, nativeAuthUrlLog, NATIVE_OAUTH_REDIRECT_URL } from "@/lib/native-auth"
+import { isNativeApp, nativeAuthLog, nativeAuthUrlLog, NATIVE_OAUTH_REDIRECT_URL } from "@/lib/native-auth"
 
 type NativeGoogleAuthButtonProps = {
   mode: "sign-in" | "sign-up"
@@ -23,7 +23,7 @@ export function NativeGoogleAuthButton({ mode, completeUrl, unsafeMetadata }: Na
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  if (!isNativeAndroid()) return null
+  if (!isNativeApp()) return null
 
   const loaded = mode === "sign-in" ? signInState.isLoaded : signUpState.isLoaded
 

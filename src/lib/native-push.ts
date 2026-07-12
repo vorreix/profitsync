@@ -8,7 +8,7 @@
 // gracefully: on the web, or in a native build without google-services.json
 // baked in, the helpers return a reason instead of throwing.
 import { apiDelete, apiPost } from "@/lib/api"
-import { isNativeAndroid } from "@/lib/native-auth"
+import { isNativeApp, nativePlatform } from "@/lib/native-auth"
 
 // Local intent flag: the OS permission alone can't distinguish "user enabled
 // push" from "user granted permission once but toggled push off in the app".
@@ -19,7 +19,10 @@ export type NativeSubscribeResult =
   | { ok: false; reason: "unsupported" | "blocked" | "dismissed" | "unconfigured" | "auth" | "error" }
 
 export function isNativePushSupported(): boolean {
-  return isNativeAndroid()
+  // FCM wraps APNs, so one native path serves android AND ios. iOS still needs
+  // its APNs key uploaded to Firebase + a GoogleService-Info.plist baked in — an
+  // unconfigured build simply reports "unconfigured" from getToken() below.
+  return isNativeApp()
 }
 
 // ⚠️ Capacitor plugin objects are Proxies that forward EVERY property access —
@@ -66,7 +69,7 @@ async function registerCurrentToken(getToken: () => Promise<string | null>): Pro
     await apiPost("/api/notifications/push", token, {
       channel: "fcm",
       endpoint: deviceToken,
-      platform: "android",
+      platform: nativePlatform() ?? "android",
     })
     return { ok: true }
   } catch {
@@ -121,7 +124,7 @@ export async function ensureNativePushSynced(getToken: () => Promise<string | nu
  * Attach the notification-tap listener: server pushes carry `data.url`
  * (see api/_lib/push-fcm.ts) and tapping deep-links there. Also re-registers on
  * FCM token rotation. Returns an unlisten cleanup. Call once from the
- * signed-in shell when isNativeAndroid().
+ * signed-in shell when isNativeApp().
  */
 export async function initNativePush(
   getToken: () => Promise<string | null>,
