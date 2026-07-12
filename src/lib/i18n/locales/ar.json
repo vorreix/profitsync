@@ -442,7 +442,23 @@
     "clientCreated": "تم إنشاء العميل",
     "createClientFailed": "فشل إنشاء العميل",
     "clientCount_one": "{{count}} عميل",
-    "clientCount_other": "{{count}} عملاء"
+    "clientCount_other": "{{count}} عملاء",
+    "sortIncomeDesc": "الدخل (من الأعلى إلى الأدنى)",
+    "sortIncomeAsc": "الدخل (من الأدنى إلى الأعلى)",
+    "sortExpenseDesc": "المصروفات (من الأعلى إلى الأدنى)",
+    "sortExpenseAsc": "المصروفات (من الأدنى إلى الأعلى)",
+    "sortProfitDesc": "الربح (من الأعلى إلى الأدنى)",
+    "sortProfitAsc": "الربح (من الأدنى إلى الأعلى)",
+    "table": {
+      "name": "الاسم",
+      "company": "الشركة",
+      "income": "الدخل",
+      "expense": "المصروفات",
+      "profit": "الربح",
+      "date": "التاريخ",
+      "actions": "الإجراءات",
+      "sortBy": "الترتيب حسب {{column}}"
+    }
   },
   "quotations": {
     "titleLabel": "العنوان *",
@@ -523,7 +539,36 @@
     "deleteBtn": "حذف",
     "totalQuotations_one": "{{count}} اقتراح",
     "totalQuotations_other": "{{count}} اقتراحات",
-    "dateLabel": "التاريخ"
+    "dateLabel": "التاريخ",
+    "table": {
+      "title": "العنوان",
+      "prospect": "العميل المحتمل",
+      "amount": "المبلغ",
+      "status": "الحالة",
+      "date": "التاريخ",
+      "actions": "الإجراءات",
+      "sortBy": "الترتيب حسب {{column}}"
+    },
+    "pdf": {
+      "action": "PDF",
+      "title": "ملف PDF لعرض السعر",
+      "generatingTitle": "جارٍ تحضير ملف PDF…",
+      "generatingHint": "يستغرق هذا عادةً بضع ثوانٍ.",
+      "ready": "ملف PDF لعرض السعر جاهز.",
+      "view": "عرض",
+      "download": "تنزيل",
+      "share": "مشاركة",
+      "shareText": "عرض السعر: {{title}}",
+      "linkCopied": "تم نسخ الرابط إلى الحافظة",
+      "expiresNote": "تظل روابط العرض والتنزيل صالحة لمدة ساعة تقريبًا.",
+      "unavailableTitle": "إنشاء PDF غير متاح",
+      "unavailableHint": "لم يتم إعداد إنشاء ملفات PDF بعد. يرجى المحاولة لاحقًا.",
+      "errorTitle": "تعذّر تحضير ملف PDF",
+      "timeout": "يستغرق هذا وقتًا أطول من المتوقع. يرجى المحاولة مرة أخرى.",
+      "retry": "حاول مرة أخرى",
+      "close": "إغلاق",
+      "openError": "تعذّر فتح ملف PDF. يرجى المحاولة مرة أخرى."
+    }
   },
   "organizations": {
     "organizationCreated": "تم إنشاء المنظمة",
@@ -1634,5 +1679,16 @@
     "sortAmountHigh": "أعلى مبلغ",
     "sortAmountLow": "أقل مبلغ",
     "sortName": "الاسم"
+  },
+  "auth": {
+    "continueWithGoogle": "المتابعة باستخدام Google",
+    "continueWithApple": "المتابعة باستخدام Apple",
+    "oauthError": "تعذّر بدء تسجيل الدخول. يرجى المحاولة مرة أخرى."
+  },
+  "view": {
+    "label": "العرض",
+    "card": "عرض البطاقات",
+    "list": "عرض القائمة",
+    "table": "عرض الجدول"
   }
 }

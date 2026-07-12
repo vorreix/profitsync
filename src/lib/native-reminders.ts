@@ -12,7 +12,7 @@
 // Bundle discipline: @capacitor/local-notifications loads lazily (vite routes
 // @capacitor/* to the lazy "native" chunk); web builds never pull it in.
 import { apiGet } from "@/lib/api"
-import { isNativeAndroid } from "@/lib/native-auth"
+import { isNativeApp } from "@/lib/native-auth"
 
 export type LocalReminder = {
   id: string
@@ -30,7 +30,7 @@ async function plugin() {
 }
 
 export function isLocalRemindersSupported(): boolean {
-  return isNativeAndroid()
+  return isNativeApp()
 }
 
 /** ISO weekday (1=Mon…7=Sun, our schedule model) → Capacitor (1=Sun…7=Sat). */

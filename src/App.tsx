@@ -9,7 +9,8 @@ import { BusinessOnlyRoute } from "@/components/BusinessOnlyRoute"
 import { PersonalOnlyRoute } from "@/components/PersonalOnlyRoute"
 import { Toaster } from "@/components/ui/sonner"
 import { UpdatePrompt } from "@/components/UpdatePrompt"
-import { isNativeAndroid, nativeAuthLog, nativeAuthUrlLog, toInternalOAuthCallbackPath } from "@/lib/native-auth"
+import { NativeShell } from "@/components/NativeShell"
+import { isNativeApp, nativeAuthLog, nativeAuthUrlLog, toInternalOAuthCallbackPath } from "@/lib/native-auth"
 import { useShouldRedirectToApp } from "@/lib/use-redirect-to-app"
 import { isStandalonePwa } from "@/lib/pwa/is-standalone"
 
@@ -92,13 +93,15 @@ function RouteFallback() {
 // revisit the marketing site, which the old "always redirect signed-in users"
 // behavior prevented.
 //
-// The installed PWA is the app, not a website: when running standalone we never
-// render the marketing landing at "/", and instead boot straight into the
-// product — the dashboard when signed in (AppLayout forwards to /onboarding if
-// the account isn't set up yet), or the login screen when signed out.
+// The app surfaces — the installed PWA AND the native apps (Android + iOS) — are
+// the product, not a website: they never render the marketing landing at "/", and
+// instead boot straight into the app — the dashboard when signed in (AppLayout
+// forwards to /onboarding if the account isn't set up yet), or the login screen
+// when signed out. The Capacitor WebView loads the bundle at "/", so this is the
+// single gate that keeps the marketing landing out of the native apps.
 function LandingRoute() {
   const signedIn = useShouldRedirectToApp()
-  if (isStandalonePwa()) {
+  if (isStandalonePwa() || isNativeApp()) {
     return <Navigate to={signedIn ? "/dashboard" : "/login"} replace />
   }
   return <LandingApp />
@@ -110,8 +113,9 @@ export function App() {
 
     async function installNativeUrlListener() {
       // Web never needs the deep-link listener — bail before the dynamic
-      // imports so browsers don't fetch the capacitor chunk at all.
-      if (!isNativeAndroid()) return
+      // imports so browsers don't fetch the capacitor chunk at all. Covers
+      // android AND ios (the custom OAuth scheme is shared across platforms).
+      if (!isNativeApp()) return
       try {
         const [{ App: CapacitorApp }, { Browser }] = await Promise.all([
           import("@capacitor/app"),
@@ -151,6 +155,7 @@ export function App() {
 
   return (
     <BrowserRouter>
+      <NativeShell />
       <AppErrorBoundary>
       <Suspense fallback={<RouteFallback />}>
         <Routes>

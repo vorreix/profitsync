@@ -442,7 +442,23 @@
     "clientCreated": "வாடிக்கையாளர் உருவாக்கப்பட்டார்",
     "createClientFailed": "வாடிக்கையாளரை உருவாக்க முடியவில்லை",
     "clientCount_one": "{{count}} வாடிக்கையாளர்",
-    "clientCount_other": "{{count}} வாடிக்கையாளர்கள்"
+    "clientCount_other": "{{count}} வாடிக்கையாளர்கள்",
+    "sortIncomeDesc": "வருமானம் (அதிகம் → குறைவு)",
+    "sortIncomeAsc": "வருமானம் (குறைவு → அதிகம்)",
+    "sortExpenseDesc": "செலவு (அதிகம் → குறைவு)",
+    "sortExpenseAsc": "செலவு (குறைவு → அதிகம்)",
+    "sortProfitDesc": "லாபம் (அதிகம் → குறைவு)",
+    "sortProfitAsc": "லாபம் (குறைவு → அதிகம்)",
+    "table": {
+      "name": "பெயர்",
+      "company": "நிறுவனம்",
+      "income": "வருமானம்",
+      "expense": "செலவு",
+      "profit": "லாபம்",
+      "date": "தேதி",
+      "actions": "செயல்கள்",
+      "sortBy": "{{column}} வாரியாக வரிசைப்படுத்து"
+    }
   },
   "quotations": {
     "titleLabel": "தலைப்பு *",
@@ -523,7 +539,36 @@
     "deleteBtn": "நீக்கவும்",
     "totalQuotations_one": "{{count}} மேற்கோள்",
     "totalQuotations_other": "{{count}} மேற்கோள்கள்",
-    "dateLabel": "தேதி"
+    "dateLabel": "தேதி",
+    "table": {
+      "title": "தலைப்பு",
+      "prospect": "வாய்ப்புள்ள வாடிக்கையாளர்",
+      "amount": "தொகை",
+      "status": "நிலை",
+      "date": "தேதி",
+      "actions": "செயல்கள்",
+      "sortBy": "{{column}} வாரியாக வரிசைப்படுத்து"
+    },
+    "pdf": {
+      "action": "PDF",
+      "title": "மேற்கோள் PDF",
+      "generatingTitle": "உங்கள் PDF தயாராகிறது…",
+      "generatingHint": "இது பொதுவாக சில வினாடிகள் ஆகும்.",
+      "ready": "உங்கள் மேற்கோள் PDF தயாராக உள்ளது.",
+      "view": "பார்க்க",
+      "download": "பதிவிறக்க",
+      "share": "பகிர்",
+      "shareText": "மேற்கோள்: {{title}}",
+      "linkCopied": "இணைப்பு கிளிப்போர்டுக்கு நகலெடுக்கப்பட்டது",
+      "expiresNote": "பார்வை மற்றும் பதிவிறக்க இணைப்புகள் சுமார் ஒரு மணி நேரம் செல்லுபடியாகும்.",
+      "unavailableTitle": "PDF உருவாக்கம் கிடைக்கவில்லை",
+      "unavailableHint": "PDF உருவாக்கம் இன்னும் அமைக்கப்படவில்லை. பிறகு மீண்டும் முயற்சிக்கவும்.",
+      "errorTitle": "PDF தயாரிக்க முடியவில்லை",
+      "timeout": "எதிர்பார்த்ததை விட அதிக நேரம் ஆகிறது. மீண்டும் முயற்சிக்கவும்.",
+      "retry": "மீண்டும் முயற்சிக்கவும்",
+      "close": "மூடு",
+      "openError": "PDF ஐ திறக்க முடியவில்லை. மீண்டும் முயற்சிக்கவும்."
+    }
   },
   "organizations": {
     "organizationCreated": "நிறுவனம் உருவாக்கப்பட்டது",
@@ -1634,5 +1679,16 @@
     "sortAmountHigh": "அதிக தொகை",
     "sortAmountLow": "குறைந்த தொகை",
     "sortName": "பெயர்"
+  },
+  "auth": {
+    "continueWithGoogle": "Google உடன் தொடரவும்",
+    "continueWithApple": "Apple உடன் தொடரவும்",
+    "oauthError": "உள்நுழைவைத் தொடங்க முடியவில்லை. மீண்டும் முயற்சிக்கவும்."
+  },
+  "view": {
+    "label": "காட்சி",
+    "card": "அட்டை காட்சி",
+    "list": "பட்டியல் காட்சி",
+    "table": "அட்டவணை காட்சி"
   }
 }

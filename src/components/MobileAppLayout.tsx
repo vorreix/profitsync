@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { Outlet, NavLink, useLocation, useNavigate } from "react-router-dom"
+import { Outlet, NavLink, useLocation, useNavigate, useNavigationType } from "react-router-dom"
 import { useUser, useClerk } from "@clerk/clerk-react"
 import { toast } from "sonner"
 import {
@@ -59,6 +59,7 @@ import { QuickAddModal, type QuickAddEntity } from "@/components/QuickAddModal"
 import { AddTransactionDialog, type CreatedTxInfo } from "@/components/transactions/AddTransactionDialog"
 import { useCurrency } from "@/lib/currency-context"
 import { formatMoney } from "@/lib/wealth"
+import { haptic } from "@/lib/native-shell"
 
 type TabItem = { labelKey: string; href: string; icon: typeof LayoutDashboard }
 
@@ -143,6 +144,12 @@ export function MobileAppLayout() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const location = useLocation()
+  const navType = useNavigationType()
+  // Shared-axis route transition: forward on a push (drill-in / tab), back on a
+  // pop (browser or hardware back), plain fade on a replace. The <main> is keyed
+  // by route below so the class's keyframe replays on each navigation.
+  const routeEnterClass =
+    navType === "POP" ? "page-enter-back" : navType === "REPLACE" ? "page-enter" : "page-enter-forward"
   const { user } = useUser()
   const { signOut } = useClerk()
   const { activeOrg, orgs, profile, switchOrg, refresh, loading: orgLoading } = useOrg()
@@ -212,7 +219,7 @@ export function MobileAppLayout() {
   )
 
   return (
-    <div className="min-h-screen flex flex-col bg-background ios-tap">
+    <div className="min-h-screen flex flex-col bg-background ios-tap overflow-x-clip">
       <header className="safe-pt sticky top-0 z-30 bg-background/95 backdrop-blur border-b">
         <div className="flex items-center gap-2 px-4 h-12">
           <button
@@ -367,7 +374,7 @@ export function MobileAppLayout() {
         </div>
       </header>
 
-      <main className="flex-1 overflow-y-auto overflow-x-hidden pb-32 page-enter" key={location.pathname + (activeOrg?.id ?? "")}>
+      <main className={`flex-1 overflow-y-auto overflow-x-hidden pb-32 ${routeEnterClass}`} key={location.pathname + (activeOrg?.id ?? "")}>
         <InstallAppBanner className="mx-4 mt-3" />
         <ReferralBanner className="mx-4 mt-3" />
         {orgLoading ? (
@@ -405,6 +412,7 @@ export function MobileAppLayout() {
             key={action.href}
             className="flex items-center gap-2 animate-in fade-in slide-in-from-bottom-1 duration-150 cursor-pointer group/action"
             onClick={() => {
+              void haptic("selection")
               if (action.kind === "transaction") setAddTxOpen(true)
               else setQuickAdd(action.kind)
               setFabOpen(false)
@@ -426,7 +434,7 @@ export function MobileAppLayout() {
           size="icon"
           className="size-14 rounded-full shadow-lg pressable"
           aria-label={pageAction ? t(pageAction.labelKey) : undefined}
-          onClick={() => { if (pageAction) navigate(pageAction.href); else setFabOpen((o) => !o) }}
+          onClick={() => { void haptic("light"); if (pageAction) navigate(pageAction.href); else setFabOpen((o) => !o) }}
         >
           {!pageAction && fabOpen ? <X className="size-5" /> : <Plus className="size-5" />}
         </Button>
@@ -447,6 +455,7 @@ export function MobileAppLayout() {
               <NavLink
                 key={tab.href}
                 to={tab.href}
+                onClick={() => void haptic("selection")}
                 className={`pressable flex flex-col items-center justify-center gap-0.5 py-2 px-1 rounded-md ios-tap ${
                   active ? "text-primary" : "text-muted-foreground"
                 }`}

@@ -94,6 +94,24 @@ VITE_VAPID_PUBLIC_KEY=B...                # browser (same value as VAPID_PUBLIC_
 # no-ops if absent). Firebase service-account key: raw JSON or base64 of it.
 # Setup: docs/native/ANDROID.md → "Push notifications (FCM)".
 FCM_SERVICE_ACCOUNT_JSON=...              # server-only — never expose to browser
+
+# Object storage for quotation PDFs (Hetzner Object Storage / MinIO / AWS S3;
+# OPTIONAL — the PDF modal shows "not available" (503) if absent). These are the
+# app's READ credentials; it mints a fresh short-lived (~1h) presigned URL on
+# every view/download so shared links expire on their own. The Go worker holds
+# the matching WRITE credentials under the SAME S3_* names (worker/deploy/.env)
+# and uploads the bytes. Keep the bucket PRIVATE — the presigned URL from the
+# authed, org-scoped GET /api/quotations/:id/pdf is the only path to the bytes.
+# ⚠ SERVER-ONLY — never expose to the browser (no VITE_ prefix; the client only
+#   ever receives a presigned URL, which carries a signature, not the key).
+# Full architecture + ops: docs/quotation-pdf/SYSTEM.md.
+S3_ENDPOINT=fsn1.your-objectstorage.com   # server-only — host, no scheme
+S3_REGION=us-east-1                        # default us-east-1
+S3_BUCKET=...                              # server-only — private bucket
+S3_ACCESS_KEY=...                          # server-only — never expose to browser
+S3_SECRET_KEY=...                          # server-only — never expose to browser
+S3_USE_SSL=true                            # "false" for plain HTTP (dev only)
+S3_FORCE_PATH_STYLE=true                   # true for Hetzner/MinIO; "false" = virtual-hosted
 ```
 
 The `E2E_*` secrets (`E2E_VITE_CLERK_PUBLISHABLE_KEY`, `E2E_CLERK_SECRET_KEY`, `E2E_DATABASE_URL`) are **GitHub Actions secrets for the e2e workflow only** — they do **not** go in `.env.local` or Vercel. The two Clerk ones are your existing **dev**-instance keys (same `pk_test_…`/`sk_test_…` already in `.env.local`); `E2E_DATABASE_URL` is a dedicated Neon branch. Vercel manages the running app's env separately (`vercel env`; note: `vercel dev` reads the cloud Development env, not `.env.local`).
@@ -201,6 +219,16 @@ The app is a client-rendered SPA, which is invisible to crawlers/AI engines that
 - **`skipWaiting`/`clientsClaim` stay OFF.** A new SW installs and WAITS; `onNeedRefresh` shows the `<UpdatePrompt />` banner ("Update available" → `updateSW(true)` reloads onto the new version). Update checks run hourly + on `visibilitychange`. Never force-activate without a reload.
 - Recovery ladder (shared `sessionStorage` budget across `chunk-recovery.ts`, the inline `index.html` script, and `AppErrorBoundary`): attempt 1 = cache-busted reload; attempts 2–3 = **also unregister all SWs + delete all caches** (the only escape from a zombie worker).
 - **Chunking invariant (`vite.config.ts` `manualChunks`):** the chunk graph must stay acyclic — `flow` (@xyflow) → `charts` (recharts/d3) → `vendor` (everything else incl. React). A library landing in `vendor` while its dependency sits in a leaf chunk (e.g. @xyflow's d3-zoom) creates a `vendor↔leaf` cycle and a **total white screen** at boot (`forwardRef` of undefined). After touching chunking, verify: `grep -o 'charts-[^"]*\.js' dist/assets/vendor-*.js` must be empty.
+
+#### Native apps (Capacitor) — Web ↔ Native parity
+
+The Android (`android/`) and iOS (`ios/`) apps are **[Capacitor](https://capacitorjs.com) WebView shells around the exact same Vite build** (`capacitor.config.ts` `webDir: "dist"`). The copied bundle lives at `android/app/src/main/assets/public` and `ios/App/App/public` — both are **gitignored build artifacts**, not source. There is **no separate native UI codebase**: a change to the web bundle (UI, routes, assets, i18n, client logic) **is** the native change once the bundle is re-copied into the shells.
+
+- **🔴 STRICT PARITY RULE — non-negotiable during development:** whenever a change affects the built web bundle, you MUST propagate it to **both** native apps **before the task is done**, and say so in the plan/PR. One command per platform: **`npm run cap:sync:android`** and **`npm run cap:sync:ios`** (each = a native-mode `vite build` + `cap sync`). This rule is also a *Key conventions* bullet — see there. Never land a web-UI change that leaves Android/iOS on a stale bundle.
+- **`cap sync` vs `cap copy`:** `cap sync` = `cap copy` (web assets + config) **plus** `cap update` (native deps/plugins). Use the **`cap:sync:*` npm scripts** whenever a Capacitor **plugin** was added/updated. A plugin-free, web-assets-only change can use `npx cap copy android` / `npx cap copy ios` after a build — but when in doubt, **`cap:sync:*`**.
+- **Native-mode builds matter:** `build:android` / `build:ios` (`vite build --mode android|ios`) wire native-only config (deep-link scheme `com.vorreix.profitsync://oauth-callback`, FCM stub alias, public keys). Don't point the native shells at a plain `npm run build` when a mode-specific env is involved — always go through `cap:sync:{android,ios}`.
+- **Mobile-safety constraints every web change must keep** (they exist because the same DOM runs in the native WebView): ≥44 px touch targets, ≥16 px inputs (iOS avoids auto-zoom), safe-area insets (`src/index.css`), wide tables wrapped in `overflow-x-auto`, and **the page body never scrolls horizontally** (headers `flex-wrap` rather than overflow — see the Clients header).
+- **Store is the only native update path** (the in-app service worker is disabled in the shell) — bump the version and re-upload for every shipped change. Full setup/ops: **`docs/native/README.md`** (+ `ANDROID.md` / `IOS.md` / `PUBLISHING.md`).
 
 #### Route table (as of current codebase)
 
@@ -351,6 +379,7 @@ Dark/light mode via `next-themes` (`ThemeProvider` in `src/components/theme-prov
 - **i18n strings:** all UI text goes through `useTranslation()`. Raw English strings in JSX are a bug.
 - **Form validation:** use `react-hook-form` + `zod` resolvers. Do not roll custom validation.
 - **shadcn components:** install via CLI, never edit `src/components/ui/` directly.
+- **Web ↔ Native parity (STRICT — do not skip):** the Android + iOS apps are Capacitor shells around the **same `dist/` bundle**, so **every** web-UI / asset / route / i18n / client-logic change MUST be propagated to **both** native apps **before the task is considered done** — run `npm run cap:sync:android` **and** `npm run cap:sync:ios` (each = native-mode `vite build` + `cap sync`; `npx cap copy android/ios` is acceptable only for a plugin-free, web-assets-only change). Keep the mobile constraints (≥44 px targets, ≥16 px inputs, safe-area insets, no horizontal page scroll). A web change that leaves the native shells on a stale bundle is an incomplete task. Details: *Native apps (Capacitor) — Web ↔ Native parity* above.
 
 ## Product context
 

@@ -358,6 +358,13 @@
       "when": 1783783818488,
       "tag": "0050_curvy_norrin_radd",
       "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1783860506342,
+      "tag": "0051_skinny_outlaw_kid",
+      "breakpoints": true
     }
   ]
 }
