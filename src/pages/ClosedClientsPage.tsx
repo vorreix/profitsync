@@ -16,6 +16,13 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ExpandableSearch } from "@/components/ExpandableSearch"
 import { FilterSheet, FilterSection } from "@/components/filters/FilterSheet"
+import { ViewToggle } from "@/components/ViewToggle"
+import { useViewMode, type ViewMode } from "@/lib/use-view-mode"
+import { useInfiniteScroll } from "@/lib/use-infinite-scroll"
+
+// The closed archive is a read-only list with no financial-sort workflow, so it
+// offers Card + List (the dense sortable Table lives on the active /clients page).
+const CLOSED_VIEWS: readonly ViewMode[] = ["card", "list"]
 
 /** Dedicated screen for closed clients (reached via the "Closed" button on /clients). */
 export function ClosedClientsPage() {
@@ -35,6 +42,7 @@ export function ClosedClientsPage() {
   const [loadingMore, setLoadingMore] = useState(false)
   const [search, setSearch] = useState("")
   const [sort, setSort] = useState("date_desc")
+  const [view, setView] = useViewMode("clients-closed", "card", CLOSED_VIEWS)
   const searchRef = useRef(search)
   const sortRef = useRef(sort)
   searchRef.current = search
@@ -102,6 +110,14 @@ export function ClosedClientsPage() {
 
   const remaining = total - clients.length
 
+  // Auto infinite scroll (sentinel) with the "Load More" button as manual fallback.
+  const { sentinelRef } = useInfiniteScroll({
+    hasMore: remaining > 0,
+    loading: loadingMore,
+    onLoadMore: handleLoadMore,
+    enabled: !loading,
+  })
+
   return (
     <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
       <div className="flex items-center justify-between gap-2">
@@ -116,6 +132,7 @@ export function ClosedClientsPage() {
         </div>
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           <ExpandableSearch value={search} onChange={setSearch} placeholder={t("searchPlaceholder")} expandedClassName="w-36 sm:w-64" />
+          <ViewToggle value={view} onChange={setView} available={CLOSED_VIEWS} />
           <FilterSheet count={0} onClear={() => setSort("date_desc")} registerFloating={false}>
             <FilterSection label={t("filters.sortBy")}>
               <Select value={sort} onValueChange={setSort}>
@@ -142,41 +159,78 @@ export function ClosedClientsPage() {
         </div>
       ) : (
         <>
-          <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-            {clients.map((client) => {
-              const incoming = Number(client.total_incoming ?? 0)
-              const outgoing = Number(client.total_outgoing ?? 0)
-              return (
-                <Card key={client.id} className="py-0 opacity-95 cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate(`/clients/${client.id}`)}>
-                  <CardContent className="p-3.5 space-y-2.5">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0 flex-1">
-                        <p className="font-semibold text-sm truncate">{client.name}</p>
-                        {client.company && (
-                          <div className="flex items-center gap-1.5 mt-0.5">
-                            <Building2 className="size-3 text-muted-foreground shrink-0" />
-                            <p className="text-xs text-muted-foreground truncate">{client.company}</p>
-                          </div>
-                        )}
+          {view === "list" ? (
+            <div className="space-y-2">
+              {clients.map((client) => {
+                const incoming = Number(client.total_incoming ?? 0)
+                const outgoing = Number(client.total_outgoing ?? 0)
+                return (
+                  <div
+                    key={client.id}
+                    className="flex items-center gap-4 px-4 py-3 rounded-lg border bg-card opacity-95 cursor-pointer hover:bg-accent/50 transition-colors min-h-11"
+                    onClick={() => navigate(`/clients/${client.id}`)}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-medium text-sm truncate">{client.name}</span>
+                        <Badge variant="outline" className="text-xs shrink-0 border-amber-500/40 text-amber-600 dark:text-amber-300">{t("closed.closedBadge")}</Badge>
                       </div>
-                      <Badge variant="outline" className="shrink-0 border-amber-500/40 text-amber-600 dark:text-amber-300">{t("closed.closedBadge")}</Badge>
+                      {client.company && (
+                        <p className="text-xs text-muted-foreground truncate mt-0.5">{client.company}</p>
+                      )}
                     </div>
-                    <div className="grid grid-cols-2 gap-2 pt-2 border-t text-xs">
-                      <span className="text-emerald-600 dark:text-emerald-400 tabular-nums truncate">{fmt(incoming)}</span>
-                      <span className="text-red-600 dark:text-red-400 tabular-nums truncate text-right">{fmt(outgoing)}</span>
+                    <div className="hidden sm:flex items-center gap-4 shrink-0">
+                      <span className="text-sm font-semibold text-emerald-600 dark:text-emerald-400 tabular-nums">{fmt(incoming)}</span>
+                      <span className="text-sm font-semibold text-red-600 dark:text-red-400 tabular-nums">{fmt(outgoing)}</span>
                     </div>
                     {canWrite && (
-                      <Button variant="outline" size="sm" className="w-full" onClick={(e) => { e.stopPropagation(); reopen(client.id) }}>
-                        <ArchiveRestore className="size-3.5" /> {t("closed.reopen")}
+                      <Button variant="outline" size="sm" className="shrink-0" onClick={(e) => { e.stopPropagation(); reopen(client.id) }}>
+                        <ArchiveRestore className="size-3.5" /> <span className="hidden sm:inline">{t("closed.reopen")}</span>
                       </Button>
                     )}
-                  </CardContent>
-                </Card>
-              )
-            })}
-          </div>
+                  </div>
+                )
+              })}
+            </div>
+          ) : (
+            <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+              {clients.map((client) => {
+                const incoming = Number(client.total_incoming ?? 0)
+                const outgoing = Number(client.total_outgoing ?? 0)
+                return (
+                  <Card key={client.id} className="py-0 opacity-95 cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate(`/clients/${client.id}`)}>
+                    <CardContent className="p-3.5 space-y-2.5">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <p className="font-semibold text-sm truncate">{client.name}</p>
+                          {client.company && (
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              <Building2 className="size-3 text-muted-foreground shrink-0" />
+                              <p className="text-xs text-muted-foreground truncate">{client.company}</p>
+                            </div>
+                          )}
+                        </div>
+                        <Badge variant="outline" className="shrink-0 border-amber-500/40 text-amber-600 dark:text-amber-300">{t("closed.closedBadge")}</Badge>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 pt-2 border-t text-xs">
+                        <span className="text-emerald-600 dark:text-emerald-400 tabular-nums truncate">{fmt(incoming)}</span>
+                        <span className="text-red-600 dark:text-red-400 tabular-nums truncate text-right">{fmt(outgoing)}</span>
+                      </div>
+                      {canWrite && (
+                        <Button variant="outline" size="sm" className="w-full" onClick={(e) => { e.stopPropagation(); reopen(client.id) }}>
+                          <ArchiveRestore className="size-3.5" /> {t("closed.reopen")}
+                        </Button>
+                      )}
+                    </CardContent>
+                  </Card>
+                )
+              })}
+            </div>
+          )}
+          {/* Auto infinite scroll: sentinel triggers the next page; button = fallback. */}
           {remaining > 0 && (
-            <div className="flex justify-center pt-2">
+            <div className="flex flex-col items-center gap-2 pt-2">
+              <div ref={sentinelRef} aria-hidden className="h-px w-full" />
               <Button variant="outline" onClick={handleLoadMore} disabled={loadingMore}>
                 {loadingMore ? t("loading") : t("loadMore", { remaining })}
               </Button>

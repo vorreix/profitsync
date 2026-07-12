@@ -35,8 +35,16 @@ npm run cap:open:android       # open in Android Studio
 ```
 
 Debug APK output: `android/app/build/outputs/apk/debug/app-debug.apk`
-(unsigned — install for testing via `adb install`). Release signing is NOT
-configured yet; set up a keystore + `signingConfigs` before any store upload.
+(install for testing via `adb install`).
+
+**Release builds** are wired: `android/app/build.gradle` signs `release` with the
+upload keystore described in a gitignored `android/key.properties` (template:
+`android/key.properties.example`) — without it the release build is unsigned, so
+nothing here depends on the keystore. Produce a store bundle with
+`cd android && ./gradlew bundleRelease` →
+`android/app/build/outputs/bundle/release/app-release.aab`. Full walkthrough:
+**`SIGNING.md`** (keys) → **`PUBLISHING.md`** (Play Console). See **`README.md`**
+for the docs index.
 
 ## Branding — launcher icon & splash screen
 

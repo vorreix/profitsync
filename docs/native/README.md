@@ -1,0 +1,74 @@
+# ProfitSync native apps — docs index
+
+ProfitSync ships as one codebase on four surfaces: the **web app**, the
+**installable PWA**, a **native Android app**, and a **native iOS app**. The two
+native apps are [Capacitor](https://capacitorjs.com) WebView shells around the
+exact same Vite build — they boot straight into the product (login when signed
+out), sign in with **Google and Apple**, and talk to the deployed backend at
+`https://profitsync.net`.
+
+## Start here
+
+| If you want to… | Read |
+|---|---|
+| Understand the whole initiative + the branch chain + credential model | **`NATIVE_APPS_PLAN.md`** |
+| Build & run the **Android** app (setup, commands, branding, FCM push) | **`ANDROID.md`** |
+| Build & run the **iOS** app (setup, commands, branding, APNs push, SPM) | **`IOS.md`** |
+| Set up **Sign in with Apple** (+ Google) in Apple Developer + Clerk | **`APPLE_OAUTH.md`** |
+| Create signing keys / certificates the right way (and back them up) | **`SIGNING.md`** |
+| **Test** with real testers and **publish** to both stores, step by step | **`PUBLISHING.md`** |
+
+## The typical journey (never done this before?)
+
+1. **`APPLE_OAUTH.md`** — one-time portal setup so Apple/Google sign-in works.
+2. **`ANDROID.md`** / **`IOS.md`** — build the app and run it in an
+   emulator/simulator, then on your own phone.
+3. **`SIGNING.md`** — generate your Android upload keystore + set up iOS
+   distribution signing (do this once; back the keys up).
+4. **`PUBLISHING.md`** — upload to **Internal testing** (Android) / **TestFlight**
+   (iOS), test on real devices, then submit to production.
+
+## Keeping native in sync with the web app (🔴 strict rule)
+
+Both native apps are WebView shells around the **same** `dist/` Vite build
+(`capacitor.config.ts` `webDir: "dist"`); the copied bundle in
+`android/app/src/main/assets/public` and `ios/App/App/public` is a **gitignored
+build artifact**, not source. So **there is no separate native UI to write** — a
+web-UI change *is* the native change once the bundle is re-copied into the shells.
+
+**Rule (applies during all development):** whenever a change touches the built web
+bundle — UI, routes, assets, i18n, client logic — you must propagate it to **both**
+native apps **before the task is done**:
+
+```bash
+npm run cap:sync:android    # = vite build --mode android + cap sync android
+npm run cap:sync:ios        # = vite build --mode ios     + cap sync ios
+```
+
+- `cap sync` = `cap copy` (web assets + config) **+** `cap update` (native
+  deps/plugins). Use the `cap:sync:*` scripts whenever a **Capacitor plugin** was
+  added or updated. A plugin-free, web-assets-only change can use
+  `npx cap copy android` / `npx cap copy ios` after a build — when unsure, `cap:sync:*`.
+- The native-mode builds (`--mode android|ios`) wire native-only config
+  (deep-link scheme, FCM stub alias, public keys) — don't sync a plain
+  `npm run build` when a mode-specific env matters.
+- Then re-run the app (`cap:open:android` / `cap:open:ios`) or rebuild
+  (`cap:build:android` / `cap:build:ios`) to see the change on device.
+
+This rule is mirrored in the repo's root **`CLAUDE.md`** (*Key conventions* →
+*Web ↔ Native parity*, and the *Native apps (Capacitor)* architecture subsection).
+
+## Key facts that never change
+
+- **App ID:** `com.vorreix.profitsync` (both platforms). **OAuth deep-link
+  scheme:** `com.vorreix.profitsync://oauth-callback`.
+- **No secret ever lives in the repo.** The app bundle carries only public values
+  (`pk_live_…`, the API base, the public VAPID key); every real secret sits in
+  Vercel env, the Clerk dashboard, Firebase, or your offline key backups. Full
+  table in `NATIVE_APPS_PLAN.md`.
+- **Everything native no-ops gracefully when unconfigured** — the apps build, boot
+  login-first, and sign in with **zero** Firebase/push config present. Push turns
+  on later by adding `google-services.json` / `GoogleService-Info.plist` + the
+  server key, with no code change.
+- **Store updates are the only update path** (the in-app service worker is
+  disabled) — bump the version and re-upload for every change.

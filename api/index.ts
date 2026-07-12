@@ -65,6 +65,8 @@ import quotationsBulkDelete from "./_routes/quotations/bulk-delete.js"
 import quotationById from "./_routes/quotations/[id].js"
 import quotationAttachments from "./_routes/quotations/[id]/attachments.js"
 import quotationConvert from "./_routes/quotations/[id]/convert.js"
+import quotationPdf from "./_routes/quotations/[id]/pdf.js"
+import quotationPdfReady from "./_routes/internal/quotations/pdf-ready.js"
 import organizations from "./_routes/organizations.js"
 import organizationSwitch from "./_routes/organizations/switch.js"
 import organizationById from "./_routes/organizations/[id].js"
@@ -153,6 +155,7 @@ const routes: RoutePattern<ApiHandler>[] = [
   { segments: ["notifications", "reminders", ":id"], handler: notificationReminderById },
   { segments: ["notifications", ":id"], handler: notificationById },
   { segments: ["cron", "notifications"], handler: cronNotifications },
+  { segments: ["internal", "quotations", "pdf-ready"], handler: quotationPdfReady },
 
   { segments: ["clients"], handler: clients },
   { segments: ["clients", "bulk-delete"], handler: clientsBulkDelete },
@@ -200,6 +203,7 @@ const routes: RoutePattern<ApiHandler>[] = [
   { segments: ["quotations", ":id"], handler: quotationById },
   { segments: ["quotations", ":id", "attachments"], handler: quotationAttachments },
   { segments: ["quotations", ":id", "convert"], handler: quotationConvert },
+  { segments: ["quotations", ":id", "pdf"], handler: quotationPdf },
 
   { segments: ["referrals"], handler: referralsRoute },
   { segments: ["referrals", "apply"], handler: referralsApply },

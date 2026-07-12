@@ -442,7 +442,23 @@
     "clientCreated": "Klient erstellt",
     "createClientFailed": "Fehler beim Erstellen des Klienten",
     "clientCount_one": "{{count}} Klient",
-    "clientCount_other": "{{count}} Klienten"
+    "clientCount_other": "{{count}} Klienten",
+    "sortIncomeDesc": "Einnahmen (hoch → niedrig)",
+    "sortIncomeAsc": "Einnahmen (niedrig → hoch)",
+    "sortExpenseDesc": "Ausgaben (hoch → niedrig)",
+    "sortExpenseAsc": "Ausgaben (niedrig → hoch)",
+    "sortProfitDesc": "Gewinn (hoch → niedrig)",
+    "sortProfitAsc": "Gewinn (niedrig → hoch)",
+    "table": {
+      "name": "Name",
+      "company": "Unternehmen",
+      "income": "Einnahmen",
+      "expense": "Ausgaben",
+      "profit": "Gewinn",
+      "date": "Datum",
+      "actions": "Aktionen",
+      "sortBy": "Sortieren nach {{column}}"
+    }
   },
   "quotations": {
     "titleLabel": "Titel *",
@@ -523,7 +539,36 @@
     "deleteBtn": "Löschen",
     "totalQuotations_one": "{{count}} Angebot",
     "totalQuotations_other": "{{count}} Angebote",
-    "dateLabel": "Datum"
+    "dateLabel": "Datum",
+    "table": {
+      "title": "Titel",
+      "prospect": "Interessent",
+      "amount": "Betrag",
+      "status": "Status",
+      "date": "Datum",
+      "actions": "Aktionen",
+      "sortBy": "Sortieren nach {{column}}"
+    },
+    "pdf": {
+      "action": "PDF",
+      "title": "Angebots-PDF",
+      "generatingTitle": "PDF wird vorbereitet…",
+      "generatingHint": "Das dauert normalerweise nur wenige Sekunden.",
+      "ready": "Ihr Angebots-PDF ist fertig.",
+      "view": "Ansehen",
+      "download": "Herunterladen",
+      "share": "Teilen",
+      "shareText": "Angebot: {{title}}",
+      "linkCopied": "Link in die Zwischenablage kopiert",
+      "expiresNote": "Ansichts- und Download-Links bleiben etwa eine Stunde gültig.",
+      "unavailableTitle": "PDF-Erstellung nicht verfügbar",
+      "unavailableHint": "Die PDF-Erstellung ist noch nicht eingerichtet. Bitte versuchen Sie es später erneut.",
+      "errorTitle": "PDF konnte nicht erstellt werden",
+      "timeout": "Das dauert länger als erwartet. Bitte versuchen Sie es erneut.",
+      "retry": "Erneut versuchen",
+      "close": "Schließen",
+      "openError": "PDF konnte nicht geöffnet werden. Bitte versuchen Sie es erneut."
+    }
   },
   "organizations": {
     "organizationCreated": "Organisation erstellt",
@@ -1634,5 +1679,16 @@
     "sortAmountHigh": "Höchster Betrag",
     "sortAmountLow": "Niedrigster Betrag",
     "sortName": "Name"
+  },
+  "auth": {
+    "continueWithGoogle": "Weiter mit Google",
+    "continueWithApple": "Weiter mit Apple",
+    "oauthError": "Anmeldung konnte nicht gestartet werden. Bitte versuche es erneut."
+  },
+  "view": {
+    "label": "Ansicht",
+    "card": "Kartenansicht",
+    "list": "Listenansicht",
+    "table": "Tabellenansicht"
   }
 }

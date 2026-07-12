@@ -192,6 +192,32 @@
   .ios-tap {
     -webkit-tap-highlight-color: transparent;
   }
+  /* Native-app touch hardening — applied only inside the Capacitor WebView
+     (NativeShell tags <html> with `.native-app`), never on the web/PWA. Makes
+     the shell feel like an app instead of a web page: no long-press callouts or
+     image save menus, no text selection on chrome, no pull-to-refresh / rubber-
+     band bounce, no double-tap zoom. Real content stays selectable via `.selectable`
+     and native inputs keep their own behaviour. */
+  html.native-app {
+    overscroll-behavior: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  html.native-app,
+  html.native-app body {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    touch-action: manipulation;
+  }
+  html.native-app input,
+  html.native-app textarea,
+  html.native-app select,
+  html.native-app [contenteditable="true"],
+  html.native-app .selectable {
+    -webkit-user-select: text;
+    user-select: text;
+    -webkit-touch-callout: default;
+  }
   /* Money-flow canvas (/flow): glide nodes to new positions on expand/collapse
      — compositor-only (transform), so no reflow. The actively-dragged node and
      reduced-motion users get NO transition (drag must track the finger 1:1). */
@@ -324,11 +350,50 @@
       animation: none;
     }
   }
+  /* Route transitions for the mobile app shell — a Material "shared-axis X"
+     feel: content slides + fades on navigation while the header/tab-bar chrome
+     stays fixed. The <main> is keyed by route so the keyframe replays on every
+     change. Forward (PUSH) enters from the trailing edge, back (POP) from the
+     leading edge; `.page-enter` is the plain fade+rise used for REPLACE and by
+     standalone pages (e.g. BudgetDetailPage). Compositor-only (transform +
+     opacity) — no reflow. Direction mirrors under RTL. */
   .page-enter {
-    animation: page-enter 220ms cubic-bezier(0.22, 1, 0.36, 1);
+    animation: page-enter 240ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .page-enter-forward {
+    animation: page-enter-forward 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .page-enter-back {
+    animation: page-enter-back 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  [dir="rtl"] .page-enter-forward {
+    animation-name: page-enter-back;
+  }
+  [dir="rtl"] .page-enter-back {
+    animation-name: page-enter-forward;
   }
   @keyframes page-enter {
     from { opacity: 0; transform: translateY(8px); }
-    to { opacity: 1; transform: translateY(0); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes page-enter-forward {
+    from { opacity: 0; transform: translateX(24px); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes page-enter-back {
+    from { opacity: 0; transform: translateX(-24px); }
+    to { opacity: 1; transform: none; }
+  }
+  /* Reduced motion: keep the state change, drop the slide for a short fade. */
+  @media (prefers-reduced-motion: reduce) {
+    .page-enter,
+    .page-enter-forward,
+    .page-enter-back {
+      animation: page-fade 140ms ease-out both;
+    }
+  }
+  @keyframes page-fade {
+    from { opacity: 0; }
+    to { opacity: 1; }
   }
 }

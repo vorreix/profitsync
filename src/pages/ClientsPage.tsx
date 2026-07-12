@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
@@ -10,14 +10,12 @@ import type { Budget, Client } from "@/lib/types"
 import { useCurrency } from "@/lib/currency-context"
 import { useOrg } from "@/lib/org-context"
 import { canDeleteRole, canWriteRole } from "@/lib/roles"
-import { BudgetIndicator } from "@/components/budget/BudgetIndicator"
 import { BudgetDialog } from "@/components/budget/BudgetDialog"
 import { useMultiSelect } from "@/lib/use-multi-select"
 import { useLongPress } from "@/lib/use-long-press"
 import { BulkActionBar } from "@/components/BulkActionBar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -38,16 +36,18 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { toast } from "sonner"
-import {
-  Plus, Users, Building2, Mail, Phone, ChevronRight, Eye, Pencil,
-  TrendingUp, TrendingDown, DollarSign, LayoutGrid, LayoutList, CheckSquare, Archive,
-} from "lucide-react"
-import { MoneyBag } from "@/components/icons/MoneyBag"
+import { Plus, Users, CheckSquare, Archive } from "lucide-react"
 import { ExpandableSearch } from "@/components/ExpandableSearch"
 import { FilterSheet, FilterSection } from "@/components/filters/FilterSheet"
-import { AttachmentBadge } from "@/components/AttachmentBadge"
 import { ClientDetailSheet } from "@/components/ClientDetailSheet"
 import { CategoryPicker } from "@/components/CategoryPicker"
+import { ViewToggle } from "@/components/ViewToggle"
+import { useViewMode } from "@/lib/use-view-mode"
+import { useInfiniteScroll } from "@/lib/use-infinite-scroll"
+import {
+  ClientCard, ClientListRow, ClientTable,
+  type ClientActions, type ClientColumn, type ClientWithStats,
+} from "@/components/clients/client-views"
 
 type NewClient = {
   name: string
@@ -59,8 +59,6 @@ type NewClient = {
   category: string
   onboard_date: string
 }
-
-type ClientWithStats = Client & { profit: number }
 
 // Onboard date defaults to today so the common case needs no edit.
 const defaultForm = (): NewClient => ({
@@ -103,7 +101,7 @@ export function ClientsPage() {
   // Search is mirrored to ?q= so it survives navigating into a client and back.
   const [search, setSearch] = useState(() => searchParams.get("q") ?? "")
   const [sort, setSort] = useState("date_desc")
-  const [viewMode, setViewMode] = useState<"grid" | "list">("grid")
+  const [view, setView] = useViewMode("clients")
   const [dialogOpen, setDialogOpen] = useState(false)
   const [form, setForm] = useState<NewClient>(defaultForm)
   const clientSchema = z.object({ name: z.string().trim().min(1, t("clientNameRequired")) })
@@ -296,18 +294,72 @@ export function ClientsPage() {
     }
   }
 
+  // O(1) per-client budget lookup for the memoized rows (was a Map read per card).
+  const budgetFor = useCallback((id: string) => budgets.get(id), [budgets])
+
+  // Table column header click: toggle asc/desc on the active column, else start a
+  // sensible default (money columns biggest-first, text A→Z, date newest-first).
+  const handleSort = useCallback((key: ClientColumn["key"]) => {
+    setSort((prev) => {
+      const [prevKey, prevDir] = prev.split("_")
+      if (prevKey === key) return `${key}_${prevDir === "asc" ? "desc" : "asc"}`
+      return `${key}_${key === "name" || key === "company" ? "asc" : "desc"}`
+    })
+  }, [])
+
+  // Auto infinite scroll — loads the next page as the sentinel nears the viewport;
+  // the visible "Load More" button stays as the manual / no-observer fallback.
+  const { sentinelRef } = useInfiniteScroll({
+    hasMore: remaining > 0,
+    loading: loadingMore,
+    onLoadMore: handleLoadMore,
+    enabled: !loading,
+  })
+
+  // Stable action bundle for the memoized Card/List/Table rows. Handler bodies close
+  // over changing state, so we keep the latest set in a ref and hand the rows fixed
+  // wrappers — a row re-renders only when its own data/selection/budget changes,
+  // never because a parent closure was recreated (e.g. on every search keystroke).
+  const latestActions = {
+    onOpen: (id: string) => navigate(`/clients/${id}`),
+    onQuickView: (client: ClientWithStats) => setViewClient(client),
+    onEditBudget: (client: ClientWithStats) => setBudgetClient(client),
+    onOpenBudget: (id: string) => navigate(`/budgets/${id}`),
+    onToggleSelect: sel.toggle,
+    onEnterSelection: sel.enterSelection,
+    formatAmount: formatCurrency,
+    bindLongPress: longPress.bind,
+    didLongPress: longPress.didLongPress,
+  }
+  const latestActionsRef = useRef(latestActions)
+  latestActionsRef.current = latestActions
+  const actions = useMemo<ClientActions>(() => ({
+    onOpen: (id) => latestActionsRef.current.onOpen(id),
+    onQuickView: (c) => latestActionsRef.current.onQuickView(c),
+    onEditBudget: (c) => latestActionsRef.current.onEditBudget(c),
+    onOpenBudget: (id) => latestActionsRef.current.onOpenBudget(id),
+    onToggleSelect: (id) => latestActionsRef.current.onToggleSelect(id),
+    onEnterSelection: (id) => latestActionsRef.current.onEnterSelection(id),
+    formatAmount: (n) => latestActionsRef.current.formatAmount(n),
+    bindLongPress: (cb) => latestActionsRef.current.bindLongPress(cb),
+    didLongPress: () => latestActionsRef.current.didLongPress(),
+  }), [])
+
   return (
     <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
       {/* Header — on mobile the search + filter sit right next to "+ New"
-          (sort lives inside the filter); on desktop the view toggle joins them. */}
-      <div className="flex items-center justify-between gap-2">
+          (sort lives inside the filter); the view toggle joins them. The row
+          WRAPS (flex-wrap + ml-auto): when the search expands on a narrow phone
+          the toggle/actions drop to a second right-aligned line instead of
+          overflowing the viewport (no horizontal scroll — a11y CRITICAL). */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="min-w-0">
           <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">{t("pageTitle")}</h1>
           <p className="text-sm text-muted-foreground mt-0.5 sm:mt-1">
             {loading ? t("loading") : t("clientCount", { count: total })}
           </p>
         </div>
-        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+        <div className="flex flex-wrap items-center justify-end gap-1.5 sm:gap-2 ml-auto">
           <ExpandableSearch
             value={search}
             onChange={setSearch}
@@ -325,6 +377,12 @@ export function ClientsPage() {
                   <SelectItem value="name_desc">{t("nameDescending")}</SelectItem>
                   <SelectItem value="date_asc">{t("dateOldest")}</SelectItem>
                   <SelectItem value="date_desc">{t("dateNewest")}</SelectItem>
+                  <SelectItem value="income_desc">{t("sortIncomeDesc")}</SelectItem>
+                  <SelectItem value="income_asc">{t("sortIncomeAsc")}</SelectItem>
+                  <SelectItem value="expense_desc">{t("sortExpenseDesc")}</SelectItem>
+                  <SelectItem value="expense_asc">{t("sortExpenseAsc")}</SelectItem>
+                  <SelectItem value="profit_desc">{t("sortProfitDesc")}</SelectItem>
+                  <SelectItem value="profit_asc">{t("sortProfitAsc")}</SelectItem>
                 </SelectContent>
               </Select>
             </FilterSection>
@@ -351,24 +409,7 @@ export function ClientsPage() {
               {t("multiSelect.select")}
             </Button>
           )}
-          <div className="hidden sm:flex items-center border rounded-md overflow-hidden shrink-0">
-            <Button
-              variant={viewMode === "grid" ? "secondary" : "ghost"}
-              size="icon"
-              className="rounded-none border-0 h-9 w-9"
-              onClick={() => setViewMode("grid")}
-            >
-              <LayoutGrid className="size-4" />
-            </Button>
-            <Button
-              variant={viewMode === "list" ? "secondary" : "ghost"}
-              size="icon"
-              className="rounded-none border-0 h-9 w-9"
-              onClick={() => setViewMode("list")}
-            >
-              <LayoutList className="size-4" />
-            </Button>
-          </div>
+          <ViewToggle value={view} onChange={setView} />
           <Button onClick={() => setDialogOpen(true)} className="shrink-0">
             <Plus className="size-4" />
             <span className="hidden sm:inline">{t("newClientButton")}</span>
@@ -379,9 +420,9 @@ export function ClientsPage() {
 
       {/* Content */}
       {loading ? (
-        <div className={viewMode === "grid" ? "grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3" : "space-y-2"}>
+        <div className={view === "card" ? "grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3" : "space-y-2"}>
           {[1, 2, 3].map((i) => (
-            <Skeleton key={i} className={viewMode === "grid" ? "h-36 w-full rounded-xl" : "h-16 w-full rounded-lg"} />
+            <Skeleton key={i} className={view === "card" ? "h-44 w-full rounded-xl" : "h-16 w-full rounded-lg"} />
           ))}
         </div>
       ) : activeClients.length === 0 && closedMatches.length === 0 ? (
@@ -399,238 +440,58 @@ export function ClientsPage() {
         </div>
       ) : (
         <>
-          {viewMode === "grid" ? (
-            <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-              {activeClients.map((client) => {
-                const selectable = canDelete && !client.is_own
-                return (
-                <Card
+          {view === "table" ? (
+            <ClientTable
+              clients={activeClients}
+              budgetFor={budgetFor}
+              isSelected={sel.isSelected}
+              selectionMode={sel.selectionMode}
+              canDelete={canDelete}
+              canWrite={canWrite}
+              currency={currency}
+              actions={actions}
+              sort={sort}
+              onSort={handleSort}
+            />
+          ) : view === "list" ? (
+            <div className="space-y-2">
+              {activeClients.map((client) => (
+                <ClientListRow
                   key={client.id}
-                  className={`cursor-pointer hover:shadow-md transition-shadow group py-0 ${sel.isSelected(client.id) ? "ring-2 ring-primary" : ""}`}
-                  onClick={() => {
-                    if (sel.selectionMode && selectable) { sel.toggle(client.id); return }
-                    if (longPress.didLongPress()) return
-                    navigate(`/clients/${client.id}`)
-                  }}
-                  {...(selectable ? longPress.bind(() => sel.enterSelection(client.id)) : {})}
-                >
-                  <CardContent className="p-3.5 sm:p-4 space-y-2.5 sm:space-y-3">
-                    <div className="flex items-start justify-between gap-2">
-                      {sel.selectionMode && selectable && (
-                        <Checkbox
-                          checked={sel.isSelected(client.id)}
-                          onClick={(e) => e.stopPropagation()}
-                          onCheckedChange={() => sel.toggle(client.id)}
-                          className="mt-0.5 shrink-0"
-                          aria-label={`Select ${client.name}`}
-                        />
-                      )}
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <p className="font-semibold text-sm truncate">{client.name}</p>
-                          {client.is_own && (
-                            <Badge variant="outline" className="text-xs shrink-0 border-primary/40 text-primary">
-                              <Building2 className="size-3 mr-0.5" /> {t("ownCompany")}
-                            </Badge>
-                          )}
-                          <Badge
-                            variant={client.status === "active" ? "default" : "secondary"}
-                            className="text-xs shrink-0"
-                          >
-                            {client.status}
-                          </Badge>
-                          <AttachmentBadge count={client.attachment_count} />
-                          {client.category && (
-                            <Badge variant="outline" className="text-xs shrink-0">{client.category}</Badge>
-                          )}
-                        </div>
-                        {client.company && (
-                          <div className="flex items-center gap-1.5 mt-1">
-                            <Building2 className="size-3 text-muted-foreground shrink-0" />
-                            <p className="text-xs text-muted-foreground truncate">{client.company}</p>
-                          </div>
-                        )}
-                      </div>
-                      {/* Mobile: an explicit "view" (eye) opens a quick details
-                          sheet; desktop keeps the chevron nav hint. */}
-                      {!sel.selectionMode && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="size-8 shrink-0 -mt-1 -mr-1 sm:hidden"
-                          aria-label={`View ${client.name}`}
-                          onClick={(e) => { e.stopPropagation(); setViewClient(client) }}
-                        >
-                          <Eye className="size-4" />
-                        </Button>
-                      )}
-                      <ChevronRight className="hidden sm:block size-4 text-muted-foreground shrink-0 mt-0.5 group-hover:text-foreground transition-colors" />
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-2 pt-2 border-t">
-                      <div>
-                        <p className="text-xs text-muted-foreground font-medium">{t("incomeLabel")}</p>
-                        <p className="text-sm font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1 mt-0.5">
-                          <TrendingUp className="size-3" />
-                          {formatCurrency(Number(client.total_incoming ?? 0))}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-muted-foreground font-medium">{t("expenseLabel")}</p>
-                        <p className="text-sm font-semibold text-red-600 dark:text-red-400 flex items-center gap-1 mt-0.5">
-                          <TrendingDown className="size-3" />
-                          {formatCurrency(Number(client.total_outgoing ?? 0))}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-muted-foreground font-medium">{t("profitLabel")}</p>
-                        <p className={`text-sm font-semibold flex items-center gap-1 mt-0.5 ${
-                          client.profit >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"
-                        }`}>
-                          <DollarSign className="size-3" />
-                          {formatCurrency(client.profit)}
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Expense budget. Two distinct actions: the bar/piggy navigates to
-                        the budget page; the pencil opens the edit dialog. */}
-                    {(() => {
-                      const b = budgets.get(client.id)
-                      if (b) {
-                        return (
-                          <div className="flex items-start gap-1">
-                            <button
-                              type="button"
-                              className="group/budget min-w-0 flex-1 rounded-md p-1 text-left transition-colors hover:bg-accent/50"
-                              onClick={(e) => { e.stopPropagation(); navigate(`/budgets/${client.id}`) }}
-                              aria-label={t("nav.budgets", { ns: "translation" })}
-                            >
-                              {/* Piggy icon sits right after the period word (Monthly 🐷 …). */}
-                              <BudgetIndicator amount={b.amount} spent={b.spent ?? 0} period={b.period} currency={currency} showPeriodIcon />
-                            </button>
-                            {canWrite && (
-                              <button
-                                type="button"
-                                className="grid size-8 shrink-0 place-items-center rounded-md text-muted-foreground/70 transition-colors hover:bg-accent/50 hover:text-foreground"
-                                onClick={(e) => { e.stopPropagation(); setBudgetClient(client) }}
-                                aria-label={t("budget.edit", { ns: "translation" })}
-                              >
-                                <Pencil className="size-3.5" />
-                              </button>
-                            )}
-                          </div>
-                        )
-                      }
-                      if (!canWrite) return null
-                      return (
-                        <button
-                          type="button"
-                          className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-                          onClick={(e) => { e.stopPropagation(); setBudgetClient(client) }}
-                        >
-                          <MoneyBag className="size-3" /> {t("budget.set", { ns: "translation" })}
-                        </button>
-                      )
-                    })()}
-
-                    {(client.email || client.phone) && (
-                      <div className="hidden sm:block space-y-1 pt-1">
-                        {client.email && (
-                          <div className="flex items-center gap-1.5">
-                            <Mail className="size-3 text-muted-foreground shrink-0" />
-                            <p className="text-xs text-muted-foreground truncate">{client.email}</p>
-                          </div>
-                        )}
-                        {client.phone && (
-                          <div className="flex items-center gap-1.5">
-                            <Phone className="size-3 text-muted-foreground shrink-0" />
-                            <p className="text-xs text-muted-foreground truncate">{client.phone}</p>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-                )
-              })}
+                  client={client}
+                  selected={sel.isSelected(client.id)}
+                  selectionMode={sel.selectionMode}
+                  canDelete={canDelete}
+                  canWrite={canWrite}
+                  currency={currency}
+                  budget={budgetFor(client.id)}
+                  actions={actions}
+                />
+              ))}
             </div>
           ) : (
-            <div className="space-y-2">
-              {activeClients.map((client) => {
-                const selectable = canDelete && !client.is_own
-                return (
-                <div
+            <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+              {activeClients.map((client) => (
+                <ClientCard
                   key={client.id}
-                  className={`flex items-center gap-4 px-4 py-3 rounded-lg border bg-card cursor-pointer hover:bg-accent/50 transition-colors group ${sel.isSelected(client.id) ? "ring-2 ring-primary" : ""}`}
-                  onClick={() => {
-                    if (sel.selectionMode && selectable) { sel.toggle(client.id); return }
-                    if (longPress.didLongPress()) return
-                    navigate(`/clients/${client.id}`)
-                  }}
-                  {...(selectable ? longPress.bind(() => sel.enterSelection(client.id)) : {})}
-                >
-                  {sel.selectionMode && selectable && (
-                    <Checkbox
-                      checked={sel.isSelected(client.id)}
-                      onClick={(e) => e.stopPropagation()}
-                      onCheckedChange={() => sel.toggle(client.id)}
-                      className="shrink-0"
-                      aria-label={`Select ${client.name}`}
-                    />
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-medium text-sm">{client.name}</span>
-                      {client.is_own && (
-                        <Badge variant="outline" className="text-xs border-primary/40 text-primary">
-                          <Building2 className="size-3 mr-0.5" /> {t("ownCompany")}
-                        </Badge>
-                      )}
-                      <Badge variant={client.status === "active" ? "default" : "secondary"} className="text-xs">
-                        {client.status}
-                      </Badge>
-                      <AttachmentBadge count={client.attachment_count} />
-                    </div>
-                    {client.company && (
-                      <p className="text-xs text-muted-foreground truncate mt-0.5">{client.company}</p>
-                    )}
-                  </div>
-                  <div className="hidden sm:flex items-center gap-1.5 w-40 shrink-0">
-                    <Mail className="size-3 text-muted-foreground shrink-0" />
-                    <p className="text-xs text-muted-foreground truncate">{client.email || "—"}</p>
-                  </div>
-                  <div className="flex items-center gap-4 shrink-0">
-                    <div className="hidden md:block text-right">
-                      <p className="text-xs text-muted-foreground">{t("incomeLabel")}</p>
-                      <p className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">
-                        {formatCurrency(Number(client.total_incoming ?? 0))}
-                      </p>
-                    </div>
-                    <div className="hidden md:block text-right">
-                      <p className="text-xs text-muted-foreground">{t("expenseLabel")}</p>
-                      <p className="text-sm font-semibold text-red-600 dark:text-red-400">
-                        {formatCurrency(Number(client.total_outgoing ?? 0))}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-xs text-muted-foreground">{t("profitLabel")}</p>
-                      <p className={`text-sm font-semibold ${
-                        client.profit >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"
-                      }`}>
-                        {formatCurrency(client.profit)}
-                      </p>
-                    </div>
-                  </div>
-                  <ChevronRight className="size-4 text-muted-foreground shrink-0 group-hover:text-foreground transition-colors" />
-                </div>
-                )
-              })}
+                  client={client}
+                  selected={sel.isSelected(client.id)}
+                  selectionMode={sel.selectionMode}
+                  canDelete={canDelete}
+                  canWrite={canWrite}
+                  currency={currency}
+                  budget={budgetFor(client.id)}
+                  actions={actions}
+                />
+              ))}
             </div>
           )}
 
+          {/* Auto infinite scroll: the sentinel triggers the next page as it nears
+              the viewport; the button stays as a visible manual fallback. */}
           {remaining > 0 && (
-            <div className="flex justify-center pt-2">
+            <div className="flex flex-col items-center gap-2 pt-2">
+              <div ref={sentinelRef} aria-hidden className="h-px w-full" />
               <Button variant="outline" onClick={handleLoadMore} disabled={loadingMore}>
                 {loadingMore ? t("loading") : t("loadMore", { remaining })}
               </Button>

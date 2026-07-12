@@ -442,7 +442,23 @@
     "clientCreated": "క్లయింట్ సృష్టించబడింది",
     "createClientFailed": "క్లయింట్‌ను సృష్టించడం విఫలమైంది",
     "clientCount_one": "{{count}} క్లయింట్",
-    "clientCount_other": "{{count}} క్లయింట్‌లు"
+    "clientCount_other": "{{count}} క్లయింట్‌లు",
+    "sortIncomeDesc": "ఆదాయం (ఎక్కువ → తక్కువ)",
+    "sortIncomeAsc": "ఆదాయం (తక్కువ → ఎక్కువ)",
+    "sortExpenseDesc": "ఖర్చు (ఎక్కువ → తక్కువ)",
+    "sortExpenseAsc": "ఖర్చు (తక్కువ → ఎక్కువ)",
+    "sortProfitDesc": "లాభం (ఎక్కువ → తక్కువ)",
+    "sortProfitAsc": "లాభం (తక్కువ → ఎక్కువ)",
+    "table": {
+      "name": "పేరు",
+      "company": "సంస్థ",
+      "income": "ఆదాయం",
+      "expense": "ఖర్చు",
+      "profit": "లాభం",
+      "date": "తేదీ",
+      "actions": "చర్యలు",
+      "sortBy": "{{column}} ద్వారా క్రమబద్ధీకరించు"
+    }
   },
   "quotations": {
     "titleLabel": "శీర్షిక *",
@@ -523,7 +539,36 @@
     "deleteBtn": "తొలగించు",
     "totalQuotations_one": "{{count}} కోట్",
     "totalQuotations_other": "{{count}} కోట్‌లు",
-    "dateLabel": "తేదీ"
+    "dateLabel": "తేదీ",
+    "table": {
+      "title": "శీర్షిక",
+      "prospect": "అవకాశ కస్టమర్",
+      "amount": "మొత్తం",
+      "status": "స్థితి",
+      "date": "తేదీ",
+      "actions": "చర్యలు",
+      "sortBy": "{{column}} ద్వారా క్రమబద్ధీకరించు"
+    },
+    "pdf": {
+      "action": "PDF",
+      "title": "కొటేషన్ PDF",
+      "generatingTitle": "మీ PDF సిద్ధమవుతోంది…",
+      "generatingHint": "దీనికి సాధారణంగా కొన్ని సెకన్లు పడుతుంది.",
+      "ready": "మీ కొటేషన్ PDF సిద్ధంగా ఉంది.",
+      "view": "చూడండి",
+      "download": "డౌన్‌లోడ్ చేయండి",
+      "share": "షేర్ చేయండి",
+      "shareText": "కొటేషన్: {{title}}",
+      "linkCopied": "లింక్ క్లిప్‌బోర్డ్‌కు కాపీ చేయబడింది",
+      "expiresNote": "వీక్షణ మరియు డౌన్‌లోడ్ లింక్‌లు సుమారు ఒక గంట పాటు చెల్లుబాటు అవుతాయి.",
+      "unavailableTitle": "PDF తయారీ అందుబాటులో లేదు",
+      "unavailableHint": "PDF తయారీ ఇంకా సెటప్ చేయబడలేదు. దయచేసి తర్వాత మళ్లీ ప్రయత్నించండి.",
+      "errorTitle": "PDF సిద్ధం చేయలేకపోయాము",
+      "timeout": "ఇది ఊహించిన దానికంటే ఎక్కువ సమయం తీసుకుంటోంది. దయచేసి మళ్లీ ప్రయత్నించండి.",
+      "retry": "మళ్లీ ప్రయత్నించండి",
+      "close": "మూసివేయండి",
+      "openError": "PDF తెరవలేకపోయాము. దయచేసి మళ్లీ ప్రయత్నించండి."
+    }
   },
   "organizations": {
     "organizationCreated": "సంస్థ సృష్టించబడింది",
@@ -1634,5 +1679,16 @@
     "sortAmountHigh": "అత్యధిక మొత్తం",
     "sortAmountLow": "అత్యల్ప మొత్తం",
     "sortName": "పేరు"
+  },
+  "auth": {
+    "continueWithGoogle": "Googleతో కొనసాగించండి",
+    "continueWithApple": "Appleతో కొనసాగించండి",
+    "oauthError": "సైన్-ఇన్ ప్రారంభించడం సాధ్యపడలేదు. దయచేసి మళ్లీ ప్రయత్నించండి."
+  },
+  "view": {
+    "label": "వీక్షణ",
+    "card": "కార్డ్ వీక్షణ",
+    "list": "జాబితా వీక్షణ",
+    "table": "పట్టిక వీక్షణ"
   }
 }

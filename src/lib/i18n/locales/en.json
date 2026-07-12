@@ -1,4 +1,9 @@
 {
+  "auth": {
+    "continueWithGoogle": "Continue with Google",
+    "continueWithApple": "Continue with Apple",
+    "oauthError": "Sign-in could not be started. Please try again."
+  },
   "pwa": {
     "installTitle": "Install ProfitSync",
     "installBody": "Add ProfitSync to your home screen for quick, full-screen access.",
@@ -175,6 +180,12 @@
     "save": "Save Changes",
     "saving": "Saving...",
     "amountTooLarge": "Amount is too large"
+  },
+  "view": {
+    "label": "View",
+    "card": "Card view",
+    "list": "List view",
+    "table": "Table view"
   },
   "audit": {
     "history": "History",
@@ -847,6 +858,22 @@
     "nameDescending": "Name Z → A",
     "dateOldest": "Date (oldest)",
     "dateNewest": "Date (newest)",
+    "sortIncomeDesc": "Income (high → low)",
+    "sortIncomeAsc": "Income (low → high)",
+    "sortExpenseDesc": "Expense (high → low)",
+    "sortExpenseAsc": "Expense (low → high)",
+    "sortProfitDesc": "Profit (high → low)",
+    "sortProfitAsc": "Profit (low → high)",
+    "table": {
+      "name": "Name",
+      "company": "Company",
+      "income": "Income",
+      "expense": "Expense",
+      "profit": "Profit",
+      "date": "Date",
+      "actions": "Actions",
+      "sortBy": "Sort by {{column}}"
+    },
     "noClientsMatch": "No clients match your search",
     "noClientsYet": "No clients yet",
     "createFirstClient": "Create your first client",
@@ -882,6 +909,15 @@
     "clientCount_other": "{{count}} clients"
   },
   "quotations": {
+    "table": {
+      "title": "Title",
+      "prospect": "Prospect",
+      "amount": "Amount",
+      "status": "Status",
+      "date": "Date",
+      "actions": "Actions",
+      "sortBy": "Sort by {{column}}"
+    },
     "titleLabel": "Title *",
     "titlePlaceholder": "Web Design Proposal",
     "prospectNameLabel": "Prospect Name *",
@@ -960,7 +996,27 @@
     "deleteAttachmentDescription": "This attachment will be permanently deleted.",
     "deleteBtn": "Delete",
     "totalQuotations_one": "{{count}} quotation",
-    "totalQuotations_other": "{{count}} quotations"
+    "totalQuotations_other": "{{count}} quotations",
+    "pdf": {
+      "action": "PDF",
+      "title": "Quotation PDF",
+      "generatingTitle": "Preparing your PDF…",
+      "generatingHint": "This usually takes a few seconds.",
+      "ready": "Your quotation PDF is ready.",
+      "view": "View",
+      "download": "Download",
+      "share": "Share",
+      "shareText": "Quotation: {{title}}",
+      "linkCopied": "Link copied to clipboard",
+      "expiresNote": "View and download links stay valid for about an hour.",
+      "unavailableTitle": "PDF generation unavailable",
+      "unavailableHint": "PDF generation isn't set up yet. Please try again later.",
+      "errorTitle": "Couldn't prepare the PDF",
+      "timeout": "This is taking longer than expected. Please try again.",
+      "retry": "Try again",
+      "close": "Close",
+      "openError": "Couldn't open the PDF. Please try again."
+    }
   },
   "organizations": {
     "organizationCreated": "Organization created",

@@ -442,7 +442,23 @@
     "clientCreated": "ग्राहक बनाया गया",
     "createClientFailed": "ग्राहक बनाने में विफल",
     "clientCount_one": "{{count}} ग्राहक",
-    "clientCount_other": "{{count}} ग्राहक"
+    "clientCount_other": "{{count}} ग्राहक",
+    "sortIncomeDesc": "आय (अधिक → कम)",
+    "sortIncomeAsc": "आय (कम → अधिक)",
+    "sortExpenseDesc": "व्यय (अधिक → कम)",
+    "sortExpenseAsc": "व्यय (कम → अधिक)",
+    "sortProfitDesc": "लाभ (अधिक → कम)",
+    "sortProfitAsc": "लाभ (कम → अधिक)",
+    "table": {
+      "name": "नाम",
+      "company": "कंपनी",
+      "income": "आय",
+      "expense": "व्यय",
+      "profit": "लाभ",
+      "date": "तारीख",
+      "actions": "क्रियाएँ",
+      "sortBy": "{{column}} के अनुसार क्रमबद्ध करें"
+    }
   },
   "quotations": {
     "titleLabel": "शीर्षक *",
@@ -523,7 +539,36 @@
     "deleteBtn": "हटाएं",
     "totalQuotations_one": "{{count}} उद्धरण",
     "totalQuotations_other": "{{count}} उद्धरण",
-    "dateLabel": "तारीख़"
+    "dateLabel": "तारीख़",
+    "table": {
+      "title": "शीर्षक",
+      "prospect": "संभावित ग्राहक",
+      "amount": "राशि",
+      "status": "स्थिति",
+      "date": "तारीख",
+      "actions": "क्रियाएँ",
+      "sortBy": "{{column}} के अनुसार क्रमबद्ध करें"
+    },
+    "pdf": {
+      "action": "PDF",
+      "title": "कोटेशन PDF",
+      "generatingTitle": "आपका PDF तैयार किया जा रहा है…",
+      "generatingHint": "इसमें आमतौर पर कुछ सेकंड लगते हैं।",
+      "ready": "आपका कोटेशन PDF तैयार है।",
+      "view": "देखें",
+      "download": "डाउनलोड करें",
+      "share": "साझा करें",
+      "shareText": "कोटेशन: {{title}}",
+      "linkCopied": "लिंक क्लिपबोर्ड पर कॉपी किया गया",
+      "expiresNote": "देखने और डाउनलोड के लिंक लगभग एक घंटे तक मान्य रहते हैं।",
+      "unavailableTitle": "PDF निर्माण उपलब्ध नहीं है",
+      "unavailableHint": "PDF निर्माण अभी सेट अप नहीं है। कृपया बाद में पुनः प्रयास करें।",
+      "errorTitle": "PDF तैयार नहीं किया जा सका",
+      "timeout": "यह अपेक्षा से अधिक समय ले रहा है। कृपया पुनः प्रयास करें।",
+      "retry": "पुनः प्रयास करें",
+      "close": "बंद करें",
+      "openError": "PDF नहीं खोला जा सका। कृपया पुनः प्रयास करें।"
+    }
   },
   "organizations": {
     "organizationCreated": "संगठन बनाया गया",
@@ -1634,5 +1679,16 @@
     "sortAmountHigh": "सर्वाधिक राशि",
     "sortAmountLow": "न्यूनतम राशि",
     "sortName": "नाम"
+  },
+  "auth": {
+    "continueWithGoogle": "Google से जारी रखें",
+    "continueWithApple": "Apple से जारी रखें",
+    "oauthError": "साइन-इन शुरू नहीं किया जा सका। कृपया पुनः प्रयास करें।"
+  },
+  "view": {
+    "label": "दृश्य",
+    "card": "कार्ड दृश्य",
+    "list": "सूची दृश्य",
+    "table": "तालिका दृश्य"
   }
 }
