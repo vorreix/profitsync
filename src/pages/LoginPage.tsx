@@ -5,8 +5,17 @@ import { useTranslation } from "react-i18next"
 
 import { InstallAppBanner } from "@/components/InstallAppBanner"
 import { NativeOAuthButton } from "@/components/NativeOAuthButton"
+import { isNativeApp } from "@/lib/native-auth"
 import { initPwa } from "@/lib/pwa/register-sw"
 import { safeRedirect } from "@/lib/safe-redirect"
+
+// In the native WebView, Clerk's own social buttons can't complete OAuth (Google
+// blocks OAuth inside an embedded WebView), so we render the custom
+// NativeOAuthButtons above and HIDE Clerk's duplicate social section + "or"
+// divider here. The web keeps Clerk's built-in provider buttons.
+const HIDE_CLERK_SOCIAL = isNativeApp()
+  ? { elements: { socialButtonsRoot: "hidden", dividerRow: "hidden" } }
+  : undefined
 
 export function LoginPage() {
   const { t } = useTranslation()
@@ -36,6 +45,7 @@ export function LoginPage() {
         signUpUrl={signUpUrl}
         forceRedirectUrl={target}
         fallbackRedirectUrl={target}
+        appearance={HIDE_CLERK_SOCIAL}
       />
       <Link
         to="/forgot-password"
