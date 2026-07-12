@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CAPACITOR_DEBUG</key>
+	<string>$(CAPACITOR_DEBUG)</string>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleDisplayName</key>
+        <string>ProfitSync</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<key>UILaunchStoryboardName</key>
+	<string>LaunchScreen</string>
+	<key>UIMainStoryboardFile</key>
+	<string>Main</string>
+	<key>UIRequiredDeviceCapabilities</key>
+	<array>
+		<string>armv7</string>
+	</array>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>UIViewControllerBasedStatusBarAppearance</key>
+	<true/>
+	<!-- OAuth deep link: Clerk redirects to com.vorreix.profitsync://oauth-callback
+	     after Apple/Google sign-in; the @capacitor/app plugin turns it into an
+	     appUrlOpen event handled in src/App.tsx. Mirrors the Android intent-filter. -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>com.vorreix.profitsync</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.vorreix.profitsync</string>
+			</array>
+		</dict>
+	</array>
+	<!-- The app only uses standard HTTPS/TLS (exempt) encryption. Declaring this
+	     up front skips the export-compliance prompt on every App Store upload. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<!-- Attachment uploads (receipts, client logos) use a web <input type="file">.
+	     In a WKWebView that picker can offer Camera / Photo Library; iOS requires a
+	     purpose string for each or the picker crashes the app (and App Store review
+	     rejects a build that can reach the camera without one). -->
+	<key>NSCameraUsageDescription</key>
+	<string>ProfitSync uses the camera so you can photograph receipts and documents to attach to your transactions and quotations.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>ProfitSync accesses your photo library so you can attach existing receipts, invoices, and logos to your records.</string>
+</dict>
+</plist>
