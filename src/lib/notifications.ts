@@ -41,6 +41,8 @@ export const NOTIFICATION_TYPES = {
   payment_failed: { category: "billing", i18nKey: "types.payment_failed" },
   payment_succeeded: { category: "billing", i18nKey: "types.payment_succeeded" },
   subscription_changed: { category: "billing", i18nKey: "types.subscription_changed" },
+  referral_credited: { category: "billing", i18nKey: "types.referral_credited" },
+  referral_payout: { category: "billing", i18nKey: "types.referral_payout" },
   budget_warning: { category: "budget", i18nKey: "types.budget_warning" },
   budget_exceeded: { category: "budget", i18nKey: "types.budget_exceeded" },
   recurring_posted: { category: "transactions", i18nKey: "types.recurring_posted" },

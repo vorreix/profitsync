@@ -1447,9 +1447,28 @@
         "body_active": "مؤسستك الآن على خطة {{plan}}.",
         "body_cancelled": "تم إلغاء اشتراك {{plan}} الخاص بك."
       },
+      "referral_credited": {
+        "title": "تم إيداع مكافأة الإحالة",
+        "body": "قام من أحلته بالترقية — {{amount}} في الطريق إليك."
+      },
+      "referral_payout": {
+        "title": "تحديث الدفعة",
+        "body_approved": "تمت الموافقة على دفعتك البالغة {{amount}}.",
+        "body_paid": "تم إرسال دفعتك البالغة {{amount}}.",
+        "body_rejected": "تم رفض طلب الدفع البالغ {{amount}}."
+      },
+      "budget_warning": {
+        "title": "الميزانية على وشك النفاد",
+        "body": "استخدم {{name}} {{percent}}% من ميزانيته {{period}}."
+      },
       "budget_exceeded": {
         "title": "تجاوز الميزانية",
         "body": "تجاوزت {{name}} ميزانية {{period}}."
+      },
+      "recurring_posted": {
+        "title": "تم تسجيل معاملة متكررة",
+        "body": "تمت إضافة “{{name}}” تلقائيًا.",
+        "body_many": "أضاف “{{name}}” {{count}} معاملة."
       },
       "space_autosaved": {
         "title": "تم الادخار تلقائيًا في مساحتك",

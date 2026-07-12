@@ -31,7 +31,7 @@ Status: **in progress** · Started 2026-07-11 · Chain root: `feat/notif5-00-pla
 | 00 | `feat/notif5-00-plan` | This plan | ✅ pushed |
 | 01 | `feat/notif5-01-events-billing` | `payment_succeeded` + `subscription_changed` fired from webhook AND reconcile (+ admin transitions) | ✅ pushed |
 | 02 | `feat/notif5-02-events-team` | `member_invited` (admins), org-wide join fan-out, `quotation_accepted` | ✅ pushed |
-| 03 | `feat/notif5-03-events-money` | `budget_warning` @80%, `recurring_posted`, `referral_credited`/`referral_payout` (new types) | ⏳ |
+| 03 | `feat/notif5-03-events-money` | `budget_warning` @80%, `recurring_posted`, `referral_credited`/`referral_payout` (new types) | ✅ pushed |
 | 04 | `feat/notif5-04-fcm-server` | FCM HTTP v1 sender (node:crypto JWT, lazy, no-op w/o env), channel-aware `POST /api/notifications/push`, `mobile_push` preference channel | ⏳ |
 | 05 | `feat/notif5-05-fcm-client` | `@capacitor-firebase/messaging`, native token registration, Mobile-push toggle UI, conditional gradle wiring, docs | ⏳ |
 | 06 | `feat/notif5-06-reliability` | GH tick workflow fails loud on stale heartbeat, worker-deploy schedule registration, rate-limit on subscription POST, ops checklist | ⏳ |
@@ -172,3 +172,15 @@ Status: **in progress** · Started 2026-07-11 · Chain root: `feat/notif5-00-pla
   dedupe shape makes fan-out + direct-to-creator + accept-then-convert all
   collapse to one row per recipient. i18n ×8 (1465 keys). DB-verified
   (exclusion array, no-self-notify, dedupe collapse) with a throwaway test.
+- 2026-07-12 (03): money events. `budgetAlertTier` (pure, committed test locks
+  the 80%/100% boundaries — warning fires 80%..=cap, exceeded strictly past
+  cap; one alert per window PER TIER via `budget_warning:`/`budget_exceeded:`
+  dedupe keys). `recurring_posted` → rule creator once per batch (count-aware
+  body/body_many, `recurring_posted:<ruleId>:<cursor>`, mirrors
+  space_autosaved). NEW billing types `referral_credited` (fires ONLY when the
+  status-guarded UPDATE wins via `.returning()`, account-level orgId null) +
+  `referral_payout` (approved/paid/rejected body variants from the admin payout
+  PATCH). i18n ×8 (1476 keys). referral_credited DB-verified end-to-end with a
+  synthetic org (credit once / notify once / replay silent; cleaned up).
+  recurring_posted verified by typecheck + pattern-parity with space_autosaved
+  (materializer setup too heavy for a throwaway test — noted honestly).
