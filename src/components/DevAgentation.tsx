@@ -17,6 +17,14 @@ export function DevAgentation() {
 
   useEffect(() => {
     if (!import.meta.env.DEV) return
+    // Opt OUT under the e2e dev server. The `playwright smoke` project boots the
+    // real dev server (`npm run dev`, so import.meta.env.DEV === true), where this
+    // toolbar's fixed bottom-right overlay sits over the Add-Client FAB and
+    // intercepts pointer events — Playwright then times out clicking through it.
+    // playwright.config.ts sets VITE_DISABLE_DEV_TOOLS=1 on that web server (an
+    // explicit, deterministic signal — navigator.webdriver is NOT reliably true
+    // across Playwright launch modes). Normal `npm run dev` keeps the toolbar.
+    if (import.meta.env.VITE_DISABLE_DEV_TOOLS) return
     let alive = true
     import("agentation")
       .then((m) => {

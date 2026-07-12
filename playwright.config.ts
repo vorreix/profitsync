@@ -71,6 +71,11 @@ export default defineConfig({
           url: "http://localhost:5173",
           reuseExistingServer: !process.env.CI,
           timeout: 120_000,
+          // Suppress the dev-only Agentation toolbar (DevAgentation.tsx): its
+          // fixed overlay intercepts pointer events over the Add-Client FAB and
+          // makes clicks time out. Vite exposes VITE_-prefixed process.env vars
+          // on import.meta.env, so this reaches the client deterministically.
+          env: { VITE_DISABLE_DEV_TOOLS: "1" },
         },
         {
           // Fresh production build for the prod-build project (no API needed).
