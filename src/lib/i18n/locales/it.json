@@ -1505,6 +1505,7 @@
     "reminders": {
       "title": "Promemoria transazioni",
       "description": "Ricevi un promemoria per registrare entrate e uscite. Toccandolo si apre il modulo Aggiungi transazione.",
+      "phoneOnly": "I promemoria suonano sul telefono — installa l'app Android di ProfitSync per riceverli.",
       "add": "Aggiungi promemoria",
       "none": "Ancora nessun promemoria",
       "none_hint": "Aggiungine uno per ricordarti di registrare le transazioni.",

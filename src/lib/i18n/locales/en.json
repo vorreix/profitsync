@@ -1567,6 +1567,7 @@
     "reminders": {
       "title": "Transaction reminders",
       "description": "Get a nudge to record your income and expenses. Tapping the reminder opens the Add Transaction form.",
+      "phoneOnly": "Reminders ring on your phone — install the ProfitSync Android app to receive them.",
       "add": "Add reminder",
       "none": "No reminders yet",
       "none_hint": "Add one to get a nudge to record your transactions.",
