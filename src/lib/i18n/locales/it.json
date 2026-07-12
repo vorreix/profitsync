@@ -567,7 +567,17 @@
       "timeout": "Sta richiedendo più tempo del previsto. Riprova.",
       "retry": "Riprova",
       "close": "Chiudi",
-      "openError": "Impossibile aprire il PDF. Riprova."
+      "openError": "Impossibile aprire il PDF. Riprova.",
+      "generate": "Genera PDF",
+      "regenerate": "Rigenera",
+      "historyTitle": "Versioni precedenti",
+      "emptyTitle": "Nessun PDF generato",
+      "emptyHint": "Genera un PDF da visualizzare, scaricare o condividere.",
+      "staleHint": "Questo preventivo è cambiato dopo l'ultimo PDF: rigeneralo per aggiornarlo.",
+      "currentBadge": "Attuale",
+      "latestLabel": "Ultimo PDF",
+      "generateError": "Impossibile avviare la generazione del PDF. Riprova.",
+      "newVersionGenerating": "Generazione di una nuova versione…"
     }
   },
   "organizations": {

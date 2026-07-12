@@ -1015,7 +1015,17 @@
       "timeout": "This is taking longer than expected. Please try again.",
       "retry": "Try again",
       "close": "Close",
-      "openError": "Couldn't open the PDF. Please try again."
+      "openError": "Couldn't open the PDF. Please try again.",
+      "generate": "Generate PDF",
+      "regenerate": "Regenerate",
+      "historyTitle": "Previous versions",
+      "emptyTitle": "No PDF generated yet",
+      "emptyHint": "Generate a PDF you can view, download, or share.",
+      "staleHint": "This quotation changed since the last PDF — regenerate to update it.",
+      "currentBadge": "Current",
+      "latestLabel": "Latest PDF",
+      "generateError": "Couldn't start PDF generation. Please try again.",
+      "newVersionGenerating": "Generating a new version…"
     }
   },
   "organizations": {

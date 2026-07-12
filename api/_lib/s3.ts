@@ -97,6 +97,33 @@ export function presignGetObject(cfg: S3Config, key: string, opts: PresignGetOpt
   })
 }
 
+/**
+ * Best-effort delete of a stored object, used when pruning PDF history past the
+ * newest 5. Presigns a short-lived DELETE and fires it server-side; a network
+ * failure or a 4xx (e.g. already gone) resolves to false and is treated as
+ * non-fatal — the DB row is removed regardless, so at worst an object is briefly
+ * orphaned in the bucket. Server-only (holds the S3 secret).
+ */
+export async function deleteObject(cfg: S3Config, key: string): Promise<boolean> {
+  const { host, path } = objectLocation(cfg, key)
+  const url = presignUrl({
+    method: "DELETE",
+    protocol: cfg.protocol,
+    host,
+    path,
+    region: cfg.region,
+    accessKeyId: cfg.accessKeyId,
+    secretAccessKey: cfg.secretAccessKey,
+    expiresIn: 300,
+  })
+  try {
+    const res = await fetch(url, { method: "DELETE", signal: AbortSignal.timeout(5000) })
+    return res.ok || res.status === 404 // 404 = already deleted = success for our purposes
+  } catch {
+    return false
+  }
+}
+
 /** Strip characters that would break a quoted Content-Disposition filename. */
 function sanitizeFilename(name?: string): string {
   if (!name) return ""

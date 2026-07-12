@@ -24,11 +24,12 @@ export function isWorkerConfigured(): boolean {
 
 /**
  * Enqueue a compute-style `pdf.quotation` job. The worker renders the snapshot
- * to a PDF, uploads it to `objectKey`, and calls back to mark the quotation
- * ready. `dedupeKey = qpdf:<id>:<hash>` collapses concurrent views of the same
- * content version to a single render (the worker's partial unique index on
- * queued/running is the race backstop). Best-effort: a worker outage returns
- * false and the view route reports "generating" — the user's next view retries.
+ * to a PDF, uploads it to `objectKey`, and calls back to mark that generation
+ * ready. `dedupeKey = qpdf:<objectKey>` collapses only a double-submit of the
+ * SAME generation (the object key is unique per quotation_pdfs row), so an
+ * explicit Regenerate — a new row with a new key — always renders afresh. The
+ * worker's partial unique index on queued/running is the race backstop.
+ * Best-effort: a worker outage returns false and the POST reports it.
  */
 export async function enqueueQuotationPdf(input: {
   quotationId: string
@@ -47,7 +48,7 @@ export async function enqueueQuotationPdf(input: {
       },
       body: JSON.stringify({
         type: "pdf.quotation",
-        dedupe_key: `qpdf:${input.quotationId}:${input.sourceHash}`,
+        dedupe_key: `qpdf:${input.objectKey}`,
         payload: {
           quotation_id: input.quotationId,
           organization_id: input.organizationId,

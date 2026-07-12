@@ -398,6 +398,30 @@ export const quotationAttachments = pgTable("quotation_attachments", {
   quotationIdx: index("quotation_attachments_quotation_idx").on(table.quotationId),
 }))
 
+// PDF generation history — the source of truth for a quotation's rendered PDFs
+// (the older single-value `quotations.pdf_*` columns are kept but no longer read,
+// and are backfilled into this table by migration 0052). Each row is ONE explicit
+// generation: a UNIQUE S3 object key (so history entries never clobber each other),
+// the content hash it was rendered from (drives the "content changed since" hint),
+// and a status. The worker callback flips `generating` → `ready`; on each new
+// ready row we keep only the newest 5 per quotation and delete the older rows +
+// their S3 objects. Generation is NEVER auto-triggered — the user clicks Generate/
+// Regenerate — so opening the modal no longer hits the worker.
+export const quotationPdfs = pgTable("quotation_pdfs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  quotationId: uuid("quotation_id").notNull().references(() => quotations.id, { onDelete: "cascade" }),
+  organizationId: uuid("organization_id"), // nullable to match quotations (legacy personal rows)
+  objectKey: text("object_key").notNull().default(""),
+  sourceHash: text("source_hash").notNull().default(""),
+  sizeBytes: integer("size_bytes").notNull().default(0),
+  status: text("status").notNull().default("generating"), // generating | ready | error
+  error: text("error").notNull().default(""),
+  createdAt: timestamp("created_at").defaultNow(),
+  generatedAt: timestamp("generated_at"),
+}, (table) => ({
+  quotationIdx: index("quotation_pdfs_quotation_idx").on(table.quotationId),
+}))
+
 export const clientAttachments = pgTable("client_attachments", {
   id: uuid("id").primaryKey().defaultRandom(),
   clientId: uuid("client_id").notNull().references(() => clients.id, { onDelete: "cascade" }),

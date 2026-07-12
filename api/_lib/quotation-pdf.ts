@@ -130,6 +130,16 @@ export function pdfObjectKey(orgId: string, quotationId: string, hash: string): 
   return `quotations/${orgId}/${quotationId}/${hash}.pdf`
 }
 
+/**
+ * Per-generation object key — UNIQUE per PDF (keyed by the `quotation_pdfs` row
+ * id), so every Generate/Regenerate produces a distinct S3 object and history
+ * entries never overwrite each other's bytes. (The content-hash `pdfObjectKey`
+ * above only survives via rows backfilled from the old single-value columns.)
+ */
+export function pdfObjectKeyForGeneration(orgId: string, quotationId: string, generationId: string): string {
+  return `quotations/${orgId}/${quotationId}/gen-${generationId}.pdf`
+}
+
 /** A friendly download filename, e.g. "Quotation-Q-1A2B3C4D.pdf". */
 export function quotationPdfFilename(q: QuotationRowLike): string {
   const base = (q.title && q.title.trim()) || quotationReference(q.id)
