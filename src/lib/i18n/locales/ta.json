@@ -442,7 +442,23 @@
     "clientCreated": "வாடிக்கையாளர் உருவாக்கப்பட்டார்",
     "createClientFailed": "வாடிக்கையாளரை உருவாக்க முடியவில்லை",
     "clientCount_one": "{{count}} வாடிக்கையாளர்",
-    "clientCount_other": "{{count}} வாடிக்கையாளர்கள்"
+    "clientCount_other": "{{count}} வாடிக்கையாளர்கள்",
+    "sortIncomeDesc": "வருமானம் (அதிகம் → குறைவு)",
+    "sortIncomeAsc": "வருமானம் (குறைவு → அதிகம்)",
+    "sortExpenseDesc": "செலவு (அதிகம் → குறைவு)",
+    "sortExpenseAsc": "செலவு (குறைவு → அதிகம்)",
+    "sortProfitDesc": "லாபம் (அதிகம் → குறைவு)",
+    "sortProfitAsc": "லாபம் (குறைவு → அதிகம்)",
+    "table": {
+      "name": "பெயர்",
+      "company": "நிறுவனம்",
+      "income": "வருமானம்",
+      "expense": "செலவு",
+      "profit": "லாபம்",
+      "date": "தேதி",
+      "actions": "செயல்கள்",
+      "sortBy": "{{column}} வாரியாக வரிசைப்படுத்து"
+    }
   },
   "quotations": {
     "titleLabel": "தலைப்பு *",
@@ -523,7 +539,16 @@
     "deleteBtn": "நீக்கவும்",
     "totalQuotations_one": "{{count}} மேற்கோள்",
     "totalQuotations_other": "{{count}} மேற்கோள்கள்",
-    "dateLabel": "தேதி"
+    "dateLabel": "தேதி",
+    "table": {
+      "title": "தலைப்பு",
+      "prospect": "வாய்ப்புள்ள வாடிக்கையாளர்",
+      "amount": "தொகை",
+      "status": "நிலை",
+      "date": "தேதி",
+      "actions": "செயல்கள்",
+      "sortBy": "{{column}} வாரியாக வரிசைப்படுத்து"
+    }
   },
   "organizations": {
     "organizationCreated": "நிறுவனம் உருவாக்கப்பட்டது",
