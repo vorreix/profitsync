@@ -1,160 +1,205 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
-import { Download, ExternalLink, FileText, Loader as Loader2, RotateCw, Share2, TriangleAlert } from "lucide-react"
+import { Download, ExternalLink, FileText, Loader as Loader2, RotateCw, Share2, Sparkles, TriangleAlert } from "lucide-react"
 import { getActiveOrgId } from "@/lib/api"
 import type { Quotation } from "@/lib/types"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 
-// The single endpoint this modal talks to returns three shapes by HTTP status:
-//   200 → ready (fresh presigned view + download URLs, valid ~1h)
-//   202 → generating (job enqueued / still rendering — poll)
-//   503 → unavailable (S3 or worker not configured)
-// We use a raw fetch (not apiGet) on purpose: apiGet caches GETs for 30s, which
-// would freeze the poll, and it throws on the 503 we want to render as a state.
-type PdfReady = {
-  status: "ready"
-  view_url: string
-  download_url: string
-  filename: string
-  expires_in: number
+// The GET is read-only: it returns the PDF *history* and never enqueues a render.
+// Generation happens only when the user clicks Generate/Regenerate (POST). We use
+// a raw fetch (not apiGet) so the poll isn't frozen by the 30s GET cache.
+type PdfHistoryItem = {
+  id: string
   generated_at: string | null
   size_bytes: number
+  is_current: boolean
+  view_url: string
+  download_url: string
 }
-type PdfResponse =
-  | PdfReady
-  | { status: "generating"; queued?: boolean }
-  | { status: "unavailable"; error?: string }
-
-type Phase = "loading" | "generating" | "ready" | "unavailable" | "error"
+type PdfState = {
+  filename: string
+  unavailable: boolean
+  can_generate: boolean
+  generating: boolean
+  latest_stale: boolean
+  history: PdfHistoryItem[]
+}
 
 const POLL_MS = 2000
-const MAX_POLLS = 45 // ~90s ceiling before we surface a retry
+const MAX_POLLS = 45 // ~90s ceiling
+
+function formatWhen(iso: string | null): string {
+  if (!iso) return ""
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ""
+  return d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })
+}
+function formatSize(bytes: number): string {
+  if (!bytes) return ""
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
 
 export function QuotationPdfModal({ quotation, onClose }: { quotation: Quotation | null; onClose: () => void }) {
   const { t } = useTranslation("quotations")
   const { getToken } = useAuth()
-  const [phase, setPhase] = useState<Phase>("loading")
-  const [ready, setReady] = useState<PdfReady | null>(null)
+  const [data, setData] = useState<PdfState | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [working, setWorking] = useState(false) // a generate/regenerate is in flight or polling
   const [errorMsg, setErrorMsg] = useState("")
-  const [retryNonce, setRetryNonce] = useState(0)
+  const pollRef = useRef<{ cancelled: boolean } | null>(null)
 
   const open = quotation !== null
   const quotationId = quotation?.id ?? null
   const title = quotation?.title ?? ""
 
-  const fetchPdf = useCallback(
-    async (id: string): Promise<PdfResponse> => {
-      const token = await getToken()
-      if (!token) throw new Error("auth")
-      const orgId = getActiveOrgId()
-      const res = await fetch(`/api/quotations/${id}/pdf`, {
-        headers: { Authorization: `Bearer ${token}`, ...(orgId ? { "x-org-id": orgId } : {}) },
-      })
-      const body = (await res.json().catch(() => ({}))) as Record<string, unknown>
-      if (res.status === 200 && body.status === "ready") return body as unknown as PdfReady
-      if (res.status === 202 || body.status === "generating") return { status: "generating" }
-      if (res.status === 503 || body.status === "unavailable") {
-        return { status: "unavailable", error: typeof body.error === "string" ? body.error : undefined }
-      }
-      throw new Error(typeof body.error === "string" ? body.error : `HTTP ${res.status}`)
-    },
-    [getToken],
-  )
+  const fetchState = useCallback(async (): Promise<PdfState> => {
+    const token = await getToken()
+    if (!token) throw new Error("auth")
+    const orgId = getActiveOrgId()
+    const res = await fetch(`/api/quotations/${quotationId}/pdf`, {
+      headers: { Authorization: `Bearer ${token}`, ...(orgId ? { "x-org-id": orgId } : {}) },
+    })
+    const body = (await res.json().catch(() => ({}))) as Partial<PdfState> & { error?: string }
+    if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`)
+    return {
+      filename: body.filename ?? "quotation.pdf",
+      unavailable: !!body.unavailable,
+      can_generate: !!body.can_generate,
+      generating: !!body.generating,
+      latest_stale: body.latest_stale !== false,
+      history: Array.isArray(body.history) ? body.history : [],
+    }
+  }, [getToken, quotationId])
 
-  // Drive the state machine: fetch on open, then poll every POLL_MS while the
-  // worker renders. Cancels cleanly on close / quotation change / retry.
-  useEffect(() => {
-    if (!open || !quotationId) return
-    let cancelled = false
+  // Poll while a generation is in flight; stops as soon as `generating` clears.
+  const startPolling = useCallback(() => {
+    if (pollRef.current) pollRef.current.cancelled = true
+    const ctl = { cancelled: false }
+    pollRef.current = ctl
     let polls = 0
-    let timer: ReturnType<typeof setTimeout> | undefined
-
-    async function tick() {
-      polls += 1
-      let result: PdfResponse
+    const tick = async () => {
+      let next: PdfState
       try {
-        result = await fetchPdf(quotationId as string)
+        next = await fetchState()
       } catch (err) {
-        if (cancelled) return
-        setPhase("error")
+        if (ctl.cancelled) return
+        setWorking(false)
         setErrorMsg(err instanceof Error && err.message !== "auth" ? err.message : t("pdf.errorTitle"))
         return
       }
-      if (cancelled) return
-      if (result.status === "ready") {
-        setReady(result)
-        setPhase("ready")
-        return
+      if (ctl.cancelled) return
+      setData(next)
+      if (next.generating && polls < MAX_POLLS) {
+        polls += 1
+        setTimeout(tick, POLL_MS)
+      } else {
+        setWorking(false)
+        if (next.generating) setErrorMsg(t("pdf.timeout"))
       }
-      if (result.status === "unavailable") {
-        setPhase("unavailable")
-        return
-      }
-      setPhase("generating")
-      if (polls >= MAX_POLLS) {
-        setPhase("error")
-        setErrorMsg(t("pdf.timeout"))
-        return
-      }
-      timer = setTimeout(tick, POLL_MS)
     }
+    setWorking(true)
+    setTimeout(tick, POLL_MS)
+  }, [fetchState, t])
 
-    setPhase("loading")
-    setReady(null)
+  // On open (or quotation change): load the history once, then poll if a
+  // generation is already in flight. NEVER triggers a render itself.
+  useEffect(() => {
+    if (!open || !quotationId) return
+    const ctl = { cancelled: false }
+    pollRef.current = ctl
+    setLoading(true)
+    setData(null)
     setErrorMsg("")
-    tick()
+    setWorking(false)
+    ;(async () => {
+      let first: PdfState
+      try {
+        first = await fetchState()
+      } catch (err) {
+        if (ctl.cancelled) return
+        setLoading(false)
+        setErrorMsg(err instanceof Error && err.message !== "auth" ? err.message : t("pdf.errorTitle"))
+        return
+      }
+      if (ctl.cancelled) return
+      setData(first)
+      setLoading(false)
+      if (first.generating) startPolling()
+    })()
     return () => {
-      cancelled = true
-      if (timer) clearTimeout(timer)
+      ctl.cancelled = true
+      if (pollRef.current === ctl) pollRef.current = null
     }
-  }, [open, quotationId, retryNonce, fetchPdf, t])
+  }, [open, quotationId, fetchState, startPolling, t])
 
-  function handleView() {
-    if (!ready) return
-    const w = window.open(ready.view_url, "_blank", "noopener,noreferrer")
+  async function generate() {
+    if (!quotationId) return
+    setWorking(true)
+    setErrorMsg("")
+    try {
+      const token = await getToken()
+      if (!token) return
+      const orgId = getActiveOrgId()
+      const res = await fetch(`/api/quotations/${quotationId}/pdf`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, ...(orgId ? { "x-org-id": orgId } : {}) },
+      })
+      if (res.status !== 202) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string }
+        setWorking(false)
+        setErrorMsg(body.error || t("pdf.generateError"))
+        return
+      }
+      startPolling()
+    } catch {
+      setWorking(false)
+      setErrorMsg(t("pdf.generateError"))
+    }
+  }
+
+  function handleView(url: string) {
+    const w = window.open(url, "_blank", "noopener,noreferrer")
     if (!w) toast.error(t("pdf.openError"))
   }
 
-  function handleDownload() {
-    if (!ready) return
-    // The presigned download URL carries `Content-Disposition: attachment`, so a
-    // plain anchor click downloads it without navigating the SPA away.
+  function handleDownload(item: PdfHistoryItem, filename: string) {
     const a = document.createElement("a")
-    a.href = ready.download_url
+    a.href = item.download_url
     a.rel = "noopener"
-    a.download = ready.filename
+    a.download = filename
     document.body.appendChild(a)
     a.click()
     a.remove()
   }
 
-  async function handleShare() {
-    if (!ready) return
-    const shareData = { title: ready.filename, text: t("pdf.shareText", { title }), url: ready.view_url }
-    // navigator.share must be reached synchronously from the click gesture; the
-    // URL is already in state so there's no await before the call.
+  async function handleShare(url: string, filename: string) {
+    const shareData = { title: filename, text: t("pdf.shareText", { title }), url }
     if (typeof navigator !== "undefined" && navigator.share) {
       try {
         await navigator.share(shareData)
       } catch {
-        // user dismissed the share sheet — not an error
+        /* dismissed */
       }
       return
     }
     try {
-      await navigator.clipboard.writeText(ready.view_url)
+      await navigator.clipboard.writeText(url)
       toast.success(t("pdf.linkCopied"))
     } catch {
       toast.error(t("pdf.openError"))
     }
   }
 
-  function retry() {
-    setRetryNonce((n) => n + 1)
-  }
+  const filename = data?.filename ?? "quotation.pdf"
+  const history = data?.history ?? []
+  const latest = history[0]
+  const rest = history.slice(1)
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose() }}>
@@ -166,45 +211,30 @@ export function QuotationPdfModal({ quotation, onClose }: { quotation: Quotation
           </DialogTitle>
         </DialogHeader>
 
-        {/* Generating / loading */}
-        {(phase === "loading" || phase === "generating") && (
+        {/* Initial load */}
+        {loading && (
           <div role="status" aria-live="polite" className="flex flex-col items-center gap-3 py-8 text-center">
             <Loader2 className="size-8 animate-spin text-primary motion-reduce:animate-none" />
+          </div>
+        )}
+
+        {/* Hard error (fetch/generate) — recoverable */}
+        {!loading && errorMsg && (
+          <div className="flex flex-col items-center gap-3 py-6 text-center">
+            <TriangleAlert className="size-8 text-destructive" />
             <div className="space-y-1">
-              <p className="text-sm font-medium">{t("pdf.generatingTitle")}</p>
-              <p className="text-xs text-muted-foreground">{t("pdf.generatingHint")}</p>
+              <p className="text-sm font-medium">{t("pdf.errorTitle")}</p>
+              <p className="text-xs text-muted-foreground break-words">{errorMsg}</p>
             </div>
+            <Button variant="outline" className="h-11" onClick={() => { setErrorMsg(""); if (data?.can_generate) generate() }}>
+              <RotateCw className="size-4" />
+              {t("pdf.retry")}
+            </Button>
           </div>
         )}
 
-        {/* Ready — one primary CTA (View), Download + Share subordinate */}
-        {phase === "ready" && ready && (
-          <div className="space-y-4 py-2">
-            <p role="status" aria-live="polite" className="text-sm text-muted-foreground text-center">
-              {t("pdf.ready")}
-            </p>
-            <div className="space-y-2">
-              <Button className="w-full h-11" onClick={handleView}>
-                <ExternalLink className="size-4" />
-                {t("pdf.view")}
-              </Button>
-              <div className="grid grid-cols-2 gap-2">
-                <Button variant="outline" className="h-11" onClick={handleDownload}>
-                  <Download className="size-4" />
-                  {t("pdf.download")}
-                </Button>
-                <Button variant="outline" className="h-11" onClick={handleShare}>
-                  <Share2 className="size-4" />
-                  {t("pdf.share")}
-                </Button>
-              </div>
-            </div>
-            <p className="text-[11px] leading-relaxed text-muted-foreground text-center">{t("pdf.expiresNote")}</p>
-          </div>
-        )}
-
-        {/* Unavailable (storage/worker not configured) */}
-        {phase === "unavailable" && (
+        {/* Storage/worker not configured */}
+        {!loading && !errorMsg && data?.unavailable && (
           <div className="flex flex-col items-center gap-3 py-8 text-center">
             <TriangleAlert className="size-8 text-muted-foreground" />
             <div className="space-y-1">
@@ -214,18 +244,106 @@ export function QuotationPdfModal({ quotation, onClose }: { quotation: Quotation
           </div>
         )}
 
-        {/* Error — with a recovery path */}
-        {phase === "error" && (
-          <div className="flex flex-col items-center gap-3 py-8 text-center">
-            <TriangleAlert className="size-8 text-destructive" />
-            <div className="space-y-1">
-              <p className="text-sm font-medium">{t("pdf.errorTitle")}</p>
-              <p className="text-xs text-muted-foreground break-words">{errorMsg}</p>
-            </div>
-            <Button variant="outline" className="h-11" onClick={retry}>
-              <RotateCw className="size-4" />
-              {t("pdf.retry")}
-            </Button>
+        {/* Loaded, available */}
+        {!loading && !errorMsg && data && !data.unavailable && (
+          <div className="space-y-4 py-1">
+            {/* Empty: no PDF yet → explicit Generate */}
+            {history.length === 0 && !working && (
+              <div className="flex flex-col items-center gap-3 py-6 text-center">
+                <FileText className="size-8 text-muted-foreground/60" />
+                <div className="space-y-1">
+                  <p className="text-sm font-medium">{t("pdf.emptyTitle")}</p>
+                  <p className="text-xs text-muted-foreground">{t("pdf.emptyHint")}</p>
+                </div>
+                {data.can_generate && (
+                  <Button className="h-11 w-full" onClick={generate}>
+                    <Sparkles className="size-4" />
+                    {t("pdf.generate")}
+                  </Button>
+                )}
+              </div>
+            )}
+
+            {/* Generating a (first or new) version */}
+            {working && (
+              <div role="status" aria-live="polite" className="flex items-center gap-3 rounded-lg border bg-muted/40 px-3 py-2.5">
+                <Loader2 className="size-4 shrink-0 animate-spin text-primary motion-reduce:animate-none" />
+                <div className="min-w-0">
+                  <p className="text-sm font-medium">{history.length ? t("pdf.newVersionGenerating") : t("pdf.generatingTitle")}</p>
+                  <p className="text-xs text-muted-foreground">{t("pdf.generatingHint")}</p>
+                </div>
+              </div>
+            )}
+
+            {/* Latest PDF — the prominent, actionable one */}
+            {latest && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-medium text-muted-foreground">{t("pdf.latestLabel")}</p>
+                  {latest.is_current ? (
+                    <Badge variant="outline" className="text-[10px] border-emerald-500/40 text-emerald-600 dark:text-emerald-300">{t("pdf.currentBadge")}</Badge>
+                  ) : null}
+                </div>
+                <Button className="w-full h-11" onClick={() => handleView(latest.view_url)}>
+                  <ExternalLink className="size-4" />
+                  {t("pdf.view")}
+                </Button>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button variant="outline" className="h-11" onClick={() => handleDownload(latest, filename)}>
+                    <Download className="size-4" />
+                    {t("pdf.download")}
+                  </Button>
+                  <Button variant="outline" className="h-11" onClick={() => handleShare(latest.view_url, filename)}>
+                    <Share2 className="size-4" />
+                    {t("pdf.share")}
+                  </Button>
+                </div>
+                <p className="text-[11px] text-muted-foreground">{formatWhen(latest.generated_at)}{latest.size_bytes ? ` · ${formatSize(latest.size_bytes)}` : ""}</p>
+              </div>
+            )}
+
+            {/* Stale hint + Regenerate */}
+            {latest && data.can_generate && (
+              <div className="space-y-2">
+                {data.latest_stale && !working && (
+                  <p className="text-[11px] leading-relaxed text-amber-600 dark:text-amber-400">{t("pdf.staleHint")}</p>
+                )}
+                <Button variant="outline" className="w-full h-11" onClick={generate} disabled={working}>
+                  <RotateCw className="size-4" />
+                  {t("pdf.regenerate")}
+                </Button>
+              </div>
+            )}
+
+            {/* Previous versions (up to 5 total) */}
+            {rest.length > 0 && (
+              <div className="space-y-1.5">
+                <p className="text-xs font-medium text-muted-foreground pt-1">{t("pdf.historyTitle")}</p>
+                <ul className="space-y-1.5">
+                  {rest.map((item) => (
+                    <li key={item.id} className="flex items-center gap-2 rounded-lg border px-2.5 py-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-medium truncate">{formatWhen(item.generated_at) || t("pdf.title")}</p>
+                        {item.size_bytes ? <p className="text-[10px] text-muted-foreground">{formatSize(item.size_bytes)}</p> : null}
+                      </div>
+                      <div className="flex items-center gap-0.5 shrink-0">
+                        <Button size="icon" variant="ghost" className="size-8" aria-label={t("pdf.view")} title={t("pdf.view")} onClick={() => handleView(item.view_url)}>
+                          <ExternalLink className="size-3.5" />
+                        </Button>
+                        <Button size="icon" variant="ghost" className="size-8" aria-label={t("pdf.download")} title={t("pdf.download")} onClick={() => handleDownload(item, filename)}>
+                          <Download className="size-3.5" />
+                        </Button>
+                        <Button size="icon" variant="ghost" className="size-8" aria-label={t("pdf.share")} title={t("pdf.share")} onClick={() => handleShare(item.view_url, filename)}>
+                          <Share2 className="size-3.5" />
+                        </Button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {latest && <p className="text-[11px] leading-relaxed text-muted-foreground">{t("pdf.expiresNote")}</p>}
           </div>
         )}
 

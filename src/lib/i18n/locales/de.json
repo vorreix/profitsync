@@ -567,7 +567,17 @@
       "timeout": "Das dauert länger als erwartet. Bitte versuchen Sie es erneut.",
       "retry": "Erneut versuchen",
       "close": "Schließen",
-      "openError": "PDF konnte nicht geöffnet werden. Bitte versuchen Sie es erneut."
+      "openError": "PDF konnte nicht geöffnet werden. Bitte versuchen Sie es erneut.",
+      "generate": "PDF erstellen",
+      "regenerate": "Neu erstellen",
+      "historyTitle": "Frühere Versionen",
+      "emptyTitle": "Noch kein PDF erstellt",
+      "emptyHint": "Erstelle ein PDF zum Ansehen, Herunterladen oder Teilen.",
+      "staleHint": "Dieses Angebot wurde seit dem letzten PDF geändert – neu erstellen zum Aktualisieren.",
+      "currentBadge": "Aktuell",
+      "latestLabel": "Neuestes PDF",
+      "generateError": "PDF-Erstellung konnte nicht gestartet werden. Bitte erneut versuchen.",
+      "newVersionGenerating": "Neue Version wird erstellt…"
     }
   },
   "organizations": {

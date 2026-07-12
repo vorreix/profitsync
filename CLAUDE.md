@@ -188,7 +188,7 @@ The sidebar has a floating action button (FAB) for quick access to Add Client, A
 
 **Drizzle helpers:**
 - `db` and `serialize()` are in `src/lib/db/index.ts`. `serialize()` converts Drizzle's camelCase row keys to snake_case before `res.json()` — call it on every row returned from an API route.
-- Migrations are in `drizzle/` and run automatically on `vercel-build` (`scripts/db-migrate.mjs`). Current head is **0042**. **Journal gotcha:** a new migration can silently skip ("up to date" but column missing) when `drizzle/meta/_journal.json` `when` values were normalized — bump the new entry's `when` above the previous, then verify the column exists in `information_schema`.
+- Migrations are in `drizzle/` and run automatically on `vercel-build` (`scripts/db-migrate.mjs`). Current head is **0052**. **Journal gotcha:** a new migration can silently skip ("up to date" but column missing) when `drizzle/meta/_journal.json` `when` values were normalized — bump the new entry's `when` above the previous, then verify the column exists in `information_schema`.
 
 ### API layer — consolidated router
 
