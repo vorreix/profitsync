@@ -523,7 +523,16 @@
     "deleteBtn": "Elimina",
     "totalQuotations_one": "{{count}} preventivo",
     "totalQuotations_other": "{{count}} preventivi",
-    "dateLabel": "Data"
+    "dateLabel": "Data",
+    "table": {
+      "title": "Titolo",
+      "prospect": "Potenziale cliente",
+      "amount": "Importo",
+      "status": "Stato",
+      "date": "Data",
+      "actions": "Azioni",
+      "sortBy": "Ordina per {{column}}"
+    }
   },
   "organizations": {
     "organizationCreated": "Organizzazione creata",

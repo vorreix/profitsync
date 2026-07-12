@@ -523,7 +523,16 @@
     "deleteBtn": "हटाएं",
     "totalQuotations_one": "{{count}} उद्धरण",
     "totalQuotations_other": "{{count}} उद्धरण",
-    "dateLabel": "तारीख़"
+    "dateLabel": "तारीख़",
+    "table": {
+      "title": "शीर्षक",
+      "prospect": "संभावित ग्राहक",
+      "amount": "राशि",
+      "status": "स्थिति",
+      "date": "तारीख",
+      "actions": "क्रियाएँ",
+      "sortBy": "{{column}} के अनुसार क्रमबद्ध करें"
+    }
   },
   "organizations": {
     "organizationCreated": "संगठन बनाया गया",

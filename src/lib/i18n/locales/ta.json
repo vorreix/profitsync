@@ -523,7 +523,16 @@
     "deleteBtn": "நீக்கவும்",
     "totalQuotations_one": "{{count}} மேற்கோள்",
     "totalQuotations_other": "{{count}} மேற்கோள்கள்",
-    "dateLabel": "தேதி"
+    "dateLabel": "தேதி",
+    "table": {
+      "title": "தலைப்பு",
+      "prospect": "வாய்ப்புள்ள வாடிக்கையாளர்",
+      "amount": "தொகை",
+      "status": "நிலை",
+      "date": "தேதி",
+      "actions": "செயல்கள்",
+      "sortBy": "{{column}} வாரியாக வரிசைப்படுத்து"
+    }
   },
   "organizations": {
     "organizationCreated": "நிறுவனம் உருவாக்கப்பட்டது",

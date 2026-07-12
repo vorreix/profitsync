@@ -523,7 +523,16 @@
     "deleteBtn": "Löschen",
     "totalQuotations_one": "{{count}} Angebot",
     "totalQuotations_other": "{{count}} Angebote",
-    "dateLabel": "Datum"
+    "dateLabel": "Datum",
+    "table": {
+      "title": "Titel",
+      "prospect": "Interessent",
+      "amount": "Betrag",
+      "status": "Status",
+      "date": "Datum",
+      "actions": "Aktionen",
+      "sortBy": "Sortieren nach {{column}}"
+    }
   },
   "organizations": {
     "organizationCreated": "Organisation erstellt",

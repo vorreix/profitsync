@@ -523,7 +523,16 @@
     "deleteBtn": "తొలగించు",
     "totalQuotations_one": "{{count}} కోట్",
     "totalQuotations_other": "{{count}} కోట్‌లు",
-    "dateLabel": "తేదీ"
+    "dateLabel": "తేదీ",
+    "table": {
+      "title": "శీర్షిక",
+      "prospect": "అవకాశ కస్టమర్",
+      "amount": "మొత్తం",
+      "status": "స్థితి",
+      "date": "తేదీ",
+      "actions": "చర్యలు",
+      "sortBy": "{{column}} ద్వారా క్రమబద్ధీకరించు"
+    }
   },
   "organizations": {
     "organizationCreated": "సంస్థ సృష్టించబడింది",

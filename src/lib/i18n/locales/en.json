@@ -893,6 +893,15 @@
     "clientCount_other": "{{count}} clients"
   },
   "quotations": {
+    "table": {
+      "title": "Title",
+      "prospect": "Prospect",
+      "amount": "Amount",
+      "status": "Status",
+      "date": "Date",
+      "actions": "Actions",
+      "sortBy": "Sort by {{column}}"
+    },
     "titleLabel": "Title *",
     "titlePlaceholder": "Web Design Proposal",
     "prospectNameLabel": "Prospect Name *",

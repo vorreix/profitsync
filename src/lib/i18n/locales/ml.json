@@ -523,7 +523,16 @@
     "deleteBtn": "ഇല്ലാതാക്കുക",
     "totalQuotations_one": "{{count}} ഉദ്ധരണി",
     "totalQuotations_other": "{{count}} ഉദ്ധരണികൾ",
-    "dateLabel": "തീയതി"
+    "dateLabel": "തീയതി",
+    "table": {
+      "title": "ശീർഷകം",
+      "prospect": "സാധ്യതയുള്ള ഉപഭോക്താവ്",
+      "amount": "തുക",
+      "status": "നില",
+      "date": "തീയതി",
+      "actions": "പ്രവർത്തനങ്ങൾ",
+      "sortBy": "{{column}} അനുസരിച്ച് അടുക്കുക"
+    }
   },
   "organizations": {
     "organizationCreated": "സംഘടന സൃഷ്ടിക്കപ്പെട്ടു",
