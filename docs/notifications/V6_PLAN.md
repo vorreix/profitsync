@@ -40,7 +40,7 @@ Status: **in progress** · Started 2026-07-12 · Chain root: `feat/notif6-00-pla
 |---|--------|----------|--------|
 | 00 | `feat/notif6-00-plan` | This plan | ✅ pushed |
 | 01 | `feat/notif6-01-local-reminders` | Phone-local reminder delivery + web banner + tick stops delivering reminders | ✅ pushed |
-| 02 | `feat/notif6-02-exact-jobs` | Exact-time broadcast jobs, hourly sweep, GH fallback downshift | ⏳ |
+| 02 | `feat/notif6-02-exact-jobs` | Exact-time broadcast jobs, hourly sweep, GH fallback downshift | ✅ pushed |
 | 03 | `feat/notif6-03-docs` | SCHEDULER/SYSTEM model rewrite, ops notes, final verification summary | ⏳ |
 
 ## Per-branch details
@@ -113,3 +113,17 @@ Status: **in progress** · Started 2026-07-12 · Chain root: `feat/notif6-00-pla
   DB-free tests lock the weekday mapping (ISO→Capacitor), stable int32 ids,
   and schedule expansion. Test reminders deleted, app uninstalled, emulator
   shut down.
+- 2026-07-12 (02): exact-time jobs SHIPPED. `api/_lib/worker-jobs.ts`
+  (`enqueueNotificationTickAt`: POST /v1/jobs, `dedupe_key=tick:<id>:<occurrence>`,
+  5s timeout, best-effort — committed mock-fetch tests cover payload/dedupe/
+  no-config/failure). Wired at 3 sites: broadcast create, broadcast edit
+  (stale jobs = harmless no-op ticks, NO cancel plumbing), and the recurring
+  re-arm inside the tick. All `notifications-dispatch` registrations
+  (register script, Makefile, admin panel action + NOTIFICATIONS_CRON default)
+  downshifted `*/5 * * * *` → `0 * * * *` (hourly reconcile sweep); admin
+  panel staleness threshold 15 → 150 min; GH fallback `*/30` → `15 */2 * * *`
+  with the dead-worker alert at >150 min. Sweep path DB-verified with a
+  throwaway test (due broadcast delivers with ZERO worker jobs, synthetic
+  single-user audience; cleaned up). ⚠️ Prod rollout: after merge, click
+  "Register notification schedule" once in /admin → Worker so the hourly cron
+  replaces the 5-min one (idempotent upsert by name).
