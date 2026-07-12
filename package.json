@@ -104,6 +104,7 @@
     "@vercel/node": "^3.2.0",
     "@vite-pwa/assets-generator": "^1.0.2",
     "@vitejs/plugin-react": "^5.2.0",
+    "agentation": "^3.0.2",
     "dotenv": "^16.4.5",
     "drizzle-kit": "^0.31.0",
     "eslint": "^9.39.4",

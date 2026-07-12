@@ -9,6 +9,7 @@ import { BusinessOnlyRoute } from "@/components/BusinessOnlyRoute"
 import { PersonalOnlyRoute } from "@/components/PersonalOnlyRoute"
 import { Toaster } from "@/components/ui/sonner"
 import { UpdatePrompt } from "@/components/UpdatePrompt"
+import { DevAgentation } from "@/components/DevAgentation"
 import { NativeShell } from "@/components/NativeShell"
 import { isNativeApp, nativeAuthLog, nativeAuthUrlLog, toInternalOAuthCallbackPath } from "@/lib/native-auth"
 import { useShouldRedirectToApp } from "@/lib/use-redirect-to-app"
@@ -238,6 +239,8 @@ export function App() {
       </AppErrorBoundary>
       <Toaster />
       <UpdatePrompt />
+      {/* Dev-only visual-feedback tool for AI agents (stripped from prod builds). */}
+      <DevAgentation />
     </BrowserRouter>
   )
 }
