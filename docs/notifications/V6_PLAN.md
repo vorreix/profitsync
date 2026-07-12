@@ -41,7 +41,7 @@ Status: **in progress** · Started 2026-07-12 · Chain root: `feat/notif6-00-pla
 | 00 | `feat/notif6-00-plan` | This plan | ✅ pushed |
 | 01 | `feat/notif6-01-local-reminders` | Phone-local reminder delivery + web banner + tick stops delivering reminders | ✅ pushed |
 | 02 | `feat/notif6-02-exact-jobs` | Exact-time broadcast jobs, hourly sweep, GH fallback downshift | ✅ pushed |
-| 03 | `feat/notif6-03-docs` | SCHEDULER/SYSTEM model rewrite, ops notes, final verification summary | ⏳ |
+| 03 | `feat/notif6-03-docs` | SCHEDULER model rewrite, skill update, ops notes | ✅ pushed |
 
 ## Per-branch details
 
