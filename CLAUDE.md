@@ -220,6 +220,16 @@ The app is a client-rendered SPA, which is invisible to crawlers/AI engines that
 - Recovery ladder (shared `sessionStorage` budget across `chunk-recovery.ts`, the inline `index.html` script, and `AppErrorBoundary`): attempt 1 = cache-busted reload; attempts 2–3 = **also unregister all SWs + delete all caches** (the only escape from a zombie worker).
 - **Chunking invariant (`vite.config.ts` `manualChunks`):** the chunk graph must stay acyclic — `flow` (@xyflow) → `charts` (recharts/d3) → `vendor` (everything else incl. React). A library landing in `vendor` while its dependency sits in a leaf chunk (e.g. @xyflow's d3-zoom) creates a `vendor↔leaf` cycle and a **total white screen** at boot (`forwardRef` of undefined). After touching chunking, verify: `grep -o 'charts-[^"]*\.js' dist/assets/vendor-*.js` must be empty.
 
+#### Native apps (Capacitor) — Web ↔ Native parity
+
+The Android (`android/`) and iOS (`ios/`) apps are **[Capacitor](https://capacitorjs.com) WebView shells around the exact same Vite build** (`capacitor.config.ts` `webDir: "dist"`). The copied bundle lives at `android/app/src/main/assets/public` and `ios/App/App/public` — both are **gitignored build artifacts**, not source. There is **no separate native UI codebase**: a change to the web bundle (UI, routes, assets, i18n, client logic) **is** the native change once the bundle is re-copied into the shells.
+
+- **🔴 STRICT PARITY RULE — non-negotiable during development:** whenever a change affects the built web bundle, you MUST propagate it to **both** native apps **before the task is done**, and say so in the plan/PR. One command per platform: **`npm run cap:sync:android`** and **`npm run cap:sync:ios`** (each = a native-mode `vite build` + `cap sync`). This rule is also a *Key conventions* bullet — see there. Never land a web-UI change that leaves Android/iOS on a stale bundle.
+- **`cap sync` vs `cap copy`:** `cap sync` = `cap copy` (web assets + config) **plus** `cap update` (native deps/plugins). Use the **`cap:sync:*` npm scripts** whenever a Capacitor **plugin** was added/updated. A plugin-free, web-assets-only change can use `npx cap copy android` / `npx cap copy ios` after a build — but when in doubt, **`cap:sync:*`**.
+- **Native-mode builds matter:** `build:android` / `build:ios` (`vite build --mode android|ios`) wire native-only config (deep-link scheme `com.vorreix.profitsync://oauth-callback`, FCM stub alias, public keys). Don't point the native shells at a plain `npm run build` when a mode-specific env is involved — always go through `cap:sync:{android,ios}`.
+- **Mobile-safety constraints every web change must keep** (they exist because the same DOM runs in the native WebView): ≥44 px touch targets, ≥16 px inputs (iOS avoids auto-zoom), safe-area insets (`src/index.css`), wide tables wrapped in `overflow-x-auto`, and **the page body never scrolls horizontally** (headers `flex-wrap` rather than overflow — see the Clients header).
+- **Store is the only native update path** (the in-app service worker is disabled in the shell) — bump the version and re-upload for every shipped change. Full setup/ops: **`docs/native/README.md`** (+ `ANDROID.md` / `IOS.md` / `PUBLISHING.md`).
+
 #### Route table (as of current codebase)
 
 | Path | File |
@@ -369,6 +379,7 @@ Dark/light mode via `next-themes` (`ThemeProvider` in `src/components/theme-prov
 - **i18n strings:** all UI text goes through `useTranslation()`. Raw English strings in JSX are a bug.
 - **Form validation:** use `react-hook-form` + `zod` resolvers. Do not roll custom validation.
 - **shadcn components:** install via CLI, never edit `src/components/ui/` directly.
+- **Web ↔ Native parity (STRICT — do not skip):** the Android + iOS apps are Capacitor shells around the **same `dist/` bundle**, so **every** web-UI / asset / route / i18n / client-logic change MUST be propagated to **both** native apps **before the task is considered done** — run `npm run cap:sync:android` **and** `npm run cap:sync:ios` (each = native-mode `vite build` + `cap sync`; `npx cap copy android/ios` is acceptable only for a plugin-free, web-assets-only change). Keep the mobile constraints (≥44 px targets, ≥16 px inputs, safe-area insets, no horizontal page scroll). A web change that leaves the native shells on a stale bundle is an incomplete task. Details: *Native apps (Capacitor) — Web ↔ Native parity* above.
 
 ## Product context
 

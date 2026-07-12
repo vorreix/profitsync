@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
@@ -18,7 +18,6 @@ import { InputGroup, InputGroupAddon, InputGroupInput, InputGroupText } from "@/
 import { getCurrencySymbol } from "@/lib/currencies"
 import { useFieldErrors } from "@/lib/use-field-errors"
 import { z } from "zod"
-import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -29,12 +28,19 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "sonner"
-import { Plus, FileText, Building2, Mail, Phone, UserPlus, Trash2, Pencil, ExternalLink, Calendar, Paperclip, Download, X, CheckSquare, ChevronDown, Archive, ArchiveRestore } from "lucide-react"
+import { Plus, FileText, Pencil, ExternalLink, Paperclip, Download, X, CheckSquare, ChevronDown, ArchiveRestore } from "lucide-react"
 import { ExpandableSearch } from "@/components/ExpandableSearch"
 import { FilterSheet, FilterSection } from "@/components/filters/FilterSheet"
-import { AttachmentBadge } from "@/components/AttachmentBadge"
 import { CategoryPicker } from "@/components/CategoryPicker"
 import { AuditHistory } from "@/components/AuditHistory"
+import { ViewToggle } from "@/components/ViewToggle"
+import { useViewMode } from "@/lib/use-view-mode"
+import { useInfiniteScroll } from "@/lib/use-infinite-scroll"
+import {
+  QuotationCard, QuotationListRow, QuotationTable,
+  type QuotationActions, type QuotationColumn,
+} from "@/components/quotations/quotation-views"
+import { STATUS_COLORS, formatQuotationDate as formatDate } from "@/lib/quotation-display"
 import { QuotationPdfModal } from "@/components/QuotationPdfModal"
 
 type QuotationForm = {
@@ -65,17 +71,7 @@ const defaultForm = (): QuotationForm => ({
   category: "",
 })
 
-const STATUS_COLORS: Record<string, string> = {
-  draft: "bg-muted text-muted-foreground",
-  sent: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
-  accepted: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400",
-  rejected: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
-}
-
 const ALL_STATUSES = ["draft", "sent", "accepted", "rejected"] as const
-
-const formatDate = (d: string) =>
-  new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
 
 const formatFileSize = (bytes: number) => {
   if (bytes < 1024) return `${bytes} B`
@@ -192,6 +188,8 @@ export function QuotationsPage() {
   const [tab, setTab] = useState("all")
   const [dateFrom, setDateFrom] = useState("")
   const [dateTo, setDateTo] = useState("")
+  const [sort, setSort] = useState("created_desc")
+  const [view, setView] = useViewMode("quotations")
   const [closedOpen, setClosedOpen] = useState(false)
   const [closedQuotations, setClosedQuotations] = useState<Quotation[]>([])
   const [closedLoaded, setClosedLoaded] = useState(false)
@@ -235,10 +233,12 @@ export function QuotationsPage() {
   const tabRef = useRef(tab)
   const dateFromRef = useRef(dateFrom)
   const dateToRef = useRef(dateTo)
+  const sortRef = useRef(sort)
   searchRef.current = search
   tabRef.current = tab
   dateFromRef.current = dateFrom
   dateToRef.current = dateTo
+  sortRef.current = sort
   const appliedFilterCount = (tab !== "all" ? 1 : 0) + (dateFrom || dateTo ? 1 : 0)
   const clearFilters = () => {
     setTab("all")
@@ -259,6 +259,7 @@ export function QuotationsPage() {
       if (tabRef.current !== "all") params.set("status", tabRef.current)
       if (dateFromRef.current) params.set("dateFrom", dateFromRef.current)
       if (dateToRef.current) params.set("dateTo", dateToRef.current)
+      if (sortRef.current !== "created_desc") params.set("sort", sortRef.current)
       const data = await apiGet<{ data: Quotation[]; total: number }>(`/api/quotations?${params}`, token)
       setQuotations(data.data)
       setTotal(data.total)
@@ -281,6 +282,7 @@ export function QuotationsPage() {
       if (tabRef.current !== "all") params.set("status", tabRef.current)
       if (dateFromRef.current) params.set("dateFrom", dateFromRef.current)
       if (dateToRef.current) params.set("dateTo", dateToRef.current)
+      if (sortRef.current !== "created_desc") params.set("sort", sortRef.current)
       const data = await apiGet<{ data: Quotation[]; total: number }>(`/api/quotations?${params}`, token)
       setQuotations((prev) => [...prev, ...data.data])
       setTotal(data.total)
@@ -296,8 +298,8 @@ export function QuotationsPage() {
   useEffect(() => {
     const t = setTimeout(fetchPage1, 300)
     return () => clearTimeout(t)
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- debounced refetch keyed on filters; fetchPage1 reads the latest values via refs
-  }, [search, tab, dateFrom, dateTo])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- debounced refetch keyed on filters+sort; fetchPage1 reads the latest values via refs
+  }, [search, tab, dateFrom, dateTo, sort])
 
   useEffect(() => {
     if (searchParams.get("new") === "1") {
@@ -338,7 +340,19 @@ export function QuotationsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once on mount
   }, [])
 
-  const clientById = (id: string | null) => id ? clients.find((c) => c.id === id) : undefined
+  // O(1) client lookup by id (was an O(N) find per card → O(N²) across the list).
+  const clientMap = useMemo(() => new Map(clients.map((c) => [c.id, c])), [clients])
+  const clientById = useCallback((id: string | null) => (id ? clientMap.get(id) : undefined), [clientMap])
+
+  // Table column header click: toggle asc/desc on the active column, else start a
+  // sensible default (amount/date newest-or-biggest first, text A→Z).
+  const handleSort = useCallback((key: QuotationColumn["key"]) => {
+    setSort((prev) => {
+      const [prevKey, prevDir] = prev.split("_")
+      if (prevKey === key) return `${key}_${prevDir === "asc" ? "desc" : "asc"}`
+      return `${key}_${key === "amount" || key === "date" ? "desc" : "asc"}`
+    })
+  }, [])
 
   async function loadAttachments(quotationId: string) {
     setAttachLoading(true)
@@ -530,6 +544,54 @@ export function QuotationsPage() {
   const selectableIds = quotations.map((q) => q.id)
   const allSelected = selectableIds.length > 0 && selectableIds.every((id) => sel.isSelected(id))
 
+  // Auto infinite scroll — loads the next page as the sentinel nears the viewport;
+  // the visible "Load More" button stays as the manual / no-observer fallback.
+  const { sentinelRef } = useInfiniteScroll({
+    hasMore: remaining > 0,
+    loading: loadingMore,
+    onLoadMore: handleLoadMore,
+    enabled: !loading,
+  })
+
+  // Stable action bundle for the memoized Card/List/Table rows. Handler bodies
+  // close over changing state, so we keep the latest set in a ref and hand the
+  // rows fixed wrappers — a row re-renders only when its own data/selection
+  // changes, never because a parent closure was recreated (e.g. on every keystroke).
+  const openEdit = (q: Quotation) => {
+    setForm({ title: q.title, prospect_name: q.prospect_name, company: q.company, email: q.email, phone: q.phone, amount: q.amount, date: q.date ?? todayIso(), status: q.status, notes: q.notes, category: q.category ?? "" })
+    setEditTarget(q)
+  }
+  const latestActions = {
+    onView: openViewModal,
+    onEdit: openEdit,
+    onConvert: (q: Quotation) => setConvertTarget(q),
+    onClose: (id: string) => setQuotationClosed(id, true),
+    onDelete: (q: Quotation) => setDeleteTarget(q),
+    onPdf: (q: Quotation) => setPdfTarget(q),
+    onToggleSelect: sel.toggle,
+    onEnterSelection: sel.enterSelection,
+    onOpenClient: (id: string) => navigate(`/clients/${id}`),
+    formatAmount: fmt,
+    bindLongPress: longPress.bind,
+    didLongPress: longPress.didLongPress,
+  }
+  const latestActionsRef = useRef(latestActions)
+  latestActionsRef.current = latestActions
+  const actions = useMemo<QuotationActions>(() => ({
+    onView: (q) => latestActionsRef.current.onView(q),
+    onEdit: (q) => latestActionsRef.current.onEdit(q),
+    onConvert: (q) => latestActionsRef.current.onConvert(q),
+    onClose: (id) => latestActionsRef.current.onClose(id),
+    onDelete: (q) => latestActionsRef.current.onDelete(q),
+    onPdf: (q) => latestActionsRef.current.onPdf(q),
+    onToggleSelect: (id) => latestActionsRef.current.onToggleSelect(id),
+    onEnterSelection: (id) => latestActionsRef.current.onEnterSelection(id),
+    onOpenClient: (id) => latestActionsRef.current.onOpenClient(id),
+    formatAmount: (n) => latestActionsRef.current.formatAmount(n),
+    bindLongPress: (cb) => latestActionsRef.current.bindLongPress(cb),
+    didLongPress: () => latestActionsRef.current.didLongPress(),
+  }), [])
+
   async function loadClosed() {
     setClosedLoading(true)
     try {
@@ -636,7 +698,8 @@ export function QuotationsPage() {
           placeholder={t("searchPlaceholder")}
           expandedClassName="w-full sm:w-72"
         />
-        <FilterSheet count={appliedFilterCount} onClear={clearFilters} triggerClassName="shrink-0 ml-auto">
+        <ViewToggle value={view} onChange={setView} className="ml-auto" />
+        <FilterSheet count={appliedFilterCount} onClear={clearFilters} triggerClassName="shrink-0">
           <FilterSection label={t("filters.status")}>
             <Select value={tab} onValueChange={setTab}>
               <SelectTrigger className="w-full">
@@ -661,9 +724,15 @@ export function QuotationsPage() {
 
       {/* List */}
       {loading ? (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {[1, 2, 3].map((i) => <Skeleton key={i} className="h-52 w-full rounded-xl" />)}
-        </div>
+        view === "card" ? (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {[1, 2, 3].map((i) => <Skeleton key={i} className="h-52 w-full rounded-xl" />)}
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {[1, 2, 3, 4, 5].map((i) => <Skeleton key={i} className="h-14 w-full rounded-lg" />)}
+          </div>
+        )
       ) : quotations.length === 0 ? (
         <div className="py-20 text-center">
           <FileText className="size-12 mx-auto text-muted-foreground/50 mb-4" />
@@ -679,154 +748,52 @@ export function QuotationsPage() {
         </div>
       ) : (
         <>
-          <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-            {quotations.map((q) => {
-              const linkedClient = clientById(q.linked_client_id)
-              const canConvert = !q.linked_client_id && (q.status === "draft" || q.status === "sent")
-              return (
-                <Card
+          {view === "table" ? (
+            <QuotationTable
+              quotations={quotations}
+              clientFor={clientById}
+              isSelected={sel.isSelected}
+              selectionMode={sel.selectionMode}
+              canDelete={canDelete}
+              actions={actions}
+              sort={sort}
+              onSort={handleSort}
+            />
+          ) : view === "list" ? (
+            <div className="space-y-2">
+              {quotations.map((q) => (
+                <QuotationListRow
                   key={q.id}
-                  className={`group cursor-pointer hover:shadow-md transition-shadow py-0 ${sel.isSelected(q.id) ? "ring-2 ring-primary" : ""}`}
-                  onClick={() => {
-                    if (sel.selectionMode) { sel.toggle(q.id); return }
-                    if (longPress.didLongPress()) return
-                    openViewModal(q)
-                  }}
-                  {...(canDelete ? longPress.bind(() => sel.enterSelection(q.id)) : {})}
-                >
-                  <CardContent className="p-3.5 sm:p-4 space-y-2.5 sm:space-y-3">
-                    {/* Top row */}
-                    <div className="flex items-start justify-between gap-2">
-                      {sel.selectionMode && (
-                        <Checkbox
-                          checked={sel.isSelected(q.id)}
-                          onClick={(e) => e.stopPropagation()}
-                          onCheckedChange={() => sel.toggle(q.id)}
-                          className="mt-0.5 shrink-0"
-                          aria-label={`Select ${q.title}`}
-                        />
-                      )}
-                      <div className="min-w-0 flex-1">
-                        <p className="font-semibold text-sm truncate">{q.title}</p>
-                        <p className="text-sm text-muted-foreground truncate">{q.prospect_name}</p>
-                        {q.category && <Badge variant="outline" className="mt-1 text-[10px]">{q.category}</Badge>}
-                      </div>
-                      <span className={`text-xs font-medium px-2 py-0.5 rounded-full shrink-0 ${STATUS_COLORS[q.status] ?? ""}`}>
-                        {q.status.charAt(0).toUpperCase() + q.status.slice(1)}
-                      </span>
-                    </div>
+                  q={q}
+                  linkedClient={clientById(q.linked_client_id)}
+                  selected={sel.isSelected(q.id)}
+                  selectionMode={sel.selectionMode}
+                  canDelete={canDelete}
+                  actions={actions}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+              {quotations.map((q) => (
+                <QuotationCard
+                  key={q.id}
+                  q={q}
+                  linkedClient={clientById(q.linked_client_id)}
+                  selected={sel.isSelected(q.id)}
+                  selectionMode={sel.selectionMode}
+                  canDelete={canDelete}
+                  actions={actions}
+                />
+              ))}
+            </div>
+          )}
 
-                    {/* Details */}
-                    <div className="space-y-1">
-                      {q.company && (
-                        <div className="flex items-center gap-1.5">
-                          <Building2 className="size-3 text-muted-foreground shrink-0" />
-                          <p className="text-xs text-muted-foreground truncate">{q.company}</p>
-                        </div>
-                      )}
-                      {q.email && (
-                        <div className="flex items-center gap-1.5">
-                          <Mail className="size-3 text-muted-foreground shrink-0" />
-                          <p className="text-xs text-muted-foreground truncate">{q.email}</p>
-                        </div>
-                      )}
-                      {q.phone && (
-                        <div className="flex items-center gap-1.5">
-                          <Phone className="size-3 text-muted-foreground shrink-0" />
-                          <p className="text-xs text-muted-foreground truncate">{q.phone}</p>
-                        </div>
-                      )}
-                      <div className="flex items-center gap-1.5">
-                        <Calendar className="size-3 text-muted-foreground shrink-0" />
-                        <p className="text-xs text-muted-foreground">
-                          {formatDate(q.created_at)}
-                        </p>
-                        <AttachmentBadge count={q.attachment_count} className="ml-auto" />
-                      </div>
-                    </div>
-
-                    {/* Amount + linked client */}
-                    <div className="flex items-center justify-between pt-1 border-t">
-                      <p className="text-base font-bold">{fmt(Number(q.amount))}</p>
-                      {linkedClient ? (
-                        <button
-                          className="flex items-center gap-1 text-xs text-primary hover:underline"
-                          onClick={(e) => { e.stopPropagation(); navigate(`/clients/${linkedClient.id}`) }}
-                        >
-                          <ExternalLink className="size-3" />
-                          {linkedClient.name}
-                        </button>
-                      ) : q.linked_client_id ? (
-                        <Badge variant="outline" className="text-xs">Converted</Badge>
-                      ) : null}
-                    </div>
-
-                    {/* Actions */}
-                    {!sel.selectionMode && (
-                    <div className="flex gap-2 pt-1" onClick={(e) => e.stopPropagation()}>
-                      {canConvert && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="flex-1 text-xs"
-                          onClick={() => setConvertTarget(q)}
-                        >
-                          <UserPlus className="size-3" />
-                          {t("convertToClientBtn")}
-                        </Button>
-                      )}
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="size-8 p-0 shrink-0 text-muted-foreground"
-                        aria-label={t("pdf.action")}
-                        title={t("pdf.action")}
-                        onClick={() => setPdfTarget(q)}
-                      >
-                        <FileText className="size-3.5" />
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="size-8 p-0 shrink-0"
-                        aria-label={t("editBtn")}
-                        onClick={() => {
-                          setForm({ title: q.title, prospect_name: q.prospect_name, company: q.company, email: q.email, phone: q.phone, amount: q.amount, date: q.date ?? todayIso(), status: q.status, notes: q.notes, category: q.category ?? "" })
-                          setEditTarget(q)
-                        }}
-                      >
-                        <Pencil className="size-3.5" />
-                      </Button>
-                      {/* Close (archive) the quotation — lives on the row, not the view
-                          modal, so the modal stays a clean read-only detail view. */}
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="size-8 p-0 shrink-0 text-muted-foreground"
-                        aria-label={t("closed.close")}
-                        title={t("closed.close")}
-                        onClick={() => setQuotationClosed(q.id, true)}
-                      >
-                        <Archive className="size-3.5" />
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="size-8 p-0 shrink-0 text-muted-foreground hover:text-destructive"
-                        onClick={() => setDeleteTarget(q)}
-                      >
-                        <Trash2 className="size-3.5" />
-                      </Button>
-                    </div>
-                    )}
-                  </CardContent>
-                </Card>
-              )
-            })}
-          </div>
-
+          {/* Auto infinite scroll: the sentinel triggers the next page as it nears
+              the viewport; the button stays as a visible manual fallback. */}
           {remaining > 0 && (
-            <div className="flex justify-center pt-2">
+            <div className="flex flex-col items-center gap-2 pt-2">
+              <div ref={sentinelRef} aria-hidden className="h-px w-full" />
               <Button variant="outline" onClick={handleLoadMore} disabled={loadingMore}>
                 {loadingMore ? t("loading") : t("loadMore", { remaining })}
               </Button>

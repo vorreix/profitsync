@@ -442,7 +442,23 @@
     "clientCreated": "ക്ലയന്റ് സൃഷ്ടിക്കപ്പെട്ടു",
     "createClientFailed": "ക്ലയന്റ് സൃഷ്ടിക്കാൻ പരാജയപ്പെട്ടു",
     "clientCount_one": "{{count}} ക്ലയന്റ്",
-    "clientCount_other": "{{count}} ക്ലയന്റുകൾ"
+    "clientCount_other": "{{count}} ക്ലയന്റുകൾ",
+    "sortIncomeDesc": "വരുമാനം (ഉയർന്നത് → കുറഞ്ഞത്)",
+    "sortIncomeAsc": "വരുമാനം (കുറഞ്ഞത് → ഉയർന്നത്)",
+    "sortExpenseDesc": "ചെലവ് (ഉയർന്നത് → കുറഞ്ഞത്)",
+    "sortExpenseAsc": "ചെലവ് (കുറഞ്ഞത് → ഉയർന്നത്)",
+    "sortProfitDesc": "ലാഭം (ഉയർന്നത് → കുറഞ്ഞത്)",
+    "sortProfitAsc": "ലാഭം (കുറഞ്ഞത് → ഉയർന്നത്)",
+    "table": {
+      "name": "പേര്",
+      "company": "കമ്പനി",
+      "income": "വരുമാനം",
+      "expense": "ചെലവ്",
+      "profit": "ലാഭം",
+      "date": "തീയതി",
+      "actions": "പ്രവർത്തനങ്ങൾ",
+      "sortBy": "{{column}} അനുസരിച്ച് അടുക്കുക"
+    }
   },
   "quotations": {
     "titleLabel": "ശീർഷകം *",
@@ -524,6 +540,15 @@
     "totalQuotations_one": "{{count}} ഉദ്ധരണി",
     "totalQuotations_other": "{{count}} ഉദ്ധരണികൾ",
     "dateLabel": "തീയതി",
+    "table": {
+      "title": "ശീർഷകം",
+      "prospect": "സാധ്യതയുള്ള ഉപഭോക്താവ്",
+      "amount": "തുക",
+      "status": "നില",
+      "date": "തീയതി",
+      "actions": "പ്രവർത്തനങ്ങൾ",
+      "sortBy": "{{column}} അനുസരിച്ച് അടുക്കുക"
+    },
     "pdf": {
       "action": "PDF",
       "title": "ക്വട്ടേഷൻ PDF",
@@ -1659,5 +1684,11 @@
     "continueWithGoogle": "Google ഉപയോഗിച്ച് തുടരുക",
     "continueWithApple": "Apple ഉപയോഗിച്ച് തുടരുക",
     "oauthError": "സൈൻ-ഇൻ ആരംഭിക്കാൻ കഴിഞ്ഞില്ല. വീണ്ടും ശ്രമിക്കുക."
+  },
+  "view": {
+    "label": "കാഴ്ച",
+    "card": "കാർഡ് കാഴ്ച",
+    "list": "ലിസ്റ്റ് കാഴ്ച",
+    "table": "പട്ടിക കാഴ്ച"
   }
 }
