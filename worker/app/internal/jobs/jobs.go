@@ -58,8 +58,8 @@ func (r *Registry) Types() []string {
 func RegisterAll(r *Registry, d Deps) {
 	r.Register("ping", pingHandler)
 	r.Register("app.trigger", appTriggerHandler(d))
+	r.Register("pdf.quotation", pdfQuotationHandler(d))
 	// Future compute-style handlers register here, e.g.:
-	//   r.Register("pdf.quotation", pdfQuotationHandler(d))
 	//   r.Register("csv.export", csvExportHandler(d))
 	//   r.Register("email.bulk", bulkEmailHandler(d))
 }

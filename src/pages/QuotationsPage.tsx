@@ -35,6 +35,7 @@ import { FilterSheet, FilterSection } from "@/components/filters/FilterSheet"
 import { AttachmentBadge } from "@/components/AttachmentBadge"
 import { CategoryPicker } from "@/components/CategoryPicker"
 import { AuditHistory } from "@/components/AuditHistory"
+import { QuotationPdfModal } from "@/components/QuotationPdfModal"
 
 type QuotationForm = {
   title: string
@@ -200,6 +201,7 @@ export function QuotationsPage() {
   const [deleteTarget, setDeleteTarget] = useState<Quotation | null>(null)
   const [convertTarget, setConvertTarget] = useState<Quotation | null>(null)
   const [viewTarget, setViewTarget] = useState<Quotation | null>(null)
+  const [pdfTarget, setPdfTarget] = useState<Quotation | null>(null)
   const [form, setForm] = useState<QuotationForm>(defaultForm())
   const [saving, setSaving] = useState(false)
 
@@ -776,7 +778,18 @@ export function QuotationsPage() {
                       <Button
                         size="sm"
                         variant="ghost"
+                        className="size-8 p-0 shrink-0 text-muted-foreground"
+                        aria-label={t("pdf.action")}
+                        title={t("pdf.action")}
+                        onClick={() => setPdfTarget(q)}
+                      >
+                        <FileText className="size-3.5" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
                         className="size-8 p-0 shrink-0"
+                        aria-label={t("editBtn")}
                         onClick={() => {
                           setForm({ title: q.title, prospect_name: q.prospect_name, company: q.company, email: q.email, phone: q.phone, amount: q.amount, date: q.date ?? todayIso(), status: q.status, notes: q.notes, category: q.category ?? "" })
                           setEditTarget(q)
@@ -987,6 +1000,10 @@ export function QuotationsPage() {
               </div>
 
               <DialogFooter>
+                <Button variant="outline" onClick={() => setPdfTarget(viewTarget)}>
+                  <FileText className="size-3.5" />
+                  {t("pdf.action")}
+                </Button>
                 <Button variant="outline" onClick={() => {
                   // Neutralize the view modal's back-entry first so closing it doesn't
                   // fire a history.back() popstate that the edit dialog's useBackClose
@@ -1005,6 +1022,10 @@ export function QuotationsPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Quotation PDF: view / download / share (worker-rendered, S3-stored,
+          short-lived presigned links minted fresh on every open). */}
+      <QuotationPdfModal quotation={pdfTarget} onClose={() => setPdfTarget(null)} />
 
       {/* Create Dialog */}
       <Dialog open={createOpen} onOpenChange={closeCreate}>
