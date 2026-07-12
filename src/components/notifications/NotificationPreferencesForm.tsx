@@ -127,11 +127,14 @@ export function NotificationPreferencesForm({ scope, orgId, clientId, canEdit = 
         <Switch checked={!!muted} onCheckedChange={setMuted} disabled={controlsDisabled} aria-label={t("settings.mute_all")} />
       </div>
 
-      {/* Per-category grid */}
-      <div className={cn("grid grid-cols-[1fr_3.5rem_3.5rem] items-center gap-x-2 gap-y-1", muted && "opacity-50")}>
+      {/* Per-category grid — one switch column per channel in the shared model. */}
+      <div className={cn("grid grid-cols-[1fr_3.5rem_3.5rem_3.5rem] items-center gap-x-2 gap-y-1", muted && "opacity-50")}>
         <div />
-        <span className="text-center text-[11px] font-medium text-muted-foreground">{t("settings.channel_in_app")}</span>
-        <span className="text-center text-[11px] font-medium text-muted-foreground">{t("settings.channel_push")}</span>
+        {NOTIFICATION_CHANNELS.map((ch) => (
+          <span key={ch} className="text-center text-[11px] font-medium text-muted-foreground">
+            {t(`settings.channel_${ch === "web_push" ? "push" : ch}`)}
+          </span>
+        ))}
 
         {NOTIFICATION_CATEGORIES.map((cat) => {
           const Icon = categoryIcon(cat)
@@ -153,7 +156,7 @@ export function NotificationPreferencesForm({ scope, orgId, clientId, canEdit = 
                     checked={prefs.categories[cat][ch]}
                     onCheckedChange={(on) => setChannel(cat, ch, on)}
                     disabled={controlsDisabled || muted}
-                    aria-label={`${t(`categories.${cat}`)} — ${t(`settings.channel_${ch === "in_app" ? "in_app" : "push"}`)}`}
+                    aria-label={`${t(`categories.${cat}`)} — ${t(`settings.channel_${ch === "web_push" ? "push" : ch}`)}`}
                   />
                 </div>
               ))}

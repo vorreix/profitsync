@@ -4,34 +4,38 @@ import { db } from "../../../src/lib/db/index.js"
 import { pushSubscriptions } from "../../../src/lib/db/schema.js"
 import { requireAuth } from "../../_lib/auth.js"
 
-// Register / unregister a Web Push subscription for the calling user.
-//   POST   { endpoint, keys: { p256dh, auth }, platform? }  → upsert (by endpoint)
-//   DELETE { endpoint }                                      → remove (this user's)
+// Register / unregister a push subscription for the calling user.
+//   POST { endpoint, keys: { p256dh, auth }, platform? }          → web push (default)
+//   POST { channel: "fcm", endpoint: <device token>, platform? }  → native FCM token
+//   DELETE { endpoint }                                           → remove (this user's)
 //
 // Subscriptions are per-user, not per-org (a device receives a user's pushes
-// regardless of active org). The `channel`/`platform` columns leave room for
-// future native (fcm/apns) registrations with no schema change.
+// regardless of active org). Web push rows need the VAPID keys; fcm rows store
+// the device token in `endpoint` with empty keys (the schema defaults).
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ctx = await requireAuth(req, res)
   if (!ctx) return
 
   if (req.method === "POST") {
     const body = (req.body ?? {}) as {
+      channel?: string
       endpoint?: string
       keys?: { p256dh?: string; auth?: string }
       platform?: string
     }
+    const channel = body.channel === "fcm" ? "fcm" : "web_push"
     const endpoint = body.endpoint
-    const p256dh = body.keys?.p256dh
-    const auth = body.keys?.auth
-    if (!endpoint || !p256dh || !auth) {
+    const p256dh = body.keys?.p256dh ?? ""
+    const auth = body.keys?.auth ?? ""
+    if (!endpoint || (channel === "web_push" && (!p256dh || !auth))) {
       return res.status(400).json({ error: "Missing endpoint or keys" })
     }
     const platform = typeof body.platform === "string" ? body.platform.slice(0, 20) : "web"
     const userAgent = (req.headers["user-agent"] ?? "").toString().slice(0, 300)
 
-    // Upsert by endpoint: a re-subscribe (e.g. after key rotation or a different
-    // user on the same device) rebinds the endpoint to the current user.
+    // Upsert by endpoint: a re-subscribe (e.g. after key rotation, an FCM token
+    // refresh, or a different user on the same device) rebinds the endpoint to
+    // the current user.
     const [existing] = await db
       .select({ id: pushSubscriptions.id })
       .from(pushSubscriptions)
@@ -40,12 +44,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (existing) {
       await db
         .update(pushSubscriptions)
-        .set({ userId: ctx.userId, channel: "web_push", p256dh, auth, platform, userAgent, lastSeenAt: new Date() })
+        .set({ userId: ctx.userId, channel, p256dh, auth, platform, userAgent, lastSeenAt: new Date() })
         .where(eq(pushSubscriptions.id, existing.id))
     } else {
       await db.insert(pushSubscriptions).values({
         userId: ctx.userId,
-        channel: "web_push",
+        channel,
         endpoint,
         p256dh,
         auth,

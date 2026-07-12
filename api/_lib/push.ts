@@ -59,9 +59,9 @@ async function getWebPush(): Promise<typeof WebPushType> {
 /**
  * Persist the outcome of a fan-out so admins can see whether pushes go out and
  * why they fail (push_events, surfaced in /admin → Worker). Fire-and-forget:
- * logging can never affect delivery.
+ * logging can never affect delivery. Shared with the FCM sender (push-fcm.ts).
  */
-function logPushEvent(userId: string, source: string, r: PushSendResult): void {
+export function logPushEvent(userId: string, source: string, r: PushSendResult): void {
   const outcome = !r.configured
     ? "unconfigured"
     : r.subscriptions === 0
