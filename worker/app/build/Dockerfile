@@ -1,19 +1,20 @@
 # Multi-stage build for the ProfitSync worker.
 # Build context is the `app/` directory (see deploy/docker-compose.yml).
 
-FROM golang:1.23-alpine AS build
+# Go 1.25: the maroto v2 PDF library's (transitive, test-only) dep graph needs
+# a >=1.25 toolchain to resolve. go.sum IS committed, so the build is fully
+# reproducible — we `go build` straight from the lockfile (no `go mod tidy`,
+# which would re-resolve/upgrade and reintroduce non-determinism).
+FROM golang:1.25-alpine AS build
 WORKDIR /src
 
 # Toolchain for module resolution.
 RUN apk add --no-cache git
 
-# Copy the source. (No go.sum is committed for the scaffold, so we resolve the
-# module graph at build time; commit go.sum for fully reproducible builds.)
 COPY . .
 
-ENV CGO_ENABLED=0 GOOS=linux GOFLAGS=-mod=mod
-RUN go mod tidy && \
-    go build -trimpath -ldflags="-s -w" -o /out/worker .
+ENV CGO_ENABLED=0 GOOS=linux
+RUN go build -trimpath -ldflags="-s -w" -o /out/worker .
 
 # ── Runtime ──────────────────────────────────────────────────────────────────
 FROM alpine:3.20

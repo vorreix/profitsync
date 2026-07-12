@@ -965,7 +965,27 @@
     "deleteAttachmentDescription": "This attachment will be permanently deleted.",
     "deleteBtn": "Delete",
     "totalQuotations_one": "{{count}} quotation",
-    "totalQuotations_other": "{{count}} quotations"
+    "totalQuotations_other": "{{count}} quotations",
+    "pdf": {
+      "action": "PDF",
+      "title": "Quotation PDF",
+      "generatingTitle": "Preparing your PDF…",
+      "generatingHint": "This usually takes a few seconds.",
+      "ready": "Your quotation PDF is ready.",
+      "view": "View",
+      "download": "Download",
+      "share": "Share",
+      "shareText": "Quotation: {{title}}",
+      "linkCopied": "Link copied to clipboard",
+      "expiresNote": "View and download links stay valid for about an hour.",
+      "unavailableTitle": "PDF generation unavailable",
+      "unavailableHint": "PDF generation isn't set up yet. Please try again later.",
+      "errorTitle": "Couldn't prepare the PDF",
+      "timeout": "This is taking longer than expected. Please try again.",
+      "retry": "Try again",
+      "close": "Close",
+      "openError": "Couldn't open the PDF. Please try again."
+    }
   },
   "organizations": {
     "organizationCreated": "Organization created",

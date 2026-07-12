@@ -523,7 +523,27 @@
     "deleteBtn": "حذف",
     "totalQuotations_one": "{{count}} اقتراح",
     "totalQuotations_other": "{{count}} اقتراحات",
-    "dateLabel": "التاريخ"
+    "dateLabel": "التاريخ",
+    "pdf": {
+      "action": "PDF",
+      "title": "ملف PDF لعرض السعر",
+      "generatingTitle": "جارٍ تحضير ملف PDF…",
+      "generatingHint": "يستغرق هذا عادةً بضع ثوانٍ.",
+      "ready": "ملف PDF لعرض السعر جاهز.",
+      "view": "عرض",
+      "download": "تنزيل",
+      "share": "مشاركة",
+      "shareText": "عرض السعر: {{title}}",
+      "linkCopied": "تم نسخ الرابط إلى الحافظة",
+      "expiresNote": "تظل روابط العرض والتنزيل صالحة لمدة ساعة تقريبًا.",
+      "unavailableTitle": "إنشاء PDF غير متاح",
+      "unavailableHint": "لم يتم إعداد إنشاء ملفات PDF بعد. يرجى المحاولة لاحقًا.",
+      "errorTitle": "تعذّر تحضير ملف PDF",
+      "timeout": "يستغرق هذا وقتًا أطول من المتوقع. يرجى المحاولة مرة أخرى.",
+      "retry": "حاول مرة أخرى",
+      "close": "إغلاق",
+      "openError": "تعذّر فتح ملف PDF. يرجى المحاولة مرة أخرى."
+    }
   },
   "organizations": {
     "organizationCreated": "تم إنشاء المنظمة",

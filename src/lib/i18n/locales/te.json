@@ -523,7 +523,27 @@
     "deleteBtn": "తొలగించు",
     "totalQuotations_one": "{{count}} కోట్",
     "totalQuotations_other": "{{count}} కోట్‌లు",
-    "dateLabel": "తేదీ"
+    "dateLabel": "తేదీ",
+    "pdf": {
+      "action": "PDF",
+      "title": "కొటేషన్ PDF",
+      "generatingTitle": "మీ PDF సిద్ధమవుతోంది…",
+      "generatingHint": "దీనికి సాధారణంగా కొన్ని సెకన్లు పడుతుంది.",
+      "ready": "మీ కొటేషన్ PDF సిద్ధంగా ఉంది.",
+      "view": "చూడండి",
+      "download": "డౌన్‌లోడ్ చేయండి",
+      "share": "షేర్ చేయండి",
+      "shareText": "కొటేషన్: {{title}}",
+      "linkCopied": "లింక్ క్లిప్‌బోర్డ్‌కు కాపీ చేయబడింది",
+      "expiresNote": "వీక్షణ మరియు డౌన్‌లోడ్ లింక్‌లు సుమారు ఒక గంట పాటు చెల్లుబాటు అవుతాయి.",
+      "unavailableTitle": "PDF తయారీ అందుబాటులో లేదు",
+      "unavailableHint": "PDF తయారీ ఇంకా సెటప్ చేయబడలేదు. దయచేసి తర్వాత మళ్లీ ప్రయత్నించండి.",
+      "errorTitle": "PDF సిద్ధం చేయలేకపోయాము",
+      "timeout": "ఇది ఊహించిన దానికంటే ఎక్కువ సమయం తీసుకుంటోంది. దయచేసి మళ్లీ ప్రయత్నించండి.",
+      "retry": "మళ్లీ ప్రయత్నించండి",
+      "close": "మూసివేయండి",
+      "openError": "PDF తెరవలేకపోయాము. దయచేసి మళ్లీ ప్రయత్నించండి."
+    }
   },
   "organizations": {
     "organizationCreated": "సంస్థ సృష్టించబడింది",

@@ -94,6 +94,24 @@ VITE_VAPID_PUBLIC_KEY=B...                # browser (same value as VAPID_PUBLIC_
 # no-ops if absent). Firebase service-account key: raw JSON or base64 of it.
 # Setup: docs/native/ANDROID.md → "Push notifications (FCM)".
 FCM_SERVICE_ACCOUNT_JSON=...              # server-only — never expose to browser
+
+# Object storage for quotation PDFs (Hetzner Object Storage / MinIO / AWS S3;
+# OPTIONAL — the PDF modal shows "not available" (503) if absent). These are the
+# app's READ credentials; it mints a fresh short-lived (~1h) presigned URL on
+# every view/download so shared links expire on their own. The Go worker holds
+# the matching WRITE credentials under the SAME S3_* names (worker/deploy/.env)
+# and uploads the bytes. Keep the bucket PRIVATE — the presigned URL from the
+# authed, org-scoped GET /api/quotations/:id/pdf is the only path to the bytes.
+# ⚠ SERVER-ONLY — never expose to the browser (no VITE_ prefix; the client only
+#   ever receives a presigned URL, which carries a signature, not the key).
+# Full architecture + ops: docs/quotation-pdf/SYSTEM.md.
+S3_ENDPOINT=fsn1.your-objectstorage.com   # server-only — host, no scheme
+S3_REGION=us-east-1                        # default us-east-1
+S3_BUCKET=...                              # server-only — private bucket
+S3_ACCESS_KEY=...                          # server-only — never expose to browser
+S3_SECRET_KEY=...                          # server-only — never expose to browser
+S3_USE_SSL=true                            # "false" for plain HTTP (dev only)
+S3_FORCE_PATH_STYLE=true                   # true for Hetzner/MinIO; "false" = virtual-hosted
 ```
 
 The `E2E_*` secrets (`E2E_VITE_CLERK_PUBLISHABLE_KEY`, `E2E_CLERK_SECRET_KEY`, `E2E_DATABASE_URL`) are **GitHub Actions secrets for the e2e workflow only** — they do **not** go in `.env.local` or Vercel. The two Clerk ones are your existing **dev**-instance keys (same `pk_test_…`/`sk_test_…` already in `.env.local`); `E2E_DATABASE_URL` is a dedicated Neon branch. Vercel manages the running app's env separately (`vercel env`; note: `vercel dev` reads the cloud Development env, not `.env.local`).

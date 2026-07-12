@@ -523,7 +523,27 @@
     "deleteBtn": "Elimina",
     "totalQuotations_one": "{{count}} preventivo",
     "totalQuotations_other": "{{count}} preventivi",
-    "dateLabel": "Data"
+    "dateLabel": "Data",
+    "pdf": {
+      "action": "PDF",
+      "title": "PDF del preventivo",
+      "generatingTitle": "Preparazione del PDF…",
+      "generatingHint": "Di solito richiede pochi secondi.",
+      "ready": "Il PDF del tuo preventivo è pronto.",
+      "view": "Visualizza",
+      "download": "Scarica",
+      "share": "Condividi",
+      "shareText": "Preventivo: {{title}}",
+      "linkCopied": "Link copiato negli appunti",
+      "expiresNote": "I link di visualizzazione e download restano validi per circa un'ora.",
+      "unavailableTitle": "Generazione PDF non disponibile",
+      "unavailableHint": "La generazione dei PDF non è ancora configurata. Riprova più tardi.",
+      "errorTitle": "Impossibile preparare il PDF",
+      "timeout": "Sta richiedendo più tempo del previsto. Riprova.",
+      "retry": "Riprova",
+      "close": "Chiudi",
+      "openError": "Impossibile aprire il PDF. Riprova."
+    }
   },
   "organizations": {
     "organizationCreated": "Organizzazione creata",

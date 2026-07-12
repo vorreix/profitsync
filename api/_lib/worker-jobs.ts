@@ -23,6 +23,56 @@ export function isWorkerConfigured(): boolean {
 }
 
 /**
+ * Enqueue a compute-style `pdf.quotation` job. The worker renders the snapshot
+ * to a PDF, uploads it to `objectKey`, and calls back to mark the quotation
+ * ready. `dedupeKey = qpdf:<id>:<hash>` collapses concurrent views of the same
+ * content version to a single render (the worker's partial unique index on
+ * queued/running is the race backstop). Best-effort: a worker outage returns
+ * false and the view route reports "generating" — the user's next view retries.
+ */
+export async function enqueueQuotationPdf(input: {
+  quotationId: string
+  organizationId: string
+  objectKey: string
+  sourceHash: string
+  snapshot: unknown
+}): Promise<boolean> {
+  if (!isWorkerConfigured()) return false
+  try {
+    const res = await fetch(`${process.env.WORKER_BASE_URL}/v1/jobs`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${process.env.WORKER_API_TOKEN}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        type: "pdf.quotation",
+        dedupe_key: `qpdf:${input.quotationId}:${input.sourceHash}`,
+        payload: {
+          quotation_id: input.quotationId,
+          organization_id: input.organizationId,
+          object_key: input.objectKey,
+          source_hash: input.sourceHash,
+          snapshot: input.snapshot,
+        },
+      }),
+      signal: AbortSignal.timeout(5000),
+    })
+    if (!res.ok) {
+      console.warn("[worker-jobs] pdf.quotation enqueue rejected", { status: res.status, quotationId: input.quotationId })
+      return false
+    }
+    return true
+  } catch (err) {
+    console.warn("[worker-jobs] pdf.quotation enqueue failed", {
+      quotationId: input.quotationId,
+      err: String((err as Error)?.message ?? err),
+    })
+    return false
+  }
+}
+
+/**
  * Enqueue an exact-time tick on the worker. `occurrenceKey` identifies the
  * (broadcast, occurrence) pair — the worker keeps at most one live job per
  * key, so re-saves and races collapse. Returns true when the worker accepted
