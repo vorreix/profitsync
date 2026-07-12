@@ -1509,9 +1509,28 @@
         "body_active": "Your organization is now on {{plan}}.",
         "body_cancelled": "Your {{plan}} subscription was cancelled."
       },
+      "referral_credited": {
+        "title": "Referral reward credited",
+        "body": "Your referral upgraded — {{amount}} is on its way."
+      },
+      "referral_payout": {
+        "title": "Payout update",
+        "body_approved": "Your {{amount}} payout was approved.",
+        "body_paid": "Your {{amount}} payout was sent.",
+        "body_rejected": "Your {{amount}} payout request was declined."
+      },
+      "budget_warning": {
+        "title": "Budget almost used up",
+        "body": "{{name}} has used {{percent}}% of its {{period}} budget."
+      },
       "budget_exceeded": {
         "title": "Budget exceeded",
         "body": "{{name}} has gone over its {{period}} budget."
+      },
+      "recurring_posted": {
+        "title": "Recurring transaction posted",
+        "body": "“{{name}}” was added automatically.",
+        "body_many": "“{{name}}” added {{count}} transactions."
       },
       "space_autosaved": {
         "title": "Auto-saved to your Space",

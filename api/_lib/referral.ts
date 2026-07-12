@@ -7,6 +7,7 @@ import {
   referralSettings,
   referrals,
 } from "../../src/lib/db/schema.js"
+import { createNotification } from "./notifications.js"
 
 const SETTINGS_ID = "default"
 
@@ -84,7 +85,7 @@ export async function creditReferralOnPaid(orgId: string, paymentAmount: number,
     const now = new Date()
     const qualifyingAt = new Date(now.getTime() + Number(settings.holdingDays) * 86_400_000)
 
-    await db
+    const credited = await db
       .update(referrals)
       .set({
         status: "paid",
@@ -106,6 +107,32 @@ export async function creditReferralOnPaid(orgId: string, paymentAmount: number,
       })
       // Guard on the current status so concurrent/replayed events credit once.
       .where(and(eq(referrals.id, ref.id), eq(referrals.status, "signed_up")))
+      .returning({ id: referrals.id })
+
+    // Tell the referrer their reward is on its way — only when THIS call won the
+    // status-guarded transition (a replayed webhook/reconcile returns no row).
+    // Account-level (orgId null): the referrer isn't a member of the referred org.
+    if (credited.length > 0) {
+      const rewardCurrency =
+        settings.rewardType === "fixed"
+          ? settings.rewardCurrency || "USD"
+          : paymentCurrency || settings.rewardCurrency || "USD"
+      const reward = `${amount.toFixed(2)} ${rewardCurrency}`
+      void createNotification({
+        userId: ref.referrerUserId,
+        organizationId: null,
+        type: "referral_credited",
+        title: "Referral reward credited",
+        body: `Your referral upgraded — ${reward} is on its way.`,
+        data: {
+          i18nKey: "types.referral_credited.title",
+          i18nBodyKey: "types.referral_credited.body",
+          i18nParams: { amount: reward },
+        },
+        link: "/referrals",
+        dedupeKey: `ref_credited:${ref.id}`,
+      }).catch(() => {})
+    }
   } catch {
     /* never break billing on a referral hiccup */
   }

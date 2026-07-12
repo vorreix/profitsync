@@ -1447,9 +1447,28 @@
         "body_active": "आपका संगठन अब {{plan}} प्लान पर है।",
         "body_cancelled": "आपकी {{plan}} सदस्यता रद्द कर दी गई।"
       },
+      "referral_credited": {
+        "title": "रेफ़रल इनाम क्रेडिट हुआ",
+        "body": "आपके रेफ़रल ने अपग्रेड किया — {{amount}} जल्द मिलेगा।"
+      },
+      "referral_payout": {
+        "title": "पेआउट अपडेट",
+        "body_approved": "आपका {{amount}} पेआउट स्वीकृत हुआ।",
+        "body_paid": "आपका {{amount}} पेआउट भेज दिया गया।",
+        "body_rejected": "आपका {{amount}} पेआउट अनुरोध अस्वीकृत हुआ।"
+      },
+      "budget_warning": {
+        "title": "बजट लगभग समाप्त",
+        "body": "{{name}} ने अपने {{period}} बजट का {{percent}}% उपयोग कर लिया है।"
+      },
       "budget_exceeded": {
         "title": "बजट अतिक्रमण",
         "body": "{{name}} अपने {{period}} बजट से अधिक हो गया है।"
+      },
+      "recurring_posted": {
+        "title": "आवर्ती लेन-देन दर्ज हुआ",
+        "body": "“{{name}}” स्वचालित रूप से जोड़ा गया।",
+        "body_many": "“{{name}}” ने {{count}} लेन-देन जोड़े।"
       },
       "space_autosaved": {
         "title": "आपके Space में अपने आप सेव हुआ",
