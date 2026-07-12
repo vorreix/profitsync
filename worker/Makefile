@@ -115,9 +115,9 @@ register: ## Register the notification cron schedule on the worker (retries whil
 	for i in 1 2 3 4 5 6 7 8 9 10; do \
 		if curl -fsS -X POST "http://localhost:$${WORKER_PORT:-8080}/v1/schedules" \
 			-H "Authorization: Bearer $$WORKER_API_TOKEN" -H 'Content-Type: application/json' \
-			-d '{"name":"notifications-dispatch","type":"app.trigger","cron":"*/5 * * * *","timezone":"UTC","payload":{"path":"/api/cron/notifications"}}' \
+			-d '{"name":"notifications-dispatch","type":"app.trigger","cron":"0 * * * *","timezone":"UTC","payload":{"path":"/api/cron/notifications"}}' \
 			>/dev/null 2>&1; then \
-			echo "  ✓ notifications-dispatch registered (the worker now drives reminders + scheduled broadcasts)"; exit 0; \
+			echo "  ✓ notifications-dispatch registered (hourly reconcile sweep for scheduled broadcasts)"; exit 0; \
 		fi; \
 		echo "  … worker not ready yet (attempt $$i/10), retrying in 3s"; sleep 3; \
 	done; \

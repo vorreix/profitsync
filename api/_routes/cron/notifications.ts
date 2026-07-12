@@ -14,6 +14,7 @@ import { db } from "../../../src/lib/db/index.js"
 import { broadcasts, notificationSchedulerState } from "../../../src/lib/db/schema.js"
 import { requireServiceToken } from "../../_lib/auth.js"
 import { deliverBroadcast } from "../../_lib/broadcast-deliver.js"
+import { enqueueNotificationTickAt } from "../../_lib/worker-jobs.js"
 import { nextRecurringFire } from "../../../src/lib/schedule-notifications.js"
 import type { BroadcastAudience, BroadcastSchedule, BroadcastStats } from "../../../src/lib/types.js"
 
@@ -89,8 +90,10 @@ export async function runNotificationTick(
       if (schedule.type === "recurring") {
         const next = nextRecurringFire(schedule.recurring, claimed.nextFireAt ?? now)
         if (next) {
-          // Re-arm for the next occurrence (back to scheduled).
+          // Re-arm for the next occurrence (back to scheduled) + enqueue the
+          // exact-time worker job for it (best-effort; the sweep reconciles).
           await db.update(broadcasts).set({ status: "scheduled", nextFireAt: next, stats, sentAt: now, updatedAt: now }).where(eq(broadcasts.id, claimed.id))
+          void enqueueNotificationTickAt(next, `${claimed.id}:${next.toISOString()}`).catch(() => {})
         } else {
           await db.update(broadcasts).set({ status: "sent", nextFireAt: null, sentAt: now, stats, updatedAt: now }).where(eq(broadcasts.id, claimed.id))
         }
