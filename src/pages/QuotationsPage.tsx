@@ -41,6 +41,7 @@ import {
   type QuotationActions, type QuotationColumn,
 } from "@/components/quotations/quotation-views"
 import { STATUS_COLORS, formatQuotationDate as formatDate } from "@/lib/quotation-display"
+import { QuotationPdfModal } from "@/components/QuotationPdfModal"
 
 type QuotationForm = {
   title: string
@@ -198,6 +199,7 @@ export function QuotationsPage() {
   const [deleteTarget, setDeleteTarget] = useState<Quotation | null>(null)
   const [convertTarget, setConvertTarget] = useState<Quotation | null>(null)
   const [viewTarget, setViewTarget] = useState<Quotation | null>(null)
+  const [pdfTarget, setPdfTarget] = useState<Quotation | null>(null)
   const [form, setForm] = useState<QuotationForm>(defaultForm())
   const [saving, setSaving] = useState(false)
 
@@ -565,6 +567,7 @@ export function QuotationsPage() {
     onConvert: (q: Quotation) => setConvertTarget(q),
     onClose: (id: string) => setQuotationClosed(id, true),
     onDelete: (q: Quotation) => setDeleteTarget(q),
+    onPdf: (q: Quotation) => setPdfTarget(q),
     onToggleSelect: sel.toggle,
     onEnterSelection: sel.enterSelection,
     onOpenClient: (id: string) => navigate(`/clients/${id}`),
@@ -580,6 +583,7 @@ export function QuotationsPage() {
     onConvert: (q) => latestActionsRef.current.onConvert(q),
     onClose: (id) => latestActionsRef.current.onClose(id),
     onDelete: (q) => latestActionsRef.current.onDelete(q),
+    onPdf: (q) => latestActionsRef.current.onPdf(q),
     onToggleSelect: (id) => latestActionsRef.current.onToggleSelect(id),
     onEnterSelection: (id) => latestActionsRef.current.onEnterSelection(id),
     onOpenClient: (id) => latestActionsRef.current.onOpenClient(id),
@@ -963,6 +967,10 @@ export function QuotationsPage() {
               </div>
 
               <DialogFooter>
+                <Button variant="outline" onClick={() => setPdfTarget(viewTarget)}>
+                  <FileText className="size-3.5" />
+                  {t("pdf.action")}
+                </Button>
                 <Button variant="outline" onClick={() => {
                   // Neutralize the view modal's back-entry first so closing it doesn't
                   // fire a history.back() popstate that the edit dialog's useBackClose
@@ -981,6 +989,10 @@ export function QuotationsPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Quotation PDF: view / download / share (worker-rendered, S3-stored,
+          short-lived presigned links minted fresh on every open). */}
+      <QuotationPdfModal quotation={pdfTarget} onClose={() => setPdfTarget(null)} />
 
       {/* Create Dialog */}
       <Dialog open={createOpen} onOpenChange={closeCreate}>

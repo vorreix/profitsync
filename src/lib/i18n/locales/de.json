@@ -548,6 +548,26 @@
       "date": "Datum",
       "actions": "Aktionen",
       "sortBy": "Sortieren nach {{column}}"
+    },
+    "pdf": {
+      "action": "PDF",
+      "title": "Angebots-PDF",
+      "generatingTitle": "PDF wird vorbereitet…",
+      "generatingHint": "Das dauert normalerweise nur wenige Sekunden.",
+      "ready": "Ihr Angebots-PDF ist fertig.",
+      "view": "Ansehen",
+      "download": "Herunterladen",
+      "share": "Teilen",
+      "shareText": "Angebot: {{title}}",
+      "linkCopied": "Link in die Zwischenablage kopiert",
+      "expiresNote": "Ansichts- und Download-Links bleiben etwa eine Stunde gültig.",
+      "unavailableTitle": "PDF-Erstellung nicht verfügbar",
+      "unavailableHint": "Die PDF-Erstellung ist noch nicht eingerichtet. Bitte versuchen Sie es später erneut.",
+      "errorTitle": "PDF konnte nicht erstellt werden",
+      "timeout": "Das dauert länger als erwartet. Bitte versuchen Sie es erneut.",
+      "retry": "Erneut versuchen",
+      "close": "Schließen",
+      "openError": "PDF konnte nicht geöffnet werden. Bitte versuchen Sie es erneut."
     }
   },
   "organizations": {

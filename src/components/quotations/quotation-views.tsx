@@ -2,7 +2,7 @@ import { memo, type DOMAttributes } from "react"
 import { useTranslation } from "react-i18next"
 import {
   Archive, ArrowDown, ArrowUp, ArrowUpDown, Building2, Calendar, ExternalLink,
-  Mail, Pencil, Phone, Trash2, UserPlus,
+  FileText, Mail, Pencil, Phone, Trash2, UserPlus,
 } from "lucide-react"
 import type { Client, Quotation } from "@/lib/types"
 import { Badge } from "@/components/ui/badge"
@@ -28,6 +28,7 @@ export interface QuotationActions {
   onConvert: (q: Quotation) => void
   onClose: (id: string) => void
   onDelete: (q: Quotation) => void
+  onPdf: (q: Quotation) => void
   onToggleSelect: (id: string) => void
   onEnterSelection: (id: string) => void
   onOpenClient: (id: string) => void
@@ -59,6 +60,12 @@ function RowActions({ q, canDelete, actions }: { q: Quotation; canDelete: boolea
           {t("convertToClientBtn")}
         </Button>
       )}
+      <Button
+        size="sm" variant="ghost" className="size-8 p-0 shrink-0 text-muted-foreground"
+        aria-label={t("pdf.action")} title={t("pdf.action")} onClick={() => actions.onPdf(q)}
+      >
+        <FileText className="size-3.5" />
+      </Button>
       <Button size="sm" variant="ghost" className="size-8 p-0 shrink-0" aria-label={t("editBtn")} onClick={() => actions.onEdit(q)}>
         <Pencil className="size-3.5" />
       </Button>
@@ -217,6 +224,9 @@ export const QuotationListRow = memo(function QuotationListRow({
               <UserPlus className="size-3.5" />
             </Button>
           )}
+          <Button size="icon" variant="ghost" className="size-8 text-muted-foreground" aria-label={t("pdf.action")} title={t("pdf.action")} onClick={() => actions.onPdf(q)}>
+            <FileText className="size-3.5" />
+          </Button>
           <Button size="icon" variant="ghost" className="size-8" aria-label={t("editBtn")} title={t("editBtn")} onClick={() => actions.onEdit(q)}>
             <Pencil className="size-3.5" />
           </Button>
@@ -288,6 +298,9 @@ const QuotationTableRow = memo(function QuotationTableRow({
       {!selectionMode && (
         <td className="p-2 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
           <div className="flex items-center gap-0.5 justify-end">
+            <Button size="icon" variant="ghost" className="size-8 text-muted-foreground" aria-label={t("pdf.action")} title={t("pdf.action")} onClick={() => actions.onPdf(q)}>
+              <FileText className="size-3.5" />
+            </Button>
             <Button size="icon" variant="ghost" className="size-8" aria-label={t("editBtn")} title={t("editBtn")} onClick={() => actions.onEdit(q)}>
               <Pencil className="size-3.5" />
             </Button>
