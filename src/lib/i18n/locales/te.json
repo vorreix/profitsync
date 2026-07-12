@@ -1634,5 +1634,10 @@
     "sortAmountHigh": "అత్యధిక మొత్తం",
     "sortAmountLow": "అత్యల్ప మొత్తం",
     "sortName": "పేరు"
+  },
+  "auth": {
+    "continueWithGoogle": "Googleతో కొనసాగించండి",
+    "continueWithApple": "Appleతో కొనసాగించండి",
+    "oauthError": "సైన్-ఇన్ ప్రారంభించడం సాధ్యపడలేదు. దయచేసి మళ్లీ ప్రయత్నించండి."
   }
 }
