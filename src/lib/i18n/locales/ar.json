@@ -1418,6 +1418,10 @@
       "test_error": "تعذّر إرسال اختبار الآن. يرجى المحاولة مرة أخرى."
     },
     "types": {
+      "member_invited": {
+        "title": "تمت دعوة عضو جديد",
+        "body": "تمت دعوة {{email}} إلى {{org}} بدور {{role}}"
+      },
       "invitation_accepted": {
         "title": "تم قبول الدعوة",
         "body": "انضم {{name}} إلى {{org}}"
@@ -1450,6 +1454,10 @@
       "space_autosaved": {
         "title": "تم الادخار تلقائيًا في مساحتك",
         "body": "تم نقل الأموال إلى {{space}}"
+      },
+      "quotation_accepted": {
+        "title": "تم قبول عرض السعر",
+        "body": "تم قبول “{{title}}”."
       },
       "add_transaction_reminder": {
         "title": "حان وقت إضافة معاملاتك",

@@ -1418,6 +1418,10 @@
       "test_error": "Test konnte gerade nicht gesendet werden. Bitte versuche es erneut."
     },
     "types": {
+      "member_invited": {
+        "title": "Neues Mitglied eingeladen",
+        "body": "{{email}} wurde als {{role}} zu {{org}} eingeladen"
+      },
       "invitation_accepted": {
         "title": "Einladung angenommen",
         "body": "{{name}} ist {{org}} beigetreten"
@@ -1450,6 +1454,10 @@
       "space_autosaved": {
         "title": "Automatisch in deinen Space gespart",
         "body": "Geld nach {{space}} verschoben"
+      },
+      "quotation_accepted": {
+        "title": "Angebot angenommen",
+        "body": "„{{title}}“ wurde angenommen."
       },
       "add_transaction_reminder": {
         "title": "Zeit, deine Transaktionen einzutragen",

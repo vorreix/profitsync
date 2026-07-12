@@ -30,7 +30,7 @@ Status: **in progress** · Started 2026-07-11 · Chain root: `feat/notif5-00-pla
 |---|--------|----------|--------|
 | 00 | `feat/notif5-00-plan` | This plan | ✅ pushed |
 | 01 | `feat/notif5-01-events-billing` | `payment_succeeded` + `subscription_changed` fired from webhook AND reconcile (+ admin transitions) | ✅ pushed |
-| 02 | `feat/notif5-02-events-team` | `member_invited` (admins), org-wide join fan-out, `quotation_accepted` | ⏳ |
+| 02 | `feat/notif5-02-events-team` | `member_invited` (admins), org-wide join fan-out, `quotation_accepted` | ✅ pushed |
 | 03 | `feat/notif5-03-events-money` | `budget_warning` @80%, `recurring_posted`, `referral_credited`/`referral_payout` (new types) | ⏳ |
 | 04 | `feat/notif5-04-fcm-server` | FCM HTTP v1 sender (node:crypto JWT, lazy, no-op w/o env), channel-aware `POST /api/notifications/push`, `mobile_push` preference channel | ⏳ |
 | 05 | `feat/notif5-05-fcm-client` | `@capacitor-firebase/messaging`, native token registration, Mobile-push toggle UI, conditional gradle wiring, docs | ⏳ |
@@ -162,3 +162,13 @@ Status: **in progress** · Started 2026-07-11 · Chain root: `feat/notif5-00-pla
   change status; the actor did it themselves). i18n ×8 (1461 keys). Committed
   pure test api/_lib/notify-billing.test.ts; DB-verified with a throwaway test
   (notify/dedupe/recency/body-variant all proven against the dev DB, cleaned up).
+- 2026-07-11 (02): team events. `notifyOrgMembers` now accepts an
+  exclude-ARRAY (needed to skip inviter+joiner together). `member_invited` →
+  owners/admins on invite POST (dedupe `invited:<inviteId>` also silences
+  re-invite refreshes); org-wide join fan-out on real joins only
+  (`inv_joined:<inviteId>`, reuses the localized invitation_accepted copy);
+  `api/_lib/notify-quotation.ts#notifyQuotationAccepted` fired from the PATCH
+  status transition AND /convert — the shared `quote_accepted:<id>:<user>`
+  dedupe shape makes fan-out + direct-to-creator + accept-then-convert all
+  collapse to one row per recipient. i18n ×8 (1465 keys). DB-verified
+  (exclusion array, no-self-notify, dedupe collapse) with a throwaway test.

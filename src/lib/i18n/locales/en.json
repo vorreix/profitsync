@@ -1480,6 +1480,10 @@
       "test_error": "Couldn't send a test right now. Please try again."
     },
     "types": {
+      "member_invited": {
+        "title": "New member invited",
+        "body": "{{email}} was invited to {{org}} as {{role}}"
+      },
       "invitation_accepted": {
         "title": "Invitation accepted",
         "body": "{{name}} joined {{org}}"
@@ -1512,6 +1516,10 @@
       "space_autosaved": {
         "title": "Auto-saved to your Space",
         "body": "Money moved into {{space}}"
+      },
+      "quotation_accepted": {
+        "title": "Quotation accepted",
+        "body": "“{{title}}” was accepted."
       },
       "add_transaction_reminder": {
         "title": "Time to add your transactions",

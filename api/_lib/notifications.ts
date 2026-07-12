@@ -173,8 +173,8 @@ export async function createNotification(input: CreateNotificationInput): Promis
 export type NotifyOrgMembersOptions = {
   /** Restrict to these roles (e.g. ["owner", "admin"]); default = all members. */
   roles?: string[]
-  /** Skip this user (typically the actor who triggered the event). */
-  excludeUserId?: string
+  /** Skip these users (typically the actor who triggered the event). */
+  excludeUserId?: string | string[]
 }
 
 /**
@@ -192,9 +192,10 @@ export async function notifyOrgMembers(
     .from(organizationMembers)
     .where(eq(organizationMembers.organizationId, organizationId))
 
-  const targets = members.filter(
-    (m) => m.userId !== opts.excludeUserId && (!opts.roles || opts.roles.includes(m.role)),
+  const excluded = new Set(
+    Array.isArray(opts.excludeUserId) ? opts.excludeUserId : opts.excludeUserId ? [opts.excludeUserId] : [],
   )
+  const targets = members.filter((m) => !excluded.has(m.userId) && (!opts.roles || opts.roles.includes(m.role)))
 
   await Promise.all(
     targets.map((m) =>

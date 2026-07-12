@@ -5,6 +5,7 @@ import { quotations } from "../../../src/lib/db/schema.js"
 import { canDelete, canWrite, requireAuth, requireBusinessFeature } from "../../_lib/auth.js"
 import { checkNoteLength } from "../../_lib/quota.js"
 import { diffFields, logAudit } from "../../_lib/audit.js"
+import { notifyQuotationAccepted } from "../../_lib/notify-quotation.js"
 import { amountExceedsLimit } from "../../../src/lib/money.js"
 import { cleanTags } from "../../../src/lib/tags.js"
 
@@ -67,6 +68,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .where(and(eq(quotations.id, id), eq(quotations.organizationId, orgId), isNull(quotations.deletedAt)))
       .returning()
     if (!updated) return res.status(404).json({ error: "Not found" })
+    if (updated.status === "accepted" && before?.status !== "accepted") {
+      void notifyQuotationAccepted(
+        orgId,
+        { id: updated.id, title: updated.title, userId: updated.userId },
+        userId,
+      ).catch(() => {})
+    }
     if (closed !== undefined && (!!before?.closedAt !== !!updated.closedAt)) {
       await logAudit({ orgId, entityType: "quotation", entityId: id, action: closed ? "close" : "reopen", actorId: userId })
     } else {
