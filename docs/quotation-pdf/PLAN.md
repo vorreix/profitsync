@@ -102,12 +102,21 @@ Each branch is cut **from the previous one**. Naming: `feat/qpdf-NN-<task>-maqbo
 | NN | Branch | Scope | Depends on | Status |
 |----|--------|-------|-----------|--------|
 | 00 | `feat/qpdf-00-plan-maqbool` | This plan doc | dev | ✅ pushed |
-| 01 | `feat/qpdf-01-schema-maqbool` | Migration 0051 + `quotations` PDF columns + `Quotation` type | 00 | ⬜ todo |
-| 02 | `feat/qpdf-02-presign-maqbool` | `api/_lib/s3.ts` config + `api/_lib/s3-presign.ts` (dependency-free SigV4) + unit test | 01 | ⬜ todo |
-| 03 | `feat/qpdf-03-worker-maqbool` | Go worker `pdf.quotation` handler (maroto v2) + register + `go.mod` | 02 | ⬜ todo |
-| 04 | `feat/qpdf-04-api-maqbool` | `enqueueQuotationPdf` + `GET /api/quotations/:id/pdf` + internal `pdf-ready` callback + register in `api/index.ts` + shared snapshot/hash lib | 03 | ⬜ todo |
-| 05 | `feat/qpdf-05-ui-maqbool` | QuotationsPage PDF modal (view/download/share) + poll + i18n ×8 | 04 | ⬜ todo |
-| 06 | `feat/qpdf-06-docs-env-maqbool` | CLAUDE.md env block + `.env.example` (app+worker) + `docs/quotation-pdf/SYSTEM.md` + memory note | 05 | ⬜ todo |
+| 01 | `feat/qpdf-01-schema-maqbool` | Migration 0051 + `quotations` PDF columns + `Quotation` type | 00 | ✅ pushed |
+| 02 | `feat/qpdf-02-presign-maqbool` | `api/_lib/s3.ts` config + `api/_lib/s3-presign.ts` (dependency-free SigV4) + unit test | 01 | ✅ pushed |
+| 03 | `feat/qpdf-03-worker-maqbool` | Go worker `pdf.quotation` handler (maroto v2) + register + `go.mod` | 02 | ✅ pushed |
+| 04 | `feat/qpdf-04-api-maqbool` | `enqueueQuotationPdf` + `GET /api/quotations/:id/pdf` + internal `pdf-ready` callback + register in `api/index.ts` + shared snapshot/hash lib | 03 | ✅ pushed |
+| 05 | `feat/qpdf-05-ui-maqbool` | QuotationsPage PDF modal (view/download/share) + poll + i18n ×8 | 04 | ✅ pushed |
+| 06 | `feat/qpdf-06-docs-env-maqbool` | CLAUDE.md env block + `.env.example` (app+worker) + `docs/quotation-pdf/SYSTEM.md` + memory note | 05 | ✅ pushed |
+
+**Compare/PR URLs** (`gh` not authenticated → open these manually):
+- 00 https://github.com/vorreix/profitsync/pull/new/feat/qpdf-00-plan-maqbool
+- 01 https://github.com/vorreix/profitsync/pull/new/feat/qpdf-01-schema-maqbool
+- 02 https://github.com/vorreix/profitsync/pull/new/feat/qpdf-02-presign-maqbool
+- 03 https://github.com/vorreix/profitsync/pull/new/feat/qpdf-03-worker-maqbool
+- 04 https://github.com/vorreix/profitsync/pull/new/feat/qpdf-04-api-maqbool
+- 05 https://github.com/vorreix/profitsync/pull/new/feat/qpdf-05-ui-maqbool
+- 06 https://github.com/vorreix/profitsync/pull/new/feat/qpdf-06-docs-env-maqbool
 
 **Gate per branch (no `--no-verify`, ever):** secret-scan → check-esm-extensions →
 boot-functions → i18n:check → lint → typecheck → test:ci (the husky pre-commit hook).
@@ -236,13 +245,15 @@ round-trip is deferred to deploy. Screenshot captured.
 
 | Check | Status | Why |
 |---|---|---|
-| Presigner crypto | ⬜ will be **verified** (unit test vs AWS vector) | pure, DB-free |
-| Migration columns | ⬜ will be **verified** (Dev DB `information_schema`) | local Dev DB available |
-| API routes | ⬜ **typecheck + boot-functions** | real end-to-end needs worker+S3 |
-| Frontend modal | ⬜ **Playwright UI states** | byte round-trip needs deploy |
-| Worker Go compile | ⛔ **DEFERRED** | no Go/Docker locally; CI/Dockerfile compiles it |
-| End-to-end PDF round-trip | ⛔ **DEFERRED** | no local worker + no Hetzner creds |
-| PR creation | ⛔ **DEFERRED** | `gh` not authenticated → record `pull/new/...` URLs |
+| Presigner crypto | ✅ **verified** — unit test vs AWS SigV4 vector (`s3-presign.test.ts`) | pure, DB-free |
+| Snapshot/hash/key lib | ✅ **verified** — unit test incl. `updatedAt`-only loop guard (`quotation-pdf.test.ts`) | pure, DB-free |
+| Migration columns | ✅ **verified** — applied to Dev DB, columns present in `information_schema` | local Dev DB available |
+| API routes | ✅ **verified** — typecheck + `boot-functions` (imports every fn in real Node) + `check-esm-extensions` | real end-to-end needs worker+S3 |
+| Frontend modal | ✅ **verified** — Playwright: all states (loading/generating/ready/unavailable/error+retry), both triggers (card + detail), desktop + mobile 390px, no new console errors | byte round-trip needs deploy |
+| Full pre-commit gate per branch | ✅ **verified** — secret-scan → ESM-ext → boot-functions → route-guards → i18n (1499 keys/locale) → lint → typecheck → test:ci (398 tests) | ran green on every branch |
+| Worker Go compile | ⛔ **DEFERRED** | no Go/Docker locally; CI/Dockerfile (`go mod tidy && go build`) compiles it — API pinned from context7 docs, handler mirrors existing patterns |
+| End-to-end PDF round-trip | ⛔ **DEFERRED** | no local worker + no Hetzner creds; verify after deploy via `/admin → Worker` + presigned View/Download |
+| PR creation | ⛔ **DEFERRED** | `gh` not authenticated → `pull/new/...` URLs recorded in §3 |
 
 Nothing is silently skipped; each deferral has a reason and (where possible) a
 mitigation.
@@ -254,3 +265,12 @@ mitigation.
 
 ## 8. Change log
 - 2026-07-12 — Plan authored; chain-root branch created.
+- 2026-07-12 — Branches 01–05 implemented, gated, and pushed: schema (mig 0051),
+  dependency-free SigV4 presigner + S3 config (unit-tested vs AWS vector), Go worker
+  `pdf.quotation` handler (maroto v2), app API (enqueue + secure org-scoped view route +
+  service-token `pdf-ready` callback + shared snapshot/hash lib, unit-tested), and the
+  QuotationPdfModal (view/download/share, poll, i18n ×8, Playwright-verified states).
+- 2026-07-12 — Branch 06: app `S3_*` read-cred block added to root `.env.example` +
+  CLAUDE.md Environment (server-only); worker `.env.example` S3 section cross-referenced
+  (write creds, keep bucket private); `SYSTEM.md` operating doc written; branch-chain
+  statuses + honesty ledger updated; memory note recorded. Chain complete (00–06 pushed).

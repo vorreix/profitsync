@@ -280,6 +280,14 @@ export type Quotation = {
   created_at: string
   updated_at: string
   attachment_count?: number
+  // Generated-PDF state (see quotations schema). The object key is never a URL;
+  // the app mints a short-lived presigned URL on each access.
+  pdf_status?: "none" | "generating" | "ready" | "error"
+  pdf_object_key?: string
+  pdf_source_hash?: string
+  pdf_size_bytes?: number
+  pdf_generated_at?: string | null
+  pdf_error?: string
 }
 
 // An expense (outgoing) budget. `client_id` null = the org-level budget (the

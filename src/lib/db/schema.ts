@@ -323,6 +323,17 @@ export const quotations = pgTable("quotations", {
   // When set, the quotation is "closed": excluded from the default list, shown in
   // a separate section. Reversible (reopen clears it).
   closedAt: timestamp("closed_at"),
+  // ── Generated PDF (worker-rendered, stored in S3, delivered via short-lived
+  // presigned URLs). We persist the object KEY only — never a URL — and re-presign
+  // on every access. `pdfSourceHash` is the SHA-256 of the canonical data snapshot
+  // the ready PDF was rendered from: the view route re-derives it from live data and
+  // only serves the object when it still matches, so an edit auto-invalidates the PDF.
+  pdfStatus: text("pdf_status").notNull().default("none"), // none | generating | ready | error
+  pdfObjectKey: text("pdf_object_key").notNull().default(""),
+  pdfSourceHash: text("pdf_source_hash").notNull().default(""),
+  pdfSizeBytes: integer("pdf_size_bytes").notNull().default(0),
+  pdfGeneratedAt: timestamp("pdf_generated_at"),
+  pdfError: text("pdf_error").notNull().default(""),
   createdBy: text("created_by"),
   updatedBy: text("updated_by"),
   createdAt: timestamp("created_at").defaultNow(),
