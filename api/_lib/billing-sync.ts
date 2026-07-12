@@ -10,6 +10,7 @@ import {
   type DodoScheduledChange,
 } from "./dodo.js"
 import { invoiceValuesFromPayment } from "./invoice-map.js"
+import { notifyPaymentSucceeded, notifySubscriptionChanged } from "./notify-billing.js"
 import { creditReferralOnPaid } from "./referral.js"
 
 type SubscriptionRow = typeof subscriptions.$inferSelect
@@ -80,6 +81,15 @@ export async function reconcileInvoices(
         if (!firstPaid || at < firstPaid.at) {
           firstPaid = { amount: Number(values.amount), currency: values.currency, at }
         }
+        // Receipt notification — recency-guarded inside (reconcile replays the
+        // whole history; only fresh payments are news) and idempotent per
+        // payment id, so the webhook + this path collapse to one notification.
+        void notifyPaymentSucceeded(sub.organizationId, {
+          paymentId: values.providerInvoiceId,
+          amount: Number(values.amount),
+          currency: values.currency,
+          paidAt: values.paidAt,
+        }).catch(() => {})
       }
     }
     // Credit a pending referral for this org's owner when a paid charge exists.
@@ -142,6 +152,14 @@ export async function reconcileSubscriptionFromDodo(
     .returning()
 
   const row = updated ?? sub
+  // Plan/status transition notification (best-effort; dedupe collapses the
+  // webhook + reconcile double-fire on the same transition).
+  void notifySubscriptionChanged(sub.organizationId, {
+    fromPlan: sub.planKey,
+    toPlan: row.planKey,
+    fromStatus: sub.status,
+    toStatus: mapped,
+  }).catch(() => {})
   // Don't pull payments for a not-yet-paid subscription (none exist yet).
   if (mapped !== "pending") await reconcileInvoices(row, env)
 

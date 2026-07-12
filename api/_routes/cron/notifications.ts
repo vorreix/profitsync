@@ -11,47 +11,42 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { and, eq, lte } from "drizzle-orm"
 import { db } from "../../../src/lib/db/index.js"
-import { broadcasts, notificationReminders, notificationSchedulerState } from "../../../src/lib/db/schema.js"
+import { broadcasts, notificationSchedulerState } from "../../../src/lib/db/schema.js"
 import { requireServiceToken } from "../../_lib/auth.js"
-import { createNotification } from "../../_lib/notifications.js"
 import { deliverBroadcast } from "../../_lib/broadcast-deliver.js"
-import { nextRecurringFire, reminderDueSlot } from "../../../src/lib/schedule-notifications.js"
-import type { BroadcastAudience, BroadcastSchedule, BroadcastStats, ReminderSchedule } from "../../../src/lib/types.js"
+import { enqueueNotificationTickAt } from "../../_lib/worker-jobs.js"
+import { nextRecurringFire } from "../../../src/lib/schedule-notifications.js"
+import type { BroadcastAudience, BroadcastSchedule, BroadcastStats } from "../../../src/lib/types.js"
 
 /** Run one scheduler tick. Exported so the admin "Run due now" route can reuse it. */
-export async function runNotificationTick(now: Date = new Date()): Promise<{ reminders: number; broadcasts: number }> {
-  let firedReminders = 0
+export async function runNotificationTick(
+  now: Date = new Date(),
+): Promise<{ reminders: number; broadcasts: number; previousTickAt: string | null }> {
+  // V6: the tick no longer delivers reminders (kept in the return shape for
+  // response/panel compatibility — always 0 now).
+  const firedReminders = 0
   let firedBroadcasts = 0
 
-  // ── Due reminders ──────────────────────────────────────────────────────────
-  const reminders = await db.select().from(notificationReminders).where(eq(notificationReminders.enabled, true))
-  for (const r of reminders) {
-    const slot = reminderDueSlot(r.schedule as ReminderSchedule, now, r.lastFiredAt ?? null)
-    if (!slot) continue
-    await createNotification({
-      userId: r.userId,
-      organizationId: r.organizationId ?? null,
-      type: "add_transaction_reminder",
-      title: "Time to add your transactions",
-      body: "Don't forget to record today's income and expenses.",
-      data: {
-        i18nKey: "types.add_transaction_reminder.title",
-        i18nBodyKey: "types.add_transaction_reminder.body",
-      },
-      // Reuse the existing Add-Transaction deep link (?new=1) so clicking the
-      // reminder opens the Add Transaction dialog on the Transactions page.
-      link: "/transactions?new=1",
-      // The user explicitly created this reminder — push it by default (honours
-      // mute + an explicit opt-out).
-      pushDefault: true,
-      dedupeKey: `reminder:${r.id}:${slot}`,
-    })
-    await db
-      .update(notificationReminders)
-      .set({ lastFiredAt: now, updatedAt: now })
-      .where(eq(notificationReminders.id, r.id))
-    firedReminders++
+  // Read the heartbeat BEFORE this tick overwrites it. Callers use its age to
+  // detect a dead PRIMARY scheduler: the GitHub fallback goes red when the
+  // previous tick is older than the worker's cadence should ever allow.
+  let previousTickAt: string | null = null
+  try {
+    const [state] = await db
+      .select()
+      .from(notificationSchedulerState)
+      .where(eq(notificationSchedulerState.id, "default"))
+    previousTickAt = state?.lastTickAt ? state.lastTickAt.toISOString() : null
+  } catch {
+    /* observability only — never fail the tick */
   }
+
+  // ── Reminders ────────────────────────────────────────────────────────────────
+  // V6: personal reminders are delivered ON the phone via OS-scheduled local
+  // notifications (src/lib/native-reminders.ts) — exact device time, offline-
+  // capable, no server clock. The DB rows remain the SETTINGS store (web
+  // management + cross-device sync); the tick no longer delivers them, so
+  // `firedReminders` stays 0 and `last_fired_at` is dormant.
 
   // ── Due scheduled / recurring broadcasts ─────────────────────────────────────
   const due = await db
@@ -95,8 +90,10 @@ export async function runNotificationTick(now: Date = new Date()): Promise<{ rem
       if (schedule.type === "recurring") {
         const next = nextRecurringFire(schedule.recurring, claimed.nextFireAt ?? now)
         if (next) {
-          // Re-arm for the next occurrence (back to scheduled).
+          // Re-arm for the next occurrence (back to scheduled) + enqueue the
+          // exact-time worker job for it (best-effort; the sweep reconciles).
           await db.update(broadcasts).set({ status: "scheduled", nextFireAt: next, stats, sentAt: now, updatedAt: now }).where(eq(broadcasts.id, claimed.id))
+          void enqueueNotificationTickAt(next, `${claimed.id}:${next.toISOString()}`).catch(() => {})
         } else {
           await db.update(broadcasts).set({ status: "sent", nextFireAt: null, sentAt: now, stats, updatedAt: now }).where(eq(broadcasts.id, claimed.id))
         }
@@ -128,15 +125,22 @@ export async function runNotificationTick(now: Date = new Date()): Promise<{ rem
     console.error("[cron/notifications] heartbeat write failed", err)
   }
 
-  return { reminders: firedReminders, broadcasts: firedBroadcasts }
+  return { reminders: firedReminders, broadcasts: firedBroadcasts, previousTickAt }
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" })
   if (!requireServiceToken(req, res)) return
   try {
-    const processed = await runNotificationTick()
-    return res.json({ ok: true, processed })
+    const { previousTickAt, ...processed } = await runNotificationTick()
+    return res.json({
+      ok: true,
+      processed,
+      previous_tick_at: previousTickAt,
+      previous_tick_age_seconds: previousTickAt
+        ? Math.round((Date.now() - new Date(previousTickAt).getTime()) / 1000)
+        : null,
+    })
   } catch (err) {
     console.error("[cron/notifications] tick failed", err)
     return res.status(500).json({ error: "Tick failed" })

@@ -69,8 +69,12 @@ changes safely. Future work is designed in `docs/notifications/V2_ROADMAP.md`.
 
 - **Reminders** (`notification_reminders`): per-user "add transactions" schedules
   (times/weekdays/tz). UI `src/components/notifications/RemindersCard.tsx` (in Profile →
-  Notifications). API `api/_routes/notifications/reminders{,/[id]}.ts`. The cron fires an
-  `add_transaction_reminder` linking to `/transactions?new=1`.
+  Notifications). API `api/_routes/notifications/reminders{,/[id]}.ts`. **V6: delivery is
+  PHONE-LOCAL** — `src/lib/native-reminders.ts` projects the DB settings onto OS-scheduled
+  local notifications (boot + every edit re-sync; tap deep-links `/transactions?new=1`);
+  the server tick does NOT deliver reminders anymore; the web UI shows a "rings on your
+  phone" note. ⚠️ Capacitor plugin objects are Proxies — never resolve a promise WITH one
+  (wrap it), or the await hangs forever (`plugin.then()` hits native).
 - **Broadcasts** (`broadcasts`): admin-composed fan-out. Studio
   `src/pages/admin/AdminBroadcastStudioPage.tsx`; API `api/_routes/admin/broadcasts*`;
   delivery `api/_lib/broadcast-deliver.ts` (audience resolve + chunked fan-out + per-user
@@ -78,11 +82,16 @@ changes safely. Future work is designed in `docs/notifications/V2_ROADMAP.md`.
   `createNotification` **bypasses the cascade** (always bells, attempts push).
 - **User groups** (`user_groups` + `user_group_members`): reusable audiences. Page
   `src/pages/admin/AdminUserGroupsPage.tsx`; API `api/_routes/admin/user-groups*`.
-- **Scheduler** (`docs/notifications/SCHEDULER.md`): the worker-driven, scheduler-agnostic
-  `POST /api/cron/notifications` (`requireServiceToken`) runs `runNotificationTick` —
-  delivers due reminders + scheduled/recurring broadcasts. Pure tz/recurrence math lives
-  in `src/lib/schedule-notifications.ts` (+ `.test.ts`, DB-free). Also drivable by an
-  external pinger, Vercel Cron, or the admin **"Run due now"** button. See [[worker-service]].
+- **Scheduler** (`docs/notifications/SCHEDULER.md`): **V6 = exact-time one-shot worker
+  jobs** (`api/_lib/worker-jobs.ts` enqueues `POST /v1/jobs` with run_at +
+  `tick:<id>:<occurrence>` dedupe at broadcast schedule/edit/re-arm; stale jobs no-op —
+  no cancel plumbing) + an HOURLY `notifications-dispatch` reconcile sweep + a 2-hourly
+  GitHub fallback that goes RED when the pre-tick heartbeat is >150 min. The
+  scheduler-agnostic `POST /api/cron/notifications` (`requireServiceToken`) runs
+  `runNotificationTick` — broadcasts only now (reminders are phone-local). Pure
+  tz/recurrence math lives in `src/lib/schedule-notifications.ts` (+ `.test.ts`,
+  DB-free). Also drivable by an external pinger or the admin **"Run due now"** button.
+  See [[worker-service]].
 - **Admin gating:** the studio + groups require the **`broadcast`** capability (grantable;
   in `src/lib/admin-roles.ts` + `GRANTABLE_ADMIN_CAPS`). The whole `/admin` console is
   English-only (no i18n) — keep new admin UI English. Reminders (user-facing) ARE i18n'd.

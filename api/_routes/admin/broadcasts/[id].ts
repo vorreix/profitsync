@@ -8,6 +8,7 @@ import { db, serialize } from "../../../../src/lib/db/index.js"
 import { broadcasts, userGroups } from "../../../../src/lib/db/schema.js"
 import { requireAdminCap } from "../../../_lib/admin.js"
 import { linkError, sanitizeAudience, sanitizeSchedule, statusForMode } from "../../../_lib/broadcast-validate.js"
+import { enqueueNotificationTickAt } from "../../../_lib/worker-jobs.js"
 
 const TITLE_MAX = 120
 const BODY_MAX = 1000
@@ -73,6 +74,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .set({ title, body, imageUrl, link, linkType, importance, audience, schedule, status, nextFireAt, updatedAt: new Date() })
       .where(eq(broadcasts.id, id))
       .returning()
+    // Exact-time delivery for the (re)scheduled instant; a job from the OLD
+    // schedule just fires an idempotent no-op tick, so no cancel is needed.
+    if (nextFireAt) {
+      void enqueueNotificationTickAt(nextFireAt, `${id}:${nextFireAt.toISOString()}`).catch(() => {})
+    }
     return res.json(serialize(u))
   }
 

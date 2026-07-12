@@ -69,7 +69,8 @@ export function ClientNotificationForm({ clientId, canEdit = true }: Props) {
       if (!token) return
       const categories: NonNullable<NotificationPreferences["categories"]> = {}
       for (const { key, cat } of TRIGGERS) {
-        categories[cat] = { in_app: on[key], web_push: on[key] }
+        // The simplified per-client toggle drives every channel together.
+        categories[cat] = { in_app: on[key], web_push: on[key], mobile_push: on[key] }
       }
       await apiPut(query, token, { preferences: { muted, categories } })
       setDirty(false)

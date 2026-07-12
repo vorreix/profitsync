@@ -27,6 +27,11 @@ import { Switch } from "@/components/ui/switch"
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
 import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api"
+import {
+  ensureLocalNotificationPermission,
+  isLocalRemindersSupported,
+  syncLocalReminders,
+} from "@/lib/native-reminders"
 import type { NotificationReminder, ReminderSchedule } from "@/lib/types"
 
 type DayMode = "everyday" | "weekdays" | "custom"
@@ -85,6 +90,25 @@ export function RemindersCard() {
     void load()
   }, [load])
 
+  // Reminders are DELIVERED on the phone (V6): whenever the list settles —
+  // after load and after every optimistic mutation/revert — project it onto
+  // the OS alarm schedule. No-op on the web.
+  useEffect(() => {
+    if (!reminders || !isLocalRemindersSupported()) return
+    void syncLocalReminders(
+      reminders.map((r) => ({
+        id: r.id,
+        enabled: r.enabled,
+        label: r.label,
+        schedule: { times: r.schedule?.times ?? [], weekdays: r.schedule?.weekdays ?? [] },
+      })),
+      {
+        title: t("types.add_transaction_reminder.title"),
+        body: t("types.add_transaction_reminder.body"),
+      },
+    )
+  }, [reminders, t])
+
   const summarize = useCallback(
     (s: ReminderSchedule): string => {
       const wd = s.weekdays ?? []
@@ -101,6 +125,8 @@ export function RemindersCard() {
   )
 
   const toggleEnabled = async (r: NotificationReminder, enabled: boolean) => {
+    // Enabling on the phone needs the OS notification permission (Android 13+).
+    if (enabled && isLocalRemindersSupported()) void ensureLocalNotificationPermission()
     setReminders((list) => list?.map((x) => (x.id === r.id ? { ...x, enabled } : x)) ?? list)
     try {
       const token = await getToken()
@@ -137,6 +163,9 @@ export function RemindersCard() {
           <div>
             <p className="text-sm font-medium">{t("reminders.title")}</p>
             <p className="text-xs text-muted-foreground">{t("reminders.description")}</p>
+            {!isLocalRemindersSupported() && (
+              <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">{t("reminders.phoneOnly")}</p>
+            )}
           </div>
         </div>
         <Button size="sm" variant="outline" className="shrink-0" onClick={() => setEditing("new")}>

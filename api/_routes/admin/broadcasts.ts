@@ -10,6 +10,7 @@ import { broadcasts, userGroups } from "../../../src/lib/db/schema.js"
 import { requireAdminCap } from "../../_lib/admin.js"
 import { deliverBroadcast } from "../../_lib/broadcast-deliver.js"
 import { linkError, sanitizeAudience, sanitizeSchedule, statusForMode } from "../../_lib/broadcast-validate.js"
+import { enqueueNotificationTickAt } from "../../_lib/worker-jobs.js"
 import type { BroadcastAudience } from "../../../src/lib/types.js"
 
 const TITLE_MAX = 120
@@ -90,6 +91,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const { status, nextFireAt } = statusForMode(mode, schedule)
     const [row] = await db.insert(broadcasts).values({ ...base, status, nextFireAt }).returning()
+    // Exact-time delivery: one one-shot worker job at the fire instant
+    // (best-effort — the hourly sweep reconciles anything this misses).
+    if (nextFireAt) {
+      void enqueueNotificationTickAt(nextFireAt, `${row.id}:${nextFireAt.toISOString()}`).catch(() => {})
+    }
     return res.status(201).json(serialize(row))
   }
 

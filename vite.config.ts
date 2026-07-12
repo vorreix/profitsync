@@ -133,6 +133,11 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      // @capacitor-firebase/messaging's WEB implementation imports the firebase
+      // JS SDK (optional peer). We only use the plugin on native — web push is
+      // our own VAPID pipeline — so satisfy rollup with a tiny stub instead of
+      // shipping the whole SDK. See src/lib/firebase-messaging-stub.ts.
+      "firebase/messaging": path.resolve(__dirname, "./src/lib/firebase-messaging-stub.ts"),
     },
   },
   build: {
@@ -187,7 +192,8 @@ export default defineConfig({
           // (App.tsx guards the dynamic import with isNativeAndroid), so keep
           // them out of the eager web "vendor" chunk. One-way leaf — they
           // import nothing from our other chunks, so the graph stays acyclic.
-          if (id.includes("@capacitor/")) return "native"
+          // @capacitor-firebase (FCM) rides the same rule.
+          if (id.includes("@capacitor/") || id.includes("@capacitor-firebase/")) return "native"
           return "vendor"
         },
       },

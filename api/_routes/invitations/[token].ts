@@ -9,7 +9,7 @@ import {
   userProfiles,
 } from "../../../src/lib/db/schema.js"
 import { getUserId } from "../../_lib/auth.js"
-import { createNotification } from "../../_lib/notifications.js"
+import { createNotification, notifyOrgMembers } from "../../_lib/notifications.js"
 
 const clerk = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY! })
 
@@ -77,7 +77,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         eq(organizationMembers.userId, userId),
       ),
     )
-  if (!existing) {
+  const joined = !existing
+  if (joined) {
     await db.insert(organizationMembers).values({
       organizationId: invitation.organizationId,
       userId,
@@ -135,6 +136,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     actorUserId: userId,
     dedupeKey: `inv_accepted:${invitation.id}`,
   }).catch(() => {})
+
+  // Tell the rest of the org's owners/admins a new colleague actually joined
+  // (only on a real join, not a re-accepted link; the inviter got the personal
+  // notification above and the joiner obviously knows).
+  if (joined) {
+    void notifyOrgMembers(
+      invitation.organizationId,
+      {
+        type: "invitation_accepted",
+        title: "Invitation accepted",
+        body: `${accepterName} joined ${org?.name ?? "your organization"}`,
+        data: {
+          i18nKey: "types.invitation_accepted.title",
+          i18nBodyKey: "types.invitation_accepted.body",
+          i18nParams: { name: accepterName, org: org?.name ?? "" },
+        },
+        link: `/organizations/${invitation.organizationId}/members`,
+        actorUserId: userId,
+        dedupeKey: `inv_joined:${invitation.id}`,
+      },
+      { roles: ["owner", "admin"], excludeUserId: [invitation.invitedByUserId, userId] },
+    ).catch(() => {})
+  }
 
   return res.json({ invitation: serialize(accepted), organization: org })
 }
