@@ -1,7 +1,8 @@
 # Native apps (Android + iOS) — login-first, native-smooth, publishable
 
-Status: **in progress** · Started 2026-07-12 · Chain root: `feat/native-00-plan-maqbool`
-(stacked off `dev`)
+Status: **complete (code + docs)** · Started 2026-07-12 · Chain root:
+`feat/native-00-plan-maqbool` (stacked off `dev`). All 8 branches (00–07) pushed;
+remaining work is the human portal/store steps documented in `PUBLISHING.md`.
 
 This is the **single source of truth** and the living tracker for turning ProfitSync's
 Capacitor wrapper into two **publishable, native-smooth** apps (Android + iOS) that boot
@@ -96,8 +97,8 @@ is world-readable once shipped; treat it as public.
 | 03 | `feat/native-03-transitions-maqbool` | Direction-aware native page transitions | ✅ pushed |
 | 04 | `feat/native-04-apple-oauth-maqbool` | Sign in with Apple (web + native), i18n'd auth buttons | ✅ pushed |
 | 05 | `feat/native-05-ios-platform-maqbool` | Add + configure the iOS platform; build + boot in the simulator | ✅ simulator-verified |
-| 06 | `feat/native-06-release-signing-maqbool` | Android release signing + iOS export config + build pipeline | ⏳ |
-| 07 | `feat/native-07-publishing-docs-maqbool` | Play Store + App Store publishing/testing guides | ⏳ |
+| 06 | `feat/native-06-release-signing-maqbool` | Android release signing + iOS export config + build pipeline | ✅ gradle-verified |
+| 07 | `feat/native-07-publishing-docs-maqbool` | Play Store + App Store publishing/testing guides | ✅ pushed |
 
 ## Per-branch detail
 
@@ -180,21 +181,31 @@ is world-readable once shipped; treat it as public.
   status bar / Dynamic Island respected. Push / live Apple sign-in / APNs need a real device + portal
   config (documented in IOS.md + APPLE_OAUTH.md).
 
-### 06 — release signing + build pipeline
-- Android: `signingConfigs { release }` in `android/app/build.gradle` reading a **gitignored**
-  `android/key.properties` (+ committed `key.properties.example`); `bundleRelease` → signed `.aab`.
-  Recommend **Play App Signing** (Google holds the app key; you hold an upload key).
-- iOS: `ios/App/ExportOptions.plist` template for `xcodebuild -exportArchive`.
-- vite.config: **non-fatal warn** if a prod native mode (`android`/`ios`) ships a `pk_test_` key.
-- `android/credentials/.gitignore` belt-and-suspenders for `google-services.json`.
-- **Verify:** gate; `gradlew :app:tasks` shows the release signing wiring is valid (a real signed
-  build needs the operator's keystore).
+### 06 — release signing + build pipeline ✅
+- Android: `signingConfigs { release }` in `android/app/build.gradle` reads a **gitignored**
+  `android/key.properties` (+ committed `key.properties.example` with the `keytool` recipe).
+  Conditional wiring: with a keystore, `release` is signed with the upload key; **without one it
+  ships unsigned** (build config still valid) so no dev/CI machine depends on the keystore.
+  `bundleRelease` → `.aab`. Docs recommend **Play App Signing**.
+- iOS: `ios/App/ExportOptions.plist` template (App Store Connect, automatic signing) for
+  `xcodebuild -exportArchive`, with the full archive→export command in its header.
+- vite.config: **non-fatal warn** when `--mode android|ios` ships a `pk_test_` Clerk key.
+- `android/credentials/.gitignore` — belt-and-suspenders (ignore all but the example).
+- **Verified:** `./gradlew :app:signingReport` — with NO keystore the release variant is
+  `Config: null` (unsigned, config valid); with a throwaway keystore + `key.properties` it shows
+  `Config: release` bound to the upload key. The vite warn fires on a `pk_test` `--mode ios` build
+  and is silent on `pk_live`. Gate green. (A real signed store build needs the operator's own
+  keystore / Apple distribution cert — documented in native-07 `SIGNING.md`.)
 
-### 07 — publishing + signing docs
-- `docs/native/iOS.md` (mirror of ANDROID.md), `docs/native/SIGNING.md` (keystore + Play App
-  Signing + iOS certs/profiles), `docs/native/PUBLISHING.md` (first-timer step-by-step for both
-  stores: accounts + fees, app registration, internal testing / TestFlight, listings + screenshots,
-  privacy/data-safety, review, staged release), `docs/native/README.md` index; refresh ANDROID.md.
+### 07 — publishing + signing docs ✅
+- `docs/native/IOS.md` (written in 05), **`SIGNING.md`** (upload keystore + Play App Signing +
+  iOS distribution cert/profile/automatic signing, and what's secret vs public),
+  **`PUBLISHING.md`** (first-timer step-by-step for both stores: accounts + fees, app
+  registration, **Internal testing / TestFlight** before production, listings + screenshots,
+  Data Safety / App Privacy, review, staged/phased release, update cadence, common rejections),
+  **`README.md`** docs index; ANDROID.md's stale "release signing not configured" note refreshed
+  to point at the now-wired signing + the new docs.
+- Docs-only branch — verified by the gate (i18n/lint/typecheck/tests) + read-through.
 
 ## Verification matrix
 
@@ -237,4 +248,13 @@ is world-readable once shipped; treat it as public.
   page transitions, Apple OAuth). Branch 05 (iOS platform) implemented + **simulator-verified**
   (login-first boot with Apple + Google buttons, no Firebase crash). iOS uses **SPM** not CocoaPods
   (Xcode 26); brand assets via a new `scripts/ios-brand-assets.mjs` reusing the shared `assets/`;
-  `IOS.md` written. Next: 06 (release signing) → 07 (publishing docs).
+  `IOS.md` written.
+- 2026-07-12: branch 06 (release signing) implemented + **gradle-verified** (signingReport proves
+  both the unsigned-no-keystore and signed-with-keystore paths). Android `signingConfigs.release`
+  from a gitignored `key.properties`; iOS `ExportOptions.plist`; vite pk_test warn; credentials
+  `.gitignore`.
+- 2026-07-12: branch 07 (publishing docs) written — `SIGNING.md`, `PUBLISHING.md`, `README.md`
+  index; ANDROID.md refreshed. **Initiative complete on the code+docs side**: all 8 branches
+  (00–07) pushed as a stacked chain. Remaining is human portal/store work (Clerk+Apple sign-in
+  config, Firebase APNs/`GoogleService-Info.plist`, keystore creation, store registrations +
+  listings + test-track uploads) — all documented. `gh` unauthenticated → user opens the 8 PRs.
