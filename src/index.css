@@ -192,6 +192,32 @@
   .ios-tap {
     -webkit-tap-highlight-color: transparent;
   }
+  /* Native-app touch hardening — applied only inside the Capacitor WebView
+     (NativeShell tags <html> with `.native-app`), never on the web/PWA. Makes
+     the shell feel like an app instead of a web page: no long-press callouts or
+     image save menus, no text selection on chrome, no pull-to-refresh / rubber-
+     band bounce, no double-tap zoom. Real content stays selectable via `.selectable`
+     and native inputs keep their own behaviour. */
+  html.native-app {
+    overscroll-behavior: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  html.native-app,
+  html.native-app body {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    touch-action: manipulation;
+  }
+  html.native-app input,
+  html.native-app textarea,
+  html.native-app select,
+  html.native-app [contenteditable="true"],
+  html.native-app .selectable {
+    -webkit-user-select: text;
+    user-select: text;
+    -webkit-touch-callout: default;
+  }
   /* Money-flow canvas (/flow): glide nodes to new positions on expand/collapse
      — compositor-only (transform), so no reflow. The actively-dragged node and
      reduced-motion users get NO transition (drag must track the finger 1:1). */

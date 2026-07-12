@@ -59,6 +59,7 @@ import { QuickAddModal, type QuickAddEntity } from "@/components/QuickAddModal"
 import { AddTransactionDialog, type CreatedTxInfo } from "@/components/transactions/AddTransactionDialog"
 import { useCurrency } from "@/lib/currency-context"
 import { formatMoney } from "@/lib/wealth"
+import { haptic } from "@/lib/native-shell"
 
 type TabItem = { labelKey: string; href: string; icon: typeof LayoutDashboard }
 
@@ -405,6 +406,7 @@ export function MobileAppLayout() {
             key={action.href}
             className="flex items-center gap-2 animate-in fade-in slide-in-from-bottom-1 duration-150 cursor-pointer group/action"
             onClick={() => {
+              void haptic("selection")
               if (action.kind === "transaction") setAddTxOpen(true)
               else setQuickAdd(action.kind)
               setFabOpen(false)
@@ -426,7 +428,7 @@ export function MobileAppLayout() {
           size="icon"
           className="size-14 rounded-full shadow-lg pressable"
           aria-label={pageAction ? t(pageAction.labelKey) : undefined}
-          onClick={() => { if (pageAction) navigate(pageAction.href); else setFabOpen((o) => !o) }}
+          onClick={() => { void haptic("light"); if (pageAction) navigate(pageAction.href); else setFabOpen((o) => !o) }}
         >
           {!pageAction && fabOpen ? <X className="size-5" /> : <Plus className="size-5" />}
         </Button>
@@ -447,6 +449,7 @@ export function MobileAppLayout() {
               <NavLink
                 key={tab.href}
                 to={tab.href}
+                onClick={() => void haptic("selection")}
                 className={`pressable flex flex-col items-center justify-center gap-0.5 py-2 px-1 rounded-md ios-tap ${
                   active ? "text-primary" : "text-muted-foreground"
                 }`}
