@@ -1505,6 +1505,7 @@
     "reminders": {
       "title": "Transaktions-Erinnerungen",
       "description": "Lass dich daran erinnern, Einnahmen und Ausgaben zu erfassen. Ein Tippen öffnet das Formular „Transaktion hinzufügen“.",
+      "phoneOnly": "Erinnerungen klingeln auf deinem Handy — installiere die ProfitSync-Android-App, um sie zu erhalten.",
       "add": "Erinnerung hinzufügen",
       "none": "Noch keine Erinnerungen",
       "none_hint": "Füge eine hinzu, um ans Erfassen deiner Transaktionen erinnert zu werden.",

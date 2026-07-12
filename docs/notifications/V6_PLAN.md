@@ -39,7 +39,7 @@ Status: **in progress** · Started 2026-07-12 · Chain root: `feat/notif6-00-pla
 | # | Branch | Delivers | Status |
 |---|--------|----------|--------|
 | 00 | `feat/notif6-00-plan` | This plan | ✅ pushed |
-| 01 | `feat/notif6-01-local-reminders` | Phone-local reminder delivery + web banner + tick stops delivering reminders | ⏳ |
+| 01 | `feat/notif6-01-local-reminders` | Phone-local reminder delivery + web banner + tick stops delivering reminders | ✅ pushed |
 | 02 | `feat/notif6-02-exact-jobs` | Exact-time broadcast jobs, hourly sweep, GH fallback downshift | ⏳ |
 | 03 | `feat/notif6-03-docs` | SCHEDULER/SYSTEM model rewrite, ops notes, final verification summary | ⏳ |
 
@@ -94,3 +94,22 @@ Status: **in progress** · Started 2026-07-12 · Chain root: `feat/notif6-00-pla
 - 2026-07-12: plan written; decisions locked (mobile-only reminders, exact-time
   jobs, hourly sweep); worker `run_at`/`dedupe_key` support verified in
   `worker/app/internal/{httpapi/server.go,store/store.go}` — no Go changes needed.
+- 2026-07-12 (01): phone-local reminders SHIPPED + verified end-to-end on the
+  API 34 emulator: reminder created on the WEB → phone boot resync pulled the
+  settings and projected them onto the OS alarm schedule (cancel-all +
+  re-schedule) → **the OS fired the notification with the app's own copy** →
+  tap deep-linked to /transactions?new=1 → the schedule re-armed for the next
+  day. Server tick no longer delivers reminders. ⚠️ Two hard-won findings:
+  (a) **Capacitor plugin objects are Proxies that forward `then` to native** —
+  returning one from an async function makes the await HANG FOREVER (this had
+  silently broken notif5-05's FCM listener attach too; fixed in both
+  native-push.ts and native-reminders.ts by wrapping the proxy — never resolve
+  a promise WITH a plugin proxy). (b) Without the "Alarms & reminders" special
+  access, Android delivers via a ±7.5-min inexact window (observed ~4 min
+  late) — accepted for a daily nudge (Play-policy-friendly); an exact-alarms
+  opt-in via the plugin's changeExactNotificationSetting is the future knob.
+  debug_network_security_config now allows 127.0.0.1/10.0.2.2 cleartext
+  (emulators with broken native DNS need `adb reverse` + 127.0.0.1). Committed
+  DB-free tests lock the weekday mapping (ISO→Capacitor), stable int32 ids,
+  and schedule expansion. Test reminders deleted, app uninstalled, emulator
+  shut down.
