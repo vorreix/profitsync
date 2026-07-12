@@ -19,9 +19,25 @@ import { nextRecurringFire, reminderDueSlot } from "../../../src/lib/schedule-no
 import type { BroadcastAudience, BroadcastSchedule, BroadcastStats, ReminderSchedule } from "../../../src/lib/types.js"
 
 /** Run one scheduler tick. Exported so the admin "Run due now" route can reuse it. */
-export async function runNotificationTick(now: Date = new Date()): Promise<{ reminders: number; broadcasts: number }> {
+export async function runNotificationTick(
+  now: Date = new Date(),
+): Promise<{ reminders: number; broadcasts: number; previousTickAt: string | null }> {
   let firedReminders = 0
   let firedBroadcasts = 0
+
+  // Read the heartbeat BEFORE this tick overwrites it. Callers use its age to
+  // detect a dead PRIMARY scheduler: the GitHub fallback goes red when the
+  // previous tick is older than the worker's cadence should ever allow.
+  let previousTickAt: string | null = null
+  try {
+    const [state] = await db
+      .select()
+      .from(notificationSchedulerState)
+      .where(eq(notificationSchedulerState.id, "default"))
+    previousTickAt = state?.lastTickAt ? state.lastTickAt.toISOString() : null
+  } catch {
+    /* observability only — never fail the tick */
+  }
 
   // ── Due reminders ──────────────────────────────────────────────────────────
   const reminders = await db.select().from(notificationReminders).where(eq(notificationReminders.enabled, true))
@@ -128,15 +144,22 @@ export async function runNotificationTick(now: Date = new Date()): Promise<{ rem
     console.error("[cron/notifications] heartbeat write failed", err)
   }
 
-  return { reminders: firedReminders, broadcasts: firedBroadcasts }
+  return { reminders: firedReminders, broadcasts: firedBroadcasts, previousTickAt }
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" })
   if (!requireServiceToken(req, res)) return
   try {
-    const processed = await runNotificationTick()
-    return res.json({ ok: true, processed })
+    const { previousTickAt, ...processed } = await runNotificationTick()
+    return res.json({
+      ok: true,
+      processed,
+      previous_tick_at: previousTickAt,
+      previous_tick_age_seconds: previousTickAt
+        ? Math.round((Date.now() - new Date(previousTickAt).getTime()) / 1000)
+        : null,
+    })
   } catch (err) {
     console.error("[cron/notifications] tick failed", err)
     return res.status(500).json({ error: "Tick failed" })

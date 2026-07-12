@@ -28,10 +28,11 @@ endef
 # ----------------------------------------------------------------------------
 
 .PHONY: up
-up: env ## Build (if needed) + start the worker stack, detached
+up: env ## Build (if needed) + start the worker stack, detached (+ registers the notification schedule)
 	@echo "→ starting $(WORKER_PROJECT)..."
 	$(call compose, up -d --build)
 	@echo "✓ up — \`make logs\` to follow, \`make health\` to check"
+	@$(MAKE) --no-print-directory register
 
 .PHONY: start
 start: ## Start the stack without rebuilding
@@ -50,14 +51,16 @@ restart: ## Restart just the worker service
 	$(call compose, restart worker)
 
 .PHONY: rebuild
-rebuild: ## Rebuild the image + recreate the containers
+rebuild: ## Rebuild the image + recreate the containers (+ registers the notification schedule)
 	$(call compose, up -d --build --force-recreate)
+	@$(MAKE) --no-print-directory register
 
 .PHONY: up-proxy
 up-proxy: env ## Start the stack WITH the Caddy HTTPS proxy (prod; needs WORKER_DOMAIN + DNS + ports 80/443)
 	@echo "→ starting $(WORKER_PROJECT) + Caddy TLS proxy..."
 	$(call compose, --profile proxy up -d --build)
 	@echo "✓ up — Caddy is fronting https://$$(grep -E '^WORKER_DOMAIN=' $(DEPLOY_DIR)/.env | cut -d= -f2 || echo worker.profitsync.net)"
+	@$(MAKE) --no-print-directory register
 
 .PHONY: proxy-logs
 proxy-logs: ## Follow the Caddy reverse-proxy logs (cert issuance, requests)
@@ -107,12 +110,20 @@ psql: ## Open psql on the worker's own queue database
 	$(call compose, exec postgres psql -U worker -d worker)
 
 .PHONY: register
-register: ## Register the notification cron schedule on the worker (curl; reads deploy/.env)
+register: ## Register the notification cron schedule on the worker (retries while it boots)
 	@cd $(DEPLOY_DIR) && set -a && . ./.env && set +a && \
-		curl -fsS -X POST "http://localhost:$${WORKER_PORT:-8080}/v1/schedules" \
+	for i in 1 2 3 4 5 6 7 8 9 10; do \
+		if curl -fsS -X POST "http://localhost:$${WORKER_PORT:-8080}/v1/schedules" \
 			-H "Authorization: Bearer $$WORKER_API_TOKEN" -H 'Content-Type: application/json' \
 			-d '{"name":"notifications-dispatch","type":"app.trigger","cron":"*/5 * * * *","timezone":"UTC","payload":{"path":"/api/cron/notifications"}}' \
-		&& echo "  ✓ notifications-dispatch registered (the worker now drives reminders + scheduled broadcasts)"
+			>/dev/null 2>&1; then \
+			echo "  ✓ notifications-dispatch registered (the worker now drives reminders + scheduled broadcasts)"; exit 0; \
+		fi; \
+		echo "  … worker not ready yet (attempt $$i/10), retrying in 3s"; sleep 3; \
+	done; \
+	echo "  ✗ FAILED to register the notification schedule — reminders/broadcasts will NOT fire from this worker."; \
+	echo "    Retry with 'make register' or use /admin → Worker → 'Register notification schedule'."; \
+	exit 1
 
 .PHONY: env
 env: ## Verify deploy/.env exists (copy from .env.example if missing)
