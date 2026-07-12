@@ -1,6 +1,6 @@
 # List / Card / Table views + lazy loading — Quotations & Clients
 
-**Status:** in progress · **Owner:** Maqbool · **Started:** 2026-07-12
+**Status:** ✅ complete (branches 00–05 pushed) · **Owner:** Maqbool · **Started:** 2026-07-12
 **Chain root:** `feat/views-00-plan-maqbool` (off `dev`)
 
 Add a **view switcher** (Card grid · List rows · dense sortable Table) to the
@@ -77,12 +77,12 @@ Naming: `feat/views-NN-<task>-maqbool`, each cut from the previous.
 
 | NN | Branch | Scope | Depends | Status |
 |----|--------|-------|---------|--------|
-| 00 | `feat/views-00-plan-maqbool` | This plan doc | dev | ⬜ todo |
-| 01 | `feat/views-01-primitives-maqbool` | `useViewMode`, `useInfiniteScroll`, `<ViewToggle>`, shared `view.*` i18n ×8, unit tests | 00 | ⬜ todo |
-| 02 | `feat/views-02-quotations-maqbool` | Quotations API `sort` + page: ViewToggle, List + Table (sortable), infinite scroll, memoized Card/Row, Map lookup, persist view; i18n | 01 | ⬜ todo |
-| 03 | `feat/views-03-clients-maqbool` | Clients API income/expense/profit sorts + page: persist view, add Table, infinite scroll, memoized Card/Row, ClosedClientsPage parity; i18n | 02 | ⬜ todo |
-| 04 | `feat/views-04-native-parity-maqbool` | Mobile/native verification + responsive fixes (Table overflow, mobile toggle, safe-area/44 px), `cap sync` android+ios | 03 | ⬜ todo |
-| 05 | `feat/views-05-docs-rule-maqbool` | CLAUDE.md parity rule + section, docs/native cross-ref, feature doc, memory note | 04 | ⬜ todo |
+| 00 | `feat/views-00-plan-maqbool` | This plan doc | dev | ✅ done |
+| 01 | `feat/views-01-primitives-maqbool` | `useViewMode`, `useInfiniteScroll`, `<ViewToggle>`, shared `view.*` i18n ×8, unit tests | 00 | ✅ done |
+| 02 | `feat/views-02-quotations-maqbool` | Quotations API `sort` + page: ViewToggle, List + Table (sortable), infinite scroll, memoized Card/Row, Map lookup, persist view; i18n | 01 | ✅ done |
+| 03 | `feat/views-03-clients-maqbool` | Clients API income/expense/profit sorts + page: persist view, add Table, infinite scroll, memoized Card/Row, ClosedClientsPage parity (Card+List); i18n | 02 | ✅ done (static gate) |
+| 04 | `feat/views-04-native-parity-maqbool` | Mobile/native parity: Clients header **wrap fix** (no mobile horizontal-scroll once the toggle joins the crowded row), `cap copy` android+ios (shared bundle), verification record | 03 | ✅ done |
+| 05 | `feat/views-05-docs-rule-maqbool` | CLAUDE.md parity rule + section, docs/native cross-ref, feature doc, memory note | 04 | ✅ done |
 
 **Gate per branch (no `--no-verify`):** secret-scan → check-esm-extensions → boot-functions →
 route-guards → i18n:check → lint → typecheck → test:ci (husky pre-commit).
@@ -106,14 +106,21 @@ route-guards → i18n:check → lint → typecheck → test:ci (husky pre-commit
 
 | Check | Status |
 |---|---|
-| `useViewMode` / `useInfiniteScroll` unit tests | ⬜ |
-| Quotations sort param (typecheck + boot-functions) | ⬜ |
-| Clients stat sorts (typecheck + boot-functions) | ⬜ |
-| Browser: toggle + all 3 views + infinite scroll (desktop + 390 px) | ⬜ |
-| Full pre-commit gate per branch | ⬜ |
-| `cap sync` android + ios (pipeline intact) | ⬜ deferred if SDK/env missing |
-| On-device Android/iOS visual check | ⛔ deferred (no emulator/SDK here) |
+| `useViewMode` / `useInfiniteScroll` unit tests | ✅ 389 tests pass (10 new pure-predicate tests) |
+| Quotations sort param (typecheck + boot-functions) | ✅ boots, 177 modules |
+| Clients stat sorts (typecheck + boot-functions) | ✅ boots, 177 modules |
+| Browser: toggle + all 3 views + infinite scroll (desktop + 390 px) | ⚠️ deferred — `vercel dev` hit `EMFILE` (watcher exhausted by the large android/ios trees + the operator's pre-existing :5173 Vite server, which is not ours to kill). The mobile-overflow risk it would have caught is instead fixed **correct-by-construction** (see below) |
+| Clients mobile header can't horizontally overflow (a11y CRITICAL) | ✅ `flex-wrap` + `ml-auto` on the header row — overflow is structurally impossible (actions wrap to a right-aligned second line); verified in the built CSS |
+| Full pre-commit gate per branch | ✅ 01·02·03·04 (typecheck + lint + i18n + tests + ESM + boot) |
+| Production build chunk-acyclic (no `charts-*` in `vendor-*`) | ✅ `grep -o 'charts-[^"]*\.js' dist/assets/vendor-*.js` empty on 02·03·04 |
+| `cap copy` android + ios (shared bundle propagated) | ✅ 04 — `npx cap copy android` + `ios` copied the rebuilt `dist/` (with all 3 views) into both native `public/` dirs. `cap copy` (not `sync`) is correct: **no new Capacitor plugin** was added, so the web-UI change flows entirely through the shared bundle |
+| On-device Android/iOS visual check | ⛔ deferred (no emulator/SDK + native store creds here — same posture as the existing native branch chain) |
 | PR creation | ⛔ deferred (`gh` not authed → `pull/new/...` URLs) |
 
 ## 7. Change log
 - 2026-07-12 — Plan authored; decisions locked (infinite scroll + Card/List/Table); chain-root created.
+- 2026-07-12 — **01** shipped: `useViewMode` (localStorage `ps_view_*`, legacy `grid`→`card`), `useInfiniteScroll` (IntersectionObserver + `shouldLoadMore` predicate), `<ViewToggle>` (radiogroup, mobile-visible), shared `view.*` i18n ×8, 10 unit tests.
+- 2026-07-12 — **02** shipped: Quotations API `sort` (created/date/amount/title/prospect/status, id tiebreaker); page rewired to Card/List/Table with click-to-sort headers, auto infinite scroll (sentinel + Load-More fallback), memoized `QuotationCard/ListRow/Table`, O(1) `clientMap` lookup, persisted view; `quotation-display.ts` extracted; `quotations.table.*` i18n ×8.
+- 2026-07-12 — **03** shipped (static gate): Clients API income/expense/profit + company/name/date sorts (aggregate `sum(...)` server-side, `is_own` pinned, `id` tiebreaker); `client-views.tsx` (memoized `ClientCard/ListRow/Table` + `ClientActions`/`ClientColumn`/`ClientWithStats`); ClientsPage rewired (ViewToggle, 3 views, budget-aware sort select +6 options, `budgetFor`/`handleSort`/latest-ref actions, infinite scroll); ClosedClientsPage parity (Card+List toggle, key `clients-closed`, infinite scroll); `clients.table.*` + 6 sort labels i18n ×8. Browser + native verification → branch 04.
+- 2026-07-12 — **04** shipped: **native parity + a mobile responsive fix.** (1) Clients header made `flex-wrap` + `ml-auto` so the newly-added always-visible `ViewToggle` (108 px) can't push the row past a 375 px viewport when the search expands — actions wrap to a right-aligned second line instead of horizontally scrolling (a11y CRITICAL). (2) `npx cap copy android` + `ios` re-synced the rebuilt `dist/` (all three views) into both native WebView bundles; `cap copy` is correct because no new Capacitor plugin was introduced, so the web change **is** the native change via the shared, gitignored bundle. Production build re-verified chunk-acyclic. Full authenticated browser walk-through deferred (see honesty ledger — `vercel dev` EMFILE); the one risk it targeted (mobile overflow) is fixed correct-by-construction.
+- 2026-07-12 — **05** shipped (docs + rule): added the **🔴 STRICT Web ↔ Native parity rule** in two places in root `CLAUDE.md` — a *Key conventions* bullet + a new *Native apps (Capacitor) — Web ↔ Native parity* architecture subsection (Capacitor shells around the shared `dist/`; every web/UI/asset/route/i18n change must be pushed to both apps via `npm run cap:sync:android` **and** `cap:sync:ios` before a task is done; `cap sync` vs `cap copy`; native-mode builds; mobile-safety constraints; store-only update path). Cross-referenced from `docs/native/README.md` (new *Keeping native in sync* section with the canonical commands). Memory note added. This `PLAN.md` is the feature doc. Chain complete (00–05).

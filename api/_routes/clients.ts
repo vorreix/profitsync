@@ -55,11 +55,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       tagFilter,
     )
 
+    // Per-client money aggregates — reused by both the select and the sort so the
+    // table's Income/Expense/Profit columns can be ordered server-side (correct
+    // with pagination; a client-only sort would only order the loaded page).
+    const incomingSum = sql<string>`coalesce(sum(case when ${transactions.type} = 'incoming' then ${transactions.amount}::numeric else 0 end), 0)`
+    const outgoingSum = sql<string>`coalesce(sum(case when ${transactions.type} = 'outgoing' then ${transactions.amount}::numeric else 0 end), 0)`
+    const profitSum = sql`(${incomingSum} - ${outgoingSum})`
+
     const orderBy = (() => {
       switch (sort) {
         case "name_asc": return asc(clients.name)
         case "name_desc": return desc(clients.name)
+        case "company_asc": return asc(clients.company)
+        case "company_desc": return desc(clients.company)
         case "date_asc": return asc(clients.createdAt)
+        case "income_asc": return asc(incomingSum)
+        case "income_desc": return desc(incomingSum)
+        case "expense_asc": return asc(outgoingSum)
+        case "expense_desc": return desc(outgoingSum)
+        case "profit_asc": return asc(profitSum)
+        case "profit_desc": return desc(profitSum)
+        case "date_desc":
         default: return desc(clients.createdAt)
       }
     })()
@@ -82,8 +98,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       closedAt: clients.closedAt,
       createdAt: clients.createdAt,
       updatedAt: clients.updatedAt,
-      totalIncoming: sql<string>`coalesce(sum(case when ${transactions.type} = 'incoming' then ${transactions.amount}::numeric else 0 end), 0)`,
-      totalOutgoing: sql<string>`coalesce(sum(case when ${transactions.type} = 'outgoing' then ${transactions.amount}::numeric else 0 end), 0)`,
+      totalIncoming: incomingSum,
+      totalOutgoing: outgoingSum,
       // Direct attachments on the client (correlated subquery → no row fan-out
       // from the transactions LEFT JOIN above). Drives the list paperclip badge.
       attachmentCount: sql<number>`(select count(*)::int from client_attachments where client_id = ${clients.id})`,

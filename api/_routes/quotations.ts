@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { and, count, desc, eq, getTableColumns, ilike, isNull, or, sql } from "drizzle-orm"
+import { and, asc, count, desc, eq, getTableColumns, ilike, isNull, or, sql, type SQL } from "drizzle-orm"
 import { db, serialize } from "../../src/lib/db/index.js"
 import { quotations } from "../../src/lib/db/schema.js"
 import { canWrite, requireAuth, requireBusinessFeature } from "../_lib/auth.js"
@@ -13,6 +13,29 @@ const PAGE_SIZE = 20
 
 const isIsoDate = (v: unknown): v is string => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v)
 
+/**
+ * Server-side ordering for the table view's sortable columns. Default keeps the
+ * historical `created_at desc` order (what the card/list grid shows). `id` is the
+ * stable tie-breaker so pages don't drift when rows share a sort value.
+ */
+function orderForSort(sort: string | undefined): SQL[] {
+  switch (sort) {
+    case "created_asc": return [asc(quotations.createdAt), asc(quotations.id)]
+    case "date_desc": return [desc(quotations.date), desc(quotations.id)]
+    case "date_asc": return [asc(quotations.date), asc(quotations.id)]
+    case "amount_desc": return [desc(quotations.amount), desc(quotations.id)]
+    case "amount_asc": return [asc(quotations.amount), asc(quotations.id)]
+    case "title_asc": return [asc(quotations.title), asc(quotations.id)]
+    case "title_desc": return [desc(quotations.title), desc(quotations.id)]
+    case "prospect_asc": return [asc(quotations.prospectName), asc(quotations.id)]
+    case "prospect_desc": return [desc(quotations.prospectName), desc(quotations.id)]
+    case "status_asc": return [asc(quotations.status), asc(quotations.id)]
+    case "status_desc": return [desc(quotations.status), desc(quotations.id)]
+    case "created_desc":
+    default: return [desc(quotations.createdAt), desc(quotations.id)]
+  }
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ctx = await requireAuth(req, res)
   if (!ctx) return
@@ -21,9 +44,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { userId, orgId, role } = ctx
 
   if (req.method === "GET") {
-    const { search, status, page, dateFrom, dateTo, closed, includeClosed, tag } = req.query as {
-      search?: string; status?: string; page?: string; dateFrom?: string; dateTo?: string; closed?: string; includeClosed?: string; tag?: string
+    const { search, status, page, dateFrom, dateTo, closed, includeClosed, tag, sort } = req.query as {
+      search?: string; status?: string; page?: string; dateFrom?: string; dateTo?: string; closed?: string; includeClosed?: string; tag?: string; sort?: string
     }
+    const orderBy = orderForSort(sort)
 
     // `?tag=#x` → jsonb containment on the GIN-indexed tags array (normalized).
     const normalizedTag = tag ? normalizeTagName(tag) : ""
@@ -82,7 +106,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           .select(selectFields)
           .from(quotations)
           .where(whereClause)
-          .orderBy(desc(quotations.createdAt), desc(quotations.id))
+          .orderBy(...orderBy)
           .limit(PAGE_SIZE)
           .offset(offset),
       ])
@@ -94,7 +118,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .select(selectFields)
       .from(quotations)
       .where(whereClause)
-      .orderBy(desc(quotations.createdAt), desc(quotations.id))
+      .orderBy(...orderBy)
     return res.json(rows.map(serialize))
   }
 
