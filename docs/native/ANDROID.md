@@ -59,6 +59,46 @@ full lockup for the splash. The adaptive icon uses PNG layers
 (`@mipmap/ic_launcher_background` + `@mipmap/ic_launcher_foreground`); the
 Capacitor template's vector drawables were deleted.
 
+## Push notifications (FCM)
+
+The app's native push channel is **FCM** via `@capacitor-firebase/messaging`
+(one FCM token on Android AND iOS — Firebase wraps APNs). Web push stays on the
+VAPID pipeline; the two never mix. Everything **no-ops safely when
+unconfigured**: the APK builds and runs without `google-services.json`, and the
+server skips FCM without its env var — so this setup is optional until you
+flip it on.
+
+One-time setup (~10 min, needs `firebase login` / console access):
+
+1. **Firebase project**: console.firebase.google.com → add project (say
+   `profitsync-app`). No Blaze upgrade needed — FCM is free on Spark.
+2. **Android app**: add an Android app with package
+   `com.vorreix.profitsync`, download **`google-services.json`** into
+   `android/app/`. It's gitignored — each machine that builds release APKs
+   places its own copy. The gradle hook auto-applies the plugin when the file
+   exists (stock Capacitor behavior, already wired).
+3. **Server key**: Project settings → Service accounts → *Generate new private
+   key* (a JSON file). Set it on Vercel as **`FCM_SERVICE_ACCOUNT_JSON`**
+   (paste raw JSON or base64 of it) for Production (+ Preview if wanted):
+   `vercel env add FCM_SERVICE_ACCOUNT_JSON production`.
+4. Rebuild + reinstall the app. In-app: Profile → Notifications → *Enable
+   push notifications* → *Send test*.
+5. **iOS (later)**: in the Apple Developer portal create an APNs key (`.p8`)
+   and upload it under Firebase → Project settings → Cloud Messaging. Same
+   plugin, same server sender, zero server changes.
+
+How it hangs together: the toggle registers the device token via
+`POST /api/notifications/push { channel: "fcm" }` (`src/lib/native-push.ts`);
+`api/_lib/push-fcm.ts` sends via FCM HTTP v1 (service-account JWT, no SDK);
+notification taps deep-link via the `data.url` payload (listener attached in
+`AppLayout`). Token rotation re-registers automatically; dead tokens are pruned
+on send. Delivery outcomes appear in `/admin` → Worker (push_events, source
+`fcm:*`).
+
+**Bundle note:** `firebase/messaging` (the plugin's web-only optional peer) is
+aliased to a stub in `vite.config.ts` — do not install the firebase JS SDK for
+this; native push never runs in the browser.
+
 ## Shipping an app update (keep the APK in sync with the web app)
 
 The APK ships a frozen copy of the web bundle — deploying the website does
