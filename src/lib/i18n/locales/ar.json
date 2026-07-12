@@ -1634,5 +1634,10 @@
     "sortAmountHigh": "أعلى مبلغ",
     "sortAmountLow": "أقل مبلغ",
     "sortName": "الاسم"
+  },
+  "auth": {
+    "continueWithGoogle": "المتابعة باستخدام Google",
+    "continueWithApple": "المتابعة باستخدام Apple",
+    "oauthError": "تعذّر بدء تسجيل الدخول. يرجى المحاولة مرة أخرى."
   }
 }

@@ -1634,5 +1634,10 @@
     "sortAmountHigh": "Importo più alto",
     "sortAmountLow": "Importo più basso",
     "sortName": "Nome"
+  },
+  "auth": {
+    "continueWithGoogle": "Continua con Google",
+    "continueWithApple": "Continua con Apple",
+    "oauthError": "Impossibile avviare l'accesso. Riprova."
   }
 }

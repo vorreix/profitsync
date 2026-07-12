@@ -1634,5 +1634,10 @@
     "sortAmountHigh": "सर्वाधिक राशि",
     "sortAmountLow": "न्यूनतम राशि",
     "sortName": "नाम"
+  },
+  "auth": {
+    "continueWithGoogle": "Google से जारी रखें",
+    "continueWithApple": "Apple से जारी रखें",
+    "oauthError": "साइन-इन शुरू नहीं किया जा सका। कृपया पुनः प्रयास करें।"
   }
 }

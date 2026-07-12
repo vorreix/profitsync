@@ -1,5 +1,16 @@
 apply plugin: 'com.android.application'
 
+// Release signing is driven by a gitignored android/key.properties (template:
+// key.properties.example). When it's absent — every dev machine, CI without the
+// secret — the release build type simply ships UNSIGNED, so debug builds and the
+// project config never depend on the keystore. See docs/native/SIGNING.md.
+def keystorePropertiesFile = rootProject.file("key.properties")
+def keystoreProperties = new Properties()
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
+def hasReleaseKeystore = keystorePropertiesFile.exists() && keystoreProperties['storeFile'] != null
+
 android {
     namespace = "com.vorreix.profitsync"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -16,10 +27,25 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        release {
+            if (hasReleaseKeystore) {
+                storeFile file(keystoreProperties['storeFile'])
+                storePassword keystoreProperties['storePassword']
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword keystoreProperties['keyPassword']
+            }
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            // Only attach the signing config when a real keystore is present;
+            // otherwise the release artifact is unsigned (still builds).
+            if (hasReleaseKeystore) {
+                signingConfig signingConfigs.release
+            }
         }
     }
 }

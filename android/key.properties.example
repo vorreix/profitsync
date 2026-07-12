@@ -1,0 +1,25 @@
+# Android release signing — copy this to `android/key.properties` (gitignored)
+# and fill in real values to produce a SIGNED release .aab/.apk.
+#
+# 1. Generate a one-time UPLOAD keystore (keep it safe + backed up; losing it
+#    means you can never update the app unless you enrolled in Play App Signing):
+#
+#      keytool -genkeypair -v \
+#        -keystore ~/profitsync-upload.jks \
+#        -alias upload -keyalg RSA -keysize 2048 -validity 9125
+#
+#    Store the .jks OUTSIDE the repo (anywhere gitignored). *.jks/*.keystore are
+#    gitignored, but keeping it out of the tree entirely is safest.
+#
+# 2. Point storeFile at its ABSOLUTE path and set the passwords/alias you chose.
+#
+# 3. Recommended: enrol the app in **Play App Signing** (Play Console does this on
+#    first upload). Google then holds the real app-signing key; this file's
+#    keystore is only your *upload* key, which Google lets you reset if lost.
+#
+# See docs/native/SIGNING.md for the full walkthrough.
+
+storeFile=/absolute/path/to/profitsync-upload.jks
+storePassword=CHANGE_ME
+keyAlias=upload
+keyPassword=CHANGE_ME
