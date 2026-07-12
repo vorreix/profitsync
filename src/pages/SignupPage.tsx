@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { ArrowRight, TrendingUp } from "lucide-react"
 import { InstallAppBanner } from "@/components/InstallAppBanner"
-import { NativeGoogleAuthButton } from "@/components/NativeGoogleAuthButton"
+import { NativeOAuthButton } from "@/components/NativeOAuthButton"
 import { initPwa } from "@/lib/pwa/register-sw"
 
 export function SignupPage() {
@@ -42,11 +42,20 @@ export function SignupPage() {
     <div className="min-h-screen flex flex-col items-center justify-center bg-muted/30 p-4 gap-4">
       {continued ? (
         <div className="flex flex-col items-center gap-4">
-          <NativeGoogleAuthButton
-            mode="sign-up"
-            completeUrl={target}
-            unsafeMetadata={{ acceptedLegalAt: new Date().toISOString(), ...(referralCode ? { referralCode } : {}) }}
-          />
+          <div className="flex w-full max-w-sm flex-col items-center gap-2">
+            <NativeOAuthButton
+              provider="apple"
+              mode="sign-up"
+              completeUrl={target}
+              unsafeMetadata={{ acceptedLegalAt: new Date().toISOString(), ...(referralCode ? { referralCode } : {}) }}
+            />
+            <NativeOAuthButton
+              provider="google"
+              mode="sign-up"
+              completeUrl={target}
+              unsafeMetadata={{ acceptedLegalAt: new Date().toISOString(), ...(referralCode ? { referralCode } : {}) }}
+            />
+          </div>
           <SignUp
             path="/signup"
             routing="path"

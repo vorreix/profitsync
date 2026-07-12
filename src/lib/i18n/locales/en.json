@@ -1,4 +1,9 @@
 {
+  "auth": {
+    "continueWithGoogle": "Continue with Google",
+    "continueWithApple": "Continue with Apple",
+    "oauthError": "Sign-in could not be started. Please try again."
+  },
   "pwa": {
     "installTitle": "Install ProfitSync",
     "installBody": "Add ProfitSync to your home screen for quick, full-screen access.",

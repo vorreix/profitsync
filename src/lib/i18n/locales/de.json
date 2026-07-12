@@ -1634,5 +1634,10 @@
     "sortAmountHigh": "Höchster Betrag",
     "sortAmountLow": "Niedrigster Betrag",
     "sortName": "Name"
+  },
+  "auth": {
+    "continueWithGoogle": "Weiter mit Google",
+    "continueWithApple": "Weiter mit Apple",
+    "oauthError": "Anmeldung konnte nicht gestartet werden. Bitte versuche es erneut."
   }
 }
