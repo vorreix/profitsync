@@ -1434,6 +1434,15 @@
         "title": "Zahlung fehlgeschlagen",
         "body": "Wir konnten deine letzte Zahlung nicht verarbeiten. Aktualisiere deine Abrechnung, um Premium zu behalten."
       },
+      "payment_succeeded": {
+        "title": "Zahlung erhalten",
+        "body": "Deine Zahlung über {{amount}} war erfolgreich."
+      },
+      "subscription_changed": {
+        "title": "Abo aktualisiert",
+        "body_active": "Deine Organisation ist jetzt im Tarif {{plan}}.",
+        "body_cancelled": "Dein {{plan}}-Abo wurde gekündigt."
+      },
       "budget_exceeded": {
         "title": "Budget überschritten",
         "body": "{{name}} hat sein {{period}}-Budget überschritten."

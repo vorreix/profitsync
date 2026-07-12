@@ -8,6 +8,7 @@ import { invoiceStatusForPayment } from "../_lib/invoice-map.js"
 import { creditReferralOnPaid } from "../_lib/referral.js"
 import { markAttemptByRef } from "../_lib/billing-attempts.js"
 import { notifyOrgMembers } from "../_lib/notifications.js"
+import { notifyPaymentSucceeded, notifySubscriptionChanged } from "../_lib/notify-billing.js"
 
 export const config = {
   api: {
@@ -134,6 +135,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       await db.update(subscriptions).set(updates).where(eq(subscriptions.id, sub.id))
+
+      // Tell org owners/admins about plan/status transitions (best-effort,
+      // dedupe collapses the webhook + reconcile double-fire).
+      void notifySubscriptionChanged(sub.organizationId, {
+        fromPlan: sub.planKey,
+        toPlan: (updates.planKey as string | undefined) ?? sub.planKey,
+        fromStatus: sub.status,
+        toStatus: (updates.status as string | undefined) ?? sub.status,
+      }).catch(() => {})
     }
 
     // Attempt log: a now-active subscription completes its checkout attempt
@@ -185,6 +195,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         // Credit a pending referral for this org's owner (idempotent: only a
         // signed_up referral becomes paid, so renewals / retries don't re-credit).
         await creditReferralOnPaid(sub.organizationId, (minorAmount ?? 0) / 100, currency)
+        // Receipt notification for owners/admins (idempotent per payment id).
+        void notifyPaymentSucceeded(sub.organizationId, {
+          paymentId,
+          amount: (minorAmount ?? 0) / 100,
+          currency,
+          paidAt,
+        }).catch(() => {})
         // Attempt log: a successful payment completes the checkout attempt.
         await markAttemptByRef(
           { attemptId: (data.metadata as Record<string, string> | undefined)?.attempt_id, dodoSubscriptionId: subId, orgId: sub.organizationId },

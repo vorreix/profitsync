@@ -29,7 +29,7 @@ Status: **in progress** · Started 2026-07-11 · Chain root: `feat/notif5-00-pla
 | # | Branch | Delivers | Status |
 |---|--------|----------|--------|
 | 00 | `feat/notif5-00-plan` | This plan | ✅ pushed |
-| 01 | `feat/notif5-01-events-billing` | `payment_succeeded` + `subscription_changed` fired from webhook AND reconcile (+ self-serve/admin transitions) | ⏳ |
+| 01 | `feat/notif5-01-events-billing` | `payment_succeeded` + `subscription_changed` fired from webhook AND reconcile (+ admin transitions) | ✅ pushed |
 | 02 | `feat/notif5-02-events-team` | `member_invited` (admins), org-wide join fan-out, `quotation_accepted` | ⏳ |
 | 03 | `feat/notif5-03-events-money` | `budget_warning` @80%, `recurring_posted`, `referral_credited`/`referral_payout` (new types) | ⏳ |
 | 04 | `feat/notif5-04-fcm-server` | FCM HTTP v1 sender (node:crypto JWT, lazy, no-op w/o env), channel-aware `POST /api/notifications/push`, `mobile_push` preference channel | ⏳ |
@@ -151,3 +151,14 @@ Status: **in progress** · Started 2026-07-11 · Chain root: `feat/notif5-00-pla
 ## Change log
 
 - 2026-07-11: plan written; audit findings recorded; chain started.
+- 2026-07-11 (01): `api/_lib/notify-billing.ts` — `notifyPaymentSucceeded`
+  (7-day recency guard for reconcile backfills, dedupe `payment_ok:<paymentId>`)
+  + `notifySubscriptionChanged` (pure `isNoteworthySubscriptionChange`: plan
+  changes always, status only → active/cancelled; day-stamped dedupe collapses
+  webhook+reconcile double-fire). Wired at 7 sites: webhook payment.succeeded +
+  subscription branch, reconcileInvoices + reconcileSubscriptionFromDodo,
+  admin subscriptions PATCH, admin organizations PATCH, admin bulk actions.
+  Self-serve cancel/resume intentionally skipped (end-of-period cancel doesn't
+  change status; the actor did it themselves). i18n ×8 (1461 keys). Committed
+  pure test api/_lib/notify-billing.test.ts; DB-verified with a throwaway test
+  (notify/dedupe/recency/body-variant all proven against the dev DB, cleaned up).

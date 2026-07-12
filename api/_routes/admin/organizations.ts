@@ -6,6 +6,7 @@ import { createOrgForUser } from "../../_lib/auth.js"
 import { requireAdminCap } from "../../_lib/admin.js"
 import { cancelledNowFields, FREE_RESET_FIELDS, stopDodoBilling } from "../../_lib/admin-billing.js"
 import { teardownOrganization } from "../../_lib/admin-org-delete.js"
+import { notifySubscriptionChanged } from "../../_lib/notify-billing.js"
 
 const PAGE_SIZE = 30
 
@@ -194,6 +195,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               }
 
         await db.update(subscriptions).set(subPatch).where(eq(subscriptions.id, sub.id))
+        // Org owners/admins learn their plan was changed by a platform admin.
+        void notifySubscriptionChanged(organization_id, {
+          fromPlan: sub.planKey,
+          toPlan: (subPatch as { planKey?: string }).planKey ?? sub.planKey,
+          fromStatus: sub.status,
+          toStatus: (subPatch as { status?: string }).status ?? sub.status,
+        }).catch(() => {})
       } else {
         // No subscription row yet → nothing to cancel on Dodo; just create the mirror.
         await db.insert(subscriptions).values({

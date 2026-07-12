@@ -10,6 +10,7 @@ import {
   stopDodoBilling,
 } from "../../../_lib/admin-billing.js"
 import { reconcileSubscriptionFromDodo } from "../../../_lib/billing-sync.js"
+import { notifySubscriptionChanged } from "../../../_lib/notify-billing.js"
 
 const MAX_IDS = 100
 const ACTIONS = ["downgrade_free", "cancel_dodo", "sync"] as const
@@ -78,7 +79,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           : { ...cancelledNowFields(new Date()), updatedAt: new Date() }
 
       const [row] = await db.update(subscriptions).set(patch).where(eq(subscriptions.id, id)).returning()
-      if (row) updated.push(serialize(row))
+      if (row) {
+        updated.push(serialize(row))
+        // Org owners/admins learn their plan was changed by a platform admin.
+        // (The `sync` action notifies from inside reconcileSubscriptionFromDodo.)
+        void notifySubscriptionChanged(row.organizationId, {
+          fromPlan: sub.planKey,
+          toPlan: row.planKey,
+          fromStatus: sub.status,
+          toStatus: row.status,
+        }).catch(() => {})
+      }
     } catch (err) {
       failed.push({ id, error: err instanceof Error ? err.message : "Action failed" })
     }

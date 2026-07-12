@@ -4,6 +4,7 @@ import { db, serialize } from "../../../src/lib/db/index.js"
 import { organizations, subscriptions, userProfiles } from "../../../src/lib/db/schema.js"
 import { requireAdminCap } from "../../_lib/admin.js"
 import { cancelledNowFields, FREE_RESET_FIELDS, stopDodoBilling } from "../../_lib/admin-billing.js"
+import { notifySubscriptionChanged } from "../../_lib/notify-billing.js"
 
 const PAGE_SIZE = 30
 // free + the current paid tiers (personal/business). "premium" kept for legacy rows.
@@ -122,6 +123,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .where(eq(subscriptions.id, subscription_id))
       .returning()
     if (!updated) return res.status(404).json({ error: "Not found" })
+    // Org owners/admins learn their plan was changed by a platform admin.
+    void notifySubscriptionChanged(updated.organizationId, {
+      fromPlan: existing.planKey,
+      toPlan: updated.planKey,
+      fromStatus: existing.status,
+      toStatus: updated.status,
+    }).catch(() => {})
     return res.json(serialize(updated))
   }
 
