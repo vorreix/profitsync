@@ -365,6 +365,13 @@
       "when": 1783860506342,
       "tag": "0051_skinny_outlaw_kid",
       "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1783877744001,
+      "tag": "0052_slow_cannonball",
+      "breakpoints": true
     }
   ]
 }
