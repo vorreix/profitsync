@@ -1639,5 +1639,11 @@
     "continueWithGoogle": "المتابعة باستخدام Google",
     "continueWithApple": "المتابعة باستخدام Apple",
     "oauthError": "تعذّر بدء تسجيل الدخول. يرجى المحاولة مرة أخرى."
+  },
+  "view": {
+    "label": "العرض",
+    "card": "عرض البطاقات",
+    "list": "عرض القائمة",
+    "table": "عرض الجدول"
   }
 }

@@ -1639,5 +1639,11 @@
     "continueWithGoogle": "Continua con Google",
     "continueWithApple": "Continua con Apple",
     "oauthError": "Impossibile avviare l'accesso. Riprova."
+  },
+  "view": {
+    "label": "Vista",
+    "card": "Vista schede",
+    "list": "Vista elenco",
+    "table": "Vista tabella"
   }
 }

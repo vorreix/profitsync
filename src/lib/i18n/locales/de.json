@@ -1639,5 +1639,11 @@
     "continueWithGoogle": "Weiter mit Google",
     "continueWithApple": "Weiter mit Apple",
     "oauthError": "Anmeldung konnte nicht gestartet werden. Bitte versuche es erneut."
+  },
+  "view": {
+    "label": "Ansicht",
+    "card": "Kartenansicht",
+    "list": "Listenansicht",
+    "table": "Tabellenansicht"
   }
 }

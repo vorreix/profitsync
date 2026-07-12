@@ -1639,5 +1639,11 @@
     "continueWithGoogle": "Google से जारी रखें",
     "continueWithApple": "Apple से जारी रखें",
     "oauthError": "साइन-इन शुरू नहीं किया जा सका। कृपया पुनः प्रयास करें।"
+  },
+  "view": {
+    "label": "दृश्य",
+    "card": "कार्ड दृश्य",
+    "list": "सूची दृश्य",
+    "table": "तालिका दृश्य"
   }
 }

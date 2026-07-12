@@ -181,6 +181,12 @@
     "saving": "Saving...",
     "amountTooLarge": "Amount is too large"
   },
+  "view": {
+    "label": "View",
+    "card": "Card view",
+    "list": "List view",
+    "table": "Table view"
+  },
   "audit": {
     "history": "History",
     "created": "Created",
