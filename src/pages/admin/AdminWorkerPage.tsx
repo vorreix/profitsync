@@ -66,12 +66,15 @@ const PUSH_OUTCOME_STYLE: Record<string, string> = {
   unconfigured: "bg-rose-600/15 text-rose-700 dark:text-rose-300",
 }
 
-// The tick runs every ~5 min; past this gap the scheduler is presumed dead
-// (worker down AND no fallback pinger reaching /api/cron/notifications).
-const TICK_STALE_MINUTES = 15
+// V6: ticks come from exact-time jobs (when broadcasts fire), the worker's
+// HOURLY reconcile sweep, and the 2-hourly GitHub fallback. Past this gap the
+// scheduler is presumed dead (worker down AND no fallback reaching
+// /api/cron/notifications).
+const TICK_STALE_MINUTES = 150
 
-// The schedule that drives reminders + scheduled/recurring broadcasts. If it's
-// missing, timed notifications never fire (the worker is a clock with no alarm).
+// The hourly reconcile-sweep schedule. Exact-time one-shot jobs are the primary
+// delivery for scheduled broadcasts; this sweep catches anything a lost enqueue
+// missed. If it's missing AND enqueues fail, timed broadcasts never fire.
 const DISPATCH_SCHEDULE = "notifications-dispatch"
 
 const STATUS_ORDER = ["queued", "running", "done", "failed", "dead", "cancelled"]
