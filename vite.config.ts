@@ -26,6 +26,17 @@ if (viteMode === "android-local") {
   loadDotenv()
 }
 
+// A production native build (--mode android|ios) ships whatever key is in its
+// .env — warn (non-fatally) if that's a Clerk DEV key, since the published app
+// would then point at the dev instance. Not an error: the *-local shell builds
+// intentionally use pk_test_ against a LAN dev server.
+if ((viteMode === "android" || viteMode === "ios") && process.env.VITE_CLERK_PUBLISHABLE_KEY?.startsWith("pk_test_")) {
+  console.warn(
+    `\n⚠️  [native] --mode ${viteMode} is a PRODUCTION build but VITE_CLERK_PUBLISHABLE_KEY is a pk_test_ (dev) key.\n` +
+    `   The store build would target your Clerk DEV instance. Put a pk_live_… key in .env.${viteMode} before publishing.\n`,
+  )
+}
+
 async function readJsonBody(req: IncomingMessage): Promise<unknown> {
   if (req.method === "GET" || req.method === "HEAD") return undefined
   const chunks: Buffer[] = []
