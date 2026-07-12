@@ -442,7 +442,23 @@
     "clientCreated": "Cliente creato",
     "createClientFailed": "Impossibile creare il cliente",
     "clientCount_one": "{{count}} cliente",
-    "clientCount_other": "{{count}} clienti"
+    "clientCount_other": "{{count}} clienti",
+    "sortIncomeDesc": "Entrate (alto → basso)",
+    "sortIncomeAsc": "Entrate (basso → alto)",
+    "sortExpenseDesc": "Uscite (alto → basso)",
+    "sortExpenseAsc": "Uscite (basso → alto)",
+    "sortProfitDesc": "Profitto (alto → basso)",
+    "sortProfitAsc": "Profitto (basso → alto)",
+    "table": {
+      "name": "Nome",
+      "company": "Azienda",
+      "income": "Entrate",
+      "expense": "Uscite",
+      "profit": "Profitto",
+      "date": "Data",
+      "actions": "Azioni",
+      "sortBy": "Ordina per {{column}}"
+    }
   },
   "quotations": {
     "titleLabel": "Titolo *",
@@ -524,6 +540,15 @@
     "totalQuotations_one": "{{count}} preventivo",
     "totalQuotations_other": "{{count}} preventivi",
     "dateLabel": "Data",
+    "table": {
+      "title": "Titolo",
+      "prospect": "Potenziale cliente",
+      "amount": "Importo",
+      "status": "Stato",
+      "date": "Data",
+      "actions": "Azioni",
+      "sortBy": "Ordina per {{column}}"
+    },
     "pdf": {
       "action": "PDF",
       "title": "PDF del preventivo",
@@ -1659,5 +1684,11 @@
     "continueWithGoogle": "Continua con Google",
     "continueWithApple": "Continua con Apple",
     "oauthError": "Impossibile avviare l'accesso. Riprova."
+  },
+  "view": {
+    "label": "Vista",
+    "card": "Vista schede",
+    "list": "Vista elenco",
+    "table": "Vista tabella"
   }
 }

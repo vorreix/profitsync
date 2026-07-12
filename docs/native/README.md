@@ -28,6 +28,36 @@ out), sign in with **Google and Apple**, and talk to the deployed backend at
 4. **`PUBLISHING.md`** — upload to **Internal testing** (Android) / **TestFlight**
    (iOS), test on real devices, then submit to production.
 
+## Keeping native in sync with the web app (🔴 strict rule)
+
+Both native apps are WebView shells around the **same** `dist/` Vite build
+(`capacitor.config.ts` `webDir: "dist"`); the copied bundle in
+`android/app/src/main/assets/public` and `ios/App/App/public` is a **gitignored
+build artifact**, not source. So **there is no separate native UI to write** — a
+web-UI change *is* the native change once the bundle is re-copied into the shells.
+
+**Rule (applies during all development):** whenever a change touches the built web
+bundle — UI, routes, assets, i18n, client logic — you must propagate it to **both**
+native apps **before the task is done**:
+
+```bash
+npm run cap:sync:android    # = vite build --mode android + cap sync android
+npm run cap:sync:ios        # = vite build --mode ios     + cap sync ios
+```
+
+- `cap sync` = `cap copy` (web assets + config) **+** `cap update` (native
+  deps/plugins). Use the `cap:sync:*` scripts whenever a **Capacitor plugin** was
+  added or updated. A plugin-free, web-assets-only change can use
+  `npx cap copy android` / `npx cap copy ios` after a build — when unsure, `cap:sync:*`.
+- The native-mode builds (`--mode android|ios`) wire native-only config
+  (deep-link scheme, FCM stub alias, public keys) — don't sync a plain
+  `npm run build` when a mode-specific env matters.
+- Then re-run the app (`cap:open:android` / `cap:open:ios`) or rebuild
+  (`cap:build:android` / `cap:build:ios`) to see the change on device.
+
+This rule is mirrored in the repo's root **`CLAUDE.md`** (*Key conventions* →
+*Web ↔ Native parity*, and the *Native apps (Capacitor)* architecture subsection).
+
 ## Key facts that never change
 
 - **App ID:** `com.vorreix.profitsync` (both platforms). **OAuth deep-link

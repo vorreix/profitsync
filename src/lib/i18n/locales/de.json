@@ -442,7 +442,23 @@
     "clientCreated": "Klient erstellt",
     "createClientFailed": "Fehler beim Erstellen des Klienten",
     "clientCount_one": "{{count}} Klient",
-    "clientCount_other": "{{count}} Klienten"
+    "clientCount_other": "{{count}} Klienten",
+    "sortIncomeDesc": "Einnahmen (hoch → niedrig)",
+    "sortIncomeAsc": "Einnahmen (niedrig → hoch)",
+    "sortExpenseDesc": "Ausgaben (hoch → niedrig)",
+    "sortExpenseAsc": "Ausgaben (niedrig → hoch)",
+    "sortProfitDesc": "Gewinn (hoch → niedrig)",
+    "sortProfitAsc": "Gewinn (niedrig → hoch)",
+    "table": {
+      "name": "Name",
+      "company": "Unternehmen",
+      "income": "Einnahmen",
+      "expense": "Ausgaben",
+      "profit": "Gewinn",
+      "date": "Datum",
+      "actions": "Aktionen",
+      "sortBy": "Sortieren nach {{column}}"
+    }
   },
   "quotations": {
     "titleLabel": "Titel *",
@@ -524,6 +540,15 @@
     "totalQuotations_one": "{{count}} Angebot",
     "totalQuotations_other": "{{count}} Angebote",
     "dateLabel": "Datum",
+    "table": {
+      "title": "Titel",
+      "prospect": "Interessent",
+      "amount": "Betrag",
+      "status": "Status",
+      "date": "Datum",
+      "actions": "Aktionen",
+      "sortBy": "Sortieren nach {{column}}"
+    },
     "pdf": {
       "action": "PDF",
       "title": "Angebots-PDF",
@@ -1659,5 +1684,11 @@
     "continueWithGoogle": "Weiter mit Google",
     "continueWithApple": "Weiter mit Apple",
     "oauthError": "Anmeldung konnte nicht gestartet werden. Bitte versuche es erneut."
+  },
+  "view": {
+    "label": "Ansicht",
+    "card": "Kartenansicht",
+    "list": "Listenansicht",
+    "table": "Tabellenansicht"
   }
 }
