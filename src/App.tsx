@@ -9,6 +9,7 @@ import { BusinessOnlyRoute } from "@/components/BusinessOnlyRoute"
 import { PersonalOnlyRoute } from "@/components/PersonalOnlyRoute"
 import { Toaster } from "@/components/ui/sonner"
 import { UpdatePrompt } from "@/components/UpdatePrompt"
+import { NativeShell } from "@/components/NativeShell"
 import { isNativeApp, nativeAuthLog, nativeAuthUrlLog, toInternalOAuthCallbackPath } from "@/lib/native-auth"
 import { useShouldRedirectToApp } from "@/lib/use-redirect-to-app"
 import { isStandalonePwa } from "@/lib/pwa/is-standalone"
@@ -154,6 +155,7 @@ export function App() {
 
   return (
     <BrowserRouter>
+      <NativeShell />
       <AppErrorBoundary>
       <Suspense fallback={<RouteFallback />}>
         <Routes>
