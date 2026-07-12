@@ -1,7 +1,8 @@
 # Native apps (Android + iOS) — login-first, native-smooth, publishable
 
-Status: **in progress** · Started 2026-07-12 · Chain root: `feat/native-00-plan-maqbool`
-(stacked off `dev`)
+Status: **complete (code + docs)** · Started 2026-07-12 · Chain root:
+`feat/native-00-plan-maqbool` (stacked off `dev`). All 8 branches (00–07) pushed;
+remaining work is the human portal/store steps documented in `PUBLISHING.md`.
 
 This is the **single source of truth** and the living tracker for turning ProfitSync's
 Capacitor wrapper into two **publishable, native-smooth** apps (Android + iOS) that boot
@@ -97,7 +98,7 @@ is world-readable once shipped; treat it as public.
 | 04 | `feat/native-04-apple-oauth-maqbool` | Sign in with Apple (web + native), i18n'd auth buttons | ✅ pushed |
 | 05 | `feat/native-05-ios-platform-maqbool` | Add + configure the iOS platform; build + boot in the simulator | ✅ simulator-verified |
 | 06 | `feat/native-06-release-signing-maqbool` | Android release signing + iOS export config + build pipeline | ✅ gradle-verified |
-| 07 | `feat/native-07-publishing-docs-maqbool` | Play Store + App Store publishing/testing guides | ⏳ |
+| 07 | `feat/native-07-publishing-docs-maqbool` | Play Store + App Store publishing/testing guides | ✅ pushed |
 
 ## Per-branch detail
 
@@ -196,11 +197,15 @@ is world-readable once shipped; treat it as public.
   and is silent on `pk_live`. Gate green. (A real signed store build needs the operator's own
   keystore / Apple distribution cert — documented in native-07 `SIGNING.md`.)
 
-### 07 — publishing + signing docs
-- `docs/native/iOS.md` (mirror of ANDROID.md), `docs/native/SIGNING.md` (keystore + Play App
-  Signing + iOS certs/profiles), `docs/native/PUBLISHING.md` (first-timer step-by-step for both
-  stores: accounts + fees, app registration, internal testing / TestFlight, listings + screenshots,
-  privacy/data-safety, review, staged release), `docs/native/README.md` index; refresh ANDROID.md.
+### 07 — publishing + signing docs ✅
+- `docs/native/IOS.md` (written in 05), **`SIGNING.md`** (upload keystore + Play App Signing +
+  iOS distribution cert/profile/automatic signing, and what's secret vs public),
+  **`PUBLISHING.md`** (first-timer step-by-step for both stores: accounts + fees, app
+  registration, **Internal testing / TestFlight** before production, listings + screenshots,
+  Data Safety / App Privacy, review, staged/phased release, update cadence, common rejections),
+  **`README.md`** docs index; ANDROID.md's stale "release signing not configured" note refreshed
+  to point at the now-wired signing + the new docs.
+- Docs-only branch — verified by the gate (i18n/lint/typecheck/tests) + read-through.
 
 ## Verification matrix
 
@@ -247,4 +252,9 @@ is world-readable once shipped; treat it as public.
 - 2026-07-12: branch 06 (release signing) implemented + **gradle-verified** (signingReport proves
   both the unsigned-no-keystore and signed-with-keystore paths). Android `signingConfigs.release`
   from a gitignored `key.properties`; iOS `ExportOptions.plist`; vite pk_test warn; credentials
-  `.gitignore`. Next: 07 (publishing docs) — SIGNING.md, PUBLISHING.md, README index.
+  `.gitignore`.
+- 2026-07-12: branch 07 (publishing docs) written — `SIGNING.md`, `PUBLISHING.md`, `README.md`
+  index; ANDROID.md refreshed. **Initiative complete on the code+docs side**: all 8 branches
+  (00–07) pushed as a stacked chain. Remaining is human portal/store work (Clerk+Apple sign-in
+  config, Firebase APNs/`GoogleService-Info.plist`, keystore creation, store registrations +
+  listings + test-track uploads) — all documented. `gh` unauthenticated → user opens the 8 PRs.
