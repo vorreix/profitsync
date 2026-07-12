@@ -7,8 +7,8 @@ android {
         applicationId "com.vorreix.profitsync"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode 2
+        versionName "1.1"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -43,6 +43,18 @@ dependencies {
 }
 
 apply from: 'capacitor.build.gradle'
+
+// Credentials live in android/credentials/ (gitignored; template:
+// google.services.example.json). The google-services plugin only searches the
+// module dir, so mirror the file into android/app/ (also gitignored) at
+// configuration time.
+def firebaseConfig = file('../credentials/google-services.json')
+if (firebaseConfig.exists()) {
+    copy {
+        from firebaseConfig
+        into projectDir
+    }
+}
 
 try {
     def servicesJSON = file('google-services.json')

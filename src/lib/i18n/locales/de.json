@@ -1390,7 +1390,8 @@
       "mute_all": "Alle Benachrichtigungen pausieren",
       "mute_all_hint": "Deaktiviere alle Benachrichtigungen auf dieser Ebene.",
       "channel_in_app": "In der App",
-      "channel_push": "Push",
+      "channel_push": "Web",
+      "channel_mobile_push": "Handy",
       "saved": "Benachrichtigungseinstellungen gespeichert",
       "save": "Speichern",
       "saving": "Wird gespeichert …",
@@ -1418,6 +1419,10 @@
       "test_error": "Test konnte gerade nicht gesendet werden. Bitte versuche es erneut."
     },
     "types": {
+      "member_invited": {
+        "title": "Neues Mitglied eingeladen",
+        "body": "{{email}} wurde als {{role}} zu {{org}} eingeladen"
+      },
       "invitation_accepted": {
         "title": "Einladung angenommen",
         "body": "{{name}} ist {{org}} beigetreten"
@@ -1434,13 +1439,45 @@
         "title": "Zahlung fehlgeschlagen",
         "body": "Wir konnten deine letzte Zahlung nicht verarbeiten. Aktualisiere deine Abrechnung, um Premium zu behalten."
       },
+      "payment_succeeded": {
+        "title": "Zahlung erhalten",
+        "body": "Deine Zahlung über {{amount}} war erfolgreich."
+      },
+      "subscription_changed": {
+        "title": "Abo aktualisiert",
+        "body_active": "Deine Organisation ist jetzt im Tarif {{plan}}.",
+        "body_cancelled": "Dein {{plan}}-Abo wurde gekündigt."
+      },
+      "referral_credited": {
+        "title": "Empfehlungsprämie gutgeschrieben",
+        "body": "Deine Empfehlung hat ein Upgrade gemacht — {{amount}} ist unterwegs."
+      },
+      "referral_payout": {
+        "title": "Auszahlungs-Update",
+        "body_approved": "Deine Auszahlung über {{amount}} wurde genehmigt.",
+        "body_paid": "Deine Auszahlung über {{amount}} wurde gesendet.",
+        "body_rejected": "Deine Auszahlungsanfrage über {{amount}} wurde abgelehnt."
+      },
+      "budget_warning": {
+        "title": "Budget fast aufgebraucht",
+        "body": "{{name}} hat {{percent}} % des {{period}}-Budgets verbraucht."
+      },
       "budget_exceeded": {
         "title": "Budget überschritten",
         "body": "{{name}} hat sein {{period}}-Budget überschritten."
       },
+      "recurring_posted": {
+        "title": "Wiederkehrende Transaktion gebucht",
+        "body": "„{{name}}“ wurde automatisch hinzugefügt.",
+        "body_many": "„{{name}}“ hat {{count}} Transaktionen hinzugefügt."
+      },
       "space_autosaved": {
         "title": "Automatisch in deinen Space gespart",
         "body": "Geld nach {{space}} verschoben"
+      },
+      "quotation_accepted": {
+        "title": "Angebot angenommen",
+        "body": "„{{title}}“ wurde angenommen."
       },
       "add_transaction_reminder": {
         "title": "Zeit, deine Transaktionen einzutragen",
@@ -1468,6 +1505,7 @@
     "reminders": {
       "title": "Transaktions-Erinnerungen",
       "description": "Lass dich daran erinnern, Einnahmen und Ausgaben zu erfassen. Ein Tippen öffnet das Formular „Transaktion hinzufügen“.",
+      "phoneOnly": "Erinnerungen klingeln auf deinem Handy — installiere die ProfitSync-Android-App, um sie zu erhalten.",
       "add": "Erinnerung hinzufügen",
       "none": "Noch keine Erinnerungen",
       "none_hint": "Füge eine hinzu, um ans Erfassen deiner Transaktionen erinnert zu werden.",

@@ -64,6 +64,12 @@ android/capacitor-cordova-android-plugins/
 ios/App/build/
 ios/App/Pods/
 ios/DerivedData/
+# Retired Flutter app (removed 2026-07-11, source archived at tag
+# archive/flutter-mobile). An IDE with the old project still open regenerates
+# .dart_tool/build/.idea cruft under mobile/; ignore the whole tree so a stray
+# `git add -A` can never re-commit it. Restore the source with:
+#   git checkout archive/flutter-mobile -- mobile/
+/mobile/
 
 # Packaged binaries never belong in git.
 *.apk

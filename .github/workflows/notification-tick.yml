@@ -1,11 +1,12 @@
 # Fallback driver for the notification scheduler.
 #
-# The PRIMARY driver is the self-hosted Go worker (every 5 min → POST
-# /api/cron/notifications). This cron is redundancy: if the worker host is down
-# or its schedule table was wiped by a redeploy (the June'26 silent outage),
-# reminders and scheduled broadcasts still fire — at worst 30 minutes late.
-# Running both drivers is safe by design: every notification the tick creates
-# carries a dedupe key, so double ticks never double-send.
+# V6 model: scheduled broadcasts fire via EXACT-TIME one-shot worker jobs
+# (api/_lib/worker-jobs.ts); the worker also runs an HOURLY reconcile sweep.
+# This cron is second-layer redundancy: if the worker host is down entirely
+# (jobs AND sweep lost), scheduled broadcasts still fire — at worst ~2 hours
+# late. Personal reminders are phone-local and don't depend on any of this.
+# Running every driver together is safe by design: every notification the tick
+# creates carries a dedupe key, so double ticks never double-send.
 #
 # Setup (one-time): add the repo secret PROFITSYNC_CRON_TOKEN with the same
 # value as the app's CRON_FALLBACK_TOKEN Vercel env var (an additional token
@@ -15,7 +16,7 @@ name: notification-tick-fallback
 
 on:
   schedule:
-    - cron: "*/30 * * * *"
+    - cron: "15 */2 * * *"
   workflow_dispatch: {}
 
 permissions: {}
@@ -30,7 +31,11 @@ jobs:
           TOKEN: ${{ secrets.PROFITSYNC_CRON_TOKEN }}
         run: |
           if [ -z "$TOKEN" ]; then
-            echo "PROFITSYNC_CRON_TOKEN secret not set — skipping (worker remains the only driver)."
+            echo "::warning::PROFITSYNC_CRON_TOKEN secret not set — the fallback is INACTIVE; the worker is the only scheduler."
+            {
+              echo "### ⚠️ Notification fallback is inactive"
+              echo "Set the repo secret \`PROFITSYNC_CRON_TOKEN\` (same value as the app's \`CRON_FALLBACK_TOKEN\` Vercel env) to activate this redundancy."
+            } >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
           code=$(curl -sS -X POST \
@@ -41,3 +46,24 @@ jobs:
           echo "HTTP $code"
           cat /tmp/body
           [ "$code" = "200" ]
+
+      # The worker sweeps hourly (plus exact-time jobs); this fallback runs every
+      # 2 h at :15. If the tick BEFORE ours was >150 min ago, nothing but this
+      # fallback has been ticking — the worker is down or lost its schedule (the
+      # June'26 failure mode). Fail the run so GitHub emails about it; it
+      # self-resolves once the worker ticks again.
+      - name: Alert when the primary scheduler (worker) looks dead
+        env:
+          TOKEN: ${{ secrets.PROFITSYNC_CRON_TOKEN }}
+        run: |
+          [ -z "$TOKEN" ] && exit 0
+          age=$(jq -r '.previous_tick_age_seconds // empty' /tmp/body 2>/dev/null || true)
+          if [ -n "$age" ] && [ "$age" -gt 9000 ]; then
+            echo "::error::Previous scheduler tick was ${age}s ago (>150 min) — the Go worker looks DOWN. This fallback still delivered, but fix the worker: /admin → Worker → 'Register notification schedule', or restart it (docs/notifications/SCHEDULER.md)."
+            {
+              echo "### 🔴 Primary scheduler (worker) looks down"
+              echo "The heartbeat before this tick was **${age}s** old. Scheduled broadcasts are riding the 2-hourly fallback only."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo "Primary scheduler healthy (previous tick ${age:-n/a}s ago)."

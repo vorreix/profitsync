@@ -178,6 +178,32 @@ function AppLayoutInner() {
     setFabOpen(false)
   }, [location.pathname])
 
+  // Native (Android) notifications: attach the tap deep-link + FCM token
+  // rotation listeners, self-heal this device's FCM registration, and mirror
+  // the user's reminder settings onto the OS alarm schedule (reminders are
+  // delivered LOCALLY on the phone — see src/lib/native-reminders.ts). No-ops
+  // on the web (native gates inside; the plugins load lazily). Runs on mobile
+  // too — this hook sits above the MobileAppLayout early return.
+  const { getToken } = useAuth()
+  useEffect(() => {
+    const cleanups: Array<() => void> = []
+    void (async () => {
+      const { ensureNativePushSynced, initNativePush, isNativePushSupported } = await import("@/lib/native-push")
+      if (!isNativePushSupported()) return
+      cleanups.push(await initNativePush(getToken, navigate))
+      void ensureNativePushSynced(getToken)
+      const { initLocalReminderTaps, resyncLocalRemindersFromServer } = await import("@/lib/native-reminders")
+      cleanups.push(await initLocalReminderTaps(navigate))
+      // defaultValue guards the lazily-loaded namespace at boot.
+      void resyncLocalRemindersFromServer(getToken, {
+        title: t("notifications:types.add_transaction_reminder.title", "Time to add your transactions"),
+        body: t("notifications:types.add_transaction_reminder.body", "Don't forget to record today's income and expenses."),
+      })
+    })()
+    return () => cleanups.forEach((fn) => fn())
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // New (or not-yet-chosen) users must pick an account type first.
   if (!orgLoading && needsOnboarding) {
     return <Navigate to="/onboarding" replace />

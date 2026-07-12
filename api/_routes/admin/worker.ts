@@ -18,7 +18,7 @@ const TOKEN = process.env.WORKER_API_TOKEN
 const NOTIFICATIONS_SCHEDULE = {
   name: "notifications-dispatch",
   type: "app.trigger",
-  cron: process.env.NOTIFICATIONS_CRON ?? "*/5 * * * *",
+  cron: process.env.NOTIFICATIONS_CRON ?? "0 * * * *",
   timezone: "UTC",
   payload: { path: "/api/cron/notifications" },
 }

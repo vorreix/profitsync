@@ -1390,7 +1390,8 @@
       "mute_all": "إيقاف جميع الإشعارات",
       "mute_all_hint": "أوقف كل الإشعارات على هذا المستوى.",
       "channel_in_app": "داخل التطبيق",
-      "channel_push": "إشعار فوري",
+      "channel_push": "الويب",
+      "channel_mobile_push": "الهاتف",
       "saved": "تم حفظ إعدادات الإشعارات",
       "save": "حفظ",
       "saving": "جاري الحفظ…",
@@ -1418,6 +1419,10 @@
       "test_error": "تعذّر إرسال اختبار الآن. يرجى المحاولة مرة أخرى."
     },
     "types": {
+      "member_invited": {
+        "title": "تمت دعوة عضو جديد",
+        "body": "تمت دعوة {{email}} إلى {{org}} بدور {{role}}"
+      },
       "invitation_accepted": {
         "title": "تم قبول الدعوة",
         "body": "انضم {{name}} إلى {{org}}"
@@ -1434,13 +1439,45 @@
         "title": "فشل الدفع",
         "body": "لم نتمكن من معالجة آخر دفعة لك. حدث بيانات الفواتير للحفاظ على Premium."
       },
+      "payment_succeeded": {
+        "title": "تم استلام الدفعة",
+        "body": "تمت عملية دفع {{amount}} بنجاح."
+      },
+      "subscription_changed": {
+        "title": "تم تحديث الاشتراك",
+        "body_active": "مؤسستك الآن على خطة {{plan}}.",
+        "body_cancelled": "تم إلغاء اشتراك {{plan}} الخاص بك."
+      },
+      "referral_credited": {
+        "title": "تم إيداع مكافأة الإحالة",
+        "body": "قام من أحلته بالترقية — {{amount}} في الطريق إليك."
+      },
+      "referral_payout": {
+        "title": "تحديث الدفعة",
+        "body_approved": "تمت الموافقة على دفعتك البالغة {{amount}}.",
+        "body_paid": "تم إرسال دفعتك البالغة {{amount}}.",
+        "body_rejected": "تم رفض طلب الدفع البالغ {{amount}}."
+      },
+      "budget_warning": {
+        "title": "الميزانية على وشك النفاد",
+        "body": "استخدم {{name}} {{percent}}% من ميزانيته {{period}}."
+      },
       "budget_exceeded": {
         "title": "تجاوز الميزانية",
         "body": "تجاوزت {{name}} ميزانية {{period}}."
       },
+      "recurring_posted": {
+        "title": "تم تسجيل معاملة متكررة",
+        "body": "تمت إضافة “{{name}}” تلقائيًا.",
+        "body_many": "أضاف “{{name}}” {{count}} معاملة."
+      },
       "space_autosaved": {
         "title": "تم الادخار تلقائيًا في مساحتك",
         "body": "تم نقل الأموال إلى {{space}}"
+      },
+      "quotation_accepted": {
+        "title": "تم قبول عرض السعر",
+        "body": "تم قبول “{{title}}”."
       },
       "add_transaction_reminder": {
         "title": "حان وقت إضافة معاملاتك",
@@ -1468,6 +1505,7 @@
     "reminders": {
       "title": "تذكيرات المعاملات",
       "description": "احصل على تذكير لتسجيل دخلك ومصروفاتك. النقر على التذكير يفتح نموذج إضافة معاملة.",
+      "phoneOnly": "تصلك التذكيرات على هاتفك — ثبّت تطبيق ProfitSync لأندرويد لاستلامها.",
       "add": "إضافة تذكير",
       "none": "لا توجد تذكيرات بعد",
       "none_hint": "أضف واحدًا لتلقّي تذكير بتسجيل معاملاتك.",

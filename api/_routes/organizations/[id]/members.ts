@@ -10,7 +10,7 @@ import {
 } from "../../../../src/lib/db/schema.js"
 import { getUserId } from "../../../_lib/auth.js"
 import { sendInvitationEmail } from "../../../_lib/email.js"
-import { createNotification } from "../../../_lib/notifications.js"
+import { createNotification, notifyOrgMembers } from "../../../_lib/notifications.js"
 
 const VALID_ROLES = ["owner", "admin", "editor", "viewer"]
 
@@ -172,11 +172,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // `emailed: false` and the inviter shares the link manually.
     const link = `${baseUrl(req)}/invitations/${invite.token}`
     let emailed = false
+    let orgName: string | undefined
     try {
       const [org] = await db
         .select({ name: organizations.name })
         .from(organizations)
         .where(eq(organizations.id, id))
+      orgName = org?.name
       const [inviter] = await db
         .select({ fullName: userProfiles.fullName })
         .from(userProfiles)
@@ -193,6 +195,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     } catch {
       emailed = false
     }
+
+    // Tell the org's owners/admins someone was invited (best-effort; the
+    // invitee themselves gets the email above). Re-invites reuse the invite id,
+    // so the dedupe key keeps a refreshed invitation from re-notifying.
+    void notifyOrgMembers(
+      id,
+      {
+        type: "member_invited",
+        title: "New member invited",
+        body: `${invite.email} was invited as ${invite.role}`,
+        data: {
+          i18nKey: "types.member_invited.title",
+          i18nBodyKey: "types.member_invited.body",
+          i18nParams: { email: invite.email, role: invite.role, org: orgName ?? "" },
+        },
+        link: `/organizations/${id}/members`,
+        actorUserId: userId,
+        dedupeKey: `invited:${invite.id}`,
+      },
+      { roles: ["owner", "admin"], excludeUserId: userId },
+    ).catch(() => {})
 
     return res.status(statusCode).json({ ...serialize(invite), link, emailed })
   }
