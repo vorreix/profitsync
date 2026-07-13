@@ -12,8 +12,8 @@ import { useNativeOAuthIntercept } from "@/lib/use-native-oauth-intercept"
 // looks identical everywhere. On native their taps are hijacked by
 // useNativeOAuthIntercept (Google blocks OAuth inside an embedded WebView, and
 // production Clerk needs a native-flagged attempt for the external-browser
-// round-trip — see src/lib/native-oauth.ts). On the web the hook is a no-op and
-// Clerk's buttons behave normally.
+// round-trip — see src/lib/use-native-oauth-intercept.ts). On the web the hook is
+// a no-op and Clerk's buttons behave normally.
 export function LoginPage() {
   const { t } = useTranslation()
   const [params] = useSearchParams()

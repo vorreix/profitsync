@@ -13,8 +13,8 @@ import { useNativeOAuthIntercept } from "@/lib/use-native-oauth-intercept"
 
 // Clerk's own in-card social buttons render on BOTH web and native. On native
 // their taps are hijacked by useNativeOAuthIntercept (see
-// src/lib/native-oauth.ts for why the native flow exists); on the web the hook
-// is a no-op and Clerk's buttons behave normally.
+// src/lib/use-native-oauth-intercept.ts for why the native flow exists); on the
+// web the hook is a no-op and Clerk's buttons behave normally.
 export function SignupPage() {
   const [agreed, setAgreed] = useState(false)
   const [continued, setContinued] = useState(false)

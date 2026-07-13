@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react"
+import { useNavigate } from "react-router-dom"
 import { useClerk } from "@clerk/clerk-react"
 import { Loader2 } from "lucide-react"
 
@@ -8,24 +9,50 @@ import { nativeAuthLog, nativeAuthUrlLog } from "@/lib/native-auth"
 // browser lands here (App.tsx routes com.vorreix.profitsync://oauth-callback to
 // /sso-callback with the query intact). We do NOT rely solely on Clerk's
 // generic handleRedirectCallback: on native its outcome navigation is easy to
-// strand (SPA history hacks don't re-render the router), and the "transferable"
-// case — signing IN with a Google/Apple account that has no user yet, or
-// signing UP with one that already exists — dead-ends in a component-driven
-// flow. Instead: absorb the rotating_token_nonce, then resolve the client state
-// explicitly and finish with a HARD navigation (full reload boots the app with
-// the fresh session; the in-app service worker is disabled on native, so this
-// is always a clean load).
+// strand, and the "transferable" case — signing IN with a Google/Apple account
+// that has no user yet, or signing UP with one that already exists — dead-ends
+// in a component-driven flow. Instead: absorb the rotating_token_nonce, resolve
+// the client state explicitly, then setActive and enter the app.
+//
+// ⚠️ Finish with a SOFT (react-router) navigation, never window.location — a
+// full reload is fatal on native. clerk-js has no cookies here; its session
+// lives in memory + the native client (addressed by the rotating client JWT the
+// transport shim persists). setActive rotates that JWT one last time; a hard
+// reload races that rotation and boots a COLD clerk-js that rejects the spent
+// token and mints a fresh, session-less client — the exact "returns to /login
+// and freezes" bug. A soft navigate keeps the just-activated in-memory session
+// and lets the shim persist the final JWT so a later cold start can restore it.
 export function OAuthCallbackPage() {
   const clerk = useClerk()
+  const navigate = useNavigate()
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
 
-    // Hard navigation on purpose — see the header comment.
+    // Soft navigation on purpose — a hard reload drops the native session.
+    // See the header comment.
     function go(to: string) {
       nativeAuthLog("final_navigation", { to })
-      window.location.replace(to)
+      navigate(to, { replace: true })
+    }
+
+    // Activate the browser-completed session and enter the app with a SOFT
+    // navigation (a hard reload is fatal here — see the header comment).
+    //
+    // ⚠️ We deliberately do NOT do a second `client.reload()` to "refresh" the
+    // token. The rotating_token_nonce reload already rotated the client token
+    // server-side, so any follow-up GET with the now-spent token resolves to a
+    // fresh EMPTY client and ABANDONS the session-bearing one (device-verified).
+    // setActive holds the session in memory, so the app works for the life of
+    // this instance. The one downside — the shim can't capture the nonce-rotated
+    // token, so a COLD START boots signed-out — is a known limitation tracked in
+    // docs/native-oauth/PLAN.md (the fix is a CORS-free native read of the
+    // nonce-reload response; see native-clerk-transport.ts).
+    async function completeAndEnter(sessionId: string, via: string) {
+      await clerk.setActive({ session: sessionId })
+      nativeAuthLog("oauth_complete", { via })
+      go("/dashboard")
     }
 
     async function completeOAuth() {
@@ -53,17 +80,29 @@ export function OAuthCallbackPage() {
         const signIn = clerk.client?.signIn
         const signUp = clerk.client?.signUp
 
+        // Diagnostic snapshot of the resolved client state after the nonce
+        // reload — the single most useful signal when a round-trip lands here
+        // but doesn't complete (missing_requirements, transferable, etc.).
+        nativeAuthLog("oauth_state_after_reload", {
+          signInStatus: signIn?.status ?? null,
+          signInSession: signIn?.createdSessionId ?? null,
+          signInFirstFactor: signIn?.firstFactorVerification?.status ?? null,
+          signUpStatus: signUp?.status ?? null,
+          signUpSession: signUp?.createdSessionId ?? null,
+          signUpMissingFields: signUp?.missingFields?.join(",") ?? null,
+          signUpUnverifiedFields: signUp?.unverifiedFields?.join(",") ?? null,
+          signUpExternalAccount: signUp?.verifications?.externalAccount?.status ?? null,
+          clientSessions: (clerk.client?.sessions ?? []).length,
+          activeSession: clerk.session?.status ?? null,
+        })
+
         // 1) Attempt already complete — activate its session and enter the app.
         if (signIn?.status === "complete" && signIn.createdSessionId) {
-          await clerk.setActive({ session: signIn.createdSessionId })
-          nativeAuthLog("oauth_complete", { via: "sign_in" })
-          go("/dashboard")
+          await completeAndEnter(signIn.createdSessionId, "sign_in")
           return
         }
         if (signUp?.status === "complete" && signUp.createdSessionId) {
-          await clerk.setActive({ session: signUp.createdSessionId })
-          nativeAuthLog("oauth_complete", { via: "sign_up" })
-          go("/dashboard")
+          await completeAndEnter(signUp.createdSessionId, "sign_up")
           return
         }
 
@@ -73,9 +112,7 @@ export function OAuthCallbackPage() {
           nativeAuthLog("oauth_transfer", { direction: "sign_in_to_sign_up" })
           const res = await signUp.create({ transfer: true, legalAccepted: true })
           if (res.status === "complete" && res.createdSessionId) {
-            await clerk.setActive({ session: res.createdSessionId })
-            nativeAuthLog("oauth_complete", { via: "transfer_sign_up" })
-            go("/dashboard")
+            await completeAndEnter(res.createdSessionId, "transfer_sign_up")
             return
           }
           nativeAuthLog("oauth_transfer_incomplete", { status: res.status ?? "unknown" })
@@ -86,16 +123,26 @@ export function OAuthCallbackPage() {
           nativeAuthLog("oauth_transfer", { direction: "sign_up_to_sign_in" })
           const res = await signIn.create({ transfer: true })
           if (res.status === "complete" && res.createdSessionId) {
-            await clerk.setActive({ session: res.createdSessionId })
-            nativeAuthLog("oauth_complete", { via: "transfer_sign_in" })
-            go("/dashboard")
+            await completeAndEnter(res.createdSessionId, "transfer_sign_in")
             return
           }
           nativeAuthLog("oauth_transfer_incomplete", { status: res.status ?? "unknown" })
         }
 
+        // 3b) The nonce reload can create/attach a session on the client without
+        //     the sign-in/up resource itself flipping to "complete" (or its
+        //     createdSessionId being surfaced). If the client now carries a
+        //     session, activate the newest one and enter the app.
+        const clientSessions = clerk.client?.sessions ?? []
+        const activeCandidate =
+          clientSessions.find((s) => s.status === "active") ?? clientSessions.at(-1)
+        if (activeCandidate) {
+          await completeAndEnter(activeCandidate.id, "client_session")
+          return
+        }
+
         // 4) Anything else (failed verification, cancelled, unexpected state):
-        //    let Clerk's generic handler decide, with the same hard navigation.
+        //    let Clerk's generic handler decide, with the same soft navigation.
         await clerk.handleRedirectCallback(
           {
             signInUrl: "/login",
@@ -117,7 +164,7 @@ export function OAuthCallbackPage() {
     return () => {
       cancelled = true
     }
-  }, [clerk])
+  }, [clerk, navigate])
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-muted/30 p-4 text-center">
