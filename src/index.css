@@ -146,6 +146,7 @@
   * {
     @apply border-border;
   }
+
   body {
     @apply bg-background text-foreground;
   }
@@ -155,43 +156,55 @@
   .safe-pt {
     padding-top: env(safe-area-inset-top, 0px);
   }
+
   .safe-pb {
     padding-bottom: env(safe-area-inset-bottom, 0px);
   }
+
   .safe-pl {
     padding-left: env(safe-area-inset-left, 0px);
   }
+
   .safe-pr {
     padding-right: env(safe-area-inset-right, 0px);
   }
+
   .scrollbar-none {
     scrollbar-width: none;
   }
+
   .scrollbar-none::-webkit-scrollbar {
     display: none;
   }
+
   /* Thin, unobtrusive scrollbar that only shows a subtle thumb. */
   .scrollbar-thin {
     scrollbar-width: thin;
     scrollbar-color: color-mix(in oklch, var(--muted-foreground) 35%, transparent) transparent;
   }
+
   .scrollbar-thin::-webkit-scrollbar {
     width: 6px;
     height: 6px;
   }
+
   .scrollbar-thin::-webkit-scrollbar-track {
     background: transparent;
   }
+
   .scrollbar-thin::-webkit-scrollbar-thumb {
     background-color: color-mix(in oklch, var(--muted-foreground) 35%, transparent);
     border-radius: 9999px;
   }
+
   .scrollbar-thin::-webkit-scrollbar-thumb:hover {
     background-color: color-mix(in oklch, var(--muted-foreground) 55%, transparent);
   }
+
   .ios-tap {
     -webkit-tap-highlight-color: transparent;
   }
+
   /* Native-app touch hardening — applied only inside the Capacitor WebView
      (NativeShell tags <html> with `.native-app`), never on the web/PWA. Makes
      the shell feel like an app instead of a web page: no long-press callouts or
@@ -202,6 +215,7 @@
     overscroll-behavior: none;
     -webkit-tap-highlight-color: transparent;
   }
+
   html.native-app,
   html.native-app body {
     -webkit-user-select: none;
@@ -209,6 +223,7 @@
     -webkit-touch-callout: none;
     touch-action: manipulation;
   }
+
   html.native-app input,
   html.native-app textarea,
   html.native-app select,
@@ -218,6 +233,7 @@
     user-select: text;
     -webkit-touch-callout: default;
   }
+
   /* Note on Clerk's in-card social buttons: they render on native too, and
      their taps are intercepted by useNativeOAuthIntercept (capture phase) to
      run the native OAuth flow. If you ever need to hide/override Clerk UI with
@@ -229,15 +245,18 @@
   .ps-flow .react-flow__node {
     transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1);
   }
+
   .ps-flow .react-flow__node.dragging,
   .ps-flow .react-flow__node:active {
     transition: none;
   }
+
   @media (prefers-reduced-motion: reduce) {
     .ps-flow .react-flow__node {
       transition: none;
     }
   }
+
   /* Money-flow edge palette (drives the gradient "pipes" + minimap). Tones read
      as income (emerald), expense (rose), neutral (slate); dark gets brighter
      stops so the curves stay legible on the dark canvas. */
@@ -250,12 +269,14 @@
     --xy-background-pattern-color: color-mix(in oklch, var(--muted-foreground) 22%, transparent);
     --xy-background-pattern-color-default: color-mix(in oklch, var(--muted-foreground) 22%, transparent);
   }
+
   .dark .ps-flow {
     --mf-income: #34d399;
     --mf-expense: #fb7185;
     --mf-neutral: #64748b;
     --mf-minimap-mask: rgb(2 6 23 / 0.6);
   }
+
   /* Flowing-dash layers on the ONE connection line. Both use dasharray "6 12"
      (period 18). IN (income) glides target → source (offset increasing); OUT
      (expense) glides source → target (decreasing) AND starts half a period out
@@ -265,36 +286,45 @@
   .ps-flow .ps-flow-edge-in {
     stroke-dashoffset: 0;
   }
+
   .ps-flow .ps-flow-edge-out {
     stroke-dashoffset: 9;
   }
+
   @media (prefers-reduced-motion: no-preference) {
     .ps-flow .ps-flow-edge-out {
       animation: ps-flow-out 1.3s linear infinite;
     }
+
     .ps-flow .ps-flow-edge-in {
       animation: ps-flow-in 1.3s linear infinite;
     }
   }
+
   .ps-flow .ps-flow-edge--active {
     filter: saturate(1.35);
   }
+
   @keyframes ps-flow-out {
     from {
       stroke-dashoffset: 9;
     }
+
     to {
       stroke-dashoffset: -9;
     }
   }
+
   @keyframes ps-flow-in {
     from {
       stroke-dashoffset: 0;
     }
+
     to {
       stroke-dashoffset: 18;
     }
   }
+
   /* Canvas chrome polish — Controls + MiniMap inherit the app surface so they
      stay legible in both themes (colorMode already swaps the --xy-* base). */
   .ps-flow .react-flow__controls-button {
@@ -303,21 +333,26 @@
     color: var(--foreground);
     fill: var(--foreground);
   }
+
   .ps-flow .react-flow__controls-button:hover {
     background: var(--muted);
   }
+
   /* React Flow reads these vars for the minimap fill/mask — overriding the var
      (not just `background`) wins over RF's colorMode defaults reliably. */
   .ps-flow {
     --xy-minimap-background-color: color-mix(in oklch, var(--card) 92%, transparent);
     --xy-minimap-background-color-default: color-mix(in oklch, var(--card) 92%, transparent);
   }
+
   .ps-flow .react-flow__minimap {
     border-radius: 0.75rem;
   }
+
   .ps-flow .react-flow__attribution {
     display: none;
   }
+
   /* Sonner sets touch-action:none on toasts for swipe-to-dismiss — but a
      bottom toast spans ~92% of a phone's width exactly where the thumb starts
      scrolling, so for its whole duration the page can't be panned from there.
@@ -326,13 +361,16 @@
   [data-sonner-toast] {
     touch-action: pan-y !important;
   }
+
   .pressable {
     transition: transform 120ms ease-out, opacity 120ms ease-out;
   }
+
   .pressable:active {
     transform: scale(0.97);
     opacity: 0.85;
   }
+
   /* iOS-home-screen-style "jiggle" for the dashboard's arrange mode: a gentle
      rotate + 1px float, compositor-only (transform). Cards are LARGE, so the
      amplitude is far smaller than app icons (±0.3deg) — any more feels drunken
@@ -343,18 +381,35 @@
     animation: dash-jiggle 0.42s ease-in-out infinite;
     transform-origin: 50% 50%;
   }
+
   @keyframes dash-jiggle {
-    0%   { transform: rotate(-0.3deg) translateY(0); }
-    25%  { transform: rotate(0.25deg) translateY(-1px); }
-    50%  { transform: rotate(-0.25deg) translateY(0.5px); }
-    75%  { transform: rotate(0.3deg) translateY(-0.5px); }
-    100% { transform: rotate(-0.3deg) translateY(0); }
+    0% {
+      transform: rotate(-0.3deg) translateY(0);
+    }
+
+    25% {
+      transform: rotate(0.25deg) translateY(-1px);
+    }
+
+    50% {
+      transform: rotate(-0.25deg) translateY(0.5px);
+    }
+
+    75% {
+      transform: rotate(0.3deg) translateY(-0.5px);
+    }
+
+    100% {
+      transform: rotate(-0.3deg) translateY(0);
+    }
   }
+
   @media (prefers-reduced-motion: reduce) {
     .dash-jiggle {
       animation: none;
     }
   }
+
   /* Route transitions for the mobile app shell — a Material "shared-axis X"
      feel: content slides + fades on navigation while the header/tab-bar chrome
      stays fixed. The <main> is keyed by route so the keyframe replays on every
@@ -365,40 +420,76 @@
   .page-enter {
     animation: page-enter 240ms cubic-bezier(0.22, 1, 0.36, 1) both;
   }
+
   .page-enter-forward {
     animation: page-enter-forward 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
   }
+
   .page-enter-back {
     animation: page-enter-back 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
   }
+
   [dir="rtl"] .page-enter-forward {
     animation-name: page-enter-back;
   }
+
   [dir="rtl"] .page-enter-back {
     animation-name: page-enter-forward;
   }
+
   @keyframes page-enter {
-    from { opacity: 0; transform: translateY(8px); }
-    to { opacity: 1; transform: none; }
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+
+    to {
+      opacity: 1;
+      transform: none;
+    }
   }
+
   @keyframes page-enter-forward {
-    from { opacity: 0; transform: translateX(24px); }
-    to { opacity: 1; transform: none; }
+    from {
+      opacity: 0;
+      transform: translateX(24px);
+    }
+
+    to {
+      opacity: 1;
+      transform: none;
+    }
   }
+
   @keyframes page-enter-back {
-    from { opacity: 0; transform: translateX(-24px); }
-    to { opacity: 1; transform: none; }
+    from {
+      opacity: 0;
+      transform: translateX(-24px);
+    }
+
+    to {
+      opacity: 1;
+      transform: none;
+    }
   }
+
   /* Reduced motion: keep the state change, drop the slide for a short fade. */
   @media (prefers-reduced-motion: reduce) {
+
     .page-enter,
     .page-enter-forward,
     .page-enter-back {
       animation: page-fade 140ms ease-out both;
     }
   }
+
   @keyframes page-fade {
-    from { opacity: 0; }
-    to { opacity: 1; }
+    from {
+      opacity: 0;
+    }
+
+    to {
+      opacity: 1;
+    }
   }
 }
