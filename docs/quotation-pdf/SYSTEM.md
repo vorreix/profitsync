@@ -92,11 +92,34 @@ it). For the design rationale and the branch-by-branch build log, see
 - `api/_routes/internal/quotations/pdf-ready.ts` — `POST` worker callback
   (`requireServiceToken`); sets `pdf_status=ready`, key, hash, size, `pdf_generated_at`.
 - Both registered in `api/index.ts` (static-before-dynamic).
+- `api/_routes/quotations/[id]/pdf/file.ts` — `GET ?gen=<quotationPdfs.id>[&dl=1]` —
+  **same-origin streaming proxy**: authed + org-scoped + business-gated, validates the
+  generation row (belongs to the quotation, `ready`, has a key), presigns a short-lived
+  (300 s) GET **server-side**, fetches it, and relays the bytes with
+  `Content-Type: application/pdf` + inline/attachment disposition. Exists because
+  installed PWAs and the Capacitor WebViews can't reliably navigate/download the
+  cross-origin presigned URL (see *How the client opens PDFs* below).
 - `src/components/QuotationPdfModal.tsx` — the delivery state machine (loading →
-  generating (poll 2s, ≤~90s) → ready | unavailable | error+retry). View =
-  `window.open`; Download = anchor to the attachment URL; Share = `navigator.share`
-  (copy-link fallback). Wired into `src/pages/QuotationsPage.tsx` (card row + detail
-  modal).
+  generating (poll 2s, ≤~90s) → ready | unavailable | error+retry). View / Download go
+  through `src/lib/pdf-open.ts` (platform-correct, below); Share = `navigator.share`
+  (copy-link fallback — the Capacitor WebViews have no `navigator.share`, and the
+  clipboard fallback is device-verified working). Wired into
+  `src/pages/QuotationsPage.tsx` (card row + detail modal).
+- `src/lib/pdf-open.ts` + `src/lib/pdf-open-urls.ts` (pure, unit-tested) — **how PDFs
+  actually open per platform**:
+  - **native (Capacitor)** → `@capacitor/browser` `Browser.open` (Chrome Custom Tab /
+    SFSafariViewController): in-app, renders the PDF, dismisses back to the app.
+    Download opens the *attachment* URL on Android (Custom Tab hands it to Chrome's
+    download manager — device-verified "File downloaded → Open") and the *inline* URL on
+    iOS (SFSafariViewController has no download manager; users save via its share sheet).
+  - **web / PWA View** → synthetic `<a target="_blank" rel="noopener">` click (popup-safe
+    in a user gesture). ⚠️ Never `window.open(url, "_blank", "noopener,…")` — with
+    `noopener` in the features string it returns `null` BY SPEC even on success (the
+    pre-fix code toasted a false error on every platform), and WebViews/PWAs don't open
+    it reliably anyway.
+  - **web / PWA Download** → authed fetch of the same-origin `pdf/file?dl=1` proxy →
+    blob-URL anchor (the attachment modals' proven pattern; a cross-origin `download`
+    attribute is ignored by browsers).
 - i18n: `quotations.pdf.*` (18 keys) in all 8 locales.
 - Schema: `quotations.pdf_status | pdf_object_key | pdf_source_hash | pdf_size_bytes |
   pdf_generated_at | pdf_error` (migration **0051**); `Quotation` type mirrors in

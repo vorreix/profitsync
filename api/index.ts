@@ -66,6 +66,7 @@ import quotationById from "./_routes/quotations/[id].js"
 import quotationAttachments from "./_routes/quotations/[id]/attachments.js"
 import quotationConvert from "./_routes/quotations/[id]/convert.js"
 import quotationPdf from "./_routes/quotations/[id]/pdf.js"
+import quotationPdfFile from "./_routes/quotations/[id]/pdf/file.js"
 import quotationPdfReady from "./_routes/internal/quotations/pdf-ready.js"
 import organizations from "./_routes/organizations.js"
 import organizationSwitch from "./_routes/organizations/switch.js"
@@ -204,6 +205,7 @@ const routes: RoutePattern<ApiHandler>[] = [
   { segments: ["quotations", ":id", "attachments"], handler: quotationAttachments },
   { segments: ["quotations", ":id", "convert"], handler: quotationConvert },
   { segments: ["quotations", ":id", "pdf"], handler: quotationPdf },
+  { segments: ["quotations", ":id", "pdf", "file"], handler: quotationPdfFile },
 
   { segments: ["referrals"], handler: referralsRoute },
   { segments: ["referrals", "apply"], handler: referralsApply },
