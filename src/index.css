@@ -218,16 +218,11 @@
     user-select: text;
     -webkit-touch-callout: default;
   }
-  /* Native app: the custom NativeOAuthButtons replace Clerk's in-card social
-     section (in-WebView OAuth is blocked by Google), so hide Clerk's own
-     provider buttons + "or" divider everywhere. This CANNOT be done via the
-     appearance prop with a Tailwind class: Tailwind v4 utilities live in a
-     cascade layer, and Clerk's unlayered CSS-in-JS (display:flex) always beats
-     layered rules — only `!important` wins here (verified in the WebView). */
-  html.native-app .cl-socialButtonsRoot,
-  html.native-app .cl-dividerRow {
-    display: none !important;
-  }
+  /* Note on Clerk's in-card social buttons: they render on native too, and
+     their taps are intercepted by useNativeOAuthIntercept (capture phase) to
+     run the native OAuth flow. If you ever need to hide/override Clerk UI with
+     CSS, remember Tailwind v4 utilities live in a cascade layer and LOSE to
+     Clerk's unlayered CSS-in-JS — only `!important` rules here win. */
   /* Money-flow canvas (/flow): glide nodes to new positions on expand/collapse
      — compositor-only (transform), so no reflow. The actively-dragged node and
      reduced-motion users get NO transition (drag must track the finger 1:1). */
