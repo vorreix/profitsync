@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
+import { toast } from "sonner"
 import { useAuth } from "@clerk/clerk-react"
 import { Check, ChevronsUpDown, Pencil, Plus, X } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -64,6 +65,10 @@ export function CategoryPicker({
       mutateLocal((prev) => [created, ...prev.filter((c) => c.id !== created.id)])
       onChange(name)
       close()
+    } catch {
+      // Surface the failure (quota, network, auth) — an unhandled rejection here
+      // used to leave the user staring at a dead picker with no feedback.
+      toast.error(t("categories.createFailed", { defaultValue: "Failed to create category" }))
     } finally {
       setAdding(false)
     }

@@ -128,6 +128,15 @@ function ssrTemplatePlugin() {
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [localApiPlugin(), react(), tailwindcss(), buildPwaPlugin(), ssrTemplatePlugin()],
+  // Keep the dev watcher OFF the giant generated trees (the android/ios native
+  // projects and the Go worker) — chokidar walking them exhausts macOS's
+  // file-descriptor limit (EMFILE: too many open files, which kills `vercel dev`
+  // mid-boot) and gradle build noise triggers pointless full reloads.
+  server: {
+    watch: {
+      ignored: ["**/android/**", "**/ios/**", "**/worker/**", "**/dist/**"],
+    },
+  },
   // Vitest config. Two concerns:
   //  - `env`: the committed unit suite is DB-FREE (it runs zero queries), but
   //    some test files import modules that transitively pull in src/lib/db,
