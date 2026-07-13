@@ -10,6 +10,8 @@ import App from "./App.tsx"
 import { ThemeProvider } from "@/components/theme-provider.tsx"
 import { installApiBaseFetchRewrite } from "@/lib/api-base"
 import { initPwa } from "@/lib/pwa/register-sw"
+import { isNativeApp } from "@/lib/native-auth"
+import { installNativeClerkTransport } from "@/lib/native-clerk-transport"
 
 const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY
 
@@ -18,6 +20,11 @@ if (!PUBLISHABLE_KEY) {
 }
 
 installApiBaseFetchRewrite()
+
+// Native only: route clerk-js through the native FAPI transport (so its own
+// client is a stable `_is_native` client that can complete external-browser
+// OAuth). Must run before clerk-js loads so it captures the wrapped fetch.
+installNativeClerkTransport(PUBLISHABLE_KEY)
 
 // Capture a referral code (?r=CODE) on first load - anywhere, including the
 // landing - so it survives the hop to signup (read there from localStorage).
@@ -28,7 +35,16 @@ try {
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <ClerkProvider publishableKey={PUBLISHABLE_KEY}>
+    {/* On native (Capacitor) run clerk-js in NON-standard-browser mode so it
+        derives its state from FAPI responses rather than browser cookies. Paired
+        with installNativeClerkTransport() above (which makes every FAPI call an
+        `_is_native` request on a JWT-addressed client), this lets clerk-js's own
+        client complete external-browser OAuth: the attempt from
+        clerk.client.signIn/signUp.create is native, its callback deep-links back
+        with rotating_token_nonce, and client.reload({nonce}) completes it on that
+        same client (see use-native-oauth-intercept.ts + OAuthCallbackPage.tsx).
+        Web keeps the default cookie-based standardBrowser:true. */}
+    <ClerkProvider publishableKey={PUBLISHABLE_KEY} standardBrowser={!isNativeApp()}>
       <ThemeProvider>
         {/* Bind the app subtree to its own i18next instance explicitly. The
             landing mounts a separate i18next instance (createInstance), and
