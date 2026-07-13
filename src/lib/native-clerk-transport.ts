@@ -26,32 +26,29 @@ import { isNativeApp } from "@/lib/native-auth"
 //
 //   2. Follow the ROTATING token. Clerk rotates the client token on every
 //      client-scoped response and returns the new one in the `Authorization`
-//      RESPONSE header; the old one is immediately spent. We read it off a REAL
-//      browser fetch — a hidden same-origin iframe's `contentWindow.fetch`, which
-//      CapacitorHttp (enabled in capacitor.config.ts) never patched — where
-//      Clerk's CORS `access-control-expose-headers: Authorization` makes the
-//      rotated token readable on ordinary FAPI responses. Everything else keeps
-//      using CapacitorHttp's window.fetch.
+//      RESPONSE header; the old one is immediately spent. We read it off
+//      `CapacitorHttp.request()` — a NATIVE, CORS-free transport that surfaces
+//      every response header (it does NOT strip `Authorization`;
+//      echo-server-verified). Everything else keeps using CapacitorHttp's
+//      window.fetch.
+//
+// ⚠️ Why FAPI must NOT go through any browser fetch (the historical iframe
+// approach): browser contexts ALWAYS auto-attach an `Origin` header, and Clerk's
+// FAPI now REJECTS requests that carry both `Origin` and `Authorization` with
+// HTTP 400 "For security purposes, only one of the 'Origin' and 'Authorization'
+// headers should be provided" (device-verified 2026-07-13, API version
+// 2025-11-10). With the iframe transport every tokened FAPI call 400'd →
+// `Clerk.status === "error"` → clerk-js never loaded → the native app showed
+// dead/black auth screens, session-token refresh failed (every org API call
+// 401'd), and cold starts always booted signed out. A native request sends no
+// `Origin`, so the bearer is accepted — and as a bonus the one response the
+// iframe could never read (the `rotating_token_nonce` reload after external-
+// browser OAuth, whose rotated token is not CORS-exposed) is now readable too,
+// which fixes cold-start persistence after Google/Apple sign-in.
 //
 // FAPI calls are serialized (a promise chain) so a rotation can't race: each
 // request waits for the previous and uses the token it rotated. The persisted
 // JWT also restores the session on a cold start (no cookies needed).
-//
-// ⚠️ KNOWN GAP — cold-start persistence after external-browser OAuth. The one
-// request that adopts the browser-completed session — `client.reload({
-// rotatingTokenNonce })` (GET /v1/client?rotating_token_nonce=…) — rotates the
-// client token server-side but comes back WITHOUT a CORS-readable `Authorization`
-// header (unlike plain GETs, Clerk does not expose it via CORS on that response,
-// device-verified). So the iframe can't capture the token that reload rotates to;
-// the shim keeps the spent pre-nonce token. The in-memory session is fine for the
-// life of this app instance (setActive holds it), but a COLD START boots on the
-// dead token → a fresh empty client → signed out. There is no safe post-hoc
-// recovery: a second GET with the spent token just rotates to a NEW empty client
-// (device-verified). The fix is to read THAT one response through a native,
-// CORS-free transport — `CapacitorHttp.request()` does NOT strip `Authorization`
-// (echo-server-verified), so it can surface the rotated token the CORS-bound
-// iframe cannot. Pending a live-device sign-in to verify. See
-// docs/native-oauth/PLAN.md.
 //
 // Pairs with `standardBrowser: false` on <ClerkProvider> (main.tsx). Install
 // BEFORE clerk-js loads (top of main.tsx) so clerk-js captures the wrapped fetch.
@@ -89,28 +86,6 @@ export function installNativeClerkTransport(publishableKey: string): void {
     /* storage unavailable */
   }
 
-  // Real browser fetch via a hidden same-origin iframe. CapacitorHttp only
-  // patches the TOP window at bridge init, so a freshly created iframe's `fetch`
-  // is the untouched native implementation whose Response surfaces the
-  // CORS-exposed `Authorization` header (the rotated client token).
-  //
-  // ⚠️ A FRESH iframe per call — never a persistent one. The app backgrounds for
-  // ~35s during the external-browser OAuth hop, and the WebView freezes/discards
-  // a long-lived hidden iframe's realm. Reusing it, its `contentWindow` stays
-  // truthy but its `fetch` silently stops surfacing response headers — so the
-  // FIRST call after returning (the rotating_token_nonce reload, the single most
-  // important one) drops the rotated token, leaving the shim on a stale client
-  // for the rest of the session and after every cold start. A per-call iframe is
-  // created after we're back in the foreground, so it's always a live realm.
-  // FAPI traffic is a handful of calls plus infrequent polls — the cost is nil.
-  function createNativeFrame(): HTMLIFrameElement {
-    const el = document.createElement("iframe")
-    el.setAttribute("aria-hidden", "true")
-    el.style.display = "none"
-    ;(document.body ?? document.documentElement).appendChild(el)
-    return el
-  }
-
   const isFapiRequest = (rawUrl: string): boolean => {
     try {
       const u = new URL(rawUrl, window.location.href)
@@ -144,53 +119,65 @@ export function installNativeClerkTransport(publishableKey: string): void {
     const headers = new Headers(headerSource)
     if (clientJwt) headers.set("Authorization", `Bearer ${clientJwt}`)
     else headers.delete("Authorization")
-    // Plain object so it crosses cleanly into the iframe realm.
     const headerObj: Record<string, string> = {}
     headers.forEach((value, key) => {
       headerObj[key] = value
     })
 
-    // Fresh iframe per call; keep it in the DOM until BOTH the headers and the
-    // body have been read (its realm owns the response stream), then remove it.
-    const frame = createNativeFrame()
-    try {
-      const response = await frame.contentWindow!.fetch(url.toString(), {
-        method,
-        headers: headerObj,
-        body: body as BodyInit | null | undefined,
-        // Native client is cookie-less — the bearer is the identity.
-        credentials: "omit",
-      })
-
-      // Persist the rotated client token (empty value = client reset / sign-out).
-      const returnedJwt = response.headers.get("Authorization")
-      if (returnedJwt !== null) {
-        clientJwt = returnedJwt || null
-        try {
-          if (clientJwt) localStorage.setItem(STORAGE_KEY, clientJwt)
-          else localStorage.removeItem(STORAGE_KEY)
-        } catch {
-          /* storage unavailable */
-        }
-      }
-
-      // Re-materialise the cross-realm response as a same-realm Response so
-      // clerk-js consumes it exactly as a normal fetch (204/205/304 = no body).
-      const nullBody = response.status === 204 || response.status === 205 || response.status === 304
-      const bodyText = nullBody ? null : await response.text()
-
-      const outHeaders = new Headers()
-      response.headers.forEach((value, key) => {
-        outHeaders.set(key, value)
-      })
-      return new Response(bodyText, {
-        status: response.status,
-        statusText: response.statusText,
-        headers: outHeaders,
-      })
-    } finally {
-      frame.remove()
+    // clerk-js sends form-encoded string bodies; normalise the odd cases so the
+    // native layer transmits the exact bytes a browser would have.
+    let bodyText: string | undefined
+    if (body != null) {
+      if (typeof body === "string") bodyText = body
+      else if (body instanceof URLSearchParams) bodyText = body.toString()
+      else bodyText = String(body)
     }
+
+    // Native, CORS-free HTTP: sends NO `Origin` header (Clerk 400s on
+    // Origin+Authorization together) and surfaces EVERY response header,
+    // including the rotated `Authorization` the browser would hide on the
+    // rotating_token_nonce reload. @capacitor/core is imported lazily to keep it
+    // out of the eager web bundle (manualChunks routes @capacitor/* aside).
+    const { CapacitorHttp } = await import("@capacitor/core")
+    const response = await CapacitorHttp.request({
+      url: url.toString(),
+      method: method ?? "GET",
+      headers: headerObj,
+      data: bodyText,
+      // Hand back the raw body text — clerk-js does its own JSON parsing.
+      responseType: "text",
+    })
+
+    // CapacitorHttp header names keep whatever case the platform reports —
+    // match case-insensitively.
+    const outHeaders = new Headers()
+    for (const [key, value] of Object.entries(response.headers ?? {})) {
+      if (typeof value === "string") outHeaders.set(key, value)
+    }
+
+    // Persist the rotated client token (empty value = client reset / sign-out).
+    const returnedJwt = outHeaders.get("authorization")
+    if (returnedJwt !== null) {
+      clientJwt = returnedJwt || null
+      try {
+        if (clientJwt) localStorage.setItem(STORAGE_KEY, clientJwt)
+        else localStorage.removeItem(STORAGE_KEY)
+      } catch {
+        /* storage unavailable */
+      }
+    }
+
+    // Re-materialise as a real Response so clerk-js consumes it exactly as a
+    // normal fetch (204/205/304 = no body). CapacitorHttp may hand `data` back
+    // as a parsed object on some platforms even with responseType text —
+    // re-serialise so the body is always a string.
+    const nullBody = response.status === 204 || response.status === 205 || response.status === 304
+    const raw = response.data
+    const responseText = nullBody || raw == null ? null : typeof raw === "string" ? raw : JSON.stringify(raw)
+    return new Response(responseText, {
+      status: response.status,
+      headers: outHeaders,
+    })
   }
 
   // Serialize FAPI calls: each waits for the previous so it uses the token the
