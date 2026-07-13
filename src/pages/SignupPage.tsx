@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
-import { Link, useSearchParams } from "react-router-dom"
-import { SignUp } from "@clerk/clerk-react"
+import { Link, Navigate, useSearchParams } from "react-router-dom"
+import { SignUp, useAuth } from "@clerk/clerk-react"
 import { safeRedirect } from "@/lib/safe-redirect"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
@@ -8,18 +8,18 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { ArrowRight, TrendingUp } from "lucide-react"
 import { InstallAppBanner } from "@/components/InstallAppBanner"
-import { NativeOAuthButton } from "@/components/NativeOAuthButton"
 import { initPwa } from "@/lib/pwa/register-sw"
+import { useNativeOAuthIntercept } from "@/lib/use-native-oauth-intercept"
 
-// On native, Clerk's own social buttons can't complete OAuth in the WebView, so
-// the custom NativeOAuthButtons above replace them. Clerk's duplicate in-card
-// social section + "or" divider are hidden by the `html.native-app
-// .cl-socialButtonsRoot` rule in index.css — an appearance-prop Tailwind class
-// can't do it (Clerk's unlayered CSS-in-JS beats layered Tailwind utilities).
+// Clerk's own in-card social buttons render on BOTH web and native. On native
+// their taps are hijacked by useNativeOAuthIntercept (see
+// src/lib/native-oauth.ts for why the native flow exists); on the web the hook
+// is a no-op and Clerk's buttons behave normally.
 export function SignupPage() {
   const [agreed, setAgreed] = useState(false)
   const [continued, setContinued] = useState(false)
   const [params] = useSearchParams()
+  const { isLoaded, isSignedIn } = useAuth()
 
   // Preserve a post-signup destination (e.g. an invitation accept page) and
   // pre-fill the invited email so a fresh account matches the invite.
@@ -39,28 +39,23 @@ export function SignupPage() {
     }
   }, [])
 
+  useNativeOAuthIntercept("sign-up", {
+    acceptedLegalAt: new Date().toISOString(),
+    ...(referralCode ? { referralCode } : {}),
+  })
+
   useEffect(() => {
     initPwa()
   }, [])
+
+  // Already signed in (e.g. arriving back after a completed native OAuth
+  // round-trip) — go straight to the app instead of showing the card.
+  if (isLoaded && isSignedIn) return <Navigate to={target} replace />
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-muted/30 p-4 gap-4">
       {continued ? (
         <div className="flex flex-col items-center gap-4">
-          <div className="flex w-full max-w-sm flex-col items-center gap-2">
-            <NativeOAuthButton
-              provider="apple"
-              mode="sign-up"
-              completeUrl={target}
-              unsafeMetadata={{ acceptedLegalAt: new Date().toISOString(), ...(referralCode ? { referralCode } : {}) }}
-            />
-            <NativeOAuthButton
-              provider="google"
-              mode="sign-up"
-              completeUrl={target}
-              unsafeMetadata={{ acceptedLegalAt: new Date().toISOString(), ...(referralCode ? { referralCode } : {}) }}
-            />
-          </div>
           <SignUp
             path="/signup"
             routing="path"
