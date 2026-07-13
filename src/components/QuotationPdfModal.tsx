@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { Download, ExternalLink, FileText, Loader as Loader2, RotateCw, Share2, Sparkles, TriangleAlert } from "lucide-react"
 import { getActiveOrgId } from "@/lib/api"
+import { downloadPdf, viewPdf } from "@/lib/pdf-open"
 import type { Quotation } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -58,13 +59,17 @@ export function QuotationPdfModal({ quotation, onClose }: { quotation: Quotation
   const quotationId = quotation?.id ?? null
   const title = quotation?.title ?? ""
 
-  const fetchState = useCallback(async (): Promise<PdfState> => {
+  const authHeaders = useCallback(async (): Promise<Record<string, string> | null> => {
     const token = await getToken()
-    if (!token) throw new Error("auth")
+    if (!token) return null
     const orgId = getActiveOrgId()
-    const res = await fetch(`/api/quotations/${quotationId}/pdf`, {
-      headers: { Authorization: `Bearer ${token}`, ...(orgId ? { "x-org-id": orgId } : {}) },
-    })
+    return { Authorization: `Bearer ${token}`, ...(orgId ? { "x-org-id": orgId } : {}) }
+  }, [getToken])
+
+  const fetchState = useCallback(async (): Promise<PdfState> => {
+    const headers = await authHeaders()
+    if (!headers) throw new Error("auth")
+    const res = await fetch(`/api/quotations/${quotationId}/pdf`, { headers })
     const body = (await res.json().catch(() => ({}))) as Partial<PdfState> & { error?: string }
     if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`)
     return {
@@ -75,7 +80,7 @@ export function QuotationPdfModal({ quotation, onClose }: { quotation: Quotation
       latest_stale: body.latest_stale !== false,
       history: Array.isArray(body.history) ? body.history : [],
     }
-  }, [getToken, quotationId])
+  }, [authHeaders, quotationId])
 
   // Poll while a generation is in flight; stops as soon as `generating` clears.
   const startPolling = useCallback(() => {
@@ -143,13 +148,9 @@ export function QuotationPdfModal({ quotation, onClose }: { quotation: Quotation
     setWorking(true)
     setErrorMsg("")
     try {
-      const token = await getToken()
-      if (!token) return
-      const orgId = getActiveOrgId()
-      const res = await fetch(`/api/quotations/${quotationId}/pdf`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}`, ...(orgId ? { "x-org-id": orgId } : {}) },
-      })
+      const headers = await authHeaders()
+      if (!headers) return
+      const res = await fetch(`/api/quotations/${quotationId}/pdf`, { method: "POST", headers })
       if (res.status !== 202) {
         const body = (await res.json().catch(() => ({}))) as { error?: string }
         setWorking(false)
@@ -163,19 +164,23 @@ export function QuotationPdfModal({ quotation, onClose }: { quotation: Quotation
     }
   }
 
-  function handleView(url: string) {
-    const w = window.open(url, "_blank", "noopener,noreferrer")
-    if (!w) toast.error(t("pdf.openError"))
+  function handleView(item: PdfHistoryItem) {
+    void viewPdf(item).then((ok) => {
+      if (!ok) toast.error(t("pdf.openError"))
+    })
   }
 
   function handleDownload(item: PdfHistoryItem, filename: string) {
-    const a = document.createElement("a")
-    a.href = item.download_url
-    a.rel = "noopener"
-    a.download = filename
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
+    if (!quotationId) return
+    void downloadPdf({
+      quotationId,
+      generationId: item.id,
+      urls: item,
+      filename,
+      getAuthHeaders: authHeaders,
+    }).then((ok) => {
+      if (!ok) toast.error(t("pdf.openError"))
+    })
   }
 
   async function handleShare(url: string, filename: string) {
@@ -284,7 +289,7 @@ export function QuotationPdfModal({ quotation, onClose }: { quotation: Quotation
                     <Badge variant="outline" className="text-[10px] border-emerald-500/40 text-emerald-600 dark:text-emerald-300">{t("pdf.currentBadge")}</Badge>
                   ) : null}
                 </div>
-                <Button className="w-full h-11" onClick={() => handleView(latest.view_url)}>
+                <Button className="w-full h-11" onClick={() => handleView(latest)}>
                   <ExternalLink className="size-4" />
                   {t("pdf.view")}
                 </Button>
@@ -327,7 +332,7 @@ export function QuotationPdfModal({ quotation, onClose }: { quotation: Quotation
                         {item.size_bytes ? <p className="text-[10px] text-muted-foreground">{formatSize(item.size_bytes)}</p> : null}
                       </div>
                       <div className="flex items-center gap-0.5 shrink-0">
-                        <Button size="icon" variant="ghost" className="size-8" aria-label={t("pdf.view")} title={t("pdf.view")} onClick={() => handleView(item.view_url)}>
+                        <Button size="icon" variant="ghost" className="size-8" aria-label={t("pdf.view")} title={t("pdf.view")} onClick={() => handleView(item)}>
                           <ExternalLink className="size-3.5" />
                         </Button>
                         <Button size="icon" variant="ghost" className="size-8" aria-label={t("pdf.download")} title={t("pdf.download")} onClick={() => handleDownload(item, filename)}>
