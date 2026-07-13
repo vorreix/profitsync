@@ -9,16 +9,13 @@ import { Button } from "@/components/ui/button"
 import { ArrowRight, TrendingUp } from "lucide-react"
 import { InstallAppBanner } from "@/components/InstallAppBanner"
 import { NativeOAuthButton } from "@/components/NativeOAuthButton"
-import { isNativeApp } from "@/lib/native-auth"
 import { initPwa } from "@/lib/pwa/register-sw"
 
 // On native, Clerk's own social buttons can't complete OAuth in the WebView, so
-// we use the custom NativeOAuthButtons above and hide Clerk's duplicate social
-// section + divider here (web keeps Clerk's buttons). See LoginPage for context.
-const HIDE_CLERK_SOCIAL = isNativeApp()
-  ? { elements: { socialButtonsRoot: "hidden", dividerRow: "hidden" } }
-  : undefined
-
+// the custom NativeOAuthButtons above replace them. Clerk's duplicate in-card
+// social section + "or" divider are hidden by the `html.native-app
+// .cl-socialButtonsRoot` rule in index.css — an appearance-prop Tailwind class
+// can't do it (Clerk's unlayered CSS-in-JS beats layered Tailwind utilities).
 export function SignupPage() {
   const [agreed, setAgreed] = useState(false)
   const [continued, setContinued] = useState(false)
@@ -72,7 +69,6 @@ export function SignupPage() {
             fallbackRedirectUrl={target}
             initialValues={invitedEmail ? { emailAddress: invitedEmail } : undefined}
             unsafeMetadata={{ acceptedLegalAt: new Date().toISOString(), ...(referralCode ? { referralCode } : {}) }}
-            appearance={HIDE_CLERK_SOCIAL}
           />
           <p className="text-xs text-muted-foreground">
             By signing up you confirm you accept the{" "}

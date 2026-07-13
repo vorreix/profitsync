@@ -1,16 +1,20 @@
-import { useState } from "react"
-import { useSignIn, useSignUp } from "@clerk/clerk-react"
+import { useEffect, useState } from "react"
+import { useClerk } from "@clerk/clerk-react"
 import { Loader2 } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
 import { isNativeApp, nativeAuthLog, nativeAuthUrlLog, NATIVE_OAUTH_REDIRECT_URL } from "@/lib/native-auth"
+import { createNativeOAuthAttempt } from "@/lib/native-oauth"
 import { cn } from "@/lib/utils"
 
 // Native-only social sign-in. In the Capacitor WebView, Clerk's prebuilt social
 // buttons can't complete OAuth (the provider redirect leaves the WebView), so we
-// drive it manually: create the sign-in/up with our custom-scheme redirect, open
-// the provider page in the in-app Browser, and the deep-link listener in App.tsx
+// drive it manually: create a NATIVE-flagged sign-in/up attempt against FAPI
+// (`_is_native=1` — see src/lib/native-oauth.ts for why clerk-js's own create is
+// unusable here: production rejects a web-created attempt whose callback arrives
+// from the cookie-less external browser with `authorization_invalid`), open the
+// provider page in the system Browser, and the deep-link listener in App.tsx
 // routes the callback back to /sso-callback. On the web this renders nothing —
 // Clerk's <SignIn>/<SignUp> already render the enabled providers there.
 type Provider = "google" | "apple"
@@ -50,16 +54,27 @@ function AppleGlyph() {
 
 export function NativeOAuthButton({ provider, mode, completeUrl, unsafeMetadata }: NativeOAuthButtonProps) {
   const { t } = useTranslation()
-  const signInState = useSignIn()
-  const signUpState = useSignUp()
+  const clerk = useClerk()
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // If the user backs out of the external browser without finishing OAuth (or
+  // the callback fails and returns here), the page regains visibility with the
+  // button still in its submitting state — reset it so it's tappable again.
+  useEffect(() => {
+    if (!isNativeApp()) return
+    const onVisible = () => {
+      if (document.visibilityState === "visible") setSubmitting(false)
+    }
+    document.addEventListener("visibilitychange", onVisible)
+    return () => document.removeEventListener("visibilitychange", onVisible)
+  }, [])
 
   if (!isNativeApp()) return null
 
   const strategy = STRATEGY[provider]
   const label = provider === "google" ? t("auth.continueWithGoogle") : t("auth.continueWithApple")
-  const loaded = mode === "sign-in" ? signInState.isLoaded : signUpState.isLoaded
+  const loaded = clerk.loaded
 
   async function handleAuth() {
     setSubmitting(true)
@@ -72,34 +87,15 @@ export function NativeOAuthButton({ provider, mode, completeUrl, unsafeMetadata 
     })
     try {
       const { Browser } = await import("@capacitor/browser")
-      let externalVerificationRedirectURL: URL | null | undefined
+      const url = await createNativeOAuthAttempt({
+        publishableKey: clerk.publishableKey,
+        mode,
+        strategy,
+        unsafeMetadata,
+      })
 
-      if (mode === "sign-in") {
-        if (!signInState.isLoaded) return
-        const result = await signInState.signIn.create({
-          strategy,
-          redirectUrl: NATIVE_OAUTH_REDIRECT_URL,
-          actionCompleteRedirectUrl: completeUrl,
-        })
-        externalVerificationRedirectURL = result.firstFactorVerification.externalVerificationRedirectURL
-      } else {
-        if (!signUpState.isLoaded) return
-        const result = await signUpState.signUp.create({
-          strategy,
-          redirectUrl: NATIVE_OAUTH_REDIRECT_URL,
-          actionCompleteRedirectUrl: completeUrl,
-          legalAccepted: true,
-          unsafeMetadata,
-        })
-        externalVerificationRedirectURL = result.verifications.externalAccount.externalVerificationRedirectURL
-      }
-
-      if (!externalVerificationRedirectURL) {
-        throw new Error(`Clerk did not return a ${provider} verification URL.`)
-      }
-
-      nativeAuthUrlLog("generated_redirect_url", externalVerificationRedirectURL, { provider, mode })
-      await Browser.open({ url: externalVerificationRedirectURL.toString(), presentationStyle: "fullscreen" })
+      nativeAuthUrlLog("generated_redirect_url", url, { provider, mode })
+      await Browser.open({ url, presentationStyle: "fullscreen" })
     } catch (cause) {
       const detail = cause instanceof Error ? cause.message : String(cause)
       nativeAuthLog("oauth_start_failed", { provider, mode, message: detail })

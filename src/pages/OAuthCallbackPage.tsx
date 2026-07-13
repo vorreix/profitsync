@@ -14,6 +14,23 @@ export function OAuthCallbackPage() {
     async function completeOAuth() {
       nativeAuthUrlLog("callback_route_loaded", window.location.href)
       try {
+        // Native cross-browser flow: the attempt is created `_is_native=1` in
+        // the WebView but completes in the external browser, which rotates the
+        // client's token server-side. The callback deep link carries
+        // rotating_token_nonce — reload the client with it FIRST so the
+        // completed sign-in/up (and its new session) is visible to
+        // handleRedirectCallback below. See src/lib/native-oauth.ts.
+        const nonce = new URLSearchParams(window.location.search).get("rotating_token_nonce")
+        if (nonce) {
+          try {
+            await clerk.client?.reload({ rotatingTokenNonce: nonce })
+            nativeAuthLog("client_reloaded_with_nonce")
+          } catch (cause) {
+            nativeAuthLog("client_nonce_reload_failed", {
+              message: cause instanceof Error ? cause.message : String(cause),
+            })
+          }
+        }
         await clerk.handleRedirectCallback(
           {
             signInUrl: "/login",
