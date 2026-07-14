@@ -10,9 +10,10 @@
 // unbundled ESM on @vercel/node (see scripts/check-esm-extensions.mjs).
 import { and, eq, or, sql } from "drizzle-orm"
 import { db } from "../../src/lib/db/index.js"
-import { notificationPreferences, notifications, organizationMembers } from "../../src/lib/db/schema.js"
+import { notificationPreferences, notifications, organizationMembers, organizations } from "../../src/lib/db/schema.js"
 import {
   categoryForType,
+  pushUrlWithOrg,
   resolveChannelEnabled,
   sanitizePreferences,
   type NotificationCategory,
@@ -56,6 +57,22 @@ export type CreateNotificationInput = {
   pushDefault?: boolean
   /** Optional image URL forwarded to the push payload (broadcasts). */
   imageUrl?: string | null
+  /**
+   * Human org name for the PUSH title prefix ("<Org> · <title>"). Optional — when
+   * org-scoped and omitted, it is looked up. notifyOrgMembers passes it once so a
+   * fan-out doesn't re-query per recipient.
+   */
+  orgName?: string | null
+}
+
+/** Look up an org's display name (for the push title prefix). Null if missing. */
+async function orgNameFor(orgId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ name: organizations.name })
+    .from(organizations)
+    .where(eq(organizations.id, orgId))
+    .limit(1)
+  return row?.name ?? null
 }
 
 /**
@@ -133,15 +150,22 @@ export async function createNotification(input: CreateNotificationInput): Promis
   }
 
   // Best-effort push (fire-and-forget): the in-app write below is the source of
-  // truth and never waits on or fails because of push.
-  const pushPayload = {
-    title: input.title,
-    body: input.body || undefined,
-    url: input.link || undefined,
-    image: input.imageUrl || undefined,
+  // truth and never waits on or fails because of push. Org-scoped pushes carry
+  // the org identity so a push that arrives while a DIFFERENT org is active
+  // clearly names its org (title prefix) and, on tap, switches into it (the
+  // `no_org` url param — see useNotificationOrgSwitch). The in-app row's `link`
+  // stays clean; the drawer is already active-org scoped.
+  if (showPush) {
+    const orgName = input.orgName ?? (input.organizationId ? await orgNameFor(input.organizationId) : null)
+    const pushPayload = {
+      title: orgName ? `${orgName} · ${input.title}` : input.title,
+      body: input.body || undefined,
+      url: pushUrlWithOrg(input.link, input.organizationId),
+      image: input.imageUrl || undefined,
+    }
+    if (showWebPush) void sendWebPushToUser(input.userId, pushPayload, input.type).catch(() => {})
+    if (showMobilePush) void sendFcmToUser(input.userId, pushPayload, input.type).catch(() => {})
   }
-  if (showWebPush) void sendWebPushToUser(input.userId, pushPayload, input.type).catch(() => {})
-  if (showMobilePush) void sendFcmToUser(input.userId, pushPayload, input.type).catch(() => {})
 
   if (!showInApp) return null
 
@@ -196,6 +220,11 @@ export async function notifyOrgMembers(
     Array.isArray(opts.excludeUserId) ? opts.excludeUserId : opts.excludeUserId ? [opts.excludeUserId] : [],
   )
   const targets = members.filter((m) => !excluded.has(m.userId) && (!opts.roles || opts.roles.includes(m.role)))
+  if (targets.length === 0) return
+
+  // Resolve the org name ONCE for the whole fan-out (each createNotification would
+  // otherwise re-query it for the push title prefix).
+  const orgName = input.orgName ?? (await orgNameFor(organizationId))
 
   await Promise.all(
     targets.map((m) =>
@@ -203,6 +232,7 @@ export async function notifyOrgMembers(
         ...input,
         userId: m.userId,
         organizationId,
+        orgName,
         dedupeKey: input.dedupeKey ? `${input.dedupeKey}:${m.userId}` : null,
       }),
     ),

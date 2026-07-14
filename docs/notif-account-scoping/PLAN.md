@@ -44,12 +44,14 @@ Existing `organization_id` assignments already fit: membership-bound events (`ro
 
 | # | Branch | Task | Gate | cap:sync | Push / PR |
 |---|---|---|---|---|---|
-| A | `fix/notif-account-scope-maqbool` | Task A — scope inbox/count/read-all to active org + account-level (+ this plan doc) | ⏳ | (server-only) | ⏳ |
-| B | `feat/notif-settings-button-maqbool` | Task B — settings button in the drawer → `/profile?tab=notifications` | ⏳ | ⏳ | ⏳ |
-| C | `feat/notif-push-org-context-maqbool` | Task C — push org name prefix + `?no_org=` switch-on-tap consumer | ⏳ | ⏳ | ⏳ |
+| A | `fix/notif-account-scope-maqbool` | Task A — scope inbox/count/read-all to active org + account-level (+ this plan doc) | ✅ `4cb91d0` | (server-only) | ✅ [pull/new](https://github.com/vorreix/profitsync/pull/new/fix/notif-account-scope-maqbool) |
+| B | `feat/notif-settings-button-maqbool` | Task B — settings button in the drawer → `/profile?tab=notifications` | ✅ `05242ca` | (on tip) | ✅ [pull/new](https://github.com/vorreix/profitsync/pull/new/feat/notif-settings-button-maqbool) |
+| C | `feat/notif-push-org-context-maqbool` | Task C — push org name prefix + `?no_org=` switch-on-tap consumer | ✅ `b2b103f` | ✅ android+ios | ✅ [pull/new](https://github.com/vorreix/profitsync/pull/new/feat/notif-push-org-context-maqbool) |
 
-`cap:sync:android` + `cap:sync:ios` run once on the **tip** (C) — B and C change the web
-bundle; A is API-only.
+`cap:sync:android` + `cap:sync:ios` ran once on the **tip** (C) — B and C change the web
+bundle; A is API-only. Both native shells now carry the new `dist/` (8 plugins, assets copied).
+`gh` is unauthenticated in this environment → the user opens the three PRs from the compare
+URLs above (stack them A → B → C).
 
 ## Task A — per-account notification scoping (API)
 
@@ -103,4 +105,33 @@ react-router nav (search-param effect). `native-push.ts` unchanged — its tap a
 4. **Base off `dev`** (== `main`), not the stale OAuth branch.
 
 ## Change log
-- _(pending)_ Task A committed.
+- **Task A** (`4cb91d0`, `fix/notif-account-scope-maqbool`): scoped the bell list,
+  unread-count and read-all to `user_id = me AND (organization_id = active_org OR
+  organization_id IS NULL)`; added `or` imports. Committed this plan doc on the same branch
+  (chain root). Full gate green.
+- **Task B** (`05242ca`, `feat/notif-settings-button-maqbool`): gear button in the drawer
+  header → `/profile?tab=notifications`; new `notifications.settings_button` key across all
+  8 locales (via `scripts/i18n-merge.mjs`). Gate green.
+- **Task C** (`b2b103f`, `feat/notif-push-org-context-maqbool`): server prefixes org-scoped
+  push titles with the org name and appends `?no_org=<orgId>` to internal push URLs
+  (`notifyOrgMembers` resolves the name once for the fan-out); shared pure helpers
+  `pushUrlWithOrg` + `decideNoOrgSwitch`; `useNotificationOrgSwitch` mounted in
+  `AppLayoutInner` switches into the tapped org then strips the param; 11 new unit tests.
+  Full gate green (432 tests). Ran `cap:sync:android` + `cap:sync:ios` on this tip — both
+  native shells rebuilt with the new bundle. All three branches pushed.
+
+## Verification (honest ledger)
+- **Automated gate** — every branch passed the full pre-commit gate (secret scan →
+  ESM-extension → boot-functions → route-guards → i18n parity → lint → typecheck → 432 tests)
+  and a clean production `vite build` (no chunk-cycle / build-only breakage).
+- **Task C logic** — the tricky parts (push-URL construction incl. existing query / external
+  links / url-encoding, and the switch-decision guards: loading, already-active, non-member)
+  are locked by **11 committed unit tests** against the extracted pure helpers.
+- **Deferred (documented, not hidden):** live end-to-end drawer/push behaviour on a real
+  device is **not** browser/device-verified here — the unit gate is DB-free (no jsdom/RTL in
+  the repo), a full-stack `vercel dev` EMFILEs in this tree, and driving a real push tap needs
+  a published native build (≥ versionCode 8). The org-switch glue is thin over the tested pure
+  logic; the user is actively device-testing and receives this in the next store build.
+- **Items 1 & 4 (onboarding idempotency, wealth-logout)** are already code-complete on
+  `dev`/`main` (onboarding on dev; logout via #335). They reach the user via a `main` deploy
+  (item 1/2) and a native build ≥ versionCode 8 (item 4/logout) — no new code from this wave.

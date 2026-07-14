@@ -203,3 +203,39 @@ export function sanitizePreferences(input: unknown): NotificationPreferences {
   }
   return out
 }
+
+// Org-context on a PUSH so a tap lands in the right account (used by the server
+// sender api/_lib/notifications.ts and the client consumer
+// use-notification-org-switch.ts). Kept here — pure + shared — so both sides
+// agree on the `no_org` contract and it stays unit-testable (DB-free).
+
+/**
+ * Build the push url: org-scoped pushes get `?no_org=<orgId>` appended to an
+ * internal link (the client switches to that org on open), a missing link falls
+ * back to the notifications page in that org. External (http) links and
+ * account-level (org-less) notifications are left untouched.
+ */
+export function pushUrlWithOrg(link: string | null | undefined, orgId: string | null | undefined): string | undefined {
+  if (!orgId) return link || undefined
+  if (link && !link.startsWith("/")) return link
+  const base = link && link.startsWith("/") ? link : "/notifications"
+  const sep = base.includes("?") ? "&" : "?"
+  return `${base}${sep}no_org=${encodeURIComponent(orgId)}`
+}
+
+/**
+ * Decide what the `?no_org=<target>` consumer should do. Pure so the tricky
+ * timing/guard logic is unit-tested without a DOM. `strip` = remove the param
+ * (only once orgs have loaded and a target is present); `switchTo` = the org to
+ * activate, or null when it's already active or not a member org.
+ */
+export function decideNoOrgSwitch(
+  target: string | null | undefined,
+  activeOrgId: string | null | undefined,
+  memberOrgIds: string[],
+  loading: boolean,
+): { strip: boolean; switchTo: string | null } {
+  if (!target || loading) return { strip: false, switchTo: null }
+  const switchTo = target !== activeOrgId && memberOrgIds.includes(target) ? target : null
+  return { strip: true, switchTo }
+}
