@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { and, count, desc, eq, isNull, sql } from "drizzle-orm"
+import { and, count, desc, eq, isNull, or, sql } from "drizzle-orm"
 import { db, serialize } from "../../src/lib/db/index.js"
 import { notifications } from "../../src/lib/db/schema.js"
 import { requireAuth } from "../_lib/auth.js"
@@ -36,11 +36,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const category = single(req.query.category)
   const cursorRaw = single(req.query.cursor)
 
-  // The bell is a PERSONAL inbox: a recipient sees ALL their own notifications
-  // across every org they belong to, plus account-level (org-less) ones — never
-  // filtered by the org they happen to be viewing. (Org-scoped filtering hid
-  // cross-org events like a role change in a non-active org.)
-  const scope = eq(notifications.userId, ctx.userId)
+  // The bell is scoped to the ACTIVE organization: a recipient sees this org's
+  // notifications plus account-level (org-less) ones (broadcasts, being removed
+  // from an org) — never a mix of every org they belong to. Cross-org events
+  // (e.g. a role change in a non-active org) are still surfaced via push, which
+  // names the org and switches to it on tap (see api/_lib/notifications.ts), so
+  // scoping the drawer keeps accounts cleanly separated without losing anything.
+  const scope = and(
+    eq(notifications.userId, ctx.userId),
+    or(eq(notifications.organizationId, ctx.orgId), isNull(notifications.organizationId)),
+  )
 
   const listConditions = [scope]
   if (filter === "unread") listConditions.push(isNull(notifications.readAt))
