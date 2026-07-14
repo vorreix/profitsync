@@ -1587,7 +1587,8 @@
       "need_time": "కనీసం ఒక సమయాన్ని జోడించండి.",
       "new_reminder": "కొత్త రిమైండర్",
       "edit_reminder": "రిమైండర్ సవరించు"
-    }
+    },
+    "settings_button": "నోటిఫికేషన్ సెట్టింగ్‌లు"
   },
   "featureHelp": {
     "open": "Open help for {{feature}}",

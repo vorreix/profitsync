@@ -2,7 +2,7 @@ import { useCallback, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { useNavigate } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
-import { Bell, CheckCheck } from "lucide-react"
+import { Bell, CheckCheck, Settings } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Drawer, DrawerContent, DrawerTitle, DrawerTrigger } from "@/components/ui/drawer"
@@ -97,6 +97,11 @@ export function NotificationBell({ className }: { className?: string }) {
     navigate("/notifications")
   }
 
+  const onSettings = () => {
+    setOpen(false)
+    navigate("/profile?tab=notifications")
+  }
+
   const badge = unreadCount > 99 ? "99+" : String(unreadCount)
 
   const trigger = (
@@ -121,22 +126,33 @@ export function NotificationBell({ className }: { className?: string }) {
 
   const panel = (
     <>
-      <div className="flex shrink-0 items-center justify-between border-b px-3 py-2.5">
+      <div className="flex shrink-0 items-center justify-between gap-2 border-b px-3 py-2.5">
         {isMobile ? (
           <DrawerTitle className="text-sm font-semibold">{t("title")}</DrawerTitle>
         ) : (
           <p className="text-sm font-semibold">{t("title")}</p>
         )}
-        {unreadCount > 0 && (
+        <div className="flex items-center gap-1">
+          {unreadCount > 0 && (
+            <button
+              type="button"
+              onClick={markAllRead}
+              className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+            >
+              <CheckCheck className="size-3.5" />
+              {t("mark_all_read")}
+            </button>
+          )}
           <button
             type="button"
-            onClick={markAllRead}
-            className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+            onClick={onSettings}
+            aria-label={t("settings_button")}
+            title={t("settings_button")}
+            className="inline-flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
           >
-            <CheckCheck className="size-3.5" />
-            {t("mark_all_read")}
+            <Settings className="size-4" />
           </button>
-        )}
+        </div>
       </div>
 
       {loading && !loaded ? (

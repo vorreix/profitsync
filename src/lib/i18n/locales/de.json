@@ -1587,7 +1587,8 @@
       "need_time": "Füge mindestens eine Uhrzeit hinzu.",
       "new_reminder": "Neue Erinnerung",
       "edit_reminder": "Erinnerung bearbeiten"
-    }
+    },
+    "settings_button": "Benachrichtigungseinstellungen"
   },
   "featureHelp": {
     "open": "Open help for {{feature}}",

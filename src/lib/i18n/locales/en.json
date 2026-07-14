@@ -1482,6 +1482,7 @@
     "empty_hint": "New notifications will show up here.",
     "mark_all_read": "Mark all as read",
     "view_all": "View all",
+    "settings_button": "Notification settings",
     "mark_read": "Mark as read",
     "mark_unread": "Mark as unread",
     "delete": "Delete",

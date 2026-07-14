@@ -1587,7 +1587,8 @@
       "need_time": "குறைந்தது ஒரு நேரத்தைச் சேர்க்கவும்.",
       "new_reminder": "புதிய நினைவூட்டல்",
       "edit_reminder": "நினைவூட்டலைத் திருத்து"
-    }
+    },
+    "settings_button": "அறிவிப்பு அமைப்புகள்"
   },
   "featureHelp": {
     "open": "Open help for {{feature}}",
