@@ -49,6 +49,34 @@ Switching an installed native app to `standardBrowser:false` changes the client 
 any currently-signed-in native user is logged out **once** on first launch of the new build
 and signs in again. Acceptable; web is unaffected (`standardBrowser` stays `true` on web).
 
+## UPDATE (2026-07-14): cold-start persistence — CapacitorHttp fix SHIPPED + token-wipe hardened
+The "pending fix" below (route FAPI — incl. the nonce reload — through `CapacitorHttp` so the
+rotated `Authorization` is readable) **shipped** in **#335** (`5a04502`) and first rode a build
+at **`versionCode 8`**. The transport shim no longer uses a hidden iframe; it goes through
+`CapacitorHttp.request()` (see the header comment in `native-clerk-transport.ts`). So the
+"KNOWN GAP" narrative below is **historical** — kept for the root-cause record.
+
+Two things were true about the user still seeing "logged out on every reopen":
+
+1. **Build reality (primary).** Every build the user tested was **`versionCode 7`** — *below*
+   the fix. A native build ≥ `versionCode 8` is required for the fix to reach the device; the
+   code has carried it since #335. Resolution = ship/install a `versionCode ≥ 8` build (this
+   branch bumps to **10**).
+2. **Token-wipe hardening (this branch — `fix/native-clerk-token-persist-maqbool`).** Even on a
+   fixed build, `native-clerk-transport.ts` treated an **empty** `Authorization` response
+   header (`""`, not `null`) as a sign-out: `returnedJwt !== null` was true for `""`, `|| null`
+   collapsed it, and `localStorage.removeItem()` **silently wiped the live token** → next cold
+   start booted signed-out. Fix: extracted the decision into the pure, unit-tested
+   `nextClientJwt(current, header)` — adopt a rotated token **only when non-empty**; an
+   absent/empty header means "no rotation, keep the held token" (never wiped). Clerk signals
+   sign-out by rotating to a fresh *session-less* client token (still non-empty), so this can't
+   regress logout; and a stale token can't resurrect a dead session (cold start re-validates and
+   Clerk replaces it). Locked by 4 tests in `native-clerk-transport.test.ts`.
+
+**Still needs one on-device confirmation** (the only step left): install the `versionCode ≥ 8`
+build, Google sign-in, **force-close**, reopen → should land already signed in. Logcat filter
+`[ProfitSync Native Auth]`.
+
 ## Status: primary sign-in FIXED (device-verified). Cold-start persistence — KNOWN GAP.
 On a physical phone the Google round-trip now completes end-to-end **in-session**: tap
 Continue with Google → pick the account in the system browser → deep link back →
@@ -123,8 +151,10 @@ To verify when at the device: install this build, sign in with Google, **force-c
   `getToken` returns a real JWT, authed API works (lands on `/onboarding` for a new user).
 - [ ] Device: email/password sign-in still works in native mode. *(unchanged path; not
   re-run this pass — email/password never touched the native OAuth transport)*
-- [ ] Device: session persists across an app restart — **KNOWN GAP**, root cause + fix
-  documented above; not yet fixed (needs a live-device verification of the CapacitorHttp path).
+- [~] Device: session persists across an app restart — **CapacitorHttp fix shipped in #335
+  (versionCode ≥ 8) + empty-header token-wipe hardened this pass (`nextClientJwt`).** Code-
+  complete; the one remaining step is a live-device force-close/reopen on a `versionCode ≥ 8`
+  build (the user's prior tests were on versionCode 7). See the UPDATE section at the top.
 - [ ] Web: Google/email sign-in unaffected (`standardBrowser` stays `true` — the shim and the
   intercept both early-return off-native, so web is structurally untouched).
 - [x] `cap:sync:android` + `cap:sync:ios` — see task summary for run status.
