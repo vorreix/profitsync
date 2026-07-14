@@ -426,7 +426,20 @@ export function AppLayout() {
     }
   }, [isLoaded, isSignedIn, navigate])
 
-  if (!isLoaded || !isSignedIn) return null
+  // Never render a bare `null` here. A transient auth blip — a session-token
+  // refresh that momentarily flips `isSignedIn` to false (the failure mode
+  // behind the native "transaction failed → black screen"), or clerk-js still
+  // booting — would otherwise paint the whole WebView its default black
+  // background. Render the app background + a spinner so a blip reads as
+  // "loading", not a dead app; the effect above redirects to /login only when
+  // the sign-out is real.
+  if (!isLoaded || !isSignedIn) {
+    return (
+      <div className="flex min-h-dvh w-full items-center justify-center bg-background safe-pt safe-pb">
+        <Loader2 className="size-6 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
 
   return (
     <OrgProvider>
