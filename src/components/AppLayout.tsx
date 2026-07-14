@@ -31,6 +31,7 @@ import { LanguageSwitcher } from "@/components/LanguageSwitcher"
 import { useSyncProfileLanguage } from "@/lib/i18n/use-language"
 import { CurrencyProvider, useCurrency } from "@/lib/currency-context"
 import { OrgProvider, useOrg } from "@/lib/org-context"
+import { useNotificationOrgSwitch } from "@/lib/use-notification-org-switch"
 import { AdminProvider, useAdmin } from "@/lib/admin-context"
 import { PageFilterProvider } from "@/lib/page-filter-context"
 import { DataRefreshProvider } from "@/lib/data-refresh-context"
@@ -153,6 +154,8 @@ function AppLayoutInner() {
   const { activeOrg, profile, needsOnboarding, loading: orgLoading } = useOrg()
   const { isAdmin } = useAdmin()
   const { currency } = useCurrency()
+  // A push tapped for a non-active org (?no_org=<id>) switches into that org here.
+  useNotificationOrgSwitch()
   const [fabOpen, setFabOpen] = useState(false)
   // Quick-add opens the create form IN PLACE over the current page (no navigation),
   // so "add from any screen" keeps you where you are; a success toast deep-links.
