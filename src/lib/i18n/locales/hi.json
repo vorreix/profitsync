@@ -1587,7 +1587,8 @@
       "need_time": "कम से कम एक समय जोड़ें।",
       "new_reminder": "नया अनुस्मारक",
       "edit_reminder": "अनुस्मारक संपादित करें"
-    }
+    },
+    "settings_button": "सूचना सेटिंग्स"
   },
   "featureHelp": {
     "open": "Open help for {{feature}}",
