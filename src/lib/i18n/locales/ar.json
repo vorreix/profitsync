@@ -1587,7 +1587,8 @@
       "need_time": "أضف وقتًا واحدًا على الأقل.",
       "new_reminder": "تذكير جديد",
       "edit_reminder": "تعديل التذكير"
-    }
+    },
+    "settings_button": "إعدادات الإشعارات"
   },
   "featureHelp": {
     "open": "Open help for {{feature}}",

@@ -1587,7 +1587,8 @@
       "need_time": "Aggiungi almeno un orario.",
       "new_reminder": "Nuovo promemoria",
       "edit_reminder": "Modifica promemoria"
-    }
+    },
+    "settings_button": "Impostazioni notifiche"
   },
   "featureHelp": {
     "open": "Apri la guida per {{feature}}",
