@@ -1,8 +1,10 @@
 import { describe, it, expect } from "vitest"
 import {
   categoryForType,
+  decideNoOrgSwitch,
   defaultChannelEnabled,
   fullDefaultPreferences,
+  pushUrlWithOrg,
   resolveChannelEnabled,
   resolveAnyChannel,
   sanitizePreferences,
@@ -194,5 +196,56 @@ describe("notificationRenderKeys", () => {
       titleKey: null,
       bodyKey: "types.role_changed.body",
     })
+  })
+})
+
+describe("pushUrlWithOrg", () => {
+  it("leaves account-level (no org) notifications untouched", () => {
+    expect(pushUrlWithOrg("/transactions", null)).toBe("/transactions")
+    expect(pushUrlWithOrg(null, null)).toBeUndefined()
+    expect(pushUrlWithOrg(undefined, undefined)).toBeUndefined()
+  })
+
+  it("appends no_org to an internal link, respecting an existing query", () => {
+    expect(pushUrlWithOrg("/organizations/o1/members", "o1")).toBe("/organizations/o1/members?no_org=o1")
+    expect(pushUrlWithOrg("/transactions?view=t1", "o2")).toBe("/transactions?view=t1&no_org=o2")
+  })
+
+  it("falls back to the notifications page when org-scoped but link-less", () => {
+    expect(pushUrlWithOrg(null, "o1")).toBe("/notifications?no_org=o1")
+    expect(pushUrlWithOrg("", "o1")).toBe("/notifications?no_org=o1")
+  })
+
+  it("never rewrites an external (http) link even when org-scoped", () => {
+    expect(pushUrlWithOrg("https://example.com/x", "o1")).toBe("https://example.com/x")
+  })
+
+  it("url-encodes the org id", () => {
+    expect(pushUrlWithOrg("/x", "a b&c")).toBe("/x?no_org=a%20b%26c")
+  })
+})
+
+describe("decideNoOrgSwitch", () => {
+  const members = ["o1", "o2"]
+
+  it("does nothing (and does not strip) with no target", () => {
+    expect(decideNoOrgSwitch(null, "o1", members, false)).toEqual({ strip: false, switchTo: null })
+  })
+
+  it("waits for orgs to load before acting (does not strip yet)", () => {
+    // loading=true must NOT strip, or a cold start would drop the switch.
+    expect(decideNoOrgSwitch("o2", "o1", [], true)).toEqual({ strip: false, switchTo: null })
+  })
+
+  it("switches to a member org that isn't already active", () => {
+    expect(decideNoOrgSwitch("o2", "o1", members, false)).toEqual({ strip: true, switchTo: "o2" })
+  })
+
+  it("strips but does not switch when the target is already active", () => {
+    expect(decideNoOrgSwitch("o1", "o1", members, false)).toEqual({ strip: true, switchTo: null })
+  })
+
+  it("strips but does not switch to a non-member org (stale push after leaving)", () => {
+    expect(decideNoOrgSwitch("o9", "o1", members, false)).toEqual({ strip: true, switchTo: null })
   })
 })
