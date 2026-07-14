@@ -56,6 +56,27 @@ import { isNativeApp } from "@/lib/native-auth"
 
 const STORAGE_KEY = "ps_clerk_native_client_jwt"
 
+/**
+ * Decide the client JWT to persist after a FAPI response.
+ *
+ * Clerk rotates the native client token on every client-scoped response and
+ * returns the fresh one in the `Authorization` response header (`null` here when
+ * the header is absent). We adopt a rotated token ONLY when it's non-empty. An
+ * absent (`null`) OR empty (`""`) header means "no rotation happened on this
+ * response" — keep the token we already hold.
+ *
+ * ⚠️ We deliberately do NOT wipe on an empty header. Clerk signals sign-out by
+ * rotating to a fresh session-less client token (still non-empty), never with an
+ * empty `Authorization` header — so treating an empty header as a sign-out would
+ * destroy a live session on a stray empty header, which is exactly the
+ * "logged out on every app reopen" cold-start bug this guards against. Even if a
+ * spent token were ever kept, a cold start re-validates it and Clerk replaces it
+ * with a fresh (signed-out) client — a dead session can never be resurrected.
+ */
+export function nextClientJwt(current: string | null, responseAuthHeader: string | null): string | null {
+  return responseAuthHeader ? responseAuthHeader : current
+}
+
 // pk_live_<base64("clerk.example.com$")> → "clerk.example.com"
 function fapiHostFromPublishableKey(publishableKey: string): string | null {
   const encoded = publishableKey.split("_")[2]
@@ -155,13 +176,13 @@ export function installNativeClerkTransport(publishableKey: string): void {
       if (typeof value === "string") outHeaders.set(key, value)
     }
 
-    // Persist the rotated client token (empty value = client reset / sign-out).
-    const returnedJwt = outHeaders.get("authorization")
-    if (returnedJwt !== null) {
-      clientJwt = returnedJwt || null
+    // Adopt the rotated client token (see nextClientJwt: only a non-empty header
+    // rotates; an absent/empty one leaves the held token untouched — never wiped).
+    const rotated = nextClientJwt(clientJwt, outHeaders.get("authorization"))
+    if (rotated && rotated !== clientJwt) {
+      clientJwt = rotated
       try {
-        if (clientJwt) localStorage.setItem(STORAGE_KEY, clientJwt)
-        else localStorage.removeItem(STORAGE_KEY)
+        localStorage.setItem(STORAGE_KEY, rotated)
       } catch {
         /* storage unavailable */
       }
