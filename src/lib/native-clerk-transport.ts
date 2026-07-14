@@ -178,7 +178,8 @@ export function installNativeClerkTransport(publishableKey: string): void {
 
     // Adopt the rotated client token (see nextClientJwt: only a non-empty header
     // rotates; an absent/empty one leaves the held token untouched — never wiped).
-    const rotated = nextClientJwt(clientJwt, outHeaders.get("authorization"))
+    const respAuth = outHeaders.get("authorization")
+    const rotated = nextClientJwt(clientJwt, respAuth)
     if (rotated && rotated !== clientJwt) {
       clientJwt = rotated
       try {

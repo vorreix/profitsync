@@ -33,6 +33,14 @@ const config: CapacitorConfig = {
       overlaysWebView: true,
       style: "DEFAULT",
     },
+    // Native Google Sign-In (src/lib/native-google-signin.ts). skipNativeAuth
+    // keeps this a PURE credential provider: signInWithGoogle() returns the Google
+    // ID token WITHOUT creating a Firebase user — we hand that token straight to
+    // Clerk's google_one_tap strategy. `providers` scopes the SDKs linked natively.
+    FirebaseAuthentication: {
+      skipNativeAuth: true,
+      providers: ["google.com", "apple.com"],
+    },
   },
 }
 
