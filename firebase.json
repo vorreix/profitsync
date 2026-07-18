@@ -1,0 +1,17 @@
+{
+  "auth": {
+    "providers": {
+      "emailPassword": true,
+      "googleSignIn": {
+        "oAuthBrandDisplayName": "ProfitSync",
+        "supportEmail": "maqboolthoufeeq.t@gmail.com",
+        "authorizedRedirectUris": ["https://profitsync.net"]
+      }
+    },
+    "authorizedDomains": ["localhost", "profitsync.net", "profitsync-app.firebaseapp.com", "profitsync-app.web.app"]
+  },
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  }
+}
