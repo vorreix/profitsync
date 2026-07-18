@@ -1738,5 +1738,29 @@
     "failed": "Impossibile eliminare il tuo account. Riprova.",
     "emailFailed": "Impossibile inviare il codice. Riprova.",
     "loadFailed": "Impossibile caricare i dettagli dell'account"
+  },
+  "search": {
+    "title": "Cerca",
+    "description": "Cerca tra clienti, transazioni, preventivi, conti, categorie e pagine",
+    "placeholder": "Cerca…",
+    "recent": "Ricerche recenti",
+    "actions": "Azioni rapide",
+    "pages": "Pagine",
+    "clients": "Clienti",
+    "transactions": "Transazioni",
+    "quotations": "Preventivi",
+    "accounts": "Conti",
+    "categories": "Categorie",
+    "filterAll": "Tutto",
+    "noResults": "Nessun risultato trovato",
+    "clear": "Cancella",
+    "hintNavigate": "naviga",
+    "hintOpen": "apri",
+    "hintClose": "chiudi",
+    "handleSettings": "Impostazioni della maniglia di ricerca",
+    "handlePosition": "Posizione della maniglia di ricerca",
+    "sideLeft": "Bordo sinistro",
+    "sideRight": "Bordo destro",
+    "handleDragHint": "Tocca o scorri la maniglia verso l'interno per cercare. Trascinala su o giù lungo il bordo per posizionarla dove preferisci."
   }
 }

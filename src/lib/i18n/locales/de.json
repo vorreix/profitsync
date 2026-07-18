@@ -1738,5 +1738,29 @@
     "failed": "Dein Konto konnte nicht gelöscht werden. Bitte versuche es erneut.",
     "emailFailed": "Der Code konnte nicht gesendet werden. Bitte versuche es erneut.",
     "loadFailed": "Kontodetails konnten nicht geladen werden"
+  },
+  "search": {
+    "title": "Suche",
+    "description": "Suche in Kunden, Transaktionen, Angeboten, Konten, Kategorien und Seiten",
+    "placeholder": "Suchen…",
+    "recent": "Letzte Suchen",
+    "actions": "Schnellaktionen",
+    "pages": "Seiten",
+    "clients": "Kunden",
+    "transactions": "Transaktionen",
+    "quotations": "Angebote",
+    "accounts": "Konten",
+    "categories": "Kategorien",
+    "filterAll": "Alle",
+    "noResults": "Keine Ergebnisse gefunden",
+    "clear": "Löschen",
+    "hintNavigate": "navigieren",
+    "hintOpen": "öffnen",
+    "hintClose": "schließen",
+    "handleSettings": "Einstellungen des Suchgriffs",
+    "handlePosition": "Position des Suchgriffs",
+    "sideLeft": "Linker Rand",
+    "sideRight": "Rechter Rand",
+    "handleDragHint": "Tippe auf den Griff oder wische ihn nach innen, um zu suchen. Ziehe ihn am Rand nach oben oder unten, um ihn beliebig zu platzieren."
   }
 }
