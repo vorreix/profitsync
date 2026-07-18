@@ -4,11 +4,11 @@ import { db, serialize } from "../../../src/lib/db/index.js"
 import {
   appAdmins,
   organizationMembers,
-  organizations,
   subscriptions,
   userProfiles,
 } from "../../../src/lib/db/schema.js"
 import { requireAdminCap, rootAdminEmails } from "../../_lib/admin.js"
+import { deleteUserAccount } from "../../_lib/account-delete.js"
 
 const PAGE_SIZE = 30
 const IDS_CAP = 10000
@@ -244,40 +244,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(403).json({ error: "Only a super admin can delete a super admin's account." })
     }
 
-    // Delete every org the user owns (cascades to clients/transactions/subscriptions/invoices/members/invitations).
-    const ownedOrgs = await db
-      .select({ id: organizations.id })
-      .from(organizations)
-      .where(eq(organizations.ownerUserId, user_id))
-
-    for (const o of ownedOrgs) {
-      // Re-point any profile that had this org as current
-      const profilesWithCurrent = await db
-        .select({ id: userProfiles.id })
-        .from(userProfiles)
-        .where(eq(userProfiles.currentOrganizationId, o.id))
-      for (const p of profilesWithCurrent) {
-        await db
-          .update(userProfiles)
-          .set({ currentOrganizationId: null, updatedAt: new Date() })
-          .where(eq(userProfiles.id, p.id))
-      }
-      await db.delete(organizations).where(eq(organizations.id, o.id))
-    }
-
-    // Drop any non-owner memberships the user holds in other orgs.
-    await db.delete(organizationMembers).where(eq(organizationMembers.userId, user_id))
-
-    // Drop app-admin grant if any.
-    await db.delete(appAdmins).where(eq(appAdmins.userId, user_id))
-
-    // Finally delete the profile row.
-    const result = await db
-      .delete(userProfiles)
+    const [existingProfile] = await db
+      .select({ id: userProfiles.id })
+      .from(userProfiles)
       .where(eq(userProfiles.id, user_id))
-      .returning({ id: userProfiles.id })
-    if (!result.length) return res.status(404).json({ error: "Not found" })
-    return res.status(204).end()
+    if (!existingProfile) return res.status(404).json({ error: "Not found" })
+
+    // Shared with the self-serve delete-account flow. Fixes two old bugs: owned
+    // orgs are now torn down via teardownOrganization (Dodo billing cancelled
+    // FIRST — the old direct org delete kept charging the customer), and
+    // user-scoped rows (push subscriptions, referral codes, …) are cleaned up.
+    // Also deletes the Clerk user so they can't log back in and resurrect an
+    // empty account.
+    const result = await deleteUserAccount(user_id)
+    return res.json({ ok: true, clerk_deleted: result.clerkDeleted })
   }
 
   return res.status(405).json({ error: "Method not allowed" })
