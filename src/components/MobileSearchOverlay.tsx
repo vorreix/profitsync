@@ -365,7 +365,12 @@ export function MobileSearchOverlay({
         ))}
       </div>
 
-      <div className="safe-pb border-t bg-background/80 px-4 py-2">
+      {/* Bottom padding = safe inset + a small lift, so the bar never hugs the
+          screen edge (the unlayered .safe-pb would zero out py-2 on the web). */}
+      <div
+        className="border-t bg-background/80 px-4 pt-2"
+        style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 12px)" }}
+      >
         <div className="flex items-center gap-2 rounded-full border bg-muted/60 px-4 py-2.5">
           <Search className="size-4 shrink-0 text-muted-foreground" />
           <input
