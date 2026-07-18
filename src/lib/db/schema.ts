@@ -20,6 +20,12 @@ export const organizations = pgTable("organizations", {
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => ({
   ownerIdx: index("organizations_owner_idx").on(table.ownerUserId),
+  // One personal org per owner — the DB-level guard for the boot race where two
+  // parallel first-visit calls both run ensurePersonalOrg (both used to insert;
+  // the loser is now caught as 23505 and re-selects the winner).
+  onePersonalPerOwner: uniqueIndex("organizations_one_personal_idx")
+    .on(table.ownerUserId)
+    .where(sql`is_personal = true`),
 }))
 
 export const organizationMembers = pgTable("organization_members", {
@@ -94,6 +100,9 @@ export const clients = pgTable("clients", {
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => ({
   orgIdx: index("clients_org_idx").on(table.organizationId),
+  // Nearly every read filters org + live-rows together (lists, analytics, flow,
+  // calendar); the composite serves that pair without a post-index filter.
+  orgDeletedIdx: index("clients_org_deleted_idx").on(table.organizationId, table.deletedAt),
   // Containment lookups for the `?tag=` filter.
   tagsIdx: index("clients_tags_idx").using("gin", table.tags),
   // Trigram GIN: makes the leading-wildcard ILIKE '%q%' in /api/search and the
@@ -355,6 +364,8 @@ export const quotations = pgTable("quotations", {
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => ({
   orgIdx: index("quotations_org_idx").on(table.organizationId),
+  // Same org + live-rows pair as clients — serves the list/search filters.
+  orgDeletedIdx: index("quotations_org_deleted_idx").on(table.organizationId, table.deletedAt),
   // Containment lookups for the `?tag=` filter.
   tagsIdx: index("quotations_tags_idx").using("gin", table.tags),
   // Trigram GIN for /api/search and the list's ?search= ILIKE '%q%'.
