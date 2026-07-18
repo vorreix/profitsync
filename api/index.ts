@@ -139,6 +139,7 @@ import adminPayoutById from "./_routes/admin/payouts/[id].js"
 import referralsRoute from "./_routes/referrals.js"
 import referralsApply from "./_routes/referrals/apply.js"
 import referralPayouts from "./_routes/referrals/payouts.js"
+import search from "./_routes/search.js"
 
 type ApiHandler = (req: VercelRequest, res: VercelResponse) => unknown | Promise<unknown>
 
@@ -218,6 +219,8 @@ const routes: RoutePattern<ApiHandler>[] = [
   { segments: ["referrals"], handler: referralsRoute },
   { segments: ["referrals", "apply"], handler: referralsApply },
   { segments: ["referrals", "payouts"], handler: referralPayouts },
+
+  { segments: ["search"], handler: search },
 
   { segments: ["organizations"], handler: organizations },
   { segments: ["organizations", "switch"], handler: organizationSwitch },

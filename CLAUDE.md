@@ -298,6 +298,7 @@ The Android (`android/`) and iOS (`ios/`) apps are **[Capacitor](https://capacit
 | `/api/analytics` · `/api/audit` | trend/category/client aggregates · org audit log |
 | `/api/onboarding` | first-run setup (POST) |
 | `/api/referrals` (+ `/apply`, `/payouts`) | referral program |
+| `/api/search` | org-scoped global search (`?q=`, min 2 chars) — clients/transactions/quotations/wealth accounts/categories in one grouped payload; drives the ⌘K palette + mobile search overlay |
 | `/api/transactions/group` · `/api/transactions/bulk-delete` | split groups · bulk delete |
 | `/api/clients/bulk-delete` · `/api/clients/:id/media` | bulk delete · client logo |
 | `/api/billing/change-plan` · `/resume` · `/invoices` · `/invoice-pdf` | self-serve billing |

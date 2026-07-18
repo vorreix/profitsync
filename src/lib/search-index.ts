@@ -40,7 +40,7 @@ export function searchablePages(
   isAdmin: boolean,
   membersHref = "/organizations",
 ): SearchNavItem[] {
-  return [
+  const pages: Array<SearchNavItem | false> = [
     { labelKey: "nav.dashboard", href: "/dashboard", icon: LayoutDashboard },
     accountTypeAllows(accountType, "clients") && { labelKey: "nav.clients", href: "/clients", icon: Users },
     { labelKey: "nav.transactions", href: "/transactions", icon: ArrowLeftRight },
@@ -60,17 +60,19 @@ export function searchablePages(
     { labelKey: "nav.trash", href: "/trash", icon: Trash2 },
     { labelKey: "nav.profile", href: "/profile", icon: User },
     isAdmin && { labelKey: "nav.admin", href: "/admin", icon: Shield },
-  ].filter((p): p is SearchNavItem => Boolean(p))
+  ]
+  return pages.filter((p): p is SearchNavItem => Boolean(p))
 }
 
 export function quickActions(accountType: AccountType | null | undefined): SearchNavItem[] {
-  return [
+  const actions: Array<SearchNavItem | false> = [
     accountTypeAllows(accountType, "clients") &&
       { labelKey: "actions.addClient", href: "/clients?new=1", icon: Users },
     { labelKey: "actions.addTransaction", href: "/transactions?new=1", icon: ArrowLeftRight },
     accountTypeAllows(accountType, "quotations") &&
       { labelKey: "actions.createQuotation", href: "/quotations?new=1", icon: FileText },
-  ].filter((a): a is SearchNavItem => Boolean(a))
+  ]
+  return actions.filter((a): a is SearchNavItem => Boolean(a))
 }
 
 /** Case-insensitive substring match on the *translated* label (locale-aware). */
