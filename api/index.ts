@@ -80,6 +80,7 @@ import legalAccept from "./_routes/legal/accept.js"
 import trash from "./_routes/trash.js"
 import trashRestore from "./_routes/trash/restore.js"
 import trashPurge from "./_routes/trash/purge.js"
+import trashClear from "./_routes/trash/clear.js"
 import budgets from "./_routes/budgets.js"
 import budgetsOverview from "./_routes/budgets/overview.js"
 import budgetsDetail from "./_routes/budgets/detail.js"
@@ -230,6 +231,7 @@ const routes: RoutePattern<ApiHandler>[] = [
   { segments: ["trash"], handler: trash },
   { segments: ["trash", "restore"], handler: trashRestore },
   { segments: ["trash", "purge"], handler: trashPurge },
+  { segments: ["trash", "clear"], handler: trashClear },
 
   // Public, unauthenticated pricing for the marketing landing page.
   { segments: ["public", "pricing"], handler: publicPricing },
