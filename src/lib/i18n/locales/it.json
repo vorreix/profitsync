@@ -762,7 +762,14 @@
     "deleteForever": "Elimina per sempre",
     "deleting": "Eliminazione in corso...",
     "income": "Reddito",
-    "expense": "Spesa"
+    "expense": "Spesa",
+    "clearTrash": "Svuota cestino",
+    "clearTrashTitle": "Svuotare il cestino?",
+    "clearTrashDesc_one": "{{count}} elemento verrà eliminato definitivamente. Questa azione non può essere annullata.",
+    "clearTrashDesc_other": "Tutti i {{count}} elementi verranno eliminati definitivamente. Questa azione non può essere annullata.",
+    "clearing": "Svuotamento…",
+    "trashCleared": "Cestino svuotato",
+    "clearFailed": "Impossibile svuotare il cestino"
   },
   "theme": {
     "toggle": "Attiva/disattiva tema",

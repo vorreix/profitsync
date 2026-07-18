@@ -1210,7 +1210,14 @@
     "deleteForever": "Delete Forever",
     "deleting": "Deleting...",
     "income": "Income",
-    "expense": "Expense"
+    "expense": "Expense",
+    "clearTrash": "Clear trash",
+    "clearTrashTitle": "Clear trash?",
+    "clearTrashDesc_one": "{{count}} item will be permanently deleted. This cannot be undone.",
+    "clearTrashDesc_other": "All {{count}} items will be permanently deleted. This cannot be undone.",
+    "clearing": "Clearing…",
+    "trashCleared": "Trash cleared",
+    "clearFailed": "Failed to clear trash"
   },
   "theme": {
     "toggle": "Toggle theme",

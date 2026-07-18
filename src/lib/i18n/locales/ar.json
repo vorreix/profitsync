@@ -762,7 +762,14 @@
     "deleteForever": "حذف بشكل دائم",
     "deleting": "جاري الحذف...",
     "income": "الدخل",
-    "expense": "النفقة"
+    "expense": "النفقة",
+    "clearTrash": "إفراغ سلة المهملات",
+    "clearTrashTitle": "إفراغ سلة المهملات؟",
+    "clearTrashDesc_one": "سيتم حذف {{count}} عنصر نهائيًا. لا يمكن التراجع عن هذا الإجراء.",
+    "clearTrashDesc_other": "سيتم حذف جميع العناصر ({{count}}) نهائيًا. لا يمكن التراجع عن هذا الإجراء.",
+    "clearing": "جارٍ الإفراغ…",
+    "trashCleared": "تم إفراغ سلة المهملات",
+    "clearFailed": "تعذّر إفراغ سلة المهملات"
   },
   "theme": {
     "toggle": "تبديل المظهر",

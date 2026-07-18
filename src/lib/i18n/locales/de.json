@@ -762,7 +762,14 @@
     "deleteForever": "Für immer löschen",
     "deleting": "Wird gelöscht...",
     "income": "Einnahme",
-    "expense": "Ausgabe"
+    "expense": "Ausgabe",
+    "clearTrash": "Papierkorb leeren",
+    "clearTrashTitle": "Papierkorb leeren?",
+    "clearTrashDesc_one": "{{count}} Element wird endgültig gelöscht. Dies kann nicht rückgängig gemacht werden.",
+    "clearTrashDesc_other": "Alle {{count}} Elemente werden endgültig gelöscht. Dies kann nicht rückgängig gemacht werden.",
+    "clearing": "Wird geleert…",
+    "trashCleared": "Papierkorb geleert",
+    "clearFailed": "Papierkorb konnte nicht geleert werden"
   },
   "theme": {
     "toggle": "Design wechseln",

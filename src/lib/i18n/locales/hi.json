@@ -762,7 +762,14 @@
     "deleteForever": "हमेशा के लिए हटाएं",
     "deleting": "हटाया जा रहा है...",
     "income": "आय",
-    "expense": "व्यय"
+    "expense": "व्यय",
+    "clearTrash": "ट्रैश खाली करें",
+    "clearTrashTitle": "ट्रैश खाली करें?",
+    "clearTrashDesc_one": "{{count}} आइटम स्थायी रूप से हटा दिया जाएगा। इसे पूर्ववत नहीं किया जा सकता।",
+    "clearTrashDesc_other": "सभी {{count}} आइटम स्थायी रूप से हटा दिए जाएंगे। इसे पूर्ववत नहीं किया जा सकता।",
+    "clearing": "खाली किया जा रहा है…",
+    "trashCleared": "ट्रैश खाली कर दिया गया",
+    "clearFailed": "ट्रैश खाली नहीं हो सका"
   },
   "theme": {
     "toggle": "विषय टॉगल करें",
