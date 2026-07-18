@@ -13,6 +13,9 @@ import { matchRoute, type RoutePattern } from "../src/lib/api-router.js"
 // ---------------------------------------------------------------------------
 
 import profile from "./_routes/profile.js"
+import accountDeleteSummary from "./_routes/account/delete/summary.js"
+import accountDeleteRequestCode from "./_routes/account/delete/request-code.js"
+import accountDeleteConfirm from "./_routes/account/delete/confirm.js"
 import onboarding from "./_routes/onboarding.js"
 import notificationsList from "./_routes/notifications.js"
 import notificationsUnreadCount from "./_routes/notifications/unread-count.js"
@@ -143,6 +146,9 @@ type ApiHandler = (req: VercelRequest, res: VercelResponse) => unknown | Promise
 // same length (see ["organizations", "switch"] before ["organizations", ":id"]).
 const routes: RoutePattern<ApiHandler>[] = [
   { segments: ["profile"], handler: profile },
+  { segments: ["account", "delete", "summary"], handler: accountDeleteSummary },
+  { segments: ["account", "delete", "request-code"], handler: accountDeleteRequestCode },
+  { segments: ["account", "delete", "confirm"], handler: accountDeleteConfirm },
   { segments: ["onboarding"], handler: onboarding },
 
   // Notifications. Static length-2 routes before the dynamic ":id". (preferences
