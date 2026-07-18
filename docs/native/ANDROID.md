@@ -76,21 +76,37 @@ unconfigured**: the APK builds and runs without `google-services.json`, and the
 server skips FCM without its env var — so this setup is optional until you
 flip it on.
 
-One-time setup (~10 min, needs `firebase login` / console access):
+One-time setup (~10 min, needs `firebase login` / console access).
+**State 2026-07-18:** steps 1–2 are DONE against the current project
+**`profitsync-app`** (number `622629171265`; the previous `profitsync-net`
+project was deleted — any older `google-services.json` from it is dead).
+Step 3 is BLOCKED pending an org-admin action (see the note inside it).
 
-1. **Firebase project**: console.firebase.google.com → add project (say
-   `profitsync-app`). No Blaze upgrade needed — FCM is free on Spark.
-2. **Android app**: add an Android app with package
-   `com.vorreix.profitsync`, download **`google-services.json`** into
-   **`android/credentials/`** (template: `google.services.example.json` in the
-   same folder). It's gitignored — each machine that builds release APKs
-   places its own copy. The build mirrors it into `android/app/` and
-   auto-applies the google-services plugin when it exists; without it the
-   app still builds, push is simply off.
-3. **Server key**: Project settings → Service accounts → *Generate new private
-   key* (a JSON file). Set it on Vercel as **`FCM_SERVICE_ACCOUNT_JSON`**
-   (paste raw JSON or base64 of it) for Production (+ Preview if wanted):
+1. **Firebase project**: exists — `profitsync-app`, org `547785823382`. No
+   Blaze upgrade needed — FCM is free on Spark.
+2. **Android app**: registered (`com.vorreix.profitsync`, app id
+   `1:622629171265:android:edd7cd2f7b1b0bcfebd6c0`) and the fresh
+   **`google-services.json`** is placed in **`android/credentials/`**
+   (template: `google.services.example.json` in the same folder). It's
+   gitignored — each machine that builds release APKs places its own copy
+   (`npx -y firebase-tools@latest apps:sdkconfig ANDROID 1:622629171265:android:edd7cd2f7b1b0bcfebd6c0`).
+   The build mirrors it into `android/app/` and auto-applies the
+   google-services plugin when it exists; without it the app still builds,
+   push is simply off.
+3. **Server key**: a JSON key for
+   `firebase-adminsdk-fbsvc@profitsync-app.iam.gserviceaccount.com`. Set it on
+   Vercel as **`FCM_SERVICE_ACCOUNT_JSON`** (paste raw JSON or base64 of it)
+   for Production (+ Preview if wanted):
    `vercel env add FCM_SERVICE_ACCOUNT_JSON production`.
+   > ⚠️ **Blocked by org policy** `iam.disableServiceAccountKeyCreation`
+   > (enforced on org `547785823382`; the Firebase-console *Generate new
+   > private key* button fails the same way). An **org-policy admin** must
+   > either add a project-level exception (Console → IAM & Admin →
+   > Organization Policies → *Disable service account key creation* → project
+   > `profitsync-app` → Manage policy → Override → enforcement Off) or grant
+   > the deployer `roles/orgpolicy.policyAdmin`. Then mint the key:
+   > `gcloud iam service-accounts keys create fcm-sa.json --iam-account=firebase-adminsdk-fbsvc@profitsync-app.iam.gserviceaccount.com --project=profitsync-app`
+   > (keep the file out of the repo; delete it after setting the env var).
 4. Rebuild + reinstall the app. In-app: Profile → Notifications → *Enable
    push notifications* → *Send test*.
 5. **iOS (later)**: in the Apple Developer portal create an APNs key (`.p8`)

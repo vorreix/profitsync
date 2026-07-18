@@ -86,6 +86,7 @@ import budgetsDetail from "./_routes/budgets/detail.js"
 import publicPricing from "./_routes/public/pricing.js"
 import publicBlog from "./_routes/public/blog.js"
 import publicBlogBySlug from "./_routes/public/blog/[slug].js"
+import publicNativeGoogleAuth from "./_routes/public/native-google-auth.js"
 import billingPricing from "./_routes/billing/pricing.js"
 import billingCreateSubscription from "./_routes/billing/create-subscription.js"
 import billingChangePlan from "./_routes/billing/change-plan.js"
@@ -235,6 +236,9 @@ const routes: RoutePattern<ApiHandler>[] = [
   // Public, unauthenticated blog reads for the marketing site (published only).
   { segments: ["public", "blog"], handler: publicBlog },
   { segments: ["public", "blog", ":slug"], handler: publicBlogBySlug },
+  // Public by design: exchanges a Google-verified ID token for a Clerk sign-in
+  // ticket (native Google Sign-In — the token itself is the authorization).
+  { segments: ["public", "native-google-auth"], handler: publicNativeGoogleAuth },
 
   { segments: ["billing", "pricing"], handler: billingPricing },
   { segments: ["billing", "create-subscription"], handler: billingCreateSubscription },
