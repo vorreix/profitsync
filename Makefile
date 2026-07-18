@@ -102,6 +102,22 @@ pr: ## Full pre-commit gate: conflict markers → i18n parity → format → lin
 	@npm run test:ci || (echo "✗ tests failed" && exit 1)
 	@echo "✓ all checks passed"
 
+.PHONY: pr-e2e
+pr-e2e: ## Run the e2e workflow locally (mirrors .github/workflows/e2e.yml): migrations → Playwright browsers → full suite. Needs .env.local.
+	@test -f .env.local || (echo "✗ .env.local missing — the e2e suite needs VITE_CLERK_PUBLISHABLE_KEY, CLERK_SECRET_KEY and DATABASE_URL" && exit 1)
+	@echo "→ applying migrations to the .env.local database..."
+	@node -r dotenv/config scripts/db-migrate.mjs dotenv_config_path=.env.local
+	@echo "→ ensuring Playwright chromium is installed..."
+	@npx playwright install chromium
+	@if lsof -nP -iTCP:5173 -sTCP:LISTEN >/dev/null 2>&1; then \
+		echo "⚠ a server is already listening on :5173 — Playwright will REUSE it."; \
+		echo "  It must have been started with VITE_DISABLE_DEV_TOOLS=1, otherwise"; \
+		echo "  the dev Agentation toolbar intercepts clicks and flakes the suite."; \
+	fi
+	@echo "→ e2e suite (setup, chromium, mobile, prod-build)..."
+	@npx playwright test || (echo "✗ e2e suite failed — open the report with: npx playwright show-report" && exit 1)
+	@echo "✓ e2e suite passed"
+
 # ----------------------------------------------------------------------------
 # Background worker (worker/ — docker-compose, project: profitsync-worker)
 # Delegates to worker/Makefile. Run `make -C worker help` for all worker targets.
