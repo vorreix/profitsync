@@ -96,6 +96,11 @@ export const clients = pgTable("clients", {
   orgIdx: index("clients_org_idx").on(table.organizationId),
   // Containment lookups for the `?tag=` filter.
   tagsIdx: index("clients_tags_idx").using("gin", table.tags),
+  // Trigram GIN: makes the leading-wildcard ILIKE '%q%' in /api/search and the
+  // list pages' ?search= indexable (btree can't serve substring matches).
+  nameTrgmIdx: index("clients_name_trgm_idx").using("gin", table.name.op("gin_trgm_ops")),
+  companyTrgmIdx: index("clients_company_trgm_idx").using("gin", table.company.op("gin_trgm_ops")),
+  emailTrgmIdx: index("clients_email_trgm_idx").using("gin", table.email.op("gin_trgm_ops")),
 }))
 
 // Org-scoped, managed transaction categories. Transactions still store the
@@ -113,6 +118,8 @@ export const categories = pgTable("categories", {
 }, (table) => ({
   orgTypeIdx: index("categories_org_type_idx").on(table.organizationId, table.type),
   orgNameTypeUnique: uniqueIndex("categories_org_name_type_unique").on(table.organizationId, table.type, table.name),
+  // Trigram GIN for /api/search's ILIKE '%q%' on category names.
+  nameTrgmIdx: index("categories_name_trgm_idx").using("gin", table.name.op("gin_trgm_ops")),
 }))
 
 // Org-scoped tag registry. Entities (transactions/clients/quotations) store the
@@ -181,6 +188,9 @@ export const wealthAccounts = pgTable("wealth_accounts", {
   oneDefaultPerOrg: uniqueIndex("wealth_accounts_one_default_idx")
     .on(table.organizationId)
     .where(sql`is_default = true AND archived_at IS NULL`),
+  // Trigram GIN for /api/search's ILIKE '%q%' on account names.
+  bankNameTrgmIdx: index("wealth_accounts_bank_name_trgm_idx").using("gin", table.bankName.op("gin_trgm_ops")),
+  nicknameTrgmIdx: index("wealth_accounts_nickname_trgm_idx").using("gin", table.nickname.op("gin_trgm_ops")),
 }))
 
 export const wealthAccountAttachments = pgTable("wealth_account_attachments", {
@@ -253,6 +263,11 @@ export const transactions = pgTable("transactions", {
   dateIdx: index("transactions_date_idx").on(table.date),
   // Containment lookups for the `?tag=` filter.
   tagsIdx: index("transactions_tags_idx").using("gin", table.tags),
+  // Trigram GIN: /api/search and the list's ?search= run ILIKE '%q%' over
+  // description/category/tags-as-text; these make all three indexable.
+  descriptionTrgmIdx: index("transactions_description_trgm_idx").using("gin", table.description.op("gin_trgm_ops")),
+  categoryTrgmIdx: index("transactions_category_trgm_idx").using("gin", table.category.op("gin_trgm_ops")),
+  tagsTextTrgmIdx: index("transactions_tags_text_trgm_idx").using("gin", sql`(${table.tags}::text) gin_trgm_ops`),
 }))
 
 // ── Recurring payments ───────────────────────────────────────────────────────
@@ -342,6 +357,11 @@ export const quotations = pgTable("quotations", {
   orgIdx: index("quotations_org_idx").on(table.organizationId),
   // Containment lookups for the `?tag=` filter.
   tagsIdx: index("quotations_tags_idx").using("gin", table.tags),
+  // Trigram GIN for /api/search and the list's ?search= ILIKE '%q%'.
+  titleTrgmIdx: index("quotations_title_trgm_idx").using("gin", table.title.op("gin_trgm_ops")),
+  prospectTrgmIdx: index("quotations_prospect_trgm_idx").using("gin", table.prospectName.op("gin_trgm_ops")),
+  companyTrgmIdx: index("quotations_company_trgm_idx").using("gin", table.company.op("gin_trgm_ops")),
+  emailTrgmIdx: index("quotations_email_trgm_idx").using("gin", table.email.op("gin_trgm_ops")),
 }))
 
 // Append-only change history for the main entities. `changes` holds a

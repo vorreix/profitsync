@@ -19,7 +19,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const q = String((req.query as { q?: string }).q ?? "").trim().slice(0, 120)
   if (q.length < 2) return res.status(400).json({ error: "query too short" })
   // Escape LIKE wildcards so "test_" matches the literal string, not a pattern
-  // (Postgres' default ESCAPE character is backslash).
+  // (Postgres' default ESCAPE character is backslash). The ILIKE predicates are
+  // served by the pg_trgm GIN indexes (mig 0054); ranking below uses the RAW
+  // query — word_similarity() wants the text, not the pattern.
   const term = `%${q.replace(/[\\%_]/g, "\\$&")}%`
 
   const [clientRows, txRows, quoteRows, accountRows, categoryRows] = await Promise.all([
@@ -31,7 +33,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         isNull(clients.deletedAt),
         or(ilike(clients.name, term), ilike(clients.company, term), ilike(clients.email, term)),
       ))
-      .orderBy(asc(clients.name))
+      // Best trigram match first, name as the tiebreaker.
+      .orderBy(
+        sql`greatest(word_similarity(${q}, ${clients.name}), word_similarity(${q}, ${clients.company})) desc`,
+        asc(clients.name),
+      )
       .limit(ENTITY_LIMIT),
     db
       .select({
@@ -79,7 +85,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           ilike(quotations.email, term),
         ),
       ))
-      .orderBy(desc(quotations.date))
+      .orderBy(
+        sql`greatest(word_similarity(${q}, ${quotations.title}), word_similarity(${q}, ${quotations.prospectName})) desc`,
+        desc(quotations.date),
+      )
       .limit(ENTITY_LIMIT),
     db
       .select({
@@ -95,13 +104,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         isNull(wealthAccounts.archivedAt),
         or(ilike(wealthAccounts.bankName, term), ilike(wealthAccounts.nickname, term)),
       ))
-      .orderBy(asc(wealthAccounts.bankName))
+      .orderBy(
+        sql`greatest(word_similarity(${q}, ${wealthAccounts.bankName}), word_similarity(${q}, ${wealthAccounts.nickname})) desc`,
+        asc(wealthAccounts.bankName),
+      )
       .limit(AUX_LIMIT),
     db
       .select({ id: categories.id, name: categories.name, type: categories.type, color: categories.color })
       .from(categories)
       .where(and(eq(categories.organizationId, orgId), ilike(categories.name, term)))
-      .orderBy(asc(categories.name))
+      .orderBy(sql`word_similarity(${q}, ${categories.name}) desc`, asc(categories.name))
       .limit(AUX_LIMIT),
   ])
 
