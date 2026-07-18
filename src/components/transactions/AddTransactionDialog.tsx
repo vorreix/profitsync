@@ -17,7 +17,8 @@ import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { TxFormFields } from "@/components/transactions/tx-form"
+import { TxFormFields, type AiFieldMeta } from "@/components/transactions/tx-form"
+import { SmartAddBar, type SmartApply } from "@/components/transactions/SmartAddBar"
 import { mergeTags } from "@/lib/transaction-tags"
 import {
   defaultAccountId,
@@ -70,6 +71,10 @@ export function AddTransactionDialog({
   const [pendingFiles, setPendingFiles] = useState<File[]>([])
   const [saving, setSaving] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
+  // AI quick add: which fields the parser filled (drives highlights), plus the
+  // pre-parse snapshot Undo restores. Cleared per-field on manual edits.
+  const [aiMeta, setAiMeta] = useState<AiFieldMeta>({})
+  const aiSnapshot = useRef<{ form: TxForm; files: File[] } | null>(null)
 
   // A draft worth keeping: anything the user actually typed/attached.
   const dirty =
@@ -171,6 +176,80 @@ export function AddTransactionDialog({
   const budgetFor = (clientId: string): Budget | null =>
     (isPersonal ? budgetMap.get("") : clientId ? budgetMap.get(clientId) : undefined) ?? null
 
+  // ── AI quick add ──────────────────────────────────────────────────────────
+  const AI_KEY_FOR_PATCH: Record<string, keyof AiFieldMeta> = {
+    client_id: "client", type: "type", allocations: "amount",
+    description: "description", category: "category", date: "date",
+  }
+
+  // Manual edit of a field retires its AI highlight — the value is theirs now.
+  function onFormChange(patch: Partial<TxForm>) {
+    setForm((prev) => ({ ...prev, ...patch }))
+    const touched = Object.keys(patch).map((k) => AI_KEY_FOR_PATCH[k]).filter(Boolean)
+    if (touched.length) {
+      setAiMeta((prev) => {
+        const next = { ...prev }
+        for (const k of touched) delete next[k]
+        return next
+      })
+    }
+  }
+
+  function applyAiResult({ response, receiptFile }: SmartApply): { filled: number; check: string[] } {
+    aiSnapshot.current = { form, files: pendingFiles }
+    const { fields, confidence } = response
+    const HIGH = 0.85
+    const FILL = 0.55
+    const meta: AiFieldMeta = {}
+    const patch: Partial<TxForm> = {}
+    const check: string[] = []
+    const label: Record<keyof AiFieldMeta, string> = {
+      client: t("client"), type: t("type"), amount: t("amount"),
+      description: t("description"), category: t("category"), date: t("date"),
+    }
+
+    const consider = (key: keyof AiFieldMeta, value: unknown, conf: number, apply: () => void) => {
+      if (value == null || value === "") return
+      if (conf < FILL) { check.push(label[key]); return } // abstain: too unsure to prefill
+      apply()
+      meta[key] = conf >= HIGH ? "high" : "medium"
+      if (conf < HIGH) check.push(label[key])
+    }
+
+    consider("type", fields.type, confidence.type, () => { patch.type = fields.type })
+    consider("amount", fields.amount, confidence.amount, () => {
+      patch.allocations = [{ account_id: defaultAccountId(accounts), amount: String(fields.amount) }]
+    })
+    consider("date", fields.date, confidence.date, () => { patch.date = fields.date! })
+    // Description is free text the model rewrote — no numeric confidence; always "high".
+    consider("description", fields.description, 1, () => { patch.description = fields.description! })
+    consider("category", fields.category, confidence.category, () => { patch.category = fields.category! })
+    if (!isPersonal && !presetClientId) {
+      consider("client", fields.client_id, confidence.client, () => { patch.client_id = fields.client_id! })
+    }
+
+    setForm((prev) => ({ ...prev, ...patch }))
+    setAiMeta(meta)
+    if (receiptFile) setPendingFiles((prev) => [...prev, receiptFile])
+    return { filled: Object.keys(meta).length + (receiptFile ? 1 : 0), check }
+  }
+
+  function undoAiResult() {
+    const snap = aiSnapshot.current
+    if (!snap) return
+    setForm(snap.form)
+    setPendingFiles(snap.files)
+    setAiMeta({})
+    aiSnapshot.current = null
+  }
+
+  function pickAiClient(id: string | null) {
+    if (id) {
+      setForm((prev) => ({ ...prev, client_id: id }))
+      setAiMeta((prev) => ({ ...prev, client: "high" }))
+    }
+  }
+
   function onFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? [])
     const valid = files.filter((f) => {
@@ -211,6 +290,8 @@ export function AddTransactionDialog({
       const total = allocs.reduce((s, a) => s + Number(a.amount), 0)
       draft.clearDraft()
       setPendingFiles([])
+      setAiMeta({})
+      aiSnapshot.current = null
       onOpenChange(false)
       onCreated?.({ id: firstId, type: form.type, amount: total })
     } catch (err) {
@@ -231,15 +312,25 @@ export function AddTransactionDialog({
       <DialogContent className="inset-x-0 bottom-0 top-auto flex max-h-[92svh] w-full max-w-full translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-t-2xl p-0 sm:inset-x-auto sm:bottom-auto sm:top-[7svh] sm:left-1/2 sm:max-h-[86svh] sm:w-full sm:max-w-md sm:-translate-x-1/2 sm:rounded-2xl">
         <DialogHeader className="shrink-0 border-b px-6 pb-3 pt-6"><DialogTitle>{t("addTransaction")}</DialogTitle></DialogHeader>
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto scrollbar-thin px-6 py-1">
+          <div className="pt-3">
+            <SmartAddBar
+              currency={currency}
+              onApply={applyAiResult}
+              onUndo={undoAiResult}
+              onPickClient={pickAiClient}
+              onUpgrade={goUpgrade}
+            />
+          </div>
           <TxFormFields
             f={form}
-            onChange={(p) => setForm((prev) => ({ ...prev, ...p }))}
+            onChange={onFormChange}
             showClient={!isPersonal && !presetClientId}
             clients={clients}
             accounts={accounts}
             accountsLoading={accountsLoading}
             categories={categories}
             tagSuggestions={tagSuggestions}
+            aiFields={aiMeta}
             tagLimit={tagLimit}
             onTagUpgrade={goUpgrade}
             onChangeCats={handleChangeCats}
@@ -278,7 +369,7 @@ export function AddTransactionDialog({
           </div>
         </div>
         <DialogFooter className="shrink-0 border-t px-6 pb-6 pt-3">
-          <Button variant="outline" onClick={() => { draft.clearDraft(); setPendingFiles([]); onOpenChange(false) }}>{t("cancel")}</Button>
+          <Button variant="outline" onClick={() => { draft.clearDraft(); setPendingFiles([]); setAiMeta({}); aiSnapshot.current = null; onOpenChange(false) }}>{t("cancel")}</Button>
           <Button onClick={handleAdd} disabled={saving}>{saving ? <Loader2 className="size-4 animate-spin" /> : t("add")}</Button>
         </DialogFooter>
       </DialogContent>

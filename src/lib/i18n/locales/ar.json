@@ -397,7 +397,28 @@
     "tagsPlaceholder": "أضف وسومًا مثل #business #travel",
     "tagsUpgrade": "الترقية لمزيد من الوسوم",
     "tagsLimitReached": "لقد وصلت إلى حد الوسوم في باقتك.",
-    "removeTag": "إزالة {{tag}}"
+    "removeTag": "إزالة {{tag}}",
+    "ai": {
+      "inputLabel": "صِف المعاملة للإضافة السريعة بالذكاء الاصطناعي",
+      "placeholder": "جرّب \"غداء مع Acme، {{example}}، أمس\" — أو صوّر إيصالاً",
+      "parse": "املأ بالذكاء الاصطناعي",
+      "parsing": "جارٍ قراءة الإدخال…",
+      "cameraLabel": "مسح إيصال",
+      "filledSummary_one": "تم ملء {{count}} حقل — راجع قبل الحفظ",
+      "filledSummary_other": "تم ملء {{count}} حقول — راجع قبل الحفظ",
+      "checkFields": "راجع {{fields}}",
+      "checkField": "تخمين الذكاء الاصطناعي — يرجى المراجعة",
+      "undo": "تراجع",
+      "didYouMean": "هل تقصد:",
+      "none": "لا شيء من هذه",
+      "quotaLow_one": "تبقّت {{count}} تعبئة ذكية هذا الشهر",
+      "quotaLow_other": "تبقّت {{count}} تعبئات ذكية هذا الشهر",
+      "quotaExhausted": "لقد استخدمت {{count}} تعبئة ذكية لهذا الشهر",
+      "upgrade": "ترقية",
+      "errorUnparseable": "لم يُفهم الإدخال — جرّب إضافة مبلغ",
+      "errorGeneric": "لم تنجح التعبئة الذكية — حاول مرة أخرى",
+      "receiptUnreadable": "تعذّرت قراءة الإيصال — املأ الحقول يدويًا"
+    }
   },
   "clients": {
     "pageTitle": "العملاء",

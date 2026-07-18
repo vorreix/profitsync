@@ -397,7 +397,28 @@
     "tagsPlaceholder": "Tags wie #business #travel hinzufügen",
     "tagsUpgrade": "Upgrade für mehr Tags",
     "tagsLimitReached": "Du hast das Tag-Limit deines Tarifs erreicht.",
-    "removeTag": "{{tag}} entfernen"
+    "removeTag": "{{tag}} entfernen",
+    "ai": {
+      "inputLabel": "Transaktion für KI-Schnelleingabe beschreiben",
+      "placeholder": "z. B. \"Mittagessen mit Acme, {{example}}, gestern\" — oder Beleg fotografieren",
+      "parse": "Mit KI ausfüllen",
+      "parsing": "Eingabe wird gelesen…",
+      "cameraLabel": "Beleg scannen",
+      "filledSummary_one": "{{count}} Feld ausgefüllt — vor dem Speichern prüfen",
+      "filledSummary_other": "{{count}} Felder ausgefüllt — vor dem Speichern prüfen",
+      "checkFields": "{{fields}} prüfen",
+      "checkField": "KI-Vorschlag — bitte prüfen",
+      "undo": "Rückgängig",
+      "didYouMean": "Meinten Sie:",
+      "none": "Keiner davon",
+      "quotaLow_one": "Noch {{count}} KI-Ausfüllung diesen Monat",
+      "quotaLow_other": "Noch {{count}} KI-Ausfüllungen diesen Monat",
+      "quotaExhausted": "Sie haben Ihre {{count}} KI-Ausfüllungen diesen Monat verbraucht",
+      "upgrade": "Upgrade",
+      "errorUnparseable": "Nicht verstanden — bitte einen Betrag angeben",
+      "errorGeneric": "KI-Ausfüllen hat nicht geklappt — bitte erneut versuchen",
+      "receiptUnreadable": "Beleg nicht lesbar — Felder bitte manuell ausfüllen"
+    }
   },
   "clients": {
     "pageTitle": "Klienten",

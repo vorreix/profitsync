@@ -42,6 +42,7 @@ async function main() {
       attachmentsPerTx: 1,
       noteLength: 200,
       tagsPerTransaction: 1,
+      aiParsesPerMonth: 20,
     },
     premium: {
       clients: 1000,
@@ -51,6 +52,7 @@ async function main() {
       attachmentsPerTx: 10,
       noteLength: 100000,
       tagsPerTransaction: 3,
+      aiParsesPerMonth: 500,
     },
   }
 

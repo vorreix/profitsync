@@ -397,7 +397,28 @@
     "tagsPlaceholder": "#business #travel వంటి ట్యాగ్‌లను జోడించండి",
     "tagsUpgrade": "మరిన్ని ట్యాగ్‌ల కోసం అప్‌గ్రేడ్ చేయండి",
     "tagsLimitReached": "మీ ప్లాన్ ట్యాగ్ పరిమితిని చేరుకున్నారు.",
-    "removeTag": "{{tag}} తీసివేయండి"
+    "removeTag": "{{tag}} తీసివేయండి",
+    "ai": {
+      "inputLabel": "AI క్విక్ యాడ్ కోసం లావాదేవీని వివరించండి",
+      "placeholder": "ఉదా. \"Acme తో లంచ్, {{example}}, నిన్న\" — లేదా రసీదు ఫోటో తీయండి",
+      "parse": "AI తో నింపండి",
+      "parsing": "చదువుతోంది…",
+      "cameraLabel": "రసీదును స్కాన్ చేయండి",
+      "filledSummary_one": "{{count}} ఫీల్డ్ నింపబడింది — సేవ్ చేసే ముందు తనిఖీ చేయండి",
+      "filledSummary_other": "{{count}} ఫీల్డ్‌లు నింపబడ్డాయి — సేవ్ చేసే ముందు తనిఖీ చేయండి",
+      "checkFields": "{{fields}} తనిఖీ చేయండి",
+      "checkField": "AI అంచనా — దయచేసి తనిఖీ చేయండి",
+      "undo": "చర్య రద్దు",
+      "didYouMean": "మీరు ఉద్దేశించింది:",
+      "none": "వీటిలో ఏదీ కాదు",
+      "quotaLow_one": "ఈ నెలలో {{count}} AI ఫిల్ మిగిలి ఉంది",
+      "quotaLow_other": "ఈ నెలలో {{count}} AI ఫిల్‌లు మిగిలి ఉన్నాయి",
+      "quotaExhausted": "ఈ నెల {{count}} AI ఫిల్‌లను మీరు వాడేశారు",
+      "upgrade": "అప్‌గ్రేడ్",
+      "errorUnparseable": "అర్థం కాలేదు — మొత్తాన్ని చేర్చి ప్రయత్నించండి",
+      "errorGeneric": "AI ఫిల్ పని చేయలేదు — మళ్లీ ప్రయత్నించండి",
+      "receiptUnreadable": "రసీదు చదవలేకపోయాం — ఫీల్డ్‌లను మీరే నింపండి"
+    }
   },
   "clients": {
     "pageTitle": "క్లయింట్‌లు",

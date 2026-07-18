@@ -397,7 +397,28 @@
     "tagsPlaceholder": "Aggiungi tag come #business #travel",
     "tagsUpgrade": "Passa a Premium per più tag",
     "tagsLimitReached": "Hai raggiunto il limite di tag del tuo piano.",
-    "removeTag": "Rimuovi {{tag}}"
+    "removeTag": "Rimuovi {{tag}}",
+    "ai": {
+      "inputLabel": "Descrivi la transazione per l'inserimento rapido AI",
+      "placeholder": "Prova \"Pranzo con Acme, {{example}}, ieri\" — o scatta una ricevuta",
+      "parse": "Compila con AI",
+      "parsing": "Lettura in corso…",
+      "cameraLabel": "Scansiona una ricevuta",
+      "filledSummary_one": "Compilato {{count}} campo — controlla prima di salvare",
+      "filledSummary_other": "Compilati {{count}} campi — controlla prima di salvare",
+      "checkFields": "controlla {{fields}}",
+      "checkField": "Suggerito dall'AI — verifica",
+      "undo": "Annulla",
+      "didYouMean": "Intendevi:",
+      "none": "Nessuno di questi",
+      "quotaLow_one": "{{count}} compilazione AI rimasta questo mese",
+      "quotaLow_other": "{{count}} compilazioni AI rimaste questo mese",
+      "quotaExhausted": "Hai usato le tue {{count}} compilazioni AI di questo mese",
+      "upgrade": "Aggiorna",
+      "errorUnparseable": "Non ho capito — prova a includere un importo",
+      "errorGeneric": "La compilazione AI non ha funzionato — riprova",
+      "receiptUnreadable": "Ricevuta illeggibile — compila i campi manualmente"
+    }
   },
   "clients": {
     "pageTitle": "Clienti",

@@ -769,7 +769,28 @@
     "splitHint": "Each account is saved as its own transaction.",
     "account_one": "{{count}} account",
     "account_other": "{{count}} accounts",
-    "recurringBadge": "Recurring"
+    "recurringBadge": "Recurring",
+    "ai": {
+      "inputLabel": "Describe the transaction for AI quick add",
+      "placeholder": "Try \"Lunch with Acme, {{example}}, yesterday\" — or snap a receipt",
+      "parse": "Fill with AI",
+      "parsing": "Reading your input…",
+      "cameraLabel": "Scan a receipt",
+      "filledSummary_one": "Filled {{count}} field — review before saving",
+      "filledSummary_other": "Filled {{count}} fields — review before saving",
+      "checkFields": "check {{fields}}",
+      "checkField": "AI guessed this — please check",
+      "undo": "Undo",
+      "didYouMean": "Did you mean:",
+      "none": "None of these",
+      "quotaLow_one": "{{count}} AI fill left this month",
+      "quotaLow_other": "{{count}} AI fills left this month",
+      "quotaExhausted": "You've used your {{count}} AI fills this month",
+      "upgrade": "Upgrade",
+      "errorUnparseable": "Couldn't understand that — try including an amount",
+      "errorGeneric": "AI fill didn't work — please try again",
+      "receiptUnreadable": "Couldn't read this receipt — fill the fields manually"
+    }
   },
   "wealth": {
     "title": "Wealth",

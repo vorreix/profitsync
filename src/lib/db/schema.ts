@@ -521,6 +521,19 @@ export const accountDeletionCodes = pgTable("account_deletion_codes", {
   createdAt: timestamp("created_at").defaultNow(),
 })
 
+// ── AI quick add ────────────────────────────────────────────────────────────
+// Per-org monthly counter for AI parse calls (NL quick add + receipt OCR).
+// Metered against plans.limits.aiParsesPerMonth; one row per org per "YYYY-MM".
+export const aiUsage = pgTable("ai_usage", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  period: text("period").notNull(), // "YYYY-MM" (UTC)
+  count: integer("count").notNull().default(0),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  orgPeriodUnique: uniqueIndex("ai_usage_org_period_unique").on(table.organizationId, table.period),
+}))
+
 // ── Referral program ────────────────────────────────────────────────────────
 // One shareable code per user.
 export const referralCodes = pgTable("referral_codes", {

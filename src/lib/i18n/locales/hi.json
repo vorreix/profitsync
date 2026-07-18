@@ -397,7 +397,28 @@
     "tagsPlaceholder": "#business #travel जैसे टैग जोड़ें",
     "tagsUpgrade": "अधिक टैग के लिए अपग्रेड करें",
     "tagsLimitReached": "आप अपने प्लान की टैग सीमा तक पहुँच गए हैं।",
-    "removeTag": "{{tag}} हटाएं"
+    "removeTag": "{{tag}} हटाएं",
+    "ai": {
+      "inputLabel": "AI क्विक ऐड के लिए लेन-देन बताएं",
+      "placeholder": "जैसे \"Acme के साथ लंच, {{example}}, कल\" — या रसीद की फोटो लें",
+      "parse": "AI से भरें",
+      "parsing": "पढ़ा जा रहा है…",
+      "cameraLabel": "रसीद स्कैन करें",
+      "filledSummary_one": "{{count}} फ़ील्ड भरा गया — सेव करने से पहले जाँचें",
+      "filledSummary_other": "{{count}} फ़ील्ड भरे गए — सेव करने से पहले जाँचें",
+      "checkFields": "{{fields}} जाँचें",
+      "checkField": "AI का अनुमान — कृपया जाँचें",
+      "undo": "पूर्ववत करें",
+      "didYouMean": "क्या आपका मतलब था:",
+      "none": "इनमें से कोई नहीं",
+      "quotaLow_one": "इस महीने {{count}} AI फिल बची है",
+      "quotaLow_other": "इस महीने {{count}} AI फिल बची हैं",
+      "quotaExhausted": "आपने इस महीने की {{count}} AI फिल इस्तेमाल कर ली हैं",
+      "upgrade": "अपग्रेड करें",
+      "errorUnparseable": "समझ नहीं आया — राशि शामिल करके देखें",
+      "errorGeneric": "AI फिल काम नहीं किया — फिर से कोशिश करें",
+      "receiptUnreadable": "रसीद पढ़ी नहीं जा सकी — फ़ील्ड खुद भरें"
+    }
   },
   "clients": {
     "pageTitle": "ग्राहक",
