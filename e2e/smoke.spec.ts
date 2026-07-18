@@ -46,7 +46,10 @@ test.describe.serial("core flows", () => {
 
     // Client (business org): the first combobox opens a searchable list.
     await dialog.getByRole("combobox").first().click()
-    const search = page.getByPlaceholder(/search/i).first()
+    // Scope to the popover's own "Search clients..." input — the transactions
+    // page behind the modal has a list-filter input whose placeholder also
+    // starts with "Search", and filling THAT filters the list instead.
+    const search = page.getByPlaceholder(/search clients/i).first()
     await expect(search).toBeVisible()
     await search.fill(E2E_PREFIX)
     const option = page.getByRole("option", { name: new RegExp(E2E_PREFIX, "i") }).first()
@@ -56,9 +59,9 @@ test.describe.serial("core flows", () => {
     // The popover closes and the trigger shows the chosen client.
     await expect(dialog.getByRole("combobox").first()).toContainText(new RegExp(E2E_PREFIX, "i"))
 
-    // Description (best-effort: optional free-text field).
-    const desc = dialog.locator('input[placeholder*="e.g" i], input[placeholder*="invoice" i], input[placeholder*="hosting" i]').first()
-    if (await desc.isVisible().catch(() => false)) await desc.fill(TX_DESC)
+    // Description — a textarea ("Invoice #1234" / "Hosting fee" placeholder).
+    // Filled strictly: a silent no-op here once masked a real failure.
+    await dialog.getByPlaceholder(/invoice|hosting/i).first().fill(TX_DESC)
 
     // Amount — the prominent money input inside the account selector.
     await dialog.locator('input[inputmode="decimal"]').first().fill("123.45")
@@ -88,29 +91,55 @@ test.describe.serial("core flows", () => {
   })
 
   test("cleanup: delete the e2e client (cascades its transactions) and purge", async ({ page }) => {
-    await page.goto("/clients")
-    await dismissBanners(page)
-    const row = page.getByText(CLIENT_NAME).first()
-    if (!(await row.isVisible().catch(() => false))) return // already clean
-    await row.click()
-    // Client detail → delete (soft) — the action may live behind a menu.
-    const direct = page.getByRole("button", { name: /^delete/i }).first()
-    if (await direct.isVisible().catch(() => false)) {
-      await direct.click()
-    } else {
-      await page.getByRole("button", { name: /more|actions|menu/i }).first().click()
-      await page.getByRole("menuitem", { name: /delete/i }).first().click()
+    // Retries re-run the whole serial group (and past runs may have leaked),
+    // so sweep EVERY e2e client — and WAIT for the async list before deciding
+    // the page is clean (a bare isVisible() races the fetch and no-ops).
+    for (let sweep = 0; sweep < 5; sweep++) {
+      await page.goto("/clients")
+      await dismissBanners(page)
+      const row = page.getByText(CLIENT_NAME).first()
+      const present = await row
+        .waitFor({ state: "visible", timeout: 10_000 })
+        .then(() => true)
+        .catch(() => false)
+      if (!present) break // clean
+      await row.click()
+      // Client detail → delete (soft) — the action may live behind a menu.
+      // WAIT for the detail page to render before probing (isVisible races it).
+      const direct = page.getByRole("button", { name: /^delete/i }).first()
+      const hasDirect = await direct
+        .waitFor({ state: "visible", timeout: 10_000 })
+        .then(() => true)
+        .catch(() => false)
+      if (hasDirect) {
+        await direct.click()
+      } else {
+        await page.getByRole("button", { name: /more|actions|menu/i }).first().click()
+        await page.getByRole("menuitem", { name: /delete/i }).first().click()
+      }
+      // Confirm dialog — the button says "Move to Trash" (not "Delete").
+      const confirm = page.getByRole("alertdialog").getByRole("button", { name: /delete|trash/i }).last()
+      await confirm.waitFor({ state: "visible", timeout: 10_000 }).catch(() => {})
+      if (await confirm.isVisible().catch(() => false)) await confirm.click()
+      // Soft-delete removes the row in place — wait so the next sweep sees fresh state.
+      await row.waitFor({ state: "hidden", timeout: 10_000 }).catch(() => {})
     }
-    const confirm = page.getByRole("alertdialog").getByRole("button", { name: /delete/i }).last()
-    if (await confirm.isVisible().catch(() => false)) await confirm.click()
 
-    // Purge from trash so the shared dev DB stays clean.
+    // Purge from trash so the shared dev DB stays clean — the purge (not the
+    // soft delete) is what reverses wealth balances. Button label: "Clear trash".
     await page.goto("/trash")
-    const purgeAll = page.getByRole("button", { name: /empty trash|purge/i }).first()
-    if (await purgeAll.isVisible().catch(() => false)) {
+    const purgeAll = page.getByRole("button", { name: /clear trash|empty trash|purge/i }).first()
+    const hasPurge = await purgeAll
+      .waitFor({ state: "visible", timeout: 10_000 })
+      .then(() => true)
+      .catch(() => false)
+    if (hasPurge) {
       await purgeAll.click()
-      const confirmPurge = page.getByRole("alertdialog").getByRole("button", { name: /purge|empty|delete/i }).last()
+      const confirmPurge = page.getByRole("alertdialog").getByRole("button", { name: /clear|purge|empty|delete/i }).last()
+      await confirmPurge.waitFor({ state: "visible", timeout: 10_000 }).catch(() => {})
       if (await confirmPurge.isVisible().catch(() => false)) await confirmPurge.click()
+      // Wait for the purge to complete before ending the suite.
+      await page.getByRole("alertdialog").waitFor({ state: "hidden", timeout: 15_000 }).catch(() => {})
     }
   })
 })
