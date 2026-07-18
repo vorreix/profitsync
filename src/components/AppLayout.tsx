@@ -37,6 +37,7 @@ import { PageFilterProvider } from "@/lib/page-filter-context"
 import { DataRefreshProvider } from "@/lib/data-refresh-context"
 import { NotificationProvider } from "@/lib/notification-context"
 import { NotificationBell } from "@/components/notifications/NotificationBell"
+import { EntityAvatar } from "@/components/EntityAvatar"
 import { accountTypeAllows, type AccountType } from "@/lib/types"
 import { OrgSwitcher } from "@/components/OrgSwitcher"
 import { MobileAppLayout } from "@/components/MobileAppLayout"
@@ -350,7 +351,13 @@ function AppLayoutInner() {
             />
             {activeOrg && (
               <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-                <Building2 className="size-3" />
+                <EntityAvatar
+                  name={activeOrg.name}
+                  src={activeOrg.logo_src}
+                  className="size-4 text-[8px]"
+                  rounded="rounded-sm"
+                  fallbackIcon={<Building2 className="size-3" />}
+                />
                 {activeOrg.name}
               </span>
             )}
