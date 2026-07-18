@@ -55,6 +55,7 @@ import { InstallAppBanner } from "@/components/InstallAppBanner"
 import { InstallButton } from "@/components/InstallButton"
 import { ReferralBanner } from "@/components/ReferralBanner"
 import { NotificationBell } from "@/components/notifications/NotificationBell"
+import { EntityAvatar } from "@/components/EntityAvatar"
 import { QuickAddModal, type QuickAddEntity } from "@/components/QuickAddModal"
 import { AddTransactionDialog, type CreatedTxInfo } from "@/components/transactions/AddTransactionDialog"
 import { useCurrency } from "@/lib/currency-context"
@@ -236,9 +237,12 @@ export function MobileAppLayout() {
           <Sheet open={orgSheetOpen} onOpenChange={setOrgSheetOpen}>
             <SheetTrigger asChild>
               <button className="pressable flex items-center gap-2 px-2.5 py-1.5 rounded-full bg-muted text-sm font-medium max-w-[50%] ml-auto">
-                <div className="flex size-5 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground">
-                  <Building2 className="size-3" />
-                </div>
+                <EntityAvatar
+                  name={activeOrg?.name ?? "Personal"}
+                  src={activeOrg?.logo_src}
+                  className="size-5 text-[9px]"
+                  fallbackIcon={<Building2 className="size-3" />}
+                />
                 <span className="truncate text-xs">{activeOrg?.name ?? t("org.personal")}</span>
                 {activeOrg && (
                   <span
@@ -268,9 +272,12 @@ export function MobileAppLayout() {
                         org.id === activeOrg?.id ? "bg-primary/10 text-primary" : "hover:bg-accent"
                       }`}
                     >
-                      <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-background border">
-                        <Building2 className="size-4" />
-                      </div>
+                      <EntityAvatar
+                        name={org.name}
+                        src={org.logo_src}
+                        className="size-9 text-xs"
+                        fallbackIcon={<Building2 className="size-4" />}
+                      />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1.5">
                           <p className="text-sm font-medium truncate">{org.name}</p>
