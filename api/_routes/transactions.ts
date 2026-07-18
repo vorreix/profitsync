@@ -390,10 +390,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         updatedBy: userId,
       })
       .returning()
-    const nextBalance = Number(account.currentBalance) + balanceDelta(type, amount)
+    // Relative SQL delta — NEVER read-compute-write the balance in JS: two
+    // concurrent posts to the same account raced and lost an update. (Same
+    // pattern as every other money path; a crash between the two statements is
+    // repairable by recomputing from the ledger.)
     await db
       .update(wealthAccounts)
-      .set({ currentBalance: String(nextBalance), updatedBy: userId, updatedAt: new Date() })
+      .set({
+        currentBalance: sql`${wealthAccounts.currentBalance}::numeric + ${balanceDelta(type, amount)}`,
+        updatedBy: userId,
+        updatedAt: new Date(),
+      })
       .where(eq(wealthAccounts.id, wealth_account_id))
     await logAudit({ orgId, entityType: "transaction", entityId: row.id, action: "create", actorId: userId })
     // Budget-exceeded alert (fire-and-forget): never blocks or fails the write.

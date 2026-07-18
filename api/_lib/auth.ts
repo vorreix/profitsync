@@ -181,15 +181,34 @@ export async function ensurePersonalOrg(userId: string): Promise<string> {
 
   // Pull profile currency to inherit (if profile exists yet)
   const [profile] = await db.select().from(userProfiles).where(eq(userProfiles.id, userId))
-  const { id } = await createOrgForUser({
-    userId,
-    name: "Personal",
-    slug: "personal",
-    isPersonal: true,
-    accountType: "personal",
-    currency: profile?.currency ?? "USD",
-  })
-  return id
+  try {
+    const { id } = await createOrgForUser({
+      userId,
+      name: "Personal",
+      slug: "personal",
+      isPersonal: true,
+      accountType: "personal",
+      currency: profile?.currency ?? "USD",
+    })
+    return id
+  } catch (err) {
+    // A brand-new user's first page load fires /api/profile and /api/organizations
+    // in parallel, and both can reach this insert. The partial unique index (one
+    // personal org per owner, mig 0055) makes the loser fail fast on the org
+    // insert — nothing partial exists yet — so re-select the winner's org.
+    if ((err as { code?: string })?.code === "23505") {
+      const [winner] = await db
+        .select({ id: organizations.id })
+        .from(organizations)
+        .where(and(eq(organizations.ownerUserId, userId), eq(organizations.isPersonal, true)))
+      if (winner) {
+        await ensureFreeSubscription(winner.id)
+        await ensureDefaultClient(winner.id, userId)
+        return winner.id
+      }
+    }
+    throw err
+  }
 }
 
 // Short-lived in-process cache for org resolution. requireAuth runs on every API
