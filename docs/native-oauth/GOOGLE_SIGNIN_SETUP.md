@@ -29,21 +29,31 @@ every other write, and the app persists it. No nonce, no browser, no gap.
 
 ---
 
-## What you configure (the aud must match)
+## How the native flow works (ticket exchange — 2026-07-18)
 
-The native SDK mints a **Google ID token** whose `aud` = the **Web OAuth client ID**.
-Clerk only accepts the token if its Google connection is configured with **that same
-Web client ID**. So the whole job is: create the Google client, then point Clerk at it.
+The native SDK mints a **Google ID token** whose `aud` = the **Web OAuth client ID**
+but whose `azp` = the platform (Android/iOS) client. Clerk's `google_one_tap`
+strategy rejects any token whose azp isn't the configured Web client
+(`403 authorization_invalid`, device-proven — that check cannot be satisfied by
+an Android-minted token). So the app does a **server-side ticket exchange**
+instead — Clerk's Google connection is not involved in the native path at all:
 
 ```
 Android/iOS device ──(native picker)──► Google ID token (aud = WEB client id)
-                                              │
-                                              ▼
-                       clerk.authenticateWithGoogleOneTap({ token })
-                                              │  Clerk verifies aud == configured client id
+                │
+                ▼  POST /api/public/native-google-auth  { token }
+   our API verifies via Google tokeninfo (aud == WEB client id, email_verified)
+                │  find-or-create Clerk user by verified email (Backend API)
+                ▼
+        60-second Clerk sign-in ticket ──► signIn.create({ strategy: "ticket" })
+                                              │  ordinary client write
                                               ▼
                                    session set + rotated token returned ✓
 ```
+
+The Clerk **custom credentials** (Steps 4–5) are still required — for **web**
+Google login on profitsync.net (normal OAuth redirect flow), and they keep the
+web/native accounts unified by verified email.
 
 For project `profitsync-app` the generated clients are:
 

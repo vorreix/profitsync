@@ -10,14 +10,20 @@
 // app therefore held a SPENT client token; the next authed write (a session touch)
 // 401'd → clerk-js signed out → cold starts booted signed-out. Device-proven.
 //
-// A native ID-token sign-in sidesteps that entirely: `authenticateWithGoogleOneTap`
-// is an ORDINARY client write (POST /v1/client/sign_ins) — Clerk returns the rotated
-// client token in the Authorization RESPONSE header exactly like every other authed
-// write, and native-clerk-transport.ts captures it. No nonce, no browser, no gap.
-//
-// Requires (see docs/native-oauth/GOOGLE_SIGNIN_SETUP.md): the Google ID token's
-// `aud` must equal the Web OAuth client ID configured on Clerk's Google connection.
+// WHY A SERVER-SIDE TICKET EXCHANGE (and not `google_one_tap`):
+// Google ID tokens minted on-device carry the platform (Android/iOS) OAuth client
+// in `azp`, and Clerk's google_one_tap strategy only authorizes tokens whose azp
+// is the configured Web client → 403 authorization_invalid (device-proven
+// 2026-07-18; a garbage token fails with a DIFFERENT error, so the token itself
+// verified fine — the rejection is the azp check). The fix: POST the Google token
+// to our own /api/public/native-google-auth, which verifies it against Google
+// (aud = our Web client) and mints a 60-second Clerk sign-in ticket. Redeeming
+// the ticket is an ORDINARY client write (POST /v1/client/sign_ins) — Clerk
+// returns the rotated client token in the Authorization RESPONSE header exactly
+// like every other authed write, and native-clerk-transport.ts captures it.
+// No nonce, no browser, no gap.
 import { isNativeApp, nativeAuthLog } from "@/lib/native-auth"
+import { API_BASE_URL } from "@/lib/api-base"
 
 // Where a completed sign-in lands. The app's own guards then bounce brand-new
 // users on to onboarding; landing on /dashboard first is correct for both.
@@ -27,16 +33,19 @@ export type NativeGoogleResult =
   | { ok: true }
   | { ok: false; reason: "unsupported" | "cancelled" | "no-token" | "error"; message?: string }
 
-// The two clerk-js methods we need. Typed locally (rather than off @clerk/types)
-// so this compiles regardless of the installed clerk-react typings version — the
-// methods are present on the loaded clerk-js 5.127.1 runtime (verified on-device).
-type GoogleOneTapClerk = {
-  authenticateWithGoogleOneTap: (params: { token: string }) => Promise<unknown>
-  handleGoogleOneTapCallback: (
-    signInOrUp: unknown,
-    params: { signInFallbackRedirectUrl?: string; signUpFallbackRedirectUrl?: string },
-    customNavigate?: (to: string) => Promise<unknown>,
-  ) => Promise<unknown>
+// The clerk-js surface we need for the ticket redemption. Typed locally (rather
+// than off @clerk/types) so this compiles regardless of the installed
+// clerk-react typings version — present on the loaded clerk-js 5.127.1 runtime.
+type TicketClerk = {
+  client: {
+    signIn: {
+      create: (params: { strategy: "ticket"; ticket: string }) => Promise<{
+        status: string
+        createdSessionId: string | null
+      }>
+    }
+  }
+  setActive: (params: { session: string }) => Promise<unknown>
 }
 
 // ⚠️ Capacitor plugin objects are Proxies that forward EVERY property access —
@@ -53,11 +62,30 @@ function isCancellation(message: string): boolean {
   return /cancel|canceled|cancelled|12501|dismiss|no credential|GIDSignIn.*-5\b/i.test(message)
 }
 
+// Exchange the Google ID token for a Clerk sign-in ticket via our API. Uses
+// CapacitorHttp (native transport): this runs pre-auth inside the WebView, and
+// the native request avoids the cross-origin preflight entirely.
+async function fetchSignInTicket(idToken: string): Promise<string> {
+  const { CapacitorHttp } = await import("@capacitor/core")
+  const response = await CapacitorHttp.request({
+    url: `${API_BASE_URL}/api/public/native-google-auth`,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    data: { token: idToken },
+  })
+  const body =
+    typeof response.data === "string" ? JSON.parse(response.data || "{}") : (response.data ?? {})
+  if (response.status !== 200 || typeof body.ticket !== "string") {
+    throw new Error(body.error || `Sign-in exchange failed (${response.status})`)
+  }
+  return body.ticket
+}
+
 // Runs the whole native Google login: obtain a Google ID token via the native
-// Credential Manager / Google Sign-In UI, hand it to Clerk's google_one_tap
-// strategy (creates OR signs in), then let Clerk set the active session and
-// hard-navigate to the app. Returns a result the caller maps to UX (silent on
-// user-cancel, toast on real failure). Never throws.
+// Credential Manager / Google Sign-In UI, exchange it server-side for a Clerk
+// sign-in ticket (creates the user on first login), redeem the ticket, then set
+// the active session and hard-navigate into the app. Returns a result the
+// caller maps to UX (silent on user-cancel, toast on real failure). Never throws.
 export async function nativeGoogleSignIn(clerk: unknown): Promise<NativeGoogleResult> {
   if (!isNativeApp()) return { ok: false, reason: "unsupported" }
 
@@ -83,22 +111,22 @@ export async function nativeGoogleSignIn(clerk: unknown): Promise<NativeGoogleRe
   }
 
   try {
-    const oneTap = clerk as GoogleOneTapClerk
-    const signInOrUp = await oneTap.authenticateWithGoogleOneTap({ token: idToken })
-    nativeAuthLog("native_google_onetap_authenticated")
+    const ticket = await fetchSignInTicket(idToken)
+    nativeAuthLog("native_google_ticket_minted")
+
+    const c = clerk as TicketClerk
+    const attempt = await c.client.signIn.create({ strategy: "ticket", ticket })
+    if (attempt.status !== "complete" || !attempt.createdSessionId) {
+      nativeAuthLog("native_google_ticket_incomplete", { message: attempt.status })
+      return { ok: false, reason: "error", message: `Sign-in incomplete (${attempt.status})` }
+    }
+    await c.setActive({ session: attempt.createdSessionId })
+    nativeAuthLog("native_google_signin_complete")
     // Hard-navigate on completion: clerk's default SPA history push does not
     // re-render the router in this app (the reason OAuthCallbackPage always used
     // window.location.replace). setActive has already persisted the rotated
     // client token by the time this fires, so the fresh boot is signed in.
-    await oneTap.handleGoogleOneTapCallback(
-      signInOrUp,
-      { signInFallbackRedirectUrl: POST_SIGNIN_PATH, signUpFallbackRedirectUrl: POST_SIGNIN_PATH },
-      (to: string) => {
-        window.location.assign(to || POST_SIGNIN_PATH)
-        return Promise.resolve()
-      },
-    )
-    nativeAuthLog("native_google_signin_complete")
+    window.location.assign(POST_SIGNIN_PATH)
     return { ok: true }
   } catch (cause) {
     const message = cause instanceof Error ? cause.message : String(cause)
