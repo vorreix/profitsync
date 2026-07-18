@@ -162,6 +162,10 @@ export default defineConfig({
       // our own VAPID pipeline — so satisfy rollup with a tiny stub instead of
       // shipping the whole SDK. See src/lib/firebase-messaging-stub.ts.
       "firebase/messaging": path.resolve(__dirname, "./src/lib/firebase-messaging-stub.ts"),
+      // Same treatment for @capacitor-firebase/authentication (native Google
+      // Sign-In -> Clerk google_one_tap). Its web impl statically imports
+      // firebase/auth; we only use the native bridge. See firebase-auth-stub.ts.
+      "firebase/auth": path.resolve(__dirname, "./src/lib/firebase-auth-stub.ts"),
     },
   },
   build: {
