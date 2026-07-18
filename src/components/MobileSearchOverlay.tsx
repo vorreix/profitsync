@@ -9,6 +9,7 @@ import {
   Loader2,
   PiggyBank,
   Search,
+  Settings2,
   Tag,
   Users,
   X,
@@ -26,6 +27,7 @@ import {
   searchHrefs,
   useGlobalSearch,
 } from "@/hooks/use-global-search"
+import type { SearchHandleSide } from "@/lib/search-handle"
 
 type Chip = "all" | "clients" | "transactions" | "quotations" | "pages" | "accounts"
 
@@ -74,7 +76,18 @@ function ResultRow({
  * keyboard (thumb zone). Always mounted + state-driven; the Back gesture
  * closes it via useBackClose.
  */
-export function MobileSearchOverlay({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function MobileSearchOverlay({
+  open,
+  onClose,
+  handleSide,
+  onHandleSideChange,
+}: {
+  open: boolean
+  onClose: () => void
+  // The edge handle's side — surfaced here as the search settings UI.
+  handleSide?: SearchHandleSide
+  onHandleSideChange?: (side: SearchHandleSide) => void
+}) {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const { userId } = useAuth()
@@ -84,6 +97,7 @@ export function MobileSearchOverlay({ open, onClose }: { open: boolean; onClose:
   const recentsScope = activeOrg ? recentSearchScope(userId, activeOrg.id) : null
   const [query, setQuery] = useState("")
   const [chip, setChip] = useState<Chip>("all")
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   // Visual-viewport height while the keyboard is up (mobile web); the Capacitor
   // WebView resizes itself, where this stays equal to the layout viewport.
@@ -95,6 +109,7 @@ export function MobileSearchOverlay({ open, onClose }: { open: boolean; onClose:
     if (!open) {
       setQuery("")
       setChip("all")
+      setSettingsOpen(false)
       return
     }
     const timer = setTimeout(() => inputRef.current?.focus(), 80)
@@ -171,15 +186,49 @@ export function MobileSearchOverlay({ open, onClose }: { open: boolean; onClose:
     >
       <div className="safe-pt flex items-center justify-between px-4 pb-1 pt-3">
         <span className="text-base font-semibold">{t("search.title")}</span>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label={t("common.close")}
-          className="pressable ios-tap flex size-11 items-center justify-center rounded-full"
-        >
-          <X className="size-5" />
-        </button>
+        <div className="flex items-center gap-1">
+          {handleSide && onHandleSideChange && (
+            <button
+              type="button"
+              onClick={() => setSettingsOpen((o) => !o)}
+              aria-label={t("search.handleSettings")}
+              className={`pressable ios-tap flex size-11 items-center justify-center rounded-full ${settingsOpen ? "bg-muted" : ""}`}
+            >
+              <Settings2 className="size-5" />
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label={t("common.close")}
+            className="pressable ios-tap flex size-11 items-center justify-center rounded-full"
+          >
+            <X className="size-5" />
+          </button>
+        </div>
       </div>
+      {settingsOpen && handleSide && onHandleSideChange && (
+        <div className="mx-4 mb-1 rounded-2xl border bg-background/70 p-3">
+          <div className="mb-2 text-xs font-medium">{t("search.handlePosition")}</div>
+          <div className="flex gap-2">
+            {(["left", "right"] as const).map((side) => (
+              <button
+                key={side}
+                type="button"
+                onClick={() => onHandleSideChange(side)}
+                className={`pressable ios-tap min-h-11 flex-1 rounded-xl border px-3 text-sm font-medium transition-colors ${
+                  handleSide === side
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "bg-background/60 text-muted-foreground"
+                }`}
+              >
+                {side === "left" ? t("search.sideLeft") : t("search.sideRight")}
+              </button>
+            ))}
+          </div>
+          <p className="mt-2 text-[11px] text-muted-foreground">{t("search.handleDragHint")}</p>
+        </div>
+      )}
 
       <div className="flex-1 overflow-y-auto overscroll-contain px-3 pb-2">
         {!hasQuery && (

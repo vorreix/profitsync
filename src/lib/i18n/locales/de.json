@@ -1756,6 +1756,11 @@
     "clear": "Löschen",
     "hintNavigate": "navigieren",
     "hintOpen": "öffnen",
-    "hintClose": "schließen"
+    "hintClose": "schließen",
+    "handleSettings": "Einstellungen des Suchgriffs",
+    "handlePosition": "Position des Suchgriffs",
+    "sideLeft": "Linker Rand",
+    "sideRight": "Rechter Rand",
+    "handleDragHint": "Tippe auf den Griff oder wische ihn nach innen, um zu suchen. Ziehe ihn am Rand nach oben oder unten, um ihn beliebig zu platzieren."
   }
 }

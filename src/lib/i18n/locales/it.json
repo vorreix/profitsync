@@ -1756,6 +1756,11 @@
     "clear": "Cancella",
     "hintNavigate": "naviga",
     "hintOpen": "apri",
-    "hintClose": "chiudi"
+    "hintClose": "chiudi",
+    "handleSettings": "Impostazioni della maniglia di ricerca",
+    "handlePosition": "Posizione della maniglia di ricerca",
+    "sideLeft": "Bordo sinistro",
+    "sideRight": "Bordo destro",
+    "handleDragHint": "Tocca o scorri la maniglia verso l'interno per cercare. Trascinala su o giù lungo il bordo per posizionarla dove preferisci."
   }
 }

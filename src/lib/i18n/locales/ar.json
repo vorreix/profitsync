@@ -1756,6 +1756,11 @@
     "clear": "مسح",
     "hintNavigate": "تنقّل",
     "hintOpen": "فتح",
-    "hintClose": "إغلاق"
+    "hintClose": "إغلاق",
+    "handleSettings": "إعدادات مقبض البحث",
+    "handlePosition": "موضع مقبض البحث",
+    "sideLeft": "الحافة اليسرى",
+    "sideRight": "الحافة اليمنى",
+    "handleDragHint": "انقر على المقبض أو اسحبه للداخل للبحث. اسحبه لأعلى أو لأسفل على طول الحافة لوضعه حيث تريد."
   }
 }

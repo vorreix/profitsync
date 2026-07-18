@@ -526,7 +526,12 @@
     "clear": "Clear",
     "hintNavigate": "navigate",
     "hintOpen": "open",
-    "hintClose": "close"
+    "hintClose": "close",
+    "handleSettings": "Search handle settings",
+    "handlePosition": "Search handle position",
+    "sideLeft": "Left edge",
+    "sideRight": "Right edge",
+    "handleDragHint": "Tap or swipe the handle inward to search. Drag it up or down along the edge to place it wherever you like."
   },
   "deleteAccount": {
     "title": "Delete account",
