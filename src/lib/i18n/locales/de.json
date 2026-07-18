@@ -417,7 +417,12 @@
       "upgrade": "Upgrade",
       "errorUnparseable": "Nicht verstanden — bitte einen Betrag angeben",
       "errorGeneric": "KI-Ausfüllen hat nicht geklappt — bitte erneut versuchen",
-      "receiptUnreadable": "Beleg nicht lesbar — Felder bitte manuell ausfüllen"
+      "receiptUnreadable": "Beleg nicht lesbar — Felder bitte manuell ausfüllen",
+      "speak": "Transaktion einsprechen",
+      "recording": "Hört zu…",
+      "stop": "Stoppen und ausfüllen",
+      "micDenied": "Mikrofonzugriff verweigert — bitte in den Geräteeinstellungen erlauben",
+      "voiceFailed": "Aufnahme konnte nicht verarbeitet werden — bitte erneut versuchen"
     }
   },
   "clients": {

@@ -6,7 +6,14 @@ import { apiGet, apiPost } from "@/lib/api"
 // and the ≤1568px downscale caps both image tokens and upload size on mobile
 // networks. See docs/ai-quick-add/RESEARCH.md §3/§6.
 
-export type AiQuota = { enabled: boolean; remaining: number; limit: number; plan_key: string }
+export type AiQuota = {
+  enabled: boolean
+  voice: boolean
+  remaining: number
+  limit: number
+  max_record_seconds: number
+  plan_key: string
+}
 
 export type AiParsedFields = {
   type: "incoming" | "outgoing"
@@ -15,11 +22,12 @@ export type AiParsedFields = {
   category: string | null
   description: string | null
   client_id: string | null
+  account_id: string | null
 }
 
 export type AiParseResponse = {
   fields: AiParsedFields
-  confidence: { type: number; amount: number; date: number; category: number; client: number }
+  confidence: { type: number; amount: number; date: number; category: number; client: number; account: number }
   client_candidates: { id: string; name: string }[] | null
   raw_client_name: string | null
   remaining: number
@@ -29,7 +37,11 @@ export const fetchAiQuota = (token: string) => apiGet<AiQuota>("/api/ai/quota", 
 
 export const parseWithAi = (
   token: string,
-  input: { text?: string; image?: { data: string; media_type: string } },
+  input: {
+    text?: string
+    image?: { data: string; media_type: string }
+    audio?: { data: string; media_type: string }
+  },
 ) => apiPost<AiParseResponse>("/api/ai/parse-transaction", token, input)
 
 const MAX_EDGE = 1568 // matches the model's standard-resolution long-edge cap

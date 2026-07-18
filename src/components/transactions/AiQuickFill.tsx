@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { ArrowLeft, Camera, CircleAlert, Loader as Loader2, Sparkles, SendHorizontal } from "lucide-react"
+import { ArrowLeft, Camera, Check, CircleAlert, Loader as Loader2, Mic, Sparkles, SendHorizontal, X } from "lucide-react"
 import { useAuth } from "@clerk/clerk-react"
 import { apiErrorUpgradeHint } from "@/lib/api"
 import { parseWithAi, preprocessReceipt, type AiParseResponse } from "@/lib/ai-parse"
+import { useVoiceRecorder } from "@/hooks/use-voice-recorder"
 import { formatMoney } from "@/lib/wealth"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
@@ -14,11 +15,11 @@ export type SmartApply = { response: AiParseResponse; receiptFile: File | null; 
  * AI quick fill, progressive-disclosure edition. `<AiCaptureView />` is a
  * focused surface the dialog swaps in PLACE of the form body when the header
  * sparkle trigger is tapped (availability comes from `useAiQuota` in
- * src/hooks/use-ai-quota.ts). All AI chrome — input, camera, parsing state,
- * errors, ambiguity chips, quota — lives here and only here; the form never
- * gains a single extra element. Results are applied on the way OUT (including
- * an ambiguous-client resolution step inside this view), and the dialog
- * confirms via toast + transient field highlights.
+ * src/hooks/use-ai-quota.ts). All AI chrome — text input, voice recording,
+ * camera, parsing state, errors, ambiguity chips, quota — lives here and only
+ * here; the form never gains a single extra element. Results are applied on
+ * the way OUT (including an ambiguous-client resolution step inside this
+ * view), and the dialog confirms via toast + transient field highlights.
  */
 type Step =
   | { kind: "input" }
@@ -26,10 +27,14 @@ type Step =
   | { kind: "pick-client"; response: AiParseResponse; receiptFile: File | null }
   | { kind: "error"; message: string }
 
-export function AiCaptureView({ currency, remaining, limit, onApply, onClose, onUpgrade, onQuotaUsed }: {
+const fmtClock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`
+
+export function AiCaptureView({ currency, remaining, limit, voice, maxRecordSeconds, onApply, onClose, onUpgrade, onQuotaUsed }: {
   currency: string
   remaining: number
   limit: number
+  voice: boolean
+  maxRecordSeconds: number
   onApply: (a: SmartApply) => void
   onClose: () => void
   onUpgrade: () => void
@@ -43,6 +48,17 @@ export function AiCaptureView({ currency, remaining, limit, onApply, onClose, on
   const textRef = useRef<HTMLTextAreaElement>(null)
   const abortRef = useRef(false)
 
+  const recorder = useVoiceRecorder({
+    maxSeconds: maxRecordSeconds,
+    onFinish: (wav) => {
+      void runParse(
+        { text: text.trim() || undefined, audio: { data: wav, media_type: "audio/wav" } },
+        null,
+      )
+    },
+    onError: (kind) => setStep({ kind: "error", message: kind === "denied" ? t("ai.micDenied") : t("ai.voiceFailed") }),
+  })
+
   useEffect(() => {
     // Autofocus only where a keyboard won't cover half the sheet.
     if (window.matchMedia("(min-width: 640px)").matches) textRef.current?.focus()
@@ -50,10 +66,15 @@ export function AiCaptureView({ currency, remaining, limit, onApply, onClose, on
   }, [])
 
   const exhausted = remaining <= 0
-  const parsing = step.kind === "parsing"
-  const canSend = text.trim().length > 0 && !parsing && !exhausted
+  const recording = recorder.state === "recording"
+  const transcoding = recorder.state === "processing"
+  const parsing = step.kind === "parsing" || transcoding
+  const canSend = text.trim().length > 0 && !parsing && !recording && !exhausted
 
-  async function runParse(input: { text?: string; image?: { data: string; media_type: string } }, receiptFile: File | null) {
+  async function runParse(
+    input: { text?: string; image?: { data: string; media_type: string }; audio?: { data: string; media_type: string } },
+    receiptFile: File | null,
+  ) {
     abortRef.current = false
     setStep({ kind: "parsing", hasReceipt: receiptFile != null })
     try {
@@ -100,7 +121,7 @@ export function AiCaptureView({ currency, remaining, limit, onApply, onClose, on
   return (
     <div className="flex min-h-[16rem] flex-col animate-in fade-in duration-200">
       <div className="mb-3 flex items-center gap-1">
-        <Button variant="ghost" size="icon" className="-ms-2 size-9" aria-label={t("cancel")} onClick={onClose}>
+        <Button variant="ghost" size="icon" className="-ms-2 size-9" aria-label={t("cancel")} onClick={() => { recorder.cancel(); onClose() }}>
           <ArrowLeft className="size-4 rtl:-scale-x-100" />
         </Button>
         <p className="flex items-center gap-1.5 text-sm font-medium">
@@ -136,36 +157,85 @@ export function AiCaptureView({ currency, remaining, limit, onApply, onClose, on
         </div>
       ) : (
         <div className="flex flex-1 flex-col gap-3">
-          <div className={`relative rounded-xl border ${parsing ? "ai-shimmer-border" : ""}`}>
-            <Textarea
-              ref={textRef}
-              value={text}
-              onChange={(e) => { setText(e.target.value); if (step.kind === "error") setStep({ kind: "input" }) }}
-              placeholder={t("ai.placeholder", { example: formatMoney(450, currency) })}
-              rows={3}
-              enterKeyHint="go"
-              disabled={parsing}
-              aria-label={t("ai.inputLabel")}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey && canSend) { e.preventDefault(); void runParse({ text: text.trim() }, null) }
-              }}
-              className="min-h-24 resize-none border-0 bg-transparent text-base shadow-none focus-visible:ring-0 md:text-sm"
-            />
-            {canSend && (
-              <Button
-                type="button" size="icon" className="absolute bottom-2 end-2 size-9"
-                aria-label={t("ai.parse")}
-                onClick={() => void runParse({ text: text.trim() }, null)}
-              >
-                <SendHorizontal className="size-4 rtl:-scale-x-100" />
-              </Button>
-            )}
-          </div>
+          {recording ? (
+            /* ── Recording: replaces the input box, same footprint ────────── */
+            <div className="relative overflow-hidden rounded-xl border">
+              <div className="flex min-h-24 items-center justify-between gap-3 p-4 pb-5">
+                <div className="flex min-w-0 items-center gap-3">
+                  <span className="relative flex size-3 shrink-0" aria-hidden>
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-60 motion-reduce:hidden" />
+                    <span className="relative inline-flex size-3 rounded-full bg-red-500" />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium">{t("ai.recording")}</p>
+                    <p className="text-xs tabular-nums text-muted-foreground" aria-live="polite">
+                      {fmtClock(recorder.elapsed)} / {fmtClock(maxRecordSeconds)}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <Button
+                    type="button" variant="outline" size="icon" className="size-11 rounded-full"
+                    aria-label={t("cancel")} onClick={recorder.cancel}
+                  >
+                    <X className="size-4" />
+                  </Button>
+                  <Button
+                    type="button" size="icon" className="size-11 rounded-full"
+                    aria-label={t("ai.stop")} onClick={recorder.stop}
+                  >
+                    <Check className="size-5" />
+                  </Button>
+                </div>
+              </div>
+              <div className="absolute inset-x-0 bottom-0 h-1 bg-muted" aria-hidden>
+                <div
+                  className="h-full origin-left bg-red-500/80 transition-transform duration-200 ease-linear rtl:origin-right"
+                  style={{ transform: `scaleX(${Math.min(1, recorder.elapsed / maxRecordSeconds)})` }}
+                />
+              </div>
+            </div>
+          ) : (
+            /* ── Idle / parsing: textarea with mic-or-send action ─────────── */
+            <div className={`relative rounded-xl border ${parsing ? "ai-shimmer-border" : ""}`}>
+              <Textarea
+                ref={textRef}
+                value={text}
+                onChange={(e) => { setText(e.target.value); if (step.kind === "error") setStep({ kind: "input" }) }}
+                placeholder={t("ai.placeholder", { example: formatMoney(450, currency) })}
+                rows={3}
+                enterKeyHint="go"
+                disabled={parsing}
+                aria-label={t("ai.inputLabel")}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey && canSend) { e.preventDefault(); void runParse({ text: text.trim() }, null) }
+                }}
+                className="min-h-24 resize-none border-0 bg-transparent pb-14 text-base shadow-none focus-visible:ring-0 md:text-sm"
+              />
+              {canSend ? (
+                <Button
+                  type="button" size="icon" className="absolute bottom-2 end-2 size-11"
+                  aria-label={t("ai.parse")}
+                  onClick={() => void runParse({ text: text.trim() }, null)}
+                >
+                  <SendHorizontal className="size-4 rtl:-scale-x-100" />
+                </Button>
+              ) : voice && !parsing ? (
+                <Button
+                  type="button" variant="ghost" size="icon" className="absolute bottom-2 end-2 size-11 text-muted-foreground"
+                  aria-label={t("ai.speak")}
+                  onClick={() => { setStep({ kind: "input" }); void recorder.start() }}
+                >
+                  <Mic className="size-5" />
+                </Button>
+              ) : null}
+            </div>
+          )}
 
           <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={onReceiptPick} />
           <Button
             type="button" variant="outline" className="h-11 w-full"
-            disabled={parsing}
+            disabled={parsing || recording}
             onClick={() => cameraRef.current?.click()}
           >
             <Camera className="me-2 size-4" /> {t("ai.cameraLabel")}
@@ -177,7 +247,7 @@ export function AiCaptureView({ currency, remaining, limit, onApply, onClose, on
                 <Loader2 className="size-3 animate-spin" /> {t("ai.parsing")}
               </p>
             )}
-            {step.kind === "error" && (
+            {step.kind === "error" && !recording && (
               <p className="flex items-center gap-1.5 text-xs text-destructive">
                 <CircleAlert className="size-3 shrink-0" /> {step.message}
               </p>

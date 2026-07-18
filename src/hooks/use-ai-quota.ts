@@ -1,15 +1,16 @@
 import { useEffect, useState } from "react"
 import { useAuth } from "@clerk/clerk-react"
-import { fetchAiQuota } from "@/lib/ai-parse"
+import { fetchAiQuota, type AiQuota } from "@/lib/ai-parse"
 
 /**
- * Availability + remaining monthly AI parses for the active org. Fetched when
- * the Add-Transaction dialog opens; `enabled:false` (no ANTHROPIC_API_KEY on
- * the server) keeps every AI trigger hidden.
+ * Availability, capabilities (voice, per-plan recording ceiling) and remaining
+ * monthly AI parses for the active org. Fetched when the Add-Transaction
+ * dialog opens; `enabled:false` (no AI provider key on the server) keeps every
+ * AI trigger hidden, `voice:false` hides just the mic.
  */
 export function useAiQuota(open: boolean) {
   const { getToken } = useAuth()
-  const [quota, setQuota] = useState<{ enabled: boolean; remaining: number; limit: number } | null>(null)
+  const [quota, setQuota] = useState<AiQuota | null>(null)
 
   useEffect(() => {
     if (!open) return
@@ -21,7 +22,7 @@ export function useAiQuota(open: boolean) {
         const q = await fetchAiQuota(token)
         if (!cancelled) setQuota(q)
       } catch {
-        if (!cancelled) setQuota({ enabled: false, remaining: 0, limit: 0 })
+        if (!cancelled) setQuota({ enabled: false, voice: false, remaining: 0, limit: 0, max_record_seconds: 0, plan_key: "free" })
       }
     })()
     return () => { cancelled = true }

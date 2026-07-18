@@ -48,7 +48,7 @@ const DEFAULT_FREE_LIMITS: Required<PlanLimits> = {
   bankAccounts: 1, // free workspaces get a single bank account (+ Cash in Hand)
   spaces: 1, // free personal accounts get a single savings Space
   tagsPerTransaction: FREE_TAGS_PER_TX, // free: a single tag per transaction
-  aiParsesPerMonth: 20, // market-aligned with Expensify (25) / Zoho (20) free scans
+  aiParsesPerMonth: 30, // 30/mo free (user-set; voice+text+receipt share the pool)
 }
 
 const DEFAULT_PREMIUM_LIMITS: Required<PlanLimits> = {

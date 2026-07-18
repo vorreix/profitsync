@@ -42,7 +42,7 @@ async function main() {
       attachmentsPerTx: 1,
       noteLength: 200,
       tagsPerTransaction: 1,
-      aiParsesPerMonth: 20,
+      aiParsesPerMonth: 30,
     },
     premium: {
       clients: 1000,

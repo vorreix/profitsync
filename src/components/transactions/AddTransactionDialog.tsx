@@ -230,7 +230,13 @@ export function AddTransactionDialog({
 
     consider("type", fields.type, confidence.type, () => { patch.type = fields.type })
     consider("amount", fields.amount, confidence.amount, () => {
-      patch.allocations = [{ account_id: defaultAccountId(accounts), amount: String(fields.amount) }]
+      // "…from account A" — use the AI-matched wealth account when it's a real,
+      // confidently-matched one; otherwise fall back to the usual default.
+      const matchedAccount =
+        fields.account_id && confidence.account >= FILL && accounts.some((a) => a.id === fields.account_id)
+          ? fields.account_id
+          : defaultAccountId(accounts)
+      patch.allocations = [{ account_id: matchedAccount, amount: String(fields.amount) }]
     })
     consider("date", fields.date, confidence.date, () => { patch.date = fields.date! })
     // Description is free text the model rewrote — no numeric confidence; always "high".
@@ -343,6 +349,8 @@ export function AddTransactionDialog({
               currency={currency}
               remaining={aiQuota.remaining}
               limit={aiQuota.limit}
+              voice={aiQuota.voice}
+              maxRecordSeconds={aiQuota.max_record_seconds}
               onApply={applyAiResult}
               onClose={() => setAiOpen(false)}
               onUpgrade={goUpgrade}

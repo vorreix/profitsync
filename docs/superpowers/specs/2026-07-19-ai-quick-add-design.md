@@ -79,3 +79,13 @@ New keys in `transactions` ns (`ai.*`): placeholder, parse, parsing, filledSumma
 
 ## Out of scope (v1)
 Voice UI (OS keyboard dictation covers it), batch receipt import, dedicated FAB capture flow, auto-save, model fallback routing, Gemini adapter (pre-designated cost lever — see RESEARCH §8.5).
+
+---
+
+## v2 addendum (2026-07-19): multi-provider + voice input
+
+- **Provider abstraction** (`api/_lib/ai-providers.ts`): Anthropic (SDK) / Gemini (REST `generateContent`, `responseSchema` in nullable dialect via `src/lib/ai-schema.ts`, `thinkingBudget: 0`) / OpenAI (REST chat.completions, strict json_schema). Selected by `AI_PROVIDER` + `AI_PARSE_MODEL` env; defaults per provider: `claude-haiku-4-5` / `gemini-2.5-flash` / `gpt-5.4-mini`. Operator preference: **Gemini 2.5 Flash** ($0.30/$2.50 per MTok; audio input $1.00/MTok).
+- **Voice quick add**: mic button in the capture view (shown only when the provider supports audio — Gemini only; OpenAI mini tier and Anthropic have no audio input). MediaRecorder → decode → 16 kHz mono WAV (`src/lib/audio-wav.ts`) because Gemini inline audio accepts only wav/mp3/aiff/aac/ogg-vorbis/flac — NOT the webm/m4a that MediaRecorder produces. Recording UI: pulsing dot + tabular timer `0:12 / 0:30` + progress bar (scaleX) + cancel/stop; auto-stop at the per-plan ceiling.
+- **Limits**: recording 30 s free / 60 s premium (`maxRecordSeconds`, enforced by auto-stop + per-plan audio payload caps 1.5/3 MB b64); monthly quota free bumped 20 → **30** (user-set), premium 500. Audio ≈32 tokens/s → a 60 s parse ≈ $0.004 on Gemini.
+- **Account matching**: schema + prompt gain `account_name` ("from account A", "paid by cash"); server resolves against the org's wealth accounts (nickname||bank_name||"Cash") with the same fuzzy matcher; matched account drives the allocation's source account, else default. Ambiguous account abstains (no chip flow).
+- **Native**: `RECORD_AUDIO` (+`MODIFY_AUDIO_SETTINGS`) in AndroidManifest — Capacitor auto-bridges WebView mic permission; `NSMicrophoneUsageDescription` in iOS Info.plist (WKWebView getUserMedia ≥ iOS 14.3).

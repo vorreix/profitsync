@@ -789,7 +789,12 @@
       "upgrade": "Upgrade",
       "errorUnparseable": "Couldn't understand that — try including an amount",
       "errorGeneric": "AI fill didn't work — please try again",
-      "receiptUnreadable": "Couldn't read this receipt — fill the fields manually"
+      "receiptUnreadable": "Couldn't read this receipt — fill the fields manually",
+      "speak": "Speak the transaction",
+      "recording": "Listening…",
+      "stop": "Stop and fill",
+      "micDenied": "Microphone access was denied — allow it in your device settings",
+      "voiceFailed": "Couldn't process the recording — please try again"
     }
   },
   "wealth": {
