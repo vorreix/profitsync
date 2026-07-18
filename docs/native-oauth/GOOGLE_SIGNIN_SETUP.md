@@ -60,16 +60,23 @@ Google (and email/password) providers are enabled on **`profitsync-app`** via
 auto-created the Web + Android OAuth clients above in the underlying Google
 Cloud project.
 
-## Step 2 — Firebase: register the app signing fingerprints (SHA-1) — ◐ debug DONE
+## Step 2 — Firebase: register the app signing fingerprints (SHA-1) — ✅ ALL DONE
 
 | Build | SHA-1 | Status |
 |---|---|---|
 | **Debug** (local APKs) | `88:86:2B:67:63:DF:18:D3:DA:19:78:C7:64:2F:0D:88:29:34:23:43` | ✅ registered (SHA-256 too) |
-| **Production** (Play store) | *(your Play app-signing SHA-1)* | ❌ **still to add** — Play Console → your app → **App integrity** → **App signing** → **App signing key certificate → SHA-1**, then Firebase → Project settings → Android app → **Add fingerprint** |
+| **Upload key** (locally built release APKs) | `FE:9C:D3:4A:5D:41:7F:26:4F:B5:68:5F:2F:54:62:43:55:63:B0:6F` | ✅ registered (SHA-256 too) |
+| **Play App signing** (store-delivered builds) | `D4:69:B8:CF:CB:AB:4D:75:21:43:69:FA:51:8C:06:0A:B8:80:6C:DC` | ✅ registered (SHA-256 too) |
 
-> Without the matching SHA-1, native Google Sign-In fails on-device with
-> `DEVELOPER_ERROR (code 10)`. The debug fingerprint only covers debug builds —
-> the **Play-signed release will fail until the Play SHA-1 is added**.
+> Historical gotcha (2026-07-18): the Play SHA-1 initially failed with
+> `409 ALREADY_EXISTS: OAuth client already exists in a different project` — a
+> package+SHA-1 pair belongs to ONE Google Cloud project globally, and the
+> deleted `profitsync-net` still claimed it (deleted projects hold claims until
+> purged, ~30 days). Fixed by restoring `profitsync-net` from
+> cloud-resource-manager → Resources pending deletion, deleting its Android
+> OAuth client, re-adding here. If it recurs for a new fingerprint, that's the
+> playbook. Without a matching SHA-1, native Google Sign-In fails on-device
+> with `DEVELOPER_ERROR (code 10)`.
 
 ## Step 3 — `google-services.json` — ✅ DONE
 
