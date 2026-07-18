@@ -234,6 +234,20 @@
     -webkit-touch-callout: default;
   }
 
+  /* Kill backdrop-filter blur inside the WebView. The sticky mobile header, the
+     bottom nav and the FAB scrim all use `backdrop-blur*` (bg-background/95 +
+     blur). On the Android/iOS WebView backdrop-filter is NOT reliably GPU
+     compositor-accelerated — every scroll frame re-samples and re-blurs the pixels
+     behind the sticky bars, dropping 60→30fps (the "not smooth vs web" jank). The
+     backgrounds are already 50–95% opaque, so dropping the blur is visually
+     near-identical but scrolls at full framerate. Native only; web keeps the blur
+     (browsers accelerate it). Unlayered !important beats Tailwind's layered
+     utilities (see the Clerk note below). */
+  html.native-app [class*="backdrop-blur"] {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+
   /* Note on Clerk's in-card social buttons: they render on native too, and
      their taps are intercepted by useNativeOAuthIntercept (capture phase) to
      run the native OAuth flow. If you ever need to hide/override Clerk UI with

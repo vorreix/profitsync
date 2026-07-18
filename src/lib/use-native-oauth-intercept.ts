@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 import { NATIVE_OAUTH_REDIRECT_URL, isNativeApp, nativeAuthLog, nativeAuthUrlLog } from "@/lib/native-auth"
+import { nativeGoogleSignIn } from "@/lib/native-google-signin"
 
 export type NativeOAuthMode = "sign-in" | "sign-up"
 type NativeOAuthStrategy = "oauth_google" | "oauth_apple"
@@ -60,11 +61,25 @@ export function useNativeOAuthIntercept(mode: NativeOAuthMode, unsafeMetadata?: 
       if (busy) return
       busy = true
 
-      const strategy: NativeOAuthStrategy = provider === "google" ? "oauth_google" : "oauth_apple"
       nativeAuthLog("oauth_button_clicked", { provider, mode, via: "clerk_card_intercept" })
 
       void (async () => {
         try {
+          if (provider === "google") {
+            // Native Google Sign-In (Credential Manager → Clerk google_one_tap).
+            // Reliable session persistence; no external browser, no nonce reload.
+            // On success it hard-navigates itself, so there is nothing to do here.
+            const result = await nativeGoogleSignIn(clerk)
+            if (!result.ok && result.reason !== "cancelled") {
+              nativeAuthLog("native_google_signin_failed", { reason: result.reason, message: result.message })
+              toast.error(errorTextRef.current)
+            }
+            return
+          }
+          // Apple: the external-browser attempt + system browser (unchanged).
+          // Native Apple ID-token sign-in is a follow-up; Apple is iOS-only in
+          // practice and the primary account is Google. See GOOGLE_SIGNIN_SETUP.md.
+          const strategy: NativeOAuthStrategy = "oauth_apple"
           const { Browser } = await import("@capacitor/browser")
           const url = await startNativeOAuth(clerk, mode, strategy, metadataRef.current)
           nativeAuthUrlLog("generated_redirect_url", url, { provider, mode })
