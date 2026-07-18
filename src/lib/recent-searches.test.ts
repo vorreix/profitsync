@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { clearRecents, loadRecents, recordRecent, RECENTS_LIMIT } from "./recent-searches"
+import { clearRecents, loadRecents, recentSearchScope, recordRecent, RECENTS_LIMIT } from "./recent-searches"
 
 function memoryStorage(initial: Record<string, string> = {}) {
   const map = new Map(Object.entries(initial))
@@ -51,12 +51,20 @@ describe("recent-searches", () => {
     expect(loadRecents(s, "org1")).toEqual([])
   })
 
-  it("keeps orgs isolated and clears only the given org", () => {
+  it("keeps scopes isolated and clears only the given scope", () => {
     const s = memoryStorage()
     recordRecent(s, "org1", "alpha")
     recordRecent(s, "org2", "beta")
     clearRecents(s, "org1")
     expect(loadRecents(s, "org1")).toEqual([])
     expect(loadRecents(s, "org2")).toEqual(["beta"])
+  })
+
+  it("scopes by user AND org so users on a shared device never see each other's history", () => {
+    const s = memoryStorage()
+    recordRecent(s, recentSearchScope("userA", "org1"), "fraud investigation")
+    expect(loadRecents(s, recentSearchScope("userB", "org1"))).toEqual([])
+    expect(loadRecents(s, recentSearchScope("userA", "org1"))).toEqual(["fraud investigation"])
+    expect(recentSearchScope(null, "org1")).toBe("anon:org1")
   })
 })

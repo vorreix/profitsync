@@ -26,10 +26,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { useAuth } from "@clerk/clerk-react"
 import { useAdmin } from "@/lib/admin-context"
 import { useCurrency } from "@/lib/currency-context"
 import { useOrg } from "@/lib/org-context"
-import { loadRecents, recordRecent } from "@/lib/recent-searches"
+import { loadRecents, recentSearchScope, recordRecent } from "@/lib/recent-searches"
 import { filterLocal, quickActions, searchablePages } from "@/lib/search-index"
 import { accountDisplayName, formatMoney } from "@/lib/wealth"
 import {
@@ -51,11 +52,13 @@ export function GlobalSearchDialog({
 }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const { userId } = useAuth()
   const { activeOrg } = useOrg()
   const { isAdmin } = useAdmin()
   const { currency } = useCurrency()
   const [query, setQuery] = useState("")
 
+  const recentsScope = activeOrg ? recentSearchScope(userId, activeOrg.id) : null
   const accountType = activeOrg?.account_type ?? null
   const membersHref = activeOrg ? `/organizations/${activeOrg.id}/members` : "/organizations"
   const { results, loading } = useGlobalSearch(query)
@@ -69,16 +72,22 @@ export function GlobalSearchDialog({
     [accountType, query, t],
   )
   const recents = useMemo(
-    () => (activeOrg && open && !query.trim() ? loadRecents(localStorage, activeOrg.id) : []),
-    [activeOrg, open, query],
+    () => (recentsScope && open && !query.trim() ? loadRecents(localStorage, recentsScope) : []),
+    [recentsScope, open, query],
   )
 
   useEffect(() => {
     if (!open) setQuery("")
   }, [open])
 
+  // Switching orgs while the palette is open would otherwise keep showing the
+  // previous org's results (the hook only re-fetches when the query changes).
+  useEffect(() => {
+    setQuery("")
+  }, [activeOrg?.id])
+
   const go = (href: string) => {
-    if (activeOrg && query.trim()) recordRecent(localStorage, activeOrg.id, query)
+    if (recentsScope && query.trim()) recordRecent(localStorage, recentsScope, query)
     onOpenChange(false)
     navigate(href)
   }

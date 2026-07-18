@@ -16,9 +16,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!auth) return
   const { orgId } = auth
 
-  const q = String((req.query as { q?: string }).q ?? "").trim()
+  const q = String((req.query as { q?: string }).q ?? "").trim().slice(0, 120)
   if (q.length < 2) return res.status(400).json({ error: "query too short" })
-  const term = `%${q}%`
+  // Escape LIKE wildcards so "test_" matches the literal string, not a pattern
+  // (Postgres' default ESCAPE character is backslash).
+  const term = `%${q.replace(/[\\%_]/g, "\\$&")}%`
 
   const [clientRows, txRows, quoteRows, accountRows, categoryRows] = await Promise.all([
     db

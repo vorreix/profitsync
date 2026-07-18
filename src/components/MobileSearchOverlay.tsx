@@ -13,10 +13,11 @@ import {
   Users,
   X,
 } from "lucide-react"
+import { useAuth } from "@clerk/clerk-react"
 import { useAdmin } from "@/lib/admin-context"
 import { useCurrency } from "@/lib/currency-context"
 import { useOrg } from "@/lib/org-context"
-import { loadRecents, recordRecent } from "@/lib/recent-searches"
+import { loadRecents, recentSearchScope, recordRecent } from "@/lib/recent-searches"
 import { filterLocal, quickActions, searchablePages } from "@/lib/search-index"
 import { accountDisplayName, formatMoney } from "@/lib/wealth"
 import { useBackClose } from "@/hooks/use-back-close"
@@ -76,9 +77,11 @@ function ResultRow({
 export function MobileSearchOverlay({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const { userId } = useAuth()
   const { activeOrg } = useOrg()
   const { isAdmin } = useAdmin()
   const { currency } = useCurrency()
+  const recentsScope = activeOrg ? recentSearchScope(userId, activeOrg.id) : null
   const [query, setQuery] = useState("")
   const [chip, setChip] = useState<Chip>("all")
   const inputRef = useRef<HTMLInputElement>(null)
@@ -101,6 +104,12 @@ export function MobileSearchOverlay({ open, onClose }: { open: boolean; onClose:
       document.body.style.overflow = ""
     }
   }, [open])
+
+  // Switching orgs mid-search would otherwise keep the previous org's results
+  // (the hook only re-fetches when the query changes).
+  useEffect(() => {
+    setQuery("")
+  }, [activeOrg?.id])
 
   useEffect(() => {
     if (!open) return
@@ -128,14 +137,14 @@ export function MobileSearchOverlay({ open, onClose }: { open: boolean; onClose:
     [accountType, query, t],
   )
   const recents = useMemo(
-    () => (activeOrg && open && !query.trim() ? loadRecents(localStorage, activeOrg.id) : []),
-    [activeOrg, open, query],
+    () => (recentsScope && open && !query.trim() ? loadRecents(localStorage, recentsScope) : []),
+    [recentsScope, open, query],
   )
 
   if (!open) return null
 
   const go = (href: string) => {
-    if (activeOrg && query.trim()) recordRecent(localStorage, activeOrg.id, query)
+    if (recentsScope && query.trim()) recordRecent(localStorage, recentsScope, query)
     onClose()
     navigate(href)
   }
@@ -296,7 +305,7 @@ export function MobileSearchOverlay({ open, onClose }: { open: boolean; onClose:
             key={c.key}
             type="button"
             onClick={() => setChip(c.key)}
-            className={`pressable ios-tap min-h-9 shrink-0 rounded-full border px-4 py-1.5 text-xs font-medium transition-colors ${
+            className={`pressable ios-tap min-h-11 shrink-0 rounded-full border px-4 py-1.5 text-xs font-medium transition-colors ${
               chip === c.key
                 ? "border-primary bg-primary text-primary-foreground"
                 : "bg-background/60 text-muted-foreground"
@@ -325,9 +334,11 @@ export function MobileSearchOverlay({ open, onClose }: { open: boolean; onClose:
               type="button"
               onClick={() => setQuery("")}
               aria-label={t("search.clear")}
-              className="pressable flex size-6 items-center justify-center rounded-full bg-muted"
+              className="pressable -my-2.5 -me-3 flex size-11 shrink-0 items-center justify-center"
             >
-              <X className="size-3.5" />
+              <span className="flex size-6 items-center justify-center rounded-full bg-muted">
+                <X className="size-3.5" />
+              </span>
             </button>
           )}
         </div>
