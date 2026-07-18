@@ -123,3 +123,52 @@ If you weren't expecting this invitation, you can safely ignore this email.`
 
   return sendEmail({ to: opts.to, subject, html, text })
 }
+
+/**
+ * Delete-account confirmation code. Unlike invitations this is NOT best-effort:
+ * the caller blocks the deletion flow when the send fails (the OTP is the
+ * security gate, there is no "copy the link" fallback).
+ */
+export async function sendAccountDeletionCodeEmail(opts: { to: string; code: string }): Promise<SendResult> {
+  const code = escapeHtml(opts.code)
+  const subject = `${opts.code} is your ProfitSync account deletion code`
+  const html = `<!doctype html>
+<html>
+  <body style="margin:0;padding:0;background:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:32px 16px;">
+      <tr><td align="center">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#ffffff;border-radius:14px;border:1px solid #e4e4e7;overflow:hidden;">
+          <tr><td style="padding:28px 32px 8px;">
+            <div style="font-size:18px;font-weight:700;color:#0a0a0a;">ProfitSync</div>
+          </td></tr>
+          <tr><td style="padding:8px 32px 0;">
+            <h1 style="margin:0 0 8px;font-size:20px;line-height:1.3;color:#0a0a0a;">Confirm your account deletion</h1>
+            <p style="margin:0;font-size:14px;line-height:1.6;color:#52525b;">
+              You asked to permanently delete your ProfitSync account. Enter this code to confirm:
+            </p>
+          </td></tr>
+          <tr><td style="padding:20px 32px 8px;" align="center">
+            <div style="display:inline-block;background:#f4f4f5;border:1px solid #e4e4e7;border-radius:10px;padding:14px 28px;font-size:28px;font-weight:700;letter-spacing:8px;color:#0a0a0a;">${code}</div>
+          </td></tr>
+          <tr><td style="padding:8px 32px 0;">
+            <p style="margin:0;font-size:12px;line-height:1.6;color:#a1a1aa;">This code expires in 10 minutes. Deleting your account removes all your organizations and data permanently and cancels any active subscription.</p>
+          </td></tr>
+          <tr><td style="padding:24px 32px 28px;">
+            <p style="margin:0;font-size:12px;line-height:1.6;color:#a1a1aa;border-top:1px solid #e4e4e7;padding-top:16px;">
+              If you didn't request this, you can safely ignore this email — nothing will happen without the code.
+            </p>
+          </td></tr>
+        </table>
+      </td></tr>
+    </table>
+  </body>
+</html>`
+  const text = `You asked to permanently delete your ProfitSync account.
+
+Your confirmation code: ${opts.code}
+
+This code expires in 10 minutes. Deleting your account removes all your organizations and data permanently and cancels any active subscription.
+
+If you didn't request this, you can safely ignore this email — nothing will happen without the code.`
+  return sendEmail({ to: opts.to, subject, html, text })
+}

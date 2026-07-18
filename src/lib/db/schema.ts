@@ -476,6 +476,20 @@ export const userProfiles = pgTable("user_profiles", {
   updatedAt: timestamp("updated_at").defaultNow(),
 })
 
+// ── Account deletion codes ────────────────────────────────────────────────────
+// One pending email-OTP per user for the self-serve delete-account flow. Only
+// the SHA-256 hash of the code is stored (hashed with the userId so a leaked
+// row can't confirm another account). Upserted on every (re)send; removed by
+// deleteUserAccount's cleanup.
+export const accountDeletionCodes = pgTable("account_deletion_codes", {
+  userId: text("user_id").primaryKey(),
+  codeHash: text("code_hash").notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  attempts: integer("attempts").notNull().default(0),
+  lastSentAt: timestamp("last_sent_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+})
+
 // ── Referral program ────────────────────────────────────────────────────────
 // One shareable code per user.
 export const referralCodes = pgTable("referral_codes", {

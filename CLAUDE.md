@@ -77,6 +77,12 @@ DODO_PAYMENTS_ENVIRONMENT=test_mode      # or live_mode
 DODO_PRODUCT_PREMIUM_MONTHLY=...         # Dodo product id
 DODO_PRODUCT_PREMIUM_YEARLY=...          # Dodo product id
 
+# Transactional email via Resend (api/_lib/email.ts). OPTIONAL in dev — org
+# invitations degrade to "copy the link", but self-serve ACCOUNT DELETION needs
+# it (the email OTP is the gate; /api/account/delete/request-code 503s without).
+RESEND_API_KEY=re_...                    # server-only
+EMAIL_FROM="ProfitSync <noreply@profitsync.net>"  # verified sender; falls back to onboarding@resend.dev
+
 # Platform admin bootstrap (OPTIONAL) — comma-separated emails that are ALWAYS
 # super_admin without an app_admins row (api/_lib/admin.ts rootAdminEmails()).
 # This is how the FIRST admin gets access in an environment whose DB was never
@@ -300,6 +306,8 @@ The Android (`android/`) and iOS (`ios/`) apps are **[Capacitor](https://capacit
 | `/api/admin/billing-attempts` (+ `/:id`) | checkout-attempt log + follow-up |
 | `/api/admin/payouts` (+ `/:id`) · `/api/admin/referrals` · `/api/admin/referral-settings` | referral admin |
 | `/api/admin/subscriptions/actions` · `/api/admin/organizations/bulk-delete` | bulk admin actions |
+| `/api/account/delete/summary` · `/request-code` · `/confirm` | self-serve account deletion: consequences summary, email OTP (hash-only `account_deletion_codes`, mig 0053), confirm → `api/_lib/account-delete.ts` `deleteUserAccount()` (org teardown w/ Dodo cancel → user-scoped rows → profile → Clerk user LAST; admin user-delete uses the same helper) |
+| `/api/trash/clear` | purge the org's whole trash (same balance/split-group invariants as single purge) |
 
 ### Auth & authorization (`api/_lib/auth.ts`)
 

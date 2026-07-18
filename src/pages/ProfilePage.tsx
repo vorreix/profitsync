@@ -17,7 +17,8 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { LanguageSwitcher } from "@/components/LanguageSwitcher"
 import { CountryCombobox, CountryCodeCombobox } from "@/components/CountryCombobox"
 import { toast } from "sonner"
-import { ArrowLeft, Bell, Building2, ChevronDown, FileText, ImagePlus, Loader as Loader2, LogOut, ScrollText, ShieldCheck, SlidersHorizontal, UserRound } from "lucide-react"
+import { ArrowLeft, Bell, Building2, ChevronDown, FileText, ImagePlus, Loader as Loader2, LogOut, ScrollText, ShieldCheck, SlidersHorizontal, Trash2, UserRound } from "lucide-react"
+import { DeleteAccountDialog } from "@/components/DeleteAccountDialog"
 import { EntityAvatar } from "@/components/EntityAvatar"
 import { fileToResizedDataUrl } from "@/lib/image-upload"
 import { useAutoAnimate } from "@formkit/auto-animate/react"
@@ -43,6 +44,7 @@ export function ProfilePage() {
   const [phoneCode, setPhoneCode] = useState("")
   const [phone, setPhone] = useState("")
   const [showContact, setShowContact] = useState(false)
+  const [deleteOpen, setDeleteOpen] = useState(false)
   const [contactRef] = useAutoAnimate<HTMLDivElement>()
 
   // Tabs are reflected in the URL (?tab=) so they're deep-linkable and shareable.
@@ -390,8 +392,23 @@ export function ProfilePage() {
               </Button>
             </CardContent>
           </Card>
+
+          <Card className="border-destructive/20 bg-destructive/5">
+            <CardHeader>
+              <CardTitle className="text-destructive">{t("deleteAccount.title")}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground mb-4">{t("deleteAccount.cardDescription")}</p>
+              <Button variant="destructive" onClick={() => setDeleteOpen(true)} className="w-full">
+                <Trash2 className="size-4 mr-2" />
+                {t("deleteAccount.button")}
+              </Button>
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
+
+      <DeleteAccountDialog open={deleteOpen} onOpenChange={setDeleteOpen} />
     </div>
   )
 }

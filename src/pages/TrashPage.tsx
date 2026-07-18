@@ -42,6 +42,7 @@ export function TrashPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [loading, setLoading] = useState(true)
   const [purgeTarget, setPurgeTarget] = useState<PurgeTarget | null>(null)
+  const [clearOpen, setClearOpen] = useState(false)
   const [working, setWorking] = useState(false)
 
   const loadData = useCallback(async () => {
@@ -95,6 +96,22 @@ export function TrashPage() {
       loadData()
     } catch {
       toast.error(t("deleteFailed"))
+    } finally {
+      setWorking(false)
+    }
+  }
+
+  async function handleClearAll() {
+    setWorking(true)
+    try {
+      const token = await getToken()
+      if (!token) throw new Error("Not authenticated")
+      await apiPost("/api/trash/clear", token, {})
+      toast.success(t("trashCleared"))
+      setClearOpen(false)
+      loadData()
+    } catch {
+      toast.error(t("clearFailed"))
     } finally {
       setWorking(false)
     }
@@ -197,10 +214,23 @@ export function TrashPage() {
 
   return (
     <div className="p-3 sm:p-6 space-y-6">
-      <div>
-        <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">{t("title")}</h1>
-        {!loading && (
-          <p className="text-sm text-muted-foreground mt-1">{t("itemsInTrash", { count: totalCount })}</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">{t("title")}</h1>
+          {!loading && (
+            <p className="text-sm text-muted-foreground mt-1">{t("itemsInTrash", { count: totalCount })}</p>
+          )}
+        </div>
+        {!loading && totalCount > 0 && (
+          <Button
+            variant="outline"
+            className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+            disabled={working}
+            onClick={() => setClearOpen(true)}
+          >
+            <Trash2 className="size-4 mr-1.5" />
+            {t("clearTrash")}
+          </Button>
         )}
       </div>
 
@@ -262,6 +292,25 @@ export function TrashPage() {
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               {working ? t("deleting") : t("deleteForever")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={clearOpen} onOpenChange={(open) => { if (!open) setClearOpen(false) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("clearTrashTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>{t("clearTrashDesc", { count: totalCount })}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleClearAll}
+              disabled={working}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {working ? t("clearing") : t("clearTrash")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
