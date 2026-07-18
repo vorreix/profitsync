@@ -762,7 +762,14 @@
     "deleteForever": "Für immer löschen",
     "deleting": "Wird gelöscht...",
     "income": "Einnahme",
-    "expense": "Ausgabe"
+    "expense": "Ausgabe",
+    "clearTrash": "Papierkorb leeren",
+    "clearTrashTitle": "Papierkorb leeren?",
+    "clearTrashDesc_one": "{{count}} Element wird endgültig gelöscht. Dies kann nicht rückgängig gemacht werden.",
+    "clearTrashDesc_other": "Alle {{count}} Elemente werden endgültig gelöscht. Dies kann nicht rückgängig gemacht werden.",
+    "clearing": "Wird geleert…",
+    "trashCleared": "Papierkorb geleert",
+    "clearFailed": "Papierkorb konnte nicht geleert werden"
   },
   "theme": {
     "toggle": "Design wechseln",
@@ -1701,5 +1708,35 @@
     "card": "Kartenansicht",
     "list": "Listenansicht",
     "table": "Tabellenansicht"
+  },
+  "deleteAccount": {
+    "title": "Konto löschen",
+    "cardDescription": "Lösche dein Konto, alle Organisationen, die dir gehören, und alle zugehörigen Daten dauerhaft. Dies kann nicht rückgängig gemacht werden.",
+    "button": "Konto löschen…",
+    "dialogTitle": "Dein Konto löschen?",
+    "consequences": "Alles unten Aufgeführte wird dauerhaft gelöscht — Organisationen, die dir gehören, ihre Kunden, Transaktionen, Angebote und Dateien.",
+    "personalWorkspace": "Persönlicher Bereich",
+    "memberCount_one": "{{count}} Mitglied — verliert den Zugriff",
+    "memberCount_other": "{{count}} Mitglieder — sie verlieren den Zugriff",
+    "premiumWarning": "Premium-Abo — wird sofort gekündigt, keine Rückerstattung",
+    "membershipsRemoved_one": "Du wirst außerdem aus {{count}} Organisation entfernt, in der du Mitglied bist.",
+    "membershipsRemoved_other": "Du wirst außerdem aus {{count}} Organisationen entfernt, in denen du Mitglied bist.",
+    "finalWarning": "Diese Aktion ist endgültig und kann nicht rückgängig gemacht werden.",
+    "continue": "Weiter",
+    "otpTitle": "Bestätigungscode eingeben",
+    "otpSent": "Wir haben einen 6-stelligen Code an {{email}} gesendet. Gib ihn ein, um dein Konto dauerhaft zu löschen.",
+    "resend": "Code erneut senden",
+    "resendIn": "Erneut senden in {{seconds}}s",
+    "confirmButton": "Mein Konto für immer löschen",
+    "deleting": "Wird gelöscht…",
+    "invalidCode_one": "Falscher Code — noch {{count}} Versuch",
+    "invalidCode_other": "Falscher Code — noch {{count}} Versuche",
+    "expiredCode": "Der Code ist abgelaufen. Fordere einen neuen an.",
+    "tooManyAttempts": "Zu viele Fehlversuche. Fordere einen neuen Code an.",
+    "unavailable": "Die Kontolöschung ist derzeit nicht verfügbar. Bitte kontaktiere den Support.",
+    "deleted": "Dein Konto wurde gelöscht",
+    "failed": "Dein Konto konnte nicht gelöscht werden. Bitte versuche es erneut.",
+    "emailFailed": "Der Code konnte nicht gesendet werden. Bitte versuche es erneut.",
+    "loadFailed": "Kontodetails konnten nicht geladen werden"
   }
 }

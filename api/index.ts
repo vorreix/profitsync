@@ -13,6 +13,9 @@ import { matchRoute, type RoutePattern } from "../src/lib/api-router.js"
 // ---------------------------------------------------------------------------
 
 import profile from "./_routes/profile.js"
+import accountDeleteSummary from "./_routes/account/delete/summary.js"
+import accountDeleteRequestCode from "./_routes/account/delete/request-code.js"
+import accountDeleteConfirm from "./_routes/account/delete/confirm.js"
 import onboarding from "./_routes/onboarding.js"
 import notificationsList from "./_routes/notifications.js"
 import notificationsUnreadCount from "./_routes/notifications/unread-count.js"
@@ -80,6 +83,7 @@ import legalAccept from "./_routes/legal/accept.js"
 import trash from "./_routes/trash.js"
 import trashRestore from "./_routes/trash/restore.js"
 import trashPurge from "./_routes/trash/purge.js"
+import trashClear from "./_routes/trash/clear.js"
 import budgets from "./_routes/budgets.js"
 import budgetsOverview from "./_routes/budgets/overview.js"
 import budgetsDetail from "./_routes/budgets/detail.js"
@@ -142,6 +146,9 @@ type ApiHandler = (req: VercelRequest, res: VercelResponse) => unknown | Promise
 // same length (see ["organizations", "switch"] before ["organizations", ":id"]).
 const routes: RoutePattern<ApiHandler>[] = [
   { segments: ["profile"], handler: profile },
+  { segments: ["account", "delete", "summary"], handler: accountDeleteSummary },
+  { segments: ["account", "delete", "request-code"], handler: accountDeleteRequestCode },
+  { segments: ["account", "delete", "confirm"], handler: accountDeleteConfirm },
   { segments: ["onboarding"], handler: onboarding },
 
   // Notifications. Static length-2 routes before the dynamic ":id". (preferences
@@ -230,6 +237,7 @@ const routes: RoutePattern<ApiHandler>[] = [
   { segments: ["trash"], handler: trash },
   { segments: ["trash", "restore"], handler: trashRestore },
   { segments: ["trash", "purge"], handler: trashPurge },
+  { segments: ["trash", "clear"], handler: trashClear },
 
   // Public, unauthenticated pricing for the marketing landing page.
   { segments: ["public", "pricing"], handler: publicPricing },
