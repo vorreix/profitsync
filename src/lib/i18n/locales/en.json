@@ -509,6 +509,25 @@
     "inactive": "inactive",
     "archived": "archived"
   },
+  "search": {
+    "title": "Search",
+    "description": "Search across clients, transactions, quotations, accounts, categories, and pages",
+    "placeholder": "Search…",
+    "recent": "Recent searches",
+    "actions": "Quick actions",
+    "pages": "Pages",
+    "clients": "Clients",
+    "transactions": "Transactions",
+    "quotations": "Quotations",
+    "accounts": "Accounts",
+    "categories": "Categories",
+    "filterAll": "All",
+    "noResults": "No results found",
+    "clear": "Clear",
+    "hintNavigate": "navigate",
+    "hintOpen": "open",
+    "hintClose": "close"
+  },
   "deleteAccount": {
     "title": "Delete account",
     "cardDescription": "Permanently delete your account, every organization you own, and all their data. This cannot be undone.",

@@ -32,7 +32,9 @@ import {
   Repeat,
   CalendarDays,
   Network,
+  Search,
 } from "lucide-react"
+import { MobileSearchOverlay } from "@/components/MobileSearchOverlay"
 import { MoneyBag } from "@/components/icons/MoneyBag"
 import { useOrg } from "@/lib/org-context"
 import { useAdmin } from "@/lib/admin-context"
@@ -163,6 +165,8 @@ export function MobileAppLayout() {
   const [quickAdd, setQuickAdd] = useState<QuickAddEntity | null>(null)
   // The + FAB's "Add transaction" opens the SAME real modal as the Transactions page.
   const [addTxOpen, setAddTxOpen] = useState(false)
+  // WhatsApp-style global search: glass button bottom-left → full-screen overlay.
+  const [searchOpen, setSearchOpen] = useState(false)
 
   // Success feedback for an in-place FAB transaction add: toast + deep link to it.
   // (The page refresh signal now fires centrally from the API client on every
@@ -397,6 +401,21 @@ export function MobileAppLayout() {
       {!pageAction && fabOpen && (
         <div className="fixed inset-0 z-40 bg-background/50 backdrop-blur-sm" onClick={() => setFabOpen(false)} />
       )}
+      {/* Floating glass search button — WhatsApp iOS-26 style, mirroring the + FAB.
+          The frosted look degrades to a near-solid bg in the native WebView (the
+          global `html.native-app` rule strips backdrop-blur for scroll perf). */}
+      {!(!pageAction && fabOpen) && (
+        <div className="fixed bottom-24 left-4 z-50 safe-pb">
+          <button
+            type="button"
+            onClick={() => { void haptic("light"); setSearchOpen(true) }}
+            aria-label={t("search.title")}
+            className="pressable ios-tap flex size-14 items-center justify-center rounded-full border bg-background/70 shadow-lg backdrop-blur-xl"
+          >
+            <Search className="size-5" />
+          </button>
+        </div>
+      )}
       <div className="fixed bottom-24 right-4 z-50 flex flex-col items-end gap-2 safe-pb">
         {/* Floating filter shortcut: appears just above the FAB when the current
             page has active filters, so they're reachable without scrolling back
@@ -449,6 +468,7 @@ export function MobileAppLayout() {
 
       <QuickAddModal entity={quickAdd} onClose={() => setQuickAdd(null)} />
       <AddTransactionDialog open={addTxOpen} onOpenChange={setAddTxOpen} onCreated={onTxCreated} />
+      <MobileSearchOverlay open={searchOpen} onClose={() => setSearchOpen(false)} />
 
       {/* Bottom tab bar — columns adapt to the (account-type-filtered) tab count. */}
       <nav className="safe-pb fixed bottom-0 inset-x-0 z-40 bg-background/95 backdrop-blur border-t">

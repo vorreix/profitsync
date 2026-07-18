@@ -81,7 +81,7 @@ Response: `{ clients: [...], transactions: [...], quotations: [...], accounts: [
 | Result | Target |
 |---|---|
 | client | `/clients/:id` |
-| transaction | `/transactions?q=<query>&highlight=<id>` — TransactionsPage gains `?q=` prefill (same convention as ClientsPage) and `?highlight=`: scroll to the `data-tx-id` row + temporary flash class |
+| transaction | `/transactions?view=<id>` — the page's existing deep link opens the detail modal and fetches the tx itself when it isn't in the visible page (superseded the earlier `?q=`+`?highlight=` plan: less code, works on any page) |
 | quotation | `/quotations?view=<id>` (existing deep link) |
 | account | `/wealth/:id` |
 | category | `/categories` |
