@@ -1,0 +1,13 @@
+rules_version = '2';
+
+// ProfitSync — Firestore is provisioned but NOT yet adopted as the data layer
+// (Neon Postgres remains the source of truth this phase). Deny all client
+// access until collections are designed; server-side access via the Admin SDK
+// bypasses these rules.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
