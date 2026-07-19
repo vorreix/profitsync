@@ -260,17 +260,21 @@ export function AiVoiceAssistant({ quota, onEdit, onQuotaUsed }: {
   return (
     <>
       {/* Floating trigger, stacked just above the FAB: the energy orb itself,
-          drifting very slowly. Its glow halo is part of the component. */}
-      <Button
-        type="button"
-        size="icon"
-        variant="ghost"
-        aria-label={t("aiVoice.openLabel")}
-        onClick={() => setOpen(true)}
-        className="group relative size-11 overflow-visible rounded-full p-0 hover:bg-transparent dark:hover:bg-transparent"
-      >
-        <AiOrb size={44} gold={free} className="transition-transform duration-150 group-active:scale-90 group-hover:scale-105" />
-      </Button>
+          drifting very slowly. Its glow halo is part of the component. The
+          w-14 wrapper matches the size-14 FAB below, so in the items-end
+          stack the 44px orb sits exactly on the FAB's center axis. */}
+      <div className="flex w-14 justify-center">
+        <Button
+          type="button"
+          size="icon"
+          variant="ghost"
+          aria-label={t("aiVoice.openLabel")}
+          onClick={() => setOpen(true)}
+          className="group relative size-11 overflow-visible rounded-full p-0 hover:bg-transparent dark:hover:bg-transparent"
+        >
+          <AiOrb size={44} gold={free} className="transition-transform duration-150 group-active:scale-90 group-hover:scale-105" />
+        </Button>
+      </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent
