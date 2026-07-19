@@ -393,7 +393,7 @@ const ASSISTANT_SCHEMA = {
       enum: ["add_transaction", "add_client", "add_quotation", "show_transactions", "unknown"],
       description: "add_transaction = money spent/received; add_client = new client/customer; add_quotation = new quote/estimate; show_transactions = find/list/show existing transactions; unknown = anything else.",
     },
-    say: { type: "string", description: "One short sentence IN THE INPUT'S LANGUAGE, PRESENT/FUTURE tense describing what you are PREPARING (e.g. 'Preparing a €20 expense for review') — NEVER claim something was already created or saved. For unknown: say what you can help with." },
+    say: { type: ["string", "null"], description: "One short sentence IN THE INPUT'S LANGUAGE, PRESENT/FUTURE tense describing what you are PREPARING (e.g. 'Preparing a €20 expense for review') — NEVER claim something was already created or saved. For unknown: say what you can help with." },
     transaction: {
       type: ["object", "null"],
       additionalProperties: false,

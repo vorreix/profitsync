@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { useAuth } from "@clerk/clerk-react"
 import { toast } from "sonner"
@@ -37,6 +37,10 @@ export function AiAssistantConfirm({ response, currency, onSaved, onEdit, onCanc
   const isPersonal = activeOrg?.account_type === "personal"
   const { byType: categoriesByType } = useCategories()
   const [saving, setSaving] = useState(false)
+  // Move focus to the card when it appears so screen readers announce the
+  // listening→review transition.
+  const rootRef = useRef<HTMLDivElement>(null)
+  useEffect(() => { rootRef.current?.focus() }, [])
 
   const tx = response.intent === "add_transaction" ? response.transaction : null
   const client = response.intent === "add_client" ? response.client : null
@@ -148,7 +152,7 @@ export function AiAssistantConfirm({ response, currency, onSaved, onEdit, onCanc
   )
 
   return (
-    <div className="flex w-full max-w-sm flex-col gap-4 animate-in fade-in slide-in-from-bottom-2 duration-200 motion-reduce:animate-none">
+    <div ref={rootRef} tabIndex={-1} className="flex w-full max-w-sm flex-col gap-4 outline-none animate-in fade-in slide-in-from-bottom-2 duration-200 motion-reduce:animate-none">
       <p className="text-center text-base font-semibold">{headline}</p>
 
       {response.transcript && (
@@ -168,7 +172,7 @@ export function AiAssistantConfirm({ response, currency, onSaved, onEdit, onCanc
                     <span className="truncate">{matchedClient.name}</span>
                   ) : (
                     <Select value={clientId} onValueChange={setClientId}>
-                      <SelectTrigger className="h-9 w-44" aria-label={t("aiVoice.whichClient")}>
+                      <SelectTrigger className="h-11 w-44" aria-label={t("aiVoice.whichClient")}>
                         <SelectValue placeholder={t("aiVoice.whichClient")} />
                       </SelectTrigger>
                       <SelectContent>
@@ -185,7 +189,8 @@ export function AiAssistantConfirm({ response, currency, onSaved, onEdit, onCanc
                   <Input
                     type="number" inputMode="decimal" value={amount}
                     onChange={(e) => setAmount(e.target.value)}
-                    className="h-9 w-28 text-end text-base md:text-sm"
+                    className="h-11 w-28 text-end text-base md:text-sm"
+                    onFocus={(e) => e.target.scrollIntoView({ block: "center", behavior: "smooth" })}
                     aria-label={t("transactions:amount")}
                   />
                 </Row>
@@ -203,7 +208,7 @@ export function AiAssistantConfirm({ response, currency, onSaved, onEdit, onCanc
                       <button
                         key={c} type="button"
                         onClick={() => setCategory((prev) => (prev === c ? "" : c))}
-                        className={`h-8 rounded-full border px-3 text-xs font-medium transition-colors ${
+                        className={`h-11 rounded-full border px-4 text-xs font-medium transition-colors ${
                           category === c ? "border-primary bg-primary/10 text-primary" : "hover:bg-muted"
                         }`}
                       >
@@ -230,7 +235,8 @@ export function AiAssistantConfirm({ response, currency, onSaved, onEdit, onCanc
                 {needsProspect ? (
                   <Input
                     value={prospect} onChange={(e) => setProspect(e.target.value)}
-                    className="h-9 w-44 text-end text-base md:text-sm"
+                    className="h-11 w-44 text-end text-base md:text-sm"
+                    onFocus={(e) => e.target.scrollIntoView({ block: "center", behavior: "smooth" })}
                     aria-label={t("aiVoice.whichProspect")}
                     placeholder={t("aiVoice.whichProspect")}
                   />
@@ -243,7 +249,8 @@ export function AiAssistantConfirm({ response, currency, onSaved, onEdit, onCanc
                   <Input
                     type="number" inputMode="decimal" value={amount}
                     onChange={(e) => setAmount(e.target.value)}
-                    className="h-9 w-28 text-end text-base md:text-sm"
+                    className="h-11 w-28 text-end text-base md:text-sm"
+                    onFocus={(e) => e.target.scrollIntoView({ block: "center", behavior: "smooth" })}
                     aria-label={t("transactions:amount")}
                   />
                 </Row>
@@ -261,10 +268,10 @@ export function AiAssistantConfirm({ response, currency, onSaved, onEdit, onCanc
           {t("aiVoice.save")}
         </Button>
         <div className="flex items-center justify-center gap-2">
-          <Button variant="ghost" size="sm" className="h-9 text-muted-foreground" onClick={onEdit} disabled={saving}>
+          <Button variant="ghost" size="sm" className="h-11 px-4 text-muted-foreground" onClick={onEdit} disabled={saving}>
             <Pencil className="me-1.5 size-3.5" /> {t("aiVoice.editDetails")}
           </Button>
-          <Button variant="ghost" size="sm" className="h-9 text-muted-foreground" onClick={onCancel} disabled={saving}>
+          <Button variant="ghost" size="sm" className="h-11 px-4 text-muted-foreground" onClick={onCancel} disabled={saving}>
             {t("transactions:cancel")}
           </Button>
         </div>

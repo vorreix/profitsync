@@ -98,8 +98,6 @@ export function AddTransactionDialog({
   useEffect(() => {
     if (!open || !initialAi) return
     pendingAiRef.current = initialAi
-    onInitialAiConsumed?.()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, initialAi])
 
   // A draft worth keeping: anything the user actually typed/attached.
@@ -166,11 +164,13 @@ export function AddTransactionDialog({
           prev.allocations.length > 0 || !acctId ? prev : { ...prev, allocations: [{ account_id: acctId, amount: "" }] },
         )
       }
-      // Voice-assistant handoff LAST — after seeding — so nothing overwrites it.
+      // Voice-assistant handoff LAST — after seeding — so nothing overwrites
+      // it. "Consumed" is signalled only now, once it has truly been applied.
       if (pendingAiRef.current) {
         const handoff = pendingAiRef.current
         pendingAiRef.current = null
         applyAiResult(handoff, active)
+        onInitialAiConsumed?.()
       }
     })()
     return () => { cancelled = true }

@@ -66,17 +66,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const { totalTokens, ...result } = await parseAssistant(ctx.orgId, { text, audio })
     const extra = tokenSurcharge("assistant", totalTokens, tokenPolicy())
     const remaining = extra > 0 ? await settleTokenSurcharge(ctx.orgId, extra) : reserved.balance
-    // Best-effort ask log for the USER's history view — never re-read by the
-    // model (each ask is parsed fresh; old requests must not skew decisions).
-    db.insert(aiAsks)
-      .values({
+    // Ask log for the USER's history view — never re-read by the model (each
+    // ask is parsed fresh; old requests must not skew decisions). Awaited so a
+    // serverless freeze after res.json can't silently drop it; a failure is
+    // non-fatal (history is a convenience, the parse result matters more).
+    // NOTE: transcripts are the user's own speech, stored like the rest of
+    // their financial data and deletable from the overlay (per-item + clear).
+    try {
+      await db.insert(aiAsks).values({
         organizationId: ctx.orgId,
         userId: ctx.userId,
         transcript: result.transcript ?? text?.slice(0, 1000) ?? "",
         intent: result.intent,
         say: result.say ?? "",
       })
-      .catch((e: unknown) => console.error("ai ask log failed", e))
+    } catch (e) {
+      console.error("ai ask log failed", e)
+    }
     return res.json({ ...result, remaining })
   } catch (err) {
     await refundAiCredits(ctx.orgId, cost, limit).catch(() => undefined)

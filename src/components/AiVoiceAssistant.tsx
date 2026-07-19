@@ -33,6 +33,11 @@ type SpeechRecognitionLike = {
   start: () => void
   stop: () => void
 }
+// SpeechRecognition wants full BCP-47 locales; the app stores short codes.
+const SPEECH_LOCALE: Record<string, string> = {
+  en: "en-US", it: "it-IT", de: "de-DE", hi: "hi-IN", ml: "ml-IN", ta: "ta-IN", te: "te-IN", ar: "ar-SA",
+}
+
 const speechRecognitionCtor = (): (new () => SpeechRecognitionLike) | null => {
   const w = window as unknown as Record<string, unknown>
   return (w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null) as (new () => SpeechRecognitionLike) | null
@@ -64,6 +69,7 @@ export function AiVoiceAssistant({ quota, onEdit, onQuotaUsed }: {
   const [confirmData, setConfirmData] = useState<AiAssistantResponse | null>(null)
   const [liveText, setLiveText] = useState("")
   const [history, setHistory] = useState<AiAskHistoryItem[] | null>(null)
+  const [clearing, setClearing] = useState(false)
   const reqIdRef = useRef(0)
 
   // ── Live waveform: AnalyserNode → level ring buffer → bars ────────────────
@@ -120,7 +126,7 @@ export function AiVoiceAssistant({ quota, onEdit, onQuotaUsed }: {
     if (!Ctor) return
     try {
       const rec = new Ctor()
-      rec.lang = i18n.language
+      rec.lang = SPEECH_LOCALE[i18n.language.split("-")[0]] ?? i18n.language
       rec.interimResults = true
       rec.continuous = true
       let finalText = ""
@@ -245,6 +251,7 @@ export function AiVoiceAssistant({ quota, onEdit, onQuotaUsed }: {
       const token = await getToken()
       if (token) setHistory(await fetchAiHistory(token))
     } catch {
+      toast.error(t("aiVoice.failed"))
       setHistory([])
     }
   }
@@ -309,17 +316,26 @@ export function AiVoiceAssistant({ quota, onEdit, onQuotaUsed }: {
                 <p className="flex-1 text-sm font-medium">{t("aiVoice.historyTitle")}</p>
                 {history != null && history.length > 0 && (
                   <Button
-                    variant="ghost" size="sm" className="h-9 text-xs text-muted-foreground"
+                    variant="ghost" size="sm" className="h-11 text-xs text-muted-foreground"
+                    disabled={clearing}
                     onClick={async () => {
-                      const token = await getToken()
-                      if (token) { await clearAiHistory(token).catch(() => undefined); setHistory([]) }
+                      setClearing(true)
+                      try {
+                        const token = await getToken()
+                        if (token) { await clearAiHistory(token); setHistory([]) }
+                      } catch {
+                        toast.error(t("aiVoice.failed"))
+                      } finally {
+                        setClearing(false)
+                      }
                     }}
                   >
+                    {clearing ? <Loader2 className="me-1 size-3 animate-spin motion-reduce:animate-none" /> : null}
                     {t("aiVoice.clearHistory")}
                   </Button>
                 )}
               </div>
-              <div className="min-h-0 flex-1 space-y-2 overflow-y-auto scrollbar-thin">
+              <div className="min-h-0 flex-1 space-y-2 overflow-y-auto scrollbar-thin" aria-live="polite">
                 {history == null ? (
                   <p className="flex items-center justify-center gap-1.5 py-8 text-xs text-muted-foreground">
                     <Loader2 className="size-3 animate-spin motion-reduce:animate-none" /> {t("aiVoice.thinking")}
@@ -339,8 +355,16 @@ export function AiVoiceAssistant({ quota, onEdit, onQuotaUsed }: {
                         variant="ghost" size="icon" className="size-9 shrink-0 text-muted-foreground hover:text-destructive"
                         aria-label={t("aiVoice.deleteAsk")}
                         onClick={async () => {
-                          const token = await getToken()
-                          if (token) { await deleteAiAsk(token, item.id).catch(() => undefined); setHistory((h) => h?.filter((x) => x.id !== item.id) ?? h) }
+                          // No optimistic removal — the row disappears only
+                          // once the server really deleted it.
+                          try {
+                            const token = await getToken()
+                            if (!token) return
+                            await deleteAiAsk(token, item.id)
+                            setHistory((h) => h?.filter((x) => x.id !== item.id) ?? h)
+                          } catch {
+                            toast.error(t("aiVoice.failed"))
+                          }
                         }}
                       >
                         <Trash2 className="size-4" />
