@@ -561,4 +561,196 @@
       animation: none;
     }
   }
+
+  /* ── AI energy orb (src/components/AiOrb.tsx) ──────────────────────────────
+     A dark glass sphere wrapped by slowly-drifting translucent teal "silk"
+     ribbons (flattened SVG ellipse rings, each tilted in 3D and spinning in
+     its own plane; screen-blended so crossings brighten additively). The orb
+     carries its own near-black disc so it reads on light AND dark themes.
+     Everything animated is transform/opacity — compositor-only — because the
+     44px trigger runs persistently on every page. `--ai-orb-level` (0..1, set
+     imperatively from the mic RMS meter) drives glow + scale while listening. */
+  .ai-orb {
+    --ai-orb-size: 44px;
+    --ai-orb-c1: 34 211 238;   /* cyan-400 */
+    --ai-orb-c2: 45 212 191;   /* teal-400 */
+    --ai-orb-c3: 205 250 254;  /* near-white ribbon crossings, accent-tinted */
+    --ai-orb-level: 0;
+    position: relative;
+    width: var(--ai-orb-size);
+    height: var(--ai-orb-size);
+    border-radius: 50%;
+    background:
+      radial-gradient(ellipse 70% 45% at 50% 88%, rgb(var(--ai-orb-c2) / 0.22), transparent 72%),
+      radial-gradient(circle at 33% 28%, #0d181d 0%, #060d10 55%, #03080a 100%);
+    box-shadow:
+      0 0 calc(var(--ai-orb-size) * 0.18) rgb(var(--ai-orb-c2) / calc(0.18 + var(--ai-orb-level) * 0.35)),
+      0 0 calc(var(--ai-orb-size) * 0.05) rgb(var(--ai-orb-c1) / calc(0.12 + var(--ai-orb-level) * 0.25)),
+      inset 0 0 calc(var(--ai-orb-size) * 0.12) rgb(var(--ai-orb-c2) / 0.10),
+      inset 0 calc(var(--ai-orb-size) * -0.06) calc(var(--ai-orb-size) * 0.16) rgb(var(--ai-orb-c2) / 0.12);
+    transform: scale(calc(1 + var(--ai-orb-level) * 0.06));
+    transition: transform 120ms ease-out;
+  }
+
+  .ai-orb-gold {
+    --ai-orb-c1: 251 191 36;   /* amber-400 */
+    --ai-orb-c2: 245 158 11;   /* amber-500 */
+    --ai-orb-c3: 254 240 199;  /* warm amber-tinted crossings */
+  }
+
+  /* specular highlight, top-left (static) */
+  .ai-orb::before {
+    content: "";
+    position: absolute;
+    left: 22%;
+    top: 14%;
+    width: 26%;
+    height: 18%;
+    border-radius: 50%;
+    background: radial-gradient(closest-side, rgb(255 255 255 / 0.16), transparent);
+    filter: blur(2px);
+  }
+
+  /* wide ambient halo behind the sphere */
+  .ai-orb::after {
+    content: "";
+    position: absolute;
+    inset: -30%;
+    border-radius: 50%;
+    background: radial-gradient(closest-side, rgb(var(--ai-orb-c2) / calc(0.11 + var(--ai-orb-level) * 0.25)), transparent 72%);
+    z-index: -1;
+  }
+
+  .ai-orb-stage {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    overflow: hidden;
+    perspective: calc(var(--ai-orb-size) * 3);
+    transform-style: preserve-3d;
+  }
+
+  .ai-orb-rib {
+    position: absolute;
+    inset: 0;
+    mix-blend-mode: screen;
+    opacity: calc(var(--o) + var(--ai-orb-level) * 0.15);
+    animation: ai-orb-rib-spin var(--dur) linear infinite;
+    animation-direction: var(--dir, normal);
+  }
+
+  .ai-orb-rib > svg {
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+    display: block;
+  }
+
+  @keyframes ai-orb-rib-spin {
+    from {
+      transform: rotateX(var(--tx)) rotateY(var(--ty)) rotateZ(0deg);
+    }
+
+    to {
+      transform: rotateX(var(--tx)) rotateY(var(--ty)) rotateZ(360deg);
+    }
+  }
+
+  /* very slow idle drift — each ribbon its own plane, period and direction */
+  .ai-orb-rib-1 { --tx: 62deg;  --ty: -14deg; --dur: 26s; --o: 0.9; }
+  .ai-orb-rib-2 { --tx: -58deg; --ty: 18deg;  --dur: 34s; --dir: reverse; --o: 0.75; }
+  .ai-orb-rib-3 { --tx: 50deg;  --ty: 32deg;  --dur: 42s; --o: 0.65; }
+  .ai-orb-rib-4 { --tx: 78deg;  --ty: 8deg;   --dur: 30s; --dir: reverse; --o: 0.55; }
+  .ai-orb-rib-5 { --tx: -32deg; --ty: -42deg; --dur: 48s; --o: 0.5; }
+
+  /* listening: a calm ~3s breath on the stage (level reacts on the root, so
+     the two transforms never fight) */
+  .ai-orb-listening .ai-orb-stage {
+    animation: ai-orb-breathe 3s ease-in-out infinite;
+  }
+
+  @keyframes ai-orb-breathe {
+    0%, 100% {
+      transform: scale(1);
+    }
+
+    50% {
+      transform: scale(1.03);
+    }
+  }
+
+  /* thinking: the whole stage swirls on top of the slow drifts (starts from
+     0deg, so switching modes never causes a keyframe jump) + halo pulse */
+  .ai-orb-thinking .ai-orb-stage {
+    animation: ai-orb-stage-spin 7s linear infinite;
+  }
+
+  .ai-orb-thinking .ai-orb-rib {
+    opacity: calc(var(--o) + 0.12);
+  }
+
+  .ai-orb-thinking::after {
+    animation: ai-orb-halo-pulse 2.2s ease-in-out infinite;
+  }
+
+  @keyframes ai-orb-stage-spin {
+    from {
+      transform: rotateZ(0deg);
+    }
+
+    to {
+      transform: rotateZ(360deg);
+    }
+  }
+
+  @keyframes ai-orb-halo-pulse {
+    0%, 100% {
+      opacity: 0.7;
+    }
+
+    50% {
+      opacity: 1;
+    }
+  }
+
+  /* status-text shimmer for the overlay's "Thinking…" label */
+  .ai-orb-status-shimmer {
+    background: linear-gradient(100deg,
+      var(--muted-foreground) 30%,
+      var(--foreground) 50%,
+      var(--muted-foreground) 70%);
+    background-size: 250% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: ai-orb-text-shimmer 1.8s linear infinite;
+  }
+
+  @keyframes ai-orb-text-shimmer {
+    from {
+      background-position: 150% 0;
+    }
+
+    to {
+      background-position: -150% 0;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+
+    /* paused (not none) so the staggered negative delays still pose a
+       balanced static frame */
+    .ai-orb-rib,
+    .ai-orb-listening .ai-orb-stage,
+    .ai-orb-thinking .ai-orb-stage,
+    .ai-orb-thinking::after {
+      animation-play-state: paused;
+    }
+
+    .ai-orb-status-shimmer {
+      animation: none;
+      color: var(--muted-foreground);
+      background: none;
+    }
+  }
 }
