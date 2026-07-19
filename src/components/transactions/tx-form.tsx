@@ -213,8 +213,23 @@ function CategoryCombobox({ categories, value, onChangeCategories, onChange }: {
 
 // ─── Transaction form fields ──────────────────────────────────────────────────
 
+// Which form fields the AI just filled, and how sure it was. "high" gets a
+// brief highlight pulse; "medium" additionally shows an amber review dot on the
+// label. Cleared per-field by the parent when the user edits that field.
+export type AiFieldMeta = Partial<Record<"client" | "type" | "amount" | "description" | "category" | "date", "high" | "medium">>
+
+function AiReviewDot({ show, label }: { show: boolean; label: string }) {
+  if (!show) return null
+  return (
+    <span className="ms-1 inline-flex items-center" title={label}>
+      <span className="inline-block size-1.5 rounded-full bg-amber-500" />
+      <span className="sr-only">{label}</span>
+    </span>
+  )
+}
+
 export function TxFormFields({
-  f, onChange, showClient, clients, accounts, accountsLoading, categories, onChangeCats, onAddAccount, currency, singleAccount = false, budget = null, tagSuggestions = [], tagLimit, onTagUpgrade,
+  f, onChange, showClient, clients, accounts, accountsLoading, categories, onChangeCats, onAddAccount, currency, singleAccount = false, budget = null, tagSuggestions = [], tagLimit, onTagUpgrade, aiFields,
 }: {
   f: TxForm
   onChange: (patch: Partial<TxForm>) => void
@@ -235,8 +250,19 @@ export function TxFormFields({
   // Per-plan tag ceiling + the "go upgrade" handler (shows a premium chip at cap).
   tagLimit?: number
   onTagUpgrade?: () => void
+  // AI quick-add highlight metadata (undefined = feature inactive, zero impact).
+  aiFields?: AiFieldMeta
 }) {
   const { t } = useTranslation("transactions")
+  // Staggered fill-cascade: each AI-touched field pulses ~60ms after the previous.
+  const aiOrder: (keyof AiFieldMeta)[] = ["type", "amount", "client", "description", "category", "date"]
+  const aiProps = (key: keyof AiFieldMeta) => {
+    const level = aiFields?.[key]
+    if (!level) return {}
+    const idx = aiOrder.filter((k) => aiFields?.[k]).indexOf(key)
+    return { className: "ai-fill-pulse", style: { animationDelay: `${Math.max(0, idx) * 60}ms` } as React.CSSProperties }
+  }
+  const aiDot = (key: keyof AiFieldMeta) => <AiReviewDot show={aiFields?.[key] === "medium"} label={t("ai.checkField")} />
   const cats = f.type === "incoming" ? categories.incoming : categories.outgoing
   const txTotal = f.allocations.reduce((sum, a) => sum + (Number(a.amount) || 0), 0)
   const budgetHint = (() => {
@@ -250,13 +276,16 @@ export function TxFormFields({
   return (
     <div className="space-y-4 py-2">
       {showClient && (
-        <div className="space-y-1.5">
-          <Label>{t("clientRequired")}</Label>
-          <ClientCombobox clients={clients} value={f.client_id} onChange={(id) => onChange({ client_id: id })} />
+        <div {...aiProps("client")}>
+          <div className="space-y-1.5">
+            <Label>{t("clientRequired")}{aiDot("client")}</Label>
+            <ClientCombobox clients={clients} value={f.client_id} onChange={(id) => onChange({ client_id: id })} />
+          </div>
         </div>
       )}
+      <div {...aiProps("type")}>
       <div className="space-y-1.5">
-        <Label>{t("type")}</Label>
+        <Label>{t("type")}{aiDot("type")}</Label>
         <div className="grid grid-cols-2 gap-2">
           {(["incoming", "outgoing"] as const).map((type) => (
             <button key={type} type="button" onClick={() => onChange({ type, category: "" })} className={`flex items-center justify-center gap-2 rounded-md border py-2.5 text-sm font-medium transition-colors ${
@@ -272,6 +301,8 @@ export function TxFormFields({
           ))}
         </div>
       </div>
+      </div>
+      <div {...aiProps("amount")}>
       <AccountSelector
         accounts={accounts}
         allocations={f.allocations}
@@ -281,13 +312,15 @@ export function TxFormFields({
         onAddAccount={onAddAccount}
         loading={accountsLoading}
       />
+      </div>
       {budgetHint && (
         <p className={`-mt-1 text-xs ${budgetHint.over ? "text-red-600 dark:text-red-400" : budgetHint.state === "warn" ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"}`}>
           {budgetHint.text}
         </p>
       )}
+      <div {...aiProps("description")}>
       <div className="space-y-1.5">
-        <Label>{t("description")}</Label>
+        <Label>{t("description")}{aiDot("description")}</Label>
         <Textarea
           placeholder={f.type === "incoming" ? t("invoicePlaceholder") : t("hostingFeePlaceholder")}
           value={f.description}
@@ -295,6 +328,7 @@ export function TxFormFields({
           rows={3}
           className="resize-none"
         />
+      </div>
       </div>
       <div className="space-y-1.5">
         <Label>{t("tags")}</Label>
@@ -309,8 +343,9 @@ export function TxFormFields({
         />
       </div>
       <div className="grid grid-cols-2 gap-3">
+        <div {...aiProps("category")}>
         <div className="space-y-1.5">
-          <Label>{t("category")}</Label>
+          <Label>{t("category")}{aiDot("category")}</Label>
           <CategoryCombobox
             categories={cats}
             value={f.category}
@@ -318,9 +353,12 @@ export function TxFormFields({
             onChange={(v) => onChange({ category: v })}
           />
         </div>
+        </div>
+        <div {...aiProps("date")}>
         <div className="space-y-1.5">
-          <Label>{t("date")}</Label>
+          <Label>{t("date")}{aiDot("date")}</Label>
           <Input type="date" value={f.date} onChange={(e) => onChange({ date: e.target.value })} />
+        </div>
         </div>
       </div>
     </div>

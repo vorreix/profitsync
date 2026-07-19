@@ -11,6 +11,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Progress } from "@/components/ui/progress"
+import { useAiQuota } from "@/hooks/use-ai-quota"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -159,6 +161,8 @@ const INVOICE_BADGE: Record<string, string> = {
 
 export function SubscriptionPage() {
   const { t } = useTranslation("subscription")
+  // AI quick-add usage for the meter card below (null/disabled → card hidden).
+  const { quota: aiQuota } = useAiQuota(true)
   const planText = usePlanText()
   const { getToken } = useAuth()
   const { activeOrg, refresh: refreshOrg } = useOrg()
@@ -576,6 +580,47 @@ export function SubscriptionPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* ── AI quick-add usage meter ─────────────────────────────────────────── */}
+      {aiQuota?.enabled && (() => {
+        const aiUsed = Math.max(0, aiQuota.limit - aiQuota.remaining)
+        const aiPct = aiQuota.limit > 0 ? Math.min(100, Math.round((aiUsed / aiQuota.limit) * 100)) : 0
+        const aiExhausted = aiQuota.remaining <= 0
+        const aiFree = aiQuota.plan_key === "free"
+        return (
+          <Card>
+            <CardContent className="py-4 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <div className={`flex size-9 shrink-0 items-center justify-center rounded-lg ${aiFree ? "bg-amber-500/15 text-amber-500 dark:text-amber-400" : "bg-primary/15 text-primary"}`}>
+                    <Sparkles className="size-5" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium">{t("aiUsage.title")}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {aiFree
+                        ? t("aiUsage.usedOneTime", { used: aiUsed, limit: aiQuota.limit })
+                        : t("aiUsage.used", { used: aiUsed, limit: aiQuota.limit })}
+                    </p>
+                  </div>
+                </div>
+                {aiExhausted && (
+                  <Badge variant="outline" className="shrink-0 border-amber-500/40 text-amber-700 bg-amber-500/10 dark:text-amber-300">
+                    {t("aiUsage.exhausted")}
+                  </Badge>
+                )}
+              </div>
+              <Progress value={aiPct} className={aiPct >= 100 ? "[&>div]:bg-amber-500" : undefined} />
+              {aiFree && (
+                <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <Crown className="size-3.5 shrink-0 text-amber-500 dark:text-amber-400" />
+                  {t("aiUsage.premiumHint", { count: paidPlan?.limits?.aiCredits ?? 10000 })}
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        )
+      })()}
 
       {/* ── Choose-a-plan view: Free + Pro cards ─────────────────────────────── */}
       {showCards && (

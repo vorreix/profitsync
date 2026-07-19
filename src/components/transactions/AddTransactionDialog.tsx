@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
-import { Loader as Loader2, Paperclip, X } from "lucide-react"
+import { Loader as Loader2, Paperclip, Sparkles, X } from "lucide-react"
 import { apiDelete, apiErrorUpgradeHint, apiGet, apiPatch, apiPost } from "@/lib/api"
 import { amountExceedsLimit } from "@/lib/money"
 import { isPaidPlanKey, type Budget, type Client, type WealthAccount } from "@/lib/types"
@@ -17,7 +17,9 @@ import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { TxFormFields } from "@/components/transactions/tx-form"
+import { TxFormFields, type AiFieldMeta } from "@/components/transactions/tx-form"
+import { AiCaptureView, type SmartApply } from "@/components/transactions/AiQuickFill"
+import { useAiQuota } from "@/hooks/use-ai-quota"
 import { mergeTags } from "@/lib/transaction-tags"
 import {
   defaultAccountId,
@@ -43,12 +45,19 @@ export function AddTransactionDialog({
   onCreated,
   presetClientId,
   tagSuggestions,
+  initialAi,
+  onInitialAiConsumed,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   onCreated?: (info: CreatedTxInfo) => void
   presetClientId?: string
   tagSuggestions?: string[]
+  // Handoff from the AI voice assistant: applied once (after accounts load so
+  // the allocation can resolve) with the same highlights/undo as the in-modal
+  // AI quick fill.
+  initialAi?: SmartApply | null
+  onInitialAiConsumed?: () => void
 }) {
   const { t } = useTranslation("transactions")
   const navigate = useNavigate()
@@ -70,6 +79,26 @@ export function AddTransactionDialog({
   const [pendingFiles, setPendingFiles] = useState<File[]>([])
   const [saving, setSaving] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
+  // AI quick add: which fields the parser filled (drives highlights), plus the
+  // pre-parse snapshot Undo restores. Cleared per-field on manual edits.
+  const [aiMeta, setAiMeta] = useState<AiFieldMeta>({})
+  const aiSnapshot = useRef<{ form: TxForm; files: File[] } | null>(null)
+  // Progressive disclosure: the ONLY always-visible AI element is a sparkle
+  // icon in the header; the capture surface replaces the form body on demand.
+  const [aiOpen, setAiOpen] = useState(false)
+  const { quota: aiQuota, consumeOne: aiConsume } = useAiQuota(open)
+  // The dialog stays mounted across opens — don't reopen into the AI view.
+  useEffect(() => { if (!open) setAiOpen(false) }, [open])
+
+  // Voice-assistant handoff: stash it in a ref; the LOAD effect applies it
+  // after seeding + account fetch (applying earlier let the open-effect's
+  // form seeding clobber the AI values — the "said created but form was
+  // empty" bug).
+  const pendingAiRef = useRef<SmartApply | null>(null)
+  useEffect(() => {
+    if (!open || !initialAi) return
+    pendingAiRef.current = initialAi
+  }, [open, initialAi])
 
   // A draft worth keeping: anything the user actually typed/attached.
   const dirty =
@@ -135,6 +164,14 @@ export function AddTransactionDialog({
           prev.allocations.length > 0 || !acctId ? prev : { ...prev, allocations: [{ account_id: acctId, amount: "" }] },
         )
       }
+      // Voice-assistant handoff LAST — after seeding — so nothing overwrites
+      // it. "Consumed" is signalled only now, once it has truly been applied.
+      if (pendingAiRef.current) {
+        const handoff = pendingAiRef.current
+        pendingAiRef.current = null
+        applyAiResult(handoff, active)
+        onInitialAiConsumed?.()
+      }
     })()
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -162,14 +199,107 @@ export function AddTransactionDialog({
         }
         await refreshCats()
       } catch {
-        toast.error("Failed to update categories")
+        toast.error(t("failedToUpdateCategories"))
       }
     },
-    [getToken, catRows, refreshCats],
+    [getToken, catRows, refreshCats, t],
   )
 
   const budgetFor = (clientId: string): Budget | null =>
     (isPersonal ? budgetMap.get("") : clientId ? budgetMap.get(clientId) : undefined) ?? null
+
+  // ── AI quick add ──────────────────────────────────────────────────────────
+  const AI_KEY_FOR_PATCH: Record<string, keyof AiFieldMeta> = {
+    client_id: "client", type: "type", allocations: "amount",
+    description: "description", category: "category", date: "date",
+  }
+
+  // Manual edit of a field retires its AI highlight — the value is theirs now.
+  function onFormChange(patch: Partial<TxForm>) {
+    setForm((prev) => ({ ...prev, ...patch }))
+    const touched = Object.keys(patch).map((k) => AI_KEY_FOR_PATCH[k]).filter(Boolean)
+    if (touched.length) {
+      setAiMeta((prev) => {
+        const next = { ...prev }
+        for (const k of touched) delete next[k]
+        return next
+      })
+    }
+  }
+
+  function applyAiResult({ response, receiptFile, pickedClientId }: SmartApply, accountsOverride?: WealthAccount[]): void {
+    const accts = accountsOverride ?? accounts
+    const { confidence } = response
+    // An explicit chip pick from the capture view overrides the match result.
+    const fields = pickedClientId !== undefined
+      ? { ...response.fields, client_id: pickedClientId }
+      : response.fields
+    if (pickedClientId) confidence.client = 1
+    const HIGH = 0.85
+    const FILL = 0.55
+    const meta: AiFieldMeta = {}
+    const patch: Partial<TxForm> = {}
+    const check: string[] = []
+    const label: Record<keyof AiFieldMeta, string> = {
+      client: t("client"), type: t("type"), amount: t("amount"),
+      description: t("description"), category: t("category"), date: t("date"),
+    }
+
+    const consider = (key: keyof AiFieldMeta, value: unknown, conf: number, apply: () => void) => {
+      if (value == null || value === "") return
+      if (conf < FILL) { check.push(label[key]); return } // abstain: too unsure to prefill
+      apply()
+      meta[key] = conf >= HIGH ? "high" : "medium"
+      if (conf < HIGH) check.push(label[key])
+    }
+
+    consider("type", fields.type, confidence.type, () => { patch.type = fields.type })
+    consider("amount", fields.amount, confidence.amount, () => {
+      // "…from account A" — use the AI-matched wealth account when it's a real,
+      // confidently-matched one; otherwise fall back to the usual default.
+      const matchedAccount =
+        fields.account_id && confidence.account >= FILL && accts.some((a) => a.id === fields.account_id)
+          ? fields.account_id
+          : defaultAccountId(accts)
+      patch.allocations = [{ account_id: matchedAccount, amount: String(fields.amount) }]
+    })
+    consider("date", fields.date, confidence.date, () => { patch.date = fields.date! })
+    // Description is free text the model rewrote — no numeric confidence; always "high".
+    consider("description", fields.description, 1, () => { patch.description = fields.description! })
+    consider("category", fields.category, confidence.category, () => { patch.category = fields.category! })
+    if (!isPersonal && !presetClientId) {
+      consider("client", fields.client_id, confidence.client, () => { patch.client_id = fields.client_id! })
+    }
+
+    // Snapshot INSIDE the updaters so Undo captures the true pre-apply state
+    // even when this runs from an async callback with stale closures.
+    setForm((prev) => {
+      aiSnapshot.current = { form: prev, files: aiSnapshot.current?.files ?? pendingFiles }
+      return { ...prev, ...patch }
+    })
+    setPendingFiles((prev) => {
+      aiSnapshot.current = { form: aiSnapshot.current?.form ?? form, files: prev }
+      return receiptFile ? [...prev, receiptFile] : prev
+    })
+    setAiMeta(meta)
+
+    // Feedback lives OUTSIDE the modal chrome: one toast with Undo, plus the
+    // transient field pulses. Nothing persistent is added to the form.
+    const filled = Object.keys(meta).length + (receiptFile ? 1 : 0)
+    toast.success(t("ai.filledSummary", { count: filled }), {
+      description: check.length > 0 ? t("ai.checkFields", { fields: check.join(", ") }) : undefined,
+      action: { label: t("ai.undo"), onClick: () => undoAiResult() },
+    })
+  }
+
+  function undoAiResult() {
+    const snap = aiSnapshot.current
+    if (!snap) return
+    setForm(snap.form)
+    setPendingFiles(snap.files)
+    setAiMeta({})
+    aiSnapshot.current = null
+  }
 
   function onFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? [])
@@ -211,6 +341,8 @@ export function AddTransactionDialog({
       const total = allocs.reduce((s, a) => s + Number(a.amount), 0)
       draft.clearDraft()
       setPendingFiles([])
+      setAiMeta({})
+      aiSnapshot.current = null
       onOpenChange(false)
       onCreated?.({ id: firstId, type: form.type, amount: total })
     } catch (err) {
@@ -229,17 +361,49 @@ export function AddTransactionDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="inset-x-0 bottom-0 top-auto flex max-h-[92svh] w-full max-w-full translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-t-2xl p-0 sm:inset-x-auto sm:bottom-auto sm:top-[7svh] sm:left-1/2 sm:max-h-[86svh] sm:w-full sm:max-w-md sm:-translate-x-1/2 sm:rounded-2xl">
-        <DialogHeader className="shrink-0 border-b px-6 pb-3 pt-6"><DialogTitle>{t("addTransaction")}</DialogTitle></DialogHeader>
+        <DialogHeader className="shrink-0 border-b px-6 pb-3 pt-6">
+          <div className="flex items-center gap-2">
+            <DialogTitle className="flex-1">{t("addTransaction")}</DialogTitle>
+            {aiQuota?.enabled && !aiOpen && (
+              <Button
+                type="button" variant="ghost" size="icon"
+                // Free plan wears the app's "premium feature" gold (same as the
+                // bank-quota crown); paid plans get the normal primary tint.
+                className={`-my-1 me-6 size-9 ${aiQuota.plan_key === "free" ? "text-amber-500 dark:text-amber-400" : "text-primary"}`}
+                aria-label={t("ai.parse")}
+                onClick={() => setAiOpen(true)}
+              >
+                <Sparkles className="size-5" />
+              </Button>
+            )}
+          </div>
+        </DialogHeader>
+        {aiOpen && aiQuota ? (
+          <div className="min-h-0 flex-1 overflow-y-auto scrollbar-thin px-6 py-4">
+            <AiCaptureView
+              currency={currency}
+              remaining={aiQuota.remaining}
+              costs={aiQuota.costs}
+              voice={aiQuota.voice}
+              maxRecordSeconds={aiQuota.max_record_seconds}
+              onApply={applyAiResult}
+              onClose={() => setAiOpen(false)}
+              onUpgrade={goUpgrade}
+              onQuotaUsed={aiConsume}
+            />
+          </div>
+        ) : (
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto scrollbar-thin px-6 py-1">
           <TxFormFields
             f={form}
-            onChange={(p) => setForm((prev) => ({ ...prev, ...p }))}
+            onChange={onFormChange}
             showClient={!isPersonal && !presetClientId}
             clients={clients}
             accounts={accounts}
             accountsLoading={accountsLoading}
             categories={categories}
             tagSuggestions={tagSuggestions}
+            aiFields={aiMeta}
             tagLimit={tagLimit}
             onTagUpgrade={goUpgrade}
             onChangeCats={handleChangeCats}
@@ -277,10 +441,13 @@ export function AddTransactionDialog({
             )}
           </div>
         </div>
+        )}
+        {!aiOpen && (
         <DialogFooter className="shrink-0 border-t px-6 pb-6 pt-3">
-          <Button variant="outline" onClick={() => { draft.clearDraft(); setPendingFiles([]); onOpenChange(false) }}>{t("cancel")}</Button>
+          <Button variant="outline" onClick={() => { draft.clearDraft(); setPendingFiles([]); setAiMeta({}); aiSnapshot.current = null; onOpenChange(false) }}>{t("cancel")}</Button>
           <Button onClick={handleAdd} disabled={saving}>{saving ? <Loader2 className="size-4 animate-spin" /> : t("add")}</Button>
         </DialogFooter>
+        )}
       </DialogContent>
     </Dialog>
   )

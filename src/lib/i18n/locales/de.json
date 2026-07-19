@@ -397,7 +397,35 @@
     "tagsPlaceholder": "Tags wie #business #travel hinzufügen",
     "tagsUpgrade": "Upgrade für mehr Tags",
     "tagsLimitReached": "Du hast das Tag-Limit deines Tarifs erreicht.",
-    "removeTag": "{{tag}} entfernen"
+    "removeTag": "{{tag}} entfernen",
+    "ai": {
+      "inputLabel": "Transaktion für KI-Schnelleingabe beschreiben",
+      "placeholder": "z. B. \"Mittagessen mit Acme, {{example}}, gestern\" — oder Beleg fotografieren",
+      "parse": "Mit KI ausfüllen",
+      "parsing": "Eingabe wird gelesen…",
+      "cameraLabel": "Beleg scannen",
+      "filledSummary_one": "{{count}} Feld ausgefüllt — vor dem Speichern prüfen",
+      "filledSummary_other": "{{count}} Felder ausgefüllt — vor dem Speichern prüfen",
+      "checkFields": "{{fields}} prüfen",
+      "checkField": "KI-Vorschlag — bitte prüfen",
+      "undo": "Rückgängig",
+      "didYouMean": "Meinten Sie:",
+      "none": "Keiner davon",
+      "quotaLow_one": "Noch {{count}} KI-Credit diesen Monat",
+      "quotaLow_other": "Noch {{count}} KI-Credits diesen Monat",
+      "quotaExhausted": "Ihre KI-Credits sind aufgebraucht",
+      "upgrade": "Upgrade",
+      "errorUnparseable": "Nicht verstanden — bitte einen Betrag angeben",
+      "errorGeneric": "KI-Ausfüllen hat nicht geklappt — bitte erneut versuchen",
+      "receiptUnreadable": "Beleg nicht lesbar — Felder bitte manuell ausfüllen",
+      "speak": "Transaktion einsprechen",
+      "recording": "Hört zu…",
+      "stop": "Stoppen und ausfüllen",
+      "micDenied": "Mikrofonzugriff verweigert — bitte in den Geräteeinstellungen erlauben",
+      "voiceFailed": "Aufnahme konnte nicht verarbeitet werden — bitte erneut versuchen",
+      "notEnoughCredits": "Nicht genug Credits für diese Aktion — versuchen Sie eine Text-Ausfüllung oder upgraden Sie"
+    },
+    "failedToUpdateCategories": "Kategorien konnten nicht aktualisiert werden"
   },
   "clients": {
     "pageTitle": "Klienten",
@@ -735,7 +763,14 @@
     "resume": "Abonnement fortsetzen",
     "resumeSuccess": "Abonnement fortgesetzt — es wird wie gewohnt verlängert.",
     "cancellingNotice": "Dein Tarif wird am {{date}} gekündigt. Bis dahin behältst du den vollen Zugriff.",
-    "cancelScheduledToast": "Dein Abonnement wird am {{date}} gekündigt — bis dahin behältst du den vollen Zugriff."
+    "cancelScheduledToast": "Dein Abonnement wird am {{date}} gekündigt — bis dahin behältst du den vollen Zugriff.",
+    "aiUsage": {
+      "title": "KI-Credits",
+      "used": "{{used}} von {{limit}} Credits diesen Monat verbraucht",
+      "exhausted": "Limit erreicht",
+      "premiumHint": "Premium lädt jeden Monat {{count}} Credits auf — mit 60-Sekunden-Sprachdiktaten und einem 2-Minuten-Sprachassistenten",
+      "usedOneTime": "{{used}} von {{limit}} einmaligen Gratis-Credits verbraucht"
+    }
   },
   "trash": {
     "title": "Papierkorb",
@@ -1762,5 +1797,38 @@
     "sideLeft": "Linker Rand",
     "sideRight": "Rechter Rand",
     "handleDragHint": "Tippe auf den Griff oder wische ihn nach innen, um zu suchen. Ziehe ihn am Rand nach oben oder unten, um ihn beliebig zu platzieren."
+  },
+  "aiVoice": {
+    "openLabel": "KI-Sprachassistent",
+    "note": "Einfach sprechen — jede Sprache funktioniert",
+    "thinking": "Wird bearbeitet…",
+    "tryAgain": "Erneut versuchen",
+    "notUnderstood": "Das habe ich nicht verstanden — nennen Sie einen Betrag oder Namen",
+    "failed": "Etwas ist schiefgelaufen — bitte erneut versuchen",
+    "cantHelp": "Ich kann Transaktionen, Kunden und Angebote anlegen oder Transaktionen anzeigen",
+    "creditsChip": "{{remaining}} Credits übrig · diese Anfrage kostet {{cost}}",
+    "confirm": {
+      "transaction": "Erstelle {{type}}-Transaktion über {{amount}}",
+      "client": "Füge Kunde {{name}} hinzu",
+      "quotation": "Erstelle Angebot „{{title}}“"
+    },
+    "field": {
+      "name": "Name",
+      "company": "Firma",
+      "phone": "Telefon",
+      "title": "Titel",
+      "prospect": "Interessent"
+    },
+    "save": "Speichern",
+    "editDetails": "Details bearbeiten",
+    "whichClient": "Welcher Kunde?",
+    "whichProspect": "Name des Interessenten",
+    "addCategory": "Kategorie hinzufügen?",
+    "savedTransaction": "Transaktion über {{amount}} gespeichert",
+    "showingTransactions": "Ihre Transaktionen werden angezeigt",
+    "historyTitle": "Ihre Anfragen",
+    "historyEmpty": "Noch nichts — Ihre Sprachanfragen erscheinen hier",
+    "clearHistory": "Alle löschen",
+    "deleteAsk": "Löschen"
   }
 }

@@ -71,6 +71,8 @@
 	     In a WKWebView that picker can offer Camera / Photo Library; iOS requires a
 	     purpose string for each or the picker crashes the app (and App Store review
 	     rejects a build that can reach the camera without one). -->
+	<key>NSMicrophoneUsageDescription</key>
+	<string>ProfitSync uses the microphone so you can add transactions by voice.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>ProfitSync uses the camera so you can photograph receipts and documents to attach to your transactions and quotations.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

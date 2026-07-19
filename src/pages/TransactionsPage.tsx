@@ -246,6 +246,20 @@ export function TransactionsPage() {
   const [dateFrom, setDateFrom] = useState(() => searchParams.get("from") ?? "")
   const [dateTo, setDateTo] = useState(() => searchParams.get("to") ?? "")
   const [summary, setSummary] = useState<{ incoming: number; outgoing: number }>({ incoming: 0, outgoing: 0 })
+
+  // URL → state for the deep-linkable filters. The initial useState reads run
+  // only on MOUNT, so in-app navigations to /transactions?from=…&category=…
+  // while the page is already mounted (AI assistant "show me last month",
+  // calendar links) must sync here. Only reacts to params PRESENT in the URL —
+  // absent params leave the user's current filters untouched.
+  useEffect(() => {
+    const c = searchParams.get("category")
+    const f = searchParams.get("from")
+    const to = searchParams.get("to")
+    if (c !== null) setCategoryFilter(c || "all")
+    if (f !== null) setDateFrom(f)
+    if (to !== null) setDateTo(to)
+  }, [searchParams])
   const searchRef = useRef(search)
   searchRef.current = search
   const tabRef = useRef(tab)

@@ -521,6 +521,51 @@ export const accountDeletionCodes = pgTable("account_deletion_codes", {
   createdAt: timestamp("created_at").defaultNow(),
 })
 
+// ── AI credits ──────────────────────────────────────────────────────────────
+// One balance row per org. Free plans receive a ONE-TIME grant (free_granted
+// flips exactly once); premium refills the balance monthly (premium_period
+// records the last refill month; cleared + balance capped on downgrade).
+// Reservations/refunds/settlements are single conditional UPDATEs — no
+// check-then-act races. Engine: api/_lib/ai.ts.
+export const aiCredits = pgTable("ai_credits", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  balance: integer("balance").notNull().default(0),
+  freeGranted: boolean("free_granted").notNull().default(false),
+  premiumPeriod: text("premium_period").notNull().default(""), // "YYYY-MM" of last premium refill, "" = never/downgraded
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  orgUnique: uniqueIndex("ai_credits_org_unique").on(table.organizationId),
+}))
+
+// Voice-assistant ask history — the USER's reference log (transcript + what
+// the AI decided), viewable and deletable from the overlay. Deliberately
+// NEVER fed back into the model: each ask is parsed fresh so old requests
+// can't skew new decisions.
+export const aiAsks = pgTable("ai_asks", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull(),
+  transcript: text("transcript").notNull().default(""),
+  intent: text("intent").notNull().default("unknown"),
+  say: text("say").notNull().default(""),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  orgUserIdx: index("ai_asks_org_user_idx").on(table.organizationId, table.userId, table.createdAt),
+}))
+
+// DEPRECATED (superseded by ai_credits): early per-month usage counter for the
+// AI quick add. Kept for historical rows; no code writes to it anymore.
+export const aiUsage = pgTable("ai_usage", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  period: text("period").notNull(), // "YYYY-MM" (UTC)
+  count: integer("count").notNull().default(0),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  orgPeriodUnique: uniqueIndex("ai_usage_org_period_unique").on(table.organizationId, table.period),
+}))
+
 // ── Referral program ────────────────────────────────────────────────────────
 // One shareable code per user.
 export const referralCodes = pgTable("referral_codes", {
