@@ -38,8 +38,8 @@ export function encodeWav(samples: Float32Array, sampleRate: number): ArrayBuffe
   return buffer
 }
 
-/** Decode a recorded blob (webm/mp4/ogg) and re-encode as 16 kHz mono WAV base64. */
-export async function blobToWavBase64(blob: Blob): Promise<string> {
+/** Decode a recorded blob (webm/mp4/ogg) and re-encode as mono WAV base64. */
+export async function blobToWavBase64(blob: Blob, sampleRate: number = WAV_SAMPLE_RATE): Promise<string> {
   const encoded = await blob.arrayBuffer()
   // Decode at native rate first (decodeAudioData ignores the context rate for
   // compressed sources in some engines), then resample via OfflineAudioContext.
@@ -50,15 +50,15 @@ export async function blobToWavBase64(blob: Blob): Promise<string> {
   } finally {
     void probe.close()
   }
-  const length = Math.ceil((decoded.duration || 0) * WAV_SAMPLE_RATE)
+  const length = Math.ceil((decoded.duration || 0) * sampleRate)
   if (length === 0) throw new Error("empty recording")
-  const offline = new OfflineAudioContext(1, length, WAV_SAMPLE_RATE)
+  const offline = new OfflineAudioContext(1, length, sampleRate)
   const src = offline.createBufferSource()
   src.buffer = decoded
   src.connect(offline.destination)
   src.start()
   const rendered = await offline.startRendering()
-  const wav = encodeWav(rendered.getChannelData(0), WAV_SAMPLE_RATE)
+  const wav = encodeWav(rendered.getChannelData(0), sampleRate)
 
   // ArrayBuffer → base64 without blowing the call stack on large buffers.
   const bytes = new Uint8Array(wav)

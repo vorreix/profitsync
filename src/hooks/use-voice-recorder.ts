@@ -9,10 +9,16 @@ export type RecorderState = "idle" | "recording" | "processing"
  * hands back a 16 kHz mono WAV base64 (the only universally Gemini-accepted
  * format we can produce client-side — see src/lib/audio-wav.ts).
  */
-export function useVoiceRecorder({ maxSeconds, onFinish, onError }: {
+export function useVoiceRecorder({ maxSeconds, sampleRate, onFinish, onError, onStream }: {
   maxSeconds: number
+  // WAV resample rate; the assistant uses 12000 to fit long premium
+  // recordings under the request-body limit (default 16000).
+  sampleRate?: number
   onFinish: (wavBase64: string) => void
   onError: (kind: "denied" | "failed") => void
+  // Fired when the mic stream opens — used to attach an AnalyserNode for
+  // live waveform rendering. The stream is owned by the hook; do not stop it.
+  onStream?: (stream: MediaStream) => void
 }) {
   const [state, setState] = useState<RecorderState>("idle")
   const [elapsed, setElapsed] = useState(0)
@@ -51,6 +57,7 @@ export function useVoiceRecorder({ maxSeconds, onFinish, onError }: {
       streamRef.current = stream
       recRef.current = rec
       chunksRef.current = []
+      onStream?.(stream)
       rec.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data) }
       rec.onerror = () => { cleanup(); setState("idle"); onError("failed") }
       rec.onstop = async () => {
@@ -60,7 +67,7 @@ export function useVoiceRecorder({ maxSeconds, onFinish, onError }: {
         if (wasCancelled) { setState("idle"); return }
         setState("processing")
         try {
-          const wav = await blobToWavBase64(blob)
+          const wav = await blobToWavBase64(blob, sampleRate)
           setState("idle")
           onFinish(wav)
         } catch {
@@ -82,7 +89,7 @@ export function useVoiceRecorder({ maxSeconds, onFinish, onError }: {
       cleanup()
       onError("failed")
     }
-  }, [state, maxSeconds, onFinish, onError, cleanup])
+  }, [state, maxSeconds, sampleRate, onFinish, onError, onStream, cleanup])
 
   const stop = useCallback(() => {
     if (recRef.current?.state === "recording") recRef.current.stop()

@@ -12,6 +12,8 @@ export type AiQuota = {
   remaining: number
   limit: number
   max_record_seconds: number
+  assistant_max_record_seconds: number
+  costs: { quickadd: number; assistant: number }
   plan_key: string
 }
 
@@ -34,6 +36,27 @@ export type AiParseResponse = {
 }
 
 export const fetchAiQuota = (token: string) => apiGet<AiQuota>("/api/ai/quota", token)
+
+// ── Voice assistant ─────────────────────────────────────────────────────────
+
+export type AiAssistantResponse = {
+  intent: "add_transaction" | "add_client" | "add_quotation" | "show_transactions" | "unknown"
+  say: string | null
+  transaction: Omit<AiParseResponse, "remaining"> | null
+  client: { name: string; company: string | null; email: string | null; phone: string | null; notes: string | null } | null
+  quotation: { title: string; prospect_name: string | null; amount: number | null; date: string | null } | null
+  search: { from: string | null; to: string | null; category: string | null; client_id: string | null; client_name: string | null } | null
+  remaining: number
+}
+
+// The assistant records at 12 kHz (vs the quick add's 16 kHz) so a 120 s
+// premium ask stays under the serverless request-body limit.
+export const ASSISTANT_WAV_RATE = 12000
+
+export const askAssistant = (
+  token: string,
+  input: { text?: string; audio?: { data: string; media_type: string } },
+) => apiPost<AiAssistantResponse>("/api/ai/assistant", token, input)
 
 export const parseWithAi = (
   token: string,

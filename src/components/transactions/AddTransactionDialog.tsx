@@ -45,12 +45,19 @@ export function AddTransactionDialog({
   onCreated,
   presetClientId,
   tagSuggestions,
+  initialAi,
+  onInitialAiConsumed,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   onCreated?: (info: CreatedTxInfo) => void
   presetClientId?: string
   tagSuggestions?: string[]
+  // Handoff from the AI voice assistant: applied once (after accounts load so
+  // the allocation can resolve) with the same highlights/undo as the in-modal
+  // AI quick fill.
+  initialAi?: SmartApply | null
+  onInitialAiConsumed?: () => void
 }) {
   const { t } = useTranslation("transactions")
   const navigate = useNavigate()
@@ -82,6 +89,15 @@ export function AddTransactionDialog({
   const { quota: aiQuota, consumeOne: aiConsume } = useAiQuota(open)
   // The dialog stays mounted across opens — don't reopen into the AI view.
   useEffect(() => { if (!open) setAiOpen(false) }, [open])
+
+  // Apply a voice-assistant handoff exactly once, after accounts arrive (the
+  // allocation patch needs them for the default/matched source account).
+  useEffect(() => {
+    if (!open || !initialAi || accountsLoading) return
+    applyAiResult(initialAi)
+    onInitialAiConsumed?.()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, initialAi, accountsLoading])
 
   // A draft worth keeping: anything the user actually typed/attached.
   const dirty =

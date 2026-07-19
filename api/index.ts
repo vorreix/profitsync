@@ -92,6 +92,7 @@ import publicBlog from "./_routes/public/blog.js"
 import publicBlogBySlug from "./_routes/public/blog/[slug].js"
 import publicNativeGoogleAuth from "./_routes/public/native-google-auth.js"
 import aiQuota from "./_routes/ai/quota.js"
+import aiAssistant from "./_routes/ai/assistant.js"
 import aiParseTransaction from "./_routes/ai/parse-transaction.js"
 import billingPricing from "./_routes/billing/pricing.js"
 import billingCreateSubscription from "./_routes/billing/create-subscription.js"
@@ -176,6 +177,7 @@ const routes: RoutePattern<ApiHandler>[] = [
   { segments: ["clients", ":id", "media"], handler: clientMedia },
 
   { segments: ["ai", "quota"], handler: aiQuota },
+  { segments: ["ai", "assistant"], handler: aiAssistant },
   { segments: ["ai", "parse-transaction"], handler: aiParseTransaction },
 
   { segments: ["analytics"], handler: analytics },

@@ -29,8 +29,17 @@ export type PlanLimits = {
   spaces?: number
   // Max #hashtag tags per transaction. Free = 1, paid = 3 (defaults from tags.ts).
   tagsPerTransaction?: number
-  // Monthly AI quick-add parses (NL text + receipt OCR). Free = 20, paid = 500.
+  // Monthly AI CREDITS shared by every AI feature (quick add costs 1, voice
+  // assistant 2 — weights in api/_lib/ai.ts). Defaults are env-tunable via
+  // AI_MONTHLY_CREDITS_FREE / AI_MONTHLY_CREDITS_PREMIUM; a per-plan value in
+  // plans.limits still overrides, like every other limit.
   aiParsesPerMonth?: number
+}
+
+// Positive-integer env override with a safe fallback (bad values are ignored).
+function envInt(name: string, fallback: number): number {
+  const n = Number(process.env[name])
+  return Number.isInteger(n) && n > 0 ? n : fallback
 }
 
 export type QuotaCheck =
@@ -48,7 +57,7 @@ const DEFAULT_FREE_LIMITS: Required<PlanLimits> = {
   bankAccounts: 1, // free workspaces get a single bank account (+ Cash in Hand)
   spaces: 1, // free personal accounts get a single savings Space
   tagsPerTransaction: FREE_TAGS_PER_TX, // free: a single tag per transaction
-  aiParsesPerMonth: 30, // 30/mo free (user-set; voice+text+receipt share the pool)
+  aiParsesPerMonth: envInt("AI_MONTHLY_CREDITS_FREE", 30),
 }
 
 const DEFAULT_PREMIUM_LIMITS: Required<PlanLimits> = {
@@ -62,7 +71,7 @@ const DEFAULT_PREMIUM_LIMITS: Required<PlanLimits> = {
   bankAccounts: 20, // paid plans: up to 20 bank accounts INCLUDING closed ones
   spaces: 7, // paid personal plan includes 7 savings Spaces
   tagsPerTransaction: PREMIUM_TAGS_PER_TX, // paid: up to 3 tags per transaction
-  aiParsesPerMonth: 500, // effectively unmetered at realistic usage; hard cost ceiling
+  aiParsesPerMonth: envInt("AI_MONTHLY_CREDITS_PREMIUM", 500),
 }
 
 export async function getOrgPlan(orgId: string): Promise<{ planKey: string; limits: Required<PlanLimits> }> {

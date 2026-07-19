@@ -126,6 +126,10 @@ AI_PARSE_MODEL=gemini-3.1-flash-lite      # optional override; per-provider defa
 GEMINI_API_KEY=...                        # server-only. Gemini is the only provider with VOICE input (audio)
 ANTHROPIC_API_KEY=...                     # server-only
 OPENAI_API_KEY=...                        # server-only (text+image only, no voice)
+AI_MONTHLY_CREDITS_FREE=30                # monthly AI credit pool defaults (all AI features share it;
+AI_MONTHLY_CREDITS_PREMIUM=500            #   quick add = AI_CREDITS_QUICKADD credits, voice assistant = AI_CREDITS_ASSISTANT)
+AI_CREDITS_QUICKADD=1
+AI_CREDITS_ASSISTANT=2
 ```
 
 The `E2E_*` secrets (`E2E_VITE_CLERK_PUBLISHABLE_KEY`, `E2E_CLERK_SECRET_KEY`, `E2E_DATABASE_URL`) are **GitHub Actions secrets for the e2e workflow only** — they do **not** go in `.env.local` or Vercel. The two Clerk ones are your existing **dev**-instance keys (same `pk_test_…`/`sk_test_…` already in `.env.local`); `E2E_DATABASE_URL` is a dedicated Neon branch. Vercel manages the running app's env separately (`vercel env`; note: `vercel dev` reads the cloud Development env, not `.env.local`).

@@ -783,9 +783,9 @@
       "undo": "Undo",
       "didYouMean": "Did you mean:",
       "none": "None of these",
-      "quotaLow_one": "{{count}} AI fill left this month",
-      "quotaLow_other": "{{count}} AI fills left this month",
-      "quotaExhausted": "You've used your {{count}} AI fills this month",
+      "quotaLow_one": "{{count}} AI credit left this month",
+      "quotaLow_other": "{{count}} AI credits left this month",
+      "quotaExhausted": "You've used all {{count}} AI credits for this month",
       "upgrade": "Upgrade",
       "errorUnparseable": "Couldn't understand that — try including an amount",
       "errorGeneric": "AI fill didn't work — please try again",
@@ -1265,10 +1265,10 @@
     "cancellingNotice": "Your plan is set to cancel on {{date}}. You’ll keep full access until then.",
     "cancelScheduledToast": "Your subscription will cancel on {{date}} — you keep full access until then.",
     "aiUsage": {
-      "title": "AI quick add",
-      "used": "{{used}} of {{limit}} AI fills used this month",
+      "title": "AI credits",
+      "used": "{{used}} of {{limit}} credits used this month",
       "exhausted": "Limit reached",
-      "premiumHint": "Premium includes 500 AI fills a month and 60-second voice notes"
+      "premiumHint": "Premium includes 500 credits a month, 60-second voice fills and a 2-minute voice assistant"
     }
   },
   "trash": {
@@ -1794,5 +1794,15 @@
       "why": "It highlights where cash is entering, leaving, or getting concentrated.",
       "tip": "Use it with Net Profit to spot high-volume work with weak margins."
     }
+  },
+  "aiVoice": {
+    "openLabel": "AI voice assistant",
+    "note": "Just speak — any language works",
+    "thinking": "Working on it…",
+    "tryAgain": "Try again",
+    "notUnderstood": "I didn't catch that — try saying an amount or a name",
+    "failed": "Something went wrong — please try again",
+    "cantHelp": "I can add transactions, clients and quotations, or show your transactions",
+    "creditsChip": "{{remaining}} credits left · this ask uses {{cost}}"
   }
 }

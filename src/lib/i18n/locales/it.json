@@ -411,9 +411,9 @@
       "undo": "Annulla",
       "didYouMean": "Intendevi:",
       "none": "Nessuno di questi",
-      "quotaLow_one": "{{count}} compilazione AI rimasta questo mese",
-      "quotaLow_other": "{{count}} compilazioni AI rimaste questo mese",
-      "quotaExhausted": "Hai usato le tue {{count}} compilazioni AI di questo mese",
+      "quotaLow_one": "{{count}} credito AI rimasto questo mese",
+      "quotaLow_other": "{{count}} crediti AI rimasti questo mese",
+      "quotaExhausted": "Hai usato tutti i {{count}} crediti AI di questo mese",
       "upgrade": "Aggiorna",
       "errorUnparseable": "Non ho capito — prova a includere un importo",
       "errorGeneric": "La compilazione AI non ha funzionato — riprova",
@@ -763,10 +763,10 @@
     "cancellingNotice": "Il tuo piano è impostato per annullarsi il {{date}}. Manterrai l’accesso completo fino ad allora.",
     "cancelScheduledToast": "Il tuo abbonamento si annullerà il {{date}} — mantieni l’accesso completo fino ad allora.",
     "aiUsage": {
-      "title": "Inserimento rapido AI",
-      "used": "{{used}} di {{limit}} compilazioni AI usate questo mese",
+      "title": "Crediti AI",
+      "used": "{{used}} di {{limit}} crediti usati questo mese",
       "exhausted": "Limite raggiunto",
-      "premiumHint": "Premium include 500 compilazioni AI al mese e note vocali da 60 secondi"
+      "premiumHint": "Premium include 500 crediti al mese, dettatura vocale di 60 secondi e un assistente vocale di 2 minuti"
     }
   },
   "trash": {
@@ -1794,5 +1794,15 @@
     "sideLeft": "Bordo sinistro",
     "sideRight": "Bordo destro",
     "handleDragHint": "Tocca o scorri la maniglia verso l'interno per cercare. Trascinala su o giù lungo il bordo per posizionarla dove preferisci."
+  },
+  "aiVoice": {
+    "openLabel": "Assistente vocale AI",
+    "note": "Parla e basta — in qualsiasi lingua",
+    "thinking": "Ci sto lavorando…",
+    "tryAgain": "Riprova",
+    "notUnderstood": "Non ho capito — prova a dire un importo o un nome",
+    "failed": "Qualcosa è andato storto — riprova",
+    "cantHelp": "Posso aggiungere transazioni, clienti e preventivi, o mostrarti le transazioni",
+    "creditsChip": "{{remaining}} crediti rimasti · questa richiesta usa {{cost}}"
   }
 }
