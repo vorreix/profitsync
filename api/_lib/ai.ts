@@ -70,7 +70,16 @@ export const currentPeriod = () => new Date().toISOString().slice(0, 7) // "YYYY
  * - premium, new month    → balance = monthly refill (no rollover)
  *                           (+ free_granted = true so a later downgrade
  *                            can't double-dip the one-time grant)
- * - free, was premium     → leftover balance capped at the free grant
+ * - free, was premium     → balance capped at the free grant on EVERY free
+ *                           request (idempotent LEAST). premium_period is
+ *                           deliberately KEPT — it records the last refill
+ *                           month, so downgrade→re-upgrade within the same
+ *                           month does NOT refill again (that month's pool
+ *                           was already granted; refill resumes next month).
+ *
+ * Note: the caller snapshots planKey before calling this, so a webhook
+ * changing the plan mid-request can make ONE ensure pass use a stale plan —
+ * harmless, since ensure runs on every request and self-corrects on the next.
  */
 export async function ensureCreditState(orgId: string, planKey: string, pool: number): Promise<void> {
   await db
@@ -84,7 +93,7 @@ export async function ensureCreditState(orgId: string, planKey: string, pool: nu
       .where(and(eq(aiCredits.organizationId, orgId), eq(aiCredits.freeGranted, false)))
     await db
       .update(aiCredits)
-      .set({ balance: sql`LEAST(${aiCredits.balance}, ${pool})`, premiumPeriod: "", updatedAt: new Date() })
+      .set({ balance: sql`LEAST(${aiCredits.balance}, ${pool})`, updatedAt: new Date() })
       .where(and(eq(aiCredits.organizationId, orgId), sql`${aiCredits.premiumPeriod} <> ''`))
   } else {
     await db
@@ -118,10 +127,15 @@ export async function reserveAiCredits(
   return { ok: true, balance: rows[0].balance }
 }
 
-export async function refundAiCredits(orgId: string, cost: number): Promise<void> {
+/**
+ * Refund a failed reservation, capped at the plan's pool size — a refund that
+ * lands AFTER a month-boundary refill (slow provider call spanning midnight)
+ * must not inflate the fresh pool beyond its ceiling.
+ */
+export async function refundAiCredits(orgId: string, cost: number, poolCeiling: number): Promise<void> {
   await db
     .update(aiCredits)
-    .set({ balance: sql`${aiCredits.balance} + ${cost}`, updatedAt: new Date() })
+    .set({ balance: sql`LEAST(${aiCredits.balance} + ${cost}, ${poolCeiling})`, updatedAt: new Date() })
     .where(eq(aiCredits.organizationId, orgId))
 }
 

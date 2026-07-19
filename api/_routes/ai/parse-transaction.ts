@@ -87,7 +87,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const remaining = extra > 0 ? await settleTokenSurcharge(ctx.orgId, extra) : reserved.balance
     return res.json({ ...result, remaining })
   } catch (err) {
-    await refundAiCredits(ctx.orgId, cost).catch(() => undefined)
+    await refundAiCredits(ctx.orgId, cost, limit).catch(() => undefined)
     if ((err as { code?: string }).code === "unparseable") {
       return res.status(422).json({ error: "unparseable" })
     }

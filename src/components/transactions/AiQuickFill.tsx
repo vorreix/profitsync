@@ -96,7 +96,9 @@ export function AiCaptureView({ currency, remaining, costs, voice, maxRecordSeco
       onClose()
     } catch (err) {
       if (reqIdRef.current !== reqId) return
-      if (apiErrorUpgradeHint(err)) { onQuotaUsed(0); setStep({ kind: "input" }); return }
+      // 403+upgradeHint = this action costs more than the remaining balance.
+      // Don't zero the visible balance — cheaper actions may still fit.
+      if (apiErrorUpgradeHint(err)) { setStep({ kind: "error", message: t("ai.notEnoughCredits") }); return }
       const unparseable = err instanceof Error && err.message.includes("unparseable")
       setStep({
         kind: "error",
@@ -228,7 +230,7 @@ export function AiCaptureView({ currency, remaining, costs, voice, maxRecordSeco
                 >
                   <SendHorizontal className="size-4 rtl:-scale-x-100" />
                 </Button>
-              ) : voice && !parsing ? (
+              ) : voice && !parsing && remaining >= costs.quickaddMedia ? (
                 <Button
                   type="button" variant="ghost" size="icon" className="absolute bottom-2 end-2 size-11 text-muted-foreground"
                   aria-label={t("ai.speak")}
@@ -243,7 +245,7 @@ export function AiCaptureView({ currency, remaining, costs, voice, maxRecordSeco
           <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={onReceiptPick} />
           <Button
             type="button" variant="outline" className="h-11 w-full"
-            disabled={parsing || recording}
+            disabled={parsing || recording || remaining < costs.quickaddMedia}
             onClick={() => cameraRef.current?.click()}
           >
             <Camera className="me-2 size-4" /> {t("ai.cameraLabel")}

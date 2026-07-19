@@ -104,8 +104,10 @@ export function AiVoiceAssistant({ quota, onResult, onQuotaUsed }: {
     } catch (err) {
       if (reqIdRef.current !== reqId) return
       if (apiErrorUpgradeHint(err)) {
-        onQuotaUsed(0)
-        setPhase("listening") // quota view takes over via remaining=0
+        // Server judged the ask too expensive for the remaining balance —
+        // show it as an error; the balance itself is unchanged.
+        setErrorMsg(t("transactions:ai.notEnoughCredits"))
+        setPhase("error")
         return
       }
       const unparseable = err instanceof Error && err.message.includes("unparseable")

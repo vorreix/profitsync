@@ -422,7 +422,8 @@
       "recording": "Hört zu…",
       "stop": "Stoppen und ausfüllen",
       "micDenied": "Mikrofonzugriff verweigert — bitte in den Geräteeinstellungen erlauben",
-      "voiceFailed": "Aufnahme konnte nicht verarbeitet werden — bitte erneut versuchen"
+      "voiceFailed": "Aufnahme konnte nicht verarbeitet werden — bitte erneut versuchen",
+      "notEnoughCredits": "Nicht genug Credits für diese Aktion — versuchen Sie eine Text-Ausfüllung oder upgraden Sie"
     },
     "failedToUpdateCategories": "Kategorien konnten nicht aktualisiert werden"
   },
