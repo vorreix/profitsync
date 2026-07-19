@@ -186,7 +186,7 @@ export function AiVoiceAssistant({ quota, onResult, onQuotaUsed }: {
                 <Crown className="size-8 text-amber-500 dark:text-amber-400" aria-hidden />
               </div>
               <p className="max-w-[22rem] text-sm text-muted-foreground">
-                {t("transactions:ai.quotaExhausted", { count: quota.limit })}
+                {t("transactions:ai.quotaExhausted")}
               </p>
               <Button onClick={() => { setOpen(false); navigate("/subscription") }}>
                 <Crown className="me-2 size-4" /> {t("transactions:ai.upgrade")}

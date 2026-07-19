@@ -13,7 +13,7 @@ export type AiQuota = {
   limit: number
   max_record_seconds: number
   assistant_max_record_seconds: number
-  costs: { quickadd: number; assistant: number }
+  costs: { quickadd: number; quickaddMedia: number; assistant: number }
   plan_key: string
 }
 

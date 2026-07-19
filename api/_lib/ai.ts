@@ -1,9 +1,10 @@
 import { and, eq, isNull, sql } from "drizzle-orm"
 import { db } from "../../src/lib/db/index.js"
-import { aiUsage, categories, clients, organizations, wealthAccounts } from "../../src/lib/db/schema.js"
+import { aiCredits, categories, clients, organizations, wealthAccounts } from "../../src/lib/db/schema.js"
 import { amountExceedsLimit } from "../../src/lib/money.js"
 import { resolveCategory, resolveClientName, type ClientMatchResult } from "../../src/lib/ai-match.js"
 import { callProvider, resolveProvider, type MediaPart } from "./ai-providers.js"
+import { baseCost, tokenSurcharge, type AiCreditCosts, type AiTokenPolicy } from "../../src/lib/ai-credits.js"
 
 // ── Availability & capabilities ─────────────────────────────────────────────
 // Optional feature: no provider key configured → /api/ai/quota reports
@@ -17,11 +18,11 @@ export const aiCapabilities = () => {
 }
 
 // ── Credits ─────────────────────────────────────────────────────────────────
-// Every AI feature draws from ONE monthly per-org credit pool
-// (plans.limits.aiParsesPerMonth, env-default via AI_MONTHLY_CREDITS_*).
-// Actions are weighted instead of token-metered: per-call costs are fractions
-// of a cent, so users get predictability ("an ask costs 2 credits") and we
-// keep the freedom to retune weights from env without schema churn.
+// One per-org credit BALANCE (ai_credits row). Free plans get a ONE-TIME
+// grant; premium refills monthly with no rollover (downgrades cap leftover
+// balance at the free grant). Actions cost a predictable BASE plus a token
+// surcharge only beyond the included budget — pure math in
+// src/lib/ai-credits.ts, env-derived config here.
 export type AiKind = "quickadd" | "assistant"
 
 const envInt = (name: string, fallback: number): number => {
@@ -29,8 +30,19 @@ const envInt = (name: string, fallback: number): number => {
   return Number.isInteger(n) && n > 0 ? n : fallback
 }
 
-export const creditCost = (kind: AiKind): number =>
-  kind === "assistant" ? envInt("AI_CREDITS_ASSISTANT", 2) : envInt("AI_CREDITS_QUICKADD", 1)
+export const creditCosts = (): AiCreditCosts => ({
+  quickadd: envInt("AI_CREDITS_QUICKADD", 5),
+  quickaddMedia: envInt("AI_CREDITS_QUICKADD_MEDIA", 10),
+  assistant: envInt("AI_CREDITS_ASSISTANT", 20),
+})
+
+export const tokenPolicy = (): AiTokenPolicy => ({
+  includedQuickadd: envInt("AI_TOKENS_INCLUDED_QUICKADD", 3000),
+  includedAssistant: envInt("AI_TOKENS_INCLUDED_ASSISTANT", 6000),
+  tokensPerExtraCredit: envInt("AI_TOKENS_PER_EXTRA_CREDIT", 1000),
+})
+
+export { baseCost, tokenSurcharge }
 
 // Per-plan, per-feature voice recording ceilings (seconds). Enforced
 // client-side by the auto-stop timer and server-side by the payload caps.
@@ -49,49 +61,79 @@ export const maxAudioB64 = (planKey: string, kind: AiKind): number => {
 
 export const currentPeriod = () => new Date().toISOString().slice(0, 7) // "YYYY-MM" UTC
 
-export async function aiUsageThisMonth(orgId: string): Promise<number> {
-  const [row] = await db
-    .select({ count: aiUsage.count })
-    .from(aiUsage)
-    .where(and(eq(aiUsage.organizationId, orgId), eq(aiUsage.period, currentPeriod())))
-  return row?.count ?? 0
+/**
+ * Bring the org's balance row up to date for its CURRENT plan. Lazy (runs on
+ * every AI request + the quota GET), idempotent, and race-safe: every write is
+ * a conditional UPDATE whose WHERE makes the second concurrent writer a no-op.
+ *
+ * - free, never granted   → balance += grant, free_granted = true (once ever)
+ * - premium, new month    → balance = monthly refill (no rollover)
+ *                           (+ free_granted = true so a later downgrade
+ *                            can't double-dip the one-time grant)
+ * - free, was premium     → leftover balance capped at the free grant
+ */
+export async function ensureCreditState(orgId: string, planKey: string, pool: number): Promise<void> {
+  await db
+    .insert(aiCredits)
+    .values({ organizationId: orgId, balance: 0 })
+    .onConflictDoNothing()
+  if (planKey === "free") {
+    await db
+      .update(aiCredits)
+      .set({ balance: sql`${aiCredits.balance} + ${pool}`, freeGranted: true, updatedAt: new Date() })
+      .where(and(eq(aiCredits.organizationId, orgId), eq(aiCredits.freeGranted, false)))
+    await db
+      .update(aiCredits)
+      .set({ balance: sql`LEAST(${aiCredits.balance}, ${pool})`, premiumPeriod: "", updatedAt: new Date() })
+      .where(and(eq(aiCredits.organizationId, orgId), sql`${aiCredits.premiumPeriod} <> ''`))
+  } else {
+    await db
+      .update(aiCredits)
+      .set({ balance: pool, freeGranted: true, premiumPeriod: currentPeriod(), updatedAt: new Date() })
+      .where(and(eq(aiCredits.organizationId, orgId), sql`${aiCredits.premiumPeriod} <> ${currentPeriod()}`))
+  }
 }
 
-// ── Atomic credit reservation ───────────────────────────────────────────────
-// check-then-act is racy (two concurrent requests could both pass a read-side
-// check and overshoot the pool), so credits are RESERVED up front with one
-// conditional UPDATE whose WHERE re-checks the limit atomically. A failed
-// parse refunds, preserving "failures don't burn credits". The returned count
-// is the post-reserve truth, so `remaining` is always exact.
+export async function creditBalance(orgId: string): Promise<number> {
+  const [row] = await db
+    .select({ balance: aiCredits.balance })
+    .from(aiCredits)
+    .where(eq(aiCredits.organizationId, orgId))
+  return row?.balance ?? 0
+}
+
+// Reserve the BASE cost atomically (WHERE re-checks the balance); refund on
+// parse failure; settle the token surcharge after success (clamped at zero —
+// an outlier call at the pool's edge empties it rather than going negative).
 export async function reserveAiCredits(
   orgId: string,
   cost: number,
-  limit: number,
-): Promise<{ ok: true; remaining: number } | { ok: false }> {
-  await db
-    .insert(aiUsage)
-    .values({ organizationId: orgId, period: currentPeriod(), count: 0 })
-    .onConflictDoNothing()
+): Promise<{ ok: true; balance: number } | { ok: false }> {
   const rows = await db
-    .update(aiUsage)
-    .set({ count: sql`${aiUsage.count} + ${cost}`, updatedAt: new Date() })
-    .where(
-      and(
-        eq(aiUsage.organizationId, orgId),
-        eq(aiUsage.period, currentPeriod()),
-        sql`${aiUsage.count} + ${cost} <= ${limit}`,
-      ),
-    )
-    .returning({ count: aiUsage.count })
+    .update(aiCredits)
+    .set({ balance: sql`${aiCredits.balance} - ${cost}`, updatedAt: new Date() })
+    .where(and(eq(aiCredits.organizationId, orgId), sql`${aiCredits.balance} >= ${cost}`))
+    .returning({ balance: aiCredits.balance })
   if (!rows.length) return { ok: false }
-  return { ok: true, remaining: Math.max(0, limit - rows[0].count) }
+  return { ok: true, balance: rows[0].balance }
 }
 
 export async function refundAiCredits(orgId: string, cost: number): Promise<void> {
   await db
-    .update(aiUsage)
-    .set({ count: sql`GREATEST(${aiUsage.count} - ${cost}, 0)`, updatedAt: new Date() })
-    .where(and(eq(aiUsage.organizationId, orgId), eq(aiUsage.period, currentPeriod())))
+    .update(aiCredits)
+    .set({ balance: sql`${aiCredits.balance} + ${cost}`, updatedAt: new Date() })
+    .where(eq(aiCredits.organizationId, orgId))
+}
+
+/** Deduct the post-hoc token surcharge; returns the settled balance. */
+export async function settleTokenSurcharge(orgId: string, extra: number): Promise<number> {
+  if (extra <= 0) return creditBalance(orgId)
+  const rows = await db
+    .update(aiCredits)
+    .set({ balance: sql`GREATEST(${aiCredits.balance} - ${extra}, 0)`, updatedAt: new Date() })
+    .where(eq(aiCredits.organizationId, orgId))
+    .returning({ balance: aiCredits.balance })
+  return rows[0]?.balance ?? 0
 }
 
 // ── Org context (shared by quick add + assistant) ───────────────────────────
@@ -278,12 +320,15 @@ function resolveTransactionRaw(raw: Record<string, unknown>, ctx: OrgAiContext):
  * transaction fields for one org. Throws { code: "unparseable" } when nothing
  * usable could be extracted.
  */
-export async function parseTransaction(orgId: string, input: ParseInput): Promise<ParseResult> {
+export async function parseTransaction(
+  orgId: string,
+  input: ParseInput,
+): Promise<ParseResult & { totalTokens: number }> {
   const provider = resolveProvider()
   if (!provider) throw new Error("no AI provider configured")
   const ctx = await loadOrgAiContext(orgId)
 
-  const raw = await callAndParse(provider, {
+  const { raw, totalTokens } = await callAndParse(provider, {
     system: `You are a transaction parser for a finance app. Extract structured fields from the user's ${input.audio ? "spoken audio message" : "free text"} and/or a receipt photo.
 
 ${promptRules(ctx, { today: new Date().toISOString().slice(0, 10), hasAudio: input.audio != null })}`,
@@ -303,7 +348,7 @@ ${promptRules(ctx, { today: new Date().toISOString().slice(0, 10), hasAudio: inp
   if (f.amount == null && f.date == null && !result.raw_client_name && !f.description) {
     throw Object.assign(new Error("nothing extracted"), { code: "unparseable" })
   }
-  return result
+  return { ...result, totalTokens }
 }
 
 // ── Voice assistant ─────────────────────────────────────────────────────────
@@ -380,12 +425,15 @@ const ASSISTANT_SCHEMA = {
   },
 }
 
-export async function parseAssistant(orgId: string, input: ParseInput): Promise<AssistantResult> {
+export async function parseAssistant(
+  orgId: string,
+  input: ParseInput,
+): Promise<AssistantResult & { totalTokens: number }> {
   const provider = resolveProvider()
   if (!provider) throw new Error("no AI provider configured")
   const ctx = await loadOrgAiContext(orgId)
 
-  const raw = await callAndParse(provider, {
+  const { raw, totalTokens } = await callAndParse(provider, {
     system: `You are the voice assistant of a finance app. The user ${input.audio ? "speaks a request as audio" : "types a request"}; classify their INTENT and extract the payload for it. You cannot answer general questions — only the four intents (adding a transaction, client, or quotation; showing transactions).
 
 ${promptRules(ctx, { today: new Date().toISOString().slice(0, 10), hasAudio: input.audio != null })}
@@ -452,16 +500,16 @@ ${promptRules(ctx, { today: new Date().toISOString().slice(0, 10), hasAudio: inp
   if (intent === "add_quotation" && !result.quotation) result.intent = "unknown"
   if (intent === "add_transaction" && !result.transaction) result.intent = "unknown"
 
-  return result
+  return { ...result, totalTokens }
 }
 
 async function callAndParse(
   provider: NonNullable<ReturnType<typeof resolveProvider>>,
   req: Parameters<typeof callProvider>[1],
-): Promise<Record<string, unknown>> {
-  const text = await callProvider(provider, req)
+): Promise<{ raw: Record<string, unknown>; totalTokens: number }> {
+  const { text, totalTokens } = await callProvider(provider, req)
   try {
-    return JSON.parse(text) as Record<string, unknown>
+    return { raw: JSON.parse(text) as Record<string, unknown>, totalTokens }
   } catch {
     throw Object.assign(new Error("non-JSON model response"), { code: "unparseable" })
   }

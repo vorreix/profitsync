@@ -2,11 +2,16 @@ import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { canWrite, requireAuth } from "../../_lib/auth.js"
 import {
   aiCapabilities,
-  creditCost,
+  baseCost,
+  creditCosts,
+  ensureCreditState,
   maxAudioB64,
   parseTransaction,
   refundAiCredits,
   reserveAiCredits,
+  settleTokenSurcharge,
+  tokenPolicy,
+  tokenSurcharge,
   type ParseInput,
 } from "../../_lib/ai.js"
 import { getOrgPlan } from "../../_lib/quota.js"
@@ -34,9 +39,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const caps = aiCapabilities()
   if (!caps.enabled) return res.status(503).json({ error: "AI features are not configured" })
 
-  const cost = creditCost("quickadd")
   const { planKey, limits } = await getOrgPlan(ctx.orgId)
-  const limit = limits.aiParsesPerMonth
+  const limit = limits.aiCredits
 
   const body = (req.body ?? {}) as {
     text?: unknown
@@ -66,17 +70,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (audio && !caps.voice) return res.status(400).json({ error: "Voice input is not supported by the configured AI provider" })
   if (!text?.trim() && !image && !audio) return res.status(400).json({ error: "text, image or audio is required" })
 
-  // Reserve credits ATOMICALLY (the WHERE re-checks the limit), then parse;
-  // failures refund so a bad recording never burns the pool.
-  const reserved = await reserveAiCredits(ctx.orgId, cost, limit)
+  // Media (receipt/voice) costs more than text; the token surcharge for
+  // outlier calls settles AFTER success. Reservation of the base is one
+  // atomic conditional UPDATE against the org's balance.
+  const cost = baseCost("quickadd", Boolean(image || audio), creditCosts())
+  await ensureCreditState(ctx.orgId, planKey, limit)
+  const reserved = await reserveAiCredits(ctx.orgId, cost)
   if (!reserved.ok) {
-    return res.status(403).json({ error: "aiParsesPerMonth", limit, upgradeHint: true })
+    return res.status(403).json({ error: "aiCredits", limit, upgradeHint: true })
   }
 
   try {
     const input: ParseInput = { text, image: image ?? undefined, audio: audio ?? undefined }
-    const result = await parseTransaction(ctx.orgId, input)
-    return res.json({ ...result, remaining: reserved.remaining })
+    const { totalTokens, ...result } = await parseTransaction(ctx.orgId, input)
+    const extra = tokenSurcharge("quickadd", totalTokens, tokenPolicy())
+    const remaining = extra > 0 ? await settleTokenSurcharge(ctx.orgId, extra) : reserved.balance
+    return res.json({ ...result, remaining })
   } catch (err) {
     await refundAiCredits(ctx.orgId, cost).catch(() => undefined)
     if ((err as { code?: string }).code === "unparseable") {

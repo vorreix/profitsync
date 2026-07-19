@@ -785,7 +785,7 @@
       "none": "None of these",
       "quotaLow_one": "{{count}} AI credit left this month",
       "quotaLow_other": "{{count}} AI credits left this month",
-      "quotaExhausted": "You've used all {{count}} AI credits for this month",
+      "quotaExhausted": "You're out of AI credits",
       "upgrade": "Upgrade",
       "errorUnparseable": "Couldn't understand that — try including an amount",
       "errorGeneric": "AI fill didn't work — please try again",
@@ -1269,7 +1269,8 @@
       "title": "AI credits",
       "used": "{{used}} of {{limit}} credits used this month",
       "exhausted": "Limit reached",
-      "premiumHint": "Premium includes 500 credits a month, 60-second voice fills and a 2-minute voice assistant"
+      "premiumHint": "Premium refills {{count}} credits every month, with 60-second voice fills and a 2-minute voice assistant",
+      "usedOneTime": "{{used}} of {{limit}} one-time free credits used"
     }
   },
   "trash": {

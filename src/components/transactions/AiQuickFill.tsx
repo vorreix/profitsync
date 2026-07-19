@@ -29,10 +29,10 @@ type Step =
 
 const fmtClock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`
 
-export function AiCaptureView({ currency, remaining, limit, voice, maxRecordSeconds, onApply, onClose, onUpgrade, onQuotaUsed }: {
+export function AiCaptureView({ currency, remaining, costs, voice, maxRecordSeconds, onApply, onClose, onUpgrade, onQuotaUsed }: {
   currency: string
   remaining: number
-  limit: number
+  costs: { quickadd: number; quickaddMedia: number; assistant: number }
   voice: boolean
   maxRecordSeconds: number
   onApply: (a: SmartApply) => void
@@ -68,7 +68,8 @@ export function AiCaptureView({ currency, remaining, limit, voice, maxRecordSeco
     return () => { reqIdRef.current++ }
   }, [])
 
-  const exhausted = remaining <= 0
+  // Out when even the cheapest action no longer fits the balance.
+  const exhausted = remaining < costs.quickadd
   const recording = recorder.state === "recording"
   const transcoding = recorder.state === "processing"
   const parsing = step.kind === "parsing" || transcoding
@@ -157,7 +158,7 @@ export function AiCaptureView({ currency, remaining, limit, voice, maxRecordSeco
           <div className="flex size-12 items-center justify-center rounded-full bg-amber-500/15">
             <Crown className="size-6 text-amber-500 dark:text-amber-400" aria-hidden />
           </div>
-          <p className="max-w-[24rem] text-sm text-muted-foreground">{t("ai.quotaExhausted", { count: limit })}</p>
+          <p className="max-w-[24rem] text-sm text-muted-foreground">{t("ai.quotaExhausted")}</p>
           <Button onClick={onUpgrade}>
             <Crown className="me-2 size-4" /> {t("ai.upgrade")}
           </Button>
@@ -261,7 +262,7 @@ export function AiCaptureView({ currency, remaining, limit, voice, maxRecordSeco
             )}
           </div>
 
-          {remaining <= 5 && !parsing && (
+          {remaining <= costs.quickaddMedia * 3 && !parsing && (
             <p className="mt-auto text-center text-xs text-muted-foreground">{t("ai.quotaLow", { count: remaining })}</p>
           )}
         </div>

@@ -597,7 +597,11 @@ export function SubscriptionPage() {
                   </div>
                   <div>
                     <p className="text-sm font-medium">{t("aiUsage.title")}</p>
-                    <p className="text-xs text-muted-foreground">{t("aiUsage.used", { used: aiUsed, limit: aiQuota.limit })}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {aiFree
+                        ? t("aiUsage.usedOneTime", { used: aiUsed, limit: aiQuota.limit })
+                        : t("aiUsage.used", { used: aiUsed, limit: aiQuota.limit })}
+                    </p>
                   </div>
                 </div>
                 {aiExhausted && (
@@ -610,7 +614,7 @@ export function SubscriptionPage() {
               {aiFree && (
                 <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
                   <Crown className="size-3.5 shrink-0 text-amber-500 dark:text-amber-400" />
-                  {t("aiUsage.premiumHint")}
+                  {t("aiUsage.premiumHint", { count: paidPlan?.limits?.aiCredits ?? 10000 })}
                 </p>
               )}
             </CardContent>

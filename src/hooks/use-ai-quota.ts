@@ -22,7 +22,7 @@ export function useAiQuota(open: boolean) {
         const q = await fetchAiQuota(token)
         if (!cancelled) setQuota(q)
       } catch {
-        if (!cancelled) setQuota({ enabled: false, voice: false, remaining: 0, limit: 0, max_record_seconds: 0, assistant_max_record_seconds: 0, costs: { quickadd: 1, assistant: 2 }, plan_key: "free" })
+        if (!cancelled) setQuota({ enabled: false, voice: false, remaining: 0, limit: 0, max_record_seconds: 0, assistant_max_record_seconds: 0, costs: { quickadd: 5, quickaddMedia: 10, assistant: 20 }, plan_key: "free" })
       }
     })()
     return () => { cancelled = true }

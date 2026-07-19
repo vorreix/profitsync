@@ -521,9 +521,25 @@ export const accountDeletionCodes = pgTable("account_deletion_codes", {
   createdAt: timestamp("created_at").defaultNow(),
 })
 
-// ── AI quick add ────────────────────────────────────────────────────────────
-// Per-org monthly counter for AI parse calls (NL quick add + receipt OCR).
-// Metered against plans.limits.aiParsesPerMonth; one row per org per "YYYY-MM".
+// ── AI credits ──────────────────────────────────────────────────────────────
+// One balance row per org. Free plans receive a ONE-TIME grant (free_granted
+// flips exactly once); premium refills the balance monthly (premium_period
+// records the last refill month; cleared + balance capped on downgrade).
+// Reservations/refunds/settlements are single conditional UPDATEs — no
+// check-then-act races. Engine: api/_lib/ai.ts.
+export const aiCredits = pgTable("ai_credits", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  balance: integer("balance").notNull().default(0),
+  freeGranted: boolean("free_granted").notNull().default(false),
+  premiumPeriod: text("premium_period").notNull().default(""), // "YYYY-MM" of last premium refill, "" = never/downgraded
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  orgUnique: uniqueIndex("ai_credits_org_unique").on(table.organizationId),
+}))
+
+// DEPRECATED (superseded by ai_credits): early per-month usage counter for the
+// AI quick add. Kept for historical rows; no code writes to it anymore.
 export const aiUsage = pgTable("ai_usage", {
   id: uuid("id").primaryKey().defaultRandom(),
   organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),

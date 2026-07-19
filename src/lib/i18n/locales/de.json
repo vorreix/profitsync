@@ -413,7 +413,7 @@
       "none": "Keiner davon",
       "quotaLow_one": "Noch {{count}} KI-Credit diesen Monat",
       "quotaLow_other": "Noch {{count}} KI-Credits diesen Monat",
-      "quotaExhausted": "Sie haben alle {{count}} KI-Credits dieses Monats verbraucht",
+      "quotaExhausted": "Ihre KI-Credits sind aufgebraucht",
       "upgrade": "Upgrade",
       "errorUnparseable": "Nicht verstanden — bitte einen Betrag angeben",
       "errorGeneric": "KI-Ausfüllen hat nicht geklappt — bitte erneut versuchen",
@@ -767,7 +767,8 @@
       "title": "KI-Credits",
       "used": "{{used}} von {{limit}} Credits diesen Monat verbraucht",
       "exhausted": "Limit erreicht",
-      "premiumHint": "Premium umfasst 500 Credits pro Monat, 60-Sekunden-Sprachdiktate und einen 2-Minuten-Sprachassistenten"
+      "premiumHint": "Premium lädt jeden Monat {{count}} Credits auf — mit 60-Sekunden-Sprachdiktaten und einem 2-Minuten-Sprachassistenten",
+      "usedOneTime": "{{used}} von {{limit}} einmaligen Gratis-Credits verbraucht"
     }
   },
   "trash": {

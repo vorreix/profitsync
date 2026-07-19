@@ -68,8 +68,10 @@ class UnparseableError extends Error {
   code = "unparseable" as const
 }
 
-/** Run one structured-extraction call; returns the model's raw JSON text. */
-export async function callProvider(p: ResolvedProvider, req: ProviderRequest): Promise<string> {
+export type ProviderResult = { text: string; totalTokens: number }
+
+/** Run one structured-extraction call; returns raw JSON text + token usage. */
+export async function callProvider(p: ResolvedProvider, req: ProviderRequest): Promise<ProviderResult> {
   switch (p.name) {
     case "anthropic": return callAnthropic(p, req)
     case "gemini": return callGemini(p, req)
@@ -77,7 +79,7 @@ export async function callProvider(p: ResolvedProvider, req: ProviderRequest): P
   }
 }
 
-async function callAnthropic(p: ResolvedProvider, req: ProviderRequest): Promise<string> {
+async function callAnthropic(p: ResolvedProvider, req: ProviderRequest): Promise<ProviderResult> {
   const client = new Anthropic({ apiKey: p.apiKey })
   const content: Anthropic.ContentBlockParam[] = []
   if (req.image) {
@@ -96,10 +98,11 @@ async function callAnthropic(p: ResolvedProvider, req: ProviderRequest): Promise
   })
   const textBlock = response.content.find((b): b is Anthropic.TextBlock => b.type === "text")
   if (!textBlock) throw new UnparseableError("empty anthropic response")
-  return textBlock.text
+  const totalTokens = (response.usage?.input_tokens ?? 0) + (response.usage?.output_tokens ?? 0)
+  return { text: textBlock.text, totalTokens }
 }
 
-async function callGemini(p: ResolvedProvider, req: ProviderRequest): Promise<string> {
+async function callGemini(p: ResolvedProvider, req: ProviderRequest): Promise<ProviderResult> {
   const parts: Record<string, unknown>[] = []
   if (req.image) parts.push({ inline_data: { mime_type: req.image.media_type, data: req.image.data } })
   if (req.audio) parts.push({ inline_data: { mime_type: req.audio.media_type, data: req.audio.data } })
@@ -133,13 +136,16 @@ async function callGemini(p: ResolvedProvider, req: ProviderRequest): Promise<st
   }
   const json = (await res.json()) as {
     candidates?: { content?: { parts?: { text?: string }[] } }[]
+    usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; thoughtsTokenCount?: number }
   }
   const text = json.candidates?.[0]?.content?.parts?.map((x) => x.text ?? "").join("") ?? ""
   if (!text.trim()) throw new UnparseableError("empty gemini response")
-  return text
+  const u = json.usageMetadata
+  const totalTokens = (u?.promptTokenCount ?? 0) + (u?.candidatesTokenCount ?? 0) + (u?.thoughtsTokenCount ?? 0)
+  return { text, totalTokens }
 }
 
-async function callOpenAi(p: ResolvedProvider, req: ProviderRequest): Promise<string> {
+async function callOpenAi(p: ResolvedProvider, req: ProviderRequest): Promise<ProviderResult> {
   const userContent: Record<string, unknown>[] = []
   if (req.image) {
     userContent.push({
@@ -169,8 +175,12 @@ async function callOpenAi(p: ResolvedProvider, req: ProviderRequest): Promise<st
     const body = await res.text().catch(() => "")
     throw new Error(`openai ${res.status}: ${body.slice(0, 300)}`)
   }
-  const json = (await res.json()) as { choices?: { message?: { content?: string } }[] }
+  const json = (await res.json()) as {
+    choices?: { message?: { content?: string } }[]
+    usage?: { prompt_tokens?: number; completion_tokens?: number }
+  }
   const text = json.choices?.[0]?.message?.content ?? ""
   if (!text.trim()) throw new UnparseableError("empty openai response")
-  return text
+  const totalTokens = (json.usage?.prompt_tokens ?? 0) + (json.usage?.completion_tokens ?? 0)
+  return { text, totalTokens }
 }

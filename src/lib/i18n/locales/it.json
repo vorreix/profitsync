@@ -413,7 +413,7 @@
       "none": "Nessuno di questi",
       "quotaLow_one": "{{count}} credito AI rimasto questo mese",
       "quotaLow_other": "{{count}} crediti AI rimasti questo mese",
-      "quotaExhausted": "Hai usato tutti i {{count}} crediti AI di questo mese",
+      "quotaExhausted": "Hai esaurito i crediti AI",
       "upgrade": "Aggiorna",
       "errorUnparseable": "Non ho capito — prova a includere un importo",
       "errorGeneric": "La compilazione AI non ha funzionato — riprova",
@@ -767,7 +767,8 @@
       "title": "Crediti AI",
       "used": "{{used}} di {{limit}} crediti usati questo mese",
       "exhausted": "Limite raggiunto",
-      "premiumHint": "Premium include 500 crediti al mese, dettatura vocale di 60 secondi e un assistente vocale di 2 minuti"
+      "premiumHint": "Premium ricarica {{count}} crediti ogni mese, con dettatura vocale di 60 secondi e un assistente vocale di 2 minuti",
+      "usedOneTime": "{{used}} di {{limit}} crediti gratuiti una tantum usati"
     }
   },
   "trash": {

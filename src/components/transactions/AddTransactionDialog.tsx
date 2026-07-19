@@ -366,7 +366,7 @@ export function AddTransactionDialog({
             <AiCaptureView
               currency={currency}
               remaining={aiQuota.remaining}
-              limit={aiQuota.limit}
+              costs={aiQuota.costs}
               voice={aiQuota.voice}
               maxRecordSeconds={aiQuota.max_record_seconds}
               onApply={applyAiResult}

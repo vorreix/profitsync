@@ -29,10 +29,13 @@ export type PlanLimits = {
   spaces?: number
   // Max #hashtag tags per transaction. Free = 1, paid = 3 (defaults from tags.ts).
   tagsPerTransaction?: number
-  // Monthly AI CREDITS shared by every AI feature (quick add costs 1, voice
-  // assistant 2 — weights in api/_lib/ai.ts). Defaults are env-tunable via
-  // AI_MONTHLY_CREDITS_FREE / AI_MONTHLY_CREDITS_PREMIUM; a per-plan value in
-  // plans.limits still overrides, like every other limit.
+  // AI credit pool size. Meaning is PER-PLAN: on free it is the ONE-TIME
+  // lifetime grant; on premium it is the MONTHLY refill (no rollover).
+  // Env-tunable defaults (AI_CREDITS_FREE_GRANT / AI_MONTHLY_CREDITS_PREMIUM);
+  // a per-plan value in plans.limits overrides, like every other limit.
+  // (Stored rows may still use the legacy key "aiParsesPerMonth".)
+  aiCredits?: number
+  /** @deprecated legacy stored key — read via the aiCredits fallback only. */
   aiParsesPerMonth?: number
 }
 
@@ -57,7 +60,8 @@ const DEFAULT_FREE_LIMITS: Required<PlanLimits> = {
   bankAccounts: 1, // free workspaces get a single bank account (+ Cash in Hand)
   spaces: 1, // free personal accounts get a single savings Space
   tagsPerTransaction: FREE_TAGS_PER_TX, // free: a single tag per transaction
-  aiParsesPerMonth: envInt("AI_MONTHLY_CREDITS_FREE", 30),
+  aiCredits: envInt("AI_CREDITS_FREE_GRANT", 500), // one-time grant
+  aiParsesPerMonth: 0, // deprecated key, unused default
 }
 
 const DEFAULT_PREMIUM_LIMITS: Required<PlanLimits> = {
@@ -71,7 +75,8 @@ const DEFAULT_PREMIUM_LIMITS: Required<PlanLimits> = {
   bankAccounts: 20, // paid plans: up to 20 bank accounts INCLUDING closed ones
   spaces: 7, // paid personal plan includes 7 savings Spaces
   tagsPerTransaction: PREMIUM_TAGS_PER_TX, // paid: up to 3 tags per transaction
-  aiParsesPerMonth: envInt("AI_MONTHLY_CREDITS_PREMIUM", 500),
+  aiCredits: envInt("AI_MONTHLY_CREDITS_PREMIUM", 10_000), // monthly refill
+  aiParsesPerMonth: 0, // deprecated key, unused default
 }
 
 export async function getOrgPlan(orgId: string): Promise<{ planKey: string; limits: Required<PlanLimits> }> {
@@ -115,7 +120,8 @@ export async function getOrgPlan(orgId: string): Promise<{ planKey: string; limi
       bankAccounts: stored.bankAccounts ?? fallback.bankAccounts,
       spaces: stored.spaces ?? fallback.spaces,
       tagsPerTransaction: stored.tagsPerTransaction ?? fallback.tagsPerTransaction,
-      aiParsesPerMonth: stored.aiParsesPerMonth ?? fallback.aiParsesPerMonth,
+      aiCredits: stored.aiCredits ?? stored.aiParsesPerMonth ?? fallback.aiCredits,
+      aiParsesPerMonth: 0,
     },
   }
 }
