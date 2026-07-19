@@ -45,6 +45,10 @@ export const parseWithAi = (
 ) => apiPost<AiParseResponse>("/api/ai/parse-transaction", token, input)
 
 const MAX_EDGE = 1568 // matches the model's standard-resolution long-edge cap
+// Attachment budget: the parsed receipt is auto-attached to the transaction,
+// and the FREE plan's per-file attachment limit is 1 MB — so compress until
+// we're safely under it on every plan (also keeps the AI payload small).
+const TARGET_BYTES = 900 * 1024
 
 /**
  * Normalize orientation + downscale + re-encode a receipt photo.
@@ -62,13 +66,30 @@ export async function preprocessReceipt(file: File): Promise<{ data: string; med
     const canvas = document.createElement("canvas")
     canvas.width = w
     canvas.height = h
-    const ctx = canvas.getContext("2d")
-    if (!ctx) throw new Error("canvas unavailable")
-    // White backdrop so transparent PNGs don't turn black in JPEG.
-    ctx.fillStyle = "#fff"
-    ctx.fillRect(0, 0, w, h)
-    ctx.drawImage(bitmap, 0, 0, w, h)
-    const dataUrl = canvas.toDataURL("image/jpeg", 0.8)
+    const draw = (cw: number, ch: number) => {
+      canvas.width = cw
+      canvas.height = ch
+      const ctx = canvas.getContext("2d")
+      if (!ctx) throw new Error("canvas unavailable")
+      // White backdrop so transparent PNGs don't turn black in JPEG.
+      ctx.fillStyle = "#fff"
+      ctx.fillRect(0, 0, cw, ch)
+      ctx.drawImage(bitmap, 0, 0, cw, ch)
+    }
+    // Compression ladder: step quality down, then resolution, until the file
+    // fits the free plan's attachment limit. b64 length ≈ bytes × 4/3.
+    const b64Target = Math.floor((TARGET_BYTES * 4) / 3)
+    let dataUrl = ""
+    draw(w, h)
+    for (const quality of [0.8, 0.65, 0.5]) {
+      dataUrl = canvas.toDataURL("image/jpeg", quality)
+      if (dataUrl.length - 23 <= b64Target) break
+    }
+    if (dataUrl.length - 23 > b64Target) {
+      const scale2 = 1280 / Math.max(w, h)
+      draw(Math.max(1, Math.round(w * scale2)), Math.max(1, Math.round(h * scale2)))
+      dataUrl = canvas.toDataURL("image/jpeg", 0.55)
+    }
     const base64 = dataUrl.slice(dataUrl.indexOf(",") + 1)
     const bytes = atob(base64)
     const buf = new Uint8Array(bytes.length)

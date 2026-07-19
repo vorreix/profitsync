@@ -1263,7 +1263,13 @@
     "resume": "Resume subscription",
     "resumeSuccess": "Subscription resumed — it will keep renewing as usual.",
     "cancellingNotice": "Your plan is set to cancel on {{date}}. You’ll keep full access until then.",
-    "cancelScheduledToast": "Your subscription will cancel on {{date}} — you keep full access until then."
+    "cancelScheduledToast": "Your subscription will cancel on {{date}} — you keep full access until then.",
+    "aiUsage": {
+      "title": "AI quick add",
+      "used": "{{used}} of {{limit}} AI fills used this month",
+      "exhausted": "Limit reached",
+      "premiumHint": "Premium includes 500 AI fills a month and 60-second voice notes"
+    }
   },
   "trash": {
     "title": "Trash",

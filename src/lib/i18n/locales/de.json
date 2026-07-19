@@ -761,7 +761,13 @@
     "resume": "Abonnement fortsetzen",
     "resumeSuccess": "Abonnement fortgesetzt — es wird wie gewohnt verlängert.",
     "cancellingNotice": "Dein Tarif wird am {{date}} gekündigt. Bis dahin behältst du den vollen Zugriff.",
-    "cancelScheduledToast": "Dein Abonnement wird am {{date}} gekündigt — bis dahin behältst du den vollen Zugriff."
+    "cancelScheduledToast": "Dein Abonnement wird am {{date}} gekündigt — bis dahin behältst du den vollen Zugriff.",
+    "aiUsage": {
+      "title": "KI-Schnelleingabe",
+      "used": "{{used}} von {{limit}} KI-Ausfüllungen diesen Monat verbraucht",
+      "exhausted": "Limit erreicht",
+      "premiumHint": "Premium umfasst 500 KI-Ausfüllungen pro Monat und 60-Sekunden-Sprachnotizen"
+    }
   },
   "trash": {
     "title": "Papierkorb",

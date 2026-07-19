@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { ArrowLeft, Camera, Check, CircleAlert, Loader as Loader2, Mic, Sparkles, SendHorizontal, X } from "lucide-react"
+import { ArrowLeft, Camera, Check, CircleAlert, Crown, Loader as Loader2, Mic, Sparkles, SendHorizontal, X } from "lucide-react"
 import { useAuth } from "@clerk/clerk-react"
 import { apiErrorUpgradeHint } from "@/lib/api"
 import { parseWithAi, preprocessReceipt, type AiParseResponse } from "@/lib/ai-parse"
@@ -151,9 +151,13 @@ export function AiCaptureView({ currency, remaining, limit, voice, maxRecordSeco
         </div>
       ) : exhausted ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
-          <Sparkles className="size-6 text-primary" aria-hidden />
+          <div className="flex size-12 items-center justify-center rounded-full bg-amber-500/15">
+            <Crown className="size-6 text-amber-500 dark:text-amber-400" aria-hidden />
+          </div>
           <p className="max-w-[24rem] text-sm text-muted-foreground">{t("ai.quotaExhausted", { count: limit })}</p>
-          <Button onClick={onUpgrade}>{t("ai.upgrade")}</Button>
+          <Button onClick={onUpgrade}>
+            <Crown className="me-2 size-4" /> {t("ai.upgrade")}
+          </Button>
         </div>
       ) : (
         <div className="flex flex-1 flex-col gap-3">

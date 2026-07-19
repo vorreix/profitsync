@@ -334,7 +334,9 @@ export function AddTransactionDialog({
             {aiQuota?.enabled && !aiOpen && (
               <Button
                 type="button" variant="ghost" size="icon"
-                className="-my-1 me-6 size-9 text-primary"
+                // Free plan wears the app's "premium feature" gold (same as the
+                // bank-quota crown); paid plans get the normal primary tint.
+                className={`-my-1 me-6 size-9 ${aiQuota.plan_key === "free" ? "text-amber-500 dark:text-amber-400" : "text-primary"}`}
                 aria-label={t("ai.parse")}
                 onClick={() => setAiOpen(true)}
               >

@@ -761,7 +761,13 @@
     "resume": "Riprendi abbonamento",
     "resumeSuccess": "Abbonamento ripreso — continuerà a rinnovarsi normalmente.",
     "cancellingNotice": "Il tuo piano è impostato per annullarsi il {{date}}. Manterrai l’accesso completo fino ad allora.",
-    "cancelScheduledToast": "Il tuo abbonamento si annullerà il {{date}} — mantieni l’accesso completo fino ad allora."
+    "cancelScheduledToast": "Il tuo abbonamento si annullerà il {{date}} — mantieni l’accesso completo fino ad allora.",
+    "aiUsage": {
+      "title": "Inserimento rapido AI",
+      "used": "{{used}} di {{limit}} compilazioni AI usate questo mese",
+      "exhausted": "Limite raggiunto",
+      "premiumHint": "Premium include 500 compilazioni AI al mese e note vocali da 60 secondi"
+    }
   },
   "trash": {
     "title": "Cestino",
