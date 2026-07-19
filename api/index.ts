@@ -91,6 +91,11 @@ import publicPricing from "./_routes/public/pricing.js"
 import publicBlog from "./_routes/public/blog.js"
 import publicBlogBySlug from "./_routes/public/blog/[slug].js"
 import publicNativeGoogleAuth from "./_routes/public/native-google-auth.js"
+import aiQuota from "./_routes/ai/quota.js"
+import aiAssistant from "./_routes/ai/assistant.js"
+import aiHistory from "./_routes/ai/history.js"
+import aiHistoryById from "./_routes/ai/history/[id].js"
+import aiParseTransaction from "./_routes/ai/parse-transaction.js"
 import billingPricing from "./_routes/billing/pricing.js"
 import billingCreateSubscription from "./_routes/billing/create-subscription.js"
 import billingChangePlan from "./_routes/billing/change-plan.js"
@@ -172,6 +177,12 @@ const routes: RoutePattern<ApiHandler>[] = [
   { segments: ["clients", ":id"], handler: clientById },
   { segments: ["clients", ":id", "attachments"], handler: clientAttachments },
   { segments: ["clients", ":id", "media"], handler: clientMedia },
+
+  { segments: ["ai", "quota"], handler: aiQuota },
+  { segments: ["ai", "assistant"], handler: aiAssistant },
+  { segments: ["ai", "history"], handler: aiHistory },
+  { segments: ["ai", "history", ":id"], handler: aiHistoryById },
+  { segments: ["ai", "parse-transaction"], handler: aiParseTransaction },
 
   { segments: ["analytics"], handler: analytics },
   { segments: ["calendar"], handler: calendar },

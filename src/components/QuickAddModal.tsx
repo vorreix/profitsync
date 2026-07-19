@@ -16,6 +16,12 @@ import { useModalDraft } from "@/hooks/use-modal-draft"
 
 export type QuickAddEntity = "client" | "quotation"
 
+// Voice-assistant handoff: fields to seed the form with when the modal opens.
+export type QuickAddPrefill = {
+  client?: { name: string; company: string | null; email: string | null; phone: string | null; notes: string | null }
+  quotation?: { title: string; prospect_name: string | null; amount: number | null; date: string | null }
+}
+
 const todayStr = () => new Date().toISOString().split("T")[0]
 
 /**
@@ -31,7 +37,7 @@ const todayStr = () => new Date().toISOString().split("T")[0]
  * section reveals every field the full create form has — so power users never have
  * to leave the overlay, while the common path stays a two-field affair.
  */
-export function QuickAddModal({ entity, onClose }: { entity: QuickAddEntity | null; onClose: () => void }) {
+export function QuickAddModal({ entity, prefill, onClose }: { entity: QuickAddEntity | null; prefill?: QuickAddPrefill | null; onClose: () => void }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const { getToken } = useAuth()
@@ -83,6 +89,28 @@ export function QuickAddModal({ entity, onClose }: { entity: QuickAddEntity | nu
     setQCompany(""); setQEmail(""); setQPhone(""); setQStatus("draft"); setQCategory(""); setQNotes("")
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entity])
+
+  // Voice-assistant handoff: seed the freshly-reset form with the parsed
+  // fields. Runs after the reset effect above (declared later = runs later),
+  // and opens Advanced when the payload has fields that live there.
+  useEffect(() => {
+    if (!entity || !prefill) return
+    if (entity === "client" && prefill.client) {
+      const c = prefill.client
+      setClientName(c.name)
+      if (c.company) setClientCompany(c.company)
+      if (c.email) setClientEmail(c.email)
+      if (c.phone) setClientPhone(c.phone)
+      if (c.notes) setClientNotes(c.notes)
+      if (c.email || c.phone || c.notes) setAdvancedOpen(true)
+    } else if (entity === "quotation" && prefill.quotation) {
+      const q = prefill.quotation
+      setQTitle(q.title)
+      if (q.prospect_name) setQProspect(q.prospect_name)
+      if (q.amount != null) setQAmount(String(q.amount))
+      if (q.date) setQDate(q.date)
+    }
+  }, [entity, prefill])
 
   const title = useMemo(() => {
     if (entity === "client") return t("actions.addClient")

@@ -507,3 +507,58 @@
     }
   }
 }
+@layer utilities {
+  /* AI quick-add: brief background pulse on fields the parser just filled.
+     Staggered via inline animation-delay; color rides the theme primary token. */
+  .ai-fill-pulse {
+    border-radius: var(--radius);
+    animation: ai-fill-pulse 1.1s ease-out both;
+  }
+
+  @keyframes ai-fill-pulse {
+    0% {
+      background-color: transparent;
+    }
+
+    25% {
+      background-color: color-mix(in oklab, var(--primary) 14%, transparent);
+    }
+
+    100% {
+      background-color: transparent;
+    }
+  }
+
+  /* Border shimmer while a parse is in flight (transform/opacity-safe: we
+     animate background-position on a gradient, cheap and CLS-free). */
+  .ai-shimmer-border {
+    background:
+      linear-gradient(var(--background), var(--background)) padding-box,
+      linear-gradient(100deg,
+        color-mix(in oklab, var(--primary) 35%, var(--border)) 20%,
+        var(--border) 40%,
+        color-mix(in oklab, var(--primary) 55%, var(--border)) 60%,
+        var(--border) 80%) border-box;
+    background-size: 100% 100%, 300% 100%;
+    border-color: transparent;
+    animation: ai-shimmer 1.6s linear infinite;
+  }
+
+  @keyframes ai-shimmer {
+    from {
+      background-position: 0 0, 150% 0;
+    }
+
+    to {
+      background-position: 0 0, -150% 0;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+
+    .ai-fill-pulse,
+    .ai-shimmer-border {
+      animation: none;
+    }
+  }
+}

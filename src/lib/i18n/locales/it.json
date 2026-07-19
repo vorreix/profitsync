@@ -397,7 +397,35 @@
     "tagsPlaceholder": "Aggiungi tag come #business #travel",
     "tagsUpgrade": "Passa a Premium per più tag",
     "tagsLimitReached": "Hai raggiunto il limite di tag del tuo piano.",
-    "removeTag": "Rimuovi {{tag}}"
+    "removeTag": "Rimuovi {{tag}}",
+    "ai": {
+      "inputLabel": "Descrivi la transazione per l'inserimento rapido AI",
+      "placeholder": "Prova \"Pranzo con Acme, {{example}}, ieri\" — o scatta una ricevuta",
+      "parse": "Compila con AI",
+      "parsing": "Lettura in corso…",
+      "cameraLabel": "Scansiona una ricevuta",
+      "filledSummary_one": "Compilato {{count}} campo — controlla prima di salvare",
+      "filledSummary_other": "Compilati {{count}} campi — controlla prima di salvare",
+      "checkFields": "controlla {{fields}}",
+      "checkField": "Suggerito dall'AI — verifica",
+      "undo": "Annulla",
+      "didYouMean": "Intendevi:",
+      "none": "Nessuno di questi",
+      "quotaLow_one": "{{count}} credito AI rimasto questo mese",
+      "quotaLow_other": "{{count}} crediti AI rimasti questo mese",
+      "quotaExhausted": "Hai esaurito i crediti AI",
+      "upgrade": "Aggiorna",
+      "errorUnparseable": "Non ho capito — prova a includere un importo",
+      "errorGeneric": "La compilazione AI non ha funzionato — riprova",
+      "receiptUnreadable": "Ricevuta illeggibile — compila i campi manualmente",
+      "speak": "Detta la transazione",
+      "recording": "In ascolto…",
+      "stop": "Ferma e compila",
+      "micDenied": "Accesso al microfono negato — consentilo nelle impostazioni del dispositivo",
+      "voiceFailed": "Impossibile elaborare la registrazione — riprova",
+      "notEnoughCredits": "Crediti insufficienti per questa azione — prova una compilazione testuale o passa a Premium"
+    },
+    "failedToUpdateCategories": "Impossibile aggiornare le categorie"
   },
   "clients": {
     "pageTitle": "Clienti",
@@ -735,7 +763,14 @@
     "resume": "Riprendi abbonamento",
     "resumeSuccess": "Abbonamento ripreso — continuerà a rinnovarsi normalmente.",
     "cancellingNotice": "Il tuo piano è impostato per annullarsi il {{date}}. Manterrai l’accesso completo fino ad allora.",
-    "cancelScheduledToast": "Il tuo abbonamento si annullerà il {{date}} — mantieni l’accesso completo fino ad allora."
+    "cancelScheduledToast": "Il tuo abbonamento si annullerà il {{date}} — mantieni l’accesso completo fino ad allora.",
+    "aiUsage": {
+      "title": "Crediti AI",
+      "used": "{{used}} di {{limit}} crediti usati questo mese",
+      "exhausted": "Limite raggiunto",
+      "premiumHint": "Premium ricarica {{count}} crediti ogni mese, con dettatura vocale di 60 secondi e un assistente vocale di 2 minuti",
+      "usedOneTime": "{{used}} di {{limit}} crediti gratuiti una tantum usati"
+    }
   },
   "trash": {
     "title": "Cestino",
@@ -1762,5 +1797,38 @@
     "sideLeft": "Bordo sinistro",
     "sideRight": "Bordo destro",
     "handleDragHint": "Tocca o scorri la maniglia verso l'interno per cercare. Trascinala su o giù lungo il bordo per posizionarla dove preferisci."
+  },
+  "aiVoice": {
+    "openLabel": "Assistente vocale AI",
+    "note": "Parla e basta — in qualsiasi lingua",
+    "thinking": "Ci sto lavorando…",
+    "tryAgain": "Riprova",
+    "notUnderstood": "Non ho capito — prova a dire un importo o un nome",
+    "failed": "Qualcosa è andato storto — riprova",
+    "cantHelp": "Posso aggiungere transazioni, clienti e preventivi, o mostrarti le transazioni",
+    "creditsChip": "{{remaining}} crediti rimasti · questa richiesta usa {{cost}}",
+    "confirm": {
+      "transaction": "Creazione transazione {{type}} di {{amount}}",
+      "client": "Aggiunta del cliente {{name}}",
+      "quotation": "Creazione preventivo “{{title}}”"
+    },
+    "field": {
+      "name": "Nome",
+      "company": "Azienda",
+      "phone": "Telefono",
+      "title": "Titolo",
+      "prospect": "Prospect"
+    },
+    "save": "Salva",
+    "editDetails": "Modifica dettagli",
+    "whichClient": "Quale cliente?",
+    "whichProspect": "Nome del prospect",
+    "addCategory": "Aggiungere una categoria?",
+    "savedTransaction": "Transazione di {{amount}} salvata",
+    "showingTransactions": "Ecco le tue transazioni",
+    "historyTitle": "Le tue richieste",
+    "historyEmpty": "Ancora nulla — le tue richieste vocali appariranno qui",
+    "clearHistory": "Cancella tutto",
+    "deleteAsk": "Elimina"
   }
 }
