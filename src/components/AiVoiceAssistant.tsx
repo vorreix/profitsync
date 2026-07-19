@@ -16,10 +16,9 @@ import { useCurrency } from "@/lib/currency-context"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { AiAssistantConfirm } from "@/components/AiAssistantConfirm"
+import { AiOrb } from "@/components/AiOrb"
 
 const fmtClock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`
-
-const BAR_COUNT = 27
 
 // Minimal SpeechRecognition surface (lib.dom lacks it; WebViews lack the API
 // entirely — it is a PROGRESSIVE enhancement for live-transcript display only,
@@ -72,16 +71,18 @@ export function AiVoiceAssistant({ quota, onEdit, onQuotaUsed }: {
   const [clearing, setClearing] = useState(false)
   const reqIdRef = useRef(0)
 
-  // ── Live waveform: AnalyserNode → level ring buffer → bars ────────────────
+  // ── Live mic meter: AnalyserNode → RMS level → the orb's glow/scale ───────
+  // The overlay orb reacts to the voice instead of a bar waveform: the level
+  // drives `--ai-orb-level` imperatively (no re-renders at 20fps).
   const audioCtxRef = useRef<AudioContext | null>(null)
   const rafRef = useRef(0)
-  const levelsRef = useRef<number[]>(Array.from({ length: BAR_COUNT }, () => 0))
-  const barRefs = useRef<(HTMLDivElement | null)[]>([])
+  const orbRef = useRef<HTMLDivElement | null>(null)
 
   const stopMeter = useCallback(() => {
     cancelAnimationFrame(rafRef.current)
     void audioCtxRef.current?.close().catch(() => undefined)
     audioCtxRef.current = null
+    orbRef.current?.style.setProperty("--ai-orb-level", "0")
   }, [])
 
   const startMeter = useCallback((stream: MediaStream) => {
@@ -94,9 +95,10 @@ export function AiVoiceAssistant({ quota, onEdit, onQuotaUsed }: {
       ctx.createMediaStreamSource(stream).connect(analyser)
       const buf = new Uint8Array(analyser.fftSize)
       let last = 0
+      let smoothed = 0
       const tick = (now: number) => {
         rafRef.current = requestAnimationFrame(tick)
-        if (now - last < 50) return // ~20fps is plenty for a waveform
+        if (now - last < 50) return // ~20fps is plenty for a glow
         last = now
         analyser.getByteTimeDomainData(buf)
         let sum = 0
@@ -105,17 +107,13 @@ export function AiVoiceAssistant({ quota, onEdit, onQuotaUsed }: {
           sum += v * v
         }
         const level = Math.min(1, Math.sqrt(sum / buf.length) * 4)
-        const levels = levelsRef.current
-        levels.push(level)
-        levels.shift()
-        for (let i = 0; i < BAR_COUNT; i++) {
-          const el = barRefs.current[i]
-          if (el) el.style.transform = `scaleY(${Math.max(0.12, levels[i])})`
-        }
+        // fast attack, slow release — feels alive without flickering
+        smoothed = level > smoothed ? level : smoothed * 0.86
+        orbRef.current?.style.setProperty("--ai-orb-level", smoothed.toFixed(3))
       }
       rafRef.current = requestAnimationFrame(tick)
     } catch {
-      // Waveform is decorative — recording works without it.
+      // The meter is decorative — recording works without it.
     }
   }, [stopMeter])
 
@@ -218,7 +216,6 @@ export function AiVoiceAssistant({ quota, onEdit, onQuotaUsed }: {
     setErrorMsg("")
     setLiveText("")
     setPhase("listening")
-    levelsRef.current = Array.from({ length: BAR_COUNT }, () => 0)
     void recorderRef.current.start()
     startLiveTranscript()
   }, [startLiveTranscript])
@@ -262,27 +259,35 @@ export function AiVoiceAssistant({ quota, onEdit, onQuotaUsed }: {
 
   return (
     <>
-      {/* Floating trigger, stacked just above the FAB. */}
-      <Button
-        type="button"
-        size="icon"
-        variant="outline"
-        aria-label={t("aiVoice.openLabel")}
-        onClick={() => setOpen(true)}
-        className="relative size-11 rounded-full border bg-background/95 shadow-lg backdrop-blur"
-      >
-        <Mic className={`size-5 ${free ? "text-amber-500 dark:text-amber-400" : "text-primary"}`} />
-        <Sparkles
-          className={`absolute -end-0.5 -top-0.5 size-3.5 ${free ? "text-amber-500 dark:text-amber-400" : "text-primary"}`}
-          aria-hidden
-        />
-      </Button>
+      {/* Floating trigger, stacked just above the FAB: the energy orb itself,
+          drifting very slowly. Its glow halo is part of the component. The
+          w-14 wrapper matches the size-14 FAB below, so in the items-end
+          stack the 44px orb sits exactly on the FAB's center axis. */}
+      <div className="flex w-14 justify-center">
+        <Button
+          type="button"
+          size="icon"
+          variant="ghost"
+          aria-label={t("aiVoice.openLabel")}
+          onClick={() => setOpen(true)}
+          className="group relative size-11 overflow-visible rounded-full p-0 hover:bg-transparent dark:hover:bg-transparent"
+        >
+          <AiOrb size={44} gold={free} className="transition-transform duration-150 group-active:scale-90 group-hover:scale-105" />
+        </Button>
+      </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent
-          className="inset-0 top-0 left-0 flex h-full max-h-none w-full max-w-none translate-x-0 translate-y-0 flex-col items-center justify-center gap-0 overflow-y-auto rounded-none border-0 bg-background/70 p-6 backdrop-blur-xl safe-pb"
+          className="inset-0 top-0 left-0 flex h-full max-h-none w-full max-w-none sm:max-w-none translate-x-0 translate-y-0 flex-col items-center justify-center gap-0 overflow-y-auto rounded-none sm:rounded-none border-0 bg-background/80 p-6 backdrop-blur-2xl safe-pb"
         >
           <DialogTitle className="sr-only">{t("aiVoice.openLabel")}</DialogTitle>
+
+          {/* Ambient light field — two static blurred glows give the overlay
+              its cinematic depth in both themes (gold-tinted on free). */}
+          <div aria-hidden className="pointer-events-none fixed inset-0 overflow-hidden">
+            <div className={`absolute -start-24 -top-24 size-80 rounded-full blur-3xl ${free ? "bg-amber-500/10" : "bg-teal-500/10"}`} />
+            <div className={`absolute -bottom-32 -end-24 size-96 rounded-full blur-3xl ${free ? "bg-yellow-500/10" : "bg-cyan-500/10"}`} />
+          </div>
 
           {/* History entry point (listening view only, opposite the close ✕) */}
           {phase === "listening" && !exhausted && (
@@ -297,7 +302,7 @@ export function AiVoiceAssistant({ quota, onEdit, onQuotaUsed }: {
           )}
 
           {exhausted && phase !== "history" ? (
-            <div className="flex flex-col items-center gap-4 text-center">
+            <div className="flex flex-col items-center gap-4 text-center animate-in fade-in zoom-in-95 duration-300 motion-reduce:animate-none">
               <div className="flex size-16 items-center justify-center rounded-full bg-amber-500/15">
                 <Crown className="size-8 text-amber-500 dark:text-amber-400" aria-hidden />
               </div>
@@ -308,7 +313,7 @@ export function AiVoiceAssistant({ quota, onEdit, onQuotaUsed }: {
             </div>
           ) : phase === "history" ? (
             /* ── Ask history: the user's log; never fed back to the model ── */
-            <div className="flex h-full w-full max-w-sm flex-col gap-3 py-8">
+            <div className="flex h-full w-full max-w-sm flex-col gap-3 py-8 animate-in fade-in slide-in-from-bottom-2 duration-300 motion-reduce:animate-none">
               <div className="flex items-center gap-1">
                 <Button variant="ghost" size="icon" className="-ms-2 size-9" aria-label={t("transactions:cancel")} onClick={startListening}>
                   <ArrowLeft className="size-4 rtl:-scale-x-100" />
@@ -375,91 +380,89 @@ export function AiVoiceAssistant({ quota, onEdit, onQuotaUsed }: {
               </div>
             </div>
           ) : phase === "confirm" && confirmData ? (
-            <AiAssistantConfirm
-              response={confirmData}
-              currency={currency}
-              onSaved={() => setOpen(false)}
-              onEdit={() => { setOpen(false); onEdit(confirmData) }}
-              onCancel={() => setOpen(false)}
-            />
+            <div className="w-full max-w-sm animate-in fade-in slide-in-from-bottom-3 duration-300 motion-reduce:animate-none">
+              <AiAssistantConfirm
+                response={confirmData}
+                currency={currency}
+                onSaved={() => setOpen(false)}
+                onEdit={() => { setOpen(false); onEdit(confirmData) }}
+                onCancel={() => setOpen(false)}
+              />
+            </div>
           ) : phase === "error" ? (
-            <div className="flex flex-col items-center gap-4 text-center" aria-live="polite">
-              <div className="flex size-16 items-center justify-center rounded-full bg-destructive/10">
+            <div className="flex flex-col items-center gap-4 text-center animate-in fade-in zoom-in-95 duration-300 motion-reduce:animate-none" aria-live="polite">
+              <div className="flex size-16 items-center justify-center rounded-full bg-destructive/10 ring-8 ring-destructive/5">
                 <CircleAlert className="size-8 text-destructive" aria-hidden />
               </div>
               <p className="max-w-[22rem] text-sm text-muted-foreground">{errorMsg}</p>
-              <Button onClick={startListening}>
+              <Button className="rounded-full px-6" onClick={startListening}>
                 <Mic className="me-2 size-4" /> {t("aiVoice.tryAgain")}
               </Button>
             </div>
-          ) : phase === "asking" ? (
-            <div className="flex flex-col items-center gap-4 text-center" aria-live="polite">
-              <div className="flex size-20 items-center justify-center rounded-full bg-primary/10">
-                <Loader2 className="size-8 animate-spin text-primary motion-reduce:animate-none" aria-hidden />
-              </div>
-              <p className="text-sm font-medium">{t("aiVoice.thinking")}</p>
-              {liveText && (
-                <p className="line-clamp-2 max-w-[22rem] text-xs text-muted-foreground">“{liveText}”</p>
-              )}
-            </div>
           ) : (
-            /* ── Listening: mic + live transcript + waveform + controls ──── */
-            <div className="flex w-full max-w-sm flex-col items-center gap-6">
-              <div className="relative flex size-20 items-center justify-center rounded-full bg-primary/10">
-                {recording && (
-                  <span className="absolute inset-0 animate-ping rounded-full bg-primary/20 motion-reduce:hidden" aria-hidden />
-                )}
-                <Mic className="size-9 text-primary" aria-hidden />
-              </div>
+            /* ── Voice: the orb IS the interface — it breathes and glows with
+                 the voice while listening, then swirls while thinking. One
+                 persistent element, so the state change morphs seamlessly. ── */
+            <div className="flex w-full max-w-sm flex-col items-center gap-7 animate-in fade-in zoom-in-95 duration-300 motion-reduce:animate-none">
+              <AiOrb
+                ref={orbRef}
+                size={172}
+                gold={free}
+                mode={phase === "asking" ? "thinking" : "listening"}
+              />
 
-              {/* Live transcript where the engine supports it (else nothing). */}
-              {liveText && (
-                <p className="line-clamp-2 w-full text-center text-sm leading-6" aria-live="polite">
-                  {liveText}
-                </p>
+              {phase === "asking" ? (
+                <div className="flex flex-col items-center gap-3 text-center" aria-live="polite">
+                  <p className="ai-orb-status-shimmer text-sm font-medium">{t("aiVoice.thinking")}</p>
+                  {liveText && (
+                    <p className="line-clamp-2 max-w-[22rem] text-xs text-muted-foreground">“{liveText}”</p>
+                  )}
+                </div>
+              ) : (
+                <>
+                  {/* Live transcript grows in place of the hint (fixed slot —
+                      no layout jump when words arrive). */}
+                  <div className="flex min-h-14 w-full items-center justify-center">
+                    {liveText ? (
+                      <p className="line-clamp-3 w-full text-balance text-center text-base font-medium leading-7" aria-live="polite">
+                        {liveText}
+                      </p>
+                    ) : (
+                      <p className="flex items-center gap-1.5 text-center text-sm text-muted-foreground">
+                        <Sparkles className={`size-4 ${free ? "text-amber-500 dark:text-amber-400" : "text-teal-500 dark:text-teal-400"}`} aria-hidden />
+                        {t("aiVoice.note")}
+                      </p>
+                    )}
+                  </div>
+
+                  <p className="text-sm tabular-nums text-muted-foreground" aria-hidden={!recording}>
+                    {fmtClock(recorder.elapsed)} / {fmtClock(maxSeconds)}
+                  </p>
+
+                  <div className="flex items-center gap-5">
+                    <Button
+                      variant="outline" size="icon"
+                      className="size-12 rounded-full border-border/60 bg-background/50 backdrop-blur transition-transform active:scale-95"
+                      aria-label={t("transactions:cancel")}
+                      onClick={() => setOpen(false)}
+                    >
+                      <X className="size-5" />
+                    </Button>
+                    <Button
+                      size="icon" className="size-14 rounded-full shadow-lg transition-transform active:scale-95"
+                      aria-label={t("transactions:ai.stop")}
+                      disabled={!recording}
+                      onClick={recorder.stop}
+                    >
+                      <Check className="size-6" />
+                    </Button>
+                  </div>
+
+                  <p className="text-xs text-muted-foreground">
+                    {t("aiVoice.creditsChip", { remaining: quota.remaining, cost })}
+                  </p>
+                </>
               )}
-
-              <div className="flex h-12 items-center gap-1" aria-hidden>
-                {Array.from({ length: BAR_COUNT }, (_, i) => (
-                  <div
-                    key={i}
-                    ref={(el) => { barRefs.current[i] = el }}
-                    className="h-full w-1 origin-center rounded-full bg-primary/70 transition-transform duration-75"
-                    style={{ transform: "scaleY(0.12)" }}
-                  />
-                ))}
-              </div>
-
-              <p className="text-sm tabular-nums text-muted-foreground">
-                {fmtClock(recorder.elapsed)} / {fmtClock(maxSeconds)}
-              </p>
-
-              <div className="flex items-center gap-4">
-                <Button
-                  variant="outline" size="icon" className="size-12 rounded-full"
-                  aria-label={t("transactions:cancel")}
-                  onClick={() => setOpen(false)}
-                >
-                  <X className="size-5" />
-                </Button>
-                <Button
-                  size="icon" className="size-14 rounded-full"
-                  aria-label={t("transactions:ai.stop")}
-                  disabled={!recording}
-                  onClick={recorder.stop}
-                >
-                  <Check className="size-6" />
-                </Button>
-              </div>
-
-              <div className="flex flex-col items-center gap-1 text-center">
-                <p className="flex items-center gap-1.5 text-sm font-medium">
-                  <Sparkles className="size-4 text-primary" aria-hidden /> {t("aiVoice.note")}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {t("aiVoice.creditsChip", { remaining: quota.remaining, cost })}
-                </p>
-              </div>
             </div>
           )}
         </DialogContent>
