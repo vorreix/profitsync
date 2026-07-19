@@ -122,7 +122,7 @@ S3_FORCE_PATH_STYLE=true                   # true for Hetzner/MinIO; "false" = v
 # AI quick add (OPTIONAL — the ✨ trigger in the Add-Transaction modal is
 # hidden entirely when no provider key is set). Provider + model are config:
 AI_PROVIDER=gemini                        # anthropic | gemini | openai (default: first key found, anthropic→gemini→openai)
-AI_PARSE_MODEL=gemini-2.5-flash           # optional override; per-provider defaults in api/_lib/ai-providers.ts
+AI_PARSE_MODEL=gemini-3.1-flash-lite      # optional override; per-provider defaults in api/_lib/ai-providers.ts (2.5-gen Gemini is closed to new Google projects)
 GEMINI_API_KEY=...                        # server-only. Gemini is the only provider with VOICE input (audio)
 ANTHROPIC_API_KEY=...                     # server-only
 OPENAI_API_KEY=...                        # server-only (text+image only, no voice)

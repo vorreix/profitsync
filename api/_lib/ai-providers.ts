@@ -27,7 +27,7 @@ export type ProviderRequest = {
 
 const DEFAULT_MODEL: Record<ProviderName, string> = {
   anthropic: "claude-haiku-4-5",
-  gemini: "gemini-2.5-flash",
+  gemini: "gemini-3.1-flash-lite",
   openai: "gpt-5.4-mini",
 }
 
@@ -117,9 +117,12 @@ async function callGemini(p: ResolvedProvider, req: ProviderRequest): Promise<st
           responseMimeType: "application/json",
           responseSchema: toGeminiSchema(req.schema),
           maxOutputTokens: req.maxTokens,
-          // A tiny extraction task doesn't need visible reasoning depth; keep
-          // latency/cost down on 2.5-flash's dynamic thinking.
-          thinkingConfig: { thinkingBudget: 0 },
+          // Thinking config is GENERATION-SPECIFIC: 2.5 models take
+          // thinkingBudget (0 = off; keeps latency/cost down on this tiny
+          // extraction task), 3.x models use thinkingLevel instead and the
+          // lite tiers may not accept a thinking config at all — so we only
+          // send it where it's verified to work.
+          ...(p.model.startsWith("gemini-2.5") ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
         },
       }),
     },
