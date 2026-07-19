@@ -46,7 +46,9 @@ export function AiCaptureView({ currency, remaining, limit, voice, maxRecordSeco
   const [step, setStep] = useState<Step>({ kind: "input" })
   const cameraRef = useRef<HTMLInputElement>(null)
   const textRef = useRef<HTMLTextAreaElement>(null)
-  const abortRef = useRef(false)
+  // Monotonic request id: a response only lands if it belongs to the LATEST
+  // request (a boolean abort flag couldn't distinguish overlapping calls).
+  const reqIdRef = useRef(0)
 
   const recorder = useVoiceRecorder({
     maxSeconds: maxRecordSeconds,
@@ -62,7 +64,8 @@ export function AiCaptureView({ currency, remaining, limit, voice, maxRecordSeco
   useEffect(() => {
     // Autofocus only where a keyboard won't cover half the sheet.
     if (window.matchMedia("(min-width: 640px)").matches) textRef.current?.focus()
-    return () => { abortRef.current = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally bump the CURRENT id at unmount so in-flight responses are dropped
+    return () => { reqIdRef.current++ }
   }, [])
 
   const exhausted = remaining <= 0
@@ -75,13 +78,13 @@ export function AiCaptureView({ currency, remaining, limit, voice, maxRecordSeco
     input: { text?: string; image?: { data: string; media_type: string }; audio?: { data: string; media_type: string } },
     receiptFile: File | null,
   ) {
-    abortRef.current = false
+    const reqId = ++reqIdRef.current
     setStep({ kind: "parsing", hasReceipt: receiptFile != null })
     try {
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
       const response = await parseWithAi(token, input)
-      if (abortRef.current) return
+      if (reqIdRef.current !== reqId) return
       onQuotaUsed(response.remaining)
       if (response.client_candidates && response.client_candidates.length > 0) {
         // Resolve ambiguity HERE, before anything touches the form.
@@ -91,7 +94,7 @@ export function AiCaptureView({ currency, remaining, limit, voice, maxRecordSeco
       onApply({ response, receiptFile })
       onClose()
     } catch (err) {
-      if (abortRef.current) return
+      if (reqIdRef.current !== reqId) return
       if (apiErrorUpgradeHint(err)) { onQuotaUsed(0); setStep({ kind: "input" }); return }
       const unparseable = err instanceof Error && err.message.includes("unparseable")
       setStep({
@@ -119,7 +122,7 @@ export function AiCaptureView({ currency, remaining, limit, voice, maxRecordSeco
   }
 
   return (
-    <div className="flex min-h-[16rem] flex-col animate-in fade-in duration-200">
+    <div className="flex min-h-[16rem] flex-col animate-in fade-in duration-200 motion-reduce:animate-none">
       <div className="mb-3 flex items-center gap-1">
         <Button variant="ghost" size="icon" className="-ms-2 size-9" aria-label={t("cancel")} onClick={() => { recorder.cancel(); onClose() }}>
           <ArrowLeft className="size-4 rtl:-scale-x-100" />
@@ -172,7 +175,7 @@ export function AiCaptureView({ currency, remaining, limit, voice, maxRecordSeco
                   </span>
                   <div className="min-w-0">
                     <p className="text-sm font-medium">{t("ai.recording")}</p>
-                    <p className="text-xs tabular-nums text-muted-foreground" aria-live="polite">
+                    <p className="text-xs tabular-nums text-muted-foreground">
                       {fmtClock(recorder.elapsed)} / {fmtClock(maxRecordSeconds)}
                     </p>
                   </div>
@@ -248,7 +251,7 @@ export function AiCaptureView({ currency, remaining, limit, voice, maxRecordSeco
           <div aria-live="polite" className="min-h-5">
             {parsing && (
               <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <Loader2 className="size-3 animate-spin" /> {t("ai.parsing")}
+                <Loader2 className="size-3 animate-spin motion-reduce:animate-none" /> {t("ai.parsing")}
               </p>
             )}
             {step.kind === "error" && !recording && (

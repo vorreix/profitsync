@@ -795,7 +795,8 @@
       "stop": "Stop and fill",
       "micDenied": "Microphone access was denied — allow it in your device settings",
       "voiceFailed": "Couldn't process the recording — please try again"
-    }
+    },
+    "failedToUpdateCategories": "Failed to update categories"
   },
   "wealth": {
     "title": "Wealth",

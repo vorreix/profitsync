@@ -423,7 +423,8 @@
       "stop": "Stoppen und ausfüllen",
       "micDenied": "Mikrofonzugriff verweigert — bitte in den Geräteeinstellungen erlauben",
       "voiceFailed": "Aufnahme konnte nicht verarbeitet werden — bitte erneut versuchen"
-    }
+    },
+    "failedToUpdateCategories": "Kategorien konnten nicht aktualisiert werden"
   },
   "clients": {
     "pageTitle": "Klienten",

@@ -2,13 +2,14 @@ import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { canWrite, requireAuth } from "../../_lib/auth.js"
 import {
   aiCapabilities,
-  checkAiQuota,
   creditCost,
   maxAudioB64,
   parseAssistant,
-  recordAiUse,
+  refundAiCredits,
+  reserveAiCredits,
   type ParseInput,
 } from "../../_lib/ai.js"
+import { getOrgPlan } from "../../_lib/quota.js"
 
 const MAX_TEXT = 1_000
 // The client always transcodes recordings to mono WAV (12 kHz for the
@@ -29,10 +30,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!caps.enabled) return res.status(503).json({ error: "AI features are not configured" })
 
   const cost = creditCost("assistant")
-  const quota = await checkAiQuota(ctx.orgId, cost)
-  if (!quota.allowed) {
-    return res.status(403).json({ error: quota.reason, limit: quota.limit, upgradeHint: quota.upgradeHint })
-  }
+  const { planKey, limits } = await getOrgPlan(ctx.orgId)
+  const limit = limits.aiParsesPerMonth
 
   const body = (req.body ?? {}) as { text?: unknown; audio?: { data?: unknown; media_type?: unknown } }
   const text = typeof body.text === "string" ? body.text.slice(0, MAX_TEXT) : undefined
@@ -40,7 +39,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (body.audio != null) {
     const { data, media_type } = body.audio
     if (
-      typeof data !== "string" || data.length === 0 || data.length > maxAudioB64(quota.planKey, "assistant") ||
+      typeof data !== "string" || data.length === 0 || data.length > maxAudioB64(planKey, "assistant") ||
       typeof media_type !== "string" || !AUDIO_TYPES.includes(media_type as (typeof AUDIO_TYPES)[number])
     ) {
       return res.status(400).json({ error: "Invalid audio" })
@@ -50,12 +49,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (audio && !caps.voice) return res.status(400).json({ error: "Voice input is not supported by the configured AI provider" })
   if (!text?.trim() && !audio) return res.status(400).json({ error: "text or audio is required" })
 
+  // Reserve credits ATOMICALLY (the WHERE re-checks the limit), then parse;
+  // failures refund so a bad recording never burns the pool.
+  const reserved = await reserveAiCredits(ctx.orgId, cost, limit)
+  if (!reserved.ok) {
+    return res.status(403).json({ error: "aiParsesPerMonth", limit, upgradeHint: true })
+  }
+
   try {
     const result = await parseAssistant(ctx.orgId, { text, audio })
-    await recordAiUse(ctx.orgId, cost)
-    const remaining = Math.max(0, (quota.remaining ?? cost) - cost)
-    return res.json({ ...result, remaining })
+    return res.json({ ...result, remaining: reserved.remaining })
   } catch (err) {
+    await refundAiCredits(ctx.orgId, cost).catch(() => undefined)
     if ((err as { code?: string }).code === "unparseable") {
       return res.status(422).json({ error: "unparseable" })
     }

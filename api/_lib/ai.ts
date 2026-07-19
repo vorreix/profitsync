@@ -4,7 +4,6 @@ import { aiUsage, categories, clients, organizations, wealthAccounts } from "../
 import { amountExceedsLimit } from "../../src/lib/money.js"
 import { resolveCategory, resolveClientName, type ClientMatchResult } from "../../src/lib/ai-match.js"
 import { callProvider, resolveProvider, type MediaPart } from "./ai-providers.js"
-import { getOrgPlan, type QuotaCheck } from "./quota.js"
 
 // ── Availability & capabilities ─────────────────────────────────────────────
 // Optional feature: no provider key configured → /api/ai/quota reports
@@ -58,28 +57,41 @@ export async function aiUsageThisMonth(orgId: string): Promise<number> {
   return row?.count ?? 0
 }
 
-export async function checkAiQuota(
+// ── Atomic credit reservation ───────────────────────────────────────────────
+// check-then-act is racy (two concurrent requests could both pass a read-side
+// check and overshoot the pool), so credits are RESERVED up front with one
+// conditional UPDATE whose WHERE re-checks the limit atomically. A failed
+// parse refunds, preserving "failures don't burn credits". The returned count
+// is the post-reserve truth, so `remaining` is always exact.
+export async function reserveAiCredits(
   orgId: string,
-  cost = 1,
-): Promise<QuotaCheck & { remaining?: number; limit?: number; planKey: string }> {
-  const [{ planKey, limits }, used] = await Promise.all([getOrgPlan(orgId), aiUsageThisMonth(orgId)])
-  const limit = limits.aiParsesPerMonth
-  if (used + cost > limit) {
-    return { allowed: false, reason: "aiParsesPerMonth", limit, current: used, upgradeHint: true, planKey }
-  }
-  return { allowed: true, remaining: limit - used, limit, planKey }
-}
-
-// Deduct AFTER a successful parse only — a failed/unparseable call should not
-// burn the user's credits.
-export async function recordAiUse(orgId: string, credits = 1): Promise<void> {
+  cost: number,
+  limit: number,
+): Promise<{ ok: true; remaining: number } | { ok: false }> {
   await db
     .insert(aiUsage)
-    .values({ organizationId: orgId, period: currentPeriod(), count: credits })
-    .onConflictDoUpdate({
-      target: [aiUsage.organizationId, aiUsage.period],
-      set: { count: sql`${aiUsage.count} + ${credits}`, updatedAt: new Date() },
-    })
+    .values({ organizationId: orgId, period: currentPeriod(), count: 0 })
+    .onConflictDoNothing()
+  const rows = await db
+    .update(aiUsage)
+    .set({ count: sql`${aiUsage.count} + ${cost}`, updatedAt: new Date() })
+    .where(
+      and(
+        eq(aiUsage.organizationId, orgId),
+        eq(aiUsage.period, currentPeriod()),
+        sql`${aiUsage.count} + ${cost} <= ${limit}`,
+      ),
+    )
+    .returning({ count: aiUsage.count })
+  if (!rows.length) return { ok: false }
+  return { ok: true, remaining: Math.max(0, limit - rows[0].count) }
+}
+
+export async function refundAiCredits(orgId: string, cost: number): Promise<void> {
+  await db
+    .update(aiUsage)
+    .set({ count: sql`GREATEST(${aiUsage.count} - ${cost}, 0)`, updatedAt: new Date() })
+    .where(and(eq(aiUsage.organizationId, orgId), eq(aiUsage.period, currentPeriod())))
 }
 
 // ── Org context (shared by quick add + assistant) ───────────────────────────
@@ -125,6 +137,12 @@ async function loadOrgAiContext(orgId: string): Promise<OrgAiContext> {
     outgoingCats: catRows.filter((c) => c.type === "outgoing").map((c) => c.name),
   }
 }
+
+// Org-authored names (clients/accounts/categories) are interpolated into the
+// system prompt — strip newlines/quotes/backticks so a maliciously-named row
+// can't fake structure or close a quoted context. The blast radius was already
+// bounded (server-side ID resolution), this removes the injection surface.
+const promptSafe = (s: string) => s.replace(/[\r\n"`]/g, " ").replace(/\s+/g, " ").trim().slice(0, 80)
 
 const clamp01 = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 0)
 
@@ -211,9 +229,9 @@ const promptRules = (ctx: OrgAiContext, opts: { today: string; hasAudio: boolean
 - Amounts: plain number, no separators. The workspace currency is ${ctx.currency}; if a different currency is explicitly stated, still return the number but lower the amount confidence.
 - Dates: resolve relative expressions against today, ${opts.today} (UTC). Output YYYY-MM-DD.
 - type: "incoming" = money received; "outgoing" = money spent. Receipts are almost always outgoing.
-- client_name: copy the name as said/written. The workspace's known clients are: ${ctx.clientRows.length ? ctx.clientRows.map((c) => c.name).join(", ") : "(none)"} — if the input clearly refers to one of them, you may return that exact known name instead.
-- account_name: the money account used, if mentioned. The workspace's accounts are: ${ctx.accountList.length ? ctx.accountList.map((a) => a.name).join(", ") : "(none)"} — if the input clearly refers to one, return that exact known name.
-- category must be VERBATIM one of — incoming: ${ctx.incomingCats.join(", ") || "(none)"}; outgoing: ${ctx.outgoingCats.join(", ") || "(none)"} — else null.
+- client_name: copy the name as said/written. The workspace's known clients are: ${ctx.clientRows.length ? ctx.clientRows.map((c) => promptSafe(c.name)).join(", ") : "(none)"} — if the input clearly refers to one of them, you may return that exact known name instead.
+- account_name: the money account used, if mentioned. The workspace's accounts are: ${ctx.accountList.length ? ctx.accountList.map((a) => promptSafe(a.name)).join(", ") : "(none)"} — if the input clearly refers to one, return that exact known name.
+- category must be VERBATIM one of — incoming: ${ctx.incomingCats.map(promptSafe).join(", ") || "(none)"}; outgoing: ${ctx.outgoingCats.map(promptSafe).join(", ") || "(none)"} — else null.
 - Confidence values are 0..1 per field.`
 
 /** Shared validation + org-scoped name resolution for a raw transaction payload. */

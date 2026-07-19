@@ -190,10 +190,10 @@ export function AddTransactionDialog({
         }
         await refreshCats()
       } catch {
-        toast.error("Failed to update categories")
+        toast.error(t("failedToUpdateCategories"))
       }
     },
-    [getToken, catRows, refreshCats],
+    [getToken, catRows, refreshCats, t],
   )
 
   const budgetFor = (clientId: string): Budget | null =>

@@ -423,7 +423,8 @@
       "stop": "Ferma e compila",
       "micDenied": "Accesso al microfono negato — consentilo nelle impostazioni del dispositivo",
       "voiceFailed": "Impossibile elaborare la registrazione — riprova"
-    }
+    },
+    "failedToUpdateCategories": "Impossibile aggiornare le categorie"
   },
   "clients": {
     "pageTitle": "Clienti",

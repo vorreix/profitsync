@@ -2,13 +2,14 @@ import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { canWrite, requireAuth } from "../../_lib/auth.js"
 import {
   aiCapabilities,
-  checkAiQuota,
   creditCost,
   maxAudioB64,
   parseTransaction,
-  recordAiUse,
+  refundAiCredits,
+  reserveAiCredits,
   type ParseInput,
 } from "../../_lib/ai.js"
+import { getOrgPlan } from "../../_lib/quota.js"
 
 // ~1.5 MB of base64 ≈ 1.1 MB image — generous after the client's ≤1568px
 // downscale (typically 150–400 KB) while bounding request size.
@@ -34,10 +35,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!caps.enabled) return res.status(503).json({ error: "AI features are not configured" })
 
   const cost = creditCost("quickadd")
-  const quota = await checkAiQuota(ctx.orgId, cost)
-  if (!quota.allowed) {
-    return res.status(403).json({ error: quota.reason, limit: quota.limit, upgradeHint: quota.upgradeHint })
-  }
+  const { planKey, limits } = await getOrgPlan(ctx.orgId)
+  const limit = limits.aiParsesPerMonth
 
   const body = (req.body ?? {}) as {
     text?: unknown
@@ -62,18 +61,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const image = readPart(body.image, IMAGE_TYPES, MAX_IMAGE_B64)
   if (image === "invalid") return res.status(400).json({ error: "Invalid image" })
-  const audio = readPart(body.audio, AUDIO_TYPES, maxAudioB64(quota.planKey, "quickadd"))
+  const audio = readPart(body.audio, AUDIO_TYPES, maxAudioB64(planKey, "quickadd"))
   if (audio === "invalid") return res.status(400).json({ error: "Invalid audio" })
   if (audio && !caps.voice) return res.status(400).json({ error: "Voice input is not supported by the configured AI provider" })
   if (!text?.trim() && !image && !audio) return res.status(400).json({ error: "text, image or audio is required" })
 
+  // Reserve credits ATOMICALLY (the WHERE re-checks the limit), then parse;
+  // failures refund so a bad recording never burns the pool.
+  const reserved = await reserveAiCredits(ctx.orgId, cost, limit)
+  if (!reserved.ok) {
+    return res.status(403).json({ error: "aiParsesPerMonth", limit, upgradeHint: true })
+  }
+
   try {
     const input: ParseInput = { text, image: image ?? undefined, audio: audio ?? undefined }
     const result = await parseTransaction(ctx.orgId, input)
-    await recordAiUse(ctx.orgId, cost)
-    const remaining = Math.max(0, (quota.remaining ?? cost) - cost)
-    return res.json({ ...result, remaining })
+    return res.json({ ...result, remaining: reserved.remaining })
   } catch (err) {
+    await refundAiCredits(ctx.orgId, cost).catch(() => undefined)
     if ((err as { code?: string }).code === "unparseable") {
       return res.status(422).json({ error: "unparseable" })
     }

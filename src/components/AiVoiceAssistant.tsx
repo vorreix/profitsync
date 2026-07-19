@@ -38,6 +38,8 @@ export function AiVoiceAssistant({ quota, onResult, onQuotaUsed }: {
   const [open, setOpen] = useState(false)
   const [phase, setPhase] = useState<"listening" | "asking" | "error">("listening")
   const [errorMsg, setErrorMsg] = useState("")
+  // Monotonic request id — a response only lands for the latest ask.
+  const reqIdRef = useRef(0)
 
   // ── Live waveform: AnalyserNode → level ring buffer → bars ────────────────
   const audioCtxRef = useRef<AudioContext | null>(null)
@@ -89,15 +91,18 @@ export function AiVoiceAssistant({ quota, onResult, onQuotaUsed }: {
   }, [stopMeter])
 
   const runAsk = useCallback(async (wavBase64: string) => {
+    const reqId = ++reqIdRef.current
     setPhase("asking")
     try {
       const token = await getToken()
       if (!token) throw new Error("not authenticated")
       const response = await askAssistant(token, { audio: { data: wavBase64, media_type: "audio/wav" } })
+      if (reqIdRef.current !== reqId) return
       onQuotaUsed(response.remaining)
       setOpen(false)
       onResult(response)
     } catch (err) {
+      if (reqIdRef.current !== reqId) return
       if (apiErrorUpgradeHint(err)) {
         onQuotaUsed(0)
         setPhase("listening") // quota view takes over via remaining=0
@@ -128,9 +133,13 @@ export function AiVoiceAssistant({ quota, onResult, onQuotaUsed }: {
   const cost = quota?.costs.assistant ?? 2
   const exhausted = (quota?.remaining ?? 0) < cost
 
+  // Unmount safety: never leave the meter's AudioContext running.
+  useEffect(() => () => { reqIdRef.current++; stopMeter() }, [stopMeter])
+
   // Opening the overlay starts listening immediately (one tap to talk).
   useEffect(() => {
     if (!open) {
+      reqIdRef.current++
       recorderRef.current.cancel()
       stopMeter()
       return
@@ -198,7 +207,7 @@ export function AiVoiceAssistant({ quota, onResult, onQuotaUsed }: {
             /* ── Thinking ────────────────────────────────────────────────── */
             <div className="flex flex-col items-center gap-4 text-center" aria-live="polite">
               <div className="flex size-20 items-center justify-center rounded-full bg-primary/10">
-                <Loader2 className="size-8 animate-spin text-primary" aria-hidden />
+                <Loader2 className="size-8 animate-spin text-primary motion-reduce:animate-none" aria-hidden />
               </div>
               <p className="text-sm font-medium">{t("aiVoice.thinking")}</p>
             </div>
@@ -224,7 +233,7 @@ export function AiVoiceAssistant({ quota, onResult, onQuotaUsed }: {
                 ))}
               </div>
 
-              <p className="text-sm tabular-nums text-muted-foreground" aria-live="polite">
+              <p className="text-sm tabular-nums text-muted-foreground">
                 {fmtClock(recorder.elapsed)} / {fmtClock(maxSeconds)}
               </p>
 

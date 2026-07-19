@@ -26,11 +26,13 @@ export function useVoiceRecorder({ maxSeconds, sampleRate, onFinish, onError, on
   const streamRef = useRef<MediaStream | null>(null)
   const chunksRef = useRef<Blob[]>([])
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const hideListenerRef = useRef<(() => void) | null>(null)
   const cancelledRef = useRef(false)
   const startedAtRef = useRef(0)
 
   const cleanup = useCallback(() => {
     if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null }
+    if (hideListenerRef.current) { document.removeEventListener("visibilitychange", hideListenerRef.current); hideListenerRef.current = null }
     streamRef.current?.getTracks().forEach((t) => t.stop())
     streamRef.current = null
     recRef.current = null
@@ -79,6 +81,13 @@ export function useVoiceRecorder({ maxSeconds, sampleRate, onFinish, onError, on
       setElapsed(0)
       rec.start(1000)
       setState("recording")
+      // Backgrounding the app (home button, app switch) mid-recording stops
+      // and processes what was said — the mic must never keep running unseen.
+      const onHide = () => {
+        if (document.visibilityState === "hidden" && recRef.current?.state === "recording") recRef.current.stop()
+      }
+      document.addEventListener("visibilitychange", onHide)
+      hideListenerRef.current = onHide
       timerRef.current = setInterval(() => {
         const secs = (Date.now() - startedAtRef.current) / 1000
         setElapsed(Math.min(secs, maxSeconds))
