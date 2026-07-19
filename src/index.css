@@ -430,17 +430,20 @@
      change. Forward (PUSH) enters from the trailing edge, back (POP) from the
      leading edge; `.page-enter` is the plain fade+rise used for REPLACE and by
      standalone pages (e.g. BudgetDetailPage). Compositor-only (transform +
-     opacity) — no reflow. Direction mirrors under RTL. */
+     opacity) — no reflow. Direction mirrors under RTL. Fill is `backwards`
+     (never `both`/`forwards`): a retained end-frame transform would make
+     <main> a permanent containing block + stacking context, trapping any
+     `fixed` descendant (e.g. a bulk-action bar) beneath the bottom nav. */
   .page-enter {
-    animation: page-enter 240ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation: page-enter 240ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
   }
 
   .page-enter-forward {
-    animation: page-enter-forward 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation: page-enter-forward 260ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
   }
 
   .page-enter-back {
-    animation: page-enter-back 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation: page-enter-back 260ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
   }
 
   [dir="rtl"] .page-enter-forward {
@@ -493,7 +496,7 @@
     .page-enter,
     .page-enter-forward,
     .page-enter-back {
-      animation: page-fade 140ms ease-out both;
+      animation: page-fade 140ms ease-out backwards;
     }
   }
 
