@@ -538,6 +538,22 @@ export const aiCredits = pgTable("ai_credits", {
   orgUnique: uniqueIndex("ai_credits_org_unique").on(table.organizationId),
 }))
 
+// Voice-assistant ask history — the USER's reference log (transcript + what
+// the AI decided), viewable and deletable from the overlay. Deliberately
+// NEVER fed back into the model: each ask is parsed fresh so old requests
+// can't skew new decisions.
+export const aiAsks = pgTable("ai_asks", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull(),
+  transcript: text("transcript").notNull().default(""),
+  intent: text("intent").notNull().default("unknown"),
+  say: text("say").notNull().default(""),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  orgUserIdx: index("ai_asks_org_user_idx").on(table.organizationId, table.userId, table.createdAt),
+}))
+
 // DEPRECATED (superseded by ai_credits): early per-month usage counter for the
 // AI quick add. Kept for historical rows; no code writes to it anymore.
 export const aiUsage = pgTable("ai_usage", {

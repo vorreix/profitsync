@@ -1806,6 +1806,29 @@
     "notUnderstood": "Non ho capito — prova a dire un importo o un nome",
     "failed": "Qualcosa è andato storto — riprova",
     "cantHelp": "Posso aggiungere transazioni, clienti e preventivi, o mostrarti le transazioni",
-    "creditsChip": "{{remaining}} crediti rimasti · questa richiesta usa {{cost}}"
+    "creditsChip": "{{remaining}} crediti rimasti · questa richiesta usa {{cost}}",
+    "confirm": {
+      "transaction": "Creazione transazione {{type}} di {{amount}}",
+      "client": "Aggiunta del cliente {{name}}",
+      "quotation": "Creazione preventivo “{{title}}”"
+    },
+    "field": {
+      "name": "Nome",
+      "company": "Azienda",
+      "phone": "Telefono",
+      "title": "Titolo",
+      "prospect": "Prospect"
+    },
+    "save": "Salva",
+    "editDetails": "Modifica dettagli",
+    "whichClient": "Quale cliente?",
+    "whichProspect": "Nome del prospect",
+    "addCategory": "Aggiungere una categoria?",
+    "savedTransaction": "Transazione di {{amount}} salvata",
+    "showingTransactions": "Ecco le tue transazioni",
+    "historyTitle": "Le tue richieste",
+    "historyEmpty": "Ancora nulla — le tue richieste vocali appariranno qui",
+    "clearHistory": "Cancella tutto",
+    "deleteAsk": "Elimina"
   }
 }

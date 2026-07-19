@@ -15,6 +15,8 @@ import {
   type ParseInput,
 } from "../../_lib/ai.js"
 import { getOrgPlan } from "../../_lib/quota.js"
+import { db } from "../../../src/lib/db/index.js"
+import { aiAsks } from "../../../src/lib/db/schema.js"
 
 const MAX_TEXT = 1_000
 // The client always transcodes recordings to mono WAV (12 kHz for the
@@ -64,6 +66,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const { totalTokens, ...result } = await parseAssistant(ctx.orgId, { text, audio })
     const extra = tokenSurcharge("assistant", totalTokens, tokenPolicy())
     const remaining = extra > 0 ? await settleTokenSurcharge(ctx.orgId, extra) : reserved.balance
+    // Best-effort ask log for the USER's history view — never re-read by the
+    // model (each ask is parsed fresh; old requests must not skew decisions).
+    db.insert(aiAsks)
+      .values({
+        organizationId: ctx.orgId,
+        userId: ctx.userId,
+        transcript: result.transcript ?? text?.slice(0, 1000) ?? "",
+        intent: result.intent,
+        say: result.say ?? "",
+      })
+      .catch((e: unknown) => console.error("ai ask log failed", e))
     return res.json({ ...result, remaining })
   } catch (err) {
     await refundAiCredits(ctx.orgId, cost, limit).catch(() => undefined)

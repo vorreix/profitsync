@@ -1806,6 +1806,29 @@
     "notUnderstood": "समझ नहीं आया — कोई राशि या नाम बोलकर देखें",
     "failed": "कुछ गड़बड़ हुई — फिर से कोशिश करें",
     "cantHelp": "मैं लेन-देन, क्लाइंट और कोटेशन जोड़ सकता हूँ, या आपके लेन-देन दिखा सकता हूँ",
-    "creditsChip": "{{remaining}} क्रेडिट बचे · इस सवाल में {{cost}} लगेंगे"
+    "creditsChip": "{{remaining}} क्रेडिट बचे · इस सवाल में {{cost}} लगेंगे",
+    "confirm": {
+      "transaction": "{{amount}} का {{type}} लेन-देन बनाया जा रहा है",
+      "client": "क्लाइंट {{name}} जोड़ा जा रहा है",
+      "quotation": "कोटेशन “{{title}}” बनाया जा रहा है"
+    },
+    "field": {
+      "name": "नाम",
+      "company": "कंपनी",
+      "phone": "फ़ोन",
+      "title": "शीर्षक",
+      "prospect": "संभावित ग्राहक"
+    },
+    "save": "सेव करें",
+    "editDetails": "विवरण संपादित करें",
+    "whichClient": "कौन सा क्लाइंट?",
+    "whichProspect": "संभावित ग्राहक का नाम",
+    "addCategory": "श्रेणी जोड़ें?",
+    "savedTransaction": "{{amount}} का लेन-देन सेव हुआ",
+    "showingTransactions": "आपके लेन-देन दिखाए जा रहे हैं",
+    "historyTitle": "आपके सवाल",
+    "historyEmpty": "अभी कुछ नहीं — आपके वॉइस सवाल यहाँ दिखेंगे",
+    "clearHistory": "सब हटाएँ",
+    "deleteAsk": "हटाएँ"
   }
 }

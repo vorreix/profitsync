@@ -90,14 +90,17 @@ export function AddTransactionDialog({
   // The dialog stays mounted across opens — don't reopen into the AI view.
   useEffect(() => { if (!open) setAiOpen(false) }, [open])
 
-  // Apply a voice-assistant handoff exactly once, after accounts arrive (the
-  // allocation patch needs them for the default/matched source account).
+  // Voice-assistant handoff: stash it in a ref; the LOAD effect applies it
+  // after seeding + account fetch (applying earlier let the open-effect's
+  // form seeding clobber the AI values — the "said created but form was
+  // empty" bug).
+  const pendingAiRef = useRef<SmartApply | null>(null)
   useEffect(() => {
-    if (!open || !initialAi || accountsLoading) return
-    applyAiResult(initialAi)
+    if (!open || !initialAi) return
+    pendingAiRef.current = initialAi
     onInitialAiConsumed?.()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, initialAi, accountsLoading])
+  }, [open, initialAi])
 
   // A draft worth keeping: anything the user actually typed/attached.
   const dirty =
@@ -163,6 +166,12 @@ export function AddTransactionDialog({
           prev.allocations.length > 0 || !acctId ? prev : { ...prev, allocations: [{ account_id: acctId, amount: "" }] },
         )
       }
+      // Voice-assistant handoff LAST — after seeding — so nothing overwrites it.
+      if (pendingAiRef.current) {
+        const handoff = pendingAiRef.current
+        pendingAiRef.current = null
+        applyAiResult(handoff, active)
+      }
     })()
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -218,8 +227,8 @@ export function AddTransactionDialog({
     }
   }
 
-  function applyAiResult({ response, receiptFile, pickedClientId }: SmartApply): void {
-    aiSnapshot.current = { form, files: pendingFiles }
+  function applyAiResult({ response, receiptFile, pickedClientId }: SmartApply, accountsOverride?: WealthAccount[]): void {
+    const accts = accountsOverride ?? accounts
     const { confidence } = response
     // An explicit chip pick from the capture view overrides the match result.
     const fields = pickedClientId !== undefined
@@ -249,9 +258,9 @@ export function AddTransactionDialog({
       // "…from account A" — use the AI-matched wealth account when it's a real,
       // confidently-matched one; otherwise fall back to the usual default.
       const matchedAccount =
-        fields.account_id && confidence.account >= FILL && accounts.some((a) => a.id === fields.account_id)
+        fields.account_id && confidence.account >= FILL && accts.some((a) => a.id === fields.account_id)
           ? fields.account_id
-          : defaultAccountId(accounts)
+          : defaultAccountId(accts)
       patch.allocations = [{ account_id: matchedAccount, amount: String(fields.amount) }]
     })
     consider("date", fields.date, confidence.date, () => { patch.date = fields.date! })
@@ -262,9 +271,17 @@ export function AddTransactionDialog({
       consider("client", fields.client_id, confidence.client, () => { patch.client_id = fields.client_id! })
     }
 
-    setForm((prev) => ({ ...prev, ...patch }))
+    // Snapshot INSIDE the updaters so Undo captures the true pre-apply state
+    // even when this runs from an async callback with stale closures.
+    setForm((prev) => {
+      aiSnapshot.current = { form: prev, files: aiSnapshot.current?.files ?? pendingFiles }
+      return { ...prev, ...patch }
+    })
+    setPendingFiles((prev) => {
+      aiSnapshot.current = { form: aiSnapshot.current?.form ?? form, files: prev }
+      return receiptFile ? [...prev, receiptFile] : prev
+    })
     setAiMeta(meta)
-    if (receiptFile) setPendingFiles((prev) => [...prev, receiptFile])
 
     // Feedback lives OUTSIDE the modal chrome: one toast with Undo, plus the
     // transient field pulses. Nothing persistent is added to the form.

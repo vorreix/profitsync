@@ -1806,6 +1806,29 @@
     "notUnderstood": "Das habe ich nicht verstanden — nennen Sie einen Betrag oder Namen",
     "failed": "Etwas ist schiefgelaufen — bitte erneut versuchen",
     "cantHelp": "Ich kann Transaktionen, Kunden und Angebote anlegen oder Transaktionen anzeigen",
-    "creditsChip": "{{remaining}} Credits übrig · diese Anfrage kostet {{cost}}"
+    "creditsChip": "{{remaining}} Credits übrig · diese Anfrage kostet {{cost}}",
+    "confirm": {
+      "transaction": "Erstelle {{type}}-Transaktion über {{amount}}",
+      "client": "Füge Kunde {{name}} hinzu",
+      "quotation": "Erstelle Angebot „{{title}}“"
+    },
+    "field": {
+      "name": "Name",
+      "company": "Firma",
+      "phone": "Telefon",
+      "title": "Titel",
+      "prospect": "Interessent"
+    },
+    "save": "Speichern",
+    "editDetails": "Details bearbeiten",
+    "whichClient": "Welcher Kunde?",
+    "whichProspect": "Name des Interessenten",
+    "addCategory": "Kategorie hinzufügen?",
+    "savedTransaction": "Transaktion über {{amount}} gespeichert",
+    "showingTransactions": "Ihre Transaktionen werden angezeigt",
+    "historyTitle": "Ihre Anfragen",
+    "historyEmpty": "Noch nichts — Ihre Sprachanfragen erscheinen hier",
+    "clearHistory": "Alle löschen",
+    "deleteAsk": "Löschen"
   }
 }

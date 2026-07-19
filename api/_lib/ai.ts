@@ -374,6 +374,7 @@ ${promptRules(ctx, { today: new Date().toISOString().slice(0, 10), hasAudio: inp
 export type AssistantResult = {
   intent: "add_transaction" | "add_client" | "add_quotation" | "show_transactions" | "unknown"
   say: string | null
+  transcript: string | null
   transaction: ParseResult | null
   client: { name: string; company: string | null; email: string | null; phone: string | null; notes: string | null } | null
   quotation: { title: string; prospect_name: string | null; amount: number | null; date: string | null } | null
@@ -383,15 +384,16 @@ export type AssistantResult = {
 const ASSISTANT_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["reasoning", "intent", "say", "transaction", "client", "quotation", "search"],
+  required: ["reasoning", "transcript", "intent", "say", "transaction", "client", "quotation", "search"],
   properties: {
     reasoning: { type: "string", description: "One short sentence: what the user wants and what is uncertain." },
+    transcript: { type: ["string", "null"], description: "Verbatim transcription of the user's words, in their language. null only if inaudible." },
     intent: {
       type: "string",
       enum: ["add_transaction", "add_client", "add_quotation", "show_transactions", "unknown"],
       description: "add_transaction = money spent/received; add_client = new client/customer; add_quotation = new quote/estimate; show_transactions = find/list/show existing transactions; unknown = anything else.",
     },
-    say: { type: "string", description: "One short friendly sentence IN THE INPUT'S LANGUAGE confirming what you understood or, for unknown, what you can help with." },
+    say: { type: "string", description: "One short sentence IN THE INPUT'S LANGUAGE, PRESENT/FUTURE tense describing what you are PREPARING (e.g. 'Preparing a €20 expense for review') — NEVER claim something was already created or saved. For unknown: say what you can help with." },
     transaction: {
       type: ["object", "null"],
       additionalProperties: false,
@@ -465,8 +467,9 @@ ${promptRules(ctx, { today: new Date().toISOString().slice(0, 10), hasAudio: inp
   const intents = ["add_transaction", "add_client", "add_quotation", "show_transactions", "unknown"] as const
   const intent = intents.includes(raw.intent as (typeof intents)[number]) ? (raw.intent as AssistantResult["intent"]) : "unknown"
   const say = cleanStr(raw.say, 300)
+  const transcript = cleanStr(raw.transcript, 1000)
 
-  const result: AssistantResult = { intent, say, transaction: null, client: null, quotation: null, search: null }
+  const result: AssistantResult = { intent, say, transcript, transaction: null, client: null, quotation: null, search: null }
 
   if (intent === "add_transaction" && raw.transaction && typeof raw.transaction === "object") {
     result.transaction = resolveTransactionRaw(raw.transaction as Record<string, unknown>, ctx)

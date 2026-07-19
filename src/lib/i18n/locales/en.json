@@ -1806,6 +1806,29 @@
     "notUnderstood": "I didn't catch that — try saying an amount or a name",
     "failed": "Something went wrong — please try again",
     "cantHelp": "I can add transactions, clients and quotations, or show your transactions",
-    "creditsChip": "{{remaining}} credits left · this ask uses {{cost}}"
+    "creditsChip": "{{remaining}} credits left · this ask uses {{cost}}",
+    "confirm": {
+      "transaction": "Creating {{type}} transaction of {{amount}}",
+      "client": "Adding client {{name}}",
+      "quotation": "Creating quotation “{{title}}”"
+    },
+    "field": {
+      "name": "Name",
+      "company": "Company",
+      "phone": "Phone",
+      "title": "Title",
+      "prospect": "Prospect"
+    },
+    "save": "Save",
+    "editDetails": "Edit details",
+    "whichClient": "Which client?",
+    "whichProspect": "Prospect name",
+    "addCategory": "Add a category?",
+    "savedTransaction": "Transaction of {{amount}} saved",
+    "showingTransactions": "Showing your transactions",
+    "historyTitle": "Your asks",
+    "historyEmpty": "Nothing here yet — your voice asks will appear here",
+    "clearHistory": "Clear all",
+    "deleteAsk": "Delete"
   }
 }

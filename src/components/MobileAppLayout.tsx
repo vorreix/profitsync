@@ -181,32 +181,18 @@ export function MobileAppLayout() {
   const [aiTxHandoff, setAiTxHandoff] = useState<SmartApply | null>(null)
   const [quickAddPrefill, setQuickAddPrefill] = useState<QuickAddPrefill | null>(null)
 
-  const handleAssistantResult = (r: AiAssistantResponse) => {
+  // "Edit details" from the assistant's review card → the matching PREFILLED
+  // create dialog (save/search/confirm all happen inside the overlay itself).
+  const handleAssistantEdit = (r: AiAssistantResponse) => {
     if (r.intent === "add_transaction" && r.transaction) {
-      if (r.say) toast.success(r.say)
       setAiTxHandoff({ response: { ...r.transaction, remaining: r.remaining }, receiptFile: null })
       setAddTxOpen(true)
     } else if (r.intent === "add_client" && r.client) {
-      if (r.say) toast.success(r.say)
       setQuickAddPrefill({ client: r.client })
       setQuickAdd("client")
     } else if (r.intent === "add_quotation" && r.quotation) {
-      if (r.say) toast.success(r.say)
       setQuickAddPrefill({ quotation: r.quotation })
       setQuickAdd("quotation")
-    } else if (r.intent === "show_transactions" && r.search) {
-      if (r.say) toast.success(r.say)
-      if (r.search.client_id) {
-        navigate(`/clients/${r.search.client_id}`)
-      } else {
-        const params = new URLSearchParams()
-        if (r.search.from) params.set("from", r.search.from)
-        if (r.search.to) params.set("to", r.search.to)
-        if (r.search.category) params.set("category", r.search.category)
-        navigate(`/transactions${params.size ? `?${params}` : ""}`)
-      }
-    } else {
-      toast.info(r.say ?? t("aiVoice.cantHelp"))
     }
   }
   // WhatsApp-style global search: an edge "bump" handle → full-screen overlay.
@@ -467,7 +453,7 @@ export function MobileAppLayout() {
         {/* AI voice assistant — hidden while the quick-actions menu is open so
             the stack stays uncluttered. */}
         {!(!pageAction && fabOpen) && (
-          <AiVoiceAssistant quota={aiQuota} onResult={handleAssistantResult} onQuotaUsed={aiConsume} />
+          <AiVoiceAssistant quota={aiQuota} onEdit={handleAssistantEdit} onQuotaUsed={aiConsume} />
         )}
         {/* Floating filter shortcut: appears just above the FAB when the current
             page has active filters, so they're reachable without scrolling back

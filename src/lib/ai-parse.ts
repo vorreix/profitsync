@@ -1,4 +1,4 @@
-import { apiGet, apiPost } from "@/lib/api"
+import { apiDelete, apiGet, apiPost } from "@/lib/api"
 
 // Client for the AI quick-add endpoints + receipt image preprocessing.
 // Preprocessing is NOT optional polish: drawing to a canvas normalizes EXIF
@@ -42,6 +42,7 @@ export const fetchAiQuota = (token: string) => apiGet<AiQuota>("/api/ai/quota", 
 export type AiAssistantResponse = {
   intent: "add_transaction" | "add_client" | "add_quotation" | "show_transactions" | "unknown"
   say: string | null
+  transcript: string | null
   transaction: Omit<AiParseResponse, "remaining"> | null
   client: { name: string; company: string | null; email: string | null; phone: string | null; notes: string | null } | null
   quotation: { title: string; prospect_name: string | null; amount: number | null; date: string | null } | null
@@ -52,6 +53,18 @@ export type AiAssistantResponse = {
 // The assistant records at 12 kHz (vs the quick add's 16 kHz) so a 120 s
 // premium ask stays under the serverless request-body limit.
 export const ASSISTANT_WAV_RATE = 12000
+
+export type AiAskHistoryItem = {
+  id: string
+  transcript: string
+  intent: string
+  say: string
+  created_at: string
+}
+
+export const fetchAiHistory = (token: string) => apiGet<AiAskHistoryItem[]>("/api/ai/history", token)
+export const deleteAiAsk = (token: string, id: string) => apiDelete(`/api/ai/history/${id}`, token)
+export const clearAiHistory = (token: string) => apiDelete("/api/ai/history", token)
 
 export const askAssistant = (
   token: string,

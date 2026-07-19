@@ -1806,6 +1806,29 @@
     "notUnderstood": "لم أفهم ذلك — جرّب قول مبلغ أو اسم",
     "failed": "حدث خطأ ما — حاول مرة أخرى",
     "cantHelp": "أستطيع إضافة معاملات وعملاء وعروض أسعار، أو عرض معاملاتك",
-    "creditsChip": "تبقّى {{remaining}} من الرصيد · هذا الطلب يستهلك {{cost}}"
+    "creditsChip": "تبقّى {{remaining}} من الرصيد · هذا الطلب يستهلك {{cost}}",
+    "confirm": {
+      "transaction": "إنشاء معاملة {{type}} بقيمة {{amount}}",
+      "client": "إضافة العميل {{name}}",
+      "quotation": "إنشاء عرض السعر «{{title}}»"
+    },
+    "field": {
+      "name": "الاسم",
+      "company": "الشركة",
+      "phone": "الهاتف",
+      "title": "العنوان",
+      "prospect": "العميل المحتمل"
+    },
+    "save": "حفظ",
+    "editDetails": "تعديل التفاصيل",
+    "whichClient": "أي عميل؟",
+    "whichProspect": "اسم العميل المحتمل",
+    "addCategory": "إضافة فئة؟",
+    "savedTransaction": "تم حفظ معاملة بقيمة {{amount}}",
+    "showingTransactions": "جارٍ عرض معاملاتك",
+    "historyTitle": "طلباتك",
+    "historyEmpty": "لا شيء بعد — ستظهر طلباتك الصوتية هنا",
+    "clearHistory": "مسح الكل",
+    "deleteAsk": "حذف"
   }
 }
