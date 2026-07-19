@@ -54,4 +54,8 @@
          and shows the runtime prompt automatically when this is declared. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <!-- RECORD_AUDIO implies a REQUIRED microphone feature, which makes Play
+         filter out mic-less devices (tablets/TV boxes). Voice input is an
+         optional enhancement — the app is fully usable without a mic. -->
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
 </manifest>

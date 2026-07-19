@@ -18,9 +18,14 @@ android {
         applicationId "com.vorreix.profitsync"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 15
-        versionName "1.2.0"
+        versionCode 17
+        versionName "1.3.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        // Embed native-lib symbol tables in the bundle (Play console warns
+        // otherwise; the .so files come from transitive androidx/Firebase deps).
+        ndk {
+            debugSymbolLevel 'SYMBOL_TABLE'
+        }
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
              // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
