@@ -33,6 +33,13 @@ import {
   CalendarDays,
   Network,
 } from "lucide-react"
+import { MobileSearchOverlay } from "@/components/MobileSearchOverlay"
+import { SearchEdgeHandle } from "@/components/SearchEdgeHandle"
+import {
+  loadSearchHandlePref,
+  saveSearchHandlePref,
+  type SearchHandlePref,
+} from "@/lib/search-handle"
 import { MoneyBag } from "@/components/icons/MoneyBag"
 import { useOrg } from "@/lib/org-context"
 import { useAdmin } from "@/lib/admin-context"
@@ -56,7 +63,11 @@ import { InstallButton } from "@/components/InstallButton"
 import { ReferralBanner } from "@/components/ReferralBanner"
 import { NotificationBell } from "@/components/notifications/NotificationBell"
 import { EntityAvatar } from "@/components/EntityAvatar"
-import { QuickAddModal, type QuickAddEntity } from "@/components/QuickAddModal"
+import { QuickAddModal, type QuickAddEntity, type QuickAddPrefill } from "@/components/QuickAddModal"
+import { AiVoiceAssistant } from "@/components/AiVoiceAssistant"
+import { useAiQuota } from "@/hooks/use-ai-quota"
+import type { AiAssistantResponse } from "@/lib/ai-parse"
+import type { SmartApply } from "@/components/transactions/AiQuickFill"
 import { AddTransactionDialog, type CreatedTxInfo } from "@/components/transactions/AddTransactionDialog"
 import { useCurrency } from "@/lib/currency-context"
 import { formatMoney } from "@/lib/wealth"
@@ -163,6 +174,38 @@ export function MobileAppLayout() {
   const [quickAdd, setQuickAdd] = useState<QuickAddEntity | null>(null)
   // The + FAB's "Add transaction" opens the SAME real modal as the Transactions page.
   const [addTxOpen, setAddTxOpen] = useState(false)
+  // ── AI voice assistant ────────────────────────────────────────────────────
+  // Intent results route into the EXISTING create surfaces, prefilled — the
+  // assistant never writes anything itself (review-before-save everywhere).
+  const { quota: aiQuota, consumeOne: aiConsume } = useAiQuota(true)
+  const [aiTxHandoff, setAiTxHandoff] = useState<SmartApply | null>(null)
+  const [quickAddPrefill, setQuickAddPrefill] = useState<QuickAddPrefill | null>(null)
+
+  // "Edit details" from the assistant's review card → the matching PREFILLED
+  // create dialog (save/search/confirm all happen inside the overlay itself).
+  const handleAssistantEdit = (r: AiAssistantResponse) => {
+    if (r.intent === "add_transaction" && r.transaction) {
+      setAiTxHandoff({ response: { ...r.transaction, remaining: r.remaining }, receiptFile: null })
+      setAddTxOpen(true)
+    } else if (r.intent === "add_client" && r.client) {
+      setQuickAddPrefill({ client: r.client })
+      setQuickAdd("client")
+    } else if (r.intent === "add_quotation" && r.quotation) {
+      setQuickAddPrefill({ quotation: r.quotation })
+      setQuickAdd("quotation")
+    }
+  }
+  // WhatsApp-style global search: an edge "bump" handle → full-screen overlay.
+  // The handle's side + vertical position are user preferences (persisted).
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [handlePref, setHandlePref] = useState<SearchHandlePref>(() => loadSearchHandlePref(localStorage))
+  const updateHandlePref = (patch: Partial<SearchHandlePref>) => {
+    setHandlePref((prev) => {
+      const next = { ...prev, ...patch }
+      saveSearchHandlePref(localStorage, next)
+      return next
+    })
+  }
 
   // Success feedback for an in-place FAB transaction add: toast + deep link to it.
   // (The page refresh signal now fires centrally from the API client on every
@@ -397,7 +440,21 @@ export function MobileAppLayout() {
       {!pageAction && fabOpen && (
         <div className="fixed inset-0 z-40 bg-background/50 backdrop-blur-sm" onClick={() => setFabOpen(false)} />
       )}
+      {/* Search entry: a thin frosted bump on the screen wall — tap or swipe it
+          inward to search, drag it up/down to reposition; side chosen in the
+          overlay's settings. */}
+      <SearchEdgeHandle
+        pref={handlePref}
+        onPrefChange={updateHandlePref}
+        onOpen={() => setSearchOpen(true)}
+        hidden={searchOpen || (!pageAction && fabOpen)}
+      />
       <div className="fixed bottom-24 right-4 z-50 flex flex-col items-end gap-2 safe-pb">
+        {/* AI voice assistant — hidden while the quick-actions menu is open so
+            the stack stays uncluttered. */}
+        {!(!pageAction && fabOpen) && (
+          <AiVoiceAssistant quota={aiQuota} onEdit={handleAssistantEdit} onQuotaUsed={aiConsume} />
+        )}
         {/* Floating filter shortcut: appears just above the FAB when the current
             page has active filters, so they're reachable without scrolling back
             to the toolbar. Hidden while the quick-actions menu is open. */}
@@ -447,8 +504,14 @@ export function MobileAppLayout() {
         </Button>
       </div>
 
-      <QuickAddModal entity={quickAdd} onClose={() => setQuickAdd(null)} />
-      <AddTransactionDialog open={addTxOpen} onOpenChange={setAddTxOpen} onCreated={onTxCreated} />
+      <QuickAddModal entity={quickAdd} prefill={quickAddPrefill} onClose={() => { setQuickAdd(null); setQuickAddPrefill(null) }} />
+      <AddTransactionDialog open={addTxOpen} onOpenChange={setAddTxOpen} onCreated={onTxCreated} initialAi={aiTxHandoff} onInitialAiConsumed={() => setAiTxHandoff(null)} />
+      <MobileSearchOverlay
+        open={searchOpen}
+        onClose={() => setSearchOpen(false)}
+        handleSide={handlePref.side}
+        onHandleSideChange={(side) => updateHandlePref({ side })}
+      />
 
       {/* Bottom tab bar — columns adapt to the (account-type-filtered) tab count. */}
       <nav className="safe-pb fixed bottom-0 inset-x-0 z-40 bg-background/95 backdrop-blur border-t">

@@ -509,6 +509,30 @@
     "inactive": "inactive",
     "archived": "archived"
   },
+  "search": {
+    "title": "Search",
+    "description": "Search across clients, transactions, quotations, accounts, categories, and pages",
+    "placeholder": "Search…",
+    "recent": "Recent searches",
+    "actions": "Quick actions",
+    "pages": "Pages",
+    "clients": "Clients",
+    "transactions": "Transactions",
+    "quotations": "Quotations",
+    "accounts": "Accounts",
+    "categories": "Categories",
+    "filterAll": "All",
+    "noResults": "No results found",
+    "clear": "Clear",
+    "hintNavigate": "navigate",
+    "hintOpen": "open",
+    "hintClose": "close",
+    "handleSettings": "Search handle settings",
+    "handlePosition": "Search handle position",
+    "sideLeft": "Left edge",
+    "sideRight": "Right edge",
+    "handleDragHint": "Tap or swipe the handle inward to search. Drag it up or down along the edge to place it wherever you like."
+  },
   "deleteAccount": {
     "title": "Delete account",
     "cardDescription": "Permanently delete your account, every organization you own, and all their data. This cannot be undone.",
@@ -745,7 +769,35 @@
     "splitHint": "Each account is saved as its own transaction.",
     "account_one": "{{count}} account",
     "account_other": "{{count}} accounts",
-    "recurringBadge": "Recurring"
+    "recurringBadge": "Recurring",
+    "ai": {
+      "inputLabel": "Describe the transaction for AI quick add",
+      "placeholder": "Try \"Lunch with Acme, {{example}}, yesterday\" — or snap a receipt",
+      "parse": "Fill with AI",
+      "parsing": "Reading your input…",
+      "cameraLabel": "Scan a receipt",
+      "filledSummary_one": "Filled {{count}} field — review before saving",
+      "filledSummary_other": "Filled {{count}} fields — review before saving",
+      "checkFields": "check {{fields}}",
+      "checkField": "AI guessed this — please check",
+      "undo": "Undo",
+      "didYouMean": "Did you mean:",
+      "none": "None of these",
+      "quotaLow_one": "{{count}} AI credit left this month",
+      "quotaLow_other": "{{count}} AI credits left this month",
+      "quotaExhausted": "You're out of AI credits",
+      "upgrade": "Upgrade",
+      "errorUnparseable": "Couldn't understand that — try including an amount",
+      "errorGeneric": "AI fill didn't work — please try again",
+      "receiptUnreadable": "Couldn't read this receipt — fill the fields manually",
+      "speak": "Speak the transaction",
+      "recording": "Listening…",
+      "stop": "Stop and fill",
+      "micDenied": "Microphone access was denied — allow it in your device settings",
+      "voiceFailed": "Couldn't process the recording — please try again",
+      "notEnoughCredits": "Not enough credits for this action — try a text fill, or upgrade"
+    },
+    "failedToUpdateCategories": "Failed to update categories"
   },
   "wealth": {
     "title": "Wealth",
@@ -1213,7 +1265,14 @@
     "resume": "Resume subscription",
     "resumeSuccess": "Subscription resumed — it will keep renewing as usual.",
     "cancellingNotice": "Your plan is set to cancel on {{date}}. You’ll keep full access until then.",
-    "cancelScheduledToast": "Your subscription will cancel on {{date}} — you keep full access until then."
+    "cancelScheduledToast": "Your subscription will cancel on {{date}} — you keep full access until then.",
+    "aiUsage": {
+      "title": "AI credits",
+      "used": "{{used}} of {{limit}} credits used this month",
+      "exhausted": "Limit reached",
+      "premiumHint": "Premium refills {{count}} credits every month, with 60-second voice fills and a 2-minute voice assistant",
+      "usedOneTime": "{{used}} of {{limit}} one-time free credits used"
+    }
   },
   "trash": {
     "title": "Trash",
@@ -1738,5 +1797,38 @@
       "why": "It highlights where cash is entering, leaving, or getting concentrated.",
       "tip": "Use it with Net Profit to spot high-volume work with weak margins."
     }
+  },
+  "aiVoice": {
+    "openLabel": "AI voice assistant",
+    "note": "Just speak — any language works",
+    "thinking": "Working on it…",
+    "tryAgain": "Try again",
+    "notUnderstood": "I didn't catch that — try saying an amount or a name",
+    "failed": "Something went wrong — please try again",
+    "cantHelp": "I can add transactions, clients and quotations, or show your transactions",
+    "creditsChip": "{{remaining}} credits left · this ask uses {{cost}}",
+    "confirm": {
+      "transaction": "Creating {{type}} transaction of {{amount}}",
+      "client": "Adding client {{name}}",
+      "quotation": "Creating quotation “{{title}}”"
+    },
+    "field": {
+      "name": "Name",
+      "company": "Company",
+      "phone": "Phone",
+      "title": "Title",
+      "prospect": "Prospect"
+    },
+    "save": "Save",
+    "editDetails": "Edit details",
+    "whichClient": "Which client?",
+    "whichProspect": "Prospect name",
+    "addCategory": "Add a category?",
+    "savedTransaction": "Transaction of {{amount}} saved",
+    "showingTransactions": "Showing your transactions",
+    "historyTitle": "Your asks",
+    "historyEmpty": "Nothing here yet — your voice asks will appear here",
+    "clearHistory": "Clear all",
+    "deleteAsk": "Delete"
   }
 }

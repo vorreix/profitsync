@@ -20,6 +20,12 @@ export const organizations = pgTable("organizations", {
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => ({
   ownerIdx: index("organizations_owner_idx").on(table.ownerUserId),
+  // One personal org per owner — the DB-level guard for the boot race where two
+  // parallel first-visit calls both run ensurePersonalOrg (both used to insert;
+  // the loser is now caught as 23505 and re-selects the winner).
+  onePersonalPerOwner: uniqueIndex("organizations_one_personal_idx")
+    .on(table.ownerUserId)
+    .where(sql`is_personal = true`),
 }))
 
 export const organizationMembers = pgTable("organization_members", {
@@ -94,8 +100,16 @@ export const clients = pgTable("clients", {
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => ({
   orgIdx: index("clients_org_idx").on(table.organizationId),
+  // Nearly every read filters org + live-rows together (lists, analytics, flow,
+  // calendar); the composite serves that pair without a post-index filter.
+  orgDeletedIdx: index("clients_org_deleted_idx").on(table.organizationId, table.deletedAt),
   // Containment lookups for the `?tag=` filter.
   tagsIdx: index("clients_tags_idx").using("gin", table.tags),
+  // Trigram GIN: makes the leading-wildcard ILIKE '%q%' in /api/search and the
+  // list pages' ?search= indexable (btree can't serve substring matches).
+  nameTrgmIdx: index("clients_name_trgm_idx").using("gin", table.name.op("gin_trgm_ops")),
+  companyTrgmIdx: index("clients_company_trgm_idx").using("gin", table.company.op("gin_trgm_ops")),
+  emailTrgmIdx: index("clients_email_trgm_idx").using("gin", table.email.op("gin_trgm_ops")),
 }))
 
 // Org-scoped, managed transaction categories. Transactions still store the
@@ -113,6 +127,8 @@ export const categories = pgTable("categories", {
 }, (table) => ({
   orgTypeIdx: index("categories_org_type_idx").on(table.organizationId, table.type),
   orgNameTypeUnique: uniqueIndex("categories_org_name_type_unique").on(table.organizationId, table.type, table.name),
+  // Trigram GIN for /api/search's ILIKE '%q%' on category names.
+  nameTrgmIdx: index("categories_name_trgm_idx").using("gin", table.name.op("gin_trgm_ops")),
 }))
 
 // Org-scoped tag registry. Entities (transactions/clients/quotations) store the
@@ -181,6 +197,9 @@ export const wealthAccounts = pgTable("wealth_accounts", {
   oneDefaultPerOrg: uniqueIndex("wealth_accounts_one_default_idx")
     .on(table.organizationId)
     .where(sql`is_default = true AND archived_at IS NULL`),
+  // Trigram GIN for /api/search's ILIKE '%q%' on account names.
+  bankNameTrgmIdx: index("wealth_accounts_bank_name_trgm_idx").using("gin", table.bankName.op("gin_trgm_ops")),
+  nicknameTrgmIdx: index("wealth_accounts_nickname_trgm_idx").using("gin", table.nickname.op("gin_trgm_ops")),
 }))
 
 export const wealthAccountAttachments = pgTable("wealth_account_attachments", {
@@ -253,6 +272,11 @@ export const transactions = pgTable("transactions", {
   dateIdx: index("transactions_date_idx").on(table.date),
   // Containment lookups for the `?tag=` filter.
   tagsIdx: index("transactions_tags_idx").using("gin", table.tags),
+  // Trigram GIN: /api/search and the list's ?search= run ILIKE '%q%' over
+  // description/category/tags-as-text; these make all three indexable.
+  descriptionTrgmIdx: index("transactions_description_trgm_idx").using("gin", table.description.op("gin_trgm_ops")),
+  categoryTrgmIdx: index("transactions_category_trgm_idx").using("gin", table.category.op("gin_trgm_ops")),
+  tagsTextTrgmIdx: index("transactions_tags_text_trgm_idx").using("gin", sql`(${table.tags}::text) gin_trgm_ops`),
 }))
 
 // ── Recurring payments ───────────────────────────────────────────────────────
@@ -340,8 +364,15 @@ export const quotations = pgTable("quotations", {
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => ({
   orgIdx: index("quotations_org_idx").on(table.organizationId),
+  // Same org + live-rows pair as clients — serves the list/search filters.
+  orgDeletedIdx: index("quotations_org_deleted_idx").on(table.organizationId, table.deletedAt),
   // Containment lookups for the `?tag=` filter.
   tagsIdx: index("quotations_tags_idx").using("gin", table.tags),
+  // Trigram GIN for /api/search and the list's ?search= ILIKE '%q%'.
+  titleTrgmIdx: index("quotations_title_trgm_idx").using("gin", table.title.op("gin_trgm_ops")),
+  prospectTrgmIdx: index("quotations_prospect_trgm_idx").using("gin", table.prospectName.op("gin_trgm_ops")),
+  companyTrgmIdx: index("quotations_company_trgm_idx").using("gin", table.company.op("gin_trgm_ops")),
+  emailTrgmIdx: index("quotations_email_trgm_idx").using("gin", table.email.op("gin_trgm_ops")),
 }))
 
 // Append-only change history for the main entities. `changes` holds a
@@ -489,6 +520,51 @@ export const accountDeletionCodes = pgTable("account_deletion_codes", {
   lastSentAt: timestamp("last_sent_at").notNull().defaultNow(),
   createdAt: timestamp("created_at").defaultNow(),
 })
+
+// ── AI credits ──────────────────────────────────────────────────────────────
+// One balance row per org. Free plans receive a ONE-TIME grant (free_granted
+// flips exactly once); premium refills the balance monthly (premium_period
+// records the last refill month; cleared + balance capped on downgrade).
+// Reservations/refunds/settlements are single conditional UPDATEs — no
+// check-then-act races. Engine: api/_lib/ai.ts.
+export const aiCredits = pgTable("ai_credits", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  balance: integer("balance").notNull().default(0),
+  freeGranted: boolean("free_granted").notNull().default(false),
+  premiumPeriod: text("premium_period").notNull().default(""), // "YYYY-MM" of last premium refill, "" = never/downgraded
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  orgUnique: uniqueIndex("ai_credits_org_unique").on(table.organizationId),
+}))
+
+// Voice-assistant ask history — the USER's reference log (transcript + what
+// the AI decided), viewable and deletable from the overlay. Deliberately
+// NEVER fed back into the model: each ask is parsed fresh so old requests
+// can't skew new decisions.
+export const aiAsks = pgTable("ai_asks", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull(),
+  transcript: text("transcript").notNull().default(""),
+  intent: text("intent").notNull().default("unknown"),
+  say: text("say").notNull().default(""),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  orgUserIdx: index("ai_asks_org_user_idx").on(table.organizationId, table.userId, table.createdAt),
+}))
+
+// DEPRECATED (superseded by ai_credits): early per-month usage counter for the
+// AI quick add. Kept for historical rows; no code writes to it anymore.
+export const aiUsage = pgTable("ai_usage", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  period: text("period").notNull(), // "YYYY-MM" (UTC)
+  count: integer("count").notNull().default(0),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  orgPeriodUnique: uniqueIndex("ai_usage_org_period_unique").on(table.organizationId, table.period),
+}))
 
 // ── Referral program ────────────────────────────────────────────────────────
 // One shareable code per user.

@@ -74,7 +74,9 @@ import {
   Repeat,
   CalendarDays,
   Network,
+  Search,
 } from "lucide-react"
+import { GlobalSearchDialog } from "@/components/GlobalSearchDialog"
 import { MoneyBag } from "@/components/icons/MoneyBag"
 
 type QuickAction = {
@@ -99,6 +101,10 @@ const quickActions: QuickAction[] = [
 // mirror the nav's active-section logic, so nested routes like /clients/:id
 // count as being in the section too. Everywhere else (Home, etc.) the FAB keeps
 // the full quick-actions menu.
+// Platform sniff for the ⌘K / Ctrl K *hint* only — the listener accepts both.
+const IS_MAC =
+  typeof navigator !== "undefined" && /mac|iphone|ipad/i.test(navigator.platform || navigator.userAgent)
+
 const SECTION_FAB: { prefix: string; href: string }[] = [
   { prefix: "/clients", href: "/clients?new=1" },
   { prefix: "/transactions", href: "/transactions?new=1" },
@@ -163,6 +169,19 @@ function AppLayoutInner() {
   const [quickAdd, setQuickAdd] = useState<QuickAddEntity | null>(null)
   // The + FAB's "Add transaction" opens the SAME real modal as the Transactions page.
   const [addTxOpen, setAddTxOpen] = useState(false)
+  // Global search palette (desktop). Cmd/Ctrl+K toggles it; mobile has its own overlay.
+  const [searchOpen, setSearchOpen] = useState(false)
+  useEffect(() => {
+    if (isMobile) return
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault()
+        setSearchOpen((o) => !o)
+      }
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [isMobile])
 
   // Success feedback for an in-place FAB transaction add: toast + deep link to it.
   // (The page refresh signal now fires centrally from the API client on every
@@ -340,6 +359,17 @@ function AppLayoutInner() {
               return key ? t(key) : ""
             })()}
           </span>
+          <button
+            type="button"
+            onClick={() => setSearchOpen(true)}
+            className="mx-auto hidden w-full max-w-sm items-center gap-2 rounded-lg border bg-muted/40 px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted md:flex"
+          >
+            <Search className="size-4 shrink-0" />
+            <span className="flex-1 truncate text-left">{t("search.placeholder")}</span>
+            <kbd className="pointer-events-none inline-flex h-5 shrink-0 select-none items-center gap-1 rounded border bg-background px-1.5 font-mono text-[10px] font-medium">
+              {IS_MAC ? "⌘" : "Ctrl"} K
+            </kbd>
+          </button>
           <div className="ml-auto flex items-center gap-3">
             <NotificationBell />
             <InstallButton
@@ -415,6 +445,7 @@ function AppLayoutInner() {
       </div>
       <QuickAddModal entity={quickAdd} onClose={() => setQuickAdd(null)} />
       <AddTransactionDialog open={addTxOpen} onOpenChange={setAddTxOpen} onCreated={onTxCreated} />
+      <GlobalSearchDialog open={searchOpen} onOpenChange={setSearchOpen} />
     </SidebarProvider>
   )
 }
