@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { createPortal } from "react-dom"
 import { useTranslation } from "react-i18next"
 import { Trash2, X, CheckSquare } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -39,6 +40,11 @@ export function BulkActionBar({
 
   return (
     <>
+      {/* Portalled to <body>: the bar renders inside <main>, whose page-enter
+          animation gives it a transform — that would trap this `fixed` bar in
+          main's stacking context, where the mobile bottom nav (a z-40 SIBLING
+          of main) paints over it. At body level, z-50 wins for real. */}
+      {createPortal(
       <div className="safe-pb fixed inset-x-0 bottom-0 z-50 border-t bg-background/95 backdrop-blur animate-in slide-in-from-bottom-2 duration-150">
         <div className="mx-auto flex max-w-5xl items-center gap-2 px-3 py-2.5 sm:px-6">
           <Button variant="ghost" size="sm" onClick={onCancel} className="shrink-0">
@@ -66,7 +72,8 @@ export function BulkActionBar({
             </Button>
           </div>
         </div>
-      </div>
+      </div>,
+      document.body)}
 
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <AlertDialogContent>

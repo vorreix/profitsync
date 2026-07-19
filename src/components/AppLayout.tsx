@@ -45,8 +45,12 @@ import { useIsMobile } from "@/hooks/use-mobile"
 import { InstallAppBanner } from "@/components/InstallAppBanner"
 import { InstallButton } from "@/components/InstallButton"
 import { ReferralBanner } from "@/components/ReferralBanner"
-import { QuickAddModal, type QuickAddEntity } from "@/components/QuickAddModal"
+import { QuickAddModal, type QuickAddEntity, type QuickAddPrefill } from "@/components/QuickAddModal"
 import { AddTransactionDialog, type CreatedTxInfo } from "@/components/transactions/AddTransactionDialog"
+import { AiVoiceAssistant } from "@/components/AiVoiceAssistant"
+import { useAiQuota } from "@/hooks/use-ai-quota"
+import type { AiAssistantResponse } from "@/lib/ai-parse"
+import type { SmartApply } from "@/components/transactions/AiQuickFill"
 import { formatMoney } from "@/lib/wealth"
 import { toast } from "sonner"
 import { initPwa } from "@/lib/pwa/register-sw"
@@ -169,6 +173,24 @@ function AppLayoutInner() {
   const [quickAdd, setQuickAdd] = useState<QuickAddEntity | null>(null)
   // The + FAB's "Add transaction" opens the SAME real modal as the Transactions page.
   const [addTxOpen, setAddTxOpen] = useState(false)
+  // ── AI voice assistant (desktop) — same review-before-save flow as mobile:
+  // intent results route into the EXISTING create surfaces, prefilled; the
+  // assistant never writes anything itself. Mobile fetches its own quota.
+  const { quota: aiQuota, consumeOne: aiConsume } = useAiQuota(!isMobile)
+  const [aiTxHandoff, setAiTxHandoff] = useState<SmartApply | null>(null)
+  const [quickAddPrefill, setQuickAddPrefill] = useState<QuickAddPrefill | null>(null)
+  const handleAssistantEdit = (r: AiAssistantResponse) => {
+    if (r.intent === "add_transaction" && r.transaction) {
+      setAiTxHandoff({ response: { ...r.transaction, remaining: r.remaining }, receiptFile: null })
+      setAddTxOpen(true)
+    } else if (r.intent === "add_client" && r.client) {
+      setQuickAddPrefill({ client: r.client })
+      setQuickAdd("client")
+    } else if (r.intent === "add_quotation" && r.quotation) {
+      setQuickAddPrefill({ quotation: r.quotation })
+      setQuickAdd("quotation")
+    }
+  }
   // Global search palette (desktop). Cmd/Ctrl+K toggles it; mobile has its own overlay.
   const [searchOpen, setSearchOpen] = useState(false)
   useEffect(() => {
@@ -410,6 +432,11 @@ function AppLayoutInner() {
         <div className="fixed inset-0 z-40" onClick={() => setFabOpen(false)} />
       )}
       <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3">
+        {/* AI voice assistant — hidden while the quick-actions menu is open so
+            the stack stays uncluttered (same rule as mobile). */}
+        {!(!pageAction && fabOpen) && (
+          <AiVoiceAssistant quota={aiQuota} onEdit={handleAssistantEdit} onQuotaUsed={aiConsume} />
+        )}
         {!pageAction && fabOpen && actions.map((action) => (
           <div
             key={action.href}
@@ -443,8 +470,8 @@ function AppLayoutInner() {
             : <Plus className="size-5 transition-transform duration-200" />}
         </Button>
       </div>
-      <QuickAddModal entity={quickAdd} onClose={() => setQuickAdd(null)} />
-      <AddTransactionDialog open={addTxOpen} onOpenChange={setAddTxOpen} onCreated={onTxCreated} />
+      <QuickAddModal entity={quickAdd} prefill={quickAddPrefill} onClose={() => { setQuickAdd(null); setQuickAddPrefill(null) }} />
+      <AddTransactionDialog open={addTxOpen} onOpenChange={setAddTxOpen} onCreated={onTxCreated} initialAi={aiTxHandoff} onInitialAiConsumed={() => setAiTxHandoff(null)} />
       <GlobalSearchDialog open={searchOpen} onOpenChange={setSearchOpen} />
     </SidebarProvider>
   )
