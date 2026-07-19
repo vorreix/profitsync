@@ -49,4 +49,9 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- AI voice quick add: the WebView's getUserMedia needs the app-level mic
+         permission; Capacitor's bridge grants the WebView permission request
+         and shows the runtime prompt automatically when this is declared. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
 </manifest>

@@ -118,6 +118,22 @@ S3_ACCESS_KEY=...                          # server-only — never expose to bro
 S3_SECRET_KEY=...                          # server-only — never expose to browser
 S3_USE_SSL=true                            # "false" for plain HTTP (dev only)
 S3_FORCE_PATH_STYLE=true                   # true for Hetzner/MinIO; "false" = virtual-hosted
+
+# AI quick add (OPTIONAL — the ✨ trigger in the Add-Transaction modal is
+# hidden entirely when no provider key is set). Provider + model are config:
+AI_PROVIDER=gemini                        # anthropic | gemini | openai (default: first key found, anthropic→gemini→openai)
+AI_PARSE_MODEL=gemini-3.1-flash-lite      # optional override; per-provider defaults in api/_lib/ai-providers.ts (2.5-gen Gemini is closed to new Google projects)
+GEMINI_API_KEY=...                        # server-only. Gemini is the only provider with VOICE input (audio)
+ANTHROPIC_API_KEY=...                     # server-only
+OPENAI_API_KEY=...                        # server-only (text+image only, no voice)
+AI_CREDITS_FREE_GRANT=500                 # AI credit economy: free = ONE-TIME grant, premium = monthly refill
+AI_MONTHLY_CREDITS_PREMIUM=10000          #   (no rollover; downgrade caps leftover at the free grant)
+AI_CREDITS_QUICKADD=5                     # base costs (text / receipt+voice fill / assistant ask) + token
+AI_CREDITS_QUICKADD_MEDIA=10              #   surcharge beyond included budgets — see api/_lib/ai.ts +
+AI_CREDITS_ASSISTANT=20                   #   src/lib/ai-credits.ts (pure math, tested)
+AI_TOKENS_INCLUDED_QUICKADD=3000
+AI_TOKENS_INCLUDED_ASSISTANT=6000
+AI_TOKENS_PER_EXTRA_CREDIT=1000
 ```
 
 The `E2E_*` secrets (`E2E_VITE_CLERK_PUBLISHABLE_KEY`, `E2E_CLERK_SECRET_KEY`, `E2E_DATABASE_URL`) are **GitHub Actions secrets for the e2e workflow only** — they do **not** go in `.env.local` or Vercel. The two Clerk ones are your existing **dev**-instance keys (same `pk_test_…`/`sk_test_…` already in `.env.local`); `E2E_DATABASE_URL` is a dedicated Neon branch. Vercel manages the running app's env separately (`vercel env`; note: `vercel dev` reads the cloud Development env, not `.env.local`).
@@ -298,6 +314,7 @@ The Android (`android/`) and iOS (`ios/`) apps are **[Capacitor](https://capacit
 | `/api/analytics` · `/api/audit` | trend/category/client aggregates · org audit log |
 | `/api/onboarding` | first-run setup (POST) |
 | `/api/referrals` (+ `/apply`, `/payouts`) | referral program |
+| `/api/search` | org-scoped global search (`?q=`, min 2 chars) — clients/transactions/quotations/wealth accounts/categories in one grouped payload; drives the ⌘K palette + mobile search overlay |
 | `/api/transactions/group` · `/api/transactions/bulk-delete` | split groups · bulk delete |
 | `/api/clients/bulk-delete` · `/api/clients/:id/media` | bulk delete · client logo |
 | `/api/billing/change-plan` · `/resume` · `/invoices` · `/invoice-pdf` | self-serve billing |
