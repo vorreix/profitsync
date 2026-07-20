@@ -26,9 +26,16 @@
     <key>method</key>
     <string>app-store-connect</string>
     <key>teamID</key>
-    <string>YOUR_TEAM_ID</string>
+    <string>5W385PH47T</string>
     <key>signingStyle</key>
-    <string>automatic</string>
+    <string>manual</string>
+    <key>signingCertificate</key>
+    <string>8206D5309FF1940DA92CA59FB7B6530729A92086</string>
+    <key>provisioningProfiles</key>
+    <dict>
+        <key>com.vorreix.profitsync</key>
+        <string>ProfitSync AppStore</string>
+    </dict>
     <key>uploadSymbols</key>
     <true/>
     <key>destination</key>

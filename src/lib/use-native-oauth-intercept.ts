@@ -61,6 +61,17 @@ export function useNativeOAuthIntercept(mode: NativeOAuthMode, unsafeMetadata?: 
       if (busy) return
       busy = true
 
+      // Watchdog: a native provider call can hang forever without ever settling
+      // (device-proven: FirebaseAuthentication.signInWithGoogle on an
+      // unconfigured Firebase never resolves), and preventDefault above runs on
+      // EVERY social tap — so a stuck `busy` would silently swallow all further
+      // Google AND Apple taps. Unlatch after a grace period; the original flow
+      // keeps running and still completes normally if it ever settles.
+      const unlatch = window.setTimeout(() => {
+        busy = false
+        nativeAuthLog("oauth_busy_watchdog_reset", { provider, mode })
+      }, 30_000)
+
       nativeAuthLog("oauth_button_clicked", { provider, mode, via: "clerk_card_intercept" })
 
       void (async () => {
@@ -89,6 +100,7 @@ export function useNativeOAuthIntercept(mode: NativeOAuthMode, unsafeMetadata?: 
           nativeAuthLog("oauth_start_failed", { provider, mode, message: detail })
           toast.error(errorTextRef.current)
         } finally {
+          window.clearTimeout(unlatch)
           busy = false
         }
       })()
