@@ -84,6 +84,7 @@
 				504EC3001FED79650016851F /* Sources */,
 				504EC3011FED79650016851F /* Frameworks */,
 				504EC3021FED79650016851F /* Resources */,
+				5FA1E4B2C3D4E5F607182930 /* Embed GoogleService-Info.plist */,
 			);
 			buildRules = (
 			);
@@ -148,6 +149,28 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		5FA1E4B2C3D4E5F607182930 /* Embed GoogleService-Info.plist */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Embed GoogleService-Info.plist";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# GoogleService-Info.plist is machine-local (gitignored, like Android's\n# google-services.json), so it cannot sit in Copy Bundle Resources — a missing\n# file there fails the build outright. Embed it when present instead; without\n# it the app boots on the inert Firebase placeholder (AppDelegate.swift) and\n# native Google Sign-In hangs forever (device-proven 2026-07-20). See\n# docs/native-oauth/GOOGLE_SIGNIN_SETUP.md.\nPLIST=\"${PROJECT_DIR}/App/GoogleService-Info.plist\"\nDEST=\"${BUILT_PRODUCTS_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}\"\nif [ -f \"$PLIST\" ]; then\n  cp \"$PLIST\" \"$DEST/GoogleService-Info.plist\"\n  echo \"Embedded GoogleService-Info.plist\"\nelse\n  echo \"warning: App/GoogleService-Info.plist missing — Firebase (Google Sign-In, FCM) will be inert in this build\"\nfi\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		504EC3001FED79650016851F /* Sources */ = {

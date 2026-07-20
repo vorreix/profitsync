@@ -62,6 +62,19 @@
 				<string>com.vorreix.profitsync</string>
 			</array>
 		</dict>
+		<!-- Google Sign-In callback: the REVERSED_CLIENT_ID of the Firebase iOS
+		     OAuth client (GoogleService-Info.plist). Without this scheme the
+		     GIDSignIn round trip can never return to the app. -->
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>google-signin</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.622629171265-8ip18d5nl51005n90qn4kofsv7ppmfh6</string>
+			</array>
+		</dict>
 	</array>
 	<!-- The app only uses standard HTTPS/TLS (exempt) encryption. Declaring this
 	     up front skips the export-compliance prompt on every App Store upload. -->

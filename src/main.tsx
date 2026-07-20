@@ -43,8 +43,21 @@ createRoot(document.getElementById("root")!).render(
         clerk.client.signIn/signUp.create is native, its callback deep-links back
         with rotating_token_nonce, and client.reload({nonce}) completes it on that
         same client (see use-native-oauth-intercept.ts + OAuthCallbackPage.tsx).
-        Web keeps the default cookie-based standardBrowser:true. */}
-    <ClerkProvider publishableKey={PUBLISHABLE_KEY} standardBrowser={!isNativeApp()}>
+        Web keeps the default cookie-based standardBrowser:true.
+
+        allowedRedirectProtocols: the iOS WebView origin is capacitor://localhost
+        (Android's is https://localhost), and clerk-js validates every redirect —
+        INCLUDING its own card step navigation (/login/factor-one,
+        /signup/verify-email-address, built absolute against the page origin) —
+        against an http/https protocol allowlist. Without capacitor: listed,
+        every email submit on iOS "redirects to /" (a full WebView reload back to
+        the start; simulator-verified 2026-07-20). The app scheme is included for
+        deep-link redirects. */}
+    <ClerkProvider
+      publishableKey={PUBLISHABLE_KEY}
+      standardBrowser={!isNativeApp()}
+      allowedRedirectProtocols={isNativeApp() ? ["http:", "https:", "capacitor:", "com.vorreix.profitsync:"] : undefined}
+    >
       <ThemeProvider>
         {/* Bind the app subtree to its own i18next instance explicitly. The
             landing mounts a separate i18next instance (createInstance), and
