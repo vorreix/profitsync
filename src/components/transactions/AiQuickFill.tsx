@@ -5,6 +5,7 @@ import { useAuth } from "@clerk/clerk-react"
 import { apiErrorUpgradeHint } from "@/lib/api"
 import { parseWithAi, preprocessReceipt, type AiParseResponse } from "@/lib/ai-parse"
 import { useVoiceRecorder } from "@/hooks/use-voice-recorder"
+import { canOpenAppSettings, openAppSettings } from "@/lib/native-shell"
 import { formatMoney } from "@/lib/wealth"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
@@ -25,7 +26,7 @@ type Step =
   | { kind: "input" }
   | { kind: "parsing"; hasReceipt: boolean }
   | { kind: "pick-client"; response: AiParseResponse; receiptFile: File | null }
-  | { kind: "error"; message: string }
+  | { kind: "error"; message: string; micDenied?: boolean }
 
 const fmtClock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`
 
@@ -58,7 +59,7 @@ export function AiCaptureView({ currency, remaining, costs, voice, maxRecordSeco
         null,
       )
     },
-    onError: (kind) => setStep({ kind: "error", message: kind === "denied" ? t("ai.micDenied") : t("ai.voiceFailed") }),
+    onError: (kind) => setStep({ kind: "error", message: kind === "denied" ? t("ai.micDenied") : t("ai.voiceFailed"), micDenied: kind === "denied" }),
   })
 
   useEffect(() => {
@@ -260,6 +261,13 @@ export function AiCaptureView({ currency, remaining, costs, voice, maxRecordSeco
             {step.kind === "error" && !recording && (
               <p className="flex items-center gap-1.5 text-xs text-destructive">
                 <CircleAlert className="size-3 shrink-0" /> {step.message}
+                {step.micDenied && canOpenAppSettings() && (
+                  /* iOS never re-prompts a denied mic permission — deep-link
+                     straight to the app's Settings page. */
+                  <button type="button" onClick={openAppSettings} className="shrink-0 font-medium underline underline-offset-2">
+                    {t("ai.micOpenSettings")}
+                  </button>
+                )}
               </p>
             )}
           </div>

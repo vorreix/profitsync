@@ -423,7 +423,8 @@
       "stop": "Ferma e compila",
       "micDenied": "Accesso al microfono negato — consentilo nelle impostazioni del dispositivo",
       "voiceFailed": "Impossibile elaborare la registrazione — riprova",
-      "notEnoughCredits": "Crediti insufficienti per questa azione — prova una compilazione testuale o passa a Premium"
+      "notEnoughCredits": "Crediti insufficienti per questa azione — prova una compilazione testuale o passa a Premium",
+      "micOpenSettings": "Apri le impostazioni"
     },
     "failedToUpdateCategories": "Impossibile aggiornare le categorie"
   },

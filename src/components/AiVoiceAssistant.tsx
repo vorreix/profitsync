@@ -12,6 +12,7 @@ import {
   type AiAskHistoryItem, type AiAssistantResponse, type AiQuota,
 } from "@/lib/ai-parse"
 import { useVoiceRecorder } from "@/hooks/use-voice-recorder"
+import { canOpenAppSettings, openAppSettings } from "@/lib/native-shell"
 import { useCurrency } from "@/lib/currency-context"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
@@ -65,6 +66,9 @@ export function AiVoiceAssistant({ quota, onEdit, onQuotaUsed }: {
   const [open, setOpen] = useState(false)
   const [phase, setPhase] = useState<Phase>("listening")
   const [errorMsg, setErrorMsg] = useState("")
+  // Mic-permission denials get a dedicated "Open settings" recovery on iOS,
+  // where the OS never re-prompts once denied (see use-voice-recorder).
+  const [errorDenied, setErrorDenied] = useState(false)
   const [confirmData, setConfirmData] = useState<AiAssistantResponse | null>(null)
   const [liveText, setLiveText] = useState("")
   const [history, setHistory] = useState<AiAskHistoryItem[] | null>(null)
@@ -203,6 +207,7 @@ export function AiVoiceAssistant({ quota, onEdit, onQuotaUsed }: {
       stopMeter()
       stopLiveTranscript()
       setErrorMsg(kind === "denied" ? t("transactions:ai.micDenied") : t("aiVoice.failed"))
+      setErrorDenied(kind === "denied")
       setPhase("error")
     },
   })
@@ -214,6 +219,7 @@ export function AiVoiceAssistant({ quota, onEdit, onQuotaUsed }: {
 
   const startListening = useCallback(() => {
     setErrorMsg("")
+    setErrorDenied(false)
     setLiveText("")
     setPhase("listening")
     void recorderRef.current.start()
@@ -395,9 +401,22 @@ export function AiVoiceAssistant({ quota, onEdit, onQuotaUsed }: {
                 <CircleAlert className="size-8 text-destructive" aria-hidden />
               </div>
               <p className="max-w-[22rem] text-sm text-muted-foreground">{errorMsg}</p>
-              <Button className="rounded-full px-6" onClick={startListening}>
-                <Mic className="me-2 size-4" /> {t("aiVoice.tryAgain")}
-              </Button>
+              {errorDenied && canOpenAppSettings() ? (
+                /* iOS never re-prompts a denied mic permission — Settings is the
+                   only recovery, so it gets the primary action. */
+                <div className="flex flex-col items-center gap-2">
+                  <Button className="rounded-full px-6" onClick={openAppSettings}>
+                    {t("transactions:ai.micOpenSettings")}
+                  </Button>
+                  <Button variant="outline" className="rounded-full px-6" onClick={startListening}>
+                    <Mic className="me-2 size-4" /> {t("aiVoice.tryAgain")}
+                  </Button>
+                </div>
+              ) : (
+                <Button className="rounded-full px-6" onClick={startListening}>
+                  <Mic className="me-2 size-4" /> {t("aiVoice.tryAgain")}
+                </Button>
+              )}
             </div>
           ) : (
             /* ── Voice: the orb IS the interface — it breathes and glows with

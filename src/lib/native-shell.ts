@@ -107,6 +107,30 @@ export async function syncStatusBarToTheme(dark: boolean): Promise<void> {
   }
 }
 
+/**
+ * Whether openAppSettings() can deep-link to this app's page in the OS
+ * Settings — iOS only. On iOS a denied microphone/camera permission can NEVER
+ * be re-prompted by the app (the OS remembers the choice and instantly rejects
+ * every request), so Settings is the only recovery and error UIs surface an
+ * "Open settings" action. Android re-prompts through Capacitor's
+ * runtime-permission flow on the next attempt, so no deep link is needed there.
+ */
+export function canOpenAppSettings(): boolean {
+  return nativePlatform() === "ios"
+}
+
+/**
+ * Deep-link to the app's page in the iOS Settings app. Navigating the WebView
+ * to `app-settings:` is intentional, not a bug: Capacitor cancels any
+ * top-level navigation to a non-app URL and hands it to UIApplication.open
+ * (WebViewDelegationHandler.decidePolicyFor), which opens Settings — no plugin
+ * needed, and the WebView itself never leaves the page.
+ */
+export function openAppSettings(): void {
+  if (!canOpenAppSettings()) return
+  window.location.assign("app-settings:")
+}
+
 export type HapticKind = "selection" | "light" | "medium"
 
 /**

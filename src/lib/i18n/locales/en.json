@@ -794,6 +794,7 @@
       "recording": "Listening…",
       "stop": "Stop and fill",
       "micDenied": "Microphone access was denied — allow it in your device settings",
+      "micOpenSettings": "Open settings",
       "voiceFailed": "Couldn't process the recording — please try again",
       "notEnoughCredits": "Not enough credits for this action — try a text fill, or upgrade"
     },
