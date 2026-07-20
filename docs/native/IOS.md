@@ -194,6 +194,15 @@ self-update path — rebuilding is the only way, same as Android.
   `.gitignore`). Only the project shell, `AppDelegate.swift`, `Info.plist`, the
   asset catalog, storyboards, and the SPM manifest are tracked. Never commit the
   synced bundle or a build output.
+- **`GoogleService-Info.plist` is embedded by a run-script build phase** ("Embed
+  GoogleService-Info.plist" in the App target), NOT by Copy Bundle Resources —
+  it's gitignored, and a missing Copy-Resources file fails the build. The phase
+  copies it into the app when present and only warns when absent. ⚠️ A build
+  from a machine without the plist ships an app whose Firebase is the inert
+  placeholder: native Google Sign-In then **hangs with no error** (this shipped
+  in the first TestFlight build — see
+  `docs/native-oauth/GOOGLE_SIGNIN_SETUP.md` Step 6 + Troubleshooting). Check
+  the archive log for "Embedded GoogleService-Info.plist" before uploading.
 
 ## What still needs a real device / portal (not blockers to the simulator build)
 
