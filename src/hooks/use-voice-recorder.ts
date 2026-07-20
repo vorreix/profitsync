@@ -48,8 +48,14 @@ export function useVoiceRecorder({ maxSeconds, sampleRate, onFinish, onError, on
     let stream: MediaStream
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-    } catch {
-      onError("denied")
+    } catch (cause) {
+      // Only a real permission rejection is "denied" — callers show a
+      // Settings-recovery for it (on iOS a denied mic permission can NEVER be
+      // re-prompted by the app; the OS remembers and instantly rejects).
+      // Anything else (no mic hardware → NotFoundError, engine quirks,
+      // mediaDevices missing in an insecure context) is a plain failure.
+      const name = cause instanceof DOMException ? cause.name : ""
+      onError(name === "NotAllowedError" || name === "PermissionDeniedError" || name === "SecurityError" ? "denied" : "failed")
       return
     }
     try {
