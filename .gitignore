@@ -65,6 +65,9 @@ android/capacitor-cordova-android-plugins/
 ios/App/build/
 ios/App/Pods/
 ios/DerivedData/
+# CLI archive/export output (xcodebuild -archivePath ios/build/… per
+# docs/native/SIGNING.md — thousands of generated files, never source).
+ios/build/
 # Retired Flutter app (removed 2026-07-11, source archived at tag
 # archive/flutter-mobile). An IDE with the old project still open regenerates
 # .dart_tool/build/.idea cruft under mobile/; ignore the whole tree so a stray
