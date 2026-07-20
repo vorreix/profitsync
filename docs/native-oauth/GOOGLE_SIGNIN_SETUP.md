@@ -130,14 +130,36 @@ device build targets prod; repeat on the **dev** instance too if you also test a
 
 ## Step 6 (iOS only — do when you build for iOS)
 
-1. `GoogleService-Info.plist` for `com.vorreix.profitsync` is already at
-   `ios/App/App/GoogleService-Info.plist` (gitignored). If Xcode doesn't list it
-   under the App target's resources yet, drag it in once (File → Add Files).
-2. In Xcode → target **App** → **Info** → **URL Types** → add a URL scheme equal to
-   the plist's **`REVERSED_CLIENT_ID`**:
-   `com.googleusercontent.apps.622629171265-8ip18d5nl51005n90qn4kofsv7ppmfh6`
+1. `GoogleService-Info.plist` for `com.vorreix.profitsync` must exist at
+   `ios/App/App/GoogleService-Info.plist` (gitignored, machine-local — like
+   Android's `google-services.json`). An **"Embed GoogleService-Info.plist"**
+   run-script build phase copies it into the app bundle at build time when
+   present (and only warns when absent, so plist-less machines still build).
+   ⚠️ It is deliberately NOT in Copy Bundle Resources — a gitignored file there
+   fails the build on any machine without it. **Never assume "the file is in the
+   folder" means "the file is in the app"**: the v1 TestFlight build shipped
+   with the plist on disk but not embedded, so the app booted on the inert
+   Firebase placeholder and `signInWithGoogle()` **hung forever with no error**
+   (simulator-proven 2026-07-20) — and the stuck `busy` latch then swallowed
+   Apple taps too (now watchdogged in `use-native-oauth-intercept.ts`).
+2. The plist's **`REVERSED_CLIENT_ID`** URL scheme
+   (`com.googleusercontent.apps.622629171265-8ip18d5nl51005n90qn4kofsv7ppmfh6`)
+   is committed in `Info.plist` under `CFBundleURLTypes` — the GIDSignIn round
+   trip cannot return to the app without it. If the iOS OAuth client is ever
+   regenerated, update it.
 3. `npm run cap:sync:ios` already added the FirebaseAuthentication SPM package; Xcode
    resolves FirebaseAuth on the next build.
+4. **iOS tokens have `aud` = the IOS client id** (not the Web client like
+   Android's Credential Manager): `api/_routes/public/native-google-auth.ts`
+   accepts both ids in `GOOGLE_CLIENT_IDS`. If the iOS OAuth client changes,
+   update that set.
+5. clerk-js validates every redirect — including its own card step navigation —
+   against an http/https protocol allowlist, and the iOS WebView origin is
+   `capacitor://localhost` (Android's is `https://localhost`). Without
+   `allowedRedirectProtocols` on `<ClerkProvider>` (main.tsx) every email
+   sign-in/sign-up submit on iOS logs `Clerk: "capacitor:" is not a valid
+   protocol` and hard-redirects to `/` — perceived as "the page just reloads".
+   Don't remove that prop.
 
 ---
 
@@ -178,6 +200,9 @@ adb shell monkey -p com.vorreix.profitsync -c android.intent.category.LAUNCHER 1
 | On-device `DEVELOPER_ERROR` / code `10` | app's SHA-1 not registered | Add the debug **and** Play SHA-1 (Step 2) |
 | Clerk rejects the token (`one_tap` / invalid token) | `aud` ≠ Clerk's Google Client ID | Client ID in Clerk (Step 5) must be the **Web** client ID — check it's not the deleted project's `568589293730-…` one |
 | Picker opens then nothing happens | you configured the **dev** Clerk but the build targets **prod** (or vice-versa) | configure the instance `.env.android` points to (prod = pk_live) |
+| iOS: Google tap does NOTHING (no picker, no error) — and Apple goes dead after | `GoogleService-Info.plist` not **embedded** in the app bundle → inert Firebase → `signInWithGoogle()` never resolves; the hung flow latched `busy` (pre-watchdog) | Verify the "Embed GoogleService-Info.plist" build phase ran (`ls` the plist inside the built `App.app`); Step 6 above |
+| iOS: email sign-in/sign-up "just reloads the page" | clerk-js rejects the `capacitor:` origin protocol on its step navigation and redirects to `/` | keep `allowedRedirectProtocols` on `<ClerkProvider>` (Step 6.5) |
+| iOS: server exchange 401 "Invalid Google token" | iOS tokens carry `aud` = IOS client id | that id must be in `GOOGLE_CLIENT_IDS` (native-google-auth.ts) |
 
 Apple Sign-In still uses the old external-browser flow (iOS-only in practice; the
 primary account is Google). Native Apple ID-token sign-in is a documented follow-up.

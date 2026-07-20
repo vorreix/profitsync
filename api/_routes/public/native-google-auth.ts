@@ -1,14 +1,18 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { createClerkClient } from "@clerk/backend"
 
-// The Google WEB OAuth client of Firebase project profitsync-app. Native Google
-// Sign-In (Android/iOS) mints ID tokens with this `aud`. A public identifier,
-// not a secret — but it IS the security boundary below: only tokens minted for
+// The Google OAuth clients of Firebase project profitsync-app that native
+// Google Sign-In mints ID tokens for: Android's Credential Manager targets the
+// WEB client (serverClientId), while iOS GoogleSignIn mints tokens whose `aud`
+// is the IOS client (from GoogleService-Info.plist). Public identifiers, not
+// secrets — but they ARE the security boundary below: only tokens minted for
 // our own OAuth client family are accepted, and each can only sign in as the
 // token's own Google-verified email. Keep in sync with
 // docs/native-oauth/GOOGLE_SIGNIN_SETUP.md.
-const GOOGLE_WEB_CLIENT_ID =
-  "622629171265-u02534555bnc0fpkp5hjk6dp3ei9a9jg.apps.googleusercontent.com"
+const GOOGLE_CLIENT_IDS = new Set([
+  "622629171265-u02534555bnc0fpkp5hjk6dp3ei9a9jg.apps.googleusercontent.com", // Web (Android)
+  "622629171265-8ip18d5nl51005n90qn4kofsv7ppmfh6.apps.googleusercontent.com", // iOS
+])
 
 const clerk = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY! })
 
@@ -61,7 +65,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const issOk = info.iss === "https://accounts.google.com" || info.iss === "accounts.google.com"
   const emailVerified = info.email_verified === true || info.email_verified === "true"
   const email = (info.email ?? "").trim().toLowerCase()
-  if (info.aud !== GOOGLE_WEB_CLIENT_ID || !issOk || !emailVerified || !email) {
+  if (!GOOGLE_CLIENT_IDS.has(info.aud ?? "") || !issOk || !emailVerified || !email) {
     return res.status(401).json({ error: "Invalid Google token" })
   }
 
