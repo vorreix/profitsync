@@ -46,7 +46,7 @@ const speechRecognitionCtor = (): (new () => SpeechRecognitionLike) | null => {
 type Phase = "listening" | "asking" | "confirm" | "history" | "error"
 
 /**
- * The floating AI voice assistant (mobile): tap → blurred fullscreen overlay
+ * The floating AI voice assistant (mobile): tap → fullscreen overlay
  * that listens immediately (live waveform + live transcript where the engine
  * supports SpeechRecognition), then shows a REVIEW CARD — "Creating outgoing
  * transaction of €20.00", the transcript, resolved fields, pickers only for
@@ -283,16 +283,21 @@ export function AiVoiceAssistant({ quota, onEdit, onQuotaUsed }: {
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
+        {/* Opaque surface, NO backdrop-filter and NO filter:blur children: the
+            WebView disables backdrop-blur (html.native-app), which used to
+            leave a see-through /80 sheet, and fullscreen blur layers are what
+            Chromium-on-Android intermittently mis-composites into dark bands.
+            The glows below are plain radial gradients — same look, no filter. */}
         <DialogContent
-          className="inset-0 top-0 left-0 flex h-full max-h-none w-full max-w-none sm:max-w-none translate-x-0 translate-y-0 flex-col items-center justify-center gap-0 overflow-y-auto rounded-none sm:rounded-none border-0 bg-background/80 p-6 backdrop-blur-2xl safe-pb"
+          className="inset-0 top-0 left-0 flex h-full max-h-none w-full max-w-none sm:max-w-none translate-x-0 translate-y-0 flex-col items-center justify-center gap-0 overflow-y-auto rounded-none sm:rounded-none border-0 bg-background p-6 safe-pb"
         >
           <DialogTitle className="sr-only">{t("aiVoice.openLabel")}</DialogTitle>
 
-          {/* Ambient light field — two static blurred glows give the overlay
+          {/* Ambient light field — two static gradient glows give the overlay
               its cinematic depth in both themes (gold-tinted on free). */}
           <div aria-hidden className="pointer-events-none fixed inset-0 overflow-hidden">
-            <div className={`absolute -start-24 -top-24 size-80 rounded-full blur-3xl ${free ? "bg-amber-500/10" : "bg-teal-500/10"}`} />
-            <div className={`absolute -bottom-32 -end-24 size-96 rounded-full blur-3xl ${free ? "bg-yellow-500/10" : "bg-cyan-500/10"}`} />
+            <div className={`absolute -start-32 -top-32 size-[28rem] rounded-full ${free ? "bg-[radial-gradient(closest-side,rgb(245_158_11/0.12),transparent_75%)]" : "bg-[radial-gradient(closest-side,rgb(45_212_191/0.12),transparent_75%)]"}`} />
+            <div className={`absolute -bottom-40 -end-32 size-[32rem] rounded-full ${free ? "bg-[radial-gradient(closest-side,rgb(234_179_8/0.12),transparent_75%)]" : "bg-[radial-gradient(closest-side,rgb(34_211_238/0.12),transparent_75%)]"}`} />
           </div>
 
           {/* History entry point (listening view only, opposite the close ✕) */}
@@ -461,7 +466,7 @@ export function AiVoiceAssistant({ quota, onEdit, onQuotaUsed }: {
                   <div className="flex items-center gap-5">
                     <Button
                       variant="outline" size="icon"
-                      className="size-12 rounded-full border-border/60 bg-background/50 backdrop-blur transition-transform active:scale-95"
+                      className="size-12 rounded-full border-border/60 bg-muted/50 transition-transform active:scale-95"
                       aria-label={t("transactions:cancel")}
                       onClick={() => setOpen(false)}
                     >

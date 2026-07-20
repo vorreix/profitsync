@@ -631,6 +631,11 @@
     overflow: hidden;
     perspective: calc(var(--ai-orb-size) * 3);
     transform-style: preserve-3d;
+    /* Confine the screen-blended ribbons to THIS group (they still brighten
+       each other at crossings). Without it the compositor resolves the blend
+       against the page backdrop, which Android WebView/mobile Chrome
+       intermittently renders as hard dark rectangles over the orb. */
+    isolation: isolate;
   }
 
   .ai-orb-rib {
