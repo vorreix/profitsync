@@ -38,6 +38,17 @@ export function encodeWav(samples: Float32Array, sampleRate: number): ArrayBuffe
   return buffer
 }
 
+/** ArrayBuffer → base64 without blowing the call stack on large buffers. */
+function bufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer)
+  let binary = ""
+  const CHUNK = 0x8000
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK))
+  }
+  return btoa(binary)
+}
+
 /** Decode a recorded blob (webm/mp4/ogg) and re-encode as mono WAV base64. */
 export async function blobToWavBase64(blob: Blob, sampleRate: number = WAV_SAMPLE_RATE): Promise<string> {
   const encoded = await blob.arrayBuffer()
@@ -58,14 +69,75 @@ export async function blobToWavBase64(blob: Blob, sampleRate: number = WAV_SAMPL
   src.connect(offline.destination)
   src.start()
   const rendered = await offline.startRendering()
-  const wav = encodeWav(rendered.getChannelData(0), sampleRate)
+  return bufferToBase64(encodeWav(rendered.getChannelData(0), sampleRate))
+}
 
-  // ArrayBuffer → base64 without blowing the call stack on large buffers.
-  const bytes = new Uint8Array(wav)
-  let binary = ""
-  const CHUNK = 0x8000
-  for (let i = 0; i < bytes.length; i += CHUNK) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK))
+export type PcmTap = {
+  /** Mono WAV base64 of everything captured so far (resampled to targetRate), or null when nothing was captured yet. */
+  getWavBase64: (targetRate: number) => Promise<string | null>
+  close: () => void
+}
+
+/**
+ * Taps raw PCM off a live mic graph so a WAV of the audio-so-far can be
+ * encoded at ANY moment — the basis of server-side live transcription in the
+ * native WebViews (no SpeechRecognition there). Raw samples are the only
+ * mid-recording source that always works: decoding a TRUNCATED MediaRecorder
+ * container is an engine lottery (WKWebView's fMP4 in particular).
+ * ScriptProcessorNode is deprecated but universally shipped, and an
+ * AudioWorklet would need a served module file for a plain copy tap.
+ * Capture stops silently at `maxSeconds` (memory/upload budget); the real
+ * recording is not affected. Call close() when the meter graph is torn down.
+ */
+export function createPcmTap(ctx: AudioContext, source: AudioNode, maxSeconds: number): PcmTap {
+  const rate = ctx.sampleRate
+  const maxSamples = maxSeconds * rate
+  const chunks: Float32Array[] = []
+  let total = 0
+  const proc = ctx.createScriptProcessor(4096, 1, 1)
+  proc.onaudioprocess = (e) => {
+    if (total >= maxSamples) return
+    const input = e.inputBuffer.getChannelData(0)
+    chunks.push(new Float32Array(input))
+    total += input.length
   }
-  return btoa(binary)
+  source.connect(proc)
+  // A muted sink keeps the processor pulled without routing mic → speakers.
+  const sink = ctx.createGain()
+  sink.gain.value = 0
+  proc.connect(sink)
+  sink.connect(ctx.destination)
+
+  return {
+    async getWavBase64(targetRate: number): Promise<string | null> {
+      if (total === 0) return null
+      const snapshotTotal = total // capture length before any concurrent push
+      const merged = new Float32Array(snapshotTotal)
+      let offset = 0
+      for (const c of chunks) {
+        if (offset + c.length > snapshotTotal) break
+        merged.set(c, offset)
+        offset += c.length
+      }
+      // createBuffer over `new AudioBuffer({...})`: same object, but the
+      // factory has existed since the first Web Audio shipped — no WebView
+      // vintage can miss it.
+      const source = ctx.createBuffer(1, snapshotTotal, rate)
+      source.copyToChannel(merged, 0)
+      const length = Math.ceil((snapshotTotal / rate) * targetRate)
+      const offline = new OfflineAudioContext(1, length, targetRate)
+      const src = offline.createBufferSource()
+      src.buffer = source
+      src.connect(offline.destination)
+      src.start()
+      const rendered = await offline.startRendering()
+      return bufferToBase64(encodeWav(rendered.getChannelData(0), targetRate))
+    },
+    close() {
+      proc.onaudioprocess = null
+      try { proc.disconnect(); sink.disconnect() } catch { /* graph already torn down */ }
+      chunks.length = 0
+      total = maxSamples // stop any in-flight push
+    },
+  }
 }

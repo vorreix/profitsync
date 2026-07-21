@@ -18,7 +18,7 @@ android {
         applicationId "com.vorreix.profitsync"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 17
+        versionCode 18
         versionName "1.3.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         // Embed native-lib symbol tables in the bundle (Play console warns

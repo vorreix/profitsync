@@ -1,4 +1,4 @@
-import { apiDelete, apiGet, apiPost } from "@/lib/api"
+import { apiDelete, apiGet, apiPost, getActiveOrgId } from "@/lib/api"
 
 // Client for the AI quick-add endpoints + receipt image preprocessing.
 // Preprocessing is NOT optional polish: drawing to a canvas normalizes EXIF
@@ -70,6 +70,31 @@ export const askAssistant = (
   token: string,
   input: { text?: string; audio?: { data: string; media_type: string } },
 ) => apiPost<AiAssistantResponse>("/api/ai/assistant", token, input)
+
+/**
+ * Live-transcript partial for engines without SpeechRecognition (the native
+ * WebViews): audio-so-far in, running transcript out. A RAW fetch on purpose —
+ * apiPost would clear the whole GET cache and fire data-changed refetch
+ * events on EVERY poll tick, making the app refetch itself every few seconds.
+ */
+export async function transcribePartial(
+  token: string,
+  audio: { data: string; media_type: string },
+): Promise<string> {
+  const orgId = getActiveOrgId()
+  const res = await fetch("/api/ai/transcribe", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+      ...(orgId ? { "x-org-id": orgId } : {}),
+    },
+    body: JSON.stringify({ audio }),
+  })
+  if (!res.ok) throw Object.assign(new Error(`transcribe ${res.status}`), { status: res.status })
+  const body = (await res.json()) as { text?: string }
+  return typeof body.text === "string" ? body.text : ""
+}
 
 export const parseWithAi = (
   token: string,

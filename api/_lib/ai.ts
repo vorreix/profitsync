@@ -531,3 +531,34 @@ async function callAndParse(
     throw Object.assign(new Error("non-JSON model response"), { code: "unparseable" })
   }
 }
+
+// ── Live transcription (the assistant overlay's tier-2 transcript) ──────────
+// Engines without SpeechRecognition (the native WebViews) poll the audio-
+// so-far through this; it must transcribe ONLY — never interpret, never
+// answer — and tolerate clips that cut off mid-sentence.
+const TRANSCRIBE_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["transcript"],
+  properties: {
+    transcript: {
+      type: "string",
+      description: "Verbatim transcription in the speaker's original language and script. Empty string when there is no clear speech.",
+    },
+  },
+}
+
+export async function transcribeAudio(audio: MediaPart): Promise<string> {
+  const provider = resolveProvider()
+  if (!provider?.supportsAudio) throw new Error("no audio-capable AI provider configured")
+  const { raw } = await callAndParse(provider, {
+    system: `You transcribe in-progress voice notes for a finance app. Transcribe the speech verbatim in its ORIGINAL language and script — never translate, never summarize, never add commentary. The clip may cut off mid-word; transcribe exactly what is audible and nothing more.
+
+The clip comes from a LIVE microphone and may contain only silence, hum, breathing or background noise. Transcribe ONLY words a human clearly speaks. When in doubt, or when there is no clear human speech, return an empty transcript — NEVER fill in plausible-sounding words that were not actually said.`,
+    text: "Transcribe the attached audio.",
+    audio,
+    schema: TRANSCRIBE_SCHEMA,
+    maxTokens: 800,
+  })
+  return typeof raw.transcript === "string" ? raw.transcript.slice(0, 1000) : ""
+}

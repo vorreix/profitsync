@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
 import { useAuth } from "@clerk/clerk-react"
+import { useOrg } from "@/lib/org-context"
 import { fetchAiQuota, type AiQuota } from "@/lib/ai-parse"
 
 /**
@@ -7,9 +8,15 @@ import { fetchAiQuota, type AiQuota } from "@/lib/ai-parse"
  * monthly AI parses for the active org. Fetched when the Add-Transaction
  * dialog opens; `enabled:false` (no AI provider key on the server) keeps every
  * AI trigger hidden, `voice:false` hides just the mic.
+ *
+ * Quota is per-ORG (plan, credits, gold/teal orb accent), so switching the
+ * active org refetches. The stale value is kept while the refetch is in
+ * flight — the orb morphs to the new org's state instead of blinking out.
  */
 export function useAiQuota(open: boolean) {
   const { getToken } = useAuth()
+  const { activeOrg } = useOrg()
+  const orgId = activeOrg?.id ?? null
   const [quota, setQuota] = useState<AiQuota | null>(null)
 
   useEffect(() => {
@@ -26,7 +33,7 @@ export function useAiQuota(open: boolean) {
       }
     })()
     return () => { cancelled = true }
-  }, [open, getToken])
+  }, [open, getToken, orgId])
 
   return { quota, consumeOne: (remaining: number) => setQuota((q) => (q ? { ...q, remaining } : q)) }
 }
