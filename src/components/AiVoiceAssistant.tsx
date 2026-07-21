@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react"
+import { Fragment, useCallback, useEffect, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { useAuth } from "@clerk/clerk-react"
@@ -8,9 +8,10 @@ import {
 } from "lucide-react"
 import { apiErrorUpgradeHint } from "@/lib/api"
 import {
-  askAssistant, ASSISTANT_WAV_RATE, clearAiHistory, deleteAiAsk, fetchAiHistory,
+  askAssistant, ASSISTANT_WAV_RATE, clearAiHistory, deleteAiAsk, fetchAiHistory, transcribePartial,
   type AiAskHistoryItem, type AiAssistantResponse, type AiQuota,
 } from "@/lib/ai-parse"
+import { createPcmTap, type PcmTap } from "@/lib/audio-wav"
 import { useVoiceRecorder } from "@/hooks/use-voice-recorder"
 import { canOpenAppSettings, openAppSettings } from "@/lib/native-shell"
 import { useCurrency } from "@/lib/currency-context"
@@ -46,9 +47,52 @@ const speechRecognitionCtor = (): (new () => SpeechRecognitionLike) | null => {
 type Phase = "listening" | "asking" | "confirm" | "history" | "error"
 
 /**
+ * Word-by-word live transcript: appended words materialize (transform/opacity
+ * only — no filters, per the WebView compositing constraints that shaped this
+ * overlay), corrections re-render in place without flashing (index-keyed
+ * spans), and the text bottom-anchors inside a fixed-height clip so the
+ * NEWEST words stay visible when a long dictation outgrows the slot
+ * (line-clamp would hide the end of the text, not the start).
+ */
+function LiveTranscript({ text }: { text: string }) {
+  const clipRef = useRef<HTMLDivElement | null>(null)
+  const [clipped, setClipped] = useState(false)
+  useEffect(() => {
+    const el = clipRef.current
+    if (!el) return
+    setClipped(el.scrollHeight > el.clientHeight + 1)
+    // Caption roll: the newest words stay visible by SCROLLING the clip (a
+    // scroll offset is not a layout shift — bottom-anchoring with items-end
+    // would jolt every prior line upward on each new line instead).
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" })
+  }, [text])
+  const words = text.split(/\s+/).filter(Boolean)
+  return (
+    <div
+      ref={clipRef}
+      className={`flex h-full w-full flex-col overflow-hidden ${clipped ? "ai-live-clip-fade" : ""}`}
+    >
+      {/* my-auto centers short transcripts and degrades to top-anchored
+          scrollable once the text outgrows the fixed slot. NO text-balance:
+          it re-breaks every line on each appended word — pure layout churn. */}
+      <p className="my-auto w-full text-center text-base font-medium leading-7" aria-live="polite">
+        {words.map((w, i) => (
+          <Fragment key={i}>
+            <span className="ai-live-word">{w}</span>{" "}
+          </Fragment>
+        ))}
+        <span className="ai-live-caret" aria-hidden />
+      </p>
+    </div>
+  )
+}
+
+/**
  * The floating AI voice assistant (mobile): tap → fullscreen overlay
- * that listens immediately (live waveform + live transcript where the engine
- * supports SpeechRecognition), then shows a REVIEW CARD — "Creating outgoing
+ * that listens immediately with a LIVE transcript on every platform —
+ * SpeechRecognition where the engine has it (Chrome/Safari), otherwise
+ * server-side partials off the mic tap (the native WebViews; see
+ * startServerPartials) — then shows a REVIEW CARD — "Creating outgoing
  * transaction of €20.00", the transcript, resolved fields, pickers only for
  * gaps — whose Save creates the record directly. show_transactions navigates
  * with filters applied; Edit hands off to the full prefilled dialog. A
@@ -81,9 +125,14 @@ export function AiVoiceAssistant({ quota, onEdit, onQuotaUsed }: {
   const audioCtxRef = useRef<AudioContext | null>(null)
   const rafRef = useRef(0)
   const orbRef = useRef<HTMLDivElement | null>(null)
+  // Raw-PCM tap on the same graph — feeds the server-side live transcript on
+  // engines without SpeechRecognition (see startServerPartials below).
+  const tapRef = useRef<PcmTap | null>(null)
 
   const stopMeter = useCallback(() => {
     cancelAnimationFrame(rafRef.current)
+    tapRef.current?.close()
+    tapRef.current = null
     void audioCtxRef.current?.close().catch(() => undefined)
     audioCtxRef.current = null
     orbRef.current?.style.setProperty("--ai-orb-level", "0")
@@ -96,7 +145,11 @@ export function AiVoiceAssistant({ quota, onEdit, onQuotaUsed }: {
       audioCtxRef.current = ctx
       const analyser = ctx.createAnalyser()
       analyser.fftSize = 512
-      ctx.createMediaStreamSource(stream).connect(analyser)
+      const source = ctx.createMediaStreamSource(stream)
+      source.connect(analyser)
+      // Always tapped (bounded at 60 s, freed on stop): the SpeechRecognition
+      // path can fail mid-flight and hand over to server partials.
+      tapRef.current = createPcmTap(ctx, source, 60)
       const buf = new Uint8Array(analyser.fftSize)
       let last = 0
       let smoothed = 0
@@ -121,7 +174,47 @@ export function AiVoiceAssistant({ quota, onEdit, onQuotaUsed }: {
     }
   }, [stopMeter])
 
-  // ── Live transcript (progressive enhancement; display-only) ───────────────
+  // ── Live transcript tier 2: server partials ───────────────────────────────
+  // The native WebViews have NO SpeechRecognition, so the mic tap's audio-
+  // so-far is periodically transcribed by /api/ai/transcribe (free — the ask
+  // itself pays; the endpoint verifies the caller could afford that ask).
+  // A session-guarded setTimeout chain with adaptive cadence: quick first
+  // feedback, then progressively slower ticks so a long dictation doesn't
+  // hammer mobile data with ever-growing uploads. Display-only, like tier 1.
+  const partialSessionRef = useRef(0)
+  const stopServerPartials = useCallback(() => { partialSessionRef.current++ }, [])
+  const startServerPartials = useCallback(() => {
+    const session = ++partialSessionRef.current
+    const startedAt = Date.now()
+    const tick = async () => {
+      if (partialSessionRef.current !== session) return
+      if (recorderRef.current.state !== "recording") return // ended — stop rescheduling
+      const wav = (await tapRef.current?.getWavBase64(ASSISTANT_WAV_RATE).catch(() => null)) ?? null
+      if (partialSessionRef.current !== session) return
+      // ~45 s of audio is the partials ceiling: the transcript so far stays
+      // on screen and the final ask still hears the whole recording.
+      if (wav && wav.length > 1_450_000) return
+      if (wav) {
+        try {
+          const token = await getToken()
+          if (token) {
+            const text = await transcribePartial(token, { data: wav, media_type: "audio/wav" })
+            if (partialSessionRef.current === session && text.trim()) setLiveText(text.trim())
+          }
+        } catch (err) {
+          // 4xx (credits exhausted / throttled / misconfigured) → give up
+          // quietly for this recording; network/5xx just waits for next tick.
+          const status = (err as { status?: number }).status
+          if (status != null && status < 500) return
+        }
+      }
+      if (partialSessionRef.current !== session) return
+      window.setTimeout(() => void tick(), Math.min(10_000, Math.max(4_000, (Date.now() - startedAt) / 4)))
+    }
+    window.setTimeout(() => void tick(), 2_500)
+  }, [getToken])
+
+  // ── Live transcript tier 1: SpeechRecognition (display-only) ──────────────
   const speechRef = useRef<SpeechRecognitionLike | null>(null)
   const startLiveTranscript = useCallback(() => {
     const Ctor = speechRecognitionCtor()
@@ -132,7 +225,9 @@ export function AiVoiceAssistant({ quota, onEdit, onQuotaUsed }: {
       rec.interimResults = true
       rec.continuous = true
       let finalText = ""
+      let gotText = false
       rec.onresult = (e) => {
+        gotText = true
         let interim = ""
         for (let i = e.resultIndex; i < e.results.length; i++) {
           const r = e.results[i]
@@ -141,17 +236,44 @@ export function AiVoiceAssistant({ quota, onEdit, onQuotaUsed }: {
         }
         setLiveText((finalText + " " + interim).trim())
       }
-      rec.onerror = () => undefined // display-only; the server transcribes anyway
+      rec.onerror = () => {
+        // Stubbed engines, mic contention, service failures: if recognition
+        // produced nothing, hand over to server partials so the transcript
+        // still appears. Deliberate stops clear onerror first. An error ends
+        // the recognition session per spec, but stop() costs nothing and
+        // guards engines that keep the session alive anyway.
+        if (!gotText && speechRef.current === rec) {
+          speechRef.current = null
+          try { rec.stop() } catch { /* already ended */ }
+          startServerPartials()
+        }
+      }
       rec.start()
       speechRef.current = rec
     } catch {
       speechRef.current = null
+      startServerPartials()
     }
-  }, [i18n.language])
+  }, [i18n.language, startServerPartials])
   const stopLiveTranscript = useCallback(() => {
-    try { speechRef.current?.stop() } catch { /* already stopped */ }
+    const rec = speechRef.current
     speechRef.current = null
+    if (rec) {
+      rec.onerror = null
+      try { rec.stop() } catch { /* already stopped */ }
+    }
   }, [])
+
+  // One switch for both tiers — every stop site must kill BOTH (a leaked
+  // partial loop would keep polling the transcribe endpoint).
+  const startLiveFeedback = useCallback(() => {
+    if (speechRecognitionCtor()) startLiveTranscript()
+    else startServerPartials()
+  }, [startLiveTranscript, startServerPartials])
+  const stopLiveFeedback = useCallback(() => {
+    stopLiveTranscript()
+    stopServerPartials()
+  }, [stopLiveTranscript, stopServerPartials])
 
   const runAsk = useCallback(async (wavBase64: string) => {
     const reqId = ++reqIdRef.current
@@ -201,11 +323,11 @@ export function AiVoiceAssistant({ quota, onEdit, onQuotaUsed }: {
   const recorder = useVoiceRecorder({
     maxSeconds,
     sampleRate: ASSISTANT_WAV_RATE,
-    onFinish: (wav) => { stopMeter(); stopLiveTranscript(); void runAsk(wav) },
+    onFinish: (wav) => { stopLiveFeedback(); stopMeter(); void runAsk(wav) },
     onStream: startMeter,
     onError: (kind) => {
+      stopLiveFeedback()
       stopMeter()
-      stopLiveTranscript()
       setErrorMsg(kind === "denied" ? t("transactions:ai.micDenied") : t("aiVoice.failed"))
       setErrorDenied(kind === "denied")
       setPhase("error")
@@ -223,19 +345,19 @@ export function AiVoiceAssistant({ quota, onEdit, onQuotaUsed }: {
     setLiveText("")
     setPhase("listening")
     void recorderRef.current.start()
-    startLiveTranscript()
-  }, [startLiveTranscript])
+    startLiveFeedback()
+  }, [startLiveFeedback])
 
-  // Unmount safety: never leave the meter or recognizer running.
-  useEffect(() => () => { reqIdRef.current++; stopMeter(); stopLiveTranscript() }, [stopMeter, stopLiveTranscript])
+  // Unmount safety: never leave the meter, recognizer or partial loop running.
+  useEffect(() => () => { reqIdRef.current++; stopLiveFeedback(); stopMeter() }, [stopMeter, stopLiveFeedback])
 
   // Opening the overlay starts listening immediately (one tap to talk).
   useEffect(() => {
     if (!open) {
       reqIdRef.current++
       recorderRef.current.cancel()
+      stopLiveFeedback()
       stopMeter()
-      stopLiveTranscript()
       setConfirmData(null)
       return
     }
@@ -246,8 +368,8 @@ export function AiVoiceAssistant({ quota, onEdit, onQuotaUsed }: {
 
   async function openHistory() {
     recorderRef.current.cancel()
+    stopLiveFeedback()
     stopMeter()
-    stopLiveTranscript()
     setPhase("history")
     setHistory(null)
     try {
@@ -444,13 +566,12 @@ export function AiVoiceAssistant({ quota, onEdit, onQuotaUsed }: {
                 </div>
               ) : (
                 <>
-                  {/* Live transcript grows in place of the hint (fixed slot —
-                      no layout jump when words arrive). */}
-                  <div className="flex min-h-14 w-full items-center justify-center">
+                  {/* Live transcript replaces the hint inside a FIXED-height
+                      slot (3 lines) — nothing below ever moves while words
+                      stream in; long dictations roll like captions. */}
+                  <div className="flex h-[5.25rem] w-full items-center justify-center">
                     {liveText ? (
-                      <p className="line-clamp-3 w-full text-balance text-center text-base font-medium leading-7" aria-live="polite">
-                        {liveText}
-                      </p>
+                      <LiveTranscript text={liveText} />
                     ) : (
                       <p className="flex items-center gap-1.5 text-center text-sm text-muted-foreground">
                         <Sparkles className={`size-4 ${free ? "text-amber-500 dark:text-amber-400" : "text-teal-500 dark:text-teal-400"}`} aria-hidden />
