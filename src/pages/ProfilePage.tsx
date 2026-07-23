@@ -17,8 +17,9 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { LanguageSwitcher } from "@/components/LanguageSwitcher"
 import { CountryCombobox, CountryCodeCombobox } from "@/components/CountryCombobox"
 import { toast } from "sonner"
-import { ArrowLeft, Bell, Building2, ChevronDown, FileText, ImagePlus, Loader as Loader2, LogOut, ScrollText, ShieldCheck, SlidersHorizontal, Trash2, UserRound } from "lucide-react"
+import { ArrowLeft, Bell, Building2, ChevronDown, FileText, ImagePlus, Loader as Loader2, LogOut, RotateCcw, ScrollText, ShieldCheck, SlidersHorizontal, Trash2, UserRound } from "lucide-react"
 import { DeleteAccountDialog } from "@/components/DeleteAccountDialog"
+import { ResetDataDialog } from "@/components/ResetDataDialog"
 import { EntityAvatar } from "@/components/EntityAvatar"
 import { fileToResizedDataUrl } from "@/lib/image-upload"
 import { useAutoAnimate } from "@formkit/auto-animate/react"
@@ -45,6 +46,7 @@ export function ProfilePage() {
   const [phone, setPhone] = useState("")
   const [showContact, setShowContact] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const [resetOpen, setResetOpen] = useState(false)
   const [contactRef] = useAutoAnimate<HTMLDivElement>()
 
   // Tabs are reflected in the URL (?tab=) so they're deep-linkable and shareable.
@@ -395,6 +397,19 @@ export function ProfilePage() {
 
           <Card className="border-destructive/20 bg-destructive/5">
             <CardHeader>
+              <CardTitle className="text-destructive">{t("resetData.title")}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground mb-4">{t("resetData.cardDescription")}</p>
+              <Button variant="destructive" onClick={() => setResetOpen(true)} className="w-full">
+                <RotateCcw className="size-4 mr-2" />
+                {t("resetData.button")}
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card className="border-destructive/20 bg-destructive/5">
+            <CardHeader>
               <CardTitle className="text-destructive">{t("deleteAccount.title")}</CardTitle>
             </CardHeader>
             <CardContent>
@@ -409,6 +424,7 @@ export function ProfilePage() {
       </Tabs>
 
       <DeleteAccountDialog open={deleteOpen} onOpenChange={setDeleteOpen} />
+      <ResetDataDialog open={resetOpen} onOpenChange={setResetOpen} />
     </div>
   )
 }
