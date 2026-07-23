@@ -4,6 +4,7 @@ import { Download, Share, X } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import { useInstallPrompt } from "@/lib/pwa/use-install-prompt"
+import { getMobileStoreUrl } from "@/lib/store-links"
 
 type Variant = "solid" | "outline"
 
@@ -42,10 +43,22 @@ export function InstallButton({
   const { canInstall, isInstalled, isIosSafari, promptInstall } = useInstallPrompt()
   const [iosOpen, setIosOpen] = useState(false)
 
+  // On a phone, hand the user the real native app instead of installing the PWA:
+  // Android → Google Play, iOS → App Store (once its URL is set). Desktop keeps
+  // the PWA install path. `null` = no store target for this device.
+  const storeUrl = getMobileStoreUrl()
+
   if (isInstalled) return null
-  if (!canInstall && !isIosSafari) return null
+  // Show the button whenever there's SOMETHING it can do: a store to open, a PWA
+  // install prompt, or the iOS add-to-home-screen fallback.
+  if (!storeUrl && !canInstall && !isIosSafari) return null
 
   const onClick = () => {
+    if (storeUrl) {
+      // Play/App Store listing — opens the native store app on-device.
+      window.open(storeUrl, "_blank", "noopener,noreferrer")
+      return
+    }
     if (canInstall) void promptInstall()
     else setIosOpen(true)
   }
