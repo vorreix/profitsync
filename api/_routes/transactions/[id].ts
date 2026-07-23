@@ -5,7 +5,7 @@ import { clients, transactions, wealthAccounts } from "../../../src/lib/db/schem
 import { canDelete, canWrite, requireAuth } from "../../_lib/auth.js"
 import { diffFields, logAudit } from "../../_lib/audit.js"
 import { checkTransactionTagQuota } from "../../_lib/quota.js"
-import { balanceDelta } from "../../../src/lib/wealth-ledger.js"
+import { balanceDelta, reversesOnTrash } from "../../../src/lib/wealth-ledger.js"
 import { amountExceedsLimit } from "../../../src/lib/money.js"
 import { cleanTransactionTags } from "../../../src/lib/transaction-tags.js"
 
@@ -176,7 +176,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .where(before.groupId ? eq(transactions.groupId, before.groupId) : eq(transactions.id, id))
 
     for (const leg of legs) {
-      if (!leg.wealthAccountId) continue
+      // System balance-defining legs (Opening Balance / Balance Adjustment reset)
+      // are not reversed on delete — see reversesOnTrash. Reversing one would
+      // re-credit the account and undo the user's reset.
+      if (!leg.wealthAccountId || !reversesOnTrash(leg)) continue
       await db
         .update(wealthAccounts)
         .set({

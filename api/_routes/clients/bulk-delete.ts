@@ -52,6 +52,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       wealthAccountId: transactions.wealthAccountId,
       type: transactions.type,
       amount: transactions.amount,
+      isSystem: transactions.isSystem,
     })
     .from(transactions)
     .where(and(inArray(transactions.clientId, eligibleIds), isNull(transactions.deletedAt)))

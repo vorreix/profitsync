@@ -54,7 +54,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Reverse those before the cascade hard-delete. Already-soft-deleted ones were
     // reversed at soft-delete time — leave their balances alone (no double-reverse).
     const liveTx = await db
-      .select({ wealthAccountId: transactions.wealthAccountId, type: transactions.type, amount: transactions.amount })
+      .select({ wealthAccountId: transactions.wealthAccountId, type: transactions.type, amount: transactions.amount, isSystem: transactions.isSystem })
       .from(transactions)
       .where(and(eq(transactions.clientId, id), isNull(transactions.deletedAt)))
     for (const [accountId, shift] of reversalsByAccount(liveTx)) {
