@@ -9,6 +9,7 @@ export type TxLeg = {
   wealthAccountId: string | null
   type: string
   amount: string
+  isSystem: boolean | null
 }
 
 const legCols = {
@@ -17,6 +18,9 @@ const legCols = {
   wealthAccountId: transactions.wealthAccountId,
   type: transactions.type,
   amount: transactions.amount,
+  // Needed so balance reversal can skip system balance-defining entries
+  // (Opening Balance / Balance Adjustment); see wealth-ledger.reversesOnTrash.
+  isSystem: transactions.isSystem,
 }
 
 /**
