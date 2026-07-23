@@ -1831,5 +1831,19 @@
     "historyEmpty": "Ancora nulla — le tue richieste vocali appariranno qui",
     "clearHistory": "Cancella tutto",
     "deleteAsk": "Elimina"
+  },
+  "resetData": {
+    "title": "Azzera tutti i dati",
+    "cardDescription": "Elimina definitivamente tutti i dati finanziari di questo spazio di lavoro e riparti da zero. L'account, l'accesso e l'abbonamento vengono mantenuti.",
+    "button": "Azzera tutti i dati…",
+    "dialogTitle": "Ripristinare questo spazio di lavoro?",
+    "dialogWarning": "Questa operazione elimina definitivamente ogni conto, portafoglio, transazione, budget e categoria, oltre a tutto il cestino e la cronologia di questo spazio di lavoro.",
+    "finalWarning": "L'operazione non può essere annullata. L'accesso, il profilo e l'abbonamento vengono mantenuti: ripartirai da una configurazione pulita.",
+    "confirmPrompt": "Digita {{word}} per confermare",
+    "confirmWord": "RESET",
+    "confirmButton": "Azzera tutto",
+    "resetting": "Azzeramento…",
+    "success": "Tutti i dati sono stati azzerati.",
+    "error": "Impossibile azzerare i dati. Riprova."
   }
 }

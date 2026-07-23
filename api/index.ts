@@ -16,6 +16,7 @@ import profile from "./_routes/profile.js"
 import accountDeleteSummary from "./_routes/account/delete/summary.js"
 import accountDeleteRequestCode from "./_routes/account/delete/request-code.js"
 import accountDeleteConfirm from "./_routes/account/delete/confirm.js"
+import accountReset from "./_routes/account/reset.js"
 import onboarding from "./_routes/onboarding.js"
 import notificationsList from "./_routes/notifications.js"
 import notificationsUnreadCount from "./_routes/notifications/unread-count.js"
@@ -156,6 +157,7 @@ const routes: RoutePattern<ApiHandler>[] = [
   { segments: ["account", "delete", "summary"], handler: accountDeleteSummary },
   { segments: ["account", "delete", "request-code"], handler: accountDeleteRequestCode },
   { segments: ["account", "delete", "confirm"], handler: accountDeleteConfirm },
+  { segments: ["account", "reset"], handler: accountReset },
   { segments: ["onboarding"], handler: onboarding },
 
   // Notifications. Static length-2 routes before the dynamic ":id". (preferences

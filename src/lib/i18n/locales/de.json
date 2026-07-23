@@ -1831,5 +1831,19 @@
     "historyEmpty": "Noch nichts — Ihre Sprachanfragen erscheinen hier",
     "clearHistory": "Alle löschen",
     "deleteAsk": "Löschen"
+  },
+  "resetData": {
+    "title": "Alle Daten zurücksetzen",
+    "cardDescription": "Alle Finanzdaten in diesem Arbeitsbereich dauerhaft löschen und neu beginnen. Dein Konto, Login und Abonnement bleiben erhalten.",
+    "button": "Alle Daten zurücksetzen…",
+    "dialogTitle": "Diesen Arbeitsbereich zurücksetzen?",
+    "dialogWarning": "Dies löscht dauerhaft jedes Konto, jede Wallet, Transaktion, jedes Budget und jede Kategorie sowie den gesamten Papierkorb und Verlauf in diesem Arbeitsbereich.",
+    "finalWarning": "Dies kann nicht rückgängig gemacht werden. Login, Profil und Abonnement bleiben erhalten – du beginnst mit einer sauberen Einrichtung neu.",
+    "confirmPrompt": "Gib zur Bestätigung {{word}} ein",
+    "confirmWord": "RESET",
+    "confirmButton": "Alles zurücksetzen",
+    "resetting": "Wird zurückgesetzt…",
+    "success": "Alle Daten wurden zurückgesetzt.",
+    "error": "Daten konnten nicht zurückgesetzt werden. Bitte versuche es erneut."
   }
 }

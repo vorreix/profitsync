@@ -533,6 +533,20 @@
     "sideRight": "Right edge",
     "handleDragHint": "Tap or swipe the handle inward to search. Drag it up or down along the edge to place it wherever you like."
   },
+  "resetData": {
+    "title": "Reset all data",
+    "cardDescription": "Permanently erase all financial data in this workspace and start fresh. Your account, login and subscription are kept.",
+    "button": "Reset all data…",
+    "dialogTitle": "Factory reset this workspace?",
+    "dialogWarning": "This permanently deletes every account, wallet, transaction, budget, category and all trash & history in this workspace.",
+    "finalWarning": "This cannot be undone. Your login, profile and subscription are kept — you'll start over from a clean setup.",
+    "confirmPrompt": "Type {{word}} to confirm",
+    "confirmWord": "RESET",
+    "confirmButton": "Reset everything",
+    "resetting": "Resetting…",
+    "success": "All data has been reset.",
+    "error": "Couldn't reset your data. Please try again."
+  },
   "deleteAccount": {
     "title": "Delete account",
     "cardDescription": "Permanently delete your account, every organization you own, and all their data. This cannot be undone.",
