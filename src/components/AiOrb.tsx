@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils"
 
 /**
  * The AI "energy orb": a dark glass sphere wrapped by slowly-drifting silk
- * ribbons of teal light (gold for the free plan). Pure CSS/SVG — flattened
+ * ribbons of emerald-green light (gold for the free plan). Pure CSS/SVG — flattened
  * ellipse rings, each tilted in 3D and spinning very slowly in its own plane,
  * screen-blended so crossings brighten. All motion is compositor-only; styles
  * live in index.css under "AI energy orb".
