@@ -26,7 +26,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const clientIds = trashedClients.map((c) => c.id)
   if (clientIds.length) {
     const liveTx = await db
-      .select({ wealthAccountId: transactions.wealthAccountId, type: transactions.type, amount: transactions.amount })
+      .select({ wealthAccountId: transactions.wealthAccountId, type: transactions.type, amount: transactions.amount, isSystem: transactions.isSystem })
       .from(transactions)
       .where(and(inArray(transactions.clientId, clientIds), isNull(transactions.deletedAt)))
     for (const [accountId, shift] of reversalsByAccount(liveTx)) {

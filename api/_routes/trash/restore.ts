@@ -3,7 +3,7 @@ import { and, eq, isNotNull, sql } from "drizzle-orm"
 import { db, serialize } from "../../../src/lib/db/index.js"
 import { clients, quotations, transactions, wealthAccounts } from "../../../src/lib/db/schema.js"
 import { canDelete, requireAuth } from "../../_lib/auth.js"
-import { applicationsByAccount, balanceDelta } from "../../../src/lib/wealth-ledger.js"
+import { applicationsByAccount, balanceDelta, reversesOnTrash } from "../../../src/lib/wealth-ledger.js"
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ctx = await requireAuth(req, res)
@@ -22,7 +22,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (type === "transaction") {
     // Transactions are org-scoped via their client.
     const [tx] = await db
-      .select({ id: transactions.id, wealthAccountId: transactions.wealthAccountId, type: transactions.type, amount: transactions.amount })
+      .select({ id: transactions.id, wealthAccountId: transactions.wealthAccountId, type: transactions.type, amount: transactions.amount, isSystem: transactions.isSystem })
       .from(transactions)
       .innerJoin(clients, eq(transactions.clientId, clients.id))
       .where(and(eq(transactions.id, id), eq(clients.organizationId, orgId), isNotNull(transactions.deletedAt)))
@@ -32,7 +32,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .set({ deletedAt: null, updatedAt: new Date() })
       .where(eq(transactions.id, id))
       .returning()
-    if (tx.wealthAccountId) {
+    // System balance-defining entries are not re-applied on restore — their
+    // balance effect was never reversed on delete (see reversesOnTrash).
+    if (tx.wealthAccountId && reversesOnTrash(tx)) {
       await db
         .update(wealthAccounts)
         .set({
@@ -62,7 +64,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // this client (same deletedAt). Transactions the user trashed individually
     // earlier carry a different deletedAt and stay in Trash.
     const cascadeTx = await db
-      .select({ wealthAccountId: transactions.wealthAccountId, type: transactions.type, amount: transactions.amount })
+      .select({ wealthAccountId: transactions.wealthAccountId, type: transactions.type, amount: transactions.amount, isSystem: transactions.isSystem })
       .from(transactions)
       .where(and(eq(transactions.clientId, id), eq(transactions.deletedAt, deletedAt)))
     for (const [accountId, shift] of applicationsByAccount(cascadeTx)) {
