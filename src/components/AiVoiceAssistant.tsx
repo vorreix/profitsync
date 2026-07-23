@@ -418,8 +418,8 @@ export function AiVoiceAssistant({ quota, onEdit, onQuotaUsed }: {
           {/* Ambient light field — two static gradient glows give the overlay
               its cinematic depth in both themes (gold-tinted on free). */}
           <div aria-hidden className="pointer-events-none fixed inset-0 overflow-hidden">
-            <div className={`absolute -start-32 -top-32 size-[28rem] rounded-full ${free ? "bg-[radial-gradient(closest-side,rgb(245_158_11/0.12),transparent_75%)]" : "bg-[radial-gradient(closest-side,rgb(45_212_191/0.12),transparent_75%)]"}`} />
-            <div className={`absolute -bottom-40 -end-32 size-[32rem] rounded-full ${free ? "bg-[radial-gradient(closest-side,rgb(234_179_8/0.12),transparent_75%)]" : "bg-[radial-gradient(closest-side,rgb(34_211_238/0.12),transparent_75%)]"}`} />
+            <div className={`absolute -start-32 -top-32 size-[28rem] rounded-full ${free ? "bg-[radial-gradient(closest-side,rgb(245_158_11/0.12),transparent_75%)]" : "bg-[radial-gradient(closest-side,rgb(16_185_129/0.12),transparent_75%)]"}`} />
+            <div className={`absolute -bottom-40 -end-32 size-[32rem] rounded-full ${free ? "bg-[radial-gradient(closest-side,rgb(234_179_8/0.12),transparent_75%)]" : "bg-[radial-gradient(closest-side,rgb(52_211_153/0.12),transparent_75%)]"}`} />
           </div>
 
           {/* History entry point (listening view only, opposite the close ✕) */}
@@ -574,7 +574,7 @@ export function AiVoiceAssistant({ quota, onEdit, onQuotaUsed }: {
                       <LiveTranscript text={liveText} />
                     ) : (
                       <p className="flex items-center gap-1.5 text-center text-sm text-muted-foreground">
-                        <Sparkles className={`size-4 ${free ? "text-amber-500 dark:text-amber-400" : "text-teal-500 dark:text-teal-400"}`} aria-hidden />
+                        <Sparkles className={`size-4 ${free ? "text-amber-500 dark:text-amber-400" : "text-emerald-500 dark:text-emerald-400"}`} aria-hidden />
                         {t("aiVoice.note")}
                       </p>
                     )}
