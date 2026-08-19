@@ -566,7 +566,7 @@
   }
 
   /* ── AI energy orb (src/components/AiOrb.tsx) ──────────────────────────────
-     A dark glass sphere wrapped by slowly-drifting translucent teal "silk"
+     A dark glass sphere wrapped by slowly-drifting translucent emerald "silk"
      ribbons (flattened SVG ellipse rings, each tilted in 3D and spinning in
      its own plane; screen-blended so crossings brighten additively). The orb
      carries its own near-black disc so it reads on light AND dark themes.
@@ -575,9 +575,12 @@
      imperatively from the mic RMS meter) drives glow + scale while listening. */
   .ai-orb {
     --ai-orb-size: 44px;
-    --ai-orb-c1: 34 211 238;   /* cyan-400 */
-    --ai-orb-c2: 45 212 191;   /* teal-400 */
-    --ai-orb-c3: 205 250 254;  /* near-white ribbon crossings, accent-tinted */
+    /* ProfitSync brand identity: emerald green + mint-white on near-black glass
+       (not the old cyan/teal, which read as generic-AI against the black/green/
+       white product). The orb IS the "smart money input" mark. */
+    --ai-orb-c1: 5 150 105;    /* emerald-600 — deep edge */
+    --ai-orb-c2: 16 185 129;   /* emerald-500 — primary brand green */
+    --ai-orb-c3: 209 250 229;  /* emerald-50 — bright, green-tinted ribbon crossings */
     --ai-orb-level: 0;
     position: relative;
     width: var(--ai-orb-size);
