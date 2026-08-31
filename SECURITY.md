@@ -2,7 +2,7 @@
 
 ## Reporting
 
-Email **maqboolthoufeeq.t@gmail.com* with a description and reproduction steps.
+Email **maqboolthoufeeq.t@gmail.com** with a description and reproduction steps.
 Please do not open public issues for vulnerabilities.
 
 ## Threat model (summary)
