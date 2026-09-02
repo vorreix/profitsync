@@ -35,6 +35,7 @@ import { useNotificationOrgSwitch } from "@/lib/use-notification-org-switch"
 import { AdminProvider, useAdmin } from "@/lib/admin-context"
 import { PageFilterProvider } from "@/lib/page-filter-context"
 import { DataRefreshProvider } from "@/lib/data-refresh-context"
+import { BudgetProvider } from "@/lib/budget-context"
 import { NotificationProvider } from "@/lib/notification-context"
 import { NotificationBell } from "@/components/notifications/NotificationBell"
 import { EntityAvatar } from "@/components/EntityAvatar"
@@ -511,11 +512,15 @@ export function AppLayout() {
       <AdminProvider>
         <CurrencyProvider>
           <DataRefreshProvider>
-            <NotificationProvider>
-              <PageFilterProvider>
-                <AppLayoutInner />
-              </PageFilterProvider>
-            </NotificationProvider>
+            {/* Inside DataRefreshProvider: the budget refetches on `revision`,
+                which every mutation bumps (spec §11.5). */}
+            <BudgetProvider>
+              <NotificationProvider>
+                <PageFilterProvider>
+                  <AppLayoutInner />
+                </PageFilterProvider>
+              </NotificationProvider>
+            </BudgetProvider>
           </DataRefreshProvider>
         </CurrencyProvider>
       </AdminProvider>
