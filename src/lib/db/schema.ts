@@ -1451,3 +1451,40 @@ export const budgetExclusions = pgTable("budget_exclusions", {
   planTxUnique: uniqueIndex("budget_exclusions_plan_tx_unique").on(table.planId, table.transactionId),
   orgIdx: index("budget_exclusions_org_idx").on(table.organizationId, table.planId),
 }))
+
+/**
+ * Explicit expense↔settlement links (spec §8.8.1 / §10.11) — Phase 2.
+ *
+ * Provisional netting (an inflow guessed to be a refund because it shares the
+ * expense's category) cannot express "this €400 travel expense in March was
+ * reimbursed €250 in May and €150 in June". That needs a link, and PARTIAL
+ * settlement means MANY rows per expense — hence `amount` per row rather than a
+ * single column on `transactions`.
+ *
+ * Ownership (decision D-12): this references `transactions` but adds no column
+ * to it, so it respects the §22.4 boundary — Budget v2 never owns a column on a
+ * Maqbool-owned table. It is deliberately NOT prefixed `budget_` because it is
+ * a transactions-domain fact that Budget merely reads.
+ *
+ * The `Σ amount ≤ expense.amount` invariant is enforced on write (the engine
+ * re-reads the current sum inside the same request); a CHECK cannot express a
+ * cross-row aggregate.
+ */
+export const transactionSettlements = pgTable("transaction_settlements", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  expenseTransactionId: uuid("expense_transaction_id").notNull().references(() => transactions.id, { onDelete: "cascade" }),
+  settlementTransactionId: uuid("settlement_transaction_id").notNull().references(() => transactions.id, { onDelete: "cascade" }),
+  amount: numeric("amount", { precision: 20, scale: 2 }).notNull(),
+  kind: text("kind").notNull().default("refund"), // refund | reimbursement | chargeback
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  pairUnique: uniqueIndex("transaction_settlements_pair_unique").on(table.expenseTransactionId, table.settlementTransactionId),
+  expenseIdx: index("transaction_settlements_expense_idx").on(table.organizationId, table.expenseTransactionId),
+  settlementIdx: index("transaction_settlements_settlement_idx").on(table.settlementTransactionId),
+  amountCheck: check("transaction_settlements_amount_check", sql`amount > 0`),
+  kindCheck: check("transaction_settlements_kind_check", sql`kind in ('refund','reimbursement','chargeback')`),
+  // An expense cannot settle itself.
+  distinctCheck: check("transaction_settlements_distinct_check", sql`expense_transaction_id <> settlement_transaction_id`),
+}))
