@@ -1,14 +1,20 @@
 import { useState } from "react"
 import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
-import { AlertTriangle, Info, Loader as Loader2, Pause, Play, RefreshCw } from "lucide-react"
+import { ChevronRight, Info, Loader as Loader2, Pause, Play, Plus, RefreshCw } from "lucide-react"
 import { MoneyBag } from "@/components/icons/MoneyBag"
 import { apiPatch } from "@/lib/api"
 import { useBudget } from "@/lib/budget-context"
 import { useCurrency } from "@/lib/currency-context"
 import { formatMoney } from "@/lib/wealth"
-import type { BudgetEnvelopeView, BudgetStateV2, BudgetView } from "@/lib/types"
+import type { BudgetEnvelopeView, BudgetSectionName, BudgetStateV2, BudgetView } from "@/lib/types"
 import { BudgetWizard } from "@/components/budget/BudgetWizard"
+import { AddCommitmentDialog } from "@/components/budget/AddCommitmentDialog"
+import { AddEnvelopeDialog } from "@/components/budget/AddEnvelopeDialog"
+import { EnvelopeDetailSheet } from "@/components/budget/EnvelopeDetailSheet"
+import { OverdueList } from "@/components/budget/OverdueList"
+import { RefundReview } from "@/components/budget/RefundReview"
+import { ResolveOverspendSheet } from "@/components/budget/ResolveOverspendSheet"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -37,6 +43,13 @@ export function BudgetOverviewPage() {
   const { data, loaded, syncing, error, refresh, sync } = useBudget()
   const [explainOpen, setExplainOpen] = useState(false)
   const [busy, setBusy] = useState(false)
+  // Progressive disclosure (P2): every one of these is CLOSED until the user
+  // asks for it. The overview never shows a form.
+  const [addSection, setAddSection] = useState<BudgetSectionName | null>(null)
+  const [addBillOpen, setAddBillOpen] = useState(false)
+  const [detailFor, setDetailFor] = useState<BudgetEnvelopeView | null>(null)
+  const [overspendFor, setOverspendFor] = useState<BudgetEnvelopeView | null>(null)
+  const [revision, setRevision] = useState(0)
 
   const money = (n: number) => formatMoney(n, currency)
 
@@ -91,6 +104,29 @@ export function BudgetOverviewPage() {
   }
 
   const paused = data.plan.status === "paused"
+
+  // Categories another envelope already claims, so the add dialog can show them
+  // as unavailable BEFORE the user picks one and hits the 409.
+  const claimedKeys = [
+    ...new Set(
+      Object.values(data.sections ?? {}).flatMap((sec) =>
+        ((sec as { envelopes?: BudgetEnvelopeView[] }).envelopes ?? []).flatMap((e) => e.match_keys ?? []),
+      ),
+    ),
+  ]
+  const commitmentEnvelopes = [
+    ...(data.sections?.commitment.envelopes ?? []),
+    ...(data.sections?.debt.envelopes ?? []),
+  ]
+
+  // Every mutation re-reads the plan rather than patching state locally: these
+  // figures are derived from each other (a reallocation moves safe-to-spend as
+  // well as two envelopes), so a local patch would show a self-inconsistent
+  // plan for a moment.
+  const afterChange = () => {
+    setRevision((r) => r + 1)
+    void refresh()
+  }
 
   const togglePause = async () => {
     setBusy(true)
@@ -155,20 +191,34 @@ export function BudgetOverviewPage() {
             className={paused ? "opacity-70" : ""}
           />
 
-          {/* Overdue is the single most consequential thing on the screen. */}
-          {data.occurrences_overdue.length > 0 && (
-            <div className="flex items-start gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-300">
-              <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
-              <p>
-                {t("budgetV2.overdueTitle", {
-                  count: data.occurrences_overdue.length,
-                  amount: money(data.occurrences_overdue.reduce((s, o) => s + o.amount, 0)),
-                })}
-              </p>
-            </div>
-          )}
+          {/* Overdue is the single most consequential thing on the screen, and
+              each row is actionable in one tap rather than being a warning the
+              user has to go somewhere else to act on. */}
+          <OverdueList
+            occurrences={data.occurrences_overdue}
+            money={money}
+            canWrite={canWrite && !paused}
+            onChanged={afterChange}
+          />
 
-          <Sections view={data} money={money} />
+          {/* A provisional refund is a GUESS the user can correct — surfaced
+              only when there is one to review. */}
+          <RefundReview
+            revision={revision}
+            money={money}
+            canWrite={canWrite && !paused}
+            onChanged={afterChange}
+          />
+
+          <Sections
+            view={data}
+            money={money}
+            canWrite={canWrite && !paused}
+            onAdd={setAddSection}
+            onAddBill={() => setAddBillOpen(true)}
+            onOpenDetail={setDetailFor}
+            onResolveOverspend={setOverspendFor}
+          />
 
           {/* Machine-readable honesty about what this build cannot do (§21.4). */}
           {data.limitations.length > 0 && <Limitations codes={data.limitations} />}
@@ -176,8 +226,42 @@ export function BudgetOverviewPage() {
       )}
 
       <SafeToSpendExplainer open={explainOpen} onOpenChange={setExplainOpen} view={data} money={money} />
+
+      <AddEnvelopeDialog
+        open={addSection !== null}
+        onOpenChange={(v) => !v && setAddSection(null)}
+        section={addSection ?? "flexible"}
+        claimedKeys={claimedKeys}
+        onCreated={afterChange}
+      />
+
+      <AddCommitmentDialog
+        open={addBillOpen}
+        onOpenChange={setAddBillOpen}
+        envelopes={commitmentEnvelopes}
+        onCreated={afterChange}
+      />
+
+      <EnvelopeDetailSheet envelope={detailFor} money={money} onOpenChange={() => setDetailFor(null)} />
+
+      <ResolveOverspendSheet
+        envelope={overspendFor}
+        siblings={overspendFor ? sameSection(data, overspendFor.section) : []}
+        unallocated={data.money?.unallocated_available ?? 0}
+        money={money}
+        onOpenChange={() => setOverspendFor(null)}
+        onResolved={afterChange}
+      />
     </div>
   )
+}
+
+/** Every envelope in one section — the candidates a reallocation can draw from. */
+function sameSection(view: BudgetView, section: BudgetSectionName): BudgetEnvelopeView[] {
+  const s = view.sections
+  if (!s) return []
+  const bucket = (s as unknown as Record<string, { envelopes?: BudgetEnvelopeView[] }>)[section]
+  return bucket?.envelopes ?? []
 }
 
 function Header({ right }: { right?: React.ReactNode }) {
@@ -304,7 +388,23 @@ function SafeToSpendHero({
  * A progress bar appears ONLY on flexible spending: a bar implies "X of Y used",
  * which says nothing useful about income or an unpaid bill.
  */
-function Sections({ view, money }: { view: BudgetView; money: (n: number) => string }) {
+function Sections({
+  view,
+  money,
+  canWrite,
+  onAdd,
+  onAddBill,
+  onOpenDetail,
+  onResolveOverspend,
+}: {
+  view: BudgetView
+  money: (n: number) => string
+  canWrite: boolean
+  onAdd: (section: BudgetSectionName) => void
+  onAddBill: () => void
+  onOpenDetail: (env: BudgetEnvelopeView) => void
+  onResolveOverspend: (env: BudgetEnvelopeView) => void
+}) {
   const { t } = useTranslation()
   const s = view.sections!
   const m = view.money!
@@ -314,9 +414,21 @@ function Sections({ view, money }: { view: BudgetView; money: (n: number) => str
       {/* Flexible — the only section with a utilisation bar. */}
       <Card className="py-0 sm:col-span-2">
         <CardContent className="p-4">
-          <div className="flex items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm font-semibold">{t("budgetV2.sectionFlexible")}</p>
-            <span className="text-xs text-muted-foreground">{stateLabel(t, s.flexible.utilisation)}</span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">{stateLabel(t, s.flexible.utilisation)}</span>
+              {canWrite && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-9 gap-1 px-2 text-xs"
+                  onClick={() => onAdd("flexible")}
+                >
+                  <Plus className="size-3" aria-hidden /> {t("budgetV2.addCategory")}
+                </Button>
+              )}
+            </div>
           </div>
           <p className="mt-2 text-lg font-bold tabular-nums">
             {money(s.flexible.spent_net)}
@@ -329,10 +441,25 @@ function Sections({ view, money }: { view: BudgetView; money: (n: number) => str
               ? t("budgetV2.left", { amount: money(s.flexible.remaining) })
               : t("budgetV2.over", { amount: money(-s.flexible.remaining) })}
           </p>
+          {/* Where the rest of the spending went. Answering this is the whole
+              point of having a catch-all rather than dropping unmatched rows. */}
+          {s.flexible.uncategorised > 0 && s.flexible.envelopes.some((e) => !e.is_catch_all) && (
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              {t("budgetV2.uncategorisedNote", { amount: money(s.flexible.uncategorised) })}
+            </p>
+          )}
+
           {s.flexible.envelopes.length > 0 && (
             <ul className="mt-3 space-y-2 border-t pt-3">
               {s.flexible.envelopes.map((e) => (
-                <EnvelopeRow key={e.id} env={e} money={money} />
+                <EnvelopeRow
+                  key={e.id}
+                  env={e}
+                  money={money}
+                  canWrite={canWrite}
+                  onOpenDetail={onOpenDetail}
+                  onResolveOverspend={onResolveOverspend}
+                />
               ))}
             </ul>
           )}
@@ -355,17 +482,54 @@ function Sections({ view, money }: { view: BudgetView; money: (n: number) => str
         </CardContent>
       </Card>
 
-      {/* Commitments — hidden entirely when there are none, not shown at zero. */}
-      {(s.commitment.planned > 0 || s.commitment.outstanding > 0 || s.commitment.envelopes.length > 0) && (
+      {/* Commitments — hidden entirely when there are none, not shown at zero,
+          except for the one affordance that lets a user create the first one. */}
+      {s.commitment.envelopes.length > 0 ? (
         <Card className="py-0">
           <CardContent className="p-4">
-            <p className="text-sm font-semibold">{t("budgetV2.sectionCommitment")}</p>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm font-semibold">{t("budgetV2.sectionCommitment")}</p>
+              {canWrite && (
+                <Button size="sm" variant="outline" className="h-9 gap-1 px-2 text-xs" onClick={onAddBill}>
+                  <Plus className="size-3" aria-hidden /> {t("budgetV2.addBill")}
+                </Button>
+              )}
+            </div>
             <dl className="mt-2 space-y-1 text-xs">
               <Row label={t("budgetV2.commitmentSettled")} value={money(s.commitment.settled)} />
               <Row label={t("budgetV2.commitmentOutstanding")} value={money(s.commitment.outstanding)} />
             </dl>
+            <ul className="mt-3 space-y-2 border-t pt-3">
+              {s.commitment.envelopes.map((e) => (
+                <EnvelopeRow
+                  key={e.id}
+                  env={e}
+                  money={money}
+                  canWrite={canWrite}
+                  onOpenDetail={onOpenDetail}
+                  onResolveOverspend={onResolveOverspend}
+                />
+              ))}
+            </ul>
           </CardContent>
         </Card>
+      ) : (
+        canWrite && (
+          <Card className="py-0">
+            <CardContent className="p-4">
+              <p className="text-sm font-semibold">{t("budgetV2.sectionCommitment")}</p>
+              <p className="mt-1 text-xs text-muted-foreground">{t("budgetV2.commitmentEmpty")}</p>
+              <Button
+                size="sm"
+                variant="outline"
+                className="mt-3 h-9 gap-1 text-xs"
+                onClick={() => onAdd("commitment")}
+              >
+                <Plus className="size-3" aria-hidden /> {t("budgetV2.addBillsGroup")}
+              </Button>
+            </CardContent>
+          </Card>
+        )
       )}
 
       {/* Savings — funded / reserved-not-confirmed / balance. */}
@@ -386,15 +550,35 @@ function Sections({ view, money }: { view: BudgetView; money: (n: number) => str
         </Card>
       )}
 
-      {/* Debt — paid / outstanding, never mixed into spending. */}
-      {(s.debt.planned > 0 || s.debt.outstanding > 0) && (
+      {/* Debt — paid / outstanding, NEVER mixed into spending: a debt payment
+          reduces what you owe, it is not consumption (§8.7). */}
+      {s.debt.envelopes.length > 0 && (
         <Card className="py-0">
           <CardContent className="p-4">
-            <p className="text-sm font-semibold">{t("budgetV2.sectionDebt")}</p>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm font-semibold">{t("budgetV2.sectionDebt")}</p>
+              {canWrite && (
+                <Button size="sm" variant="outline" className="h-9 gap-1 px-2 text-xs" onClick={onAddBill}>
+                  <Plus className="size-3" aria-hidden /> {t("budgetV2.addPayment")}
+                </Button>
+              )}
+            </div>
             <dl className="mt-2 space-y-1 text-xs">
               <Row label={t("budgetV2.debtPaid")} value={money(s.debt.paid)} />
               <Row label={t("budgetV2.debtOutstanding")} value={money(s.debt.outstanding)} />
             </dl>
+            <ul className="mt-3 space-y-2 border-t pt-3">
+              {s.debt.envelopes.map((e) => (
+                <EnvelopeRow
+                  key={e.id}
+                  env={e}
+                  money={money}
+                  canWrite={canWrite}
+                  onOpenDetail={onOpenDetail}
+                  onResolveOverspend={onResolveOverspend}
+                />
+              ))}
+            </ul>
           </CardContent>
         </Card>
       )}
@@ -422,32 +606,83 @@ function Row({ label, value }: { label: string; value: string }) {
   )
 }
 
-/** An envelope row keeps its OWN signed remaining, even when the plan nets it. */
-function EnvelopeRow({ env, money }: { env: BudgetEnvelopeView; money: (n: number) => string }) {
+/**
+ * One envelope, as a card.
+ *
+ * Shows EXACTLY four figures — planned, spent, pending, remaining — and nothing
+ * else (spec §6.5). Anything more belongs in the detail sheet, which is one tap
+ * away; a card that tried to show rollover, refunds, carry policy and priority
+ * at once is what made v1's list unreadable.
+ *
+ * `remaining` is this envelope's OWN signed figure even when the plan nets it
+ * across the section: an overspent category must look overspent, and the netting
+ * only ever applies to the plan-wide headroom.
+ */
+function EnvelopeRow({
+  env,
+  money,
+  canWrite,
+  onOpenDetail,
+  onResolveOverspend,
+}: {
+  env: BudgetEnvelopeView
+  money: (n: number) => string
+  canWrite: boolean
+  onOpenDetail: (env: BudgetEnvelopeView) => void
+  onResolveOverspend: (env: BudgetEnvelopeView) => void
+}) {
   const { t } = useTranslation()
+  const over = env.remaining < 0
+
   return (
-    <li className="flex items-start justify-between gap-2">
-      <div className="min-w-0">
-        <p className="truncate text-xs font-medium">{env.name}</p>
-        <p className="text-[11px] text-muted-foreground tabular-nums">
-          {t("budgetV2.spent")} {money(env.spent_net)} / {money(env.planned)}
-          {env.rollover_in !== 0 && ` · ${t("budgetV2.carriedIn", { amount: money(env.rollover_in) })}`}
-        </p>
-        {env.refunds_provisional > 0 && (
-          <p className="text-[11px] text-muted-foreground">
-            {t("budgetV2.includesRefund", { amount: money(env.refunds_provisional) })}
-          </p>
-        )}
-      </div>
-      <span
-        className={`shrink-0 text-xs font-medium tabular-nums ${
-          env.remaining < 0 ? "text-red-600 dark:text-red-400" : "text-muted-foreground"
-        }`}
+    <li className="rounded-lg transition-colors hover:bg-accent/40">
+      <button
+        type="button"
+        onClick={() => onOpenDetail(env)}
+        className="flex min-h-11 w-full items-center justify-between gap-2 px-1 py-1.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        aria-label={t("budgetV2.openEnvelope", { name: env.name })}
       >
-        {env.remaining >= 0
-          ? t("budgetV2.left", { amount: money(env.remaining) })
-          : t("budgetV2.over", { amount: money(-env.remaining) })}
-      </span>
+        <div className="min-w-0 flex-1">
+          <p className="flex items-center gap-1.5 truncate text-xs font-medium">
+            {env.name}
+            {env.is_catch_all && (
+              <span className="rounded bg-muted px-1 text-[10px] font-normal text-muted-foreground">
+                {t("budgetV2.leftoverTag")}
+              </span>
+            )}
+          </p>
+          {/* The four figures. Pending only appears when it is non-zero, so a
+              plain spending category stays a two-number row. */}
+          <p className="text-[11px] text-muted-foreground tabular-nums">
+            {t("budgetV2.plannedShort")} {money(env.planned)} · {t("budgetV2.spentShort")} {money(env.spent_net)}
+            {env.pending > 0 && ` · ${t("budgetV2.pendingShort")} ${money(env.pending)}`}
+          </p>
+        </div>
+        <span
+          className={`shrink-0 text-xs font-medium tabular-nums ${
+            over ? "text-red-600 dark:text-red-400" : "text-muted-foreground"
+          }`}
+        >
+          {over ? t("budgetV2.over", { amount: money(-env.remaining) }) : t("budgetV2.left", { amount: money(env.remaining) })}
+        </span>
+        <ChevronRight className="size-3.5 shrink-0 text-muted-foreground/60 rtl:rotate-180" aria-hidden />
+      </button>
+
+      {/* An overspend offers the way OUT, right where it is visible. Supportive,
+          not scolding: it states the amount and offers options (P7). */}
+      {over && canWrite && (
+        <div className="flex items-center justify-between gap-2 px-1 pb-1.5">
+          <p className="text-[11px] text-muted-foreground">{t("budgetV2.overspendInline")}</p>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 px-2 text-[11px]"
+            onClick={() => onResolveOverspend(env)}
+          >
+            {t("budgetV2.resolve")}
+          </Button>
+        </div>
+      )}
     </li>
   )
 }
