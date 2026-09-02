@@ -674,6 +674,377 @@ export function suggestFlexible(observations: number[]): Suggestion {
  * construction. Do NOT add a rate table, base currency or conversion policy here
  * — that is Maqbool's multicurrency model, and §12.3 M1–M12 must be agreed first.
  */
-export function amountInPlanCurrency(amount: number): number {
+export function amountInPlanCurrency(
+  amount: number,
+  from?: string | null,
+  planCurrency?: string | null,
+): number {
+  // Identity, deliberately. The two currency parameters exist so that EVERY
+  // call site already declares what it believes the denomination to be: the
+  // day a conversion policy is agreed, this function gains a rate lookup and
+  // no call site changes. Passing a mismatch here is not an error — the caller
+  // is responsible for surfacing it via detectCurrencyMismatch() rather than
+  // silently summing, because a pure function must not throw on data.
+  void from
+  void planCurrency
   return amount
+}
+
+/**
+ * A machine-readable limitation, NOT a conversion (§12.2, and the Phase 2
+ * multicurrency boundary).
+ *
+ * What can actually mismatch in the CURRENT data model matters here. Neither
+ * `transactions` nor `wealth_accounts` carries a currency column — every amount
+ * in an organization is denominated in `organizations.currency` by
+ * construction, so a per-account or per-transaction mismatch is structurally
+ * impossible today and inventing an FX table to handle it would be inventing a
+ * problem.
+ *
+ * The one mismatch that IS reachable: `budget_plans.currency` is a SNAPSHOT
+ * taken when the plan was created, so changing the organization currency
+ * afterwards leaves historical amounts that were entered under the old
+ * denomination being summed with new ones. That is a real correctness hazard
+ * and the honest response is to say so, not to guess a rate.
+ *
+ * Returns null when everything agrees (the overwhelmingly common case).
+ */
+export type CurrencyLimitation = {
+  code: "currency_mismatch"
+  plan_currency: string
+  org_currency: string
+  /** Sums remain in `plan_currency`; nothing was converted. */
+  converted: false
+}
+
+export function detectCurrencyMismatch(
+  planCurrency: string | null | undefined,
+  orgCurrency: string | null | undefined,
+): CurrencyLimitation | null {
+  const plan = (planCurrency ?? "").trim().toUpperCase()
+  const org = (orgCurrency ?? "").trim().toUpperCase()
+  if (!plan || !org || plan === org) return null
+  return { code: "currency_mismatch", plan_currency: plan, org_currency: org, converted: false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PHASE 2 — categories, sections, reallocation, settlements
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * The normalised category key (§8.3). MUST stay identical in behaviour to the
+ * SQL expression `lower(btrim(coalesce(category, '')))` that the functional
+ * index `transactions_category_key_idx` is built on — if these two ever
+ * disagree, spend silently lands in the catch-all instead of its envelope.
+ *
+ * `btrim` strips ASCII space/tab/newline/CR only, so JS `.trim()` (which also
+ * strips unicode whitespace) would be WIDER. We therefore trim exactly the same
+ * four characters rather than calling .trim().
+ */
+const BTRIM_CHARS = " \t\n\r"
+export function categoryKey(raw: string | null | undefined): string {
+  let s = raw ?? ""
+  let a = 0
+  let b = s.length
+  while (a < b && BTRIM_CHARS.includes(s[a]!)) a++
+  while (b > a && BTRIM_CHARS.includes(s[b - 1]!)) b--
+  s = s.slice(a, b)
+  // Postgres lower() on a UTF-8 database is locale-aware; JS toLowerCase() is
+  // full-unicode. Over the ASCII-plus-accented range that real categories use
+  // they agree. Documented as a known narrow divergence rather than pretended
+  // away.
+  return s.toLowerCase()
+}
+
+/** True when two category strings denote the same category. */
+export const sameCategory = (a: string | null | undefined, b: string | null | undefined): boolean =>
+  categoryKey(a) === categoryKey(b)
+
+/**
+ * ONE CATEGORY → ONE ENVELOPE (§8.3). Returns the keys that would collide, so
+ * the API can name them in the error instead of saying "invalid".
+ *
+ * `existing` is every other envelope match list in the same plan; the catch-all
+ * is excluded by the caller because it claims "everything not claimed" rather
+ * than a key list.
+ */
+export function categoryConflicts(
+  proposed: (string | null | undefined)[],
+  existing: { id: string; name: string; matchKeys: string[] }[],
+): { key: string; envelopeId: string; envelopeName: string }[] {
+  const out: { key: string; envelopeId: string; envelopeName: string }[] = []
+  const want = new Set(proposed.map(categoryKey).filter((k) => k.length > 0))
+  for (const e of existing) {
+    for (const k of e.matchKeys) {
+      const key = categoryKey(k)
+      if (want.has(key)) out.push({ key, envelopeId: e.id, envelopeName: e.name })
+    }
+  }
+  return out
+}
+
+/** De-duplicated, normalised, empty-stripped key list ready to store. */
+export function normalizeMatchKeys(raw: (string | null | undefined)[]): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const r of raw) {
+    const k = categoryKey(r)
+    if (!k || seen.has(k)) continue
+    seen.add(k)
+    out.push(k)
+  }
+  return out
+}
+
+// ── per-section aggregation (§8.7) ───────────────────────────────────────────
+
+export type EnvelopeTotals = {
+  section: BudgetSection
+  planned: number
+  spentNet: number
+  pending: number
+}
+
+export type SectionTotals = {
+  section: BudgetSection
+  planned: number
+  spentNet: number
+  pending: number
+  /** Signed. NEGATIVE means the section as a whole is over its target. */
+  remaining: number
+  /**
+   * Non-negative spendable room. Netted across the WHOLE section, then floored
+   * exactly ONCE (§8.5.1) — never the sum of per-envelope floors, which would
+   * let an overspend hide behind an untouched envelope.
+   */
+  headroom: number
+  utilisation: BudgetStateV2
+  envelopeCount: number
+  overspentCount: number
+}
+
+/**
+ * Aggregate one section.
+ *
+ * The floor-once rule is the whole point. Groceries planned 300 / spent 400 and
+ * Dining planned 200 / spent 0 gives planned 500, spent 400 → headroom 100.
+ * Flooring per envelope first would give max(0,-100) + max(0,200) = 200 and
+ * invite the user to spend money the plan does not have.
+ */
+export function aggregateSection(section: BudgetSection, envelopes: EnvelopeTotals[]): SectionTotals {
+  const mine = envelopes.filter((e) => e.section === section)
+  let planned = 0
+  let spent = 0
+  let pending = 0
+  let overspent = 0
+  for (const e of mine) {
+    planned += e.planned
+    spent += e.spentNet
+    pending += e.pending
+    if (remaining(e.planned, e.spentNet, e.pending) < 0) overspent++
+  }
+  planned = round2(planned)
+  spent = round2(spent)
+  pending = round2(pending)
+  return {
+    section,
+    planned,
+    spentNet: spent,
+    pending,
+    remaining: remaining(planned, spent, pending),
+    headroom: flexibleHeadroom({ planned, spentNet: spent, pending }),
+    utilisation: state(round2(spent + pending), planned),
+    envelopeCount: mine.length,
+    overspentCount: overspent,
+  }
+}
+
+/** Every section, in display order, including the empty ones. */
+export function aggregateAllSections(envelopes: EnvelopeTotals[]): Record<BudgetSection, SectionTotals> {
+  const out = {} as Record<BudgetSection, SectionTotals>
+  for (const s of BUDGET_SECTIONS) out[s] = aggregateSection(s, envelopes)
+  return out
+}
+
+// ── reallocation and covering an overspend (§8.5.2, §8.10) ───────────────────
+
+export type ReallocationCheck =
+  | { ok: true; amount: number }
+  | {
+      ok: false
+      reason: "same_envelope" | "not_positive" | "insufficient_source" | "cross_section"
+      available?: number
+    }
+
+/**
+ * Moving planned money between two envelopes must leave the plan-wide total
+ * planned UNCHANGED — that is what makes safe-to-spend invariant under
+ * reallocation (§8.5.2). This validates the move; it does not perform it.
+ *
+ * `allowCrossSection` is false by default because moving a commitment planned
+ * amount into flexible spending changes what is RESERVED, and therefore changes
+ * safe-to-spend. That is a legitimate action, but it must be an explicit
+ * decision rather than a side effect of a drag.
+ */
+export function checkReallocation(input: {
+  fromId: string
+  toId: string
+  amount: number
+  fromSection: BudgetSection
+  toSection: BudgetSection
+  /** The source own remaining room — money already spent cannot be moved. */
+  fromAvailable: number
+  allowCrossSection?: boolean
+}): ReallocationCheck {
+  if (input.fromId === input.toId) return { ok: false, reason: "same_envelope" }
+  const amount = round2(input.amount)
+  if (!Number.isFinite(amount) || amount <= 0) return { ok: false, reason: "not_positive" }
+  if (!input.allowCrossSection && input.fromSection !== input.toSection) {
+    return { ok: false, reason: "cross_section" }
+  }
+  const available = round2(input.fromAvailable)
+  if (amount > available) return { ok: false, reason: "insufficient_source", available }
+  return { ok: true, amount }
+}
+
+/** Proves the invariance the UI promises: total planned is unchanged. */
+export function reallocationPreservesTotal(
+  before: { fromPlanned: number; toPlanned: number },
+  after: { fromPlanned: number; toPlanned: number },
+): boolean {
+  return round2(before.fromPlanned + before.toPlanned) === round2(after.fromPlanned + after.toPlanned)
+}
+
+export type OverspendOption =
+  | { kind: "move_from_envelope"; envelopeId: string; envelopeName: string; available: number }
+  | { kind: "cover_from_unallocated"; available: number }
+  | { kind: "raise_target"; delta: number }
+  | { kind: "accept" }
+
+/**
+ * The options offered when an envelope is over (§8.10). ORDER IS THE ADVICE:
+ * cheapest-for-the-plan first. Moving money from another envelope keeps total
+ * planned flat; unallocated is a real buffer; raising the target increases what
+ * the plan claims it can spend and so is offered LAST before simply accepting.
+ *
+ * "Accept" is always present and never framed as a failure (principle P7): an
+ * overspend the user has seen and accepted is a valid plan state.
+ */
+export function overspendOptions(input: {
+  overBy: number
+  unallocated: number
+  siblings: { id: string; name: string; available: number }[]
+}): OverspendOption[] {
+  const over = round2(input.overBy)
+  const out: OverspendOption[] = []
+  for (const s of [...input.siblings].sort((a, b) => b.available - a.available)) {
+    if (s.available > 0) {
+      out.push({
+        kind: "move_from_envelope",
+        envelopeId: s.id,
+        envelopeName: s.name,
+        available: round2(s.available),
+      })
+    }
+  }
+  if (input.unallocated > 0) out.push({ kind: "cover_from_unallocated", available: round2(input.unallocated) })
+  if (over > 0) out.push({ kind: "raise_target", delta: over })
+  out.push({ kind: "accept" })
+  return out
+}
+
+// ── settlements (§8.8.1) ─────────────────────────────────────────────────────
+
+export type SettlementStatus = "unsettled" | "partially_settled" | "fully_settled"
+
+export type SettlementRollup = {
+  expenseAmount: number
+  settled: number
+  outstanding: number
+  status: SettlementStatus
+}
+
+/**
+ * The sum of settlements per expense is capped at the expense amount on write,
+ * so `outstanding` never goes negative and `settled` is clamped. A caller that
+ * has somehow accumulated more than the expense gets `fully_settled` and
+ * outstanding 0 rather than a nonsensical negative figure in the UI.
+ */
+export function settlementRollup(expenseAmount: number, settlements: number[]): SettlementRollup {
+  const expense = round2(Math.abs(expenseAmount))
+  const raw = round2(settlements.reduce((a, b) => a + b, 0))
+  const settled = round2(Math.min(raw, expense))
+  const outstanding = round2(Math.max(0, expense - settled))
+  const status: SettlementStatus =
+    settled <= 0 ? "unsettled" : outstanding <= 0 ? "fully_settled" : "partially_settled"
+  return { expenseAmount: expense, settled, outstanding, status }
+}
+
+/** Enforced on write: may this settlement amount be added? */
+export function canAddSettlement(input: {
+  expenseAmount: number
+  alreadySettled: number
+  amount: number
+}): { ok: true; amount: number } | { ok: false; reason: "not_positive" | "exceeds_expense"; room: number } {
+  const amount = round2(input.amount)
+  const room = round2(Math.max(0, round2(Math.abs(input.expenseAmount)) - round2(input.alreadySettled)))
+  if (!Number.isFinite(amount) || amount <= 0) return { ok: false, reason: "not_positive", room }
+  if (amount > room) return { ok: false, reason: "exceeds_expense", room }
+  return { ok: true, amount }
+}
+
+// ── occurrence actions (§8.6) ────────────────────────────────────────────────
+
+export type OccurrenceAction = "settle" | "cancel" | "skip" | "reschedule"
+
+/**
+ * Rescheduling must not create two occurrences of the same commitment on the
+ * same day — `budget_occurrences_commitment_due_unique` would reject the write,
+ * so the collision is detected first and the taken date is named (§8.6).
+ *
+ * `taken` is every other effective due date for this commitment.
+ */
+export function checkReschedule(input: {
+  toDate: string
+  currentDate: string
+  taken: string[]
+  /** Recurring commitments may not be moved outside their carry window. */
+  lowerBound?: string | null
+}): { ok: true; date: string } | { ok: false; reason: "invalid_date" | "unchanged" | "collision" | "before_window" } {
+  if (!isIsoDate(input.toDate)) return { ok: false, reason: "invalid_date" }
+  if (input.toDate === input.currentDate) return { ok: false, reason: "unchanged" }
+  if (input.lowerBound && input.toDate < input.lowerBound) return { ok: false, reason: "before_window" }
+  if (input.taken.some((d) => d === input.toDate)) return { ok: false, reason: "collision" }
+  return { ok: true, date: input.toDate }
+}
+
+/** Which actions make sense for an occurrence in its current state. */
+export function allowedOccurrenceActions(occState: OccurrenceState): OccurrenceAction[] {
+  switch (occState) {
+    case "expected":
+    case "rescheduled":
+      return ["settle", "reschedule", "skip", "cancel"]
+    case "skipped":
+      // A skip is reversible by settling or moving it; cancelling a skip is a no-op.
+      return ["settle", "reschedule"]
+    case "settled":
+    case "cancelled":
+      return []
+    default:
+      return []
+  }
+}
+
+/** Days a commitment is past due, floored at 0. */
+export const daysOverdue = (dueDate: string, today: string): number => Math.max(0, daysBetween(dueDate, today))
+
+/**
+ * `needs_attention` (§8.6.1) is a RECURRING-only flag — the schema CHECK
+ * `budget_commitments_attention_check` enforces that. A recurring commitment
+ * earns it when unresolved occurrences pile up to the cap, which is the signal
+ * that the rule itself is wrong (a cancelled subscription, a changed landlord)
+ * rather than that one payment is late.
+ */
+export function needsAttention(kind: CommitmentKind, unresolvedCount: number): boolean {
+  return kind === "recurring" && unresolvedCount >= MAX_UNRESOLVED_RECURRING_OCCURRENCES
 }
