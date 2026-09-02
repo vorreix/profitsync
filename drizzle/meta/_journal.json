@@ -414,6 +414,13 @@
       "when": 1784459636827,
       "tag": "0058_sour_venom",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1788345426420,
+      "tag": "0059_dazzling_stark_industries",
+      "breakpoints": true
     }
   ]
 }
