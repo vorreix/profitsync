@@ -8,6 +8,7 @@ import { checkTransactionTagQuota } from "../../_lib/quota.js"
 import { balanceDelta, reversesOnTrash } from "../../../src/lib/wealth-ledger.js"
 import { amountExceedsLimit } from "../../../src/lib/money.js"
 import { cleanTransactionTags } from "../../../src/lib/transaction-tags.js"
+import { notifyIfBudgetExceeded } from "../../_lib/notify-budget.js"
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ctx = await requireAuth(req, res)
@@ -151,6 +152,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ["type", "amount", "description", "category", "tags", "date", "wealthAccountId"],
     )
     if (Object.keys(changes).length) await logAudit({ orgId, entityType: "transaction", entityId: id, action: "update", actorId: userId, changes })
+    // An edit can push a budget over just as a create can (raising the amount,
+    // moving the date into the current window, or flipping income -> expense).
+    // Fire-and-forget so alerting can never fail the write.
+    if (updated.type === "outgoing" || before.type === "outgoing") {
+      void notifyIfBudgetExceeded(orgId, updated.clientId, userId).catch(() => {})
+    }
     return res.json(serialize(updated))
   }
 

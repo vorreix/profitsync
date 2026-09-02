@@ -37,6 +37,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     isNull(transactions.deletedAt),
     // Internal account-to-account transfers aren't income/expense — exclude them.
     ne(transactions.kind, "transfer"),
+    // Balance-DEFINING system entries ("Opening Balance", "Balance Adjustment")
+    // are not income or expense — they assert what an account balance IS at a
+    // point in time (src/lib/wealth-ledger.ts reversesOnTrash). Counting an
+    // opening balance as income overstated revenue. Budgets exclude them too
+    // (api/_lib/budget-spend.ts), so the two now agree.
+    eq(transactions.isSystem, false),
     gte(transactions.date, fromDate),
     lte(transactions.date, toDate),
   )

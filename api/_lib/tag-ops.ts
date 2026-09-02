@@ -103,22 +103,25 @@ export async function softDeleteByTag(orgId: string, name: string, userId: strin
   // live transactions of a tagged client. Dedupe by id so a tx that is both isn't
   // double-reversed.
   const taggedTx = await db
-    .select({ id: transactions.id, wealthAccountId: transactions.wealthAccountId, type: transactions.type, amount: transactions.amount })
+    .select({ id: transactions.id, wealthAccountId: transactions.wealthAccountId, type: transactions.type, amount: transactions.amount, isSystem: transactions.isSystem })
     .from(transactions)
     .innerJoin(clients, eq(transactions.clientId, clients.id))
     .where(and(eq(clients.organizationId, orgId), isNull(clients.deletedAt), isNull(transactions.deletedAt), txHasTag))
   const clientTx = clientIds.length
     ? await db
-        .select({ id: transactions.id, wealthAccountId: transactions.wealthAccountId, type: transactions.type, amount: transactions.amount })
+        .select({ id: transactions.id, wealthAccountId: transactions.wealthAccountId, type: transactions.type, amount: transactions.amount, isSystem: transactions.isSystem })
         .from(transactions)
         .where(and(inArray(transactions.clientId, clientIds), isNull(transactions.deletedAt)))
     : []
 
-  const legMap = new Map<string, { id: string; wealthAccountId: string | null; type: string; amount: string }>()
+  const legMap = new Map<string, { id: string; wealthAccountId: string | null; type: string; amount: string; isSystem: boolean | null }>()
   for (const t of [...taggedTx, ...clientTx]) legMap.set(t.id, t)
   const legs = [...legMap.values()]
 
   // Reverse each removed transaction's balance effect (collapsed per account).
+  // isSystem MUST be selected above: reversalsByAccount skips balance-DEFINING
+  // system rows via reversesOnTrash, and an undefined flag makes it reverse them
+  // — silently moving money. Every other reversal call site already selects it.
   for (const [accountId, shift] of reversalsByAccount(legs)) {
     await db
       .update(wealthAccounts)

@@ -6,10 +6,37 @@ import type { PeriodWindow } from "../../src/lib/budget-history.js"
 
 export type PeriodSums = { daily: number; weekly: number; monthly: number; lifetime: number }
 
+/**
+ * The inclusion predicates EVERY budget-spend query must share:
+ * org-scoped, not trashed, outgoing, non-transfer, and **not a system
+ * balance-defining row**.
+ *
+ * Exported so the committed (DB-free) suite can assert the `is_system`
+ * exclusion via generated SQL — that filter was missing and let "zero this
+ * account" register as budget spend, so it must not be able to regress
+ * silently.
+ */
+export function budgetSpendPredicates(orgId: string) {
+  return [
+    eq(clients.organizationId, orgId),
+    isNull(clients.deletedAt),
+    isNull(transactions.deletedAt),
+    eq(transactions.type, "outgoing"),
+    eq(transactions.kind, "standard"),
+    eq(transactions.isSystem, false),
+  ]
+}
+
 // Per-client OUTGOING (expense) spend for each current budget window, in ONE grouped
 // query, so a budget of any period just reads its column. Spend is derived here — the
-// budgets table only stores the target + cadence. Excludes transfers (kind!=standard)
-// and trashed clients/transactions.
+// budgets table only stores the target + cadence.
+//
+// Excluded: transfers (kind != 'standard'), trashed clients/transactions, and
+// SYSTEM entries (is_system) — "Opening Balance" and "Balance Adjustment" rows
+// *define* what an account balance IS at a point in time (see
+// src/lib/wealth-ledger.ts reversesOnTrash); they are not spending. Without this
+// filter, zeroing a wallet registered as an expense and silently consumed the
+// budget. `api/_lib/quota.ts` already excludes them for the same reason.
 export async function outgoingByClient(orgId: string, now: Date): Promise<Map<string, PeriodSums>> {
   const today = periodStart("daily", now)!
   const weekStart = periodStart("weekly", now)!
@@ -24,15 +51,7 @@ export async function outgoingByClient(orgId: string, now: Date): Promise<Map<st
     })
     .from(transactions)
     .innerJoin(clients, eq(transactions.clientId, clients.id))
-    .where(
-      and(
-        eq(clients.organizationId, orgId),
-        isNull(clients.deletedAt),
-        isNull(transactions.deletedAt),
-        eq(transactions.type, "outgoing"),
-        eq(transactions.kind, "standard"),
-      ),
-    )
+    .where(and(...budgetSpendPredicates(orgId)))
     .groupBy(transactions.clientId)
 
   const map = new Map<string, PeriodSums>()
@@ -66,11 +85,7 @@ export async function spendForWindows(
   const first = windows[0].start
   const lastEnd = windows[windows.length - 1].endExclusive
   const conds = [
-    eq(clients.organizationId, orgId),
-    isNull(clients.deletedAt),
-    isNull(transactions.deletedAt),
-    eq(transactions.type, "outgoing"),
-    eq(transactions.kind, "standard"),
+    ...budgetSpendPredicates(orgId),
     gte(transactions.date, first),
     lt(transactions.date, lastEnd),
   ]

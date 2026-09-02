@@ -10,6 +10,7 @@ import { balanceDelta } from "../../../src/lib/wealth-ledger.js"
 import { cleanTransactionTags } from "../../../src/lib/transaction-tags.js"
 import { PREMIUM_TAGS_PER_TX } from "../../../src/lib/tags.js"
 import { amountExceedsLimit } from "../../../src/lib/money.js"
+import { notifyIfBudgetExceeded } from "../../_lib/notify-budget.js"
 
 type AllocationInput = { wealth_account_id?: string; account_id?: string; amount?: number | string }
 
@@ -160,6 +161,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   for (const row of created) {
     await logAudit({ orgId, entityType: "transaction", entityId: row.id, action: "create", actorId: userId })
   }
+
+  // A split is one logical expense spread over several accounts, so it can breach
+  // a budget exactly like a single transaction. Evaluated once for the group.
+  if (type === "outgoing") void notifyIfBudgetExceeded(orgId, clientId, userId).catch(() => {})
 
   return res.status(201).json({
     group_id: groupId,

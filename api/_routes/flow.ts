@@ -92,6 +92,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     isNull(clients.closedAt),
     isNull(transactions.deletedAt),
     ne(transactions.kind, "transfer"),
+    // See api/_routes/analytics.ts — system balance-defining rows are not
+    // income/expense, and budgets exclude them too.
+    eq(transactions.isSystem, false),
     gte(transactions.date, fromDate),
     lte(transactions.date, toDate),
   ]

@@ -26,6 +26,7 @@ import { ensureDefaultClient } from "./auth.js"
 import { checkTransactionQuota } from "./quota.js"
 import { logAudit } from "./audit.js"
 import { createNotification } from "./notifications.js"
+import { notifyIfBudgetExceeded } from "./notify-budget.js"
 
 export type MaterializeResult = { created: number; skipped: string[] }
 
@@ -193,6 +194,13 @@ export async function materializeDueRecurring(orgId: string): Promise<Materializ
               dedupeKey: `space_autosave:${rule.id}:${cursor}`,
             })
           })().catch(() => {})
+        }
+
+        // A materialized recurring expense is real spend, so it can breach a budget
+        // exactly like a manual one. Evaluated once per rule per batch, off the
+        // response path so alerting can never fail materialization.
+        if (!isTransfer && regularCreatedCount > 0 && rule.type === "outgoing") {
+          void notifyIfBudgetExceeded(orgId, clientId, rule.createdBy ?? "system").catch(() => {})
         }
 
         // Regular recurring rules tell their creator what posted — best-effort,
