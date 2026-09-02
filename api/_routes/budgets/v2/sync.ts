@@ -354,7 +354,11 @@ async function snapshotPayload(
   role: string,
   accountType: string | null,
 ): Promise<Record<string, unknown>> {
-  const view = await buildBudgetView(orgId, role, accountType)
+  // Report THIS period explicitly. At close time it is still the open one, so
+  // this is a no-op then; when restating a closed period it is the whole point,
+  // because the default is "whatever is open now" — which would have silently
+  // snapshotted the CURRENT period's figures over a historical record.
+  const view = await buildBudgetView(orgId, role, accountType, new Date(), { periodId: period.id })
   const sections = (view.sections ?? {}) as Record<string, { envelopes?: unknown[] }>
   const envelopes = Object.values(sections).flatMap((s) =>
     (s.envelopes ?? []).map((e) => {
@@ -416,38 +420,24 @@ function stripEnvelopes(sections: Record<string, unknown>): Record<string, unkno
  * Threshold is exact (0): a money figure is either the current truth or it is
  * restated.
  */
-async function restateDriftedPeriods(
+/** How many closed periods one sync will re-examine. */
+const MAX_RESTATE_SWEEP = 12
+
+/**
+ * The transaction fingerprint for one closed window.
+ *
+ * ORG-SCOPED via the clients join: `transactions` carries no organization_id, so
+ * without it this sums EVERY organization's rows in the window and any
+ * unrelated workspace's activity would restate this org's closed period. The
+ * rest of the predicate set mirrors the budget's own inclusion rules, so the
+ * fingerprint moves when, and only when, a number the snapshot reports could
+ * have moved.
+ */
+async function windowFingerprint(
   orgId: string,
-  plan: PlanRow,
-  role: string,
-  accountType: string | null,
-): Promise<number> {
-  // Phase 1 scope: the most recently closed period. Older periods are restated
-  // when they are next opened in the history view (Phase 4 broadens this sweep).
-  const [lastClosed] = await db
-    .select()
-    .from(budgetPeriods)
-    .where(and(eq(budgetPeriods.planId, plan.id), eq(budgetPeriods.status, "closed")))
-    .orderBy(sql`${budgetPeriods.start} desc`)
-    .limit(1)
-  if (!lastClosed) return 0
-
-  const [current] = await db
-    .select()
-    .from(budgetPeriodSnapshots)
-    .where(and(eq(budgetPeriodSnapshots.periodId, lastClosed.id), eq(budgetPeriodSnapshots.isCurrent, true)))
-  if (!current) return 0
-
-  // Recompute what that period WOULD report now. buildBudgetView reports the
-  // open period, so a full historical recompute is Phase 4; here we compare the
-  // stored transaction fingerprint instead, which is cheap and exact.
-  // ORG-SCOPED via the clients join. transactions carries no organization_id,
-  // so without this join the fingerprint sums EVERY organization's rows in the
-  // window and any unrelated workspace's activity would restate this org's
-  // closed period. The predicate set otherwise mirrors the budget's own
-  // inclusion rules so the fingerprint moves when, and only when, a number the
-  // snapshot reports could have moved.
-  const [fingerprint] = await db
+  window: { start: string; endExclusive: string },
+): Promise<{ total: number; n: number }> {
+  const [row] = await db
     .select({
       total: sql<string>`coalesce(sum(${transactions.amount}::numeric), 0)`,
       n: sql<number>`count(*)::int`,
@@ -458,61 +448,184 @@ async function restateDriftedPeriods(
       and(
         eq(clients.organizationId, orgId),
         isNull(clients.deletedAt),
-        sql`${transactions.date} >= ${lastClosed.start}`,
-        sql`${transactions.date} < ${lastClosed.endExclusive}`,
+        sql`${transactions.date} >= ${window.start}`,
+        sql`${transactions.date} < ${window.endExclusive}`,
         isNull(transactions.deletedAt),
         eq(transactions.isSystem, false),
         eq(transactions.kind, "standard"),
       ),
     )
+  return { total: round2(Number(row?.total ?? 0)), n: Number(row?.n ?? 0) }
+}
 
-  const payload = current.payload as Record<string, unknown>
-  const prevPrint = (payload.__fingerprint ?? null) as { total?: number; n?: number } | null
-  const nowPrint = { total: round2(Number(fingerprint?.total ?? 0)), n: Number(fingerprint?.n ?? 0) }
+/** Per-envelope figures out of a snapshot payload, keyed by envelope id. */
+function envelopeLines(payload: unknown): Map<string, Record<string, unknown>> {
+  const out = new Map<string, Record<string, unknown>>()
+  const list = (payload as { envelopes?: unknown })?.envelopes
+  if (!Array.isArray(list)) return out
+  for (const e of list) {
+    const row = e as Record<string, unknown>
+    if (typeof row?.envelope_id === "string") out.set(row.envelope_id, row)
+  }
+  return out
+}
 
-  if (!prevPrint) {
-    // First sync after this period closed: record the fingerprint so future
-    // drift is detectable, without claiming a restatement happened.
-    await db
-      .update(budgetPeriodSnapshots)
-      .set({ payload: { ...payload, __fingerprint: nowPrint } })
-      .where(eq(budgetPeriodSnapshots.id, current.id))
-    return 0
+/**
+ * What actually changed between two snapshot payloads.
+ *
+ * Recorded on the restatement so a reader can see WHICH envelope moved and by
+ * how much, instead of only that something did. A restatement that cannot say
+ * what it corrected is not much better than no restatement.
+ */
+function payloadDrift(before: unknown, after: unknown): Record<string, unknown>[] {
+  const a = envelopeLines(before)
+  const b = envelopeLines(after)
+  const changes: Record<string, unknown>[] = []
+  for (const [id, next] of b) {
+    const prev = a.get(id)
+    const was = round2(Number(prev?.spent_net ?? 0))
+    const now = round2(Number(next.spent_net ?? 0))
+    if (prev == null || was !== now) {
+      changes.push({
+        envelope_id: id,
+        // The name AS STORED in each snapshot, so a rename cannot disguise a diff.
+        name: next.name ?? prev?.name ?? null,
+        spent_net: { was: prev == null ? null : was, now },
+        remaining: {
+          was: prev == null ? null : round2(Number(prev.remaining ?? 0)),
+          now: round2(Number(next.remaining ?? 0)),
+        },
+      })
+    }
+  }
+  for (const [id, prev] of a) {
+    if (!b.has(id)) changes.push({ envelope_id: id, name: prev.name ?? null, removed: true })
+  }
+  return changes
+}
+
+/**
+ * Restate every closed period whose underlying transactions have changed (§8.11).
+ *
+ * A backdated, edited, deleted or restored transaction changes what a CLOSED
+ * period should say. History is never edited in place: the old snapshot is
+ * marked `is_current = false` and a new version supersedes it, so the record of
+ * what was reported at the time survives alongside the correction.
+ *
+ * The recompute is real. Phase 1 detected drift and then re-stored the OLD
+ * payload with a `__restated` flag, which recorded that something had changed
+ * without ever saying what the corrected figures were. `buildBudgetView` now
+ * accepts a period id, so the closed window is genuinely recomputed from the
+ * ledger as it stands.
+ *
+ * The one thing that is NOT recomputed is cash. `available_now` is a reading of
+ * today's account balances and cannot be reconstructed for a past instant, so
+ * the original snapshot's cash figures are carried forward and flagged
+ * `as_at_close`. Recomputing them would quietly replace "what your balance was
+ * when this period closed" with "what it is today", which is a different and
+ * much less useful fact.
+ */
+async function restateDriftedPeriods(
+  orgId: string,
+  plan: PlanRow,
+  role: string,
+  accountType: string | null,
+): Promise<number> {
+  const closed = await db
+    .select()
+    .from(budgetPeriods)
+    .where(and(eq(budgetPeriods.planId, plan.id), eq(budgetPeriods.status, "closed")))
+    .orderBy(sql`${budgetPeriods.start} desc`)
+    .limit(MAX_RESTATE_SWEEP)
+  if (!closed.length) return 0
+
+  let restated = 0
+
+  for (const period of closed) {
+    const [current] = await db
+      .select()
+      .from(budgetPeriodSnapshots)
+      .where(and(eq(budgetPeriodSnapshots.periodId, period.id), eq(budgetPeriodSnapshots.isCurrent, true)))
+    if (!current) continue
+
+    const payload = current.payload as Record<string, unknown>
+    const prevPrint = (payload.__fingerprint ?? null) as { total?: number; n?: number } | null
+    const nowPrint = await windowFingerprint(orgId, { start: period.start, endExclusive: period.endExclusive })
+
+    if (!prevPrint) {
+      // First sync after this period closed: record the fingerprint so future
+      // drift is detectable, without claiming a restatement happened.
+      await db
+        .update(budgetPeriodSnapshots)
+        .set({ payload: { ...payload, __fingerprint: nowPrint } })
+        .where(eq(budgetPeriodSnapshots.id, current.id))
+      continue
+    }
+
+    if (prevPrint.total === nowPrint.total && prevPrint.n === nowPrint.n) continue
+
+    // Genuine recompute of THIS closed window.
+    const fresh = await snapshotPayload(orgId, plan, period, role, accountType)
+    const originalMoney = (payload.money ?? {}) as Record<string, unknown>
+    const freshMoney = (fresh.money ?? {}) as Record<string, unknown>
+
+    const merged: Record<string, unknown> = {
+      ...fresh,
+      money: {
+        ...freshMoney,
+        // Cash as at close — unknowable retrospectively, so preserved verbatim.
+        available_now: originalMoney.available_now ?? null,
+        cash_after_reservations: originalMoney.cash_after_reservations ?? null,
+        safe_to_spend: originalMoney.safe_to_spend ?? null,
+        binding: originalMoney.binding ?? null,
+        forecast_balance: originalMoney.forecast_balance ?? null,
+        as_at_close: true,
+      },
+      __fingerprint: nowPrint,
+      __restated: true,
+      __restated_at: new Date().toISOString(),
+      __supersedes_version: current.version,
+    }
+
+    const changes = payloadDrift(payload, fresh)
+    const nextVersion = current.version + 1
+
+    await dbBatch([
+      db
+        .update(budgetPeriodSnapshots)
+        .set({ isCurrent: false })
+        .where(eq(budgetPeriodSnapshots.id, current.id)),
+      db.insert(budgetPeriodSnapshots).values({
+        periodId: period.id,
+        organizationId: orgId,
+        version: nextVersion,
+        isCurrent: true,
+        supersedesId: current.id,
+        restatedReason: "transaction_edited",
+        restatedBy: null, // system-detected
+        drift: { transactions: [prevPrint, nowPrint], envelopes: changes },
+        currency: current.currency, // carried forward, so history keeps its currency
+        payload: merged,
+        engineVersion: ENGINE_VERSION,
+      }),
+      db.insert(budgetEvents).values({
+        organizationId: orgId,
+        planId: plan.id,
+        periodId: period.id,
+        action: "period_restated",
+        detail: {
+          version: nextVersion,
+          reason: "transaction_edited",
+          was: prevPrint,
+          now: nowPrint,
+          envelopes_changed: changes.length,
+        },
+        actorUserId: null,
+      }),
+    ] as unknown as Parameters<typeof dbBatch>[0])
+
+    restated++
   }
 
-  if (prevPrint.total === nowPrint.total && prevPrint.n === nowPrint.n) return 0
-
-  const nextVersion = current.version + 1
-  const view = await buildBudgetView(orgId, role, accountType)
-  void view
-
-  await dbBatch([
-    db
-      .update(budgetPeriodSnapshots)
-      .set({ isCurrent: false })
-      .where(eq(budgetPeriodSnapshots.id, current.id)),
-    db.insert(budgetPeriodSnapshots).values({
-      periodId: lastClosed.id,
-      organizationId: orgId,
-      version: nextVersion,
-      isCurrent: true,
-      supersedesId: current.id,
-      restatedReason: "transaction_edited",
-      restatedBy: null, // system-detected
-      drift: { transactions: [prevPrint, nowPrint] },
-      currency: current.currency, // carried forward, so history keeps its currency
-      payload: { ...payload, __fingerprint: nowPrint, __restated: true },
-      engineVersion: ENGINE_VERSION,
-    }),
-    db.insert(budgetEvents).values({
-      organizationId: orgId,
-      planId: plan.id,
-      periodId: lastClosed.id,
-      action: "period_restated",
-      detail: { version: nextVersion, reason: "transaction_edited", was: prevPrint, now: nowPrint },
-      actorUserId: null,
-    }),
-  ] as unknown as Parameters<typeof dbBatch>[0])
-
-  return 1
+  return restated
 }

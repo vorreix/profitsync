@@ -20,7 +20,7 @@ import {
   settlementRollup,
   state,
 } from "../../../../../../src/lib/budget-math.js"
-import { loadPlan, planToday } from "../../../../../_lib/budget-engine.js"
+import { attributedSettlementsByCategoryKey, loadPlan, planToday } from "../../../../../_lib/budget-engine.js"
 
 /**
  * GET /api/budgets/v2/envelopes/:id/detail
@@ -104,6 +104,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const keys = ((envelope.matchKeys as string[] | null) ?? []).map(categoryKey).filter(Boolean)
   let txRows: Record<string, unknown>[] = []
   let settlementRows: Record<string, unknown>[] = []
+  let attributedTotal = 0
+  let attributedGross = 0
 
   if (open && envelope.section === "flexible") {
     // The catch-all claims whatever no explicit envelope does, so its row list
@@ -197,6 +199,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     })
 
+    // ATTRIBUTED (report-only) economic line, §8.8.1. The operational figures
+    // above use the CASH view — a settlement counts in the period its own money
+    // moved. That is authoritative, but it cannot answer "what did that trip
+    // actually cost me": a 400 expense here reimbursed 250 next month shows as
+    // 400 of spend now and 250 of credit later, and neither number is the 150
+    // true cost. This attributes settlements back to the period their EXPENSE
+    // falls in. It rewrites nothing and is labelled as a report in the UI.
+    const attributed = await attributedSettlementsByCategoryKey(orgId, plan, {
+      start: open.start,
+      endExclusive: open.endExclusive,
+    })
+    const mine = envelope.isCatchAll
+      ? [...attributed.entries()] // the catch-all owns whatever is left
+      : [...attributed.entries()].filter(([k]) => keys.includes(k))
+    attributedTotal = round2(mine.reduce((a, [, v]) => a + v, 0))
+
+    attributedGross = round2(
+      rows.filter((r) => r.type === "outgoing").reduce((a, r) => a + Number(r.amount), 0),
+    )
+
     const ids = rows.map((r) => r.id)
     if (ids.length) {
       const links = await db
@@ -269,6 +291,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }),
     transactions: txRows,
     settlements: settlementRows,
+    /**
+     * Report-only (§8.8.1): settlements attributed back to the period their
+     * ORIGINAL EXPENSE falls in, giving this envelope's true economic cost for
+     * the period. `spent_net` above stays on the authoritative cash view; these
+     * two figures differ whenever a refund crossed a period boundary, and the
+     * UI must label this one as a report rather than present it as the total.
+     */
+    attributed: {
+      /** Settlements whose EXPENSE falls in this period, whenever they arrived. */
+      settlements: attributedTotal,
+      /** Gross outflow in this period, from the same rows listed above. */
+      gross: attributedGross,
+      /** The true economic cost: what this period's spending really came to. */
+      net_cost: round2(attributedGross - attributedTotal),
+      note: "report_only",
+    },
     commitments: commitments.map(serialize),
     events: events.map(serialize),
   })

@@ -31,6 +31,7 @@ import {
   wealthAccounts,
 } from "../../src/lib/db/schema.js"
 import { safeTimezone } from "../../src/lib/schedule-notifications.js"
+import { spaceProgress, suggestedMonthly } from "../../src/lib/spaces.js"
 import { occurrencesDue } from "../../src/lib/recurring.js"
 import {
   addDays,
@@ -369,6 +370,54 @@ export async function confirmedSettlementsByCategoryKey(
         isNull(expense.deletedAt),
         gte(transactions.date, window.start),
         lt(transactions.date, window.endExclusive),
+      ),
+    )
+    .groupBy(sql`lower(btrim(coalesce(${expense.category}, '')))`)
+
+  const out = new Map<string, number>()
+  for (const r of rows) {
+    out.set(r.key ?? "", round2(amountInPlanCurrency(num(r.total), plan.currency, plan.currency)))
+  }
+  return out
+}
+
+/**
+ * ATTRIBUTED settlements (§8.8.1) — report only, never operational.
+ *
+ * The cash view (`confirmedSettlementsByCategoryKey`) is authoritative because
+ * it records money in the period it actually moved. But it cannot answer "what
+ * did that trip really cost me": a €400 March expense reimbursed €250 in May
+ * shows as €400 of March spend and €250 of May credit, and neither figure is
+ * the €150 true cost.
+ *
+ * This attributes each settlement back to the period its ORIGINAL EXPENSE falls
+ * in, keyed by the expense's category. It rewrites nothing: a settlement
+ * arriving after a period closed produces a restatement candidate (§8.11), not
+ * a silent edit. Every caller must label the result as a report.
+ */
+export async function attributedSettlementsByCategoryKey(
+  orgId: string,
+  plan: PlanRow,
+  window: PeriodWindow,
+): Promise<Map<string, number>> {
+  const expense = alias(transactions, "attributed_expense_tx")
+  const rows = await db
+    .select({
+      key: sql<string>`lower(btrim(coalesce(${expense.category}, '')))`,
+      total: sql<string>`coalesce(sum(${transactionSettlements.amount}::numeric), 0)`,
+    })
+    .from(transactionSettlements)
+    .innerJoin(expense, eq(transactionSettlements.expenseTransactionId, expense.id))
+    .innerJoin(transactions, eq(transactionSettlements.settlementTransactionId, transactions.id))
+    .where(
+      and(
+        eq(transactionSettlements.organizationId, orgId),
+        isNull(expense.deletedAt),
+        isNull(transactions.deletedAt),
+        // The EXPENSE's date decides the bucket — that is the whole difference
+        // from the cash view, which keys off the settlement's date.
+        gte(expense.date, window.start),
+        lt(expense.date, window.endExclusive),
       ),
     )
     .groupBy(sql`lower(btrim(coalesce(${expense.category}, '')))`)
@@ -776,6 +825,18 @@ export type EnvelopeView = {
   /** Category keys this envelope claims (empty for the catch-all). */
   match_keys: string[]
   /**
+   * Goal progress for a savings fund, or null.
+   *
+   * Computed with `spaceProgress` / `suggestedMonthly` from src/lib/spaces.ts,
+   * REUSED UNCHANGED (§8.9): that module is pure math over
+   * (balance, goal, targetDate) and never assumed a Space, so a virtual fund
+   * gets identical treatment without needing one. `suggested_monthly` rises
+   * when a contribution is missed, which is how a fund tells the truth about
+   * being behind instead of quietly forgiving it.
+   */
+  goal_progress: { pct: number; remaining: number; reached: boolean } | null
+  suggested_monthly: number | null
+  /**
    * Occurrence money SETTLED inside this period, for the commitment and debt
    * sections whose spend is defined by settling an expectation rather than by
    * matching a category.
@@ -811,11 +872,27 @@ export type BudgetView = {
  * The whole overview in one read (§11.3). READ-ONLY: it never writes, and
  * reports `sync_required` instead of silently serving a stale figure.
  */
+export type BuildViewOptions = {
+  /**
+   * Report a SPECIFIC period instead of the currently open one.
+   *
+   * Used by restatement (§8.11) to recompute a closed period from the ledger as
+   * it stands now. Every window-derived figure (spend, refunds, occurrences,
+   * section totals) recomputes correctly against that window. The CASH figures
+   * do not: `available_now` is a reading of today's balances and cannot be
+   * reconstructed for a past instant, so a caller recomputing history must
+   * carry the original snapshot's cash figures forward rather than believe
+   * these ones. `restateDriftedPeriods` does exactly that.
+   */
+  periodId?: string
+}
+
 export async function buildBudgetView(
   orgId: string,
   role: string,
   accountType: string | null,
   now = new Date(),
+  options: BuildViewOptions = {},
 ): Promise<BudgetView> {
   const plan = await loadPlan(orgId)
   const capabilities = {
@@ -846,13 +923,21 @@ export async function buildBudgetView(
   const today = planToday(plan, now)
   const stale = await syncRequired(orgId, plan, today)
 
-  // The currently OPEN period (there is at most one — a partial unique index).
-  const [period] = await db
-    .select()
-    .from(budgetPeriods)
-    .where(and(eq(budgetPeriods.planId, plan.id), eq(budgetPeriods.status, "open")))
-    .orderBy(desc(budgetPeriods.start))
-    .limit(1)
+  // The requested period, or the currently OPEN one (there is at most one open
+  // period — a partial unique index guarantees it). An explicitly requested
+  // period is still scoped to this plan, so an id from another workspace
+  // resolves to nothing rather than leaking a foreign period.
+  const [period] = options.periodId
+    ? await db
+        .select()
+        .from(budgetPeriods)
+        .where(and(eq(budgetPeriods.id, options.periodId), eq(budgetPeriods.planId, plan.id)))
+    : await db
+        .select()
+        .from(budgetPeriods)
+        .where(and(eq(budgetPeriods.planId, plan.id), eq(budgetPeriods.status, "open")))
+        .orderBy(desc(budgetPeriods.start))
+        .limit(1)
 
   // Currency divergence is DETECTED, never converted (§12.4).
   const [org] = await db.select({ currency: organizations.currency }).from(organizations).where(eq(organizations.id, orgId))
@@ -913,6 +998,18 @@ export async function buildBudgetView(
   ])
   const occMap = new Map(occByEnvelope.map((o) => [o.envelopeId, o]))
 
+  /**
+   * One definition of a fund's balance, used by BOTH the `balance` field and the
+   * goal math — otherwise a rounding or mode difference would let the progress
+   * bar disagree with the figure printed beside it.
+   *
+   * Virtual: the CONFIRMED entry ledger. Space-backed: the Space's own balance,
+   * which is authoritative and surfaced by /api/wealth/accounts, so it is null
+   * here rather than guessed.
+   */
+  const fundBalanceOf = (e: EnvelopeRow): number =>
+    e.fundingMode === "virtual" ? (fundBalances.get(e.id) ?? 0) : 0
+
   const views: EnvelopeView[] = []
   for (const e of envelopes) {
     const alloc = allocByEnvelope.get(e.id)
@@ -957,13 +1054,21 @@ export async function buildBudgetView(
       balance:
         e.section === "savings"
           ? e.fundingMode === "virtual"
-            ? (fundBalances.get(e.id) ?? 0)
-            : null // Space-backed: the Space's own balance, surfaced by /api/spaces
+            ? fundBalanceOf(e)
+            : null // Space-backed: the Space's own balance, surfaced by /api/wealth/accounts
           : null,
       contribution_status: alloc?.contributionStatus ?? null,
       needs_attention: occ?.needsAttention ?? false,
       excluded_occurrence_count: occ?.excludedCount ?? 0,
       match_keys: normalizeMatchKeys((e.matchKeys as string[] | null) ?? []),
+      goal_progress:
+        e.section === "savings" && e.goalAmount != null
+          ? spaceProgress(fundBalanceOf(e), num(e.goalAmount))
+          : null,
+      suggested_monthly:
+        e.section === "savings" && e.goalAmount != null
+          ? suggestedMonthly(fundBalanceOf(e), num(e.goalAmount), e.targetDate, today)
+          : null,
       settled: round2(
         (occ?.occurrences ?? [])
           .filter((x) => x.state === "settled" && x.dueDate >= window.start && x.dueDate < window.endExclusive)
@@ -1020,7 +1125,18 @@ export async function buildBudgetView(
   const spaceDue = sum(
     savings.filter((v) => v.funding_mode === "space_backed" && v.contribution_status === "planned").map((v) => v.planned),
   )
-  const protectedDue = sum(savings.filter((v) => !v.goal_amount && v.contribution_status === "planned").map(() => 0))
+  // PROTECTED SAVINGS (§8.5): a savings envelope with NO funding mode — a plain
+  // "hold this back" line rather than a sinking fund. The other three savings
+  // terms above already cover every virtual and Space-backed envelope, so this
+  // one must cover exactly the remainder or the same money is reserved twice.
+  //
+  // `max(0, planned − funded)` is what is still owed to the intention this
+  // period: a partially confirmed line reserves only the unconfirmed part.
+  const protectedDue = sum(
+    savings
+      .filter((v) => v.funding_mode == null && v.contribution_status !== "skipped")
+      .map((v) => Math.max(0, round2(v.planned - (v.contribution_status === "confirmed" ? v.planned : 0)))),
+  )
 
   const breakdown: ReservedBreakdown = {
     commitmentsOutstanding: commitmentOutstanding,
@@ -1142,6 +1258,10 @@ export async function buildBudgetView(
         outstanding: round2(virtualUnconfirmed + spaceDue),
         balance: sum(savings.map((v) => v.balance ?? 0)),
         awaiting_confirmation: savings.filter((v) => v.contribution_status === "planned").length,
+        skipped_count: savings.filter((v) => v.contribution_status === "skipped").length,
+        // Funds that are behind their goal pace, so the section can say so
+        // without the user opening each one.
+        behind_count: savings.filter((v) => v.suggested_monthly != null && v.suggested_monthly > 0).length,
         envelopes: savings,
       },
     },
