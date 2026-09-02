@@ -562,3 +562,147 @@ export type UserGroupMember = {
   name: string | null
   avatar_url: string | null
 }
+
+// ── Budget v2 ────────────────────────────────────────────────────────────────
+// Mirrors the GET /api/budgets/v2 payload (spec §11.3). Section shapes are
+// deliberately DIFFERENT from one another: income/commitment/debt/savings are
+// not commensurable with flexible spending, and collapsing them into one
+// "spent of planned" ratio is the error §8.7 exists to prevent.
+
+export type BudgetSectionName = "income" | "commitment" | "flexible" | "savings" | "debt"
+export type BudgetStateV2 = "none" | "ok" | "warn" | "full" | "over"
+/** Which limit produced safe-to-spend, so the UI can say WHY. */
+export type SafeToSpendBinding = "cash" | "plan" | "both" | "cash_only"
+
+export type BudgetEnvelopeView = {
+  id: string
+  name: string
+  section: BudgetSectionName
+  planned: number
+  rollover_in: number
+  authored_amount: number
+  authored_cadence: "period" | "month" | "week" | "day"
+  spent_gross: number
+  refunds_confirmed: number
+  refunds_provisional: number
+  spent_net: number
+  pending: number
+  /** SIGNED — negative when this envelope is over. Cards show this, not the netted figure. */
+  remaining: number
+  state: BudgetStateV2
+  priority: string
+  carry_policy: string
+  is_catch_all: boolean
+  reimbursable: boolean
+  funding_mode: "virtual" | "space_backed" | null
+  auto_fund: boolean
+  goal_amount: number | null
+  target_date: string | null
+  balance: number | null
+  contribution_status: "planned" | "confirmed" | "missed" | "skipped" | null
+  needs_attention: boolean
+  excluded_occurrence_count: number
+}
+
+export type BudgetOccurrenceView = {
+  commitment_id: string
+  due_date: string
+  amount: number
+  state: string
+  overdue: boolean
+  days_overdue?: number
+  from_previous_period?: boolean
+}
+
+export type BudgetView = {
+  plan: {
+    id: string
+    status: "active" | "paused" | "archived"
+    cadence: "monthly" | "weekly" | "payday" | "custom"
+    timezone: string
+    income_mode: "expected" | "available"
+    expected_income: number | null
+    currency: string
+    next_period_seed: string
+    paused_at: string | null
+    updated_at: string | null
+  } | null
+  period: {
+    id: string
+    start: string
+    end_exclusive: string
+    status: "open" | "closed"
+    is_partial: boolean
+    days_left: number
+    funding_base: number
+    funding_base_source: string
+    funding_base_anchor_date: string
+    funding_base_as_of: string | null
+    income_accreted: number
+    funding_adjustments: number
+    funding_capacity: number
+  } | null
+  money: {
+    available_now: number
+    reserved: number
+    reserved_breakdown: {
+      commitments_outstanding: number
+      commitments_overdue: number
+      debt_outstanding: number
+      virtual_fund_balances: number
+      virtual_contributions_unconfirmed: number
+      space_contributions_due: number
+      protected_savings_due: number
+    }
+    cash_after_reservations: number
+    /** max(0, Σ planned − Σ spent_net − Σ pending) — netted, then floored ONCE. */
+    flexible_headroom: number
+    ceiling_defined: boolean
+    safe_to_spend: number
+    binding: SafeToSpendBinding
+    unallocated: number
+    unallocated_available: number
+    forecast_balance: number
+  } | null
+  sections: {
+    income: { expected: number | null; received: number; outstanding: number | null }
+    flexible: {
+      planned: number
+      spent_gross: number
+      refunds_confirmed: number
+      refunds_provisional: number
+      spent_net: number
+      pending: number
+      /** SIGNED. `headroom` is the floored value used in the min(). */
+      remaining: number
+      headroom: number
+      utilisation: BudgetStateV2
+      envelopes: BudgetEnvelopeView[]
+    }
+    commitment: { planned: number; settled: number; outstanding: number; envelopes: BudgetEnvelopeView[] }
+    debt: { planned: number; paid: number; outstanding: number; envelopes: BudgetEnvelopeView[] }
+    savings: {
+      planned: number
+      reserved: number
+      funded: number
+      funded_cash: number
+      missed: number
+      outstanding: number
+      balance: number
+      awaiting_confirmation: number
+      envelopes: BudgetEnvelopeView[]
+    }
+  } | null
+  /** Identically the FLEXIBLE section's utilisation — never a cross-section ratio. */
+  plan_status: BudgetStateV2 | null
+  total_outflow: number | null
+  occurrences_upcoming: BudgetOccurrenceView[]
+  occurrences_overdue: BudgetOccurrenceView[]
+  /** The read told us it is stale; resolve with POST /api/budgets/v2/sync. */
+  sync_required: boolean
+  alerts: { kind: string; envelope_id?: string; amount?: number }[]
+  suggestions: { kind: string; envelope_id?: string; amount?: number | null; basis?: string }[]
+  capabilities: { can_write: boolean; can_close: boolean; account_type: string | null }
+  /** Machine-readable honesty about what this build cannot do (§21.4). */
+  limitations: string[]
+}

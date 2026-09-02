@@ -33,6 +33,7 @@ const SpacesPage = lazy(() => import("@/pages/SpacesPage").then((m) => ({ defaul
 const SpaceDetailPage = lazy(() => import("@/pages/SpaceDetailPage").then((m) => ({ default: m.SpaceDetailPage })))
 const CategoryTagsPage = lazy(() => import("@/pages/CategoryTagsPage").then((m) => ({ default: m.CategoryTagsPage })))
 const BudgetsPage = lazy(() => import("@/pages/BudgetsPage").then((m) => ({ default: m.BudgetsPage })))
+const BudgetOverviewPage = lazy(() => import("@/pages/BudgetOverviewPage").then((m) => ({ default: m.BudgetOverviewPage })))
 const BudgetDetailPage = lazy(() => import("@/pages/BudgetDetailPage").then((m) => ({ default: m.BudgetDetailPage })))
 const AnalyticsPage = lazy(() => import("@/pages/AnalyticsPage").then((m) => ({ default: m.AnalyticsPage })))
 const ReferralPage = lazy(() => import("@/pages/ReferralPage").then((m) => ({ default: m.ReferralPage })))
@@ -223,7 +224,10 @@ export function App() {
             <Route path="spaces/:id" element={<PersonalOnlyRoute feature="spaces"><SpaceDetailPage /></PersonalOnlyRoute>} />
             <Route path="analytics" element={<AnalyticsPage />} />
             <Route path="categories" element={<CategoryTagsPage />} />
-            <Route path="budgets" element={<BudgetsPage />} />
+            {/* Budget v2 is the /budgets surface. The v1 pages stay reachable at
+                /budgets/legacy so an existing bookmark never 404s (spec §13.6). */}
+            <Route path="budgets" element={<BudgetOverviewPage />} />
+            <Route path="budgets/legacy" element={<BudgetsPage />} />
             <Route path="budgets/:key" element={<BudgetDetailPage />} />
             <Route path="referrals" element={<ReferralPage />} />
             <Route path="quotations" element={<BusinessOnlyRoute feature="quotations"><QuotationsPage /></BusinessOnlyRoute>} />
