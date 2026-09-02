@@ -145,7 +145,7 @@ export function BudgetOverviewPage() {
       <Header
         right={
           canWrite ? (
-            <Button variant="outline" size="sm" onClick={togglePause} disabled={busy}>
+            <Button variant="outline" size="sm" className="h-9" onClick={togglePause} disabled={busy}>
               {busy ? (
                 <Loader2 className="size-3.5 animate-spin" />
               ) : paused ? (
@@ -323,10 +323,13 @@ function SafeToSpendHero({
         <dl>
           <dt className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground">
             {t("budgetV2.safeToSpend")}
+            {/* The icon stays small so it does not compete with the figure, but
+                the HIT AREA is a full 36px: the same DOM runs in the native
+                WebView, where an 18px target is genuinely hard to tap. */}
             <button
               type="button"
               onClick={onExplain}
-              className="rounded-full p-0.5 text-muted-foreground/70 transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="-m-2 inline-flex size-9 items-center justify-center rounded-full text-muted-foreground/70 transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               aria-label={t("budgetV2.explainTitle")}
             >
               <Info className="size-3.5" aria-hidden />
