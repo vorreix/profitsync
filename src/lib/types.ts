@@ -602,16 +602,71 @@ export type BudgetEnvelopeView = {
   contribution_status: "planned" | "confirmed" | "missed" | "skipped" | null
   needs_attention: boolean
   excluded_occurrence_count: number
+  /** Category keys this envelope claims. Empty for the catch-all. */
+  match_keys: string[]
+  /** Occurrence money settled inside this period (commitment and debt). */
+  settled: number
+  overdue_count: number
+  overdue_amount: number
 }
+
+export type BudgetOccurrenceAction = "settle" | "cancel" | "skip" | "reschedule"
 
 export type BudgetOccurrenceView = {
   commitment_id: string
+  /** The commitment's name — an overdue row without it cannot be acted on. */
+  name: string
+  kind: string
+  needs_attention: boolean
+  envelope_id: string
   due_date: string
   amount: number
   state: string
   overdue: boolean
   days_overdue?: number
   from_previous_period?: boolean
+  /** Which actions the server will accept for this occurrence's current state. */
+  actions: BudgetOccurrenceAction[]
+}
+
+/** A machine-readable limitation. Never a converted figure (spec §12.2). */
+export type BudgetCurrencyLimitation = {
+  code: "currency_mismatch"
+  plan_currency: string
+  org_currency: string
+  converted: false
+}
+
+/** One inflow that currently nets against an envelope only by category match. */
+export type BudgetProvisionalRefund = {
+  transaction_id: string
+  date: string
+  amount: number
+  category: string | null
+  description: string | null
+  envelope: { id: string; name: string } | null
+}
+
+export type BudgetCommitmentView = {
+  id: string
+  envelope_id: string
+  kind: "one_time" | "recurring"
+  name: string
+  amount: string
+  due_date: string | null
+  recurring_rule_id: string | null
+  first_due_date: string
+  status: string
+  needs_attention: boolean
+  rule: {
+    name: string | null
+    active: boolean
+    missing: boolean
+    next_due_at: string | null
+    frequency_unit: string | null
+    frequency_interval: number | null
+    end_date: string | null
+  } | null
 }
 
 export type BudgetView = {
@@ -677,10 +732,30 @@ export type BudgetView = {
       remaining: number
       headroom: number
       utilisation: BudgetStateV2
+      envelope_count: number
+      overspent_count: number
+      /** Outflow that matched no explicit envelope, i.e. what the catch-all absorbed. */
+      uncategorised: number
       envelopes: BudgetEnvelopeView[]
     }
-    commitment: { planned: number; settled: number; outstanding: number; envelopes: BudgetEnvelopeView[] }
-    debt: { planned: number; paid: number; outstanding: number; envelopes: BudgetEnvelopeView[] }
+    commitment: {
+      planned: number
+      settled: number
+      outstanding: number
+      overdue: number
+      overdue_count: number
+      needs_attention_count: number
+      envelopes: BudgetEnvelopeView[]
+    }
+    debt: {
+      planned: number
+      paid: number
+      outstanding: number
+      overdue: number
+      overdue_count: number
+      needs_attention_count: number
+      envelopes: BudgetEnvelopeView[]
+    }
     savings: {
       planned: number
       reserved: number
@@ -702,6 +777,7 @@ export type BudgetView = {
   sync_required: boolean
   alerts: { kind: string; envelope_id?: string; amount?: number }[]
   suggestions: { kind: string; envelope_id?: string; amount?: number | null; basis?: string }[]
+  currency_limitation?: BudgetCurrencyLimitation | null
   capabilities: { can_write: boolean; can_close: boolean; account_type: string | null }
   /** Machine-readable honesty about what this build cannot do (§21.4). */
   limitations: string[]
