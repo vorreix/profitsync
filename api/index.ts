@@ -92,6 +92,8 @@ import budgetsV2 from "./_routes/budgets/v2.js"
 import budgetsV2Sync from "./_routes/budgets/v2/sync.js"
 import budgetsV2Envelopes from "./_routes/budgets/v2/envelopes.js"
 import budgetsV2Envelope from "./_routes/budgets/v2/envelopes/[id].js"
+import budgetsV2EnvelopeReorder from "./_routes/budgets/v2/envelopes/reorder.js"
+import budgetsV2Contributions from "./_routes/budgets/v2/contributions.js"
 import budgetsV2EnvelopeDetail from "./_routes/budgets/v2/envelopes/[id]/detail.js"
 import budgetsV2Commitments from "./_routes/budgets/v2/commitments.js"
 import budgetsV2Commitment from "./_routes/budgets/v2/commitments/[id].js"
@@ -270,6 +272,9 @@ const routes: RoutePattern<ApiHandler>[] = [
   { segments: ["budgets", "v2", "occurrences"], handler: budgetsV2Occurrences },
   { segments: ["budgets", "v2", "reallocate"], handler: budgetsV2Reallocate },
   { segments: ["budgets", "v2", "refunds"], handler: budgetsV2Refunds },
+  { segments: ["budgets", "v2", "contributions"], handler: budgetsV2Contributions },
+  // "reorder" is a STATIC 4th segment and must precede the dynamic :id sibling.
+  { segments: ["budgets", "v2", "envelopes", "reorder"], handler: budgetsV2EnvelopeReorder },
   { segments: ["budgets", "v2", "envelopes", ":id", "detail"], handler: budgetsV2EnvelopeDetail },
   { segments: ["budgets", "v2", "envelopes", ":id"], handler: budgetsV2Envelope },
   { segments: ["budgets", "v2", "commitments", ":id"], handler: budgetsV2Commitment },
