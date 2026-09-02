@@ -7,6 +7,8 @@ import { amountExceedsLimit } from "../../src/lib/money.js"
 import { isBudgetPeriod, type BudgetPeriod } from "../../src/lib/budget.js"
 import { budgetChangeAction } from "../../src/lib/budget-history.js"
 import { outgoingByClient, spentFor, type PeriodSums } from "../_lib/budget-spend.js"
+import { applyV1Write, noteAdapterRead, projectPlanToV1 } from "../_lib/budget-v1-adapter.js"
+import { loadPlan } from "../_lib/budget-engine.js"
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ctx = await requireAuth(req, res)
@@ -15,6 +17,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const personal = isPersonalAccount(ctx)
 
   if (req.method === "GET") {
+    // v1 CONTRACT, PRESERVED. When this org has a Budget v2 plan, project it down
+    // to the v1 shape rather than changing this path's response — the Android and
+    // iOS apps run a store-pinned bundle and cannot be pushed a fix (spec §11.1).
+    const projected = await projectPlanToV1(orgId, role, ctx.accountType)
+    if (projected) {
+      const [plan] = [await loadPlan(orgId)]
+      if (plan) noteAdapterRead(orgId, plan.id)
+      return res.json(projected)
+    }
+
     const now = new Date()
     const [rows, byClient] = await Promise.all([
       db.select().from(budgets).where(eq(budgets.organizationId, orgId)),
@@ -59,6 +71,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const amt = Number(amount)
     if (!Number.isFinite(amt) || amt < 0) return res.status(400).json({ error: "amount must be a non-negative number" })
     if (amountExceedsLimit(amt)) return res.status(400).json({ error: "Amount is too large" })
+
+    // v1 WRITE, PRESERVED. An old client editing a workspace budget is routed to
+    // the v2 plan's catch-all envelope. amount <= 0 PAUSES the plan rather than
+    // deleting it: deleting a v2 plan from a v1 client would silently destroy
+    // envelopes, commitments and funds the old client cannot even see (§11.1).
+    const v2Plan = await loadPlan(orgId)
+    if (v2Plan && clientId === null) {
+      const { paused } = await applyV1Write({ orgId, plan: v2Plan, period, amount: amt, actorUserId: userId })
+      return paused ? res.json({ ok: true, removed: true }) : res.json({ ok: true })
+    }
 
     // Validate the client belongs to the org (when targeting a specific client).
     if (clientId) {

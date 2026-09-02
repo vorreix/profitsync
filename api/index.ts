@@ -88,6 +88,8 @@ import trashClear from "./_routes/trash/clear.js"
 import budgets from "./_routes/budgets.js"
 import budgetsOverview from "./_routes/budgets/overview.js"
 import budgetsDetail from "./_routes/budgets/detail.js"
+import budgetsV2 from "./_routes/budgets/v2.js"
+import budgetsV2Sync from "./_routes/budgets/v2/sync.js"
 import publicPricing from "./_routes/public/pricing.js"
 import publicBlog from "./_routes/public/blog.js"
 import publicBlogBySlug from "./_routes/public/blog/[slug].js"
@@ -249,6 +251,10 @@ const routes: RoutePattern<ApiHandler>[] = [
   { segments: ["invitations", ":token"], handler: invitationByToken },
   { segments: ["legal", "accept"], handler: legalAccept },
 
+  // Budget v2 lives under a versioned path so /api/budgets can keep its v1
+  // contract indefinitely for store-pinned native bundles (spec §11.1).
+  { segments: ["budgets", "v2", "sync"], handler: budgetsV2Sync },
+  { segments: ["budgets", "v2"], handler: budgetsV2 },
   { segments: ["budgets", "overview"], handler: budgetsOverview },
   { segments: ["budgets", "detail"], handler: budgetsDetail },
   { segments: ["budgets"], handler: budgets },
