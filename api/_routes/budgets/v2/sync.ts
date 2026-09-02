@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { and, asc, eq, inArray, isNull, ne, sql } from "drizzle-orm"
-import { db } from "../../../../src/lib/db/index.js"
+import { db, dbBatch } from "../../../../src/lib/db/index.js"
 import {
   budgetAllocations,
   budgetCommitments,
@@ -119,7 +119,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const fresh = await reconstructedBase(orgId, plan, stillOpen)
       const was = Number(stillOpen.fundingBase ?? 0)
       if (Math.abs(fresh - was) >= 0.01) {
-        await db.batch([
+        await dbBatch([
           db
             .update(budgetPeriods)
             .set({ fundingBase: String(fresh), fundingBaseComputedAt: new Date() })
@@ -236,7 +236,7 @@ async function closePeriod(
 
   const nextWindow = periodFor(cadenceOf(plan), period.endExclusive)
 
-  const writes: Parameters<typeof db.batch>[0] = [
+  const writes: Parameters<typeof dbBatch>[0] = [
     db.insert(budgetPeriodSnapshots).values({
       periodId: period.id,
       organizationId: orgId,
@@ -258,7 +258,7 @@ async function closePeriod(
       detail: { start: period.start, end_exclusive: period.endExclusive },
       actorUserId: actorUserId || null,
     }),
-  ] as unknown as Parameters<typeof db.batch>[0]
+  ] as unknown as Parameters<typeof dbBatch>[0]
 
   const batch = [...(writes as unknown as unknown[])] as unknown[]
 
@@ -313,7 +313,7 @@ async function closePeriod(
     }
   }
 
-  await db.batch(batch as unknown as Parameters<typeof db.batch>[0])
+  await dbBatch(batch as unknown as Parameters<typeof dbBatch>[0])
 
   // Open the next period and carry rollover into it.
   const next = await openPeriod(orgId, plan, nextWindow, { isPartial: false, actorUserId })
@@ -486,7 +486,7 @@ async function restateDriftedPeriods(
   const view = await buildBudgetView(orgId, role, accountType)
   void view
 
-  await db.batch([
+  await dbBatch([
     db
       .update(budgetPeriodSnapshots)
       .set({ isCurrent: false })
@@ -512,7 +512,7 @@ async function restateDriftedPeriods(
       detail: { version: nextVersion, reason: "transaction_edited", was: prevPrint, now: nowPrint },
       actorUserId: null,
     }),
-  ] as unknown as Parameters<typeof db.batch>[0])
+  ] as unknown as Parameters<typeof dbBatch>[0])
 
   return 1
 }
