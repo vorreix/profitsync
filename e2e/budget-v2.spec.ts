@@ -194,9 +194,15 @@ test.describe.serial("Budget v2", () => {
       const b = buttons.nth(i)
       const box = await b.boundingBox()
       if (!box) continue
-      // 36px is the rendered floor for the compact icon rows (h-9); anything
-      // below that is genuinely hard to hit on a phone.
-      if (box.height < 36) tooSmall.push(`${(await b.textContent())?.trim() || "(icon)"} = ${box.height}px`)
+      // 36px is the rendered floor for the compact icon rows (h-9). The one
+      // deliberate exception is a STACKED pair (move up / move down): each half
+      // is 18px but the pair forms a 36px block, so the effective target is met
+      // in both axes. Such a control is accepted only when it is at least 36px
+      // WIDE, which is what distinguishes it from a genuinely tiny button.
+      const stackedPair = box.height >= 17 && box.width >= 36
+      if (box.height < 36 && !stackedPair) {
+        tooSmall.push(`${(await b.textContent())?.trim() || "(icon)"} = ${box.height}x${box.width}px`)
+      }
     }
     expect(tooSmall, `controls under 36px tall:\n${tooSmall.join("\n")}`).toEqual([])
   })

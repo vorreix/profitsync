@@ -55,8 +55,15 @@ export function AddEnvelopeDialog({
   const [categories, setCategories] = useState<CategoryRow[]>([])
   const [saving, setSaving] = useState(false)
   const [conflict, setConflict] = useState<string | null>(null)
+  // Savings only. `virtual` is the default because it needs no Space, is
+  // unlimited on every plan and moves no money — which is what makes a second
+  // and third fund possible for a free user at all (spec §8.9).
+  const [fundingMode, setFundingMode] = useState<"virtual" | "space_backed">("virtual")
+  const [goal, setGoal] = useState("")
+  const [targetDate, setTargetDate] = useState("")
 
   const needsCategories = section === "flexible"
+  const isSavings = section === "savings"
   const claimed = new Set(claimedKeys)
 
   useEffect(() => {
@@ -65,6 +72,9 @@ export function AddEnvelopeDialog({
     setTarget("")
     setPicked([])
     setConflict(null)
+    setFundingMode("virtual")
+    setGoal("")
+    setTargetDate("")
     if (!needsCategories) return
     let alive = true
     ;(async () => {
@@ -105,6 +115,13 @@ export function AddEnvelopeDialog({
           target_amount: Number.isFinite(targetNum) ? targetNum : 0,
           target_cadence: "period",
           ...(needsCategories ? { match_keys: picked } : {}),
+          ...(isSavings
+            ? {
+                funding_mode: fundingMode,
+                goal_amount: Number(goal) > 0 ? Number(goal) : null,
+                target_date: targetDate || null,
+              }
+            : {}),
         },
         ["/api/budgets"],
       )
@@ -173,6 +190,73 @@ export function AddEnvelopeDialog({
               </div>
               <p className="text-xs text-muted-foreground">{t("budgetV2.envelopeTargetHint")}</p>
             </div>
+          )}
+
+          {isSavings && (
+            <>
+              {/* Where the money actually sits. The consequence of each choice
+                  is stated, because it is the difference between money being
+                  held back and money physically leaving the account. */}
+              <div className="space-y-1.5">
+                <Label>{t("budgetV2.fundMode")}</Label>
+                <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label={t("budgetV2.fundMode")}>
+                  {(
+                    [
+                      ["virtual", t("budgetV2.fundVirtual"), t("budgetV2.fundVirtualHint")],
+                      ["space_backed", t("budgetV2.fundSpace"), t("budgetV2.fundSpaceHint")],
+                    ] as ["virtual" | "space_backed", string, string][]
+                  ).map(([value, label, hint]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      role="radio"
+                      aria-checked={fundingMode === value}
+                      onClick={() => setFundingMode(value)}
+                      className={`pressable flex min-h-16 flex-col items-start justify-center gap-0.5 rounded-xl border px-3 py-2 text-left transition-colors ${
+                        fundingMode === value ? "border-primary bg-primary/5" : "hover:bg-accent"
+                      }`}
+                    >
+                      <span className="text-sm font-medium">{label}</span>
+                      <span className="text-[11px] text-muted-foreground">{hint}</span>
+                    </button>
+                  ))}
+                </div>
+                {fundingMode === "space_backed" && (
+                  <p className="text-xs text-muted-foreground">{t("budgetV2.fundSpaceNote")}</p>
+                )}
+              </div>
+
+              {/* A goal is optional: a fund can simply hold money back with no
+                  target, and requiring one would make the simple case harder. */}
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="env-goal">{t("budgetV2.fundGoal")}</Label>
+                  <div className="relative">
+                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                      {symbol}
+                    </span>
+                    <Input
+                      id="env-goal"
+                      inputMode="decimal"
+                      value={goal}
+                      onChange={(e) => setGoal(e.target.value)}
+                      placeholder={t("budgetV2.optional")}
+                      className="h-11 pl-8 text-base"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="env-target-date">{t("budgetV2.fundBy")}</Label>
+                  <Input
+                    id="env-target-date"
+                    type="date"
+                    value={targetDate}
+                    onChange={(e) => setTargetDate(e.target.value)}
+                    className="h-11 text-base"
+                  />
+                </div>
+              </div>
+            </>
           )}
 
           {needsCategories && (
