@@ -40,8 +40,12 @@ type DetailHistory = {
   restated_reason: string | null
 }
 
+/** Report-only economic view (§8.8.1) — never the operational figure. */
+type Attributed = { settlements: number; gross: number; net_cost: number; note: string }
+
 type Detail = {
   envelope: { id: string; name: string; section: string }
+  attributed?: Attributed
   transactions: DetailTx[]
   history: DetailHistory[]
   events: { id: string; action: string; amount: string | null; created_at: string }[]
@@ -179,6 +183,38 @@ export function EnvelopeDetailSheet({
                       </li>
                     ))}
                   </ul>
+                </section>
+              )}
+
+              {/* ── the attributed economic view (§8.8.1) ──
+                  Shown ONLY when it actually differs from the cash figure, i.e.
+                  when a refund crossed a period boundary. Otherwise it would be
+                  a second number saying the same thing, and a screen with two
+                  figures for one fact is how a budget loses its reader. */}
+              {detail.attributed && detail.attributed.settlements > 0 && (
+                <section className="mt-5 rounded-lg border border-dashed p-3">
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    {t("budgetV2.attributedTitle")}
+                  </h3>
+                  {/* Labelled as a report, explicitly. The figures above are the
+                      operational truth; this answers a different question. */}
+                  <p className="mt-1 text-[11px] text-muted-foreground">{t("budgetV2.attributedBody")}</p>
+                  <dl className="mt-2 grid grid-cols-3 gap-2">
+                    <div>
+                      <dt className="text-[11px] text-muted-foreground">{t("budgetV2.attributedGross")}</dt>
+                      <dd className="text-sm font-semibold tabular-nums">{money(detail.attributed.gross)}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-[11px] text-muted-foreground">{t("budgetV2.attributedRefunded")}</dt>
+                      <dd className="text-sm font-semibold tabular-nums">
+                        −{money(detail.attributed.settlements)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-[11px] text-muted-foreground">{t("budgetV2.attributedNet")}</dt>
+                      <dd className="text-sm font-semibold tabular-nums">{money(detail.attributed.net_cost)}</dd>
+                    </div>
+                  </dl>
                 </section>
               )}
 

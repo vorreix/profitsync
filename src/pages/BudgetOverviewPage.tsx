@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
-import { ChevronRight, Info, Loader as Loader2, Pause, Play, Plus, RefreshCw } from "lucide-react"
+import { ChevronRight, GripVertical, Info, Loader as Loader2, Pause, Play, Plus, RefreshCw } from "lucide-react"
 import { MoneyBag } from "@/components/icons/MoneyBag"
 import { apiPatch } from "@/lib/api"
 import { useBudget } from "@/lib/budget-context"
@@ -15,6 +15,8 @@ import { EnvelopeDetailSheet } from "@/components/budget/EnvelopeDetailSheet"
 import { OverdueList } from "@/components/budget/OverdueList"
 import { RefundReview } from "@/components/budget/RefundReview"
 import { ResolveOverspendSheet } from "@/components/budget/ResolveOverspendSheet"
+import { EnvelopeList, type HandleProps } from "@/components/budget/EnvelopeList"
+import { SavingsSection } from "@/components/budget/SavingsSection"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -218,6 +220,7 @@ export function BudgetOverviewPage() {
             onAddBill={() => setAddBillOpen(true)}
             onOpenDetail={setDetailFor}
             onResolveOverspend={setOverspendFor}
+            onChanged={afterChange}
           />
 
           {/* Machine-readable honesty about what this build cannot do (§21.4). */}
@@ -399,6 +402,7 @@ function Sections({
   onAddBill,
   onOpenDetail,
   onResolveOverspend,
+  onChanged,
 }: {
   view: BudgetView
   money: (n: number) => string
@@ -407,6 +411,7 @@ function Sections({
   onAddBill: () => void
   onOpenDetail: (env: BudgetEnvelopeView) => void
   onResolveOverspend: (env: BudgetEnvelopeView) => void
+  onChanged: () => void
 }) {
   const { t } = useTranslation()
   const s = view.sections!
@@ -453,18 +458,18 @@ function Sections({
           )}
 
           {s.flexible.envelopes.length > 0 && (
-            <ul className="mt-3 space-y-2 border-t pt-3">
-              {s.flexible.envelopes.map((e) => (
+            <EnvelopeList envelopes={s.flexible.envelopes} canWrite={canWrite} onChanged={onChanged}>
+              {(e, handle) => (
                 <EnvelopeRow
-                  key={e.id}
                   env={e}
                   money={money}
                   canWrite={canWrite}
+                  handle={handle}
                   onOpenDetail={onOpenDetail}
                   onResolveOverspend={onResolveOverspend}
                 />
-              ))}
-            </ul>
+              )}
+            </EnvelopeList>
           )}
         </CardContent>
       </Card>
@@ -504,14 +509,16 @@ function Sections({
             </dl>
             <ul className="mt-3 space-y-2 border-t pt-3">
               {s.commitment.envelopes.map((e) => (
-                <EnvelopeRow
-                  key={e.id}
-                  env={e}
-                  money={money}
-                  canWrite={canWrite}
-                  onOpenDetail={onOpenDetail}
-                  onResolveOverspend={onResolveOverspend}
-                />
+                <li key={e.id}>
+                  <EnvelopeRow
+                    env={e}
+                    money={money}
+                    canWrite={canWrite}
+                    handle={null}
+                    onOpenDetail={onOpenDetail}
+                    onResolveOverspend={onResolveOverspend}
+                  />
+                </li>
               ))}
             </ul>
           </CardContent>
@@ -535,23 +542,15 @@ function Sections({
         )
       )}
 
-      {/* Savings — funded / reserved-not-confirmed / balance. */}
-      {(s.savings.planned > 0 || s.savings.balance > 0 || s.savings.envelopes.length > 0) && (
-        <Card className="py-0">
-          <CardContent className="p-4">
-            <p className="text-sm font-semibold">{t("budgetV2.sectionSavings")}</p>
-            <dl className="mt-2 space-y-1 text-xs">
-              <Row label={t("budgetV2.savingsFunded")} value={money(s.savings.funded)} />
-              <Row label={t("budgetV2.reserved")} value={money(s.savings.reserved)} />
-            </dl>
-            {s.savings.awaiting_confirmation > 0 && (
-              <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
-                {t("budgetV2.savingsAwaiting", { count: s.savings.awaiting_confirmation })}
-              </p>
-            )}
-          </CardContent>
-        </Card>
-      )}
+      {/* Savings — funds with their own confirmation flow (§8.9.1). */}
+      <SavingsSection
+        view={view}
+        money={money}
+        canWrite={canWrite}
+        onAdd={() => onAdd("savings")}
+        onOpenDetail={onOpenDetail}
+        onChanged={onChanged}
+      />
 
       {/* Debt — paid / outstanding, NEVER mixed into spending: a debt payment
           reduces what you owe, it is not consumption (§8.7). */}
@@ -572,14 +571,16 @@ function Sections({
             </dl>
             <ul className="mt-3 space-y-2 border-t pt-3">
               {s.debt.envelopes.map((e) => (
-                <EnvelopeRow
-                  key={e.id}
-                  env={e}
-                  money={money}
-                  canWrite={canWrite}
-                  onOpenDetail={onOpenDetail}
-                  onResolveOverspend={onResolveOverspend}
-                />
+                <li key={e.id}>
+                  <EnvelopeRow
+                    env={e}
+                    money={money}
+                    canWrite={canWrite}
+                    handle={null}
+                    onOpenDetail={onOpenDetail}
+                    onResolveOverspend={onResolveOverspend}
+                  />
+                </li>
               ))}
             </ul>
           </CardContent>
@@ -625,12 +626,15 @@ function EnvelopeRow({
   env,
   money,
   canWrite,
+  handle,
   onOpenDetail,
   onResolveOverspend,
 }: {
   env: BudgetEnvelopeView
   money: (n: number) => string
   canWrite: boolean
+  /** Drag activator, when this row sits in a reorderable list. */
+  handle: HandleProps | null
   onOpenDetail: (env: BudgetEnvelopeView) => void
   onResolveOverspend: (env: BudgetEnvelopeView) => void
 }) {
@@ -657,13 +661,31 @@ function EnvelopeRow({
       : { text: t("budgetV2.left", { amount: money(env.remaining) }), tone: "" }
 
   return (
-    <li className="rounded-lg transition-colors hover:bg-accent/40">
-      <button
-        type="button"
-        onClick={() => onOpenDetail(env)}
-        className="flex min-h-11 w-full items-center justify-between gap-2 px-1 py-1.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        aria-label={t("budgetV2.openEnvelope", { name: env.name })}
-      >
+    <div className="rounded-lg transition-colors hover:bg-accent/40">
+      <div className="flex items-center gap-1">
+        {/* The drag activator is a SEPARATE control from the row button, so a
+            tap still opens the envelope and only the grip starts a drag. It is
+            aria-hidden because the move up/down buttons in EnvelopeList are the
+            accessible way to reorder — a drag handle announced to a screen
+            reader that cannot be operated by one is worse than none. */}
+        {handle && (
+          <span
+            ref={handle.ref}
+            {...handle.listeners}
+            {...handle.attributes}
+            aria-hidden
+            tabIndex={-1}
+            className="flex size-6 shrink-0 cursor-grab touch-none items-center justify-center text-muted-foreground/40 transition-colors hover:text-muted-foreground active:cursor-grabbing"
+          >
+            <GripVertical className="size-3.5" />
+          </span>
+        )}
+        <button
+          type="button"
+          onClick={() => onOpenDetail(env)}
+          className="flex min-h-11 w-full flex-1 items-center justify-between gap-2 px-1 py-1.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          aria-label={t("budgetV2.openEnvelope", { name: env.name })}
+        >
         <div className="min-w-0 flex-1">
           <p className="flex items-center gap-1.5 truncate text-xs font-medium">
             {env.name}
@@ -693,7 +715,8 @@ function EnvelopeRow({
           {trailing.text}
         </span>
         <ChevronRight className="size-3.5 shrink-0 text-muted-foreground/60 rtl:rotate-180" aria-hidden />
-      </button>
+        </button>
+      </div>
 
       {/* An overspend offers the way OUT, right where it is visible. Supportive,
           not scolding: it states the amount and offers options (P7). Offered for
@@ -705,14 +728,14 @@ function EnvelopeRow({
           <Button
             size="sm"
             variant="outline"
-            className="h-8 px-2 text-[11px]"
+            className="h-9 px-2 text-[11px]"
             onClick={() => onResolveOverspend(env)}
           >
             {t("budgetV2.resolve")}
           </Button>
         </div>
       )}
-    </li>
+    </div>
   )
 }
 

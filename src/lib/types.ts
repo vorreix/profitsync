@@ -604,6 +604,13 @@ export type BudgetEnvelopeView = {
   excluded_occurrence_count: number
   /** Category keys this envelope claims. Empty for the catch-all. */
   match_keys: string[]
+  /**
+   * Goal progress for a savings fund, or null when it has no goal.
+   * Computed with the Spaces goal math, reused unchanged (spec §8.9).
+   */
+  goal_progress: { pct: number; remaining: number; reached: boolean } | null
+  /** Rises when a contribution is missed, so a fund tells the truth about being behind. */
+  suggested_monthly: number | null
   /** Occurrence money settled inside this period (commitment and debt). */
   settled: number
   overdue_count: number
@@ -645,6 +652,18 @@ export type BudgetProvisionalRefund = {
   category: string | null
   description: string | null
   envelope: { id: string; name: string } | null
+}
+
+/** One entry in a virtual fund's ledger. */
+export type BudgetFundEntry = {
+  id: string
+  envelope_id: string
+  period_id: string | null
+  kind: "contribution" | "withdrawal" | "adjustment"
+  amount: string
+  source: "confirmed" | "auto_fund" | "manual" | "conversion"
+  note: string
+  created_at: string
 }
 
 export type BudgetCommitmentView = {
@@ -765,6 +784,8 @@ export type BudgetView = {
       outstanding: number
       balance: number
       awaiting_confirmation: number
+      skipped_count: number
+      behind_count: number
       envelopes: BudgetEnvelopeView[]
     }
   } | null
