@@ -2051,6 +2051,9 @@
     "partiallySettled": "{{settled}} திரும்பக் கிடைத்தது, {{outstanding}} இன்னும் நிலுவை",
     "confirmedSettlement": "உறுதிசெய்யப்பட்ட திரும்பப்பணம்",
     "wasNamed": "{{name}} ஆக இருந்தது",
-    "restated": "மீள்கூறப்பட்டது"
+    "restated": "மீள்கூறப்பட்டது",
+    "unpaidAmount": "{{amount}} செலுத்த வேண்டும்",
+    "paidShort": "செலுத்தியது",
+    "overdueShort": "தாமதம்"
   }
 }

@@ -2051,6 +2051,9 @@
     "partiallySettled": "{{settled}} वापस, {{outstanding}} अभी बाकी",
     "confirmedSettlement": "पुष्ट वापसी",
     "wasNamed": "पहले {{name}} था",
-    "restated": "पुनः प्रस्तुत"
+    "restated": "पुनः प्रस्तुत",
+    "unpaidAmount": "{{amount}} बाकी",
+    "paidShort": "चुकाया",
+    "overdueShort": "देर"
   }
 }
