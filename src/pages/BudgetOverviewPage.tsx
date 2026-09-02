@@ -132,6 +132,19 @@ export function BudgetOverviewPage() {
         </div>
       )}
 
+      {/* A plan can exist for a moment before its first period is opened (the
+          wizard creates the plan, then sync opens the period). Render the
+          setting-up state rather than a blank body — the provider's self-heal
+          is already in flight. */}
+      {(!data.money || !data.period) && (
+        <Card className="py-0">
+          <CardContent className="flex items-center gap-2 p-4 text-sm text-muted-foreground">
+            <Loader2 className="size-4 animate-spin" aria-hidden />
+            {t("budgetV2.updating")}
+          </CardContent>
+        </Card>
+      )}
+
       {data.money && data.period && (
         <>
           <SafeToSpendHero
