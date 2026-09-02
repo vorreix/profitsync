@@ -52,7 +52,7 @@ and **what it must not be confused with**.
 
 ### `safeToSpend`
 - **English:** Safe to spend
-- **Current ar:** آمن للإنفاق
+- **Current ar:** المتاح للإنفاق بأمان
 - **Must not be confused with:** Must NOT read as 'available', 'balance' or 'remaining budget'. It is the bounded intersection of available cash and what the plan allows — the one figure that answers 'can I buy this?'
 
 ### `availableNow`
@@ -62,7 +62,7 @@ and **what it must not be confused with**.
 
 ### `reserved`
 - **English:** Reserved
-- **Current ar:** محتجز
+- **Current ar:** محجوز
 - **Must not be confused with:** Must NOT read as 'spent'. The money has NOT left the account; it is held back for bills, debt and savings.
 
 ### `forecast`
@@ -72,7 +72,7 @@ and **what it must not be confused with**.
 
 ### `fundingCapacity`
 - **English:** Funding this period
-- **Current ar:** تمويل هذه الفترة
+- **Current ar:** الأموال المتاحة لهذه الفترة
 - **Must not be confused with:** What this period has to work with. Must NOT read as 'income'. Spending never reduces it.
 
 ### `unallocated`
@@ -87,17 +87,17 @@ and **what it must not be confused with**.
 
 ### `savingsReservedNotConfirmed`
 - **English:** {{amount}} reserved · not yet confirmed
-- **Current ar:** {{amount}} محتجزة · لم تُؤكَّد بعد
+- **Current ar:** {{amount}} محجوز · لم يتم التأكيد بعد
 - **Must not be confused with:** Reserved but NOT yet confirmed. Must read clearly DIFFERENT from savingsFunded — this distinction is the entire point of the four contribution states.
 
 ### `pending`
 - **English:** Pending
-- **Current ar:** معلّق
+- **Current ar:** بانتظار السداد
 - **Must not be confused with:** An obligation not yet paid. Must NOT read as 'spent'.
 
 ### `overdueSince`
 - **English:** Overdue since {{date}}
-- **Current ar:** متأخرة منذ {{date}}
+- **Current ar:** متأخر عن السداد منذ {{date}}
 - **Must not be confused with:** Still owed and still reserved. Must NOT read as 'cancelled' or 'written off'.
 
 ### `stateFull`
@@ -107,12 +107,12 @@ and **what it must not be confused with**.
 
 ### `bindingPlan`
 - **English:** Limited by your plan — {{amount}} of cash is uncommitted
-- **Current ar:** محدود بخطتك — {{amount}} من النقد غير مُلتزم به
+- **Current ar:** الحد وفق خطتك — ما زال {{amount}} من النقد غير مخصّص
 - **Must not be confused with:** Explains that THE PLAN was the tighter of two limits. Must read differently from bindingCash.
 
 ### `bindingCash`
 - **English:** Limited by your available cash — your plan still allows {{amount}}
-- **Current ar:** محدود بالنقد المتاح — خطتك تسمح بـ {{amount}} إضافية
+- **Current ar:** الحد وفق نقدك المتاح — لا تزال خطتك تسمح بإنفاق {{amount}}
 - **Must not be confused with:** Explains that AVAILABLE CASH was the tighter of two limits. Must read differently from bindingPlan.
 
 ### `bindingCashOnly`
@@ -122,7 +122,7 @@ and **what it must not be confused with**.
 
 ### `includesRefund`
 - **English:** Includes {{amount}} treated as a refund
-- **Current ar:** يشمل {{amount}} تُعتبر مبلغًا مُعادًا
+- **Current ar:** يتضمن {{amount}} اعتُبر مبدئيًا مبلغًا مستردًا
 - **Must not be confused with:** A PROVISIONAL guess the user can correct — not a confirmed fact. The wording must convey uncertainty.
 
 ### `rejectRefund`
@@ -132,7 +132,7 @@ and **what it must not be confused with**.
 
 ### `plannedShort`
 - **English:** Planned
-- **Current ar:** المخطط
+- **Current ar:** المخطط له
 - **Must not be confused with:** Intent. Must read differently from spentShort, pendingShort and remaining.
 
 ### `spentShort`
@@ -142,7 +142,7 @@ and **what it must not be confused with**.
 
 ### `pendingShort`
 - **English:** Pending
-- **Current ar:** قيد الاستحقاق
+- **Current ar:** بانتظار السداد
 - **Must not be confused with:** Owed but still in the account. Must NOT read as spentShort.
 
 ### `remaining`
@@ -167,7 +167,7 @@ and **what it must not be confused with**.
 
 ### `overdueShort`
 - **English:** Overdue
-- **Current ar:** متأخر
+- **Current ar:** متأخر السداد
 - **Must not be confused with:** Late but still owed and still reserved. Factual, never accusatory.
 
 ### `daysOverdue`
@@ -182,17 +182,17 @@ and **what it must not be confused with**.
 
 ### `leftoverTag`
 - **English:** leftover
-- **Current ar:** المتبقي
+- **Current ar:** المتبقي العام
 - **Must not be confused with:** Tags the catch-all envelope, which claims EVERYTHING not claimed by a named category. Not 'other' or 'miscellaneous'.
 
 ### `uncategorisedNote`
 - **English:** {{amount}} was not in any category you track.
-- **Current ar:** {{amount}} لم يكن في أي فئة تتابعها.
+- **Current ar:** لم يُدرج {{amount}} ضمن أي فئة تتابعها.
 - **Must not be confused with:** The money IS tracked — by the leftover envelope. This says only that it matched no NAMED category. Must not read as 'untracked' or 'ignored'.
 
 ### `categoryTaken`
 - **English:** Already tracked by another envelope
-- **Current ar:** مُتابَعة بالفعل في بند آخر
+- **Current ar:** هذه الفئة مرتبطة بالفعل ببند آخر
 - **Must not be confused with:** This category already belongs to a different envelope. Each category belongs to exactly one.
 
 ### `envelopeCategoriesHint`
@@ -202,17 +202,17 @@ and **what it must not be confused with**.
 
 ### `overspendTitle`
 - **English:** {{name}} is over its target
-- **Current ar:** {{name}} تجاوز هدفه
+- **Current ar:** تم تجاوز هدف {{name}}
 - **Must not be confused with:** States a fact about a target being exceeded. Neutral.
 
 ### `overspendBody`
 - **English:** You planned {{planned}} and have spent {{spent}}, so this is {{amount}} over. Here is how you can cover it.
-- **Current ar:** خططت لـ {{planned}} وأنفقت {{spent}}، أي تجاوز بمقدار {{amount}}. إليك طرق التغطية.
+- **Current ar:** خططت لـ {{planned}} وأنفقت {{spent}}، وهذا يزيد على الهدف بمقدار {{amount}}. إليك خيارات لتغطيته.
 - **Must not be confused with:** States three numbers and offers help. Must contain NO reproach — no 'unfortunately', no 'you should have'.
 
 ### `moveFrom`
 - **English:** Move from {{name}}
-- **Current ar:** النقل من {{name}}
+- **Current ar:** إعادة توزيع من {{name}}
 - **Must not be confused with:** CRITICAL: must NOT borrow the app's account-transfer verb. NO money moves between accounts — only the plan's intent is redistributed.
 
 ### `coverFromUnallocated`
@@ -222,7 +222,7 @@ and **what it must not be confused with**.
 
 ### `raiseTarget`
 - **English:** Raise this target
-- **Current ar:** رفع هذا الهدف
+- **Current ar:** زيادة هذا الهدف
 - **Must not be confused with:** The plan decides to allow more. Nothing is added; no money appears.
 
 ### `acceptOverspend`
@@ -232,12 +232,12 @@ and **what it must not be confused with**.
 
 ### `overspendInline`
 - **English:** You have options for covering this.
-- **Current ar:** لديك خيارات لتغطية ذلك.
+- **Current ar:** لديك خيارات لتغطية هذا التجاوز.
 - **Must not be confused with:** A calm pointer that options exist.
 
 ### `partiallySettled`
 - **English:** {{settled}} refunded, {{outstanding}} still outstanding
-- **Current ar:** {{settled}} مُسترد، و{{outstanding}} لا يزال مستحقًا
+- **Current ar:** تم استرداد {{settled}}، ويتبقى {{outstanding}} للاسترداد
 - **Must not be confused with:** Money coming BACK, partly. Must read differently from fullySettled and from 'paid'.
 
 ### `fullySettled`
@@ -247,7 +247,7 @@ and **what it must not be confused with**.
 
 ### `confirmedSettlement`
 - **English:** Confirmed refund
-- **Current ar:** مبلغ مُسترد مؤكد
+- **Current ar:** استرداد مؤكد
 - **Must not be confused with:** A STATED FACT, as opposed to includesRefund which is a guess. The two must read differently.
 
 ### `billOneTime`
@@ -257,12 +257,12 @@ and **what it must not be confused with**.
 
 ### `billRecurring`
 - **English:** Recurring
-- **Current ar:** متكررة
+- **Current ar:** متكرر
 - **Must not be confused with:** LINKS an existing recurring expense, which keeps control of the amount and the schedule. Must read differently from billOneTime.
 
 ### `billRecurringNote`
 - **English:** The recurring expense stays in charge of the amount and the schedule. It is marked paid automatically when it posts.
-- **Current ar:** يبقى المصروف المتكرر هو المسؤول عن المبلغ والجدول. ويُحدَّد كمسدد تلقائيًا عند تسجيله.
+- **Current ar:** يظل مبلغ المصروف المتكرر وجدوله كما هما. وعند تسجيله، يُعلَّم تلقائيًا على أنه مسدد.
 - **Must not be confused with:** Explains that the recurring expense stays in charge and is marked paid automatically. That meaning must survive.
 
 ### `wasNamed`
@@ -272,7 +272,7 @@ and **what it must not be confused with**.
 
 ### `restated`
 - **English:** Restated
-- **Current ar:** مُعاد بيانه
+- **Current ar:** مُعاد احتسابه
 - **Must not be confused with:** The audited, LEGITIMATE way a closed period is revised. Must NOT read as 'wrong', 'error' or 'corrected mistake'.
 
 ## What to give back
@@ -300,6 +300,8 @@ more useful than a full retranslation.
 
 ```bash
 # save the JSON block as corrections.json, then:
-node scripts/i18n-merge.mjs corrections.json
+#   --overwrite is REQUIRED for a review. Without it the merge only fills keys
+#   that are MISSING, so a correction to an existing key is silently dropped.
+node scripts/i18n-merge.mjs corrections.json --overwrite
 npm run i18n:check
 ```

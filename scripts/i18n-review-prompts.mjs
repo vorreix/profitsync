@@ -199,7 +199,9 @@ more useful than a full retranslation.
 
 \`\`\`bash
 # save the JSON block as corrections.json, then:
-node scripts/i18n-merge.mjs corrections.json
+#   --overwrite is REQUIRED for a review. Without it the merge only fills keys
+#   that are MISSING, so a correction to an existing key is silently dropped.
+node scripts/i18n-merge.mjs corrections.json --overwrite
 npm run i18n:check
 \`\`\`
 `

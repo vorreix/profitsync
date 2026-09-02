@@ -78,10 +78,22 @@ alarm.
 
 ```bash
 # 1. Put corrections in a flat map: { "<lang>": { "budgetV2.<key>": "<text>" } }
-node scripts/i18n-merge.mjs /path/to/corrections.json
-# 2. Verify parity
+# 2. --overwrite is REQUIRED. The default mode only fills keys that are MISSING
+#    from a locale, so without the flag a correction to an existing key is
+#    dropped while the command still reports success.
+node scripts/i18n-merge.mjs /path/to/corrections.json --overwrite
+# 3. Verify parity (placeholders included)
 npm run i18n:check
 ```
 
-`i18n-merge.mjs` is additive and order-preserving, so it will not disturb any
-other key.
+`i18n-merge.mjs` preserves each locale's key order, so the diff stays confined
+to the values actually corrected. It prints how many values it CHANGED, not how
+many were supplied — a run that alters nothing says so.
+
+Generate a fresh review prompt per locale, built from the strings currently
+shipped, with:
+
+```bash
+node scripts/i18n-review-prompts.mjs           # all five
+node scripts/i18n-review-prompts.mjs hi ar     # just these
+```
