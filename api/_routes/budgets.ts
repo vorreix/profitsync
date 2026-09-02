@@ -24,6 +24,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (projected) {
       const [plan] = [await loadPlan(orgId)]
       if (plan) noteAdapterRead(orgId, plan.id)
+      // `projected` IS the v1 envelope — { budgets, account_type } — so it is
+      // returned as-is. Wrapping it again would nest budgets inside budgets and
+      // give every store-pinned native bundle an empty list, which is exactly
+      // the breakage this adapter exists to prevent.
       return res.json(projected)
     }
 
