@@ -90,6 +90,14 @@ import budgetsOverview from "./_routes/budgets/overview.js"
 import budgetsDetail from "./_routes/budgets/detail.js"
 import budgetsV2 from "./_routes/budgets/v2.js"
 import budgetsV2Sync from "./_routes/budgets/v2/sync.js"
+import budgetsV2Envelopes from "./_routes/budgets/v2/envelopes.js"
+import budgetsV2Envelope from "./_routes/budgets/v2/envelopes/[id].js"
+import budgetsV2EnvelopeDetail from "./_routes/budgets/v2/envelopes/[id]/detail.js"
+import budgetsV2Commitments from "./_routes/budgets/v2/commitments.js"
+import budgetsV2Commitment from "./_routes/budgets/v2/commitments/[id].js"
+import budgetsV2Occurrences from "./_routes/budgets/v2/occurrences.js"
+import budgetsV2Reallocate from "./_routes/budgets/v2/reallocate.js"
+import budgetsV2Refunds from "./_routes/budgets/v2/refunds.js"
 import publicPricing from "./_routes/public/pricing.js"
 import publicBlog from "./_routes/public/blog.js"
 import publicBlogBySlug from "./_routes/public/blog/[slug].js"
@@ -253,7 +261,18 @@ const routes: RoutePattern<ApiHandler>[] = [
 
   // Budget v2 lives under a versioned path so /api/budgets can keep its v1
   // contract indefinitely for store-pinned native bundles (spec §11.1).
+  // Static segments FIRST, then the dynamic siblings at the same depth. The
+  // router matches on exact segment length, so a 4-segment envelope id can
+  // never be confused with the 3-segment collection route.
   { segments: ["budgets", "v2", "sync"], handler: budgetsV2Sync },
+  { segments: ["budgets", "v2", "envelopes"], handler: budgetsV2Envelopes },
+  { segments: ["budgets", "v2", "commitments"], handler: budgetsV2Commitments },
+  { segments: ["budgets", "v2", "occurrences"], handler: budgetsV2Occurrences },
+  { segments: ["budgets", "v2", "reallocate"], handler: budgetsV2Reallocate },
+  { segments: ["budgets", "v2", "refunds"], handler: budgetsV2Refunds },
+  { segments: ["budgets", "v2", "envelopes", ":id", "detail"], handler: budgetsV2EnvelopeDetail },
+  { segments: ["budgets", "v2", "envelopes", ":id"], handler: budgetsV2Envelope },
+  { segments: ["budgets", "v2", "commitments", ":id"], handler: budgetsV2Commitment },
   { segments: ["budgets", "v2"], handler: budgetsV2 },
   { segments: ["budgets", "overview"], handler: budgetsOverview },
   { segments: ["budgets", "detail"], handler: budgetsDetail },
