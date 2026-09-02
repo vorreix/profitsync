@@ -168,25 +168,129 @@ Both are outside what this environment can do, and neither has been done.
 
 ---
 
-## 7. Known gaps (deliberate, deferred)
+## 7. Follow-up work — now done
 
-These are Phase 3+ per the spec, and are **not** defects:
+Everything listed here as deferred after Phase 2 has since been delivered; see
+§9. What genuinely remains is at the end of that section.
 
-- Savings funds: `protectedSavingsDue` is still `0`; Space-backed contribution
-  confirmation is not wired to a UI.
-- Envelope reordering is stored (`position`) but has no drag affordance.
-- `restateDriftedPeriods` detects drift by fingerprint and versions a new
-  snapshot; a full historical **recompute** is Phase 4.
-- The attributed (report-only) settlement view of §8.8.1 is not built; the cash
-  view is, and it is the authoritative one.
-- Notifications for Phase 2 events reuse the Phase 0 budget-alert path; no new
-  channels were added.
-- `docs/budget-v2/I18N_REVIEW.md` lists the terms still needing native review
-  for `hi`, `ml`, `ta`, `te`, `ar`.
+- ~~Savings funds: `protectedSavingsDue` stubbed at `0`~~ → real, and covering
+  exactly the envelopes with no funding mode so nothing is reserved twice.
+- ~~Envelope reordering stored but with no affordance~~ → drag plus accessible
+  move up/down.
+- ~~Restatement detects drift but re-stores the old payload~~ → a real
+  recompute, over the last 12 closed periods.
+- ~~The attributed (report-only) settlement view is not built~~ → built, shown
+  only when it differs from the cash view.
+- Notifications for Phase 2 events still reuse the Phase 0 budget-alert path;
+  no new channels were added. **Still open.**
 
 ---
 
-## 8. Re-running the verification
+## 8. Native parity, restated
+
+Both shells carry the current bundle:
+
+- **Android** — `npm run cap:sync:android`.
+- **iOS** — `npm run build:ios` + `npx cap copy ios`, deliberately not
+  `cap sync ios`: on Windows the `cap update` half writes backslash paths into
+  `ios/App/CapApp-SPM/Package.swift` and would break the macOS build. Verified
+  safe each time — `Package.swift` md5 unchanged, no tracked file dirtied.
+
+**Copying web assets on Windows is still not a native build verification.**
+Neither app has been compiled, installed or run. That needs
+`npm run cap:build:ios` on macOS with Xcode, and `npm run cap:build:android`
+with Gradle.
+
+---
+
+## 9. Phase 3 follow-up (delivered)
+
+### 9.1 Restatement is a real recompute
+
+`buildBudgetView` now accepts a `periodId`, which was the blocker: it could only
+ever report the OPEN period, so the old code detected drift and then re-stored
+the **old** payload with a `__restated` flag — recording that something changed
+without ever saying what the corrected figures were. The sweep also widened from
+the single most-recent closed period to the last 12.
+
+Cash is deliberately **not** recomputed. `available_now` is a reading of today's
+balances and cannot be reconstructed for a past instant, so the original
+snapshot's cash figures are carried forward and flagged `as_at_close`.
+Recomputing them would quietly replace "what your balance was when this period
+closed" with "what it is today". Each restatement also records which envelope
+moved and by how much.
+
+Verified through the real sync route: v1 keeps 120, v2 recomputes to 260, v3
+recomputes to 0 after a delete, and a repeat sync restates nothing further
+(19/19 assertions).
+
+### 9.2 `protectedSavingsDue`
+
+Covers exactly the savings envelopes with **no** funding mode — a plain "hold
+this back" line rather than a sinking fund. The other three savings terms
+already cover every virtual and Space-backed envelope, so overlapping them would
+reserve the same money twice. Verified: 175 lands in `protected_savings_due`
+and 0 in the virtual term, and drops out once confirmed or skipped.
+
+### 9.3 Fund contributions
+
+`POST /api/budgets/v2/contributions` — confirm / skip / unskip. Confirming is
+reserved-NEUTRAL by design: the amount moves from
+`virtualContributionsUnconfirmed` into `virtualFundBalances`, so safe-to-spend
+does not jump and it is safe to leave a contribution unconfirmed for days. The
+UI says so in as many words.
+
+Crediting is idempotent on `(envelope_id, period_id)` via the partial unique
+index, and when that index rejects a second credit the route reports success —
+because it means the fund is already credited. A Space-backed contribution is
+refused with `transfer_required`: it is real only once the money has moved, and
+Budget must not fabricate that transfer.
+
+Goal progress reuses `src/lib/spaces.ts` unchanged, as §8.9 intended.
+
+### 9.4 Envelope reorder
+
+`POST /api/budgets/v2/envelopes/reorder` rewrites positions from the array index
+so the stored order always matches what the user sees. Drag uses
+`@dnd-kit/core` (no new dependency); move up/down buttons are the **accessible**
+path, not a fallback, and the drag handle is `aria-hidden` because announcing a
+handle a screen reader cannot operate is worse than not announcing one.
+
+### 9.5 Attributed settlement view
+
+Report-only, in the envelope detail, shown only when it actually differs from
+the cash figure. The cash view remains authoritative.
+
+### 9.6 Defects this phase found
+
+- **`i18n-merge.mjs` silently dropped corrections.** It is a backfill tool: it
+  keeps existing values and only fills missing keys, while printing
+  "N translation entries applied" — the input count, not the change count. The
+  first native review applied cleanly, reported success, and changed nothing.
+  Fixed with `--overwrite` and an honest summary; the generated prompts and this
+  doc set both said to run it without the flag, so both were corrected.
+- Three savings-UI defects found by looking at the rendered page rather than the
+  numbers: a literal `{{amount}}`, "Held in a Space" on a fund with no Space,
+  and "Set aside" used for both a period figure and a running total.
+- Two touch targets found by the e2e: reorder chevrons at 24px, Resolve at 32px.
+
+### 9.7 Translation review
+
+154 native corrections applied — Malayalam 41, Arabic 25, Hindi 43, Tamil 45 —
+each pre-flighted and re-verified for key existence, placeholder parity and
+script. `scripts/i18n-review-prompts.mjs` generates the prompts from the strings
+currently shipped, so they cannot drift from what is live.
+
+Two reviewers independently flagged that `budgetV2` used the minority plural
+style (bare + `_one`) against 26 uses of `_one`/`_other` elsewhere, so
+`daysOverdue_other` now exists in all eight locales.
+
+**Still open:** Telugu (`te`) review — the prompt is at
+`docs/budget-v2/i18n-review/te.md`.
+
+---
+
+## 10. Re-running the verification
 
 The local database and the verification scripts are described in `LOCAL_DB.md`.
 The Phase 2 scripts live in this session's scratchpad, not the repo, because
