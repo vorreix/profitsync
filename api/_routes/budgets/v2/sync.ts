@@ -10,6 +10,7 @@ import {
   budgetOccurrences,
   budgetPeriodSnapshots,
   budgetPeriods,
+  clients,
   transactions,
 } from "../../../../src/lib/db/schema.js"
 import { canWrite, requireAuth } from "../../../_lib/auth.js"
@@ -440,14 +441,23 @@ async function restateDriftedPeriods(
   // Recompute what that period WOULD report now. buildBudgetView reports the
   // open period, so a full historical recompute is Phase 4; here we compare the
   // stored transaction fingerprint instead, which is cheap and exact.
+  // ORG-SCOPED via the clients join. transactions carries no organization_id,
+  // so without this join the fingerprint sums EVERY organization's rows in the
+  // window and any unrelated workspace's activity would restate this org's
+  // closed period. The predicate set otherwise mirrors the budget's own
+  // inclusion rules so the fingerprint moves when, and only when, a number the
+  // snapshot reports could have moved.
   const [fingerprint] = await db
     .select({
       total: sql<string>`coalesce(sum(${transactions.amount}::numeric), 0)`,
       n: sql<number>`count(*)::int`,
     })
     .from(transactions)
+    .innerJoin(clients, eq(transactions.clientId, clients.id))
     .where(
       and(
+        eq(clients.organizationId, orgId),
+        isNull(clients.deletedAt),
         sql`${transactions.date} >= ${lastClosed.start}`,
         sql`${transactions.date} < ${lastClosed.endExclusive}`,
         isNull(transactions.deletedAt),
