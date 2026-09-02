@@ -635,7 +635,26 @@ function EnvelopeRow({
   onResolveOverspend: (env: BudgetEnvelopeView) => void
 }) {
   const { t } = useTranslation()
-  const over = env.remaining < 0
+
+  // SECTION VOCABULARY IS NOT INTERCHANGEABLE (spec §8.7).
+  //
+  // Only a FLEXIBLE envelope can be "over": it has a target that caps spending,
+  // so exceeding it is a real overspend with real options. A commitment or debt
+  // envelope carries no target — its money is defined by the bills inside it —
+  // so `remaining` there is structurally negative the moment a bill is pending.
+  // Rendering that as "$1,056.40 over" in red would tell the user they have
+  // overspent when in fact the money is merely RESERVED and not yet paid, which
+  // is exactly the conflation this redesign exists to remove.
+  const capped = env.section === "flexible"
+  const over = capped && env.remaining < 0
+  const obligation = env.section === "commitment" || env.section === "debt"
+
+  const trailing = obligation
+    ? // Unpaid is a fact about an obligation, not a judgement about spending.
+      { text: t("budgetV2.unpaidAmount", { amount: money(env.pending) }), tone: "" }
+    : over
+      ? { text: t("budgetV2.over", { amount: money(-env.remaining) }), tone: "text-red-600 dark:text-red-400" }
+      : { text: t("budgetV2.left", { amount: money(env.remaining) }), tone: "" }
 
   return (
     <li className="rounded-lg transition-colors hover:bg-accent/40">
@@ -654,25 +673,32 @@ function EnvelopeRow({
               </span>
             )}
           </p>
-          {/* The four figures. Pending only appears when it is non-zero, so a
-              plain spending category stays a two-number row. */}
+          {/* The figures each section actually has. An obligation envelope has
+              no target to report, so showing "Planned 0" there would be noise. */}
           <p className="text-[11px] text-muted-foreground tabular-nums">
-            {t("budgetV2.plannedShort")} {money(env.planned)} · {t("budgetV2.spentShort")} {money(env.spent_net)}
-            {env.pending > 0 && ` · ${t("budgetV2.pendingShort")} ${money(env.pending)}`}
+            {obligation ? (
+              <>
+                {t("budgetV2.paidShort")} {money(env.settled)}
+                {env.overdue_amount > 0 && ` · ${t("budgetV2.overdueShort")} ${money(env.overdue_amount)}`}
+              </>
+            ) : (
+              <>
+                {t("budgetV2.plannedShort")} {money(env.planned)} · {t("budgetV2.spentShort")} {money(env.spent_net)}
+                {env.pending > 0 && ` · ${t("budgetV2.pendingShort")} ${money(env.pending)}`}
+              </>
+            )}
           </p>
         </div>
-        <span
-          className={`shrink-0 text-xs font-medium tabular-nums ${
-            over ? "text-red-600 dark:text-red-400" : "text-muted-foreground"
-          }`}
-        >
-          {over ? t("budgetV2.over", { amount: money(-env.remaining) }) : t("budgetV2.left", { amount: money(env.remaining) })}
+        <span className={`shrink-0 text-xs font-medium tabular-nums ${trailing.tone || "text-muted-foreground"}`}>
+          {trailing.text}
         </span>
         <ChevronRight className="size-3.5 shrink-0 text-muted-foreground/60 rtl:rotate-180" aria-hidden />
       </button>
 
       {/* An overspend offers the way OUT, right where it is visible. Supportive,
-          not scolding: it states the amount and offers options (P7). */}
+          not scolding: it states the amount and offers options (P7). Offered for
+          capped envelopes only — there is nothing to "resolve" about a bill that
+          simply has not been paid yet. */}
       {over && canWrite && (
         <div className="flex items-center justify-between gap-2 px-1 pb-1.5">
           <p className="text-[11px] text-muted-foreground">{t("budgetV2.overspendInline")}</p>

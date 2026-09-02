@@ -2051,6 +2051,9 @@
     "partiallySettled": "{{settled}} వాపసు వచ్చింది, {{outstanding}} ఇంకా బాకీ",
     "confirmedSettlement": "నిర్ధారించిన వాపసు",
     "wasNamed": "{{name}} గా ఉండేది",
-    "restated": "పునఃప్రకటించబడింది"
+    "restated": "పునఃప్రకటించబడింది",
+    "unpaidAmount": "{{amount}} చెల్లించాలి",
+    "paidShort": "చెల్లించినది",
+    "overdueShort": "ఆలస్యం"
   }
 }
