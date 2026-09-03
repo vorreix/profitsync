@@ -363,3 +363,110 @@ npx vitest run src/lib/budget-math-phase2.test.ts
 export CLERK_PUBLISHABLE_KEY="$VITE_CLERK_PUBLISHABLE_KEY"
 npx playwright test --project=chromium e2e/budget-v2.spec.ts
 ```
+
+---
+
+## 11. Phase 4 — migration and rollout (delivered)
+
+### 11.1 The migration script
+
+`scripts/migrate-budgets-v2.ts` (`--dry-run` / `--org` / `--limit`), additive and
+idempotent. Each §13.10 prohibition is enforced and locked by a test: `lifetime`
+becomes a PAUSED plan, `income_mode` is `available` with no inferred income, an
+org with no v1 budget gets nothing, no historical periods are fabricated,
+amounts and currencies are copied verbatim, business orgs are skipped entirely,
+and no `budgets` / `budget_history` row is ever written to.
+
+Two details worth keeping:
+
+- **`timezone='UTC'`** exactly preserves v1 semantics. v1 had no timezone and
+  computed its windows in UTC, so any other zone would shift which transactions
+  fall in a period and silently change numbers the user has already seen.
+- **`daily` → a MONTHLY plan with `target_cadence='day'`.** The "20/day" intent
+  survives and the engine normalises it onto the period; a daily *plan* would
+  open a new period every day, which is not what was asked for.
+
+`openPeriod` gained a migration-only `forceSource`, because §13.3 requires the
+first period to SNAPSHOT rather than reconstruct and `baseSourceFor` would have
+picked reconstruction on the one day the migration ran exactly on a boundary.
+
+**55 assertions, 0 failures** against seeded v1 data covering monthly, weekly,
+daily, lifetime, a business template + client cap, and no-budget — including an
+md5 fingerprint of both v1 tables proving they are byte-identical afterwards,
+idempotency across three runs, and a rollback that finds the v1 row still
+readable.
+
+### 11.2 The two prompts the migration refuses to answer
+
+`POST /api/budgets/v2/prompts`, surfaced by `MigrationPrompts.tsx` ABOVE the
+hero — both change the figures below them, so settling one before reading the
+numbers is the right order.
+
+- **§13.4 lifetime.** Offers a real monthly target or keeping it as a record.
+  "Keep as a record" is a legitimate answer, so it is a proper option rather
+  than an X in the corner. Choosing a target activates the plan and retargets
+  the catch-all in ONE batch, so the plan is never observed active with the old
+  lifetime figure standing in as a monthly target.
+- **§13.8 salary-vs-target.** Fires when the catch-all target is within 5 % of
+  median monthly income over three months. Answering "that is my income" sets
+  `expected_income` and CLEARS the target rather than inventing one — a cleared
+  target makes safe-to-spend honestly cash-bound until the user sets a real one,
+  and the UI says so before you tap it.
+
+Both are suppressed by an audited event rather than a column, because a
+dismissal is a user decision. **21 assertions, 0 failures.**
+
+### 11.3 Legacy URLs (§13.6)
+
+`BudgetKeyPage` resolves `/budgets/:key`: no plan → the v1 page unchanged (not a
+transitional state — business caps live on under §23); a plan → deep-link to the
+matching envelope, `default` meaning the catch-all; unresolvable → `/budgets`
+with an explanation. **An existing bookmark never 404s.**
+
+### 11.4 Performance validation (§16.11)
+
+Calibrating first changed what was worth measuring: every query here is an HTTPS
+round trip costing ~200 ms, and a single-row fetch measures the same as a 100k
+aggregate. Wall-clock milliseconds describe the PROXY, not the database, so
+§16.11's production p95 targets **cannot be judged from this environment**.
+ROUND TRIPS are the portable metric — and they are also what the named
+regression (#13) actually looks like.
+
+Against 100k transactions / 24 months / 41 envelopes / 10k fund entries,
+**15 assertions, 0 failures**:
+
+| Property | Result |
+|---|---|
+| Open-period read | **17 round trips, FLAT** — 17 at 15 envelopes and 17 at 41 |
+| No sequential scan on 100k `transactions` | confirmed by EXPLAIN |
+| Staleness probe | **1** round trip (was 2 — fixed) |
+| Virtual fund balance | **1** indexed SUM (was shipping 10k rows — fixed) |
+| Closed-period read | **1** row fetch, indistinguishable from the proxy floor |
+| v1 adapter overhead | **+1** round trip |
+
+Two real fixes came out of it, both committed: `syncRequired` now composes its
+four checks into one statement (it runs on every read, so that is ~200 ms off
+every one), and `virtualFundBalances` aggregates in SQL with its CASE bound by
+comment to `fundBalanceFromEntries`, the same mirror discipline `categoryKey`
+already has.
+
+One of my assertions was wrong rather than the code: the fund SUM shows a Seq
+Scan because the fixture gives one fund 10 000 of the table's 10 001 rows, so
+the predicate matches everything and an index scan would be slower. With a
+selective predicate (5 of ~10k) the planner does use the index.
+
+### 11.5 Documentation
+
+`docs/budget/BUDGETS.md` rewritten for v2 as the human explainer, and
+`.claude/skills/budget-v2/SKILL.md` added as the operating guide — the repo
+convention of a durable doc paired with a skill. Every path the skill cites was
+checked to resolve.
+
+### 11.6 Not done in Phase 4
+
+- **The v1 drop migration** is deliberately absent. §13.9 gates it on the flag
+  at 100 % for ≥30 days, zero v1-handler traffic and a verified backup — it is
+  the point of no return and cannot be written ahead of that evidence.
+- **Staged rollout** is supported by the script (`--org`, `--limit`) but the
+  rollout itself is an operational sequence, not code.
+- **Native builds** still require macOS/Xcode and Gradle.
