@@ -79,6 +79,17 @@ export async function projectPlanToV1(
   role: string,
   accountType: string | null,
 ): Promise<V1Response | null> {
+  // PERSONAL ONLY, and this one is a correctness fix rather than a scope gate.
+  //
+  // A business workspace's `budgets` rows ARE its per-client spend caps. If such
+  // an org somehow has a v2 plan — the ungated wizard used to allow it — then
+  // projecting that plan here would serve one household-shaped row INSTEAD of
+  // those caps, and the caps would simply vanish from GET /api/budgets.
+  //
+  // Returning null makes the caller read the real v1 tables, which is both the
+  // correct answer for business and the documented rollback path (§13.9).
+  if (accountType !== "personal") return null
+
   const plan = await loadPlan(orgId)
   if (!plan) return null // caller falls back to the real v1 tables
 

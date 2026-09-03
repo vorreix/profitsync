@@ -32,6 +32,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === "POST") {
     if (!canWrite(role)) return res.status(403).json({ error: "Forbidden" })
 
+    // BUSINESS WORKSPACES GET NO PLAN (spec §23, decision D-1).
+    //
+    // Not a technical limit — a product decision. Business revenue has no single
+    // figure (it is per client, and already modelled by clients, quotations and
+    // /analytics), so `expected_income`, `funding_base`, `unallocated` and most
+    // of Safe-to-spend have no business meaning. Business keeps its per-client
+    // SPEND CAPS, which are a different concept and unaffected.
+    //
+    // The migration already refuses business orgs (§13.10.7). This is the same
+    // rule on the other path into a plan: without it the wizard would happily
+    // create a household budget on a business workspace, so the invariant held
+    // on one route and not the other.
+    if (accountType !== "personal") {
+      return res.status(403).json({
+        error: "business_not_supported",
+        message: "Budgets on a business workspace are per-client spend caps, not a household plan",
+      })
+    }
+
     const existing = await loadPlan(orgId)
     if (existing) return res.status(409).json({ error: "A budget plan already exists for this workspace" })
 
