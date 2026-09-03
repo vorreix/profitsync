@@ -181,8 +181,8 @@ Everything listed here as deferred after Phase 2 has since been delivered; see
   recompute, over the last 12 closed periods.
 - ~~The attributed (report-only) settlement view is not built~~ → built, shown
   only when it differs from the cash view.
-- Notifications for Phase 2 events still reuse the Phase 0 budget-alert path;
-  no new channels were added. **Still open.**
+- ~~Notifications for Phase 2 events reuse the Phase 0 budget-alert path~~ →
+  five dedicated types; see §9.8.
 
 ---
 
@@ -287,6 +287,32 @@ style (bare + `_one`) against 26 uses of `_one`/`_other` elsewhere, so
 
 **Still open:** Telugu (`te`) review — the prompt is at
 `docs/budget-v2/i18n-review/te.md`.
+
+### 9.8 Notifications
+
+Five types, all in the `budget` category so ONE preference toggle governs them —
+a user who mutes budget notifications must not still be pinged by their budget.
+Every one is emitted from `POST /api/budgets/v2/sync` and only after the write
+it describes has committed, and all are fire-and-forget: sync is what keeps the
+plan correct, so a notification must never be able to fail it.
+
+| Type | Cadence, and why |
+|---|---|
+| `budget_overdue` | ONE aggregated nudge per plan **per day**, in the plan's timezone. An overdue bill *stays* overdue, so per-commitment alerts would either fire once and go quiet as the pile grows, or fire forever. It is a standing condition, not a moment. |
+| `budget_envelope_over` | Once per envelope per period, FLEXIBLE only — a commitment or debt envelope has no target, so its negative remaining means "not yet paid" (§8.7). Capped at 3 per sync so enabling this on an existing plan does not deliver a burst. |
+| `budget_contribution_missed` | Per fund per closed period. §8.9.1 forbids auto-crediting, so an unconfirmed contribution becomes `missed` and the money stayed spendable — not a decision the user made deliberately. |
+| `budget_period_closed` | One per period. |
+| `budget_period_restated` | Per period per **version**, so a genuinely new revision notifies again. It revises a record the user may already have acted on. |
+
+Verified live through the sync route: 17 assertions, 0 failures. Two things that
+verification taught, both recorded in the throwaway test and worth knowing:
+
+- **Sync can return before the notification insert lands**, because the emit is
+  deliberately not awaited. A reader must poll rather than read immediately —
+  the first run of the check looked like a total failure for exactly this
+  reason.
+- `notifyOrgMembers` **suffixes the dedupe key with the recipient id**, so the
+  stored key is `<ourKey>:<userId>`.
 
 ---
 
