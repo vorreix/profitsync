@@ -285,8 +285,33 @@ Two reviewers independently flagged that `budgetV2` used the minority plural
 style (bare + `_one`) against 26 uses of `_one`/`_other` elsewhere, so
 `daysOverdue_other` now exists in all eight locales.
 
-**Still open:** Telugu (`te`) review — the prompt is at
-`docs/budget-v2/i18n-review/te.md`.
+All five reviews are in: **ml 41, ar 25, hi 43, ta 45, te 46 — 200 corrections**,
+each pre-flighted and re-verified for key existence, placeholder parity and
+script, then re-checked together after the final merge (zero placeholder drift,
+219/219 keys resolving).
+
+**And they exposed a bug that had made them invisible.** Verifying that the
+corrections actually RENDER — rather than trusting that a green `i18n:check`
+meant they were on screen — found the whole UI still in English with
+`<html lang="te">` set. The boot guard in `src/lib/i18n/index.ts` read
+`i18n.resolvedLanguage ?? i18n.language`; `resolvedLanguage` is what i18next can
+resolve against the bundles it currently HAS, which is English only at that
+moment, so a stored `te` resolved to `en`, the guard skipped the load, and the
+locale chunk never arrived. The check defeated itself: it asked "did the locale
+load?" in order to decide whether to load it.
+
+Picking a language from the switcher always worked (`setAppLanguage()` awaits
+`ensureLocaleLoaded()`), so only a COLD load with a non-English language already
+stored was broken — the returning user, not the one changing the setting. And
+`ensureLocaleLoaded` swallows failures by design, so nothing was logged.
+
+It is shared i18n code, not Budget v2, and it affected all 7 non-English locales
+across the whole app. Verified in a browser before and after, and all five
+reviewed locales now render their own script on a cold load with Arabic RTL
+correct, no overflow at 390px and no leaked placeholders.
+
+The lesson worth keeping: `i18n:check` proves a string EXISTS, not that it
+reaches the screen.
 
 ### 9.8 Notifications
 
