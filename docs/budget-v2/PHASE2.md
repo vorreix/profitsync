@@ -350,7 +350,8 @@ they seed and mutate data:
 ```bash
 # 1. bring up the isolated local DB (see LOCAL_DB.md)
 docker compose -f docs/budget-v2/docker-compose.localdb.yml up -d
-export DATABASE_URL='postgres://postgres:postgres@db.localtest.me:4444/main?sslmode=require'
+set -a; . docs/budget-v2/.env.localdb; set +a   # see LOCAL_DB.md
+export DATABASE_URL="postgres://$LOCAL_DB_USER:$LOCAL_DB_PASSWORD@db.localtest.me:4444/$LOCAL_DB_NAME?sslmode=require"
 export NODE_TLS_REJECT_UNAUTHORIZED=0
 
 # 2. migrations (LOCAL ONLY — never a shared database)
