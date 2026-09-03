@@ -10,7 +10,7 @@
 //      the write happens in an explicit idempotent sync (§8.10, decision D-3).
 //   2. An occurrence is an EXPECTATION. Nothing in this file lets one touch
 //      wealth_accounts.current_balance.
-import { and, asc, desc, eq, gte, inArray, isNull, lt, lte, ne, or, sql } from "drizzle-orm"
+import { and, asc, desc, eq, gte, inArray, isNull, lt, ne, or, sql } from "drizzle-orm"
 import { alias } from "drizzle-orm/pg-core"
 import { db } from "../../src/lib/db/index.js"
 import {
@@ -46,7 +46,6 @@ import {
   detectCurrencyMismatch,
   median,
   normalizeMatchKeys,
-  fundBalanceFromEntries,
   fundingCapacity,
   flexibleHeadroom,
   normalizeTarget,
@@ -756,19 +755,35 @@ function commitmentMeta(idx: Map<string, CommitmentMeta>, id: string): Record<st
 /** Virtual fund balances by envelope: the signed sum of CONFIRMED entries. */
 export async function virtualFundBalances(orgId: string, envelopeIds: string[]): Promise<Map<string, number>> {
   if (!envelopeIds.length) return new Map()
+
+  // Aggregated in SQL, not over the wire.
+  //
+  // This previously selected every entry row and summed them with
+  // `fundBalanceFromEntries` in JS. That is O(entries) in BANDWIDTH as well as
+  // in work — a fund with 10k entries shipped 10k rows on every budget read,
+  // and it only grows. §16.11 asks for one indexed SUM.
+  //
+  // The sign rule is therefore expressed twice, so the CASE below MUST stay
+  // equivalent to `fundBalanceFromEntries` in src/lib/budget-math.ts:
+  // contribution adds, withdrawal subtracts, adjustment is already signed.
+  // That function remains the tested definition and the one a reader should
+  // trust; this is its SQL mirror, exactly as `categoryKey` mirrors
+  // `lower(btrim(...))`. `budget_fund_entries_ledger_idx` leads with
+  // (organization_id, envelope_id), which is why both are in the predicate.
   const rows = await db
-    .select({ envelopeId: budgetFundEntries.envelopeId, kind: budgetFundEntries.kind, amount: budgetFundEntries.amount })
+    .select({
+      envelopeId: budgetFundEntries.envelopeId,
+      balance: sql<string>`coalesce(sum(case ${budgetFundEntries.kind}
+        when 'contribution' then ${budgetFundEntries.amount}::numeric
+        when 'withdrawal' then -${budgetFundEntries.amount}::numeric
+        else ${budgetFundEntries.amount}::numeric end), 0)`,
+    })
     .from(budgetFundEntries)
     .where(and(eq(budgetFundEntries.organizationId, orgId), inArray(budgetFundEntries.envelopeId, envelopeIds)))
+    .groupBy(budgetFundEntries.envelopeId)
 
-  const byEnvelope = new Map<string, { kind: "contribution" | "withdrawal" | "adjustment"; amount: number }[]>()
-  for (const r of rows) {
-    const list = byEnvelope.get(r.envelopeId) ?? []
-    list.push({ kind: r.kind as "contribution" | "withdrawal" | "adjustment", amount: num(r.amount) })
-    byEnvelope.set(r.envelopeId, list)
-  }
   const out = new Map<string, number>()
-  for (const [id, entries] of byEnvelope) out.set(id, fundBalanceFromEntries(entries))
+  for (const r of rows) out.set(r.envelopeId, round2(num(r.balance)))
   return out
 }
 
@@ -782,27 +797,50 @@ export const MAX_PERIODS_PER_RUN = 24
 export async function syncRequired(orgId: string, plan: PlanRow | null, today: string): Promise<boolean> {
   if (!plan || plan.status !== "active") return false
 
-  // 1. A due recurring rule that has not materialized its transaction yet.
-  const [dueRule] = await db
-    .select({ id: recurringRules.id })
-    .from(recurringRules)
-    .where(
-      and(eq(recurringRules.organizationId, orgId), eq(recurringRules.active, true), lte(recurringRules.nextDueAt, today)),
-    )
-    .limit(1)
-  if (dueRule) return true
-
-  // 2. The current period is missing, or an open period has already elapsed.
   const cur = periodFor(cadenceOf(plan), today)
-  const open = await db
-    .select({ id: budgetPeriods.id, start: budgetPeriods.start, endExclusive: budgetPeriods.endExclusive })
-    .from(budgetPeriods)
-    .where(and(eq(budgetPeriods.planId, plan.id), eq(budgetPeriods.status, "open")))
-  if (!open.length) return true
-  if (open.some((p) => p.endExclusive <= today)) return true
-  if (!open.some((p) => p.start === cur.start)) return true
 
-  return false
+  // ONE round trip, deliberately.
+  //
+  // This probe runs on EVERY budget read, and in this deployment a query is an
+  // HTTPS round trip — so two indexed lookups cost twice the latency of one
+  // even though both are individually trivial. §16.11 asks for a single
+  // EXISTS-style probe for exactly this reason, and the two things it needs to
+  // know are independent booleans, so they compose into one statement.
+  //
+  // What makes a plan stale:
+  //   · a due recurring rule whose transaction has not materialized yet, or
+  //   · no open period at all, or
+  //   · an open period that has already elapsed, or
+  //   · an open period that is not the CURRENT one (a gap after a long absence)
+  const probe = await db.execute(sql`
+    select
+      exists (
+        select 1 from ${recurringRules}
+        where organization_id = ${orgId} and active = true and next_due_at <= ${today}
+      ) as due_rule,
+      not exists (
+        select 1 from ${budgetPeriods} where plan_id = ${plan.id} and status = 'open'
+      ) as no_open,
+      exists (
+        select 1 from ${budgetPeriods}
+        where plan_id = ${plan.id} and status = 'open' and end_exclusive <= ${today}
+      ) as elapsed,
+      not exists (
+        select 1 from ${budgetPeriods}
+        where plan_id = ${plan.id} and status = 'open' and start = ${cur.start}
+      ) as not_current
+  `)
+
+  // neon-http returns a result object with `.rows`, not an iterable.
+  const r = ((probe as unknown as { rows?: Record<string, unknown>[] }).rows?.[0] ?? {}) as {
+    due_rule?: boolean
+    no_open?: boolean
+    elapsed?: boolean
+    not_current?: boolean
+  }
+  // `not_current` is only meaningful when a period IS open; with none open,
+  // `no_open` already says so and the third condition would double-count.
+  return Boolean(r.due_rule || r.no_open || r.elapsed || r.not_current)
 }
 
 function baseSourceFor(plan: PlanRow, isPartial: boolean): FundingBaseSource {
