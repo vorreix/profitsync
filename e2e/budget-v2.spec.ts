@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test"
+import { expect, test, type Browser, type Page } from "@playwright/test"
 import { dismissBanners, expectAppShell } from "./helpers"
 
 /**
@@ -14,7 +14,75 @@ import { dismissBanners, expectAppShell } from "./helpers"
  * It is deliberately tolerant about WHICH state /budgets is in, because the
  * shared e2e workspace may or may not already have a plan. Both branches are
  * asserted; neither is skipped silently.
+ *
+ * WORKSPACE: a household plan is PERSONAL-only — a business workspace keeps its
+ * per-client spend caps instead, and /budgets redirects away there. The shared
+ * e2e user is onboarded as a BUSINESS workspace, so this suite switches them to
+ * their personal one for its duration and switches them back afterwards. That
+ * restore matters: playwright.config runs with `workers: 1`, so leaving the
+ * active workspace changed would silently move every LATER spec file's data
+ * into the wrong org, past the leftover sweep in auth.setup.
  */
+
+type OrgRow = { id: string; name: string; is_personal: boolean }
+
+/** The app's own switch endpoint, driven with the page's real Clerk session. */
+async function switchWorkspace(page: Page, want: "personal" | "business" | string): Promise<string> {
+  await page.waitForFunction(
+    () => {
+      const c = (window as unknown as { Clerk?: { loaded?: boolean; session?: unknown } }).Clerk
+      return !!c?.loaded && !!c.session
+    },
+    null,
+    { timeout: 30_000 },
+  )
+  const result = await page.evaluate(async (target) => {
+    const Clerk = (window as unknown as { Clerk: { session?: { getToken: () => Promise<string | null> } } }).Clerk
+    const token = await Clerk.session?.getToken()
+    if (!token) return { ok: false as const, error: "no session token" }
+    const auth = { Authorization: `Bearer ${token}` }
+    const listRes = await fetch("/api/organizations", { headers: auth })
+    if (!listRes.ok) return { ok: false as const, error: `list -> ${listRes.status}` }
+    const orgs = (await listRes.json()) as OrgRow[]
+    const pick =
+      target === "personal"
+        ? orgs.find((o) => o.is_personal)
+        : target === "business"
+          ? orgs.find((o) => !o.is_personal)
+          : orgs.find((o) => o.id === target)
+    if (!pick) return { ok: false as const, error: `no ${target} workspace among ${orgs.length}` }
+    const res = await fetch("/api/organizations/switch", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...auth },
+      body: JSON.stringify({ organization_id: pick.id }),
+    })
+    if (!res.ok) return { ok: false as const, error: `switch -> ${res.status} ${await res.text()}` }
+    return { ok: true as const, id: pick.id, name: pick.name }
+  }, want)
+  expect(result.ok, "ok" in result && result.ok ? "" : result.error).toBe(true)
+  // The active org is read from the profile at boot, so a switch only takes
+  // effect on the next load. Clear the mirror too, or the first requests of the
+  // next page still carry the old x-org-id.
+  await page.evaluate(() => {
+    try {
+      localStorage.removeItem("ps_active_org")
+    } catch {
+      /* private mode */
+    }
+  })
+  return (result as { id: string }).id
+}
+
+async function inFreshTab<T>(browser: Browser, fn: (page: Page) => Promise<T>): Promise<T> {
+  const context = await browser.newContext({ storageState: "e2e/.auth/user.json" })
+  const page = await context.newPage()
+  try {
+    await page.goto("/dashboard")
+    return await fn(page)
+  } finally {
+    await context.close()
+  }
+}
 
 const gotoBudgets = async (page: Page) => {
   await page.goto("/budgets")
@@ -41,6 +109,20 @@ async function hasPlan(page: Page): Promise<boolean> {
 // SERIAL: the first test creates the plan the rest of the suite exercises, so
 // the "has a plan" branches are really executed rather than silently skipped.
 test.describe.serial("Budget v2", () => {
+  // Borrow the personal workspace for the suite, and give it back.
+  let restoreOrgId = ""
+  test.beforeAll(async ({ browser }) => {
+    await inFreshTab(browser, async (page) => {
+      restoreOrgId = await page.evaluate(() => localStorage.getItem("ps_active_org") ?? "")
+      await switchWorkspace(page, "personal")
+    })
+  })
+  test.afterAll(async ({ browser }) => {
+    await inFreshTab(browser, async (page) => {
+      await switchWorkspace(page, restoreOrgId || "business")
+    })
+  })
+
   test("creates a plan through the four-decision wizard", async ({ page }) => {
     test.setTimeout(120_000)
     await gotoBudgets(page)
@@ -217,5 +299,27 @@ test.describe.serial("Budget v2", () => {
     await page.goto("/dashboard")
     await expectAppShell(page)
     expect(errors, `page errors:\n${errors.join("\n")}`).toEqual([])
+  })
+
+  test("a business workspace is kept out of the household plan", async ({ page }) => {
+    test.setTimeout(90_000)
+    // The gate is the reason this whole suite borrows a personal workspace, so
+    // it is worth asserting rather than assuming. A business workspace's
+    // `budgets` rows ARE its per-client spend caps: showing it the household
+    // plan would not just be out of scope, it would replace a feature it uses.
+    await page.goto("/dashboard")
+    await switchWorkspace(page, "business")
+    try {
+      await page.goto("/budgets")
+      await expectAppShell(page)
+      // Bounced, not a blank page and not a crash.
+      await expect(page).not.toHaveURL(/\/budgets/, { timeout: 30_000 })
+      await expect(heroFigure(page).or(wizardStep(page)).first()).toBeHidden()
+      // ...and the per-client caps a business workspace actually uses still work.
+      await page.goto("/budgets/own")
+      await expectAppShell(page)
+    } finally {
+      await switchWorkspace(page, "personal")
+    }
   })
 })
