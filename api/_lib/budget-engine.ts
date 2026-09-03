@@ -695,9 +695,24 @@ export async function openPeriod(
   orgId: string,
   plan: PlanRow,
   window: PeriodWindow,
-  opts: { isPartial: boolean; actorUserId?: string | null },
+  opts: {
+    isPartial: boolean
+    actorUserId?: string | null
+    /**
+     * MIGRATION ONLY. Force the funding-base source instead of deriving it.
+     *
+     * §13.3 requires a migrated plan's first period to snapshot, never
+     * reconstruct — reconstructing to a boundary before the plan existed would
+     * describe a period v2 never governed, and would risk counting income that
+     * is already inside the migrated balance. `baseSourceFor` would pick
+     * `reconstructed_at_boundary` on the one day the migration happens to run
+     * exactly on a period boundary, so the migration states its requirement
+     * rather than depending on the date it is run.
+     */
+    forceSource?: FundingBaseSource
+  },
 ): Promise<PeriodRow> {
-  const source = baseSourceFor(plan, opts.isPartial)
+  const source = opts.forceSource ?? baseSourceFor(plan, opts.isPartial)
   const now = new Date()
 
   let base = 0
