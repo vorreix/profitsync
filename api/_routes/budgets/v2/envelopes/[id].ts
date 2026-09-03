@@ -69,6 +69,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       auto_fund?: boolean
       status?: string
       position?: number
+      icon?: string
     }
 
     const patch: Record<string, unknown> = { updatedBy: userId, updatedAt: new Date() }
@@ -100,6 +101,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(400).json({ error: "The catch-all envelope tracks whatever is left over, so it has no categories" })
       }
       const keys = normalizeMatchKeys(body.match_keys)
+
+      // Same rule as create: a spending category with no categories tracks
+      // nothing. Refusing here matters more than on create, because emptying an
+      // existing envelope would silently stop counting spend it had been
+      // counting yesterday and hand it to the catch-all instead.
+      if (envelope.section === "flexible" && !keys.length) {
+        return res.status(400).json({
+          error: "categories_required",
+          message: "Keep at least one category, otherwise this would stop tracking anything",
+        })
+      }
+
       if (keys.length) {
         const others = await db
           .select({ id: budgetEnvelopes.id, name: budgetEnvelopes.name, matchKeys: budgetEnvelopes.matchKeys })
@@ -133,6 +146,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (body.position !== undefined && Number.isFinite(Number(body.position))) {
       patch.position = Math.trunc(Number(body.position))
     }
+    if (body.icon !== undefined) patch.icon = String(body.icon).slice(0, 40)
 
     let updated
     try {
