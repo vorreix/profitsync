@@ -47,7 +47,7 @@ Three seconds later you have:
 
 ```bash
 set -a; . docs/budget-v2/.env.localdb; set +a
-export DATABASE_URL="postgres://$LOCAL_DB_USER:$LOCAL_DB_PASSWORD@db.localtest.me:4444/$LOCAL_DB_NAME?sslmode=require"
+export DATABASE_URL="postgres://$LOCAL_DB_USER:$LOCAL_DB_PASSWORD@db.localtest.me:4444/$LOCAL_DB_NAME?sslmode=require"   # secret-scan:ignore
 export NODE_TLS_REJECT_UNAUTHORIZED=0     # the proxy serves a self-signed cert
 
 npm run db:migrate      # applies the whole journal from zero

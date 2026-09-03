@@ -28,7 +28,7 @@ services:
     image: ghcr.io/timowilhelm/local-neon-http-proxy:main
     container_name: ps-budget-neonproxy
     environment:
-      PG_CONNECTION_STRING: postgres://${LOCAL_DB_USER}:${LOCAL_DB_PASSWORD}@postgres:5432/${LOCAL_DB_NAME:-main}
+      PG_CONNECTION_STRING: postgres://${LOCAL_DB_USER}:${LOCAL_DB_PASSWORD}@postgres:5432/${LOCAL_DB_NAME:-main}   # secret-scan:ignore
     # 4445 is the proxy's serverless listener: HTTPS SQL-over-HTTP + wss.
     ports:
       - "4444:4445"
