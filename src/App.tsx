@@ -226,7 +226,14 @@ export function App() {
             <Route path="categories" element={<CategoryTagsPage />} />
             {/* Budget v2 is the /budgets surface. The v1 pages stay reachable at
                 /budgets/legacy so an existing bookmark never 404s (spec §13.6). */}
-            <Route path="budgets" element={<BudgetOverviewPage />} />
+            <Route
+              path="budgets"
+              element={
+                <PersonalOnlyRoute feature="budget_plan">
+                  <BudgetOverviewPage />
+                </PersonalOnlyRoute>
+              }
+            />
             <Route path="budgets/legacy" element={<BudgetsPage />} />
             {/* Legacy bookmarks resolve to a v2 envelope, or fall through to
                 the v1 page when this workspace has no plan (§13.6). Never a 404. */}

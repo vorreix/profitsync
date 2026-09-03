@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { useBudget } from "@/lib/budget-context"
+import { useOrg } from "@/lib/org-context"
 import type { BudgetEnvelopeView } from "@/lib/types"
 import { BudgetDetailPage } from "@/pages/BudgetDetailPage"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -32,13 +33,23 @@ export function BudgetKeyPage() {
   const navigate = useNavigate()
   const { t } = useTranslation()
   const { data, loaded } = useBudget()
+  const { activeOrg, loading: orgLoading } = useOrg()
 
-  const plan = data?.plan ?? null
+  // A BUSINESS workspace always gets the v1 page, whatever the API says.
+  //
+  // Its `budgets` rows are per-client spend caps (§23), and /budgets itself is
+  // now personal-only — so resolving a business bookmark onto a v2 envelope
+  // would redirect to a route that immediately bounces to the dashboard. The v1
+  // page is both the correct surface and the one that honours "a bookmark never
+  // 404s".
+  const isBusiness = Boolean(activeOrg) && activeOrg?.account_type !== "personal"
+
+  const plan = isBusiness ? null : (data?.plan ?? null)
 
   useEffect(() => {
     // Wait for the plan to be known: redirecting before it loads would send a
     // migrated user to the v1 page, or bounce a v1 user off their own bookmark.
-    if (!loaded || !plan) return
+    if (orgLoading || !loaded || !plan) return
 
     const envelopes: BudgetEnvelopeView[] = Object.values(data?.sections ?? {}).flatMap(
       (s) => (s as { envelopes?: BudgetEnvelopeView[] }).envelopes ?? [],
@@ -56,10 +67,10 @@ export function BudgetKeyPage() {
 
     toast.info(t("budgetV2.legacyLinkMoved"))
     navigate("/budgets", { replace: true })
-  }, [loaded, plan, data, key, navigate, t])
+  }, [orgLoading, loaded, plan, data, key, navigate, t])
 
-  // No v2 plan: this workspace still uses v1, so serve the v1 page as-is.
-  if (loaded && !plan) return <BudgetDetailPage />
+  // No v2 plan — or a business workspace, which never has one: serve v1 as-is.
+  if (!orgLoading && (isBusiness || (loaded && !plan))) return <BudgetDetailPage />
 
   // Resolving. A skeleton rather than a spinner, so the redirect does not flash
   // a loading state that looks like a failure.

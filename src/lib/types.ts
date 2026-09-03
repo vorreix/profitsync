@@ -348,7 +348,7 @@ export const ACCOUNT_TYPES: AccountType[] = ["personal", "business"]
  * Enforced in the UI (nav + route guards) and on the server (API authz).
  */
 export type BusinessFeature = "clients" | "quotations" | "members"
-export type PersonalFeature = "spaces"
+export type PersonalFeature = "spaces" | "budget_plan"
 export type GatedFeature = BusinessFeature | PersonalFeature
 
 export function accountTypeAllows(
@@ -358,7 +358,12 @@ export function accountTypeAllows(
   const isBusinessOnly = feature === "clients" || feature === "quotations" || feature === "members"
   // Personal-only sections (Spaces savings buckets). Legacy/unknown orgs are
   // treated as business, so Spaces show ONLY for an explicit personal account.
-  const isPersonalOnly = feature === "spaces"
+  // `budget_plan` is the Budget v2 household plan (periods, envelopes, safe to
+  // spend). Business workspaces keep their per-client SPEND CAPS instead, which
+  // are a different concept and are not gated — see spec §23. Adding it here is
+  // what stops a business workspace creating a household plan it was never
+  // meant to have.
+  const isPersonalOnly = feature === "spaces" || feature === "budget_plan"
   // Unknown / legacy orgs default to the full (business) experience so we never
   // lock an existing user out of features they already use.
   if (isBusinessOnly && accountType === "personal") return false
