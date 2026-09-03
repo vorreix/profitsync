@@ -20,8 +20,20 @@ parity.
 
 ## Start it
 
+The compose file takes its credentials from `docs/budget-v2/.env.localdb`, which
+is gitignored — throwaway values for a loopback-bound container, but kept out of
+the repository so no default password is ever committed. Create it once:
+
 ```bash
-docker compose -f docs/budget-v2/docker-compose.localdb.yml up -d
+cat > docs/budget-v2/.env.localdb <<EOF
+LOCAL_DB_USER=psdev
+LOCAL_DB_PASSWORD=$(openssl rand -hex 16)
+LOCAL_DB_NAME=main
+EOF
+```
+
+```bash
+docker compose --env-file docs/budget-v2/.env.localdb   -f docs/budget-v2/docker-compose.localdb.yml up -d
 ```
 
 Three seconds later you have:
@@ -34,7 +46,8 @@ Three seconds later you have:
 ## Use it
 
 ```bash
-export DATABASE_URL='postgres://postgres:postgres@db.localtest.me:4444/main?sslmode=require'
+set -a; . docs/budget-v2/.env.localdb; set +a
+export DATABASE_URL="postgres://$LOCAL_DB_USER:$LOCAL_DB_PASSWORD@db.localtest.me:4444/$LOCAL_DB_NAME?sslmode=require"
 export NODE_TLS_REJECT_UNAUTHORIZED=0     # the proxy serves a self-signed cert
 
 npm run db:migrate      # applies the whole journal from zero
