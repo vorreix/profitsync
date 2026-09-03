@@ -1583,6 +1583,26 @@
       },
       "admin_broadcast": {
         "title": "إعلان"
+      },
+      "budget_overdue": {
+        "title": "مدفوعات متأخرة",
+        "body": "{{count}} من المدفوعات لم تُسدَّد بعد — و{{amount}} محتجز من أجلها."
+      },
+      "budget_envelope_over": {
+        "title": "تم تجاوز هدف الفئة",
+        "body": "تجاوز {{name}} هدفه البالغ {{planned}} بمقدار {{amount}}."
+      },
+      "budget_contribution_missed": {
+        "title": "لم يتم تأكيد المبلغ المخصص",
+        "body": "لم يتم تأكيد {{amount}} لـ {{name}}، لذلك لم يُخصَّص."
+      },
+      "budget_period_closed": {
+        "title": "انتهت فترة الميزانية",
+        "body": "انتهت فترتك المنتهية في {{date}}. الأرقام نهائية الآن."
+      },
+      "budget_period_restated": {
+        "title": "تم تحديث فترة منتهية",
+        "body": "أُعيد احتساب الفترة التي تبدأ في {{date}} بعد تغيّر معاملة داخلها."
       }
     },
     "client": {

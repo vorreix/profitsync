@@ -29,6 +29,12 @@ import {
   type PlanRow,
 } from "../../../_lib/budget-engine.js"
 import { carryFor, contributionAtClose, periodFor, round2, type CarryPolicy } from "../../../../src/lib/budget-math.js"
+import {
+  notifyBudgetOverdue,
+  notifyEnvelopeOverspend,
+  notifyPeriodClosed,
+  notifyPeriodRestated,
+} from "../../../_lib/notify-budget-v2.js"
 
 /**
  * POST /api/budgets/v2/sync — the ONE place budget state is written.
@@ -91,6 +97,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (p.endExclusive <= today) {
       await closePeriod(orgId, plan, p, role, accountType, userId)
       result.closed++
+      // After the close has committed, so a "period closed" notice can never
+      // precede the snapshot it refers to.
+      void notifyPeriodClosed({ orgId, plan, period: p, actorUserId: userId }).catch(() => {})
     }
   }
 
@@ -144,6 +153,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   result.restated = await restateDriftedPeriods(orgId, plan, role, accountType)
 
   const view = await buildBudgetView(orgId, role, accountType)
+
+  // ── notifications ────────────────────────────────────────────────────────
+  // Best-effort, ALWAYS. Sync is what keeps the plan correct, so a notification
+  // failure must never fail it — and these run after every write above has
+  // already landed, so nothing can be announced that did not happen.
+  void notifyBudgetOverdue({ orgId, plan, view, actorUserId: userId }).catch(() => {})
+  void notifyEnvelopeOverspend({ orgId, plan, view, actorUserId: userId }).catch(() => {})
+
   return res.json({ synced: true, result, view })
 }
 
@@ -623,6 +640,16 @@ async function restateDriftedPeriods(
         actorUserId: null,
       }),
     ] as unknown as Parameters<typeof dbBatch>[0])
+
+    // Worth announcing: this revises a record the user may already have read.
+    // Deduped per VERSION, so a later second revision does notify again.
+    void notifyPeriodRestated({
+      orgId,
+      periodId: period.id,
+      periodStart: period.start,
+      version: nextVersion,
+      actorUserId: null,
+    }).catch(() => {})
 
     restated++
   }

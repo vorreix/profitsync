@@ -1725,6 +1725,26 @@
       },
       "admin_broadcast": {
         "title": "Announcement"
+      },
+      "budget_overdue": {
+        "title": "Payments overdue",
+        "body": "{{count}} payment(s) still to pay — {{amount}} is held back for them."
+      },
+      "budget_envelope_over": {
+        "title": "Category over its target",
+        "body": "{{name}} is {{amount}} over its {{planned}} target."
+      },
+      "budget_contribution_missed": {
+        "title": "Contribution not confirmed",
+        "body": "{{amount}} for {{name}} was not confirmed, so it was not set aside."
+      },
+      "budget_period_closed": {
+        "title": "Budget period closed",
+        "body": "Your budget period ending {{date}} is closed. The figures are now final."
+      },
+      "budget_period_restated": {
+        "title": "A closed period was updated",
+        "body": "The period starting {{date}} was recalculated after a transaction in it changed."
       }
     },
     "client": {
