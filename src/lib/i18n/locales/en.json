@@ -2117,6 +2117,20 @@
     "setAsideThisPeriod": "Set aside this period",
     "awaitingConfirmation": "Reserved, not yet confirmed",
     "fundTotal": "Total in funds",
-    "fundHeldBack": "Held back in your account"
+    "fundHeldBack": "Held back in your account",
+    "lifetimeTitle": "Your old lifetime budget needs a decision",
+    "lifetimeBody": "A lifetime budget of {{amount}} tracked everything you had ever spent. The new plans work in periods, so we have kept yours untouched rather than turning it into a monthly figure it never was.",
+    "lifetimeTargetLabel": "Monthly target",
+    "lifetimeSetTarget": "Start with this target",
+    "lifetimeKeepRecord": "Keep it as a record",
+    "salaryTitle": "Is {{amount}} what you earn, or what you want to spend?",
+    "salaryBody": "It closely matches your recent monthly income. The old budget had no place to record earnings, so some people put their income here.",
+    "salaryIsIncome": "That is my income",
+    "salaryIsTarget": "That is my spending target",
+    "salaryDismiss": "Not now",
+    "salaryIncomeNote": "Choosing income records it as your expected earnings and leaves the spending target for you to set.",
+    "promptSaved": "Saved",
+    "promptFailed": "Could not save that choice",
+    "legacyLinkMoved": "That budget now lives on your plan."
   }
 }

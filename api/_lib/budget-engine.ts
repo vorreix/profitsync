@@ -35,6 +35,7 @@ import { spaceProgress, suggestedMonthly } from "../../src/lib/spaces.js"
 import { occurrencesDue } from "../../src/lib/recurring.js"
 import {
   addDays,
+  addMonths,
   aggregateAllSections,
   allowedOccurrenceActions,
   amountInPlanCurrency,
@@ -43,6 +44,7 @@ import {
   categoryKey,
   daysOverdue,
   detectCurrencyMismatch,
+  median,
   normalizeMatchKeys,
   fundBalanceFromEntries,
   fundingCapacity,
@@ -591,6 +593,126 @@ export async function projectOccurrences(
   return [...byEnvelope.values()]
 }
 
+/**
+ * Migration prompts (§13.4, §13.8).
+ *
+ * Both exist because the migration REFUSES to guess. Rather than reinterpreting
+ * a user's data on their behalf, it leaves the ambiguity visible and asks once —
+ * so each prompt is a question the migration deliberately did not answer.
+ *
+ * Both are suppressed by an audited event rather than a new column: dismissal is
+ * a user decision, and `budget_events` is already the record of those.
+ */
+export type MigrationPrompts = {
+  /**
+   * A `lifetime` v1 budget migrated to a PAUSED plan. "Total ever spent against
+   * a cap" has no v2 period, and converting it silently would have turned a
+   * 10,000 lifetime cap into a 10,000 MONTHLY budget.
+   */
+  lifetime_choice: { amount: number } | null
+  /**
+   * The catch-all target is within 5 % of the org's median monthly income — the
+   * known v1 anti-pattern where someone entered their INCOME as their spending
+   * target because v1 had no income concept. Classifying that automatically
+   * would be a guess, so it becomes one explicit question, asked once.
+   */
+  salary_vs_target: { target: number; median_income: number } | null
+}
+
+const PROMPT_DISMISSED = {
+  lifetime: "lifetime_choice_resolved",
+  salary: "salary_prompt_dismissed",
+} as const
+
+/** Median of the org's monthly `incoming` totals over the last 3 whole months. */
+async function medianMonthlyIncome(orgId: string, plan: PlanRow, today: string): Promise<number> {
+  const from = addMonths(today, -3)
+  const rows = await db
+    .select({
+      month: sql<string>`to_char(${transactions.date}, 'YYYY-MM')`,
+      total: sql<string>`coalesce(sum(${transactions.amount}::numeric), 0)`,
+    })
+    .from(transactions)
+    .innerJoin(clients, eq(transactions.clientId, clients.id))
+    .where(
+      and(
+        eq(clients.organizationId, orgId),
+        isNull(clients.deletedAt),
+        isNull(transactions.deletedAt),
+        eq(transactions.type, "incoming"),
+        eq(transactions.kind, "standard"),
+        eq(transactions.isSystem, false),
+        gte(transactions.date, from),
+        lt(transactions.date, today),
+      ),
+    )
+    .groupBy(sql`to_char(${transactions.date}, 'YYYY-MM')`)
+
+  const monthly = rows.map((r) => round2(amountInPlanCurrency(num(r.total), plan.currency, plan.currency)))
+  return monthly.length ? median(monthly) : 0
+}
+
+/**
+ * Which migration questions are still outstanding for this plan.
+ *
+ * Cheap by construction: the lifetime branch only runs for a PAUSED plan, and
+ * the salary branch only for a plan that was actually migrated from v1 — so a
+ * natively created plan pays for one indexed event lookup and nothing more.
+ */
+export async function migrationPrompts(
+  orgId: string,
+  plan: PlanRow,
+  catchAllTarget: number,
+  today: string,
+): Promise<MigrationPrompts> {
+  const out: MigrationPrompts = { lifetime_choice: null, salary_vs_target: null }
+
+  const events = await db
+    .select({ action: budgetEvents.action, amount: budgetEvents.amount, detail: budgetEvents.detail })
+    .from(budgetEvents)
+    .where(
+      and(
+        eq(budgetEvents.organizationId, orgId),
+        eq(budgetEvents.planId, plan.id),
+        inArray(budgetEvents.action, [
+          "plan_created",
+          PROMPT_DISMISSED.lifetime,
+          PROMPT_DISMISSED.salary,
+        ]),
+      ),
+    )
+
+  const created = events.find((e) => e.action === "plan_created")
+  const detail = (created?.detail ?? {}) as Record<string, unknown>
+  const migrated = detail.migrated_from === "v1"
+  if (!migrated) return out
+
+  // ── §13.4 ──
+  if (
+    plan.status === "paused" &&
+    detail.lifetime_needs_choice === true &&
+    !events.some((e) => e.action === PROMPT_DISMISSED.lifetime)
+  ) {
+    out.lifetime_choice = { amount: round2(num(created?.amount)) }
+  }
+
+  // ── §13.8 ──
+  if (
+    plan.status === "active" &&
+    catchAllTarget > 0 &&
+    !events.some((e) => e.action === PROMPT_DISMISSED.salary)
+  ) {
+    const medianIncome = await medianMonthlyIncome(orgId, plan, today)
+    // Within 5 % either way. A zero median means we have no income history to
+    // compare against, so there is no question to ask.
+    if (medianIncome > 0 && Math.abs(catchAllTarget - medianIncome) <= medianIncome * 0.05) {
+      out.salary_vs_target = { target: catchAllTarget, median_income: medianIncome }
+    }
+  }
+
+  return out
+}
+
 /** Commitment display metadata, keyed by id. */
 export type CommitmentMeta = { name: string; kind: string; envelope_id: string; needs_attention: boolean }
 
@@ -881,6 +1003,8 @@ export type BudgetView = {
   capabilities: Record<string, unknown>
   limitations: string[]
   currency_limitation?: CurrencyLimitation | null
+  /** Questions the migration deliberately did not answer (§13.4, §13.8). */
+  prompts?: MigrationPrompts
 }
 
 /**
@@ -960,8 +1084,13 @@ export async function buildBudgetView(
   if (currencyLimitation) limitations.push("currency_changed")
 
   if (!period) {
+    // A paused plan has no open period, and the lifetime prompt is exactly the
+    // reason a migrated plan is paused — so it must be resolved on this path
+    // too, not only the fully-open one.
+    const pausedPrompts = await migrationPrompts(orgId, plan, 0, today)
     return {
       plan: planView(plan),
+      prompts: pausedPrompts,
       period: null,
       money: null,
       sections: null,
@@ -1280,6 +1409,14 @@ export async function buildBudgetView(
         envelopes: savings,
       },
     },
+    prompts: await migrationPrompts(
+      orgId,
+      plan,
+      // The catch-all's AUTHORED amount is what the user typed in v1, which is
+      // the figure the salary question is about.
+      round2(num(flex.find((v) => v.is_catch_all)?.authored_amount ?? 0)),
+      today,
+    ),
     // Plan utilisation is the FLEXIBLE section alone — never a cross-section ratio.
     plan_status: state(flexTotals.spentNet + flexTotals.pending, flexTotals.planned),
     total_outflow: round2(

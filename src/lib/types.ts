@@ -799,6 +799,16 @@ export type BudgetView = {
   alerts: { kind: string; envelope_id?: string; amount?: number }[]
   suggestions: { kind: string; envelope_id?: string; amount?: number | null; basis?: string }[]
   currency_limitation?: BudgetCurrencyLimitation | null
+  /**
+   * Questions the MIGRATION deliberately did not answer (spec §13.4, §13.8).
+   * Absent for any plan created natively in v2.
+   */
+  prompts?: {
+    /** A v1 `lifetime` budget: no monthly equivalent, so the user chooses. */
+    lifetime_choice: { amount: number } | null
+    /** The catch-all target is within 5% of median monthly income. */
+    salary_vs_target: { target: number; median_income: number } | null
+  }
   capabilities: { can_write: boolean; can_close: boolean; account_type: string | null }
   /** Machine-readable honesty about what this build cannot do (§21.4). */
   limitations: string[]
