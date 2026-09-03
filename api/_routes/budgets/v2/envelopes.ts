@@ -65,6 +65,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     goal_amount?: number | null
     target_date?: string | null
     auto_fund?: boolean
+    icon?: string
   }
 
   const section: BudgetSection = isBudgetSection(body.section) ? body.section : "flexible"
@@ -81,6 +82,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // that already claim the categories, because "invalid" gives the user nothing
   // to act on. Only flexible and income envelopes match categories at all.
   const matchKeys = section === "flexible" || section === "income" ? normalizeMatchKeys(body.match_keys ?? []) : []
+
+  // A SPENDING CATEGORY MUST CLAIM AT LEAST ONE TRANSACTION CATEGORY.
+  //
+  // Without one it matches nothing and tracks nothing: it would sit on the plan
+  // showing a target and a permanent zero, and its spend would silently fall
+  // through to the catch-all instead. That is worse than refusing to create it.
+  //
+  // The catch-all is the deliberate exception — it claims everything no other
+  // envelope has claimed, so an explicit list would make it both the general and
+  // the specific case at once.
+  if (section === "flexible" && !matchKeys.length) {
+    return res.status(400).json({
+      error: "categories_required",
+      message: "Choose at least one category, otherwise this would not track anything",
+    })
+  }
+
   if (matchKeys.length) {
     const others = await db
       .select({ id: budgetEnvelopes.id, name: budgetEnvelopes.name, matchKeys: budgetEnvelopes.matchKeys })
@@ -122,6 +140,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         targetCadence: isTargetCadence(body.target_cadence) ? body.target_cadence : "period",
         matchKeys,
         isCatchAll: false, // only the wizard creates the catch-all
+        icon: typeof body.icon === "string" ? body.icon.slice(0, 40) : "",
         fundingMode,
         wealthAccountId: fundingMode === "space_backed" ? (body.wealth_account_id ?? null) : null,
         autoFund: section === "savings" ? Boolean(body.auto_fund) : false,

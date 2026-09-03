@@ -2,7 +2,17 @@ import { useEffect, useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
-import { ChevronRight, GripVertical, Info, Loader as Loader2, Pause, Play, Plus, RefreshCw } from "lucide-react"
+import {
+  ChevronRight,
+  GripVertical,
+  Info,
+  Loader as Loader2,
+  Pause,
+  Pencil,
+  Play,
+  Plus,
+  RefreshCw,
+} from "lucide-react"
 import { MoneyBag } from "@/components/icons/MoneyBag"
 import { apiPatch } from "@/lib/api"
 import { useBudget } from "@/lib/budget-context"
@@ -11,7 +21,8 @@ import { formatMoney } from "@/lib/wealth"
 import type { BudgetEnvelopeView, BudgetSectionName, BudgetStateV2, BudgetView } from "@/lib/types"
 import { BudgetWizard } from "@/components/budget/BudgetWizard"
 import { AddCommitmentDialog } from "@/components/budget/AddCommitmentDialog"
-import { AddEnvelopeDialog } from "@/components/budget/AddEnvelopeDialog"
+import { EnvelopeDialog } from "@/components/budget/EnvelopeDialog"
+import { envelopeIcon } from "@/components/budget/envelope-icons"
 import { EnvelopeDetailSheet } from "@/components/budget/EnvelopeDetailSheet"
 import { OverdueList } from "@/components/budget/OverdueList"
 import { RefundReview } from "@/components/budget/RefundReview"
@@ -50,6 +61,7 @@ export function BudgetOverviewPage() {
   // Progressive disclosure (P2): every one of these is CLOSED until the user
   // asks for it. The overview never shows a form.
   const [addSection, setAddSection] = useState<BudgetSectionName | null>(null)
+  const [editing, setEditing] = useState<BudgetEnvelopeView | null>(null)
   const [addBillOpen, setAddBillOpen] = useState(false)
   const [detailFor, setDetailFor] = useState<BudgetEnvelopeView | null>(null)
   const [overspendFor, setOverspendFor] = useState<BudgetEnvelopeView | null>(null)
@@ -248,6 +260,7 @@ export function BudgetOverviewPage() {
             onAddBill={() => setAddBillOpen(true)}
             onOpenDetail={setDetailFor}
             onResolveOverspend={setOverspendFor}
+            onEdit={setEditing}
             onChanged={afterChange}
           />
 
@@ -258,12 +271,23 @@ export function BudgetOverviewPage() {
 
       <SafeToSpendExplainer open={explainOpen} onOpenChange={setExplainOpen} view={data} money={money} />
 
-      <AddEnvelopeDialog
+      <EnvelopeDialog
         open={addSection !== null}
         onOpenChange={(v) => !v && setAddSection(null)}
         section={addSection ?? "flexible"}
         claimedKeys={claimedKeys}
-        onCreated={afterChange}
+        onSaved={afterChange}
+      />
+
+      {/* Same component in EDIT mode — the fields are identical, and a separate
+          edit dialog is how the two drift apart. */}
+      <EnvelopeDialog
+        open={editing !== null}
+        onOpenChange={(v) => !v && setEditing(null)}
+        section={editing?.section ?? "flexible"}
+        envelope={editing}
+        claimedKeys={claimedKeys}
+        onSaved={afterChange}
       />
 
       <AddCommitmentDialog
@@ -430,6 +454,7 @@ function Sections({
   onAddBill,
   onOpenDetail,
   onResolveOverspend,
+  onEdit,
   onChanged,
 }: {
   view: BudgetView
@@ -439,6 +464,7 @@ function Sections({
   onAddBill: () => void
   onOpenDetail: (env: BudgetEnvelopeView) => void
   onResolveOverspend: (env: BudgetEnvelopeView) => void
+  onEdit: (env: BudgetEnvelopeView) => void
   onChanged: () => void
 }) {
   const { t } = useTranslation()
@@ -495,6 +521,7 @@ function Sections({
                   handle={handle}
                   onOpenDetail={onOpenDetail}
                   onResolveOverspend={onResolveOverspend}
+                  onEdit={onEdit}
                 />
               )}
             </EnvelopeList>
@@ -545,6 +572,7 @@ function Sections({
                     handle={null}
                     onOpenDetail={onOpenDetail}
                     onResolveOverspend={onResolveOverspend}
+                    onEdit={onEdit}
                   />
                 </li>
               ))}
@@ -577,6 +605,7 @@ function Sections({
         canWrite={canWrite}
         onAdd={() => onAdd("savings")}
         onOpenDetail={onOpenDetail}
+        onEdit={onEdit}
         onChanged={onChanged}
       />
 
@@ -607,6 +636,7 @@ function Sections({
                     handle={null}
                     onOpenDetail={onOpenDetail}
                     onResolveOverspend={onResolveOverspend}
+                    onEdit={onEdit}
                   />
                 </li>
               ))}
@@ -657,6 +687,7 @@ function EnvelopeRow({
   handle,
   onOpenDetail,
   onResolveOverspend,
+  onEdit,
 }: {
   env: BudgetEnvelopeView
   money: (n: number) => string
@@ -665,6 +696,7 @@ function EnvelopeRow({
   handle: HandleProps | null
   onOpenDetail: (env: BudgetEnvelopeView) => void
   onResolveOverspend: (env: BudgetEnvelopeView) => void
+  onEdit: (env: BudgetEnvelopeView) => void
 }) {
   const { t } = useTranslation()
 
@@ -680,6 +712,7 @@ function EnvelopeRow({
   const capped = env.section === "flexible"
   const over = capped && env.remaining < 0
   const obligation = env.section === "commitment" || env.section === "debt"
+  const Glyph = envelopeIcon(env.icon, env.section)
 
   const trailing = obligation
     ? // Unpaid is a fact about an obligation, not a judgement about spending.
@@ -714,11 +747,15 @@ function EnvelopeRow({
           className="flex min-h-11 w-full flex-1 items-center justify-between gap-2 px-1 py-1.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           aria-label={t("budgetV2.openEnvelope", { name: env.name })}
         >
+        <Glyph className="size-4 shrink-0 text-muted-foreground" aria-hidden />
         <div className="min-w-0 flex-1">
-          <p className="flex items-center gap-1.5 truncate text-xs font-medium">
-            {env.name}
+          {/* The NAME truncates; the tag never does. `truncate` on the flex
+              parent clipped the tag instead of the name, so a narrow row showed
+              "Everyday spending  lefto" — the one word that explains the row. */}
+          <p className="flex items-center gap-1.5 text-xs font-medium">
+            <span className="truncate">{env.name}</span>
             {env.is_catch_all && (
-              <span className="rounded bg-muted px-1 text-[10px] font-normal text-muted-foreground">
+              <span className="shrink-0 rounded bg-muted px-1 text-[10px] font-normal text-muted-foreground">
                 {t("budgetV2.leftoverTag")}
               </span>
             )}
@@ -744,21 +781,55 @@ function EnvelopeRow({
         </span>
         <ChevronRight className="size-3.5 shrink-0 text-muted-foreground/60 rtl:rotate-180" aria-hidden />
         </button>
+        {/* Edit sits IN the row rather than on a line of its own — a row that is
+            not overspent has nothing else to put there, and a lone pencil under
+            an empty paragraph reads as a layout accident. Editing and deleting
+            both live in the dialog, so there is ONE place a category changes. */}
+        {canWrite && (
+          <button
+            type="button"
+            onClick={() => onEdit(env)}
+            aria-label={t("budgetV2.editEnvelope", { name: env.name })}
+            className="pressable flex size-9 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          >
+            <Pencil className="size-3.5" aria-hidden />
+          </button>
+        )}
       </div>
+
+      {/* USED vs LEFT, per envelope.
+          Only for a capped (flexible) envelope: a bills envelope has no target,
+          so a proportion bar there would be measuring against nothing. The bar
+          caps at 100 % while the text carries the real overspend, because a bar
+          that overflows its track reads as a rendering bug rather than as
+          information. */}
+      {capped && env.planned > 0 && (
+        <div className="px-1 pb-1.5">
+          <Bar
+            state={env.state}
+            spent={env.spent_net + env.pending}
+            planned={env.planned}
+            label={t("budgetV2.usedOfPlanned", { name: env.name })}
+          />
+          <p className="mt-1 flex items-center justify-between gap-2 text-[11px] text-muted-foreground tabular-nums">
+            <span>{t("budgetV2.usedAmount", { amount: money(env.spent_net) })}</span>
+            <span>
+              {over
+                ? t("budgetV2.overAmount", { amount: money(-env.remaining) })
+                : t("budgetV2.leftAmount", { amount: money(env.remaining) })}
+            </span>
+          </p>
+        </div>
+      )}
 
       {/* An overspend offers the way OUT, right where it is visible. Supportive,
           not scolding: it states the amount and offers options (P7). Offered for
           capped envelopes only — there is nothing to "resolve" about a bill that
           simply has not been paid yet. */}
       {over && canWrite && (
-        <div className="flex items-center justify-between gap-2 px-1 pb-1.5">
+        <div className="flex flex-wrap items-center justify-between gap-2 px-1 pb-1.5">
           <p className="text-[11px] text-muted-foreground">{t("budgetV2.overspendInline")}</p>
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-9 px-2 text-[11px]"
-            onClick={() => onResolveOverspend(env)}
-          >
+          <Button size="sm" variant="outline" className="h-9 px-2 text-[11px]" onClick={() => onResolveOverspend(env)}>
             {t("budgetV2.resolve")}
           </Button>
         </div>

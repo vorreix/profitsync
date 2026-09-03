@@ -609,6 +609,8 @@ export type BudgetEnvelopeView = {
   excluded_occurrence_count: number
   /** Category keys this envelope claims. Empty for the catch-all. */
   match_keys: string[]
+  /** Icon key; empty means "derive from the section". */
+  icon: string
   /**
    * Goal progress for a savings fund, or null when it has no goal.
    * Computed with the Spaces goal math, reused unchanged (spec §8.9).

@@ -139,7 +139,11 @@ export function EnvelopeList({
                     18px tall — the smallest sensible split of a 36px target —
                     and both are full width, which is what makes them hittable
                     with a thumb. */}
-                <div className="flex w-9 shrink-0 flex-col justify-center">
+                {/* Top-aligned, not centred: the row is now as tall as its
+                    used/left bar and its overspend line, and a control block
+                    floating at the vertical middle of all that reads as though
+                    it belongs to the bar rather than to the row. */}
+                <div className="flex w-9 shrink-0 flex-col justify-start pt-1">
                   <button
                     type="button"
                     disabled={index === 0 || saving}

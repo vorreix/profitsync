@@ -999,6 +999,8 @@ export type EnvelopeView = {
   excluded_occurrence_count: number
   /** Category keys this envelope claims (empty for the catch-all). */
   match_keys: string[]
+  /** Icon key; empty means "derive from the section" (envelope-icons.tsx). */
+  icon: string
   /**
    * Goal progress for a savings fund, or null.
    *
@@ -1243,6 +1245,7 @@ export async function buildBudgetView(
       needs_attention: occ?.needsAttention ?? false,
       excluded_occurrence_count: occ?.excludedCount ?? 0,
       match_keys: normalizeMatchKeys((e.matchKeys as string[] | null) ?? []),
+      icon: e.icon ?? "",
       goal_progress:
         e.section === "savings" && e.goalAmount != null
           ? spaceProgress(fundBalanceOf(e), num(e.goalAmount))

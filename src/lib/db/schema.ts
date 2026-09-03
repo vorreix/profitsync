@@ -1148,6 +1148,10 @@ export const budgetEnvelopes = pgTable("budget_envelopes", {
   // the app and the functional index on transactions agree (8.3.1).
   matchKeys: jsonb("match_keys").notNull().default([]),
   isCatchAll: boolean("is_catch_all").notNull().default(false), // the beginner's single envelope
+  // A lucide icon key from src/components/budget/envelope-icons.tsx. Empty means
+  // "derive from the section", so an envelope always has a sensible glyph and no
+  // backfill is needed for the ones that predate this column.
+  icon: text("icon").notNull().default(""),
   // savings only ------------------------------------------------------------
   fundingMode: text("funding_mode"), // virtual | space_backed
   wealthAccountId: uuid("wealth_account_id").references(() => wealthAccounts.id, { onDelete: "set null" }), // the Space
