@@ -2117,6 +2117,20 @@
     "setAsideThisPeriod": "In diesem Zeitraum zurückgelegt",
     "awaitingConfirmation": "Reserviert, nicht bestätigt",
     "fundTotal": "Gesamt in Sparzielen",
-    "fundHeldBack": "Auf deinem Konto zurückgehalten"
+    "fundHeldBack": "Auf deinem Konto zurückgehalten",
+    "lifetimeTitle": "Dein altes Gesamtbudget braucht eine Entscheidung",
+    "lifetimeBody": "Ein Gesamtbudget von {{amount}} erfasste alles, was du je ausgegeben hast. Die neuen Pläne arbeiten in Zeiträumen, deshalb haben wir deins unverändert gelassen statt es in eine monatliche Zahl zu verwandeln, die es nie war.",
+    "lifetimeTargetLabel": "Monatliches Ziel",
+    "lifetimeSetTarget": "Mit diesem Ziel starten",
+    "lifetimeKeepRecord": "Als Aufzeichnung behalten",
+    "salaryTitle": "Sind {{amount}} dein Verdienst oder dein Ausgabenziel?",
+    "salaryBody": "Es entspricht fast deinem letzten Monatseinkommen. Das alte Budget hatte kein Feld für Einnahmen, daher trugen manche ihr Einkommen hier ein.",
+    "salaryIsIncome": "Das ist mein Einkommen",
+    "salaryIsTarget": "Das ist mein Ausgabenziel",
+    "salaryDismiss": "Nicht jetzt",
+    "salaryIncomeNote": "Bei der Wahl Einkommen wird es als erwarteter Verdienst gespeichert; das Ausgabenziel setzt du selbst.",
+    "promptSaved": "Gespeichert",
+    "promptFailed": "Auswahl konnte nicht gespeichert werden",
+    "legacyLinkMoved": "Dieses Budget ist jetzt Teil deines Plans."
   }
 }

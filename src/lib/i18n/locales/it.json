@@ -2117,6 +2117,20 @@
     "setAsideThisPeriod": "Messo da parte in questo periodo",
     "awaitingConfirmation": "Accantonato, non confermato",
     "fundTotal": "Totale nei fondi",
-    "fundHeldBack": "Trattenuto sul tuo conto"
+    "fundHeldBack": "Trattenuto sul tuo conto",
+    "lifetimeTitle": "Il tuo vecchio budget a vita richiede una scelta",
+    "lifetimeBody": "Un budget a vita di {{amount}} teneva conto di tutto ciò che avevi speso. I nuovi piani lavorano per periodi, quindi lo abbiamo lasciato intatto invece di trasformarlo in una cifra mensile che non è mai stata.",
+    "lifetimeTargetLabel": "Obiettivo mensile",
+    "lifetimeSetTarget": "Inizia con questo obiettivo",
+    "lifetimeKeepRecord": "Conservalo come archivio",
+    "salaryTitle": "{{amount}} è quanto guadagni o quanto vuoi spendere?",
+    "salaryBody": "Corrisponde quasi al tuo reddito mensile recente. Il vecchio budget non aveva un posto per le entrate, così alcuni ci inserivano il proprio reddito.",
+    "salaryIsIncome": "È il mio reddito",
+    "salaryIsTarget": "È il mio obiettivo di spesa",
+    "salaryDismiss": "Non ora",
+    "salaryIncomeNote": "Scegliendo il reddito lo registriamo come guadagno previsto e lasciamo a te l'obiettivo di spesa.",
+    "promptSaved": "Salvato",
+    "promptFailed": "Non è stato possibile salvare la scelta",
+    "legacyLinkMoved": "Quel budget ora si trova nel tuo piano."
   }
 }

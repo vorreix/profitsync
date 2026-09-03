@@ -34,7 +34,7 @@ const SpaceDetailPage = lazy(() => import("@/pages/SpaceDetailPage").then((m) =>
 const CategoryTagsPage = lazy(() => import("@/pages/CategoryTagsPage").then((m) => ({ default: m.CategoryTagsPage })))
 const BudgetsPage = lazy(() => import("@/pages/BudgetsPage").then((m) => ({ default: m.BudgetsPage })))
 const BudgetOverviewPage = lazy(() => import("@/pages/BudgetOverviewPage").then((m) => ({ default: m.BudgetOverviewPage })))
-const BudgetDetailPage = lazy(() => import("@/pages/BudgetDetailPage").then((m) => ({ default: m.BudgetDetailPage })))
+const BudgetKeyPage = lazy(() => import("@/pages/BudgetKeyPage").then((m) => ({ default: m.BudgetKeyPage })))
 const AnalyticsPage = lazy(() => import("@/pages/AnalyticsPage").then((m) => ({ default: m.AnalyticsPage })))
 const ReferralPage = lazy(() => import("@/pages/ReferralPage").then((m) => ({ default: m.ReferralPage })))
 const QuotationsPage = lazy(() => import("@/pages/QuotationsPage").then((m) => ({ default: m.QuotationsPage })))
@@ -228,7 +228,9 @@ export function App() {
                 /budgets/legacy so an existing bookmark never 404s (spec §13.6). */}
             <Route path="budgets" element={<BudgetOverviewPage />} />
             <Route path="budgets/legacy" element={<BudgetsPage />} />
-            <Route path="budgets/:key" element={<BudgetDetailPage />} />
+            {/* Legacy bookmarks resolve to a v2 envelope, or fall through to
+                the v1 page when this workspace has no plan (§13.6). Never a 404. */}
+            <Route path="budgets/:key" element={<BudgetKeyPage />} />
             <Route path="referrals" element={<ReferralPage />} />
             <Route path="quotations" element={<BusinessOnlyRoute feature="quotations"><QuotationsPage /></BusinessOnlyRoute>} />
             <Route path="organizations" element={<OrganizationsPage />} />

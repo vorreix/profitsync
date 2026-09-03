@@ -1,4 +1,5 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
+import { useSearchParams } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
 import { ChevronRight, GripVertical, Info, Loader as Loader2, Pause, Play, Plus, RefreshCw } from "lucide-react"
@@ -17,6 +18,7 @@ import { RefundReview } from "@/components/budget/RefundReview"
 import { ResolveOverspendSheet } from "@/components/budget/ResolveOverspendSheet"
 import { EnvelopeList, type HandleProps } from "@/components/budget/EnvelopeList"
 import { SavingsSection } from "@/components/budget/SavingsSection"
+import { MigrationPrompts } from "@/components/budget/MigrationPrompts"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -52,8 +54,28 @@ export function BudgetOverviewPage() {
   const [detailFor, setDetailFor] = useState<BudgetEnvelopeView | null>(null)
   const [overspendFor, setOverspendFor] = useState<BudgetEnvelopeView | null>(null)
   const [revision, setRevision] = useState(0)
+  const [searchParams, setSearchParams] = useSearchParams()
 
   const money = (n: number) => formatMoney(n, currency)
+
+  // A legacy /budgets/:key bookmark resolves to ?envelope=<id> (§13.6), so open
+  // that envelope's detail once and then drop the param — otherwise a refresh
+  // or a back-navigation would keep reopening the sheet.
+  //
+  // Declared HERE, above the loading / error / empty guards: those return early,
+  // so a hook placed after them would not run in the same order on every render.
+  const deepLinkId = searchParams.get("envelope")
+  useEffect(() => {
+    if (!deepLinkId) return
+    const all = Object.values(data?.sections ?? {}).flatMap(
+      (sec) => (sec as { envelopes?: BudgetEnvelopeView[] }).envelopes ?? [],
+    )
+    const found = all.find((e) => e.id === deepLinkId)
+    if (found) setDetailFor(found)
+    const next = new URLSearchParams(searchParams)
+    next.delete("envelope")
+    setSearchParams(next, { replace: true })
+  }, [deepLinkId, data, searchParams, setSearchParams])
 
   // ── loading: skeletons shaped like the final content, never a bare spinner ──
   if (!loaded) {
@@ -182,6 +204,12 @@ export function BudgetOverviewPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* The migration's unanswered questions come FIRST: both change the
+          figures below them, so settling one before reading the numbers is the
+          right order (§13.4, §13.8). Renders nothing for a natively created
+          plan. */}
+      <MigrationPrompts view={data} money={money} canWrite={canWrite} onResolved={afterChange} />
 
       {data.money && data.period && (
         <>
