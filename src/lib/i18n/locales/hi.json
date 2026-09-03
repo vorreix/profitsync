@@ -1583,6 +1583,26 @@
       },
       "admin_broadcast": {
         "title": "घोषणा"
+      },
+      "budget_overdue": {
+        "title": "भुगतान देर से",
+        "body": "{{count}} भुगतान अभी बाकी — इनके लिए {{amount}} रोका हुआ है।"
+      },
+      "budget_envelope_over": {
+        "title": "श्रेणी अपने लक्ष्य से ऊपर",
+        "body": "{{name}} अपने {{planned}} के लक्ष्य से {{amount}} ऊपर है।"
+      },
+      "budget_contribution_missed": {
+        "title": "योगदान की पुष्टि नहीं हुई",
+        "body": "{{name}} के लिए {{amount}} की पुष्टि नहीं हुई, इसलिए वह अलग नहीं रखा गया।"
+      },
+      "budget_period_closed": {
+        "title": "बजट अवधि बंद हुई",
+        "body": "{{date}} को समाप्त होने वाली आपकी अवधि बंद हो गई। आंकड़े अब अंतिम हैं।"
+      },
+      "budget_period_restated": {
+        "title": "एक बंद अवधि अपडेट हुई",
+        "body": "{{date}} से शुरू होने वाली अवधि की फिर गणना हुई, क्योंकि उसमें एक लेन-देन बदला।"
       }
     },
     "client": {

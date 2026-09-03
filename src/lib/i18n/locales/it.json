@@ -1583,6 +1583,26 @@
       },
       "admin_broadcast": {
         "title": "Annuncio"
+      },
+      "budget_overdue": {
+        "title": "Pagamenti scaduti",
+        "body": "{{count}} pagamento/i ancora da saldare — {{amount}} sono trattenuti per questo."
+      },
+      "budget_envelope_over": {
+        "title": "Categoria oltre il suo obiettivo",
+        "body": "{{name}} è oltre di {{amount}} rispetto al suo obiettivo di {{planned}}."
+      },
+      "budget_contribution_missed": {
+        "title": "Contributo non confermato",
+        "body": "{{amount}} per {{name}} non sono stati confermati, quindi non sono stati messi da parte."
+      },
+      "budget_period_closed": {
+        "title": "Periodo di budget chiuso",
+        "body": "Il periodo che termina il {{date}} è chiuso. I dati sono ora definitivi."
+      },
+      "budget_period_restated": {
+        "title": "Un periodo chiuso è stato aggiornato",
+        "body": "Il periodo che inizia il {{date}} è stato ricalcolato dopo la modifica di una transazione al suo interno."
       }
     },
     "client": {

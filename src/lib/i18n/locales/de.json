@@ -1583,6 +1583,26 @@
       },
       "admin_broadcast": {
         "title": "Ankündigung"
+      },
+      "budget_overdue": {
+        "title": "Überfällige Zahlungen",
+        "body": "{{count}} Zahlung(en) noch offen — {{amount}} sind dafür zurückgehalten."
+      },
+      "budget_envelope_over": {
+        "title": "Kategorie über dem Ziel",
+        "body": "{{name}} liegt {{amount}} über dem Ziel von {{planned}}."
+      },
+      "budget_contribution_missed": {
+        "title": "Beitrag nicht bestätigt",
+        "body": "{{amount}} für {{name}} wurden nicht bestätigt und daher nicht zurückgelegt."
+      },
+      "budget_period_closed": {
+        "title": "Budgetzeitraum abgeschlossen",
+        "body": "Dein Zeitraum bis {{date}} ist abgeschlossen. Die Zahlen sind nun endgültig."
+      },
+      "budget_period_restated": {
+        "title": "Ein abgeschlossener Zeitraum wurde aktualisiert",
+        "body": "Der Zeitraum ab {{date}} wurde neu berechnet, nachdem sich eine Transaktion darin geändert hat."
       }
     },
     "client": {
