@@ -50,16 +50,20 @@ async function waitForClerk(page: Page) {
 }
 
 /**
- * Call the app's own API with the page's real Clerk session. No `x-org-id`
- * header on purpose: the saved storage state carries a STALE `ps_active_org`
- * mirror (the business org) until the app reconciles it after boot, so the
- * server's fallback — the profile's current workspace, switched to PERSONAL in
- * beforeAll — is the only value that is right at every moment of a test.
+ * The workspace every API call in this file targets. Pinned explicitly via
+ * `x-org-id` once beforeAll has switched to the personal workspace: the saved
+ * storage state carries a STALE `ps_active_org` mirror (the business org), and
+ * the server's header-less fallback is served from a short-lived per-user cache
+ * that can still name the previous workspace right after a switch — so neither
+ * implicit source is right at every moment of a test.
  */
+let orgIdForApi = ""
+
+/** Call the app's own API with the page's real Clerk session. */
 async function api<T>(page: Page, method: string, path: string, body?: unknown): Promise<{ status: number; json: T }> {
   await waitForClerk(page)
   return page.evaluate(
-    async ({ method, path, body }) => {
+    async ({ method, path, body, orgId }) => {
       const Clerk = (window as unknown as { Clerk: { session?: { getToken: () => Promise<string | null> } } }).Clerk
       const token = await Clerk.session?.getToken()
       const res = await fetch(path, {
@@ -67,6 +71,7 @@ async function api<T>(page: Page, method: string, path: string, body?: unknown):
         headers: {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
+          ...(orgId ? { "x-org-id": orgId } : {}),
         },
         body: body === undefined ? undefined : JSON.stringify(body),
       })
@@ -75,7 +80,7 @@ async function api<T>(page: Page, method: string, path: string, body?: unknown):
       try { json = text ? JSON.parse(text) : null } catch { json = text }
       return { status: res.status, json: json as never }
     },
-    { method, path, body },
+    { method, path, body, orgId: orgIdForApi },
   )
 }
 
@@ -154,14 +159,14 @@ test.describe.serial("Credit cards", () => {
   test.beforeAll(async ({ browser }) => {
     await inFreshTab(browser, async (page) => {
       restoreOrgId = await page.evaluate(() => localStorage.getItem("ps_active_org") ?? "")
-      await useWorkspace(page, "personal")
+      orgIdForApi = await useWorkspace(page, "personal")
       await cleanup(page)
     })
   })
 
   test.afterAll(async ({ browser }) => {
     await inFreshTab(browser, async (page) => {
-      await useWorkspace(page, "personal")
+      orgIdForApi = await useWorkspace(page, "personal")
       await cleanup(page)
       if (restoreOrgId) await switchWorkspace(page, restoreOrgId).catch(() => {})
     })
@@ -198,7 +203,7 @@ test.describe.serial("Credit cards", () => {
     await expect(tile).not.toContainText(/-950/)
 
     // Net worth shows the liability separately.
-    await expect(page.getByText(/owed on cards/i).first()).toBeVisible()
+    await expect(page.getByText(/^owed( on cards)?:/i).first()).toBeVisible()
 
     const accs = await accounts(page)
     const card = accs.find((a) => a.nickname === CARD_NAME)

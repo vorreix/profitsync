@@ -75,7 +75,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     .where(and(eq(wealthAccounts.organizationId, orgId), isNull(wealthAccounts.archivedAt)))
   const byId = new Map(orgAccounts.map((a) => [a.id, a]))
   for (const leg of legs) {
-    if (!byId.has(leg.accountId)) return res.status(400).json({ error: "Select an active bank or cash account" })
+    const acc = byId.get(leg.accountId)
+    if (!acc) return res.status(400).json({ error: "Select an active bank or cash account" })
+    if (acc.type === "space") return res.status(400).json({ error: "You can't record a transaction on a Space — move money in or out with a transfer instead." })
+    if (acc.type === "loan" || acc.type === "receivable") return res.status(400).json({ error: "Record a payment from the debt's page instead — that keeps principal and interest apart." })
   }
 
   // Resolve the anchoring client (personal orgs use their hidden default client).

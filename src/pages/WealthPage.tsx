@@ -116,6 +116,8 @@ export function WealthPage() {
   const { balancesVisible, setBalancesVisible } = useBalancePrivacy()
   const [accounts, setAccounts] = useState<WealthAccount[]>([])
   const [spaces, setSpaces] = useState<WealthAccount[]>([])
+  // Debts (loans I owe / money owed to me) live on /debts but belong in net worth.
+  const [debtTotals, setDebtTotals] = useState<{ owed: number; receivable: number }>({ owed: 0, receivable: 0 })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
@@ -249,7 +251,9 @@ export function WealthPage() {
   // it (a bank→Space transfer nets to zero). /api/spaces 403s for business orgs,
   // so this is naturally personal-only.
   const savedTotal = spaces.filter((s) => !s.archived_at).reduce((sum, s) => sum + Number(s.current_balance), 0)
-  const netWorth = total + savedTotal
+  // Loans reduce net worth like card debt; receivables add to it (not liquid).
+  const netWorth = total + savedTotal + debtTotals.receivable - debtTotals.owed
+  const owedTotal = liabilities + debtTotals.owed
   const archived = useMemo(() => accounts.filter((a) => a.archived_at), [accounts])
   // Free counts only ACTIVE banks (closing frees a slot); paid counts the TOTAL
   // incl. closed (the 20 cap includes closed accounts). Live count from the list
@@ -269,14 +273,18 @@ export function WealthPage() {
     if (!token) return
     if (!silent) setLoading(true)
     try {
-      const [rows, q, spaceRows] = await Promise.all([
+      const [rows, q, spaceRows, debtsRes] = await Promise.all([
         apiGet<WealthAccount[]>("/api/wealth/accounts", token),
         apiGet<BankQuota>("/api/wealth/quota", token).catch(() => null),
         // Personal-only; 403s for business orgs → treated as no Spaces.
         apiGet<WealthAccount[]>("/api/spaces", token).catch(() => [] as WealthAccount[]),
+        apiGet<{ summary: { owed_by_currency: { currency: string; amount: number }[]; receivable_by_currency: { currency: string; amount: number }[] } }>("/api/debts", token).catch(() => null),
       ])
       setAccounts(rows)
       setSpaces(spaceRows)
+      // Only same-currency debts can be summed into net worth (no FX is invented).
+      const sum = (xs: { currency: string; amount: number }[] | undefined) => (xs ?? []).filter((x) => x.currency === currency).reduce((s, x) => s + x.amount, 0)
+      setDebtTotals({ owed: sum(debtsRes?.summary.owed_by_currency), receivable: sum(debtsRes?.summary.receivable_by_currency) })
       if (q) setQuota(q)
     } catch {
       if (!silent) toast.error(t("failedToLoad"))
@@ -473,12 +481,12 @@ export function WealthPage() {
         ) : (
           <>
             <p className="mt-1 text-3xl font-bold tabular-nums sm:text-4xl">{formatMoney(netWorth, currency, balancesVisible)}</p>
-            {liabilities > 0 && (
-              <p className="mt-1.5 inline-flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
-                <span className="tabular-nums">{t("assets")}: {formatMoney(assets + savedTotal, currency, balancesVisible)}</span>
+            {owedTotal > 0 && (
+              <button type="button" onClick={() => navigate("/debts")} className="mt-1.5 inline-flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground hover:text-foreground">
+                <span className="tabular-nums">{t("assets")}: {formatMoney(assets + savedTotal + debtTotals.receivable, currency, balancesVisible)}</span>
                 <span aria-hidden>·</span>
-                <span className="tabular-nums text-red-600 dark:text-red-400">{t("owedOnCards")}: {formatMoney(liabilities, currency, balancesVisible)}</span>
-              </p>
+                <span className="tabular-nums text-red-600 dark:text-red-400">{t("liabilities")}: {formatMoney(owedTotal, currency, balancesVisible)} →</span>
+              </button>
             )}
             {savedTotal > 0 && (
               <button

@@ -29,6 +29,8 @@ const CalendarPage = lazy(() => import("@/pages/CalendarPage").then((m) => ({ de
 const MoneyFlowPage = lazy(() => import("@/pages/MoneyFlowPage").then((m) => ({ default: m.MoneyFlowPage })))
 const WealthPage = lazy(() => import("@/pages/WealthPage").then((m) => ({ default: m.WealthPage })))
 const WealthAccountDetailPage = lazy(() => import("@/pages/WealthAccountDetailPage").then((m) => ({ default: m.WealthAccountDetailPage })))
+const DebtsPage = lazy(() => import("@/pages/DebtsPage").then((m) => ({ default: m.DebtsPage })))
+const DebtDetailPage = lazy(() => import("@/pages/DebtDetailPage").then((m) => ({ default: m.DebtDetailPage })))
 const SpacesPage = lazy(() => import("@/pages/SpacesPage").then((m) => ({ default: m.SpacesPage })))
 const SpaceDetailPage = lazy(() => import("@/pages/SpaceDetailPage").then((m) => ({ default: m.SpaceDetailPage })))
 const CategoryTagsPage = lazy(() => import("@/pages/CategoryTagsPage").then((m) => ({ default: m.CategoryTagsPage })))
@@ -220,6 +222,8 @@ export function App() {
             <Route path="flow" element={<MoneyFlowPage />} />
             <Route path="wealth" element={<WealthPage />} />
             <Route path="wealth/:id" element={<WealthAccountDetailPage />} />
+            <Route path="debts" element={<DebtsPage />} />
+            <Route path="debts/:id" element={<DebtDetailPage />} />
             <Route path="spaces" element={<PersonalOnlyRoute feature="spaces"><SpacesPage /></PersonalOnlyRoute>} />
             <Route path="spaces/:id" element={<PersonalOnlyRoute feature="spaces"><SpaceDetailPage /></PersonalOnlyRoute>} />
             <Route path="analytics" element={<AnalyticsPage />} />

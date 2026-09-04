@@ -358,6 +358,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // can never post a standard income/expense to a Space (the security boundary;
     // the UI also hides Spaces from the account picker).
     if (account.type === "space") return res.status(400).json({ error: "You can't record a transaction on a Space — move money in or out with a transfer instead." })
+    // A debt's balance only moves through repayments (principal = transfer,
+    // interest/fees = expenses on the paying account) — see /api/debts/:id/payments.
+    if (account.type === "loan" || account.type === "receivable") return res.status(400).json({ error: "Record a payment from the debt's page instead — that keeps principal and interest apart." })
 
     // Personal accounts have a single hidden default client that every
     // transaction anchors to; the client picker isn't shown, so resolve it here.

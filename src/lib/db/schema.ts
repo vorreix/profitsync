@@ -152,11 +152,13 @@ export const tags = pgTable("tags", {
 export const wealthAccounts = pgTable("wealth_accounts", {
   id: uuid("id").primaryKey().defaultRandom(),
   organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
-  // bank | cash | space | credit_card. `space` = a personal savings bucket;
-  // `credit_card` = a LIABILITY account: its current_balance is the signed
-  // asset-equivalent value, so it is normally NEGATIVE (−950 = €950 owed). The
-  // ledger (balanceDelta) is type-agnostic; only presentation reads the sign,
-  // through src/lib/credit-card.ts (cardDebt / availableCredit / …).
+  // bank | cash | space | credit_card | loan | receivable.
+  // `space` = a personal savings bucket. `credit_card` and `loan` are LIABILITY
+  // accounts: their current_balance is the signed asset-equivalent value, so it
+  // is normally NEGATIVE (−950 = €950 owed). `receivable` = money owed TO the
+  // user (an asset, not liquid). The ledger (balanceDelta) is type-agnostic;
+  // only presentation reads the sign (src/lib/credit-card.ts, src/lib/wealth.ts).
+  // A loan/receivable carries its terms in `debt_details` (1:1).
   type: text("type").notNull(),
   bankName: text("bank_name").notNull().default(""),
   nickname: text("nickname").notNull().default(""),
@@ -249,6 +251,82 @@ export const creditCardStatements = pgTable("credit_card_statements", {
   accountCloseUnique: uniqueIndex("credit_card_statements_account_close_unique").on(table.wealthAccountId, table.closingDate),
   orgIdx: index("credit_card_statements_org_idx").on(table.organizationId),
   sourceCheck: check("credit_card_statements_source_check", sql`source in ('computed','manual')`),
+}))
+
+// ── Debt & Loans ─────────────────────────────────────────────────────────────
+// A debt IS a wealth account (type 'loan' = I owe, 'receivable' = owed to me):
+// its balance lives in wealth_accounts.current_balance and moves through the
+// ordinary ledger, so borrowing is a TRANSFER (never income), a repayment's
+// principal is a TRANSFER (never an expense) and net worth is still Σ balances.
+// This 1:1 table holds only the TERMS the user told us. Everything the screens
+// show — status, progress, this month's obligations, the debt-free date, the
+// planner — is derived (src/lib/debt-status.ts, debt-planner.ts).
+// Amounts are NATIVE to `currency` and never rewritten by an FX change.
+export const debtDetails = pgTable("debt_details", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  wealthAccountId: uuid("wealth_account_id").notNull().references(() => wealthAccounts.id, { onDelete: "cascade" }),
+  // mortgage | personal | car | student | business | bnpl | overdraft | informal | other
+  kind: text("kind").notNull().default("other"),
+  // Lender, shop, or the person ("Marco").
+  counterparty: text("counterparty").notNull().default(""),
+  currency: text("currency").notNull(),
+  originalAmount: numeric("original_amount", { precision: 20, scale: 2 }),
+  // Annual % (nominal); NULL = unknown / interest-free informal debt.
+  annualRatePct: numeric("annual_rate_pct", { precision: 8, scale: 4 }),
+  rateType: text("rate_type"), // fixed | variable | null
+  paymentAmount: numeric("payment_amount", { precision: 20, scale: 2 }),
+  paymentFrequency: text("payment_frequency"), // weekly | biweekly | monthly | quarterly | yearly | irregular | null
+  nextDueDate: date("next_due_date"),
+  startDate: date("start_date"),
+  maturityDate: date("maturity_date"),
+  remainingInstallments: integer("remaining_installments"),
+  // "Roughly €650,000" — shown as Estimated, never blocks the user.
+  balanceIsEstimate: boolean("balance_is_estimate").notNull().default(false),
+  // What the user SET: active | paused | paid_off | refinanced | written_off.
+  // overdue / due soon / paid off-by-balance are derived, never stored.
+  lifecycle: text("lifecycle").notNull().default("active"),
+  // Refinancing keeps the old debt (closed, history intact) and points at the new one.
+  refinancedIntoAccountId: uuid("refinanced_into_account_id").references(() => wealthAccounts.id, { onDelete: "set null" }),
+  closedAt: timestamp("closed_at"),
+  notes: text("notes").notNull().default(""),
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  accountUnique: uniqueIndex("debt_details_account_unique").on(table.wealthAccountId),
+  orgIdx: index("debt_details_org_idx").on(table.organizationId),
+  lifecycleCheck: check("debt_details_lifecycle_check", sql`lifecycle in ('active','paused','paid_off','refinanced','written_off')`),
+  frequencyCheck: check("debt_details_frequency_check", sql`payment_frequency is null or payment_frequency in ('weekly','biweekly','monthly','quarterly','yearly','irregular')`),
+}))
+
+// One recorded repayment = one ledger GROUP (transfer legs for the principal,
+// standard expense legs for interest / fees / other) + this allocation row that
+// says how the total was split. `transaction_id` is the group's anchor leg:
+// the row is LIVE while that leg is not trashed (derived, never a flag), and
+// purging the leg cascades the row. Trash/restore of the group therefore keeps
+// balances, expenses and this history in lockstep.
+export const debtPayments = pgTable("debt_payments", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  wealthAccountId: uuid("wealth_account_id").notNull().references(() => wealthAccounts.id, { onDelete: "cascade" }),
+  transactionId: uuid("transaction_id").notNull().references(() => transactions.id, { onDelete: "cascade" }),
+  groupId: uuid("group_id"),
+  date: date("date").notNull(),
+  total: numeric("total", { precision: 20, scale: 2 }).notNull(),
+  principal: numeric("principal", { precision: 20, scale: 2 }).notNull().default("0"),
+  interest: numeric("interest", { precision: 20, scale: 2 }).notNull().default("0"),
+  fees: numeric("fees", { precision: 20, scale: 2 }).notNull().default("0"),
+  other: numeric("other", { precision: 20, scale: 2 }).notNull().default("0"),
+  // entered (user typed the split) | calculated (from the rate) | principal_only (no rate)
+  splitSource: text("split_source").notNull().default("entered"),
+  note: text("note").notNull().default(""),
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  accountDateIdx: index("debt_payments_account_date_idx").on(table.wealthAccountId, table.date),
+  orgIdx: index("debt_payments_org_idx").on(table.organizationId),
+  splitCheck: check("debt_payments_split_check", sql`split_source in ('entered','calculated','principal_only')`),
 }))
 
 export const wealthAccountAttachments = pgTable("wealth_account_attachments", {
