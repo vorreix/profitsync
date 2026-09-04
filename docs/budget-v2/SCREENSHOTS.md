@@ -1,6 +1,6 @@
 # Budget v2 — what it looks like
 
-A screenshot walkthrough of everything built for the Smart Hybrid Budget (Phases 0–4), captured from a real browser against a seeded local database. Phone shots are 430 px wide; desktop is 1440 px.
+A screenshot walkthrough of everything built for the Smart Hybrid Budget (Phases 0–4), captured from a real browser against a seeded development database. Phone shots are 430 px wide; desktop is 1440 px.
 
 The design rules these screens follow, and the financial invariants behind the numbers, are in [`docs/budget/BUDGETS.md`](../budget/BUDGETS.md) (the human explainer) and [`docs/budget-v2/PHASE2.md`](./PHASE2.md) (the build log).
 
@@ -186,4 +186,4 @@ The v1 business feature the gate exists to protect, untouched.
 
 ---
 
-Captured with a throwaway Playwright script against a local Neon-protocol Postgres (`docs/budget-v2/LOCAL_DB.md`) seeded with a deliberately messy month: a category taken over its target three different ways, spend in a category no envelope claims, spend with no category at all, an invoice overdue since 2024, a fund part-way to its goal, and two money-in entries that look like refunds. No production or shared data was touched.
+Captured with a throwaway Playwright script against a seeded development database, with a deliberately messy month: a category taken over its target three different ways, spend in a category no envelope claims, spend with no category at all, an invoice overdue since 2024, a fund part-way to its goal, and two money-in entries that look like refunds. No production or shared data was touched.

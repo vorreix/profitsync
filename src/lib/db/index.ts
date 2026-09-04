@@ -2,10 +2,6 @@ import { neon, type NeonQueryFunction } from "@neondatabase/serverless"
 import { drizzle } from "drizzle-orm/neon-http"
 import * as schema from "./schema.js"
 import { withDbRetry } from "./retry.js"
-import { configureLocalNeonEndpoint } from "./neon-local.js"
-
-// No-op unless DATABASE_URL is a local Neon proxy (see ./neon-local.ts).
-configureLocalNeonEndpoint(process.env.DATABASE_URL)
 
 const rawSql = neon(process.env.DATABASE_URL!)
 

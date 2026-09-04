@@ -136,7 +136,7 @@ and **no call site changes**.
 | Check | Result |
 |---|---|
 | Unit tests | 662 passed (59 files), including 55 new Phase 2 math tests |
-| Live API, real Clerk auth, isolated local DB | **109 assertions, 0 failures** |
+| Live API, real Clerk auth, real database | **109 assertions, 0 failures** |
 | Playwright `e2e/budget-v2.spec.ts` | **9 passed** (setup + 8), run locally |
 | Full pre-commit gate on every commit | secret scan · ESM extensions · function boot · route guards (122) · i18n parity · lint · typecheck · tests — all green |
 | Production build | succeeds; `manualChunks` acyclicity verified (0 `vendor → charts`, 0 `vendor → flow`) |
@@ -343,24 +343,18 @@ verification taught, both recorded in the throwaway test and worth knowing:
 
 ## 10. Re-running the verification
 
-The local database and the verification scripts are described in `LOCAL_DB.md`.
-The Phase 2 scripts live in this session's scratchpad, not the repo, because
-they seed and mutate data:
+Everything runs against the Neon database whose `DATABASE_URL` is in `.env.local`
+(there is no local Postgres). The Phase 2 verification scripts live in this
+session's scratchpad, not the repo, because they seed and mutate data:
 
 ```bash
-# 1. bring up the isolated local DB (see LOCAL_DB.md)
-docker compose -f docs/budget-v2/docker-compose.localdb.yml up -d
-set -a; . docs/budget-v2/.env.localdb; set +a   # see LOCAL_DB.md
-export DATABASE_URL="postgres://$LOCAL_DB_USER:$LOCAL_DB_PASSWORD@db.localtest.me:4444/$LOCAL_DB_NAME?sslmode=require"   # secret-scan:ignore
-export NODE_TLS_REJECT_UNAUTHORIZED=0
+# 1. migrations — reads .env.local itself; 0059–0061 are additive
+npm run db:migrate
 
-# 2. migrations (LOCAL ONLY — never a shared database)
-node scripts/db-migrate.mjs
-
-# 3. unit tests
+# 2. unit tests
 npx vitest run src/lib/budget-math-phase2.test.ts
 
-# 4. the committed e2e spec, against the dev Clerk instance
+# 3. the committed e2e spec, against the dev Clerk instance
 export CLERK_PUBLISHABLE_KEY="$VITE_CLERK_PUBLISHABLE_KEY"
 npx playwright test --project=chromium e2e/budget-v2.spec.ts
 ```

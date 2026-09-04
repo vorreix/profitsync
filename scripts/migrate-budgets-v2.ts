@@ -2,10 +2,14 @@
 /**
  * Migrate v1 budgets to Budget v2 plans (spec §13).
  *
- *   npx tsx scripts/migrate-budgets-v2.ts --dry-run        # report, write nothing
- *   npx tsx scripts/migrate-budgets-v2.ts                  # apply
- *   npx tsx scripts/migrate-budgets-v2.ts --org <uuid>     # one org (staged rollout)
- *   npx tsx scripts/migrate-budgets-v2.ts --limit 50       # a batch at a time
+ *   npx tsx --env-file=.env.local scripts/migrate-budgets-v2.ts --dry-run        # report, write nothing
+ *   npx tsx --env-file=.env.local scripts/migrate-budgets-v2.ts                  # apply
+ *   npx tsx --env-file=.env.local scripts/migrate-budgets-v2.ts --org <uuid>     # one org (staged rollout)
+ *   npx tsx --env-file=.env.local scripts/migrate-budgets-v2.ts --limit 50       # a batch at a time
+ *
+ * DATABASE_URL comes from `.env.local` (the Neon instance) — `--env-file` loads it
+ * before `src/lib/db` constructs its client at import time. An already-exported
+ * DATABASE_URL wins over the file.
  *
  * ─────────────────────────────────────────────────────────────────────────────
  * THE GOVERNING PRINCIPLE (§13.1): do not silently reinterpret user data.

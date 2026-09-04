@@ -101,16 +101,17 @@ code comments). Delivery history and the defects each phase found are in
 - Schema: `src/lib/db/schema.ts`; migrations `drizzle/0059_*` (10 tables), `0060_*`
   (`transaction_settlements` + the category index).
 - Migration: `scripts/migrate-budgets-v2.ts` (`--dry-run` / `--org` / `--limit`).
-- Local DB for development: `docs/budget-v2/LOCAL_DB.md`.
+- Database: the Neon instance in `.env.local` (no local Postgres — `npm run db:migrate` reads
+  `.env.local` itself).
 
 ## Verifying a change
 
 The unit gate is **DB-FREE**, so:
 
 1. **Formulae** → extend `src/lib/budget-math*.test.ts` (committed, no DB).
-2. **SQL / route behaviour** → write a **throwaway** script against the local DB
-   (`docs/budget-v2/LOCAL_DB.md`), run it, and **delete it before committing**. Never commit
-   a DB-touching test.
+2. **SQL / route behaviour** → write a **throwaway** script against the Neon database in
+   `.env.local` (`node --env-file=.env.local --import tsx <script>.ts`), run it, and **delete it
+   before committing**. Never commit a DB-touching test.
 3. **UI** → `e2e/budget-v2.spec.ts` is committed and runs locally with the dev Clerk keys:
    ```bash
    export CLERK_PUBLISHABLE_KEY="$VITE_CLERK_PUBLISHABLE_KEY"

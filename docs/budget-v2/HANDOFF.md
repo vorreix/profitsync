@@ -12,7 +12,6 @@ Orientation, in reading order:
 | `docs/budget-v2/SCREENSHOTS.md` | Every screen, with a caption on each |
 | `.claude/skills/budget-v2/SKILL.md` | The operating guide: 12 invariants and the traps |
 | `docs/budget-v2/PHASE2.md` | The build log, §9 Phase 3, §11 Phase 4 |
-| `docs/budget-v2/LOCAL_DB.md` | An isolated local Postgres that speaks the Neon protocol |
 
 ---
 
@@ -52,9 +51,12 @@ the original in `afterAll`. That restore is not cosmetic: `playwright.config.ts`
 `workers: 1`, so a left-behind workspace switch would move every later spec file's data into the
 wrong org, past the leftover sweep in `auth.setup.ts`. If you touch that spec, keep the restore.
 
-### By hand, against a local database
+### By hand, against the database in `.env.local`
 
-1. Bring up the local DB (`docs/budget-v2/LOCAL_DB.md`) and `npm run db:migrate`.
+There is no local Postgres: development, migrations and the e2e suite all use the Neon database
+whose `DATABASE_URL` is in `.env.local` (`npm run db:migrate` reads that file itself).
+
+1. `npm run db:migrate` — applies 0059–0061; all three are additive (new tables, one index, one column).
 2. Confirm the three migrations really applied — the journal has silently skipped one before:
 
 ```sql
@@ -87,9 +89,10 @@ budgets, and converts v1 cadences (`monthly`→monthly/period, `weekly`→weekly
 `daily`→**monthly/day**) and v1 history actions into v2 equivalents.
 
 ```bash
-npx tsx scripts/migrate-budgets-v2.ts --dry-run                 # whole database, writes nothing
-npx tsx scripts/migrate-budgets-v2.ts --dry-run --org <orgId>   # one org
-npx tsx scripts/migrate-budgets-v2.ts --limit 25                # then, in batches
+# --env-file loads DATABASE_URL from .env.local before src/lib/db builds its client
+npx tsx --env-file=.env.local scripts/migrate-budgets-v2.ts --dry-run                 # whole database, writes nothing
+npx tsx --env-file=.env.local scripts/migrate-budgets-v2.ts --dry-run --org <orgId>   # one org
+npx tsx --env-file=.env.local scripts/migrate-budgets-v2.ts --limit 25                # then, in batches
 ```
 
 A **lifetime** v1 budget cannot be expressed as a period, so it is migrated to a **paused** plan
