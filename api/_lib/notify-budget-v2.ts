@@ -15,10 +15,11 @@
 //     un-deduped emit would re-notify on every page load. Every key below is
 //     stable for the event it describes: per occurrence, per envelope per
 //     period, or per day for the standing "you have overdue bills" nudge.
-import { and, eq, ne } from "drizzle-orm"
+import { and, eq, inArray, ne } from "drizzle-orm"
 import { db } from "../../src/lib/db/index.js"
-import { budgetAllocations, budgetEnvelopes } from "../../src/lib/db/schema.js"
+import { budgetAllocations, budgetEnvelopes, notifications } from "../../src/lib/db/schema.js"
 import { notifyOrgMembers } from "./notifications.js"
+import { addDays } from "../../src/lib/budget-math.js"
 import { planToday, type PeriodRow, type PlanRow, type BudgetView } from "./budget-engine.js"
 
 /**
@@ -31,7 +32,10 @@ import { planToday, type PeriodRow, type PlanRow, type BudgetView } from "./budg
  */
 const MAX_OVERSPEND_ALERTS_PER_SYNC = 3
 
-const money = (n: number) => n.toFixed(2)
+// Amounts are labelled with the PLAN's currency — the currency the view's
+// figures are in (never the org currency, which can differ under a
+// currency_mismatch limitation) — like every other notification emitter.
+const money = (n: number, currency: string) => `${n.toFixed(2)} ${currency}`
 
 /**
  * Overdue obligations — ONE aggregated nudge per plan per day.
@@ -61,11 +65,11 @@ export async function notifyBudgetOverdue(input: {
     {
       type: "budget_overdue",
       title: "Payments overdue",
-      body: `${overdue.length} payment${overdue.length === 1 ? "" : "s"} still to pay — ${money(total)} is held back for them.`,
+      body: `${overdue.length} payment${overdue.length === 1 ? "" : "s"} still to pay — ${money(total, input.plan.currency)} is held back for them.`,
       data: {
         i18nKey: "types.budget_overdue.title",
         i18nBodyKey: "types.budget_overdue.body",
-        i18nParams: { count: overdue.length, amount: money(total) },
+        i18nParams: { count: overdue.length, amount: money(total, input.plan.currency) },
       },
       link: "/budgets",
       actorUserId: input.actorUserId,
@@ -95,11 +99,26 @@ export async function notifyEnvelopeOverspend(input: {
     | null
   if (!period?.id || !sections) return
 
-  const over = (sections.flexible?.envelopes ?? [])
+  const overAll = (sections.flexible?.envelopes ?? [])
     .filter((e) => e.section === "flexible" && e.remaining < 0)
     // Worst first, so the capped run reports the ones that matter most.
     .sort((a, b) => a.remaining - b.remaining)
-    .slice(0, MAX_OVERSPEND_ALERTS_PER_SYNC)
+
+  // Cap NEW alerts per sync, not the candidate list: an envelope already
+  // announced this period (its dedupe row exists) must not keep consuming one
+  // of the slots, or the fourth-worst category never notifies at all.
+  const keyOf = (env: { id: string }) => `budget_envelope_over:${env.id}:${period.id}`
+  const already = new Set(
+    overAll.length
+      ? (
+          await db
+            .select({ key: notifications.dedupeKey })
+            .from(notifications)
+            .where(and(eq(notifications.userId, input.actorUserId), inArray(notifications.dedupeKey, overAll.map(keyOf))))
+        ).map((r) => r.key)
+      : [],
+  )
+  const over = overAll.filter((env) => !already.has(keyOf(env))).slice(0, MAX_OVERSPEND_ALERTS_PER_SYNC)
 
   for (const env of over) {
     const overBy = Math.abs(env.remaining)
@@ -108,11 +127,11 @@ export async function notifyEnvelopeOverspend(input: {
       {
         type: "budget_envelope_over",
         title: "Category over its target",
-        body: `${env.name} is ${money(overBy)} over its ${money(env.planned)} target.`,
+        body: `${env.name} is ${money(overBy, input.plan.currency)} over its ${money(env.planned, input.plan.currency)} target.`,
         data: {
           i18nKey: "types.budget_envelope_over.title",
           i18nBodyKey: "types.budget_envelope_over.body",
-          i18nParams: { name: env.name, amount: money(overBy), planned: money(env.planned) },
+          i18nParams: { name: env.name, amount: money(overBy, input.plan.currency), planned: money(env.planned, input.plan.currency) },
         },
         link: "/budgets",
         actorUserId: input.actorUserId,
@@ -147,11 +166,13 @@ export async function notifyPeriodClosed(input: {
     {
       type: "budget_period_closed",
       title: "Budget period closed",
-      body: `Your budget period ending ${period.endExclusive} is closed. The figures are now final.`,
+      // The period's LAST day, not its exclusive end (the first day of the
+      // next period) — a September budget "ending 1 October" reads as wrong.
+      body: `Your budget period ending ${addDays(period.endExclusive, -1)} is closed. The figures are now final.`,
       data: {
         i18nKey: "types.budget_period_closed.title",
         i18nBodyKey: "types.budget_period_closed.body",
-        i18nParams: { date: period.endExclusive },
+        i18nParams: { date: addDays(period.endExclusive, -1) },
       },
       link: "/budgets",
       actorUserId,
@@ -187,11 +208,11 @@ export async function notifyPeriodClosed(input: {
       {
         type: "budget_contribution_missed",
         title: "Contribution not confirmed",
-        body: `${money(amount)} for ${fund.name} was not confirmed, so it was not set aside.`,
+        body: `${money(amount, input.plan.currency)} for ${fund.name} was not confirmed, so it was not set aside.`,
         data: {
           i18nKey: "types.budget_contribution_missed.title",
           i18nBodyKey: "types.budget_contribution_missed.body",
-          i18nParams: { name: fund.name, amount: money(amount) },
+          i18nParams: { name: fund.name, amount: money(amount, input.plan.currency) },
         },
         link: "/budgets",
         actorUserId,

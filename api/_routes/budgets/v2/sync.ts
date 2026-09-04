@@ -1,19 +1,22 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { and, asc, eq, inArray, isNull, ne, sql } from "drizzle-orm"
+import { and, desc, eq, ne, sql } from "drizzle-orm"
 import { db, dbBatch } from "../../../../src/lib/db/index.js"
 import {
   budgetAllocations,
   budgetCommitments,
   budgetEnvelopes,
   budgetEvents,
+  budgetExclusions,
   budgetFundEntries,
   budgetOccurrences,
   budgetPeriodSnapshots,
   budgetPeriods,
   clients,
+  transactionSettlements,
   transactions,
 } from "../../../../src/lib/db/schema.js"
 import { canWrite, requireAuth } from "../../../_lib/auth.js"
+import { violates } from "../../../_lib/db-errors.js"
 import { materializeDueRecurring } from "../../../_lib/recurring-materialize.js"
 import {
   buildBudgetView,
@@ -28,7 +31,7 @@ import {
   type PeriodRow,
   type PlanRow,
 } from "../../../_lib/budget-engine.js"
-import { carryFor, contributionAtClose, periodFor, round2, type CarryPolicy } from "../../../../src/lib/budget-math.js"
+import { carryFor, contributionAtClose, nextPeriod, periodFor, round2, type CarryPolicy } from "../../../../src/lib/budget-math.js"
 import {
   notifyBudgetOverdue,
   notifyEnvelopeOverspend,
@@ -83,43 +86,70 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // 2 ── reconcile occurrence settlements.
   result.settled = await reconcileSettlements(orgId, plan)
 
-  // 3 ── close elapsed periods, then open the current one.
+  // 3 ── close EVERY elapsed period, oldest first, then make sure one is open.
+  //
+  // §8.10 ensurePeriods is a chain: closing a period opens its successor, which
+  // after a long absence is itself elapsed — so walk the chain rather than
+  // closing one period per call and handing the user an elapsed view. Capped
+  // (MAX_PERIODS_PER_RUN) and RESUMABLE: past the cap the view still reports
+  // sync_required and the next sync continues from the latest closed period.
+  // That same resume path also repairs a close whose successor never opened
+  // (a failure between the two writes), including the rollover it is owed.
   const cadence = cadenceOf(plan)
   const cur = periodFor(cadence, today)
 
-  const openPeriods = await db
+  const [firstOpen] = await db
     .select()
     .from(budgetPeriods)
     .where(and(eq(budgetPeriods.planId, plan.id), eq(budgetPeriods.status, "open")))
-    .orderBy(asc(budgetPeriods.start))
-
-  for (const p of openPeriods.slice(0, MAX_PERIODS_PER_RUN)) {
-    if (p.endExclusive <= today) {
-      await closePeriod(orgId, plan, p, role, accountType, userId)
-      result.closed++
-      // After the close has committed, so a "period closed" notice can never
-      // precede the snapshot it refers to.
-      void notifyPeriodClosed({ orgId, plan, period: p, actorUserId: userId }).catch(() => {})
+  let open: PeriodRow | null = firstOpen ?? null
+  let openedThisRun = false
+  for (let i = 0; i < MAX_PERIODS_PER_RUN; i++) {
+    if (!open) {
+      const [last] = await db
+        .select()
+        .from(budgetPeriods)
+        .where(eq(budgetPeriods.planId, plan.id))
+        .orderBy(desc(budgetPeriods.start))
+        .limit(1)
+      if (last && last.status === "closed") {
+        // Resume the chain from the latest closed period: its snapshot still
+        // carries the rollover its successor is owed (§8.12).
+        open = await openAfter(orgId, plan, last, userId)
+      } else {
+        // First period ever. Was the plan created mid-period? Then the base
+        // anchors at creation (D-18) rather than reconstructing a period the
+        // plan never governed.
+        const isPartial = !last && today !== cur.start
+        open = await openPeriod(orgId, plan, cur, { isPartial, actorUserId: userId })
+      }
+      openedThisRun = true
+      result.opened++
     }
+    if (open.endExclusive > today) break
+    const elapsed = open
+    open = await closePeriod(orgId, plan, elapsed, role, accountType, userId)
+    result.closed++
+    if (open) {
+      openedThisRun = true
+      result.opened++
+    }
+    // After the close has committed, so a "period closed" notice can never
+    // precede the snapshot it refers to.
+    void notifyPeriodClosed({ orgId, plan, period: elapsed, actorUserId: userId }).catch(() => {})
   }
 
-  const [stillOpen] = await db
-    .select()
-    .from(budgetPeriods)
-    .where(and(eq(budgetPeriods.planId, plan.id), eq(budgetPeriods.status, "open")))
+  const stillOpen =
+    open ??
+    (
+      await db
+        .select()
+        .from(budgetPeriods)
+        .where(and(eq(budgetPeriods.planId, plan.id), eq(budgetPeriods.status, "open")))
+    )[0] ??
+    null
 
-  if (!stillOpen) {
-    // Was the plan created mid-period? Then the base anchors at creation (D-18)
-    // rather than reconstructing a period the plan never governed.
-    const hadAny = await db
-      .select({ id: budgetPeriods.id })
-      .from(budgetPeriods)
-      .where(eq(budgetPeriods.planId, plan.id))
-      .limit(1)
-    const isPartial = hadAny.length === 0 && today !== cur.start
-    await openPeriod(orgId, plan, cur, { isPartial, actorUserId: userId })
-    result.opened++
-  } else {
+  if (stillOpen && !openedThisRun) {
     // Keep allocations in step with any envelope added since the period opened.
     await materializeAllocations(orgId, plan, stillOpen)
 
@@ -173,57 +203,38 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
  * here (a wrong auto-match would silently mark a bill paid).
  */
 async function reconcileSettlements(orgId: string, plan: PlanRow): Promise<number> {
-  const commitments = await db
-    .select()
-    .from(budgetCommitments)
-    .where(
-      and(
-        eq(budgetCommitments.planId, plan.id),
-        eq(budgetCommitments.status, "active"),
-        eq(budgetCommitments.kind, "recurring"),
-      ),
-    )
-  if (!commitments.length) return 0
-
-  const ruleIds = commitments.map((c) => c.recurringRuleId).filter((v): v is string => !!v)
-  if (!ruleIds.length) return 0
-
-  const posted = await db
-    .select({
-      id: transactions.id,
-      ruleId: transactions.recurringRuleId,
-      dueDate: transactions.recurringDueDate,
-      amount: transactions.amount,
-    })
-    .from(transactions)
-    .where(and(inArray(transactions.recurringRuleId, ruleIds), isNull(transactions.deletedAt)))
-
-  let settled = 0
-  for (const tx of posted) {
-    if (!tx.ruleId || !tx.dueDate) continue
-    const commitment = commitments.find((c) => c.recurringRuleId === tx.ruleId)
-    if (!commitment) continue
-    const inserted = await db
-      .insert(budgetOccurrences)
-      .values({
-        commitmentId: commitment.id,
-        organizationId: orgId,
-        dueDate: tx.dueDate,
-        status: "settled",
-        settledTransactionId: tx.id,
-        settledAmount: tx.amount,
-        settledAt: new Date(),
-        actorUserId: null, // matched by the system
-      })
-      // Idempotent: (commitment_id, due_date) is unique, so re-running is a no-op.
-      .onConflictDoNothing({ target: [budgetOccurrences.commitmentId, budgetOccurrences.dueDate] })
-      .returning({ id: budgetOccurrences.id })
-    if (inserted.length) settled++
-  }
-  return settled
+  // ONE round trip (§17.3), however many transactions the rules have posted:
+  // the DB matches posted transactions to their commitments and inserts the
+  // occurrences that do not exist yet. The unique (commitment_id, due_date)
+  // index dedupes inside the statement, and RETURNING under DO NOTHING yields
+  // only the rows actually inserted — so a re-run inserts nothing and ships
+  // nothing, and the count is the number of newly settled bills.
+  const inserted = await db.execute(sql`
+    insert into ${budgetOccurrences}
+      (commitment_id, organization_id, due_date, status, settled_transaction_id, settled_amount, settled_at, actor_user_id)
+    select c.id, ${orgId}::uuid, t.recurring_due_date, 'settled', t.id, t.amount, now(), null
+    from ${transactions} t
+    join ${budgetCommitments} c on c.recurring_rule_id = t.recurring_rule_id
+    where c.plan_id = ${plan.id}
+      and c.status = 'active'
+      and c.kind = 'recurring'
+      and t.deleted_at is null
+      and t.recurring_due_date is not null
+      and not exists (
+        select 1 from ${budgetOccurrences} o
+        where o.commitment_id = c.id and o.due_date = t.recurring_due_date
+      )
+    on conflict (commitment_id, due_date) do nothing
+    returning id
+  `)
+  return ((inserted as unknown as { rows?: unknown[] }).rows ?? []).length
 }
 
-/** Close a period: freeze a snapshot, apply rollover, resolve contributions. */
+/**
+ * Close a period: freeze a snapshot, resolve contributions, then open the
+ * successor WITH its rollover. Returns the period it opened, or null when
+ * nothing was opened here (already closed, or a concurrent close won).
+ */
 async function closePeriod(
   orgId: string,
   plan: PlanRow,
@@ -231,7 +242,7 @@ async function closePeriod(
   role: string,
   accountType: string | null,
   actorUserId: string,
-): Promise<void> {
+): Promise<PeriodRow | null> {
   // Idempotent: a snapshot already exists ⇒ this period is already closed.
   const [existing] = await db
     .select({ id: budgetPeriodSnapshots.id })
@@ -239,10 +250,13 @@ async function closePeriod(
     .where(and(eq(budgetPeriodSnapshots.periodId, period.id), eq(budgetPeriodSnapshots.isCurrent, true)))
   if (existing) {
     await db.update(budgetPeriods).set({ status: "closed" }).where(eq(budgetPeriods.id, period.id))
-    return
+    return null // the caller resumes the chain from this closed period
   }
 
   const payload = await snapshotPayload(orgId, plan, period, role, accountType)
+  // The drift fingerprint is taken AT close and stored with the snapshot, so a
+  // later sync never has to UPDATE the immutable v1 record to backfill it.
+  const fingerprint = await windowFingerprint(orgId, plan, { start: period.start, endExclusive: period.endExclusive })
 
   const envelopes = await db
     .select()
@@ -251,8 +265,6 @@ async function closePeriod(
   const allocations = await db.select().from(budgetAllocations).where(eq(budgetAllocations.periodId, period.id))
   const envById = new Map(envelopes.map((e) => [e.id, e]))
 
-  const nextWindow = periodFor(cadenceOf(plan), period.endExclusive)
-
   const writes: Parameters<typeof dbBatch>[0] = [
     db.insert(budgetPeriodSnapshots).values({
       periodId: period.id,
@@ -260,7 +272,7 @@ async function closePeriod(
       version: 1,
       isCurrent: true,
       currency: plan.currency,
-      payload,
+      payload: { ...payload, __fingerprint: fingerprint },
       engineVersion: ENGINE_VERSION,
     }),
     db
@@ -330,37 +342,97 @@ async function closePeriod(
     }
   }
 
-  await dbBatch(batch as unknown as Parameters<typeof dbBatch>[0])
-
-  // Open the next period and carry rollover into it.
-  const next = await openPeriod(orgId, plan, nextWindow, { isPartial: false, actorUserId })
-
-  for (const alloc of allocations) {
-    const env = envById.get(alloc.envelopeId)
-    if (!env) continue
-    const snapEnv = (payload.envelopes as { envelope_id: string; remaining: number }[]).find(
-      (e) => e.envelope_id === alloc.envelopeId,
-    )
-    const surplus = snapEnv?.remaining ?? 0
-    const carry = carryFor(env.carryPolicy as CarryPolicy, surplus, env.carryCap == null ? null : Number(env.carryCap))
-    if (carry === 0) continue
-    // rollover_in is written ONCE per (period, envelope), so a repeated close
-    // cannot compound it.
-    await db
-      .update(budgetAllocations)
-      .set({ rolloverIn: String(carry), updatedAt: new Date() })
-      .where(and(eq(budgetAllocations.periodId, next.id), eq(budgetAllocations.envelopeId, env.id)))
-    await db.insert(budgetEvents).values({
-      organizationId: orgId,
-      planId: plan.id,
-      periodId: next.id,
-      envelopeId: env.id,
-      action: "rollover_applied",
-      amount: String(carry),
-      detail: { from_period: period.id, policy: env.carryPolicy },
-      actorUserId: null,
-    })
+  try {
+    await dbBatch(batch as unknown as Parameters<typeof dbBatch>[0])
+  } catch (err) {
+    // Lost a concurrent close (two tabs at the boundary): the other request's
+    // snapshot v1 already exists (§10.14 — a repeat close returns the existing
+    // snapshot). Nothing here is wrong, so this must not surface as a 500; the
+    // caller resumes the chain, which finds the successor the winner opened.
+    if (violates(err, "budget_period_snapshots_version_unique") || violates(err, "budget_period_snapshots_current_unique")) return null
+    throw err
   }
+
+  return openSuccessor(orgId, plan, period, payload, envelopes, actorUserId)
+}
+
+/**
+ * Resume the period chain after a CLOSED period whose successor is not open:
+ * a close that failed between its two writes, a concurrent close that lost,
+ * or a sync that stopped at the cap. The rollover comes from the closed
+ * period's current snapshot, so it is never lost.
+ */
+async function openAfter(orgId: string, plan: PlanRow, closed: PeriodRow, actorUserId: string): Promise<PeriodRow> {
+  const [current] = await db
+    .select({ payload: budgetPeriodSnapshots.payload })
+    .from(budgetPeriodSnapshots)
+    .where(and(eq(budgetPeriodSnapshots.periodId, closed.id), eq(budgetPeriodSnapshots.isCurrent, true)))
+  const envelopes = await db
+    .select()
+    .from(budgetEnvelopes)
+    .where(and(eq(budgetEnvelopes.planId, plan.id), ne(budgetEnvelopes.status, "removed")))
+  return openSuccessor(orgId, plan, closed, (current?.payload ?? {}) as Record<string, unknown>, envelopes, actorUserId)
+}
+
+type EnvelopeCarryRow = { id: string; carryPolicy: string; carryCap: string | null }
+
+/** Rollover per envelope out of a closed period's snapshot (§8.12). */
+function rolloverFrom(envelopes: EnvelopeCarryRow[], payload: Record<string, unknown>): Map<string, number> {
+  const lines = envelopeLines(payload)
+  const out = new Map<string, number>()
+  for (const env of envelopes) {
+    const line = lines.get(env.id)
+    if (!line) continue
+    const surplus = Number(line.remaining ?? 0)
+    const carry = carryFor(env.carryPolicy as CarryPolicy, surplus, env.carryCap == null ? null : Number(env.carryCap))
+    if (carry !== 0) out.set(env.id, carry)
+  }
+  return out
+}
+
+/**
+ * Open the period after `closed` and carry its rollover in.
+ *
+ * The successor is the BRIDGED next window (§6.16 / §8.6.1 — never overlapping
+ * the closed period after a cadence change). The rollover is written IN the
+ * allocation insert (one write, never a period with its carry missing), and
+ * the rollover events are recorded only when THIS call created the period, so
+ * a resumed or concurrent open cannot record them twice.
+ */
+async function openSuccessor(
+  orgId: string,
+  plan: PlanRow,
+  closed: PeriodRow,
+  payload: Record<string, unknown>,
+  envelopes: EnvelopeCarryRow[],
+  actorUserId: string,
+): Promise<PeriodRow> {
+  const nextWindow = nextPeriod(cadenceOf(plan), { start: closed.start, endExclusive: closed.endExclusive })
+  const rollover = rolloverFrom(envelopes, payload)
+
+  const [already] = await db
+    .select({ id: budgetPeriods.id })
+    .from(budgetPeriods)
+    .where(and(eq(budgetPeriods.planId, plan.id), eq(budgetPeriods.start, nextWindow.start)))
+    .limit(1)
+
+  const next = await openPeriod(orgId, plan, nextWindow, { isPartial: false, actorUserId, rollover })
+
+  if (!already && rollover.size) {
+    await db.insert(budgetEvents).values(
+      [...rollover].map(([envelopeId, carry]) => ({
+        organizationId: orgId,
+        planId: plan.id,
+        periodId: next.id,
+        envelopeId,
+        action: "rollover_applied",
+        amount: String(carry),
+        detail: { from_period: closed.id, policy: envelopes.find((e) => e.id === envelopeId)?.carryPolicy ?? null },
+        actorUserId: null,
+      })),
+    )
+  }
+  return next
 }
 
 /** The frozen report for a closed period (§10.8). */
@@ -440,39 +512,80 @@ function stripEnvelopes(sections: Record<string, unknown>): Record<string, unkno
 /** How many closed periods one sync will re-examine. */
 const MAX_RESTATE_SWEEP = 12
 
+type Fingerprint = { total: number; n: number; tx?: string; settlements?: string }
+
 /**
- * The transaction fingerprint for one closed window.
+ * The SQL that fingerprints one closed window (§8.11.2).
  *
  * ORG-SCOPED via the clients join: `transactions` carries no organization_id, so
- * without it this sums EVERY organization's rows in the window and any
- * unrelated workspace's activity would restate this org's closed period. The
- * rest of the predicate set mirrors the budget's own inclusion rules, so the
- * fingerprint moves when, and only when, a number the snapshot reports could
- * have moved.
+ * without it this would hash EVERY organization's rows in the window and any
+ * unrelated workspace's activity would restate this org's closed period.
+ *
+ * `tx` hashes every input a per-envelope figure depends on — id, type, amount,
+ * account, category key and date, plus whether the row is excluded from this
+ * plan — and `settlements` hashes the settlement links whose inflow falls in
+ * the window. Σ and count alone could not see a re-categorised, re-dated or
+ * re-accounted row, an exclusion, or a settlement link, and so most closed-
+ * period drift went unrestated. Σ/count are kept for the human-readable
+ * `drift.transactions` record.
  */
+function fingerprintSql(orgId: string, planId: string, start: ReturnType<typeof sql>, endExclusive: ReturnType<typeof sql>) {
+  return sql`
+    select
+      coalesce(sum(t.amount::numeric), 0)::text as total,
+      count(*)::int as n,
+      md5(coalesce(string_agg(
+        t.id::text || '|' || t.type || '|' || t.amount::text || '|' || coalesce(t.wealth_account_id::text, '') || '|'
+          || lower(btrim(coalesce(t.category, ''))) || '|' || t.date::text || '|'
+          || (exists (select 1 from ${budgetExclusions} bx where bx.transaction_id = t.id and bx.plan_id = ${planId}))::int,
+        ',' order by t.id), '')) as tx,
+      (
+        select md5(coalesce(string_agg(
+          ts.expense_transaction_id::text || '|' || ts.settlement_transaction_id::text || '|' || ts.amount::text || '|'
+            || lower(btrim(coalesce(e.category, ''))) || '|' || (e.deleted_at is null)::int,
+          ',' order by ts.expense_transaction_id, ts.settlement_transaction_id), ''))
+        from ${transactionSettlements} ts
+        join ${transactions} s on s.id = ts.settlement_transaction_id
+        join ${transactions} e on e.id = ts.expense_transaction_id
+        where ts.organization_id = ${orgId} and s.deleted_at is null
+          and s.date >= ${start} and s.date < ${endExclusive}
+      ) as settlements
+    from ${transactions} t
+    join ${clients} c on c.id = t.client_id
+    where c.organization_id = ${orgId} and c.deleted_at is null
+      and t.date >= ${start} and t.date < ${endExclusive}
+      and t.deleted_at is null and t.is_system = false and t.kind = 'standard'
+  `
+}
+
+function fingerprintOf(row: Record<string, unknown> | undefined): Fingerprint {
+  return {
+    total: round2(Number(row?.total ?? 0)),
+    n: Number(row?.n ?? 0),
+    tx: typeof row?.tx === "string" ? row.tx : "",
+    settlements: typeof row?.settlements === "string" ? row.settlements : "",
+  }
+}
+
+/** Fingerprint one window (used at close time, so the snapshot carries it). */
 async function windowFingerprint(
   orgId: string,
+  plan: PlanRow,
   window: { start: string; endExclusive: string },
-): Promise<{ total: number; n: number }> {
-  const [row] = await db
-    .select({
-      total: sql<string>`coalesce(sum(${transactions.amount}::numeric), 0)`,
-      n: sql<number>`count(*)::int`,
-    })
-    .from(transactions)
-    .innerJoin(clients, eq(transactions.clientId, clients.id))
-    .where(
-      and(
-        eq(clients.organizationId, orgId),
-        isNull(clients.deletedAt),
-        sql`${transactions.date} >= ${window.start}`,
-        sql`${transactions.date} < ${window.endExclusive}`,
-        isNull(transactions.deletedAt),
-        eq(transactions.isSystem, false),
-        eq(transactions.kind, "standard"),
-      ),
-    )
-  return { total: round2(Number(row?.total ?? 0)), n: Number(row?.n ?? 0) }
+): Promise<Fingerprint> {
+  const res = await db.execute(fingerprintSql(orgId, plan.id, sql`${window.start}::date`, sql`${window.endExclusive}::date`))
+  return fingerprintOf((res as unknown as { rows?: Record<string, unknown>[] }).rows?.[0])
+}
+
+/**
+ * Has the window drifted? A snapshot taken before signatures existed carries
+ * only Σ/count; it is compared on those until it is restated (or backfilled).
+ */
+function driftBetween(prev: Fingerprint, now: Fingerprint): boolean {
+  if (prev.tx != null && prev.settlements != null && now.tx != null && now.settlements != null) {
+    return prev.tx !== now.tx || prev.settlements !== now.settlements
+  }
+  return prev.total !== now.total || prev.n !== now.n
 }
 
 /** Per-envelope figures out of a snapshot payload, keyed by envelope id. */
@@ -548,38 +661,60 @@ async function restateDriftedPeriods(
   role: string,
   accountType: string | null,
 ): Promise<number> {
+  // ONE round trip for the closed periods AND their current snapshots (the
+  // partial unique index on is_current serves the join) …
   const closed = await db
-    .select()
+    .select({ period: budgetPeriods, snapshot: budgetPeriodSnapshots })
     .from(budgetPeriods)
+    .innerJoin(
+      budgetPeriodSnapshots,
+      and(eq(budgetPeriodSnapshots.periodId, budgetPeriods.id), eq(budgetPeriodSnapshots.isCurrent, true)),
+    )
     .where(and(eq(budgetPeriods.planId, plan.id), eq(budgetPeriods.status, "closed")))
-    .orderBy(sql`${budgetPeriods.start} desc`)
+    .orderBy(desc(budgetPeriods.start))
     .limit(MAX_RESTATE_SWEEP)
   if (!closed.length) return 0
 
+  // … and ONE for every window's fingerprint, instead of one per period. The
+  // sweep used to cost 1 + 2×N trips on every sync (25 after a year).
+  const windows = sql.join(
+    closed.map(({ period }) => sql`(${period.id}::uuid, ${period.start}::date, ${period.endExclusive}::date)`),
+    sql`, `,
+  )
+  const printed = await db.execute(sql`
+    select w.id, fp.total, fp.n, fp.tx, fp.settlements
+    from (values ${windows}) as w(id, start, end_exclusive)
+    cross join lateral (${fingerprintSql(orgId, plan.id, sql`w.start`, sql`w.end_exclusive`)}) fp
+  `)
+  const nowById = new Map<string, Fingerprint>()
+  for (const row of (printed as unknown as { rows?: Record<string, unknown>[] }).rows ?? []) {
+    nowById.set(String(row.id), fingerprintOf(row))
+  }
+
   let restated = 0
 
-  for (const period of closed) {
-    const [current] = await db
-      .select()
-      .from(budgetPeriodSnapshots)
-      .where(and(eq(budgetPeriodSnapshots.periodId, period.id), eq(budgetPeriodSnapshots.isCurrent, true)))
-    if (!current) continue
-
+  for (const { period, snapshot: current } of closed) {
     const payload = current.payload as Record<string, unknown>
-    const prevPrint = (payload.__fingerprint ?? null) as { total?: number; n?: number } | null
-    const nowPrint = await windowFingerprint(orgId, { start: period.start, endExclusive: period.endExclusive })
+    const prevRaw = (payload.__fingerprint ?? null) as Partial<Fingerprint> | null
+    const nowPrint = nowById.get(period.id) ?? fingerprintOf(undefined)
 
-    if (!prevPrint) {
-      // First sync after this period closed: record the fingerprint so future
-      // drift is detectable, without claiming a restatement happened.
+    if (!prevRaw) {
+      // A snapshot frozen before fingerprints were stored at close: record one
+      // now so future drift is detectable, without claiming a restatement.
       await db
         .update(budgetPeriodSnapshots)
         .set({ payload: { ...payload, __fingerprint: nowPrint } })
         .where(eq(budgetPeriodSnapshots.id, current.id))
       continue
     }
+    const prevPrint: Fingerprint = {
+      total: round2(Number(prevRaw.total ?? 0)),
+      n: Number(prevRaw.n ?? 0),
+      tx: typeof prevRaw.tx === "string" ? prevRaw.tx : undefined,
+      settlements: typeof prevRaw.settlements === "string" ? prevRaw.settlements : undefined,
+    }
 
-    if (prevPrint.total === nowPrint.total && prevPrint.n === nowPrint.n) continue
+    if (!driftBetween(prevPrint, nowPrint)) continue
 
     // Genuine recompute of THIS closed window.
     const fresh = await snapshotPayload(orgId, plan, period, role, accountType)
@@ -607,7 +742,8 @@ async function restateDriftedPeriods(
     const changes = payloadDrift(payload, fresh)
     const nextVersion = current.version + 1
 
-    await dbBatch([
+    try {
+      await dbBatch([
       db
         .update(budgetPeriodSnapshots)
         .set({ isCurrent: false })
@@ -639,7 +775,13 @@ async function restateDriftedPeriods(
         },
         actorUserId: null,
       }),
-    ] as unknown as Parameters<typeof dbBatch>[0])
+      ] as unknown as Parameters<typeof dbBatch>[0])
+    } catch (err) {
+      // A concurrent sync restated this version first (§16.12): the record is
+      // already correct and already announced — nothing for the loser to do.
+      if (violates(err, "budget_period_snapshots_version_unique") || violates(err, "budget_period_snapshots_current_unique")) continue
+      throw err
+    }
 
     // Worth announcing: this revises a record the user may already have read.
     // Deduped per VERSION, so a later second revision does notify again.

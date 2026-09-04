@@ -23,6 +23,15 @@ if (!url) {
 }
 
 const db = drizzle(neon(url))
+// Name the target before touching it — a migration against the wrong database
+// is the one mistake that is cheaper to prevent than to repair.
+let host = "(unparseable DATABASE_URL)"
+try {
+  host = new URL(url).hostname
+} catch {
+  /* leave the placeholder */
+}
+console.log(`[db-migrate] target: ${host}`)
 console.log("[db-migrate] applying migrations from ./drizzle …")
 await migrate(db, { migrationsFolder: "drizzle" })
 console.log("[db-migrate] database schema is up to date")

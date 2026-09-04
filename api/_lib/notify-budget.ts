@@ -1,9 +1,9 @@
 // Budget alerting (warning at 80%, exceeded past 100%). Called fire-and-forget
 // after an outgoing transaction so it never blocks (or fails) the write.
 // Notifies the workspace's editing members once per budget window per tier.
-import { eq } from "drizzle-orm"
+import { and, eq, ne } from "drizzle-orm"
 import { db } from "../../src/lib/db/index.js"
-import { budgets, clients, organizations } from "../../src/lib/db/schema.js"
+import { budgets, clients, organizations, budgetPlans } from "../../src/lib/db/schema.js"
 import { periodStart, type BudgetPeriod } from "../../src/lib/budget.js"
 import { outgoingByClient, spentFor, type PeriodSums } from "./budget-spend.js"
 import { notifyOrgMembers } from "./notifications.js"
@@ -147,7 +147,17 @@ export async function notifyIfBudgetExceeded(orgId: string, clientId: string, ac
     })
   }
 
-  if (isPersonal && orgBudget && Number(orgBudget.amount) > 0) {
+  // A personal workspace with a Budget v2 plan is alerted by the v2 emitter
+  // (notify-budget-v2.ts); its v1 row is frozen at migration time and must not
+  // keep firing "over budget" from a figure the user no longer edits.
+  const [v2Plan] = isPersonal
+    ? await db
+        .select({ id: budgetPlans.id })
+        .from(budgetPlans)
+        .where(and(eq(budgetPlans.organizationId, orgId), ne(budgetPlans.status, "archived")))
+        .limit(1)
+    : []
+  if (isPersonal && !v2Plan && orgBudget && Number(orgBudget.amount) > 0) {
     const period = (orgBudget.period ?? "monthly") as BudgetPeriod
     await emitBudgetAlert({
       orgId,

@@ -1,13 +1,16 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { and, asc, desc, eq, max, ne } from "drizzle-orm"
+import { and, asc, desc, eq, isNull, max, ne } from "drizzle-orm"
 import { db, serialize } from "../../../../src/lib/db/index.js"
 import {
   budgetAllocations,
   budgetEnvelopes,
   budgetEvents,
   budgetPeriods,
+  wealthAccounts,
 } from "../../../../src/lib/db/schema.js"
 import { canWrite, requireAuth } from "../../../_lib/auth.js"
+import { violates } from "../../../_lib/db-errors.js"
+import { parseGoal, parseTargetDate } from "../../../_lib/spaces.js"
 import { amountExceedsLimit } from "../../../../src/lib/money.js"
 import {
   categoryConflicts,
@@ -21,6 +24,8 @@ import {
   periodDays,
   round2,
   type BudgetSection,
+  type PlanCadence,
+  type TargetCadence,
 } from "../../../../src/lib/budget-math.js"
 import { loadPlan } from "../../../_lib/budget-engine.js"
 
@@ -118,8 +123,46 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const fundingMode = section === "savings" && isFundingMode(body.funding_mode) ? body.funding_mode : null
-  if (fundingMode === "space_backed" && !body.wealth_account_id) {
-    return res.status(400).json({ error: "A Space-backed fund needs a Space" })
+  let spaceId: string | null = null
+  if (fundingMode === "space_backed") {
+    // §6.9: the Space must belong to THIS org, be a Space, and be live. The FK
+    // alone only proves the row exists somewhere — an id from another
+    // workspace must 404, never be stored on this org's envelope.
+    const raw = String(body.wealth_account_id ?? "").trim()
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(raw)) {
+      return res.status(400).json({ error: "A Space-backed fund needs a Space" })
+    }
+    const [space] = await db
+      .select({ id: wealthAccounts.id })
+      .from(wealthAccounts)
+      .where(
+        and(
+          eq(wealthAccounts.id, raw),
+          eq(wealthAccounts.organizationId, orgId),
+          eq(wealthAccounts.type, "space"),
+          isNull(wealthAccounts.archivedAt),
+        ),
+      )
+    if (!space) return res.status(404).json({ error: "space_not_found", message: "That Space is not in this workspace" })
+    spaceId = space.id
+  }
+
+  // Sinking-fund goal (§6.10 / §18.5): reuse the Spaces guards. Only a savings
+  // envelope has a goal — same gating as fundingMode/autoFund. Validated so a
+  // NaN can never be stored (numeric accepts 'NaN') and a bad date is a 400,
+  // not a 500.
+  const goalAmount = section === "savings" ? parseGoal(body.goal_amount) : null
+  if (goalAmount === "invalid") return res.status(400).json({ error: "goal_amount is invalid" })
+  const targetDate = section === "savings" ? parseTargetDate(body.target_date) : null
+  if (targetDate === "invalid") return res.status(400).json({ error: "target_date must be YYYY-MM-DD" })
+
+  // §8.12: NULL is "no cap"; 0 means "carry nothing" (carryFor clamps to it).
+  let carryCap: string | null = null
+  if (body.carry_cap != null) {
+    const cap = Number(body.carry_cap)
+    if (!Number.isFinite(cap) || cap < 0) return res.status(400).json({ error: "carry_cap must be zero or more" })
+    if (amountExceedsLimit(cap)) return res.status(400).json({ error: "Amount is too large" })
+    carryCap = String(round2(cap))
   }
 
   const [{ maxPos } = { maxPos: 0 }] = await db
@@ -142,12 +185,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         isCatchAll: false, // only the wizard creates the catch-all
         icon: typeof body.icon === "string" ? body.icon.slice(0, 40) : "",
         fundingMode,
-        wealthAccountId: fundingMode === "space_backed" ? (body.wealth_account_id ?? null) : null,
+        wealthAccountId: spaceId,
         autoFund: section === "savings" ? Boolean(body.auto_fund) : false,
-        goalAmount: body.goal_amount == null ? null : String(round2(Number(body.goal_amount))),
-        targetDate: body.target_date ?? null,
+        goalAmount,
+        targetDate,
         carryPolicy: isCarryPolicy(body.carry_policy) ? body.carry_policy : "none",
-        carryCap: body.carry_cap == null ? null : String(round2(Number(body.carry_cap))),
+        carryCap,
         priority: isPriority(body.priority) ? body.priority : "important",
         reimbursable: Boolean(body.reimbursable),
         position: Number(maxPos ?? 0) + 1,
@@ -176,7 +219,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (open) {
     const days = periodDays({ start: open.start, endExclusive: open.endExclusive })
-    const planned = normalizeTarget(round2(target), envelope.targetCadence as "period" | "month" | "week" | "day", days)
+    const planned = normalizeTarget(round2(target), envelope.targetCadence as TargetCadence, days, plan.cadence as PlanCadence)
     await db
       .insert(budgetAllocations)
       .values({
@@ -204,28 +247,4 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   })
 
   return res.status(201).json({ envelope: serialize(envelope) })
-}
-
-/**
- * Did this error violate the named constraint?
- *
- * A NeonDbError puts the constraint in `.constraint` and the offending row in
- * `.detail`; the `.message` is often just "duplicate key value violates unique
- * constraint" with the name quoted, and for a UNIQUE INDEX (as opposed to a
- * table constraint) `.constraint` can be absent entirely. Checking all three is
- * what makes the difference between a helpful 409 and a bare 500.
- */
-function violates(err: unknown, constraint: string): boolean {
-  // Drizzle wraps the driver error in a DrizzleQueryError whose `message` is the
-  // SQL text, so the constraint name lives on `.cause` (the NeonDbError). Walk
-  // the chain rather than inspecting only the outer error, which is what made
-  // every unique violation surface as a 500 instead of a helpful 409.
-  let node: unknown = err
-  for (let depth = 0; node && typeof node === "object" && depth < 5; depth++) {
-    const e = node as { constraint?: unknown; detail?: unknown; message?: unknown; cause?: unknown }
-    if (typeof e.constraint === "string" && e.constraint === constraint) return true
-    if ([e.message, e.detail].some((v) => typeof v === "string" && v.includes(constraint))) return true
-    node = e.cause
-  }
-  return false
 }

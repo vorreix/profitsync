@@ -47,11 +47,11 @@ import {
   median,
   normalizeMatchKeys,
   fundingCapacity,
-  flexibleHeadroom,
   normalizeTarget,
   pendingFrom,
   periodDays,
-  periodFor,
+  effectiveOccurrenceStatus,
+  forecastBalance,
   remaining,
   reservedTotal,
   round2,
@@ -70,6 +70,7 @@ import {
   type ProjectedOccurrence,
   type ReservedBreakdown,
   type TargetCadence,
+  type PlanCadence,
 } from "../../src/lib/budget-math.js"
 
 export const ENGINE_VERSION = 1
@@ -282,6 +283,17 @@ const planRestrictsAccounts = (plan: PlanRow): boolean =>
   (((plan.includedAccountIds as string[] | null) ?? []).length > 0)
 
 /**
+ * The full §8.3 inclusion predicate set for a plan — org, trash, kind, system
+ * rows, ACCOUNT SCOPE and budget_exclusions — for callers outside the engine
+ * (the envelope drill-through), so a listed row is always one the totals
+ * counted. Requires the `clients` join.
+ */
+export async function planInclusionConds(orgId: string, plan: PlanRow) {
+  const accounts = await includedAccountIds(orgId, plan)
+  return inclusionConds(orgId, accounts, plan.id, planRestrictsAccounts(plan))
+}
+
+/**
  * The normalised category key expression. MUST stay identical to
  * `categoryKey()` in src/lib/budget-math.ts and to the expression the
  * functional index `transactions_category_key_idx` is built on.
@@ -355,11 +367,14 @@ export async function confirmedSettlementsByCategoryKey(
   plan: PlanRow,
   window: PeriodWindow,
 ): Promise<Map<string, number>> {
+  // Per EXPENSE first, clamped at the expense's own amount (invariant 7 on the
+  // READ side too — an edit that slipped under the write-time cap can never net
+  // more than the expense), and only outflow ← inflow pairs count. Then Σ by key.
   const expense = alias(transactions, "expense_tx")
-  const rows = await db
+  const perExpense = db
     .select({
-      key: sql<string>`lower(btrim(coalesce(${expense.category}, '')))`,
-      total: sql<string>`coalesce(sum(${transactionSettlements.amount}::numeric), 0)`,
+      key: sql<string>`lower(btrim(coalesce(${expense.category}, '')))`.as("key"),
+      settled: sql<string>`least(sum(${transactionSettlements.amount}::numeric), ${expense.amount}::numeric)`.as("settled"),
     })
     .from(transactionSettlements)
     .innerJoin(transactions, eq(transactionSettlements.settlementTransactionId, transactions.id))
@@ -369,11 +384,18 @@ export async function confirmedSettlementsByCategoryKey(
         eq(transactionSettlements.organizationId, orgId),
         isNull(transactions.deletedAt),
         isNull(expense.deletedAt),
+        eq(expense.type, "outgoing"),
+        eq(transactions.type, "incoming"),
         gte(transactions.date, window.start),
         lt(transactions.date, window.endExclusive),
       ),
     )
-    .groupBy(sql`lower(btrim(coalesce(${expense.category}, '')))`)
+    .groupBy(expense.id, expense.category, expense.amount)
+    .as("per_expense")
+  const rows = await db
+    .select({ key: perExpense.key, total: sql<string>`coalesce(sum(${perExpense.settled}), 0)` })
+    .from(perExpense)
+    .groupBy(perExpense.key)
 
   const out = new Map<string, number>()
   for (const r of rows) {
@@ -402,10 +424,11 @@ export async function attributedSettlementsByCategoryKey(
   window: PeriodWindow,
 ): Promise<Map<string, number>> {
   const expense = alias(transactions, "attributed_expense_tx")
-  const rows = await db
+  // Same per-expense clamp and direction filter as the cash view.
+  const perExpense = db
     .select({
-      key: sql<string>`lower(btrim(coalesce(${expense.category}, '')))`,
-      total: sql<string>`coalesce(sum(${transactionSettlements.amount}::numeric), 0)`,
+      key: sql<string>`lower(btrim(coalesce(${expense.category}, '')))`.as("key"),
+      settled: sql<string>`least(sum(${transactionSettlements.amount}::numeric), ${expense.amount}::numeric)`.as("settled"),
     })
     .from(transactionSettlements)
     .innerJoin(expense, eq(transactionSettlements.expenseTransactionId, expense.id))
@@ -415,13 +438,20 @@ export async function attributedSettlementsByCategoryKey(
         eq(transactionSettlements.organizationId, orgId),
         isNull(expense.deletedAt),
         isNull(transactions.deletedAt),
+        eq(expense.type, "outgoing"),
+        eq(transactions.type, "incoming"),
         // The EXPENSE's date decides the bucket — that is the whole difference
         // from the cash view, which keys off the settlement's date.
         gte(expense.date, window.start),
         lt(expense.date, window.endExclusive),
       ),
     )
-    .groupBy(sql`lower(btrim(coalesce(${expense.category}, '')))`)
+    .groupBy(expense.id, expense.category, expense.amount)
+    .as("attributed_per_expense")
+  const rows = await db
+    .select({ key: perExpense.key, total: sql<string>`coalesce(sum(${perExpense.settled}), 0)` })
+    .from(perExpense)
+    .groupBy(perExpense.key)
 
   const out = new Map<string, number>()
   for (const r of rows) {
@@ -515,9 +545,13 @@ export async function projectOccurrences(
     .where(and(eq(budgetCommitments.planId, plan.id), eq(budgetCommitments.status, "active")))
   if (!commitments.length) return []
 
+  // Same round trip, plus the settling transaction's liveness: a bill settled by
+  // a transaction that was since trashed (or purged) is NOT paid (§10.15), so
+  // that row must project as `expected` again — see effectiveOccurrenceStatus.
   const devRows = await db
-    .select()
+    .select({ occ: budgetOccurrences, txId: transactions.id, txDeletedAt: transactions.deletedAt })
     .from(budgetOccurrences)
+    .leftJoin(transactions, eq(transactions.id, budgetOccurrences.settledTransactionId))
     .where(inArray(budgetOccurrences.commitmentId, commitments.map((c) => c.id)))
 
   const ruleIds = commitments.map((c) => c.recurringRuleId).filter((v): v is string => !!v)
@@ -557,9 +591,12 @@ export async function projectOccurrences(
     }
 
     const deviations: Parameters<typeof applyOccurrenceDeviations>[0]["deviations"] = {}
-    for (const d of devRows.filter((d) => d.commitmentId === c.id)) {
+    for (const { occ: d, txId, txDeletedAt } of devRows.filter((r) => r.occ.commitmentId === c.id)) {
+      const status = effectiveOccurrenceStatus(d, { id: txId, deletedAt: txDeletedAt })
+      // No deviation ⇒ projected as expected: back to pending/reserved/overdue.
+      if (status === "expected") continue
       deviations[d.dueDate] = {
-        status: d.status as "settled" | "cancelled" | "skipped" | "rescheduled",
+        status,
         rescheduledTo: d.rescheduledTo,
         settledAmount: d.settledAmount == null ? null : num(d.settledAmount),
         settledTransactionId: d.settledTransactionId,
@@ -797,8 +834,6 @@ export const MAX_PERIODS_PER_RUN = 24
 export async function syncRequired(orgId: string, plan: PlanRow | null, today: string): Promise<boolean> {
   if (!plan || plan.status !== "active") return false
 
-  const cur = periodFor(cadenceOf(plan), today)
-
   // ONE round trip, deliberately.
   //
   // This probe runs on EVERY budget read, and in this deployment a query is an
@@ -810,8 +845,15 @@ export async function syncRequired(orgId: string, plan: PlanRow | null, today: s
   // What makes a plan stale:
   //   · a due recurring rule whose transaction has not materialized yet, or
   //   · no open period at all, or
-  //   · an open period that has already elapsed, or
-  //   · an open period that is not the CURRENT one (a gap after a long absence)
+  //   · an open period that has already elapsed.
+  //
+  // NOT a difference between the open period's start and periodFor(cadence,
+  // today): after a cadence/anchor/week-start change the current period
+  // deliberately keeps its boundaries (§6.16, v2.ts PATCH), and sync only
+  // closes elapsed periods / opens one when none is open. Probing for that
+  // reported the plan stale for the rest of every period after such a change
+  // and made every read fire a sync that could not clear it. A gap after a
+  // long absence is already `elapsed`.
   const probe = await db.execute(sql`
     select
       exists (
@@ -824,11 +866,7 @@ export async function syncRequired(orgId: string, plan: PlanRow | null, today: s
       exists (
         select 1 from ${budgetPeriods}
         where plan_id = ${plan.id} and status = 'open' and end_exclusive <= ${today}
-      ) as elapsed,
-      not exists (
-        select 1 from ${budgetPeriods}
-        where plan_id = ${plan.id} and status = 'open' and start = ${cur.start}
-      ) as not_current
+      ) as elapsed
   `)
 
   // neon-http returns a result object with `.rows`, not an iterable.
@@ -836,11 +874,8 @@ export async function syncRequired(orgId: string, plan: PlanRow | null, today: s
     due_rule?: boolean
     no_open?: boolean
     elapsed?: boolean
-    not_current?: boolean
   }
-  // `not_current` is only meaningful when a period IS open; with none open,
-  // `no_open` already says so and the third condition would double-count.
-  return Boolean(r.due_rule || r.no_open || r.elapsed || r.not_current)
+  return Boolean(r.due_rule || r.no_open || r.elapsed)
 }
 
 function baseSourceFor(plan: PlanRow, isPartial: boolean): FundingBaseSource {
@@ -870,6 +905,8 @@ export async function openPeriod(
      * rather than depending on the date it is run.
      */
     forceSource?: FundingBaseSource
+    /** Rollover carried from the period just closed, by envelope id (§8.12). */
+    rollover?: Map<string, number>
   },
 ): Promise<PeriodRow> {
   const source = opts.forceSource ?? baseSourceFor(plan, opts.isPartial)
@@ -914,7 +951,7 @@ export async function openPeriod(
       .select()
       .from(budgetPeriods)
       .where(and(eq(budgetPeriods.planId, plan.id), eq(budgetPeriods.start, window.start)))
-    await materializeAllocations(orgId, plan, existing)
+    await materializeAllocations(orgId, plan, existing, opts.rollover)
     return existing
   }
 
@@ -927,12 +964,24 @@ export async function openPeriod(
     actorUserId: opts.actorUserId ?? null,
   })
 
-  await materializeAllocations(orgId, plan, period)
+  await materializeAllocations(orgId, plan, period, opts.rollover)
   return period
 }
 
-/** Create this period's allocation rows from the envelopes. Idempotent. */
-export async function materializeAllocations(orgId: string, plan: PlanRow, period: PeriodRow): Promise<void> {
+/**
+ * Create this period's allocation rows from the envelopes. Idempotent.
+ *
+ * `rollover` (from the close that opened this period) is written IN the same
+ * insert as the allocation rows, so a period can never exist with its carry
+ * missing: either both landed or neither did. Because the insert is
+ * `ON CONFLICT DO NOTHING`, a repeated close cannot compound it either.
+ */
+export async function materializeAllocations(
+  orgId: string,
+  plan: PlanRow,
+  period: PeriodRow,
+  rollover?: Map<string, number>,
+): Promise<void> {
   const envelopes = await db
     .select()
     .from(budgetEnvelopes)
@@ -946,7 +995,7 @@ export async function materializeAllocations(orgId: string, plan: PlanRow, perio
   const rows = envelopes.map((e) => {
     const authored = num(e.targetAmount)
     const cadence = e.targetCadence as TargetCadence
-    const planned = seed === "fresh" ? 0 : normalizeTarget(authored, cadence, days)
+    const planned = seed === "fresh" ? 0 : normalizeTarget(authored, cadence, days, plan.cadence as PlanCadence)
     return {
       periodId: period.id,
       envelopeId: e.id,
@@ -955,6 +1004,7 @@ export async function materializeAllocations(orgId: string, plan: PlanRow, perio
       authoredAmount: String(authored),
       authoredCadence: cadence,
       source: seed,
+      rolloverIn: String(rollover?.get(e.id) ?? 0),
       // A savings envelope's contribution starts merely PLANNED — reserved, but
       // never described as funded until confirmed (§8.9.1).
       contributionStatus: e.section === "savings" ? "planned" : null,
@@ -1143,6 +1193,9 @@ export async function buildBudgetView(
       suggestions: [],
       capabilities,
       limitations,
+      // Present on BOTH paths whenever "currency_changed" is in limitations,
+      // so the UI can name the two currencies.
+      currency_limitation: currencyLimitation,
     }
   }
 
@@ -1346,7 +1399,11 @@ export async function buildBudgetView(
   const totalAllocated = sum(views.map((v) => v.planned))
 
   const expectedIncome = plan.incomeMode === "expected" ? num(plan.expectedIncome) : null
-  const flexHeadroom = flexibleHeadroom(flexTotals)
+  // §8.5: the income still to come this period — ONE definition, shared by the
+  // forecast and the income section. Zero in available mode, and zero once the
+  // period has elapsed (the window [today, end) is then empty).
+  const incomeOutstanding = expectedIncome == null ? null : Math.max(0, round2(expectedIncome - incomeRecv))
+  const expectedRemainingIncome = incomeOutstanding != null && today < period.endExclusive ? incomeOutstanding : 0
 
   const upcoming = occByEnvelope
     .flatMap((o) => o.occurrences.map((x) => ({ ...x, envelopeId: o.envelopeId })))
@@ -1389,13 +1446,22 @@ export async function buildBudgetView(
       binding: sts.binding,
       unallocated: unallocated(capacity, totalAllocated),
       unallocated_available: Math.max(0, unallocated(capacity, totalAllocated)),
-      forecast_balance: round2(available - reserved - Math.max(0, flexHeadroom)),
+      // §8.5, the ONE definition in budget-math: available + income still to
+      // come − reserved − flexible remaining (floored once inside). The old
+      // inline formula dropped the income term, understating every
+      // expected-mode plan's forecast by the unreceived income.
+      forecast_balance: forecastBalance({
+        availableNow: available,
+        expectedRemainingIncome,
+        reserved,
+        flexibleRemainingPlanned: sectionTotals.flexible.remaining, // SIGNED; floored ONCE inside
+      }),
     },
     sections: {
       income: {
         expected: expectedIncome,
         received: incomeRecv,
-        outstanding: expectedIncome == null ? null : Math.max(0, round2(expectedIncome - incomeRecv)),
+        outstanding: incomeOutstanding,
       },
       flexible: {
         planned: flexTotals.planned,

@@ -14,6 +14,8 @@ import {
   type BudgetAction,
   type HistoryRow,
 } from "../../../src/lib/budget-history.js"
+import { noteAdapterRead, projectPlanToV1 } from "../../_lib/budget-v1-adapter.js"
+import { loadPlan } from "../../_lib/budget-engine.js"
 
 // How many past periods the spend-vs-budget chart covers, per cadence.
 const LOOKBACK: Record<BudgetPeriod, number> = { lifetime: 0, monthly: 6, weekly: 8, daily: 14 }
@@ -56,10 +58,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     createdAt: (h.createdAt ?? new Date(0)).toISOString(),
   }))
 
+  // v1 CONTRACT, PRESERVED (§11.1). The personal org-level budget is served from
+  // the v2 plan's projection when one exists — the v1 row the migration left
+  // behind is never updated again, so its amount would be stale. The change
+  // timeline stays the v1 history (it IS history); only `current` is live.
+  const projectedRow = personal && clientId === null ? (await projectPlanToV1(orgId, ctx.role, ctx.accountType))?.budgets[0] ?? null : null
+  if (projectedRow) {
+    const plan = await loadPlan(orgId)
+    if (plan) noteAdapterRead(orgId, plan.id)
+  }
+
   // No budget yet for a valid client (or the default) is fine — the detail page is
   // also where you *set* one, so return an empty-but-valid payload (current: null)
   // instead of 404. (An invalid/trashed client was already rejected above.)
-  const period = (isBudgetPeriod(budgetRow?.period) ? budgetRow!.period : history[history.length - 1]?.period ?? "monthly") as BudgetPeriod
+  const period = (
+    projectedRow && isBudgetPeriod(projectedRow.period)
+      ? projectedRow.period
+      : isBudgetPeriod(budgetRow?.period)
+        ? budgetRow!.period
+        : history[history.length - 1]?.period ?? "monthly"
+  ) as BudgetPeriod
 
   // Series only makes sense when there's a real, periodic spend stream: a per-client
   // budget, or the personal org's whole-workspace budget. The business default
@@ -78,7 +96,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     client_name: clientRow?.name ?? null,
     is_own: clientRow?.isOwn ?? false,
     is_default: !clientId,
-    current: budgetRow ? { amount: Number(budgetRow.amount), period } : null,
+    current: projectedRow ? { amount: projectedRow.amount, period } : budgetRow ? { amount: Number(budgetRow.amount), period } : null,
     timeline: history.map((h) => ({ amount: h.amount, period: h.period, action: h.action, created_at: h.createdAt })),
     has_series: tracksSpend,
     series,

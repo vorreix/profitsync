@@ -16,6 +16,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const id = String(req.query.id ?? "")
   if (!id) return res.status(400).json({ error: "Missing id" })
+  // A malformed id is "not found", not a 22P02 from the uuid cast (a 500).
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+    return res.status(404).json({ error: "Commitment not found" })
+  }
 
   const plan = await loadPlan(orgId)
   if (!plan) return res.status(404).json({ error: "No budget plan" })
@@ -99,7 +103,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     if (body.status !== undefined) {
-      if (!["active", "paused", "completed", "cancelled"].includes(String(body.status))) {
+      // Cancelling goes through DELETE: it is owner/admin-gated there and
+      // records the commitment_cancelled event (§10.9, §18.2). A PATCH must not
+      // reach the same state under canWrite and a commitment_updated event.
+      if (String(body.status) === "cancelled") {
+        return res.status(400).json({ error: "use_delete", message: "Cancel a commitment with DELETE" })
+      }
+      if (!["active", "paused", "completed"].includes(String(body.status))) {
         return res.status(400).json({ error: "invalid status" })
       }
       patch.status = body.status

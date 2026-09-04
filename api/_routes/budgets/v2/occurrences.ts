@@ -5,13 +5,17 @@ import {
   budgetCommitments,
   budgetEvents,
   budgetOccurrences,
+  recurringRules,
+  transactions,
 } from "../../../../src/lib/db/schema.js"
+import { occurrencesDue } from "../../../../src/lib/recurring.js"
 import { canWrite, requireAuth } from "../../../_lib/auth.js"
 import { amountExceedsLimit } from "../../../../src/lib/money.js"
 import {
   allowedOccurrenceActions,
   carryLowerBound,
   checkReschedule,
+  effectiveOccurrenceStatus,
   isIsoDate,
   periodFor,
   round2,
@@ -73,14 +77,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (commitment.status === "cancelled") return res.status(409).json({ error: "commitment_cancelled" })
 
   // Existing deviations for this commitment: both the state gate and the
-  // reschedule collision check need them.
-  const existing = await db
-    .select()
+  // reschedule collision check need them. Joined to the settling transaction so
+  // a bill whose payment was since trashed reads as EXPECTED again (§10.15) and
+  // can be re-settled, skipped or moved instead of being refused as "settled".
+  const existingRows = await db
+    .select({ occ: budgetOccurrences, txId: transactions.id, txDeletedAt: transactions.deletedAt })
     .from(budgetOccurrences)
+    .leftJoin(transactions, eq(transactions.id, budgetOccurrences.settledTransactionId))
     .where(eq(budgetOccurrences.commitmentId, commitment.id))
+  const existing = existingRows.map((r) => r.occ)
 
-  const current = existing.find((o) => o.dueDate === body.due_date)
-  const currentState: OccurrenceState = (current?.status as OccurrenceState | undefined) ?? "expected"
+  const currentRow = existingRows.find((r) => r.occ.dueDate === body.due_date)
+  const currentState: OccurrenceState = currentRow
+    ? effectiveOccurrenceStatus(currentRow.occ, { id: currentRow.txId, deletedAt: currentRow.txDeletedAt })
+    : "expected"
 
   // A settled or cancelled occurrence is closed. Re-acting on one would rewrite
   // a recorded fact, so it is refused with the states that ARE available.
@@ -135,11 +145,57 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           )
         : null
 
-    // Effective dates of every OTHER occurrence, so the unique constraint on
-    // (commitment_id, due_date) is never the thing that reports the clash.
+    // UNDO: moving a payment back onto the date it was moved FROM. Inserting a
+    // second row (B → A) would form a cycle the projection resolves to NOTHING —
+    // the bill would vanish from pending and reserved. Deleting the original
+    // move restores the natural occurrence at A instead.
+    const undo = existing.find((o) => o.status === "rescheduled" && o.rescheduledTo === body.due_date && o.dueDate === body.to_date)
+    if (undo) {
+      await db.delete(budgetOccurrences).where(eq(budgetOccurrences.id, undo.id))
+      await db.insert(budgetEvents).values({
+        organizationId: orgId,
+        planId: plan.id,
+        envelopeId: commitment.envelopeId,
+        action: "occurrence_reschedule",
+        detail: {
+          commitment_id: commitment.id,
+          commitment_name: commitment.name,
+          due_date: body.due_date,
+          was: currentState,
+          rescheduled_to: body.to_date,
+          undo_of: undo.id,
+          overdue_when_actioned: String(body.due_date) < today,
+        },
+        actorUserId: userId,
+      })
+      return res.json({ occurrence: null, restored: { commitment_id: commitment.id, due_date: body.to_date } })
+    }
+
+    // Every OTHER stored row occupies its own due_date (a consumed original stays
+    // consumed — the projection drops any target that has a stored row there,
+    // §10.6) AND its target, so the unique constraint on (commitment_id,
+    // due_date) is never the thing that reports the clash.
     const taken = existing
       .filter((o) => o.dueDate !== body.due_date)
-      .map((o) => o.rescheduledTo ?? o.dueDate)
+      .flatMap((o) => (o.rescheduledTo ? [o.dueDate, o.rescheduledTo] : [o.dueDate]))
+
+    // A recurring rule's NATURAL dates are occupied too, stored or not: landing a
+    // move on the rule's next date would merge two obligations into one
+    // reservation (§8.6.1 "counted exactly once"). One-shot membership check,
+    // horizon-independent — a next-period target is the common case.
+    if (commitment.kind === "recurring" && commitment.recurringRuleId) {
+      const [rule] = await db.select().from(recurringRules).where(eq(recurringRules.id, commitment.recurringRuleId))
+      if (rule) {
+        const { due } = occurrencesDue({
+          anchor: rule.startDate,
+          freq: { unit: rule.frequencyUnit as "day" | "week" | "month" | "year", interval: rule.frequencyInterval },
+          cursor: body.to_date,
+          until: body.to_date,
+          end: rule.endDate,
+        })
+        taken.push(...due.filter((d: string) => d !== body.due_date))
+      }
+    }
 
     const check = checkReschedule({
       toDate: body.to_date,

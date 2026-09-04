@@ -10,7 +10,7 @@ import {
 } from "../../../../src/lib/db/schema.js"
 import { canWrite, requireAuth } from "../../../_lib/auth.js"
 import { amountExceedsLimit } from "../../../../src/lib/money.js"
-import { normalizeTarget, periodDays, round2 } from "../../../../src/lib/budget-math.js"
+import { normalizeTarget, periodDays, round2, type PlanCadence } from "../../../../src/lib/budget-math.js"
 import { cadenceOf, loadPlan, openPeriod, planToday } from "../../../_lib/budget-engine.js"
 import { periodFor } from "../../../../src/lib/budget-math.js"
 
@@ -130,6 +130,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           amount,
           "period",
           periodDays({ start: period.start, endExclusive: period.endExclusive }),
+          fresh.cadence as PlanCadence,
         )
         await db
           .update(budgetAllocations)

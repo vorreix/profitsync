@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { and, eq, isNull, sql } from "drizzle-orm"
 import { db, serialize } from "../../../src/lib/db/index.js"
-import { clients, transactions, wealthAccounts } from "../../../src/lib/db/schema.js"
+import { clients, transactions, transactionSettlements, wealthAccounts } from "../../../src/lib/db/schema.js"
 import { canDelete, canWrite, requireAuth } from "../../_lib/auth.js"
 import { diffFields, logAudit } from "../../_lib/audit.js"
 import { checkTransactionTagQuota } from "../../_lib/quota.js"
@@ -108,6 +108,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .where(and(eq(wealthAccounts.id, nextAccountId), eq(wealthAccounts.organizationId, orgId), isNull(wealthAccounts.archivedAt)))
       if (!account && nextAccountId !== before.wealthAccountId) {
         return res.status(400).json({ error: "Select an active bank or cash account" })
+      }
+    }
+    // Budget v2 invariant 7: Σ settlements ≤ expense.amount. The cap is enforced
+    // when a refund is LINKED (api/_routes/budgets/v2/refunds.ts); an edit of
+    // the expense (or of the linked inflow) must not sneak underneath it —
+    // shrinking a fully-settled €100 expense to €40 would net −€60 into
+    // safe-to-spend, money that never existed. Flipping the direction of a
+    // linked row makes the link meaningless. Unlink first, then edit.
+    const nextType = type ?? before.type
+    const nextAmount = amount !== undefined ? Number(amount) : Number(before.amount)
+    if (nextType !== before.type || nextAmount !== Number(before.amount)) {
+      const [links] = await db
+        .select({
+          asExpense: sql<string>`coalesce(sum(case when ${transactionSettlements.expenseTransactionId} = ${id} then ${transactionSettlements.amount}::numeric end), 0)`,
+          asSettlement: sql<string>`coalesce(sum(case when ${transactionSettlements.settlementTransactionId} = ${id} then ${transactionSettlements.amount}::numeric end), 0)`,
+        })
+        .from(transactionSettlements)
+        .where(sql`${transactionSettlements.expenseTransactionId} = ${id} or ${transactionSettlements.settlementTransactionId} = ${id}`)
+      const linked = Math.max(Number(links?.asExpense ?? 0), Number(links?.asSettlement ?? 0))
+      if (linked > 0 && (nextType !== before.type || nextAmount < linked)) {
+        return res.status(409).json({
+          error: "settled_amount_exceeds",
+          message: "This transaction has refunds linked to it — unlink them before changing its amount or direction",
+          settled: linked,
+          requested: nextAmount,
+        })
       }
     }
     const [updated] = await db

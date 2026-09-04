@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { and, asc, desc, eq, gte, inArray, isNull, lt, sql } from "drizzle-orm"
+import { and, asc, desc, eq, gte, inArray, lt, sql } from "drizzle-orm"
 import { db, serialize } from "../../../../../../src/lib/db/index.js"
 import {
   budgetAllocations,
@@ -20,7 +20,7 @@ import {
   settlementRollup,
   state,
 } from "../../../../../../src/lib/budget-math.js"
-import { attributedSettlementsByCategoryKey, loadPlan, planToday } from "../../../../../_lib/budget-engine.js"
+import { attributedSettlementsByCategoryKey, loadPlan, planToday, planInclusionConds } from "../../../../../_lib/budget-engine.js"
 
 /**
  * GET /api/budgets/v2/envelopes/:id/detail
@@ -164,11 +164,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .innerJoin(clients, eq(transactions.clientId, clients.id))
       .where(
         and(
-          eq(clients.organizationId, orgId),
-          isNull(clients.deletedAt),
-          isNull(transactions.deletedAt),
-          eq(transactions.kind, "standard"),
-          eq(transactions.isSystem, false),
+          // The SAME predicate set the totals use (§8.3): org, trash, kind,
+          // system rows, the plan's account scope and budget_exclusions —
+          // otherwise the list shows rows spent_net never counted.
+          ...(await planInclusionConds(orgId, plan)),
           gte(transactions.date, open.start),
           lt(transactions.date, open.endExclusive),
           scope,

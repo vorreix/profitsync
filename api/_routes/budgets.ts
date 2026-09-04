@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { and, eq, isNull } from "drizzle-orm"
 import { db, serialize } from "../../src/lib/db/index.js"
 import { budgetHistory, budgets, clients } from "../../src/lib/db/schema.js"
-import { canWrite, isPersonalAccount, requireAuth } from "../_lib/auth.js"
+import { canDelete, canWrite, isPersonalAccount, requireAuth } from "../_lib/auth.js"
 import { amountExceedsLimit } from "../../src/lib/money.js"
 import { isBudgetPeriod, type BudgetPeriod } from "../../src/lib/budget.js"
 import { budgetChangeAction } from "../../src/lib/budget-history.js"
@@ -80,10 +80,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // the v2 plan's catch-all envelope. amount <= 0 PAUSES the plan rather than
     // deleting it: deleting a v2 plan from a v1 client would silently destroy
     // envelopes, commitments and funds the old client cannot even see (§11.1).
-    const v2Plan = await loadPlan(orgId)
-    if (v2Plan && clientId === null) {
-      const { paused } = await applyV1Write({ orgId, plan: v2Plan, period, amount: amt, actorUserId: userId })
-      return paused ? res.json({ ok: true, removed: true }) : res.json({ ok: true })
+    //
+    // PERSONAL ONLY — the same rule as projectPlanToV1 (§23, HANDOFF §3): a
+    // business workspace's `budgets` rows ARE its per-client caps and its
+    // client_id=NULL row is the company default template, so a stray plan on a
+    // business org must never capture that write. Without this guard GET reads
+    // the v1 tables while POST writes somewhere GET never shows.
+    const v2Plan = personal ? await loadPlan(orgId) : null
+    if (v2Plan) {
+      // `clientId` is always null for a personal org (see above).
+      // §18.2: pause/resume is owner/admin. The v1 adapter must not be a looser
+      // path to the same state change than PATCH /api/budgets/v2 { status }.
+      // loadPlan() never returns an archived plan, so status is active | paused.
+      const changesStatus = amt <= 0 || v2Plan.status === "paused"
+      if (changesStatus && !canDelete(role)) return res.status(403).json({ error: "Forbidden" })
+      const result = await applyV1Write({ orgId, plan: v2Plan, period, amount: amt, actorUserId: userId })
+      // A lifetime cap has no period and cannot become a per-period target
+      // (§13.4) — tell the old client instead of silently re-denominating it.
+      if (result.rejected) return res.status(409).json({ error: result.rejected })
+      return result.paused ? res.json({ ok: true, removed: true }) : res.json({ ok: true })
     }
 
     // Validate the client belongs to the org (when targeting a specific client).

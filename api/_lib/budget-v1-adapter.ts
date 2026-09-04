@@ -22,8 +22,9 @@ import {
   budgetPeriods,
   budgetPlans,
 } from "../../src/lib/db/schema.js"
-import { normalizeTarget, periodDays, type TargetCadence } from "../../src/lib/budget-math.js"
-import { buildBudgetView, loadPlan, planToday, type PlanRow } from "./budget-engine.js"
+import { outgoingByClient } from "./budget-spend.js"
+import { normalizeTarget, periodDays, type TargetCadence, type PlanCadence } from "../../src/lib/budget-math.js"
+import { buildBudgetView, loadPlan, planToday, type PlanRow, migrationPrompts } from "./budget-engine.js"
 
 /** The v1 `budgets` row shape, exactly as v1 clients parse it. */
 export type V1Budget = {
@@ -94,6 +95,30 @@ export async function projectPlanToV1(
   if (!plan) return null // caller falls back to the real v1 tables
 
   if (plan.status !== "active") {
+    // A migrated LIFETIME cap is parked as a paused plan awaiting the user's
+    // choice (§13.4). Until then a store-pinned v1 client must still see the
+    // cap it set — as the lifetime row it was — rather than "no budget".
+    const prompts = await migrationPrompts(orgId, plan, 0, planToday(plan))
+    if (prompts.lifetime_choice) {
+      const [catchAll] = await db
+        .select({ targetAmount: budgetEnvelopes.targetAmount })
+        .from(budgetEnvelopes)
+        .where(and(eq(budgetEnvelopes.planId, plan.id), eq(budgetEnvelopes.isCatchAll, true), eq(budgetEnvelopes.status, "active")))
+      const byClient = await outgoingByClient(orgId, new Date())
+      let lifetimeSpent = 0
+      for (const sums of byClient.values()) lifetimeSpent += sums.lifetime
+      const row: V1Budget = {
+        id: plan.id,
+        organization_id: orgId,
+        client_id: null,
+        period: "lifetime",
+        amount: Number(catchAll?.targetAmount ?? prompts.lifetime_choice.amount ?? 0),
+        spent: Number(lifetimeSpent.toFixed(2)),
+        created_at: plan.createdAt ? new Date(plan.createdAt).toISOString() : null,
+        updated_at: plan.updatedAt ? new Date(plan.updatedAt).toISOString() : null,
+      }
+      return { budgets: [row], account_type: accountType, degraded: true }
+    }
     return { budgets: [], account_type: accountType }
   }
 
@@ -132,14 +157,27 @@ export async function projectPlanToV1(
  * plan rather than deleting it: deleting a v2 plan from a v1 client would
  * silently destroy envelopes, commitments and funds the old client cannot see.
  */
+/** v1 `period` → the v2 target cadence that preserves what the user authored. */
+const V1_PERIOD_TO_TARGET_CADENCE: Record<string, TargetCadence> = {
+  daily: "day",
+  weekly: "week",
+  monthly: "month",
+}
+
 export async function applyV1Write(input: {
   orgId: string
   plan: PlanRow
   period: string | undefined
   amount: number
   actorUserId: string
-}): Promise<{ paused: boolean }> {
+}): Promise<{ paused: boolean; rejected?: "lifetime_unsupported" }> {
   const { orgId, plan, amount, actorUserId } = input
+
+  // A LIFETIME cap has no period and cannot be expressed as a per-period target
+  // (§13.4, D-13): converting it would be exactly the "lifetime cap becomes a
+  // monthly budget" misrepresentation the v1→v2 migration refuses. Refuse here
+  // too, and let the route tell the old client so.
+  if (input.period === "lifetime") return { paused: false, rejected: "lifetime_unsupported" }
 
   if (amount <= 0) {
     await db
@@ -150,9 +188,12 @@ export async function applyV1Write(input: {
     return { paused: true }
   }
 
-  // v1's `daily` has no v2 cadence; it becomes a DAY-authored target on the
-  // plan's own cadence, so "€20/day" is preserved as intent and normalised.
-  const authoredCadence: TargetCadence = input.period === "daily" ? "day" : "period"
+  // A v1 period is the AUTHORED cadence of the amount, and v2 has a target
+  // cadence for each of them: "€150/week" stays a week-authored target and is
+  // normalised onto the plan's own period, "€600/month" a month-authored one,
+  // "€20/day" a day-authored one (§11.1). Mapping everything to "period" would
+  // silently re-denominate the figure — a weekly €150 would become €150 a month.
+  const authoredCadence: TargetCadence = V1_PERIOD_TO_TARGET_CADENCE[input.period ?? ""] ?? "period"
 
   const [catchAll] = await db
     .select()
@@ -175,7 +216,7 @@ export async function applyV1Write(input: {
       await db
         .update(budgetAllocations)
         .set({
-          plannedAmount: String(normalizeTarget(amount, authoredCadence, days)),
+          plannedAmount: String(normalizeTarget(amount, authoredCadence, days, plan.cadence as PlanCadence)),
           authoredAmount: String(amount),
           authoredCadence,
           source: "manual",

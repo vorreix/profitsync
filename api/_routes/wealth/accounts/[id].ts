@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { and, count, eq, isNull, sql } from "drizzle-orm"
 import { db, serialize } from "../../../../src/lib/db/index.js"
-import { transactions, wealthAccounts } from "../../../../src/lib/db/schema.js"
+import { transactions, wealthAccounts, budgetEnvelopes } from "../../../../src/lib/db/schema.js"
 import { canDelete, canWrite, ensureDefaultClient, requireAuth } from "../../../_lib/auth.js"
 import { diffFields, logAudit } from "../../../_lib/audit.js"
 import { type BankDetailInput, pickBankDetails, resolveLogoColumns } from "../../../_lib/bank-brand.js"
@@ -183,8 +183,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .select({ total: count() })
       .from(transactions)
       .where(and(eq(transactions.wealthAccountId, id), isNull(transactions.deletedAt)))
+    // A Space that backs a Budget savings fund is referenced by that envelope
+    // (FK NO ACTION — the fund must keep its Space while it is space_backed),
+    // so it is CLOSED rather than deleted, exactly like an account with history.
+    const [{ backing }] = await db
+      .select({ backing: count() })
+      .from(budgetEnvelopes)
+      .where(and(eq(budgetEnvelopes.wealthAccountId, id), eq(budgetEnvelopes.organizationId, orgId)))
 
-    if (total > 0) {
+    if (total > 0 || backing > 0) {
       const [updated] = await db
         .update(wealthAccounts)
         .set({ archivedAt: new Date(), updatedBy: userId, updatedAt: new Date() })

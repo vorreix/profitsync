@@ -1,7 +1,8 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { eq } from "drizzle-orm"
-import { db, serialize } from "../../../src/lib/db/index.js"
-import { budgetEnvelopes, budgetEvents, budgetPlans, organizations } from "../../../src/lib/db/schema.js"
+import { randomUUID } from "node:crypto"
+import { and, eq, inArray, isNull } from "drizzle-orm"
+import { db, dbBatch, serialize } from "../../../src/lib/db/index.js"
+import { budgetEnvelopes, budgetEvents, budgetPlans, organizations, wealthAccounts } from "../../../src/lib/db/schema.js"
 import { canDelete, canWrite, requireAuth } from "../../_lib/auth.js"
 import { amountExceedsLimit } from "../../../src/lib/money.js"
 import { safeTimezone } from "../../../src/lib/schedule-notifications.js"
@@ -11,7 +12,52 @@ import {
   clampInt,
   isIsoDate,
 } from "../../../src/lib/budget-math.js"
-import { buildBudgetView, loadPlan } from "../../_lib/budget-engine.js"
+import { buildBudgetView, loadPlan, migrationPrompts, planToday } from "../../_lib/budget-engine.js"
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+/** Same cap as envelopes/reorder.ts. */
+const MAX_INCLUDED_ACCOUNTS = 200
+
+/**
+ * The plan's account scope, validated: an array of THIS org's live bank/cash
+ * account ids (an empty array means "all bank + cash", spec table §10.1).
+ * Stored verbatim before, one malformed element made every later
+ * GET /api/budgets/v2 fail inside the engine's `inArray` (22P02), and an id
+ * from another workspace was accepted. Writes a 4xx and returns null on
+ * failure.
+ */
+async function parseIncludedAccountIds(raw: unknown, orgId: string, res: VercelResponse): Promise<string[] | null> {
+  if (!Array.isArray(raw)) {
+    res.status(400).json({ error: "included_account_ids must be an array of account ids" })
+    return null
+  }
+  if (raw.length > MAX_INCLUDED_ACCOUNTS) {
+    res.status(400).json({ error: "Too many account ids" })
+    return null
+  }
+  if (!raw.every((v) => typeof v === "string" && UUID_RE.test(v))) {
+    res.status(400).json({ error: "included_account_ids must be account ids" })
+    return null
+  }
+  const ids = [...new Set(raw as string[])]
+  if (!ids.length) return []
+  const owned = await db
+    .select({ id: wealthAccounts.id })
+    .from(wealthAccounts)
+    .where(
+      and(
+        eq(wealthAccounts.organizationId, orgId),
+        inArray(wealthAccounts.id, ids),
+        inArray(wealthAccounts.type, ["bank", "cash"]),
+        isNull(wealthAccounts.archivedAt),
+      ),
+    )
+  if (owned.length !== ids.length) {
+    res.status(404).json({ error: "account_not_found", message: "One of those accounts is not in this workspace" })
+    return null
+  }
+  return ids
+}
 
 // GET    /api/budgets/v2   — the ONE aggregate read (read-only; reports sync_required)
 // POST   /api/budgets/v2   — create the plan (the four-decision wizard's single write)
@@ -63,9 +109,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       timezone?: string
       income_mode?: string
       expected_income?: number | null
-      spending_target?: number | null
+      spending_target?: number
       included_account_ids?: string[]
     }
+    if (!body || typeof body !== "object" || Array.isArray(body)) return res.status(400).json({ error: "Invalid body" })
 
     const cadence = isPlanCadence(body.cadence) ? body.cadence : "monthly"
     const incomeMode = isIncomeMode(body.income_mode) ? body.income_mode : "expected"
@@ -80,22 +127,37 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (amountExceedsLimit(expectedIncome)) return res.status(400).json({ error: "Amount is too large" })
     }
 
-    const target = body.spending_target == null ? null : Number(body.spending_target)
-    if (target != null) {
-      if (!Number.isFinite(target) || target <= 0) return res.status(400).json({ error: "spending_target must be positive" })
-      if (amountExceedsLimit(target)) return res.status(400).json({ error: "Amount is too large" })
+    // The one spending target is REQUIRED (§6.1): it becomes the catch-all, and
+    // without it the plan has no ceiling and can never get one — only the
+    // wizard creates the catch-all (envelopes.ts) and it cannot be removed
+    // (envelopes/[id].ts). Same invariant as the DELETE guard, on the create path.
+    const target = body.spending_target == null ? NaN : Number(body.spending_target)
+    if (!Number.isFinite(target) || target <= 0) {
+      return res.status(400).json({ error: "spending_target is required and must be positive" })
+    }
+    if (amountExceedsLimit(target)) return res.status(400).json({ error: "Amount is too large" })
+
+    // A custom cadence needs its anchor (§8.2): without one the period grid has
+    // nothing to hang on and periods could not stay contiguous.
+    if (cadence === "custom" && !isIsoDate(body.custom_start)) {
+      return res.status(400).json({ error: "custom_start is required for a custom cadence (YYYY-MM-DD)" })
     }
 
-    if (cadence === "custom" && body.custom_start != null && !isIsoDate(body.custom_start)) {
-      return res.status(400).json({ error: "custom_start must be YYYY-MM-DD" })
-    }
+    const includedAccountIds = await parseIncludedAccountIds(body.included_account_ids ?? [], orgId, res)
+    if (!includedAccountIds) return
 
     const [org] = await db.select({ currency: organizations.currency }).from(organizations).where(eq(organizations.id, orgId))
 
-    const [plan] = await db
-      .insert(budgetPlans)
-      .values({
-        organizationId: orgId,
+    // ONE round trip: the plan, its catch-all and the audit row land together
+    // or not at all — no window in which a plan exists without its ceiling,
+    // and a failed audit write blocks the edit (D-6).
+    const planId = randomUUID()
+    const results = await dbBatch([
+      db
+        .insert(budgetPlans)
+        .values({
+          id: planId,
+          organizationId: orgId,
         status: "active",
         cadence,
         anchorDay: cadence === "payday" ? clampInt(body.anchor_day ?? 1, 1, 31) : null,
@@ -106,18 +168,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         timezone: safeTimezone(body.timezone),
         incomeMode,
         expectedIncome: incomeMode === "expected" && expectedIncome != null ? String(expectedIncome) : null,
-        includedAccountIds: Array.isArray(body.included_account_ids) ? body.included_account_ids : [],
-        currency: org?.currency ?? "USD",
-        createdBy: userId,
-        updatedBy: userId,
-      })
-      .returning()
-
-    // The beginner's ONE overall envelope. A plan is never envelope-less: with no
-    // ceiling, safe-to-spend would silently degrade to cash-only (§8.5).
-    if (target != null) {
-      await db.insert(budgetEnvelopes).values({
-        planId: plan.id,
+          includedAccountIds,
+          currency: org?.currency ?? "USD",
+          createdBy: userId,
+          updatedBy: userId,
+        })
+        .returning(),
+      // The beginner's ONE overall envelope. A plan is never envelope-less: with
+      // no ceiling, safe-to-spend would silently degrade to cash-only (§8.5).
+      db.insert(budgetEnvelopes).values({
+        planId,
         organizationId: orgId,
         section: "flexible",
         name: "Everyday spending",
@@ -127,17 +187,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         carryPolicy: "surplus",
         createdBy: userId,
         updatedBy: userId,
-      })
-    }
-
-    await db.insert(budgetEvents).values({
-      organizationId: orgId,
-      planId: plan.id,
-      action: "plan_created",
-      amount: target != null ? String(target) : null,
-      detail: { cadence, income_mode: incomeMode, has_target: target != null },
-      actorUserId: userId,
-    })
+      }),
+      db.insert(budgetEvents).values({
+        organizationId: orgId,
+        planId,
+        action: "plan_created",
+        amount: String(target),
+        detail: { cadence, income_mode: incomeMode, has_target: true },
+        actorUserId: userId,
+      }),
+    ] as unknown as Parameters<typeof dbBatch>[0])
+    const plan = (results[0] as (typeof budgetPlans.$inferSelect)[])[0]
 
     // The wizard's next call is POST /sync, which opens the first period.
     return res.status(201).json({ plan: serialize(plan), sync_required: true })
@@ -163,10 +223,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       expected_updated_at?: string
     }
 
+    if (!body || typeof body !== "object" || Array.isArray(body)) return res.status(400).json({ error: "Invalid body" })
+
     // Pause/resume is a write; plan-wide SETTINGS are irreversible enough to
     // warrant canDelete (owner/admin), per §18.2.
     const settingsKeys = ["cadence", "anchor_day", "week_start_day", "custom_start", "custom_days", "timezone", "income_mode", "included_account_ids"]
-    const touchesSettings = settingsKeys.some((k) => k in (body ?? {}))
+    const touchesSettings = settingsKeys.some((k) => k in body)
     if (touchesSettings || body.status) {
       if (!canDelete(role)) return res.status(403).json({ error: "Forbidden" })
     } else if (!canWrite(role)) {
@@ -187,6 +249,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (body.status) {
       if (!["active", "paused"].includes(body.status)) {
         return res.status(400).json({ error: "status must be active or paused" })
+      }
+      // A migrated LIFETIME cap is parked as a paused plan whose catch-all
+      // carries the cap verbatim (§13.4). Resuming it generically would turn
+      // that lifetime figure into a per-period target — exactly the silent
+      // re-denomination the migration refuses. The lifetime prompt is the
+      // only way out; it records the user's choice and resumes.
+      if (body.status === "active" && plan.status === "paused") {
+        const prompts = await migrationPrompts(orgId, plan, 0, planToday(plan))
+        if (prompts.lifetime_choice) {
+          return res.status(409).json({
+            error: "lifetime_choice_required",
+            message: "This budget was a lifetime cap — choose how to carry it over before resuming",
+          })
+        }
       }
       updates.status = body.status
       updates.pausedAt = body.status === "paused" ? new Date() : null
@@ -225,7 +301,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       updates.expectedIncome = v == null ? null : String(v)
     }
     if (body.included_account_ids !== undefined) {
-      updates.includedAccountIds = Array.isArray(body.included_account_ids) ? body.included_account_ids : []
+      const ids = await parseIncludedAccountIds(body.included_account_ids, orgId, res)
+      if (!ids) return
+      updates.includedAccountIds = ids
     }
     if (body.next_period_seed !== undefined) {
       if (!["copy", "fresh", "suggest"].includes(body.next_period_seed)) {
@@ -234,16 +312,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       updates.nextPeriodSeed = body.next_period_seed
     }
 
-    const [updated] = await db.update(budgetPlans).set(updates).where(eq(budgetPlans.id, plan.id)).returning()
+    // A custom cadence must END UP with an anchor (§8.2), whichever half of
+    // (cadence, custom_start) this request changes.
+    const resultingCadence = (updates.cadence as string | undefined) ?? plan.cadence
+    const resultingStart = "customStart" in updates ? (updates.customStart as string | null) : plan.customStart
+    if (resultingCadence === "custom" && !isIsoDate(resultingStart)) {
+      return res.status(400).json({ error: "custom_start is required for a custom cadence (YYYY-MM-DD)" })
+    }
 
     const action = body.status === "paused" ? "plan_paused" : body.status === "active" ? "plan_resumed" : "plan_settings_changed"
-    await db.insert(budgetEvents).values({
-      organizationId: orgId,
-      planId: plan.id,
-      action,
-      detail: Object.fromEntries(Object.entries(body ?? {}).filter(([k]) => k !== "expected_updated_at")),
-      actorUserId: userId,
-    })
+    // The audit row records what was APPLIED — the validated, clamped values —
+    // not the raw request body, which could carry unknown keys of any size.
+    const applied = Object.fromEntries(Object.entries(updates).filter(([k]) => k !== "updatedBy" && k !== "updatedAt"))
+    // ONE round trip: the change and its audit row land together (D-6).
+    const results = await dbBatch([
+      db.update(budgetPlans).set(updates).where(eq(budgetPlans.id, plan.id)).returning(),
+      db.insert(budgetEvents).values({
+        organizationId: orgId,
+        planId: plan.id,
+        action,
+        detail: serialize(applied),
+        actorUserId: userId,
+      }),
+    ] as unknown as Parameters<typeof dbBatch>[0])
+    const updated = (results[0] as (typeof budgetPlans.$inferSelect)[])[0]
 
     return res.json({ plan: serialize(updated) })
   }
@@ -255,17 +347,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!plan) return res.status(404).json({ error: "No budget plan" })
 
     // Archived, never row-deleted: snapshots and events must outlive the plan.
-    await db
-      .update(budgetPlans)
-      .set({ status: "archived", updatedBy: userId, updatedAt: new Date() })
-      .where(eq(budgetPlans.id, plan.id))
-    await db.insert(budgetEvents).values({
-      organizationId: orgId,
-      planId: plan.id,
-      action: "plan_archived",
-      detail: { note: "history retained" },
-      actorUserId: userId,
-    })
+    // ONE batch, so a failed audit write blocks the archive (D-6).
+    await dbBatch([
+      db
+        .update(budgetPlans)
+        .set({ status: "archived", updatedBy: userId, updatedAt: new Date() })
+        .where(eq(budgetPlans.id, plan.id)),
+      db.insert(budgetEvents).values({
+        organizationId: orgId,
+        planId: plan.id,
+        action: "plan_archived",
+        detail: { note: "history retained" },
+        actorUserId: userId,
+      }),
+    ] as unknown as Parameters<typeof dbBatch>[0])
     return res.json({ ok: true, archived: true })
   }
 

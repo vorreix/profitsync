@@ -35,6 +35,8 @@ import {
   MAX_UNRESOLVED_RECURRING_OCCURRENCES,
   RECURRING_OVERDUE_LOOKBACK_DAYS,
   type ReservedBreakdown,
+  nextPeriod,
+  effectiveOccurrenceStatus,
 } from "./budget-math"
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -217,22 +219,31 @@ describe("periodFor — custom range (§8.2)", () => {
 // ═══════════════════════════════════════════════════════════════════════════
 describe("normalizeTarget (§8.7)", () => {
   it("scales a daily target to the period length", () => {
-    expect(normalizeTarget(20, "day", 30)).toBe(600)
-    expect(normalizeTarget(20, "day", 28)).toBe(560)
-    expect(normalizeTarget(20, "day", 31)).toBe(620)
+    expect(normalizeTarget(20, "day", 30, "monthly")).toBe(600)
+    expect(normalizeTarget(20, "day", 28, "monthly")).toBe(560)
+    expect(normalizeTarget(20, "day", 31, "monthly")).toBe(620)
   })
   it("scales a weekly target", () => {
-    expect(normalizeTarget(70, "week", 7)).toBe(70)
-    expect(normalizeTarget(70, "week", 28)).toBe(280)
+    expect(normalizeTarget(70, "week", 7, "weekly")).toBe(70)
+    expect(normalizeTarget(70, "week", 28, "monthly")).toBe(280)
   })
   it("is the identity for period-authored targets", () => {
-    expect(normalizeTarget(400, "period", 31)).toBe(400)
+    expect(normalizeTarget(400, "period", 31, "monthly")).toBe(400)
+  })
+  it("a month-authored target is the identity on month-long plans, pro-rated elsewhere", () => {
+    // "€600/month" must be €600 in a 28-day February and a 31-day January alike.
+    expect(normalizeTarget(600, "month", 28, "monthly")).toBe(600)
+    expect(normalizeTarget(600, "month", 31, "monthly")).toBe(600)
+    expect(normalizeTarget(600, "month", 31, "payday")).toBe(600)
+    // Weekly/custom plans pro-rate on the 30.44-day mean month.
+    expect(normalizeTarget(600, "month", 7, "weekly")).toBe(137.99)
+    expect(normalizeTarget(600, "month", 14, "custom")).toBe(275.98)
   })
   it("rounds to the cent and rejects non-positive input", () => {
-    expect(normalizeTarget(10, "day", 3)).toBe(30)
-    expect(normalizeTarget(0, "day", 30)).toBe(0)
-    expect(normalizeTarget(-5, "period", 30)).toBe(0)
-    expect(normalizeTarget(Number.NaN, "period", 30)).toBe(0)
+    expect(normalizeTarget(10, "day", 3, "monthly")).toBe(30)
+    expect(normalizeTarget(0, "day", 30, "monthly")).toBe(0)
+    expect(normalizeTarget(-5, "period", 30, "monthly")).toBe(0)
+    expect(normalizeTarget(Number.NaN, "period", 30, "monthly")).toBe(0)
   })
 })
 
@@ -486,6 +497,13 @@ describe("reallocation invariance (§8.5.2)", () => {
 })
 
 describe("forecastBalance (§8.5)", () => {
+  it("adds the income still to come, and floors an overspent flexible section ONCE", () => {
+    // expected-mode plan: €1,500 of income not yet received counts toward the
+    // period-end balance; an overspent flexible section cannot ADD to it.
+    expect(forecastBalance({ availableNow: 1000, expectedRemainingIncome: 1500, reserved: 800, flexibleRemainingPlanned: -50 })).toBe(1700)
+    // available mode: the income term is 0 and the formula reduces to cash − reserved − headroom.
+    expect(forecastBalance({ availableNow: 1000, expectedRemainingIncome: 0, reserved: 800, flexibleRemainingPlanned: 120 })).toBe(80)
+  })
   it("adds expected income and subtracts remaining planned outflow", () => {
     expect(
       forecastBalance({ availableNow: 1840.22, expectedRemainingIncome: 0, reserved: 980, flexibleRemainingPlanned: 187.6 }),
@@ -528,6 +546,99 @@ describe("carryLowerBound (§8.6.1 — the projection WINDOW reaches back)", () 
 
 describe("applyOccurrenceDeviations (§8.6)", () => {
   const win = { windowStart: "2026-08-01", windowEndExclusive: "2026-10-01", periodStart: "2026-09-01" }
+
+  it("a one-time bill rescheduled EARLIER than its due date is still reserved (D-17)", () => {
+    // The engine's window for a one-time commitment STARTS at its own due date,
+    // so an earlier target used to fall below windowStart and vanish from
+    // pending/reserved/safe-to-spend — the exact "forgotten bill" §8.6.1 forbids.
+    const r = applyOccurrenceDeviations({
+      commitmentId: "c1",
+      kind: "one_time",
+      defaultAmount: 400,
+      rawDates: [{ dueDate: "2026-09-15", amount: 400 }],
+      deviations: { "2026-09-15": { status: "rescheduled", rescheduledTo: "2026-09-10" } },
+      periodStart: "2026-09-01",
+      windowStart: "2026-09-15",
+      windowEndExclusive: "2026-10-01",
+    })
+    expect(r.occurrences).toHaveLength(1)
+    expect(r.occurrences[0]).toMatchObject({ dueDate: "2026-09-10", state: "expected", rescheduledFrom: "2026-09-15", carried: false })
+    expect(pendingFrom(r.occurrences)).toBe(400)
+  })
+
+  it("a one-time bill due NEXT period pulled into this one is reserved now", () => {
+    const r = applyOccurrenceDeviations({
+      commitmentId: "c1",
+      kind: "one_time",
+      defaultAmount: 400,
+      rawDates: [],
+      deviations: { "2026-10-15": { status: "rescheduled", rescheduledTo: "2026-09-20" } },
+      periodStart: "2026-09-01",
+      windowStart: "2026-10-15",
+      windowEndExclusive: "2026-10-01",
+    })
+    expect(r.occurrences.map((o) => [o.dueDate, o.state])).toEqual([["2026-09-20", "expected"]])
+  })
+
+  it("a recurring target behind its carry window is still dropped (the rule has moved on)", () => {
+    const r = applyOccurrenceDeviations({
+      commitmentId: "c1",
+      kind: "recurring",
+      defaultAmount: 50,
+      rawDates: [{ dueDate: "2026-09-05", amount: 50 }],
+      deviations: { "2026-09-05": { status: "rescheduled", rescheduledTo: "2026-07-05" } },
+      ...win,
+    })
+    expect(r.occurrences).toEqual([])
+  })
+
+  it("a reschedule target that was then settled is emitted SETTLED, not dropped", () => {
+    // Otherwise §8.7's settled Σ under-reports by the bill and the paid bill
+    // disappears from the history list.
+    const r = applyOccurrenceDeviations({
+      commitmentId: "c1",
+      kind: "one_time",
+      defaultAmount: 118.4,
+      rawDates: [{ dueDate: "2026-08-14", amount: 118.4 }],
+      deviations: {
+        "2026-08-14": { status: "rescheduled", rescheduledTo: "2026-09-22" },
+        "2026-09-22": { status: "settled", settledAmount: 118.4, settledTransactionId: "tx1" },
+      },
+      ...win,
+    })
+    expect(r.occurrences).toHaveLength(1)
+    expect(r.occurrences[0]).toMatchObject({ dueDate: "2026-09-22", state: "settled", amount: 118.4, rescheduledFrom: "2026-08-14", settledTransactionId: "tx1" })
+    expect(pendingFrom(r.occurrences)).toBe(0)
+  })
+
+  it("a reschedule target that was then skipped is emitted skipped — and a chain emits only its final date", () => {
+    const skipped = applyOccurrenceDeviations({
+      commitmentId: "c1",
+      kind: "one_time",
+      defaultAmount: 60,
+      rawDates: [{ dueDate: "2026-09-01", amount: 60 }],
+      deviations: {
+        "2026-09-01": { status: "rescheduled", rescheduledTo: "2026-09-10" },
+        "2026-09-10": { status: "skipped" },
+      },
+      ...win,
+    })
+    expect(skipped.occurrences.map((o) => [o.dueDate, o.state])).toEqual([["2026-09-10", "skipped"]])
+
+    const chain = applyOccurrenceDeviations({
+      commitmentId: "c1",
+      kind: "one_time",
+      defaultAmount: 60,
+      rawDates: [{ dueDate: "2026-09-01", amount: 60 }],
+      deviations: {
+        "2026-09-01": { status: "rescheduled", rescheduledTo: "2026-09-10" },
+        "2026-09-10": { status: "rescheduled", rescheduledTo: "2026-09-20" },
+      },
+      ...win,
+    })
+    expect(chain.occurrences.map((o) => [o.dueDate, o.state, o.rescheduledFrom])).toEqual([["2026-09-20", "expected", "2026-09-10"]])
+    expect(pendingFrom(chain.occurrences)).toBe(60)
+  })
 
   it("carries an unresolved PRIOR-PERIOD occurrence into the set", () => {
     // The rev-4 regression test: the occurrence must be PRESENT, not merely un-filtered.
@@ -683,6 +794,12 @@ describe("carryFor (§8.12)", () => {
     expect(carryFor("both", -500, 100)).toBe(-100)
     expect(carryFor("both", 50, 100)).toBe(50)
   })
+  it("a stored cap of 0 carries nothing — NULL, not 0, is the no-cap sentinel (§8.12)", () => {
+    expect(carryFor("both", 250, 0)).toBe(0)
+    expect(carryFor("surplus", 50, 0)).toBe(0)
+    expect(carryFor("deficit", -50, 0)).toBe(0)
+    expect(carryFor("both", 250, null)).toBe(250)
+  })
   it("defaults carry to none for every non-flexible section", () => {
     expect(defaultCarryPolicy("flexible")).toBe("surplus")
     for (const s of ["commitment", "debt", "savings", "income"] as const) {
@@ -761,5 +878,51 @@ describe("round2", () => {
     expect(round2(0.1 + 0.2)).toBe(0.3)
     expect(round2(1.005)).toBe(1.01)
     expect(round2(-1.005)).toBe(-1)
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════════════
+// §8.10 successor periods — bridge after a cadence change, never overlap
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("nextPeriod (§8.10 / §6.16)", () => {
+  const monthly = { cadence: "monthly" as const }
+  it("is the natural next window on an unchanged cadence", () => {
+    const w = periodFor(monthly, "2026-09-15")
+    expect(nextPeriod(monthly, w)).toEqual({ start: "2026-10-01", endExclusive: "2026-11-01" })
+  })
+  it("bridges from the closed period's end when the new grid starts earlier — no day counted twice", () => {
+    const closed = { start: "2026-09-01", endExclusive: "2026-10-01" }
+    for (const cfg of [
+      { cadence: "weekly" as const, weekStartDay: 1 },
+      { cadence: "payday" as const, anchorDay: 25 },
+      { cadence: "custom" as const, customDays: 14, customStart: "2026-09-20" },
+    ]) {
+      const next = nextPeriod(cfg, closed)
+      expect(next.start, JSON.stringify(cfg)).toBe(closed.endExclusive)
+      expect(next.endExclusive > next.start, JSON.stringify(cfg)).toBe(true)
+      expect(next.endExclusive).toBe(periodFor(cfg, closed.endExclusive).endExclusive)
+    }
+  })
+  it("never gaps: the successor of the successor starts where the first ended", () => {
+    const cfg = { cadence: "weekly" as const, weekStartDay: 1 }
+    const first = nextPeriod(cfg, { start: "2026-09-01", endExclusive: "2026-10-01" })
+    const second = nextPeriod(cfg, first)
+    expect(second.start).toBe(first.endExclusive)
+  })
+})
+
+describe("effectiveOccurrenceStatus (§10.15 trash integration)", () => {
+  const settled = { status: "settled", settledTransactionId: "tx1" }
+  it("a settled bill whose payment was trashed or purged reads as expected again", () => {
+    expect(effectiveOccurrenceStatus(settled, { id: "tx1", deletedAt: new Date() })).toBe("expected")
+    expect(effectiveOccurrenceStatus(settled, { id: null, deletedAt: null })).toBe("expected")
+    expect(effectiveOccurrenceStatus(settled, null)).toBe("expected")
+  })
+  it("a live payment, a manual settle, and the other states are untouched", () => {
+    expect(effectiveOccurrenceStatus(settled, { id: "tx1", deletedAt: null })).toBe("settled")
+    expect(effectiveOccurrenceStatus({ status: "settled", settledTransactionId: null }, null)).toBe("settled")
+    expect(effectiveOccurrenceStatus({ status: "skipped", settledTransactionId: null }, null)).toBe("skipped")
+    expect(effectiveOccurrenceStatus({ status: "cancelled", settledTransactionId: "tx1" }, { id: "tx1", deletedAt: new Date() })).toBe("cancelled")
   })
 })

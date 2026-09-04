@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { and, desc, eq, inArray } from "drizzle-orm"
+import { and, desc, eq, inArray, ne, sql } from "drizzle-orm"
 import { db, dbBatch } from "../../../../src/lib/db/index.js"
 import {
   budgetAllocations,
@@ -73,6 +73,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       and(
         eq(budgetEnvelopes.planId, plan.id),
         eq(budgetEnvelopes.organizationId, orgId),
+        // A soft-removed envelope keeps its allocation row for history but is
+        // excluded from buildBudgetView, so touching it would move planned
+        // money the view no longer counts and break §8.5.2.
+        ne(budgetEnvelopes.status, "removed"),
         inArray(budgetEnvelopes.id, ids),
       ),
     )
@@ -104,10 +108,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const sections = view.sections as Record<string, { envelopes?: { id: string; spent_net: number; pending: number }[] }> | null
     const live = Object.values(sections ?? {}).flatMap((s) => s.envelopes ?? [])
     const fromLive = live.find((e) => e.id === srcId)
+    // The ALLOCATION is what the write touches; what may be given away is the
+    // EFFECTIVE planned figure the card shows — allocation + rollover (§8.8).
+    // Rollover is untouched on both legs, so Σ(allocation + rollover) stays
+    // invariant exactly when Σ allocation does.
     const fromPlanned = round2(num(fromAlloc.plannedAmount))
+    const fromEffective = round2(fromPlanned + num(fromAlloc.rolloverIn))
     const fromAvailable = Math.max(
       0,
-      remaining(fromPlanned, fromLive?.spent_net ?? 0, fromLive?.pending ?? 0),
+      remaining(fromEffective, fromLive?.spent_net ?? 0, fromLive?.pending ?? 0),
     )
 
     const check = checkReallocation({
@@ -132,41 +141,53 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(500).json({ error: "reallocation_would_change_total" })
     }
 
-    // dbBatch is the only atomic primitive the neon-http driver has (no
-    // interactive transactions), and it is exactly what is needed: both legs
-    // and the audit row land together or not at all, so the plan can never be
-    // observed with money debited from one envelope and not credited to the
-    // other.
-    await dbBatch([
-      db
-        .update(budgetAllocations)
-        .set({ plannedAmount: String(nextFrom) })
-        .where(and(eq(budgetAllocations.periodId, open.id), eq(budgetAllocations.envelopeId, srcId))),
-      db
-        .update(budgetAllocations)
-        .set({ plannedAmount: String(nextTo) })
-        .where(and(eq(budgetAllocations.periodId, open.id), eq(budgetAllocations.envelopeId, toId))),
-      db.insert(budgetEvents).values({
-        organizationId: orgId,
-        planId: plan.id,
-        periodId: open.id,
-        envelopeId: toId,
-        relatedEnvelopeId: srcId,
-        action: "reallocated",
-        amount: String(amount),
-        detail: {
-          from: { id: srcId, name: from.name, was: fromPlanned, now: nextFrom },
-          to: { id: toId, name: to.name, was: toPlanned, now: nextTo },
-          cross_section: from.section !== to.section,
-        },
-        actorUserId: userId,
-      }),
-    ])
+    // ONE statement, so it is atomic — both legs and the audit row land
+    // together or not at all — AND race-safe: the debit is a compare-and-set on
+    // the source figure this request validated against, the credit is RELATIVE
+    // and gated on the debit, and the event on the credit. Two concurrent moves
+    // out of one source (two tabs, a double-tapped dialog) can therefore never
+    // both succeed and raise total planned (invariant 2); the loser gets a 409
+    // and the client reloads.
+    const detail = {
+      from: { id: srcId, name: from.name, was: fromPlanned, now: nextFrom, rollover_in: num(fromAlloc.rolloverIn) },
+      to: { id: toId, name: to.name, was: toPlanned, now: nextTo },
+      cross_section: from.section !== to.section,
+    }
+    const moved = await db.execute(sql`
+      with debit as (
+        update ${budgetAllocations}
+           set planned_amount = ${String(nextFrom)}::numeric, updated_at = now(), updated_by = ${userId}
+         where period_id = ${open.id} and envelope_id = ${srcId}
+           and planned_amount = ${String(fromPlanned)}::numeric
+         returning id
+      ), credit as (
+        update ${budgetAllocations}
+           set planned_amount = planned_amount + ${String(amount)}::numeric, updated_at = now(), updated_by = ${userId}
+         where period_id = ${open.id} and envelope_id = ${toId}
+           and exists (select 1 from debit)
+         returning planned_amount
+      ), ev as (
+        insert into ${budgetEvents}
+          (organization_id, plan_id, period_id, envelope_id, related_envelope_id, action, amount, detail, actor_user_id)
+        select ${orgId}, ${plan.id}, ${open.id}, ${toId}, ${srcId}, 'reallocated', ${String(amount)}::numeric, ${JSON.stringify(detail)}::jsonb, ${userId}
+         where exists (select 1 from credit)
+        returning id
+      )
+      select (select count(*)::int from debit) as debited, (select planned_amount::text from credit) as to_planned
+    `)
+    const outcome = ((moved as unknown as { rows?: { debited?: number; to_planned?: string }[] }).rows ?? [])[0]
+    if (!outcome?.debited) {
+      return res.status(409).json({
+        error: "stale_source",
+        message: "That category changed while you were deciding — reload and try again",
+      })
+    }
+    const creditedTo = outcome.to_planned == null ? nextTo : round2(Number(outcome.to_planned))
 
     return res.json({
       moved: amount,
       from: { id: srcId, planned: nextFrom },
-      to: { id: toId, planned: nextTo },
+      to: { id: toId, planned: creditedTo },
       total_planned_unchanged: true,
     })
   }
@@ -184,9 +205,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const nextTo = round2(toPlanned + amount)
   await dbBatch([
+    // RELATIVE credit: two concurrent covers into one envelope cannot lose one.
     db
       .update(budgetAllocations)
-      .set({ plannedAmount: String(nextTo) })
+      .set({ plannedAmount: sql`${budgetAllocations.plannedAmount} + ${String(amount)}::numeric`, updatedAt: new Date(), updatedBy: userId })
       .where(and(eq(budgetAllocations.periodId, open.id), eq(budgetAllocations.envelopeId, toId))),
     db.insert(budgetEvents).values({
       organizationId: orgId,

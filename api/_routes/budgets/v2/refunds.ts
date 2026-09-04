@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { and, desc, eq, gte, isNull, lt, sql } from "drizzle-orm"
-import { db, serialize } from "../../../../src/lib/db/index.js"
+import { db, dbBatch, serialize } from "../../../../src/lib/db/index.js"
 import {
   budgetEnvelopes,
   budgetEvents,
@@ -11,6 +11,7 @@ import {
   transactionSettlements,
 } from "../../../../src/lib/db/schema.js"
 import { canWrite, requireAuth } from "../../../_lib/auth.js"
+import { violates } from "../../../_lib/db-errors.js"
 import { amountExceedsLimit } from "../../../../src/lib/money.js"
 import { canAddSettlement, categoryKey, round2, settlementRollup } from "../../../../src/lib/budget-math.js"
 import { loadPlan } from "../../../_lib/budget-engine.js"
@@ -136,7 +137,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
   const action = String(body.action ?? "")
 
-  /** Org-scoped transaction lookup — an id from another workspace must 404. */
+  /**
+   * Org-scoped transaction lookup — an id from another workspace must 404.
+   * Only rows the engine counts as spend/inflow may settle or be settled
+   * (§8.3): a transfer leg, an is_system balance entry or a row on a trashed
+   * client is neither — the same inclusion predicates as the GET above and the
+   * engine's own spend queries, so a link can never net against money the
+   * plan never counted.
+   */
   const findTx = async (id: string) => {
     const [row] = await db
       .select({
@@ -148,7 +156,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       })
       .from(transactions)
       .innerJoin(clients, eq(transactions.clientId, clients.id))
-      .where(and(eq(transactions.id, id), eq(clients.organizationId, orgId), isNull(transactions.deletedAt)))
+      .where(
+        and(
+          eq(transactions.id, id),
+          eq(clients.organizationId, orgId),
+          isNull(clients.deletedAt),
+          isNull(transactions.deletedAt),
+          eq(transactions.kind, "standard"),
+          eq(transactions.isSystem, false),
+        ),
+      )
     return row ?? null
   }
 
@@ -158,11 +175,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!txId) return res.status(400).json({ error: "transaction_id is required" })
     const tx = await findTx(txId)
     if (!tx) return res.status(404).json({ error: "Transaction not found" })
+    // Only an INFLOW can be a provisional refund. An exclusion row drops the
+    // transaction from spend and restatement regardless of its reason, so
+    // accepting an outflow here would silently erase an expense from the plan.
+    if (tx.type !== "incoming") return res.status(400).json({ error: "Only an inflow can be marked as not a refund" })
 
-    await db
+    const excluded = await db
       .insert(budgetExclusions)
       .values({ organizationId: orgId, planId: plan.id, transactionId: tx.id, reason: "not_a_refund", excludedBy: userId })
       .onConflictDoNothing()
+      .returning({ id: budgetExclusions.id })
+    // Already excluded: keep the audit log honest — no second refund_rejected event.
+    if (!excluded.length) return res.json({ excluded: true, transaction_id: tx.id, already: true })
 
     await db.insert(budgetEvents).values({
       organizationId: orgId,
@@ -216,60 +240,97 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const kind = ["refund", "reimbursement", "chargeback"].includes(String(body.kind)) ? String(body.kind) : "refund"
 
-    // Σ settlements ≤ expense.amount, enforced HERE because a CHECK cannot
-    // express a cross-row aggregate. Re-read inside the request so two
-    // concurrent links cannot both see the old sum.
-    const priorRows = await db
-      .select({ amount: transactionSettlements.amount })
-      .from(transactionSettlements)
-      .where(
-        and(
-          eq(transactionSettlements.organizationId, orgId),
-          eq(transactionSettlements.expenseTransactionId, expenseId),
-        ),
-      )
-    const prior = priorRows.map((r) => round2(Number(r.amount)))
+    // Two caps, both enforced HERE because a CHECK cannot express a cross-row
+    // aggregate: Σ settlements ≤ expense.amount (invariant 7), and Σ links drawn
+    // from one inflow ≤ that inflow (§8.8.1 — a €50 refund cannot settle €400,
+    // and one inflow cannot settle several expenses for its full amount each).
+    const sums = async () => {
+      const [priorRows, inflowRows] = await Promise.all([
+        db
+          .select({ amount: transactionSettlements.amount })
+          .from(transactionSettlements)
+          .where(and(eq(transactionSettlements.organizationId, orgId), eq(transactionSettlements.expenseTransactionId, expenseId))),
+        db
+          .select({ amount: transactionSettlements.amount })
+          .from(transactionSettlements)
+          .where(and(eq(transactionSettlements.organizationId, orgId), eq(transactionSettlements.settlementTransactionId, settlementId))),
+      ])
+      return {
+        prior: priorRows.map((r) => round2(Number(r.amount))),
+        inflowLinked: inflowRows.reduce((a, r) => a + round2(Number(r.amount)), 0),
+      }
+    }
+    const { prior, inflowLinked } = await sums()
     const expenseAmount = round2(Number(expense.amount))
-    const requested = body.amount == null ? round2(Number(settlement.amount)) : round2(Number(body.amount))
+    const inflowAmount = round2(Number(settlement.amount))
+    const requested = body.amount == null ? inflowAmount : round2(Number(body.amount))
     if (amountExceedsLimit(requested)) return res.status(400).json({ error: "Amount is too large" })
 
-    const check = canAddSettlement({
-      expenseAmount,
-      alreadySettled: prior.reduce((a, b) => a + b, 0),
-      amount: requested,
-    })
-    if (!check.ok) {
-      return res.status(check.reason === "exceeds_expense" ? 409 : 400).json({
+    const refuse = (check: Exclude<ReturnType<typeof canAddSettlement>, { ok: true }>) =>
+      res.status(check.reason === "not_positive" ? 400 : 409).json({
         error: check.reason,
         message:
           check.reason === "exceeds_expense"
             ? check.room > 0
               ? `Only ${check.room} of this expense is still outstanding`
               : "This expense is already fully settled"
-            : undefined,
+            : check.reason === "exceeds_settlement"
+              ? check.room > 0
+                ? `Only ${check.room} of this refund is still unallocated`
+                : "This refund is already fully linked"
+              : undefined,
         room: check.room,
       })
-    }
 
-    let linked
+    const check = canAddSettlement({
+      expenseAmount,
+      alreadySettled: prior.reduce((a, b) => a + b, 0),
+      amount: requested,
+      inflowAmount,
+      inflowAlreadyLinked: inflowLinked,
+    })
+    if (!check.ok) return refuse(check)
+
+    // The guard is made RACE-SAFE in one batch (one transaction): lock the
+    // expense row, then insert only if both caps still hold against the sums
+    // as they stand once the lock is held. Two concurrent links of different
+    // inflows against one expense can therefore never both pass; the loser
+    // inserts nothing and is told the real room.
+    let inserted: Record<string, unknown>[] = []
     try {
-      ;[linked] = await db
-        .insert(transactionSettlements)
-        .values({
-          organizationId: orgId,
-          expenseTransactionId: expenseId,
-          settlementTransactionId: settlementId,
-          amount: String(check.amount),
-          kind,
-          createdBy: userId,
-        })
-        .returning()
+      const results = await dbBatch([
+        db.execute(sql`select id from ${transactions} where id = ${expenseId} for update`),
+        db.execute(sql`
+          insert into ${transactionSettlements}
+            (organization_id, expense_transaction_id, settlement_transaction_id, amount, kind, created_by)
+          select ${orgId}, ${expenseId}, ${settlementId}, ${String(check.amount)}::numeric, ${kind}, ${userId}
+           where coalesce((select sum(amount) from ${transactionSettlements} where expense_transaction_id = ${expenseId}), 0)
+                   + ${String(check.amount)}::numeric <= ${String(expenseAmount)}::numeric
+             and coalesce((select sum(amount) from ${transactionSettlements} where settlement_transaction_id = ${settlementId}), 0)
+                   + ${String(check.amount)}::numeric <= ${String(inflowAmount)}::numeric
+          returning *
+        `),
+      ] as unknown as Parameters<typeof dbBatch>[0])
+      inserted = ((results[1] as unknown as { rows?: Record<string, unknown>[] })?.rows ?? []) as Record<string, unknown>[]
     } catch (err) {
       if (violates(err, "transaction_settlements_pair_unique")) {
         return res.status(409).json({ error: "already_linked" })
       }
       throw err
     }
+    if (!inserted.length) {
+      // Lost the race: report the room as it stands now.
+      const now = await sums()
+      const again = canAddSettlement({
+        expenseAmount,
+        alreadySettled: now.prior.reduce((a, b) => a + b, 0),
+        amount: requested,
+        inflowAmount,
+        inflowAlreadyLinked: now.inflowLinked,
+      })
+      return refuse(again.ok ? { ok: false, reason: "exceeds_expense", room: 0 } : again)
+    }
+    const linked = inserted[0]
 
     const rollup = settlementRollup(expenseAmount, [...prior, check.amount])
 
@@ -293,28 +354,4 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   return res.status(400).json({ error: "action must be reject, link or unlink" })
-}
-
-/**
- * Did this error violate the named constraint?
- *
- * A NeonDbError puts the constraint in `.constraint` and the offending row in
- * `.detail`; the `.message` is often just "duplicate key value violates unique
- * constraint" with the name quoted, and for a UNIQUE INDEX (as opposed to a
- * table constraint) `.constraint` can be absent entirely. Checking all three is
- * what makes the difference between a helpful 409 and a bare 500.
- */
-function violates(err: unknown, constraint: string): boolean {
-  // Drizzle wraps the driver error in a DrizzleQueryError whose `message` is the
-  // SQL text, so the constraint name lives on `.cause` (the NeonDbError). Walk
-  // the chain rather than inspecting only the outer error, which is what made
-  // every unique violation surface as a 500 instead of a helpful 409.
-  let node: unknown = err
-  for (let depth = 0; node && typeof node === "object" && depth < 5; depth++) {
-    const e = node as { constraint?: unknown; detail?: unknown; message?: unknown; cause?: unknown }
-    if (typeof e.constraint === "string" && e.constraint === constraint) return true
-    if ([e.message, e.detail].some((v) => typeof v === "string" && v.includes(constraint))) return true
-    node = e.cause
-  }
-  return false
 }

@@ -8,6 +8,7 @@ import {
   recurringRules,
 } from "../../../../src/lib/db/schema.js"
 import { canWrite, requireAuth } from "../../../_lib/auth.js"
+import { violates } from "../../../_lib/db-errors.js"
 import { amountExceedsLimit } from "../../../../src/lib/money.js"
 import { isIsoDate, round2 } from "../../../../src/lib/budget-math.js"
 import { loadPlan } from "../../../_lib/budget-engine.js"
@@ -200,28 +201,4 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   })
 
   return res.status(201).json({ commitment: serialize(commitment) })
-}
-
-/**
- * Did this error violate the named constraint?
- *
- * A NeonDbError puts the constraint in `.constraint` and the offending row in
- * `.detail`; the `.message` is often just "duplicate key value violates unique
- * constraint" with the name quoted, and for a UNIQUE INDEX (as opposed to a
- * table constraint) `.constraint` can be absent entirely. Checking all three is
- * what makes the difference between a helpful 409 and a bare 500.
- */
-function violates(err: unknown, constraint: string): boolean {
-  // Drizzle wraps the driver error in a DrizzleQueryError whose `message` is the
-  // SQL text, so the constraint name lives on `.cause` (the NeonDbError). Walk
-  // the chain rather than inspecting only the outer error, which is what made
-  // every unique violation surface as a 500 instead of a helpful 409.
-  let node: unknown = err
-  for (let depth = 0; node && typeof node === "object" && depth < 5; depth++) {
-    const e = node as { constraint?: unknown; detail?: unknown; message?: unknown; cause?: unknown }
-    if (typeof e.constraint === "string" && e.constraint === constraint) return true
-    if ([e.message, e.detail].some((v) => typeof v === "string" && v.includes(constraint))) return true
-    node = e.cause
-  }
-  return false
 }

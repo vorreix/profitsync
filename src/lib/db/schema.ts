@@ -1132,6 +1132,12 @@ export const budgetPlans = pgTable("budget_plans", {
   seedCheck: check("budget_plans_seed_check", sql`next_period_seed in ('copy','fresh','suggest')`),
   anchorCheck: check("budget_plans_anchor_check", sql`anchor_day is null or (anchor_day between 1 and 31)`),
   customDaysCheck: check("budget_plans_custom_days_check", sql`custom_days is null or (custom_days between 1 and 400)`),
+  // A custom cadence needs its anchor (§8.2) — without one the period grid
+  // cannot stay contiguous. Mirrors the API check; migration 0062.
+  customAnchorCheck: check(
+    "budget_plans_custom_anchor_check",
+    sql`cadence <> 'custom' or (custom_start is not null and custom_days is not null)`,
+  ),
   weekStartCheck: check("budget_plans_week_start_check", sql`week_start_day between 1 and 7`),
 }))
 
@@ -1154,7 +1160,11 @@ export const budgetEnvelopes = pgTable("budget_envelopes", {
   icon: text("icon").notNull().default(""),
   // savings only ------------------------------------------------------------
   fundingMode: text("funding_mode"), // virtual | space_backed
-  wealthAccountId: uuid("wealth_account_id").references(() => wealthAccounts.id, { onDelete: "set null" }), // the Space
+  // The Space. NO ACTION, not SET NULL: `budget_envelopes_space_backed_check`
+  // requires a Space while the mode is space_backed, so SET NULL would raise it
+  // on delete. The wealth route archives a Space that backs a fund instead of
+  // deleting it; an org teardown still cascades (checked at end of statement).
+  wealthAccountId: uuid("wealth_account_id").references(() => wealthAccounts.id, { onDelete: "no action" }),
   // Opt-in, default OFF: confirm this fund's contribution automatically at period
   // close. Automatic RESERVATION is fine; an automatic claim that money was set
   // aside is not (8.9.1).

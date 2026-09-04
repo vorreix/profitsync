@@ -227,7 +227,12 @@ export function periodFor(cfg: CadenceConfig, today: string): PeriodWindow {
 
     case "custom": {
       const len = Math.max(1, Math.min(400, cfg.customDays ?? 30))
-      const base = isIsoDate(cfg.customStart) ? cfg.customStart : ymd(y, m, 1)
+      // The API and the `budget_plans_custom_anchor_check` CHECK guarantee a
+      // real anchor for a custom cadence. The fallback is a FIXED date on
+      // purpose: deriving it from `today` (e.g. the 1st of the current month)
+      // would re-anchor every month and produce overlapping, non-contiguous
+      // periods for a malformed row — a fixed anchor keeps the walk contiguous.
+      const base = isIsoDate(cfg.customStart) ? cfg.customStart : "1970-01-05"
       // Walk forward/back in whole periods until `today` is inside one, so a
       // custom cycle keeps repeating rather than expiring after its first window.
       const offset = Math.floor(daysBetween(base, today) / len)
@@ -256,9 +261,20 @@ export function previousPeriod(cfg: CadenceConfig, w: PeriodWindow): PeriodWindo
   return periodFor(cfg, addDays(w.start, -1))
 }
 
-/** The period immediately after `w`. */
+/**
+ * The period immediately after `w` (§8.10 ensurePeriods).
+ *
+ * Same cadence → the natural next window. After a cadence / anchor / week-start
+ * change (§6.16) the new grid's window containing `w.endExclusive` may START
+ * before it; opening that window would count the overlap's spend in two
+ * periods — the just-closed snapshot and the new one (§8.6.1). So bridge: the
+ * successor starts exactly where `w` ended and runs to the new grid's next
+ * boundary. Never overlaps, never gaps, never extends the closed period.
+ */
 export function nextPeriod(cfg: CadenceConfig, w: PeriodWindow): PeriodWindow {
-  return periodFor(cfg, w.endExclusive)
+  const natural = periodFor(cfg, w.endExclusive) // contains w.endExclusive ⇒ natural.endExclusive > w.endExclusive
+  if (natural.start >= w.endExclusive) return natural
+  return { start: w.endExclusive, endExclusive: natural.endExclusive }
 }
 
 /** Is `date` inside `[start, endExclusive)`? String comparison is correct for ISO dates. */
@@ -273,7 +289,7 @@ export const inWindow = (date: string, w: PeriodWindow): boolean => date >= w.st
  * 30-day period is €600; the authored pair is kept for display so the number is
  * never unexplained.
  */
-export function normalizeTarget(amount: number, cadence: TargetCadence, days: number): number {
+export function normalizeTarget(amount: number, cadence: TargetCadence, days: number, planCadence: PlanCadence): number {
   if (!Number.isFinite(amount) || amount <= 0) return 0
   switch (cadence) {
     case "period":
@@ -283,8 +299,11 @@ export function normalizeTarget(amount: number, cadence: TargetCadence, days: nu
     case "week":
       return round2((amount / 7) * days)
     case "month":
-      // A month is the period's own length when the plan is monthly; otherwise
-      // pro-rate on a 30.44-day mean month so weekly/custom plans stay sane.
+      // A month IS the period when the plan runs month to month (monthly, or
+      // payday — anchor to anchor is one calendar month), so "€600/month" is
+      // €600 in February and in January alike. Only weekly/custom plans
+      // pro-rate, on a 30.44-day mean month, so they stay sane.
+      if (planCadence === "monthly" || planCadence === "payday") return round2(amount)
       return round2((amount / 30.436875) * days)
   }
 }
@@ -477,6 +496,26 @@ export type ProjectedOccurrence = {
   settledTransactionId?: string | null
 }
 
+/**
+ * The state an occurrence row is IN, given the transaction it was settled with.
+ *
+ * Settling records that money moved (§10.6). If that payment is later trashed
+ * — or purged, so no row exists at all — the bill is NOT paid, and the stored
+ * `settled` must read as `expected` again so it returns to pending/reserved
+ * and to the overdue list (§10.15 "Trash integration"). Restoring the
+ * transaction re-honours the row with no write. A manual settle (no linked
+ * transaction) is never affected.
+ */
+export function effectiveOccurrenceStatus(
+  row: { status: string; settledTransactionId: string | null },
+  linkedTx: { id: string | null; deletedAt: Date | string | null } | null,
+): OccurrenceState {
+  if (row.status === "settled" && row.settledTransactionId != null && (linkedTx?.id == null || linkedTx.deletedAt != null)) {
+    return "expected"
+  }
+  return row.status as OccurrenceState
+}
+
 /** `overdue` is a DERIVED presentation condition, never a stored state (§8.6.1). */
 export const isOverdue = (o: Pick<ProjectedOccurrence, "state" | "dueDate">, today: string): boolean =>
   o.state === "expected" && o.dueDate < today
@@ -517,40 +556,48 @@ export function applyOccurrenceDeviations(input: {
     })
   }
 
-  // Reschedule targets land as fresh expected occurrences, exactly once.
+  // A reschedule target lands exactly once: as a fresh expected occurrence,
+  // or — when the target date was itself later settled/skipped/cancelled — in
+  // THAT state, so the resolved obligation still exists and §8.7's settled Σ
+  // keeps it. Only a chain (a target that was rescheduled again) is skipped:
+  // its own entry emits the final date.
   for (const [from, dev] of Object.entries(input.deviations)) {
     if (dev.status !== "rescheduled" || !dev.rescheduledTo) continue
     const to = dev.rescheduledTo
-    if (to < input.windowStart || to >= input.windowEndExclusive) continue
-    if (input.deviations[to]) continue // the target is itself resolved
+    if (to >= input.windowEndExclusive) continue
+    // A one-time commitment's window starts at its own due date (D-17), so an
+    // EARLIER reschedule target must still be emitted — it never ages out.
+    // Only a recurring rule has a carry window that a target can fall behind.
+    if (input.kind === "recurring" && to < input.windowStart) continue
     if (byKey.has(to)) continue // never create a second reservation for one obligation
+    const target = input.deviations[to]
+    if (target?.status === "rescheduled") continue // a chain — consumed by its own entry
     byKey.set(to, {
       commitmentId: input.commitmentId,
       dueDate: to,
-      amount: input.defaultAmount,
-      state: "expected",
+      amount: target?.settledAmount ?? input.defaultAmount,
+      state: target?.status ?? "expected",
       carried: to < input.periodStart,
       rescheduledFrom: from,
+      settledTransactionId: target?.settledTransactionId ?? null,
     })
   }
 
   let occurrences = [...byKey.values()].sort((a, b) => a.dueDate.localeCompare(b.dueDate))
   let excludedCount = 0
-  let needsAttention = false
 
-  // Recurring safety cap — RECURRING ONLY (D-17). One-time commitments are never
-  // capped and never age out.
-  if (input.kind === "recurring") {
-    const unresolved = occurrences.filter((o) => o.state === "expected")
-    if (unresolved.length > MAX_UNRESOLVED_RECURRING_OCCURRENCES) {
-      const keep = new Set(unresolved.slice(-MAX_UNRESOLVED_RECURRING_OCCURRENCES).map((o) => o.dueDate))
-      excludedCount = unresolved.length - keep.size
-      needsAttention = true
-      occurrences = occurrences.filter((o) => o.state !== "expected" || keep.has(o.dueDate))
-    }
+  // Recurring safety cap — RECURRING ONLY (D-17). `needsAttention()` is the
+  // single definition of the threshold; one-time commitments never cap and
+  // never age out.
+  const unresolved = occurrences.filter((o) => o.state === "expected")
+  const flagged = needsAttention(input.kind, unresolved.length)
+  if (flagged) {
+    const keep = new Set(unresolved.slice(-MAX_UNRESOLVED_RECURRING_OCCURRENCES).map((o) => o.dueDate))
+    excludedCount = unresolved.length - keep.size
+    occurrences = occurrences.filter((o) => o.state !== "expected" || keep.has(o.dueDate))
   }
 
-  return { occurrences, excludedCount, needsAttention }
+  return { occurrences, excludedCount, needsAttention: flagged }
 }
 
 /** Sum of expected occurrence amounts — the envelope's `pending`. */
@@ -600,7 +647,9 @@ export function carryFor(policy: CarryPolicy, surplus: number, cap?: number | nu
       carry = surplus
       break
   }
-  if (cap != null && Number.isFinite(cap) && cap > 0) {
+  // §8.12: clamp whenever a cap is STORED. NULL means "no cap"; 0 means
+  // "carry nothing" and must not be mistaken for the sentinel.
+  if (cap != null && Number.isFinite(cap) && cap >= 0) {
     carry = Math.max(-cap, Math.min(cap, carry))
   }
   return round2(carry)
@@ -987,11 +1036,20 @@ export function canAddSettlement(input: {
   expenseAmount: number
   alreadySettled: number
   amount: number
-}): { ok: true; amount: number } | { ok: false; reason: "not_positive" | "exceeds_expense"; room: number } {
+  /** §8.8.1: the inflow IS the money that moved — Σ links drawn from one inflow may not exceed it. */
+  inflowAmount?: number
+  inflowAlreadyLinked?: number
+}):
+  | { ok: true; amount: number }
+  | { ok: false; reason: "not_positive" | "exceeds_expense" | "exceeds_settlement"; room: number } {
   const amount = round2(input.amount)
   const room = round2(Math.max(0, round2(Math.abs(input.expenseAmount)) - round2(input.alreadySettled)))
   if (!Number.isFinite(amount) || amount <= 0) return { ok: false, reason: "not_positive", room }
   if (amount > room) return { ok: false, reason: "exceeds_expense", room }
+  if (input.inflowAmount != null) {
+    const inflowRoom = round2(Math.max(0, round2(Math.abs(input.inflowAmount)) - round2(input.inflowAlreadyLinked ?? 0)))
+    if (amount > inflowRoom) return { ok: false, reason: "exceeds_settlement", room: inflowRoom }
+  }
   return { ok: true, amount }
 }
 
@@ -1043,10 +1101,12 @@ export const daysOverdue = (dueDate: string, today: string): number => Math.max(
 /**
  * `needs_attention` (§8.6.1) is a RECURRING-only flag — the schema CHECK
  * `budget_commitments_attention_check` enforces that. A recurring commitment
- * earns it when unresolved occurrences pile up to the cap, which is the signal
- * that the rule itself is wrong (a cancelled subscription, a changed landlord)
- * rather than that one payment is late.
+ * earns it when unresolved occurrences EXCEED the cap (§8.6:
+ * `count(unresolved) > MAX_UNRESOLVED_RECURRING_OCCURRENCES`), which is the
+ * signal that the rule itself is wrong (a cancelled subscription, a changed
+ * landlord) rather than that one payment is late. This is the ONE definition
+ * of that threshold — `applyOccurrenceDeviations` calls it.
  */
 export function needsAttention(kind: CommitmentKind, unresolvedCount: number): boolean {
-  return kind === "recurring" && unresolvedCount >= MAX_UNRESOLVED_RECURRING_OCCURRENCES
+  return kind === "recurring" && unresolvedCount > MAX_UNRESOLVED_RECURRING_OCCURRENCES
 }

@@ -213,7 +213,9 @@ async function migrateOrg(org: { id: string; name: string; accountType: string |
     targetCadence,
     matchKeys: [],
     isCatchAll: true,
-    carryPolicy: "surplus",
+    // v1 caps never rolled over, so the migrated plan must not start inventing
+    // a carry (§13.10.5 — nothing is reinterpreted). The user can opt in later.
+    carryPolicy: "none",
     priority: "important",
     createdBy: v1.createdBy ?? null,
     updatedBy: v1.updatedBy ?? null,
@@ -327,8 +329,14 @@ async function main() {
     .where(ONLY_ORG ? eq(organizations.id, ONLY_ORG) : sql`true`)
     .orderBy(organizations.createdAt)
 
-  const batch = LIMIT ? rows.slice(0, LIMIT) : rows
-  for (const org of batch) {
+  // --limit counts MIGRATIONS, not organisations: slicing the org list would
+  // re-scan the same leading orgs (business, no budget, already migrated) on
+  // every batch and never advance. Scan everything, stop after N plans.
+  for (const org of rows) {
+    if (LIMIT && report.migrated + report.paused >= LIMIT) {
+      log(`  limit  : reached ${LIMIT} — re-run to continue (already-migrated orgs are skipped)`)
+      break
+    }
     try {
       await migrateOrg(org)
     } catch (err) {

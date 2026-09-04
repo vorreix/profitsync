@@ -6,6 +6,8 @@ import { requireAuth, isPersonalAccount } from "../../_lib/auth.js"
 import { outgoingByClient, spentFor } from "../../_lib/budget-spend.js"
 import { isBudgetPeriod, type BudgetPeriod } from "../../../src/lib/budget.js"
 import { detectCreep, seriesState, type BudgetAction, type HistoryRow } from "../../../src/lib/budget-history.js"
+import { noteAdapterRead, projectPlanToV1 } from "../../_lib/budget-v1-adapter.js"
+import { loadPlan } from "../../_lib/budget-engine.js"
 
 const KEY = (clientId: string | null) => clientId ?? "default"
 
@@ -19,6 +21,35 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { orgId } = ctx
   const personal = isPersonalAccount(ctx)
   const now = new Date()
+
+  // v1 CONTRACT, PRESERVED (§11.1). A personal org with a Budget v2 plan is
+  // served the plan's projection — the same numbers GET /api/budgets returns —
+  // not the v1 row the migration left behind, which is never updated again
+  // (the migration and the write adapter only ever write v2 tables). Without
+  // this, the legacy list page and a store-pinned native bundle show a frozen
+  // migration-time amount while /api/budgets shows the live plan.
+  const projected = personal ? await projectPlanToV1(orgId, ctx.role, ctx.accountType) : null
+  if (projected) {
+    const plan = await loadPlan(orgId)
+    if (plan) noteAdapterRead(orgId, plan.id)
+    const out = projected.budgets.map((row) => {
+      const spent = row.spent ?? 0
+      return {
+        key: "default",
+        client_id: null as string | null,
+        client_name: null as string | null,
+        is_own: false,
+        is_default: true,
+        period: row.period,
+        amount: row.amount,
+        spent,
+        state: seriesState(spent, row.amount),
+        ratio: row.amount > 0 ? spent / row.amount : null,
+        creep_flagged: false,
+      }
+    })
+    return res.json({ budgets: out, account_type: ctx.accountType, aggregate: aggregateOf(out), ...(projected.degraded ? { degraded: true } : {}) })
+  }
 
   const [rows, clientRows, historyRows, byClient] = await Promise.all([
     db.select().from(budgets).where(eq(budgets.organizationId, orgId)),
@@ -77,24 +108,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Drop budgets whose client was soft-deleted (trashed) — they aren't in nameById.
   }).filter((b) => !b.client_id || nameById.has(b.client_id))
 
-  // Cross-budget aggregate — over budgets that have a real spend number + amount.
+  return res.json({ budgets: out, account_type: ctx.accountType, aggregate: aggregateOf(out) })
+}
+
+type OverviewRow = {
+  key: string
+  client_name: string | null
+  is_default: boolean
+  amount: number
+  spent: number | null
+  ratio: number | null
+}
+
+// Cross-budget aggregate — over budgets that have a real spend number + amount.
+function aggregateOf(out: OverviewRow[]) {
   const tracked = out.filter((b) => b.spent !== null && b.amount > 0)
   const totalBudget = tracked.reduce((s, b) => s + b.amount, 0)
   const totalSpent = tracked.reduce((s, b) => s + (b.spent ?? 0), 0)
   const onTrack = tracked.filter((b) => (b.spent ?? 0) <= b.amount).length
   const ranked = [...tracked].filter((b) => b.ratio !== null).sort((a, b) => (b.ratio ?? 0) - (a.ratio ?? 0))
-  const lite = (b: (typeof out)[number]) => ({ key: b.key, client_name: b.client_name, is_default: b.is_default, ratio: b.ratio })
-
-  return res.json({
-    budgets: out,
-    account_type: ctx.accountType,
-    aggregate: {
-      total_budget: totalBudget,
-      total_spent: totalSpent,
-      on_track: onTrack,
-      total: tracked.length,
-      worst: ranked.length ? lite(ranked[0]) : null,
-      best: ranked.length ? lite(ranked[ranked.length - 1]) : null,
-    },
-  })
+  const lite = (b: OverviewRow) => ({ key: b.key, client_name: b.client_name, is_default: b.is_default, ratio: b.ratio })
+  return {
+    total_budget: totalBudget,
+    total_spent: totalSpent,
+    on_track: onTrack,
+    total: tracked.length,
+    worst: ranked.length ? lite(ranked[0]) : null,
+    best: ranked.length ? lite(ranked[ranked.length - 1]) : null,
+  }
 }

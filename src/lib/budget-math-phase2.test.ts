@@ -25,7 +25,7 @@ import {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("categoryKey", () => {
-  it("is case-insensitive and whitespace-normalised", () => {
+  it("is case-insensitive and trims surrounding SPACES", () => {
     expect(categoryKey("Groceries")).toBe("groceries")
     expect(categoryKey("  groceries  ")).toBe("groceries")
     expect(categoryKey(" GrOcErIeS ")).toBe("groceries")
@@ -45,11 +45,11 @@ describe("categoryKey", () => {
     expect(categoryKey("\tGROCERIES\n")).toBe("\tgroceries\n")
     expect(categoryKey(" GrOcErIeS\r")).toBe("groceries\r")
     expect(categoryKey("\rGroceries")).toBe("\rgroceries")
-    // U+00A0 NO-BREAK SPACE is whitespace to JS .trim() but NOT to Postgres
+    // U+00A0 NO-BREAK SPACE (and every other unicode space) is whitespace to JS
     // btrim(). Stripping it here would make an envelope match a row the SQL
     // index-backed query does not, i.e. two different answers for one number.
-    expect(categoryKey(" groceries")).toBe(" groceries")
-    expect(categoryKey("groceries ")).toBe("groceries ")
+    expect(categoryKey("\u00a0groceries")).toBe("\u00a0groceries")
+    expect(categoryKey("groceries\u2003")).toBe("groceries\u2003") // U+2003 EM SPACE — unicode whitespace, not a space
   })
 
   it("keeps interior whitespace, which is part of the name", () => {
@@ -320,6 +320,20 @@ describe("settlementRollup", () => {
 })
 
 describe("canAddSettlement", () => {
+  it("caps a link by the INFLOW too — a €50 refund cannot settle €400 (§8.8.1)", () => {
+    expect(canAddSettlement({ expenseAmount: 400, alreadySettled: 0, amount: 400, inflowAmount: 50 })).toEqual({
+      ok: false,
+      reason: "exceeds_settlement",
+      room: 50,
+    })
+    // …and one inflow linked to several expenses may not be drawn beyond itself.
+    expect(canAddSettlement({ expenseAmount: 400, alreadySettled: 0, amount: 30, inflowAmount: 50, inflowAlreadyLinked: 40 })).toEqual({
+      ok: false,
+      reason: "exceeds_settlement",
+      room: 10,
+    })
+    expect(canAddSettlement({ expenseAmount: 400, alreadySettled: 0, amount: 10, inflowAmount: 50, inflowAlreadyLinked: 40 })).toEqual({ ok: true, amount: 10 })
+  })
   it("permits an amount within the remaining room", () => {
     expect(canAddSettlement({ expenseAmount: 400, alreadySettled: 250, amount: 150 })).toEqual({
       ok: true,
@@ -422,9 +436,12 @@ describe("needsAttention", () => {
     expect(needsAttention("one_time", 99)).toBe(false)
   })
 
-  it("flags a recurring commitment only at the unresolved cap", () => {
+  it("flags a recurring commitment only when unresolved occurrences EXCEED the cap (§8.6)", () => {
+    // The projection excludes payments only beyond the cap, so the flag must
+    // use the same boundary or the two disagree at exactly 12.
     expect(needsAttention("recurring", 11)).toBe(false)
-    expect(needsAttention("recurring", 12)).toBe(true)
+    expect(needsAttention("recurring", 12)).toBe(false)
+    expect(needsAttention("recurring", 13)).toBe(true)
     expect(needsAttention("recurring", 40)).toBe(true)
   })
 })
