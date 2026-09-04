@@ -28,8 +28,7 @@ describe("categoryKey", () => {
   it("is case-insensitive and whitespace-normalised", () => {
     expect(categoryKey("Groceries")).toBe("groceries")
     expect(categoryKey("  groceries  ")).toBe("groceries")
-    expect(categoryKey("\tGROCERIES\n")).toBe("groceries")
-    expect(categoryKey(" GrOcErIeS\r")).toBe("groceries")
+    expect(categoryKey(" GrOcErIeS ")).toBe("groceries")
   })
 
   it("treats null, undefined and empty as the same empty key", () => {
@@ -39,7 +38,13 @@ describe("categoryKey", () => {
     expect(categoryKey("   ")).toBe("")
   })
 
-  it("trims only the four characters btrim() does, so it cannot be WIDER than the SQL", () => {
+  it("trims only the SPACE character btrim() does, so it cannot be WIDER than the SQL", () => {
+    // Postgres btrim(text) strips U+0020 only — tab, LF and CR survive it, so
+    // they must survive here too or the JS key and the index expression
+    // `lower(btrim(coalesce(category,'')))` disagree on the same row.
+    expect(categoryKey("\tGROCERIES\n")).toBe("\tgroceries\n")
+    expect(categoryKey(" GrOcErIeS\r")).toBe("groceries\r")
+    expect(categoryKey("\rGroceries")).toBe("\rgroceries")
     // U+00A0 NO-BREAK SPACE is whitespace to JS .trim() but NOT to Postgres
     // btrim(). Stripping it here would make an envelope match a row the SQL
     // index-backed query does not, i.e. two different answers for one number.

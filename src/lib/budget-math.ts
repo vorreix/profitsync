@@ -737,11 +737,13 @@ export function detectCurrencyMismatch(
  * index `transactions_category_key_idx` is built on — if these two ever
  * disagree, spend silently lands in the catch-all instead of its envelope.
  *
- * `btrim` strips ASCII space/tab/newline/CR only, so JS `.trim()` (which also
- * strips unicode whitespace) would be WIDER. We therefore trim exactly the same
- * four characters rather than calling .trim().
+ * Postgres `btrim(text)` with no character list strips ONLY U+0020 SPACE —
+ * not tab, newline, CR, and not unicode whitespace. JS `.trim()` strips all
+ * of those and would be WIDER (verified against a live Postgres 17: a category
+ * with a leading tab kept its tab under btrim() but lost it under .trim()). So
+ * we trim exactly that one character rather than calling .trim().
  */
-const BTRIM_CHARS = " \t\n\r"
+const BTRIM_CHARS = " "
 export function categoryKey(raw: string | null | undefined): string {
   let s = raw ?? ""
   let a = 0
