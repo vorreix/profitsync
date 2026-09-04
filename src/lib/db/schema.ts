@@ -152,7 +152,12 @@ export const tags = pgTable("tags", {
 export const wealthAccounts = pgTable("wealth_accounts", {
   id: uuid("id").primaryKey().defaultRandom(),
   organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
-  type: text("type").notNull(), // bank | cash | space (space = a personal savings bucket)
+  // bank | cash | space | credit_card. `space` = a personal savings bucket;
+  // `credit_card` = a LIABILITY account: its current_balance is the signed
+  // asset-equivalent value, so it is normally NEGATIVE (−950 = €950 owed). The
+  // ledger (balanceDelta) is type-agnostic; only presentation reads the sign,
+  // through src/lib/credit-card.ts (cardDebt / availableCredit / …).
+  type: text("type").notNull(),
   bankName: text("bank_name").notNull().default(""),
   nickname: text("nickname").notNull().default(""),
   openingBalance: numeric("opening_balance", { precision: 20, scale: 2 }).notNull().default("0"),
@@ -179,6 +184,15 @@ export const wealthAccounts = pgTable("wealth_accounts", {
   // SUGGESTION is computed (src/lib/spaces.ts), never stored, so it can't drift.
   goalAmount: numeric("goal_amount", { precision: 20, scale: 2 }),
   targetDate: date("target_date"),
+  // ── Credit card (type='credit_card' only; NULL for every other type) ────────
+  // Configuration, never derived state: available credit, the amount owed, the
+  // statement remaining and the new-cycle spend are all computed from the
+  // ledger + credit_card_statements (src/lib/credit-card.ts), so nothing here
+  // can drift. Closing/due days are fixed days-of-month (1..31), clamped to the
+  // month's length at use (31 → Feb 28/29).
+  creditLimit: numeric("credit_limit", { precision: 20, scale: 2 }),
+  statementClosingDay: integer("statement_closing_day"),
+  paymentDueDay: integer("payment_due_day"),
   // User-defined card order within the org (lower = earlier). Set via the
   // drag-to-reorder UI; ties fall back to createdAt so pre-existing rows keep
   // their original order until first reordered.
@@ -200,6 +214,41 @@ export const wealthAccounts = pgTable("wealth_accounts", {
   // Trigram GIN for /api/search's ILIKE '%q%' on account names.
   bankNameTrgmIdx: index("wealth_accounts_bank_name_trgm_idx").using("gin", table.bankName.op("gin_trgm_ops")),
   nicknameTrgmIdx: index("wealth_accounts_nickname_trgm_idx").using("gin", table.nickname.op("gin_trgm_ops")),
+  closingDayCheck: check("wealth_accounts_closing_day_check", sql`statement_closing_day is null or (statement_closing_day between 1 and 31)`),
+  dueDayCheck: check("wealth_accounts_due_day_check", sql`payment_due_day is null or (payment_due_day between 1 and 31)`),
+}))
+
+// ── Credit-card statements ───────────────────────────────────────────────────
+// One row per CLOSED billing cycle of a credit card: a SNAPSHOT of the amount
+// owed at the end of the closing date (`statement_balance`). Filed lazily by
+// api/_lib/credit-card.ts when the account is read after a closing date has
+// passed (`source='computed'`, from the ledger), or entered by the user when
+// onboarding a card that already has history (`source='manual'`). Immutable
+// history: new purchases belong to the next cycle and never mutate a filed
+// statement. Payments are NOT stored here — what has been paid / is still owed
+// is DERIVED from the card's incoming transfer legs dated after `closing_date`
+// (src/lib/credit-card.ts statementView), so trash/restore/edit of a payment
+// recomputes deterministically. The unique index is the filing idempotency key.
+// Cascades with the account (and therefore with the org / factory reset).
+export const creditCardStatements = pgTable("credit_card_statements", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  wealthAccountId: uuid("wealth_account_id").notNull().references(() => wealthAccounts.id, { onDelete: "cascade" }),
+  // First day of the cycle (the day after the previous close); NULL when unknown (manual onboarding).
+  cycleStart: date("cycle_start"),
+  // The closing date — the last day whose transactions belong to this statement.
+  closingDate: date("closing_date").notNull(),
+  dueDate: date("due_date").notNull(),
+  // Amount owed at the end of the closing date. Signed like a debt (≥ 0 owed;
+  // negative = the card was in credit at close, nothing due).
+  statementBalance: numeric("statement_balance", { precision: 20, scale: 2 }).notNull().default("0"),
+  source: text("source").notNull().default("computed"), // computed | manual
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  accountCloseUnique: uniqueIndex("credit_card_statements_account_close_unique").on(table.wealthAccountId, table.closingDate),
+  orgIdx: index("credit_card_statements_org_idx").on(table.organizationId),
+  sourceCheck: check("credit_card_statements_source_check", sql`source in ('computed','manual')`),
 }))
 
 export const wealthAccountAttachments = pgTable("wealth_account_attachments", {
@@ -231,10 +280,14 @@ export const transactions = pgTable("transactions", {
   // Also used to pair the two legs of an account-to-account transfer.
   groupId: uuid("group_id"),
   // 'standard' for normal income/expense (incl. splits); 'transfer' for the two
-  // legs of an account-to-account move. Transfers are real, balance-affecting
-  // rows but are excluded from the global transactions list, the income/expense
-  // summary, and analytics (they net to zero and aren't P&L).
-  kind: text("kind").notNull().default("standard"), // standard | transfer
+  // legs of an account-to-account move (incl. paying a credit card from a bank
+  // account). Transfers are real, balance-affecting rows but are excluded from
+  // the global transactions list, the income/expense summary, and analytics
+  // (they net to zero and aren't P&L). 'refund' is an INCOMING row that gives
+  // money back for an earlier expense: it moves the balance like any incoming
+  // but reporting nets it against EXPENSE, never income (src/lib/tx-classify.ts
+  // + api/_lib/tx-sql.ts).
+  kind: text("kind").notNull().default("standard"), // standard | transfer | refund
   type: text("type").notNull(),
   amount: numeric("amount", { precision: 20, scale: 2 }).notNull().default("0"),
   description: text("description").default(""),

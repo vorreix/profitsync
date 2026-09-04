@@ -268,7 +268,10 @@ function inclusionConds(orgId: string, accounts: string[], planId: string, restr
     eq(clients.organizationId, orgId),
     isNull(clients.deletedAt),
     isNull(transactions.deletedAt),
-    eq(transactions.kind, "standard"),
+    // Standard rows + REFUNDS (kind='refund': an incoming that gives money back
+    // for an earlier expense — a confirmed settlement by construction, see
+    // spendByCategoryKey). Transfers, incl. credit-card payments, never count.
+    inArray(transactions.kind, ["standard", "refund"]),
     // System rows DEFINE balances; they are not spending (v1 defect #1).
     eq(transactions.isSystem, false),
     ...accountScope,
@@ -291,7 +294,7 @@ const categoryKeyExpr = sql<string>`lower(btrim(coalesce(${transactions.category
 export type EnvelopeSpend = { spentGross: number; refundsProvisional: number; refundsConfirmed: number }
 
 /** One row per normalised category key present in the window. */
-export type CategorySpendRow = { key: string; gross: number; inflow: number; unlinkedInflow: number }
+export type CategorySpendRow = { key: string; gross: number; inflow: number; unlinkedInflow: number; refund: number }
 
 /**
  * ALL spend for the window, grouped by normalised category key — ONE query for
@@ -316,11 +319,15 @@ export async function spendByCategoryKey(
   const rows = await db
     .select({
       key: categoryKeyExpr,
-      gross: sql<string>`coalesce(sum(case when ${transactions.type} = 'outgoing' then ${transactions.amount}::numeric else 0 end), 0)`,
-      inflow: sql<string>`coalesce(sum(case when ${transactions.type} = 'incoming' then ${transactions.amount}::numeric else 0 end), 0)`,
-      unlinked: sql<string>`coalesce(sum(case when ${transactions.type} = 'incoming' and not exists (
+      gross: sql<string>`coalesce(sum(case when ${transactions.type} = 'outgoing' and ${transactions.kind} = 'standard' then ${transactions.amount}::numeric else 0 end), 0)`,
+      inflow: sql<string>`coalesce(sum(case when ${transactions.type} = 'incoming' and ${transactions.kind} = 'standard' then ${transactions.amount}::numeric else 0 end), 0)`,
+      unlinked: sql<string>`coalesce(sum(case when ${transactions.type} = 'incoming' and ${transactions.kind} = 'standard' and not exists (
         select 1 from ${transactionSettlements} ts where ts.settlement_transaction_id = ${transactions.id}
       ) then ${transactions.amount}::numeric else 0 end), 0)`,
+      // Explicit refunds (kind='refund') are a stated fact, not a guess: they are
+      // CONFIRMED wherever their category lives (catch-all included) and are
+      // never also offered as a provisional refund. Credit-card returns land here.
+      refund: sql<string>`coalesce(sum(case when ${transactions.kind} = 'refund' then ${transactions.amount}::numeric else 0 end), 0)`,
     })
     .from(transactions)
     .innerJoin(clients, eq(transactions.clientId, clients.id))
@@ -338,6 +345,7 @@ export async function spendByCategoryKey(
     gross: round2(amountInPlanCurrency(num(r.gross), plan.currency, plan.currency)),
     inflow: round2(amountInPlanCurrency(num(r.inflow), plan.currency, plan.currency)),
     unlinkedInflow: round2(amountInPlanCurrency(num(r.unlinked), plan.currency, plan.currency)),
+    refund: round2(amountInPlanCurrency(num(r.refund), plan.currency, plan.currency)),
   }))
 }
 
@@ -452,11 +460,13 @@ export function spendForKeys(
 
   let gross = 0
   let provisional = 0
+  let confirmed = 0
   for (const r of selected) {
     gross += r.gross
     if (!isCatchAll) provisional += r.unlinkedInflow
+    // An explicit refund row (kind='refund') is a stated fact: confirmed everywhere.
+    confirmed += r.refund ?? 0
   }
-  let confirmed = 0
   for (const [key, amount] of settled) {
     if (isCatchAll ? !claimedKeys.has(key) : mine.has(key)) confirmed += amount
   }

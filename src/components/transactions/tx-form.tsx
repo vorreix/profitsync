@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
-import { ArrowDownRight, ArrowUpRight, Check, ChevronsUpDown, Pencil, Plus, X } from "lucide-react"
+import { ArrowDownRight, ArrowUpRight, Check, ChevronsUpDown, Pencil, Plus, RotateCcw, X } from "lucide-react"
 import type { Budget, Client, WealthAccount } from "@/lib/types"
 import { budgetState } from "@/lib/budget"
 import { formatMoney } from "@/lib/wealth"
@@ -263,7 +263,10 @@ export function TxFormFields({
     return { className: "ai-fill-pulse", style: { animationDelay: `${Math.max(0, idx) * 60}ms` } as React.CSSProperties }
   }
   const aiDot = (key: keyof AiFieldMeta) => <AiReviewDot show={aiFields?.[key] === "medium"} label={t("ai.checkField")} />
-  const cats = f.type === "incoming" ? categories.incoming : categories.outgoing
+  // A refund reverses an EXPENSE, so it picks from the expense categories.
+  const isRefund = f.kind === "refund"
+  const catType: "incoming" | "outgoing" = isRefund ? "outgoing" : f.type
+  const cats = catType === "incoming" ? categories.incoming : categories.outgoing
   const txTotal = f.allocations.reduce((sum, a) => sum + (Number(a.amount) || 0), 0)
   const budgetHint = (() => {
     if (f.type !== "outgoing" || !budget || budget.amount <= 0 || txTotal <= 0) return null
@@ -286,20 +289,31 @@ export function TxFormFields({
       <div {...aiProps("type")}>
       <div className="space-y-1.5">
         <Label>{t("type")}{aiDot("type")}</Label>
-        <div className="grid grid-cols-2 gap-2">
-          {(["incoming", "outgoing"] as const).map((type) => (
-            <button key={type} type="button" onClick={() => onChange({ type, category: "" })} className={`flex items-center justify-center gap-2 rounded-md border py-2.5 text-sm font-medium transition-colors ${
-              f.type === type
-                ? type === "incoming"
-                  ? "border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400 dark:border-emerald-600"
-                  : "border-red-500 bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400 dark:border-red-600"
-                : "border-border hover:bg-muted"
-            }`}>
-              {type === "incoming" ? <ArrowUpRight className="size-4" /> : <ArrowDownRight className="size-4" />}
-              {t(type)}
-            </button>
-          ))}
+        {/* Income / Expense / Refund. A refund is an incoming that reverses spending
+            (src/lib/tx-classify.ts) — e.g. a returned credit-card purchase. */}
+        <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label={t("type")}>
+          {([
+            { key: "incoming", type: "incoming", kind: "standard", Icon: ArrowUpRight, on: "border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400 dark:border-emerald-600" },
+            { key: "outgoing", type: "outgoing", kind: "standard", Icon: ArrowDownRight, on: "border-red-500 bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400 dark:border-red-600" },
+            { key: "refund", type: "incoming", kind: "refund", Icon: RotateCcw, on: "border-amber-500 bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-600" },
+          ] as const).map((o) => {
+            const selected = f.type === o.type && (f.kind ?? "standard") === o.kind
+            return (
+              <button
+                key={o.key}
+                type="button"
+                role="radio"
+                aria-checked={selected}
+                onClick={() => onChange({ type: o.type, kind: o.kind, category: "" })}
+                className={`flex min-h-11 items-center justify-center gap-1.5 rounded-md border px-2 py-2.5 text-sm font-medium transition-colors ${selected ? o.on : "border-border hover:bg-muted"}`}
+              >
+                <o.Icon className="size-4 shrink-0" aria-hidden />
+                <span className="truncate">{t(o.key)}</span>
+              </button>
+            )
+          })}
         </div>
+        {isRefund && <p className="text-xs text-muted-foreground">{t("refundHint")}</p>}
       </div>
       </div>
       <div {...aiProps("amount")}>
@@ -349,7 +363,7 @@ export function TxFormFields({
           <CategoryCombobox
             categories={cats}
             value={f.category}
-            onChangeCategories={(next) => onChangeCats(f.type, next)}
+            onChangeCategories={(next) => onChangeCats(catType, next)}
             onChange={(v) => onChange({ category: v })}
           />
         </div>

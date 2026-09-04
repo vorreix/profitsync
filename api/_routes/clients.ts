@@ -6,6 +6,7 @@ import { canWrite, ensureDefaultClient, requireAuth, requireBusinessFeature } fr
 import { checkClientQuota, checkNoteLength } from "../_lib/quota.js"
 import { logAudit } from "../_lib/audit.js"
 import { cleanTags, normalizeTagName } from "../../src/lib/tags.js"
+import { expenseSumSql, incomeSumSql } from "../_lib/tx-sql.js"
 
 const VALID_STATUSES = ["active", "inactive", "archived"]
 const PAGE_SIZE = 20
@@ -58,8 +59,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Per-client money aggregates — reused by both the select and the sort so the
     // table's Income/Expense/Profit columns can be ordered server-side (correct
     // with pagination; a client-only sort would only order the loaded page).
-    const incomingSum = sql<string>`coalesce(sum(case when ${transactions.type} = 'incoming' then ${transactions.amount}::numeric else 0 end), 0)`
-    const outgoingSum = sql<string>`coalesce(sum(case when ${transactions.type} = 'outgoing' then ${transactions.amount}::numeric else 0 end), 0)`
+    // Shared reporting rules (api/_lib/tx-sql.ts): transfers (incl. card payments)
+    // count nowhere, refunds reduce expense rather than adding income.
+    const incomingSum = incomeSumSql
+    const outgoingSum = expenseSumSql
     const profitSum = sql`(${incomingSum} - ${outgoingSum})`
 
     const orderBy = (() => {

@@ -27,6 +27,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Separator } from "@/components/ui/separator"
 import { toast } from "sonner"
 import { Plus, ArrowUpRight, ArrowDownRight, DollarSign, Pencil, Trash2, Paperclip, Download, X, Eye, Tag, CheckSquare, Layers, Repeat } from "lucide-react"
+import { TxKindBadge } from "@/components/transactions/TxKindBadge"
 import { ExpandableSearch } from "@/components/ExpandableSearch"
 import { FilterSheet, FilterSection } from "@/components/filters/FilterSheet"
 import { AttachmentBadge } from "@/components/AttachmentBadge"
@@ -123,6 +124,7 @@ const TransactionRow = memo(function TransactionRow({
               <Layers className="size-3" /> {t("split")}
             </Badge>
           )}
+          <TxKindBadge tx={tx} />
           {tx.recurring_rule_id && (
             <Badge
               variant="secondary"
@@ -531,7 +533,7 @@ export function TransactionsPage() {
           group_id: tx.group_id,
           client_id: tx.client_id,
           allocations: legs.map((l) => ({ account_id: l.wealth_account_id ?? "", amount: String(l.amount) })),
-          type: tx.type, description: tx.description, category: tx.category,
+          type: tx.type, kind: tx.kind === "refund" ? "refund" : "standard", description: tx.description, category: tx.category,
           tags: txTags(legs[0]), tag_draft: "", date: tx.date,
         })
         setEditOpen(true)
@@ -542,7 +544,7 @@ export function TransactionsPage() {
     }
     setEditForm({
       id: tx.id, group_id: tx.group_id ?? null, client_id: tx.client_id,
-      allocations: allocationFor(tx, accounts), type: tx.type, description: tx.description, category: tx.category,
+      allocations: allocationFor(tx, accounts), type: tx.type, kind: tx.kind === "refund" ? "refund" : "standard", description: tx.description, category: tx.category,
       tags: txTags(tx), tag_draft: "", date: tx.date,
     })
     setEditOpen(true)
@@ -565,6 +567,7 @@ export function TransactionsPage() {
         await apiPost("/api/transactions/group", token, {
           client_id: editForm.client_id,
           type: editForm.type,
+          kind: editForm.kind,
           description: editForm.description,
           category: editForm.category,
           tags: mergeTags(editForm.tags, editForm.tag_draft),
@@ -575,6 +578,7 @@ export function TransactionsPage() {
         const alloc = allocs[0]
         await apiPatch<Transaction>(`/api/transactions/${editForm.id}`, token, {
           type: editForm.type,
+          kind: editForm.kind,
           wealth_account_id: alloc.account_id,
           amount: parseFloat(alloc.amount),
           description: editForm.description,
@@ -941,6 +945,7 @@ export function TransactionsPage() {
                       : <ArrowDownRight className="size-4 text-red-600 dark:text-red-400" />}
                   </div>
                   {t("transactionDetails")}
+                  <TxKindBadge tx={viewTx} />
                 </DialogTitle>
               </DialogHeader>
 

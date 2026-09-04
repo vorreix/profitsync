@@ -3,6 +3,7 @@ import { and, count, desc, eq, ilike, isNull, or, sql } from "drizzle-orm"
 import { db, serialize } from "../../../src/lib/db/index.js"
 import { clients, organizations, transactions } from "../../../src/lib/db/schema.js"
 import { requireAdminCap } from "../../_lib/admin.js"
+import { expenseSumSql, incomeSumSql } from "../../_lib/tx-sql.js"
 
 const PAGE_SIZE = 30
 const VALID_STATUSES = ["active", "inactive", "archived"]
@@ -60,8 +61,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         onboardDate: clients.onboardDate,
         createdAt: clients.createdAt,
         updatedAt: clients.updatedAt,
-        totalIncoming: sql<string>`coalesce(sum(case when ${transactions.type} = 'incoming' then ${transactions.amount}::numeric else 0 end), 0)`,
-        totalOutgoing: sql<string>`coalesce(sum(case when ${transactions.type} = 'outgoing' then ${transactions.amount}::numeric else 0 end), 0)`,
+        totalIncoming: incomeSumSql,
+        totalOutgoing: expenseSumSql,
         transactionCount: sql<number>`count(${transactions.id})::int`,
       })
       .from(clients)

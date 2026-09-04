@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ProfitSync — Credit-card accounts: engineering report</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm; }
+  :root { --ink: #111827; --muted: #6b7280; --line: #e5e7eb; --accent: #059669; --warn: #b45309; }
+  * { box-sizing: border-box; }
+  body { font: 10.5pt/1.5 -apple-system, "Segoe UI", Inter, Roboto, sans-serif; color: var(--ink); margin: 0; }
+  h1 { font-size: 22pt; margin: 0 0 4px; letter-spacing: -0.01em; }
+  h2 { font-size: 14pt; margin: 22px 0 8px; padding-bottom: 4px; border-bottom: 1px solid var(--line); page-break-after: avoid; }
+  h3 { font-size: 11.5pt; margin: 14px 0 6px; page-break-after: avoid; }
+  p, li { margin: 0 0 6px; }
+  .sub { color: var(--muted); margin-bottom: 18px; }
+  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 12px 0 4px; }
+  .kpi { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+  .kpi b { display: block; font-size: 15pt; }
+  .kpi span { color: var(--muted); font-size: 9pt; }
+  table { width: 100%; border-collapse: collapse; font-size: 9.5pt; margin: 6px 0 10px; page-break-inside: avoid; }
+  th, td { border: 1px solid var(--line); padding: 5px 7px; text-align: left; vertical-align: top; }
+  th { background: #f9fafb; font-weight: 600; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  code { font: 9pt ui-monospace, Consolas, monospace; background: #f3f4f6; padding: 1px 4px; border-radius: 3px; }
+  pre { font: 8.8pt ui-monospace, Consolas, monospace; background: #f3f4f6; padding: 8px 10px; border-radius: 6px; white-space: pre-wrap; }
+  .invariant { border-left: 3px solid var(--accent); padding: 6px 10px; margin: 8px 0; background: #f0fdf4; }
+  .risk { border-left: 3px solid var(--warn); padding: 6px 10px; margin: 8px 0; background: #fffbeb; }
+  figure { margin: 10px 0 14px; page-break-inside: avoid; }
+  figure img { width: 100%; border: 1px solid var(--line); border-radius: 8px; }
+  figure.half img { width: 46%; }
+  figure.half { display: flex; gap: 4%; align-items: flex-start; }
+  figcaption { color: var(--muted); font-size: 9pt; margin-top: 4px; }
+  .page { page-break-before: always; }
+  .ok { color: var(--accent); font-weight: 600; }
+  ul { padding-left: 18px; }
+</style>
+</head>
+<body>
+
+<h1>Credit-card accounts</h1>
+<p class="sub">ProfitSync · engineering report · branch <code>feat/credit-card-accounts</code> · 4 September 2026</p>
+
+<p>A credit card is now a first-class <b>liability</b> account. Buying with the card records an expense and increases the card's debt; paying the card is a transfer from a bank or cash account that reduces the debt and is never a second expense. Statements are tracked per billing cycle, with partial payments, refunds, fees, overpayments and full trash/restore/edit reversibility. Available credit is shown but never counted as money the user owns.</p>
+
+<div class="kpis">
+  <div class="kpi"><b>735</b><span>unit tests green (64 files, +64 new)</span></div>
+  <div class="kpi"><b>10 / 10</b><span>end-to-end scenarios on a real database</span></div>
+  <div class="kpi"><b>1</b><span>migration (0062), additive, legacy rows untouched</span></div>
+  <div class="kpi"><b>1</b><span>pre-existing money bug found and fixed (Trash restore)</span></div>
+</div>
+
+<h2>1. What the ledger looked like before</h2>
+<ul>
+  <li>Accounts (<code>wealth_accounts</code>) had <code>type ∈ bank | cash | space</code> and a stored <code>current_balance</code> that ten code paths mutate with relative SQL deltas. The sign lives in one place: <code>balanceDelta(type, amount)</code> in <code>src/lib/wealth-ledger.ts</code> (+incoming / −outgoing), reused on create, edit, trash, restore and purge.</li>
+  <li>Transactions: <code>type ∈ incoming | outgoing</code>, positive amounts, <code>kind ∈ standard | transfer</code>. A transfer is two legs sharing a <code>group_id</code>. <code>is_system</code> marks Opening Balance / Balance Adjustment rows, which define a balance and are never reversed through Trash.</li>
+  <li>Every report (analytics, money flow, calendar, transactions summary, client totals, budgets v1/v2) inlined its own <code>case when type = 'incoming'</code> SQL. There was no refund concept outside Budget v2's provisional "same-category inflow" guess.</li>
+</ul>
+
+<h2>2. Architecture chosen — one sign convention</h2>
+<div class="invariant"><b><code>current_balance</code> stays the signed asset-equivalent value for every account type.</b> A credit card's balance is therefore normally negative: −950 means "€950 owed". Only presentation reads the sign, through <code>src/lib/credit-card.ts</code> (<code>cardDebt</code>, <code>cardCredit</code>, <code>availableCredit</code>, <code>creditUsage</code>, <code>signedBalanceFromDebt</code>). No component writes a minus sign.</div>
+<p>Because of that single rule the existing ledger needed no special cases:</p>
+<table>
+  <tr><th>Event</th><th>Ledger rows</th><th class="num">Card</th><th class="num">Bank</th><th class="num">Expense</th><th class="num">Income</th><th class="num">Net worth</th></tr>
+  <tr><td>Buy €100 groceries with Visa</td><td>outgoing €100 on Visa</td><td class="num">−100</td><td class="num">—</td><td class="num">+100</td><td class="num">0</td><td class="num">−100</td></tr>
+  <tr><td>Pay €100 Intesa → Visa</td><td>transfer (out on Intesa, in on Visa)</td><td class="num">+100</td><td class="num">−100</td><td class="num">0</td><td class="num">0</td><td class="num">0</td></tr>
+  <tr><td>Refund €100 to Visa</td><td><b>refund</b> (incoming, <code>kind='refund'</code>)</td><td class="num">+100</td><td class="num">—</td><td class="num">−100</td><td class="num">0</td><td class="num">+100</td></tr>
+  <tr><td>€10 annual fee</td><td>outgoing €10 on Visa</td><td class="num">−10</td><td class="num">—</td><td class="num">+10</td><td class="num">0</td><td class="num">−10</td></tr>
+  <tr><td>Overpay €150 on €100 debt</td><td>transfer</td><td class="num">+50 (card credit)</td><td class="num">−150</td><td class="num">0</td><td class="num">0</td><td class="num">0</td></tr>
+</table>
+
+<h3>Refunds are a first-class kind</h3>
+<p><code>transactions.kind</code> gains <code>refund</code>: an incoming row that gives money back for an earlier expense. Its balance effect is that of any incoming; reporting nets it against <b>expense</b>, never income. The rule exists once in JS (<code>src/lib/tx-classify.ts</code>) and once in SQL (<code>api/_lib/tx-sql.ts</code>). Every aggregate route imports the SQL twins, and a convention test fails if any route re-inlines the old expression.</p>
+
+<h3>Statements: an immutable snapshot table, derived payments</h3>
+<p><code>credit_card_statements</code> holds one row per closed cycle (<code>closing_date</code>, <code>due_date</code>, <code>statement_balance</code>, <code>source ∈ computed | manual</code>). Rows are filed lazily and idempotently when the card is read after a closing date has passed, or entered by the user when onboarding a card with a known statement.</p>
+<p><b>Payments are never stored.</b> Remaining = <code>clamp(statement_balance − Σ incoming transfer legs dated after the close, 0, statement_balance)</code>. A later statement already includes older unpaid debt, so one payment reduces every statement it is dated after and the oldest reaches zero first — FIFO with no allocation table that could drift. Trash, restore and edit of a payment recompute deterministically. Post-close refunds are not payments (they post to the current cycle, like a real issuer). New-cycle spending is a separate, gross, historical figure; paying the card never "un-spends" it.</p>
+<p>The balance at a close is reconstructed from the authoritative stored balance: <code>debtAtClose = −(current_balance − movementAfterClose)</code>, using the same "effect currently applied" rule Budget v2 uses.</p>
+
+<h3>Dates</h3>
+<p>Fixed day-of-month settings (1–31) clamped at use: closing day 31 → Feb 28/29, Apr 30. The due date is the first matching day strictly after the close. UTC ISO strings throughout (same conventions as <code>recurring.ts</code>). Tested for 28/29/30/31, leap years including 2000 and 2100, and the year boundary.</p>
+
+<h2>3. Data model</h2>
+<table>
+  <tr><th>Change</th><th>Detail</th></tr>
+  <tr><td><code>wealth_accounts</code></td><td><code>type='credit_card'</code>; new nullable <code>credit_limit</code>, <code>statement_closing_day</code>, <code>payment_due_day</code> (CHECK 1..31). Existing bank/cash/space rows keep NULLs and are never reinterpreted.</td></tr>
+  <tr><td><code>credit_card_statements</code> (new)</td><td>FK cascade to account and org (factory reset and org deletion leave nothing behind); unique <code>(wealth_account_id, closing_date)</code> is the filing idempotency key.</td></tr>
+  <tr><td><code>transactions.kind</code></td><td>Accepts <code>refund</code> (text column, no DDL).</td></tr>
+  <tr><td>Migration</td><td><code>drizzle/0062_credit_card_accounts.sql</code> + journal entry. Applied to the local database and verified in <code>information_schema</code>. 0060–0062 are hand-written; <code>drizzle-kit generate</code> is out of sync with them (documented in CLAUDE.md).</td></tr>
+</table>
+
+<h2>4. API</h2>
+<table>
+  <tr><th>Endpoint</th><th>Behaviour</th></tr>
+  <tr><td><code>POST /api/wealth/accounts</code></td><td><code>type: "credit_card"</code> with <code>credit_limit</code>, <code>current_debt</code>, <code>statement_closing_day</code>, <code>payment_due_day</code>, optional <code>statement { balance, closing_date, due_date? }</code>. Opening debt becomes a negative opening balance plus an outgoing Opening Balance system row (no expense, no budget spend). A known statement seeds a <code>manual</code> statement.</td></tr>
+  <tr><td><code>PATCH /api/wealth/accounts/:id</code></td><td>Accepts <code>current_debt</code> (converted to the signed balance server-side), <code>credit_limit</code>, closing/due days.</td></tr>
+  <tr><td><code>GET /api/wealth/accounts/:id/card</code></td><td>Owed / credit / available / utilisation, latest statement (paid, remaining, textual status), older statements, open cycle (spent, refunds, payments, closes on, next due).</td></tr>
+  <tr><td><code>POST /api/wealth/transfer</code></td><td>Paying a card is this endpoint with the card as <code>to_account_id</code>; legs are labelled "Card payment to / from …".</td></tr>
+  <tr><td><code>POST /api/transactions</code>, <code>/group</code>, <code>PATCH /:id</code></td><td>Accept <code>kind: "refund"</code> (must be incoming). A transfer leg refuses kind/direction/account edits.</td></tr>
+  <tr><td>Quota</td><td>New <code>creditCards</code> plan limit (free: 1 active, paid: 20 incl. closed), exposed by <code>GET /api/wealth/quota</code>.</td></tr>
+</table>
+
+<h2 class="page">5. The built UI</h2>
+<figure><img src="screenshots/wealth-desktop.png" alt="Wealth page with a credit card tile"><figcaption>/wealth — the card tile says what is owed and what is available; net worth shows Assets and Owed on cards separately. (Demo data: the payment was made from a €0 cash account, hence the negative cash balance.)</figcaption></figure>
+<figure><img src="screenshots/card-desktop.png" alt="Credit card account screen"><figcaption>/wealth/:id for a card — amount you owe, utilisation bar with accessible value text, STATEMENT (textual status, paid, still to pay, Pay statement), NEW CYCLE, quick actions, and recent activity with Card payment / Refund badges.</figcaption></figure>
+<figure class="half page">
+  <img src="screenshots/pay-card-desktop.png" alt="Pay card sheet">
+  <img src="screenshots/add-refund-desktop.png" alt="Add refund sheet">
+</figure>
+<figcaption style="margin-top:-8px">Left: Pay card — statement remaining / everything owed / other amount, from a bank or cash account; recorded as a transfer. Right: the Income / Expense / Refund selector (a refund picks from expense categories).</figcaption>
+<figure class="half">
+  <img src="screenshots/card-mobile.png" alt="Card screen on a 390px viewport">
+  <img src="screenshots/wealth-mobile.png" alt="Wealth page on a 390px viewport">
+</figure>
+<figcaption style="margin-top:-8px">Mobile (390 px): the same DOM the Capacitor shells run — 44 px targets, no horizontal scroll.</figcaption>
+<figure><img src="screenshots/dashboard-desktop.png" alt="Dashboard wealth overview"><figcaption>Dashboard — Total available is liquid money only; Owed on cards is listed beneath; a card's negative balance is never flagged as overdrawn.</figcaption></figure>
+<figure><img src="screenshots/add-card-validation.png" alt="Add card form with field-level validation"><figcaption>Add Card — field-level validation (after the first-review fix: an empty day field now names itself instead of showing the generic month-length hint).</figcaption></figure>
+
+<h2 class="page">6. Integration impact</h2>
+<table>
+  <tr><th>Area</th><th>Effect</th></tr>
+  <tr><td>Budgets v1</td><td>Spend predicates include refunds as negative spend (<code>budgetSpendSignedAmount</code>); card payments are transfers and never match.</td></tr>
+  <tr><td>Budgets v2</td><td>A <code>refund</code> row counts as a <b>confirmed</b> refund in its category's envelope (catch-all included), never as a provisional guess; envelope detail lists refund rows.</td></tr>
+  <tr><td>Analytics · Money flow · Calendar · Transactions summary · Client totals</td><td>All use the shared aggregates: transfers count nowhere, refunds reduce expense, income excludes refunds.</td></tr>
+  <tr><td>Net worth</td><td>Σ signed balances (debt reduces it); a payment leaves it unchanged; available credit is never added.</td></tr>
+  <tr><td>AI quick add / voice</td><td>Schema gains <code>kind</code>, <code>to_account_name</code>, <code>statement_payment</code>; accounts are labelled by type in the prompt. "Paid 500 towards Visa from Intesa" → a transfer saved through the transfer endpoint. "Paid my Visa statement" → amount filled from the statement remaining and flagged for review. Quick-fill refuses to fill a transfer into the expense form.</td></tr>
+  <tr><td>Trash</td><td>Delete / restore / purge verified for purchases and payments. <b>Fixed:</b> restore only brought back the one leg whose id was passed, leaving the other leg of a transfer or split in Trash — restoring a card payment reduced the debt without re-debiting the bank. Restore now brings back every trashed leg of the group.</td></tr>
+  <tr><td>Persistence / factory reset</td><td>Statements cascade with the account; no change to <code>resetOrgData</code> or org teardown.</td></tr>
+  <tr><td>i18n</td><td>~100 new keys in <code>en.json</code>, propagated to the other 7 locales with the repo's English-placeholder strategy (translations pending, per convention).</td></tr>
+  <tr><td>Native</td><td>Android synced (<code>cap:sync:android</code>), iOS bundle built and copied.</td></tr>
+</table>
+
+<h2>7. Tests</h2>
+<table>
+  <tr><th>Suite</th><th>What it pins</th></tr>
+  <tr><td><code>src/lib/credit-card.test.ts</code> (32)</td><td>Sign convention, available credit, day clamping incl. leap years (2000, 2100), year boundary, due-date rule, open cycle, statement/new-cycle boundary, filing schedule, snapshot reconstruction, full / partial / multiple / excess / over payments, refund after close, two unpaid statements FIFO, onboarding with a manual statement, validation.</td></tr>
+  <tr><td><code>src/lib/credit-card-ledger.test.ts</code> (12)</td><td>In-memory ledger using the exact route helpers: purchase, payment, refund, fee, overpayment, delete/restore/purge of purchase and payment, edit 100→70, budget double-count, net worth, onboarding, no cross-account leakage.</td></tr>
+  <tr><td><code>tx-classify.test.ts</code>, <code>api/_lib/tx-sql.test.ts</code>, <code>budget-spend.test.ts</code>, <code>budget-engine-refund.test.ts</code></td><td>Reporting rules in JS and SQL; convention check that no route re-inlines a type-only sum; Budget v1 predicates; Budget v2 refund netting.</td></tr>
+  <tr><td><code>e2e/credit-card.spec.ts</code> (9 scenarios)</td><td>Through the real UI, auth and database: create a card with a known statement → purchase → partial payment → full payment → refund → fee → overpayment → trash/restore/edit exactly once → reload; the paying account moved by exactly the payments.</td></tr>
+</table>
+
+<h3>Commands and results</h3>
+<pre>node scripts/secret-scan.mjs                       exit 0
+node scripts/check-esm-extensions.mjs              228 files reachable — OK
+node scripts/boot-functions.mjs                    all functions boot under Node ESM
+node scripts/check-route-guards.mjs                125 handlers guarded
+npm run i18n:check                                 8 locales in sync
+npm run lint · npm run typecheck                   clean
+npx vitest run                                     64 files, 735 tests passed
+npm run build + chunk-cycle grep                   built; no charts-* in vendor
+playwright e2e/credit-card.spec.ts (local DB)      10/10 passed
+playwright e2e/smoke.spec.ts (regression)          9/9 passed
+npm run cap:sync:android · build:ios + cap copy    OK</pre>
+
+<h2>8. Known limitations and follow-ups</h2>
+<ul>
+  <li>Filed statements cannot yet be edited or deleted from the UI (manual correction UX).</li>
+  <li>No minimum-payment, interest or grace-period logic; available credit is linear (limit + balance).</li>
+  <li>No per-card currency yet (accounts have no currency column); the math takes plain numbers so a card currency can be added without touching it.</li>
+  <li>Non-English locales carry English placeholders for the new keys.</li>
+  <li>The account-scoped Income/Expenses summary on bank pages still includes system rows (pre-existing, untouched).</li>
+</ul>
+<div class="risk"><b>Review focus.</b> (1) The transfer-leg edit guard now returns 400 if a client tries to change a transfer leg's kind, direction or account — existing UI never did that. (2) A purchase back-dated after its cycle was filed will not change that statement (by design). (3) The Trash restore fix changes behaviour for splits too: restoring one leg restores the whole group, matching delete.</div>
+
+<p class="sub" style="margin-top:20px">Full design notes: <code>docs/credit-cards/CREDIT_CARDS.md</code>. Handoff prompt for the reviewing agent: <code>docs/credit-cards/HANDOFF_PROMPT.md</code>.</p>
+</body>
+</html>

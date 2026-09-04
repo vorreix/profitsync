@@ -3,7 +3,7 @@ import { and, eq } from "drizzle-orm"
 import { readFileSync } from "node:fs"
 import { db } from "../../src/lib/db/index.js"
 import { clients, transactions } from "../../src/lib/db/schema.js"
-import { budgetSpendPredicates } from "./budget-spend.js"
+import { budgetSpendPredicates, budgetSpendSignedAmount } from "./budget-spend.js"
 
 // Phase 0 regression suite for the live Budget v1 correctness repairs.
 //
@@ -31,9 +31,17 @@ describe("budget spend predicates (defect #1 — is_system must not consume budg
   })
 
   it("still excludes transfers, trashed rows and income", () => {
-    expect(sql).toMatch(/"kind"/) // kind = 'standard'
+    expect(sql).toMatch(/"kind" in \(/) // kind in ('standard','refund') — transfers (card payments) never match
     expect(sql).toMatch(/"deleted_at" is null/)
-    expect(sql).toMatch(/"type"/) // type = 'outgoing'
+    expect(sql).toMatch(/"type" = \$\d+ or "transactions"\."kind" = \$\d+/) // outgoing, or a refund
+  })
+
+  it("a refund is in scope and SUBTRACTS (credit-card returns reverse spend, never count as income)", () => {
+    const signed = db
+      .select({ amount: budgetSpendSignedAmount })
+      .from(transactions)
+      .toSQL().sql
+    expect(signed).toMatch(/case when ("transactions"\.)?"kind" = 'refund' then -("transactions"\.)?"amount"::numeric else ("transactions"\.)?"amount"::numeric end/)
   })
 
   it("is org-scoped through the clients join", () => {

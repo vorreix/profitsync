@@ -20,6 +20,7 @@ import {
   Archive,
   ArrowLeftRight,
   ChevronRight,
+  CreditCard,
   Crown,
   Eye,
   EyeOff,
@@ -54,14 +55,17 @@ import { WealthAccountIcon } from "@/components/WealthAccountIcon"
 import { WealthAccountDialogs } from "@/components/wealth/WealthAccountDialogs"
 import { TransferWizard } from "@/components/wealth/TransferWizard"
 import { BankAccountFormFields } from "@/components/wealth/BankAccountFormFields"
+import { CreditCardFormFields } from "@/components/wealth/CreditCardFormFields"
 import { type BankFormState, bankDetailsPayload, emptyBankForm } from "@/lib/bank-form"
-import { accountDisplayName, currencySymbol, formatMoney, moveBefore, useBalancePrivacy, useWealthSummary } from "@/lib/wealth"
+import { type CardFormState, cardCreatePayload, cardFormErrorField, emptyCardForm, validateCardForm } from "@/lib/card-form"
+import { creditUsage, isLiabilityType } from "@/lib/credit-card"
+import { accountBalanceLabel, accountDisplayName, currencySymbol, formatMoney, moveBefore, useBalancePrivacy, useWealthSummary } from "@/lib/wealth"
 import { useTranslation } from "react-i18next"
 
 // The org's bank-account allowance (plan-based, server-enforced via 402). Loaded
 // from /api/wealth/quota so the Add button can gate up front with the crown +
 // upgrade dialog instead of a post-submit error.
-type BankQuota = { plan_key: string; bank_accounts: { current: number; limit: number } }
+type BankQuota = { plan_key: string; bank_accounts: { current: number; limit: number }; credit_cards?: { current: number; limit: number } }
 
 // One drag, two outcomes — disambiguated by *where on the target card* you drop,
 // which is unambiguous and needs no timing (the old dwell felt fragile on touch):
@@ -115,9 +119,15 @@ export function WealthPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
+  // What the create sheet is adding — a bank account or a credit card.
+  const [createKind, setCreateKind] = useState<"bank" | "credit_card">("bank")
   const [upgradeOpen, setUpgradeOpen] = useState(false)
+  const [upgradeKind, setUpgradeKind] = useState<"bank" | "credit_card">("bank")
   const [quota, setQuota] = useState<BankQuota | null>(null)
   const [form, setForm] = useState<CreateForm>(emptyCreate)
+  const [cardForm, setCardForm] = useState<CardFormState>(emptyCardForm)
+  // Inline error under the exact field that failed validation.
+  const [cardErrors, setCardErrors] = useState<Partial<Record<keyof CardFormState, string>>>({})
   const [editing, setEditing] = useState<WealthAccount | null>(null)
   const [adjusting, setAdjusting] = useState<WealthAccount | null>(null)
   const [transferOpen, setTransferOpen] = useState(false)
@@ -233,7 +243,8 @@ export function WealthPage() {
     setTransferOpen(true)
   }
 
-  const { active, total } = useWealthSummary(accounts)
+  // `total` is assets − card debt (a card's available credit is never counted).
+  const { active, total, assets, liabilities } = useWealthSummary(accounts)
   // Money parked in Spaces is still the user's money, so net worth must include
   // it (a bank→Space transfer nets to zero). /api/spaces 403s for business orgs,
   // so this is naturally personal-only.
@@ -248,6 +259,10 @@ export function WealthPage() {
     ? active.filter((a) => a.type === "bank").length
     : accounts.filter((a) => a.type === "bank").length
   const atBankLimit = quota != null && bankCount >= quota.bank_accounts.limit
+  const cardCount = isFreePlan
+    ? active.filter((a) => isLiabilityType(a.type)).length
+    : accounts.filter((a) => isLiabilityType(a.type)).length
+  const atCardLimit = quota?.credit_cards != null && cardCount >= quota.credit_cards.limit
 
   async function load({ silent = false }: { silent?: boolean } = {}) {
     const token = await getToken()
@@ -288,11 +303,64 @@ export function WealthPage() {
     // At the plan's bank allowance the Add button becomes an upgrade prompt —
     // opening the form would only end in the server's 402.
     if (atBankLimit) {
+      setUpgradeKind("bank")
       setUpgradeOpen(true)
       return
     }
+    setCreateKind("bank")
     setForm(emptyCreate)
     setCreateOpen(true)
+  }
+
+  function openCreateCard() {
+    if (atCardLimit) {
+      setUpgradeKind("credit_card")
+      setUpgradeOpen(true)
+      return
+    }
+    setCreateKind("credit_card")
+    setCardForm(emptyCardForm)
+    setCardErrors({})
+    setCreateOpen(true)
+  }
+
+  async function handleCreateCard() {
+    const problem = validateCardForm(cardForm, new Date().toISOString().slice(0, 10))
+    if (problem) {
+      const message =
+        problem === "name_required" ? t("bankNameRequired")
+        : problem === "limit_invalid" ? t("creditLimitRequired")
+        : problem === "debt_invalid" ? t("amountOwedInvalid")
+        : problem === "same_day" ? t("daysMustDiffer")
+        : problem === "closing_day_invalid" ? t("closingDayRequired")
+        : problem === "due_day_invalid" ? t("dueDayRequired")
+        : problem === "statement_balance_invalid" ? t("statementBalanceRequired")
+        : t("statementDateRequired")
+      setCardErrors({ [cardFormErrorField(problem)]: message })
+      toast.error(message)
+      return
+    }
+    if (amountExceedsLimit(cardForm.credit_limit) || amountExceedsLimit(cardForm.current_debt) || amountExceedsLimit(cardForm.statement_balance)) {
+      toast.error(t("common.amountTooLarge"))
+      return
+    }
+    setSaving(true)
+    try {
+      const token = await getToken()
+      if (!token) throw new Error("Not authenticated")
+      await apiPost("/api/wealth/accounts", token, cardCreatePayload(cardForm))
+      clearApiCache()
+      toast.success(t("accountAdded"))
+      setCreateOpen(false)
+      await load()
+    } catch (err) {
+      let upgrade = false
+      try { upgrade = !!(JSON.parse((err as Error).message) as { upgradeHint?: boolean }).upgradeHint } catch { /* not json */ }
+      if (upgrade) { setUpgradeKind("credit_card"); setUpgradeOpen(true) }
+      else toast.error(apiErrorMessage(err, t("couldNotAdd")))
+    } finally {
+      setSaving(false)
+    }
   }
 
   // Optimistic default flip: exactly one active account holds the badge.
@@ -405,6 +473,13 @@ export function WealthPage() {
         ) : (
           <>
             <p className="mt-1 text-3xl font-bold tabular-nums sm:text-4xl">{formatMoney(netWorth, currency, balancesVisible)}</p>
+            {liabilities > 0 && (
+              <p className="mt-1.5 inline-flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+                <span className="tabular-nums">{t("assets")}: {formatMoney(assets + savedTotal, currency, balancesVisible)}</span>
+                <span aria-hidden>·</span>
+                <span className="tabular-nums text-red-600 dark:text-red-400">{t("owedOnCards")}: {formatMoney(liabilities, currency, balancesVisible)}</span>
+              </p>
+            )}
             {savedTotal > 0 && (
               <button
                 type="button"
@@ -425,12 +500,16 @@ export function WealthPage() {
               <span className="ml-2 text-xs tabular-nums opacity-80">· {t("bankUsage", { current: bankCount, limit: quota.bank_accounts.limit })}</span>
             )}
           </p>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
             {active.length >= 2 && (
               <Button size="sm" variant="outline" onClick={openTransfer} disabled={loading}>
                 <ArrowLeftRight className="size-4" /> {t("transfer")}
               </Button>
             )}
+            <Button size="sm" variant="outline" onClick={openCreateCard} disabled={loading} className="relative">
+              {atCardLimit ? <Crown className="size-4 text-amber-500 dark:text-amber-400" /> : <CreditCard className="size-4" />}
+              {t("addCard")}
+            </Button>
             <Button size="sm" onClick={openCreate} disabled={loading} className="relative">
               {atBankLimit ? <Crown className="size-4 text-amber-500 dark:text-amber-400" /> : <Plus className="size-4" />}
               {t("addBank")}
@@ -547,17 +626,25 @@ export function WealthPage() {
               <span className="flex size-9 items-center justify-center rounded-full bg-amber-500/15">
                 <Crown className="size-4 text-amber-500 dark:text-amber-400" />
               </span>
-              {isFreePlan ? t("upgradeBanksTitle") : t("bankLimitTitle")}
+              {upgradeKind === "credit_card"
+                ? (isFreePlan ? t("upgradeCardsTitle") : t("cardLimitTitle"))
+                : (isFreePlan ? t("upgradeBanksTitle") : t("bankLimitTitle"))}
             </DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            {isFreePlan
-              ? t("upgradeBanksBody", { limit: quota?.bank_accounts.limit ?? 1 })
-              : t("bankLimitBody", { limit: quota?.bank_accounts.limit ?? 20 })}
+            {upgradeKind === "credit_card"
+              ? (isFreePlan
+                  ? t("upgradeCardsBody", { limit: quota?.credit_cards?.limit ?? 1 })
+                  : t("cardLimitBody", { limit: quota?.credit_cards?.limit ?? 20 }))
+              : (isFreePlan
+                  ? t("upgradeBanksBody", { limit: quota?.bank_accounts.limit ?? 1 })
+                  : t("bankLimitBody", { limit: quota?.bank_accounts.limit ?? 20 }))}
           </p>
           {quota && (
             <p className="text-xs font-medium tabular-nums text-muted-foreground">
-              {t("bankUsage", { current: bankCount, limit: quota.bank_accounts.limit })}
+              {upgradeKind === "credit_card"
+                ? t("cardUsage", { current: cardCount, limit: quota.credit_cards?.limit ?? 1 })
+                : t("bankUsage", { current: bankCount, limit: quota.bank_accounts.limit })}
             </p>
           )}
           <DialogFooter className="gap-2">
@@ -574,11 +661,23 @@ export function WealthPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Create bank dialog */}
+      {/* Create bank / credit-card dialog */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="inset-x-0 bottom-0 top-auto flex max-h-[92svh] w-full max-w-full translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-t-2xl p-0 sm:inset-x-auto sm:bottom-auto sm:top-[7svh] sm:left-1/2 sm:max-h-[86svh] sm:w-full sm:max-w-md sm:-translate-x-1/2 sm:rounded-2xl">
-          <DialogHeader className="shrink-0 border-b px-6 pb-3 pt-6"><DialogTitle>{t("addBankAccount")}</DialogTitle></DialogHeader>
+          <DialogHeader className="shrink-0 border-b px-6 pb-3 pt-6"><DialogTitle>{createKind === "credit_card" ? t("addCreditCard") : t("addBankAccount")}</DialogTitle></DialogHeader>
           <div className="min-h-0 flex-1 space-y-4 overflow-y-auto scrollbar-thin px-6 py-4">
+            {createKind === "credit_card" ? (
+              <>
+                <CreditCardFormFields
+                  form={cardForm}
+                  onChange={(patch) => { setCardForm((f) => ({ ...f, ...patch })); setCardErrors({}) }}
+                  mode="create"
+                  symbol={symbol}
+                  autoFocusName
+                  errors={cardErrors}
+                />
+              </>
+            ) : (
             <BankAccountFormFields
               form={form}
               onChange={(patch) => setForm((f) => ({ ...f, ...patch }))}
@@ -597,10 +696,13 @@ export function WealthPage() {
                 </div>
               }
             />
+            )}
           </div>
           <DialogFooter className="shrink-0 border-t px-6 pb-6 pt-3">
             <Button variant="outline" onClick={() => setCreateOpen(false)}>{t("cancel")}</Button>
-            <Button onClick={handleCreate} disabled={saving}>{saving ? t("saving") : t("addAccount")}</Button>
+            <Button onClick={createKind === "credit_card" ? handleCreateCard : handleCreate} disabled={saving}>
+              {saving ? t("saving") : createKind === "credit_card" ? t("addCard") : t("addAccount")}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -698,6 +800,9 @@ function AccountCard({
 }) {
   const { t } = useTranslation("wealth")
   const isCash = account.type === "cash"
+  const isCard = isLiabilityType(account.type)
+  const usage = isCard ? creditUsage(account.credit_limit, account.current_balance) : null
+  const kindLabel = isCash ? t("cash") : isCard ? t("creditCard") : t("bank")
 
   return (
     // "Stretched overlay" card: a single full-bleed button is the click target
@@ -719,13 +824,20 @@ function AccountCard({
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold">{accountDisplayName(account)}</p>
             <p className="truncate text-xs text-muted-foreground">
-              {isCash ? t("cash") : (account.nickname ? account.bank_name : t("bank"))}
+              {isCash ? t("cash") : (account.nickname ? account.bank_name : kindLabel)}
             </p>
           </div>
         </div>
 
         <div className="mt-4 flex items-start gap-1.5">
-          <p className="text-2xl font-bold tabular-nums">{formatMoney(Number(account.current_balance), currency, balancesVisible)}</p>
+          {/* A card shows what is OWED (or its credit) — never a bare negative number. */}
+          <p className="text-2xl font-bold tabular-nums">
+            {accountBalanceLabel(account, currency, balancesVisible, {
+              owed: (amount) => t("owed", { amount }),
+              credit: (amount) => t("cardCredit", { amount }),
+              nothingOwed: t("nothingOwed"),
+            })}
+          </p>
           <Button
             variant="ghost"
             size="icon"
@@ -737,12 +849,20 @@ function AccountCard({
             <Pencil className="size-4" />
           </Button>
         </div>
+        {usage && usage.available !== null && usage.limit !== null && (
+          <p className="mt-1 truncate text-xs text-muted-foreground tabular-nums">
+            {balancesVisible
+              ? t("availableOf", { available: formatMoney(usage.available, currency), limit: formatMoney(usage.limit, currency) })
+              : t("availableCredit")}
+            {usage.overLimit && <span className="ml-1 font-medium text-red-600 dark:text-red-400">· {t("overLimit")}</span>}
+          </p>
+        )}
 
         <div className="mt-3 flex items-center justify-between">
           <span className="flex items-center gap-1.5">
             <Badge variant="secondary" className="gap-1">
-              {isCash ? <Wallet className="size-3" /> : null}
-              {isCash ? t("cash") : t("bank")}
+              {isCash ? <Wallet className="size-3" /> : isCard ? <CreditCard className="size-3" /> : null}
+              {kindLabel}
             </Badge>
             {account.is_default && (
               <Badge className="gap-1 border-amber-500/40 bg-amber-500/15 text-amber-700 dark:text-amber-300" variant="outline">

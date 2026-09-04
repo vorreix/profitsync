@@ -4,7 +4,7 @@ import { useAuth } from "@clerk/clerk-react"
 import { z } from "zod"
 import { toast } from "sonner"
 import { useFieldErrors } from "@/lib/use-field-errors"
-import { ArrowDownRight, ArrowUpRight, Paperclip, X } from "lucide-react"
+import { ArrowDownRight, ArrowUpRight, Paperclip, RotateCcw, X } from "lucide-react"
 import { apiGet, apiPatch, apiPost } from "@/lib/api"
 import { ACCEPT_ATTR, attachmentsListPath, uploadAttachment, validateFile } from "@/lib/attachments-client"
 import type { Client, Transaction, WealthAccount } from "@/lib/types"
@@ -43,6 +43,9 @@ export function AccountQuickAddSheet({
   isPersonal,
   onSaved,
   editTx = null,
+  initialType,
+  initialKind,
+  initialCategory,
 }: {
   account: WealthAccount
   open: boolean
@@ -51,6 +54,10 @@ export function AccountQuickAddSheet({
   isPersonal: boolean
   onSaved?: (firstId: string | null) => void
   editTx?: Transaction | null
+  // Presets for the card screen's quick actions (purchase / refund / fee).
+  initialType?: "incoming" | "outgoing"
+  initialKind?: "standard" | "refund"
+  initialCategory?: string
 }) {
   const { t } = useTranslation("transactions")
   const { getToken } = useAuth()
@@ -58,6 +65,9 @@ export function AccountQuickAddSheet({
   const isEdit = !!editTx
 
   const [type, setType] = useState<"incoming" | "outgoing">("outgoing")
+  // 'refund' = money back for an earlier expense (always incoming; nets against
+  // expense in reporting, never income — src/lib/tx-classify.ts).
+  const [kind, setKind] = useState<"standard" | "refund">("standard")
   const [amount, setAmount] = useState("")
   const [description, setDescription] = useState("")
   const [category, setCategory] = useState("")
@@ -89,21 +99,23 @@ export function AccountQuickAddSheet({
     if (!draft.shouldSeed(editTx?.id ?? "add")) return
     if (editTx) {
       setType(editTx.type)
+      setKind(editTx.kind === "refund" ? "refund" : "standard")
       setAmount(String(editTx.amount))
       setDescription(editTx.description ?? "")
       setCategory(editTx.category ?? "")
       setDate(editTx.date)
     } else {
-      setType("outgoing")
+      setType(initialKind === "refund" ? "incoming" : (initialType ?? "outgoing"))
+      setKind(initialKind ?? "standard")
       setAmount("")
       setDescription("")
-      setCategory("")
+      setCategory(initialCategory ?? "")
       setDate(today())
     }
     setPendingFiles([])
     clearAll()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, editTx, clearAll])
+  }, [open, editTx, clearAll, initialType, initialKind, initialCategory])
 
   // Business orgs need a client; load them lazily on open.
   useEffect(() => {
@@ -150,6 +162,7 @@ export function AccountQuickAddSheet({
         // Edit a single account leg: PATCH re-syncs this account's balance.
         await apiPatch<Transaction>(`/api/transactions/${editTx.id}`, token, {
           type,
+          kind,
           amount: amt,
           description,
           category,
@@ -163,6 +176,7 @@ export function AccountQuickAddSheet({
           {
             ...(isPersonal ? {} : { client_id: clientId }),
             type,
+            kind,
             description,
             category,
             date,
@@ -202,28 +216,32 @@ export function AccountQuickAddSheet({
         </DialogHeader>
 
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto scrollbar-thin px-6 py-4">
-          {/* Type */}
+          {/* Type — Income / Expense / Refund (a refund is an incoming that reverses spending) */}
           <div className="space-y-1.5">
             <Label>{t("type")}</Label>
-            <div className="grid grid-cols-2 gap-2">
-              {(["incoming", "outgoing"] as const).map((ty) => (
-                <button
-                  key={ty}
-                  type="button"
-                  onClick={() => { setType(ty); setCategory("") }}
-                  className={`flex items-center justify-center gap-2 rounded-md border py-2.5 text-sm font-medium transition-colors ${
-                    type === ty
-                      ? ty === "incoming"
-                        ? "border-emerald-500 bg-emerald-50 text-emerald-700 dark:border-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400"
-                        : "border-red-500 bg-red-50 text-red-700 dark:border-red-600 dark:bg-red-900/20 dark:text-red-400"
-                      : "border-border hover:bg-muted"
-                  }`}
-                >
-                  {ty === "incoming" ? <ArrowUpRight className="size-4" /> : <ArrowDownRight className="size-4" />}
-                  {t(ty)}
-                </button>
-              ))}
+            <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label={t("type")}>
+              {([
+                { key: "incoming", ty: "incoming", kd: "standard", label: t("incoming"), Icon: ArrowUpRight, on: "border-emerald-500 bg-emerald-50 text-emerald-700 dark:border-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400" },
+                { key: "outgoing", ty: "outgoing", kd: "standard", label: t("outgoing"), Icon: ArrowDownRight, on: "border-red-500 bg-red-50 text-red-700 dark:border-red-600 dark:bg-red-900/20 dark:text-red-400" },
+                { key: "refund", ty: "incoming", kd: "refund", label: t("refund"), Icon: RotateCcw, on: "border-amber-500 bg-amber-50 text-amber-700 dark:border-amber-600 dark:bg-amber-900/20 dark:text-amber-400" },
+              ] as const).map((o) => {
+                const selected = type === o.ty && kind === o.kd
+                return (
+                  <button
+                    key={o.key}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    onClick={() => { setType(o.ty); setKind(o.kd); setCategory("") }}
+                    className={`flex min-h-11 items-center justify-center gap-1.5 rounded-md border px-2 py-2.5 text-sm font-medium transition-colors ${selected ? o.on : "border-border hover:bg-muted"}`}
+                  >
+                    <o.Icon className="size-4 shrink-0" aria-hidden />
+                    <span className="truncate">{o.label}</span>
+                  </button>
+                )
+              })}
             </div>
+            {kind === "refund" && <p className="text-xs text-muted-foreground">{t("refundHint")}</p>}
           </div>
 
           {/* Amount */}
@@ -281,7 +299,8 @@ export function AccountQuickAddSheet({
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label>{t("category")}</Label>
-              <CategoryPicker type={type} value={category} onChange={setCategory} />
+              {/* A refund belongs to the EXPENSE category it reverses. */}
+              <CategoryPicker type={kind === "refund" ? "outgoing" : type} value={category} onChange={setCategory} />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="qa-date">{t("date")}</Label>

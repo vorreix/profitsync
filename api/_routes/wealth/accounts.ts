@@ -1,14 +1,16 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { and, asc, count, eq, isNull, max, ne, sql } from "drizzle-orm"
 import { db, serialize } from "../../../src/lib/db/index.js"
-import { transactions, wealthAccounts } from "../../../src/lib/db/schema.js"
+import { creditCardStatements, transactions, wealthAccounts } from "../../../src/lib/db/schema.js"
 import { canWrite, ensureDefaultClient, requireAuth } from "../../_lib/auth.js"
 import { logAudit } from "../../_lib/audit.js"
 import { type BankDetailInput, fetchLogoData, pickBankDetails, resolveLogoColumns } from "../../_lib/bank-brand.js"
 import { amountExceedsLimit } from "../../../src/lib/money.js"
 import { logoDataUrl } from "../../../src/lib/logo-data.js"
-import { checkBankAccountQuota } from "../../_lib/quota.js"
+import { checkBankAccountQuota, checkCreditCardQuota } from "../../_lib/quota.js"
 import { materializeDueRecurring } from "../../_lib/recurring-materialize.js"
+import { dueDateFor, signedBalanceFromDebt, validateCardOnboarding } from "../../../src/lib/credit-card.js"
+import { todayIso } from "../../../src/lib/recurring.js"
 
 // "Cash in Hand" is the default account every workspace always has. We lazily
 // provision it on first read so existing orgs (created before wealth tracking)
@@ -114,6 +116,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         address: wealthAccounts.address,
         location: wealthAccounts.location,
         note: wealthAccounts.note,
+        creditLimit: wealthAccounts.creditLimit,
+        statementClosingDay: wealthAccounts.statementClosingDay,
+        paymentDueDay: wealthAccounts.paymentDueDay,
         position: wealthAccounts.position,
         isDefault: wealthAccounts.isDefault,
         archivedAt: wealthAccounts.archivedAt,
@@ -172,11 +177,45 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       opening_balance?: number
       openingBalance?: number
       icon?: string
+      // Credit card only (src/lib/credit-card.ts validateCardOnboarding):
+      credit_limit?: number | string
+      current_debt?: number | string
+      statement_closing_day?: number
+      payment_due_day?: number
+      // Optional latest statement the user still knows ("I don't know" = omit).
+      statement?: { balance?: number | string; closing_date?: string; due_date?: string } | null
     }
     const { type, nickname, icon } = body
     const bankName = body.bankName ?? body.bank_name ?? ""
-    const openingBalance = body.openingBalance ?? body.opening_balance ?? 0
-    if (type !== "bank" && type !== "cash") return res.status(400).json({ error: "type must be bank or cash" })
+    let openingBalance = body.openingBalance ?? body.opening_balance ?? 0
+    if (type !== "bank" && type !== "cash" && type !== "credit_card") return res.status(400).json({ error: "type must be bank, cash or credit_card" })
+
+    // A credit card is a LIABILITY: the amount owed is stored as a NEGATIVE
+    // balance (see src/lib/credit-card.ts) and its "opening balance" is that
+    // signed value, so the Opening Balance system row explains the debt.
+    let card: { creditLimit: number; currentDebt: number; statementClosingDay: number; paymentDueDay: number; statement: { balance: number; closingDate: string; dueDate?: string } | null } | null = null
+    if (type === "credit_card") {
+      const name = bankName.trim()
+      if (!name) return res.status(400).json({ error: "bank_name is required" })
+      const st = body.statement && body.statement.closing_date
+        ? { balance: Number(body.statement.balance ?? 0), closingDate: String(body.statement.closing_date), dueDate: body.statement.due_date ? String(body.statement.due_date) : undefined }
+        : null
+      card = {
+        creditLimit: Number(body.credit_limit),
+        currentDebt: Number(body.current_debt ?? 0),
+        statementClosingDay: Number(body.statement_closing_day),
+        paymentDueDay: Number(body.payment_due_day),
+        statement: st,
+      }
+      const problem = validateCardOnboarding(card, todayIso())
+      if (problem) return res.status(400).json({ error: `Invalid credit card: ${problem}` })
+      if (amountExceedsLimit(card.creditLimit) || amountExceedsLimit(card.currentDebt)) return res.status(400).json({ error: "Amount is too large" })
+      if (st && amountExceedsLimit(st.balance)) return res.status(400).json({ error: "Amount is too large" })
+      if (st?.dueDate && !/^\d{4}-\d{2}-\d{2}$/.test(st.dueDate)) return res.status(400).json({ error: "statement.due_date must be YYYY-MM-DD" })
+      const quota = await checkCreditCardQuota(orgId)
+      if (!quota.allowed) return res.status(402).json(quota)
+      openingBalance = signedBalanceFromDebt(card.currentDebt)
+    }
 
     if (type === "bank") {
       const name = bankName.trim()
@@ -196,8 +235,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const opening = money(openingBalance)
     if (amountExceedsLimit(opening)) return res.status(400).json({ error: "Amount is too large" })
-    // Bank-detail fields apply to bank accounts only (Cash in Hand has none).
-    const details = type === "bank" ? pickBankDetails(body) : null
+    // Bank-detail fields apply to bank + card accounts (Cash in Hand has none);
+    // a card reuses the issuer brand/logo lookup.
+    const details = type === "bank" || type === "credit_card" ? pickBankDetails(body) : null
     const logo = details ? await resolveLogoColumns(details.brandDomain, details.logoUrl) : null
     // Append new accounts after the user's existing order.
     const [{ maxPos }] = await db
@@ -213,7 +253,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         nickname: (nickname ?? "").trim(),
         openingBalance: String(opening),
         currentBalance: String(opening),
-        icon: icon || (type === "cash" ? "wallet" : "bank"),
+        icon: icon || (type === "cash" ? "wallet" : type === "credit_card" ? "card" : "bank"),
+        ...(card
+          ? {
+              creditLimit: String(card.creditLimit),
+              statementClosingDay: card.statementClosingDay,
+              paymentDueDay: card.paymentDueDay,
+            }
+          : {}),
         position: (maxPos ?? -1) + 1,
         ...(details ?? {}),
         ...(logo ? { logoUrl: logo.logoUrl, logoData: logo.logoData } : {}),
@@ -222,16 +269,39 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       })
       .returning()
 
-    if (opening > 0) {
+    if (opening !== 0) {
+      // The Opening Balance row EXPLAINS the starting balance in the ledger: an
+      // incoming for money held, an outgoing for money owed (a card's opening
+      // debt, an overdrawn bank). System rows are not income/expense.
       await createSystemTransaction({
         orgId,
         userId,
         accountId: row.id,
-        amount: opening,
-        type: "incoming",
+        amount: Math.abs(opening),
+        type: opening > 0 ? "incoming" : "outgoing",
         description: "Opening Balance",
         category: "Opening Balance",
       })
+    }
+
+    // A known latest statement seeds statement tracking (source='manual'); its
+    // remaining amount is derived from payments dated after its close, so the
+    // opening-debt system row above never counts as a payment.
+    if (card?.statement) {
+      const closingDate = card.statement.closingDate
+      await db
+        .insert(creditCardStatements)
+        .values({
+          organizationId: orgId,
+          wealthAccountId: row.id,
+          cycleStart: null,
+          closingDate,
+          dueDate: card.statement.dueDate ?? dueDateFor(closingDate, card.paymentDueDay),
+          statementBalance: card.statement.balance.toFixed(2),
+          source: "manual",
+          createdBy: userId,
+        })
+        .onConflictDoNothing({ target: [creditCardStatements.wealthAccountId, creditCardStatements.closingDate] })
     }
 
     await logAudit({ orgId, entityType: "wealth_account", entityId: row.id, action: "create", actorId: userId })

@@ -57,12 +57,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       incomingTotal: sql<string>`(
         select coalesce(sum(t.amount::numeric), 0)::text from transactions t
         inner join clients c on c.id = t.client_id
-        where c.organization_id = ${organization_id} and c.deleted_at is null and t.type = 'incoming'
+        where c.organization_id = ${organization_id} and c.deleted_at is null and t.deleted_at is null and t.is_system = false and t.type = 'incoming' and t.kind = 'standard'
       )`,
       outgoingTotal: sql<string>`(
         select coalesce(sum(t.amount::numeric), 0)::text from transactions t
         inner join clients c on c.id = t.client_id
-        where c.organization_id = ${organization_id} and c.deleted_at is null and t.type = 'outgoing'
+        where c.organization_id = ${organization_id} and c.deleted_at is null and t.deleted_at is null and t.is_system = false and t.type = 'outgoing' and t.kind = 'standard'
       )`,
     })
     .from(organizations)

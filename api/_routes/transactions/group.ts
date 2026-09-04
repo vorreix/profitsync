@@ -11,6 +11,8 @@ import { cleanTransactionTags } from "../../../src/lib/transaction-tags.js"
 import { PREMIUM_TAGS_PER_TX } from "../../../src/lib/tags.js"
 import { amountExceedsLimit } from "../../../src/lib/money.js"
 import { notifyIfBudgetExceeded } from "../../_lib/notify-budget.js"
+import { refundShapeValid } from "../../../src/lib/tx-classify.js"
+import { USER_KINDS } from "../../_lib/tx-sql.js"
 
 type AllocationInput = { wealth_account_id?: string; account_id?: string; amount?: number | string }
 
@@ -31,9 +33,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" })
   if (!canWrite(role)) return res.status(403).json({ error: "Forbidden" })
 
-  const { client_id, type, description, category, tags, date, allocations } = req.body as {
+  const { client_id, type, description, category, tags, date, allocations, kind: rawKind } = req.body as {
     client_id?: string
     type?: string
+    kind?: string
     description?: string
     category?: string
     tags?: unknown
@@ -46,6 +49,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!type || !["incoming", "outgoing"].includes(type)) {
     return res.status(400).json({ error: "type must be incoming or outgoing" })
   }
+  // 'standard' (default) or 'refund' (money back for an earlier expense — nets
+  // against expense in reporting, never income). Transfers never come from here.
+  const kind = rawKind ?? "standard"
+  if (!(USER_KINDS as readonly string[]).includes(kind)) return res.status(400).json({ error: "kind must be standard or refund" })
+  if (!refundShapeValid(type, kind)) return res.status(400).json({ error: "A refund must be incoming" })
   if (!Array.isArray(allocations) || allocations.length === 0) {
     return res.status(400).json({ error: "allocations is required" })
   }
@@ -132,6 +140,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         clientId,
         wealthAccountId: leg.accountId,
         groupId,
+        kind,
         type,
         amount: String(leg.amount),
         description: description ?? "",
