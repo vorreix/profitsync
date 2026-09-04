@@ -184,7 +184,7 @@ The sidebar has a floating action button (FAB) for quick access to Add Client, A
 |---|---|---|
 | `Organization` | `organizations` | `owner_user_id`, `slug`, `is_personal`, `currency`, `plan_key`, `plan_status` |
 | `Client` | `clients` | `organization_id` (scoping), `status`: `active\|inactive\|archived`, soft-delete via `deleted_at` |
-| `Transaction` | `transactions` | `client_id` (FK, cascade delete), `type`: `incoming\|outgoing`, `category`, `date` |
+| `Transaction` | `transactions` | `client_id` (FK, cascade delete), `type`: `incoming\|outgoing`, `kind`: `standard\|transfer\|refund` (a refund is an incoming that nets against EXPENSE, never income — `src/lib/tx-classify.ts` + `api/_lib/tx-sql.ts`), `category`, `date` |
 | `Quotation` | `quotations` | `organization_id`, `status`: `draft\|sent\|accepted\|rejected`, `linked_client_id` (set on convert) |
 | `UserProfile` | `user_profiles` | `id` = Clerk userId, `currency`, `language`, `current_organization_id`, `terms_accepted_at` |
 | `TransactionAttachment` | `transaction_attachments` | `file_data` (base64, stored in DB) |
@@ -198,7 +198,8 @@ The sidebar has a floating action button (FAB) for quick access to Add Client, A
 | `LegalAcceptance` | `legal_acceptances` | `document`: `privacy_policy\|terms_of_service` |
 | `BlogPost` | `blog_posts` | **global** (not org-scoped — admin-authored), `slug` (unique), `status`: `draft\|published`, `content` (Markdown), `published_at`, `reading_time_minutes` |
 | `Category` | `categories` | `organization_id`, per-org transaction category list (seeded on first access — re-seed only when empty, never on delete) |
-| `WealthAccount` | `wealth_accounts` | `organization_id`, `type`: `cash\|bank`, `opening_balance`, `current_balance`, `is_default`, `archived_at`; `Cash` auto-provisioned + permanent |
+| `WealthAccount` | `wealth_accounts` | `organization_id`, `type`: `cash\|bank\|space\|credit_card`, `opening_balance`, `current_balance` (SIGNED asset-equivalent — a credit card's is negative = amount owed), `credit_limit`/`statement_closing_day`/`payment_due_day` (cards), `is_default`, `archived_at`; `Cash` auto-provisioned + permanent. Liability math lives in `src/lib/credit-card.ts` — never read the sign in a component |
+| `CreditCardStatement` | `credit_card_statements` | one CLOSED billing cycle per row (`closing_date`, `due_date`, `statement_balance` snapshot, `source`: `computed\|manual`); filed lazily by `api/_lib/credit-card.ts`; paid/remaining are DERIVED from the card's incoming transfer legs after the close. See `docs/credit-cards/CREDIT_CARDS.md` |
 | `RecurringRule` | `recurring_rules` | `organization_id`, anchor + frequency; lazily **materializes** due transactions on GETs (no cron). Tx carry `recurring_rule_id` |
 | `Budget` / `BudgetHistory` | `budgets`, `budget_history` | per-client/own-company spend caps + adherence/creep history (keyed by org+client so it survives "remove") |
 | `Subscription` attempt | `billing_attempts` | who clicked checkout, status, errors, admin follow-up (status/notes); see `subscription-system` skill |
@@ -210,7 +211,7 @@ The sidebar has a floating action button (FAB) for quick access to Add Client, A
 
 **Drizzle helpers:**
 - `db` and `serialize()` are in `src/lib/db/index.ts`. `serialize()` converts Drizzle's camelCase row keys to snake_case before `res.json()` — call it on every row returned from an API route.
-- Migrations are in `drizzle/` and run automatically on `vercel-build` (`scripts/db-migrate.mjs`). Current head is **0058**. **Journal gotcha:** a new migration can silently skip ("up to date" but column missing) when `drizzle/meta/_journal.json` `when` values were normalized — bump the new entry's `when` above the previous, then verify the column exists in `information_schema`.
+- Migrations are in `drizzle/` and run automatically on `vercel-build` (`scripts/db-migrate.mjs`). Current head is **0062** (0060–0062 are hand-written — `drizzle-kit generate` is out of sync with them; write the SQL + journal entry by hand). **Journal gotcha:** a new migration can silently skip ("up to date" but column missing) when `drizzle/meta/_journal.json` `when` values were normalized — bump the new entry's `when` above the previous, then verify the column exists in `information_schema`.
 - **Local database:** `docs/budget-v2/LOCAL_DB.md` sets up a Neon-protocol-compatible local Postgres (docker), so you can migrate and develop without touching the shared instance. **Never run `npm run db:push` against a shared database** — it diffs the live schema and will propose dropping columns that exist there from unmerged branches.
 
 ### API layer — consolidated router
@@ -305,8 +306,9 @@ The Android (`android/`) and iOS (`ios/`) apps are **[Capacitor](https://capacit
 | Path | File / purpose |
 |---|---|
 | `/api/categories` · `/api/categories/:id` | per-org transaction category list (GET/POST · PATCH/DELETE) |
-| `/api/wealth/accounts` (+ `/:id`, `/reorder`, `/:id/attachments`) | cash/bank accounts + running balance |
-| `/api/wealth/transfer` | account-to-account transfer (`kind=transfer`; excluded from income/expense) |
+| `/api/wealth/accounts` (+ `/:id`, `/reorder`, `/:id/attachments`) | cash/bank/credit-card accounts + running balance (`type=credit_card` takes `credit_limit`, `current_debt`, `statement_closing_day`, `payment_due_day`, optional `statement`) |
+| `/api/wealth/accounts/:id/card` | credit-card view: owed / available credit / latest statement (paid, remaining, textual status) / open cycle — all ledger-derived (`api/_lib/credit-card.ts`) |
+| `/api/wealth/transfer` | account-to-account transfer (`kind=transfer`; excluded from income/expense). **Paying a credit card is this** with the card as `to_account_id` — never an expense |
 | `/api/wealth/bank-search` · `/api/wealth/quota` | bank logo/name autocomplete · free-plan bank gating |
 | `/api/recurring` · `/api/recurring/:id` | recurring rules (materialize lazily on GETs) |
 | `/api/calendar` | per-day money aggregates (drives `/calendar`) |
@@ -420,6 +422,7 @@ See `project_idea.md` for the full spec. Key domain concepts:
 - **Recurring rules** (`recurring_rules`): templates that **lazily materialize** due transactions on GETs (no cron) — anchor-based date math, race-proof; delete-is-final for occurrences (intentional).
 - **Calendar** (`/calendar`) + **Money flow** (`/flow`, React Flow): visual views of transactions — a day/week/month money calendar (with per-day figures) and a node graph in two modes (grouped by account/client/category, or a running-balance **timeline** chain). Both org-scoped + filterable; canvas state persists across navigation (sessionStorage `ps_flow_<org>`).
 - **Budgets** (`budgets` + `budget_history`): per-client / own-company spend caps with adherence + creep history (`/budgets`).
+- **Credit cards** (`wealth_accounts.type='credit_card'` + `credit_card_statements`): a LIABILITY account. A purchase is an ordinary outgoing on the card (expense, budget spend, debt up); paying the card is a TRANSFER bank → card (no expense, net worth unchanged); a refund is `kind='refund'` (reverses spending, not income). Statements are filed snapshots; what's paid is derived from payments after the close. Reporting aggregates MUST use `api/_lib/tx-sql.ts` (`tx-sql.test.ts` enforces it). Full design: `docs/credit-cards/CREDIT_CARDS.md`.
 - **Referrals**: credited on a real **paid** upgrade (from BOTH the `payment.succeeded` webhook AND the reconcile path — activation never depends on webhooks), payouts approved in `/admin/payouts`. See `docs/referrals/REFERRALS.md`.
 - **Admin console** (`/admin/**`) is restricted to `app_admins` rows; access is **capability-based** with system + custom roles (see *Platform-admin roles / RBAC* above). Seed the first admin via `scripts/seed-admin.ts`.
 - **Currency** is set per-org. `useCurrency()` reads `activeOrg.currency` throughout the UI. Checkout charges in the org's currency (`src/lib/billing-currency.ts`; **India always INR**).

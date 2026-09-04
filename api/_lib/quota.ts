@@ -25,6 +25,9 @@ export type PlanLimits = {
   attachmentTotalSizeKb?: number
   // Max bank accounts (Cash in Hand is always free + doesn't count). Free = 1.
   bankAccounts?: number
+  // Max credit-card accounts (type='credit_card'), counted like banks (free =
+  // active only, paid = total incl. closed). Free = 1, paid = 20.
+  creditCards?: number
   // Max personal savings Spaces (type='space'). Free = 1, paid personal = 7.
   spaces?: number
   // Max #hashtag tags per transaction. Free = 1, paid = 3 (defaults from tags.ts).
@@ -58,6 +61,7 @@ const DEFAULT_FREE_LIMITS: Required<PlanLimits> = {
   noteLength: 200,
   attachmentTotalSizeKb: 50 * 1024, // 50 MB across the whole workspace
   bankAccounts: 1, // free workspaces get a single bank account (+ Cash in Hand)
+  creditCards: 1, // free workspaces get a single credit card
   spaces: 1, // free personal accounts get a single savings Space
   tagsPerTransaction: FREE_TAGS_PER_TX, // free: a single tag per transaction
   aiCredits: envInt("AI_CREDITS_FREE_GRANT", 500), // one-time grant
@@ -73,6 +77,7 @@ const DEFAULT_PREMIUM_LIMITS: Required<PlanLimits> = {
   noteLength: 100000,
   attachmentTotalSizeKb: 5 * 1024 * 1024, // 5 GB across the whole workspace
   bankAccounts: 20, // paid plans: up to 20 bank accounts INCLUDING closed ones
+  creditCards: 20, // paid plans: up to 20 credit cards INCLUDING closed ones
   spaces: 7, // paid personal plan includes 7 savings Spaces
   tagsPerTransaction: PREMIUM_TAGS_PER_TX, // paid: up to 3 tags per transaction
   aiCredits: envInt("AI_MONTHLY_CREDITS_PREMIUM", 10_000), // monthly refill
@@ -118,6 +123,7 @@ export async function getOrgPlan(orgId: string): Promise<{ planKey: string; limi
       noteLength: stored.noteLength ?? fallback.noteLength,
       attachmentTotalSizeKb: stored.attachmentTotalSizeKb ?? fallback.attachmentTotalSizeKb,
       bankAccounts: stored.bankAccounts ?? fallback.bankAccounts,
+      creditCards: stored.creditCards ?? fallback.creditCards,
       spaces: stored.spaces ?? fallback.spaces,
       tagsPerTransaction: stored.tagsPerTransaction ?? fallback.tagsPerTransaction,
       aiCredits: stored.aiCredits ?? stored.aiParsesPerMonth ?? fallback.aiCredits,
@@ -226,6 +232,45 @@ export async function checkBankAccountQuota(orgId: string, opts: { forRestore?: 
     }
   }
   return { allowed: true }
+}
+
+/**
+ * Credit-card allowance — same shape and semantics as the bank allowance (free
+ * counts ACTIVE cards, paid counts the total incl. closed), separate pool so a
+ * free user's single bank does not block their single card.
+ */
+export async function checkCreditCardQuota(orgId: string, opts: { forRestore?: boolean } = {}): Promise<QuotaCheck> {
+  const { planKey, limits } = await getOrgPlan(orgId)
+  const isFree = planKey === "free"
+  if (!isFree && opts.forRestore) return { allowed: true }
+  const where = isFree
+    ? and(eq(wealthAccounts.organizationId, orgId), eq(wealthAccounts.type, "credit_card"), isNull(wealthAccounts.archivedAt))
+    : and(eq(wealthAccounts.organizationId, orgId), eq(wealthAccounts.type, "credit_card"))
+  const [{ current }] = await db.select({ current: count() }).from(wealthAccounts).where(where)
+  if (current >= limits.creditCards) {
+    return {
+      allowed: false,
+      reason: isFree
+        ? (opts.forRestore
+            ? "Free plan allows 1 active credit card. Upgrade to Premium to reopen this one."
+            : "Free plan includes 1 credit card. Upgrade to Premium for up to 20.")
+        : `This workspace has reached its limit of ${limits.creditCards} credit cards (including closed ones).`,
+      limit: limits.creditCards,
+      current,
+      upgradeHint: isFree,
+    }
+  }
+  return { allowed: true }
+}
+
+/** Count of credit cards that counts toward the plan limit (free: active; paid: total incl. closed). */
+export async function creditCardUsage(orgId: string): Promise<{ planKey: string; current: number; limit: number }> {
+  const { planKey, limits } = await getOrgPlan(orgId)
+  const where = planKey === "free"
+    ? and(eq(wealthAccounts.organizationId, orgId), eq(wealthAccounts.type, "credit_card"), isNull(wealthAccounts.archivedAt))
+    : and(eq(wealthAccounts.organizationId, orgId), eq(wealthAccounts.type, "credit_card"))
+  const [{ current }] = await db.select({ current: count() }).from(wealthAccounts).where(where)
+  return { planKey, current, limit: limits.creditCards }
 }
 
 /** Count of bank accounts that counts toward the plan limit (free: active; paid: total incl. closed). */

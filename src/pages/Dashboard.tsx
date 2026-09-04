@@ -29,7 +29,8 @@ import {
 import { useCurrency } from "@/lib/currency-context"
 import { useOrg } from "@/lib/org-context"
 import { useDataRefresh } from "@/lib/data-refresh-context"
-import { accountDisplayName, formatMoney, useBalancePrivacy, useWealthOverviewCollapsed, useWealthSummary } from "@/lib/wealth"
+import { accountBalanceLabel, accountDisplayName, formatMoney, useBalancePrivacy, useWealthOverviewCollapsed, useWealthSummary } from "@/lib/wealth"
+import { creditUsage, isLiabilityType } from "@/lib/credit-card"
 import { WealthAccountIcon } from "@/components/WealthAccountIcon"
 import { BusinessBudgetCard } from "@/components/budget/BusinessBudgetCard"
 import { SafeToSpendCard } from "@/components/budget/SafeToSpendCard"
@@ -529,22 +530,35 @@ function WealthOverview({
   const navigate = useNavigate()
   const { balancesVisible, setBalancesVisible } = useBalancePrivacy()
   const { collapsed, setCollapsed } = useWealthOverviewCollapsed()
-  const { active, total } = useWealthSummary(accounts)
+  // "Total available" is the money the user HOLDS (cash + bank). Credit-card
+  // debt is shown separately as "Owed on cards" — available credit is never
+  // counted as money (src/lib/wealth.ts summarizeWealth).
+  const { active, liquid, liabilities } = useWealthSummary(accounts)
+  const total = liquid
   // Glides account tiles into place when one is added, removed, or reordered.
   const [gridRef] = useAutoAnimate<HTMLDivElement>()
 
   // At-a-glance wealth health (data-driven, no arbitrary thresholds): red when the
   // total is in the red; amber when the total is positive but an account is
-  // overdrawn; green when everything's positive. Hidden under the privacy toggle so
-  // a coloured dot never leaks the sign of a masked balance.
-  const anyAccountNegative = active.some((a) => Number(a.current_balance) < 0)
-  const health: "good" | "warn" | "negative" =
-    total < 0 ? "negative" : anyAccountNegative ? "warn" : "good"
+  // overdrawn or a card is over its limit; green otherwise. A card's negative
+  // balance is normal (it is debt), so it is not "overdrawn". Hidden under the
+  // privacy toggle so a coloured dot never leaks the sign of a masked balance.
+  const anyAccountNegative = active.some((a) => !isLiabilityType(a.type) && Number(a.current_balance) < 0)
+  const anyCardOverLimit = active.some((a) => isLiabilityType(a.type) && creditUsage(a.credit_limit, a.current_balance).overLimit)
+  const health: "good" | "warn" | "cardOver" | "negative" =
+    total < 0 ? "negative" : anyAccountNegative ? "warn" : anyCardOverLimit ? "cardOver" : "good"
   const HEALTH = {
     good: { dot: "bg-emerald-500", label: t("wealth.healthGood") },
     warn: { dot: "bg-amber-500", label: t("wealth.healthWarn") },
+    cardOver: { dot: "bg-amber-500", label: t("wealth.healthCardOverLimit") },
     negative: { dot: "bg-red-500", label: t("wealth.healthNegative") },
   }[health]
+  const balanceOf = (a: WealthAccount) =>
+    accountBalanceLabel(a, currency, balancesVisible, {
+      owed: (amount) => t("wealth.owed", { amount }),
+      credit: (amount) => t("wealth.cardCredit", { amount }),
+      nothingOwed: t("wealth.nothingOwed"),
+    })
 
   return (
     <Card>
@@ -616,6 +630,11 @@ function WealthOverview({
                   <FitText className="mt-1" textClassName="text-2xl sm:text-3xl font-bold tabular-nums">
                     {formatMoney(total, currency, balancesVisible)}
                   </FitText>
+                  {liabilities > 0 && (
+                    <p className="mt-1 text-xs text-muted-foreground tabular-nums">
+                      {t("wealth.owedOnCards")}: {formatMoney(liabilities, currency, balancesVisible)}
+                    </p>
+                  )}
                 </div>
                 <Button
                   variant="outline"
@@ -654,7 +673,8 @@ function WealthOverview({
                     // A negative (overdrawn) balance is flagged in red with a red dot
                     // — but only when balances are visible, so privacy mode never
                     // leaks the sign through colour.
-                    const negative = Number(account.current_balance) < 0
+                    // A card's negative balance is debt, not an overdraft — never flagged.
+                    const negative = !isLiabilityType(account.type) && Number(account.current_balance) < 0
                     const flagNegative = negative && balancesVisible
                     return (
                     <button
@@ -667,13 +687,13 @@ function WealthOverview({
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium">{accountDisplayName(account)}</p>
                         <p className="truncate text-xs text-muted-foreground">
-                          {account.type === "cash" ? t("wealth.cash") : t("wealth.bank")}
+                          {account.type === "cash" ? t("wealth.cash") : isLiabilityType(account.type) ? t("wealth.creditCard") : t("wealth.bank")}
                         </p>
                       </div>
                       <div className="flex shrink-0 items-center gap-1">
                         {flagNegative && <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-red-500" />}
                         <span className={`text-sm font-semibold tabular-nums ${flagNegative ? "text-red-600 dark:text-red-400" : ""}`}>
-                          {formatMoney(Number(account.current_balance), currency, balancesVisible)}
+                          {balanceOf(account)}
                         </span>
                         <ChevronRight className="size-4 text-muted-foreground transition-transform duration-200 group-hover:translate-x-0.5" />
                       </div>

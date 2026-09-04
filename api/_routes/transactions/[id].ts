@@ -9,6 +9,8 @@ import { balanceDelta, reversesOnTrash } from "../../../src/lib/wealth-ledger.js
 import { amountExceedsLimit } from "../../../src/lib/money.js"
 import { cleanTransactionTags } from "../../../src/lib/transaction-tags.js"
 import { notifyIfBudgetExceeded } from "../../_lib/notify-budget.js"
+import { refundShapeValid } from "../../../src/lib/tx-classify.js"
+import { USER_KINDS } from "../../_lib/tx-sql.js"
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ctx = await requireAuth(req, res)
@@ -82,14 +84,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method === "PATCH") {
     if (!canWrite(role)) return res.status(403).json({ error: "Forbidden" })
-    const { type, amount, description, category, tags, date, wealth_account_id } = req.body as {
-      type?: string; amount?: number; description?: string; category?: string; tags?: unknown; date?: string; wealth_account_id?: string | null
+    const { type, amount, description, category, tags, date, wealth_account_id, kind } = req.body as {
+      type?: string; amount?: number; description?: string; category?: string; tags?: unknown; date?: string; wealth_account_id?: string | null; kind?: string
     }
     if (type !== undefined && !["incoming", "outgoing"].includes(type)) {
       return res.status(400).json({ error: "type must be incoming or outgoing" })
     }
+    // kind may flip standard <-> refund on a user row; transfer legs are never
+    // edited here (they'd desync from their counterpart) and never become one.
+    if (kind !== undefined && !(USER_KINDS as readonly string[]).includes(kind)) {
+      return res.status(400).json({ error: "kind must be standard or refund" })
+    }
     if (amount !== undefined && amountExceedsLimit(amount)) return res.status(400).json({ error: "Amount is too large" })
     const [before] = await db.select().from(transactions).where(eq(transactions.id, id))
+    if (!before) return res.status(404).json({ error: "Not found" })
+    if (before.kind === "transfer" && (kind !== undefined || type !== undefined || wealth_account_id !== undefined)) {
+      return res.status(400).json({ error: "A transfer leg can't change kind, direction or account — delete and recreate the transfer" })
+    }
+    const nextKind = kind ?? before.kind
+    const nextType = type ?? before.type
+    if (!refundShapeValid(nextType, nextKind)) return res.status(400).json({ error: "A refund must be incoming" })
     // Per-plan tag ceiling. Only gate when tags are actually being changed, and
     // grandfather an existing over-limit set (previousCount) so editing anything
     // else on a legacy transaction never trips it — only *adding* tags is blocked.
@@ -114,6 +128,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .update(transactions)
       .set({
         ...(wealth_account_id !== undefined ? { wealthAccountId: wealth_account_id } : {}),
+        ...(kind !== undefined ? { kind } : {}),
         ...(type !== undefined ? { type } : {}),
         ...(amount !== undefined ? { amount: String(amount) } : {}),
         ...(description !== undefined ? { description } : {}),
@@ -149,7 +164,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const changes = diffFields(
       before as Record<string, unknown>,
       updated as Record<string, unknown>,
-      ["type", "amount", "description", "category", "tags", "date", "wealthAccountId"],
+      ["type", "kind", "amount", "description", "category", "tags", "date", "wealthAccountId"],
     )
     if (Object.keys(changes).length) await logAudit({ orgId, entityType: "transaction", entityId: id, action: "update", actorId: userId, changes })
     // An edit can push a budget over just as a create can (raising the amount,

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { WealthAccountIcon } from "@/components/WealthAccountIcon"
-import { accountDisplayName, formatMoney } from "@/lib/wealth"
+import { accountBalanceLabel, accountDisplayName } from "@/lib/wealth"
 import type { WealthAccount } from "@/lib/types"
 
 /**
@@ -40,6 +40,13 @@ export function AccountCombobox({
     [options, q],
   )
   const selected = accounts.find((a) => a.id === value)
+  // A credit card shows what is OWED, never a bare negative balance.
+  const balanceOf = (a: WealthAccount) =>
+    accountBalanceLabel(a, currency, balancesVisible, {
+      owed: (amount) => t("owed", { amount }),
+      credit: (amount) => t("cardCredit", { amount }),
+      nothingOwed: t("nothingOwed"),
+    })
 
   function close() { setOpen(false); setSearch("") }
 
@@ -51,7 +58,7 @@ export function AccountCombobox({
               <span className="flex min-w-0 items-center gap-2">
                 <WealthAccountIcon account={selected} className="size-5" />
                 <span className="truncate">{accountDisplayName(selected)}</span>
-                <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{formatMoney(Number(selected.current_balance), currency, balancesVisible)}</span>
+                <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{balanceOf(selected)}</span>
               </span>
             ) : allowNone ? (
               <span className="truncate">{noneLabel ?? t("selectAccount")}</span>
@@ -90,7 +97,7 @@ export function AccountCombobox({
                 <Check className={cn("size-4 shrink-0", value === a.id ? "opacity-100" : "opacity-0")} />
                 <WealthAccountIcon account={a} className="size-6" />
                 <span className="min-w-0 flex-1 truncate">{accountDisplayName(a)}</span>
-                <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{formatMoney(Number(a.current_balance), currency, balancesVisible)}</span>
+                <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{balanceOf(a)}</span>
               </button>
             ))}
             {filtered.length === 0 && <p className="px-2 py-3 text-center text-xs text-muted-foreground">{t("noAccountFound")}</p>}

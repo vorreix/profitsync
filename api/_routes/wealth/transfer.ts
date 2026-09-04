@@ -7,6 +7,7 @@ import { canWrite, ensureDefaultClient, requireAuth } from "../../_lib/auth.js"
 import { getOrgPlan } from "../../_lib/quota.js"
 import { logAudit } from "../../_lib/audit.js"
 import { amountExceedsLimit } from "../../../src/lib/money.js"
+import { isLiabilityType } from "../../../src/lib/credit-card.js"
 
 const displayName = (a: { nickname: string; bankName: string }) => a.nickname.trim() || a.bankName
 
@@ -18,6 +19,11 @@ const displayName = (a: { nickname: string; bankName: string }) => a.nickname.tr
  * global transactions list, the income/expense summary, and analytics — they
  * show only on each account's own list. The first returned leg id can carry
  * attachments via the normal /transactions/:id/attachments route.
+ *
+ * PAYING A CREDIT CARD is exactly this: a transfer whose destination is a
+ * credit_card account. The card's stored balance is negative (debt), so the
+ * incoming leg reduces the debt; the bank leg is the cash movement. Neither leg
+ * is an expense — the purchases already were (src/lib/credit-card.ts).
  */
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ctx = await requireAuth(req, res)
@@ -82,6 +88,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const groupId = randomUUID()
   const noteText = (note ?? "").trim()
   const suffix = noteText ? ` — ${noteText}` : ""
+  // Label a card payment as such so the ledger reads naturally on both accounts.
+  const cardPayment = isLiabilityType(to.type)
+  const outDescription = cardPayment ? `Card payment to ${displayName(to)}${suffix}` : `Transfer to ${displayName(to)}${suffix}`
+  const inDescription = cardPayment ? `Card payment from ${displayName(from)}${suffix}` : `Transfer from ${displayName(from)}${suffix}`
 
   // Outgoing leg (source) then incoming leg (destination).
   const [outLeg] = await db
@@ -93,7 +103,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       kind: "transfer",
       type: "outgoing",
       amount: String(amt),
-      description: `Transfer to ${displayName(to)}${suffix}`,
+      description: outDescription,
       category: "Transfer",
       date: when,
       createdBy: userId,
@@ -109,7 +119,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       kind: "transfer",
       type: "incoming",
       amount: String(amt),
-      description: `Transfer from ${displayName(from)}${suffix}`,
+      description: inDescription,
       category: "Transfer",
       date: when,
       createdBy: userId,

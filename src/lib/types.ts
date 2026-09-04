@@ -135,7 +135,7 @@ export type TransactionLeg = {
   wealth_account_id: string | null
   wealth_account_name?: string | null
   wealth_account_bank_name?: string | null
-  wealth_account_type?: "bank" | "cash" | null
+  wealth_account_type?: WealthAccountType | null
   wealth_account_icon?: string | null
   type: "incoming" | "outgoing"
   amount: number
@@ -148,7 +148,7 @@ export type Transaction = {
   wealth_account_id?: string | null
   wealth_account_name?: string | null
   wealth_account_bank_name?: string | null
-  wealth_account_type?: "bank" | "cash" | null
+  wealth_account_type?: WealthAccountType | null
   wealth_account_icon?: string | null
   type: "incoming" | "outgoing"
   amount: number
@@ -162,12 +162,15 @@ export type Transaction = {
   // "Recurring" badge in lists + the detail modal).
   recurring_rule_id?: string | null
   // 'transfer' marks the two legs of an account-to-account move (shown only on
-  // the account-detail list, never in the global list / analytics).
-  kind?: "standard" | "transfer"
+  // the account-detail list, never in the global list / analytics) — paying a
+  // credit card is a transfer bank → card. 'refund' is an incoming that gives
+  // money back for an earlier expense: reporting nets it against EXPENSE, never
+  // income (src/lib/tx-classify.ts).
+  kind?: "standard" | "transfer" | "refund"
   // For a transfer leg: the OTHER leg's account (id + type) — lets the UI badge a
-  // transfer to/from a Space and deep-link to it.
+  // transfer to/from a Space (or a card payment) and deep-link to it.
   counterpart_account_id?: string | null
-  counterpart_type?: "bank" | "cash" | "space" | null
+  counterpart_type?: WealthAccountType | null
   created_at: string
   updated_at: string
   attachment_count?: number
@@ -181,7 +184,10 @@ export type Transaction = {
   legs?: TransactionLeg[]
 }
 
-export type WealthAccountType = "bank" | "cash" | "space"
+// `credit_card` is a LIABILITY account: `current_balance` stays the signed
+// asset-equivalent value (normally NEGATIVE = amount owed). Never read the sign
+// in a component — use cardDebt()/availableCredit() from src/lib/credit-card.ts.
+export type WealthAccountType = "bank" | "cash" | "space" | "credit_card"
 
 export type WealthAccount = {
   id: string
@@ -218,6 +224,50 @@ export type WealthAccount = {
   // progress are DERIVED (src/lib/spaces.ts), not stored.
   goal_amount?: number | null
   target_date?: string | null
+  // Credit card configuration (type='credit_card' only; null otherwise). Owed /
+  // available / statement figures are DERIVED (GET /api/wealth/accounts/:id/card).
+  credit_limit?: number | string | null
+  statement_closing_day?: number | null
+  payment_due_day?: number | null
+}
+
+// One CLOSED billing cycle of a credit card, as returned by the card summary
+// (statement_balance is the snapshot; paid/remaining/status are derived from
+// the payments dated after closing_date — src/lib/credit-card.ts statementView).
+export type CreditCardStatementView = {
+  id: string
+  cycle_start: string | null
+  closing_date: string
+  due_date: string
+  source: "computed" | "manual" | string
+  statementBalance: number
+  paid: number
+  remaining: number
+  status: "unpaid" | "partial" | "paid" | "overdue"
+  daysToDue: number
+}
+
+// GET /api/wealth/accounts/:id/card
+export type CreditCardSummary = {
+  account: WealthAccount
+  usage: {
+    debt: number
+    credit: number
+    limit: number | null
+    available: number | null
+    utilization: number | null
+    overLimit: boolean
+  }
+  statement: CreditCardStatementView | null
+  history: CreditCardStatementView[]
+  cycle: {
+    start: string
+    closes_on: string
+    next_due_date: string | null
+    spent: number
+    refunds: number
+    payments: number
+  }
 }
 
 export type RecurringRule = {

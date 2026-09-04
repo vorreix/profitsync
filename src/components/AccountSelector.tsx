@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next"
 import { Check, ChevronDown, Plus, Split, Star } from "lucide-react"
 import type { WealthAccount } from "@/lib/types"
 import { cn } from "@/lib/utils"
-import { accountDisplayName, currencySymbol, formatMoney } from "@/lib/wealth"
+import { accountBalanceLabel, accountDisplayName, currencySymbol, formatMoney } from "@/lib/wealth"
 import { WealthAccountIcon } from "@/components/WealthAccountIcon"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -79,7 +79,7 @@ export function AccountSelector({
     const cashAcc = accounts.find((a) => a.type === "cash")
     if (s && cashAcc && s.account_id !== cashAcc.id) return s.account_id
     // No opening selection → surface the user's default bank in the second slot.
-    return accounts.find((a) => a.type === "bank" && a.is_default)?.id ?? accounts.find((a) => a.type === "bank")?.id ?? ""
+    return accounts.find((a) => (a.type === "bank" || a.type === "credit_card") && a.is_default)?.id ?? accounts.find((a) => (a.type === "bank" || a.type === "credit_card"))?.id ?? ""
   })
 
   const selectedIds = useMemo(() => new Set(allocations.map((a) => a.account_id)), [allocations])
@@ -90,7 +90,7 @@ export function AccountSelector({
     accounts.find((a) => a.is_default)?.id ?? accounts.find((a) => a.type === "cash")?.id ?? accounts[0]?.id ?? ""
 
   const cash = useMemo(() => accounts.find((a) => a.type === "cash"), [accounts])
-  const banks = useMemo(() => accounts.filter((a) => a.type === "bank"), [accounts])
+  const banks = useMemo(() => accounts.filter((a) => (a.type === "bank" || a.type === "credit_card")), [accounts])
 
   const total = allocations.reduce((sum, a) => sum + (Number(a.amount) || 0), 0)
   const selectedCount = allocations.length
@@ -277,6 +277,7 @@ function AccountCard({
   onPrimary: (id: string) => void
   onAmount: (id: string, amount: string) => void
 }) {
+  const { t } = useTranslation("transactions")
   return (
     <div
       className={cn(
@@ -295,7 +296,11 @@ function AccountCard({
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-medium">{accountDisplayName(account)}</span>
           <span className="block truncate text-xs text-muted-foreground tabular-nums">
-            {formatMoney(Number(account.current_balance), currency)}
+            {accountBalanceLabel(account, currency, true, {
+              owed: (amount) => t("owedShort", { amount }),
+              credit: (amount) => t("cardCreditShort", { amount }),
+              nothingOwed: formatMoney(0, currency),
+            })}
           </span>
         </span>
         {split && !selected && (

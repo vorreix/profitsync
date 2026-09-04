@@ -38,6 +38,9 @@ export function WealthAccountIcon({
       ? spaceIconFor(account.icon)
       : account.type === "cash"
       ? Wallet
+      // A credit card without a brand logo reads as a card unless the user picked another glyph.
+      : account.type === "credit_card" && (!account.icon || account.icon === "card" || account.icon === "bank")
+        ? CreditCard
       : account.icon === "building"
         ? Building2
         : account.icon === "card"

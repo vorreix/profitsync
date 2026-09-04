@@ -167,7 +167,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           eq(clients.organizationId, orgId),
           isNull(clients.deletedAt),
           isNull(transactions.deletedAt),
-          eq(transactions.kind, "standard"),
+          // Standard rows + explicit refunds (kind='refund' — e.g. a returned
+          // credit-card purchase), so the envelope's list matches its figures.
+          sql`${transactions.kind} in ('standard', 'refund')`,
           eq(transactions.isSystem, false),
           gte(transactions.date, open.start),
           lt(transactions.date, open.endExclusive),

@@ -1,4 +1,4 @@
-import { and, eq, gte, isNull, lt, sql } from "drizzle-orm"
+import { and, eq, gte, inArray, isNull, lt, or, sql } from "drizzle-orm"
 import { db } from "../../src/lib/db/index.js"
 import { clients, transactions } from "../../src/lib/db/schema.js"
 import { periodStart, type BudgetPeriod } from "../../src/lib/budget.js"
@@ -8,8 +8,12 @@ export type PeriodSums = { daily: number; weekly: number; monthly: number; lifet
 
 /**
  * The inclusion predicates EVERY budget-spend query must share:
- * org-scoped, not trashed, outgoing, non-transfer, and **not a system
- * balance-defining row**.
+ * org-scoped, not trashed, **not a system balance-defining row**, and one of
+ *   • a standard OUTGOING (an expense — incl. a credit-card purchase), or
+ *   • a REFUND (an incoming that gives money back for an earlier expense).
+ * Transfers — including credit-card payments — never match: paying the card is
+ * not spending, the purchase already was. Rows are summed with
+ * `budgetSpendSignedAmount` so a refund SUBTRACTS from the window it lands in.
  *
  * Exported so the committed (DB-free) suite can assert the `is_system`
  * exclusion via generated SQL — that filter was missing and let "zero this
@@ -21,11 +25,14 @@ export function budgetSpendPredicates(orgId: string) {
     eq(clients.organizationId, orgId),
     isNull(clients.deletedAt),
     isNull(transactions.deletedAt),
-    eq(transactions.type, "outgoing"),
-    eq(transactions.kind, "standard"),
+    inArray(transactions.kind, ["standard", "refund"]),
+    or(eq(transactions.type, "outgoing"), eq(transactions.kind, "refund"))!,
     eq(transactions.isSystem, false),
   ]
 }
+
+/** +amount for an expense row, −amount for a refund row (the SQL twin of tx-classify.expenseContribution). */
+export const budgetSpendSignedAmount = sql<string>`case when ${transactions.kind} = 'refund' then -${transactions.amount}::numeric else ${transactions.amount}::numeric end`
 
 // Per-client OUTGOING (expense) spend for each current budget window, in ONE grouped
 // query, so a budget of any period just reads its column. Spend is derived here — the
@@ -44,10 +51,10 @@ export async function outgoingByClient(orgId: string, now: Date): Promise<Map<st
   const rows = await db
     .select({
       clientId: transactions.clientId,
-      daily: sql<string>`coalesce(sum(${transactions.amount}::numeric) filter (where ${transactions.date} >= ${today}), 0)`,
-      weekly: sql<string>`coalesce(sum(${transactions.amount}::numeric) filter (where ${transactions.date} >= ${weekStart}), 0)`,
-      monthly: sql<string>`coalesce(sum(${transactions.amount}::numeric) filter (where ${transactions.date} >= ${monthStart}), 0)`,
-      lifetime: sql<string>`coalesce(sum(${transactions.amount}::numeric), 0)`,
+      daily: sql<string>`coalesce(sum(${budgetSpendSignedAmount}) filter (where ${transactions.date} >= ${today}), 0)`,
+      weekly: sql<string>`coalesce(sum(${budgetSpendSignedAmount}) filter (where ${transactions.date} >= ${weekStart}), 0)`,
+      monthly: sql<string>`coalesce(sum(${budgetSpendSignedAmount}) filter (where ${transactions.date} >= ${monthStart}), 0)`,
+      lifetime: sql<string>`coalesce(sum(${budgetSpendSignedAmount}), 0)`,
     })
     .from(transactions)
     .innerJoin(clients, eq(transactions.clientId, clients.id))
@@ -92,7 +99,7 @@ export async function spendForWindows(
   if (clientId) conds.push(eq(transactions.clientId, clientId))
 
   const rows = await db
-    .select({ date: transactions.date, amount: transactions.amount })
+    .select({ date: transactions.date, amount: budgetSpendSignedAmount })
     .from(transactions)
     .innerJoin(clients, eq(transactions.clientId, clients.id))
     .where(and(...conds))

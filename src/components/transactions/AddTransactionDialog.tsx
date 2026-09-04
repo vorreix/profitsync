@@ -253,7 +253,17 @@ export function AddTransactionDialog({
       if (conf < HIGH) check.push(label[key])
     }
 
-    consider("type", fields.type, confidence.type, () => { patch.type = fields.type })
+    // A transfer / card payment is not a transaction-form entry: it needs two
+    // accounts and must never be saved as an expense. Point the user to the right
+    // action instead of half-filling the form.
+    if (fields.kind === "transfer") {
+      toast.info(t("ai.transferDetected"))
+      return
+    }
+    consider("type", fields.type, confidence.type, () => {
+      patch.type = fields.type
+      patch.kind = fields.kind === "refund" ? "refund" : "standard"
+    })
     consider("amount", fields.amount, confidence.amount, () => {
       // "…from account A" — use the AI-matched wealth account when it's a real,
       // confidently-matched one; otherwise fall back to the usual default.
@@ -323,6 +333,7 @@ export function AddTransactionDialog({
       const result = await apiPost<{ group_id: string | null; ids: string[] }>("/api/transactions/group", token, {
         client_id: form.client_id,
         type: form.type,
+        kind: form.kind,
         description: form.description,
         category: form.category,
         // Commit any un-entered draft too, so a typed-but-not-Entered tag isn't lost.

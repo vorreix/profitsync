@@ -7,6 +7,9 @@ export type TxForm = {
   // accounts; each allocation is saved as its own transaction row upstream.
   allocations: Allocation[]
   type: "incoming" | "outgoing"
+  // 'refund' = money back for an earlier expense (always incoming): reporting
+  // nets it against expense, never income. See src/lib/tx-classify.ts.
+  kind: "standard" | "refund"
   description: string
   category: string
   // Committed tags + the free-typed draft (committed on Enter/comma/blur/save).
@@ -19,6 +22,7 @@ export const defaultTxForm = (): TxForm => ({
   client_id: "",
   allocations: [],
   type: "incoming",
+  kind: "standard",
   description: "",
   category: "",
   tags: [],

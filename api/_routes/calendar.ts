@@ -1,9 +1,10 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { and, eq, gte, isNull, lte, ne, sql } from "drizzle-orm"
+import { and, eq, gte, isNull, lte, sql } from "drizzle-orm"
 import { db } from "../../src/lib/db/index.js"
 import { clients, transactions } from "../../src/lib/db/schema.js"
 import { requireAuth } from "../_lib/auth.js"
 import { materializeDueRecurring } from "../_lib/recurring-materialize.js"
+import { expenseSumSql, incomeSumSql, pnlKindFilter } from "../_lib/tx-sql.js"
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
 const MAX_RANGE_DAYS = 400 // a year view + slack; keeps the scan bounded
@@ -34,8 +35,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const rows = await db
     .select({
       date: sql<string>`${transactions.date}::text`,
-      incoming: sql<string>`coalesce(sum(${transactions.amount}::numeric) filter (where ${transactions.type} = 'incoming'), 0)`,
-      outgoing: sql<string>`coalesce(sum(${transactions.amount}::numeric) filter (where ${transactions.type} = 'outgoing'), 0)`,
+      // Shared reporting rules (api/_lib/tx-sql.ts): refunds reduce outgoing, never count as incoming.
+      incoming: incomeSumSql,
+      outgoing: expenseSumSql,
       count: sql<number>`count(*)::int`,
     })
     .from(transactions)
@@ -46,7 +48,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         isNull(clients.deletedAt),
         isNull(clients.closedAt),
         isNull(transactions.deletedAt),
-        ne(transactions.kind, "transfer"),
+        pnlKindFilter,
         // See api/_routes/analytics.ts — system balance-defining rows are not
         // income/expense, and budgets exclude them too.
         eq(transactions.isSystem, false),
