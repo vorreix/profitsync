@@ -3,7 +3,7 @@ import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { Loader as Loader2 } from "lucide-react"
-import { apiPost } from "@/lib/api"
+import { apiPost, apiErrorMessage } from "@/lib/api"
 import { useCurrency } from "@/lib/currency-context"
 import { currencySymbol } from "@/lib/wealth"
 import type { BudgetView } from "@/lib/types"
@@ -55,7 +55,7 @@ export function MigrationPrompts({
       toast.success(t("budgetV2.promptSaved"))
       onResolved()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : t("budgetV2.promptFailed"))
+      toast.error(apiErrorMessage(err, t("budgetV2.promptFailed")))
     } finally {
       setBusy(null)
     }

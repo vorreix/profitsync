@@ -3,7 +3,7 @@ import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { Loader as Loader2 } from "lucide-react"
-import { apiPost } from "@/lib/api"
+import { apiPost, apiErrorMessage } from "@/lib/api"
 import { useCurrency } from "@/lib/currency-context"
 import { currencySymbol } from "@/lib/wealth"
 import { Button } from "@/components/ui/button"
@@ -64,7 +64,7 @@ export function BudgetWizard({ onCreated, onSkip }: { onCreated: () => void; onS
       toast.success(t("budgetV2.created"))
       onCreated()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : t("budgetV2.createFailed"))
+      toast.error(apiErrorMessage(err, t("budgetV2.createFailed")))
       setSaving(false)
     }
   }

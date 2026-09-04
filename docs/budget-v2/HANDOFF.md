@@ -114,8 +114,9 @@ Not automated — it is an operational sequence, and it was left to whoever owns
 ### 2.4 Native apps
 
 The Android and iOS apps are Capacitor shells around the **same** `dist/` bundle, so this PR's UI is
-their UI once the bundle is re-copied. The PR ran `npm run cap:sync:android`, and `npm run build:ios`
-+ `npx cap copy ios` (permitted here because no Capacitor plugin changed).
+their UI once the bundle is re-copied. Both `npm run cap:sync:android` and `npm run cap:sync:ios`
+were run on the final bundle (2026-09-04, on macOS); earlier in the PR iOS had only received
+`build:ios` + `npx cap copy ios` from a Windows machine.
 
 Still needed, and **needs macOS + Xcode / a Gradle toolchain**:
 
@@ -140,6 +141,11 @@ shipped change means a version bump and a re-upload. See `docs/native/PUBLISHING
 | Credit cards, pending transactions, loan split | Phase 5 |
 | Business envelope plans | Business workspaces keep per-client caps; see the gate below |
 | Export / reports | Phase 5 |
+| **Space-backed funds — creation / convert UI** | The engine, routes and display handle `funding_mode = space_backed` (the Space must be this org's, FK NO ACTION), but the envelope dialog offers **virtual funds only**: §6.10 makes a mode change a confirmed transfer plus an audited event, and that flow (a Space picker + convert) is not built. Rows a future flow creates render correctly today |
+| **`budget_reserved_exceeds_available` notification** | The one alert the spec marks urgent (§14) has no emitter yet; the four-number view already exposes the condition (`cash_after_reservations < 0`) |
+| **Re-include an excluded inflow** (`DELETE /api/budgets/v2/exclusions/:id`, §11.2) | "Not a refund" is accepted only for INFLOWS now, but is still one-way — the re-include route and `tx_included` event are unbuilt |
+| **Push-only recipients and dedupe** | The notification dedupe key is enforced through the in-app row; a member with in-app OFF and push ON has no row, so a deduped emitter (overdue digest, overspend) would push again on every sync. A platform-level fix in `api/_lib/notifications.ts`, not a budget one |
+| **Dashboard tiles vs. system rows** | Analytics/Calendar/Flow exclude `is_system` balance rows; the dashboard tiles and client totals still include them — a cross-cutting consistency pass, out of this PR |
 
 ### The multicurrency boundary — do not cross it casually
 

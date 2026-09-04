@@ -3,7 +3,8 @@ import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { Loader as Loader2, Undo2 } from "lucide-react"
-import { apiGet, apiPost } from "@/lib/api"
+import { apiGet, apiPost, apiErrorMessage } from "@/lib/api"
+import { formatIsoDate } from "@/lib/dates"
 import type { BudgetProvisionalRefund } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 
@@ -31,7 +32,7 @@ export function RefundReview({
   canWrite: boolean
   onChanged: () => void
 }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const { getToken } = useAuth()
   const [refunds, setRefunds] = useState<BudgetProvisionalRefund[]>([])
   const [busy, setBusy] = useState<string | null>(null)
@@ -70,7 +71,7 @@ export function RefundReview({
       toast.success(t("budgetV2.refundRejected"))
       onChanged()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : t("budgetV2.refundFailed"))
+      toast.error(apiErrorMessage(err, t("budgetV2.refundFailed")))
     } finally {
       setBusy(null)
     }
@@ -102,7 +103,7 @@ export function RefundReview({
                 {r.description || r.category || t("budgetV2.noDescription")}
               </p>
               <p className="text-[11px] text-muted-foreground tabular-nums">
-                +{money(r.amount)} · {r.date}
+                +{money(r.amount)} · {formatIsoDate(r.date, i18n.language)}
                 {r.envelope ? ` · ${t("budgetV2.appliedTo", { name: r.envelope.name })}` : ""}
               </p>
             </div>

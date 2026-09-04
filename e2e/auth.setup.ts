@@ -101,6 +101,14 @@ setup("authenticate", async ({ page }) => {
   //     clear) so wealth balances are reversed correctly.
   await sweepLeftoverE2eData(page, businessOrgId)
 
+  // 4c. Archive the e2e user's PERSONAL household plan (Budget v2) from a prior
+  //     run. e2e/budget-v2.spec.ts short-circuits its wizard test when a plan
+  //     already exists, so on a persistent database the four-decision wizard —
+  //     the single most important budget flow — would otherwise never run
+  //     again after the first time. Archiving keeps history (spec §10.15) and
+  //     is exactly what the product's own "delete plan" does.
+  await archiveLeftoverBudgetPlan(page)
+
   // 5. Pin the BUSINESS workspace as the browser's active org BEFORE saving
   //    storage state. OrgProvider switches to it on the next boot anyway
   //    (`profile.current_organization_id`), but `expectAppShell` resolves on the
@@ -115,6 +123,28 @@ setup("authenticate", async ({ page }) => {
   await expectAppShell(page)
   await page.context().storageState({ path: AUTH_FILE })
 })
+
+async function archiveLeftoverBudgetPlan(page: Page) {
+  const result = await page.evaluate(async () => {
+    const Clerk = (window as unknown as { Clerk: { session?: { getToken: () => Promise<string | null> } } }).Clerk
+    const token = await Clerk.session?.getToken()
+    if (!token) return { ok: false, error: "no session token", archived: false }
+    const auth = { Authorization: `Bearer ${token}` }
+    const orgsRes = await fetch("/api/organizations", { headers: auth })
+    if (!orgsRes.ok) return { ok: false, error: `org list ${orgsRes.status}`, archived: false }
+    const orgs = (await orgsRes.json()) as { id: string; is_personal: boolean }[]
+    const personal = orgs.find((o) => o.is_personal)
+    if (!personal) return { ok: true, error: "", archived: false }
+    const headers = { ...auth, "x-org-id": personal.id }
+    const res = await fetch("/api/budgets/v2", { method: "DELETE", headers })
+    // 404 = no plan to archive; anything else unexpected is a real failure.
+    if (res.status === 404) return { ok: true, error: "", archived: false }
+    if (!res.ok) return { ok: false, error: `archive plan → ${res.status}`, archived: false }
+    return { ok: true, error: "", archived: true }
+  })
+  expect(result.ok, `budget plan archive failed: ${result.error}`).toBe(true)
+  if (result.archived) console.log("[e2e setup] archived the personal household plan from a prior run")
+}
 
 async function sweepLeftoverE2eData(page: Page, orgId: string) {
   const result = await page.evaluate(

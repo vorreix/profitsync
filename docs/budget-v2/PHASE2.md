@@ -95,7 +95,7 @@ as a 500 instead of a 409.
 |---|---|---|
 | Netted headroom, floored **once** | `aggregateSection` | `budget-math-phase2.test.ts` — asserts 100 **and** that it is not the 200 per-envelope flooring gives |
 | One category → one envelope | `categoryConflicts` + write-time check in both envelope routes | unit + live (409 names the owning envelope) |
-| Category matching is case- and whitespace-insensitive | `categoryKey` ≡ SQL `lower(btrim(coalesce(...)))` | unit test pins that JS trims **only** the four characters `btrim` does, so the matcher can never be wider than the index |
+| Category matching is case-insensitive and ignores surrounding SPACES | `categoryKey` ≡ SQL `lower(btrim(coalesce(...)))` | unit test pins that JS trims **only** U+0020, exactly what Postgres `btrim(text)` strips (tab/LF/CR survive both), so the matcher can never be wider than the index — the original "four characters" belief was wrong and was corrected on 2026-09-04 after a live-DB probe |
 | Reallocation leaves total planned unchanged | asserted in `reallocate.ts` before the write | live: safe-to-spend byte-identical across a move |
 | An occurrence never moves money | `occurrences.ts` writes only a deviation row | live: account balance unchanged after settling a 500 bill |
 | Σ settlements ≤ expense | `canAddSettlement`, re-read inside the request | live: 409 with the room remaining |
@@ -141,7 +141,7 @@ and **no call site changes**.
 | Full pre-commit gate on every commit | secret scan · ESM extensions · function boot · route guards (122) · i18n parity · lint · typecheck · tests — all green |
 | Production build | succeeds; `manualChunks` acyclicity verified (0 `vendor → charts`, 0 `vendor → flow`) |
 | Browser review | desktop + mobile + Arabic RTL, 0 page errors, no horizontal overflow at 390px |
-| Native parity | Android: `cap:sync:android`. iOS: `build:ios` + `cap copy ios` — see §6 |
+| Native parity | Android: `cap:sync:android`. iOS: `build:ios` + `cap copy ios` at the time — see §6; both `cap:sync:*` were later run on macOS (2026-09-04, HANDOFF §2.4) |
 
 ---
 
@@ -366,7 +366,8 @@ npx playwright test --project=chromium e2e/budget-v2.spec.ts
 ### 11.1 The migration script
 
 `scripts/migrate-budgets-v2.ts` (`--dry-run` / `--org` / `--limit`), additive and
-idempotent. Each §13.10 prohibition is enforced and locked by a test: `lifetime`
+idempotent. Each §13.10 prohibition is enforced in the script (the pure cadence/period
+math it relies on is unit-tested; the script itself is exercised by `--dry-run`): `lifetime`
 becomes a PAUSED plan, `income_mode` is `available` with no inferred income, an
 org with no v1 budget gets nothing, no historical periods are fabricated,
 amounts and currencies are copied verbatim, business orgs are skipped entirely,

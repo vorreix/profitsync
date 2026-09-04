@@ -47,7 +47,13 @@ export function ReferralBanner({ className }: { className?: string }) {
       <button type="button" onClick={() => navigate("/referrals")} className="min-w-0 flex-1 text-left text-sm hover:underline">
         {text}
       </button>
-      <button type="button" onClick={dismiss} aria-label="Dismiss" className="shrink-0 text-muted-foreground hover:text-foreground">
+      <button
+        type="button"
+        onClick={dismiss}
+        aria-label="Dismiss"
+        // A 16px glyph with a 36px hit area — a bare icon is genuinely hard to tap in the WebView.
+        className="-m-2 inline-flex size-9 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:text-foreground"
+      >
         <X className="size-4" />
       </button>
     </div>

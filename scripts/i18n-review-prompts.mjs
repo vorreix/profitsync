@@ -35,16 +35,20 @@ const TERMS = {
   fundingCapacity: "What this period has to work with. Must NOT read as 'income'. Spending never reduces it.",
   unallocated:
     "A deliberate buffer that is NOT freely spendable. Must NOT read as safeToSpend or as 'left over'.",
-  savingsFunded: "Only CONFIRMED money may be described as 'set aside'.",
-  savingsReservedNotConfirmed:
-    "Reserved but NOT yet confirmed. Must read clearly DIFFERENT from savingsFunded — this distinction is the entire point of the four contribution states.",
+  contributionConfirmed: "Only CONFIRMED money may be described as 'set aside'.",
+  contributionPlanned:
+    "Reserved but NOT yet confirmed. Must read clearly DIFFERENT from contributionConfirmed — this distinction is the entire point of the four contribution states (§8.9.1).",
+  setAsideThisPeriod: "The card label for a CONFIRMED contribution. Same distinction as contributionConfirmed.",
+  awaitingConfirmation: "The card label for a contribution that is reserved but NOT yet confirmed.",
+  fundBalance: "A RUNNING TOTAL across periods. Must read differently from fundConfirmed, which is one period's figure.",
+  fundConfirmed: "ONE period's confirmed contribution. Must read differently from fundBalance, the running total.",
   pending: "An obligation not yet paid. Must NOT read as 'spent'.",
   overdueSince: "Still owed and still reserved. Must NOT read as 'cancelled' or 'written off'.",
   stateFull: "Exactly 100% used. Neither 'nearing' nor 'exceeded'.",
   bindingPlan: "Explains that THE PLAN was the tighter of two limits. Must read differently from bindingCash.",
   bindingCash: "Explains that AVAILABLE CASH was the tighter of two limits. Must read differently from bindingPlan.",
   bindingCashOnly: "There is no plan ceiling yet, so only cash limits spending.",
-  includesRefund:
+  refundReviewBody:
     "A PROVISIONAL guess the user can correct — not a confirmed fact. The wording must convey uncertainty.",
   rejectRefund: "The user declaring it is not a refund. Must NOT read as 'delete' or 'remove the transaction'.",
 
@@ -88,7 +92,7 @@ const TERMS = {
   partiallySettled: "Money coming BACK, partly. Must read differently from fullySettled and from 'paid'.",
   fullySettled: "Money coming BACK, in full.",
   confirmedSettlement:
-    "A STATED FACT, as opposed to includesRefund which is a guess. The two must read differently.",
+    "A STATED FACT, as opposed to refundReviewBody which is a guess. The two must read differently.",
 
   // ── bills ──
   billOneTime: "A single due date, tracked only by the budget.",

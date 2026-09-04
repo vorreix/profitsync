@@ -3,7 +3,7 @@ import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { Loader as Loader2 } from "lucide-react"
-import { apiGet, apiPost } from "@/lib/api"
+import { apiGet, apiPost, apiErrorMessage } from "@/lib/api"
 import { useCurrency } from "@/lib/currency-context"
 import { currencySymbol } from "@/lib/wealth"
 import type { BudgetEnvelopeView } from "@/lib/types"
@@ -71,6 +71,11 @@ export function AddCommitmentDialog({
   const [saving, setSaving] = useState(false)
   const [problem, setProblem] = useState<string | null>(null)
 
+  // The bills envelopes, as a stable key: `envelopes` is a fresh array on
+  // every parent render (the page re-renders on each budget refresh), and a
+  // dependency on it reset the half-typed form while the dialog was open.
+  const firstEnvelopeId = envelopes[0]?.id ?? ""
+  const envelopeKey = envelopes.map((e) => e.id).join(",")
   useEffect(() => {
     if (!open) return
     setKind("one_time")
@@ -79,7 +84,7 @@ export function AddCommitmentDialog({
     setDueDate("")
     setRuleId("")
     setProblem(null)
-    setEnvelopeId(envelopes[0]?.id ?? "")
+    setEnvelopeId(firstEnvelopeId)
     let alive = true
     ;(async () => {
       try {
@@ -97,7 +102,8 @@ export function AddCommitmentDialog({
     return () => {
       alive = false
     }
-  }, [open, envelopes, getToken])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, envelopeKey, getToken])
 
   const amountNum = Number(amount)
   const canSave =
@@ -131,7 +137,7 @@ export function AddCommitmentDialog({
       onOpenChange(false)
       onCreated()
     } catch (err) {
-      setProblem(err instanceof Error ? err.message : t("budgetV2.billAddFailed"))
+      setProblem(apiErrorMessage(err, t("budgetV2.billAddFailed")))
     } finally {
       setSaving(false)
     }

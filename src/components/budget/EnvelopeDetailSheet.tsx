@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
 import { apiGet } from "@/lib/api"
+import { formatIsoDate } from "@/lib/dates"
 import type { BudgetEnvelopeView } from "@/lib/types"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
@@ -69,7 +70,7 @@ export function EnvelopeDetailSheet({
   money: (n: number) => string
   onOpenChange: (v: boolean) => void
 }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const { getToken } = useAuth()
   const [detail, setDetail] = useState<Detail | null>(null)
   const [loading, setLoading] = useState(false)
@@ -98,6 +99,9 @@ export function EnvelopeDetailSheet({
     }
   }, [envelope, getToken])
 
+  const obligation = envelope?.section === "commitment" || envelope?.section === "debt"
+  const isSavings = envelope?.section === "savings"
+
   return (
     <Drawer open={Boolean(envelope)} onOpenChange={(v) => (v ? undefined : onOpenChange(false))}>
       <DrawerContent className="max-h-[92dvh]">
@@ -105,17 +109,48 @@ export function EnvelopeDetailSheet({
           <DrawerHeader className="px-0">
             <DrawerTitle>{envelope?.name ?? ""}</DrawerTitle>
             <DrawerDescription>
-              {envelope
-                ? t("budgetV2.detailSummary", {
-                    planned: money(envelope.planned),
-                    spent: money(envelope.spent_net),
-                  })
-                : ""}
+              {/* Section vocabulary (§8.7): only a flexible envelope has a target
+                  to be over; a bill or debt is PAID or UNPAID; a fund is
+                  reserved or set aside. Blurring them is the bug class the
+                  design exists to remove. */}
+              {!envelope
+                ? ""
+                : obligation
+                  ? t("budgetV2.unpaidAmount", { amount: money(envelope.pending) })
+                  : isSavings
+                    ? envelope.contribution_status === "confirmed"
+                      ? t("budgetV2.contributionConfirmed", { amount: money(envelope.planned) })
+                      : t("budgetV2.contributionPlanned", { amount: money(envelope.planned) })
+                    : t("budgetV2.detailSummary", {
+                        planned: money(envelope.planned),
+                        spent: money(envelope.spent_net),
+                      })}
             </DrawerDescription>
           </DrawerHeader>
 
-          {/* The four figures a category card shows, in full. */}
-          {envelope && (
+          {/* The figures the card shows, in full — in the section's own words. */}
+          {envelope && obligation && (
+            <dl className="grid grid-cols-3 gap-2">
+              <Figure label={t("budgetV2.planned")} value={money(envelope.planned)} />
+              <Figure label={t("budgetV2.paidShort")} value={money(envelope.settled ?? 0)} />
+              <Figure label={t("budgetV2.unpaidLabel")} value={money(envelope.pending)} />
+            </dl>
+          )}
+          {envelope && isSavings && (
+            <dl className="grid grid-cols-3 gap-2">
+              <Figure label={t("budgetV2.planned")} value={money(envelope.planned)} />
+              <Figure
+                label={
+                  envelope.contribution_status === "confirmed"
+                    ? t("budgetV2.setAsideThisPeriod")
+                    : t("budgetV2.awaitingConfirmation")
+                }
+                value={money(envelope.planned)}
+              />
+              <Figure label={t("budgetV2.fundBalanceLabel")} value={money(envelope.balance ?? 0)} />
+            </dl>
+          )}
+          {envelope && !obligation && !isSavings && (
             <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               <Figure label={t("budgetV2.planned")} value={money(envelope.planned)} />
               <Figure label={t("budgetV2.spent")} value={money(envelope.spent_net)} />
@@ -152,7 +187,7 @@ export function EnvelopeDetailSheet({
                             {tx.description || tx.category || t("budgetV2.noDescription")}
                           </p>
                           <p className="text-[11px] text-muted-foreground tabular-nums">
-                            {tx.date}
+                            {formatIsoDate(tx.date, i18n.language)}
                             {tx.category ? ` · ${tx.category}` : ""}
                           </p>
                           {/* "This 400 was reimbursed 250, 150 still outstanding". */}
@@ -262,10 +297,10 @@ export function EnvelopeDetailSheet({
                     {detail.events.slice(0, 12).map((e) => (
                       <li key={e.id} className="flex items-center justify-between gap-2 text-[11px]">
                         <span className="truncate text-muted-foreground">
-                          {t(`budgetV2.event_${e.action}`, { defaultValue: e.action.replace(/_/g, " ") })}
+                          {t(EVENT_KEY[e.action] ?? "budgetV2.events.other")}
                         </span>
                         <span className="shrink-0 tabular-nums text-muted-foreground">
-                          {e.created_at?.slice(0, 10)}
+                          {formatIsoDate(e.created_at?.slice(0, 10), i18n.language)}
                         </span>
                       </li>
                     ))}
@@ -287,6 +322,37 @@ export function EnvelopeDetailSheet({
       </DrawerContent>
     </Drawer>
   )
+}
+
+/**
+ * Audit-trail labels, keyed statically like BudgetDetailPage's ACTION_KEY —
+ * never a dynamic key with the raw identifier as fallback, which rendered
+ * "envelope retargeted" in every locale.
+ */
+const EVENT_KEY: Record<string, string> = {
+  envelope_created: "budgetV2.events.envelopeCreated",
+  envelope_updated: "budgetV2.events.envelopeUpdated",
+  envelope_retargeted: "budgetV2.events.envelopeRetargeted",
+  envelope_removed: "budgetV2.events.envelopeRemoved",
+  envelopes_reordered: "budgetV2.events.envelopesReordered",
+  reallocated: "budgetV2.events.reallocated",
+  covered_from_unallocated: "budgetV2.events.coveredFromUnallocated",
+  commitment_created: "budgetV2.events.commitmentCreated",
+  commitment_updated: "budgetV2.events.commitmentUpdated",
+  commitment_cancelled: "budgetV2.events.commitmentCancelled",
+  occurrence_settle: "budgetV2.events.occurrenceSettled",
+  occurrence_cancel: "budgetV2.events.occurrenceCancelled",
+  occurrence_skip: "budgetV2.events.occurrenceSkipped",
+  occurrence_reschedule: "budgetV2.events.occurrenceRescheduled",
+  fund_contributed: "budgetV2.events.fundContributed",
+  fund_missed: "budgetV2.events.fundMissed",
+  fund_skipped: "budgetV2.events.fundSkipped",
+  fund_unskipped: "budgetV2.events.fundUnskipped",
+  rollover_applied: "budgetV2.events.rolloverApplied",
+  settlement_linked: "budgetV2.events.settlementLinked",
+  settlement_unlinked: "budgetV2.events.settlementUnlinked",
+  refund_rejected: "budgetV2.events.refundRejected",
+  lifetime_choice_resolved: "budgetV2.events.lifetimeChoiceResolved",
 }
 
 function Figure({ label, value, tone }: { label: string; value: string; tone?: "over" }) {

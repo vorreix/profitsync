@@ -11,7 +11,7 @@ import {
   SkipForward,
   Undo2,
 } from "lucide-react";
-import { apiPost } from "@/lib/api";
+import { apiPost, apiErrorMessage } from "@/lib/api";
 import type { BudgetEnvelopeView, BudgetView } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -106,7 +106,7 @@ export function SavingsSection({
       onChanged();
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : t("budgetV2.fundActionFailed"),
+        apiErrorMessage(err, t("budgetV2.fundActionFailed")),
       );
     } finally {
       setBusy(null);

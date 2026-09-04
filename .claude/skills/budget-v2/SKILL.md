@@ -37,9 +37,11 @@ code comments). Delivery history and the defects each phase found are in
 2. **Reallocation leaves total planned unchanged**, which is what makes `safe_to_spend`
    invariant under it. `reallocate.ts` asserts this before writing.
 3. **`categoryKey()` ≡ SQL `lower(btrim(coalesce(category,'')))`** and the functional index
-   `transactions_category_key_idx`. JS `.trim()` would be WIDER (it strips U+00A0), giving
-   two different answers for one number. Same mirror discipline applies to the fund-balance
-   SUM ≡ `fundBalanceFromEntries`.
+   `transactions_category_key_idx`. Postgres `btrim(text)` strips ONLY U+0020 SPACE — not tab,
+   LF, CR, and not unicode whitespace — so the JS mirror trims exactly that one character. JS
+   `.trim()` would be WIDER (it strips tab/LF/CR and U+00A0 too), giving two different answers
+   for one number; that exact divergence shipped once and was found by probing the live DB. Same
+   mirror discipline applies to the fund-balance SUM ≡ `fundBalanceFromEntries`.
 4. **One category → one envelope.** Enforced before the insert, and the 409 names the
    owning envelope.
 5. **The catch-all cannot be removed** — without it the plan has no ceiling and
@@ -99,7 +101,9 @@ code comments). Delivery history and the defects each phase found are in
 - UI: `src/pages/BudgetOverviewPage.tsx`, `BudgetKeyPage.tsx` (legacy URLs),
   `src/components/budget/*`, `src/lib/budget-context.tsx`.
 - Schema: `src/lib/db/schema.ts`; migrations `drizzle/0059_*` (10 tables), `0060_*`
-  (`transaction_settlements` + the category index).
+  (`transaction_settlements` + the category index), `0061_*` (`budget_envelopes.icon`),
+  `0062_*` (custom-cadence anchor CHECK; the Space FK becomes NO ACTION). 0060–0062 are
+  hand-written — write the SQL + journal entry by hand, `when` strictly above the previous.
 - Migration: `scripts/migrate-budgets-v2.ts` (`--dry-run` / `--org` / `--limit`).
 - Database: the Neon instance in `.env.local` (no local Postgres — `npm run db:migrate` reads
   `.env.local` itself).
@@ -110,8 +114,9 @@ The unit gate is **DB-FREE**, so:
 
 1. **Formulae** → extend `src/lib/budget-math*.test.ts` (committed, no DB).
 2. **SQL / route behaviour** → write a **throwaway** script against the Neon database in
-   `.env.local` (`node --env-file=.env.local --import tsx <script>.ts`), run it, and **delete it
-   before committing**. Never commit a DB-touching test.
+   `.env.local` (`npx tsx --env-file=.env.local <script>.ts` — the same invocation the
+   migration script documents), run it, and **delete it before committing**. Never commit a
+   DB-touching test.
 3. **UI** → `e2e/budget-v2.spec.ts` is committed and runs locally with the dev Clerk keys:
    ```bash
    export CLERK_PUBLISHABLE_KEY="$VITE_CLERK_PUBLISHABLE_KEY"

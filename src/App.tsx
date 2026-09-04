@@ -7,6 +7,8 @@ import { AdminLayout } from "@/pages/admin/AdminLayout"
 import { RequireAdminCap } from "@/pages/admin/RequireAdminCap"
 import { BusinessOnlyRoute } from "@/components/BusinessOnlyRoute"
 import { PersonalOnlyRoute } from "@/components/PersonalOnlyRoute"
+import { useOrg } from "@/lib/org-context"
+import { accountTypeAllows } from "@/lib/types"
 import { Toaster } from "@/components/ui/sonner"
 import { UpdatePrompt } from "@/components/UpdatePrompt"
 import { DevAgentation } from "@/components/DevAgentation"
@@ -35,6 +37,26 @@ const CategoryTagsPage = lazy(() => import("@/pages/CategoryTagsPage").then((m) 
 const BudgetsPage = lazy(() => import("@/pages/BudgetsPage").then((m) => ({ default: m.BudgetsPage })))
 const BudgetOverviewPage = lazy(() => import("@/pages/BudgetOverviewPage").then((m) => ({ default: m.BudgetOverviewPage })))
 const BudgetKeyPage = lazy(() => import("@/pages/BudgetKeyPage").then((m) => ({ default: m.BudgetKeyPage })))
+
+/**
+ * /budgets — ONE route, two surfaces (spec §13.6 "same route, no redirect",
+ * §23.4). A personal workspace gets the Budget v2 household plan; a business
+ * (or legacy) workspace keeps its v1 per-client spend caps on the SAME path,
+ * because every "Budgets" link in the app (sidebar, mobile tabs, search,
+ * detail pages) points here and a bounce to the dashboard left them dead.
+ * The server still refuses a business plan (api/_routes/budgets/v2.ts).
+ */
+function BudgetsSurface() {
+  const { activeOrg, loading } = useOrg()
+  if (loading) {
+    return (
+      <div className="flex h-[60vh] items-center justify-center">
+        <Loader2 className="size-6 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
+  return accountTypeAllows(activeOrg?.account_type, "budget_plan") ? <BudgetOverviewPage /> : <BudgetsPage />
+}
 const AnalyticsPage = lazy(() => import("@/pages/AnalyticsPage").then((m) => ({ default: m.AnalyticsPage })))
 const ReferralPage = lazy(() => import("@/pages/ReferralPage").then((m) => ({ default: m.ReferralPage })))
 const QuotationsPage = lazy(() => import("@/pages/QuotationsPage").then((m) => ({ default: m.QuotationsPage })))
@@ -224,16 +246,11 @@ export function App() {
             <Route path="spaces/:id" element={<PersonalOnlyRoute feature="spaces"><SpaceDetailPage /></PersonalOnlyRoute>} />
             <Route path="analytics" element={<AnalyticsPage />} />
             <Route path="categories" element={<CategoryTagsPage />} />
-            {/* Budget v2 is the /budgets surface. The v1 pages stay reachable at
+            {/* Budget v2 is the /budgets surface for a personal workspace; a
+                business workspace gets its v1 per-client caps on the SAME path
+                (BudgetsSurface). The v1 pages also stay reachable at
                 /budgets/legacy so an existing bookmark never 404s (spec §13.6). */}
-            <Route
-              path="budgets"
-              element={
-                <PersonalOnlyRoute feature="budget_plan">
-                  <BudgetOverviewPage />
-                </PersonalOnlyRoute>
-              }
-            />
+            <Route path="budgets" element={<BudgetsSurface />} />
             <Route path="budgets/legacy" element={<BudgetsPage />} />
             {/* Legacy bookmarks resolve to a v2 envelope, or fall through to
                 the v1 page when this workspace has no plan (§13.6). Never a 404. */}

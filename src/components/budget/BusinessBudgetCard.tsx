@@ -18,7 +18,7 @@ import { BudgetDialog } from "@/components/budget/BudgetDialog"
 
 /**
  * The OWN company's expense budget, shown on the business dashboard — the
- * counterpart of {@link PersonalBudgetCard}, but bound to the `is_own` client
+ * counterpart of the personal safe-to-spend card, but bound to the `is_own` client
  * instead of the org-level (client_id=NULL) budget. Loads that client's budget
  * (spend derived server-side) and renders the indicator + a set/edit dialog.
  */

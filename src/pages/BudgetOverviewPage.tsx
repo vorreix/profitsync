@@ -14,11 +14,13 @@ import {
   RefreshCw,
 } from "lucide-react"
 import { MoneyBag } from "@/components/icons/MoneyBag"
-import { apiPatch } from "@/lib/api"
+import { toast } from "sonner"
+import { apiErrorMessage, apiPatch } from "@/lib/api"
+import { formatIsoDate } from "@/lib/dates"
 import { useBudget } from "@/lib/budget-context"
 import { useCurrency } from "@/lib/currency-context"
 import { formatMoney } from "@/lib/wealth"
-import type { BudgetEnvelopeView, BudgetSectionName, BudgetStateV2, BudgetView } from "@/lib/types"
+import type { BudgetCurrencyLimitation, BudgetEnvelopeView, BudgetSectionName, BudgetStateV2, BudgetView } from "@/lib/types"
 import { BudgetWizard } from "@/components/budget/BudgetWizard"
 import { AddCommitmentDialog } from "@/components/budget/AddCommitmentDialog"
 import { EnvelopeDialog } from "@/components/budget/EnvelopeDialog"
@@ -52,7 +54,7 @@ const BAR: Record<BudgetStateV2, string> = {
 }
 
 export function BudgetOverviewPage() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const { getToken } = useAuth()
   const { currency } = useCurrency()
   const { data, loaded, syncing, error, refresh, sync } = useBudget()
@@ -171,6 +173,11 @@ export function BudgetOverviewPage() {
       if (!token) return
       await apiPatch("/api/budgets/v2", token, { status: paused ? "active" : "paused" }, ["/api/budgets"])
       await sync()
+    } catch (err) {
+      // Pause/resume is owner/admin on the server (§18.2); an editor's tap must
+      // say so rather than fail silently. request() throws before mutate()
+      // invalidates anything, so there is nothing to refresh here.
+      toast.error(apiErrorMessage(err, t("budgetV2.syncFailed")))
     } finally {
       setBusy(false)
     }
@@ -199,7 +206,7 @@ export function BudgetOverviewPage() {
       {paused && (
         <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-300">
           {t("budgetV2.pausedBanner", {
-            date: data.plan.paused_at ? new Date(data.plan.paused_at).toLocaleDateString() : "—",
+            date: data.plan.paused_at ? formatIsoDate(data.plan.paused_at, i18n.language) : "—",
           })}
         </div>
       )}
@@ -265,7 +272,7 @@ export function BudgetOverviewPage() {
           />
 
           {/* Machine-readable honesty about what this build cannot do (§21.4). */}
-          {data.limitations.length > 0 && <Limitations codes={data.limitations} />}
+          {data.limitations.length > 0 && <Limitations codes={data.limitations} currency={data.currency_limitation ?? null} />}
         </>
       )}
 
@@ -736,7 +743,9 @@ function EnvelopeRow({
             {...handle.attributes}
             aria-hidden
             tabIndex={-1}
-            className="flex size-6 shrink-0 cursor-grab touch-none items-center justify-center text-muted-foreground/40 transition-colors hover:text-muted-foreground active:cursor-grabbing"
+            // A 24px glyph with a 44px hit area (the ::after inset), so the grip
+            // meets the touch floor without spending 20px of a 390px row.
+            className="relative flex size-6 shrink-0 cursor-grab touch-none items-center justify-center text-muted-foreground/40 transition-colors after:absolute after:-inset-2.5 after:content-[''] hover:text-muted-foreground active:cursor-grabbing"
           >
             <GripVertical className="size-3.5" />
           </span>
@@ -928,7 +937,7 @@ function SafeToSpendExplainer({
 }
 
 /** States what this build cannot do, rather than approximating it (§21.4). */
-function Limitations({ codes }: { codes: string[] }) {
+function Limitations({ codes, currency }: { codes: string[]; currency: BudgetCurrencyLimitation | null }) {
   const { t } = useTranslation()
   const MAP: Record<string, string> = {
     credit_cards_unsupported: "budgetV2.limitCreditCards",
@@ -938,12 +947,18 @@ function Limitations({ codes }: { codes: string[] }) {
   }
   const known = codes.filter((c) => MAP[c])
   if (!known.length) return null
+  // The currency limitation names WHICH currencies disagree (§12.4): the plan's
+  // and the workspace's. Nothing is converted — the payload says so.
+  const label = (c: string) =>
+    c === "currency_changed"
+      ? t(MAP[c], { old: currency?.plan_currency ?? "", new: currency?.org_currency ?? "" })
+      : t(MAP[c])
   return (
     <details className="rounded-xl border bg-muted/30 p-3 text-xs">
       <summary className="cursor-pointer font-medium text-muted-foreground">{t("budgetV2.limitationsTitle")}</summary>
       <ul className="mt-2 space-y-1 text-muted-foreground">
         {known.map((c) => (
-          <li key={c}>· {t(MAP[c])}</li>
+          <li key={c}>· {label(c)}</li>
         ))}
       </ul>
     </details>

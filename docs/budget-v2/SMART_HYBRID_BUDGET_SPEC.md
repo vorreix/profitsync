@@ -1117,7 +1117,9 @@ includedInPlan(tx, plan):
 
 **8.3.1 Category matching.** `transactions.category` is free text with inconsistent casing
 (§2.6), and we must not migrate historical text. Matching is therefore **case-insensitive
-and whitespace-trimmed** at the boundary:
+and trimmed of surrounding spaces** at the boundary — U+0020 only, exactly what Postgres
+`btrim(text)` strips (tab, LF, CR and unicode whitespace are part of the name), so the JS
+mirror and the functional index can never disagree:
 
 ```
 envelopeFor(tx, envelopes):

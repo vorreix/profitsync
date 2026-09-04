@@ -83,9 +83,26 @@ function merge(enNode, locNode, trans, prefix) {
   return out
 }
 
+/** Every dotted leaf key in en.json — the only keys a locale may carry. */
+function flatKeys(node, prefix = "", out = new Set()) {
+  for (const [k, v] of Object.entries(node)) {
+    const path = prefix ? `${prefix}.${k}` : k
+    if (isObj(v)) flatKeys(v, path, out)
+    else out.add(path)
+  }
+  return out
+}
+const enKeys = flatKeys(en)
+
 const langs = Object.keys(translations).filter((c) => c !== "en")
 let totalChanged = 0
 for (const lang of langs) {
+  // A key that is not in en.json can never land (en is the source of truth for
+  // WHICH keys exist), so say so — a typo in a review used to vanish silently.
+  const unknown = Object.keys(translations[lang]).filter((k) => !enKeys.has(k))
+  if (unknown.length) {
+    console.log(`⚠ ${lang}: ${unknown.length} supplied key(s) do not exist in en.json and were IGNORED: ${unknown.join(", ")}`)
+  }
   const file = join(LOCALES_DIR, `${lang}.json`)
   const before = JSON.parse(readFileSync(file, "utf8"))
   stats.changed = 0

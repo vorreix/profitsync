@@ -103,7 +103,7 @@ reads **"unpaid"**, never "over". An unpaid bill is *reserved*, not overspent.
 ### Categories
 
 A flexible envelope claims one or more transaction **categories**. Matching is
-case-insensitive and ignores surrounding whitespace, so `Groceries`, `groceries` and
+case-insensitive and ignores surrounding spaces, so `Groceries`, `groceries` and
 `  Groceries ` are one category.
 
 **One category belongs to exactly one envelope.** Attempting to claim a category another

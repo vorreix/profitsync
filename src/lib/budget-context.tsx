@@ -3,7 +3,7 @@ import { useAuth } from "@clerk/clerk-react"
 import { apiGet, apiPost } from "@/lib/api"
 import { useOrg } from "@/lib/org-context"
 import { useDataRefresh } from "@/lib/data-refresh-context"
-import type { BudgetView } from "@/lib/types"
+import { accountTypeAllows, type BudgetView } from "@/lib/types"
 
 /**
  * The single source of budget state for the whole app.
@@ -54,7 +54,15 @@ export function BudgetProvider({ children }: { children: ReactNode }) {
   // rule the materializer keeps refusing, say) can never become a request loop.
   const autoSyncedFor = useRef<string | null>(null)
 
-  const orgId = activeOrg?.id ?? null
+  // A business (or legacy) workspace has no household plan by rule — the API
+  // 403s it (§23) — so fetching the view there is a wasted round trip on every
+  // page load. Treat it as "no plan" locally.
+  const orgId = activeOrg && accountTypeAllows(activeOrg.account_type, "budget_plan") ? activeOrg.id : null
+  // The workspace a response must belong to before it may land: a late reply
+  // from the PREVIOUS org (its fetch was in flight when the user switched) must
+  // never render as the active org's figures.
+  const orgRef = useRef(orgId)
+  orgRef.current = orgId
 
   const fetchView = useCallback(async (): Promise<BudgetView | null> => {
     const token = await getToken()
@@ -64,40 +72,61 @@ export function BudgetProvider({ children }: { children: ReactNode }) {
 
   const refresh = useCallback(async () => {
     if (!orgId) return
+    const target = orgId
     setLoading(true)
     try {
       const view = await fetchView()
-      if (view) setData(view)
+      if (orgRef.current !== target) return // the user switched workspace meanwhile
+      if (view) {
+        // A clean read re-arms the self-heal for the NEXT staleness episode (a
+        // period boundary or a rule coming due while this session lives).
+        // Loop-safe: a persistently stale plan never passes through a
+        // `sync_required: false` read, so its guard is never released.
+        if (!view.sync_required) autoSyncedFor.current = null
+        setData(view)
+      }
       setError(null)
     } catch (err) {
+      if (orgRef.current !== target) return
       setError(err instanceof Error ? err.message : "Could not load your budget")
     } finally {
-      setLoading(false)
-      setLoaded(true)
+      if (orgRef.current === target) {
+        setLoading(false)
+        setLoaded(true)
+      }
     }
   }, [fetchView, orgId])
 
   const sync = useCallback(async () => {
     if (!orgId) return
+    const target = orgId
     setSyncing(true)
     try {
       const token = await getToken()
       if (!token) return
       const res = await apiPost<{ view?: BudgetView }>("/api/budgets/v2/sync", token, {}, ["/api/budgets"])
+      if (orgRef.current !== target) return
       if (res?.view) setData(res.view)
       else await refresh()
       setError(null)
     } catch (err) {
+      if (orgRef.current !== target) return
       setError(err instanceof Error ? err.message : "Could not update your budget")
     } finally {
-      setSyncing(false)
-      setLoaded(true)
+      if (orgRef.current === target) {
+        setSyncing(false)
+        setLoaded(true)
+      }
     }
   }, [getToken, orgId, refresh])
 
   // Initial load + refetch when the org changes or any mutation bumps `revision`
-  // (250 ms-debounced, driven by emitDataChanged on every write).
+  // (250 ms-debounced, driven by emitDataChanged on every write). A workspace
+  // change CLEARS the view: the previous org's plan must never render under
+  // the new org, even for the instant before (or after a failed) fetch.
   useEffect(() => {
+    setData(null)
+    setError(null)
     setLoaded(false)
     autoSyncedFor.current = null
     void refresh()

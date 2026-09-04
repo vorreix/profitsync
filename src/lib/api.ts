@@ -148,8 +148,10 @@ export function apiErrorMessage(err: unknown, fallback: string): string {
     if (m === "auth") return fallback
     if (m.startsWith("{")) {
       try {
-        const j = JSON.parse(m) as { reason?: string; error?: string }
-        return j.reason || j.error || fallback
+        // Budget v2 routes answer { error: <machine code>, message: <human> } —
+        // the human text wins; quota bodies carry only `reason`.
+        const j = JSON.parse(m) as { message?: string; reason?: string; error?: string }
+        return j.message || j.reason || j.error || fallback
       } catch {
         /* not JSON — fall through */
       }

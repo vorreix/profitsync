@@ -3,7 +3,7 @@ import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { ArrowRight, Loader as Loader2, PiggyBank, TrendingUp } from "lucide-react"
-import { apiPatch, apiPost } from "@/lib/api"
+import { apiPatch, apiPost, apiErrorMessage } from "@/lib/api"
 import { useCurrency } from "@/lib/currency-context"
 import { currencySymbol } from "@/lib/wealth"
 import { overspendOptions, round2 } from "@/lib/budget-math"
@@ -99,7 +99,7 @@ export function ResolveOverspendSheet({
       onResolved()
       close()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : t("budgetV2.reallocateFailed"))
+      toast.error(apiErrorMessage(err, t("budgetV2.reallocateFailed")))
       setBusy(null)
     }
   }
@@ -120,7 +120,7 @@ export function ResolveOverspendSheet({
       onResolved()
       close()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : t("budgetV2.retargetFailed"))
+      toast.error(apiErrorMessage(err, t("budgetV2.retargetFailed")))
       setBusy(null)
     }
   }
@@ -157,6 +157,11 @@ export function ResolveOverspendSheet({
             </div>
           </div>
 
+          {/* No envelope has room and the buffer is empty: say so, or the list
+              reads as if moving money were simply not on offer. */}
+          {!options.some((o) => o.kind === "move_from_envelope" || o.kind === "cover_from_unallocated") && (
+            <p className="mt-3 text-xs text-muted-foreground">{t("budgetV2.noSpareRoom")}</p>
+          )}
           <ul className="mt-4 space-y-2">
             {options.map((o) => {
               if (o.kind === "move_from_envelope") {
@@ -173,8 +178,16 @@ export function ResolveOverspendSheet({
                         <span className="block truncate text-sm font-medium">
                           {t("budgetV2.moveFrom", { name: o.envelopeName })}
                         </span>
+                        {/* §6.11: the consequence, in the copy — the source
+                            drops, safe-to-spend stays the same. */}
                         <span className="block text-xs text-muted-foreground tabular-nums">
-                          {t("budgetV2.hasAvailable", { amount: money(o.available) })}
+                          {amountOk && asNumber <= o.available
+                            ? t("budgetV2.moveConsequence", {
+                                name: o.envelopeName,
+                                before: money(o.available),
+                                after: money(round2(o.available - asNumber)),
+                              })
+                            : t("budgetV2.hasAvailable", { amount: money(o.available) })}
                         </span>
                       </span>
                       {working ? (
@@ -201,8 +214,15 @@ export function ResolveOverspendSheet({
                           <PiggyBank className="size-4 shrink-0 text-muted-foreground" aria-hidden />
                           {t("budgetV2.coverFromUnallocated")}
                         </span>
+                        {/* §6.11: unallocated drops, safe-to-spend RISES by the amount. */}
                         <span className="block text-xs text-muted-foreground tabular-nums">
-                          {t("budgetV2.hasAvailable", { amount: money(o.available) })}
+                          {amountOk && asNumber <= o.available
+                            ? t("budgetV2.coverConsequence", {
+                                before: money(o.available),
+                                after: money(round2(o.available - asNumber)),
+                                amount: money(asNumber),
+                              })
+                            : t("budgetV2.hasAvailable", { amount: money(o.available) })}
                         </span>
                       </span>
                       {working ? (

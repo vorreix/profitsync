@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
@@ -16,7 +16,7 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core"
 import { ChevronDown, ChevronUp, GripVertical } from "lucide-react"
-import { apiPost } from "@/lib/api"
+import { apiPost, apiErrorMessage } from "@/lib/api"
 import type { BudgetEnvelopeView } from "@/lib/types"
 
 /**
@@ -56,10 +56,18 @@ export function EnvelopeList({
   const [draggingId, setDraggingId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
-  // Keep in step with the server, except while a save is in flight — otherwise
-  // a refresh mid-request would flicker the row back to its old position.
+  // The server view we last adopted. Props are re-synced only when a NEW view
+  // arrives — not when `saving` flips back to false, which happens before the
+  // post-save refetch resolves and would otherwise rewrite `order` with the
+  // pre-drag array for one full round trip (the list snapped back, then
+  // jumped forward again). A view that arrived mid-save is adopted as soon as
+  // the save ends.
+  const adoptedRef = useRef(envelopes)
   useEffect(() => {
-    if (!saving) setOrder(envelopes)
+    if (saving) return
+    if (adoptedRef.current === envelopes) return // nothing new from the server
+    adoptedRef.current = envelopes
+    setOrder(envelopes)
   }, [envelopes, saving])
 
   const sensors = useSensors(
@@ -82,7 +90,7 @@ export function EnvelopeList({
       onChanged()
     } catch (err) {
       setOrder(previous) // the server refused; show the truth
-      toast.error(err instanceof Error ? err.message : t("budgetV2.reorderFailed"))
+      toast.error(apiErrorMessage(err, t("budgetV2.reorderFailed")))
     } finally {
       setSaving(false)
     }
@@ -114,7 +122,15 @@ export function EnvelopeList({
   }
 
   if (!reorderable) {
-    return <ul className="mt-3 space-y-2 border-t pt-3">{order.map((e) => children(e, null))}</ul>
+    // Keyed list items, like the sibling commitment/debt sections — a bare
+    // <div> inside <ul> is invalid list semantics for assistive tech.
+    return (
+      <ul className="mt-3 space-y-2 border-t pt-3">
+        {order.map((e) => (
+          <li key={e.id}>{children(e, null)}</li>
+        ))}
+      </ul>
+    )
   }
 
   const dragged = order.find((e) => e.id === draggingId)
@@ -135,21 +151,21 @@ export function EnvelopeList({
                 <div className="min-w-0 flex-1">{children(env, handle)}</div>
                 {/* The accessible path. Labelled per row so a screen reader
                     announces WHICH envelope is being moved. */}
-                {/* Stacked, so the PAIR is a 36x36 control block. Each half is
-                    18px tall — the smallest sensible split of a 36px target —
-                    and both are full width, which is what makes them hittable
+                {/* Stacked, so the PAIR is a 44px-wide, 48px-tall control
+                    block. Each half is 24px tall (the WCAG 2.5.8 minimum per
+                    target) and full width, which is what makes them hittable
                     with a thumb. */}
                 {/* Top-aligned, not centred: the row is now as tall as its
                     used/left bar and its overspend line, and a control block
                     floating at the vertical middle of all that reads as though
                     it belongs to the bar rather than to the row. */}
-                <div className="flex w-9 shrink-0 flex-col justify-start pt-1">
+                <div className="flex w-11 shrink-0 flex-col justify-start">
                   <button
                     type="button"
                     disabled={index === 0 || saving}
                     onClick={() => move(env.id, -1)}
                     aria-label={t("budgetV2.moveUp", { name: env.name })}
-                    className="pressable flex h-[18px] w-9 items-center justify-center rounded text-muted-foreground/60 transition-colors hover:text-foreground disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="pressable flex h-6 w-11 items-center justify-center rounded text-muted-foreground/60 transition-colors hover:text-foreground disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     <ChevronUp className="size-3.5" aria-hidden />
                   </button>
@@ -158,7 +174,7 @@ export function EnvelopeList({
                     disabled={index === order.length - 1 || saving}
                     onClick={() => move(env.id, 1)}
                     aria-label={t("budgetV2.moveDown", { name: env.name })}
-                    className="pressable flex h-[18px] w-9 items-center justify-center rounded text-muted-foreground/60 transition-colors hover:text-foreground disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="pressable flex h-6 w-11 items-center justify-center rounded text-muted-foreground/60 transition-colors hover:text-foreground disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     <ChevronDown className="size-3.5" aria-hidden />
                   </button>

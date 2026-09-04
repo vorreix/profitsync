@@ -3,7 +3,7 @@ import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { Loader as Loader2, Trash2, X } from "lucide-react"
-import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api"
+import { apiDelete, apiGet, apiPatch, apiPost, apiErrorMessage } from "@/lib/api"
 import { useCurrency } from "@/lib/currency-context"
 import { currencySymbol } from "@/lib/wealth"
 import { categoryKey } from "@/lib/budget-math"
@@ -95,7 +95,11 @@ export function EnvelopeDialog({
 
   // Savings only. `virtual` is the default because it needs no Space, is
   // unlimited on every plan and moves no money.
-  const [fundingMode, setFundingMode] = useState<"virtual" | "space_backed">("virtual")
+  // Space-backed funds (a fund whose money sits in a Space) need a Space picker
+  // and a confirmed convert flow (§6.10) that are not built yet — the server
+  // would refuse a space_backed envelope without a Space. Only virtual funds
+  // are created here; rows a future convert flow makes are still displayed.
+  const FUNDING_MODE = "virtual" as const
   const [goal, setGoal] = useState("")
   const [targetDate, setTargetDate] = useState("")
 
@@ -116,7 +120,6 @@ export function EnvelopeDialog({
       setTarget(envelope.authored_amount > 0 ? String(envelope.authored_amount) : "")
       setPicked(envelope.match_keys ?? [])
       setIcon(envelope.icon ?? "")
-      setFundingMode(envelope.funding_mode === "space_backed" ? "space_backed" : "virtual")
       setGoal(envelope.goal_amount != null ? String(envelope.goal_amount) : "")
       setTargetDate(envelope.target_date ?? "")
     } else {
@@ -124,7 +127,6 @@ export function EnvelopeDialog({
       setTarget("")
       setPicked([])
       setIcon("")
-      setFundingMode("virtual")
       setGoal("")
       setTargetDate("")
     }
@@ -176,7 +178,9 @@ export function EnvelopeDialog({
         ...(needsCategories && !isCatchAll ? { match_keys: picked } : {}),
         ...(isSavings
           ? {
-              funding_mode: fundingMode,
+              // The funding MODE is set at creation only: changing it is a
+              // confirmed transfer plus an audited event (§6.10), not an edit.
+              ...(editing ? {} : { funding_mode: FUNDING_MODE }),
               goal_amount: Number(goal) > 0 ? Number(goal) : null,
               target_date: targetDate || null,
             }
@@ -195,7 +199,7 @@ export function EnvelopeDialog({
       // The server names which envelope already claims a category, and that is
       // the useful part — keep it on screen instead of in a toast that vanishes
       // before it can be acted on.
-      setProblem(err instanceof Error ? err.message : t("budgetV2.envelopeCreateFailed"))
+      setProblem(apiErrorMessage(err, t("budgetV2.envelopeCreateFailed")))
     } finally {
       setSaving(false)
     }
@@ -208,12 +212,12 @@ export function EnvelopeDialog({
     try {
       const token = await getToken()
       if (!token) return
-      await apiDelete(`/api/budgets/v2/envelopes/${envelope.id}`, token, ["/api/budgets"])
+      await apiDelete(`/api/budgets/v2/envelopes/${envelope.id}`, token, undefined, ["/api/budgets"])
       toast.success(t("budgetV2.envelopeRemoved", { name: envelope.name }))
       onOpenChange(false)
       onSaved()
     } catch (err) {
-      setProblem(err instanceof Error ? err.message : t("budgetV2.envelopeRemoveFailed"))
+      setProblem(apiErrorMessage(err, t("budgetV2.envelopeRemoveFailed")))
       setConfirmDelete(false)
     } finally {
       setDeleting(false)
@@ -292,34 +296,6 @@ export function EnvelopeDialog({
 
           {isSavings && (
             <>
-              <div className="space-y-1.5">
-                <Label>{t("budgetV2.fundMode")}</Label>
-                <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label={t("budgetV2.fundMode")}>
-                  {(
-                    [
-                      ["virtual", t("budgetV2.fundVirtual"), t("budgetV2.fundVirtualHint")],
-                      ["space_backed", t("budgetV2.fundSpace"), t("budgetV2.fundSpaceHint")],
-                    ] as ["virtual" | "space_backed", string, string][]
-                  ).map(([value, label, hint]) => (
-                    <button
-                      key={value}
-                      type="button"
-                      role="radio"
-                      aria-checked={fundingMode === value}
-                      onClick={() => setFundingMode(value)}
-                      className={`pressable flex min-h-16 flex-col items-start justify-center gap-0.5 rounded-xl border px-3 py-2 text-left transition-colors ${
-                        fundingMode === value ? "border-primary bg-primary/5" : "hover:bg-accent"
-                      }`}
-                    >
-                      <span className="text-sm font-medium">{label}</span>
-                      <span className="text-[11px] text-muted-foreground">{hint}</span>
-                    </button>
-                  ))}
-                </div>
-                {fundingMode === "space_backed" && (
-                  <p className="text-xs text-muted-foreground">{t("budgetV2.fundSpaceNote")}</p>
-                )}
-              </div>
 
               <div className="grid grid-cols-2 gap-2">
                 <div className="space-y-1.5">

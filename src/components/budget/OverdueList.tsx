@@ -3,7 +3,8 @@ import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { CalendarClock, Check, Loader as Loader2, SkipForward } from "lucide-react"
-import { apiPost } from "@/lib/api"
+import { apiPost, apiErrorMessage } from "@/lib/api"
+import { formatIsoDate } from "@/lib/dates"
 import type { BudgetOccurrenceView } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -39,7 +40,7 @@ export function OverdueList({
   canWrite: boolean
   onChanged: () => void
 }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const { getToken } = useAuth()
   const [busy, setBusy] = useState<string | null>(null)
   const [rescheduling, setRescheduling] = useState<BudgetOccurrenceView | null>(null)
@@ -68,7 +69,7 @@ export function OverdueList({
       )
       onChanged()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : t("budgetV2.occurrenceFailed"))
+      toast.error(apiErrorMessage(err, t("budgetV2.occurrenceFailed")))
     } finally {
       setBusy(null)
     }
@@ -97,7 +98,7 @@ export function OverdueList({
                   <p className="truncate text-xs font-medium">{o.name || t("budgetV2.untitledBill")}</p>
                   <p className="text-[11px] text-muted-foreground tabular-nums">
                     {money(o.amount)} ·{" "}
-                    {t("budgetV2.overdueSince", { date: o.due_date })} ·{" "}
+                    {t("budgetV2.overdueSince", { date: formatIsoDate(o.due_date, i18n.language) })} ·{" "}
                     {t("budgetV2.daysOverdue", { count: o.days_overdue ?? 0 })}
                     {o.from_previous_period && ` · ${t("budgetV2.carriedOver")}`}
                   </p>

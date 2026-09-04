@@ -1,8 +1,11 @@
 # End-to-end gate for main.
 #
-# Runs the Playwright smoke suite on every PR TARGETING MAIN (the merge gate)
-# and on demand (workflow_dispatch — usable from dev or any branch). It does
-# NOT run on every dev push: e2e is minutes-long and hits a real database.
+# Runs the Playwright suite on every PR targeting MAIN or DEV (the merge gates)
+# and on demand (workflow_dispatch — usable from any branch). It does NOT run on
+# every push: e2e is minutes-long and hits a real database. PRs into dev are
+# included because feature branches (Budget v2, credit cards, debts) land there
+# first, and the dev-server-blind failure modes the suite catches are exactly
+# the ones a feature PR introduces.
 #
 # Required repository secrets:
 #   E2E_VITE_CLERK_PUBLISHABLE_KEY  Clerk DEV instance publishable key (pk_test_…)
@@ -18,7 +21,7 @@ name: E2E
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, dev]
   workflow_dispatch:
 
 concurrency:
