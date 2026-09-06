@@ -121,8 +121,10 @@ const emptyCreate: CreateForm = { ...emptyBankForm, opening_balance: "" }
  * (`/wealth?tab=cards`). The section is a QUERY PARAM on purpose: the pathname
  * never changes, so the mobile shell (keyed by pathname) does not remount or
  * replay its page transition, and switching never stacks history entries
- * (`replace`). The net-worth hero is shared by both sections; credit cards
- * live under Cards now — the Banks section shows banks and cash only.
+ * (`replace`). Credit cards live under Cards now — the Banks section shows
+ * banks and cash only, and owns the net-worth hero: on Cards the figures that
+ * matter (owed / available / next due) are in the status bar above the grid,
+ * so a second, bigger total there was pure space.
  */
 export function WealthPage() {
   const { t } = useTranslation("wealth")
@@ -433,34 +435,52 @@ export function WealthPage() {
 
   return (
     <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">{t("title")}</h1>
-          <p className="mt-1 text-sm text-muted-foreground">{t("subtitle")}</p>
+      {/* One header row: title · section switcher · privacy. The switcher used to
+          own a full-width row of its own — three stacked blocks before any
+          content on a phone. The subtitle (about bank connections) drops on the
+          Cards section, where it means nothing. */}
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between gap-2 sm:gap-3">
+          <h1 className="min-w-0 flex-1 truncate text-xl font-semibold tracking-tight sm:text-2xl">{t("title")}</h1>
+          <div className="flex shrink-0 items-center gap-2">
+            <WealthTabs value={tab} onChange={setTab} />
+            <Button
+              variant="outline"
+              size="icon"
+              className="size-11 shrink-0"
+              aria-label={balancesVisible ? t("hideBalances") : t("showBalances")}
+              onClick={() => setBalancesVisible((v) => !v)}
+            >
+              {balancesVisible ? <Eye className="size-4" /> : <EyeOff className="size-4" />}
+            </Button>
+          </div>
         </div>
-        <Button
-          variant="outline"
-          size="icon"
-          className="shrink-0"
-          aria-label={balancesVisible ? t("hideBalances") : t("showBalances")}
-          onClick={() => setBalancesVisible((v) => !v)}
-        >
-          {balancesVisible ? <Eye className="size-4" /> : <EyeOff className="size-4" />}
-        </Button>
+        {tab === "banks" && <p className="text-xs text-muted-foreground sm:text-sm">{t("subtitle")}</p>}
       </div>
 
-      <WealthTabs value={tab} onChange={setTab} />
-
-      {/* Net-worth hero — shared by both sections */}
-      <div className="rounded-2xl border bg-gradient-to-br from-primary/10 via-card to-card p-5 sm:p-6">
-        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("netWorth")}</p>
-        {loading ? (
-          <Skeleton className="mt-2 h-9 w-40" />
-        ) : (
-          <>
-            <p className="mt-1 text-3xl font-bold tabular-nums sm:text-4xl">{formatMoney(netWorth, currency, balancesVisible)}</p>
-            {(liabilities > 0 || savedTotal > 0) && (
-              <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+      {/* ── Banks ─────────────────────────────────────────────────────────── */}
+      <div
+        role="tabpanel"
+        id="wealth-panel-banks"
+        aria-labelledby="wealth-tab-banks"
+        hidden={tab !== "banks"}
+        className="space-y-4 sm:space-y-6 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-200"
+      >
+        {/* Net-worth hero — Banks only. On Cards the numbers that matter (owed /
+            available / next due) live in the status bar above the grid, so the
+            hero would only be a second, bigger copy of a different total. */}
+        <div className="rounded-2xl border bg-gradient-to-br from-primary/10 via-card to-card p-4 sm:p-5">
+          <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-2">
+            <div className="min-w-0">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("netWorth")}</p>
+              {loading ? (
+                <Skeleton className="mt-2 h-9 w-40" />
+              ) : (
+                <p className="mt-1 text-3xl font-bold tabular-nums sm:text-4xl">{formatMoney(netWorth, currency, balancesVisible)}</p>
+              )}
+            </div>
+            {!loading && (liabilities > 0 || savedTotal > 0) && (
+              <div className="flex w-full flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground sm:w-auto sm:justify-end">
                 {liabilities > 0 && (
                   <p className="inline-flex flex-wrap items-center gap-x-2">
                     <span className="tabular-nums">{t("assets")}: {formatMoney(assets + savedTotal, currency, balancesVisible)}</span>
@@ -487,32 +507,23 @@ export function WealthPage() {
                 )}
               </div>
             )}
-          </>
-        )}
-      </div>
+          </div>
+        </div>
 
-      {/* ── Banks ─────────────────────────────────────────────────────────── */}
-      <div
-        role="tabpanel"
-        id="wealth-panel-banks"
-        aria-labelledby="wealth-tab-banks"
-        hidden={tab !== "banks"}
-        className="space-y-4 sm:space-y-6 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-200"
-      >
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-sm text-muted-foreground">
-            {active.length} {active.length === 1 ? t("account") : t("accounts")}
+          <p className="text-sm font-semibold">
+            {active.length} <span className="font-normal">{active.length === 1 ? t("account") : t("accounts")}</span>
             {quota && (
-              <span className="ms-2 text-xs tabular-nums opacity-80">· {t("bankUsage", { current: bankCount, limit: quota.bank_accounts.limit })}</span>
+              <span className="ms-2 text-xs font-normal tabular-nums text-muted-foreground">· {t("bankUsage", { current: bankCount, limit: quota.bank_accounts.limit })}</span>
             )}
           </p>
-          <div className="flex flex-wrap items-center justify-end gap-2">
+          <div className="ms-auto flex flex-wrap items-center justify-end gap-2">
             {active.length >= 2 && (
-              <Button size="sm" variant="outline" onClick={openTransfer} disabled={loading}>
+              <Button size="sm" variant="outline" onClick={openTransfer} disabled={loading} className="min-h-11 sm:min-h-8">
                 <ArrowLeftRight className="size-4" /> {t("transfer")}
               </Button>
             )}
-            <Button size="sm" onClick={openCreate} disabled={loading} className="relative">
+            <Button size="sm" onClick={openCreate} disabled={loading} className="relative min-h-11 sm:min-h-8">
               {atBankLimit ? <Crown className="size-4 text-amber-500 dark:text-amber-400" /> : <Plus className="size-4" />}
               {t("addBank")}
             </Button>
@@ -728,6 +739,10 @@ export function WealthPage() {
  * the selected tab is the only tab stop) with one sliding pill behind the
  * selected tab — a transform on a shared element, so the change animates
  * without any layout work; reduced-motion users get an instant swap.
+ *
+ * It sits in the page header next to the privacy toggle and is sized to its
+ * content (two equal grid columns, so the 50% pill translate still lands) —
+ * full-width it cost a whole row above the fold on a phone.
  */
 function WealthTabs({ value, onChange }: { value: WealthTab; onChange: (next: WealthTab) => void }) {
   const { t } = useTranslation("wealth")
@@ -755,7 +770,7 @@ function WealthTabs({ value, onChange }: { value: WealthTab; onChange: (next: We
     <div
       role="tablist"
       aria-label={t("cards.tabsLabel")}
-      className="relative grid w-full grid-cols-2 rounded-xl border bg-muted/60 p-1 sm:w-auto sm:min-w-80 sm:max-w-sm"
+      className="relative grid w-auto shrink-0 grid-cols-2 rounded-xl border bg-muted/60 p-1"
     >
       <span
         aria-hidden
@@ -779,7 +794,7 @@ function WealthTabs({ value, onChange }: { value: WealthTab; onChange: (next: We
             onClick={() => onChange(tab.key)}
             onKeyDown={onKeyDown}
             className={cn(
-              "ios-tap relative z-10 flex min-h-11 items-center justify-center gap-2 rounded-lg px-4 text-sm font-medium outline-none transition-colors duration-200 focus-visible:ring-2 focus-visible:ring-ring",
+              "ios-tap relative z-10 flex min-h-11 items-center justify-center gap-1.5 rounded-lg px-3 text-sm font-medium outline-none transition-colors duration-200 focus-visible:ring-2 focus-visible:ring-ring sm:gap-2 sm:px-4",
               selected ? "text-foreground" : "text-muted-foreground hover:text-foreground",
             )}
           >

@@ -35,7 +35,7 @@ import { PayCardSheet, type PayPreset } from "@/components/wealth/PayCardSheet"
 import { cardDisplayName } from "@/lib/cards"
 import { useCardMap } from "@/lib/use-cards"
 import { CardChip } from "@/components/cards/CardChip"
-import { BankCardsSection } from "@/components/cards/BankCardsSection"
+import { BankCardsButton } from "@/components/cards/BankCardsButton"
 import { TxKindBadge } from "@/components/transactions/TxKindBadge"
 import { TransactionDetailModal } from "@/components/TransactionDetailModal"
 import {
@@ -261,17 +261,30 @@ export function WealthAccountDetailPage() {
         <Button variant="ghost" size="icon" onClick={() => navigate("/wealth")} className="-ml-2 mt-0.5 shrink-0" aria-label={t("back")}>
           <ArrowLeft className="size-4 rtl:rotate-180" />
         </Button>
-        <div className="flex min-w-0 flex-1 items-center gap-3">
-          <WealthAccountIcon account={account} className="size-11" />
+        <div className="flex min-w-0 flex-1 items-center gap-2.5 sm:gap-3">
+          <WealthAccountIcon account={account} className="size-10 shrink-0 sm:size-11" />
+          {/* The account type reads as a quiet meta line rather than a badge
+              beside the name: on a phone the name then keeps the full width the
+              header's action buttons leave it. */}
           <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <h1 className="truncate text-xl font-semibold tracking-tight sm:text-2xl">{accountDisplayName(account)}</h1>
-              <Badge variant="secondary">{isCash ? t("cash") : isCard ? t("creditCard") : t("bank")}</Badge>
-            </div>
-            {account.nickname && !isCash && <p className="truncate text-sm text-muted-foreground">{account.bank_name}</p>}
+            <h1 className="truncate text-xl font-semibold tracking-tight sm:text-2xl">{accountDisplayName(account)}</h1>
+            <p className="truncate text-xs text-muted-foreground sm:text-sm">
+              {isCash ? t("cash") : isCard ? t("creditCard") : t("bank")}
+              {account.nickname && !isCash && account.bank_name ? ` · ${account.bank_name}` : ""}
+            </p>
           </div>
         </div>
         <div className="flex shrink-0 gap-2">
+          {/* The cards linked to this account — one tap away instead of a
+              permanent grid in the page body. */}
+          {!isCard && (
+            <BankCardsButton
+              account={account}
+              cards={cardMap.cards}
+              loading={cardMap.loading}
+              canWrite={canWrite}
+            />
+          )}
           <Button
             variant="outline"
             size="icon"
@@ -350,9 +363,6 @@ export function WealthAccountDetailPage() {
         </div>
       </div>
       )}
-
-      {/* The debit cards on this bank + the credit cards it pays */}
-      {!isCard && !isCash && <BankCardsSection bank={account} canWrite={canWrite} />}
 
       {/* Bank details + attachments (bank accounts only) */}
       {!isCash && <AccountDetailsSection account={account} canWrite={canWrite} canDelete={canDelete} />}

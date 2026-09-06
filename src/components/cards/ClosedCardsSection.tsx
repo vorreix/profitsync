@@ -60,20 +60,22 @@ export function ClosedCardsSection({
   }
 
   return (
-    <section className="rounded-2xl border bg-card">
+    // A quiet disclosure, not a panel: closed cards are history, so the row is
+    // a plain muted line until it is opened.
+    <section>
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-controls="closed-cards"
-        className="ios-tap flex min-h-11 w-full items-center justify-between gap-2 px-4 py-3 text-start text-sm font-medium"
+        className="ios-tap flex min-h-11 items-center gap-1.5 rounded-lg text-start text-sm text-muted-foreground transition-colors hover:text-foreground"
       >
+        <ChevronDown className={cn("size-4 transition-transform duration-200 motion-reduce:transition-none", open && "rotate-180")} aria-hidden />
         <span>
-          {t("cards.closedSection")} <span className="text-muted-foreground">({cards.length})</span>
+          {t("cards.closedSection")} <span className="tabular-nums">({cards.length})</span>
         </span>
-        <ChevronDown className={cn("size-4 text-muted-foreground transition-transform duration-200 motion-reduce:transition-none", open && "rotate-180")} aria-hidden />
       </button>
-      <div id="closed-cards" hidden={!open} className="divide-y border-t">
+      <div id="closed-cards" hidden={!open} className="divide-y rounded-xl border bg-card">
         {cards.map((card) => {
           const name = cardDisplayName(card)
           const bank = (card.account_nickname || card.account_bank_name || "").trim()

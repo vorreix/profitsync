@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest"
 import type { Card, WealthAccount } from "./types"
 import {
+  CARD_WIZARD_FIELD_FOR_CODE,
+  CARD_WIZARD_FIELD_SELECTOR,
   cardCreatePayload,
   cardEditPayload,
   cardPreviewProps,
@@ -18,6 +20,7 @@ import {
   isExpiryPast,
   nicknamePlaceholder,
   parseCardApiError,
+  requiredCardDetails,
   sanitizeLast4,
   tierSwatch,
   validateCardWizard,
@@ -86,6 +89,9 @@ const debitForm = (over: Partial<CardWizardForm> = {}): CardWizardForm => ({
   ...over,
 })
 
+/** A saved card's seed — the yardstick edit mode measures "was it there?" against. */
+const seeded = (over: Partial<CardWizardForm> = {}): CardWizardForm => debitForm(over)
+
 const creditForm = (over: Partial<CardWizardForm> = {}): CardWizardForm => {
   const f = emptyCardWizardForm({ kind: "credit", funding_account_id: "bank-1", holder_name: "Ada" })
   return {
@@ -93,6 +99,7 @@ const creditForm = (over: Partial<CardWizardForm> = {}): CardWizardForm => {
     issuer_name: "HDFC Bank",
     issuer_domain: "hdfcbank.com",
     issuer_logo_url: "https://cdn/hdfc.png",
+    network: "visa",
     last4: "1234",
     expiry: "09/27",
     credit: { ...f.credit, credit_limit: "2000", current_debt: "150", statement_closing_day: "1", payment_due_day: "15" },
@@ -101,8 +108,9 @@ const creditForm = (over: Partial<CardWizardForm> = {}): CardWizardForm => {
 }
 
 describe("seeding", () => {
-  it("starts as a standard debit card with the presets applied", () => {
+  it("starts as a standard debit card with the presets applied and no network picked yet", () => {
     const f = emptyCardWizardForm({ kind: "credit", funding_account_id: "b", holder_name: "Ada" })
+    expect(f.network).toBe("")
     expect(f.kind).toBe("credit")
     expect(f.funding_account_id).toBe("b")
     expect(f.holder_name).toBe("Ada")
@@ -140,35 +148,75 @@ describe("seeding", () => {
 })
 
 describe("steps", () => {
-  it("debit takes two steps, credit three", () => {
-    expect(cardWizardSteps("debit")).toEqual(["card", "look"])
-    expect(cardWizardSteps("credit")).toEqual(["card", "look", "credit"])
+  it("creating takes three steps (four for credit); editing drops the fixed 'type' step", () => {
+    expect(cardWizardSteps("debit")).toEqual(["type", "details", "look"])
+    expect(cardWizardSteps("credit")).toEqual(["type", "details", "look", "credit"])
+    expect(cardWizardSteps("debit", "edit")).toEqual(["details", "look"])
+    expect(cardWizardSteps("credit", "edit")).toEqual(["details", "look", "credit"])
   })
 
   it("maps every field to the step it lives on", () => {
-    expect(cardWizardStepForField("account_id")).toBe("card")
-    expect(cardWizardStepForField("last4")).toBe("card")
+    expect(cardWizardStepForField("account_id")).toBe("type")
+    expect(cardWizardStepForField("issuer_name")).toBe("type")
+    expect(cardWizardStepForField("network")).toBe("details")
+    expect(cardWizardStepForField("last4")).toBe("details")
+    expect(cardWizardStepForField("expiry")).toBe("details")
+    expect(cardWizardStepForField("holder_name")).toBe("details")
     expect(cardWizardStepForField("design")).toBe("look")
     expect(cardWizardStepForField("credit_limit")).toBe("credit")
     expect(cardWizardStepForField("funding_account_id")).toBe("credit")
   })
+
+  it("every field a code can point at has somewhere to put the caret", () => {
+    for (const field of Object.values(CARD_WIZARD_FIELD_FOR_CODE)) {
+      expect(CARD_WIZARD_FIELD_SELECTOR[field], field).toBeTruthy()
+    }
+  })
 })
 
 describe("validation", () => {
-  it("a debit card needs a bank on create, not on edit", () => {
-    expect(validateCardWizardStep(debitForm({ account_id: "" }), "card", "create", TODAY)).toEqual({ code: "bank_required", field: "account_id" })
-    expect(validateCardWizardStep(debitForm({ account_id: "" }), "card", "edit", TODAY)).toBeNull()
+  it("a debit card needs a bank on create; editing has no 'type' step at all", () => {
+    expect(validateCardWizardStep(debitForm({ account_id: "" }), "type", "create", TODAY)).toEqual({ code: "bank_required", field: "account_id" })
+    expect(validateCardWizardStep(debitForm({ account_id: "" }), "type", "edit", TODAY)).toBeNull()
   })
 
   it("a credit card needs an issuer", () => {
-    expect(validateCardWizardStep(creditForm({ issuer_name: " " }), "card", "create", TODAY)).toEqual({ code: "issuer_required", field: "issuer_name" })
+    expect(validateCardWizardStep(creditForm({ issuer_name: " " }), "type", "create", TODAY)).toEqual({ code: "issuer_required", field: "issuer_name" })
   })
 
-  it("last4 is four digits or blank; expiry must parse when present", () => {
-    expect(validateCardWizardStep(debitForm({ last4: "12" }), "card", "create", TODAY)?.code).toBe("last4_invalid")
-    expect(validateCardWizardStep(debitForm({ last4: "" }), "card", "create", TODAY)).toBeNull()
-    expect(validateCardWizardStep(debitForm({ expiry: "13/27" }), "card", "create", TODAY)?.code).toBe("expiry_invalid")
-    expect(validateCardWizardStep(debitForm({ expiry: "" }), "card", "create", TODAY)).toBeNull()
+  it("a new card must carry every printed detail", () => {
+    expect(validateCardWizardStep(debitForm({ network: "" }), "details", "create", TODAY)).toEqual({ code: "network_required", field: "network" })
+    expect(validateCardWizardStep(debitForm({ last4: "" }), "details", "create", TODAY)).toEqual({ code: "last4_required", field: "last4" })
+    expect(validateCardWizardStep(debitForm({ expiry: "" }), "details", "create", TODAY)).toEqual({ code: "expiry_required", field: "expiry" })
+    expect(validateCardWizardStep(debitForm({ holder_name: " " }), "details", "create", TODAY)).toEqual({ code: "holder_required", field: "holder_name" })
+    // The nickname stays optional — it derives from the bank + network.
+    expect(validateCardWizardStep(debitForm({ name: "" }), "details", "create", TODAY)).toBeNull()
+  })
+
+  it("the tail is 4 to 6 digits and the expiry must parse", () => {
+    expect(validateCardWizardStep(debitForm({ last4: "12" }), "details", "create", TODAY)?.code).toBe("last4_range")
+    expect(validateCardWizardStep(debitForm({ last4: "123456" }), "details", "create", TODAY)).toBeNull()
+    expect(validateCardWizardStep(debitForm({ expiry: "13/27" }), "details", "create", TODAY)?.code).toBe("expiry_invalid")
+  })
+
+  it("editing only requires the details the saved card already had", () => {
+    const blank = debitForm({ last4: "", expiry: "", holder_name: "" })
+    // A card added before the rule: still savable exactly as it is…
+    expect(validateCardWizardStep(blank, "details", "edit", TODAY, blank)).toBeNull()
+    // …and anything typed into it is still validated.
+    expect(validateCardWizardStep({ ...blank, last4: "12" }, "details", "edit", TODAY, blank)?.code).toBe("last4_range")
+    // A detail that WAS there can't be erased.
+    expect(validateCardWizardStep(blank, "details", "edit", TODAY, seeded())?.code).toBe("last4_required")
+    expect(validateCardWizardStep({ ...blank, last4: "4321" }, "details", "edit", TODAY, seeded())?.code).toBe("expiry_required")
+    // Without a seed, edit mode never blocks on a blank printed detail.
+    expect(validateCardWizardStep(blank, "details", "edit", TODAY)).toBeNull()
+  })
+
+  it("requiredCardDetails: everything on create, only what was seeded on edit", () => {
+    expect(requiredCardDetails("create")).toEqual({ network: true, last4: true, expiry: true, holder: true })
+    expect(requiredCardDetails("edit", seeded())).toEqual({ network: true, last4: true, expiry: true, holder: true })
+    expect(requiredCardDetails("edit", debitForm({ last4: "", expiry: "", holder_name: "" }))).toEqual({ network: true, last4: false, expiry: false, holder: false })
+    expect(requiredCardDetails("edit")).toEqual({ network: true, last4: false, expiry: false, holder: false })
   })
 
   it("a custom look needs valid colours", () => {
@@ -197,6 +245,8 @@ describe("validation", () => {
   it("the credit step is a no-op for a debit card, and the whole form validates in step order", () => {
     expect(validateCardWizardStep(debitForm(), "credit", "create", TODAY)).toBeNull()
     expect(validateCardWizard(creditForm({ issuer_name: "", credit: { ...creditForm().credit, credit_limit: "" } }), "create", TODAY)?.code).toBe("issuer_required")
+    // Missing printed details are caught before the credit numbers.
+    expect(validateCardWizard(creditForm({ holder_name: "", credit: { ...creditForm().credit, credit_limit: "" } }), "create", TODAY)?.code).toBe("holder_required")
     expect(validateCardWizard(creditForm(), "create", TODAY)).toBeNull()
   })
 
@@ -221,6 +271,7 @@ describe("server errors", () => {
   })
 
   it("maps the identity messages the route writes", () => {
+    expect(cardWizardFieldForServerError({ error: "last4 must be 4 to 6 digits" })).toBe("last4")
     expect(cardWizardFieldForServerError({ error: "last4 must be exactly four digits" })).toBe("last4")
     expect(cardWizardFieldForServerError({ error: "expiry needs both a month and a year" })).toBe("expiry")
     expect(cardWizardFieldForServerError({ error: "A custom design needs a valid colour" })).toBe("design")
@@ -357,8 +408,9 @@ describe("inputs", () => {
     expect(formatExpiryInput("", "0")).toBe("")
   })
 
-  it("last4 keeps only four digits", () => {
-    expect(sanitizeLast4("12ab34-5")).toBe("1234")
+  it("the tail keeps only digits, up to six of them", () => {
+    expect(sanitizeLast4("12ab34-5")).toBe("12345")
+    expect(sanitizeLast4("1234567890")).toBe("123456")
     expect(sanitizeLast4("")).toBe("")
   })
 })
@@ -376,6 +428,12 @@ describe("duplicates", () => {
     expect(duplicateLast4(cards, debitForm({ account_id: "bank-3" }))).toBeNull()
     expect(duplicateLast4(cards, debitForm({ last4: "9999" }))).toBeNull()
     expect(duplicateLast4(cards, debitForm({ last4: "43" }))).toBeNull()
+  })
+
+  it("matches a six-digit tail too", () => {
+    const six: Card[] = [card({ id: "d6", kind: "debit", account_id: "bank-1", last4: "432198" })]
+    expect(duplicateLast4(six, debitForm({ last4: "432198" }))?.id).toBe("d6")
+    expect(duplicateLast4(six, debitForm({ last4: "4321" }))).toBeNull()
   })
 
   it("matches credit cards by issuer, case-insensitively, and never the card being edited", () => {

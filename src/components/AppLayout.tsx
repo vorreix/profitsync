@@ -432,7 +432,7 @@ function AppLayoutInner() {
       {!pageAction && fabOpen && (
         <div className="fixed inset-0 z-40" onClick={() => setFabOpen(false)} />
       )}
-      <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3">
+      <div data-app-fab className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3">
         {/* AI voice assistant — hidden while the quick-actions menu is open so
             the stack stays uncluttered (same rule as mobile). */}
         {!(!pageAction && fabOpen) && (

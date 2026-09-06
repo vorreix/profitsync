@@ -7,6 +7,7 @@ import { CreditCardFormFields } from "@/components/wealth/CreditCardFormFields"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { BankPicker } from "./BankPicker"
+import { StepHeading } from "./StepHeading"
 
 const CREDIT_FIELDS: (keyof CardFormState & CardWizardField)[] = [
   "credit_limit",
@@ -56,7 +57,7 @@ export function StepCredit({
 
   return (
     <div className="space-y-5">
-      {mode === "edit" && <p className="text-xs text-muted-foreground">{t("cardWizard.credit.editHint")}</p>}
+      <StepHeading id="card-credit-heading" title={t("cardWizard.credit.title")} help={mode === "edit" ? t("cardWizard.credit.editHint") : t("cardWizard.credit.help")} />
 
       <CreditCardFormFields
         form={form.credit}
@@ -77,6 +78,7 @@ export function StepCredit({
           currency={currency}
           balancesVisible={balancesVisible}
           labelId="card-funding-label"
+          pickerKey="funding"
           canAddBank={canAddBank}
           onBankCreated={onBankCreated}
           onQuotaHit={onQuotaHit}

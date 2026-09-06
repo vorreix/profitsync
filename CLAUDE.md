@@ -219,7 +219,7 @@ The sidebar has a floating action button (FAB) for quick access to Add Client, A
 
 **Drizzle helpers:**
 - `db` and `serialize()` are in `src/lib/db/index.ts`. `serialize()` converts Drizzle's camelCase row keys to snake_case before `res.json()` — call it on every row returned from an API route.
-- Migrations are in `drizzle/` and run automatically on `vercel-build` (`scripts/db-migrate.mjs`). Current head is **0063** (0060–0063 are hand-written — `drizzle-kit generate` is out of sync with them; write the SQL + journal entry by hand). **Journal gotcha:** a new migration can silently skip ("up to date" but column missing) when `drizzle/meta/_journal.json` `when` values were normalized — bump the new entry's `when` above the previous, then verify the column exists in `information_schema`.
+- Migrations are in `drizzle/` and run automatically on `vercel-build` (`scripts/db-migrate.mjs`). Current head is **0064** (0060–0064 are hand-written — `drizzle-kit generate` is out of sync with them; write the SQL + journal entry by hand). **Journal gotcha:** a new migration can silently skip ("up to date" but column missing) when `drizzle/meta/_journal.json` `when` values were normalized — bump the new entry's `when` above the previous, then verify the column exists in `information_schema`.
 - **Local database:** `docs/budget-v2/LOCAL_DB.md` sets up a Neon-protocol-compatible local Postgres (docker), so you can migrate and develop without touching the shared instance. **Never run `npm run db:push` against a shared database** — it diffs the live schema and will propose dropping columns that exist there from unmerged branches.
 
 ### API layer — consolidated router

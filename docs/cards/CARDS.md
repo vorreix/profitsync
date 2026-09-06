@@ -136,10 +136,12 @@ colour from Brandfetch's Brand API (`api/_lib/bank-brand.ts fetchBrandPalette`,
 snapshotted on `cards.brand_colors` at create, fail-soft, per-process cache),
 else the curated table (`CURATED_BANK_COLORS`, ~90 banks across IN/IT/DE/UAE/
 UK/US), else a neutral navy. Text colour always comes from `readableTextOn`.
-Only the **last four digits** are ever stored (PCI DSS truncation): enough to
-tell cards apart, useless to anyone reading the database. The wordmark URL is
-a Brandfetch CDN hotlink; the visual falls back to the bank's stored icon +
-name when it fails.
+Only the **last 4 to 6 digits** are ever stored (`CARD_TAIL_MIN`/`CARD_TAIL_MAX`,
+DB CHECK from migration 0064; the column is still called `last4`): a truncated
+tail that cannot be expanded into a card number, just enough to tell two cards
+apart. `maskedTail()` and `maskedNumber()` are the only formatters — a 6-digit
+tail renders as "•••• •••• ••12 3456". The wordmark URL is a Brandfetch CDN
+hotlink; the visual falls back to the bank's stored icon + name when it fails.
 
 `BRANDFETCH_APIKEY` (server-only env) enables both the search autocomplete and
 the palette. Brand API calls are metered separately from search.

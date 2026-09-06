@@ -12,6 +12,7 @@ export function ExpiryInput({
   id,
   value,
   onChange,
+  required,
   invalid,
   describedBy,
   className,
@@ -19,6 +20,7 @@ export function ExpiryInput({
   id?: string
   value: string
   onChange: (next: string) => void
+  required?: boolean
   invalid?: boolean
   describedBy?: string
   className?: string
@@ -33,6 +35,7 @@ export function ExpiryInput({
       autoComplete="cc-exp"
       placeholder={t("cardWizard.expiry.placeholder")}
       maxLength={5}
+      aria-required={required || undefined}
       aria-invalid={invalid || undefined}
       aria-describedby={describedBy}
       className={cn("min-h-11 text-base tabular-nums", className)}

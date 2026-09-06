@@ -202,16 +202,20 @@ test.describe.serial("Wealth & Cards", () => {
     const dialog = page.getByRole("dialog")
     await expect(dialog).toBeVisible()
 
-    // Step 1 — kind, bank, identity.
+    // Step 1 — what kind of card, and which bank it belongs to.
     await dialog.getByRole("radio", { name: /debit/i }).first().click()
     await dialog.getByRole("radio", { name: new RegExp(bankName.slice(0, 12), "i") }).first().click()
+    await dialog.getByRole("button", { name: /^next$/i }).click()
+
+    // Step 2 — the card's own details. All required except the nickname.
     await dialog.getByRole("radio", { name: /^visa$/i }).first().click()
-    await dialog.getByLabel(/last 4 digits/i).fill("4242")
+    await dialog.getByLabel(/last 4/i).fill("4242")
     await dialog.getByLabel(/expiry/i).fill("0930")
+    await dialog.getByLabel(/name on card/i).fill("E2E BOT")
     await dialog.getByLabel(/nickname/i).fill(CARD_NAME)
     await dialog.getByRole("button", { name: /^next$/i }).click()
 
-    // Step 2 — look. Standard is preselected; save straight away.
+    // Step 3 — look. Standard is preselected; save straight away.
     await expect(dialog.getByRole("radio", { name: /bank colours|bank colors/i })).toBeVisible()
     await dialog.getByRole("button", { name: /save card/i }).click()
     await expect(dialog).toBeHidden({ timeout: 15_000 })
@@ -308,12 +312,28 @@ test.describe.serial("Wealth & Cards", () => {
     await api(page, "PATCH", `/api/cards/${cardId}`, { status: "active" })
   })
 
-  test("the bank page lists the cards that spend from it", async ({ page }) => {
+  test("the bank page keeps its cards behind the header button, grouped by relationship", async ({ page }) => {
     await page.goto(`/wealth/${bankId}`)
     await expectAppShell(page)
     await dismissBanners(page)
-    const section = page.locator("#cards")
-    await expect(section).toBeVisible({ timeout: 15_000 })
-    await expect(section.locator(`[data-card-tile="${cardId}"]`)).toBeVisible()
+
+    // The cards are NOT in the page body any more — they live behind the
+    // header's card button, so the account's own content keeps the space.
+    await expect(page.locator(`[data-card-tile="${cardId}"]`)).toHaveCount(0)
+
+    await page.getByRole("button", { name: /cards on this account/i }).click()
+    const sheet = page.locator("#cards")
+    await expect(sheet).toBeVisible({ timeout: 15_000 })
+    // A debit card belongs to the account it spends from — never the group for
+    // credit cards this account merely pays.
+    await expect(sheet.getByText(/on this account/i).first()).toBeVisible()
+    await expect(sheet.locator(`[data-card-tile="${cardId}"]`)).toBeVisible()
+  })
+
+  test("the #cards deep link opens the same overlay", async ({ page }) => {
+    await page.goto(`/wealth/${bankId}#cards`)
+    await expectAppShell(page)
+    await expect(page.locator("#cards")).toBeVisible({ timeout: 15_000 })
+    await expect(page.locator("#cards").locator(`[data-card-tile="${cardId}"]`)).toBeVisible()
   })
 })

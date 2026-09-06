@@ -70,20 +70,39 @@ export function cardDisplayName(card: CardNameSource): string {
   return bank ? `${bank} ${net}` : net
 }
 
-/** "•••• 1234" (or "••••" when the tail is unknown). */
-export function maskedTail(last4: string | null | undefined): string {
+/** How many trailing digits of a card number may be kept (see migration 0064). */
+export const CARD_TAIL_MIN = 4
+export const CARD_TAIL_MAX = 6
+
+const TAIL_RE = /^\d{4,6}$/
+
+/** The stored tail, or "" when it is unknown/invalid. */
+export function cardTail(last4: string | null | undefined): string {
   const tail = (last4 ?? "").trim()
-  return /^\d{4}$/.test(tail) ? `•••• ${tail}` : "••••"
+  return TAIL_RE.test(tail) ? tail : ""
 }
 
-/** The full masked number line on the visual: "•••• •••• •••• 1234". */
+/** "•••• 1234" / "•••• 123456" (or "••••" when the tail is unknown). */
+export function maskedTail(last4: string | null | undefined): string {
+  const tail = cardTail(last4)
+  return tail ? `•••• ${tail}` : "••••"
+}
+
+/**
+ * The full masked number line on the visual. A 16-digit card is shown as four
+ * groups; the known tail fills the last group(s), so 4 digits give
+ * "•••• •••• •••• 1234" and 6 give "•••• •••• ••12 3456".
+ */
 export function maskedNumber(last4: string | null | undefined): string {
-  return `•••• •••• •••• ${/^\d{4}$/.test((last4 ?? "").trim()) ? (last4 as string).trim() : "••••"}`
+  const tail = cardTail(last4)
+  if (!tail) return "•••• •••• •••• ••••"
+  const digits = "•".repeat(16 - tail.length) + tail
+  return (digits.match(/.{1,4}/g) ?? []).join(" ")
 }
 
-/** Validate a typed number tail: exactly four digits or empty. */
+/** Validate a typed number tail: 4 to 6 digits, or empty (unknown). */
 export function isValidLast4(v: string): boolean {
-  return v === "" || /^\d{4}$/.test(v)
+  return v === "" || TAIL_RE.test(v)
 }
 
 // ── Expiry ───────────────────────────────────────────────────────────────────

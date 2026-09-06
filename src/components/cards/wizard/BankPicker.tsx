@@ -10,6 +10,7 @@ import { accountDisplayName, currencySymbol, formatMoney } from "@/lib/wealth"
 import { cn } from "@/lib/utils"
 import { WealthAccountIcon } from "@/components/WealthAccountIcon"
 import { BankNameCombobox } from "@/components/wealth/BankNameCombobox"
+import { Skeleton } from "@/components/ui/skeleton"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -30,6 +31,7 @@ export function BankPicker({
   currency,
   balancesVisible,
   labelId,
+  pickerKey,
   canAddBank,
   onBankCreated,
   onQuotaHit,
@@ -48,6 +50,8 @@ export function BankPicker({
   balancesVisible: boolean
   /** id of the element that labels this group. */
   labelId: string
+  /** Tags the group so the wizard can put the caret in it ("bank" | "funding"). */
+  pickerKey: "bank" | "funding"
   canAddBank: boolean
   onBankCreated: (bank: WealthAccount) => void
   onQuotaHit: () => void
@@ -154,12 +158,30 @@ export function BankPicker({
   const noneSelected = value === ""
   const anySelected = allowNone ? true : banks.some((b) => b.id === value)
 
+  // Until the accounts have arrived we know nothing: rendering the "add a bank"
+  // state here would tell a user who HAS banks that they have none (and it
+  // flashed for ~250ms on every open). Hold the space with skeleton rows.
+  if (!ready && banks.length === 0) {
+    return (
+      <div className="space-y-1.5" aria-busy="true" aria-live="polite">
+        <span className="sr-only">{t("cardWizard.bank.loading")}</span>
+        {[0, 1].map((i) => (
+          <div key={i} className="flex min-h-11 items-center gap-3 rounded-xl border px-3 py-2">
+            <Skeleton className="size-8 shrink-0 rounded-full" />
+            <Skeleton className="h-4 flex-1" />
+          </div>
+        ))}
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-2">
       {options.length > 0 && (
         <div
           role="radiogroup"
           aria-labelledby={labelId}
+          data-bank-picker={pickerKey}
           aria-invalid={invalid || undefined}
           aria-describedby={describedBy}
           className={cn("space-y-1.5", invalid && "rounded-xl ring-1 ring-destructive/40")}
@@ -185,7 +207,7 @@ export function BankPicker({
               {noneSelected && <Check className="size-4 shrink-0 text-primary" aria-hidden />}
             </button>
           )}
-          {banks.map((b) => {
+          {banks.map((b, i) => {
             const selected = value === b.id
             return (
               <button
@@ -193,7 +215,8 @@ export function BankPicker({
                 type="button"
                 role="radio"
                 aria-checked={selected}
-                tabIndex={selected ? 0 : -1}
+                // Nothing picked yet: the first row carries the group's tab stop.
+                tabIndex={selected || (!anySelected && !allowNone && i === 0) ? 0 : -1}
                 data-bank-option={b.id}
                 onClick={() => onChange(b.id)}
                 className={cn(

@@ -828,3 +828,11 @@
     }
   }
 }
+
+/* While a modal is open, Radix locks body scroll (`data-scroll-locked`). The
+   floating action button is fixed at z-50 — the same layer as the dialog — so
+   on a phone it paints over the dialog's own primary button (the add-card
+   wizard's Save sat right under it). Hide it for as long as a modal is up. */
+body[data-scroll-locked] [data-app-fab] {
+  display: none;
+}

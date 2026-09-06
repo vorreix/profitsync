@@ -283,8 +283,10 @@ export const cards = pgTable("cards", {
   name: text("name").notNull().default(""), // nickname; empty → "<Bank> <Network>" in the UI
   holderName: text("holder_name").notNull().default(""),
   network: text("network").notNull().default("other"), // visa | mastercard | amex | rupay | discover | jcb | unionpay | maestro | diners | other
-  // ONLY the last four digits are ever stored (PCI DSS truncation) — enough to
-  // tell cards apart, useless to anyone who reads the database.
+  // ONLY the last 4–6 digits are ever stored (truncation: the value can never
+  // be expanded back into a card number) — enough to tell two cards apart,
+  // useless to anyone who reads the database. Named `last4` for history;
+  // src/lib/cards.ts is the one place that formats it.
   last4: text("last4").notNull().default(""),
   expiryMonth: integer("expiry_month"),
   expiryYear: integer("expiry_year"),
@@ -315,7 +317,7 @@ export const cards = pgTable("cards", {
   creditAccountUnique: uniqueIndex("cards_credit_account_unique").on(table.accountId).where(sql`kind = 'credit'`),
   kindCheck: check("cards_kind_check", sql`kind in ('debit','credit')`),
   statusCheck: check("cards_status_check", sql`status in ('active','frozen','closed')`),
-  last4Check: check("cards_last4_check", sql`last4 ~ '^([0-9]{4})?$'`),
+  last4Check: check("cards_last4_check", sql`last4 ~ '^([0-9]{4,6})?$'`),
   expiryMonthCheck: check("cards_expiry_month_check", sql`expiry_month is null or (expiry_month between 1 and 12)`),
   expiryYearCheck: check("cards_expiry_year_check", sql`expiry_year is null or (expiry_year between 2000 and 2100)`),
   expiryPairCheck: check("cards_expiry_pair_check", sql`(expiry_month is null) = (expiry_year is null)`),

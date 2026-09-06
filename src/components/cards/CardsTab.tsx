@@ -80,7 +80,7 @@ export function CardsTab({
   if (loading && cards.length === 0) {
     return (
       <div className="space-y-4">
-        <div className="h-24 animate-pulse rounded-2xl border bg-card" aria-hidden />
+        <div className="h-14 animate-pulse rounded-xl border bg-card sm:h-11" aria-hidden />
         <CardsGridSkeleton />
       </div>
     )
@@ -98,19 +98,21 @@ export function CardsTab({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 sm:space-y-5">
       {cards.length === 0 ? (
-        <div className="rounded-2xl border bg-card px-4 py-10 text-center sm:py-14">
-          <div className="mx-auto w-56 max-w-full sm:w-64">
+        // Deliberately not a full-height hero: on a phone this is the whole
+        // screen, so the illustration shrinks and the copy carries it.
+        <div className="rounded-2xl border bg-card px-4 py-7 text-center sm:py-12">
+          <div className="mx-auto w-40 max-w-full sm:w-56">
             <CardStack />
           </div>
-          <h2 className="mt-6 text-lg font-semibold">{t("cards.emptyTitle")}</h2>
-          <div className="mx-auto mt-2 max-w-md space-y-1 text-sm text-muted-foreground">
+          <h2 className="mt-4 text-base font-semibold sm:mt-6 sm:text-lg">{t("cards.emptyTitle")}</h2>
+          <div className="mx-auto mt-1.5 max-w-md space-y-1 text-[13px] text-muted-foreground sm:text-sm">
             <p>{t("cards.emptyDebit")}</p>
             <p>{t("cards.emptyCredit")}</p>
           </div>
           {canWrite && (
-            <Button className="pressable mt-5" onClick={openCreate}>
+            <Button className="pressable mt-4 min-h-11 sm:mt-5 sm:min-h-9" onClick={openCreate}>
               <Plus className="size-4" /> {t("cards.addCard")}
             </Button>
           )}
@@ -128,7 +130,9 @@ export function CardsTab({
           />
 
           {open.length > 0 && (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            // Two columns at most, roomy gaps — three-across felt cluttered and
+            // a wide tile lays itself out side-by-side (see CardTile).
+            <div className="grid grid-cols-1 gap-4 sm:gap-5 md:grid-cols-2">
               {open.map((card) => (
                 <CardTile
                   key={card.id}

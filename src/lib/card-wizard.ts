@@ -10,10 +10,13 @@ import type { Card, CardDesign, CardKind, CardNetwork, CardTier, WealthAccount }
 import { type CardFormState, cardFormFromAccount, emptyCardForm } from "@/lib/card-form"
 import { validateCardOnboarding, type CardOnboardingError } from "@/lib/credit-card"
 import {
+  CARD_TAIL_MAX,
   cardDisplayName,
+  cardTail,
   darken,
   expiryLabel,
   isCardExpired,
+  isCardNetwork,
   isHexColor,
   isValidLast4,
   normalizeHex,
@@ -26,7 +29,12 @@ import type { CardVisualProps } from "@/components/cards/types"
 // ── Shape ────────────────────────────────────────────────────────────────────
 
 export type CardWizardMode = "create" | "edit"
-export type CardWizardStep = "card" | "look" | "credit"
+/**
+ * One question per step: what it is and where it lives → what is printed on it
+ * → how it looks → (credit) how it works. Editing skips "type" because nothing
+ * on it can change after creation.
+ */
+export type CardWizardStep = "type" | "details" | "look" | "credit"
 
 export type CardWizardForm = {
   kind: CardKind
@@ -36,7 +44,9 @@ export type CardWizardForm = {
   issuer_name: string
   issuer_domain: string
   issuer_logo_url: string
-  network: CardNetwork
+  /** "" until the user picks one — the network is a required detail. */
+  network: CardNetwork | ""
+  /** 4 to 6 digits (CARD_TAIL_MIN..CARD_TAIL_MAX). */
   last4: string
   /** "MM/YY" as typed; parsed on validation (parseExpiry). */
   expiry: string
@@ -70,7 +80,7 @@ export function emptyCardWizardForm(init: {
     issuer_name: "",
     issuer_domain: "",
     issuer_logo_url: "",
-    network: "visa",
+    network: "",
     last4: "",
     expiry: "",
     holder_name: init.holder_name ?? "",
@@ -127,9 +137,16 @@ export function defaultHolderName(clerkFullName: string | null | undefined, prof
 
 // ── Steps ────────────────────────────────────────────────────────────────────
 
-/** Debit cards take two steps; a credit card adds "Credit details" (create AND edit). */
-export function cardWizardSteps(kind: CardKind): CardWizardStep[] {
-  return kind === "credit" ? ["card", "look", "credit"] : ["card", "look"]
+/**
+ * Creating: "Type & bank" → "Card details" → "Look" (3), plus "Credit details"
+ * for a credit card (4). Editing drops the first step — the kind and the linked
+ * bank are fixed once the card exists, so a step of read-only rows would just
+ * be one more Next to press.
+ */
+export function cardWizardSteps(kind: CardKind, mode: CardWizardMode = "create"): CardWizardStep[] {
+  const steps: CardWizardStep[] = mode === "edit" ? ["details", "look"] : ["type", "details", "look"]
+  if (kind === "credit") steps.push("credit")
+  return steps
 }
 
 // ── Validation ───────────────────────────────────────────────────────────────
@@ -138,16 +155,22 @@ export type CardWizardCode =
   | CardOnboardingError
   | "bank_required"
   | "issuer_required"
-  | "last4_invalid"
+  | "network_required"
+  | "last4_required"
+  | "last4_range"
+  | "expiry_required"
   | "expiry_invalid"
+  | "holder_required"
   | "design_invalid"
   | "funding_required"
 
 export type CardWizardField =
   | "account_id"
   | "issuer_name"
+  | "network"
   | "last4"
   | "expiry"
+  | "holder_name"
   | "design"
   | "credit_limit"
   | "current_debt"
@@ -162,8 +185,12 @@ export type CardWizardIssue = { code: CardWizardCode; field: CardWizardField }
 export const CARD_WIZARD_FIELD_FOR_CODE: Record<CardWizardCode, CardWizardField> = {
   bank_required: "account_id",
   issuer_required: "issuer_name",
-  last4_invalid: "last4",
+  network_required: "network",
+  last4_required: "last4",
+  last4_range: "last4",
+  expiry_required: "expiry",
   expiry_invalid: "expiry",
+  holder_required: "holder_name",
   design_invalid: "design",
   funding_required: "funding_account_id",
   limit_invalid: "credit_limit",
@@ -179,18 +206,59 @@ export const CARD_WIZARD_FIELD_FOR_CODE: Record<CardWizardCode, CardWizardField>
 /** Which step a field lives on (where to send the user when the server complains). */
 export function cardWizardStepForField(field: CardWizardField): CardWizardStep {
   switch (field) {
+    case "account_id":
+    case "issuer_name":
+      return "type"
+    case "network":
+    case "last4":
+    case "expiry":
+    case "holder_name":
+      return "details"
     case "design":
       return "look"
-    case "credit_limit":
-    case "current_debt":
-    case "statement_closing_day":
-    case "payment_due_day":
-    case "statement_balance":
-    case "statement_closing_date":
-    case "funding_account_id":
-      return "credit"
     default:
-      return "card"
+      return "credit"
+  }
+}
+
+/**
+ * Where to put the caret when a step is blocked. Selectors are scoped to the
+ * wizard dialog ([data-card-wizard]); the credit ids come from
+ * CreditCardFormFields, which the credit step embeds unchanged.
+ */
+export const CARD_WIZARD_FIELD_SELECTOR: Record<CardWizardField, string> = {
+  account_id: '[data-bank-picker="bank"] [data-bank-option]',
+  issuer_name: "[data-card-issuer] input",
+  network: "[data-network-rail] [data-network]",
+  last4: "#card-last4",
+  expiry: "#card-expiry",
+  holder_name: "#card-holder",
+  design: '[data-tier="custom"]',
+  credit_limit: "#cc-limit",
+  current_debt: "#cc-debt",
+  statement_closing_day: "#cc-closing",
+  payment_due_day: "#cc-due",
+  statement_balance: "#cc-st-balance",
+  statement_closing_date: "#cc-st-close",
+  funding_account_id: '[data-bank-picker="funding"] [data-bank-option]',
+}
+
+/**
+ * Which printed details this run must have. Creating a card requires all of
+ * them — a card with no number and no name renders as a blank rectangle, which
+ * is exactly the bug this rule closes. Editing only requires what the saved
+ * card already had, so a card added before the rule stays editable (and its
+ * blank tail can be filled in) instead of becoming unsavable.
+ */
+export function requiredCardDetails(mode: CardWizardMode, initial?: CardWizardForm | null): { network: boolean; last4: boolean; expiry: boolean; holder: boolean } {
+  if (mode === "create") return { network: true, last4: true, expiry: true, holder: true }
+  // No seed to compare against → assume the card predates the rule and only
+  // check what the user actually typed (never block an existing card's save).
+  return {
+    network: true,
+    last4: !!initial && initial.last4.trim() !== "",
+    expiry: !!initial && initial.expiry.trim() !== "",
+    holder: !!initial && initial.holder_name.trim() !== "",
   }
 }
 
@@ -200,15 +268,38 @@ const int = (v: string): number => (v.trim() === "" ? NaN : Number(v))
 /**
  * The first problem on one step, or null. Blocking rules only — a duplicate
  * tail or a past expiry are warnings (see duplicateLast4 / isExpiryPast).
+ * `initial` is the form as it was seeded; it only relaxes the mandatory printed
+ * details when editing a card that never had them (requiredCardDetails).
  */
-export function validateCardWizardStep(form: CardWizardForm, step: CardWizardStep, mode: CardWizardMode, today: string): CardWizardIssue | null {
-  if (step === "card") {
-    if (mode === "create") {
-      if (form.kind === "debit" && !form.account_id) return issue("bank_required")
-      if (form.kind === "credit" && !form.issuer_name.trim()) return issue("issuer_required")
+export function validateCardWizardStep(
+  form: CardWizardForm,
+  step: CardWizardStep,
+  mode: CardWizardMode,
+  today: string,
+  initial?: CardWizardForm | null,
+): CardWizardIssue | null {
+  if (step === "type") {
+    if (mode !== "create") return null
+    if (form.kind === "debit" && !form.account_id) return issue("bank_required")
+    if (form.kind === "credit" && !form.issuer_name.trim()) return issue("issuer_required")
+    return null
+  }
+  if (step === "details") {
+    const need = requiredCardDetails(mode, initial)
+    if (need.network && !isCardNetwork(form.network)) return issue("network_required")
+    const tail = form.last4.trim()
+    if (tail === "") {
+      if (need.last4) return issue("last4_required")
+    } else if (!isValidLast4(tail)) {
+      return issue("last4_range")
     }
-    if (!isValidLast4(form.last4.trim())) return issue("last4_invalid")
-    if (form.expiry.trim() !== "" && !parseExpiry(form.expiry)) return issue("expiry_invalid")
+    const expiry = form.expiry.trim()
+    if (expiry === "") {
+      if (need.expiry) return issue("expiry_required")
+    } else if (!parseExpiry(expiry)) {
+      return issue("expiry_invalid")
+    }
+    if (need.holder && !form.holder_name.trim()) return issue("holder_required")
     return null
   }
   if (step === "look") {
@@ -238,9 +329,9 @@ export function validateCardWizardStep(form: CardWizardForm, step: CardWizardSte
 }
 
 /** The first problem across every step of the form (run before saving). */
-export function validateCardWizard(form: CardWizardForm, mode: CardWizardMode, today: string): CardWizardIssue | null {
-  for (const step of cardWizardSteps(form.kind)) {
-    const found = validateCardWizardStep(form, step, mode, today)
+export function validateCardWizard(form: CardWizardForm, mode: CardWizardMode, today: string, initial?: CardWizardForm | null): CardWizardIssue | null {
+  for (const step of cardWizardSteps(form.kind, mode)) {
+    const found = validateCardWizardStep(form, step, mode, today, initial)
     if (found) return found
   }
   return null
@@ -278,7 +369,7 @@ export function cardWizardFieldForServerError(body: CardApiErrorBody | null): Ca
   if (body.code && body.code in CARD_WIZARD_FIELD_FOR_CODE) return CARD_WIZARD_FIELD_FOR_CODE[body.code as CardWizardCode]
   const msg = (body.error ?? "").toLowerCase()
   if (!msg) return null
-  if (/last4|four digits/.test(msg)) return "last4"
+  if (/last4|four digits|\d\s*to\s*\d\s*digits/.test(msg)) return "last4"
   if (/expiry/.test(msg)) return "expiry"
   if (/design|colour|color/.test(msg)) return "design"
   if (/credit_limit|credit limit/.test(msg)) return "credit_limit"
@@ -447,9 +538,9 @@ export function formatExpiryInput(next: string, prev: string): string {
   return `${digits.slice(0, 2)}/${digits.slice(2)}`
 }
 
-/** Keep only digits, at most four. */
+/** Keep only digits, at most CARD_TAIL_MAX (6) of them. */
 export function sanitizeLast4(v: string): string {
-  return v.replace(/\D/g, "").slice(0, 4)
+  return v.replace(/\D/g, "").slice(0, CARD_TAIL_MAX)
 }
 
 /**
@@ -457,8 +548,8 @@ export function sanitizeLast4(v: string): string {
  * card entered twice. A warning, never a block (two cards CAN share a tail).
  */
 export function duplicateLast4(cards: Card[], form: CardWizardForm, excludeId?: string | null): Card | null {
-  const tail = form.last4.trim()
-  if (!/^\d{4}$/.test(tail)) return null
+  const tail = cardTail(form.last4)
+  if (!tail) return null
   const issuer = form.issuer_name.trim().toLowerCase()
   return (
     cards.find((c) => {

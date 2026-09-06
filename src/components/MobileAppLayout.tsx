@@ -455,7 +455,7 @@ export function MobileAppLayout() {
         onOpen={() => setSearchOpen(true)}
         hidden={searchOpen || (!pageAction && fabOpen)}
       />
-      <div className="fixed bottom-24 right-4 z-50 flex flex-col items-end gap-2 safe-pb">
+      <div data-app-fab className="fixed bottom-24 right-4 z-50 flex flex-col items-end gap-2 safe-pb">
         {/* AI voice assistant — hidden while the quick-actions menu is open so
             the stack stays uncluttered. */}
         {!(!pageAction && fabOpen) && (

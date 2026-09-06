@@ -1272,8 +1272,6 @@
       "addCard": "Karte hinzufügen",
       "count_one": "{{count}} Karte",
       "count_other": "{{count}} Karten",
-      "linkedToBanks_one": "Mit {{count}} Bank verknüpft",
-      "linkedToBanks_other": "Mit {{count}} Banken verknüpft",
       "debitCount_one": "{{count}} Debitkarte",
       "debitCount_other": "{{count}} Debitkarten",
       "creditCount_one": "{{count}} Kreditkarte",
@@ -1370,9 +1368,7 @@
       "autopayPayManually": "Manuell zahlen",
       "autopayNotCovered": "Nicht von der automatischen Zahlung abgedeckt — bitte manuell zahlen",
       "autopayUpdated": "Automatische Zahlung aktualisiert",
-      "bankCards": "Karten",
       "bankCardsEmpty": "Noch keine Karten bei dieser Bank",
-      "paysThisCard": "zahlt diese Karte",
       "cardsOnBank_one": "{{count}} Karte",
       "cardsOnBank_other": "{{count}} Karten",
       "closeBankCards_one": "{{count}} Karte dieser Bank wird geschlossen.",
@@ -1380,16 +1376,30 @@
       "closeBankAutopay": "Die automatische Zahlung für {{names}} wird deaktiviert.",
       "frozenActions": "Diese Karte ist gesperrt — entsperre sie, um Käufe zu erfassen.",
       "closedActions": "Diese Karte ist geschlossen — öffne sie wieder, um sie zu nutzen.",
-      "viewCards": "Karten anzeigen"
+      "viewCards": "Karten anzeigen",
+      "owedShort": "Offen",
+      "availableShort": "Verfügbar",
+      "dueShort": "Fällig",
+      "bankCardsOpen": "Karten zu diesem Konto",
+      "bankCardsCount_one": "Karten zu diesem Konto, {{count}} Karte",
+      "bankCardsCount_other": "Karten zu diesem Konto, {{count}} Karten",
+      "bankCardsTitle": "Karten zu {{account}}",
+      "bankCardsDesc": "Die mit {{account}} verknüpften Karten: die, die davon ausgeben, und die, deren Abrechnung davon bezahlt wird.",
+      "bankCardsOn": "Auf diesem Konto",
+      "bankCardsOnHint": "Diese zahlen direkt von diesem Guthaben.",
+      "bankCardsPays": "Von diesem Konto bezahlt",
+      "bankCardsPaysHint": "Dieses Konto bezahlt ihre Abrechnungen. Der offene Betrag liegt auf der Karte, nicht in diesem Guthaben.",
+      "bankCardsEmptyHint": "Füge die Debitkarte hinzu, die davon ausgibt, oder eine Kreditkarte, die du von diesem Konto bezahlst."
     },
     "cardWizard": {
       "titleCreate": "Karte hinzufügen",
       "titleEdit": "Karte bearbeiten",
       "stepOf": "Schritt {{current}} von {{total}}",
       "steps": {
-        "card": "Karte",
         "look": "Design",
-        "credit": "Kreditdetails"
+        "credit": "Kreditdetails",
+        "type": "Typ & Bank",
+        "details": "Kartendetails"
       },
       "back": "Zurück",
       "next": "Weiter",
@@ -1404,8 +1414,7 @@
         "debitHelp": "Zahlt direkt vom Guthaben deines Bankkontos",
         "credit": "Kredit",
         "creditHelp": "Jetzt kaufen, die Abrechnung später zahlen",
-        "locked": "Upgrade für eine Kreditkarte",
-        "readOnly": "Der Kartentyp lässt sich nach dem Hinzufügen nicht mehr ändern"
+        "locked": "Upgrade für eine Kreditkarte"
       },
       "bank": {
         "which": "Zu welchem Bankkonto gehört diese Karte?",
@@ -1420,7 +1429,8 @@
         "createFailed": "Bank konnte nicht hinzugefügt werden",
         "upgrade": "Upgrade für weitere Banken",
         "noneOption": "Überspringen — ich zahle manuell",
-        "linked": "Verknüpft mit {{bank}}"
+        "linked": "Verknüpft mit {{bank}}",
+        "loading": "Deine Bankkonten werden geladen…"
       },
       "issuer": {
         "label": "Kartenherausgeber",
@@ -1432,9 +1442,9 @@
         "other": "Sonstiges"
       },
       "last4": {
-        "label": "Letzte 4 Ziffern",
-        "help": "Gespeichert werden nur die letzten vier Ziffern — nie die volle Nummer",
-        "duplicate": "{{name}} endet bereits auf {{last4}} — ist das dieselbe Karte?"
+        "duplicate": "{{name}} endet bereits auf {{last4}} — ist das dieselbe Karte?",
+        "labelRange": "Letzte 4–6 Ziffern",
+        "helpRange": "4 bis 6 Ziffern — die volle Kartennummer wird nie gespeichert"
       },
       "expiry": {
         "label": "Gültig bis",
@@ -1446,11 +1456,9 @@
         "placeholder": "Wie auf der Karte aufgedruckt"
       },
       "nickname": {
-        "label": "Spitzname",
-        "help": "Optional — so wird die Karte in der App angezeigt"
+        "label": "Spitzname"
       },
       "look": {
-        "label": "Design",
         "help": "Optional — wähle eine Optik oder behalte die Farben der Bank",
         "usingBankColours": "Farben von {{bank}}",
         "usingDefault": "Die Farben der Bank werden nach dem Speichern automatisch übernommen",
@@ -1475,7 +1483,8 @@
           "mesh": "Netz",
           "dots": "Punkte"
         },
-        "unreadable": "Diese Textfarbe ist auf diesen Farben schwer lesbar — „Auto“ wählt die lesbare"
+        "unreadable": "Diese Textfarbe ist auf diesen Farben schwer lesbar — „Auto“ wählt die lesbare",
+        "title": "Wie soll sie aussehen?"
       },
       "credit": {
         "payFrom": "Karte bezahlen von",
@@ -1483,12 +1492,13 @@
         "autopay": "Automatische Zahlung",
         "autopayHelp": "Aktiviere das nur, wenn deine Bank die volle Abrechnung bereits automatisch bezahlt — ProfitSync erfasst diese Zahlung dann am Fälligkeitstag. Gilt für Abrechnungen, die nach heute fällig werden.",
         "autopayNeedsBank": "Wähle die Bank, die diese Karte bezahlt, um die automatische Zahlung zu aktivieren",
-        "editHint": "Offener Betrag und frühere Abrechnungen stehen auf der Kartenseite — hier änderst du nur das Limit und die Zyklustage"
+        "editHint": "Offener Betrag und frühere Abrechnungen stehen auf der Kartenseite — hier änderst du nur das Limit und die Zyklustage",
+        "title": "Wie funktioniert diese Karte?",
+        "help": "Das Limit, die Zyklustage und wer die Abrechnung bezahlt."
       },
       "errors": {
         "bank_required": "Wähle das Bankkonto, zu dem diese Karte gehört",
         "issuer_required": "Gib die Bank an, die diese Karte ausgestellt hat",
-        "last4_invalid": "Gib die letzten vier Ziffern an oder lass das Feld leer",
         "expiry_invalid": "Gib die Gültigkeit als MM/JJ an",
         "design_invalid": "Wähle eine gültige Farbe",
         "funding_required": "Wähle die Bank, die diese Karte bezahlt, bevor du die automatische Zahlung aktivierst",
@@ -1500,7 +1510,20 @@
         "statement_balance_invalid": "Gib den Abrechnungssaldo an",
         "statement_date_invalid": "Gib das Abrechnungsdatum an",
         "statement_in_future": "Das Abrechnungsdatum kann nicht in der Zukunft liegen",
-        "amountTooLarge": "Dieser Betrag ist zu groß"
+        "amountTooLarge": "Dieser Betrag ist zu groß",
+        "network_required": "Wähle das Netzwerk der Karte",
+        "last4_required": "Gib die letzten Ziffern auf der Karte an",
+        "last4_range": "Gib die letzten 4 bis 6 Ziffern an",
+        "expiry_required": "Gib die Gültigkeit von der Karte an",
+        "holder_required": "Gib den Namen auf der Karte an"
+      },
+      "optional": "(optional)",
+      "type": {
+        "help": "Wähle den Typ und dann die Bank, zu der die Karte gehört."
+      },
+      "details": {
+        "title": "Was steht auf der Karte?",
+        "help": "Die Angaben auf der Vorderseite — daran erkennst du deine Karten wieder."
       }
     }
   },

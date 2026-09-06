@@ -186,7 +186,7 @@ test.describe.serial("Credit cards", () => {
 
   test("create a card with a known statement — the tile shows what is owed, not a negative balance", async ({ page }) => {
     // Credit cards live on the Cards tab now and are created by the wizard
-    // (Card → Look → Credit details). See docs/cards/CARDS.md.
+    // (Type & bank → Card details → Look → Credit details). docs/cards/CARDS.md.
     await page.goto("/wealth?tab=cards")
     await expectAppShell(page)
     await dismissBanners(page)
@@ -194,16 +194,25 @@ test.describe.serial("Credit cards", () => {
     const dialog = page.getByRole("dialog")
     await expect(dialog).toBeVisible()
 
-    // Step 1 — a credit card from an issuer, with a nickname.
+    // Step 1 — a credit card, and who issued it.
     await dialog.getByRole("radio", { name: /credit/i }).first().click()
     await dialog.getByPlaceholder(/search bank name/i).fill("E2E Card Bank")
     await page.keyboard.press("Tab")
-    await dialog.getByLabel(/nickname/i).fill(CARD_NAME)
-    await dialog.getByRole("button", { name: /^next$/i }).click()
-    // Step 2 — keep the default look.
     await dialog.getByRole("button", { name: /^next$/i }).click()
 
-    // Step 3 — the money: limit, what is owed today, the cycle and the
+    // Step 2 — the card's own details. Every one of these is required now, so
+    // a card can never be saved nameless and numberless.
+    await dialog.getByRole("radio", { name: /^visa$/i }).first().click()
+    await dialog.getByLabel(/last 4/i).fill("4577")
+    await dialog.getByLabel(/expiry/i).fill("0931")
+    await dialog.getByLabel(/name on card/i).fill("E2E BOT")
+    await dialog.getByLabel(/nickname/i).fill(CARD_NAME)
+    await dialog.getByRole("button", { name: /^next$/i }).click()
+
+    // Step 3 — keep the default look.
+    await dialog.getByRole("button", { name: /^next$/i }).click()
+
+    // Step 4 — the money: limit, what is owed today, the cycle and the
     // statement the user already has.
     await dialog.getByLabel(/credit limit/i).fill("2000")
     await dialog.getByLabel(/amount you owe/i).fill("950")
@@ -226,7 +235,9 @@ test.describe.serial("Credit cards", () => {
     await expect(tile).not.toContainText(/-950/)
 
     // Net worth shows the liability separately.
-    await expect(page.getByText(/owed on cards/i).first()).toBeVisible()
+    // Scoped to the Cards panel: the Banks panel is only `hidden`, so it is
+    // still in the DOM with its own (hidden) "Owed on cards" line.
+    await expect(page.locator("#wealth-panel-cards").getByText(/owed on cards/i).first()).toBeVisible()
 
     const accs = await accounts(page)
     const card = accs.find((a) => a.nickname === CARD_NAME)

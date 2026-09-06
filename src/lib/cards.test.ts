@@ -25,17 +25,22 @@ import {
 } from "./cards"
 
 describe("identity", () => {
-  it("masks the number line", () => {
+  it("masks the number line for a 4- or 6-digit tail", () => {
     expect(maskedNumber("1234")).toBe("•••• •••• •••• 1234")
+    expect(maskedNumber("123456")).toBe("•••• •••• ••12 3456")
     expect(maskedNumber("")).toBe("•••• •••• •••• ••••")
     expect(maskedTail(" 9876 ")).toBe("•••• 9876")
+    expect(maskedTail("987654")).toBe("•••• 987654")
+    expect(maskedTail("12")).toBe("••••")
   })
 
-  it("validates the tail", () => {
+  it("validates the tail: 4 to 6 digits, or unknown", () => {
     expect(isValidLast4("")).toBe(true)
     expect(isValidLast4("1234")).toBe(true)
+    expect(isValidLast4("12345")).toBe(true)
+    expect(isValidLast4("123456")).toBe(true)
     expect(isValidLast4("123")).toBe(false)
-    expect(isValidLast4("12345")).toBe(false)
+    expect(isValidLast4("1234567")).toBe(false)
     expect(isValidLast4("12a4")).toBe(false)
   })
 

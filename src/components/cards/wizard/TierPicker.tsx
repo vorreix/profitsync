@@ -17,6 +17,7 @@ type TextChoice = "auto" | "light" | "dark"
 export function TierPicker({
   value,
   onChange,
+  labelId,
   swatchFor,
   design,
   onDesignChange,
@@ -26,6 +27,8 @@ export function TierPicker({
 }: {
   value: CardTier
   onChange: (tier: CardTier) => void
+  /** id of the heading that asks the question (the step's own heading). */
+  labelId: string
   swatchFor: (tier: CardTier) => { from: string; to: string }
   design: CardDesign
   onDesignChange: (patch: Partial<CardDesign>) => void
@@ -65,10 +68,9 @@ export function TierPicker({
   return (
     <div className="space-y-4">
       <div className="space-y-2">
-        <p className="text-sm font-medium" id="card-tier-label">{t("cardWizard.look.label")}</p>
         <div
           role="radiogroup"
-          aria-labelledby="card-tier-label"
+          aria-labelledby={labelId}
           className="-mx-1 flex snap-x gap-2 overflow-x-auto px-1 pb-1 scrollbar-thin"
           onKeyDown={onTierKey}
         >

@@ -141,7 +141,14 @@ export function CardActionsMenu({
           <Button
             variant={variant}
             size={size}
-            className={cn(variant === "ghost" && "text-muted-foreground", className)}
+            // The icon stays small; the TAP TARGET is a full 44px on touch
+            // screens (the repo's floor) via a transparent ::after overlay, so
+            // the kebab never becomes the one control a thumb can't hit.
+            className={cn(
+              "after:absolute after:left-1/2 after:top-1/2 after:size-11 after:-translate-x-1/2 after:-translate-y-1/2 after:content-[''] sm:after:hidden relative",
+              variant === "ghost" && "text-muted-foreground",
+              className,
+            )}
             aria-label={t("cards.cardActions")}
             disabled={busy}
           >

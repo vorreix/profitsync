@@ -85,7 +85,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         attachmentCount: sql<number>`(select count(*)::int from wealth_account_attachments where wealth_account_id = ${wealthAccounts.id})`,
         // How many non-closed cards live on this account (debit cards on a bank,
         // the one credit card on a liability account) — the Banks tab badge.
-        cardCount: sql<number>`(select count(*)::int from cards c where c.account_id = ${wealthAccounts.id} and c.status <> 'closed')`,
+        // Cards this account is involved with, counting BOTH relationships the
+        // card overlay shows: the cards whose money IS this account (a debit
+        // card on a bank) and the credit cards this account PAYS. Counting only
+        // the first would make the tile badge disagree with the overlay.
+        cardCount: sql<number>`(
+          select count(*)::int from cards c
+          where c.status <> 'closed'
+            and (c.account_id = ${wealthAccounts.id}
+                 or (c.kind = 'credit' and c.funding_account_id = ${wealthAccounts.id}))
+        )`,
       })
       .from(wealthAccounts)
       .leftJoin(transactions, and(eq(transactions.wealthAccountId, wealthAccounts.id), isNull(transactions.deletedAt)))

@@ -1,11 +1,9 @@
 import { Link } from "react-router-dom"
 import { useTranslation } from "react-i18next"
-import { cardDisplayName, maskedTail, resolveCardPalette } from "@/lib/cards"
+import { cardDisplayName, cardTail, maskedTail, resolveCardPalette } from "@/lib/cards"
 import type { CardChipProps } from "@/components/cards/types"
 import { NetworkMark } from "@/components/cards/NetworkMark"
 import { cn } from "@/lib/utils"
-
-const LAST4_RE = /^\d{4}$/
 
 /**
  * The "which card paid" identification on a transaction row: a swatch in the
@@ -25,8 +23,9 @@ export function CardChip({ card, variant = "full", linked = true, className }: C
     brand_colors: card.brand_colors,
     brand_domain: card.account_brand_domain,
   })
-  const tail = (card.last4 ?? "").trim()
-  const hasTail = LAST4_RE.test(tail)
+  // 4–6 digits (src/lib/cards.ts is the one place that knows the range).
+  const tail = cardTail(card.last4)
+  const hasTail = tail !== ""
   const displayName = cardDisplayName({ name: card.name, network: card.network, kind: card.kind, account_bank_name: card.account_bank_name })
   const bank = (card.account_bank_name ?? "").trim()
   const kindWord = t(card.kind === "credit" ? "cardChip.credit" : "cardChip.debit")

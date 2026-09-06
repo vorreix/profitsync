@@ -1,7 +1,7 @@
 import { useState, type CSSProperties } from "react"
 import { useTranslation } from "react-i18next"
 import { Archive, Landmark, Snowflake } from "lucide-react"
-import { expiryLabel, isCardExpired, isCardTier, lighten, maskedNumber, maskedTail, resolveCardPalette } from "@/lib/cards"
+import { cardTail, expiryLabel, isCardExpired, isCardTier, lighten, maskedNumber, maskedTail, resolveCardPalette } from "@/lib/cards"
 import type { CardVisualProps } from "@/components/cards/types"
 import { ContactlessIcon, EmvChip } from "@/components/cards/ChipIcon"
 import { NetworkMark, networkLabel } from "@/components/cards/NetworkMark"
@@ -21,8 +21,6 @@ const PRINT = {
   validThru: "VALID THRU",
   tiers: { gold: "GOLD", platinum: "PLATINUM", metal: "METAL", black: "BLACK" } as Record<string, string>,
 }
-
-const LAST4_RE = /^\d{4}$/
 
 function todayIso(): string {
   const d = new Date()
@@ -92,7 +90,7 @@ export function CardVisual({
   const kindWord = t(kind === "credit" ? "cardVisual.credit" : "cardVisual.debit")
   const issuer = [bank, network !== "other" ? networkLabel(network) : ""].filter(Boolean).join(" ")
   const parts = [t("cardVisual.a11yCard", { issuer, kind: kindWord }).replace(/\s+/g, " ").trim()]
-  if (LAST4_RE.test(tail)) parts.push(t("cardVisual.cardEnding", { last4: tail }))
+  if (cardTail(tail)) parts.push(t("cardVisual.cardEnding", { last4: cardTail(tail) }))
   if (expiry) parts.push(t("cardVisual.expires", { expiry }))
   if (status === "frozen") parts.push(t("cardVisual.frozen"))
   if (status === "closed") parts.push(t("cardVisual.closed"))

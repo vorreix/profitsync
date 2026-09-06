@@ -1272,8 +1272,6 @@
       "addCard": "Aggiungi carta",
       "count_one": "{{count}} carta",
       "count_other": "{{count}} carte",
-      "linkedToBanks_one": "Collegata a {{count}} banca",
-      "linkedToBanks_other": "Collegata a {{count}} banche",
       "debitCount_one": "{{count}} carta di debito",
       "debitCount_other": "{{count}} carte di debito",
       "creditCount_one": "{{count}} carta di credito",
@@ -1370,9 +1368,7 @@
       "autopayPayManually": "Paga manualmente",
       "autopayNotCovered": "Non coperto dall'addebito automatico — pagalo manualmente",
       "autopayUpdated": "Addebito automatico aggiornato",
-      "bankCards": "Carte",
       "bankCardsEmpty": "Nessuna carta su questa banca",
-      "paysThisCard": "paga questa carta",
       "cardsOnBank_one": "{{count}} carta",
       "cardsOnBank_other": "{{count}} carte",
       "closeBankCards_one": "{{count}} carta su questa banca verrà chiusa.",
@@ -1380,16 +1376,30 @@
       "closeBankAutopay": "L'addebito automatico di {{names}} verrà disattivato.",
       "frozenActions": "Questa carta è bloccata — sbloccala per aggiungere acquisti.",
       "closedActions": "Questa carta è chiusa — riaprila per usarla di nuovo.",
-      "viewCards": "Vedi le carte"
+      "viewCards": "Vedi le carte",
+      "owedShort": "Da pagare",
+      "availableShort": "Disponibile",
+      "dueShort": "Scadenza",
+      "bankCardsOpen": "Carte su questo conto",
+      "bankCardsCount_one": "Carte su questo conto, {{count}} carta",
+      "bankCardsCount_other": "Carte su questo conto, {{count}} carte",
+      "bankCardsTitle": "Carte su {{account}}",
+      "bankCardsDesc": "Le carte collegate a {{account}}: quelle che spendono da qui e quelle che paga.",
+      "bankCardsOn": "Su questo conto",
+      "bankCardsOnHint": "Spendono direttamente da questo saldo.",
+      "bankCardsPays": "Pagate da questo conto",
+      "bankCardsPaysHint": "Questo conto paga i loro estratti conto. Quello che devono sta sulla carta, non in questo saldo.",
+      "bankCardsEmptyHint": "Aggiungi la carta di debito che spende da questo conto, oppure una carta di credito che paghi da qui."
     },
     "cardWizard": {
       "titleCreate": "Aggiungi una carta",
       "titleEdit": "Modifica carta",
       "stepOf": "Passo {{current}} di {{total}}",
       "steps": {
-        "card": "Carta",
         "look": "Aspetto",
-        "credit": "Dati credito"
+        "credit": "Dati credito",
+        "type": "Tipo e banca",
+        "details": "Dati carta"
       },
       "back": "Indietro",
       "next": "Avanti",
@@ -1404,8 +1414,7 @@
         "debitHelp": "Spende il denaro del tuo conto bancario",
         "credit": "Credito",
         "creditHelp": "Spendi ora, paghi l'estratto conto dopo",
-        "locked": "Passa a Premium per aggiungere una carta di credito",
-        "readOnly": "Il tipo di carta non si può cambiare dopo averla aggiunta"
+        "locked": "Passa a Premium per aggiungere una carta di credito"
       },
       "bank": {
         "which": "Per quale conto bancario è questa carta?",
@@ -1420,7 +1429,8 @@
         "createFailed": "Impossibile aggiungere la banca",
         "upgrade": "Passa a un piano superiore per più banche",
         "noneOption": "Salta — la pagherò manualmente",
-        "linked": "Collegata a {{bank}}"
+        "linked": "Collegata a {{bank}}",
+        "loading": "Caricamento dei tuoi conti bancari…"
       },
       "issuer": {
         "label": "Banca emittente",
@@ -1432,9 +1442,9 @@
         "other": "Altro"
       },
       "last4": {
-        "label": "Ultime 4 cifre",
-        "help": "Salviamo solo le ultime quattro cifre — mai il numero completo",
-        "duplicate": "{{name}} termina già con {{last4}} — è la stessa carta?"
+        "duplicate": "{{name}} termina già con {{last4}} — è la stessa carta?",
+        "labelRange": "Ultime 4–6 cifre",
+        "helpRange": "Da 4 a 6 cifre — il numero completo della carta non viene mai salvato"
       },
       "expiry": {
         "label": "Scadenza",
@@ -1446,11 +1456,9 @@
         "placeholder": "Come stampato sulla carta"
       },
       "nickname": {
-        "label": "Soprannome",
-        "help": "Facoltativo — come viene mostrata la carta nell'app"
+        "label": "Soprannome"
       },
       "look": {
-        "label": "Aspetto",
         "help": "Facoltativo — scegli una finitura oppure tieni i colori della banca",
         "usingBankColours": "Usa i colori di {{bank}}",
         "usingDefault": "I colori della banca vengono presi automaticamente al salvataggio della carta",
@@ -1475,7 +1483,8 @@
           "mesh": "Rete",
           "dots": "Puntini"
         },
-        "unreadable": "Questo colore del testo è poco leggibile su questi colori — Automatico sceglie quello giusto"
+        "unreadable": "Questo colore del testo è poco leggibile su questi colori — Automatico sceglie quello giusto",
+        "title": "Che aspetto deve avere?"
       },
       "credit": {
         "payFrom": "Paga questa carta da",
@@ -1483,12 +1492,13 @@
         "autopay": "Addebito automatico",
         "autopayHelp": "Attivalo solo se la tua banca paga già l'intero estratto conto automaticamente — ProfitSync registrerà quel pagamento alla data di scadenza. Vale per gli estratti conto che scadono dopo oggi.",
         "autopayNeedsBank": "Scegli la banca che paga questa carta per attivare l'addebito automatico",
-        "editHint": "Quanto devi e gli estratti conto passati sono nella pagina della carta — qui cambi solo il limite e i giorni del ciclo"
+        "editHint": "Quanto devi e gli estratti conto passati sono nella pagina della carta — qui cambi solo il limite e i giorni del ciclo",
+        "title": "Come funziona questa carta?",
+        "help": "Il limite, i giorni del ciclo e chi paga l'estratto conto."
       },
       "errors": {
         "bank_required": "Scegli il conto bancario a cui appartiene questa carta",
         "issuer_required": "Inserisci la banca che ha emesso questa carta",
-        "last4_invalid": "Inserisci le ultime quattro cifre, oppure lascia vuoto",
         "expiry_invalid": "Inserisci la scadenza nel formato MM/AA",
         "design_invalid": "Scegli un colore valido",
         "funding_required": "Scegli la banca che paga questa carta prima di attivare l'addebito automatico",
@@ -1500,7 +1510,20 @@
         "statement_balance_invalid": "Inserisci il saldo dell'estratto conto",
         "statement_date_invalid": "Inserisci la data di chiusura dell'estratto conto",
         "statement_in_future": "La data di chiusura dell'estratto conto non può essere futura",
-        "amountTooLarge": "Importo troppo alto"
+        "amountTooLarge": "Importo troppo alto",
+        "network_required": "Scegli il circuito della carta",
+        "last4_required": "Inserisci le ultime cifre stampate sulla carta",
+        "last4_range": "Inserisci le ultime 4–6 cifre",
+        "expiry_required": "Inserisci la scadenza stampata sulla carta",
+        "holder_required": "Inserisci il nome stampato sulla carta"
+      },
+      "optional": "(facoltativo)",
+      "type": {
+        "help": "Scegli il tipo, poi la banca a cui appartiene la carta."
+      },
+      "details": {
+        "title": "Cosa c'è sulla carta?",
+        "help": "I dati stampati sul fronte — così distingui le tue carte."
       }
     }
   },

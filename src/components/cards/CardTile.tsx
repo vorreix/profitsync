@@ -12,6 +12,33 @@ import { visualPropsFromCard } from "@/components/cards/types"
 import { CardActionsMenu } from "@/components/cards/CardActionsMenu"
 import { cardStatusKey, shortDate, todayIso } from "@/components/cards/card-dates"
 
+/**
+ * The Cards grid: at most two columns, roomy gaps. Three cards across is what
+ * made the tab feel cluttered — a payment card is a picture, and pictures need
+ * air. Each tile is a CONTAINER, so a wide column lays the card and its status
+ * out side by side instead of stretching the plastic into a billboard.
+ */
+const GRID = "grid grid-cols-1 gap-4 sm:gap-5 md:grid-cols-2"
+
+/** Grid placeholders in the card's own aspect ratio, so nothing jumps when the tiles arrive. */
+export function CardsGridSkeleton({ count = 2 }: { count?: number }) {
+  return (
+    <div className={GRID} aria-hidden>
+      {Array.from({ length: count }, (_, i) => (
+        <div key={i} className="@container/tile rounded-2xl border bg-card p-3.5 sm:p-4">
+          <div className="flex flex-col @lg/tile:flex-row @lg/tile:items-center @lg/tile:gap-4">
+            <Skeleton className="aspect-[1.586] w-full rounded-xl @lg/tile:w-56 @lg/tile:shrink-0 @2xl/tile:w-72" />
+            <div className="mt-4 w-full @lg/tile:mt-0">
+              <Skeleton className="h-4 w-2/5" />
+              <Skeleton className="mt-2.5 h-3 w-4/5" />
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 /** Textual status pill — words carry the meaning, colour only reinforces it. */
 export function CardStatusPill({ card, className }: { card: Pick<Card, "status" | "expiry_month" | "expiry_year">; className?: string }) {
   const { t } = useTranslation("wealth")
@@ -25,26 +52,11 @@ export function CardStatusPill({ card, className }: { card: Pick<Card, "status" 
   return <Badge variant="outline" className={cn("py-0 text-[11px]", tone, className)}>{t(`cards.${key}`)}</Badge>
 }
 
-/** Grid placeholders in the card's own aspect ratio, so nothing jumps when the tiles arrive. */
-export function CardsGridSkeleton({ count = 3 }: { count?: number }) {
-  return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3" aria-hidden>
-      {Array.from({ length: count }, (_, i) => (
-        <div key={i} className="rounded-2xl border bg-card p-3">
-          <Skeleton className="aspect-[1.586] w-full rounded-xl" />
-          <Skeleton className="mt-3 h-4 w-2/5" />
-          <Skeleton className="mt-2 h-3 w-4/5" />
-        </div>
-      ))}
-    </div>
-  )
-}
-
 /**
  * One card in the Cards grid: the realistic visual (the whole tile links to the
- * card page), a one-line status underneath — credit: owed · available of limit
- * · due date + a thin utilization bar; debit: bank · balance available — and
- * the kebab. Privacy mode hides every amount and the bar.
+ * card page), its status underneath — credit: owed · available of limit · due
+ * date + a thin utilization bar; debit: bank · balance available — and the
+ * kebab. Privacy mode hides every amount and the bar.
  */
 export function CardTile({
   card,
@@ -93,27 +105,32 @@ export function CardTile({
     // re-enables pointer events — no interactive element nests inside another.
     <div
       data-card-tile={card.id}
-      className={cn("group relative rounded-2xl border bg-card p-3 transition-colors hover:border-primary/40", dimmed && "bg-muted/30")}
+      className={cn(
+        "@container/tile group relative rounded-2xl border bg-card p-3.5 transition-colors hover:border-primary/40 sm:p-4",
+        dimmed && "bg-muted/30",
+      )}
     >
       <Link
         to={`/wealth/cards/${card.id}`}
         aria-label={t("cards.openCard", { name })}
         className="pressable ios-tap absolute inset-0 z-0 rounded-2xl outline-none focus-visible:ring-2 focus-visible:ring-ring"
       />
-      <div className="pointer-events-none relative z-10">
-        <div className="motion-safe:transition-transform motion-safe:duration-200 motion-safe:ease-out motion-safe:group-hover:-translate-y-0.5">
+      {/* Narrow: card over status. Wide column: card beside its status, with a
+          hairline between them — the plastic never stretches past ~16rem. */}
+      <div className="pointer-events-none relative z-10 flex flex-col @lg/tile:flex-row @lg/tile:items-center @lg/tile:gap-4">
+        <div className="motion-safe:transition-transform motion-safe:duration-200 motion-safe:ease-out motion-safe:group-hover:-translate-y-0.5 @lg/tile:w-56 @lg/tile:shrink-0 @2xl/tile:w-72">
           <CardVisual {...visualPropsFromCard(card)} size="md" still className="w-full" />
         </div>
-        <div className="mt-3 flex items-start gap-2">
+        <div className="mt-4 flex items-start gap-2 @lg/tile:mt-0 @lg/tile:min-w-0 @lg/tile:flex-1 @lg/tile:self-stretch @lg/tile:items-center @lg/tile:border-s @lg/tile:ps-4">
           <div className="min-w-0 flex-1">
-            <div className="flex min-w-0 items-center gap-1.5">
+            <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
               <p className="truncate text-sm font-semibold">{name}</p>
               <span className="shrink-0 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{isCredit ? t("cards.kindCredit") : t("cards.kindDebit")}</span>
             </div>
-            <p className="mt-0.5 text-xs text-muted-foreground tabular-nums">
+            <p className="mt-1.5 text-[13px] leading-relaxed text-muted-foreground tabular-nums">
               {parts.map((p, i) => (
                 <span key={p.key} className={p.className}>
-                  {i > 0 && <span aria-hidden className="text-muted-foreground/70"> · </span>}
+                  {i > 0 && <span aria-hidden className="text-muted-foreground/50"> · </span>}
                   {p.text}
                 </span>
               ))}
@@ -126,7 +143,7 @@ export function CardTile({
                 aria-valuemin={0}
                 aria-valuemax={100}
                 aria-valuenow={pct}
-                className="mt-2 h-1 w-full overflow-hidden rounded-full bg-muted"
+                className="mt-2.5 h-1 w-full overflow-hidden rounded-full bg-muted"
               >
                 <div
                   className={cn(
@@ -138,7 +155,7 @@ export function CardTile({
               </div>
             )}
           </div>
-          <div className="pointer-events-auto -me-1 -mt-1 shrink-0">
+          <div className="pointer-events-auto -me-1 -mt-1 shrink-0 @lg/tile:mt-0">
             <CardActionsMenu card={card} canWrite={canWrite} canDelete={canDelete} currency={currency} onEdit={onEdit} onChanged={onChanged} />
           </div>
         </div>

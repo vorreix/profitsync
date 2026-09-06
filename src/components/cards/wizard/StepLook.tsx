@@ -2,10 +2,11 @@ import { useTranslation } from "react-i18next"
 import type { Card, CardWizardModeProps, WealthAccount } from "./step-types"
 import { customTextUnreadable, tierSwatch, wizardBankName, type CardWizardField } from "@/lib/card-wizard"
 import type { CardTier } from "@/lib/types"
+import { StepHeading } from "./StepHeading"
 import { TierPicker } from "./TierPicker"
 
 /**
- * Step 2 — how the card looks. Optional: Standard (the bank's colours) is
+ * Step 3 — how the card looks. Optional: Standard (the bank's colours) is
  * preselected, so Next is always a valid answer.
  */
 export function StepLook({
@@ -27,13 +28,15 @@ export function StepLook({
       ? brandKnown && bankName
         ? t("cardWizard.look.usingBankColours", { bank: bankName })
         : t("cardWizard.look.usingDefault")
-      : t("cardWizard.look.help")
+      : null
 
   return (
     <div className="space-y-4">
+      <StepHeading id="card-tier-label" title={t("cardWizard.look.title")} help={t("cardWizard.look.help")} />
       <TierPicker
         value={form.tier}
         onChange={(tier: CardTier) => onChange({ tier })}
+        labelId="card-tier-label"
         swatchFor={(tier) => tierSwatch(tier, form, selectedBank, savedCard)}
         design={form.design}
         onDesignChange={(patch) => onChange({ design: { ...form.design, ...patch } })}
@@ -43,9 +46,9 @@ export function StepLook({
       />
       {errors.design ? (
         <p role="alert" className="text-xs text-destructive">{errors.design}</p>
-      ) : (
+      ) : note ? (
         <p className="text-xs text-muted-foreground">{note}</p>
-      )}
+      ) : null}
     </div>
   )
 }

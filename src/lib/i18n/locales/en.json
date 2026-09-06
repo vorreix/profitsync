@@ -1082,15 +1082,16 @@
       "addCard": "Add card",
       "count_one": "{{count}} card",
       "count_other": "{{count}} cards",
-      "linkedToBanks_one": "Linked to {{count}} bank",
-      "linkedToBanks_other": "Linked to {{count}} banks",
       "debitCount_one": "{{count}} debit card",
       "debitCount_other": "{{count}} debit cards",
       "creditCount_one": "{{count}} credit card",
       "creditCount_other": "{{count}} credit cards",
       "owedTotal": "Owed on cards",
+      "owedShort": "Owed",
       "availableCredit": "Available credit",
+      "availableShort": "Available",
       "nextDue": "Next payment due",
+      "dueShort": "Due",
       "nothingDue": "Nothing due",
       "dueIn_one": "in {{count}} day",
       "dueIn_other": "in {{count}} days",
@@ -1180,9 +1181,17 @@
       "autopayPayManually": "Pay manually",
       "autopayNotCovered": "Not covered by autopay — pay it manually",
       "autopayUpdated": "Autopay updated",
-      "bankCards": "Cards",
+      "bankCardsOpen": "Cards on this account",
+      "bankCardsCount_one": "Cards on this account, {{count}} card",
+      "bankCardsCount_other": "Cards on this account, {{count}} cards",
+      "bankCardsTitle": "Cards on {{account}}",
+      "bankCardsDesc": "The cards linked to {{account}}: the ones that spend from it and the ones it pays.",
+      "bankCardsOn": "On this account",
+      "bankCardsOnHint": "These spend straight from this balance.",
+      "bankCardsPays": "Paid from this account",
+      "bankCardsPaysHint": "This account pays their statements. What they owe lives on the card, not in this balance.",
       "bankCardsEmpty": "No cards on this bank yet",
-      "paysThisCard": "pays this card",
+      "bankCardsEmptyHint": "Add the debit card that spends from it, or a credit card you pay from this account.",
       "cardsOnBank_one": "{{count}} card",
       "cardsOnBank_other": "{{count}} cards",
       "closeBankCards_one": "{{count}} card on this bank will be closed.",
@@ -1197,10 +1206,12 @@
       "titleEdit": "Edit card",
       "stepOf": "Step {{current}} of {{total}}",
       "steps": {
-        "card": "Card",
+        "type": "Type & bank",
+        "details": "Card details",
         "look": "Look",
         "credit": "Credit details"
       },
+      "optional": "(optional)",
       "back": "Back",
       "next": "Next",
       "save": "Save card",
@@ -1214,8 +1225,14 @@
         "debitHelp": "Spends the money in your bank account",
         "credit": "Credit",
         "creditHelp": "Borrow now, pay the statement later",
-        "locked": "Upgrade to add a credit card",
-        "readOnly": "The card type can't change after it's added"
+        "locked": "Upgrade to add a credit card"
+      },
+      "type": {
+        "help": "Pick the type, then the bank the card belongs to."
+      },
+      "details": {
+        "title": "What's on the card?",
+        "help": "The details printed on the front — this is how you'll tell your cards apart."
       },
       "bank": {
         "which": "Which bank account is this card for?",
@@ -1230,7 +1247,8 @@
         "createFailed": "Couldn't add the bank",
         "upgrade": "Upgrade to add more banks",
         "noneOption": "Skip — I'll pay it manually",
-        "linked": "Linked to {{bank}}"
+        "linked": "Linked to {{bank}}",
+        "loading": "Loading your bank accounts…"
       },
       "issuer": {
         "label": "Card issuer",
@@ -1242,8 +1260,8 @@
         "other": "Other"
       },
       "last4": {
-        "label": "Last 4 digits",
-        "help": "Only the last four digits are stored — never the full number",
+        "labelRange": "Last 4–6 digits",
+        "helpRange": "4 to 6 digits — the full card number is never stored",
         "duplicate": "{{name}} already ends in {{last4}} — is this the same card?"
       },
       "expiry": {
@@ -1256,11 +1274,10 @@
         "placeholder": "As printed on the card"
       },
       "nickname": {
-        "label": "Nickname",
-        "help": "Optional — how the card is shown around the app"
+        "label": "Nickname"
       },
       "look": {
-        "label": "Design",
+        "title": "How should it look?",
         "help": "Optional — pick a finish, or keep the bank's colours",
         "usingBankColours": "Using {{bank}}'s colours",
         "usingDefault": "Bank colours are picked up automatically once the card is saved",
@@ -1288,6 +1305,8 @@
         "unreadable": "That text colour is hard to read on these colours — Auto picks the readable one"
       },
       "credit": {
+        "title": "How does this card work?",
+        "help": "The limit, the cycle days and who pays the statement.",
         "payFrom": "Pay this card from",
         "payFromHelp": "The bank that pays the statement. You can change this later.",
         "autopay": "Autopay",
@@ -1298,8 +1317,12 @@
       "errors": {
         "bank_required": "Choose the bank account this card belongs to",
         "issuer_required": "Enter the bank that issued this card",
-        "last4_invalid": "Enter the last four digits, or leave it blank",
+        "network_required": "Pick the card's network",
+        "last4_required": "Enter the last digits printed on the card",
+        "last4_range": "Enter the last 4 to 6 digits",
+        "expiry_required": "Enter the expiry printed on the card",
         "expiry_invalid": "Enter the expiry as MM/YY",
+        "holder_required": "Enter the name printed on the card",
         "design_invalid": "Pick a valid colour",
         "funding_required": "Choose the bank that pays this card before switching autopay on",
         "limit_invalid": "Enter the credit limit",

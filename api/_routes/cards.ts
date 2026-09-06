@@ -9,7 +9,7 @@ import { loadCard, loadCards, serializeCard } from "../_lib/cards.js"
 import { syncCards } from "../_lib/card-autopay.js"
 import { materializeDueRecurring } from "../_lib/recurring-materialize.js"
 import { createWealthAccount, type CreateAccountInput } from "../_lib/wealth-accounts.js"
-import { guessNetworkFromName, isCardKind, isCardNetwork, isCardTier, isValidLast4, sanitizeCardDesign } from "../../src/lib/cards.js"
+import { CARD_TAIL_MAX, CARD_TAIL_MIN, guessNetworkFromName, isCardKind, isCardNetwork, isCardTier, isValidLast4, sanitizeCardDesign } from "../../src/lib/cards.js"
 import { todayIso } from "../../src/lib/recurring.js"
 
 /**
@@ -32,8 +32,8 @@ export function pickCardIdentity(body: {
   const name = str(body.name, 60)
   const holderName = str(body.holder_name, 80)
   const network = isCardNetwork(body.network) ? body.network : guessNetworkFromName(`${name} ${fallbackName}`)
-  const last4 = str(body.last4, 4)
-  if (!isValidLast4(last4)) return { ok: false, error: "last4 must be exactly four digits" }
+  const last4 = str(body.last4, CARD_TAIL_MAX)
+  if (!isValidLast4(last4)) return { ok: false, error: `last4 must be ${CARD_TAIL_MIN} to ${CARD_TAIL_MAX} digits` }
   const month = body.expiry_month == null || body.expiry_month === "" ? null : Number(body.expiry_month)
   const year = body.expiry_year == null || body.expiry_year === "" ? null : Number(body.expiry_year)
   if ((month === null) !== (year === null)) return { ok: false, error: "expiry needs both a month and a year" }
