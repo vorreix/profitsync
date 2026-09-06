@@ -1380,12 +1380,12 @@
       "bankCardsCount_one": "Karten zu diesem Konto, {{count}} Karte",
       "bankCardsCount_other": "Karten zu diesem Konto, {{count}} Karten",
       "bankCardsTitle": "Karten zu {{account}}",
-      "bankCardsDesc": "Die mit {{account}} verknüpften Karten: die, die davon ausgeben, und die, deren Abrechnung davon bezahlt wird.",
+      "bankCardsDesc": "Die Karten zu {{account}}: die, die davon bezahlen, die, deren Abrechnung es zahlt, und die, die es ausgegeben hat.",
       "bankCardsOn": "Auf diesem Konto",
       "bankCardsOnHint": "Diese zahlen direkt von diesem Guthaben.",
       "bankCardsPays": "Von diesem Konto bezahlt",
       "bankCardsPaysHint": "Dieses Konto bezahlt ihre Abrechnungen. Der offene Betrag liegt auf der Karte, nicht in diesem Guthaben.",
-      "bankCardsEmptyHint": "Füge die Debitkarte hinzu, die davon ausgibt, oder eine Kreditkarte, die du von diesem Konto bezahlst.",
+      "bankCardsEmptyHint": "Füge die Debitkarte hinzu, die davon bezahlt, oder eine Kreditkarte dieser Bank oder eine, die du von hier bezahlst.",
       "meterUsed": "Genutzt",
       "meterLeft": "Übrig",
       "meterOfLimit": "von {{limit}}",
@@ -1403,7 +1403,9 @@
       "expiryExpiredA11y": "Karte nach {{expiry}} abgelaufen. Anzeigen, was zu tun ist.",
       "expirySoonA11y_one": "Karte läuft am {{expiry}} ab, noch {{count}} Tag. Anzeigen, was zu tun ist.",
       "expirySoonA11y_other": "Karte läuft am {{expiry}} ab, noch {{count}} Tage. Anzeigen, was zu tun ist.",
-      "expiryAction": "Kartenmenü → Ablaufdatum aktualisieren"
+      "expiryAction": "Kartenmenü → Ablaufdatum aktualisieren",
+      "bankCardsIssued": "Von dieser Bank ausgegeben",
+      "bankCardsIssuedHint": "Diese Bank hat dir die Karte gegeben. Die Abrechnung zahlt ein anderes Konto, es fließt also kein Geld zwischen beiden."
     },
     "cardWizard": {
       "titleCreate": "Karte hinzufügen",
@@ -1447,9 +1449,9 @@
         "loading": "Deine Bankkonten werden geladen…"
       },
       "issuer": {
-        "label": "Kartenherausgeber",
-        "placeholder": "Banknamen suchen…",
-        "help": "Die Bank, die die Karte ausgestellt hat — ihre Farben kommen auf die Karte"
+        "help": "Wähle die Bank, die dir die Karte gegeben hat, oder füge sie hinzu. Sie wird zu einem deiner Bankkonten, und die Farben der Karte kommen von dort.",
+        "which": "Welche Bank hat diese Karte ausgegeben?",
+        "addFirst": "Bank hinzufügen, die diese Karte ausgegeben hat"
       },
       "network": {
         "label": "Netzwerk",

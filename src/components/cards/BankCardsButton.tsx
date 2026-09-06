@@ -49,11 +49,11 @@ export function BankCardsButton({
   const [wizardOpen, setWizardOpen] = useState(false)
   const handledHash = useRef(false)
 
-  const { on, pays } = useMemo(() => relatedBankCards(cards, account.id), [cards, account.id])
+  const { on, pays, issued } = useMemo(() => relatedBankCards(cards, account.id), [cards, account.id])
   // The badge counts what is live; closed cards are still listed inside.
   const liveCount = useMemo(
-    () => [...on, ...pays].filter((c) => c.status !== "closed").length,
-    [on, pays],
+    () => [...on, ...pays, ...issued].filter((c) => c.status !== "closed").length,
+    [on, pays, issued],
   )
   const isCash = account.type === "cash"
 

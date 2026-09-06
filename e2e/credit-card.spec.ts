@@ -206,10 +206,13 @@ test.describe.serial("Credit cards", () => {
     const dialog = page.getByRole("dialog")
     await expect(dialog).toBeVisible()
 
-    // Step 1 — a credit card, and who issued it.
+    // Step 1 — a credit card, and WHICH BANK ISSUED IT. The issuer is a real
+    // account now, not typed text: a credit card is given to you by a bank, and
+    // only a row can show up on that bank's page (docs/cards/CARDS.md §1).
     await dialog.getByRole("radio", { name: /credit/i }).first().click()
-    await dialog.getByPlaceholder(/search bank name/i).fill("E2E Card Bank")
-    await page.keyboard.press("Tab")
+    const issuerPicker = dialog.locator('[data-bank-picker="issuer"]')
+    await expect(issuerPicker).toBeVisible({ timeout: 15_000 })
+    await issuerPicker.locator("[data-bank-option]").first().click()
     await dialog.getByRole("button", { name: /^next$/i }).click()
 
     // Step 2 — the card's own details. Every one of these is required now, so
@@ -269,6 +272,22 @@ test.describe.serial("Credit cards", () => {
     expect(source, "an account to pay the card from").toBeTruthy()
     sourceId = source!.id
     sourceBefore = Number(source!.current_balance)
+
+    // The issuer is a REAL bank account, and the bank it names is the one the
+    // wizard offered. Without this the card is invisible on that bank's page.
+    const { json: allCards } = await api<{ id: string; nickname?: string; name: string; issuer_account_id: string | null; funding_account_id: string | null }[]>(page, "GET", "/api/cards")
+    const created = allCards.find((c) => c.name === CARD_NAME)
+    expect(created, "the created card is in /api/cards").toBeTruthy()
+    const issuerBank = accs.find((a) => a.id === created!.issuer_account_id)
+    expect(issuerBank, "the card names an existing bank account as its issuer").toBeTruthy()
+    expect(issuerBank!.type).toBe("bank")
+    // Picking the issuer also answers "who pays it", until step 4 says otherwise.
+    expect(created!.funding_account_id).toBe(created!.issuer_account_id)
+
+    // …and the issuing bank's own page lists it.
+    await page.goto(`/wealth/${created!.issuer_account_id}#cards`)
+    await expect(page.locator("#cards")).toBeVisible({ timeout: 20_000 })
+    await expect(page.locator("#cards")).toContainText(CARD_NAME)
 
     const s = await cardSummary(page, cardId)
     expect(s.usage).toMatchObject({ debt: 950, credit: 0, available: 1050 })

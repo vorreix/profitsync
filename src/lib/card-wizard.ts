@@ -38,9 +38,19 @@ export type CardWizardStep = "type" | "details" | "look" | "credit"
 
 export type CardWizardForm = {
   kind: CardKind
-  /** Debit: the bank this card spends from (an existing ACTIVE bank). */
+  /**
+   * The BANK this card belongs to, for both kinds: a debit card spends from it,
+   * a credit card was issued by it. Always a real, active wealth account — the
+   * picker creates one inline when the user has no account with that bank yet,
+   * which is what makes an issuer countable against the plan's bank limit.
+   */
   account_id: string
-  /** Credit: the issuing bank (free text + brand pick — drives the preview colours). */
+  /**
+   * The issuer's branding, mirrored from the picked bank so the live preview
+   * and the nickname placeholder have something to draw before the card is
+   * saved. Not typed by the user any more; still sent so the server can brand a
+   * card whose issuer is not one of the user's accounts.
+   */
   issuer_name: string
   issuer_domain: string
   issuer_logo_url: string
@@ -99,7 +109,7 @@ export function cardWizardFormFromCard(card: Card): CardWizardForm {
   const design = card.design ?? { ...DEFAULT_CUSTOM_DESIGN }
   return {
     kind: card.kind,
-    account_id: card.kind === "debit" ? card.account_id : "",
+    account_id: card.kind === "debit" ? card.account_id : (card.issuer_account_id ?? ""),
     issuer_name: card.account_bank_name ?? "",
     issuer_domain: card.account_brand_domain ?? "",
     issuer_logo_url: card.account_logo_url ?? "",
@@ -184,7 +194,7 @@ export type CardWizardIssue = { code: CardWizardCode; field: CardWizardField }
 
 export const CARD_WIZARD_FIELD_FOR_CODE: Record<CardWizardCode, CardWizardField> = {
   bank_required: "account_id",
-  issuer_required: "issuer_name",
+  issuer_required: "account_id",
   network_required: "network",
   last4_required: "last4",
   last4_range: "last4",
@@ -227,8 +237,10 @@ export function cardWizardStepForField(field: CardWizardField): CardWizardStep {
  * CreditCardFormFields, which the credit step embeds unchanged.
  */
 export const CARD_WIZARD_FIELD_SELECTOR: Record<CardWizardField, string> = {
-  account_id: '[data-bank-picker="bank"] [data-bank-option]',
-  issuer_name: "[data-card-issuer] input",
+  // One rule, two pickers: step 1 is `bank` for a debit card and `issuer` for
+  // a credit one, and both write to account_id.
+  account_id: '[data-bank-picker="bank"] [data-bank-option], [data-bank-picker="issuer"] [data-bank-option]',
+  issuer_name: '[data-bank-picker="issuer"] [data-bank-option]',
   network: "[data-network-rail] [data-network]",
   last4: "#card-last4",
   expiry: "#card-expiry",
@@ -280,8 +292,9 @@ export function validateCardWizardStep(
 ): CardWizardIssue | null {
   if (step === "type") {
     if (mode !== "create") return null
-    if (form.kind === "debit" && !form.account_id) return issue("bank_required")
-    if (form.kind === "credit" && !form.issuer_name.trim()) return issue("issuer_required")
+    // Both kinds now name a real bank: the one a debit card spends from, or
+    // the one that issued a credit card.
+    if (!form.account_id) return issue(form.kind === "credit" ? "issuer_required" : "bank_required")
     return null
   }
   if (step === "details") {
@@ -440,11 +453,20 @@ export function cardCreatePayload(form: CardWizardForm) {
   }
   return {
     kind: "credit" as const,
-    issuer: {
-      bank_name: form.issuer_name.trim(),
-      brand_domain: form.issuer_domain,
-      logo_url: form.issuer_logo_url,
-    },
+    // The issuer as an ACCOUNT. With a real account the SERVER derives the
+    // branding from that bank row, so the form's mirrored copy is deliberately
+    // not sent: two sources for one fact is how they drift apart. The mirror is
+    // only sent when there is no account to derive from.
+    account_id: form.account_id,
+    ...(form.account_id
+      ? {}
+      : {
+          issuer: {
+            bank_name: form.issuer_name.trim(),
+            brand_domain: form.issuer_domain,
+            logo_url: form.issuer_logo_url,
+          },
+        }),
     ...(form.funding_account_id ? { funding_account_id: form.funding_account_id } : {}),
     autopay: !!form.funding_account_id && form.autopay,
     ...identity,
@@ -468,8 +490,10 @@ export function cardEditPayload(form: CardWizardForm) {
 
 /** The bank name the preview and the nickname placeholder use. */
 export function wizardBankName(form: CardWizardForm, bank: Pick<WealthAccount, "bank_name" | "nickname"> | null | undefined): string {
-  if (form.kind === "credit") return form.issuer_name.trim()
-  return (bank?.bank_name ?? "").trim()
+  // Both kinds name a real bank now, so one branch: the account picked in step
+  // 1. `issuer_name` is only the fallback for a form seeded from a card whose
+  // issuer account was never recorded (anything created before mig 0065).
+  return (bank?.bank_name ?? "").trim() || (form.kind === "credit" ? form.issuer_name.trim() : "")
 }
 
 /** Placeholder for the nickname field: "<Bank> <Network>" (or "Visa card" without a bank). */
@@ -490,9 +514,9 @@ export function cardPreviewProps(form: CardWizardForm, bank: WealthAccount | nul
     tier: form.tier,
     design: form.tier === "custom" ? effectiveDesign(form) : null,
     brand_colors: saved?.brand_colors ?? null,
-    brand_domain: credit ? form.issuer_domain || null : bank?.brand_domain || null,
+    brand_domain: bank?.brand_domain || (credit ? form.issuer_domain : "") || null,
     brand_logo_url: saved?.brand_logo_url || null,
-    bank_logo_src: credit ? form.issuer_logo_url || saved?.account_logo_src || null : bank?.logo_src || bank?.logo_url || null,
+    bank_logo_src: bank?.logo_src || bank?.logo_url || (credit ? form.issuer_logo_url || saved?.account_logo_src : "") || null,
     bank_name: wizardBankName(form, bank) || null,
     name: form.name.trim() || null,
     holder_name: form.holder_name.trim() || null,
@@ -508,7 +532,7 @@ export function tierSwatch(tier: CardTier, form: CardWizardForm, bank: WealthAcc
     tier,
     design: tier === "custom" ? effectiveDesign(form) : null,
     brand_colors: saved?.brand_colors ?? null,
-    brand_domain: form.kind === "credit" ? form.issuer_domain || null : bank?.brand_domain || null,
+    brand_domain: bank?.brand_domain || (form.kind === "credit" ? form.issuer_domain : "") || null,
   })
   return { from: p.from, to: p.to }
 }
@@ -555,7 +579,11 @@ export function duplicateLast4(cards: Card[], form: CardWizardForm, excludeId?: 
     cards.find((c) => {
       if (c.id === excludeId || c.status === "closed" || c.last4 !== tail) return false
       if (form.kind === "debit") return c.kind === "debit" && c.account_id === form.account_id
-      return c.kind === "credit" && !!issuer && (c.account_bank_name ?? "").trim().toLowerCase() === issuer
+      // Same issuing bank: by account when both cards recorded one, else by the
+      // branding name (cards created before the issuer became an account).
+      if (c.kind !== "credit") return false
+      if (form.account_id && c.issuer_account_id) return c.issuer_account_id === form.account_id
+      return !!issuer && (c.account_bank_name ?? "").trim().toLowerCase() === issuer
     }) ?? null
   )
 }

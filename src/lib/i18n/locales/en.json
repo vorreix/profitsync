@@ -1181,13 +1181,13 @@
       "bankCardsCount_one": "Cards on this account, {{count}} card",
       "bankCardsCount_other": "Cards on this account, {{count}} cards",
       "bankCardsTitle": "Cards on {{account}}",
-      "bankCardsDesc": "The cards linked to {{account}}: the ones that spend from it and the ones it pays.",
+      "bankCardsDesc": "The cards linked to {{account}}: the ones that spend from it, the ones it pays, and the ones it issued.",
       "bankCardsOn": "On this account",
       "bankCardsOnHint": "These spend straight from this balance.",
       "bankCardsPays": "Paid from this account",
       "bankCardsPaysHint": "This account pays their statements. What they owe lives on the card, not in this balance.",
       "bankCardsEmpty": "No cards on this bank yet",
-      "bankCardsEmptyHint": "Add the debit card that spends from it, or a credit card you pay from this account.",
+      "bankCardsEmptyHint": "Add the debit card that spends from it, or a credit card this bank issued or you pay from here.",
       "cardsOnBank_one": "{{count}} card",
       "cardsOnBank_other": "{{count}} cards",
       "closeBankCards_one": "{{count}} card on this bank will be closed.",
@@ -1213,7 +1213,9 @@
       "expiryExpiredA11y": "Card expired after {{expiry}}. Show what to do.",
       "expirySoonA11y_one": "Card expires {{expiry}}, {{count}} day left. Show what to do.",
       "expirySoonA11y_other": "Card expires {{expiry}}, {{count}} days left. Show what to do.",
-      "expiryAction": "Card menu → Update expiry"
+      "expiryAction": "Card menu → Update expiry",
+      "bankCardsIssued": "Issued by this bank",
+      "bankCardsIssuedHint": "This bank gave you the card. Something else pays its statement, so no money moves between the two."
     },
     "cardWizard": {
       "titleCreate": "Add a card",
@@ -1265,9 +1267,9 @@
         "loading": "Loading your bank accounts…"
       },
       "issuer": {
-        "label": "Card issuer",
-        "placeholder": "Search bank name…",
-        "help": "The bank that issued the card — its colours go on the card"
+        "help": "Pick the bank that gave you the card, or add it. It becomes one of your bank accounts, and the card's colours come from it.",
+        "which": "Which bank issued this card?",
+        "addFirst": "Add the bank that issued this card"
       },
       "network": {
         "label": "Network",

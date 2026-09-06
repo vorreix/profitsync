@@ -1380,12 +1380,12 @@
       "bankCardsCount_one": "Carte su questo conto, {{count}} carta",
       "bankCardsCount_other": "Carte su questo conto, {{count}} carte",
       "bankCardsTitle": "Carte su {{account}}",
-      "bankCardsDesc": "Le carte collegate a {{account}}: quelle che spendono da qui e quelle che paga.",
+      "bankCardsDesc": "Le carte collegate a {{account}}: quelle che spendono da qui, quelle che paga e quelle che ha emesso.",
       "bankCardsOn": "Su questo conto",
       "bankCardsOnHint": "Spendono direttamente da questo saldo.",
       "bankCardsPays": "Pagate da questo conto",
       "bankCardsPaysHint": "Questo conto paga i loro estratti conto. Quello che devono sta sulla carta, non in questo saldo.",
-      "bankCardsEmptyHint": "Aggiungi la carta di debito che spende da questo conto, oppure una carta di credito che paghi da qui.",
+      "bankCardsEmptyHint": "Aggiungi la carta di debito che spende da qui, o una carta di credito emessa da questa banca o che paghi da questo conto.",
       "meterUsed": "Usato",
       "meterLeft": "Residuo",
       "meterOfLimit": "di {{limit}}",
@@ -1403,7 +1403,9 @@
       "expiryExpiredA11y": "Carta scaduta dopo il {{expiry}}. Mostra cosa fare.",
       "expirySoonA11y_one": "La carta scade il {{expiry}}, manca {{count}} giorno. Mostra cosa fare.",
       "expirySoonA11y_other": "La carta scade il {{expiry}}, mancano {{count}} giorni. Mostra cosa fare.",
-      "expiryAction": "Menu carta → Aggiorna scadenza"
+      "expiryAction": "Menu carta → Aggiorna scadenza",
+      "bankCardsIssued": "Emesse da questa banca",
+      "bankCardsIssuedHint": "Questa banca ti ha dato la carta. L'estratto conto viene pagato da un altro conto, quindi tra i due non si muove denaro."
     },
     "cardWizard": {
       "titleCreate": "Aggiungi una carta",
@@ -1447,9 +1449,9 @@
         "loading": "Caricamento dei tuoi conti bancari…"
       },
       "issuer": {
-        "label": "Banca emittente",
-        "placeholder": "Cerca nome banca…",
-        "help": "La banca che ha emesso la carta — la carta ne prende i colori"
+        "help": "Scegli la banca che ti ha dato la carta, o aggiungila. Diventerà uno dei tuoi conti bancari e i colori della carta verranno da lì.",
+        "which": "Quale banca ha emesso questa carta?",
+        "addFirst": "Aggiungi la banca che ha emesso questa carta"
       },
       "network": {
         "label": "Circuito",

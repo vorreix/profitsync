@@ -53,6 +53,7 @@ const card = (over: Partial<Card> = {}): Card => ({
   kind: "credit",
   account_id: "liab-1",
   funding_account_id: "bank-1",
+  issuer_account_id: "bank-1",
   name: "Visa Gold",
   holder_name: "Ada Lovelace",
   network: "visa",
@@ -93,7 +94,7 @@ const debitForm = (over: Partial<CardWizardForm> = {}): CardWizardForm => ({
 const seeded = (over: Partial<CardWizardForm> = {}): CardWizardForm => debitForm(over)
 
 const creditForm = (over: Partial<CardWizardForm> = {}): CardWizardForm => {
-  const f = emptyCardWizardForm({ kind: "credit", funding_account_id: "bank-1", holder_name: "Ada" })
+  const f = emptyCardWizardForm({ kind: "credit", account_id: "bank-1", funding_account_id: "bank-1", holder_name: "Ada" })
   return {
     ...f,
     issuer_name: "HDFC Bank",
@@ -128,7 +129,9 @@ describe("seeding", () => {
   it("seeds the edit form from a saved credit card", () => {
     const f = cardWizardFormFromCard(card())
     expect(f.kind).toBe("credit")
-    expect(f.account_id).toBe("")
+    // A credit card's account_id is now its ISSUING BANK, not the liability
+    // account it posts to — that is the id step 1 picks.
+    expect(f.account_id).toBe("bank-1")
     expect(f.issuer_name).toBe("HDFC Bank")
     expect(f.expiry).toBe("09/27")
     expect(f.tier).toBe("gold")
@@ -137,6 +140,8 @@ describe("seeding", () => {
     expect(f.credit.payment_due_day).toBe("15")
     expect(f.funding_account_id).toBe("bank-1")
     expect(f.autopay).toBe(true)
+    // Nothing to pick for a card created before the issuer became an account.
+    expect(cardWizardFormFromCard(card({ issuer_account_id: null })).account_id).toBe("")
   })
 
   it("seeds a debit card's bank and keeps a custom design's explicit text", () => {
@@ -181,7 +186,9 @@ describe("validation", () => {
   })
 
   it("a credit card needs an issuer", () => {
-    expect(validateCardWizardStep(creditForm({ issuer_name: " " }), "type", "create", TODAY)).toEqual({ code: "issuer_required", field: "issuer_name" })
+    expect(validateCardWizardStep(creditForm({ account_id: "" }), "type", "create", TODAY)).toEqual({ code: "issuer_required", field: "account_id" })
+    // Typed branding alone is no longer enough — an issuer must be a real bank.
+    expect(validateCardWizardStep(creditForm({ account_id: "", issuer_name: "HDFC Bank" }), "type", "create", TODAY)).toEqual({ code: "issuer_required", field: "account_id" })
   })
 
   it("a new card must carry every printed detail", () => {
@@ -244,7 +251,7 @@ describe("validation", () => {
 
   it("the credit step is a no-op for a debit card, and the whole form validates in step order", () => {
     expect(validateCardWizardStep(debitForm(), "credit", "create", TODAY)).toBeNull()
-    expect(validateCardWizard(creditForm({ issuer_name: "", credit: { ...creditForm().credit, credit_limit: "" } }), "create", TODAY)?.code).toBe("issuer_required")
+    expect(validateCardWizard(creditForm({ account_id: "", credit: { ...creditForm().credit, credit_limit: "" } }), "create", TODAY)?.code).toBe("issuer_required")
     // Missing printed details are caught before the credit numbers.
     expect(validateCardWizard(creditForm({ holder_name: "", credit: { ...creditForm().credit, credit_limit: "" } }), "create", TODAY)?.code).toBe("holder_required")
     expect(validateCardWizard(creditForm(), "create", TODAY)).toBeNull()
@@ -302,17 +309,27 @@ describe("payloads", () => {
     })
   })
 
-  it("builds the credit POST body with the issuer, funding bank, opt-in autopay and the credit block", () => {
+  it("builds the credit POST body naming the ISSUING BANK, funding bank, opt-in autopay and the credit block", () => {
     const body = cardCreatePayload(creditForm({ autopay: true, expiry: "" }))
     expect(body).toMatchObject({
       kind: "credit",
-      issuer: { bank_name: "HDFC Bank", brand_domain: "hdfcbank.com", logo_url: "https://cdn/hdfc.png" },
+      // The issuer is an account id; the server reads the branding off that
+      // bank row rather than trusting a mirrored copy that can drift.
+      account_id: "bank-1",
       funding_account_id: "bank-1",
       autopay: true,
       expiry_month: null,
       expiry_year: null,
       credit: { credit_limit: 2000, current_debt: 150, statement_closing_day: 1, payment_due_day: 15, statement: null },
     })
+    expect("issuer" in body).toBe(false)
+  })
+
+  it("falls back to sending the branding when there is no issuer account to read it from", () => {
+    // The wizard always picks an account now, but an older client (or a card
+    // issued by a bank the user has no account with) still posts free text.
+    const body = cardCreatePayload(creditForm({ account_id: "" })) as { issuer?: { bank_name: string } }
+    expect(body.issuer).toEqual({ bank_name: "HDFC Bank", brand_domain: "hdfcbank.com", logo_url: "https://cdn/hdfc.png" })
   })
 
   it("never sends autopay without a paying bank, and includes a known statement", () => {
@@ -419,7 +436,10 @@ describe("duplicates", () => {
   const cards: Card[] = [
     card({ id: "d1", kind: "debit", account_id: "bank-1", last4: "4321", name: "Federal Mastercard" }),
     card({ id: "d2", kind: "debit", account_id: "bank-2", last4: "4321" }),
-    card({ id: "c1", kind: "credit", account_bank_name: "HDFC Bank", last4: "1234" }),
+    // c1 records its issuer ACCOUNT; c2 is a legacy card that only has the
+    // branding name (everything created before migration 0065).
+    card({ id: "c1", kind: "credit", issuer_account_id: "bank-1", account_bank_name: "HDFC Bank", last4: "1234" }),
+    card({ id: "c2", kind: "credit", issuer_account_id: null, account_bank_name: "Barclays", last4: "5678" }),
     card({ id: "closed", kind: "debit", account_id: "bank-1", last4: "9999", status: "closed" }),
   ]
 
@@ -436,10 +456,17 @@ describe("duplicates", () => {
     expect(duplicateLast4(six, debitForm({ last4: "4321" }))).toBeNull()
   })
 
-  it("matches credit cards by issuer, case-insensitively, and never the card being edited", () => {
-    expect(duplicateLast4(cards, creditForm({ issuer_name: "hdfc bank" }))?.id).toBe("c1")
-    expect(duplicateLast4(cards, creditForm({ issuer_name: "hdfc bank" }), "c1")).toBeNull()
-    expect(duplicateLast4(cards, creditForm({ issuer_name: "ICICI" }))).toBeNull()
+  it("matches a credit card by its issuing bank ACCOUNT, and never the card being edited", () => {
+    expect(duplicateLast4(cards, creditForm())?.id).toBe("c1")
+    expect(duplicateLast4(cards, creditForm(), "c1")).toBeNull()
+    // A different issuing bank is a different card, whatever the branding says.
+    expect(duplicateLast4(cards, creditForm({ account_id: "bank-9" }))).toBeNull()
+  })
+
+  it("falls back to the branding name for a card that never recorded an issuer account", () => {
+    // c2 predates the issuer account, so only its name can identify the bank.
+    expect(duplicateLast4(cards, creditForm({ last4: "5678", issuer_name: "barclays" }))?.id).toBe("c2")
+    expect(duplicateLast4(cards, creditForm({ last4: "5678", issuer_name: "ICICI" }))).toBeNull()
   })
 })
 

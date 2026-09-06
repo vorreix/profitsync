@@ -137,10 +137,21 @@ export function AddCardWizard({ open, onOpenChange, mode = "create", card = null
     // One bank in the workspace = no choice to make: answer it for them (the
     // free plan allows exactly one, so this is the common case). It counts as
     // part of the seed, not as something the user typed — otherwise dismissing
-    // an untouched wizard would leave a "draft" behind.
+    // an untouched wizard would leave a "draft" behind. It applies to BOTH
+    // kinds now: with one bank, it is both the account a debit card spends from
+    // and the bank that issued a credit card.
     if (mode === "create" && active.length === 1) {
       const fill = (f: CardWizardForm): CardWizardForm =>
-        f.kind !== "debit" || f.account_id ? f : { ...f, account_id: active[0].id, funding_account_id: f.funding_account_id || active[0].id }
+        f.account_id
+          ? f
+          : {
+              ...f,
+              account_id: active[0].id,
+              issuer_name: (active[0].bank_name ?? "").trim(),
+              issuer_domain: active[0].brand_domain ?? "",
+              issuer_logo_url: active[0].logo_src || active[0].logo_url || "",
+              funding_account_id: f.funding_account_id || active[0].id,
+            }
       initialRef.current = fill(initialRef.current)
       setForm(fill)
     }
@@ -204,12 +215,11 @@ export function AddCardWizard({ open, onOpenChange, mode = "create", card = null
     setQuota((q) => (q ? { ...q, bank_accounts: { ...q.bank_accounts, current: q.bank_accounts.current + 1 } } : q))
   }
 
-  const selectedBank = useMemo(() => {
-    const id = form.kind === "credit" ? form.funding_account_id : form.account_id
-    return banks.find((b) => b.id === id) ?? null
-  }, [banks, form.kind, form.account_id, form.funding_account_id])
-  // The preview's bank: a debit card's bank; a credit card is painted from its issuer.
-  const previewBank = form.kind === "debit" ? selectedBank : null
+  // One bank for both kinds now: a debit card's is where it spends from, a
+  // credit card's is the bank that ISSUED it (step 1 picks a real account for
+  // both). The funding bank is a separate, later question.
+  const selectedBank = useMemo(() => banks.find((b) => b.id === form.account_id) ?? null, [banks, form.account_id])
+  const previewBank = selectedBank
   const preview = useMemo(() => cardPreviewProps(form, previewBank, editing ? card : null), [form, previewBank, editing, card])
   const duplicate = useMemo(() => duplicateLast4(cards, form, card?.id), [cards, form, card?.id])
 
@@ -387,7 +397,7 @@ export function AddCardWizard({ open, onOpenChange, mode = "create", card = null
                       onChange={patch}
                       mode={mode}
                       initial={initialRef.current}
-                      selectedBank={form.kind === "debit" ? selectedBank : null}
+                      selectedBank={selectedBank}
                       errors={errors}
                       duplicate={duplicate}
                       today={todayIso()}

@@ -303,6 +303,8 @@ export type Card = {
   kind: CardKind
   account_id: string
   funding_account_id: string | null
+  /** Credit only: the bank that ISSUED the card (null on cards predating mig 0065). */
+  issuer_account_id: string | null
   name: string
   holder_name: string
   network: CardNetwork
@@ -337,6 +339,11 @@ export type Card = {
   funding_account_nickname?: string | null
   funding_account_logo_src?: string | null
   funding_account_archived_at?: string | null
+  // Joined from the issuing bank (credit cards).
+  issuer_account_bank_name?: string | null
+  issuer_account_nickname?: string | null
+  issuer_account_logo_src?: string | null
+  issuer_account_archived_at?: string | null
   transaction_count?: number
 }
 

@@ -18,6 +18,7 @@ import type { BrandColor, CardDesign } from "../../src/lib/types.js"
 export type CardRow = typeof cards.$inferSelect
 
 const fundingAccounts = alias(wealthAccounts, "funding_accounts")
+const issuerAccounts = alias(wealthAccounts, "issuer_accounts")
 
 // The list/detail shape: the card + the columns of its ledger account (balance,
 // limit, cycle days, brand) and its funding bank that the visuals need — one
@@ -29,6 +30,7 @@ const cardColumns = {
   kind: cards.kind,
   accountId: cards.accountId,
   fundingAccountId: cards.fundingAccountId,
+  issuerAccountId: cards.issuerAccountId,
   name: cards.name,
   holderName: cards.holderName,
   network: cards.network,
@@ -60,6 +62,10 @@ const cardColumns = {
   fundingAccountNickname: fundingAccounts.nickname,
   fundingAccountLogoData: fundingAccounts.logoData,
   fundingAccountArchivedAt: fundingAccounts.archivedAt,
+  issuerAccountBankName: issuerAccounts.bankName,
+  issuerAccountNickname: issuerAccounts.nickname,
+  issuerAccountLogoData: issuerAccounts.logoData,
+  issuerAccountArchivedAt: issuerAccounts.archivedAt,
   transactionCount: sql<number>`(select count(*)::int from transactions t where t.card_id = ${cards.id} and t.deleted_at is null)`,
 }
 
@@ -80,12 +86,17 @@ export function effectiveCardStatus(row: { status: string; accountArchivedAt?: D
 
 /** Drop the base64 blobs, add durable logo data URLs, derive the status, snake_case the keys. */
 export function serializeCard(row: JoinedCard): Record<string, unknown> {
-  const { accountLogoData, fundingAccountLogoData, ...rest } = row as JoinedCard & { accountLogoData?: unknown; fundingAccountLogoData?: unknown }
+  const { accountLogoData, fundingAccountLogoData, issuerAccountLogoData, ...rest } = row as JoinedCard & {
+    accountLogoData?: unknown
+    fundingAccountLogoData?: unknown
+    issuerAccountLogoData?: unknown
+  }
   return serialize({
     ...rest,
     status: effectiveCardStatus(rest as { status: string; accountArchivedAt?: Date | null }),
     accountLogoSrc: logoDataUrl(typeof accountLogoData === "string" ? accountLogoData : null),
     fundingAccountLogoSrc: logoDataUrl(typeof fundingAccountLogoData === "string" ? fundingAccountLogoData : null),
+    issuerAccountLogoSrc: logoDataUrl(typeof issuerAccountLogoData === "string" ? issuerAccountLogoData : null),
   })
 }
 
@@ -95,6 +106,7 @@ function baseQuery() {
     .from(cards)
     .innerJoin(wealthAccounts, eq(wealthAccounts.id, cards.accountId))
     .leftJoin(fundingAccounts, eq(fundingAccounts.id, cards.fundingAccountId))
+    .leftJoin(issuerAccounts, eq(issuerAccounts.id, cards.issuerAccountId))
 }
 
 /** The org's cards: open ones first (user order), then closed (when asked). */

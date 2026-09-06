@@ -11,10 +11,38 @@
 
 A card is **identity + attribution linked to a bank**. It never holds money:
 
-| Card | `cards.account_id` (the ledger account it posts to) | `cards.funding_account_id` |
-|---|---|---|
-| **Debit** | the linked **bank** — a purchase is an ordinary outgoing on that bank | — |
-| **Credit** | its own **liability account** (`wealth_accounts.type='credit_card'`, signed balance, limit, statements — unchanged from CREDIT_CARDS.md) | the bank that pays the statement (default "Pay from", autopay source); optional |
+| Card | `cards.account_id` (the ledger account it posts to) | `cards.funding_account_id` | `cards.issuer_account_id` |
+|---|---|---|---|
+| **Debit** | the linked **bank** — a purchase is an ordinary outgoing on that bank | — | — |
+| **Credit** | its own **liability account** (`wealth_accounts.type='credit_card'`, signed balance, limit, statements — unchanged from CREDIT_CARDS.md) | the bank that pays the statement (default "Pay from", autopay source); optional | the bank that **gave you the card** |
+
+### The issuer is a bank account, not a string (mig 0065)
+
+A credit card is given to you BY a bank, so wizard step 1 picks a real bank
+account for a credit card exactly as it does for a debit one — or creates it
+inline through the ordinary accounts API, which means **an issuer counts
+against the plan's bank limit** and the picker shows the crown + upgrade prompt
+when the limit is reached. The bank picked there becomes `issuer_account_id`,
+seeds `funding_account_id`, and its row is the single source of the card's
+branding (name, domain, logo, palette) — the client deliberately stops sending
+a mirrored copy, because two sources for one fact is how they drift apart.
+
+Before this, the issuer was free text on the liability account's `bank_name`.
+That is why a card branded "Intesa Sanpaolo" was invisible on the Intesa bank
+page: the page matches rows, and there was no row to match.
+
+`issuer_account_id` is **nullable forever**. Every card created before 0065 has
+none (the migration backfills only where the funding bank's name provably
+matches the card's own branding — it never invents a link), and every surface
+falls back to `account_bank_name`. `ON DELETE SET NULL`: removing the issuing
+bank must never remove the card or the debt on it.
+
+A bank page therefore lists cards in three groups, one card in exactly one of
+them, most-involved first (`src/components/cards/bank-cards.ts`): **on this
+account** (debit), **paid from this account** (credit it settles), **issued by
+this bank** (credit it gave you but does not pay). `GET /api/wealth/accounts`
+`card_count` counts the same three, or the tile badge would disagree with the
+overlay.
 
 `transactions.card_id` and `recurring_rules.card_id` record **which card paid**.
 They are attribution only: balances stay keyed by `wealth_account_id`, every

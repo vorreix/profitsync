@@ -280,6 +280,13 @@ export const cards = pgTable("cards", {
   kind: text("kind").notNull(), // debit | credit
   accountId: uuid("account_id").notNull().references(() => wealthAccounts.id, { onDelete: "cascade" }),
   fundingAccountId: uuid("funding_account_id").references(() => wealthAccounts.id, { onDelete: "set null" }),
+  // `issuerAccountId` (credit only) is the BANK THAT GAVE YOU THE CARD, as a
+  // real account rather than the free-text bank_name on the liability account.
+  // Usually the same bank as `fundingAccountId`, but not always — an HDFC card
+  // can be paid from an ICICI account. NULL on every card created before
+  // migration 0065, and every surface falls back to the liability account's
+  // bank_name, so a missing issuer is a supported state, not a broken one.
+  issuerAccountId: uuid("issuer_account_id").references(() => wealthAccounts.id, { onDelete: "set null" }),
   name: text("name").notNull().default(""), // nickname; empty → "<Bank> <Network>" in the UI
   holderName: text("holder_name").notNull().default(""),
   network: text("network").notNull().default("other"), // visa | mastercard | amex | rupay | discover | jcb | unionpay | maestro | diners | other

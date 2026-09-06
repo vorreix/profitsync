@@ -51,7 +51,7 @@ export function BankPicker({
   /** id of the element that labels this group. */
   labelId: string
   /** Tags the group so the wizard can put the caret in it ("bank" | "funding"). */
-  pickerKey: "bank" | "funding"
+  pickerKey: "bank" | "issuer" | "funding"
   canAddBank: boolean
   onBankCreated: (bank: WealthAccount) => void
   onQuotaHit: () => void

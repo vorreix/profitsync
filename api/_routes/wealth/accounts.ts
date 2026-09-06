@@ -87,13 +87,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         // the one credit card on a liability account) — the Banks tab badge.
         // Cards this account is involved with, counting BOTH relationships the
         // card overlay shows: the cards whose money IS this account (a debit
-        // card on a bank) and the credit cards this account PAYS. Counting only
-        // the first would make the tile badge disagree with the overlay.
+        // card on a bank), the credit cards this account PAYS, and the credit
+        // cards this bank ISSUED. Counting fewer would make the tile badge
+        // disagree with the overlay (see components/cards/bank-cards.ts).
         cardCount: sql<number>`(
           select count(*)::int from cards c
           where c.status <> 'closed'
             and (c.account_id = ${wealthAccounts.id}
-                 or (c.kind = 'credit' and c.funding_account_id = ${wealthAccounts.id}))
+                 or (c.kind = 'credit' and c.funding_account_id = ${wealthAccounts.id})
+                 or (c.kind = 'credit' and c.issuer_account_id = ${wealthAccounts.id}))
         )`,
       })
       .from(wealthAccounts)

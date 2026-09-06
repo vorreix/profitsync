@@ -160,6 +160,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         kind,
         accountId: ledgerAccountId,
         fundingAccountId,
+        // The bank picked in step 1 IS the issuer. A card created from a
+        // free-text issuer (an older client, or an issuer the user has no
+        // account with) records none, which stays a supported state.
+        issuerAccountId: kind === "credit" ? (bank?.id ?? null) : null,
         name: identity.value.name,
         holderName: identity.value.holderName,
         network: identity.value.network,

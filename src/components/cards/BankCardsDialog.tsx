@@ -1,7 +1,7 @@
 import { useMemo, type CSSProperties, type ReactNode } from "react"
 import { Link } from "react-router-dom"
 import { useTranslation } from "react-i18next"
-import { ArrowLeftRight, ChevronRight, CreditCard, Plus } from "lucide-react"
+import { ArrowLeftRight, ChevronRight, CreditCard, Landmark, Plus } from "lucide-react"
 import { cardDisplayName, isCardExpired, maskedTail } from "@/lib/cards"
 import type { Card, WealthAccount } from "@/lib/types"
 import { accountDisplayName } from "@/lib/wealth"
@@ -138,9 +138,9 @@ export function BankCardsDialog({
   onAddCard: () => void
 }) {
   const { t } = useTranslation("wealth")
-  const { on, pays } = useMemo(() => relatedBankCards(cards, account.id), [cards, account.id])
+  const { on, pays, issued } = useMemo(() => relatedBankCards(cards, account.id), [cards, account.id])
   const name = accountDisplayName(account)
-  const empty = on.length === 0 && pays.length === 0
+  const empty = on.length === 0 && pays.length === 0 && issued.length === 0
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -185,6 +185,18 @@ export function BankCardsDialog({
                 hint={t("cards.bankCardsPaysHint")}
                 cards={pays}
                 from={on.length === 0 ? 0 : on.length + 1}
+                onNavigate={() => onOpenChange(false)}
+              />
+              {/* Issued here but settled somewhere else — no money moves
+                  between this account and the card, and saying so is the point:
+                  without it the card would simply be missing from the page of
+                  the bank whose name is printed on it. */}
+              <Group
+                icon={<Landmark className="size-3.5" />}
+                title={t("cards.bankCardsIssued")}
+                hint={t("cards.bankCardsIssuedHint")}
+                cards={issued}
+                from={on.length + pays.length === 0 ? 0 : on.length + pays.length + 2}
                 onNavigate={() => onOpenChange(false)}
               />
             </>
