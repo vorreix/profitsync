@@ -330,6 +330,61 @@ test.describe.serial("Wealth & Cards", () => {
     await expect(sheet.locator(`[data-card-tile="${cardId}"]`)).toBeVisible()
   })
 
+  test("one card gets no drag handle; a second one makes the grid sortable", async ({ page }) => {
+    await page.goto("/wealth?tab=cards")
+    await expectAppShell(page)
+    await dismissBanners(page)
+    await expect(page.locator("[data-card-tile]").first()).toBeVisible({ timeout: 15_000 })
+
+    // With a single card there is nothing to reorder and nothing to drop onto,
+    // so the grid is not a drag surface at all.
+    const open = (await cards(page)).filter((c) => c.status !== "closed")
+    if (open.length < 2) {
+      await expect(page.getByRole("button", { name: /reorder/i })).toHaveCount(0)
+    }
+
+    // Add a second card so the grid becomes sortable.
+    const second = await api<CardRow>(page, "POST", "/api/cards", {
+      kind: "debit",
+      account_id: bankId,
+      name: `${E2E_PREFIX}-sortable`,
+      network: "mastercard",
+      last4: "9182",
+      expiry_month: 6,
+      expiry_year: 2031,
+      holder_name: "E2E BOT",
+      tier: "standard",
+    })
+    expect(second.status, JSON.stringify(second.json)).toBe(201)
+
+    await page.reload()
+    await expectAppShell(page)
+    const tiles = page.locator("[data-card-drag]")
+    await expect(tiles.first()).toBeVisible({ timeout: 15_000 })
+    const grips = page.getByRole("button", { name: /reorder/i })
+    expect(await grips.count(), "every open tile has a drag handle").toBe(await tiles.count())
+
+    // Drag the second tile's grip onto the first and prove the new order
+    // survived the round trip to the server.
+    // Order by tile ID, not by text: a tile has several bold paragraphs (the
+    // name AND the figures), so a text selector would compare a balance.
+    const orderOf = async () => page.locator("[data-card-drag]").evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.cardDrag!))
+    const before = await orderOf()
+    const grip = await grips.nth(1).boundingBox()
+    const target = await tiles.first().boundingBox()
+    await page.mouse.move(grip!.x + grip!.width / 2, grip!.y + grip!.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(target!.x + 6, target!.y + target!.height / 2, { steps: 16 })
+    await page.waitForTimeout(250)
+    await page.mouse.up()
+    await expect.poll(async () => (await orderOf())[0], { timeout: 10_000 }).toBe(before[1])
+    await page.reload()
+    await expectAppShell(page)
+    await expect.poll(async () => (await orderOf())[0], { timeout: 15_000 }).toBe(before[1])
+
+    await api(page, "DELETE", `/api/cards/${second.json.id}`)
+  })
+
   test("the #cards deep link opens the same overlay", async ({ page }) => {
     await page.goto(`/wealth/${bankId}#cards`)
     // No expectAppShell here on purpose: the deep link opens the overlay as

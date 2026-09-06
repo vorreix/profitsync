@@ -1405,7 +1405,10 @@
       "expirySoonA11y_other": "Karte läuft am {{expiry}} ab, noch {{count}} Tage. Anzeigen, was zu tun ist.",
       "expiryAction": "Kartenmenü → Ablaufdatum aktualisieren",
       "bankCardsIssued": "Von dieser Bank ausgegeben",
-      "bankCardsIssuedHint": "Diese Bank hat dir die Karte gegeben. Die Abrechnung zahlt ein anderes Konto, es fließt also kein Geld zwischen beiden."
+      "bankCardsIssuedHint": "Diese Bank hat dir die Karte gegeben. Die Abrechnung zahlt ein anderes Konto, es fließt also kein Geld zwischen beiden.",
+      "reorderCard": "{{name}} neu anordnen",
+      "reorderFailed": "Kartenreihenfolge konnte nicht gespeichert werden",
+      "dragHint": "Zieh den Griff einer Karte zum Sortieren — lass sie in der Mitte einer anderen Karte los, um Geld zu bewegen"
     },
     "cardWizard": {
       "titleCreate": "Karte hinzufügen",

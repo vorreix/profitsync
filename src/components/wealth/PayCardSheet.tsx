@@ -41,7 +41,11 @@ export function PayCardSheet({
   summary,
   accounts,
   currency,
+  balancesVisible = true,
   initialPreset = "statement",
+  initialFromId,
+  initialFromCardId,
+  fallbackDebt,
   onDone,
 }: {
   open: boolean
@@ -50,7 +54,18 @@ export function PayCardSheet({
   summary: CreditCardSummary | null
   accounts: WealthAccount[]
   currency: string
+  /** Privacy mode: masks the preset amounts so the sheet can't unmask the grid. */
+  balancesVisible?: boolean
   initialPreset?: PayPreset
+  /** Preselect where the money comes from (a drag onto this card). */
+  initialFromId?: string
+  initialFromCardId?: string
+  /**
+   * What the card owes according to the CARD ROW, used until the async summary
+   * lands. Without it the sheet can open saying "nothing to pay" on a tile that
+   * is simultaneously rendering a debt.
+   */
+  fallbackDebt?: number
   onDone?: () => void
 }) {
   const { t } = useTranslation("wealth")
@@ -67,7 +82,7 @@ export function PayCardSheet({
   )
   const { cards } = useCards({ enabled: open })
   const payWith = useMemo(() => usableCards(cards).filter((c) => c.account_id !== card.id), [cards, card.id])
-  const debt = summary?.usage.debt ?? 0
+  const debt = summary?.usage.debt ?? fallbackDebt ?? 0
   // A statement can't be paid beyond what the card owes right now (a payment
   // recorded before the close, or a mistyped onboarding statement).
   const statementRemaining = Math.max(0, Math.min(summary?.statement?.remaining ?? 0, debt))
@@ -99,11 +114,18 @@ export function PayCardSheet({
   // never overrides the user.
   useEffect(() => {
     if (!open || fromId) return
-    // Default to money the user HOLDS — never pre-select a balance transfer.
+    // An explicit choice (dragging a card onto this one) wins over the default.
+    if (initialFromId && sources.some((a) => a.id === initialFromId)) {
+      setFromId(initialFromId)
+      setFromCardId(initialFromCardId ?? "")
+      return
+    }
+    // Otherwise default to money the user HOLDS — never pre-select a balance
+    // transfer, which moves debt rather than clearing it.
     const holding = sources.filter((a) => !isLiabilityType(a.type))
     const defaultSource = holding.find((a) => a.is_default) ?? holding.find((a) => a.type === "bank") ?? holding[0]
     if (defaultSource) setFromId(defaultSource.id)
-  }, [open, fromId, sources])
+  }, [open, fromId, sources, initialFromId, initialFromCardId])
 
   function choose(p: PayPreset) {
     setPreset(p)
@@ -193,7 +215,7 @@ export function PayCardSheet({
                     )}
                   >
                     <span className="font-medium">{o.label}</span>
-                    {o.value !== null && <span className="tabular-nums text-muted-foreground">{formatMoney(o.value, currency)}</span>}
+                    {o.value !== null && <span className="tabular-nums text-muted-foreground">{formatMoney(o.value, currency, balancesVisible)}</span>}
                   </button>
                 )
               })}

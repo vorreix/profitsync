@@ -1,13 +1,14 @@
 import type { ReactNode } from "react"
 import { Link } from "react-router-dom"
 import { useTranslation } from "react-i18next"
-import { AlertTriangle, Archive, CalendarClock, CheckCircle2, Clock, Landmark, Snowflake, Zap } from "lucide-react"
+import { AlertTriangle, Archive, ArrowLeftRight, CalendarClock, CheckCircle2, Clock, GripVertical, Landmark, Snowflake, Wallet, Zap } from "lucide-react"
 import { cardDisplayName } from "@/lib/cards"
 import { creditUsage } from "@/lib/credit-card"
 import type { Card, CardSummary, CreditCardStatementView } from "@/lib/types"
 import { formatMoney } from "@/lib/wealth"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { CardVisual } from "@/components/cards/CardVisual"
 import { visualPropsFromCard } from "@/components/cards/types"
@@ -25,6 +26,39 @@ const GRID = "grid grid-cols-1 gap-4 sm:gap-5 md:grid-cols-2"
 
 /** Utilization at or above this is worth a warning. Matches the card page. */
 const WARN_PCT = 90
+
+/** The drag activator the grid hands each tile (dnd-kit's useDraggable). */
+export type CardDragHandle = {
+  ref: (el: HTMLElement | null) => void
+  listeners?: Record<string, unknown>
+  attributes?: Record<string, unknown>
+}
+
+/**
+ * What releasing on THIS tile would do right now. "action" is the middle of the
+ * tile: paying it, or moving money onto it. "reorder" is an edge, and shows an
+ * insertion line in the gap the tile would move to.
+ */
+export type CardDropTarget =
+  | { kind: "action"; label: string }
+  | { kind: "reorder"; edge: "before" | "after"; axis: "x" | "y" }
+  | null
+
+/** The blue insertion bar shown in the gap the dragged tile would land in. */
+function InsertionLine({ edge, axis }: { edge: "before" | "after"; axis: "x" | "y" }) {
+  const vertical = axis === "y"
+  return (
+    <span
+      aria-hidden
+      className={cn(
+        "pointer-events-none absolute z-30 rounded-full bg-primary",
+        vertical
+          ? cn("inset-x-2 h-1", edge === "before" ? "-top-2.5" : "-bottom-2.5")
+          : cn("inset-y-2 w-1", edge === "before" ? "-start-2.5" : "-end-2.5"),
+      )}
+    />
+  )
+}
 
 /** Grid placeholders in the tile's real shape, so nothing jumps when they arrive. */
 export function CardsGridSkeleton({ count = 2 }: { count?: number }) {
@@ -137,6 +171,10 @@ export function CardTile({
   canDelete,
   onEdit,
   onChanged,
+  onPay,
+  handle,
+  dragging = false,
+  drop = null,
 }: {
   card: Card
   summary?: CardSummary | null
@@ -146,6 +184,13 @@ export function CardTile({
   canDelete: boolean
   onEdit?: () => void
   onChanged?: (card: Card | null) => void
+  /** Opens the Pay sheet for this card. Absent → no Pay button. */
+  onPay?: () => void
+  /** Drag activator, when the grid is sortable. Absent → no grip. */
+  handle?: CardDragHandle
+  dragging?: boolean
+  /** What releasing here would do, while this tile is the live target. */
+  drop?: CardDropTarget
 }) {
   const { t } = useTranslation("wealth")
   const name = cardDisplayName(card)
@@ -163,6 +208,11 @@ export function CardTile({
   const overLimit = !!usage?.overLimit
   const warn = !overLimit && pct !== null && pct >= WARN_PCT
 
+  // Debt off the card ROW, never the async summary: the button must not appear
+  // (or vanish) as summaries stream in, and must never disagree with the meter
+  // rendered two lines above it.
+  const canPay = !!onPay && isCredit && canWrite && card.status !== "closed" && (usage?.debt ?? 0) > 0
+
   const statusChip =
     card.status === "frozen"
       ? { Icon: Snowflake, word: t("cards.statusFrozen"), tone: "border-sky-500/40 bg-sky-500/10 text-sky-700 dark:text-sky-300" }
@@ -179,8 +229,10 @@ export function CardTile({
     <div
       data-card-tile={card.id}
       className={cn(
-        "@container/tile group relative isolate rounded-2xl border bg-card p-3.5 transition-colors hover:border-primary/40 sm:p-4",
+        "@container/tile group relative isolate rounded-2xl border bg-card p-3.5 transition-[transform,box-shadow,opacity,border-color] duration-200 ease-out hover:border-primary/40 sm:p-4",
         dimmed && "bg-muted/30",
+        dragging && "opacity-40",
+        drop?.kind === "action" && "ring-2 ring-primary ring-offset-2 ring-offset-background motion-safe:scale-[1.02]",
       )}
     >
       <Link
@@ -208,8 +260,24 @@ export function CardTile({
                 )}
               </p>
             </div>
-            {/* z-20: this island must stack above the expiry chip's tap halo. */}
-            <div className="pointer-events-auto relative z-20 -me-1 -mt-1 shrink-0">
+            {/* z-20: these islands must stack above the expiry chip's tap halo.
+                The grip sits BEFORE the kebab with a gap, so the kebab's 44px
+                mobile halo never swallows a thumb aimed at the handle. */}
+            <div className="pointer-events-auto relative z-20 -me-1 -mt-1 flex shrink-0 items-center gap-1">
+              {handle && (
+                <button
+                  type="button"
+                  ref={handle.ref}
+                  {...handle.listeners}
+                  {...handle.attributes}
+                  aria-label={t("cards.reorderCard", { name })}
+                  // touch-none is what lets the drag start on a phone instead of
+                  // the browser claiming the gesture for scrolling.
+                  className="ios-tap relative inline-flex size-8 cursor-grab touch-none items-center justify-center rounded-md text-muted-foreground outline-none after:absolute after:left-1/2 after:top-1/2 after:size-11 after:-translate-x-1/2 after:-translate-y-1/2 after:content-[''] focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing sm:after:hidden"
+                >
+                  <GripVertical className="size-4" aria-hidden />
+                </button>
+              )}
               <CardActionsMenu card={card} canWrite={canWrite} canDelete={canDelete} currency={currency} onEdit={onEdit} onChanged={onChanged} />
             </div>
           </div>
@@ -312,8 +380,27 @@ export function CardTile({
 
           {/* BAND 4 — when to pay. mt-auto keeps it on one baseline across a row. */}
           {isCredit && <DueStrip card={card} summary={summary} money={money} />}
+
+          {/* BAND 5 — the action. Its own island so the stretched Link keeps
+              the rest of the tile; full width and 44px so a thumb cannot miss. */}
+          {canPay && (
+            <div className="pointer-events-auto relative z-20">
+              <Button variant="outline" size="sm" className="pressable w-full min-h-11 sm:min-h-9" onClick={onPay}>
+                <Wallet className="size-4" aria-hidden /> {t("payCard")}
+              </Button>
+            </div>
+          )}
         </div>
       </div>
+
+      {drop?.kind === "reorder" && <InsertionLine edge={drop.edge} axis={drop.axis} />}
+      {drop?.kind === "action" && (
+        <div className="pointer-events-none absolute inset-x-0 top-2 z-30 flex justify-center motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-95 motion-safe:duration-150">
+          <span className="inline-flex items-center gap-1 rounded-full bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground shadow-lg">
+            <ArrowLeftRight className="size-3" aria-hidden /> {drop.label}
+          </span>
+        </div>
+      )}
     </div>
   )
 }

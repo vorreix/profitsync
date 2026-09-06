@@ -1405,7 +1405,10 @@
       "expirySoonA11y_other": "La carta scade il {{expiry}}, mancano {{count}} giorni. Mostra cosa fare.",
       "expiryAction": "Menu carta → Aggiorna scadenza",
       "bankCardsIssued": "Emesse da questa banca",
-      "bankCardsIssuedHint": "Questa banca ti ha dato la carta. L'estratto conto viene pagato da un altro conto, quindi tra i due non si muove denaro."
+      "bankCardsIssuedHint": "Questa banca ti ha dato la carta. L'estratto conto viene pagato da un altro conto, quindi tra i due non si muove denaro.",
+      "reorderCard": "Riordina {{name}}",
+      "reorderFailed": "Non è stato possibile salvare l'ordine delle carte",
+      "dragHint": "Trascina la maniglia di una carta per riordinare — rilasciala al centro di un'altra carta per spostare denaro"
     },
     "cardWizard": {
       "titleCreate": "Aggiungi una carta",

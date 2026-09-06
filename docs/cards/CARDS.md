@@ -39,6 +39,35 @@ never be one. Self-payment is refused by `resolveFunding` and by same-row CHECK
 constraints; a frozen or unusable funding card defers rather than paying
 unattributed.
 
+### The card grid is a drag surface (like Banks)
+
+The tile carries a grip beside its kebab and, on a credit card that owes money,
+a **Pay card** button. Both are `pointer-events-auto` islands over the tile's
+stretched Link. The grip only appears with `canWrite` and more than one open
+card — with one card there is nothing to reorder and nothing to drop onto.
+
+Near a tile's leading/trailing edge a drop REORDERS (`POST /api/cards/reorder`,
+one atomic `UPDATE … FROM (VALUES …)`; the client keeps an id-only mirror so a
+refetch that started before the write still paints the user's order). The middle
+means "do something with this card", and the rules live in
+`src/components/cards/card-drag.ts`:
+
+| Drop | What happens |
+|---|---|
+| onto a **credit** card | the **Pay sheet** for it, source pre-filled with the dragged card — the only surface that clamps the amount to what is owed and warns when the money comes from another card |
+| onto a **debit** card | the **Transfer wizard**, from the dragged card's account to that card's bank |
+| two cards on the **same account** | REFUSED — two debit cards on one bank is ordinary, and the transfer would be account-to-itself, which `createTransfer` rejects. The whole tile becomes a reorder target instead of offering a dialog whose confirm can never enable |
+| a **frozen** source | REFUSED — the transfer route resolves the source without `allowFrozen`, so it would fail only after the user typed an amount. Frozen stays a legal DESTINATION: paying a frozen card is always allowed |
+| an **archived** destination | REFUSED |
+
+Two mechanics worth keeping: the grid measures `[data-card-drag]` inside its own
+ref, never `[data-card-tile]` document-wide (closed rows and the bank overlay
+stamp that too), and the rendered list is frozen for the length of a drag so a
+card arriving cannot move tiles out from under the rect snapshot. Both dialogs
+mount CLOSED and open from an effect — a dialog that mounts already-open pushes
+its `useBackClose` history entry inside React's development double-invoke, and
+the stray popstate slams it shut.
+
 The payer's own cycle reports what left it as `transfers_out` — not spending
 (nothing was bought), but the card really does owe for it, and dropping the leg
 (the pre-0066 behaviour) made the cycle understate the card.

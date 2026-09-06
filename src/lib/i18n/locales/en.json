@@ -1215,7 +1215,10 @@
       "expirySoonA11y_other": "Card expires {{expiry}}, {{count}} days left. Show what to do.",
       "expiryAction": "Card menu → Update expiry",
       "bankCardsIssued": "Issued by this bank",
-      "bankCardsIssuedHint": "This bank gave you the card. Something else pays its statement, so no money moves between the two."
+      "bankCardsIssuedHint": "This bank gave you the card. Something else pays its statement, so no money moves between the two.",
+      "reorderCard": "Reorder {{name}}",
+      "reorderFailed": "Couldn't save the card order",
+      "dragHint": "Drag a card's handle to reorder — drop it on the middle of another card to move money"
     },
     "cardWizard": {
       "titleCreate": "Add a card",

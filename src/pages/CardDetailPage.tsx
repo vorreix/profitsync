@@ -30,7 +30,7 @@ import { accountDisplayName, formatMoney, useBalancePrivacy } from "@/lib/wealth
 import { useUrlModal } from "@/hooks/use-url-modal"
 import { cn } from "@/lib/utils"
 import { CardVisual } from "@/components/cards/CardVisual"
-import { visualPropsFromCard } from "@/components/cards/types"
+import { accountFromCard, visualPropsFromCard } from "@/components/cards/types"
 import { AddCardWizard } from "@/components/cards/AddCardWizard"
 import { CardActionsMenu } from "@/components/cards/CardActionsMenu"
 import { AutopayPanel } from "@/components/cards/AutopayPanel"
@@ -60,27 +60,6 @@ const formatDate = (d: string) =>
  * builds the WealthAccount the existing sheets (pay / quick-add / adjust)
  * expect from it, so the page renders even if the account GET is slow or fails.
  */
-function accountFromCard(card: Card): WealthAccount {
-  return {
-    id: card.account_id,
-    organization_id: card.organization_id,
-    type: card.account_type ?? (card.kind === "credit" ? "credit_card" : "bank"),
-    bank_name: card.account_bank_name ?? "",
-    nickname: card.account_nickname ?? "",
-    opening_balance: 0,
-    current_balance: Number(card.account_current_balance ?? 0),
-    icon: card.kind === "credit" ? "card" : "bank",
-    brand_domain: card.account_brand_domain,
-    logo_url: card.account_logo_url,
-    logo_src: card.account_logo_src ?? null,
-    credit_limit: card.account_credit_limit ?? null,
-    statement_closing_day: card.account_statement_closing_day ?? null,
-    payment_due_day: card.account_payment_due_day ?? null,
-    archived_at: card.account_archived_at ?? null,
-    created_at: card.created_at,
-    updated_at: card.updated_at,
-  }
-}
 
 /**
  * /wealth/cards/:cardId — one card: the large visual, its facts, the credit
