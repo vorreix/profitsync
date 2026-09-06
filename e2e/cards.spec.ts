@@ -332,8 +332,12 @@ test.describe.serial("Wealth & Cards", () => {
 
   test("the #cards deep link opens the same overlay", async ({ page }) => {
     await page.goto(`/wealth/${bankId}#cards`)
-    await expectAppShell(page)
-    await expect(page.locator("#cards")).toBeVisible({ timeout: 15_000 })
+    // No expectAppShell here on purpose: the deep link opens the overlay as
+    // soon as the page boots, and Radix marks everything behind a modal
+    // aria-hidden — so the shell's own nav links are gone from the
+    // accessibility tree by the time that helper would look for them. The
+    // overlay being visible with the right card in it proves the app booted.
+    await expect(page.locator("#cards")).toBeVisible({ timeout: 20_000 })
     await expect(page.locator("#cards").locator(`[data-card-tile="${cardId}"]`)).toBeVisible()
   })
 })

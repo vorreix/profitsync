@@ -163,6 +163,18 @@ test.describe.serial("Credit cards", () => {
       restoreOrgId = await page.evaluate(() => localStorage.getItem("ps_active_org") ?? "")
       await useWorkspace(page, "personal")
       await cleanup(page)
+      // The free plan includes ONE credit card. If anything else is holding
+      // that slot, the wizard silently opens an upgrade modal over itself and
+      // the next click times out after 45s with "element is not stable" — an
+      // hour of trace-reading to find a one-line cause. Say it here instead.
+      const { json: quota } = await api<{ credit_cards?: { current: number; limit: number } }>(page, "GET", "/api/wealth/quota")
+      const cc = quota?.credit_cards
+      if (cc) {
+        expect(
+          cc.current,
+          `this workspace already holds ${cc.current} of ${cc.limit} credit cards — the wizard will hit the plan limit. Remove the other credit card first.`,
+        ).toBeLessThan(cc.limit)
+      }
     })
   })
 
@@ -226,13 +238,17 @@ test.describe.serial("Credit cards", () => {
     await dialog.getByRole("button", { name: /save card/i }).click()
     await expect(dialog).toBeHidden({ timeout: 15_000 })
 
-    // The tile: "$950.00 owed" + "$1,050.00 available of $2,000.00" — never a
-    // bare negative balance.
+    // The tile's meter: "Used $950.00 48%" over the filled half, "Left
+    // $1,050.00 of $2,000.00" over the empty one — never a bare negative
+    // balance. The canonical "available of" sentence survives as the
+    // progressbar's aria-valuetext, which is what a screen reader hears.
     const tile = page.locator("[data-card-tile]").filter({ hasText: CARD_NAME }).first()
     await expect(tile).toBeVisible({ timeout: 15_000 })
-    await expect(tile).toContainText(/950\.00 owed/)
-    await expect(tile).toContainText(/1,050\.00 available of .*2,000\.00/)
+    await expect(tile).toContainText(/Used/i)
+    await expect(tile).toContainText(/950\.00/)
+    await expect(tile).toContainText(/1,050\.00\s+of\s+.*2,000\.00/)
     await expect(tile).not.toContainText(/-950/)
+    await expect(tile.getByRole("progressbar")).toHaveAttribute("aria-valuetext", /1,050\.00 available of .*2,000\.00/)
 
     // Net worth shows the liability separately.
     // Scoped to the Cards panel: the Banks panel is only `hidden`, so it is
