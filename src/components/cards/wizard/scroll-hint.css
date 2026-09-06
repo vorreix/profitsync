@@ -1,7 +1,7 @@
 /* The "there is more below" chevron in the add-card wizard's scroll area.
-   A real stylesheet rather than an injected <style> tag: the repo forbids
-   dangerouslySetInnerHTML outside the vendored ui/ components
-   (scripts/check-route-guards.mjs), and keyframes belong in CSS anyway. */
+   A real stylesheet rather than an injected <style> tag: the repo's security
+   sweep (scripts/check-route-guards.mjs) forbids raw-HTML injection outside the
+   vendored ui/ components, and keyframes belong in CSS anyway. */
 @media (prefers-reduced-motion: no-preference) {
   .ps-scroll-bob {
     animation: ps-scroll-bob 2s ease-in-out infinite;
