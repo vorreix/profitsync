@@ -34,8 +34,9 @@ import { and, asc, eq, inArray, isNull, lt, lte, ne, sql } from "drizzle-orm"
 import { db } from "../../src/lib/db/index.js"
 import { cards, creditCardStatements, wealthAccounts } from "../../src/lib/db/schema.js"
 import { autopayAmount, autopayEligible, autopayPlan, cardExpiresSoon, expiryLabel } from "../../src/lib/cards.js"
-import { addDays, cardDebt, creditUsage, statementView } from "../../src/lib/credit-card.js"
+import { addDays, cardDebt, creditUsage, isLiabilityType, statementView } from "../../src/lib/credit-card.js"
 import { todayIso } from "../../src/lib/recurring.js"
+import { resolveCardForLeg } from "./cards.js"
 import { ensureStatements, isConfiguredCard, paymentsAfter } from "./credit-card.js"
 import { createTransfer } from "./wealth-accounts.js"
 import {
@@ -94,6 +95,21 @@ async function autopayStatement(input: {
     return { statementId: statement.id, cardId: card.id, status: "deferred", amount: 0, reason }
   }
   if (!funding || funding.archivedAt) return deferred("the paying bank is missing or closed — choose a bank to pay from", "funding")
+  // Autopay only ever moves money OUT OF AN ACCOUNT THAT HOLDS SOME. Paying one
+  // card with another is a balance transfer: legitimate to record by hand, but
+  // never on a schedule — it would compound debt unattended, and refusing it
+  // here is what makes a funding cycle impossible without walking the graph (a
+  // loop needs two unattended payers). Both write paths already refuse the
+  // combination; this is the backstop for a row that predates them.
+  if (isLiabilityType(funding.type)) return deferred("a credit card can't pay this automatically — pay it yourself", "funding")
+  // The paying INSTRUMENT, when one was chosen: a frozen or closed debit card,
+  // or one whose bank moved, defers (retryable) rather than paying unattributed.
+  let fromCardId: string | null = null
+  if (card.fundingCardId) {
+    const resolved = await resolveCardForLeg(orgId, card.fundingCardId, funding.id, { allowFrozen: true })
+    if (!resolved.ok) return deferred(`the card that pays this one can't be used — ${resolved.error.toLowerCase()}`, "funding")
+    fromCardId = resolved.card.id
+  }
   // (The free plan's per-client transaction quota is checked inside
   // createTransfer; a 402 there releases the claim below and defers.)
 
@@ -120,6 +136,7 @@ async function autopayStatement(input: {
     const result = await createTransfer(orgId, actor, {
       fromAccountId: funding.id,
       toAccountId: account.id,
+      fromCardId,
       amount,
       date: today,
       descriptions: {

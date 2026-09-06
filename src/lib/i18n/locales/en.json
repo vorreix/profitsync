@@ -1324,11 +1324,13 @@
         "title": "How does this card work?",
         "help": "The limit, the cycle days and who pays the statement.",
         "payFrom": "Pay this card from",
-        "payFromHelp": "The bank that pays the statement. You can change this later.",
+        "payFromHelp": "A bank, cash, or another card. Paying with a card moves the debt to it — it doesn't clear it.",
         "autopay": "Autopay",
         "autopayHelp": "Turn this on only if your bank already pays the full statement automatically — ProfitSync will record that payment on the due date. Covers statements falling due after today.",
         "autopayNeedsBank": "Choose the bank that pays this card to turn autopay on",
-        "editHint": "What you owe and past statements live on the card page — only the limit and the cycle days change here"
+        "editHint": "What you owe and past statements live on the card page — only the limit and the cycle days change here",
+        "payManually": "I'll pay it myself",
+        "autopayManualOnly": "Autopay needs a bank or cash. A card paying a card would add debt every month, so it stays manual."
       },
       "errors": {
         "bank_required": "Choose the bank account this card belongs to",
@@ -1351,7 +1353,9 @@
         "statement_in_future": "The statement closing date can't be in the future",
         "amountTooLarge": "That amount is too large"
       }
-    }
+    },
+    "balanceTransferWarning": "This moves the debt to {{card}}. You'll owe the same overall — it isn't paid off.",
+    "movedToOtherCards": "{{amount}} moved to other cards"
   },
   "clients": {
     "pageTitle": "Clients",

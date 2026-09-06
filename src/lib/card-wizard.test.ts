@@ -54,6 +54,7 @@ const card = (over: Partial<Card> = {}): Card => ({
   account_id: "liab-1",
   funding_account_id: "bank-1",
   issuer_account_id: "bank-1",
+  funding_card_id: null,
   name: "Visa Gold",
   holder_name: "Ada Lovelace",
   network: "visa",
@@ -323,6 +324,25 @@ describe("payloads", () => {
       credit: { credit_limit: 2000, current_debt: 150, statement_closing_day: 1, payment_due_day: 15, statement: null },
     })
     expect("issuer" in body).toBe(false)
+  })
+
+  it("sends the paying CARD alongside the account it resolves to", () => {
+    const body = cardCreatePayload(creditForm({ funding_account_id: "bank-1", funding_card_id: "debit-9" })) as {
+      funding_account_id?: string
+      funding_card_id?: string
+    }
+    expect(body.funding_account_id).toBe("bank-1")
+    expect(body.funding_card_id).toBe("debit-9")
+  })
+
+  it("omits the paying card when the answer is a plain account", () => {
+    const body = cardCreatePayload(creditForm({ funding_account_id: "bank-1", funding_card_id: "" }))
+    expect("funding_card_id" in body).toBe(false)
+  })
+
+  it("clears the paying card on edit, so an account-only answer never leaves a stale instrument", () => {
+    const body = cardEditPayload(creditForm({ funding_account_id: "bank-1", funding_card_id: "" })) as { funding_card_id: string | null }
+    expect(body.funding_card_id).toBeNull()
   })
 
   it("falls back to sending the branding when there is no issuer account to read it from", () => {

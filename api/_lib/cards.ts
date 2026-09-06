@@ -8,17 +8,19 @@
 //
 // NOTE: relative imports MUST keep the `.js` extension — these modules run as
 // unbundled ESM on @vercel/node (see scripts/check-esm-extensions.mjs).
-import { and, asc, eq, ne, sql } from "drizzle-orm"
+import { and, asc, eq, isNull, ne, sql } from "drizzle-orm"
 import { alias } from "drizzle-orm/pg-core"
 import { db, serialize } from "../../src/lib/db/index.js"
 import { cards, transactions, wealthAccounts } from "../../src/lib/db/schema.js"
 import { logoDataUrl } from "../../src/lib/logo-data.js"
 import type { BrandColor, CardDesign } from "../../src/lib/types.js"
+import { isLiabilityType } from "../../src/lib/credit-card.js"
 
 export type CardRow = typeof cards.$inferSelect
 
 const fundingAccounts = alias(wealthAccounts, "funding_accounts")
 const issuerAccounts = alias(wealthAccounts, "issuer_accounts")
+const fundingCards = alias(cards, "funding_cards")
 
 // The list/detail shape: the card + the columns of its ledger account (balance,
 // limit, cycle days, brand) and its funding bank that the visuals need — one
@@ -31,6 +33,7 @@ const cardColumns = {
   accountId: cards.accountId,
   fundingAccountId: cards.fundingAccountId,
   issuerAccountId: cards.issuerAccountId,
+  fundingCardId: cards.fundingCardId,
   name: cards.name,
   holderName: cards.holderName,
   network: cards.network,
@@ -66,6 +69,11 @@ const cardColumns = {
   issuerAccountNickname: issuerAccounts.nickname,
   issuerAccountLogoData: issuerAccounts.logoData,
   issuerAccountArchivedAt: issuerAccounts.archivedAt,
+  fundingCardName: fundingCards.name,
+  fundingCardKind: fundingCards.kind,
+  fundingCardLast4: fundingCards.last4,
+  fundingCardNetwork: fundingCards.network,
+  fundingCardStatus: fundingCards.status,
   transactionCount: sql<number>`(select count(*)::int from transactions t where t.card_id = ${cards.id} and t.deleted_at is null)`,
 }
 
@@ -107,6 +115,7 @@ function baseQuery() {
     .innerJoin(wealthAccounts, eq(wealthAccounts.id, cards.accountId))
     .leftJoin(fundingAccounts, eq(fundingAccounts.id, cards.fundingAccountId))
     .leftJoin(issuerAccounts, eq(issuerAccounts.id, cards.issuerAccountId))
+    .leftJoin(fundingCards, eq(fundingCards.id, cards.fundingCardId))
 }
 
 /** The org's cards: open ones first (user order), then closed (when asked). */
@@ -236,10 +245,68 @@ export async function openCardsOnAccount(orgId: string, accountId: string): Prom
     .where(and(eq(cards.organizationId, orgId), eq(cards.accountId, accountId), ne(cards.status, "closed")))
 }
 
-/** Credit cards whose statements are paid from this bank (autopay source). */
+/** Credit cards whose statements are paid from this account (autopay source). */
 export async function cardsFundedBy(orgId: string, accountId: string): Promise<CardRow[]> {
   return db
     .select()
     .from(cards)
     .where(and(eq(cards.organizationId, orgId), eq(cards.fundingAccountId, accountId), ne(cards.status, "closed")))
+}
+
+// ── Funding: who pays a credit card ──────────────────────────────────────────
+
+export type ResolvedFunding =
+  | { ok: true; accountId: string | null; cardId: string | null; isLiability: boolean }
+  | { ok: false; error: string; code?: string }
+
+/**
+ * THE one rule for the paying side of a credit card, applied by POST /api/cards
+ * and PATCH /api/cards/:id so the stored pair can never disagree:
+ *
+ *   • `accountId` is always the account the money LEAVES;
+ *   • `cardId` is the optional INSTRUMENT, and when given the account is forced
+ *     to that card's own — the same rule attributeCard applies to every
+ *     transaction leg, so a card can never post to another account;
+ *   • a card may not pay itself (`payeeAccountId` / `payeeCardId` guard the
+ *     same-row CHECKs with a message instead of a constraint violation);
+ *   • a LIABILITY funder (paying one card with another) is allowed and reported
+ *     back as `isLiability`, so the caller can force autopay off. That single
+ *     rule is what makes a funding cycle impossible without walking the graph:
+ *     a loop needs two unattended payers, and a card can never be one.
+ *
+ * `cardId: null` with an account clears any previous instrument, which is what
+ * an older client posting only `funding_account_id` must mean.
+ */
+export async function resolveFunding(
+  orgId: string,
+  input: { accountId?: string | null; cardId?: string | null; payeeCardId: string; payeeAccountId: string },
+): Promise<ResolvedFunding> {
+  if (!input.accountId && !input.cardId) return { ok: true, accountId: null, cardId: null, isLiability: false }
+
+  let accountId = input.accountId ?? null
+  let cardId: string | null = null
+
+  if (input.cardId) {
+    if (input.cardId === input.payeeCardId) return { ok: false, error: "A card can't pay itself", code: "funding_self" }
+    // allowFrozen: a frozen card cannot take new purchases, but the money still
+    // leaves the bank behind it and the user may well still be paying with it.
+    const resolved = await resolveCardForLeg(orgId, input.cardId, accountId ?? undefined, { allowFrozen: true })
+    if (!resolved.ok) return { ok: false, error: resolved.error, code: "funding_card" }
+    accountId = resolved.accountId
+    cardId = resolved.card.id
+  }
+
+  if (!accountId) return { ok: true, accountId: null, cardId: null, isLiability: false }
+  if (accountId === input.payeeAccountId) return { ok: false, error: "A card can't pay itself", code: "funding_self" }
+
+  const [account] = await db
+    .select({ id: wealthAccounts.id, type: wealthAccounts.type })
+    .from(wealthAccounts)
+    .where(and(eq(wealthAccounts.id, accountId), eq(wealthAccounts.organizationId, orgId), isNull(wealthAccounts.archivedAt)))
+  if (!account) return { ok: false, error: "The paying account must be active", code: "funding_account" }
+  const liability = isLiabilityType(account.type)
+  if (account.type !== "bank" && account.type !== "cash" && !liability) {
+    return { ok: false, error: "Pay from a bank, cash, or another card", code: "funding_account" }
+  }
+  return { ok: true, accountId: account.id, cardId, isLiability: liability }
 }

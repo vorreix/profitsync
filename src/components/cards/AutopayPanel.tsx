@@ -43,8 +43,11 @@ export function AutopayPanel({
   const { t } = useTranslation("wealth")
   const { getToken } = useAuth()
   const money = (n: number) => formatMoney(n, currency, balancesVisible)
-  // Where the payment comes from: money the user holds (banks + cash), never a
-  // card or a Space, and never the card's own liability account.
+  // Where an AUTOMATIC payment comes from: money the user holds (banks + cash),
+  // never a card or a Space, and never the card's own liability account. A card
+  // CAN pay this one (a balance transfer, set in the wizard or the Pay sheet) —
+  // but never on a schedule, so it is not offered here. The server refuses the
+  // combination too (api/_lib/card-autopay.ts).
   const sources = useMemo(
     () => accounts.filter((a) => !a.archived_at && a.id !== card.account_id && !isLiabilityType(a.type) && a.type !== "space"),
     [accounts, card.account_id],

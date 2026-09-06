@@ -11,10 +11,37 @@
 
 A card is **identity + attribution linked to a bank**. It never holds money:
 
-| Card | `cards.account_id` (the ledger account it posts to) | `cards.funding_account_id` | `cards.issuer_account_id` |
+| Card | `cards.account_id` (the ledger account it posts to) | `cards.funding_account_id` + `cards.funding_card_id` | `cards.issuer_account_id` |
 |---|---|---|---|
 | **Debit** | the linked **bank** — a purchase is an ordinary outgoing on that bank | — | — |
-| **Credit** | its own **liability account** (`wealth_accounts.type='credit_card'`, signed balance, limit, statements — unchanged from CREDIT_CARDS.md) | the bank that pays the statement (default "Pay from", autopay source); optional | the bank that **gave you the card** |
+| **Credit** | its own **liability account** (`wealth_accounts.type='credit_card'`, signed balance, limit, statements — unchanged from CREDIT_CARDS.md) | who pays the statement (default "Pay from", autopay source); optional | the bank that **gave you the card** |
+
+### Who pays a credit card (mig 0066)
+
+`funding_account_id` is always the account the money LEAVES. `funding_card_id`
+is the optional **instrument** on that side and, when set, must resolve to that
+same account — the rule `attributeCard` already applies to every transaction
+leg. One helper, `api/_lib/cards.ts resolveFunding()`, enforces the pair on both
+write paths, so the stored two can never disagree.
+
+| Answer | What happens |
+|---|---|
+| a **bank** or **cash** | the ordinary case: money leaves an account that holds some |
+| a **debit card** | the money still leaves that card's BANK; the card is a label, and the ledger reads "D •••• 1234" on the outgoing leg |
+| another **credit card** | a **BALANCE TRANSFER**: the payer's liability account is the source, so its debt goes up as this card's goes down. Net worth does not move — nothing was paid off, only moved |
+
+**Autopay requires a bank or cash.** A card paying a card would compound debt on
+a schedule, so both write paths refuse the combination and
+`api/_lib/card-autopay.ts` defers again before it claims a statement (the
+backstop for a row written before the guard). That one rule is also why there is
+no funding-graph cycle check: a loop needs two unattended payers, and a card can
+never be one. Self-payment is refused by `resolveFunding` and by same-row CHECK
+constraints; a frozen or unusable funding card defers rather than paying
+unattributed.
+
+The payer's own cycle reports what left it as `transfers_out` — not spending
+(nothing was bought), but the card really does owe for it, and dropping the leg
+(the pre-0066 behaviour) made the cycle understate the card.
 
 ### The issuer is a bank account, not a string (mig 0065)
 

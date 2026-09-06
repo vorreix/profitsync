@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { useAuth } from "@clerk/clerk-react"
 import { toast } from "sonner"
-import { ArrowRight, CreditCard } from "lucide-react"
+import { AlertTriangle, ArrowRight, CreditCard } from "lucide-react"
 import { apiPost } from "@/lib/api"
 import { amountExceedsLimit } from "@/lib/money"
 import { isLiabilityType } from "@/lib/credit-card"
@@ -28,8 +28,11 @@ export type PayPreset = "statement" | "full" | "other"
  * proper TRANSFER (POST /api/wealth/transfer, bank → card). The user never has
  * to know it is a transfer, and it is never an expense.
  *
- * "Pay from" also offers each bank's DEBIT cards ("via •••• 1234"): the money
- * still leaves the bank, and the card is recorded on that leg (`from_card_id`).
+ * "Pay from" offers every way the user can pay: banks, cash, each bank's DEBIT
+ * cards ("via •••• 1234" — the money still leaves the bank and the card is
+ * recorded on that leg via `from_card_id`), and other CREDIT cards, which is a
+ * BALANCE TRANSFER: the payer's debt goes up as this card's goes down, so
+ * nothing is cleared, only moved.
  */
 export function PayCardSheet({
   open,
@@ -55,14 +58,15 @@ export function PayCardSheet({
   const { getToken } = useAuth()
   const symbol = currencySymbol(currency)
 
-  // Sources: active, non-card, non-Space accounts (a card is paid from money you hold).
+  // Sources: every active non-Space account except this card's own — a card can
+  // never pay itself. Other credit cards stay in: buildPayOptions shows each as
+  // its card, and choosing one records a balance transfer.
   const sources = useMemo(
-    () => accounts.filter((a) => !a.archived_at && a.id !== card.id && !isLiabilityType(a.type) && a.type !== "space"),
+    () => accounts.filter((a) => !a.archived_at && a.id !== card.id && a.type !== "space"),
     [accounts, card.id],
   )
-  // Debit cards on those banks — a way of paying, not a source of money.
   const { cards } = useCards({ enabled: open })
-  const debitCards = useMemo(() => usableCards(cards).filter((c) => c.kind === "debit"), [cards])
+  const payWith = useMemo(() => usableCards(cards).filter((c) => c.account_id !== card.id), [cards, card.id])
   const debt = summary?.usage.debt ?? 0
   // A statement can't be paid beyond what the card owes right now (a payment
   // recorded before the close, or a mistyped onboarding statement).
@@ -95,7 +99,9 @@ export function PayCardSheet({
   // never overrides the user.
   useEffect(() => {
     if (!open || fromId) return
-    const defaultSource = sources.find((a) => a.is_default) ?? sources.find((a) => a.type === "bank") ?? sources[0]
+    // Default to money the user HOLDS — never pre-select a balance transfer.
+    const holding = sources.filter((a) => !isLiabilityType(a.type))
+    const defaultSource = holding.find((a) => a.is_default) ?? holding.find((a) => a.type === "bank") ?? holding[0]
     if (defaultSource) setFromId(defaultSource.id)
   }, [open, fromId, sources])
 
@@ -109,7 +115,7 @@ export function PayCardSheet({
   const amt = parseFloat(amount)
   const amountValid = !!amt && !isNaN(amt) && amt > 0
   const from = sources.find((a) => a.id === fromId)
-  const fromCard = fromCardId ? debitCards.find((c) => c.id === fromCardId) : undefined
+  const fromCard = fromCardId ? payWith.find((c) => c.id === fromCardId) : undefined
 
   async function submit() {
     if (!fromId) { toast.error(t("selectAccount")); return }
@@ -158,7 +164,7 @@ export function PayCardSheet({
             <Label className="text-xs text-muted-foreground">{t("payFrom")}</Label>
             <AccountCombobox
               accounts={sources}
-              cards={debitCards}
+              cards={payWith}
               cardsLayout="nested"
               value={fromCardId || fromId}
               onChange={(id, picked) => { setFromId(picked ? picked.account_id : id); setFromCardId(picked?.card_id ?? "") }}
@@ -218,6 +224,16 @@ export function PayCardSheet({
             <ArrowRight className="size-3.5 shrink-0 rtl:rotate-180" aria-hidden />
             <span className="truncate">{accountDisplayName(card)}</span>
           </div>
+
+          {/* Paying a card WITH a card moves the debt; it does not reduce it.
+              Saying so here is the whole point — the confirmation line above
+              otherwise reads exactly like a real payment. */}
+          {from && isLiabilityType(from.type) && (
+            <p className="flex items-start gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 p-2.5 text-xs text-amber-800 dark:bg-amber-500/15 dark:text-amber-200">
+              <AlertTriangle className="mt-px size-3.5 shrink-0" aria-hidden />
+              <span>{t("balanceTransferWarning", { card: accountDisplayName(from) })}</span>
+            </p>
+          )}
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">

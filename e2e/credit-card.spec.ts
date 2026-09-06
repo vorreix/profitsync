@@ -203,7 +203,10 @@ test.describe.serial("Credit cards", () => {
     await expectAppShell(page)
     await dismissBanners(page)
     await page.getByRole("button", { name: /add card/i }).first().click()
-    const dialog = page.getByRole("dialog")
+    // Scoped to the wizard itself, not any role="dialog": Radix leaves a
+    // popover's content mounted after it closes, and a bare getByRole("dialog")
+    // then matches two elements and fails strict mode.
+    const dialog = page.locator("[data-card-wizard]")
     await expect(dialog).toBeVisible()
 
     // Step 1 — a credit card, and WHICH BANK ISSUED IT. The issuer is a real
@@ -238,6 +241,17 @@ test.describe.serial("Credit cards", () => {
     await dialog.getByLabel(/statement balance/i).fill("800")
     await dialog.getByLabel(/statement closing date/i).fill(closing)
     await dialog.getByLabel(/payment due date/i).fill(due)
+
+    // "Pay this card from" now offers everything the Pay sheet does — a bank,
+    // cash, or another card — not just banks. Cash proves the widened list,
+    // and that autopay stays available for money the user actually holds.
+    const payFrom = dialog.getByRole("combobox").last()
+    await payFrom.click()
+    const options = page.locator("[data-slot=popover-content]").last()
+    await expect(options).toBeVisible({ timeout: 10_000 })
+    await expect(options).toContainText(/cash/i)
+    await page.keyboard.press("Escape")
+
     await dialog.getByRole("button", { name: /save card/i }).click()
     await expect(dialog).toBeHidden({ timeout: 15_000 })
 

@@ -287,6 +287,14 @@ export const cards = pgTable("cards", {
   // migration 0065, and every surface falls back to the liability account's
   // bank_name, so a missing issuer is a supported state, not a broken one.
   issuerAccountId: uuid("issuer_account_id").references(() => wealthAccounts.id, { onDelete: "set null" }),
+  // The optional INSTRUMENT on the paying side. `fundingAccountId` is always
+  // the account the money leaves; when `fundingCardId` is set it must resolve
+  // to that same account (api/_lib/cards.ts resolveFunding) — the rule every
+  // transaction write already applies. A debit card here is a label on money
+  // leaving its bank; a credit card here is a BALANCE TRANSFER, which is why
+  // autopay is refused on a liability funder on both write paths and again in
+  // the autopay engine.
+  fundingCardId: uuid("funding_card_id"),
   name: text("name").notNull().default(""), // nickname; empty → "<Bank> <Network>" in the UI
   holderName: text("holder_name").notNull().default(""),
   network: text("network").notNull().default("other"), // visa | mastercard | amex | rupay | discover | jcb | unionpay | maestro | diners | other

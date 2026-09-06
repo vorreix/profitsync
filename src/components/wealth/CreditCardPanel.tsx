@@ -203,11 +203,15 @@ export function CreditCardPanel({
             <div className="mt-2 space-y-1">
               <p className="text-2xl font-bold tabular-nums">{t("spentThisCycle", { amount: money(cycle.spent) })}</p>
               <p className="text-xs text-muted-foreground">{t("closesOn", { date: formatDate(cycle.closes_on) })}</p>
-              {(cycle.refunds > 0 || cycle.payments > 0) && (
+              {(cycle.refunds > 0 || cycle.payments > 0 || cycle.transfers_out > 0) && (
                 <p className="text-xs text-muted-foreground tabular-nums">
                   {cycle.refunds > 0 && t("refundedThisCycle", { amount: money(cycle.refunds) })}
                   {cycle.refunds > 0 && cycle.payments > 0 && <span aria-hidden> · </span>}
                   {cycle.payments > 0 && t("paymentsThisCycle", { amount: money(cycle.payments) })}
+                  {/* This card was used to pay another one. Not spending, but
+                      the card owes for it, so the cycle must say so. */}
+                  {(cycle.refunds > 0 || cycle.payments > 0) && cycle.transfers_out > 0 && <span aria-hidden> · </span>}
+                  {cycle.transfers_out > 0 && t("movedToOtherCards", { amount: money(cycle.transfers_out) })}
                 </p>
               )}
             </div>

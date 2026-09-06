@@ -5,10 +5,10 @@ import { cards, transactions, wealthAccounts } from "../../../src/lib/db/schema.
 import { canDelete, canWrite, requireAuth } from "../../_lib/auth.js"
 import { diffFields, logAudit } from "../../_lib/audit.js"
 import { fetchBrandPalette } from "../../_lib/bank-brand.js"
-import { loadCard, serializeCard } from "../../_lib/cards.js"
+import { loadCard, resolveFunding, serializeCard } from "../../_lib/cards.js"
 import { checkCreditCardQuota } from "../../_lib/quota.js"
 import { amountExceedsLimit } from "../../../src/lib/money.js"
-import { cardDebt, isValidDayOfMonth } from "../../../src/lib/credit-card.js"
+import { cardDebt, isLiabilityType, isValidDayOfMonth } from "../../../src/lib/credit-card.js"
 import { todayIso } from "../../../src/lib/recurring.js"
 import { recurringRules } from "../../../src/lib/db/schema.js"
 import { pickCardIdentity } from "../cards.js"
@@ -52,6 +52,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       design?: unknown
       account_id?: string | null
       funding_account_id?: string | null
+      funding_card_id?: string | null
       autopay?: unknown
       status?: unknown
       refresh_brand?: boolean
@@ -106,17 +107,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       patch.accountId = bank.id
     }
 
-    if (card.kind === "credit" && body.funding_account_id !== undefined) {
-      if (body.funding_account_id) {
-        const [f] = await db
-          .select({ id: wealthAccounts.id, type: wealthAccounts.type })
-          .from(wealthAccounts)
-          .where(and(eq(wealthAccounts.id, body.funding_account_id), eq(wealthAccounts.organizationId, orgId), isNull(wealthAccounts.archivedAt)))
-        if (!f || (f.type !== "bank" && f.type !== "cash")) return res.status(400).json({ error: "The paying account must be an active bank or cash account" })
-        patch.fundingAccountId = f.id
-      } else {
-        patch.fundingAccountId = null
+    // Who pays this card: a bank, cash, or another CARD. One helper validates
+    // the (account, card) pair for both write paths so the stored two can never
+    // disagree. An older client that sends only `funding_account_id` means
+    // "no instrument", so the previous card is cleared rather than left stale.
+    // null = not worked out yet; only looked up when the request needs it.
+    let fundingIsLiability: boolean | null = null
+    if (card.kind === "credit" && (body.funding_account_id !== undefined || body.funding_card_id !== undefined)) {
+      const wantAccount = body.funding_account_id !== undefined ? body.funding_account_id : card.fundingAccountId
+      const wantCard = body.funding_card_id !== undefined ? body.funding_card_id : body.funding_account_id !== undefined ? null : card.fundingCardId
+      const funding = await resolveFunding(orgId, {
+        accountId: wantAccount,
+        cardId: wantCard,
+        payeeCardId: card.id,
+        payeeAccountId: card.accountId,
+      })
+      if (!funding.ok) return res.status(400).json({ error: funding.error, code: funding.code })
+      patch.fundingAccountId = funding.accountId
+      patch.fundingCardId = funding.cardId
+      fundingIsLiability = funding.isLiability
+      // Losing the payer, or handing it to another card, always stops autopay.
+      if (!funding.accountId || funding.isLiability) {
         patch.autopay = false
+        patch.autopaySince = null
       }
     }
 
@@ -124,6 +137,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const on = body.autopay === true
       const funding = patch.fundingAccountId !== undefined ? patch.fundingAccountId : card.fundingAccountId
       if (on && !funding) return res.status(400).json({ error: "Choose the bank that pays this card before switching autopay on" })
+      // A card paying a card would compound debt on a schedule — and refusing
+      // it is also what makes a funding cycle impossible without walking the
+      // graph, since a loop needs two unattended payers.
+      if (on && fundingIsLiability === null && funding) {
+        // Autopay flipped on without touching the payer: read what it is now.
+        const [f] = await db.select({ type: wealthAccounts.type }).from(wealthAccounts).where(eq(wealthAccounts.id, funding))
+        fundingIsLiability = isLiabilityType(f?.type ?? "")
+      }
+      if (on && fundingIsLiability) {
+        return res.status(400).json({ error: "A credit card can't pay another card automatically — pay it yourself each month", code: "autopay_liability" })
+      }
       patch.autopay = on
       // Switching on (re)starts the clock: only statements due from today on
       // are ever auto-paid. Switching off clears it.

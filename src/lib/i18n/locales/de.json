@@ -1504,13 +1504,15 @@
       },
       "credit": {
         "payFrom": "Karte bezahlen von",
-        "payFromHelp": "Die Bank, die die Abrechnung bezahlt. Du kannst das später ändern.",
+        "payFromHelp": "Eine Bank, Bargeld oder eine andere Karte. Mit einer Karte zu zahlen verschiebt die Schuld dorthin — es tilgt sie nicht.",
         "autopay": "Automatische Zahlung",
         "autopayHelp": "Aktiviere das nur, wenn deine Bank die volle Abrechnung bereits automatisch bezahlt — ProfitSync erfasst diese Zahlung dann am Fälligkeitstag. Gilt für Abrechnungen, die nach heute fällig werden.",
         "autopayNeedsBank": "Wähle die Bank, die diese Karte bezahlt, um die automatische Zahlung zu aktivieren",
         "editHint": "Offener Betrag und frühere Abrechnungen stehen auf der Kartenseite — hier änderst du nur das Limit und die Zyklustage",
         "title": "Wie funktioniert diese Karte?",
-        "help": "Das Limit, die Zyklustage und wer die Abrechnung bezahlt."
+        "help": "Das Limit, die Zyklustage und wer die Abrechnung bezahlt.",
+        "payManually": "Ich zahle sie selbst",
+        "autopayManualOnly": "Autopay braucht eine Bank oder Bargeld. Eine Karte, die eine andere zahlt, würde jeden Monat Schulden aufbauen — das bleibt manuell."
       },
       "errors": {
         "bank_required": "Wähle das Bankkonto, zu dem diese Karte gehört",
@@ -1541,7 +1543,9 @@
         "title": "Was steht auf der Karte?",
         "help": "Die Angaben auf der Vorderseite — daran erkennst du deine Karten wieder."
       }
-    }
+    },
+    "balanceTransferWarning": "Das verschiebt die Schuld auf {{card}}. Insgesamt schuldest du dasselbe — sie ist nicht getilgt.",
+    "movedToOtherCards": "{{amount}} auf andere Karten verschoben"
   },
   "errorBoundary": {
     "title": "Etwas ist schiefgelaufen",

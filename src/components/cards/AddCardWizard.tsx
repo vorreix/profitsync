@@ -93,6 +93,8 @@ export function AddCardWizard({ open, onOpenChange, mode = "create", card = null
   const [errors, setErrors] = useState<Partial<Record<CardWizardField, string>>>({})
   const [saving, setSaving] = useState(false)
   const [banks, setBanks] = useState<WealthAccount[]>([])
+  // Every money account, for the credit step's "Pay from" (banks, cash, cards).
+  const [allAccounts, setAllAccounts] = useState<WealthAccount[]>([])
   const [cards, setCards] = useState<Card[]>([])
   const [quota, setQuota] = useState<Quota | null>(null)
   const [upgrade, setUpgrade] = useState<null | "bank" | "credit_card">(null)
@@ -134,6 +136,7 @@ export function AddCardWizard({ open, onOpenChange, mode = "create", card = null
     ])
     const active = accts.filter((a) => a.type === "bank" && !a.archived_at)
     setBanks(active)
+    setAllAccounts(accts)
     // One bank in the workspace = no choice to make: answer it for them (the
     // free plan allows exactly one, so this is the common case). It counts as
     // part of the seed, not as something the user typed — otherwise dismissing
@@ -413,14 +416,13 @@ export function AddCardWizard({ open, onOpenChange, mode = "create", card = null
                       onChange={patch}
                       mode={mode}
                       symbol={symbol}
-                      banks={banks}
+                      accounts={allAccounts}
+                      cards={cards}
+                      ownAccountId={editing ? card?.account_id : null}
+                      ownCardId={editing ? card?.id : null}
                       currency={currency}
                       balancesVisible={balancesVisible}
                       errors={errors}
-                      canAddBank={canAddBank}
-                      onBankCreated={onBankCreated}
-                      onQuotaHit={() => setUpgrade("bank")}
-                      ready={loaded}
                     />
                   )}
                 </div>

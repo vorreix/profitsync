@@ -73,6 +73,9 @@ export function AccountCombobox({
   }
   const filteredAccounts = options.accounts.filter(matches)
   const filteredCards = options.cards.filter(matches)
+  const shownAccountIds = new Set(filteredAccounts.map((o) => (o.kind === "account" ? o.account.id : "")))
+  const ungrouped =
+    cardsLayout === "group" ? filteredCards : filteredCards.filter((c) => c.kind === "card" && !shownAccountIds.has(c.card.account_id))
   // A value naming a credit card's ACCOUNT (legacy rows) resolves to the card option.
   const selected = options.byKey.get(value) ?? (options.creditByAccount.get(value) ? options.byKey.get(options.creditByAccount.get(value)!.id) : undefined)
     ?? accounts.filter((a) => a.id === value).map((a): PayOption => ({ key: a.id, kind: "account", account: a, card: null, expired: false }))[0]
@@ -212,10 +215,14 @@ export function AccountCombobox({
                 </div>
               )
             })}
-            {cardsLayout === "group" && filteredCards.length > 0 && (
+            {/* Cards that sit under no listed account get their own group. In
+                "group" mode that is all of them; in "nested" mode it is the
+                credit cards, whose liability account buildPayOptions replaces
+                with the card itself — without this they would render nowhere. */}
+            {ungrouped.length > 0 && (
               <>
                 <p className="px-2 pb-1 pt-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{tTx("cardsHeading")}</p>
-                {filteredCards.map((o) => (o.kind === "card" ? cardRow(o, false) : null))}
+                {ungrouped.map((o) => (o.kind === "card" ? cardRow(o, false) : null))}
               </>
             )}
             {nothing && <p className="px-2 py-3 text-center text-xs text-muted-foreground">{t("noAccountFound")}</p>}

@@ -70,8 +70,14 @@ export type CardWizardForm = {
   design_text_auto: boolean
   /** Credit only: limit / owed today / cycle days / known statement. */
   credit: CardFormState
-  /** Credit only: the bank that pays the statement ("" = pay it manually). */
+  /** Credit only: the ACCOUNT the statement is paid from ("" = pay it manually). */
   funding_account_id: string
+  /**
+   * Credit only: the CARD used to pay it, when the answer is a card rather than
+   * a bare account. Always resolves to funding_account_id — a debit card means
+   * the money leaves its bank, a credit card means a balance transfer.
+   */
+  funding_card_id: string
   /** Credit only; opt-in, needs a funding bank. */
   autopay: boolean
 }
@@ -100,6 +106,7 @@ export function emptyCardWizardForm(init: {
     design_text_auto: true,
     credit: { ...emptyCardForm },
     funding_account_id: init.funding_account_id ?? "",
+    funding_card_id: "",
     autopay: false,
   }
 }
@@ -136,6 +143,7 @@ export function cardWizardFormFromCard(card: Card): CardWizardForm {
           })
         : { ...emptyCardForm },
     funding_account_id: card.funding_account_id ?? "",
+    funding_card_id: card.funding_card_id ?? "",
     autopay: card.autopay,
   }
 }
@@ -468,6 +476,7 @@ export function cardCreatePayload(form: CardWizardForm) {
           },
         }),
     ...(form.funding_account_id ? { funding_account_id: form.funding_account_id } : {}),
+    ...(form.funding_card_id ? { funding_card_id: form.funding_card_id } : {}),
     autopay: !!form.funding_account_id && form.autopay,
     ...identity,
     credit: creditBlock(form.credit, "create"),
@@ -482,6 +491,7 @@ export function cardEditPayload(form: CardWizardForm) {
     ...identity,
     credit: creditBlock(form.credit, "edit"),
     funding_account_id: form.funding_account_id || null,
+    funding_card_id: form.funding_card_id || null,
     autopay: !!form.funding_account_id && form.autopay,
   }
 }

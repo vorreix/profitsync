@@ -9,9 +9,15 @@ import { resolveCardForLeg } from "../../_lib/cards.js"
  * api/_lib/wealth-accounts.ts createTransfer for the money model (two legs,
  * one group_id, paying a credit card is a transfer INTO the card).
  *
- * `from_card_id` (optional) names the DEBIT card used on the source side: the
- * money still leaves `from_account_id` (which must be that card's bank); the
- * card is recorded on the outgoing leg so the ledger shows "D •••• 1234".
+ * `from_card_id` (optional) names the CARD used on the source side; the money
+ * still leaves that card's own account, and the card is recorded on the
+ * outgoing leg so the ledger shows "D •••• 1234".
+ *
+ *   • a DEBIT card is an instrument — the money leaves its bank;
+ *   • a CREDIT card is a BALANCE TRANSFER — the money leaves its liability
+ *     account, so the payer's debt goes up as the payee's goes down and net
+ *     worth does not move. Nothing was paid off, only moved, which is why
+ *     autopay refuses this combination (api/_lib/card-autopay.ts).
  */
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ctx = await requireAuth(req, res)
@@ -35,9 +41,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (from_card_id) {
     const resolved = await resolveCardForLeg(orgId, from_card_id, from_account_id)
     if (!resolved.ok) return res.status(400).json({ error: resolved.error })
-    if (resolved.card.kind !== "debit") return res.status(400).json({ error: "Only a debit card can pay a transfer — a credit card is paid, not paid from" })
     fromAccountId = resolved.accountId
     fromCardId = resolved.card.id
+  }
+
+  // createTransfer already refuses from === to, but say it in card terms when
+  // the caller used a card id (the accounts would look unrelated otherwise).
+  if (fromCardId && to_account_id && fromAccountId === to_account_id) {
+    return res.status(400).json({ error: "A card can't pay itself", code: "funding_self" })
   }
 
   const result = await createTransfer(orgId, userId, {

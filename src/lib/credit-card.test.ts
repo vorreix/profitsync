@@ -167,6 +167,19 @@ describe("credit-card — statement payments (FIFO, derived, deterministic)", ()
   const today = "2026-09-04"
   const dueDate = "2026-09-15"
 
+  it("counts money that LEFT the card as a transfer, apart from spending", () => {
+    // This card was used to pay another one: a balance transfer. Nothing was
+    // bought, so it is not spending — but the card really does owe for it, and
+    // dropping the leg entirely (the old behaviour) made the cycle lie.
+    const legs = [
+      { type: "outgoing", kind: "standard", amount: 40 },
+      { type: "outgoing", kind: "transfer", amount: 500 },
+      { type: "incoming", kind: "transfer", amount: 200 },
+      { type: "outgoing", kind: "transfer", amount: 60, isSystem: true },
+    ]
+    expect(cycleActivity(legs)).toEqual({ spent: 40, refunds: 0, payments: 200, transfers_out: 500 })
+  })
+
   it("full statement payment: statement paid, new-cycle spending untouched, debt = new cycle", () => {
     // Statement €800; new-cycle purchases €150 → current debt €950. Pay €800.
     const v = statementView({ statementBalance: 800, paymentsSinceClose: 800, dueDate, today })
@@ -177,7 +190,7 @@ describe("credit-card — statement payments (FIFO, derived, deterministic)", ()
     expect(debtAfter).toBe(150)
     // The purchases metric is a separate sum and is not "un-spent" by the payment.
     expect(cycleActivity([{ type: "outgoing", kind: "standard", amount: 150 }, { type: "incoming", kind: "transfer", amount: 800 }]))
-      .toEqual({ spent: 150, refunds: 0, payments: 800 })
+      .toEqual({ spent: 150, refunds: 0, payments: 800, transfers_out: 0 })
   })
 
   it("partial payment: paid / remaining / PARTIAL", () => {
@@ -229,7 +242,7 @@ describe("credit-card — statement payments (FIFO, derived, deterministic)", ()
       { type: "incoming", kind: "refund", amount: 100 },
     ]
     const activity = cycleActivity(legs)
-    expect(activity).toEqual({ spent: 150, refunds: 100, payments: 0 })
+    expect(activity).toEqual({ spent: 150, refunds: 100, payments: 0, transfers_out: 0 })
     expect(statementRemaining(800, activity.payments)).toBe(800)
     expect(cardDebt(-800 - 150 + 100)).toBe(850)
   })
@@ -251,7 +264,7 @@ describe("credit-card — statement payments (FIFO, derived, deterministic)", ()
       { type: "incoming", kind: "transfer", amount: 800 }, // payment
     ]
     const activity = cycleActivity(legs)
-    expect(activity).toEqual({ spent: 0, refunds: 0, payments: 800 })
+    expect(activity).toEqual({ spent: 0, refunds: 0, payments: 800, transfers_out: 0 })
     expect(statementRemaining(800, activity.payments)).toBe(0)
     expect(cardDebt(-950 + 800)).toBe(150)
   })

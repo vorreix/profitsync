@@ -1504,13 +1504,15 @@
       },
       "credit": {
         "payFrom": "Paga questa carta da",
-        "payFromHelp": "La banca che paga l'estratto conto. Puoi cambiarla in seguito.",
+        "payFromHelp": "Una banca, contanti o un'altra carta. Pagare con una carta sposta il debito su di essa: non lo azzera.",
         "autopay": "Addebito automatico",
         "autopayHelp": "Attivalo solo se la tua banca paga già l'intero estratto conto automaticamente — ProfitSync registrerà quel pagamento alla data di scadenza. Vale per gli estratti conto che scadono dopo oggi.",
         "autopayNeedsBank": "Scegli la banca che paga questa carta per attivare l'addebito automatico",
         "editHint": "Quanto devi e gli estratti conto passati sono nella pagina della carta — qui cambi solo il limite e i giorni del ciclo",
         "title": "Come funziona questa carta?",
-        "help": "Il limite, i giorni del ciclo e chi paga l'estratto conto."
+        "help": "Il limite, i giorni del ciclo e chi paga l'estratto conto.",
+        "payManually": "La pago io",
+        "autopayManualOnly": "L'addebito automatico richiede una banca o contanti. Una carta che ne paga un'altra aggiungerebbe debito ogni mese, quindi resta manuale."
       },
       "errors": {
         "bank_required": "Scegli il conto bancario a cui appartiene questa carta",
@@ -1541,7 +1543,9 @@
         "title": "Cosa c'è sulla carta?",
         "help": "I dati stampati sul fronte — così distingui le tue carte."
       }
-    }
+    },
+    "balanceTransferWarning": "Questo sposta il debito su {{card}}. Nel complesso dovrai la stessa cifra: non è stato saldato.",
+    "movedToOtherCards": "{{amount}} spostati su altre carte"
   },
   "errorBoundary": {
     "title": "Qualcosa è andato storto",

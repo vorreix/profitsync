@@ -5,7 +5,7 @@ import { cards, wealthAccounts } from "../../src/lib/db/schema.js"
 import { canWrite, requireAuth } from "../_lib/auth.js"
 import { logAudit } from "../_lib/audit.js"
 import { fetchBrandPalette } from "../_lib/bank-brand.js"
-import { loadCard, loadCards, serializeCard } from "../_lib/cards.js"
+import { loadCard, loadCards, resolveFunding, serializeCard } from "../_lib/cards.js"
 import { syncCards } from "../_lib/card-autopay.js"
 import { materializeDueRecurring } from "../_lib/recurring-materialize.js"
 import { createWealthAccount, type CreateAccountInput } from "../_lib/wealth-accounts.js"
@@ -72,6 +72,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       account_id?: string | null
       new_bank?: CreateAccountInput | null
       funding_account_id?: string | null
+      funding_card_id?: string | null
       issuer?: { bank_name?: string; brand_domain?: string; logo_url?: string } | null
       autopay?: unknown
       credit?: {
@@ -114,6 +115,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // ── The ledger account ───────────────────────────────────────────────────
     let ledgerAccountId: string
     let fundingAccountId: string | null = null
+    let fundingCardId: string | null = null
+    // Paying one card with another is a BALANCE TRANSFER — real money movement
+    // worth recording, but never something to do unattended.
+    let fundingIsLiability = false
     if (kind === "credit") {
       const credit = body.credit ?? {}
       const created = await createWealthAccount(orgId, userId, {
@@ -131,14 +136,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       })
       if (!created.ok) return res.status(created.status).json({ ...created.body, step: "credit" })
       ledgerAccountId = created.row.id
-      // The funding bank: an explicit choice, else the bank picked in step 1.
-      if (body.funding_account_id && body.funding_account_id !== bank?.id) {
-        const [f] = await db
-          .select({ id: wealthAccounts.id, type: wealthAccounts.type })
-          .from(wealthAccounts)
-          .where(and(eq(wealthAccounts.id, body.funding_account_id), eq(wealthAccounts.organizationId, orgId), isNull(wealthAccounts.archivedAt)))
-        if (!f || (f.type !== "bank" && f.type !== "cash")) return res.status(400).json({ error: "The paying account must be an active bank or cash account" })
-        fundingAccountId = f.id
+      // Who pays it: an explicit choice — a bank, cash, or another CARD — else
+      // the bank picked in step 1. resolveFunding is the single place the
+      // (account, card) pair is validated and made consistent.
+      if (body.funding_account_id || body.funding_card_id) {
+        const funding = await resolveFunding(orgId, {
+          accountId: body.funding_account_id,
+          cardId: body.funding_card_id,
+          payeeCardId: "",
+          payeeAccountId: ledgerAccountId,
+        })
+        if (!funding.ok) return res.status(400).json({ error: funding.error, code: funding.code, step: "credit" })
+        fundingAccountId = funding.accountId
+        fundingCardId = funding.cardId
+        fundingIsLiability = funding.isLiability
       } else {
         fundingAccountId = bank?.id ?? null
       }
@@ -150,8 +161,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const palette = brandDomain ? await fetchBrandPalette(brandDomain).catch(() => null) : null
 
     // Autopay is OPT-IN: ProfitSync only mirrors money movement the user says
-    // their bank actually makes ("Manual tracking only"). It needs a paying bank.
-    const autopay = kind === "credit" && !!fundingAccountId && body.autopay === true
+    // their bank actually makes ("Manual tracking only"). It needs a paying
+    // account that HOLDS money — a card paying a card would compound debt on a
+    // schedule, and refusing it here is also what makes a funding cycle
+    // impossible (a loop needs two unattended payers).
+    if (kind === "credit" && body.autopay === true && fundingIsLiability) {
+      return res.status(400).json({ error: "A credit card can't pay another card automatically — pay it yourself each month", code: "autopay_liability", step: "credit" })
+    }
+    const autopay = kind === "credit" && !!fundingAccountId && !fundingIsLiability && body.autopay === true
     const [{ maxPos }] = await db.select({ maxPos: max(cards.position) }).from(cards).where(eq(cards.organizationId, orgId))
     const [row] = await db
       .insert(cards)
@@ -164,6 +181,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         // free-text issuer (an older client, or an issuer the user has no
         // account with) records none, which stays a supported state.
         issuerAccountId: kind === "credit" ? (bank?.id ?? null) : null,
+        fundingCardId,
         name: identity.value.name,
         holderName: identity.value.holderName,
         network: identity.value.network,

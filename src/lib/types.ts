@@ -281,6 +281,8 @@ export type CreditCardSummary = {
     spent: number
     refunds: number
     payments: number
+    /** Money that left this card to pay another one (a balance transfer). */
+    transfers_out: number
   }
 }
 
@@ -305,6 +307,8 @@ export type Card = {
   funding_account_id: string | null
   /** Credit only: the bank that ISSUED the card (null on cards predating mig 0065). */
   issuer_account_id: string | null
+  /** Credit only: the CARD used to pay it, if any. Always resolves to funding_account_id. */
+  funding_card_id: string | null
   name: string
   holder_name: string
   network: CardNetwork
@@ -344,6 +348,12 @@ export type Card = {
   issuer_account_nickname?: string | null
   issuer_account_logo_src?: string | null
   issuer_account_archived_at?: string | null
+  // Joined from the card that pays this one, when one is set.
+  funding_card_name?: string | null
+  funding_card_kind?: CardKind | null
+  funding_card_last4?: string | null
+  funding_card_network?: CardNetwork | null
+  funding_card_status?: CardStatus | null
   transaction_count?: number
 }
 

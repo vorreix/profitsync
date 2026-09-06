@@ -13,6 +13,7 @@ function card(over: Partial<Card>): Card {
     account_id: "liab",
     funding_account_id: null,
     issuer_account_id: null,
+    funding_card_id: null,
     name: "",
     holder_name: "",
     network: "visa",
