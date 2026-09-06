@@ -1,6 +1,6 @@
 import { useMemo, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
-import { Plus } from "lucide-react"
+import { Plus, WalletCards } from "lucide-react"
 import { creditUsage } from "@/lib/credit-card"
 import type { Card, CardSummary } from "@/lib/types"
 import { formatMoney } from "@/lib/wealth"
@@ -49,6 +49,7 @@ export function CardsSummaryStrip({
   balancesVisible,
   canWrite,
   onAddCard,
+  onOpenFan,
 }: {
   /** Open (non-closed) cards. */
   cards: Card[]
@@ -58,6 +59,8 @@ export function CardsSummaryStrip({
   balancesVisible: boolean
   canWrite: boolean
   onAddCard: () => void
+  /** Phone only: opens the card fan. Absent (or fewer than two cards) → no button. */
+  onOpenFan?: () => void
 }) {
   const { t } = useTranslation("wealth")
   const money = (n: number) => formatMoney(n, currency, balancesVisible)
@@ -140,6 +143,22 @@ export function CardsSummaryStrip({
       {canWrite && (
         <Button size="sm" onClick={onAddCard} className="pressable order-2 min-h-11 shrink-0 sm:order-none sm:ms-auto sm:min-h-8">
           <Plus className="size-4" /> {t("cards.addCard")}
+        </Button>
+      )}
+
+      {/* The fan: a phone-only way to hold every card in one hand. It is the
+          last child and ms-auto, so it sits at the strip's bottom-right corner
+          whatever the figures row wrapped to. Hidden from `sm` up, where the
+          grid shows several tiles at once and there is nothing to fan. */}
+      {onOpenFan && cards.length > 1 && (
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={onOpenFan}
+          aria-label={t("cards.fanOpen")}
+          className="pressable order-4 ms-auto size-11 shrink-0 self-end sm:hidden"
+        >
+          <WalletCards className="size-5" aria-hidden />
         </Button>
       )}
     </div>

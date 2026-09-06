@@ -1408,7 +1408,16 @@
       "bankCardsIssuedHint": "Questa banca ti ha dato la carta. L'estratto conto viene pagato da un altro conto, quindi tra i due non si muove denaro.",
       "reorderCard": "Riordina {{name}}",
       "reorderFailed": "Non è stato possibile salvare l'ordine delle carte",
-      "dragHint": "Trascina la maniglia di una carta per riordinare — rilasciala al centro di un'altra carta per spostare denaro"
+      "dragHint": "Trascina la maniglia di una carta per riordinare — rilasciala al centro di un'altra carta per spostare denaro",
+      "fanOpen": "Sfoglia le tue carte",
+      "fanTitle": "Le tue carte",
+      "fanHint": "Scorri per sfogliare. Tocca la carta in mano per aprirla.",
+      "fanReorderHint": "Tieni premuta la carta in mano e trascinala lungo il ventaglio per riordinare",
+      "fanPrev": "Carta precedente",
+      "fanNext": "Carta successiva",
+      "fanOpenCard": "Apri",
+      "fanPosition": "{{index}} di {{count}}",
+      "moveMoney": "Sposta denaro"
     },
     "cardWizard": {
       "titleCreate": "Aggiungi una carta",

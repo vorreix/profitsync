@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { useAuth } from "@clerk/clerk-react"
 import { toast } from "sonner"
@@ -17,6 +18,8 @@ import { CardVisual } from "@/components/cards/CardVisual"
 import { accountFromCard, visualPropsFromCard } from "@/components/cards/types"
 import { cardDropAction, moveBefore } from "@/components/cards/card-drag"
 import { CardsSummaryStrip } from "@/components/cards/CardsSummaryStrip"
+import { CardFanSheet } from "@/components/cards/CardFanSheet"
+import { dropModalBackEntry } from "@/hooks/use-back-close"
 import { ClosedCardsSection } from "@/components/cards/ClosedCardsSection"
 import { PayCardSheet } from "@/components/wealth/PayCardSheet"
 import { TransferWizard } from "@/components/wealth/TransferWizard"
@@ -133,6 +136,16 @@ export function CardsTab({
   const [payOpen, setPayOpen] = useState(false)
   const [transfer, setTransfer] = useState<{ fromId: string; fromCardId: string; toId: string } | null>(null)
   const [transferOpen, setTransferOpen] = useState(false)
+  // The phone-only fan (CardFanSheet). Chaining from it into Pay/Transfer goes
+  // through leaveFanFor(): the drawer's back-close entry is dropped first, or
+  // its history.back() would land on the sheet that opens next and shut it.
+  const [fanOpen, setFanOpen] = useState(false)
+  const navigate = useNavigate()
+  const leaveFanFor = (then: () => void) => {
+    dropModalBackEntry()
+    setFanOpen(false)
+    then()
+  }
   // PayCardSheet and TransferWizard both need the money accounts, which this tab
   // otherwise never uses — fetched on first need, and cached by apiGet.
   const [accounts, setAccounts] = useState<WealthAccount[]>([])
@@ -391,6 +404,7 @@ export function CardsTab({
             balancesVisible={balancesVisible}
             canWrite={canWrite}
             onAddCard={openCreate}
+            onOpenFan={() => setFanOpen(true)}
           />
 
           {open.length > 0 && (
@@ -467,6 +481,19 @@ export function CardsTab({
           <ClosedCardsSection cards={closed} currency={currency} canWrite={canWrite} canDelete={canDelete} onEdit={openEdit} onChanged={onChanged} />
         </>
       )}
+
+      <CardFanSheet
+        open={fanOpen}
+        onOpenChange={setFanOpen}
+        cards={ordered}
+        currency={currency}
+        balancesVisible={balancesVisible}
+        canWrite={canWrite}
+        onOpenCard={(card) => leaveFanFor(() => navigate(`/wealth/cards/${card.id}`))}
+        onPay={(card) => leaveFanFor(() => setPay({ card }))}
+        onMove={(card) => leaveFanFor(() => setTransfer({ fromId: card.account_id, fromCardId: card.id, toId: "" }))}
+        onReorder={(next) => void persistOrder(next, ordered.map((c) => c.id))}
+      />
 
       {pay && (
         <PayCardSheet
