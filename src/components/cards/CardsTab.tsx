@@ -2,16 +2,19 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { useAuth } from "@clerk/clerk-react"
 import { toast } from "sonner"
-import { DndContext, MouseSensor, TouchSensor, useDraggable, useSensor, useSensors, type DragEndEvent, type DragMoveEvent, type DragStartEvent } from "@dnd-kit/core"
-import { GripVertical, Plus, RefreshCw } from "lucide-react"
+import { useAutoAnimate } from "@formkit/auto-animate/react"
+import { DndContext, DragOverlay, MouseSensor, TouchSensor, useDraggable, useSensor, useSensors, type DragEndEvent, type DragMoveEvent, type DragStartEvent } from "@dnd-kit/core"
+import { ArrowLeftRight, GripVertical, Plus, RefreshCw } from "lucide-react"
 import { apiGet, apiPost } from "@/lib/api"
+import { cardDisplayName } from "@/lib/cards"
 import type { Card, CardSummary, WealthAccount } from "@/lib/types"
 import { useCards, usableCards } from "@/lib/use-cards"
 import { Button } from "@/components/ui/button"
 import { CardStack } from "@/components/cards/CardStack"
 import { AddCardWizard } from "@/components/cards/AddCardWizard"
 import { CardTile, CardsGridSkeleton, type CardDropTarget } from "@/components/cards/CardTile"
-import { accountFromCard } from "@/components/cards/types"
+import { CardVisual } from "@/components/cards/CardVisual"
+import { accountFromCard, visualPropsFromCard } from "@/components/cards/types"
 import { cardDropAction, moveBefore } from "@/components/cards/card-drag"
 import { CardsSummaryStrip } from "@/components/cards/CardsSummaryStrip"
 import { ClosedCardsSection } from "@/components/cards/ClosedCardsSection"
@@ -66,9 +69,32 @@ function pointerFromActivator(ev: Event | null): { x: number; y: number } {
  */
 function DraggableTile({ id, children }: { id: string; children: (handle: { ref: (el: HTMLElement | null) => void; listeners?: Record<string, unknown>; attributes?: Record<string, unknown> }) => React.ReactNode }) {
   const drag = useDraggable({ id })
+  // BOTH refs go on the grip, not on the tile. dnd-kit anchors the drag overlay
+  // to the draggable NODE's rect: with the tile as the node, the floating
+  // preview would appear at the tile's top-left corner — up to ~700px away from
+  // the finger on a wide tile. Anchoring to the 32px grip puts it under the
+  // pointer. The tile's own geometry is measured separately via data-card-drag,
+  // so nothing else depends on which element dnd-kit considers the node.
+  const { setNodeRef, setActivatorNodeRef } = drag
+  const setHandle = useCallback(
+    (el: HTMLElement | null) => {
+      setNodeRef(el)
+      setActivatorNodeRef(el)
+    },
+    [setNodeRef, setActivatorNodeRef],
+  )
   return (
-    <div ref={drag.setNodeRef} data-card-drag={id}>
-      {children({ ref: drag.setActivatorNodeRef, listeners: drag.listeners as Record<string, unknown>, attributes: drag.attributes as unknown as Record<string, unknown> })}
+    <div data-card-drag={id} className="h-full">
+      {children({
+        ref: setHandle,
+        listeners: drag.listeners as Record<string, unknown>,
+        // dnd-kit's aria-describedby points at instructions that tell a screen
+        // reader to press space and use the arrow keys. There is no
+        // KeyboardSensor on this grid (nor on the Banks one), so those
+        // instructions would be a promise the UI cannot keep. The grip keeps
+        // its own aria-label and simply does not claim to be keyboard-draggable.
+        attributes: { ...drag.attributes, "aria-roledescription": undefined, "aria-describedby": undefined } as unknown as Record<string, unknown>,
+      })}
     </div>
   )
 }
@@ -121,6 +147,16 @@ export function CardsTab({
   const [drop, setDrop] = useState<Drop | null>(null)
   const dropRef = useRef<Drop | null>(null)
   const gridRef = useRef<HTMLDivElement | null>(null)
+  // dnd-kit owns the drag; auto-animate eases the SETTLE after a drop, matching
+  // the Banks grid (220ms ease-out). It honours prefers-reduced-motion itself.
+  const [autoAnimateRef] = useAutoAnimate<HTMLDivElement>({ duration: 220, easing: "ease-out" })
+  const setGridRef = useCallback(
+    (el: HTMLDivElement | null) => {
+      gridRef.current = el
+      autoAnimateRef(el)
+    },
+    [autoAnimateRef],
+  )
   const rectsRef = useRef<{ id: string; rect: DOMRect }[]>([])
   const pointerStartRef = useRef({ x: 0, y: 0 })
   const singleColRef = useRef(false)
@@ -177,6 +213,7 @@ export function CardsTab({
     useSensor(TouchSensor, { activationConstraint: { distance: 6 } }),
   )
   const byId = useMemo(() => new Map(open.map((c) => [c.id, c])), [open])
+  const dragged = draggingId ? byId.get(draggingId) : undefined
   const usable = useMemo(() => new Set(usableCards(open).map((c) => c.id)), [open])
 
   const setDropBoth = useCallback((next: Drop | null) => {
@@ -360,7 +397,12 @@ export function CardsTab({
             // Two columns at most, roomy gaps — three-across felt cluttered and
             // a wide tile lays itself out side-by-side (see CardTile).
             <DndContext sensors={sensors} onDragStart={onDragStart} onDragMove={onDragMove} onDragEnd={onDragEnd} onDragCancel={endDrag}>
-              <div ref={gridRef} className="grid grid-cols-1 gap-4 sm:gap-5 md:grid-cols-2">
+              {/* auto-rows-fr only from `md`, where tiles actually sit side by
+                  side: it equalises every row to the tallest so no card looks
+                  clipped next to another. In one column there is nothing to
+                  compare against, and padding every tile would just cost
+                  scroll. */}
+              <div ref={setGridRef} className="grid grid-cols-1 gap-4 sm:gap-5 md:auto-rows-fr md:grid-cols-2">
                 {open.map((card) => {
                   const tile = (handle?: Parameters<Parameters<typeof DraggableTile>[0]["children"]>[0]) => (
                     <CardTile
@@ -387,6 +429,32 @@ export function CardsTab({
                   )
                 })}
               </div>
+
+              {/* What the pointer carries while dragging: a compact chip, not a
+                  full tile, so it never obscures the target it is aimed at. The
+                  second line is live — it says what releasing right now would
+                  do. dnd-kit positions it, so nothing here animates layout. */}
+              <DragOverlay dropAnimation={null}>
+                {dragged ? (
+                  // w-max: the overlay box is sized to the 32px grip, so the
+                  // chip sizes itself to its content and overflows that box.
+                  <div className="flex w-max max-w-[min(20rem,80vw)] cursor-grabbing items-center gap-3 rounded-2xl border bg-card p-3 opacity-95 shadow-xl ring-2 ring-primary">
+                    <div className="w-24 shrink-0">
+                      <CardVisual {...visualPropsFromCard(dragged)} size="sm" still className="w-full" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold">{cardDisplayName(dragged)}</p>
+                      <p className="flex items-center gap-1 whitespace-nowrap text-xs text-muted-foreground">
+                        {drop?.target?.kind === "action" ? (
+                          <><ArrowLeftRight className="size-3 shrink-0" aria-hidden /> {drop.target.label}</>
+                        ) : (
+                          <><GripVertical className="size-3 shrink-0" aria-hidden /> {t("reorder")}</>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                ) : null}
+              </DragOverlay>
             </DndContext>
           )}
 

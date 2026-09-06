@@ -22,7 +22,7 @@ import { cardStatusKey, expiryAlert, shortDate } from "@/components/cards/card-d
  * air. Each tile is a CONTAINER, so a wide column lays the card and its status
  * out side by side instead of stretching the plastic into a billboard.
  */
-const GRID = "grid grid-cols-1 gap-4 sm:gap-5 md:grid-cols-2"
+const GRID = "grid grid-cols-1 gap-4 sm:gap-5 md:auto-rows-fr md:grid-cols-2"
 
 /** Utilization at or above this is worth a warning. Matches the card page. */
 const WARN_PCT = 90
@@ -65,7 +65,7 @@ export function CardsGridSkeleton({ count = 2 }: { count?: number }) {
   return (
     <div className={GRID} aria-hidden>
       {Array.from({ length: count }, (_, i) => (
-        <div key={i} className="@container/tile rounded-2xl border bg-card p-3.5 sm:p-4">
+        <div key={i} className="@container/tile h-full rounded-2xl border bg-card p-3.5 sm:p-4">
           <div className="flex flex-col @lg/tile:flex-row @lg/tile:gap-4">
             <Skeleton className="aspect-[1.586] w-full rounded-xl @lg/tile:w-52 @lg/tile:shrink-0 @lg/tile:self-center @2xl/tile:w-64" />
             <div className="mt-4 w-full space-y-2.5 @lg/tile:mt-0 @lg/tile:flex-1">
@@ -229,7 +229,9 @@ export function CardTile({
     <div
       data-card-tile={card.id}
       className={cn(
-        "@container/tile group relative isolate rounded-2xl border bg-card p-3.5 transition-[transform,box-shadow,opacity,border-color] duration-200 ease-out hover:border-primary/40 sm:p-4",
+        // h-full + flex: the grid equalises its rows from `md`, so the tile has
+        // to fill the cell it was given or it would float in a taller box.
+        "@container/tile group relative isolate flex h-full flex-col rounded-2xl border bg-card p-3.5 transition-[transform,box-shadow,opacity,border-color] duration-200 ease-out hover:border-primary/40 sm:p-4",
         dimmed && "bg-muted/30",
         dragging && "opacity-40",
         drop?.kind === "action" && "ring-2 ring-primary ring-offset-2 ring-offset-background motion-safe:scale-[1.02]",
@@ -240,12 +242,16 @@ export function CardTile({
         aria-label={t("cards.openCard", { name })}
         className="pressable ios-tap absolute inset-0 z-0 rounded-2xl outline-none focus-visible:ring-2 focus-visible:ring-ring"
       />
-      <div className="pointer-events-none relative z-10 flex flex-col @lg/tile:flex-row @lg/tile:items-stretch @lg/tile:gap-4">
+      <div className="pointer-events-none relative z-10 flex flex-1 flex-col @lg/tile:flex-row @lg/tile:items-stretch @lg/tile:gap-4">
         <div className="motion-safe:transition-transform motion-safe:duration-200 motion-safe:ease-out motion-safe:group-hover:-translate-y-0.5 @lg/tile:w-52 @lg/tile:shrink-0 @lg/tile:self-center @2xl/tile:w-64">
           <CardVisual {...visualPropsFromCard(card)} size="md" still className="w-full" />
         </div>
 
-        <div className="mt-4 flex min-w-0 flex-1 flex-col gap-2.5 @lg/tile:mt-0 @lg/tile:border-s @lg/tile:ps-4">
+        {/* A credit tile fills the cell on its own (its due strip is pinned to
+            the bottom with mt-auto). A debit tile has fewer bands, so in an
+            equalised row it centres instead of hanging from the top — matching
+            the card visual beside it, which is already centred. */}
+        <div className={cn("mt-4 flex min-w-0 flex-1 flex-col gap-2.5 @lg/tile:mt-0 @lg/tile:border-s @lg/tile:ps-4", !isCredit && "@lg/tile:justify-center")}>
           {/* BAND 1 — identity */}
           <div className="flex items-start gap-2">
             <div className="min-w-0 flex-1">
