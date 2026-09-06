@@ -1,5 +1,10 @@
 # Budget v2 — what it looks like
 
+> **Superseded on 2026-09-05.** The plan page was simplified to ONE list (groups, budgets, a
+> week / month / year toggle, hide and deactivate) — see [`SIMPLE.md`](./SIMPLE.md). Sections 2–4
+> below show the earlier five-section page and the bills / savings / refund cards, which are no
+> longer laid out on the page. The wizard (§1) and the scope gate (§6) are unchanged.
+
 A screenshot walkthrough of everything built for the Smart Hybrid Budget (Phases 0–4), captured from a real browser against a seeded development database. Phone shots are 430 px wide; desktop is 1440 px.
 
 The design rules these screens follow, and the financial invariants behind the numbers, are in [`docs/budget/BUDGETS.md`](../budget/BUDGETS.md) (the human explainer) and [`docs/budget-v2/PHASE2.md`](./PHASE2.md) (the build log).

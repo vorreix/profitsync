@@ -9,6 +9,7 @@ import { safeTimezone } from "../../../src/lib/schedule-notifications.js"
 import {
   isIncomeMode,
   isPlanCadence,
+  isViewWindow,
   clampInt,
   isIsoDate,
 } from "../../../src/lib/budget-math.js"
@@ -70,7 +71,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   // ── READ ──────────────────────────────────────────────────────────────────
   if (req.method === "GET") {
-    const view = await buildBudgetView(orgId, role, accountType, new Date())
+    // `?window=week|month|year` re-windows the budgets LIST only; anything else
+    // (or nothing) reads in the plan's natural window. An unknown value is
+    // ignored rather than refused — a stale client must still get its figures.
+    const raw = req.query.window
+    const window = isViewWindow(raw) ? raw : undefined
+    const view = await buildBudgetView(orgId, role, accountType, new Date(), { window })
     return res.json(view)
   }
 
@@ -180,7 +186,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         planId,
         organizationId: orgId,
         section: "flexible",
-        name: "Everyday spending",
+        // Named for what it IS on the budgets page — the line that catches
+        // whatever no other budget claims. The old default duplicated the
+        // section's own title and read as a mistake (handoff §4.3).
+        name: "Everything else",
         targetAmount: String(target),
         targetCadence: "period",
         isCatchAll: true,

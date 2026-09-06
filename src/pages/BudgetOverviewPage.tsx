@@ -1,40 +1,70 @@
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
 import {
+  ChevronDown,
   ChevronRight,
-  GripVertical,
+  Eye,
+  EyeOff,
+  FolderPlus,
   Info,
   Loader as Loader2,
+  MoreHorizontal,
   Pause,
   Pencil,
   Play,
   Plus,
   RefreshCw,
+  Trash2,
 } from "lucide-react"
 import { MoneyBag } from "@/components/icons/MoneyBag"
 import { toast } from "sonner"
-import { apiErrorMessage, apiPatch } from "@/lib/api"
+import { apiDelete, apiErrorMessage, apiPatch, apiPost } from "@/lib/api"
 import { formatIsoDate } from "@/lib/dates"
 import { useBudget } from "@/lib/budget-context"
 import { useCurrency } from "@/lib/currency-context"
 import { formatMoney } from "@/lib/wealth"
-import type { BudgetCurrencyLimitation, BudgetEnvelopeView, BudgetSectionName, BudgetStateV2, BudgetView } from "@/lib/types"
+import type {
+  BudgetEnvelopeView,
+  BudgetGroupView,
+  BudgetItemView,
+  BudgetListView,
+  BudgetStateV2,
+  BudgetView,
+  BudgetViewWindow,
+} from "@/lib/types"
 import { BudgetWizard } from "@/components/budget/BudgetWizard"
-import { AddCommitmentDialog } from "@/components/budget/AddCommitmentDialog"
-import { EnvelopeDialog } from "@/components/budget/EnvelopeDialog"
+import { BudgetItemDialog } from "@/components/budget/BudgetItemDialog"
 import { envelopeIcon } from "@/components/budget/envelope-icons"
 import { EnvelopeDetailSheet } from "@/components/budget/EnvelopeDetailSheet"
 import { OverdueList } from "@/components/budget/OverdueList"
-import { RefundReview } from "@/components/budget/RefundReview"
 import { ResolveOverspendSheet } from "@/components/budget/ResolveOverspendSheet"
-import { EnvelopeList, type HandleProps } from "@/components/budget/EnvelopeList"
-import { SavingsSection } from "@/components/budget/SavingsSection"
 import { MigrationPrompts } from "@/components/budget/MigrationPrompts"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import {
   Drawer,
   DrawerContent,
@@ -43,7 +73,7 @@ import {
   DrawerTitle,
 } from "@/components/ui/drawer"
 
-// Semantic state colours — a healthy plan is emerald or neutral; red appears
+// Semantic state colours — a healthy budget is emerald or neutral; red appears
 // only when a figure is genuinely exceeded (spec §6.0).
 const BAR: Record<BudgetStateV2, string> = {
   none: "bg-muted-foreground/40",
@@ -53,38 +83,47 @@ const BAR: Record<BudgetStateV2, string> = {
   over: "bg-red-500",
 }
 
+type Line = BudgetItemView | BudgetGroupView
+
+/**
+ * The budgets page (docs/budget-v2/SIMPLE.md).
+ *
+ * One question, answered at a glance: where am I with each budget? The page is
+ * the safe-to-spend hero, then ONE list — macro budgets (groups) that add up the
+ * budgets inside them, and the ungrouped budgets — read through a week / month
+ * / year toggle. Every row shows the same three things: a bar, "spent of limit",
+ * and what is left or over. Everything else is one tap away in a row menu.
+ *
+ * Bills, savings and debt are tracked elsewhere (Recurring, Spaces, Debt &
+ * Loans) and are no longer laid out here; the engine still reserves for them,
+ * which the hero and its explainer say.
+ */
 export function BudgetOverviewPage() {
   const { t, i18n } = useTranslation()
   const { getToken } = useAuth()
   const { currency } = useCurrency()
-  const { data, loaded, syncing, error, refresh, sync } = useBudget()
+  const { data, loaded, syncing, error, refresh, sync, window: chosenWindow, setWindow } = useBudget()
   const [explainOpen, setExplainOpen] = useState(false)
   const [busy, setBusy] = useState(false)
-  // Progressive disclosure (P2): every one of these is CLOSED until the user
-  // asks for it. The overview never shows a form.
-  const [addSection, setAddSection] = useState<BudgetSectionName | null>(null)
-  const [editing, setEditing] = useState<BudgetEnvelopeView | null>(null)
-  const [addBillOpen, setAddBillOpen] = useState(false)
-  const [detailFor, setDetailFor] = useState<BudgetEnvelopeView | null>(null)
-  const [overspendFor, setOverspendFor] = useState<BudgetEnvelopeView | null>(null)
-  const [revision, setRevision] = useState(0)
+  // Progressive disclosure: every one of these is CLOSED until asked for.
+  const [adding, setAdding] = useState<"category" | "group" | null>(null)
+  const [editing, setEditing] = useState<Line | null>(null)
+  const [removing, setRemoving] = useState<Line | null>(null)
+  const [detailFor, setDetailFor] = useState<BudgetItemView | null>(null)
+  const [overspendFor, setOverspendFor] = useState<BudgetItemView | null>(null)
   const [searchParams, setSearchParams] = useSearchParams()
 
   const money = (n: number) => formatMoney(n, currency)
 
   // A legacy /budgets/:key bookmark resolves to ?envelope=<id> (§13.6), so open
-  // that envelope's detail once and then drop the param — otherwise a refresh
-  // or a back-navigation would keep reopening the sheet.
+  // that budget's detail once and then drop the param.
   //
   // Declared HERE, above the loading / error / empty guards: those return early,
   // so a hook placed after them would not run in the same order on every render.
   const deepLinkId = searchParams.get("envelope")
   useEffect(() => {
     if (!deepLinkId) return
-    const all = Object.values(data?.sections ?? {}).flatMap(
-      (sec) => (sec as { envelopes?: BudgetEnvelopeView[] }).envelopes ?? [],
-    )
-    const found = all.find((e) => e.id === deepLinkId)
+    const found = allItems(data?.budgets).find((e) => e.id === deepLinkId)
     if (found) setDetailFor(found)
     const next = new URLSearchParams(searchParams)
     next.delete("envelope")
@@ -96,11 +135,7 @@ export function BudgetOverviewPage() {
     return (
       <div className="space-y-4 p-3 sm:space-y-6 sm:p-6">
         <Skeleton className="h-32 w-full rounded-2xl" />
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {[0, 1, 2].map((i) => (
-            <Skeleton key={i} className="h-28 w-full rounded-xl" />
-          ))}
-        </div>
+        <Skeleton className="h-64 w-full rounded-2xl" />
       </div>
     )
   }
@@ -142,28 +177,38 @@ export function BudgetOverviewPage() {
   }
 
   const paused = data.plan.status === "paused"
+  const budgets = data.budgets
+  const groups = budgets?.groups ?? []
+  const claimedKeys = [...new Set(allItems(budgets).flatMap((e) => e.match_keys ?? []))]
+  const activeWindow: BudgetViewWindow = budgets?.window ?? chosenWindow ?? "month"
 
-  // Categories another envelope already claims, so the add dialog can show them
-  // as unavailable BEFORE the user picks one and hits the 409.
-  const claimedKeys = [
-    ...new Set(
-      Object.values(data.sections ?? {}).flatMap((sec) =>
-        ((sec as { envelopes?: BudgetEnvelopeView[] }).envelopes ?? []).flatMap((e) => e.match_keys ?? []),
-      ),
-    ),
-  ]
-  const commitmentEnvelopes = [
-    ...(data.sections?.commitment.envelopes ?? []),
-    ...(data.sections?.debt.envelopes ?? []),
-  ]
+  // Every mutation re-reads the plan rather than patching state locally: the
+  // figures are derived from each other (a group is the sum of its children,
+  // the hero moves with the plan), so a local patch would show a
+  // self-inconsistent page for a moment.
+  const afterChange = () => void refresh()
 
-  // Every mutation re-reads the plan rather than patching state locally: these
-  // figures are derived from each other (a reallocation moves safe-to-spend as
-  // well as two envelopes), so a local patch would show a self-inconsistent
-  // plan for a moment.
-  const afterChange = () => {
-    setRevision((r) => r + 1)
-    void refresh()
+  const patchLine = async (line: Line, body: Record<string, unknown>, done: string) => {
+    try {
+      const token = await getToken()
+      if (!token) return
+      await apiPatch(`/api/budgets/v2/envelopes/${line.id}`, token, body, ["/api/budgets"])
+      toast.success(t(done, { name: line.name }))
+      afterChange()
+    } catch (err) {
+      toast.error(apiErrorMessage(err, t("budgetV2.changeFailed")))
+    }
+  }
+
+  const reorder = async (ids: string[]) => {
+    try {
+      const token = await getToken()
+      if (!token) return
+      await apiPost("/api/budgets/v2/envelopes/reorder", token, { ids }, ["/api/budgets"])
+      afterChange()
+    } catch (err) {
+      toast.error(apiErrorMessage(err, t("budgetV2.reorderFailed")))
+    }
   }
 
   const togglePause = async () => {
@@ -174,9 +219,6 @@ export function BudgetOverviewPage() {
       await apiPatch("/api/budgets/v2", token, { status: paused ? "active" : "paused" }, ["/api/budgets"])
       await sync()
     } catch (err) {
-      // Pause/resume is owner/admin on the server (§18.2); an editor's tap must
-      // say so rather than fail silently. request() throws before mutate()
-      // invalidates anything, so there is nothing to refresh here.
       toast.error(apiErrorMessage(err, t("budgetV2.syncFailed")))
     } finally {
       setBusy(false)
@@ -187,18 +229,39 @@ export function BudgetOverviewPage() {
     <div className="space-y-4 p-3 sm:space-y-6 sm:p-6">
       <Header
         right={
-          canWrite ? (
-            <Button variant="outline" size="sm" className="h-9" onClick={togglePause} disabled={busy}>
-              {busy ? (
-                <Loader2 className="size-3.5 animate-spin" />
-              ) : paused ? (
-                <Play className="size-3.5" />
-              ) : (
-                <Pause className="size-3.5" />
-              )}
-              {paused ? t("budgetV2.resume") : t("budgetV2.pause")}
-            </Button>
-          ) : undefined
+          <div className="flex flex-wrap items-center gap-2">
+            {budgets && (
+              <ToggleGroup
+                type="single"
+                variant="outline"
+                value={activeWindow}
+                onValueChange={(v) => v && setWindow(v as BudgetViewWindow)}
+                aria-label={t("budgetV2.windowAria")}
+              >
+                <ToggleGroupItem value="week" className="h-9 px-3 text-xs">
+                  {t("budgetV2.windowWeek")}
+                </ToggleGroupItem>
+                <ToggleGroupItem value="month" className="h-9 px-3 text-xs">
+                  {t("budgetV2.windowMonth")}
+                </ToggleGroupItem>
+                <ToggleGroupItem value="year" className="h-9 px-3 text-xs">
+                  {t("budgetV2.windowYear")}
+                </ToggleGroupItem>
+              </ToggleGroup>
+            )}
+            {canWrite && (
+              <Button variant="outline" size="sm" className="h-9" onClick={togglePause} disabled={busy}>
+                {busy ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : paused ? (
+                  <Play className="size-3.5" />
+                ) : (
+                  <Pause className="size-3.5" />
+                )}
+                {paused ? t("budgetV2.resume") : t("budgetV2.pause")}
+              </Button>
+            )}
+          </div>
         }
       />
 
@@ -212,9 +275,7 @@ export function BudgetOverviewPage() {
       )}
 
       {/* A plan can exist for a moment before its first period is opened (the
-          wizard creates the plan, then sync opens the period). Render the
-          setting-up state rather than a blank body — the provider's self-heal
-          is already in flight. */}
+          wizard creates the plan, then sync opens the period). */}
       {(!data.money || !data.period) && (
         <Card className="py-0">
           <CardContent className="flex items-center gap-2 p-4 text-sm text-muted-foreground">
@@ -224,13 +285,11 @@ export function BudgetOverviewPage() {
         </Card>
       )}
 
-      {/* The migration's unanswered questions come FIRST: both change the
-          figures below them, so settling one before reading the numbers is the
-          right order (§13.4, §13.8). Renders nothing for a natively created
-          plan. */}
+      {/* The migration's unanswered questions come FIRST — both change the
+          figures below them. Renders nothing for a natively created plan. */}
       <MigrationPrompts view={data} money={money} canWrite={canWrite} onResolved={afterChange} />
 
-      {data.money && data.period && (
+      {data.money && data.period && budgets && (
         <>
           <SafeToSpendHero
             view={data}
@@ -240,9 +299,9 @@ export function BudgetOverviewPage() {
             className={paused ? "opacity-70" : ""}
           />
 
-          {/* Overdue is the single most consequential thing on the screen, and
-              each row is actionable in one tap rather than being a warning the
-              user has to go somewhere else to act on. */}
+          {/* An overdue bill still reserves money, so it stays actionable here
+              even though bills are no longer laid out on this page. Renders
+              nothing when nothing is overdue. */}
           <OverdueList
             occurrences={data.occurrences_overdue}
             money={money}
@@ -250,65 +309,62 @@ export function BudgetOverviewPage() {
             onChanged={afterChange}
           />
 
-          {/* A provisional refund is a GUESS the user can correct — surfaced
-              only when there is one to review. */}
-          <RefundReview
-            revision={revision}
+          <BudgetsCard
+            list={budgets}
             money={money}
             canWrite={canWrite && !paused}
-            onChanged={afterChange}
-          />
-
-          <Sections
-            view={data}
-            money={money}
-            canWrite={canWrite && !paused}
-            onAdd={setAddSection}
-            onAddBill={() => setAddBillOpen(true)}
-            onOpenDetail={setDetailFor}
-            onResolveOverspend={setOverspendFor}
+            onAdd={setAdding}
             onEdit={setEditing}
-            onChanged={afterChange}
+            onRemove={setRemoving}
+            onOpen={setDetailFor}
+            onResolve={setOverspendFor}
+            onPatch={patchLine}
+            onReorder={reorder}
           />
-
-          {/* Machine-readable honesty about what this build cannot do (§21.4). */}
-          {data.limitations.length > 0 && <Limitations codes={data.limitations} currency={data.currency_limitation ?? null} />}
         </>
       )}
 
       <SafeToSpendExplainer open={explainOpen} onOpenChange={setExplainOpen} view={data} money={money} />
 
-      <EnvelopeDialog
-        open={addSection !== null}
-        onOpenChange={(v) => !v && setAddSection(null)}
-        section={addSection ?? "flexible"}
+      <BudgetItemDialog
+        open={adding !== null}
+        onOpenChange={(v) => !v && setAdding(null)}
+        kind={adding ?? "category"}
+        groups={groups}
         claimedKeys={claimedKeys}
+        planCadence={data.plan.cadence}
         onSaved={afterChange}
       />
-
       {/* Same component in EDIT mode — the fields are identical, and a separate
           edit dialog is how the two drift apart. */}
-      <EnvelopeDialog
+      <BudgetItemDialog
         open={editing !== null}
         onOpenChange={(v) => !v && setEditing(null)}
-        section={editing?.section ?? "flexible"}
-        envelope={editing}
+        kind={editing?.kind ?? "category"}
+        item={editing}
+        groups={groups}
         claimedKeys={claimedKeys}
+        planCadence={data.plan.cadence}
         onSaved={afterChange}
       />
 
-      <AddCommitmentDialog
-        open={addBillOpen}
-        onOpenChange={setAddBillOpen}
-        envelopes={commitmentEnvelopes}
-        onCreated={afterChange}
+      <RemoveDialog
+        line={removing}
+        onOpenChange={() => setRemoving(null)}
+        onRemoved={afterChange}
       />
 
-      <EnvelopeDetailSheet envelope={detailFor} money={money} onOpenChange={() => setDetailFor(null)} />
+      <EnvelopeDetailSheet
+        envelope={detailFor ? asEnvelopeView(detailFor) : null}
+        money={money}
+        onOpenChange={() => setDetailFor(null)}
+      />
 
       <ResolveOverspendSheet
-        envelope={overspendFor}
-        siblings={overspendFor ? sameSection(data, overspendFor.section) : []}
+        envelope={overspendFor ? asEnvelopeView(overspendFor) : null}
+        siblings={allItems(budgets)
+          .filter((i) => i.active && i.id !== overspendFor?.id)
+          .map(asEnvelopeView)}
         unallocated={data.money?.unallocated_available ?? 0}
         money={money}
         onOpenChange={() => setOverspendFor(null)}
@@ -318,12 +374,53 @@ export function BudgetOverviewPage() {
   )
 }
 
-/** Every envelope in one section — the candidates a reallocation can draw from. */
-function sameSection(view: BudgetView, section: BudgetSectionName): BudgetEnvelopeView[] {
-  const s = view.sections
-  if (!s) return []
-  const bucket = (s as unknown as Record<string, { envelopes?: BudgetEnvelopeView[] }>)[section]
-  return bucket?.envelopes ?? []
+/** Every budget line (grouped and ungrouped), flat. */
+function allItems(list: BudgetListView | null | undefined): BudgetItemView[] {
+  if (!list) return []
+  return [...list.groups.flatMap((g) => g.children), ...list.items]
+}
+
+/**
+ * The detail and overspend sheets predate the list and read an envelope view.
+ * A budget line carries the same money in the same names; the rest of the
+ * envelope shape is filled with its neutral value.
+ */
+function asEnvelopeView(i: BudgetItemView): BudgetEnvelopeView {
+  return {
+    id: i.id,
+    name: i.name,
+    section: "flexible",
+    planned: i.planned,
+    rollover_in: 0,
+    authored_amount: i.authored_amount,
+    authored_cadence: i.authored_cadence,
+    spent_gross: i.spent,
+    refunds_confirmed: 0,
+    refunds_provisional: 0,
+    spent_net: i.spent,
+    pending: 0,
+    remaining: i.remaining,
+    state: i.state,
+    priority: "important",
+    carry_policy: "none",
+    is_catch_all: i.is_catch_all,
+    reimbursable: false,
+    funding_mode: null,
+    auto_fund: false,
+    goal_amount: null,
+    target_date: null,
+    balance: null,
+    contribution_status: null,
+    needs_attention: false,
+    excluded_occurrence_count: 0,
+    match_keys: i.match_keys,
+    icon: i.icon,
+    goal_progress: null,
+    suggested_monthly: null,
+    settled: 0,
+    overdue_count: 0,
+    overdue_amount: 0,
+  }
 }
 
 function Header({ right }: { right?: React.ReactNode }) {
@@ -381,13 +478,9 @@ function SafeToSpendHero({
   return (
     <Card className={`py-0 ${className}`}>
       <CardContent className="p-4 sm:p-5">
-        {/* A definition list, so each label↔value pair is programmatically linked. */}
         <dl>
           <dt className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground">
             {t("budgetV2.safeToSpend")}
-            {/* The icon stays small so it does not compete with the figure, but
-                the HIT AREA is a full 36px: the same DOM runs in the native
-                WebView, where an 18px target is genuinely hard to tap. */}
             <button
               type="button"
               onClick={onExplain}
@@ -402,7 +495,6 @@ function SafeToSpendHero({
               </span>
             )}
           </dt>
-          {/* One live region only, on the figure that actually matters. */}
           <dd
             aria-live="polite"
             className={`mt-1 text-3xl font-bold tabular-nums sm:text-4xl ${negative ? "text-amber-600 dark:text-amber-400" : ""}`}
@@ -419,7 +511,6 @@ function SafeToSpendHero({
           <p className="mt-1 text-xs font-medium">{t("budgetV2.planFullyUsed")}</p>
         )}
 
-        {/* Context strip — Available / Reserved / days left. */}
         <dl className="mt-4 grid grid-cols-3 gap-3 border-t pt-3 text-xs">
           <div>
             <dt className="text-muted-foreground">{t("budgetV2.availableNow")}</dt>
@@ -445,400 +536,426 @@ function SafeToSpendHero({
   )
 }
 
-/**
- * Section cards. Each section uses its OWN vocabulary and shape — income is
- * expected/received, commitments are paid/unpaid, savings are set-aside — because
- * one "spent of planned" ratio across them is meaningless (§8.7).
- *
- * A progress bar appears ONLY on flexible spending: a bar implies "X of Y used",
- * which says nothing useful about income or an unpaid bill.
- */
-function Sections({
-  view,
+// ─────────────────────────────────────────────────────────────────────────────
+// The list
+// ─────────────────────────────────────────────────────────────────────────────
+
+type PatchFn = (line: Line, body: Record<string, unknown>, done: string) => Promise<void>
+
+function BudgetsCard({
+  list,
   money,
   canWrite,
   onAdd,
-  onAddBill,
-  onOpenDetail,
-  onResolveOverspend,
   onEdit,
-  onChanged,
+  onRemove,
+  onOpen,
+  onResolve,
+  onPatch,
+  onReorder,
 }: {
-  view: BudgetView
+  list: BudgetListView
   money: (n: number) => string
   canWrite: boolean
-  onAdd: (section: BudgetSectionName) => void
-  onAddBill: () => void
-  onOpenDetail: (env: BudgetEnvelopeView) => void
-  onResolveOverspend: (env: BudgetEnvelopeView) => void
-  onEdit: (env: BudgetEnvelopeView) => void
-  onChanged: () => void
+  onAdd: (kind: "category" | "group") => void
+  onEdit: (line: Line) => void
+  onRemove: (line: Line) => void
+  onOpen: (item: BudgetItemView) => void
+  onResolve: (item: BudgetItemView) => void
+  onPatch: PatchFn
+  onReorder: (ids: string[]) => Promise<void>
 }) {
   const { t } = useTranslation()
-  const s = view.sections!
-  const m = view.money!
+  const [showHidden, setShowHidden] = useState(false)
+
+  // Groups first, then the ungrouped budgets, "Everything else" last: a fixed
+  // order the eye can learn. Hidden lines fold into one row at the bottom.
+  const visibleGroups = list.groups.filter((g) => !g.hidden)
+  const hiddenGroups = list.groups.filter((g) => g.hidden)
+  const ordered = useMemo(() => {
+    const items = list.items.slice().sort((a, b) => Number(a.is_catch_all) - Number(b.is_catch_all))
+    return items
+  }, [list.items])
+  const visibleItems = ordered.filter((i) => !i.hidden)
+  const hiddenItems = ordered.filter((i) => i.hidden)
+  // A hidden budget INSIDE a visible group folds into the same footer as a
+  // hidden top-level one — its group keeps counting it, the page just stops
+  // showing it there.
+  const hiddenChildren = visibleGroups.flatMap((g) => g.children.filter((c) => c.hidden))
+  const hiddenCount =
+    hiddenGroups.length + hiddenItems.length + hiddenChildren.length + hiddenGroups.reduce((n, g) => n + g.children.length, 0)
+  const onlyCatchAll = list.groups.length === 0 && list.items.length === 1 && list.items[0]?.is_catch_all
+
+  const rangeLabel =
+    list.window === "week" ? t("budgetV2.rangeWeek") : list.window === "year" ? t("budgetV2.rangeYear") : t("budgetV2.rangeMonth")
+
+  /** The full id order the server expects: groups, each with its children, then the ungrouped lines. */
+  const flatOrder = (groups: BudgetGroupView[], items: BudgetItemView[]) => [
+    ...groups.flatMap((g) => [g.id, ...g.children.map((c) => c.id)]),
+    ...items.map((i) => i.id),
+  ]
+  const moveLine = (line: Line, delta: number) => {
+    const groups = list.groups.slice()
+    const items = ordered.slice()
+    if (line.kind === "group") {
+      swap(groups, groups.findIndex((g) => g.id === line.id), delta)
+    } else if (line.parent_id) {
+      const g = groups.find((x) => x.id === line.parent_id)
+      if (!g) return
+      const children = g.children.slice()
+      swap(children, children.findIndex((c) => c.id === line.id), delta)
+      groups[groups.indexOf(g)] = { ...g, children }
+    } else {
+      swap(items, items.findIndex((i) => i.id === line.id), delta)
+    }
+    void onReorder(flatOrder(groups, items))
+  }
+
+  const menuFor = (line: Line, siblings: Line[]) =>
+    canWrite ? (
+      <RowMenu
+        line={line}
+        groups={list.groups}
+        index={siblings.findIndex((s) => s.id === line.id)}
+        count={siblings.length}
+        onEdit={() => onEdit(line)}
+        onRemove={() => onRemove(line)}
+        onPatch={onPatch}
+        onMove={(d) => moveLine(line, d)}
+      />
+    ) : null
 
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-      {/* Flexible — the only section with a utilisation bar. */}
-      <Card className="py-0 sm:col-span-2">
-        <CardContent className="p-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-sm font-semibold">{t("budgetV2.sectionFlexible")}</p>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground">{stateLabel(t, s.flexible.utilisation)}</span>
-              {canWrite && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-9 gap-1 px-2 text-xs"
-                  onClick={() => onAdd("flexible")}
-                >
-                  <Plus className="size-3" aria-hidden /> {t("budgetV2.addCategory")}
-                </Button>
-              )}
-            </div>
+    <Card className="py-0">
+      <CardContent className="p-4">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold">{t("budgetV2.budgetsTitle")}</p>
+            <p className="text-xs text-muted-foreground">{rangeLabel}</p>
           </div>
-          <p className="mt-2 text-lg font-bold tabular-nums">
-            {money(s.flexible.spent_net)}
-            <span className="text-sm font-normal text-muted-foreground"> / {money(s.flexible.planned)}</span>
-          </p>
-          <Bar state={s.flexible.utilisation} spent={s.flexible.spent_net} planned={s.flexible.planned} label={t("budgetV2.sectionFlexible")} />
-          {/* The SIGNED remaining, so an overspent plan is visible. */}
-          <p className="mt-1.5 text-xs text-muted-foreground">
-            {s.flexible.remaining >= 0
-              ? t("budgetV2.left", { amount: money(s.flexible.remaining) })
-              : t("budgetV2.over", { amount: money(-s.flexible.remaining) })}
-          </p>
-          {/* Where the rest of the spending went. Answering this is the whole
-              point of having a catch-all rather than dropping unmatched rows. */}
-          {s.flexible.uncategorised > 0 && s.flexible.envelopes.some((e) => !e.is_catch_all) && (
-            <p className="mt-1.5 text-xs text-muted-foreground">
-              {t("budgetV2.uncategorisedNote", { amount: money(s.flexible.uncategorised) })}
-            </p>
-          )}
-
-          {s.flexible.envelopes.length > 0 && (
-            <EnvelopeList envelopes={s.flexible.envelopes} canWrite={canWrite} onChanged={onChanged}>
-              {(e, handle) => (
-                <EnvelopeRow
-                  env={e}
-                  money={money}
-                  canWrite={canWrite}
-                  handle={handle}
-                  onOpenDetail={onOpenDetail}
-                  onResolveOverspend={onResolveOverspend}
-                  onEdit={onEdit}
-                />
-              )}
-            </EnvelopeList>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Income — expected / received / still to come. */}
-      <Card className="py-0">
-        <CardContent className="p-4">
-          <p className="text-sm font-semibold">{t("budgetV2.sectionIncome")}</p>
-          <dl className="mt-2 space-y-1 text-xs">
-            {s.income.expected != null && (
-              <Row label={t("budgetV2.incomeExpected")} value={money(s.income.expected)} />
-            )}
-            <Row label={t("budgetV2.incomeReceived")} value={money(s.income.received)} />
-            {s.income.outstanding != null && (
-              <Row label={t("budgetV2.incomeOutstanding")} value={money(s.income.outstanding)} />
-            )}
-          </dl>
-        </CardContent>
-      </Card>
-
-      {/* Commitments — hidden entirely when there are none, not shown at zero,
-          except for the one affordance that lets a user create the first one. */}
-      {s.commitment.envelopes.length > 0 ? (
-        <Card className="py-0">
-          <CardContent className="p-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-sm font-semibold">{t("budgetV2.sectionCommitment")}</p>
-              {canWrite && (
-                <Button size="sm" variant="outline" className="h-9 gap-1 px-2 text-xs" onClick={onAddBill}>
-                  <Plus className="size-3" aria-hidden /> {t("budgetV2.addBill")}
+          {canWrite && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="sm" variant="outline" className="h-9 gap-1 px-3 text-xs">
+                  <Plus className="size-3.5" aria-hidden /> {t("budgetV2.add")}
                 </Button>
-              )}
-            </div>
-            <dl className="mt-2 space-y-1 text-xs">
-              <Row label={t("budgetV2.commitmentSettled")} value={money(s.commitment.settled)} />
-              <Row label={t("budgetV2.commitmentOutstanding")} value={money(s.commitment.outstanding)} />
-            </dl>
-            <ul className="mt-3 space-y-2 border-t pt-3">
-              {s.commitment.envelopes.map((e) => (
-                <li key={e.id}>
-                  <EnvelopeRow
-                    env={e}
-                    money={money}
-                    canWrite={canWrite}
-                    handle={null}
-                    onOpenDetail={onOpenDetail}
-                    onResolveOverspend={onResolveOverspend}
-                    onEdit={onEdit}
-                  />
-                </li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
-      ) : (
-        canWrite && (
-          <Card className="py-0">
-            <CardContent className="p-4">
-              <p className="text-sm font-semibold">{t("budgetV2.sectionCommitment")}</p>
-              <p className="mt-1 text-xs text-muted-foreground">{t("budgetV2.commitmentEmpty")}</p>
-              <Button
-                size="sm"
-                variant="outline"
-                className="mt-3 h-9 gap-1 text-xs"
-                onClick={() => onAdd("commitment")}
-              >
-                <Plus className="size-3" aria-hidden /> {t("budgetV2.addBillsGroup")}
-              </Button>
-            </CardContent>
-          </Card>
-        )
-      )}
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem className="min-h-11 sm:min-h-9" onClick={() => onAdd("category")}>
+                  <Plus className="size-4" aria-hidden /> {t("budgetV2.addBudget")}
+                </DropdownMenuItem>
+                <DropdownMenuItem className="min-h-11 sm:min-h-9" onClick={() => onAdd("group")}>
+                  <FolderPlus className="size-4" aria-hidden /> {t("budgetV2.addGroup")}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        </div>
 
-      {/* Savings — funds with their own confirmation flow (§8.9.1). */}
-      <SavingsSection
-        view={view}
-        money={money}
-        canWrite={canWrite}
-        onAdd={() => onAdd("savings")}
-        onOpenDetail={onOpenDetail}
-        onEdit={onEdit}
-        onChanged={onChanged}
-      />
+        {/* The whole list's total — the same three things every row shows. */}
+        <Figures line={list} money={money} big />
 
-      {/* Debt — paid / outstanding, NEVER mixed into spending: a debt payment
-          reduces what you owe, it is not consumption (§8.7). */}
-      {s.debt.envelopes.length > 0 && (
-        <Card className="py-0">
-          <CardContent className="p-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-sm font-semibold">{t("budgetV2.sectionDebt")}</p>
-              {canWrite && (
-                <Button size="sm" variant="outline" className="h-9 gap-1 px-2 text-xs" onClick={onAddBill}>
-                  <Plus className="size-3" aria-hidden /> {t("budgetV2.addPayment")}
-                </Button>
-              )}
-            </div>
-            <dl className="mt-2 space-y-1 text-xs">
-              <Row label={t("budgetV2.debtPaid")} value={money(s.debt.paid)} />
-              <Row label={t("budgetV2.debtOutstanding")} value={money(s.debt.outstanding)} />
-            </dl>
-            <ul className="mt-3 space-y-2 border-t pt-3">
-              {s.debt.envelopes.map((e) => (
-                <li key={e.id}>
-                  <EnvelopeRow
-                    env={e}
-                    money={money}
-                    canWrite={canWrite}
-                    handle={null}
-                    onOpenDetail={onOpenDetail}
-                    onResolveOverspend={onResolveOverspend}
-                    onEdit={onEdit}
-                  />
-                </li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
-      )}
+        {!list.is_period && <p className="mt-2 text-[11px] text-muted-foreground">{t("budgetV2.scaledNote")}</p>}
 
-      {/* Unallocated is a BUFFER, shown neutrally — never folded into safe-to-spend. */}
-      <Card className="py-0">
-        <CardContent className="p-4">
-          <p className="text-sm font-semibold">{t("budgetV2.unallocated")}</p>
-          <p className="mt-2 text-lg font-bold tabular-nums">{money(m.unallocated)}</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {t("budgetV2.fundingCapacity")}: {money(view.period!.funding_capacity)}
-          </p>
-        </CardContent>
-      </Card>
+        <ul className="mt-3 space-y-1 border-t pt-3">
+          {visibleGroups.map((g) => (
+            <li key={g.id}>
+              <GroupRow
+                group={g}
+                money={money}
+                canWrite={canWrite}
+                isPeriod={list.is_period}
+                menu={menuFor(g, visibleGroups)}
+                childMenu={(c) => menuFor(c, g.children)}
+                onOpen={onOpen}
+                onResolve={onResolve}
+                onPatch={onPatch}
+              />
+            </li>
+          ))}
+          {visibleItems.map((i) => (
+            <li key={i.id}>
+              <BudgetRow
+                item={i}
+                money={money}
+                canWrite={canWrite}
+                isPeriod={list.is_period}
+                menu={menuFor(i, visibleItems.filter((x) => !x.is_catch_all))}
+                onOpen={onOpen}
+                onResolve={onResolve}
+                onPatch={onPatch}
+              />
+            </li>
+          ))}
+        </ul>
+
+        {onlyCatchAll && <p className="mt-3 text-xs text-muted-foreground">{t("budgetV2.onlyCatchAll")}</p>}
+
+        {hiddenCount > 0 && (
+          <div className="mt-3 border-t pt-3">
+            <button
+              type="button"
+              onClick={() => setShowHidden((v) => !v)}
+              aria-expanded={showHidden}
+              className="flex min-h-9 w-full items-center justify-between gap-2 rounded-md px-1 text-xs text-muted-foreground transition-colors hover:bg-accent/40 hover:text-foreground"
+            >
+              <span className="inline-flex items-center gap-1.5">
+                <EyeOff className="size-3.5" aria-hidden />
+                {t("budgetV2.hiddenCount", { count: hiddenCount })}
+              </span>
+              <span className="font-medium">{showHidden ? t("budgetV2.collapseHidden") : t("budgetV2.showHidden")}</span>
+            </button>
+            {showHidden && (
+              <ul className="mt-2 space-y-1 opacity-80">
+                {hiddenGroups.map((g) => (
+                  <li key={g.id}>
+                    <GroupRow
+                      group={g}
+                      money={money}
+                      canWrite={canWrite}
+                      isPeriod={list.is_period}
+                      menu={menuFor(g, hiddenGroups)}
+                      childMenu={(c) => menuFor(c, g.children)}
+                      onOpen={onOpen}
+                      onResolve={onResolve}
+                      onPatch={onPatch}
+                    />
+                  </li>
+                ))}
+                {hiddenItems.map((i) => (
+                  <li key={i.id}>
+                    <BudgetRow
+                      item={i}
+                      money={money}
+                      canWrite={canWrite}
+                      isPeriod={list.is_period}
+                      menu={menuFor(i, hiddenItems)}
+                      onOpen={onOpen}
+                      onResolve={onResolve}
+                      onPatch={onPatch}
+                    />
+                  </li>
+                ))}
+                {hiddenChildren.map((c) => (
+                  <li key={c.id}>
+                    <BudgetRow
+                      item={c}
+                      money={money}
+                      canWrite={canWrite}
+                      isPeriod={list.is_period}
+                      menu={menuFor(c, list.groups.find((g) => g.id === c.parent_id)?.children ?? [c])}
+                      onOpen={onOpen}
+                      onResolve={onResolve}
+                      onPatch={onPatch}
+                    />
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+function swap<T>(arr: T[], from: number, delta: number) {
+  const to = from + delta
+  if (from < 0 || to < 0 || to >= arr.length) return
+  const [row] = arr.splice(from, 1)
+  arr.splice(to, 0, row)
+}
+
+/** "spent of limit" with the bar and what is left or over — the three things every line shows. */
+function Figures({
+  line,
+  money,
+  big = false,
+}: {
+  line: { planned: number; spent: number; remaining: number; state: BudgetStateV2 }
+  money: (n: number) => string
+  big?: boolean
+}) {
+  const { t } = useTranslation()
+  const over = line.remaining < 0
+  return (
+    <div className={big ? "mt-2" : "mt-1"}>
+      <div className="flex items-baseline justify-between gap-2">
+        <p className={`tabular-nums ${big ? "text-lg font-bold" : "text-xs text-muted-foreground"}`}>
+          {big ? money(line.spent) : t("budgetV2.spentOf", { spent: money(line.spent), planned: money(line.planned) })}
+          {big && <span className="text-sm font-normal text-muted-foreground"> / {money(line.planned)}</span>}
+        </p>
+        <p
+          className={`shrink-0 text-xs font-semibold tabular-nums ${over ? "text-red-600 dark:text-red-400" : big ? "" : "text-muted-foreground"}`}
+        >
+          {over ? t("budgetV2.over", { amount: money(-line.remaining) }) : t("budgetV2.left", { amount: money(line.remaining) })}
+        </p>
+      </div>
+      <Bar state={line.state} spent={line.spent} planned={line.planned} />
     </div>
   )
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+function GroupRow({
+  group,
+  money,
+  canWrite,
+  isPeriod,
+  menu,
+  childMenu,
+  onOpen,
+  onResolve,
+  onPatch,
+}: {
+  group: BudgetGroupView
+  money: (n: number) => string
+  canWrite: boolean
+  isPeriod: boolean
+  menu: React.ReactNode
+  childMenu: (c: BudgetItemView) => React.ReactNode
+  onOpen: (item: BudgetItemView) => void
+  onResolve: (item: BudgetItemView) => void
+  onPatch: PatchFn
+}) {
+  const { t } = useTranslation()
+  const [open, setOpen] = useState(true)
+  const Glyph = envelopeIcon(group.icon, "flexible")
+  const inactive = !group.active
+  // Hidden children are shown in the page's hidden footer, not here — unless the
+  // group itself is hidden, in which case this row IS in that footer.
+  const shown = group.hidden ? group.children : group.children.filter((c) => !c.hidden)
+
   return (
-    <div className="flex items-center justify-between gap-2">
-      <dt className="text-muted-foreground">{label}</dt>
-      <dd className="font-medium tabular-nums">{value}</dd>
+    <div className={`rounded-lg ${inactive ? "opacity-60" : ""}`}>
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          aria-label={t("budgetV2.toggleGroup", { name: group.name })}
+          className="flex min-h-11 w-full flex-1 items-center gap-2 px-1 py-1.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          {open ? (
+            <ChevronDown className="size-3.5 shrink-0 text-muted-foreground/60" aria-hidden />
+          ) : (
+            <ChevronRight className="size-3.5 shrink-0 text-muted-foreground/60 rtl:rotate-180" aria-hidden />
+          )}
+          <Glyph className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+          <div className="min-w-0 flex-1">
+            <p className="flex items-center gap-1.5 text-sm font-semibold">
+              <span className="truncate">{group.name}</span>
+              <span className="shrink-0 rounded bg-muted px-1 text-[10px] font-normal text-muted-foreground">
+                {t("budgetV2.groupTag", { count: group.children.length })}
+              </span>
+              {inactive && <InactiveTag />}
+            </p>
+            {inactive ? (
+              <p className="text-[11px] text-muted-foreground">{t("budgetV2.inactiveNote")}</p>
+            ) : (
+              <Figures line={group} money={money} />
+            )}
+          </div>
+        </button>
+        {inactive && canWrite && (
+          <Button size="sm" variant="outline" className="h-9 px-2 text-xs" onClick={() => void onPatch(group, { status: "active" }, "budgetV2.budgetActivated")}>
+            {t("budgetV2.activate")}
+          </Button>
+        )}
+        {menu}
+      </div>
+      {open && (
+        <ul className="ms-4 space-y-1 border-s ps-2">
+          {group.children.length === 0 && <li className="px-1 py-1.5 text-xs text-muted-foreground">{t("budgetV2.groupEmpty")}</li>}
+          {shown.map((c) => (
+            <li key={c.id}>
+              <BudgetRow
+                item={c}
+                money={money}
+                canWrite={canWrite}
+                isPeriod={isPeriod}
+                menu={childMenu(c)}
+                onOpen={onOpen}
+                onResolve={onResolve}
+                onPatch={onPatch}
+              />
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   )
 }
 
 /**
- * One envelope, as a card.
- *
- * Shows EXACTLY four figures — planned, spent, pending, remaining — and nothing
- * else (spec §6.5). Anything more belongs in the detail sheet, which is one tap
- * away; a card that tried to show rollover, refunds, carry policy and priority
- * at once is what made v1's list unreadable.
- *
- * `remaining` is this envelope's OWN signed figure even when the plan nets it
- * across the section: an overspent category must look overspent, and the netting
- * only ever applies to the plan-wide headroom.
+ * One budget. Three lines: name and what is left or over · a bar · spent of
+ * limit. An overspent budget offers Resolve right there (period view only —
+ * moving planned money is a period action). Everything else is in the menu.
  */
-function EnvelopeRow({
-  env,
+function BudgetRow({
+  item,
   money,
   canWrite,
-  handle,
-  onOpenDetail,
-  onResolveOverspend,
-  onEdit,
+  isPeriod,
+  menu,
+  onOpen,
+  onResolve,
+  onPatch,
 }: {
-  env: BudgetEnvelopeView
+  item: BudgetItemView
   money: (n: number) => string
   canWrite: boolean
-  /** Drag activator, when this row sits in a reorderable list. */
-  handle: HandleProps | null
-  onOpenDetail: (env: BudgetEnvelopeView) => void
-  onResolveOverspend: (env: BudgetEnvelopeView) => void
-  onEdit: (env: BudgetEnvelopeView) => void
+  isPeriod: boolean
+  menu: React.ReactNode
+  onOpen: (item: BudgetItemView) => void
+  onResolve: (item: BudgetItemView) => void
+  onPatch: PatchFn
 }) {
   const { t } = useTranslation()
-
-  // SECTION VOCABULARY IS NOT INTERCHANGEABLE (spec §8.7).
-  //
-  // Only a FLEXIBLE envelope can be "over": it has a target that caps spending,
-  // so exceeding it is a real overspend with real options. A commitment or debt
-  // envelope carries no target — its money is defined by the bills inside it —
-  // so `remaining` there is structurally negative the moment a bill is pending.
-  // Rendering that as "$1,056.40 over" in red would tell the user they have
-  // overspent when in fact the money is merely RESERVED and not yet paid, which
-  // is exactly the conflation this redesign exists to remove.
-  const capped = env.section === "flexible"
-  const over = capped && env.remaining < 0
-  const obligation = env.section === "commitment" || env.section === "debt"
-  const Glyph = envelopeIcon(env.icon, env.section)
-
-  const trailing = obligation
-    ? // Unpaid is a fact about an obligation, not a judgement about spending.
-      { text: t("budgetV2.unpaidAmount", { amount: money(env.pending) }), tone: "" }
-    : over
-      ? { text: t("budgetV2.over", { amount: money(-env.remaining) }), tone: "text-red-600 dark:text-red-400" }
-      : { text: t("budgetV2.left", { amount: money(env.remaining) }), tone: "" }
+  const Glyph = envelopeIcon(item.icon, "flexible")
+  const inactive = !item.active
+  const over = item.active && item.remaining < 0
 
   return (
-    <div className="rounded-lg transition-colors hover:bg-accent/40">
+    <div className={`rounded-lg transition-colors hover:bg-accent/40 ${inactive ? "opacity-60" : ""}`}>
       <div className="flex items-center gap-1">
-        {/* The drag activator is a SEPARATE control from the row button, so a
-            tap still opens the envelope and only the grip starts a drag. It is
-            aria-hidden because the move up/down buttons in EnvelopeList are the
-            accessible way to reorder — a drag handle announced to a screen
-            reader that cannot be operated by one is worse than none. */}
-        {handle && (
-          <span
-            ref={handle.ref}
-            {...handle.listeners}
-            {...handle.attributes}
-            aria-hidden
-            tabIndex={-1}
-            // A 24px glyph with a 44px hit area (the ::after inset), so the grip
-            // meets the touch floor without spending 20px of a 390px row.
-            className="relative flex size-6 shrink-0 cursor-grab touch-none items-center justify-center text-muted-foreground/40 transition-colors after:absolute after:-inset-2.5 after:content-[''] hover:text-muted-foreground active:cursor-grabbing"
-          >
-            <GripVertical className="size-3.5" />
-          </span>
-        )}
         <button
           type="button"
-          onClick={() => onOpenDetail(env)}
-          className="flex min-h-11 w-full flex-1 items-center justify-between gap-2 px-1 py-1.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          aria-label={t("budgetV2.openEnvelope", { name: env.name })}
+          onClick={() => onOpen(item)}
+          className="flex min-h-11 w-full flex-1 items-center gap-2 px-1 py-1.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          aria-label={t("budgetV2.openEnvelope", { name: item.name })}
         >
-        <Glyph className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-        <div className="min-w-0 flex-1">
-          {/* The NAME truncates; the tag never does. `truncate` on the flex
-              parent clipped the tag instead of the name, so a narrow row showed
-              "Everyday spending  lefto" — the one word that explains the row. */}
-          <p className="flex items-center gap-1.5 text-xs font-medium">
-            <span className="truncate">{env.name}</span>
-            {env.is_catch_all && (
-              <span className="shrink-0 rounded bg-muted px-1 text-[10px] font-normal text-muted-foreground">
-                {t("budgetV2.leftoverTag")}
-              </span>
-            )}
-          </p>
-          {/* The figures each section actually has. An obligation envelope has
-              no target to report, so showing "Planned 0" there would be noise. */}
-          <p className="text-[11px] text-muted-foreground tabular-nums">
-            {obligation ? (
-              <>
-                {t("budgetV2.paidShort")} {money(env.settled)}
-                {env.overdue_amount > 0 && ` · ${t("budgetV2.overdueShort")} ${money(env.overdue_amount)}`}
-              </>
+          <Glyph className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+          <div className="min-w-0 flex-1">
+            <p className="flex items-center gap-1.5 text-xs font-medium">
+              <span className="truncate">{item.name}</span>
+              {item.is_catch_all && (
+                <span className="shrink-0 rounded bg-muted px-1 text-[10px] font-normal text-muted-foreground">
+                  {t("budgetV2.leftoverTag")}
+                </span>
+              )}
+              {inactive && <InactiveTag />}
+            </p>
+            {inactive ? (
+              <p className="text-[11px] text-muted-foreground">{t("budgetV2.inactiveNote")}</p>
             ) : (
-              <>
-                {t("budgetV2.plannedShort")} {money(env.planned)} · {t("budgetV2.spentShort")} {money(env.spent_net)}
-                {env.pending > 0 && ` · ${t("budgetV2.pendingShort")} ${money(env.pending)}`}
-              </>
+              <Figures line={item} money={money} />
             )}
-          </p>
-        </div>
-        <span className={`shrink-0 text-xs font-medium tabular-nums ${trailing.tone || "text-muted-foreground"}`}>
-          {trailing.text}
-        </span>
-        <ChevronRight className="size-3.5 shrink-0 text-muted-foreground/60 rtl:rotate-180" aria-hidden />
+          </div>
         </button>
-        {/* Edit sits IN the row rather than on a line of its own — a row that is
-            not overspent has nothing else to put there, and a lone pencil under
-            an empty paragraph reads as a layout accident. Editing and deleting
-            both live in the dialog, so there is ONE place a category changes. */}
-        {canWrite && (
-          <button
-            type="button"
-            onClick={() => onEdit(env)}
-            aria-label={t("budgetV2.editEnvelope", { name: env.name })}
-            className="pressable flex size-9 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-          >
-            <Pencil className="size-3.5" aria-hidden />
-          </button>
+        {inactive && canWrite && (
+          <Button size="sm" variant="outline" className="h-9 px-2 text-xs" onClick={() => void onPatch(item, { status: "active" }, "budgetV2.budgetActivated")}>
+            {t("budgetV2.activate")}
+          </Button>
         )}
+        {menu}
       </div>
-
-      {/* USED vs LEFT, per envelope.
-          Only for a capped (flexible) envelope: a bills envelope has no target,
-          so a proportion bar there would be measuring against nothing. The bar
-          caps at 100 % while the text carries the real overspend, because a bar
-          that overflows its track reads as a rendering bug rather than as
-          information. */}
-      {capped && env.planned > 0 && (
-        <div className="px-1 pb-1.5">
-          <Bar
-            state={env.state}
-            spent={env.spent_net + env.pending}
-            planned={env.planned}
-            label={t("budgetV2.usedOfPlanned", { name: env.name })}
-          />
-          <p className="mt-1 flex items-center justify-between gap-2 text-[11px] text-muted-foreground tabular-nums">
-            <span>{t("budgetV2.usedAmount", { amount: money(env.spent_net) })}</span>
-            <span>
-              {over
-                ? t("budgetV2.overAmount", { amount: money(-env.remaining) })
-                : t("budgetV2.leftAmount", { amount: money(env.remaining) })}
-            </span>
-          </p>
-        </div>
-      )}
-
-      {/* An overspend offers the way OUT, right where it is visible. Supportive,
-          not scolding: it states the amount and offers options (P7). Offered for
-          capped envelopes only — there is nothing to "resolve" about a bill that
-          simply has not been paid yet. */}
-      {over && canWrite && (
-        <div className="flex flex-wrap items-center justify-between gap-2 px-1 pb-1.5">
+      {/* The way out of an overspend, right under it — on its own line so the
+          figures above keep their room on a phone. Period view only: moving
+          planned money is a period action. */}
+      {over && isPeriod && canWrite && (
+        <div className="flex items-center justify-between gap-2 px-1 pb-1.5 ps-7">
           <p className="text-[11px] text-muted-foreground">{t("budgetV2.overspendInline")}</p>
-          <Button size="sm" variant="outline" className="h-9 px-2 text-[11px]" onClick={() => onResolveOverspend(env)}>
+          <Button size="sm" variant="outline" className="h-9 px-3 text-xs" onClick={() => onResolve(item)}>
             {t("budgetV2.resolve")}
           </Button>
         </div>
@@ -847,43 +964,197 @@ function EnvelopeRow({
   )
 }
 
-function Bar({
-  state,
-  spent,
-  planned,
-  label,
+function InactiveTag() {
+  const { t } = useTranslation()
+  return (
+    <span className="shrink-0 rounded bg-amber-500/15 px-1 text-[10px] font-normal text-amber-700 dark:text-amber-300">
+      {t("budgetV2.inactiveTag")}
+    </span>
+  )
+}
+
+/** Everything you can do to a line, one tap away, never on the row itself. */
+function RowMenu({
+  line,
+  groups,
+  index,
+  count,
+  onEdit,
+  onRemove,
+  onPatch,
+  onMove,
 }: {
-  state: BudgetStateV2
-  spent: number
-  planned: number
-  label: string
+  line: Line
+  groups: BudgetGroupView[]
+  index: number
+  count: number
+  onEdit: () => void
+  onRemove: () => void
+  onPatch: PatchFn
+  onMove: (delta: number) => void
 }) {
+  const { t } = useTranslation()
+  const isItem = line.kind === "category"
+  const catchAll = isItem && line.is_catch_all
+  const groupable = isItem && !catchAll && groups.length > 0
+  const item = "min-h-11 sm:min-h-9"
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          aria-label={t("budgetV2.rowMenu", { name: line.name })}
+          className="pressable flex size-9 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+        >
+          <MoreHorizontal className="size-4" aria-hidden />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="min-w-48">
+        <DropdownMenuItem className={item} onClick={onEdit}>
+          <Pencil className="size-4" aria-hidden /> {t("budgetV2.menuEdit")}
+        </DropdownMenuItem>
+        {groupable && (
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger className={item}>{t("budgetV2.menuMoveTo")}</DropdownMenuSubTrigger>
+            <DropdownMenuSubContent>
+              <DropdownMenuItem
+                className={item}
+                disabled={!line.parent_id}
+                onClick={() => void onPatch(line, { parent_id: null }, "budgetV2.budgetMoved")}
+              >
+                {t("budgetV2.noGroup")}
+              </DropdownMenuItem>
+              {groups.map((g) => (
+                <DropdownMenuItem
+                  key={g.id}
+                  className={item}
+                  disabled={line.parent_id === g.id}
+                  onClick={() => void onPatch(line, { parent_id: g.id }, "budgetV2.budgetMoved")}
+                >
+                  {g.name}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+        )}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          className={item}
+          onClick={() => void onPatch(line, { hidden: !line.hidden }, line.hidden ? "budgetV2.budgetShown" : "budgetV2.budgetHidden")}
+        >
+          {line.hidden ? <Eye className="size-4" aria-hidden /> : <EyeOff className="size-4" aria-hidden />}
+          {line.hidden ? t("budgetV2.menuShow") : t("budgetV2.menuHide")}
+        </DropdownMenuItem>
+        {!catchAll && (
+          <DropdownMenuItem
+            className={item}
+            onClick={() =>
+              void onPatch(
+                line,
+                { status: line.active ? "paused" : "active" },
+                line.active ? "budgetV2.budgetDeactivated" : "budgetV2.budgetActivated",
+              )
+            }
+          >
+            {line.active ? <Pause className="size-4" aria-hidden /> : <Play className="size-4" aria-hidden />}
+            {line.active ? t("budgetV2.menuDeactivate") : t("budgetV2.menuActivate")}
+          </DropdownMenuItem>
+        )}
+        {!catchAll && count > 1 && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem className={item} disabled={index <= 0} onClick={() => onMove(-1)}>
+              {t("budgetV2.menuMoveUp")}
+            </DropdownMenuItem>
+            <DropdownMenuItem className={item} disabled={index < 0 || index >= count - 1} onClick={() => onMove(1)}>
+              {t("budgetV2.menuMoveDown")}
+            </DropdownMenuItem>
+          </>
+        )}
+        {!catchAll && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem className={`${item} text-destructive focus:text-destructive`} onClick={onRemove}>
+              <Trash2 className="size-4" aria-hidden /> {t("budgetV2.menuRemove")}
+            </DropdownMenuItem>
+          </>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
+/** Remove, with the consequence stated, never on the row itself. */
+function RemoveDialog({
+  line,
+  onOpenChange,
+  onRemoved,
+}: {
+  line: Line | null
+  onOpenChange: (v: boolean) => void
+  onRemoved: () => void
+}) {
+  const { t } = useTranslation()
+  const { getToken } = useAuth()
+  const [busy, setBusy] = useState(false)
+
+  const remove = async () => {
+    if (!line) return
+    setBusy(true)
+    try {
+      const token = await getToken()
+      if (!token) return
+      await apiDelete(`/api/budgets/v2/envelopes/${line.id}`, token, undefined, ["/api/budgets"])
+      toast.success(t("budgetV2.envelopeRemoved", { name: line.name }))
+      onOpenChange(false)
+      onRemoved()
+    } catch (err) {
+      toast.error(apiErrorMessage(err, t("budgetV2.envelopeRemoveFailed")))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <AlertDialog open={Boolean(line)} onOpenChange={(v) => !v && onOpenChange(false)}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{t("budgetV2.removeTitle", { name: line?.name ?? "" })}</AlertDialogTitle>
+          <AlertDialogDescription>
+            {line?.kind === "group" ? t("budgetV2.removeGroupBody") : t("budgetV2.removeBudgetBody")}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel className="h-11 sm:h-9">{t("budgetV2.cancel")}</AlertDialogCancel>
+          <AlertDialogAction
+            className="h-11 bg-destructive text-white hover:bg-destructive/90 sm:h-9"
+            disabled={busy}
+            onClick={(e) => {
+              e.preventDefault()
+              void remove()
+            }}
+          >
+            {busy ? <Loader2 className="size-4 animate-spin" /> : t("budgetV2.menuRemove")}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  )
+}
+
+function Bar({ state, spent, planned }: { state: BudgetStateV2; spent: number; planned: number }) {
   const pct = planned > 0 ? Math.max(0, Math.min(100, (spent / planned) * 100)) : spent > 0 ? 100 : 0
   return (
     <div
-      className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-muted"
+      className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-muted"
       role="progressbar"
       aria-valuenow={Math.round(pct)}
       aria-valuemin={0}
       aria-valuemax={100}
-      aria-label={label}
     >
       <div className={`h-full rounded-full transition-[width] duration-300 ${BAR[state]}`} style={{ width: `${pct}%` }} />
     </div>
-  )
-}
-
-function stateLabel(t: (k: string) => string, s: BudgetStateV2): string {
-  return t(
-    s === "ok"
-      ? "budgetV2.stateOk"
-      : s === "warn"
-        ? "budgetV2.stateWarn"
-        : s === "full"
-          ? "budgetV2.stateFull"
-          : s === "over"
-            ? "budgetV2.stateOver"
-            : "budgetV2.stateNone",
   )
 }
 
@@ -910,12 +1181,10 @@ function SafeToSpendExplainer({
         </DrawerHeader>
         {m && (
           <div className="space-y-3 px-4 pb-8 text-sm">
-            {/* (a) the cash bound */}
             <p>{t("budgetV2.explainCash", { available: money(m.available_now), reserved: money(m.reserved) })}</p>
             <p className="font-medium">{t("budgetV2.explainCashResult", { amount: money(m.cash_after_reservations) })}</p>
             {m.reserved === 0 && <p className="text-muted-foreground">{t("budgetV2.explainNothingReserved")}</p>}
 
-            {/* (b) the plan bound — ONE netted subtraction, not a list of leftovers */}
             {m.ceiling_defined ? (
               <>
                 <p>{t("budgetV2.explainPlan", { amount: money(m.flexible_headroom) })}</p>
@@ -928,40 +1197,14 @@ function SafeToSpendExplainer({
             <div className="space-y-1 border-t pt-3 text-xs text-muted-foreground">
               <p>{t("budgetV2.explainSpaces")}</p>
               {m.reserved_breakdown.virtual_fund_balances > 0 && <p>{t("budgetV2.explainVirtual")}</p>}
+              <p>
+                {t("budgetV2.unallocated")}: {money(m.unallocated)} · {t("budgetV2.fundingCapacity")}: {money(view.period?.funding_capacity ?? 0)}
+              </p>
             </div>
           </div>
         )}
       </DrawerContent>
     </Drawer>
-  )
-}
-
-/** States what this build cannot do, rather than approximating it (§21.4). */
-function Limitations({ codes, currency }: { codes: string[]; currency: BudgetCurrencyLimitation | null }) {
-  const { t } = useTranslation()
-  const MAP: Record<string, string> = {
-    credit_cards_unsupported: "budgetV2.limitCreditCards",
-    loan_split_unsupported: "budgetV2.limitLoanSplit",
-    manual_pending_unsupported: "budgetV2.limitPending",
-    currency_changed: "budgetV2.limitCurrencyChanged",
-  }
-  const known = codes.filter((c) => MAP[c])
-  if (!known.length) return null
-  // The currency limitation names WHICH currencies disagree (§12.4): the plan's
-  // and the workspace's. Nothing is converted — the payload says so.
-  const label = (c: string) =>
-    c === "currency_changed"
-      ? t(MAP[c], { old: currency?.plan_currency ?? "", new: currency?.org_currency ?? "" })
-      : t(MAP[c])
-  return (
-    <details className="rounded-xl border bg-muted/30 p-3 text-xs">
-      <summary className="cursor-pointer font-medium text-muted-foreground">{t("budgetV2.limitationsTitle")}</summary>
-      <ul className="mt-2 space-y-1 text-muted-foreground">
-        {known.map((c) => (
-          <li key={c}>· {label(c)}</li>
-        ))}
-      </ul>
-    </details>
   )
 }
 

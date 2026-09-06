@@ -695,7 +695,67 @@ export type BudgetCommitmentView = {
   } | null
 }
 
+/** The view window the budgets LIST is read through (docs/budget-v2/SIMPLE.md). */
+export type BudgetViewWindow = "week" | "month" | "year"
+
+/** One budget line on the budgets page. Figures are for the selected view window. */
+export type BudgetItemView = {
+  id: string
+  kind: "category"
+  name: string
+  icon: string
+  parent_id: string | null
+  /** Display only — a hidden budget still counts. */
+  hidden: boolean
+  /** False when this budget (or its group) is inactive: it counts nowhere. */
+  active: boolean
+  is_catch_all: boolean
+  match_keys: string[]
+  authored_amount: number
+  authored_cadence: "period" | "month" | "week" | "day"
+  /** The limit for the selected window (0 when inactive). */
+  planned: number
+  spent: number
+  /** SIGNED — negative when over. */
+  remaining: number
+  state: BudgetStateV2
+}
+
+/** A macro budget: its figures are the sum of the ACTIVE budgets inside it. */
+export type BudgetGroupView = {
+  id: string
+  kind: "group"
+  name: string
+  icon: string
+  hidden: boolean
+  active: boolean
+  planned: number
+  spent: number
+  remaining: number
+  state: BudgetStateV2
+  children: BudgetItemView[]
+}
+
+export type BudgetListView = {
+  window: BudgetViewWindow
+  start: string
+  end_exclusive: string
+  /** True when this window IS the open period, so period-only actions (moving money) apply. */
+  is_period: boolean
+  planned: number
+  spent: number
+  remaining: number
+  state: BudgetStateV2
+  groups: BudgetGroupView[]
+  /** Ungrouped budgets, the catch-all included. */
+  items: BudgetItemView[]
+  hidden_count: number
+  inactive_count: number
+}
+
 export type BudgetView = {
+  /** The budgets page's list, read through `window`. Null until the first period is open. */
+  budgets: BudgetListView | null
   plan: {
     id: string
     status: "active" | "paused" | "archived"

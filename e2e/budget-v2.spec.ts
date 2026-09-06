@@ -188,15 +188,17 @@ test.describe.serial("Budget v2", () => {
     // The overview must show FIGURES, not forms (spec §6.4 / principle P2).
     await expect(page.getByRole("dialog")).toHaveCount(0)
 
-    // Adding a category is one tap away, and only then is a form shown.
-    const addCategory = page.getByRole("button", { name: /add category/i }).first()
-    await expect(addCategory).toBeVisible({ timeout: 15_000 })
-    await addCategory.click()
+    // Adding a budget is two taps away (Add → Add a budget), and only then is a
+    // form shown.
+    const add = page.getByRole("button", { name: /^add$/i }).first()
+    await expect(add).toBeVisible({ timeout: 15_000 })
+    await add.click()
+    await page.getByRole("menuitem", { name: /add a budget/i }).click()
 
     const dialog = page.getByRole("dialog")
     await expect(dialog).toBeVisible({ timeout: 10_000 })
-    // A name and a target — the two decisions, nothing more. Carry policy,
-    // priority and reimbursable are deliberately absent from this form.
+    // Categories, a name and a limit — the decisions, nothing more. Carry
+    // policy, priority and reimbursable are deliberately absent from this form.
     await expect(dialog.getByLabel(/name/i).first()).toBeVisible()
     await expect(dialog.getByText(/carry|priority|reimburs/i)).toHaveCount(0)
 
@@ -321,10 +323,24 @@ test.describe.serial("Budget v2", () => {
 
   const CATEGORY = "Travel" // seeded for every org, so the chip always exists
   const ENVELOPE = `${E2E_PREFIX} travel`
-  const BILLS_GROUP = `${E2E_PREFIX} bills`
-  const BILL = `${E2E_PREFIX} rent`
-  const FUND = `${E2E_PREFIX} holiday`
+  const GROUP = `${E2E_PREFIX} household`
   const createdTx: string[] = []
+
+  /** The row (list item) of a budget, found through its "Open …" button. */
+  const rowOf = (page: Page, name: string) =>
+    page.getByRole("button", { name: new RegExp(`^open ${name}`, "i") }).first().locator("xpath=ancestor::li[1]")
+  /** The "… of LIMIT" figure on a row, as a number. */
+  const plannedOn = async (row: ReturnType<typeof rowOf>) => {
+    const text = (await row.textContent()) ?? ""
+    const m = text.match(/of\s+[^\d]*([\d.,]+)/i)
+    expect(m, `no "spent of limit" figure in: ${text}`).not.toBeNull()
+    return Number(m![1].replace(/,/g, ""))
+  }
+  /** Open a budget's row menu. */
+  const openMenu = async (page: Page, name: string) => {
+    await page.getByRole("button", { name: new RegExp(`^options for ${name}`, "i") }).first().click()
+    await expect(page.getByRole("menu")).toBeVisible({ timeout: 10_000 })
+  }
 
   /** Post a ledger row on the personal workspace through the app's API. */
   async function postTransaction(page: Page, input: { type: "incoming" | "outgoing"; amount: number; category: string; date: string }) {
@@ -388,13 +404,16 @@ test.describe.serial("Budget v2", () => {
     // must attribute existing spend to a new envelope on the next sync.
     await postTransaction(page, { type: "outgoing", amount: 50, category: CATEGORY, date: today() })
 
-    // Add a category envelope with a 30 target → over by 20.
-    await page.getByRole("button", { name: /^add category$/i }).first().click()
+    // Add a budget with a 30 limit → over by 20. Categories FIRST — the name
+    // follows the pick until typed.
+    await page.getByRole("button", { name: /^add$/i }).first().click()
+    await page.getByRole("menuitem", { name: /add a budget/i }).click()
     const dialog = page.getByRole("dialog")
     await expect(dialog).toBeVisible({ timeout: 10_000 })
+    await dialog.getByRole("button", { name: CATEGORY, exact: true }).click()
+    await expect(dialog.locator("#env-name")).toHaveValue(CATEGORY)
     await dialog.locator("#env-name").fill(ENVELOPE)
     await dialog.locator("#env-target").fill("30")
-    await dialog.getByRole("button", { name: CATEGORY, exact: true }).click()
     await dialog.getByRole("button", { name: /^add$/i }).last().click()
     await expect(page.getByRole("dialog")).toHaveCount(0, { timeout: 15_000 })
 
@@ -403,7 +422,8 @@ test.describe.serial("Budget v2", () => {
     await expect(row).toBeVisible({ timeout: 20_000 })
     // The row's list item — a STABLE anchor that survives the Resolve button
     // disappearing once the overspend is resolved.
-    const card = row.locator("xpath=ancestor::li[1]")
+    const card = rowOf(page, ENVELOPE)
+    await expect(card).toContainText(/over/i)
     await expect(card.getByRole("button", { name: /^resolve$/i })).toBeVisible({ timeout: 20_000 })
 
     // Resolve it: move 20 from the catch-all. §6.11: the copy states the
@@ -424,105 +444,106 @@ test.describe.serial("Budget v2", () => {
     await expect(heroFigure(page)).toHaveText(before ?? "", { timeout: 20_000 })
   })
 
-  test("a bill lands in the overdue list and can be marked paid without moving money", async ({ page }) => {
-    test.setTimeout(120_000)
-    await gotoBudgets(page)
-    expect(await hasPlan(page)).toBe(true)
-    const before = (await heroFigure(page).textContent())?.trim()
-
-    // A bills group first, if the plan has none yet.
-    const addBill = page.getByRole("button", { name: /^add bill$/i }).first()
-    if (!(await addBill.isVisible().catch(() => false))) {
-      await page.getByRole("button", { name: /^add a bills group$/i }).first().click()
-      const dialog = page.getByRole("dialog")
-      await expect(dialog).toBeVisible({ timeout: 10_000 })
-      await dialog.locator("#env-name").fill(BILLS_GROUP)
-      await dialog.getByRole("button", { name: /^add$/i }).last().click()
-      await expect(page.getByRole("dialog")).toHaveCount(0, { timeout: 15_000 })
-      await expect(addBill).toBeVisible({ timeout: 20_000 })
-    }
-
-    // A one-time bill due three days ago → overdue immediately.
-    await addBill.click()
-    const dialog = page.getByRole("dialog", { name: /add a bill/i })
-    await expect(dialog).toBeVisible({ timeout: 10_000 })
-    await dialog.locator("#bill-name").fill(BILL)
-    await dialog.locator("#bill-amount").fill("40")
-    await dialog.locator("#bill-due").fill(daysAgo(3))
-    await dialog.getByRole("button", { name: /^add$/i }).last().click()
-    await expect(page.getByRole("dialog")).toHaveCount(0, { timeout: 15_000 })
-
-    // The overdue list names it, with a one-tap "Mark paid".
-    const overdueRow = page.locator("main").getByText(BILL, { exact: false }).first()
-    await expect(overdueRow).toBeVisible({ timeout: 20_000 })
-    const markPaid = page.getByRole("button", { name: /^mark paid$/i }).first()
-    await expect(markPaid).toBeVisible({ timeout: 10_000 })
-    await markPaid.click()
-
-    // Gone from overdue. Settling records a fact — it moves no money, so the
-    // safe-to-spend hero is exactly what it was before the bill existed (the
-    // bill was reserved while unpaid and released when marked paid).
-    await expect(page.getByRole("button", { name: /^mark paid$/i })).toHaveCount(0, { timeout: 20_000 })
-    await expect(heroFigure(page)).toHaveText(before ?? "", { timeout: 20_000 })
-  })
-
-  test("a savings fund reserves its contribution and confirming it is reserved-neutral", async ({ page }) => {
+  test("a group adds up the budgets inside it", async ({ page }) => {
     test.setTimeout(120_000)
     await gotoBudgets(page)
     expect(await hasPlan(page)).toBe(true)
 
-    await page.getByRole("button", { name: /^add a fund$/i }).first().click()
+    // Add → Add a group. A group is a name; its figures are its children's.
+    await page.getByRole("button", { name: /^add$/i }).first().click()
+    await page.getByRole("menuitem", { name: /add a group/i }).click()
     const dialog = page.getByRole("dialog")
     await expect(dialog).toBeVisible({ timeout: 10_000 })
-    await dialog.locator("#env-name").fill(FUND)
-    await dialog.locator("#env-target").fill("15")
-    await dialog.locator("#env-goal").fill("300")
+    await dialog.locator("#env-name").fill(GROUP)
     await dialog.getByRole("button", { name: /^add$/i }).last().click()
     await expect(page.getByRole("dialog")).toHaveCount(0, { timeout: 15_000 })
 
-    const fundRow = page.getByRole("button", { name: new RegExp(`^open ${FUND}`, "i") }).first()
-    await expect(fundRow).toBeVisible({ timeout: 20_000 })
-    // The fund's list item — stable across the Confirm button going away.
-    const fundCard = fundRow.locator("xpath=ancestor::li[1]")
-    const confirm = fundCard.getByRole("button", { name: /^confirm$/i })
-    await expect(confirm).toBeVisible({ timeout: 20_000 })
+    const groupToggle = page.getByRole("button", { name: new RegExp(`expand or collapse ${GROUP}`, "i") }).first()
+    await expect(groupToggle).toBeVisible({ timeout: 20_000 })
+    const groupRow = groupToggle.locator("xpath=ancestor::li[1]")
+    await expect(groupRow).toContainText(/nothing in this group yet/i)
 
-    // §8.9.1: only a CONFIRMED contribution may be called "set aside"; before
-    // that the card must say it is reserved, not yet confirmed.
-    await expect(fundCard).toContainText(/not yet confirmed/i)
-    const before = (await heroFigure(page).textContent())?.trim()
-    await confirm.click()
-    await expect(fundCard).toContainText(/set aside this period/i, { timeout: 20_000 })
-    // Reserved-neutral: the money was already held back, so safe-to-spend is unchanged.
-    await expect(heroFigure(page)).toHaveText(before ?? "", { timeout: 20_000 })
+    // Move the budget into it from its row menu.
+    const before = await plannedOn(rowOf(page, ENVELOPE))
+    await openMenu(page, ENVELOPE)
+    await page.getByRole("menuitem", { name: /move to group/i }).hover()
+    await page.getByRole("menuitem", { name: GROUP, exact: true }).click()
+    await expect(page.getByRole("menu")).toHaveCount(0)
+
+    // The budget now sits INSIDE the group, and the group's limit is its limit.
+    await expect(groupRow.getByRole("button", { name: new RegExp(`^open ${ENVELOPE}`, "i") })).toBeVisible({ timeout: 20_000 })
+    await expect(groupRow).toContainText(/1 budget/i)
+    const groupFigures = groupRow.getByRole("button", { name: new RegExp(`expand or collapse ${GROUP}`, "i") })
+    expect(await plannedOn(groupFigures)).toBe(before)
   })
 
-  test("a money-in entry in a tracked category is offered as a provisional refund and can be rejected", async ({ page }) => {
+  test("the week / month / year toggle re-windows the list, and only the list", async ({ page }) => {
     test.setTimeout(120_000)
     await gotoBudgets(page)
     expect(await hasPlan(page)).toBe(true)
 
-    await postTransaction(page, { type: "incoming", amount: 12, category: CATEGORY, date: today() })
-    await page.reload()
-    await expectAppShell(page)
-    await dismissBanners(page)
+    const hero = (await heroFigure(page).textContent())?.trim()
+    await expect(page.getByText(/^this month$/i)).toBeVisible({ timeout: 15_000 })
 
-    // The review strip states the guess with its count, and offers the ONE
-    // action that changes anything — rejecting it. Confirming would be theatre.
-    await expect(page.locator("main").getByText(/looks like a refund|look like refunds/i).first()).toBeVisible({ timeout: 20_000 })
-    const reject = page.getByRole("button", { name: /^not a refund$/i }).first()
-    await expect(reject).toBeVisible({ timeout: 10_000 })
-    await reject.click()
-    await expect(page.getByRole("button", { name: /^not a refund$/i })).toHaveCount(0, { timeout: 20_000 })
+    // Year: the same budget, its limit read as twelve months of what was set
+    // (30 authored → 360). The hero does not move: safe-to-spend is about now.
+    await page.getByRole("radio", { name: /^year$/i }).click()
+    await expect(page.getByText(/^this year$/i)).toBeVisible({ timeout: 20_000 })
+    await expect(page.getByText(/limits in this view are worked out/i)).toBeVisible()
+    await expect(rowOf(page, ENVELOPE)).toContainText(/360/, { timeout: 20_000 })
+    await expect(heroFigure(page)).toHaveText(hero ?? "")
+
+    // Back to month, and the note goes away (the month IS the period).
+    await page.getByRole("radio", { name: /^month$/i }).click()
+    await expect(page.getByText(/^this month$/i)).toBeVisible({ timeout: 20_000 })
+    await expect(page.getByText(/limits in this view are worked out/i)).toHaveCount(0)
   })
 
-  test("an envelope can be edited and removed from its own dialog", async ({ page }) => {
+  test("a budget can be hidden and shown again, and deactivated and activated", async ({ page }) => {
+    test.setTimeout(120_000)
+    await gotoBudgets(page)
+    expect(await hasPlan(page)).toBe(true)
+    const total = page.getByText(/^your budgets$/i).locator("xpath=ancestor::div[contains(@class,'rounded')][1]")
+
+    // Hide: the row folds into the footer; the list total does not change
+    // because a hidden budget still counts.
+    const totalBefore = await plannedOn(total)
+    await openMenu(page, ENVELOPE)
+    await page.getByRole("menuitem", { name: /^hide$/i }).click()
+    const hiddenToggle = page.getByRole("button", { name: /hidden budget/i }).first()
+    await expect(hiddenToggle).toBeVisible({ timeout: 20_000 })
+    await expect(page.getByRole("button", { name: new RegExp(`^open ${ENVELOPE}`, "i") })).toHaveCount(0)
+    expect(await plannedOn(total)).toBe(totalBefore)
+
+    // Show the hidden rows, then bring it back from its menu.
+    await hiddenToggle.click()
+    await expect(rowOf(page, ENVELOPE)).toBeVisible({ timeout: 10_000 })
+    await openMenu(page, ENVELOPE)
+    await page.getByRole("menuitem", { name: /show again/i }).click()
+    await expect(page.getByRole("button", { name: /hidden budget/i })).toHaveCount(0, { timeout: 20_000 })
+    await expect(rowOf(page, ENVELOPE)).toBeVisible()
+
+    // Deactivate: greyed, tagged, and its limit LEAVES the total. One tap back.
+    await openMenu(page, ENVELOPE)
+    await page.getByRole("menuitem", { name: /^deactivate$/i }).click()
+    const row = rowOf(page, ENVELOPE)
+    await expect(row).toContainText(/inactive/i, { timeout: 20_000 })
+    await expect(row.getByRole("button", { name: /^activate$/i })).toBeVisible()
+    expect(await plannedOn(total)).toBeLessThan(totalBefore)
+
+    await row.getByRole("button", { name: /^activate$/i }).click()
+    await expect(row).not.toContainText(/inactive/i, { timeout: 20_000 })
+    expect(await plannedOn(total)).toBe(totalBefore)
+  })
+
+  test("a budget can be edited and removed from its row menu, and the catch-all cannot", async ({ page }) => {
     test.setTimeout(120_000)
     await gotoBudgets(page)
     expect(await hasPlan(page)).toBe(true)
 
-    // Edit: the pencil on the row opens the SAME dialog in edit mode.
-    await page.getByRole("button", { name: new RegExp(`^edit ${ENVELOPE}`, "i") }).first().click()
+    // Edit: the same dialog, in edit mode.
+    await openMenu(page, ENVELOPE)
+    await page.getByRole("menuitem", { name: /^edit$/i }).click()
     const dialog = page.getByRole("dialog")
     await expect(dialog).toBeVisible({ timeout: 10_000 })
     await expect(dialog.locator("#env-name")).toHaveValue(ENVELOPE)
@@ -530,29 +551,31 @@ test.describe.serial("Budget v2", () => {
     await dialog.getByRole("button", { name: /^save changes$/i }).click()
     await expect(page.getByRole("dialog")).toHaveCount(0, { timeout: 15_000 })
     // Retargeted above its spend → no longer over, in place.
-    const row = page.getByRole("button", { name: new RegExp(`^open ${ENVELOPE}`, "i") }).first()
-    await expect(row).toBeVisible({ timeout: 20_000 })
+    await expect(rowOf(page, ENVELOPE)).not.toContainText(/over/i, { timeout: 20_000 })
 
-    // Remove: a two-step confirmation, then the row is gone.
-    await page.getByRole("button", { name: new RegExp(`^edit ${ENVELOPE}`, "i") }).first().click()
-    const again = page.getByRole("dialog")
-    await expect(again).toBeVisible({ timeout: 10_000 })
-    await again.getByRole("button", { name: /^remove$/i }).click()
-    await again.getByRole("button", { name: /^remove for good$/i }).click()
-    await expect(page.getByRole("dialog")).toHaveCount(0, { timeout: 15_000 })
+    // Remove: from the menu, behind a confirm; then the row is gone.
+    await openMenu(page, ENVELOPE)
+    await page.getByRole("menuitem", { name: /^remove$/i }).click()
+    const confirm = page.getByRole("alertdialog")
+    await expect(confirm).toBeVisible({ timeout: 10_000 })
+    await confirm.getByRole("button", { name: /^remove$/i }).click()
+    await expect(page.getByRole("alertdialog")).toHaveCount(0, { timeout: 15_000 })
     await expect(page.getByRole("button", { name: new RegExp(`^open ${ENVELOPE}`, "i") })).toHaveCount(0, { timeout: 20_000 })
 
-    // The catch-all cannot be removed — its dialog offers no Remove at all.
-    const catchAll = page.getByRole("button", { name: /^edit everyday spending/i }).first()
-    if (await catchAll.isVisible().catch(() => false)) {
-      await catchAll.click()
-      const ca = page.getByRole("dialog")
-      await expect(ca).toBeVisible({ timeout: 10_000 })
-      await expect(ca.getByRole("button", { name: /^remove$/i })).toHaveCount(0)
-      await page.keyboard.press("Escape")
-      await expect(page.getByRole("dialog")).toHaveCount(0)
-    }
+    // The group goes too (its menu offers Remove; it is empty now).
+    await openMenu(page, GROUP)
+    await page.getByRole("menuitem", { name: /^remove$/i }).click()
+    await page.getByRole("alertdialog").getByRole("button", { name: /^remove$/i }).click()
+    await expect(page.getByRole("button", { name: new RegExp(`expand or collapse ${GROUP}`, "i") })).toHaveCount(0, { timeout: 20_000 })
+
+    // The catch-all cannot be removed or deactivated — its menu offers neither.
+    await openMenu(page, "(everything else|everyday spending)")
+    await expect(page.getByRole("menuitem", { name: /^remove$/i })).toHaveCount(0)
+    await expect(page.getByRole("menuitem", { name: /^deactivate$/i })).toHaveCount(0)
+    await page.keyboard.press("Escape")
+    await expect(page.getByRole("menu")).toHaveCount(0)
   })
+
 
   test("a business workspace is kept out of the household plan", async ({ page }) => {
     test.setTimeout(90_000)

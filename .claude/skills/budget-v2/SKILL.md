@@ -27,6 +27,13 @@ code comments). Delivery history and the defects each phase found are in
   `POST /api/budgets/v2/sync` is the ONLY writer.
 - **An occurrence is an EXPECTATION.** Settling a bill records that money moved; it must
   never move money or create a transaction.
+- **The page is ONE list** (`docs/budget-v2/SIMPLE.md`, 2026-09-05): the hero, then the budgets
+  list read through a week / month / year window — groups (`kind='group'`, the SUM of their
+  active children, no target or keys of their own), ungrouped budgets, the catch-all last.
+  `hidden` is display only and still counts; **inactive** (`status='paused'`, self or group)
+  counts NOWHERE and its spend falls back to the catch-all. The window re-reads ONLY the
+  `budgets` block (`?window=`); the four numbers stay on the period. Bills, savings, debt,
+  income and refunds are still computed and reserved but are no longer laid out on the page.
 
 ## Invariants — do not break these
 
@@ -92,18 +99,23 @@ code comments). Delivery history and the defects each phase found are in
 ## Where everything lives
 
 - Pure math + tests: `src/lib/budget-math.ts`, `budget-math.test.ts`,
-  `budget-math-phase2.test.ts`.
+  `budget-math-phase2.test.ts`, `budget-list.test.ts` (view windows, `targetForWindow`,
+  group sums, `effectivelyActive`).
 - Engine: `api/_lib/budget-engine.ts`. Notifications: `api/_lib/notify-budget-v2.ts`
   (v2) and `notify-budget.ts` (v1 caps). v1 adapter: `api/_lib/budget-v1-adapter.ts`.
 - Routes: `api/_routes/budgets/v2.ts` + `v2/{sync,envelopes,envelopes/[id],
   envelopes/[id]/detail,envelopes/reorder,commitments,commitments/[id],occurrences,
   reallocate,refunds,contributions,prompts}.ts`.
-- UI: `src/pages/BudgetOverviewPage.tsx`, `BudgetKeyPage.tsx` (legacy URLs),
-  `src/components/budget/*`, `src/lib/budget-context.tsx`.
+- UI: `src/pages/BudgetOverviewPage.tsx` (the list, row menus, the window toggle),
+  `BudgetItemDialog.tsx` (add/edit a budget or a group — categories first), `BudgetKeyPage.tsx`
+  (legacy URLs), `src/components/budget/*`, `src/lib/budget-context.tsx` (owns the chosen
+  window; `?window=` on the read, re-read after a sync when the window differs).
 - Schema: `src/lib/db/schema.ts`; migrations `drizzle/0059_*` (10 tables), `0060_*`
   (`transaction_settlements` + the category index), `0061_*` (`budget_envelopes.icon`),
-  `0062_*` (custom-cadence anchor CHECK; the Space FK becomes NO ACTION). 0060–0062 are
-  hand-written — write the SQL + journal entry by hand, `when` strictly above the previous.
+  `0062_*` (custom-cadence anchor CHECK; the Space FK becomes NO ACTION), `0063_*` (the
+  budgets list: `kind`, `parent_id`, `hidden` + CHECKs). 0060–0063 are hand-written — write
+  the SQL + journal entry by hand, `when` strictly above the previous. ⚠ `feat/debt-loans`
+  also numbers its migrations 0062/0063 — whoever merges second renumbers.
 - Migration: `scripts/migrate-budgets-v2.ts` (`--dry-run` / `--org` / `--limit`).
 - Database: the Neon instance in `.env.local` (no local Postgres — `npm run db:migrate` reads
   `.env.local` itself).

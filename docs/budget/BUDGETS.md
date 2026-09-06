@@ -4,9 +4,13 @@ A plain-English guide to budgeting: what the numbers mean, how spend is measured
 held back and why, and how personal and business workspaces differ.
 
 > **TL;DR**
-> - A **personal** workspace gets a **plan**: recurring **periods**, **envelopes** grouped
->   into five sections, and four headline numbers — the most important being **Safe to
->   spend**.
+> - A **personal** workspace gets a **plan**: recurring **periods**, **budgets** (optionally
+>   inside **groups** such as *Household* that add them up), and four headline numbers — the
+>   most important being **Safe to spend**. The page is the hero plus ONE list, read through a
+>   **week / month / year** toggle; a budget can be **hidden** (still counts) or **inactive**
+>   (counts nowhere). Details: [`docs/budget-v2/SIMPLE.md`](../budget-v2/SIMPLE.md).
+> - Bills, savings funds and debt payments (sections 4–5 below) are still tracked and reserved
+>   by the engine, but are **no longer laid out on the budgets page**.
 > - A **business** workspace keeps **per-client spend caps**, unchanged. It has no plan,
 >   no envelopes and no Safe-to-spend, because business revenue is per-client and those
 >   concepts have no natural meaning there.

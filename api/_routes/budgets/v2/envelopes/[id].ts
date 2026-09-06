@@ -78,9 +78,59 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       target_date?: string | null
       position?: number
       icon?: string
+      parent_id?: string | null
+      hidden?: boolean
+      status?: string
     }
 
     const patch: Record<string, unknown> = { updatedBy: userId, updatedAt: new Date() }
+
+    // ── the budgets list (docs/budget-v2/SIMPLE.md) ─────────────────────────
+    // Move into / out of a group. Only a category can be grouped, only into a
+    // live group of THIS plan, and the catch-all stays at the top level — it is
+    // the plan's ceiling and must never be silenced by deactivating a group.
+    if (body.parent_id !== undefined) {
+      if (envelope.kind === "group") return res.status(400).json({ error: "A group cannot be inside another group" })
+      if (envelope.section !== "flexible") return res.status(400).json({ error: "Only a spending budget can be grouped" })
+      if (envelope.isCatchAll && body.parent_id != null) {
+        return res.status(400).json({ error: "catch_all_ungrouped", message: "The leftover budget stays at the top level" })
+      }
+      if (body.parent_id == null) {
+        patch.parentId = null
+      } else {
+        const raw = String(body.parent_id).trim()
+        const [group] = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(raw)
+          ? await db
+              .select({ id: budgetEnvelopes.id })
+              .from(budgetEnvelopes)
+              .where(
+                and(
+                  eq(budgetEnvelopes.id, raw),
+                  eq(budgetEnvelopes.planId, plan.id),
+                  eq(budgetEnvelopes.kind, "group"),
+                  ne(budgetEnvelopes.status, "removed"),
+                ),
+              )
+          : []
+        if (!group) return res.status(404).json({ error: "group_not_found", message: "That group does not exist" })
+        patch.parentId = group.id
+      }
+    }
+    // Hidden is display only — the budget still counts everywhere.
+    if (body.hidden !== undefined) patch.hidden = Boolean(body.hidden)
+    // Inactive = paused. The engine gives it semantics now: no claimed
+    // categories, no planned amount, out of every total (buildBudgetView reads
+    // only effectively-active lines). The catch-all cannot be paused — without
+    // it the plan has no ceiling (invariant 5).
+    if (body.status !== undefined) {
+      if (!["active", "paused"].includes(String(body.status))) {
+        return res.status(400).json({ error: "status must be active or paused" })
+      }
+      if (envelope.isCatchAll && body.status === "paused") {
+        return res.status(400).json({ error: "catch_all_required", message: "The leftover budget cannot be deactivated" })
+      }
+      patch.status = body.status
+    }
 
     if (body.name !== undefined) {
       const name = String(body.name).trim()
@@ -173,14 +223,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (date === "invalid") return res.status(400).json({ error: "target_date must be YYYY-MM-DD" })
       patch.targetDate = date
     }
-    // Envelope pause (spec §6.5/§6.6) is NOT wired: the engine has no
-    // paused-envelope semantics (materializeAllocations allocates only
-    // 'active', buildBudgetView reads everything but 'removed', the v1
-    // adapter and prompts look the catch-all up as 'active'), so exposing
-    // status here would let a client put the plan into a state the four
-    // numbers cannot describe — and a paused catch-all would silently drop
-    // the ceiling (invariant 5). The 'paused' CHECK value stays reserved for
-    // when its semantics are defined.
     if (body.position !== undefined && Number.isFinite(Number(body.position))) {
       patch.position = Math.trunc(Number(body.position))
     }
@@ -222,12 +264,42 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .where(and(eq(budgetAllocations.periodId, open.id), eq(budgetAllocations.envelopeId, envelope.id)))
     }
 
+    // Reactivated mid-period: the period was opened without it (only active
+    // envelopes are allocated at open), so give it its allocation NOW or it
+    // would sit at zero until the next period. Idempotent — an allocation that
+    // survived a pause is left alone.
+    const reactivated = patch.status === "active" && envelope.status !== "active"
+    if (reactivated && open && envelope.kind === "category") {
+      const days = periodDays({ start: open.start, endExclusive: open.endExclusive })
+      const planned = normalizeTarget(authored, cadence, days, plan.cadence as PlanCadence)
+      await db
+        .insert(budgetAllocations)
+        .values({
+          periodId: open.id,
+          envelopeId: envelope.id,
+          organizationId: orgId,
+          plannedAmount: String(planned),
+          authoredAmount: String(authored),
+          authoredCadence: cadence,
+          rolloverIn: "0",
+          contributionStatus: envelope.section === "savings" ? "planned" : null,
+        })
+        .onConflictDoNothing()
+    }
+
+    const statusChanged = patch.status !== undefined && patch.status !== envelope.status
     await db.insert(budgetEvents).values({
       organizationId: orgId,
       planId: plan.id,
       periodId: open?.id ?? null,
       envelopeId: envelope.id,
-      action: retargeted ? "envelope_retargeted" : "envelope_updated",
+      action: retargeted
+        ? "envelope_retargeted"
+        : statusChanged
+          ? patch.status === "paused"
+            ? "envelope_deactivated"
+            : "envelope_activated"
+          : "envelope_updated",
       amount: retargeted ? String(authored) : null,
       previousAmount: retargeted ? String(round2(Number(envelope.targetAmount))) : null,
       detail: {
@@ -271,6 +343,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .where(eq(budgetEnvelopes.id, envelope.id))
       .returning()
 
+    // Removing a GROUP keeps every budget inside it — they move to the top
+    // level. The FK is ON DELETE SET NULL, but this is a soft delete, so the
+    // detach is explicit (docs/budget-v2/SIMPLE.md).
+    if (envelope.kind === "group") {
+      await db
+        .update(budgetEnvelopes)
+        .set({ parentId: null, updatedBy: userId, updatedAt: new Date() })
+        .where(and(eq(budgetEnvelopes.parentId, envelope.id), eq(budgetEnvelopes.planId, plan.id)))
+    }
+
     await db.insert(budgetEvents).values({
       organizationId: orgId,
       planId: plan.id,
@@ -278,7 +360,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       envelopeId: envelope.id,
       action: "envelope_removed",
       previousAmount: String(round2(Number(envelope.targetAmount))),
-      detail: { name: envelope.name, section: envelope.section },
+      detail: { name: envelope.name, section: envelope.section, kind: envelope.kind },
       actorUserId: userId,
     })
 

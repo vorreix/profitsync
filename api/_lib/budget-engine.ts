@@ -43,7 +43,9 @@ import {
   carryLowerBound,
   categoryKey,
   daysOverdue,
+  defaultViewWindow,
   detectCurrencyMismatch,
+  effectivelyActive,
   median,
   normalizeMatchKeys,
   fundingCapacity,
@@ -58,9 +60,13 @@ import {
   safeToSpend,
   spentNet,
   state,
+  sumBudgetLines,
+  targetForWindow,
   todayInTz,
   unallocated,
+  viewWindowFor,
   type BudgetSection,
+  type ViewWindow,
   type CadenceConfig,
   type CurrencyLimitation,
   type EnvelopeTotals,
@@ -1078,7 +1084,56 @@ export type EnvelopeView = {
   overdue_amount: number
 }
 
+/** One line of the budgets LIST, for the selected view window (docs/budget-v2/SIMPLE.md). */
+export type BudgetItemView = {
+  id: string
+  kind: "category"
+  name: string
+  icon: string
+  parent_id: string | null
+  hidden: boolean
+  active: boolean
+  is_catch_all: boolean
+  match_keys: string[]
+  authored_amount: number
+  authored_cadence: string
+  planned: number
+  spent: number
+  remaining: number
+  state: ReturnType<typeof state>
+}
+
+export type BudgetGroupView = {
+  id: string
+  kind: "group"
+  name: string
+  icon: string
+  hidden: boolean
+  active: boolean
+  planned: number
+  spent: number
+  remaining: number
+  state: ReturnType<typeof state>
+  children: BudgetItemView[]
+}
+
+export type BudgetListView = {
+  window: ViewWindow
+  start: string
+  end_exclusive: string
+  is_period: boolean
+  planned: number
+  spent: number
+  remaining: number
+  state: ReturnType<typeof state>
+  groups: BudgetGroupView[]
+  items: BudgetItemView[]
+  hidden_count: number
+  inactive_count: number
+}
+
 export type BudgetView = {
+  budgets: BudgetListView | null
   plan: Record<string, unknown> | null
   period: Record<string, unknown> | null
   money: Record<string, unknown> | null
@@ -1114,6 +1169,13 @@ export type BuildViewOptions = {
    * these ones. `restateDriftedPeriods` does exactly that.
    */
   periodId?: string
+  /**
+   * The view window for the budgets LIST — week, month or year. Defaults to the
+   * window that matches the plan's cadence. Only `budgets` is affected: the
+   * four numbers and the sections stay on the period, because safe-to-spend is
+   * a figure about NOW and the open period, whatever the list is showing.
+   */
+  window?: ViewWindow
 }
 
 export async function buildBudgetView(
@@ -1133,6 +1195,7 @@ export async function buildBudgetView(
 
   if (!plan) {
     return {
+      budgets: null,
       plan: null,
       period: null,
       money: null,
@@ -1179,6 +1242,7 @@ export async function buildBudgetView(
     // too, not only the fully-open one.
     const pausedPrompts = await migrationPrompts(orgId, plan, 0, today)
     return {
+      budgets: null,
       plan: planView(plan),
       prompts: pausedPrompts,
       period: null,
@@ -1211,12 +1275,25 @@ export async function buildBudgetView(
   ])
   const allocByEnvelope = new Map(allocations.map((a) => [a.envelopeId, a]))
 
+  // ── the budgets list's shape (docs/budget-v2/SIMPLE.md) ───────────────────
+  // A GROUP is a macro budget: it owns no target and no keys, its figures are
+  // the sum of the categories inside it, so it never counts as an envelope of
+  // its own. An INACTIVE line (status paused, or inside a paused group) counts
+  // NOWHERE: it claims no categories (its spend falls back to the catch-all),
+  // plans nothing, and is out of every total — while its row and history stay,
+  // so one tap brings it back exactly as it was.
+  const envById = new Map(envelopes.map((e) => [e.id, e]))
+  const isGroup = (e: EnvelopeRow) => e.kind === "group"
+  const isActive = (e: EnvelopeRow) => effectivelyActive(e, e.parentId ? envById.get(e.parentId) : null)
+  /** What the four numbers and the sections COUNT: real, active envelopes. */
+  const counted = envelopes.filter((e) => !isGroup(e) && isActive(e))
+
   // Explicit category keys, so the catch-all can exclude what others claim.
   // Normalised defensively: writes go through normalizeMatchKeys(), but a row
   // that predates that (or was seeded by hand) must not create a key that the
   // catch-all fails to exclude — that would double-count the spend.
   const claimedKeys = new Set(
-    envelopes.filter((e) => !e.isCatchAll).flatMap((e) => ((e.matchKeys as string[] | null) ?? []).map(categoryKey)),
+    counted.filter((e) => !e.isCatchAll).flatMap((e) => ((e.matchKeys as string[] | null) ?? []).map(categoryKey)),
   )
 
   const [occByEnvelope, fundBalances, incomeRecv, adjustments, spendRows, settledByKey, commitmentIdx] =
@@ -1248,7 +1325,7 @@ export async function buildBudgetView(
     e.fundingMode === "virtual" ? (fundBalances.get(e.id) ?? 0) : 0
 
   const views: EnvelopeView[] = []
-  for (const e of envelopes) {
+  for (const e of counted) {
     const alloc = allocByEnvelope.get(e.id)
     const rolloverIn = num(alloc?.rolloverIn)
     const planned = round2(num(alloc?.plannedAmount) + rolloverIn)
@@ -1410,7 +1487,21 @@ export async function buildBudgetView(
     .filter((x) => x.state === "expected")
   const overdueList = upcoming.filter((x) => x.dueDate < today)
 
+  const budgets = await buildBudgetList({
+    plan,
+    window,
+    viewWindow: options.window ?? defaultViewWindow(plan.cadence as PlanCadence),
+    today,
+    envelopes,
+    isGroup,
+    isActive,
+    claimedKeys,
+    periodViews: new Map(flex.map((v) => [v.id, v])),
+    periodSpend: { spendRows, settledByKey },
+  })
+
   return {
+    budgets,
     plan: planView(plan),
     period: {
       id: period.id,
@@ -1573,6 +1664,127 @@ export async function buildBudgetView(
      * the client to assume a rate was applied.
      */
     currency_limitation: currencyLimitation,
+  }
+}
+
+/**
+ * The budgets LIST (docs/budget-v2/SIMPLE.md): every spending line, grouped,
+ * read through a view window.
+ *
+ * When the view window IS the open period, each line's figures are exactly the
+ * period figures the four numbers were computed from — same allocation, same
+ * spend rows — so the list and the hero can never disagree. Any other window
+ * (this week, this year, a calendar month on a payday plan) is a fresh read of
+ * the ledger over that window, with the limit scaled from the authored target;
+ * that costs two more round trips, taken only on that path.
+ *
+ * Groups are pure sums of their ACTIVE children. Hidden lines are counted and
+ * returned in place, flagged; the page folds them. Inactive lines return with
+ * `active: false` and zero figures.
+ */
+async function buildBudgetList(input: {
+  plan: PlanRow
+  window: PeriodWindow
+  viewWindow: ViewWindow
+  today: string
+  envelopes: EnvelopeRow[]
+  isGroup: (e: EnvelopeRow) => boolean
+  isActive: (e: EnvelopeRow) => boolean
+  claimedKeys: Set<string>
+  /** The period's flexible envelope views, by id — reused when the window is the period. */
+  periodViews: Map<string, EnvelopeView>
+  periodSpend: { spendRows: CategorySpendRow[]; settledByKey: Map<string, number> }
+}): Promise<BudgetListView> {
+  const { plan, viewWindow, today, envelopes, isGroup, isActive, claimedKeys } = input
+  const listWindow = viewWindowFor(viewWindow, today, plan.weekStartDay)
+  const isPeriod = listWindow.start === input.window.start && listWindow.endExclusive === input.window.endExclusive
+
+  const { spendRows, settledByKey } = isPeriod
+    ? input.periodSpend
+    : await (async () => {
+        const [rows, settled] = await Promise.all([
+          spendByCategoryKey(plan.organizationId, plan, listWindow),
+          confirmedSettlementsByCategoryKey(plan.organizationId, plan, listWindow),
+        ])
+        return { spendRows: rows, settledByKey: settled }
+      })()
+
+  const lines = envelopes.filter((e) => e.section === "flexible")
+  const items: BudgetItemView[] = []
+  for (const e of lines.filter((x) => !isGroup(x))) {
+    const active = isActive(e)
+    const keys = normalizeMatchKeys((e.matchKeys as string[] | null) ?? [])
+    const periodView = input.periodViews.get(e.id)
+    let planned = 0
+    let spent = 0
+    if (active) {
+      if (isPeriod && periodView) {
+        // The SAME figures the hero used — allocation (rollover and moved money
+        // included) and the period's own spend.
+        planned = periodView.planned
+        spent = periodView.spent_net
+      } else {
+        planned = targetForWindow(
+          num(e.targetAmount),
+          e.targetCadence as TargetCadence,
+          plan.cadence as PlanCadence,
+          plan.customDays,
+          viewWindow,
+        )
+        spent = spentNet(spendForKeys(spendRows, settledByKey, keys, claimedKeys))
+      }
+    }
+    items.push({
+      id: e.id,
+      kind: "category",
+      name: e.name,
+      icon: e.icon ?? "",
+      parent_id: e.parentId,
+      hidden: e.hidden,
+      active,
+      is_catch_all: e.isCatchAll,
+      match_keys: keys,
+      authored_amount: num(e.targetAmount),
+      authored_cadence: e.targetCadence,
+      planned,
+      spent,
+      remaining: remaining(planned, spent),
+      state: active ? state(spent, planned) : "none",
+    })
+  }
+
+  const groups: BudgetGroupView[] = lines
+    .filter((x) => isGroup(x))
+    .map((g) => {
+      const children = items.filter((i) => i.parent_id === g.id)
+      const totals = sumBudgetLines(children.filter((c) => c.active))
+      return {
+        id: g.id,
+        kind: "group",
+        name: g.name,
+        icon: g.icon ?? "",
+        hidden: g.hidden,
+        active: g.status === "active",
+        ...totals,
+        children,
+      }
+    })
+  const groupIds = new Set(groups.map((g) => g.id))
+  // A child whose group vanished (or was never a group) is shown at the top
+  // level rather than dropped — a budget must never disappear from the page.
+  const ungrouped = items.filter((i) => !i.parent_id || !groupIds.has(i.parent_id))
+  const totals = sumBudgetLines(items.filter((i) => i.active))
+
+  return {
+    window: viewWindow,
+    start: listWindow.start,
+    end_exclusive: listWindow.endExclusive,
+    is_period: isPeriod,
+    ...totals,
+    groups,
+    items: ungrouped,
+    hidden_count: lines.filter((e) => e.hidden).length,
+    inactive_count: lines.filter((e) => !isGroup(e) && !isActive(e)).length,
   }
 }
 

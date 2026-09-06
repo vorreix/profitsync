@@ -1110,3 +1110,131 @@ export const daysOverdue = (dueDate: string, today: string): number => Math.max(
 export function needsAttention(kind: CommitmentKind, unresolvedCount: number): boolean {
   return kind === "recurring" && unresolvedCount > MAX_UNRESOLVED_RECURRING_OCCURRENCES
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The budgets list — view windows and groups (docs/budget-v2/SIMPLE.md)
+//
+// The plan still runs in PERIODS (§8.2) and safe-to-spend is still a figure
+// about the open period. The budgets LIST, however, is read through a view
+// window the user toggles — this week, this month, this year — so the same
+// budgets can be looked at three ways without changing the plan. Nothing here
+// touches the period machinery: a window is a pure function of today's date,
+// and a window limit is a pure function of the authored target.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const VIEW_WINDOWS = ["week", "month", "year"] as const
+export type ViewWindow = (typeof VIEW_WINDOWS)[number]
+export const isViewWindow = (v: unknown): v is ViewWindow => VIEW_WINDOWS.includes(v as ViewWindow)
+
+/** The window a plan most naturally reads in: a weekly plan opens on the week, everything else on the month. */
+export function defaultViewWindow(planCadence: PlanCadence): ViewWindow {
+  return planCadence === "weekly" ? "week" : "month"
+}
+
+/**
+ * The calendar window containing `today` for a view window. The week honours
+ * the plan's week start; month and year are calendar month and calendar year.
+ * Date-only arithmetic, so DST cannot shift a boundary (§8.2).
+ */
+export function viewWindowFor(kind: ViewWindow, today: string, weekStartDay: number | null | undefined = 1): PeriodWindow {
+  const { y, m } = parseDate(today)
+  switch (kind) {
+    case "week":
+      return periodFor({ cadence: "weekly", weekStartDay: weekStartDay ?? 1 }, today)
+    case "month":
+      return { start: ymd(y, m, 1), endExclusive: addMonths(ymd(y, m, 1), 1) }
+    case "year":
+      return { start: ymd(y, 1, 1), endExclusive: ymd(y + 1, 1, 1) }
+  }
+}
+
+/** Mean Gregorian month, the same constant normalizeTarget() pro-rates with. */
+export const MEAN_MONTH_DAYS = 30.436875
+const WEEKS_PER_MONTH = 52 / 12
+
+/**
+ * An authored target expressed PER CALENDAR MONTH — the one figure every view
+ * window scales from, so "€300 a month" reads as €300 in the month view exactly,
+ * and as its 12/52 and ×12 equivalents in the week and year views.
+ *
+ * `period` on a monthly or payday plan IS a month; on a weekly plan it is a
+ * week; on a custom plan it is `customDays` days.
+ */
+export function monthlyEquivalent(
+  amount: number,
+  cadence: TargetCadence,
+  planCadence: PlanCadence,
+  customDays?: number | null,
+): number {
+  if (!Number.isFinite(amount) || amount <= 0) return 0
+  switch (cadence) {
+    case "month":
+      return amount
+    case "week":
+      return amount * WEEKS_PER_MONTH
+    case "day":
+      return amount * MEAN_MONTH_DAYS
+    case "period":
+      switch (planCadence) {
+        case "monthly":
+        case "payday":
+          return amount
+        case "weekly":
+          return amount * WEEKS_PER_MONTH
+        case "custom":
+          return (amount / Math.max(1, customDays ?? 30)) * MEAN_MONTH_DAYS
+      }
+  }
+}
+
+/**
+ * The limit shown for a budget in a view window. Exact for the window that
+ * matches how the target was authored; a stated equivalent for the others.
+ */
+export function targetForWindow(
+  amount: number,
+  cadence: TargetCadence,
+  planCadence: PlanCadence,
+  customDays: number | null | undefined,
+  window: ViewWindow,
+): number {
+  const monthly = monthlyEquivalent(amount, cadence, planCadence, customDays)
+  switch (window) {
+    case "week":
+      return round2(monthly / WEEKS_PER_MONTH)
+    case "month":
+      return round2(monthly)
+    case "year":
+      return round2(monthly * 12)
+  }
+}
+
+export type BudgetLineTotals = { planned: number; spent: number; remaining: number; state: BudgetStateV2 }
+
+/**
+ * The sum of a set of budget lines — a GROUP's figures, or the whole list's.
+ * Inactive lines are excluded by the caller (they are not counted anywhere);
+ * hidden ones are included (hidden is display only). `remaining` is SIGNED so an
+ * overspent group looks overspent; the plan-wide headroom keeps its own
+ * netted-then-floored rule (§8.5.1) and is not derived from this.
+ */
+export function sumBudgetLines(lines: { planned: number; spent: number }[]): BudgetLineTotals {
+  let planned = 0
+  let spent = 0
+  for (const l of lines) {
+    planned += l.planned
+    spent += l.spent
+  }
+  planned = round2(planned)
+  spent = round2(spent)
+  return { planned, spent, remaining: remaining(planned, spent), state: state(spent, planned) }
+}
+
+/**
+ * A budget counts only while it AND its group are active. Deactivating a group
+ * silences everything inside it in one tap, and reactivating it brings them back
+ * without touching any child row.
+ */
+export function effectivelyActive(self: { status: string }, parent: { status: string } | null | undefined): boolean {
+  return self.status === "active" && (!parent || parent.status === "active")
+}

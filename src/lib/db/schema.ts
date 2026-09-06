@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, numeric, date, timestamp, integer, boolean, index, uniqueIndex, jsonb, check } from "drizzle-orm/pg-core"
+import { pgTable, uuid, text, numeric, date, timestamp, integer, boolean, index, uniqueIndex, jsonb, check, type AnyPgColumn } from "drizzle-orm/pg-core"
 import { sql } from "drizzle-orm"
 
 export const organizations = pgTable("organizations", {
@@ -1158,6 +1158,18 @@ export const budgetEnvelopes = pgTable("budget_envelopes", {
   // "derive from the section", so an envelope always has a sensible glyph and no
   // backfill is needed for the ones that predate this column.
   icon: text("icon").notNull().default(""),
+  // The budgets list (docs/budget-v2/SIMPLE.md) ------------------------------
+  // `category` is an ordinary budget line; `group` is a macro budget (Household)
+  // whose figures are the SUM of the categories inside it — it owns no target
+  // and no category keys of its own. One level only: a group cannot have a
+  // parent (`budget_envelopes_group_flat_check`), and the catch-all is never
+  // grouped (`budget_envelopes_catch_all_ungrouped_check`).
+  kind: text("kind").notNull().default("category"), // category | group
+  parentId: uuid("parent_id").references((): AnyPgColumn => budgetEnvelopes.id, { onDelete: "set null" }),
+  // Display only. A hidden budget still counts everywhere; it is just folded
+  // away on the page. "Inactive" is `status = 'paused'` — that one STOPS
+  // counting (no claimed categories, no planned amount, out of every total).
+  hidden: boolean("hidden").notNull().default(false),
   // savings only ------------------------------------------------------------
   fundingMode: text("funding_mode"), // virtual | space_backed
   // The Space. NO ACTION, not SET NULL: `budget_envelopes_space_backed_check`
@@ -1198,6 +1210,11 @@ export const budgetEnvelopes = pgTable("budget_envelopes", {
   carryCheck: check("budget_envelopes_carry_check", sql`carry_policy in ('none','surplus','deficit','both')`),
   priorityCheck: check("budget_envelopes_priority_check", sql`priority in ('essential','important','optional')`),
   statusCheck: check("budget_envelopes_status_check", sql`status in ('active','paused','removed')`),
+  parentIdx: index("budget_envelopes_parent_idx").on(table.parentId),
+  kindCheck: check("budget_envelopes_kind_check", sql`kind in ('category','group')`),
+  groupFlatCheck: check("budget_envelopes_group_flat_check", sql`kind <> 'group' or parent_id is null`),
+  groupSectionCheck: check("budget_envelopes_group_section_check", sql`kind <> 'group' or section = 'flexible'`),
+  catchAllUngroupedCheck: check("budget_envelopes_catch_all_ungrouped_check", sql`not is_catch_all or parent_id is null`),
   fundingModeCheck: check("budget_envelopes_funding_mode_check", sql`funding_mode is null or funding_mode in ('virtual','space_backed')`),
   fundingSectionCheck: check("budget_envelopes_funding_section_check", sql`funding_mode is null or section = 'savings'`),
   autoFundSectionCheck: check("budget_envelopes_auto_fund_section_check", sql`auto_fund = false or section = 'savings'`),

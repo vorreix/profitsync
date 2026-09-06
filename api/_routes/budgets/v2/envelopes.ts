@@ -71,22 +71,52 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     target_date?: string | null
     auto_fund?: boolean
     icon?: string
+    kind?: string
+    parent_id?: string | null
   }
 
-  const section: BudgetSection = isBudgetSection(body.section) ? body.section : "flexible"
+  // ── the budgets list (docs/budget-v2/SIMPLE.md) ───────────────────────────
+  // A GROUP is a macro budget: a flexible line with no target and no category
+  // keys whose figures are the sum of the budgets inside it. A CATEGORY may sit
+  // inside one group. One level only — the schema CHECKs enforce it too.
+  const kind: "category" | "group" = body.kind === "group" ? "group" : "category"
+  const section: BudgetSection = kind === "group" ? "flexible" : isBudgetSection(body.section) ? body.section : "flexible"
   const name = String(body.name ?? "").trim()
   if (!name) return res.status(400).json({ error: "name is required" })
   if (name.length > 80) return res.status(400).json({ error: "name is too long" })
 
-  const target = Number(body.target_amount ?? 0)
+  const target = kind === "group" ? 0 : Number(body.target_amount ?? 0)
   if (!Number.isFinite(target) || target < 0) return res.status(400).json({ error: "target_amount must be zero or more" })
   if (amountExceedsLimit(target)) return res.status(400).json({ error: "Amount is too large" })
+
+  let parentId: string | null = null
+  if (kind === "category" && section === "flexible" && body.parent_id) {
+    const raw = String(body.parent_id).trim()
+    if (!UUID_RE.test(raw)) return res.status(404).json({ error: "group_not_found", message: "That group does not exist" })
+    // The group must be THIS plan's, live, and actually a group — an id from
+    // another workspace 404s, never leaks.
+    const [group] = await db
+      .select({ id: budgetEnvelopes.id })
+      .from(budgetEnvelopes)
+      .where(
+        and(
+          eq(budgetEnvelopes.id, raw),
+          eq(budgetEnvelopes.planId, plan.id),
+          eq(budgetEnvelopes.kind, "group"),
+          ne(budgetEnvelopes.status, "removed"),
+        ),
+      )
+    if (!group) return res.status(404).json({ error: "group_not_found", message: "That group does not exist" })
+    parentId = group.id
+  }
 
   // ── one category, one envelope (§8.3) ─────────────────────────────────────
   // Enforced BEFORE the insert and reported with the names of the envelopes
   // that already claim the categories, because "invalid" gives the user nothing
-  // to act on. Only flexible and income envelopes match categories at all.
-  const matchKeys = section === "flexible" || section === "income" ? normalizeMatchKeys(body.match_keys ?? []) : []
+  // to act on. Only flexible and income envelopes match categories at all; a
+  // group claims nothing of its own.
+  const matchKeys =
+    kind === "category" && (section === "flexible" || section === "income") ? normalizeMatchKeys(body.match_keys ?? []) : []
 
   // A SPENDING CATEGORY MUST CLAIM AT LEAST ONE TRANSACTION CATEGORY.
   //
@@ -97,7 +127,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // The catch-all is the deliberate exception — it claims everything no other
   // envelope has claimed, so an explicit list would make it both the general and
   // the specific case at once.
-  if (section === "flexible" && !matchKeys.length) {
+  if (kind === "category" && section === "flexible" && !matchKeys.length) {
     return res.status(400).json({
       error: "categories_required",
       message: "Choose at least one category, otherwise this would not track anything",
@@ -183,6 +213,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         targetCadence: isTargetCadence(body.target_cadence) ? body.target_cadence : "period",
         matchKeys,
         isCatchAll: false, // only the wizard creates the catch-all
+        kind,
+        parentId,
         icon: typeof body.icon === "string" ? body.icon.slice(0, 40) : "",
         fundingMode,
         wealthAccountId: spaceId,
@@ -203,13 +235,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // "Groceries" collide. Say which rule was hit rather than leaking the
     // constraint name.
     if (violates(err, "budget_envelopes_plan_name_unique")) {
-      return res.status(409).json({ error: "name_taken", message: `You already have an envelope called ${name}` })
+      return res.status(409).json({ error: "name_taken", message: `You already have a budget called ${name}` })
     }
     throw err
   }
 
   // Give the new envelope an allocation in the OPEN period immediately, so it
   // appears with its planned amount instead of at zero until the next sync.
+  // A group has nothing to allocate — its figures are its children's.
   const [open] = await db
     .select()
     .from(budgetPeriods)
@@ -217,7 +250,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     .orderBy(desc(budgetPeriods.start))
     .limit(1)
 
-  if (open) {
+  if (open && kind === "category") {
     const days = periodDays({ start: open.start, endExclusive: open.endExclusive })
     const planned = normalizeTarget(round2(target), envelope.targetCadence as TargetCadence, days, plan.cadence as PlanCadence)
     await db
@@ -242,9 +275,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     envelopeId: envelope.id,
     action: "envelope_created",
     amount: String(round2(target)),
-    detail: { section, name, match_keys: matchKeys, funding_mode: fundingMode },
+    detail: { section, name, match_keys: matchKeys, funding_mode: fundingMode, kind, parent_id: parentId },
     actorUserId: userId,
   })
 
   return res.status(201).json({ envelope: serialize(envelope) })
 }
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
