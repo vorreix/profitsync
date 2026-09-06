@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
-import { useNavigate } from "react-router-dom"
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react"
+import { Link, useNavigate, useSearchParams } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { toast } from "sonner"
 import { useAutoAnimate } from "@formkit/auto-animate/react"
@@ -25,6 +25,7 @@ import {
   Eye,
   EyeOff,
   GripVertical,
+  Landmark,
   MoreVertical,
   Plus,
   RotateCcw,
@@ -39,6 +40,8 @@ import { amountExceedsLimit } from "@/lib/money"
 import type { WealthAccount } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { useCurrency } from "@/lib/currency-context"
+import { useOrg } from "@/lib/org-context"
+import { canDeleteRole, canWriteRole } from "@/lib/roles"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
@@ -55,17 +58,23 @@ import { WealthAccountIcon } from "@/components/WealthAccountIcon"
 import { WealthAccountDialogs } from "@/components/wealth/WealthAccountDialogs"
 import { TransferWizard } from "@/components/wealth/TransferWizard"
 import { BankAccountFormFields } from "@/components/wealth/BankAccountFormFields"
-import { CreditCardFormFields } from "@/components/wealth/CreditCardFormFields"
+import { CardsTab } from "@/components/cards/CardsTab"
 import { type BankFormState, bankDetailsPayload, emptyBankForm } from "@/lib/bank-form"
-import { type CardFormState, cardCreatePayload, cardFormErrorField, emptyCardForm, validateCardForm } from "@/lib/card-form"
-import { creditUsage, isLiabilityType } from "@/lib/credit-card"
-import { accountBalanceLabel, accountDisplayName, currencySymbol, formatMoney, moveBefore, useBalancePrivacy, useWealthSummary } from "@/lib/wealth"
+import { isLiabilityType } from "@/lib/credit-card"
+import { accountDisplayName, currencySymbol, formatMoney, moveBefore, useBalancePrivacy, useWealthSummary } from "@/lib/wealth"
 import { useTranslation } from "react-i18next"
 
 // The org's bank-account allowance (plan-based, server-enforced via 402). Loaded
 // from /api/wealth/quota so the Add button can gate up front with the crown +
 // upgrade dialog instead of a post-submit error.
-type BankQuota = { plan_key: string; bank_accounts: { current: number; limit: number }; credit_cards?: { current: number; limit: number } }
+type BankQuota = { plan_key: string; bank_accounts: { current: number; limit: number } }
+
+// The accounts list also reports how many open cards live on each account
+// (server: api/_routes/wealth/accounts.ts `cardCount`). Optional until the
+// shared WealthAccount type carries it.
+type AccountRow = WealthAccount
+
+type WealthTab = "banks" | "cards"
 
 // One drag, two outcomes — disambiguated by *where on the target card* you drop,
 // which is unambiguous and needs no timing (the old dwell felt fragile on touch):
@@ -107,27 +116,52 @@ function pointerFromActivator(ev: Event | null): { x: number; y: number } {
 type CreateForm = BankFormState & { opening_balance: string }
 const emptyCreate: CreateForm = { ...emptyBankForm, opening_balance: "" }
 
+/**
+ * /wealth — one page, two sections: Banks (`/wealth`) and Cards
+ * (`/wealth?tab=cards`). The section is a QUERY PARAM on purpose: the pathname
+ * never changes, so the mobile shell (keyed by pathname) does not remount or
+ * replay its page transition, and switching never stacks history entries
+ * (`replace`). The net-worth hero is shared by both sections; credit cards
+ * live under Cards now — the Banks section shows banks and cash only.
+ */
 export function WealthPage() {
   const { t } = useTranslation("wealth")
   const navigate = useNavigate()
   const { getToken } = useAuth()
   const { currency } = useCurrency()
+  const { activeOrg } = useOrg()
+  const canWrite = canWriteRole(activeOrg?.role)
+  const canDelete = canDeleteRole(activeOrg?.role)
   const symbol = currencySymbol(currency)
   const { balancesVisible, setBalancesVisible } = useBalancePrivacy()
-  const [accounts, setAccounts] = useState<WealthAccount[]>([])
+  const [searchParams, setSearchParams] = useSearchParams()
+  const tab: WealthTab = searchParams.get("tab") === "cards" ? "cards" : "banks"
+  // The Cards body mounts on its first visit and then STAYS mounted (hidden),
+  // so switching back and forth never re-fetches or flashes a skeleton.
+  const [cardsMounted, setCardsMounted] = useState(tab === "cards")
+  useEffect(() => { if (tab === "cards") setCardsMounted(true) }, [tab])
+
+  function setTab(next: WealthTab) {
+    if (next === tab) return
+    setSearchParams(
+      (prev) => {
+        const n = new URLSearchParams(prev)
+        if (next === "cards") n.set("tab", "cards")
+        else n.delete("tab")
+        return n
+      },
+      { replace: true },
+    )
+  }
+
+  const [accounts, setAccounts] = useState<AccountRow[]>([])
   const [spaces, setSpaces] = useState<WealthAccount[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
-  // What the create sheet is adding — a bank account or a credit card.
-  const [createKind, setCreateKind] = useState<"bank" | "credit_card">("bank")
   const [upgradeOpen, setUpgradeOpen] = useState(false)
-  const [upgradeKind, setUpgradeKind] = useState<"bank" | "credit_card">("bank")
   const [quota, setQuota] = useState<BankQuota | null>(null)
   const [form, setForm] = useState<CreateForm>(emptyCreate)
-  const [cardForm, setCardForm] = useState<CardFormState>(emptyCardForm)
-  // Inline error under the exact field that failed validation.
-  const [cardErrors, setCardErrors] = useState<Partial<Record<keyof CardFormState, string>>>({})
   const [editing, setEditing] = useState<WealthAccount | null>(null)
   const [adjusting, setAdjusting] = useState<WealthAccount | null>(null)
   const [transferOpen, setTransferOpen] = useState(false)
@@ -222,11 +256,14 @@ export function WealthPage() {
     setDropBoth(null)
   }
 
-  // Optimistically apply the new active-card order, then persist to the DB.
+  // Optimistically apply the new active-bank order, then persist to the DB.
+  // Rows that are not part of the order (archived, credit-card accounts) keep
+  // their place after it.
   async function persistOrder(ids: string[]) {
     const byId = new Map(accounts.map((a) => [a.id, a]))
-    const nextActive = ids.map((id) => byId.get(id)).filter((a): a is WealthAccount => !!a)
-    setAccounts([...nextActive, ...accounts.filter((a) => a.archived_at)])
+    const ordered = ids.map((id) => byId.get(id)).filter((a): a is AccountRow => !!a)
+    const rest = accounts.filter((a) => !ids.includes(a.id))
+    setAccounts([...ordered, ...rest])
     try {
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
@@ -244,25 +281,25 @@ export function WealthPage() {
   }
 
   // `total` is assets − card debt (a card's available credit is never counted).
-  const { active, total, assets, liabilities } = useWealthSummary(accounts)
+  // Net worth still counts EVERY account, cards included — only the Banks list
+  // below leaves credit cards out (they live under Cards).
+  const { total, assets, liabilities } = useWealthSummary(accounts)
   // Money parked in Spaces is still the user's money, so net worth must include
   // it (a bank→Space transfer nets to zero). /api/spaces 403s for business orgs,
   // so this is naturally personal-only.
   const savedTotal = spaces.filter((s) => !s.archived_at).reduce((sum, s) => sum + Number(s.current_balance), 0)
   const netWorth = total + savedTotal
-  const archived = useMemo(() => accounts.filter((a) => a.archived_at), [accounts])
+  const banks = useMemo(() => accounts.filter((a) => !isLiabilityType(a.type)), [accounts])
+  const active = useMemo(() => banks.filter((a) => !a.archived_at), [banks])
+  const archived = useMemo(() => banks.filter((a) => a.archived_at), [banks])
   // Free counts only ACTIVE banks (closing frees a slot); paid counts the TOTAL
   // incl. closed (the 20 cap includes closed accounts). Live count from the list
   // (fresher than the /quota snapshot) measured against the plan limit.
   const isFreePlan = (quota?.plan_key ?? "free") === "free"
   const bankCount = isFreePlan
     ? active.filter((a) => a.type === "bank").length
-    : accounts.filter((a) => a.type === "bank").length
+    : banks.filter((a) => a.type === "bank").length
   const atBankLimit = quota != null && bankCount >= quota.bank_accounts.limit
-  const cardCount = isFreePlan
-    ? active.filter((a) => isLiabilityType(a.type)).length
-    : accounts.filter((a) => isLiabilityType(a.type)).length
-  const atCardLimit = quota?.credit_cards != null && cardCount >= quota.credit_cards.limit
 
   async function load({ silent = false }: { silent?: boolean } = {}) {
     const token = await getToken()
@@ -270,7 +307,7 @@ export function WealthPage() {
     if (!silent) setLoading(true)
     try {
       const [rows, q, spaceRows] = await Promise.all([
-        apiGet<WealthAccount[]>("/api/wealth/accounts", token),
+        apiGet<AccountRow[]>("/api/wealth/accounts", token),
         apiGet<BankQuota>("/api/wealth/quota", token).catch(() => null),
         // Personal-only; 403s for business orgs → treated as no Spaces.
         apiGet<WealthAccount[]>("/api/spaces", token).catch(() => [] as WealthAccount[]),
@@ -303,64 +340,11 @@ export function WealthPage() {
     // At the plan's bank allowance the Add button becomes an upgrade prompt —
     // opening the form would only end in the server's 402.
     if (atBankLimit) {
-      setUpgradeKind("bank")
       setUpgradeOpen(true)
       return
     }
-    setCreateKind("bank")
     setForm(emptyCreate)
     setCreateOpen(true)
-  }
-
-  function openCreateCard() {
-    if (atCardLimit) {
-      setUpgradeKind("credit_card")
-      setUpgradeOpen(true)
-      return
-    }
-    setCreateKind("credit_card")
-    setCardForm(emptyCardForm)
-    setCardErrors({})
-    setCreateOpen(true)
-  }
-
-  async function handleCreateCard() {
-    const problem = validateCardForm(cardForm, new Date().toISOString().slice(0, 10))
-    if (problem) {
-      const message =
-        problem === "name_required" ? t("bankNameRequired")
-        : problem === "limit_invalid" ? t("creditLimitRequired")
-        : problem === "debt_invalid" ? t("amountOwedInvalid")
-        : problem === "same_day" ? t("daysMustDiffer")
-        : problem === "closing_day_invalid" ? t("closingDayRequired")
-        : problem === "due_day_invalid" ? t("dueDayRequired")
-        : problem === "statement_balance_invalid" ? t("statementBalanceRequired")
-        : t("statementDateRequired")
-      setCardErrors({ [cardFormErrorField(problem)]: message })
-      toast.error(message)
-      return
-    }
-    if (amountExceedsLimit(cardForm.credit_limit) || amountExceedsLimit(cardForm.current_debt) || amountExceedsLimit(cardForm.statement_balance)) {
-      toast.error(t("common.amountTooLarge"))
-      return
-    }
-    setSaving(true)
-    try {
-      const token = await getToken()
-      if (!token) throw new Error("Not authenticated")
-      await apiPost("/api/wealth/accounts", token, cardCreatePayload(cardForm))
-      clearApiCache()
-      toast.success(t("accountAdded"))
-      setCreateOpen(false)
-      await load()
-    } catch (err) {
-      let upgrade = false
-      try { upgrade = !!(JSON.parse((err as Error).message) as { upgradeHint?: boolean }).upgradeHint } catch { /* not json */ }
-      if (upgrade) { setUpgradeKind("credit_card"); setUpgradeOpen(true) }
-      else toast.error(apiErrorMessage(err, t("couldNotAdd")))
-    } finally {
-      setSaving(false)
-    }
   }
 
   // Optimistic default flip: exactly one active account holds the badge.
@@ -465,7 +449,9 @@ export function WealthPage() {
         </Button>
       </div>
 
-      {/* Net-worth hero */}
+      <WealthTabs value={tab} onChange={setTab} />
+
+      {/* Net-worth hero — shared by both sections */}
       <div className="rounded-2xl border bg-gradient-to-br from-primary/10 via-card to-card p-5 sm:p-6">
         <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("netWorth")}</p>
         {loading ? (
@@ -473,31 +459,51 @@ export function WealthPage() {
         ) : (
           <>
             <p className="mt-1 text-3xl font-bold tabular-nums sm:text-4xl">{formatMoney(netWorth, currency, balancesVisible)}</p>
-            {liabilities > 0 && (
-              <p className="mt-1.5 inline-flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
-                <span className="tabular-nums">{t("assets")}: {formatMoney(assets + savedTotal, currency, balancesVisible)}</span>
-                <span aria-hidden>·</span>
-                <span className="tabular-nums text-red-600 dark:text-red-400">{t("owedOnCards")}: {formatMoney(liabilities, currency, balancesVisible)}</span>
-              </p>
-            )}
-            {savedTotal > 0 && (
-              <button
-                type="button"
-                onClick={() => navigate("/spaces")}
-                className="mt-1.5 inline-flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground hover:text-foreground"
-              >
-                <span className="tabular-nums">{t("availableLabel")}: {formatMoney(total, currency, balancesVisible)}</span>
-                <span aria-hidden>·</span>
-                <span className="tabular-nums text-emerald-600 dark:text-emerald-400">{t("savedInSpaces")}: {formatMoney(savedTotal, currency, balancesVisible)} →</span>
-              </button>
+            {(liabilities > 0 || savedTotal > 0) && (
+              <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                {liabilities > 0 && (
+                  <p className="inline-flex flex-wrap items-center gap-x-2">
+                    <span className="tabular-nums">{t("assets")}: {formatMoney(assets + savedTotal, currency, balancesVisible)}</span>
+                    <span aria-hidden>·</span>
+                    <button
+                      type="button"
+                      onClick={() => setTab("cards")}
+                      className="ios-tap tabular-nums text-red-600 underline-offset-2 hover:underline dark:text-red-400"
+                    >
+                      {t("owedOnCards")}: {formatMoney(liabilities, currency, balancesVisible)}
+                    </button>
+                  </p>
+                )}
+                {savedTotal > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => navigate("/spaces")}
+                    className="inline-flex flex-wrap items-center gap-x-2 hover:text-foreground"
+                  >
+                    <span className="tabular-nums">{t("availableLabel")}: {formatMoney(total, currency, balancesVisible)}</span>
+                    <span aria-hidden>·</span>
+                    <span className="tabular-nums text-emerald-600 dark:text-emerald-400">{t("savedInSpaces")}: {formatMoney(savedTotal, currency, balancesVisible)} →</span>
+                  </button>
+                )}
+              </div>
             )}
           </>
         )}
-        <div className="mt-4 flex items-center justify-between gap-2">
+      </div>
+
+      {/* ── Banks ─────────────────────────────────────────────────────────── */}
+      <div
+        role="tabpanel"
+        id="wealth-panel-banks"
+        aria-labelledby="wealth-tab-banks"
+        hidden={tab !== "banks"}
+        className="space-y-4 sm:space-y-6 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-200"
+      >
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-sm text-muted-foreground">
             {active.length} {active.length === 1 ? t("account") : t("accounts")}
             {quota && (
-              <span className="ml-2 text-xs tabular-nums opacity-80">· {t("bankUsage", { current: bankCount, limit: quota.bank_accounts.limit })}</span>
+              <span className="ms-2 text-xs tabular-nums opacity-80">· {t("bankUsage", { current: bankCount, limit: quota.bank_accounts.limit })}</span>
             )}
           </p>
           <div className="flex flex-wrap items-center justify-end gap-2">
@@ -506,115 +512,124 @@ export function WealthPage() {
                 <ArrowLeftRight className="size-4" /> {t("transfer")}
               </Button>
             )}
-            <Button size="sm" variant="outline" onClick={openCreateCard} disabled={loading} className="relative">
-              {atCardLimit ? <Crown className="size-4 text-amber-500 dark:text-amber-400" /> : <CreditCard className="size-4" />}
-              {t("addCard")}
-            </Button>
             <Button size="sm" onClick={openCreate} disabled={loading} className="relative">
               {atBankLimit ? <Crown className="size-4 text-amber-500 dark:text-amber-400" /> : <Plus className="size-4" />}
               {t("addBank")}
             </Button>
           </div>
         </div>
+
+        {loading ? (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {[1, 2, 3].map((i) => <Skeleton key={i} className="h-32 rounded-2xl" />)}
+          </div>
+        ) : (
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragStart={onDragStart}
+            onDragMove={onDragMove}
+            onDragEnd={onDragEnd}
+            onDragCancel={onDragCancel}
+          >
+            <div ref={cardsRef} className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {active.map((account) => (
+                <DndAccountCard
+                  key={account.id}
+                  account={account}
+                  dragging={draggingId === account.id}
+                  drop={drop && drop.id === account.id && draggingId !== account.id ? drop : null}
+                >
+                  {(handle) => (
+                    <AccountCard
+                      account={account}
+                      currency={currency}
+                      balancesVisible={balancesVisible}
+                      handle={handle}
+                      onOpen={() => navigate(`/wealth/${account.id}`)}
+                      onAdjust={() => setAdjusting(account)}
+                      onEdit={() => setEditing(account)}
+                      onArchive={() => deleteOrArchive(account)}
+                      onSetDefault={(next) => setAsDefault(account, next)}
+                      saving={saving}
+                    />
+                  )}
+                </DndAccountCard>
+              ))}
+              {bankCount === 0 && (
+                <button
+                  type="button"
+                  onClick={openCreate}
+                  className="pressable ios-tap flex min-h-32 flex-col items-center justify-center gap-2 rounded-2xl border border-dashed p-4 text-center text-muted-foreground transition-colors hover:bg-muted/50"
+                >
+                  <Plus className="size-5" />
+                  <span className="text-sm font-medium">{t("addBankAccount")}</span>
+                  <span className="text-xs">{t("cashAlwaysHere")}</span>
+                </button>
+              )}
+            </div>
+            <DragOverlay dropAnimation={null}>
+              {draggingId ? (
+                <div className="rounded-2xl border bg-card p-4 opacity-95 shadow-xl ring-2 ring-primary cursor-grabbing">
+                  <div className="flex items-center gap-3">
+                    <WealthAccountIcon account={banks.find((a) => a.id === draggingId) ?? { type: "bank", icon: "bank" }} className="size-10" />
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold">{accountDisplayName(banks.find((a) => a.id === draggingId) ?? { bank_name: "", nickname: "" })}</p>
+                      <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                        {drop?.kind === "transfer"
+                          ? <><ArrowLeftRight className="size-3" /> {t("transfer")}</>
+                          : <><GripVertical className="size-3" /> {t("reorder")}</>}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+            </DragOverlay>
+          </DndContext>
+        )}
+        {active.length >= 2 && (
+          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <ArrowLeftRight className="size-3" /> {t("dragHint")}
+          </p>
+        )}
+
+        {archived.length > 0 && (
+          <div className="space-y-3">
+            <p className="text-sm font-medium text-muted-foreground">{t("archived")}</p>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {archived.map((account) => (
+                <div key={account.id} className="flex items-center justify-between gap-3 rounded-2xl border bg-card p-4 opacity-70">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <WealthAccountIcon account={account} className="grayscale" />
+                    <div className="min-w-0">
+                      <div className="flex min-w-0 items-center gap-1.5">
+                        <p className="truncate text-sm font-semibold">{accountDisplayName(account)}</p>
+                        <Badge variant="outline" className="shrink-0 py-0 text-[10px]">{t("archived")}</Badge>
+                      </div>
+                      <p className="truncate text-xs text-muted-foreground tabular-nums">{formatMoney(Number(account.current_balance), currency, balancesVisible)}</p>
+                    </div>
+                  </div>
+                  <Button size="sm" variant="outline" onClick={() => restore(account)} disabled={saving}>
+                    <RotateCcw className="size-4" /> {t("restore")}
+                  </Button>
+                </div>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground">{t("archivedHint")}</p>
+          </div>
+        )}
       </div>
 
-      {loading ? (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {[1, 2, 3].map((i) => <Skeleton key={i} className="h-32 rounded-2xl" />)}
-        </div>
-      ) : (
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragStart={onDragStart}
-          onDragMove={onDragMove}
-          onDragEnd={onDragEnd}
-          onDragCancel={onDragCancel}
+      {/* ── Cards ─────────────────────────────────────────────────────────── */}
+      {cardsMounted && (
+        <div
+          role="tabpanel"
+          id="wealth-panel-cards"
+          aria-labelledby="wealth-tab-cards"
+          hidden={tab !== "cards"}
+          className="motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-200"
         >
-          <div ref={cardsRef} className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {active.map((account) => (
-              <DndAccountCard
-                key={account.id}
-                account={account}
-                dragging={draggingId === account.id}
-                drop={drop && drop.id === account.id && draggingId !== account.id ? drop : null}
-              >
-                {(handle) => (
-                  <AccountCard
-                    account={account}
-                    currency={currency}
-                    balancesVisible={balancesVisible}
-                    handle={handle}
-                    onOpen={() => navigate(`/wealth/${account.id}`)}
-                    onAdjust={() => setAdjusting(account)}
-                    onEdit={() => setEditing(account)}
-                    onArchive={() => deleteOrArchive(account)}
-                    onSetDefault={(next) => setAsDefault(account, next)}
-                    saving={saving}
-                  />
-                )}
-              </DndAccountCard>
-            ))}
-            {bankCount === 0 && (
-              <button
-                type="button"
-                onClick={openCreate}
-                className="pressable ios-tap flex min-h-32 flex-col items-center justify-center gap-2 rounded-2xl border border-dashed p-4 text-center text-muted-foreground transition-colors hover:bg-muted/50"
-              >
-                <Plus className="size-5" />
-                <span className="text-sm font-medium">{t("addBankAccount")}</span>
-                <span className="text-xs">{t("cashAlwaysHere")}</span>
-              </button>
-            )}
-          </div>
-          <DragOverlay dropAnimation={null}>
-            {draggingId ? (
-              <div className="rounded-2xl border bg-card p-4 opacity-95 shadow-xl ring-2 ring-primary cursor-grabbing">
-                <div className="flex items-center gap-3">
-                  <WealthAccountIcon account={accounts.find((a) => a.id === draggingId) ?? { type: "bank", icon: "bank" }} className="size-10" />
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold">{accountDisplayName(accounts.find((a) => a.id === draggingId) ?? { bank_name: "", nickname: "" })}</p>
-                    <p className="flex items-center gap-1 text-xs text-muted-foreground">
-                      {drop?.kind === "transfer"
-                        ? <><ArrowLeftRight className="size-3" /> {t("transfer")}</>
-                        : <><GripVertical className="size-3" /> {t("reorder")}</>}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            ) : null}
-          </DragOverlay>
-        </DndContext>
-      )}
-      {active.length >= 2 && (
-        <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <ArrowLeftRight className="size-3" /> {t("dragHint")}
-        </p>
-      )}
-
-      {archived.length > 0 && (
-        <div className="space-y-3">
-          <p className="text-sm font-medium text-muted-foreground">{t("archived")}</p>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {archived.map((account) => (
-              <div key={account.id} className="flex items-center justify-between gap-3 rounded-2xl border bg-card p-4 opacity-70">
-                <div className="flex min-w-0 items-center gap-3">
-                  <WealthAccountIcon account={account} className="grayscale" />
-                  <div className="min-w-0">
-                    <div className="flex min-w-0 items-center gap-1.5">
-                      <p className="truncate text-sm font-semibold">{accountDisplayName(account)}</p>
-                      <Badge variant="outline" className="shrink-0 py-0 text-[10px]">{t("archived")}</Badge>
-                    </div>
-                    <p className="truncate text-xs text-muted-foreground tabular-nums">{formatMoney(Number(account.current_balance), currency, balancesVisible)}</p>
-                  </div>
-                </div>
-                <Button size="sm" variant="outline" onClick={() => restore(account)} disabled={saving}>
-                  <RotateCcw className="size-4" /> {t("restore")}
-                </Button>
-              </div>
-            ))}
-          </div>
-          <p className="text-xs text-muted-foreground">{t("archivedHint")}</p>
+          <CardsTab currency={currency} balancesVisible={balancesVisible} canWrite={canWrite} canDelete={canDelete} />
         </div>
       )}
 
@@ -626,25 +641,17 @@ export function WealthPage() {
               <span className="flex size-9 items-center justify-center rounded-full bg-amber-500/15">
                 <Crown className="size-4 text-amber-500 dark:text-amber-400" />
               </span>
-              {upgradeKind === "credit_card"
-                ? (isFreePlan ? t("upgradeCardsTitle") : t("cardLimitTitle"))
-                : (isFreePlan ? t("upgradeBanksTitle") : t("bankLimitTitle"))}
+              {isFreePlan ? t("upgradeBanksTitle") : t("bankLimitTitle")}
             </DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            {upgradeKind === "credit_card"
-              ? (isFreePlan
-                  ? t("upgradeCardsBody", { limit: quota?.credit_cards?.limit ?? 1 })
-                  : t("cardLimitBody", { limit: quota?.credit_cards?.limit ?? 20 }))
-              : (isFreePlan
-                  ? t("upgradeBanksBody", { limit: quota?.bank_accounts.limit ?? 1 })
-                  : t("bankLimitBody", { limit: quota?.bank_accounts.limit ?? 20 }))}
+            {isFreePlan
+              ? t("upgradeBanksBody", { limit: quota?.bank_accounts.limit ?? 1 })
+              : t("bankLimitBody", { limit: quota?.bank_accounts.limit ?? 20 })}
           </p>
           {quota && (
             <p className="text-xs font-medium tabular-nums text-muted-foreground">
-              {upgradeKind === "credit_card"
-                ? t("cardUsage", { current: cardCount, limit: quota.credit_cards?.limit ?? 1 })
-                : t("bankUsage", { current: bankCount, limit: quota.bank_accounts.limit })}
+              {t("bankUsage", { current: bankCount, limit: quota.bank_accounts.limit })}
             </p>
           )}
           <DialogFooter className="gap-2">
@@ -661,23 +668,11 @@ export function WealthPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Create bank / credit-card dialog */}
+      {/* Create bank dialog */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="inset-x-0 bottom-0 top-auto flex max-h-[92svh] w-full max-w-full translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-t-2xl p-0 sm:inset-x-auto sm:bottom-auto sm:top-[7svh] sm:left-1/2 sm:max-h-[86svh] sm:w-full sm:max-w-md sm:-translate-x-1/2 sm:rounded-2xl">
-          <DialogHeader className="shrink-0 border-b px-6 pb-3 pt-6"><DialogTitle>{createKind === "credit_card" ? t("addCreditCard") : t("addBankAccount")}</DialogTitle></DialogHeader>
+          <DialogHeader className="shrink-0 border-b px-6 pb-3 pt-6"><DialogTitle>{t("addBankAccount")}</DialogTitle></DialogHeader>
           <div className="min-h-0 flex-1 space-y-4 overflow-y-auto scrollbar-thin px-6 py-4">
-            {createKind === "credit_card" ? (
-              <>
-                <CreditCardFormFields
-                  form={cardForm}
-                  onChange={(patch) => { setCardForm((f) => ({ ...f, ...patch })); setCardErrors({}) }}
-                  mode="create"
-                  symbol={symbol}
-                  autoFocusName
-                  errors={cardErrors}
-                />
-              </>
-            ) : (
             <BankAccountFormFields
               form={form}
               onChange={(patch) => setForm((f) => ({ ...f, ...patch }))}
@@ -696,12 +691,11 @@ export function WealthPage() {
                 </div>
               }
             />
-            )}
           </div>
           <DialogFooter className="shrink-0 border-t px-6 pb-6 pt-3">
             <Button variant="outline" onClick={() => setCreateOpen(false)}>{t("cancel")}</Button>
-            <Button onClick={createKind === "credit_card" ? handleCreateCard : handleCreate} disabled={saving}>
-              {saving ? t("saving") : createKind === "credit_card" ? t("addCard") : t("addAccount")}
+            <Button onClick={handleCreate} disabled={saving}>
+              {saving ? t("saving") : t("addAccount")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -725,6 +719,75 @@ export function WealthPage() {
         currency={currency}
         onDone={load}
       />
+    </div>
+  )
+}
+
+/**
+ * The Banks / Cards switcher: a real tablist (arrow keys move between tabs,
+ * the selected tab is the only tab stop) with one sliding pill behind the
+ * selected tab — a transform on a shared element, so the change animates
+ * without any layout work; reduced-motion users get an instant swap.
+ */
+function WealthTabs({ value, onChange }: { value: WealthTab; onChange: (next: WealthTab) => void }) {
+  const { t } = useTranslation("wealth")
+  const refs = useRef<Record<WealthTab, HTMLButtonElement | null>>({ banks: null, cards: null })
+  const tabs: { key: WealthTab; label: string; icon: typeof Landmark }[] = [
+    { key: "banks", label: t("cards.tabBanks"), icon: Landmark },
+    { key: "cards", label: t("cards.tabCards"), icon: CreditCard },
+  ]
+
+  function onKeyDown(e: KeyboardEvent<HTMLButtonElement>) {
+    const order: WealthTab[] = ["banks", "cards"]
+    const i = order.indexOf(value)
+    let next: WealthTab | null = null
+    if (e.key === "ArrowRight" || e.key === "ArrowDown") next = order[(i + 1) % order.length]
+    else if (e.key === "ArrowLeft" || e.key === "ArrowUp") next = order[(i - 1 + order.length) % order.length]
+    else if (e.key === "Home") next = order[0]
+    else if (e.key === "End") next = order[order.length - 1]
+    if (!next) return
+    e.preventDefault()
+    onChange(next)
+    refs.current[next]?.focus()
+  }
+
+  return (
+    <div
+      role="tablist"
+      aria-label={t("cards.tabsLabel")}
+      className="relative grid w-full grid-cols-2 rounded-xl border bg-muted/60 p-1 sm:w-auto sm:min-w-80 sm:max-w-sm"
+    >
+      <span
+        aria-hidden
+        className={cn(
+          "absolute inset-y-1 start-1 w-[calc(50%-4px)] rounded-lg bg-background shadow-sm ring-1 ring-border/60 transition-transform duration-200 ease-out motion-reduce:transition-none",
+          value === "cards" && "ltr:translate-x-full rtl:-translate-x-full",
+        )}
+      />
+      {tabs.map((tab) => {
+        const selected = tab.key === value
+        return (
+          <button
+            key={tab.key}
+            ref={(el) => { refs.current[tab.key] = el }}
+            type="button"
+            role="tab"
+            id={`wealth-tab-${tab.key}`}
+            aria-selected={selected}
+            aria-controls={`wealth-panel-${tab.key}`}
+            tabIndex={selected ? 0 : -1}
+            onClick={() => onChange(tab.key)}
+            onKeyDown={onKeyDown}
+            className={cn(
+              "ios-tap relative z-10 flex min-h-11 items-center justify-center gap-2 rounded-lg px-4 text-sm font-medium outline-none transition-colors duration-200 focus-visible:ring-2 focus-visible:ring-ring",
+              selected ? "text-foreground" : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            <tab.icon className="size-4" aria-hidden />
+            {tab.label}
+          </button>
+        )
+      })}
     </div>
   )
 }
@@ -787,7 +850,7 @@ function DndAccountCard({
 function AccountCard({
   account, currency, balancesVisible, handle, onOpen, onAdjust, onEdit, onArchive, onSetDefault, saving,
 }: {
-  account: WealthAccount
+  account: AccountRow
   currency: string
   balancesVisible: boolean
   handle: HandleProps
@@ -800,16 +863,15 @@ function AccountCard({
 }) {
   const { t } = useTranslation("wealth")
   const isCash = account.type === "cash"
-  const isCard = isLiabilityType(account.type)
-  const usage = isCard ? creditUsage(account.credit_limit, account.current_balance) : null
-  const kindLabel = isCash ? t("cash") : isCard ? t("creditCard") : t("bank")
+  const kindLabel = isCash ? t("cash") : t("bank")
+  const cardCount = account.card_count ?? 0
 
   return (
     // "Stretched overlay" card: a single full-bleed button is the click target
     // (z-0); the visible content sits above it (pointer-events-none) and only the
-    // genuinely interactive bits — Adjust + the actions menu — re-enable pointer
-    // events. This keeps the Adjust control right next to the balance without
-    // nesting interactive elements inside another button.
+    // genuinely interactive bits — Adjust, the cards badge + the actions menu —
+    // re-enable pointer events. This keeps the Adjust control right next to the
+    // balance without nesting interactive elements inside another button.
     <div className={`group relative rounded-2xl border bg-card transition-colors hover:border-primary/40 ${isCash ? "ring-1 ring-primary/20" : ""}`}>
       <button
         type="button"
@@ -819,7 +881,7 @@ function AccountCard({
       />
 
       <div className="pointer-events-none relative z-10 flex flex-col p-4">
-        <div className="flex min-w-0 items-center gap-3 pr-16">
+        <div className="flex min-w-0 items-center gap-3 pe-16">
           <WealthAccountIcon account={account} className="size-10" />
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold">{accountDisplayName(account)}</p>
@@ -830,13 +892,8 @@ function AccountCard({
         </div>
 
         <div className="mt-4 flex items-start gap-1.5">
-          {/* A card shows what is OWED (or its credit) — never a bare negative number. */}
           <p className="text-2xl font-bold tabular-nums">
-            {accountBalanceLabel(account, currency, balancesVisible, {
-              owed: (amount) => t("owed", { amount }),
-              credit: (amount) => t("cardCredit", { amount }),
-              nothingOwed: t("nothingOwed"),
-            })}
+            {formatMoney(Number(account.current_balance), currency, balancesVisible)}
           </p>
           <Button
             variant="ghost"
@@ -849,25 +906,28 @@ function AccountCard({
             <Pencil className="size-4" />
           </Button>
         </div>
-        {usage && usage.available !== null && usage.limit !== null && (
-          <p className="mt-1 truncate text-xs text-muted-foreground tabular-nums">
-            {balancesVisible
-              ? t("availableOf", { available: formatMoney(usage.available, currency), limit: formatMoney(usage.limit, currency) })
-              : t("availableCredit")}
-            {usage.overLimit && <span className="ml-1 font-medium text-red-600 dark:text-red-400">· {t("overLimit")}</span>}
-          </p>
-        )}
 
         <div className="mt-3 flex items-center justify-between">
           <span className="flex items-center gap-1.5">
             <Badge variant="secondary" className="gap-1">
-              {isCash ? <Wallet className="size-3" /> : isCard ? <CreditCard className="size-3" /> : null}
+              {isCash ? <Wallet className="size-3" /> : null}
               {kindLabel}
             </Badge>
             {account.is_default && (
               <Badge className="gap-1 border-amber-500/40 bg-amber-500/15 text-amber-700 dark:text-amber-300" variant="outline">
                 <Star className="size-3 fill-current" /> {t("defaultBadge")}
               </Badge>
+            )}
+            {cardCount > 0 && (
+              // Cards linked to this bank → the bank page's Cards section.
+              <Link
+                to={`/wealth/${account.id}#cards`}
+                onClick={(e) => e.stopPropagation()}
+                aria-label={`${t("cards.cardsOnBank", { count: cardCount })} — ${t("cards.viewCards")}`}
+                className="pointer-events-auto ios-tap inline-flex min-h-6 items-center gap-1 rounded-md border bg-card px-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+              >
+                <CreditCard className="size-3" aria-hidden /> {t("cards.cardsOnBank", { count: cardCount })}
+              </Link>
             )}
           </span>
           <span className="inline-flex items-center gap-0.5 text-xs font-medium text-muted-foreground transition-colors group-hover:text-primary">
@@ -876,7 +936,7 @@ function AccountCard({
         </div>
       </div>
 
-      <div className="absolute right-2 top-2 z-20 flex items-center gap-0.5">
+      <div className="absolute end-2 top-2 z-20 flex items-center gap-0.5">
         {/* Grip handle: the only drag activator. `touch-none` (touch-action:
             none) is what makes the drag start on mobile instead of scrolling. */}
         <button

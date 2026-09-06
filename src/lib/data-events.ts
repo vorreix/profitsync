@@ -18,8 +18,10 @@ export const WEALTH_CHANGED_EVENT = "wealth:accounts-changed"
 
 export type DataChangedDetail = { path: string }
 
-// Paths whose mutations can change a wealth account balance.
-const WEALTH_AFFECTING = /^\/api\/(transactions|wealth|trash|recurring|clients)\b/
+// Paths whose mutations can change a wealth account balance — or, for cards,
+// what the account pickers / wealth tiles show (a card is identity on top of an
+// account, so every card mutation refreshes the same surfaces).
+const WEALTH_AFFECTING = /^\/api\/(transactions|wealth|trash|recurring|clients|cards)\b/
 
 export function emitDataChanged(path: string): void {
   if (typeof window === "undefined") return

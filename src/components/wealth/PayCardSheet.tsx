@@ -6,6 +6,7 @@ import { ArrowRight, CreditCard } from "lucide-react"
 import { apiPost } from "@/lib/api"
 import { amountExceedsLimit } from "@/lib/money"
 import { isLiabilityType } from "@/lib/credit-card"
+import { usableCards, useCards } from "@/lib/use-cards"
 import type { CreditCardSummary, WealthAccount } from "@/lib/types"
 import { accountDisplayName, currencySymbol, formatMoney } from "@/lib/wealth"
 import { cn } from "@/lib/utils"
@@ -26,6 +27,9 @@ export type PayPreset = "statement" | "full" | "other"
  * remaining, everything owed, or another amount — and ProfitSync records the
  * proper TRANSFER (POST /api/wealth/transfer, bank → card). The user never has
  * to know it is a transfer, and it is never an expense.
+ *
+ * "Pay from" also offers each bank's DEBIT cards ("via •••• 1234"): the money
+ * still leaves the bank, and the card is recorded on that leg (`from_card_id`).
  */
 export function PayCardSheet({
   open,
@@ -47,6 +51,7 @@ export function PayCardSheet({
   onDone?: () => void
 }) {
   const { t } = useTranslation("wealth")
+  const { t: tTx } = useTranslation("transactions")
   const { getToken } = useAuth()
   const symbol = currencySymbol(currency)
 
@@ -55,10 +60,16 @@ export function PayCardSheet({
     () => accounts.filter((a) => !a.archived_at && a.id !== card.id && !isLiabilityType(a.type) && a.type !== "space"),
     [accounts, card.id],
   )
-  const statementRemaining = summary?.statement?.remaining ?? 0
+  // Debit cards on those banks — a way of paying, not a source of money.
+  const { cards } = useCards({ enabled: open })
+  const debitCards = useMemo(() => usableCards(cards).filter((c) => c.kind === "debit"), [cards])
   const debt = summary?.usage.debt ?? 0
+  // A statement can't be paid beyond what the card owes right now (a payment
+  // recorded before the close, or a mistyped onboarding statement).
+  const statementRemaining = Math.max(0, Math.min(summary?.statement?.remaining ?? 0, debt))
 
   const [fromId, setFromId] = useState("")
+  const [fromCardId, setFromCardId] = useState("")
   const [preset, setPreset] = useState<PayPreset>("statement")
   const [amount, setAmount] = useState("")
   const [date, setDate] = useState(today())
@@ -67,8 +78,7 @@ export function PayCardSheet({
 
   useEffect(() => {
     if (!open) return
-    const defaultSource = sources.find((a) => a.is_default) ?? sources.find((a) => a.type === "bank") ?? sources[0]
-    setFromId(defaultSource?.id ?? "")
+    setFromCardId("")
     const startPreset: PayPreset = initialPreset === "statement" && statementRemaining <= 0 ? (debt > 0 ? "full" : "other") : initialPreset
     setPreset(startPreset)
     setAmount(startPreset === "statement" ? String(statementRemaining) : startPreset === "full" ? String(debt) : "")
@@ -77,6 +87,17 @@ export function PayCardSheet({
     setSaving(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
+
+  // Preselect where the money comes from. Kept separate from the open-effect
+  // because the accounts can arrive AFTER the sheet opens (the card screen
+  // loads them in parallel) — without this the sheet would sit there with no
+  // source and a permanently disabled button. Only fills an empty choice, so it
+  // never overrides the user.
+  useEffect(() => {
+    if (!open || fromId) return
+    const defaultSource = sources.find((a) => a.is_default) ?? sources.find((a) => a.type === "bank") ?? sources[0]
+    if (defaultSource) setFromId(defaultSource.id)
+  }, [open, fromId, sources])
 
   function choose(p: PayPreset) {
     setPreset(p)
@@ -88,6 +109,7 @@ export function PayCardSheet({
   const amt = parseFloat(amount)
   const amountValid = !!amt && !isNaN(amt) && amt > 0
   const from = sources.find((a) => a.id === fromId)
+  const fromCard = fromCardId ? debitCards.find((c) => c.id === fromCardId) : undefined
 
   async function submit() {
     if (!fromId) { toast.error(t("selectAccount")); return }
@@ -99,6 +121,7 @@ export function PayCardSheet({
       if (!token) throw new Error("Not authenticated")
       await apiPost("/api/wealth/transfer", token, {
         from_account_id: fromId,
+        from_card_id: fromCardId || null,
         to_account_id: card.id,
         amount: amt,
         date,
@@ -133,7 +156,14 @@ export function PayCardSheet({
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto scrollbar-thin px-6 py-4">
           <div className="space-y-1.5">
             <Label className="text-xs text-muted-foreground">{t("payFrom")}</Label>
-            <AccountCombobox accounts={sources} value={fromId} onChange={setFromId} currency={currency} />
+            <AccountCombobox
+              accounts={sources}
+              cards={debitCards}
+              cardsLayout="nested"
+              value={fromCardId || fromId}
+              onChange={(id, picked) => { setFromId(picked ? picked.account_id : id); setFromCardId(picked?.card_id ?? "") }}
+              currency={currency}
+            />
           </div>
 
           <div className="space-y-2" role="radiogroup" aria-label={t("payAmount")}>
@@ -151,7 +181,7 @@ export function PayCardSheet({
                     disabled={disabled}
                     onClick={() => choose(o.key)}
                     className={cn(
-                      "pressable ios-tap flex min-h-11 items-center justify-between gap-3 rounded-xl border px-3 py-2 text-left text-sm transition-colors",
+                      "pressable ios-tap flex min-h-11 items-center justify-between gap-3 rounded-xl border px-3 py-2 text-start text-sm transition-colors",
                       selected ? "border-primary/60 bg-primary/5 ring-1 ring-primary/30" : "hover:bg-muted/50",
                       disabled && "opacity-50",
                     )}
@@ -181,7 +211,10 @@ export function PayCardSheet({
           </div>
 
           <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
-            <span className="truncate">{from ? accountDisplayName(from) : "…"}</span>
+            <span className="truncate">
+              {from ? accountDisplayName(from) : "…"}
+              {fromCard && <span className="ms-1" dir="ltr">{fromCard.last4 ? tTx("cardVia", { last4: fromCard.last4 }) : tTx("cardViaNoTail")}</span>}
+            </span>
             <ArrowRight className="size-3.5 shrink-0 rtl:rotate-180" aria-hidden />
             <span className="truncate">{accountDisplayName(card)}</span>
           </div>

@@ -47,7 +47,14 @@ export function ReferralBanner({ className }: { className?: string }) {
       <button type="button" onClick={() => navigate("/referrals")} className="min-w-0 flex-1 text-left text-sm hover:underline">
         {text}
       </button>
-      <button type="button" onClick={dismiss} aria-label="Dismiss" className="shrink-0 text-muted-foreground hover:text-foreground">
+      {/* The icon stays 16px; the BUTTON is a 36px target (the repo's floor for
+          compact icon controls) so it can be tapped on a phone. */}
+      <button
+        type="button"
+        onClick={dismiss}
+        aria-label="Dismiss"
+        className="-me-1.5 flex size-9 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+      >
         <X className="size-4" />
       </button>
     </div>

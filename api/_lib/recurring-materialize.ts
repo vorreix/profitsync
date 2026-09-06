@@ -18,7 +18,7 @@
 import { randomUUID } from "node:crypto"
 import { and, eq, lte, sql } from "drizzle-orm"
 import { db } from "../../src/lib/db/index.js"
-import { recurringRules, transactions, wealthAccounts } from "../../src/lib/db/schema.js"
+import { cards, recurringRules, transactions, wealthAccounts } from "../../src/lib/db/schema.js"
 import { balanceDelta } from "../../src/lib/wealth-ledger.js"
 import { buildRecurringTransferLegs } from "../../src/lib/recurring-transfer.js"
 import { occurrencesDue, ruleExhausted, todayIso, type Frequency, type FrequencyUnit } from "../../src/lib/recurring.js"
@@ -82,6 +82,21 @@ export async function materializeDueRecurring(orgId: string): Promise<Materializ
           result.skipped.push(rule.name)
           continue
         }
+        // A rule that pays with a card pauses while the card can't take new
+        // purchases (frozen — e.g. lost — or closed): the occurrence is NOT
+        // created and the cursor stays put, so unfreezing catches up. Same
+        // contract as the archived-account branch above.
+        if (rule.cardId) {
+          const [card] = await db
+            .select({ status: cards.status, accountId: cards.accountId })
+            .from(cards)
+            .where(and(eq(cards.id, rule.cardId), eq(cards.organizationId, orgId)))
+          if (!card || card.status !== "active" || card.accountId !== rule.wealthAccountId) {
+            await setRuleError(rule.id, !card ? "Card is missing — pick another card" : card.status === "frozen" ? "Card is frozen — unfreeze it or pick another card" : "Card is closed — pick another card")
+            result.skipped.push(rule.name)
+            continue
+          }
+        }
 
         const clientId = rule.clientId ?? (await ensureDefaultClient(orgId, rule.createdBy ?? "system"))
 
@@ -135,6 +150,8 @@ export async function materializeDueRecurring(orgId: string): Promise<Materializ
             .values({
               clientId,
               wealthAccountId: rule.wealthAccountId,
+              // Attribution follows the rule: the card that pays each occurrence.
+              cardId: rule.cardId,
               type: rule.type,
               amount: rule.amount,
               description: rule.name,

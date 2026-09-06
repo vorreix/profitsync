@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { useAuth } from "@clerk/clerk-react"
 import { toast } from "sonner"
@@ -7,6 +7,7 @@ import { apiPost } from "@/lib/api"
 import { amountExceedsLimit } from "@/lib/money"
 import { ACCEPT_ATTR, attachmentsListPath, uploadAttachment, validateFile } from "@/lib/attachments-client"
 import type { WealthAccount } from "@/lib/types"
+import { usableCards, useCards } from "@/lib/use-cards"
 import { accountDisplayName, currencySymbol, formatMoney } from "@/lib/wealth"
 import { WealthAccountIcon } from "@/components/WealthAccountIcon"
 import { Button } from "@/components/ui/button"
@@ -59,9 +60,14 @@ export function TransferWizard({
   const { getToken } = useAuth()
   const symbol = currencySymbol(currency)
   const active = accounts.filter((a) => !a.archived_at)
+  // A debit card can be the paying instrument on the "from" side: the money
+  // still leaves its bank, and the card is recorded on that leg (from_card_id).
+  const { cards } = useCards({ enabled: open })
+  const debitCards = useMemo(() => usableCards(cards).filter((c) => c.kind === "debit"), [cards])
 
   const [step, setStep] = useState<1 | 2>(1)
   const [fromId, setFromId] = useState("")
+  const [fromCardId, setFromCardId] = useState("")
   const [toId, setToId] = useState("")
   const [amount, setAmount] = useState("")
   const [date, setDate] = useState(today())
@@ -74,6 +80,7 @@ export function TransferWizard({
     if (!open) return
     setStep(1)
     setFromId(initialFromId ?? "")
+    setFromCardId("")
     setToId(initialToId ?? "")
     setAmount("")
     setDate(today())
@@ -108,6 +115,7 @@ export function TransferWizard({
       if (!token) throw new Error("Not authenticated")
       const res = await apiPost<{ group_id: string; attach_to: string }>("/api/wealth/transfer", token, {
         from_account_id: fromId,
+        from_card_id: fromCardId || null,
         to_account_id: toId,
         amount: amt,
         date,
@@ -141,7 +149,15 @@ export function TransferWizard({
           <div className="mb-4 flex items-center gap-2">
             <div className="min-w-0 flex-1 space-y-1">
               <Label className="text-xs text-muted-foreground">{t("fromAccount")}</Label>
-              <AccountCombobox accounts={active} value={fromId} onChange={setFromId} currency={currency} excludeIds={[toId]} />
+              <AccountCombobox
+                accounts={active}
+                cards={debitCards}
+                cardsLayout="nested"
+                value={fromCardId || fromId}
+                onChange={(id, picked) => { setFromId(picked ? picked.account_id : id); setFromCardId(picked?.card_id ?? "") }}
+                currency={currency}
+                excludeIds={[toId]}
+              />
             </div>
             <ArrowRight className="mt-5 size-4 shrink-0 text-muted-foreground rtl:rotate-180" />
             <div className="min-w-0 flex-1 space-y-1">

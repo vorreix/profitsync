@@ -61,6 +61,10 @@ import wealthQuota from "./_routes/wealth/quota.js"
 import recurring from "./_routes/recurring.js"
 import recurringById from "./_routes/recurring/[id].js"
 import wealthTransfer from "./_routes/wealth/transfer.js"
+import cardsList from "./_routes/cards.js"
+import cardsReorder from "./_routes/cards/reorder.js"
+import cardById from "./_routes/cards/[id].js"
+import cardSummary from "./_routes/cards/[id]/summary.js"
 import spaces from "./_routes/spaces.js"
 import spacesReorder from "./_routes/spaces/reorder.js"
 import spaceById from "./_routes/spaces/[id].js"
@@ -218,6 +222,11 @@ const routes: RoutePattern<ApiHandler>[] = [
   { segments: ["recurring"], handler: recurring },
   { segments: ["recurring", ":id"], handler: recurringById },
   { segments: ["wealth", "transfer"], handler: wealthTransfer },
+  // Cards (debit + credit, linked to banks). Static "reorder" before ":id".
+  { segments: ["cards"], handler: cardsList },
+  { segments: ["cards", "reorder"], handler: cardsReorder },
+  { segments: ["cards", ":id"], handler: cardById },
+  { segments: ["cards", ":id", "summary"], handler: cardSummary },
   // Spaces (personal savings buckets). Static "reorder" before the dynamic ":id".
   { segments: ["spaces"], handler: spaces },
   { segments: ["spaces", "reorder"], handler: spacesReorder },

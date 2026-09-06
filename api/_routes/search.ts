@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { and, asc, desc, eq, ilike, isNull, ne, or, sql } from "drizzle-orm"
 import { db, serialize } from "../../src/lib/db/index.js"
-import { categories, clients, quotations, transactions, wealthAccounts } from "../../src/lib/db/schema.js"
+import { cards, categories, clients, quotations, transactions, wealthAccounts } from "../../src/lib/db/schema.js"
 import { requireAuth } from "../_lib/auth.js"
 
 const ENTITY_LIMIT = 6
@@ -24,7 +24,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // query — word_similarity() wants the text, not the pattern.
   const term = `%${q.replace(/[\\%_]/g, "\\$&")}%`
 
-  const [clientRows, txRows, quoteRows, accountRows, categoryRows] = await Promise.all([
+  const [clientRows, txRows, quoteRows, accountRows, categoryRows, cardRows] = await Promise.all([
     db
       .select({ id: clients.id, name: clients.name, company: clients.company, status: clients.status })
       .from(clients)
@@ -102,6 +102,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .where(and(
         eq(wealthAccounts.organizationId, orgId),
         isNull(wealthAccounts.archivedAt),
+        // A credit card's liability account is surfaced as its CARD (below),
+        // never as a bank — one hit, one screen (/wealth/cards/:id).
+        ne(wealthAccounts.type, "credit_card"),
         or(ilike(wealthAccounts.bankName, term), ilike(wealthAccounts.nickname, term)),
       ))
       .orderBy(
@@ -115,6 +118,36 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .where(and(eq(categories.organizationId, orgId), ilike(categories.name, term)))
       .orderBy(sql`word_similarity(${q}, ${categories.name}) desc`, asc(categories.name))
       .limit(AUX_LIMIT),
+    // Cards: by nickname, the bank they sit on, their network or number tail.
+    db
+      .select({
+        id: cards.id,
+        kind: cards.kind,
+        name: cards.name,
+        network: cards.network,
+        last4: cards.last4,
+        tier: cards.tier,
+        design: cards.design,
+        brandColors: cards.brandColors,
+        status: cards.status,
+        accountBankName: wealthAccounts.bankName,
+        accountBrandDomain: wealthAccounts.brandDomain,
+      })
+      .from(cards)
+      .innerJoin(wealthAccounts, eq(wealthAccounts.id, cards.accountId))
+      .where(and(
+        eq(cards.organizationId, orgId),
+        ne(cards.status, "closed"),
+        isNull(wealthAccounts.archivedAt),
+        or(
+          ilike(cards.name, term),
+          ilike(wealthAccounts.bankName, term),
+          ilike(cards.network, term),
+          sql`${cards.last4} <> '' and ${q} like '%' || ${cards.last4} || '%'`,
+        ),
+      ))
+      .orderBy(sql`greatest(word_similarity(${q}, ${cards.name}), word_similarity(${q}, ${wealthAccounts.bankName})) desc`, asc(cards.name))
+      .limit(AUX_LIMIT),
   ])
 
   return res.json({
@@ -123,5 +156,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     quotations: quoteRows.map(serialize),
     accounts: accountRows.map(serialize),
     categories: categoryRows.map(serialize),
+    cards: cardRows.map(serialize),
   })
 }

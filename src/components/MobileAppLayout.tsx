@@ -146,6 +146,12 @@ function pageFabAction(pathname: string, actions: QuickAction[]): QuickAction | 
   if (clientMatch && clientMatch[1] !== "closed") {
     return { labelKey: "actions.addTransaction", icon: ArrowLeftRight, href: `/clients/${clientMatch[1]}?newTx=1`, kind: "transaction" }
   }
+  // On a card's own page → add a purchase on THAT card (the page opens its
+  // quick-add sheet with the card preselected on ?new=1).
+  const cardMatch = pathname.match(/^\/wealth\/cards\/([^/]+)$/)
+  if (cardMatch) {
+    return { labelKey: "wealth.addPurchase", icon: CreditCard, href: `/wealth/cards/${cardMatch[1]}?new=1`, kind: "transaction" }
+  }
   const match = SECTION_FAB.find(
     (s) => pathname === s.prefix || pathname.startsWith(s.prefix + "/"),
   )

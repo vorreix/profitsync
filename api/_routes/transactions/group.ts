@@ -13,8 +13,9 @@ import { amountExceedsLimit } from "../../../src/lib/money.js"
 import { notifyIfBudgetExceeded } from "../../_lib/notify-budget.js"
 import { refundShapeValid } from "../../../src/lib/tx-classify.js"
 import { USER_KINDS } from "../../_lib/tx-sql.js"
+import { attributeCard } from "../../_lib/cards.js"
 
-type AllocationInput = { wealth_account_id?: string; account_id?: string; amount?: number | string }
+type AllocationInput = { wealth_account_id?: string; account_id?: string; card_id?: string | null; amount?: number | string }
 
 /**
  * Atomic create of a "split" transaction: one logical transaction (same client /
@@ -58,14 +59,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: "allocations is required" })
   }
 
-  const legs = allocations
-    .map((a) => ({ accountId: a.wealth_account_id ?? a.account_id ?? "", amount: Number(a.amount) }))
-    .filter((a) => a.accountId && !isNaN(a.amount) && a.amount > 0)
-  if (legs.length === 0) {
+  const rawLegs = allocations
+    .map((a) => ({ accountId: a.wealth_account_id ?? a.account_id ?? "", cardId: a.card_id ?? null, amount: Number(a.amount) }))
+    .filter((a) => (a.accountId || a.cardId) && !isNaN(a.amount) && a.amount > 0)
+  if (rawLegs.length === 0) {
     return res.status(400).json({ error: "At least one allocation with an account and a positive amount is required" })
   }
-  if (legs.some((leg) => amountExceedsLimit(leg.amount))) {
+  if (rawLegs.some((leg) => amountExceedsLimit(leg.amount))) {
     return res.status(400).json({ error: "Amount is too large" })
+  }
+
+  // Resolve which card paid each leg and therefore which account the money
+  // lands on (api/_lib/cards.ts attributeCard — one rule for every write path).
+  const legs: { accountId: string; cardId: string | null; amount: number }[] = []
+  for (const leg of rawLegs) {
+    const attributed = await attributeCard(orgId, { cardId: leg.cardId, wealthAccountId: leg.accountId || null })
+    if (!attributed.ok) return res.status(400).json({ error: attributed.error })
+    if (!attributed.accountId) return res.status(400).json({ error: "Select an active bank or cash account" })
+    legs.push({ accountId: attributed.accountId, cardId: attributed.cardId, amount: leg.amount })
   }
 
   // Validate every referenced account is an active, org-scoped account.
@@ -75,7 +86,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     .where(and(eq(wealthAccounts.organizationId, orgId), isNull(wealthAccounts.archivedAt)))
   const byId = new Map(orgAccounts.map((a) => [a.id, a]))
   for (const leg of legs) {
-    if (!byId.has(leg.accountId)) return res.status(400).json({ error: "Select an active bank or cash account" })
+    const account = byId.get(leg.accountId)
+    if (!account) return res.status(400).json({ error: "Select an active bank or cash account" })
+    // A Space is a savings bucket — money only ever TRANSFERS in/out of it.
+    if (account.type === "space") return res.status(400).json({ error: "You can't record a transaction on a Space — move money in or out with a transfer instead." })
   }
 
   // Resolve the anchoring client (personal orgs use their hidden default client).
@@ -139,6 +153,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .values({
         clientId,
         wealthAccountId: leg.accountId,
+        cardId: leg.cardId,
         groupId,
         kind,
         type,

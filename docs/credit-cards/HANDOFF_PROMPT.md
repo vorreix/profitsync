@@ -20,23 +20,19 @@ You are reviewing and continuing PR **"feat(wealth): credit-card accounts as a l
 4. Statements (`credit_card_statements`) are immutable snapshots. What is paid is DERIVED: `statementRemaining(statement_balance, Σ incoming transfer legs dated after closing_date)`. Do not add a `paid_amount` column or an allocation table.
 5. Delete / restore / purge / edit must reverse or re-apply exactly the original effect once, for ALL legs of a group (see the fix in `api/_routes/trash/restore.ts`).
 6. Available credit is presentation only. Net worth is Σ signed balances (`summarizeWealth` in `src/lib/wealth.ts`).
-7. The unit gate is DB-free. Route behaviour is verified against the local Docker Postgres (`docs/budget-v2/LOCAL_DB.md`) with the dev server and Playwright — never against the shared Neon dev database. Migration 0062 is hand-written; `drizzle-kit generate` is out of sync with 0060+, so write SQL + journal entries by hand and bump `when`.
+7. The unit gate is DB-free. Route behaviour is verified against the `DATABASE_URL` in `.env.local` (the shared Neon dev instance) with the dev server and Playwright — there is no local Docker Postgres in this repo any more. Migrations are hand-written from 0060 on; `drizzle-kit generate` is out of sync with them, so write the SQL + journal entry by hand, bump `when` above the DB's newest applied migration, and verify in `information_schema` afterwards.
 
 ## How to verify anything you change
 
 ```bash
-docker start ps-budget-pg ps-budget-neonproxy          # local DB (creds in docs/budget-v2/.env.localdb)
-set -a; . docs/budget-v2/.env.localdb; set +a
-export DATABASE_URL="postgres://$LOCAL_DB_USER:$LOCAL_DB_PASSWORD@db.localtest.me:4444/$LOCAL_DB_NAME?sslmode=require"
-export NODE_TLS_REJECT_UNAUTHORIZED=0
-node scripts/db-migrate.mjs
-VITE_DISABLE_DEV_TOOLS=1 npm run dev -- --port 5173 --strictPort &
-PLAYWRIGHT_BASE_URL=http://localhost:5173 CLERK_PUBLISHABLE_KEY=$VITE_CLERK_PUBLISHABLE_KEY \
-  npx playwright test --project=chromium e2e/credit-card.spec.ts e2e/smoke.spec.ts
+node -r dotenv/config scripts/db-migrate.mjs dotenv_config_path=.env.local
+VITE_DISABLE_DEV_TOOLS=1 npm run dev -- --port 5180 --strictPort &   # not :5173, the user keeps their own there
+PLAYWRIGHT_BASE_URL=http://localhost:5180 CLERK_PUBLISHABLE_KEY=$VITE_CLERK_PUBLISHABLE_KEY \
+  npx playwright test --project=chromium e2e/cards.spec.ts e2e/credit-card.spec.ts e2e/smoke.spec.ts
 npm run i18n:check && npm run lint && npm run typecheck && npx vitest run
 ```
 
-In e2e specs, never send `x-org-id` from `localStorage.ps_active_org` — the saved storage state carries the stale business org; rely on the server's profile fallback after `/api/organizations/switch`.
+In e2e specs, pin the workspace EXPLICITLY: switch with `POST /api/organizations/switch`, keep the id, send it as `x-org-id` on every call and seed `localStorage.ps_active_org` with it in a `beforeEach` `addInitScript`. Relying on the server's profile fallback races with the app's own boot-time switch (which reads the storage state's stale business org) and silently runs assertions in the wrong workspace.
 
 ## What to look at in review
 

@@ -26,7 +26,7 @@
     "dashboard": "Dashboard",
     "clients": "Clients",
     "transactions": "Transactions",
-    "wealth": "Wealth",
+    "wealth": "Wealth & Cards",
     "quotations": "Quotations",
     "users": "Users",
     "organizations": "Organizations",
@@ -498,7 +498,13 @@
     "cardChart": "Chart",
     "cardBreakdown": "Top breakdown",
     "cardLatest": "Latest transactions",
-    "openFilters": "Open dashboard filters"
+    "openFilters": "Open dashboard filters",
+    "cardsRow": "Cards",
+    "cardsCount_one": "{{count}} card",
+    "cardsCount_other": "{{count}} cards",
+    "cardsOwed": "{{amount}} owed",
+    "cardsNothingOwed": "Nothing owed",
+    "cardsOpen": "Open cards"
   },
   "chart": {
     "incoming": "Incoming",
@@ -531,7 +537,8 @@
     "handlePosition": "Search handle position",
     "sideLeft": "Left edge",
     "sideRight": "Right edge",
-    "handleDragHint": "Tap or swipe the handle inward to search. Drag it up or down along the edge to place it wherever you like."
+    "handleDragHint": "Tap or swipe the handle inward to search. Drag it up or down along the edge to place it wherever you like.",
+    "cards": "Cards"
   },
   "resetData": {
     "title": "Reset all data",
@@ -820,7 +827,28 @@
     "transferBadge": "Transfer",
     "cardPaymentBadge": "Card payment",
     "owedShort": "{{amount}} owed",
-    "cardCreditShort": "{{amount}} credit"
+    "cardCreditShort": "{{amount}} credit",
+    "cardChip": {
+      "credit": "Credit",
+      "debit": "Debit",
+      "a11y": "{{kind}} card {{bank}} ending {{last4}}",
+      "a11yNoNumber": "{{kind}} card {{name}}",
+      "noNumber": "{{name}}"
+    },
+    "cardsHeading": "Cards",
+    "cardDebit": "Debit",
+    "cardCredit": "Credit",
+    "cardDebitBalance": "Debit · {{amount}}",
+    "cardCreditOwed": "Credit · {{amount}} owed",
+    "cardCreditNothingOwed": "Credit · nothing owed",
+    "cardExpired": "Expired",
+    "cardFrozenError": "That card is frozen or closed, so it can't take new payments. Pick another card or account.",
+    "cardPaidWith": "Paid with",
+    "cardVia": "via •••• {{last4}}",
+    "cardViaNoTail": "via card",
+    "cardAutopayBadge": "Autopay",
+    "nCards_one": "{{count}} card",
+    "nCards_other": "{{count}} cards"
   },
   "wealth": {
     "title": "Wealth",
@@ -1035,7 +1063,256 @@
     "amountOwedInvalid": "Enter the amount you owe today (0 if nothing)",
     "statementBalanceRequired": "Enter the statement balance",
     "statementDateRequired": "Enter the statement closing date (not in the future)",
-    "dayPlaceholder": "e.g. {{day}}"
+    "dayPlaceholder": "e.g. {{day}}",
+    "cardVisual": {
+      "debit": "debit",
+      "credit": "credit",
+      "a11yCard": "{{issuer}} {{kind}} card",
+      "cardEnding": "ending {{last4}}",
+      "expires": "expires {{expiry}}",
+      "frozen": "Frozen",
+      "closed": "Closed",
+      "expired": "Expired"
+    },
+    "cards": {
+      "tabsLabel": "Wealth sections",
+      "tabBanks": "Banks",
+      "tabCards": "Cards",
+      "title": "Cards",
+      "addCard": "Add card",
+      "count_one": "{{count}} card",
+      "count_other": "{{count}} cards",
+      "linkedToBanks_one": "Linked to {{count}} bank",
+      "linkedToBanks_other": "Linked to {{count}} banks",
+      "debitCount_one": "{{count}} debit card",
+      "debitCount_other": "{{count}} debit cards",
+      "creditCount_one": "{{count}} credit card",
+      "creditCount_other": "{{count}} credit cards",
+      "owedTotal": "Owed on cards",
+      "availableCredit": "Available credit",
+      "nextDue": "Next payment due",
+      "nothingDue": "Nothing due",
+      "dueIn_one": "in {{count}} day",
+      "dueIn_other": "in {{count}} days",
+      "dueToday": "today",
+      "overdueBy_one": "{{count}} day overdue",
+      "overdueBy_other": "{{count}} days overdue",
+      "kindDebit": "Debit",
+      "kindCredit": "Credit",
+      "statusActive": "Active",
+      "statusFrozen": "Frozen",
+      "statusClosed": "Closed",
+      "statusExpired": "Expired",
+      "owedLine": "{{owed}} owed",
+      "availableOfLine": "{{available}} available of {{limit}}",
+      "nothingOwed": "Nothing owed",
+      "dueLine": "due {{date}}",
+      "overdueLine": "overdue since {{date}}",
+      "debitLine": "{{bank}} · {{balance}} available",
+      "utilizationLabel": "{{pct}}% of the limit used",
+      "openCard": "Open {{name}}",
+      "cardActions": "Card actions",
+      "edit": "Edit card",
+      "updateExpiry": "Update expiry",
+      "freeze": "Freeze card",
+      "unfreeze": "Unfreeze card",
+      "close": "Close card",
+      "reopen": "Reopen card",
+      "delete": "Delete card",
+      "frozenHint": "Frozen — no new purchases until you unfreeze it. Payments still work.",
+      "closedHint": "Closed — kept for its history.",
+      "freezeToast": "Card frozen",
+      "unfreezeToast": "Card unfrozen",
+      "closeToast": "Card closed",
+      "reopenToast": "Card reopened",
+      "deleteToast": "Card deleted",
+      "updateFailed": "Couldn't update the card. Please try again.",
+      "closeTitle": "Close this card?",
+      "closeDescDebit": "The card is hidden from your cards and pickers. Its transactions keep showing which card paid. You can reopen it later.",
+      "closeDescCredit": "The card and what it owes are hidden from your active accounts. Its history stays. You can reopen it later.",
+      "deleteTitle": "Delete this card?",
+      "deleteDesc": "This card has no transactions yet, so it can be removed for good.",
+      "payOffTitle": "Pay off {{amount}} before closing this card",
+      "payOffDesc": "A closed card can't be paid, so clear what you owe first.",
+      "closedSection": "Closed cards",
+      "reopenUpgrade": "Upgrade to reopen this credit card",
+      "emptyTitle": "No cards yet",
+      "emptyDebit": "A debit card spends straight from your bank balance.",
+      "emptyCredit": "A credit card lets you buy now and pay the statement later — ProfitSync tracks what you owe.",
+      "loadFailed": "Failed to load cards",
+      "retry": "Try again",
+      "notFound": "Card not found",
+      "back": "Back to cards",
+      "linkedTo": "Linked to {{bank}}",
+      "issuedBy": "Issued by {{bank}}",
+      "paidFrom": "Paid from {{bank}}",
+      "noPayingBank": "No paying bank yet",
+      "expires": "Expires",
+      "holder": "Card holder",
+      "cycle": "Billing cycle",
+      "cycleLine": "Closes on day {{closing}} · due on day {{due}}",
+      "spending": "Spending",
+      "availableAt": "{{balance}} available at {{bank}}",
+      "spentThisMonth": "Spent this month",
+      "refundsThisMonth": "Refunds",
+      "lastUsed": "Last used",
+      "neverUsed": "Not used yet",
+      "addPurchase": "Add purchase",
+      "addRefund": "Add refund",
+      "addRecurring": "Add recurring",
+      "transactions": "Transactions",
+      "noTransactions": "No transactions on this card yet",
+      "loadMore": "Load more ({{count}})",
+      "upcoming": "Upcoming",
+      "viewAllRecurring": "View all",
+      "nextOn": "Next {{date}}",
+      "paused": "Paused",
+      "autopay": "Autopay",
+      "autopayHelp": "Turn this on only if your bank already pays the full statement automatically — ProfitSync will record that payment on the due date. It covers statements falling due after today.",
+      "autopayPayingBank": "Pay this card from",
+      "autopayChooseBank": "Choose the bank that pays this card to switch autopay on.",
+      "autopayNext": "Next autopay: {{date}} · {{amount}}",
+      "autopayNothingScheduled": "Nothing scheduled — no statement to pay.",
+      "autopayOff": "Off — you record payments yourself.",
+      "autopayLastPaid": "Last autopay: paid on {{date}}",
+      "autopayLastSkipped": "Last autopay: skipped on {{date}} — nothing was owed.",
+      "autopayLastFailed": "Last autopay failed on {{date}}",
+      "autopayPayManually": "Pay manually",
+      "autopayNotCovered": "Not covered by autopay — pay it manually",
+      "autopayUpdated": "Autopay updated",
+      "bankCards": "Cards",
+      "bankCardsEmpty": "No cards on this bank yet",
+      "paysThisCard": "pays this card",
+      "cardsOnBank_one": "{{count}} card",
+      "cardsOnBank_other": "{{count}} cards",
+      "closeBankCards_one": "{{count}} card on this bank will be closed.",
+      "closeBankCards_other": "{{count}} cards on this bank will be closed.",
+      "closeBankAutopay": "Autopay for {{names}} will be turned off.",
+      "frozenActions": "This card is frozen — unfreeze it to add purchases.",
+      "closedActions": "This card is closed — reopen it to use it again.",
+      "viewCards": "View cards"
+    },
+    "cardWizard": {
+      "titleCreate": "Add a card",
+      "titleEdit": "Edit card",
+      "stepOf": "Step {{current}} of {{total}}",
+      "steps": {
+        "card": "Card",
+        "look": "Look",
+        "credit": "Credit details"
+      },
+      "back": "Back",
+      "next": "Next",
+      "save": "Save card",
+      "saveChanges": "Save changes",
+      "created": "Card added",
+      "updated": "Card updated",
+      "saveFailed": "Couldn't save the card",
+      "kind": {
+        "label": "What kind of card is it?",
+        "debit": "Debit",
+        "debitHelp": "Spends the money in your bank account",
+        "credit": "Credit",
+        "creditHelp": "Borrow now, pay the statement later",
+        "locked": "Upgrade to add a credit card",
+        "readOnly": "The card type can't change after it's added"
+      },
+      "bank": {
+        "which": "Which bank account is this card for?",
+        "addFirst": "Add the bank this card belongs to",
+        "addNew": "Add a new bank",
+        "name": "Bank name",
+        "openingBalance": "Balance today ({{symbol}})",
+        "create": "Add bank",
+        "creating": "Adding…",
+        "cancel": "Cancel",
+        "created": "Bank added",
+        "createFailed": "Couldn't add the bank",
+        "upgrade": "Upgrade to add more banks",
+        "noneOption": "Skip — I'll pay it manually",
+        "linked": "Linked to {{bank}}"
+      },
+      "issuer": {
+        "label": "Card issuer",
+        "placeholder": "Search bank name…",
+        "help": "The bank that issued the card — its colours go on the card"
+      },
+      "network": {
+        "label": "Network",
+        "other": "Other"
+      },
+      "last4": {
+        "label": "Last 4 digits",
+        "help": "Only the last four digits are stored — never the full number",
+        "duplicate": "{{name}} already ends in {{last4}} — is this the same card?"
+      },
+      "expiry": {
+        "label": "Expiry",
+        "placeholder": "MM/YY",
+        "expired": "This card has already expired — you can still add it and update the expiry later"
+      },
+      "holder": {
+        "label": "Name on card",
+        "placeholder": "As printed on the card"
+      },
+      "nickname": {
+        "label": "Nickname",
+        "help": "Optional — how the card is shown around the app"
+      },
+      "look": {
+        "label": "Design",
+        "help": "Optional — pick a finish, or keep the bank's colours",
+        "usingBankColours": "Using {{bank}}'s colours",
+        "usingDefault": "Bank colours are picked up automatically once the card is saved",
+        "tiers": {
+          "standard": "Bank colours",
+          "gold": "Gold",
+          "platinum": "Platinum",
+          "metal": "Metal",
+          "black": "Black",
+          "custom": "Custom"
+        },
+        "from": "Colour",
+        "to": "Second colour",
+        "text": "Text",
+        "textAuto": "Auto",
+        "textLight": "Light",
+        "textDark": "Dark",
+        "pattern": "Pattern",
+        "patterns": {
+          "none": "Plain",
+          "waves": "Waves",
+          "mesh": "Mesh",
+          "dots": "Dots"
+        },
+        "unreadable": "That text colour is hard to read on these colours — Auto picks the readable one"
+      },
+      "credit": {
+        "payFrom": "Pay this card from",
+        "payFromHelp": "The bank that pays the statement. You can change this later.",
+        "autopay": "Autopay",
+        "autopayHelp": "Turn this on only if your bank already pays the full statement automatically — ProfitSync will record that payment on the due date. Covers statements falling due after today.",
+        "autopayNeedsBank": "Choose the bank that pays this card to turn autopay on",
+        "editHint": "What you owe and past statements live on the card page — only the limit and the cycle days change here"
+      },
+      "errors": {
+        "bank_required": "Choose the bank account this card belongs to",
+        "issuer_required": "Enter the bank that issued this card",
+        "last4_invalid": "Enter the last four digits, or leave it blank",
+        "expiry_invalid": "Enter the expiry as MM/YY",
+        "design_invalid": "Pick a valid colour",
+        "funding_required": "Choose the bank that pays this card before switching autopay on",
+        "limit_invalid": "Enter the credit limit",
+        "debt_invalid": "Enter the amount you owe today (0 if nothing)",
+        "closing_day_invalid": "Enter the day of the month your statement closes (1–31)",
+        "due_day_invalid": "Enter the day of the month the payment is due (1–31)",
+        "same_day": "Closing day and due day must be different",
+        "statement_balance_invalid": "Enter the statement balance",
+        "statement_date_invalid": "Enter the statement closing date",
+        "statement_in_future": "The statement closing date can't be in the future",
+        "amountTooLarge": "That amount is too large"
+      }
+    }
   },
   "clients": {
     "pageTitle": "Clients",
@@ -1492,7 +1769,11 @@
     "saveFailed": "Couldn't save — try again",
     "loadFailed": "Couldn't load recurring payments",
     "empty": "No recurring payments yet",
-    "emptyHint": "Set up rent, salaries or subscriptions once — ProfitSync records them automatically when they're due."
+    "emptyHint": "Set up rent, salaries or subscriptions once — ProfitSync records them automatically when they're due.",
+    "cardPayWith": "Pay with",
+    "cardPayWithHint": "The account or card this payment moves money in or out of.",
+    "cardFilter": "Showing only payments on {{name}}",
+    "cardClearFilter": "Show all payments"
   },
   "calendar": {
     "title": "Calendar",
@@ -1701,6 +1982,7 @@
       "billing": "Billing",
       "budget": "Budgets",
       "transactions": "Transactions",
+      "cards": "Cards",
       "clients": "Clients",
       "system": "System"
     },
@@ -1838,6 +2120,34 @@
       "budget_period_restated": {
         "title": "A closed period was updated",
         "body": "The period starting {{date}} was recalculated after a transaction in it changed."
+      },
+      "card_statement_ready": {
+        "title": "Card statement ready",
+        "body": "{{card}}: {{amount}} due {{date}}."
+      },
+      "card_payment_due_soon": {
+        "title": "Card payment due soon",
+        "body": "{{card}}: {{amount}} due {{date}} ({{days}} day(s))."
+      },
+      "card_payment_overdue": {
+        "title": "Card payment overdue",
+        "body": "{{card}}: {{amount}} was due {{date}}."
+      },
+      "card_autopay_paid": {
+        "title": "Card paid automatically",
+        "body": "{{amount}} paid to {{card}} from {{from}}."
+      },
+      "card_autopay_failed": {
+        "title": "Autopay could not pay your card",
+        "body": "{{card}}: {{amount}} was not paid — {{reason}}. Pay it manually."
+      },
+      "card_utilization_high": {
+        "title": "Card close to its limit",
+        "body": "{{card}} is at {{pct}}% of its limit — {{available}} left."
+      },
+      "card_expiring": {
+        "title": "Card expiring soon",
+        "body": "{{card}} expires {{expiry}}."
       }
     },
     "client": {

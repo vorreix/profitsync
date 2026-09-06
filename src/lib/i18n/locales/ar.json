@@ -29,7 +29,7 @@
     "termsOfService": "شروط الخدمة",
     "admin": "المشرف",
     "adminConsole": "وحدة تحكم المشرف",
-    "wealth": "الثروة",
+    "wealth": "الثروة والبطاقات",
     "categories": "الفئات",
     "analytics": "التحليلات",
     "referrals": "ادعُ وأكسب",
@@ -180,7 +180,13 @@
     "cardChart": "الرسم البياني",
     "cardBreakdown": "أهم البنود",
     "cardLatest": "أحدث المعاملات",
-    "openFilters": "Open dashboard filters"
+    "openFilters": "Open dashboard filters",
+    "cardsRow": "البطاقات",
+    "cardsCount_one": "بطاقة واحدة",
+    "cardsCount_other": "{{count}} بطاقات",
+    "cardsOwed": "{{amount}} مستحق",
+    "cardsNothingOwed": "لا مستحقات",
+    "cardsOpen": "البطاقات المفتوحة"
   },
   "chart": {
     "incoming": "وارد",
@@ -434,7 +440,28 @@
     "transferBadge": "Transfer",
     "cardPaymentBadge": "Card payment",
     "owedShort": "{{amount}} owed",
-    "cardCreditShort": "{{amount}} credit"
+    "cardCreditShort": "{{amount}} credit",
+    "cardChip": {
+      "credit": "ائتمان",
+      "debit": "خصم",
+      "a11y": "بطاقة {{kind}} من {{bank}} المنتهية بـ {{last4}}",
+      "a11yNoNumber": "بطاقة {{kind}} — {{name}}",
+      "noNumber": "{{name}}"
+    },
+    "cardsHeading": "البطاقات",
+    "cardDebit": "خصم",
+    "cardCredit": "ائتمان",
+    "cardDebitBalance": "خصم · {{amount}}",
+    "cardCreditOwed": "ائتمان · {{amount}} مستحق",
+    "cardCreditNothingOwed": "ائتمان · لا مستحقات",
+    "cardExpired": "منتهية",
+    "cardFrozenError": "هذه البطاقة مجمّدة أو مغلقة، لذا لا يمكنها تنفيذ دفعات جديدة. اختر بطاقة أو حسابًا آخر.",
+    "cardPaidWith": "تم الدفع بواسطة",
+    "cardVia": "عبر •••• {{last4}}",
+    "cardViaNoTail": "عبر البطاقة",
+    "cardAutopayBadge": "سداد تلقائي",
+    "nCards_one": "بطاقة واحدة",
+    "nCards_other": "{{count}} بطاقات"
   },
   "clients": {
     "pageTitle": "العملاء",
@@ -1226,7 +1253,256 @@
     "amountOwedInvalid": "Enter the amount you owe today (0 if nothing)",
     "statementBalanceRequired": "Enter the statement balance",
     "statementDateRequired": "Enter the statement closing date (not in the future)",
-    "dayPlaceholder": "e.g. {{day}}"
+    "dayPlaceholder": "e.g. {{day}}",
+    "cardVisual": {
+      "debit": "خصم",
+      "credit": "ائتمان",
+      "a11yCard": "بطاقة {{kind}} من {{issuer}}",
+      "cardEnding": "المنتهية بـ {{last4}}",
+      "expires": "تنتهي {{expiry}}",
+      "frozen": "مجمّدة",
+      "closed": "مغلقة",
+      "expired": "منتهية"
+    },
+    "cards": {
+      "tabsLabel": "أقسام الثروة",
+      "tabBanks": "البنوك",
+      "tabCards": "البطاقات",
+      "title": "البطاقات",
+      "addCard": "إضافة بطاقة",
+      "count_one": "بطاقة واحدة",
+      "count_other": "{{count}} بطاقات",
+      "linkedToBanks_one": "مرتبطة ببنك واحد",
+      "linkedToBanks_other": "مرتبطة بـ {{count}} بنوك",
+      "debitCount_one": "بطاقة خصم واحدة",
+      "debitCount_other": "{{count}} بطاقات خصم",
+      "creditCount_one": "بطاقة ائتمان واحدة",
+      "creditCount_other": "{{count}} بطاقات ائتمان",
+      "owedTotal": "المستحق على البطاقات",
+      "availableCredit": "الائتمان المتاح",
+      "nextDue": "الدفعة القادمة",
+      "nothingDue": "لا دفعات مستحقة",
+      "dueIn_one": "خلال يوم واحد",
+      "dueIn_other": "خلال {{count}} أيام",
+      "dueToday": "اليوم",
+      "overdueBy_one": "متأخرة بيوم واحد",
+      "overdueBy_other": "متأخرة بـ {{count}} أيام",
+      "kindDebit": "خصم",
+      "kindCredit": "ائتمان",
+      "statusActive": "نشطة",
+      "statusFrozen": "مجمّدة",
+      "statusClosed": "مغلقة",
+      "statusExpired": "منتهية",
+      "owedLine": "{{owed}} مستحق",
+      "availableOfLine": "{{available}} متاح من {{limit}}",
+      "nothingOwed": "لا مستحقات",
+      "dueLine": "الاستحقاق {{date}}",
+      "overdueLine": "متأخرة منذ {{date}}",
+      "debitLine": "{{bank}} · {{balance}} متاح",
+      "utilizationLabel": "استُخدم {{pct}}% من الحد",
+      "openCard": "فتح {{name}}",
+      "cardActions": "إجراءات البطاقة",
+      "edit": "تعديل البطاقة",
+      "updateExpiry": "تحديث تاريخ الانتهاء",
+      "freeze": "تجميد البطاقة",
+      "unfreeze": "إلغاء تجميد البطاقة",
+      "close": "إغلاق البطاقة",
+      "reopen": "إعادة فتح البطاقة",
+      "delete": "حذف البطاقة",
+      "frozenHint": "مجمّدة — لا مشتريات جديدة حتى تلغي التجميد. أما السداد فما زال متاحًا.",
+      "closedHint": "مغلقة — محفوظة من أجل سجلها.",
+      "freezeToast": "تم تجميد البطاقة",
+      "unfreezeToast": "تم إلغاء تجميد البطاقة",
+      "closeToast": "تم إغلاق البطاقة",
+      "reopenToast": "تمت إعادة فتح البطاقة",
+      "deleteToast": "تم حذف البطاقة",
+      "updateFailed": "تعذّر تحديث البطاقة. حاول مرة أخرى.",
+      "closeTitle": "إغلاق هذه البطاقة؟",
+      "closeDescDebit": "تُخفى البطاقة من بطاقاتك ومن قوائم الاختيار. وتظل معاملاتها تُظهر البطاقة التي دفعت. يمكنك إعادة فتحها لاحقًا.",
+      "closeDescCredit": "تُخفى البطاقة وما عليها من مستحقات عن حساباتك النشطة. يبقى سجلها كما هو. يمكنك إعادة فتحها لاحقًا.",
+      "deleteTitle": "حذف هذه البطاقة؟",
+      "deleteDesc": "لا توجد معاملات على هذه البطاقة بعد، لذا يمكن حذفها نهائيًا.",
+      "payOffTitle": "سدّد {{amount}} قبل إغلاق هذه البطاقة",
+      "payOffDesc": "لا يمكن سداد بطاقة مغلقة، لذا سدّد ما عليك أولًا.",
+      "closedSection": "البطاقات المغلقة",
+      "reopenUpgrade": "قم بالترقية لإعادة فتح بطاقة الائتمان هذه",
+      "emptyTitle": "لا توجد بطاقات بعد",
+      "emptyDebit": "بطاقة الخصم تُنفق مباشرة من رصيدك البنكي.",
+      "emptyCredit": "بطاقة الائتمان تتيح لك الشراء الآن وسداد الكشف لاحقًا — ويتتبع ProfitSync ما عليك من مستحقات.",
+      "loadFailed": "فشل تحميل البطاقات",
+      "retry": "حاول مرة أخرى",
+      "notFound": "لم يتم العثور على البطاقة",
+      "back": "العودة إلى البطاقات",
+      "linkedTo": "مرتبطة بـ {{bank}}",
+      "issuedBy": "صادرة عن {{bank}}",
+      "paidFrom": "مسدَّدة من {{bank}}",
+      "noPayingBank": "لا يوجد بنك مسدِّد بعد",
+      "expires": "تاريخ الانتهاء",
+      "holder": "حامل البطاقة",
+      "cycle": "دورة الفوترة",
+      "cycleLine": "تُقفل يوم {{closing}} · تُستحق يوم {{due}}",
+      "spending": "الإنفاق",
+      "availableAt": "{{balance}} متاح في {{bank}}",
+      "spentThisMonth": "المنفق هذا الشهر",
+      "refundsThisMonth": "المبالغ المستردة",
+      "lastUsed": "آخر استخدام",
+      "neverUsed": "لم تُستخدم بعد",
+      "addPurchase": "إضافة شراء",
+      "addRefund": "إضافة استرداد",
+      "addRecurring": "إضافة دفعة متكررة",
+      "transactions": "المعاملات",
+      "noTransactions": "لا توجد معاملات على هذه البطاقة بعد",
+      "loadMore": "تحميل المزيد ({{count}})",
+      "upcoming": "القادمة",
+      "viewAllRecurring": "عرض الكل",
+      "nextOn": "التالية في {{date}}",
+      "paused": "متوقفة مؤقتًا",
+      "autopay": "السداد التلقائي",
+      "autopayHelp": "فعّل هذا فقط إذا كان بنكك يسدّد كامل الكشف تلقائيًا — سيسجّل ProfitSync تلك الدفعة في تاريخ الاستحقاق. ويشمل الكشوف التي تُستحق بعد اليوم.",
+      "autopayPayingBank": "سدّد هذه البطاقة من",
+      "autopayChooseBank": "اختر البنك الذي يسدّد هذه البطاقة لتفعيل السداد التلقائي.",
+      "autopayNext": "السداد التلقائي القادم: {{date}} · {{amount}}",
+      "autopayNothingScheduled": "لا شيء مجدول — لا يوجد كشف للسداد.",
+      "autopayOff": "معطّل — تسجّل الدفعات بنفسك.",
+      "autopayLastPaid": "آخر سداد تلقائي: تم في {{date}}",
+      "autopayLastSkipped": "آخر سداد تلقائي: تم تخطيه في {{date}} — لا مستحقات.",
+      "autopayLastFailed": "فشل آخر سداد تلقائي في {{date}}",
+      "autopayPayManually": "سدّد يدويًا",
+      "autopayNotCovered": "غير مشمول بالسداد التلقائي — سدّدها يدويًا",
+      "autopayUpdated": "تم تحديث السداد التلقائي",
+      "bankCards": "البطاقات",
+      "bankCardsEmpty": "لا توجد بطاقات على هذا البنك بعد",
+      "paysThisCard": "يسدّد هذه البطاقة",
+      "cardsOnBank_one": "بطاقة واحدة",
+      "cardsOnBank_other": "{{count}} بطاقات",
+      "closeBankCards_one": "سيتم إغلاق بطاقة واحدة على هذا البنك.",
+      "closeBankCards_other": "سيتم إغلاق {{count}} بطاقات على هذا البنك.",
+      "closeBankAutopay": "سيتم إيقاف السداد التلقائي لـ {{names}}.",
+      "frozenActions": "هذه البطاقة مجمّدة — ألغِ التجميد لإضافة مشتريات.",
+      "closedActions": "هذه البطاقة مغلقة — أعد فتحها لاستخدامها مجددًا.",
+      "viewCards": "عرض البطاقات"
+    },
+    "cardWizard": {
+      "titleCreate": "إضافة بطاقة",
+      "titleEdit": "تعديل البطاقة",
+      "stepOf": "الخطوة {{current}} من {{total}}",
+      "steps": {
+        "card": "البطاقة",
+        "look": "المظهر",
+        "credit": "تفاصيل الائتمان"
+      },
+      "back": "رجوع",
+      "next": "التالي",
+      "save": "حفظ البطاقة",
+      "saveChanges": "حفظ التغييرات",
+      "created": "تمت إضافة البطاقة",
+      "updated": "تم تحديث البطاقة",
+      "saveFailed": "تعذّر حفظ البطاقة",
+      "kind": {
+        "label": "ما نوع هذه البطاقة؟",
+        "debit": "خصم",
+        "debitHelp": "تُنفق من رصيد حسابك البنكي مباشرة",
+        "credit": "ائتمان",
+        "creditHelp": "اشترِ الآن وسدّد الكشف لاحقًا",
+        "locked": "قم بالترقية لإضافة بطاقة ائتمان",
+        "readOnly": "لا يمكن تغيير نوع البطاقة بعد إضافتها"
+      },
+      "bank": {
+        "which": "لأي حساب بنكي هذه البطاقة؟",
+        "addFirst": "أضف البنك الذي تتبعه هذه البطاقة",
+        "addNew": "إضافة بنك جديد",
+        "name": "اسم البنك",
+        "openingBalance": "الرصيد اليوم ({{symbol}})",
+        "create": "إضافة بنك",
+        "creating": "جارٍ الإضافة…",
+        "cancel": "إلغاء",
+        "created": "تمت إضافة البنك",
+        "createFailed": "تعذّر إضافة البنك",
+        "upgrade": "قم بالترقية لإضافة المزيد من البنوك",
+        "noneOption": "تخطٍّ — سأسدّدها يدويًا",
+        "linked": "مرتبطة بـ {{bank}}"
+      },
+      "issuer": {
+        "label": "البنك المُصدِر",
+        "placeholder": "البحث عن اسم البنك…",
+        "help": "البنك الذي أصدر البطاقة — تُستخدم ألوانه في تصميمها"
+      },
+      "network": {
+        "label": "الشبكة",
+        "other": "أخرى"
+      },
+      "last4": {
+        "label": "آخر 4 أرقام",
+        "help": "يُحفظ آخر أربعة أرقام فقط — ولا يُحفظ الرقم كاملًا أبدًا",
+        "duplicate": "{{name}} تنتهي بالفعل بـ {{last4}} — هل هي البطاقة نفسها؟"
+      },
+      "expiry": {
+        "label": "تاريخ الانتهاء",
+        "placeholder": "MM/YY",
+        "expired": "انتهت صلاحية هذه البطاقة بالفعل — يمكنك إضافتها الآن وتحديث تاريخ الانتهاء لاحقًا"
+      },
+      "holder": {
+        "label": "الاسم على البطاقة",
+        "placeholder": "كما هو مطبوع على البطاقة"
+      },
+      "nickname": {
+        "label": "الاسم المستعار",
+        "help": "اختياري — كيف تظهر البطاقة داخل التطبيق"
+      },
+      "look": {
+        "label": "التصميم",
+        "help": "اختياري — اختر مظهرًا، أو أبقِ ألوان البنك",
+        "usingBankColours": "باستخدام ألوان {{bank}}",
+        "usingDefault": "تُلتقط ألوان البنك تلقائيًا بعد حفظ البطاقة",
+        "tiers": {
+          "standard": "ألوان البنك",
+          "gold": "ذهبي",
+          "platinum": "بلاتيني",
+          "metal": "معدني",
+          "black": "أسود",
+          "custom": "مخصص"
+        },
+        "from": "اللون",
+        "to": "اللون الثاني",
+        "text": "النص",
+        "textAuto": "تلقائي",
+        "textLight": "فاتح",
+        "textDark": "داكن",
+        "pattern": "النقشة",
+        "patterns": {
+          "none": "سادة",
+          "waves": "أمواج",
+          "mesh": "شبكة",
+          "dots": "نقاط"
+        },
+        "unreadable": "يصعب قراءة لون النص هذا على هذه الألوان — خيار «تلقائي» يختار اللون الواضح"
+      },
+      "credit": {
+        "payFrom": "سدّد هذه البطاقة من",
+        "payFromHelp": "البنك الذي يسدّد الكشف. يمكنك تغييره لاحقًا.",
+        "autopay": "السداد التلقائي",
+        "autopayHelp": "فعّل هذا فقط إذا كان بنكك يسدّد كامل الكشف تلقائيًا — سيسجّل ProfitSync تلك الدفعة في تاريخ الاستحقاق. ويشمل الكشوف التي تُستحق بعد اليوم.",
+        "autopayNeedsBank": "اختر البنك الذي يسدّد هذه البطاقة لتفعيل السداد التلقائي",
+        "editHint": "ما عليك من مستحقات والكشوف السابقة تظهر في صفحة البطاقة — هنا يتغيّر الحد وأيام الدورة فقط"
+      },
+      "errors": {
+        "bank_required": "اختر الحساب البنكي الذي تتبعه هذه البطاقة",
+        "issuer_required": "أدخل البنك الذي أصدر هذه البطاقة",
+        "last4_invalid": "أدخل آخر أربعة أرقام، أو اتركه فارغًا",
+        "expiry_invalid": "أدخل تاريخ الانتهاء بصيغة MM/YY",
+        "design_invalid": "اختر لونًا صالحًا",
+        "funding_required": "اختر البنك الذي يسدّد هذه البطاقة قبل تفعيل السداد التلقائي",
+        "limit_invalid": "أدخل الحد الائتماني",
+        "debt_invalid": "أدخل المبلغ المستحق عليك اليوم (0 إن لم يكن هناك شيء)",
+        "closing_day_invalid": "أدخل يوم الشهر الذي يُقفل فيه كشفك (1–31)",
+        "due_day_invalid": "أدخل يوم الشهر الذي تُستحق فيه الدفعة (1–31)",
+        "same_day": "يجب أن يختلف يوم الإقفال عن يوم الاستحقاق",
+        "statement_balance_invalid": "أدخل رصيد الكشف",
+        "statement_date_invalid": "أدخل تاريخ إقفال الكشف",
+        "statement_in_future": "لا يمكن أن يكون تاريخ إقفال الكشف في المستقبل",
+        "amountTooLarge": "هذا المبلغ كبير جدًا"
+      }
+    }
   },
   "errorBoundary": {
     "title": "حدث خطأ ما",
@@ -1351,7 +1627,11 @@
     "saveFailed": "تعذر الحفظ — حاول مرة أخرى",
     "loadFailed": "تعذر تحميل الدفعات المتكررة",
     "empty": "لا توجد دفعات متكررة بعد",
-    "emptyHint": "أعدّ الإيجار أو الرواتب أو الاشتراكات مرة واحدة — وسيسجلها ProfitSync تلقائيًا عند استحقاقها."
+    "emptyHint": "أعدّ الإيجار أو الرواتب أو الاشتراكات مرة واحدة — وسيسجلها ProfitSync تلقائيًا عند استحقاقها.",
+    "cardPayWith": "الدفع بواسطة",
+    "cardPayWithHint": "الحساب أو البطاقة التي تتحرك منها أو إليها هذه الدفعة.",
+    "cardFilter": "عرض دفعات {{name}} فقط",
+    "cardClearFilter": "عرض كل الدفعات"
   },
   "calendar": {
     "title": "التقويم",
@@ -1560,7 +1840,8 @@
       "budget": "الميزانيات",
       "transactions": "العمليات",
       "clients": "العملاء",
-      "system": "النظام"
+      "system": "النظام",
+      "cards": "البطاقات"
     },
     "channels": {
       "in_app": "داخل التطبيق",
@@ -1696,6 +1977,34 @@
       "budget_period_restated": {
         "title": "تم تحديث فترة منتهية",
         "body": "أُعيد احتساب الفترة التي تبدأ في {{date}} بعد تغيّر معاملة داخلها."
+      },
+      "card_statement_ready": {
+        "title": "كشف حساب البطاقة جاهز",
+        "body": "{{card}}: {{amount}} مستحقة في {{date}}."
+      },
+      "card_payment_due_soon": {
+        "title": "دفعة بطاقة مستحقة قريبًا",
+        "body": "{{card}}: {{amount}} مستحقة في {{date}} (خلال {{days}} يوم)."
+      },
+      "card_payment_overdue": {
+        "title": "دفعة بطاقة متأخرة",
+        "body": "{{card}}: كان {{amount}} مستحقًا في {{date}}."
+      },
+      "card_autopay_paid": {
+        "title": "تم سداد البطاقة تلقائيًا",
+        "body": "تم سداد {{amount}} إلى {{card}} من {{from}}."
+      },
+      "card_autopay_failed": {
+        "title": "تعذّر السداد التلقائي لبطاقتك",
+        "body": "{{card}}: لم يتم سداد {{amount}} — {{reason}}. سدّدها يدويًا."
+      },
+      "card_utilization_high": {
+        "title": "البطاقة تقترب من حدها",
+        "body": "بلغت {{card}} نسبة {{pct}}% من حدها — تبقّى {{available}}."
+      },
+      "card_expiring": {
+        "title": "بطاقة على وشك الانتهاء",
+        "body": "تنتهي صلاحية {{card}} في {{expiry}}."
       }
     },
     "client": {
@@ -1910,7 +2219,8 @@
     "handlePosition": "موضع مقبض البحث",
     "sideLeft": "الحافة اليسرى",
     "sideRight": "الحافة اليمنى",
-    "handleDragHint": "انقر على المقبض أو اسحبه للداخل للبحث. اسحبه لأعلى أو لأسفل على طول الحافة لوضعه حيث تريد."
+    "handleDragHint": "انقر على المقبض أو اسحبه للداخل للبحث. اسحبه لأعلى أو لأسفل على طول الحافة لوضعه حيث تريد.",
+    "cards": "البطاقات"
   },
   "aiVoice": {
     "openLabel": "مساعد الصوت بالذكاء الاصطناعي",

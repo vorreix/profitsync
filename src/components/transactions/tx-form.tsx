@@ -229,7 +229,7 @@ function AiReviewDot({ show, label }: { show: boolean; label: string }) {
 }
 
 export function TxFormFields({
-  f, onChange, showClient, clients, accounts, accountsLoading, categories, onChangeCats, onAddAccount, currency, singleAccount = false, budget = null, tagSuggestions = [], tagLimit, onTagUpgrade, aiFields,
+  f, onChange, showClient, clients, accounts, accountsLoading, categories, onChangeCats, onAddAccount, currency, singleAccount = false, budget = null, tagSuggestions = [], tagLimit, onTagUpgrade, aiFields, sourceError = null,
 }: {
   f: TxForm
   onChange: (patch: Partial<TxForm>) => void
@@ -252,6 +252,9 @@ export function TxFormFields({
   onTagUpgrade?: () => void
   // AI quick-add highlight metadata (undefined = feature inactive, zero impact).
   aiFields?: AiFieldMeta
+  // A server refusal about the chosen source (e.g. a frozen card), shown right
+  // under the picker so the user fixes it where they made the choice.
+  sourceError?: string | null
 }) {
   const { t } = useTranslation("transactions")
   // Staggered fill-cascade: each AI-touched field pulses ~60ms after the previous.
@@ -327,6 +330,11 @@ export function TxFormFields({
         loading={accountsLoading}
       />
       </div>
+      {sourceError && (
+        <p role="alert" className="-mt-1 text-xs text-destructive motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-top-1">
+          {sourceError}
+        </p>
+      )}
       {budgetHint && (
         <p className={`-mt-1 text-xs ${budgetHint.over ? "text-red-600 dark:text-red-400" : budgetHint.state === "warn" ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"}`}>
           {budgetHint.text}

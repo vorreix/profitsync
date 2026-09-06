@@ -5,8 +5,10 @@ import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
 import { apiGet, apiPost, apiPatch, apiDelete, apiErrorUpgradeHint } from "@/lib/api"
 import { amountExceedsLimit } from "@/lib/money"
-import { isPaidPlanKey, type Client, type Transaction, type TransactionAttachment, type WealthAccount } from "@/lib/types"
+import { isPaidPlanKey, type Card, type Client, type Transaction, type TransactionAttachment, type WealthAccount } from "@/lib/types"
 import { tagLimitForPlan } from "@/lib/tags"
+import { useCardMap } from "@/lib/use-cards"
+import { CardChip } from "@/components/cards/CardChip"
 import { useCurrency } from "@/lib/currency-context"
 import { useOrg } from "@/lib/org-context"
 import { useCategories } from "@/lib/use-categories"
@@ -38,11 +40,16 @@ import { accountDisplayName } from "@/lib/wealth"
 import { WealthAccountIcon } from "@/components/WealthAccountIcon"
 import { useUrlModal } from "@/hooks/use-url-modal"
 import { TxFormFields } from "@/components/transactions/tx-form"
-import { allocationFor, formatFileSize, type TxForm } from "@/components/transactions/tx-form-utils"
+import { allocationFor, allocationPayload, formatFileSize, isCardUnusableError, type TxForm } from "@/components/transactions/tx-form-utils"
 import { mergeTags, txTags } from "@/lib/transaction-tags"
 import { AddTransactionDialog } from "@/components/transactions/AddTransactionDialog"
 
 type PaginatedResponse<T> = { data: T[]; total: number; summary?: { incoming: number; outgoing: number } }
+
+// A collapsed split row also reports how many DISTINCT cards paid its legs
+// (GET /api/transactions groupedFields.cardCount) — "3 cards" beats one
+// arbitrary chip when several did.
+type TxRow = Transaction
 
 const PAGE_SIZE = 20
 
@@ -58,7 +65,9 @@ const formatDate = (d: string) =>
 // shallow compare works.
 
 type TransactionRowProps = {
-  tx: Transaction
+  tx: TxRow
+  // The card that paid (resolved by the page's useCardMap so the row stays memo-friendly).
+  card?: Card
   selected: boolean
   selectionMode: boolean
   isPersonal: boolean
@@ -75,13 +84,15 @@ type TransactionRowProps = {
 }
 
 const TransactionRow = memo(function TransactionRow({
-  tx, selected, selectionMode, isPersonal, isOwn, canDelete, currency,
+  tx, card, selected, selectionMode, isPersonal, isOwn, canDelete, currency,
   onOpen, onEdit, onDelete, onToggle, onEnterSelection, bind, didLongPress,
 }: TransactionRowProps) {
   const { t } = useTranslation("transactions")
   const navigate = useNavigate()
   const fmt = (n: number) =>
     new Intl.NumberFormat("en-US", { style: "currency", currency, minimumFractionDigits: 2 }).format(n)
+  const legCount = tx.leg_count ?? 1
+  const cardCount = tx.card_count ?? 0
 
   return (
     <div
@@ -161,11 +172,19 @@ const TransactionRow = memo(function TransactionRow({
             </>
           )}
           <span className="text-xs text-muted-foreground shrink-0">{formatDate(tx.date)}</span>
-          {(tx.leg_count ?? 1) > 1 ? (
+          {legCount > 1 ? (
             <>
               <span className="hidden text-xs text-muted-foreground shrink-0 sm:inline">·</span>
               <span className="hidden text-xs text-muted-foreground shrink-0 sm:inline">
-                {t("splitAccounts", { count: tx.account_count ?? tx.leg_count })}
+                {cardCount > 1 ? t("nCards", { count: cardCount }) : t("splitAccounts", { count: tx.account_count ?? legCount })}
+              </span>
+            </>
+          ) : card ? (
+            <>
+              <span className="text-xs text-muted-foreground shrink-0">·</span>
+              {/* The chip is its own link (→ the card page): keep the row's open-modal click out of it. */}
+              <span className="flex min-w-0 shrink-0" onClick={(e) => e.stopPropagation()}>
+                <CardChip card={card} />
               </span>
             </>
           ) : (tx.wealth_account_name || tx.wealth_account_bank_name) ? (
@@ -229,8 +248,11 @@ export function TransactionsPage() {
   const fmt = (n: number) =>
     new Intl.NumberFormat("en-US", { style: "currency", currency, minimumFractionDigits: 2 }).format(n)
 
-  const [transactions, setTransactions] = useState<Transaction[]>([])
+  const [transactions, setTransactions] = useState<TxRow[]>([])
   const [total, setTotal] = useState(0)
+  // Card chips for rows/legs/detail: one cached GET, resolved per row by id
+  // (or by account for a credit card — the card IS the account).
+  const cardMap = useCardMap()
   const [page, setPage] = useState(1)
   const [clients, setClients] = useState<Client[]>([])
   const [accounts, setAccounts] = useState<WealthAccount[]>([])
@@ -327,6 +349,8 @@ export function TransactionsPage() {
   const [viewAttachment, setViewAttachment] = useState<AttachmentModalItem | null>(null)
   const [editForm, setEditForm] = useState<TxForm & { id: string; group_id?: string | null } | null>(null)
   const [saving, setSaving] = useState(false)
+  // The server refused the edit's card (frozen/closed): shown under the picker.
+  const [editSourceError, setEditSourceError] = useState<string | null>(null)
 
   const [attachments, setAttachments] = useState<TransactionAttachment[]>([])
   const [attachLoading, setAttachLoading] = useState(false)
@@ -519,6 +543,7 @@ export function TransactionsPage() {
   // Open the edit dialog. For a split (grouped) row we load every leg so the user
   // edits the whole split; a single-account row prefills one allocation.
   async function openEditTx(tx: Transaction) {
+    setEditSourceError(null)
     const isGroup = (tx.leg_count ?? 1) > 1 || !!tx.group_id
     if (isGroup && tx.group_id) {
       // A split must be edited as the full set of legs. If we can't load them,
@@ -532,7 +557,7 @@ export function TransactionsPage() {
           id: legs[0].id,
           group_id: tx.group_id,
           client_id: tx.client_id,
-          allocations: legs.map((l) => ({ account_id: l.wealth_account_id ?? "", amount: String(l.amount) })),
+          allocations: legs.map((l) => ({ account_id: l.wealth_account_id ?? "", card_id: l.card_id ?? null, amount: String(l.amount) })),
           type: tx.type, kind: tx.kind === "refund" ? "refund" : "standard", description: tx.description, category: tx.category,
           tags: txTags(legs[0]), tag_draft: "", date: tx.date,
         })
@@ -572,7 +597,7 @@ export function TransactionsPage() {
           category: editForm.category,
           tags: mergeTags(editForm.tags, editForm.tag_draft),
           date: editForm.date,
-          allocations: allocs.map((a) => ({ wealth_account_id: a.account_id, amount: parseFloat(a.amount) })),
+          allocations: allocs.map(allocationPayload),
         })
       } else {
         const alloc = allocs[0]
@@ -580,6 +605,9 @@ export function TransactionsPage() {
           type: editForm.type,
           kind: editForm.kind,
           wealth_account_id: alloc.account_id,
+          // null clears the card (moved to plain Cash); the server re-derives
+          // the credit card when the account is a liability account.
+          card_id: alloc.card_id ?? null,
           amount: parseFloat(alloc.amount),
           description: editForm.description,
           category: editForm.category,
@@ -594,6 +622,7 @@ export function TransactionsPage() {
     } catch (err) {
       // A tag/quota 402 → route to upgrade instead of a generic failure toast.
       if (apiErrorUpgradeHint(err)) { toast.info(t("tagsLimitReached")); setEditOpen(false); navigate("/subscription"); return }
+      if (isCardUnusableError(err)) { setEditSourceError(t("cardFrozenError")); toast.error(t("cardFrozenError")); return }
       toast.error(t("failedToUpdateTransaction"))
     } finally {
       setSaving(false)
@@ -901,6 +930,7 @@ export function TransactionsPage() {
                 <TransactionRow
                   key={tx.id}
                   tx={tx}
+                  card={(tx.leg_count ?? 1) > 1 ? undefined : cardMap.forTx(tx)}
                   selected={sel.isSelected(tx.id)}
                   selectionMode={sel.selectionMode}
                   isPersonal={isPersonal}
@@ -1023,29 +1053,46 @@ export function TransactionsPage() {
                         {t("splitAcross", { count: viewLegs.length || viewTx.account_count || viewTx.leg_count })}
                       </p>
                       <div className="mt-1.5 space-y-1.5">
-                        {viewLegs.map((leg) => (
+                        {viewLegs.map((leg) => {
+                          const legCard = cardMap.forTx(leg)
+                          return (
                           <div key={leg.id} className="flex items-center justify-between gap-2 rounded-lg border px-3 py-2">
                             <span className="flex min-w-0 items-center gap-2">
                               <WealthAccountIcon
                                 account={{ type: leg.wealth_account_type ?? "bank", icon: leg.wealth_account_icon ?? "bank" }}
                                 className="size-6"
                               />
-                              <span className="truncate text-sm font-medium">
-                                {accountDisplayName({ bank_name: leg.wealth_account_bank_name ?? "", nickname: leg.wealth_account_name ?? "" })}
-                              </span>
+                              {legCard ? (
+                                <CardChip card={legCard} />
+                              ) : (
+                                <span className="truncate text-sm font-medium">
+                                  {accountDisplayName({ bank_name: leg.wealth_account_bank_name ?? "", nickname: leg.wealth_account_name ?? "" })}
+                                </span>
+                              )}
                             </span>
                             <span className={`shrink-0 text-sm font-semibold tabular-nums ${viewTx.type === "incoming" ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
                               {viewTx.type === "incoming" ? "+" : "−"}{fmt(Number(leg.amount))}
                             </span>
                           </div>
-                        ))}
+                          )
+                        })}
                       </div>
                     </div>
                   ) : viewTx.wealth_account_id ? (
-                    <div>
-                      <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">{t("account")}</p>
-                      <p className="mt-0.5">{viewTx.wealth_account_name || viewTx.wealth_account_bank_name || viewTx.wealth_account_id}</p>
-                    </div>
+                    (() => {
+                      const viewCard = cardMap.forTx(viewTx)
+                      return viewCard ? (
+                        <div>
+                          <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">{t("cardPaidWith")}</p>
+                          <div className="mt-1"><CardChip card={viewCard} /></div>
+                        </div>
+                      ) : (
+                        <div>
+                          <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">{t("account")}</p>
+                          <p className="mt-0.5">{viewTx.wealth_account_name || viewTx.wealth_account_bank_name || viewTx.wealth_account_id}</p>
+                        </div>
+                      )
+                    })()
                   ) : null}
                 </div>
 
@@ -1146,7 +1193,8 @@ export function TransactionsPage() {
           {editForm && (
             <TxFormFields
               f={editForm}
-              onChange={(p) => setEditForm((f) => f ? { ...f, ...p } : null)}
+              onChange={(p) => { if (p.allocations) setEditSourceError(null); setEditForm((f) => f ? { ...f, ...p } : null) }}
+              sourceError={editSourceError}
               showClient={false}
               clients={clients}
               accounts={accounts}

@@ -16,7 +16,7 @@ import {
 } from "@dnd-kit/core"
 import { toast } from "sonner"
 import { apiGet, apiPatch } from "@/lib/api"
-import type { Client, Transaction, WealthAccount } from "@/lib/types"
+import type { Client, Transaction, WealthAccount, Card as CardModel } from "@/lib/types"
 import {
   normalizeLayout,
   moveCard,
@@ -31,6 +31,8 @@ import { useOrg } from "@/lib/org-context"
 import { useDataRefresh } from "@/lib/data-refresh-context"
 import { accountBalanceLabel, accountDisplayName, formatMoney, useBalancePrivacy, useWealthOverviewCollapsed, useWealthSummary } from "@/lib/wealth"
 import { creditUsage, isLiabilityType } from "@/lib/credit-card"
+import { useCardMap, useCards } from "@/lib/use-cards"
+import { CardChip } from "@/components/cards/CardChip"
 import { WealthAccountIcon } from "@/components/WealthAccountIcon"
 import { BusinessBudgetCard } from "@/components/budget/BusinessBudgetCard"
 import { SafeToSpendCard } from "@/components/budget/SafeToSpendCard"
@@ -67,6 +69,7 @@ import {
   X,
   Eye,
   EyeOff,
+  CreditCard,
 } from "lucide-react"
 import { useAutoAnimate } from "@formkit/auto-animate/react"
 import { cn } from "@/lib/utils"
@@ -447,12 +450,15 @@ function LatestTransactionsCard({
   currency,
   showClient,
   onSelect,
+  cardFor,
 }: {
   transactions: Transaction[]
   loading: boolean
   currency: string
   showClient: boolean
   onSelect: (tx: Transaction) => void
+  // Which card paid a row (page-level useCardMap), for the chip on the meta line.
+  cardFor?: (tx: Transaction) => CardModel | undefined
 }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
@@ -476,6 +482,7 @@ function LatestTransactionsCard({
               const sub = [showClient ? tx.client_name : null, tx.category?.trim() || null]
                 .filter(Boolean)
                 .join(" · ")
+              const card = cardFor?.(tx)
               return (
                 <button
                   key={tx.id}
@@ -496,9 +503,11 @@ function LatestTransactionsCard({
                     <p className="truncate text-sm font-medium">
                       {tx.description?.trim() || sub || t(`chart.${tx.type}`)}
                     </p>
-                    <p className="truncate text-xs text-muted-foreground">
-                      {sub ? `${sub} · ` : ""}{formatTxDate(tx.date)}
-                    </p>
+                    <div className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+                      <span className="truncate">{sub ? `${sub} · ` : ""}{formatTxDate(tx.date)}</span>
+                      {/* Inside a <button> row, so the chip stays a plain span (no nested link). */}
+                      {card && <CardChip card={card} variant="compact" linked={false} className="shrink-0" />}
+                    </div>
                   </div>
                   <p
                     className={`shrink-0 text-sm font-semibold tabular-nums ${
@@ -535,6 +544,10 @@ function WealthOverview({
   // counted as money (src/lib/wealth.ts summarizeWealth).
   const { active, liquid, liabilities } = useWealthSummary(accounts)
   const total = liquid
+  // Cards (open ones): a count + what the credit cards owe, linking to the Cards tab.
+  const { cards } = useCards()
+  const cardsOwed = cards.reduce((sum, c) => (c.kind === "credit" ? sum + creditUsage(c.account_credit_limit, c.account_current_balance).debt : sum), 0)
+  const hasCreditCard = cards.some((c) => c.kind === "credit")
   // Glides account tiles into place when one is added, removed, or reordered.
   const [gridRef] = useAutoAnimate<HTMLDivElement>()
 
@@ -657,6 +670,32 @@ function WealthOverview({
                 </button>
               </div>
             </div>
+
+            {/* Cards — count + what the credit cards owe; opens the Cards tab. */}
+            {cards.length > 0 && (
+              <button
+                type="button"
+                onClick={() => navigate("/wealth?tab=cards")}
+                aria-label={t("dashboard.cardsOpen")}
+                className="pressable group mt-2.5 flex min-h-11 w-full items-center gap-3 rounded-xl border bg-card px-3 py-2 text-start transition-colors hover:border-foreground/15 hover:bg-accent"
+              >
+                <span className="grid size-8 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground">
+                  <CreditCard className="size-4" aria-hidden />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium">{t("dashboard.cardsRow")}</span>
+                  <span className="block truncate text-xs text-muted-foreground">{t("dashboard.cardsCount", { count: cards.length })}</span>
+                </span>
+                {hasCreditCard && (
+                  <span className="shrink-0 text-sm font-semibold tabular-nums">
+                    {cardsOwed > 0 || !balancesVisible
+                      ? t("dashboard.cardsOwed", { amount: formatMoney(cardsOwed, currency, balancesVisible) })
+                      : t("dashboard.cardsNothingOwed")}
+                  </span>
+                )}
+                <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform duration-200 group-hover:translate-x-0.5 rtl:rotate-180 rtl:group-hover:-translate-x-0.5" />
+              </button>
+            )}
 
             {/* Collapsible account list. The grid 0fr→1fr trick keeps open/close
                 on the compositor instead of animating height — no reflow, no
@@ -1043,6 +1082,8 @@ export function Dashboard() {
   const activeClients = realClients.filter((c) => c.status === "active").length
   // The own/internal company client — surfaces its expense budget on the dashboard.
   const ownClient = clients.find((c) => c.is_own)
+  // Card chips on the latest-transactions rows.
+  const cardMap = useCardMap()
 
   const latestTx = useMemo(
     () =>
@@ -1294,7 +1335,7 @@ export function Dashboard() {
           </CardContent>
         </Card>
     ),
-    latest: <LatestTransactionsCard transactions={latestTx} loading={loading} currency={currency} showClient={!isPersonal} onSelect={setPeekTx} />,
+    latest: <LatestTransactionsCard transactions={latestTx} loading={loading} currency={currency} showClient={!isPersonal} onSelect={setPeekTx} cardFor={cardMap.forTx} />,
   }
   const visibleCards = layout.order.filter((id) => !layout.hidden.includes(id) && cardNodes[id] !== null)
 

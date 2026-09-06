@@ -29,7 +29,7 @@
     "termsOfService": "सेवा की शर्तें",
     "admin": "एडमिन",
     "adminConsole": "एडमिन कंसोल",
-    "wealth": "संपत्ति",
+    "wealth": "संपत्ति और कार्ड",
     "categories": "श्रेणियाँ",
     "analytics": "विश्लेषण",
     "referrals": "रेफर करें और कमाएं",
@@ -180,7 +180,13 @@
     "cardChart": "चार्ट",
     "cardBreakdown": "शीर्ष विवरण",
     "cardLatest": "हाल के लेन-देन",
-    "openFilters": "Open dashboard filters"
+    "openFilters": "Open dashboard filters",
+    "cardsRow": "कार्ड",
+    "cardsCount_one": "{{count}} कार्ड",
+    "cardsCount_other": "{{count}} कार्ड",
+    "cardsOwed": "{{amount}} बकाया",
+    "cardsNothingOwed": "कुछ बकाया नहीं",
+    "cardsOpen": "चालू कार्ड"
   },
   "chart": {
     "incoming": "आवक",
@@ -434,7 +440,28 @@
     "transferBadge": "Transfer",
     "cardPaymentBadge": "Card payment",
     "owedShort": "{{amount}} owed",
-    "cardCreditShort": "{{amount}} credit"
+    "cardCreditShort": "{{amount}} credit",
+    "cardChip": {
+      "credit": "क्रेडिट",
+      "debit": "डेबिट",
+      "a11y": "{{kind}} कार्ड {{bank}}, आख़िरी अंक {{last4}}",
+      "a11yNoNumber": "{{kind}} कार्ड {{name}}",
+      "noNumber": "{{name}}"
+    },
+    "cardsHeading": "कार्ड",
+    "cardDebit": "डेबिट",
+    "cardCredit": "क्रेडिट",
+    "cardDebitBalance": "डेबिट · {{amount}}",
+    "cardCreditOwed": "क्रेडिट · {{amount}} बकाया",
+    "cardCreditNothingOwed": "क्रेडिट · कुछ बकाया नहीं",
+    "cardExpired": "एक्सपायर्ड",
+    "cardFrozenError": "वह कार्ड फ़्रीज़ या बंद है, इसलिए उस पर नया भुगतान नहीं हो सकता। दूसरा कार्ड या खाता चुनें।",
+    "cardPaidWith": "भुगतान का ज़रिया",
+    "cardVia": "•••• {{last4}} से",
+    "cardViaNoTail": "कार्ड से",
+    "cardAutopayBadge": "ऑटो-पे",
+    "nCards_one": "{{count}} कार्ड",
+    "nCards_other": "{{count}} कार्ड"
   },
   "clients": {
     "pageTitle": "ग्राहक",
@@ -1226,7 +1253,256 @@
     "amountOwedInvalid": "Enter the amount you owe today (0 if nothing)",
     "statementBalanceRequired": "Enter the statement balance",
     "statementDateRequired": "Enter the statement closing date (not in the future)",
-    "dayPlaceholder": "e.g. {{day}}"
+    "dayPlaceholder": "e.g. {{day}}",
+    "cardVisual": {
+      "debit": "डेबिट",
+      "credit": "क्रेडिट",
+      "a11yCard": "{{issuer}} {{kind}} कार्ड",
+      "cardEnding": "आख़िरी अंक {{last4}}",
+      "expires": "एक्सपायरी {{expiry}}",
+      "frozen": "फ़्रीज़",
+      "closed": "बंद",
+      "expired": "एक्सपायर्ड"
+    },
+    "cards": {
+      "tabsLabel": "संपत्ति अनुभाग",
+      "tabBanks": "बैंक",
+      "tabCards": "कार्ड",
+      "title": "कार्ड",
+      "addCard": "कार्ड जोड़ें",
+      "count_one": "{{count}} कार्ड",
+      "count_other": "{{count}} कार्ड",
+      "linkedToBanks_one": "{{count}} बैंक से जुड़ा",
+      "linkedToBanks_other": "{{count}} बैंकों से जुड़ा",
+      "debitCount_one": "{{count}} डेबिट कार्ड",
+      "debitCount_other": "{{count}} डेबिट कार्ड",
+      "creditCount_one": "{{count}} क्रेडिट कार्ड",
+      "creditCount_other": "{{count}} क्रेडिट कार्ड",
+      "owedTotal": "कार्ड पर बकाया",
+      "availableCredit": "उपलब्ध क्रेडिट",
+      "nextDue": "अगला भुगतान देय",
+      "nothingDue": "कुछ देय नहीं",
+      "dueIn_one": "{{count}} दिन में",
+      "dueIn_other": "{{count}} दिन में",
+      "dueToday": "आज",
+      "overdueBy_one": "{{count}} दिन से अतिदेय",
+      "overdueBy_other": "{{count}} दिन से अतिदेय",
+      "kindDebit": "डेबिट",
+      "kindCredit": "क्रेडिट",
+      "statusActive": "सक्रिय",
+      "statusFrozen": "फ़्रीज़",
+      "statusClosed": "बंद",
+      "statusExpired": "एक्सपायर्ड",
+      "owedLine": "{{owed}} बकाया",
+      "availableOfLine": "{{limit}} में से {{available}} उपलब्ध",
+      "nothingOwed": "कुछ बकाया नहीं",
+      "dueLine": "{{date}} को देय",
+      "overdueLine": "{{date}} से अतिदेय",
+      "debitLine": "{{bank}} · {{balance}} उपलब्ध",
+      "utilizationLabel": "लिमिट का {{pct}}% इस्तेमाल",
+      "openCard": "{{name}} खोलें",
+      "cardActions": "कार्ड क्रियाएँ",
+      "edit": "कार्ड संपादित करें",
+      "updateExpiry": "एक्सपायरी अपडेट करें",
+      "freeze": "कार्ड फ़्रीज़ करें",
+      "unfreeze": "कार्ड अनफ़्रीज़ करें",
+      "close": "कार्ड बंद करें",
+      "reopen": "कार्ड फिर से खोलें",
+      "delete": "कार्ड हटाएँ",
+      "frozenHint": "फ़्रीज़ — अनफ़्रीज़ करने तक नई खरीदारी नहीं। भुगतान फिर भी हो सकते हैं।",
+      "closedHint": "बंद — इतिहास के लिए रखा गया।",
+      "freezeToast": "कार्ड फ़्रीज़ किया गया",
+      "unfreezeToast": "कार्ड अनफ़्रीज़ किया गया",
+      "closeToast": "कार्ड बंद किया गया",
+      "reopenToast": "कार्ड फिर से खोला गया",
+      "deleteToast": "कार्ड हटाया गया",
+      "updateFailed": "कार्ड अपडेट नहीं किया जा सका। कृपया फिर से कोशिश करें।",
+      "closeTitle": "यह कार्ड बंद करें?",
+      "closeDescDebit": "कार्ड आपके कार्ड और चयन सूचियों से छिप जाता है। उसके लेन-देन में यह दिखता रहेगा कि किस कार्ड से भुगतान हुआ। आप इसे बाद में फिर से खोल सकते हैं।",
+      "closeDescCredit": "कार्ड और उसका बकाया आपके सक्रिय खातों से छिप जाते हैं। इतिहास बना रहता है। आप इसे बाद में फिर से खोल सकते हैं।",
+      "deleteTitle": "यह कार्ड हटाएँ?",
+      "deleteDesc": "इस कार्ड पर अभी कोई लेन-देन नहीं है, इसलिए इसे हमेशा के लिए हटाया जा सकता है।",
+      "payOffTitle": "यह कार्ड बंद करने से पहले {{amount}} चुकाएँ",
+      "payOffDesc": "बंद कार्ड चुकाया नहीं जा सकता, इसलिए पहले अपना बकाया चुका दें।",
+      "closedSection": "बंद कार्ड",
+      "reopenUpgrade": "यह क्रेडिट कार्ड फिर से खोलने के लिए अपग्रेड करें",
+      "emptyTitle": "अभी कोई कार्ड नहीं",
+      "emptyDebit": "डेबिट कार्ड सीधे आपके बैंक शेष से खर्च करता है।",
+      "emptyCredit": "क्रेडिट कार्ड से आप अभी खरीदें और स्टेटमेंट बाद में चुकाएँ — ProfitSync आपका बकाया ट्रैक करता है।",
+      "loadFailed": "कार्ड लोड करने में विफल",
+      "retry": "फिर कोशिश करें",
+      "notFound": "कार्ड नहीं मिला",
+      "back": "कार्ड पर वापस",
+      "linkedTo": "{{bank}} से जुड़ा",
+      "issuedBy": "{{bank}} द्वारा जारी",
+      "paidFrom": "{{bank}} से चुकाया",
+      "noPayingBank": "अभी कोई चुकाने वाला बैंक नहीं",
+      "expires": "एक्सपायरी",
+      "holder": "कार्डधारक",
+      "cycle": "बिलिंग चक्र",
+      "cycleLine": "{{closing}} तारीख़ को बंद · {{due}} तारीख़ को देय",
+      "spending": "खर्च",
+      "availableAt": "{{bank}} में {{balance}} उपलब्ध",
+      "spentThisMonth": "इस महीने खर्च",
+      "refundsThisMonth": "वापसी",
+      "lastUsed": "आख़िरी इस्तेमाल",
+      "neverUsed": "अभी इस्तेमाल नहीं हुआ",
+      "addPurchase": "खरीदारी जोड़ें",
+      "addRefund": "वापसी जोड़ें",
+      "addRecurring": "आवर्ती जोड़ें",
+      "transactions": "लेन-देन",
+      "noTransactions": "इस कार्ड पर अभी कोई लेन-देन नहीं",
+      "loadMore": "और लोड करें ({{count}})",
+      "upcoming": "आगामी",
+      "viewAllRecurring": "सभी देखें",
+      "nextOn": "अगला {{date}}",
+      "paused": "रोका गया",
+      "autopay": "ऑटो-पे",
+      "autopayHelp": "इसे तभी चालू करें जब आपका बैंक पहले से पूरा स्टेटमेंट अपने आप चुका देता हो — ProfitSync उस भुगतान को देय तिथि पर दर्ज कर देगा। यह आज के बाद देय होने वाले स्टेटमेंट पर लागू होता है।",
+      "autopayPayingBank": "यह कार्ड किससे चुकाएँ",
+      "autopayChooseBank": "ऑटो-पे चालू करने के लिए वह बैंक चुनें जो यह कार्ड चुकाता है।",
+      "autopayNext": "अगला ऑटो-पे: {{date}} · {{amount}}",
+      "autopayNothingScheduled": "कुछ तय नहीं — चुकाने के लिए कोई स्टेटमेंट नहीं।",
+      "autopayOff": "बंद — भुगतान आप खुद दर्ज करते हैं।",
+      "autopayLastPaid": "पिछला ऑटो-पे: {{date}} को चुकाया गया",
+      "autopayLastSkipped": "पिछला ऑटो-पे: {{date}} को छोड़ा गया — कुछ बकाया नहीं था।",
+      "autopayLastFailed": "पिछला ऑटो-पे {{date}} को विफल रहा",
+      "autopayPayManually": "खुद चुकाएँ",
+      "autopayNotCovered": "ऑटो-पे में शामिल नहीं — इसे खुद चुकाएँ",
+      "autopayUpdated": "ऑटो-पे अपडेट हुआ",
+      "bankCards": "कार्ड",
+      "bankCardsEmpty": "इस बैंक पर अभी कोई कार्ड नहीं",
+      "paysThisCard": "यह कार्ड चुकाता है",
+      "cardsOnBank_one": "{{count}} कार्ड",
+      "cardsOnBank_other": "{{count}} कार्ड",
+      "closeBankCards_one": "इस बैंक का {{count}} कार्ड बंद कर दिया जाएगा।",
+      "closeBankCards_other": "इस बैंक के {{count}} कार्ड बंद कर दिए जाएँगे।",
+      "closeBankAutopay": "{{names}} का ऑटो-पे बंद कर दिया जाएगा।",
+      "frozenActions": "यह कार्ड फ़्रीज़ है — खरीदारी जोड़ने के लिए इसे अनफ़्रीज़ करें।",
+      "closedActions": "यह कार्ड बंद है — दोबारा इस्तेमाल के लिए इसे फिर से खोलें।",
+      "viewCards": "कार्ड देखें"
+    },
+    "cardWizard": {
+      "titleCreate": "कार्ड जोड़ें",
+      "titleEdit": "कार्ड संपादित करें",
+      "stepOf": "चरण {{current}} / {{total}}",
+      "steps": {
+        "card": "कार्ड",
+        "look": "रूप-रंग",
+        "credit": "क्रेडिट विवरण"
+      },
+      "back": "वापस",
+      "next": "अगला",
+      "save": "कार्ड सहेजें",
+      "saveChanges": "परिवर्तनों को सहेजें",
+      "created": "कार्ड जोड़ा गया",
+      "updated": "कार्ड अपडेट हुआ",
+      "saveFailed": "कार्ड सहेजा नहीं जा सका",
+      "kind": {
+        "label": "यह किस तरह का कार्ड है?",
+        "debit": "डेबिट",
+        "debitHelp": "आपके बैंक खाते का पैसा खर्च होता है",
+        "credit": "क्रेडिट",
+        "creditHelp": "अभी उधार लें, स्टेटमेंट बाद में चुकाएँ",
+        "locked": "क्रेडिट कार्ड जोड़ने के लिए अपग्रेड करें",
+        "readOnly": "जुड़ने के बाद कार्ड का प्रकार नहीं बदला जा सकता"
+      },
+      "bank": {
+        "which": "यह कार्ड किस बैंक खाते का है?",
+        "addFirst": "वह बैंक जोड़ें जिसका यह कार्ड है",
+        "addNew": "नया बैंक जोड़ें",
+        "name": "बैंक का नाम",
+        "openingBalance": "आज का शेष ({{symbol}})",
+        "create": "बैंक जोड़ें",
+        "creating": "जोड़ा जा रहा है…",
+        "cancel": "रद्द करें",
+        "created": "बैंक जोड़ा गया",
+        "createFailed": "बैंक नहीं जोड़ा जा सका",
+        "upgrade": "और बैंक जोड़ने के लिए अपग्रेड करें",
+        "noneOption": "छोड़ें — मैं खुद चुकाऊँगा",
+        "linked": "{{bank}} से जुड़ा"
+      },
+      "issuer": {
+        "label": "कार्ड जारीकर्ता",
+        "placeholder": "बैंक का नाम खोजें…",
+        "help": "कार्ड जारी करने वाला बैंक — उसी के रंग कार्ड पर आते हैं"
+      },
+      "network": {
+        "label": "नेटवर्क",
+        "other": "अन्य"
+      },
+      "last4": {
+        "label": "आख़िरी 4 अंक",
+        "help": "सिर्फ़ आख़िरी चार अंक सहेजे जाते हैं — पूरा नंबर कभी नहीं",
+        "duplicate": "{{name}} पहले से {{last4}} पर खत्म होता है — क्या यह वही कार्ड है?"
+      },
+      "expiry": {
+        "label": "एक्सपायरी",
+        "placeholder": "MM/YY",
+        "expired": "यह कार्ड एक्सपायर हो चुका है — आप इसे अभी जोड़कर बाद में एक्सपायरी अपडेट कर सकते हैं"
+      },
+      "holder": {
+        "label": "कार्ड पर नाम",
+        "placeholder": "जैसा कार्ड पर छपा है"
+      },
+      "nickname": {
+        "label": "उपनाम",
+        "help": "वैकल्पिक — ऐप में कार्ड इसी नाम से दिखेगा"
+      },
+      "look": {
+        "label": "डिज़ाइन",
+        "help": "वैकल्पिक — कोई फ़िनिश चुनें, या बैंक के रंग रहने दें",
+        "usingBankColours": "{{bank}} के रंग इस्तेमाल हो रहे हैं",
+        "usingDefault": "कार्ड सहेजते ही बैंक के रंग अपने आप लग जाते हैं",
+        "tiers": {
+          "standard": "बैंक के रंग",
+          "gold": "गोल्ड",
+          "platinum": "प्लैटिनम",
+          "metal": "मेटल",
+          "black": "ब्लैक",
+          "custom": "कस्टम"
+        },
+        "from": "रंग",
+        "to": "दूसरा रंग",
+        "text": "टेक्स्ट",
+        "textAuto": "ऑटो",
+        "textLight": "हल्का",
+        "textDark": "गहरा",
+        "pattern": "पैटर्न",
+        "patterns": {
+          "none": "सादा",
+          "waves": "लहरें",
+          "mesh": "जाली",
+          "dots": "बिंदु"
+        },
+        "unreadable": "इन रंगों पर वह टेक्स्ट रंग पढ़ना मुश्किल है — ऑटो पढ़ने लायक रंग चुन लेता है"
+      },
+      "credit": {
+        "payFrom": "यह कार्ड किससे चुकाएँ",
+        "payFromHelp": "वह बैंक जो स्टेटमेंट चुकाता है। इसे बाद में बदल सकते हैं।",
+        "autopay": "ऑटो-पे",
+        "autopayHelp": "इसे तभी चालू करें जब आपका बैंक पहले से पूरा स्टेटमेंट अपने आप चुका देता हो — ProfitSync उस भुगतान को देय तिथि पर दर्ज कर देगा। यह आज के बाद देय होने वाले स्टेटमेंट पर लागू होता है।",
+        "autopayNeedsBank": "ऑटो-पे चालू करने के लिए वह बैंक चुनें जो यह कार्ड चुकाता है",
+        "editHint": "आपका बकाया और पुराने स्टेटमेंट कार्ड पेज पर हैं — यहाँ सिर्फ़ लिमिट और चक्र के दिन बदलते हैं"
+      },
+      "errors": {
+        "bank_required": "वह बैंक खाता चुनें जिसका यह कार्ड है",
+        "issuer_required": "वह बैंक डालें जिसने यह कार्ड जारी किया",
+        "last4_invalid": "आख़िरी चार अंक डालें, या खाली छोड़ दें",
+        "expiry_invalid": "एक्सपायरी MM/YY में डालें",
+        "design_invalid": "कोई मान्य रंग चुनें",
+        "funding_required": "ऑटो-पे चालू करने से पहले वह बैंक चुनें जो यह कार्ड चुकाता है",
+        "limit_invalid": "क्रेडिट लिमिट डालें",
+        "debt_invalid": "आज का बकाया डालें (कुछ न हो तो 0)",
+        "closing_day_invalid": "महीने का वह दिन डालें जब आपका स्टेटमेंट बंद होता है (1–31)",
+        "due_day_invalid": "महीने का वह दिन डालें जब भुगतान देय होता है (1–31)",
+        "same_day": "बंद होने का दिन और देय दिन अलग-अलग होने चाहिए",
+        "statement_balance_invalid": "स्टेटमेंट की राशि डालें",
+        "statement_date_invalid": "स्टेटमेंट बंद होने की तारीख़ डालें",
+        "statement_in_future": "स्टेटमेंट बंद होने की तारीख़ भविष्य की नहीं हो सकती",
+        "amountTooLarge": "राशि बहुत बड़ी है"
+      }
+    }
   },
   "errorBoundary": {
     "title": "कुछ ग़लत हो गया",
@@ -1351,7 +1627,11 @@
     "saveFailed": "सहेजा नहीं जा सका — फिर प्रयास करें",
     "loadFailed": "आवर्ती भुगतान लोड नहीं हो सके",
     "empty": "अभी कोई आवर्ती भुगतान नहीं",
-    "emptyHint": "किराया, वेतन या सब्सक्रिप्शन एक बार सेट करें — देय होने पर ProfitSync उन्हें अपने आप दर्ज करता है।"
+    "emptyHint": "किराया, वेतन या सब्सक्रिप्शन एक बार सेट करें — देय होने पर ProfitSync उन्हें अपने आप दर्ज करता है।",
+    "cardPayWith": "किससे भुगतान",
+    "cardPayWithHint": "वह खाता या कार्ड जिसमें यह भुगतान आता या जाता है।",
+    "cardFilter": "केवल {{name}} के भुगतान दिख रहे हैं",
+    "cardClearFilter": "सभी भुगतान दिखाएँ"
   },
   "calendar": {
     "title": "कैलेंडर",
@@ -1560,7 +1840,8 @@
       "budget": "बजट",
       "transactions": "लेन-देन",
       "clients": "क्लाइंट",
-      "system": "सिस्टम"
+      "system": "सिस्टम",
+      "cards": "कार्ड"
     },
     "channels": {
       "in_app": "इन-ऐप",
@@ -1696,6 +1977,34 @@
       "budget_period_restated": {
         "title": "एक बंद अवधि अपडेट हुई",
         "body": "{{date}} से शुरू होने वाली अवधि की फिर गणना हुई, क्योंकि उसमें एक लेन-देन बदला।"
+      },
+      "card_statement_ready": {
+        "title": "कार्ड का स्टेटमेंट तैयार",
+        "body": "{{card}}: {{amount}} {{date}} को देय।"
+      },
+      "card_payment_due_soon": {
+        "title": "कार्ड का भुगतान जल्द देय",
+        "body": "{{card}}: {{amount}} {{date}} को देय ({{days}} दिन)।"
+      },
+      "card_payment_overdue": {
+        "title": "कार्ड का भुगतान अतिदेय",
+        "body": "{{card}}: {{amount}} {{date}} को देय था।"
+      },
+      "card_autopay_paid": {
+        "title": "कार्ड अपने आप चुकाया गया",
+        "body": "{{from}} से {{card}} को {{amount}} चुकाया गया।"
+      },
+      "card_autopay_failed": {
+        "title": "ऑटो-पे आपका कार्ड नहीं चुका सका",
+        "body": "{{card}}: {{amount}} का भुगतान नहीं हुआ — {{reason}}। इसे खुद चुकाएँ।"
+      },
+      "card_utilization_high": {
+        "title": "कार्ड अपनी लिमिट के करीब",
+        "body": "{{card}} अपनी लिमिट के {{pct}}% पर है — {{available}} बचा है।"
+      },
+      "card_expiring": {
+        "title": "कार्ड जल्द एक्सपायर हो रहा है",
+        "body": "{{card}} {{expiry}} को एक्सपायर हो जाएगा।"
       }
     },
     "client": {
@@ -1910,7 +2219,8 @@
     "handlePosition": "खोज हैंडल की स्थिति",
     "sideLeft": "बायाँ किनारा",
     "sideRight": "दायाँ किनारा",
-    "handleDragHint": "खोजने के लिए हैंडल को टैप करें या अंदर की ओर स्वाइप करें। इसे किनारे पर ऊपर या नीचे खींचकर जहाँ चाहें रखें।"
+    "handleDragHint": "खोजने के लिए हैंडल को टैप करें या अंदर की ओर स्वाइप करें। इसे किनारे पर ऊपर या नीचे खींचकर जहाँ चाहें रखें।",
+    "cards": "कार्ड"
   },
   "aiVoice": {
     "openLabel": "AI वॉइस असिस्टेंट",

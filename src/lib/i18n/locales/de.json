@@ -29,7 +29,7 @@
     "termsOfService": "Nutzungsbedingungen",
     "admin": "Admin",
     "adminConsole": "Admin-Konsole",
-    "wealth": "Vermögen",
+    "wealth": "Vermögen & Karten",
     "categories": "Kategorien",
     "analytics": "Analysen",
     "referrals": "Empfehlen & verdienen",
@@ -180,7 +180,13 @@
     "cardChart": "Diagramm",
     "cardBreakdown": "Top-Aufschlüsselung",
     "cardLatest": "Neueste Transaktionen",
-    "openFilters": "Open dashboard filters"
+    "openFilters": "Open dashboard filters",
+    "cardsRow": "Karten",
+    "cardsCount_one": "{{count}} Karte",
+    "cardsCount_other": "{{count}} Karten",
+    "cardsOwed": "{{amount}} offen",
+    "cardsNothingOwed": "Nichts offen",
+    "cardsOpen": "Karten öffnen"
   },
   "chart": {
     "incoming": "Eingang",
@@ -434,7 +440,28 @@
     "transferBadge": "Transfer",
     "cardPaymentBadge": "Card payment",
     "owedShort": "{{amount}} owed",
-    "cardCreditShort": "{{amount}} credit"
+    "cardCreditShort": "{{amount}} credit",
+    "cardChip": {
+      "credit": "Kredit",
+      "debit": "Debit",
+      "a11y": "{{kind}}karte {{bank}}, endet auf {{last4}}",
+      "a11yNoNumber": "{{kind}}karte {{name}}",
+      "noNumber": "{{name}}"
+    },
+    "cardsHeading": "Karten",
+    "cardDebit": "Debit",
+    "cardCredit": "Kredit",
+    "cardDebitBalance": "Debit · {{amount}}",
+    "cardCreditOwed": "Kredit · {{amount}} offen",
+    "cardCreditNothingOwed": "Kredit · nichts offen",
+    "cardExpired": "Abgelaufen",
+    "cardFrozenError": "Diese Karte ist gesperrt oder geschlossen und kann keine neuen Zahlungen aufnehmen. Wähle eine andere Karte oder ein anderes Konto.",
+    "cardPaidWith": "Bezahlt mit",
+    "cardVia": "über •••• {{last4}}",
+    "cardViaNoTail": "über Karte",
+    "cardAutopayBadge": "Autom. Zahlung",
+    "nCards_one": "{{count}} Karte",
+    "nCards_other": "{{count}} Karten"
   },
   "clients": {
     "pageTitle": "Klienten",
@@ -1226,7 +1253,256 @@
     "amountOwedInvalid": "Enter the amount you owe today (0 if nothing)",
     "statementBalanceRequired": "Enter the statement balance",
     "statementDateRequired": "Enter the statement closing date (not in the future)",
-    "dayPlaceholder": "e.g. {{day}}"
+    "dayPlaceholder": "e.g. {{day}}",
+    "cardVisual": {
+      "debit": "Debit",
+      "credit": "Kredit",
+      "a11yCard": "{{issuer}} {{kind}}karte",
+      "cardEnding": "endet auf {{last4}}",
+      "expires": "gültig bis {{expiry}}",
+      "frozen": "Gesperrt",
+      "closed": "Geschlossen",
+      "expired": "Abgelaufen"
+    },
+    "cards": {
+      "tabsLabel": "Vermögensbereiche",
+      "tabBanks": "Banken",
+      "tabCards": "Karten",
+      "title": "Karten",
+      "addCard": "Karte hinzufügen",
+      "count_one": "{{count}} Karte",
+      "count_other": "{{count}} Karten",
+      "linkedToBanks_one": "Mit {{count}} Bank verknüpft",
+      "linkedToBanks_other": "Mit {{count}} Banken verknüpft",
+      "debitCount_one": "{{count}} Debitkarte",
+      "debitCount_other": "{{count}} Debitkarten",
+      "creditCount_one": "{{count}} Kreditkarte",
+      "creditCount_other": "{{count}} Kreditkarten",
+      "owedTotal": "Offen auf Karten",
+      "availableCredit": "Verfügbarer Rahmen",
+      "nextDue": "Nächste Fälligkeit",
+      "nothingDue": "Nichts fällig",
+      "dueIn_one": "in {{count}} Tag",
+      "dueIn_other": "in {{count}} Tagen",
+      "dueToday": "heute",
+      "overdueBy_one": "{{count}} Tag überfällig",
+      "overdueBy_other": "{{count}} Tage überfällig",
+      "kindDebit": "Debit",
+      "kindCredit": "Kredit",
+      "statusActive": "Aktiv",
+      "statusFrozen": "Gesperrt",
+      "statusClosed": "Geschlossen",
+      "statusExpired": "Abgelaufen",
+      "owedLine": "{{owed}} offen",
+      "availableOfLine": "{{available}} von {{limit}} verfügbar",
+      "nothingOwed": "Nichts offen",
+      "dueLine": "fällig am {{date}}",
+      "overdueLine": "überfällig seit {{date}}",
+      "debitLine": "{{bank}} · {{balance}} verfügbar",
+      "utilizationLabel": "{{pct}} % des Limits genutzt",
+      "openCard": "{{name}} öffnen",
+      "cardActions": "Kartenaktionen",
+      "edit": "Karte bearbeiten",
+      "updateExpiry": "Gültigkeit aktualisieren",
+      "freeze": "Karte sperren",
+      "unfreeze": "Karte entsperren",
+      "close": "Karte schließen",
+      "reopen": "Karte wieder öffnen",
+      "delete": "Karte löschen",
+      "frozenHint": "Gesperrt — keine neuen Käufe bis zum Entsperren. Zahlungen sind weiter möglich.",
+      "closedHint": "Geschlossen — bleibt für den Verlauf erhalten.",
+      "freezeToast": "Karte gesperrt",
+      "unfreezeToast": "Karte entsperrt",
+      "closeToast": "Karte geschlossen",
+      "reopenToast": "Karte wieder geöffnet",
+      "deleteToast": "Karte gelöscht",
+      "updateFailed": "Karte konnte nicht aktualisiert werden. Bitte versuche es erneut.",
+      "closeTitle": "Diese Karte schließen?",
+      "closeDescDebit": "Die Karte wird aus deinen Karten und Auswahllisten ausgeblendet. Bei den Transaktionen bleibt sichtbar, welche Karte gezahlt hat. Du kannst sie später wieder öffnen.",
+      "closeDescCredit": "Die Karte und der offene Betrag werden aus deinen aktiven Konten ausgeblendet. Der Verlauf bleibt erhalten. Du kannst sie später wieder öffnen.",
+      "deleteTitle": "Diese Karte löschen?",
+      "deleteDesc": "Diese Karte hat noch keine Transaktionen und kann endgültig entfernt werden.",
+      "payOffTitle": "Zahle {{amount}}, bevor du diese Karte schließt",
+      "payOffDesc": "Eine geschlossene Karte kann nicht bezahlt werden — begleiche zuerst den offenen Betrag.",
+      "closedSection": "Geschlossene Karten",
+      "reopenUpgrade": "Upgrade, um diese Kreditkarte wieder zu öffnen",
+      "emptyTitle": "Noch keine Karten",
+      "emptyDebit": "Eine Debitkarte zahlt direkt vom Guthaben deines Bankkontos.",
+      "emptyCredit": "Mit einer Kreditkarte kaufst du jetzt und zahlst die Abrechnung später — ProfitSync verfolgt, was offen ist.",
+      "loadFailed": "Fehler beim Laden der Karten",
+      "retry": "Erneut versuchen",
+      "notFound": "Karte nicht gefunden",
+      "back": "Zurück zu den Karten",
+      "linkedTo": "Verknüpft mit {{bank}}",
+      "issuedBy": "Ausgestellt von {{bank}}",
+      "paidFrom": "Bezahlt von {{bank}}",
+      "noPayingBank": "Noch keine zahlende Bank",
+      "expires": "Gültig bis",
+      "holder": "Karteninhaber",
+      "cycle": "Abrechnungszyklus",
+      "cycleLine": "Abschluss am {{closing}}. · fällig am {{due}}.",
+      "spending": "Ausgaben",
+      "availableAt": "{{balance}} verfügbar bei {{bank}}",
+      "spentThisMonth": "Diesen Monat ausgegeben",
+      "refundsThisMonth": "Erstattungen",
+      "lastUsed": "Zuletzt genutzt",
+      "neverUsed": "Noch nicht genutzt",
+      "addPurchase": "Kauf hinzufügen",
+      "addRefund": "Erstattung hinzufügen",
+      "addRecurring": "Dauerauftrag hinzufügen",
+      "transactions": "Transaktionen",
+      "noTransactions": "Noch keine Transaktionen auf dieser Karte",
+      "loadMore": "Mehr laden ({{count}})",
+      "upcoming": "Anstehend",
+      "viewAllRecurring": "Alle anzeigen",
+      "nextOn": "Nächste am {{date}}",
+      "paused": "Pausiert",
+      "autopay": "Automatische Zahlung",
+      "autopayHelp": "Aktiviere das nur, wenn deine Bank die volle Abrechnung bereits automatisch bezahlt — ProfitSync erfasst diese Zahlung dann am Fälligkeitstag. Es gilt für Abrechnungen, die nach heute fällig werden.",
+      "autopayPayingBank": "Karte bezahlen von",
+      "autopayChooseBank": "Wähle die Bank, die diese Karte bezahlt, um die automatische Zahlung zu aktivieren.",
+      "autopayNext": "Nächste automatische Zahlung: {{date}} · {{amount}}",
+      "autopayNothingScheduled": "Nichts geplant — keine Abrechnung offen.",
+      "autopayOff": "Aus — du erfasst Zahlungen selbst.",
+      "autopayLastPaid": "Letzte automatische Zahlung: am {{date}} bezahlt",
+      "autopayLastSkipped": "Letzte automatische Zahlung: am {{date}} übersprungen — es war nichts offen.",
+      "autopayLastFailed": "Letzte automatische Zahlung am {{date}} fehlgeschlagen",
+      "autopayPayManually": "Manuell zahlen",
+      "autopayNotCovered": "Nicht von der automatischen Zahlung abgedeckt — bitte manuell zahlen",
+      "autopayUpdated": "Automatische Zahlung aktualisiert",
+      "bankCards": "Karten",
+      "bankCardsEmpty": "Noch keine Karten bei dieser Bank",
+      "paysThisCard": "zahlt diese Karte",
+      "cardsOnBank_one": "{{count}} Karte",
+      "cardsOnBank_other": "{{count}} Karten",
+      "closeBankCards_one": "{{count}} Karte dieser Bank wird geschlossen.",
+      "closeBankCards_other": "{{count}} Karten dieser Bank werden geschlossen.",
+      "closeBankAutopay": "Die automatische Zahlung für {{names}} wird deaktiviert.",
+      "frozenActions": "Diese Karte ist gesperrt — entsperre sie, um Käufe zu erfassen.",
+      "closedActions": "Diese Karte ist geschlossen — öffne sie wieder, um sie zu nutzen.",
+      "viewCards": "Karten anzeigen"
+    },
+    "cardWizard": {
+      "titleCreate": "Karte hinzufügen",
+      "titleEdit": "Karte bearbeiten",
+      "stepOf": "Schritt {{current}} von {{total}}",
+      "steps": {
+        "card": "Karte",
+        "look": "Design",
+        "credit": "Kreditdetails"
+      },
+      "back": "Zurück",
+      "next": "Weiter",
+      "save": "Karte speichern",
+      "saveChanges": "Änderungen speichern",
+      "created": "Karte hinzugefügt",
+      "updated": "Karte aktualisiert",
+      "saveFailed": "Karte konnte nicht gespeichert werden",
+      "kind": {
+        "label": "Was für eine Karte ist es?",
+        "debit": "Debit",
+        "debitHelp": "Zahlt direkt vom Guthaben deines Bankkontos",
+        "credit": "Kredit",
+        "creditHelp": "Jetzt kaufen, die Abrechnung später zahlen",
+        "locked": "Upgrade für eine Kreditkarte",
+        "readOnly": "Der Kartentyp lässt sich nach dem Hinzufügen nicht mehr ändern"
+      },
+      "bank": {
+        "which": "Zu welchem Bankkonto gehört diese Karte?",
+        "addFirst": "Füge die Bank hinzu, zu der diese Karte gehört",
+        "addNew": "Neue Bank hinzufügen",
+        "name": "Bankname",
+        "openingBalance": "Saldo heute ({{symbol}})",
+        "create": "Bank hinzufügen",
+        "creating": "Wird hinzugefügt…",
+        "cancel": "Abbrechen",
+        "created": "Bank hinzugefügt",
+        "createFailed": "Bank konnte nicht hinzugefügt werden",
+        "upgrade": "Upgrade für weitere Banken",
+        "noneOption": "Überspringen — ich zahle manuell",
+        "linked": "Verknüpft mit {{bank}}"
+      },
+      "issuer": {
+        "label": "Kartenherausgeber",
+        "placeholder": "Banknamen suchen…",
+        "help": "Die Bank, die die Karte ausgestellt hat — ihre Farben kommen auf die Karte"
+      },
+      "network": {
+        "label": "Netzwerk",
+        "other": "Sonstiges"
+      },
+      "last4": {
+        "label": "Letzte 4 Ziffern",
+        "help": "Gespeichert werden nur die letzten vier Ziffern — nie die volle Nummer",
+        "duplicate": "{{name}} endet bereits auf {{last4}} — ist das dieselbe Karte?"
+      },
+      "expiry": {
+        "label": "Gültig bis",
+        "placeholder": "MM/JJ",
+        "expired": "Diese Karte ist bereits abgelaufen — du kannst sie trotzdem hinzufügen und die Gültigkeit später aktualisieren"
+      },
+      "holder": {
+        "label": "Name auf der Karte",
+        "placeholder": "Wie auf der Karte aufgedruckt"
+      },
+      "nickname": {
+        "label": "Spitzname",
+        "help": "Optional — so wird die Karte in der App angezeigt"
+      },
+      "look": {
+        "label": "Design",
+        "help": "Optional — wähle eine Optik oder behalte die Farben der Bank",
+        "usingBankColours": "Farben von {{bank}}",
+        "usingDefault": "Die Farben der Bank werden nach dem Speichern automatisch übernommen",
+        "tiers": {
+          "standard": "Bankfarben",
+          "gold": "Gold",
+          "platinum": "Platin",
+          "metal": "Metall",
+          "black": "Schwarz",
+          "custom": "Individuell"
+        },
+        "from": "Farbe",
+        "to": "Zweite Farbe",
+        "text": "Text",
+        "textAuto": "Auto",
+        "textLight": "Hell",
+        "textDark": "Dunkel",
+        "pattern": "Muster",
+        "patterns": {
+          "none": "Einfarbig",
+          "waves": "Wellen",
+          "mesh": "Netz",
+          "dots": "Punkte"
+        },
+        "unreadable": "Diese Textfarbe ist auf diesen Farben schwer lesbar — „Auto“ wählt die lesbare"
+      },
+      "credit": {
+        "payFrom": "Karte bezahlen von",
+        "payFromHelp": "Die Bank, die die Abrechnung bezahlt. Du kannst das später ändern.",
+        "autopay": "Automatische Zahlung",
+        "autopayHelp": "Aktiviere das nur, wenn deine Bank die volle Abrechnung bereits automatisch bezahlt — ProfitSync erfasst diese Zahlung dann am Fälligkeitstag. Gilt für Abrechnungen, die nach heute fällig werden.",
+        "autopayNeedsBank": "Wähle die Bank, die diese Karte bezahlt, um die automatische Zahlung zu aktivieren",
+        "editHint": "Offener Betrag und frühere Abrechnungen stehen auf der Kartenseite — hier änderst du nur das Limit und die Zyklustage"
+      },
+      "errors": {
+        "bank_required": "Wähle das Bankkonto, zu dem diese Karte gehört",
+        "issuer_required": "Gib die Bank an, die diese Karte ausgestellt hat",
+        "last4_invalid": "Gib die letzten vier Ziffern an oder lass das Feld leer",
+        "expiry_invalid": "Gib die Gültigkeit als MM/JJ an",
+        "design_invalid": "Wähle eine gültige Farbe",
+        "funding_required": "Wähle die Bank, die diese Karte bezahlt, bevor du die automatische Zahlung aktivierst",
+        "limit_invalid": "Gib das Kreditlimit an",
+        "debt_invalid": "Gib den heute offenen Betrag an (0, wenn nichts offen ist)",
+        "closing_day_invalid": "Gib den Monatstag an, an dem die Abrechnung schließt (1–31)",
+        "due_day_invalid": "Gib den Monatstag an, an dem die Zahlung fällig ist (1–31)",
+        "same_day": "Abrechnungstag und Fälligkeitstag müssen unterschiedlich sein",
+        "statement_balance_invalid": "Gib den Abrechnungssaldo an",
+        "statement_date_invalid": "Gib das Abrechnungsdatum an",
+        "statement_in_future": "Das Abrechnungsdatum kann nicht in der Zukunft liegen",
+        "amountTooLarge": "Dieser Betrag ist zu groß"
+      }
+    }
   },
   "errorBoundary": {
     "title": "Etwas ist schiefgelaufen",
@@ -1351,7 +1627,11 @@
     "saveFailed": "Speichern fehlgeschlagen — versuche es erneut",
     "loadFailed": "Wiederkehrende Zahlungen konnten nicht geladen werden",
     "empty": "Noch keine wiederkehrenden Zahlungen",
-    "emptyHint": "Richte Miete, Gehälter oder Abos einmal ein — ProfitSync bucht sie automatisch, wenn sie fällig sind."
+    "emptyHint": "Richte Miete, Gehälter oder Abos einmal ein — ProfitSync bucht sie automatisch, wenn sie fällig sind.",
+    "cardPayWith": "Bezahlen mit",
+    "cardPayWithHint": "Das Konto oder die Karte, über die diese Zahlung ein- oder ausgeht.",
+    "cardFilter": "Es werden nur Zahlungen auf {{name}} angezeigt",
+    "cardClearFilter": "Alle Zahlungen anzeigen"
   },
   "calendar": {
     "title": "Kalender",
@@ -1560,7 +1840,8 @@
       "budget": "Budgets",
       "transactions": "Transaktionen",
       "clients": "Kunden",
-      "system": "System"
+      "system": "System",
+      "cards": "Karten"
     },
     "channels": {
       "in_app": "In der App",
@@ -1696,6 +1977,34 @@
       "budget_period_restated": {
         "title": "Ein abgeschlossener Zeitraum wurde aktualisiert",
         "body": "Der Zeitraum ab {{date}} wurde neu berechnet, nachdem sich eine Transaktion darin geändert hat."
+      },
+      "card_statement_ready": {
+        "title": "Kartenabrechnung ist da",
+        "body": "{{card}}: {{amount}} fällig am {{date}}."
+      },
+      "card_payment_due_soon": {
+        "title": "Kartenzahlung bald fällig",
+        "body": "{{card}}: {{amount}} fällig am {{date}} (in {{days}} Tag(en))."
+      },
+      "card_payment_overdue": {
+        "title": "Kartenzahlung überfällig",
+        "body": "{{card}}: {{amount}} waren am {{date}} fällig."
+      },
+      "card_autopay_paid": {
+        "title": "Karte automatisch bezahlt",
+        "body": "{{amount}} von {{from}} an {{card}} gezahlt."
+      },
+      "card_autopay_failed": {
+        "title": "Automatische Zahlung fehlgeschlagen",
+        "body": "{{card}}: {{amount}} wurden nicht bezahlt — {{reason}}. Bitte manuell zahlen."
+      },
+      "card_utilization_high": {
+        "title": "Karte fast am Limit",
+        "body": "{{card}} liegt bei {{pct}} % des Limits — {{available}} übrig."
+      },
+      "card_expiring": {
+        "title": "Karte läuft bald ab",
+        "body": "{{card}} läuft {{expiry}} ab."
       }
     },
     "client": {
@@ -1910,7 +2219,8 @@
     "handlePosition": "Position des Suchgriffs",
     "sideLeft": "Linker Rand",
     "sideRight": "Rechter Rand",
-    "handleDragHint": "Tippe auf den Griff oder wische ihn nach innen, um zu suchen. Ziehe ihn am Rand nach oben oder unten, um ihn beliebig zu platzieren."
+    "handleDragHint": "Tippe auf den Griff oder wische ihn nach innen, um zu suchen. Ziehe ihn am Rand nach oben oder unten, um ihn beliebig zu platzieren.",
+    "cards": "Karten"
   },
   "aiVoice": {
     "openLabel": "KI-Sprachassistent",

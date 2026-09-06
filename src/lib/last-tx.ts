@@ -8,6 +8,9 @@ export type LastTxDefaults = {
   type?: "incoming" | "outgoing"
   category?: string
   wealth_account_id?: string
+  // The card that paid last time (null = paid straight from the account). The
+  // form prefers it only while the card is still usable, else the account.
+  card_id?: string | null
 }
 
 export function loadLastTx(): LastTxDefaults {

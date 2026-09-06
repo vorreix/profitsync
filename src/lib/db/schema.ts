@@ -243,12 +243,83 @@ export const creditCardStatements = pgTable("credit_card_statements", {
   // negative = the card was in credit at close, nothing due).
   statementBalance: numeric("statement_balance", { precision: 20, scale: 2 }).notNull().default("0"),
   source: text("source").notNull().default("computed"), // computed | manual
+  // Autopay bookkeeping (api/_lib/card-autopay.ts) — a small state machine:
+  // NULL → 'processing' (the CLAIM: one conditional UPDATE … WHERE autopay_status
+  // IS NULL, the only idempotency gate Neon HTTP allows) → 'paid' (written in
+  // the SAME atomic batch as the transfer legs) | 'failed' (batch error or a
+  // stale claim; never retried automatically, `autopayError` says why) |
+  // 'skipped' (nothing left to pay, or superseded by a newer statement that
+  // already contains this debt). `autopayGroupId` = the transfer's group_id.
+  autopayStatus: text("autopay_status"),
+  autopayGroupId: uuid("autopay_group_id"),
+  autopayAt: timestamp("autopay_at"),
+  autopayError: text("autopay_error"),
   createdBy: text("created_by"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (table) => ({
   accountCloseUnique: uniqueIndex("credit_card_statements_account_close_unique").on(table.wealthAccountId, table.closingDate),
   orgIdx: index("credit_card_statements_org_idx").on(table.organizationId),
   sourceCheck: check("credit_card_statements_source_check", sql`source in ('computed','manual')`),
+  autopayStatusCheck: check("credit_card_statements_autopay_status_check", sql`autopay_status is null or autopay_status in ('processing','paid','skipped','failed')`),
+}))
+
+// ── Cards ────────────────────────────────────────────────────────────────────
+// A first-class CARD (debit or credit) linked to a bank. A card row is IDENTITY
+// and ATTRIBUTION only — it never holds money. `accountId` is the ledger account
+// the card posts to: a debit card's bank, or a credit card's liability account
+// (wealth_accounts.type='credit_card' — signed balance, limit and statements
+// unchanged, docs/credit-cards). `fundingAccountId` (credit only) is the bank
+// that pays the statement (default "Pay from" + autopay source). Transactions
+// and recurring rules carry `cardId` so lists can show "C •••• 1234" — deleting
+// a card SETS NULL there, the money history is never touched. Cascades with its
+// ledger account (a liability account IS the credit card; a bank is only
+// hard-deleted when it has no transactions). Full design: docs/cards/CARDS.md.
+export const cards = pgTable("cards", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  kind: text("kind").notNull(), // debit | credit
+  accountId: uuid("account_id").notNull().references(() => wealthAccounts.id, { onDelete: "cascade" }),
+  fundingAccountId: uuid("funding_account_id").references(() => wealthAccounts.id, { onDelete: "set null" }),
+  name: text("name").notNull().default(""), // nickname; empty → "<Bank> <Network>" in the UI
+  holderName: text("holder_name").notNull().default(""),
+  network: text("network").notNull().default("other"), // visa | mastercard | amex | rupay | discover | jcb | unionpay | maestro | diners | other
+  // ONLY the last four digits are ever stored (PCI DSS truncation) — enough to
+  // tell cards apart, useless to anyone who reads the database.
+  last4: text("last4").notNull().default(""),
+  expiryMonth: integer("expiry_month"),
+  expiryYear: integer("expiry_year"),
+  tier: text("tier").notNull().default("standard"), // standard | gold | platinum | metal | black | custom
+  // Custom look: { from, to, text: 'light'|'dark', pattern }. NULL → derived from
+  // the tier + the bank's brand colours (src/lib/cards.ts resolveCardPalette).
+  design: jsonb("design"),
+  // Brandfetch palette snapshot [{ hex, type, brightness }] for the linked bank's
+  // domain, captured at create (fail-soft) so the visual never re-fetches.
+  brandColors: jsonb("brand_colors"),
+  brandLogoUrl: text("brand_logo_url").notNull().default(""),
+  // Credit only. Effective only with a funding account. `autopaySince` is the
+  // day autopay was switched on: statements due BEFORE it are never auto-paid
+  // (onboarding a card with an old statement must not "pay" it retroactively).
+  autopay: boolean("autopay").notNull().default(false),
+  autopaySince: date("autopay_since"),
+  // active | frozen (hidden from pickers, no new transactions) | closed (archived).
+  status: text("status").notNull().default("active"),
+  position: integer("position").notNull().default(0),
+  createdBy: text("created_by"),
+  updatedBy: text("updated_by"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  orgIdx: index("cards_org_idx").on(table.organizationId),
+  accountIdx: index("cards_account_idx").on(table.accountId),
+  // One credit card per liability account: the card IS that account's identity.
+  creditAccountUnique: uniqueIndex("cards_credit_account_unique").on(table.accountId).where(sql`kind = 'credit'`),
+  kindCheck: check("cards_kind_check", sql`kind in ('debit','credit')`),
+  statusCheck: check("cards_status_check", sql`status in ('active','frozen','closed')`),
+  last4Check: check("cards_last4_check", sql`last4 ~ '^([0-9]{4})?$'`),
+  expiryMonthCheck: check("cards_expiry_month_check", sql`expiry_month is null or (expiry_month between 1 and 12)`),
+  expiryYearCheck: check("cards_expiry_year_check", sql`expiry_year is null or (expiry_year between 2000 and 2100)`),
+  expiryPairCheck: check("cards_expiry_pair_check", sql`(expiry_month is null) = (expiry_year is null)`),
+  tierCheck: check("cards_tier_check", sql`tier in ('standard','gold','platinum','metal','black','custom')`),
 }))
 
 export const wealthAccountAttachments = pgTable("wealth_account_attachments", {
@@ -274,6 +345,10 @@ export const transactions = pgTable("transactions", {
     .notNull()
     .references(() => clients.id, { onDelete: "cascade" }),
   wealthAccountId: uuid("wealth_account_id").references(() => wealthAccounts.id, { onDelete: "set null" }),
+  // WHICH card paid (attribution only — the money is on wealth_account_id, which
+  // is always the card's own ledger account). NULL for a plain account payment.
+  // SET NULL on card delete: the history outlives the card.
+  cardId: uuid("card_id").references(() => cards.id, { onDelete: "set null" }),
   // Links the legs of a single logical transaction that was paid from / split
   // across multiple wealth accounts (e.g. €100 = €30 cash + €25 AC1 + €45 AC2).
   // All legs share one group_id; a single-account transaction has group_id NULL.
@@ -322,6 +397,7 @@ export const transactions = pgTable("transactions", {
   // so a separate single-column client index would be redundant.
   clientDateIdx: index("transactions_client_date_idx").on(table.clientId, table.date),
   accountIdx: index("transactions_account_idx").on(table.wealthAccountId),
+  cardIdx: index("transactions_card_idx").on(table.cardId),
   dateIdx: index("transactions_date_idx").on(table.date),
   // Containment lookups for the `?tag=` filter.
   tagsIdx: index("transactions_tags_idx").using("gin", table.tags),
@@ -356,6 +432,9 @@ export const recurringRules = pgTable("recurring_rules", {
   // (recurring_rule_id, recurring_due_date) never double-conflicts.
   kind: text("kind").notNull().default("standard"), // standard | transfer
   toAccountId: uuid("to_account_id").references(() => wealthAccounts.id, { onDelete: "set null" }),
+  // The card that pays each occurrence (copied onto every materialized row);
+  // `wealthAccountId` is then always that card's ledger account.
+  cardId: uuid("card_id").references(() => cards.id, { onDelete: "set null" }),
   name: text("name").notNull(),
   type: text("type").notNull(), // incoming | outgoing (for a transfer: the source-leg direction, always 'outgoing')
   amount: numeric("amount", { precision: 20, scale: 2 }).notNull(),

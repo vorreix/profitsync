@@ -6,8 +6,9 @@ import { toast } from "sonner"
 import { Loader as Loader2, Paperclip, Sparkles, X } from "lucide-react"
 import { apiDelete, apiErrorUpgradeHint, apiGet, apiPatch, apiPost } from "@/lib/api"
 import { amountExceedsLimit } from "@/lib/money"
-import { isPaidPlanKey, type Budget, type Client, type WealthAccount } from "@/lib/types"
+import { isPaidPlanKey, type Budget, type Card, type Client, type WealthAccount } from "@/lib/types"
 import { tagLimitForPlan } from "@/lib/tags"
+import { usableCards } from "@/lib/use-cards"
 import { useCurrency } from "@/lib/currency-context"
 import { useOrg } from "@/lib/org-context"
 import { useCategories } from "@/lib/use-categories"
@@ -22,9 +23,11 @@ import { AiCaptureView, type SmartApply } from "@/components/transactions/AiQuic
 import { useAiQuota } from "@/hooks/use-ai-quota"
 import { mergeTags } from "@/lib/transaction-tags"
 import {
+  allocationPayload,
   defaultAccountId,
   defaultTxForm,
   formatFileSize,
+  isCardUnusableError,
   uploadTxAttachment,
   type TxForm,
 } from "@/components/transactions/tx-form-utils"
@@ -78,6 +81,9 @@ export function AddTransactionDialog({
   const [budgetMap, setBudgetMap] = useState<Map<string, Budget>>(new Map())
   const [pendingFiles, setPendingFiles] = useState<File[]>([])
   const [saving, setSaving] = useState(false)
+  // The server refused the chosen card (frozen/closed since it was remembered):
+  // shown under the picker until the user picks something else.
+  const [sourceError, setSourceError] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   // AI quick add: which fields the parser filled (drives highlights), plus the
   // pre-parse snapshot Undo restores. Cleared per-field on manual edits.
@@ -114,6 +120,7 @@ export function AddTransactionDialog({
     // must be re-armed here or a previous run leaks into this one — a stale
     // `saving` left the Add button stuck on a spinner from the second open on.
     setSaving(false)
+    setSourceError(null)
     // A dismissal (outside-click/Esc/Back) keeps the draft: skip re-seeding so
     // the user's typed data is exactly where they left it. Cancel/save cleared
     // the draft, so those re-seed fresh (sticky defaults + today's date).
@@ -136,12 +143,15 @@ export function AddTransactionDialog({
     ;(async () => {
       const token = await getToken()
       if (!token) return
-      const [accs, cls, bdg] = await Promise.all([
+      // Cards load with the accounts so the seed below can settle on the
+      // remembered CARD in one go (the picker's own useCards() dedupes this GET).
+      const [accs, cls, bdg, cardRows] = await Promise.all([
         apiGet<WealthAccount[]>("/api/wealth/accounts", token).catch(() => [] as WealthAccount[]),
         !isPersonal
           ? apiGet<Client[] | { data: Client[] }>("/api/clients", token).catch(() => [] as Client[])
           : Promise.resolve([] as Client[]),
         apiGet<{ budgets: Budget[] }>("/api/budgets", token).catch(() => ({ budgets: [] })),
+        apiGet<Card[]>("/api/cards", token).catch(() => [] as Card[]),
       ])
       if (cancelled) return
       const active = (accs as WealthAccount[]).filter((a) => !a.archived_at)
@@ -153,15 +163,22 @@ export function AddTransactionDialog({
       for (const b of bdg.budgets ?? []) m.set(b.client_id ?? "", b)
       setBudgetMap(m)
       if (seeding) {
-        // Fill in only the remembered source account — and never clobber an
-        // allocation the user already started while the request was in flight.
+        // Fill in only the remembered source — the last-used CARD while it is
+        // still usable, else the last-used account, else the default — and never
+        // clobber an allocation the user already started while the request was
+        // in flight.
         const last = loadLastTx()
-        const acctId =
-          last.wealth_account_id && active.some((a) => a.id === last.wealth_account_id)
+        const card = last.card_id ? usableCards(cardRows).find((c) => c.id === last.card_id) : undefined
+        const cardAccountActive = !!card && active.some((a) => a.id === card.account_id)
+        const acctId = cardAccountActive
+          ? card!.account_id
+          : last.wealth_account_id && active.some((a) => a.id === last.wealth_account_id)
             ? last.wealth_account_id
             : defaultAccountId(active)
         setForm((prev) =>
-          prev.allocations.length > 0 || !acctId ? prev : { ...prev, allocations: [{ account_id: acctId, amount: "" }] },
+          prev.allocations.length > 0 || !acctId
+            ? prev
+            : { ...prev, allocations: [{ account_id: acctId, card_id: cardAccountActive ? card!.id : null, amount: "" }] },
         )
       }
       // Voice-assistant handoff LAST — after seeding — so nothing overwrites
@@ -217,6 +234,7 @@ export function AddTransactionDialog({
   // Manual edit of a field retires its AI highlight — the value is theirs now.
   function onFormChange(patch: Partial<TxForm>) {
     setForm((prev) => ({ ...prev, ...patch }))
+    if (patch.allocations) setSourceError(null)
     const touched = Object.keys(patch).map((k) => AI_KEY_FOR_PATCH[k]).filter(Boolean)
     if (touched.length) {
       setAiMeta((prev) => {
@@ -339,7 +357,7 @@ export function AddTransactionDialog({
         // Commit any un-entered draft too, so a typed-but-not-Entered tag isn't lost.
         tags: mergeTags(form.tags, form.tag_draft),
         date: form.date,
-        allocations: allocs.map((a) => ({ wealth_account_id: a.account_id, amount: parseFloat(a.amount) })),
+        allocations: allocs.map(allocationPayload),
       })
       const firstId = result.ids[0] ?? null
       if (firstId) {
@@ -348,7 +366,7 @@ export function AddTransactionDialog({
           catch { toast.error(t("failedToUploadFile", { name: file.name })) }
         }
       }
-      saveLastTx({ client_id: form.client_id, type: form.type, category: form.category, wealth_account_id: allocs[0]?.account_id })
+      saveLastTx({ client_id: form.client_id, type: form.type, category: form.category, wealth_account_id: allocs[0]?.account_id, card_id: allocs[0]?.card_id ?? null })
       const total = allocs.reduce((s, a) => s + Number(a.amount), 0)
       draft.clearDraft()
       setPendingFiles([])
@@ -359,6 +377,8 @@ export function AddTransactionDialog({
     } catch (err) {
       // A tag/quota 402 → route to upgrade instead of a generic failure toast.
       if (apiErrorUpgradeHint(err)) { toast.info(t("tagsLimitReached")); goUpgrade(); return }
+      // The chosen card was frozen/closed meanwhile: say so where the choice is made.
+      if (isCardUnusableError(err)) { setSourceError(t("cardFrozenError")); toast.error(t("cardFrozenError")); return }
       toast.error(t("failedToAddTransaction"))
     } finally {
       // Always reset — the component stays mounted after a successful close, so a
@@ -421,6 +441,7 @@ export function AddTransactionDialog({
             onAddAccount={() => { onOpenChange(false); navigate("/wealth") }}
             currency={currency}
             budget={budgetFor(form.client_id)}
+            sourceError={sourceError}
           />
           <Separator />
           <div className="space-y-2">

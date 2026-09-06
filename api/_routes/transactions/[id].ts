@@ -11,6 +11,7 @@ import { cleanTransactionTags } from "../../../src/lib/transaction-tags.js"
 import { notifyIfBudgetExceeded } from "../../_lib/notify-budget.js"
 import { refundShapeValid } from "../../../src/lib/tx-classify.js"
 import { USER_KINDS } from "../../_lib/tx-sql.js"
+import { attributeCard } from "../../_lib/cards.js"
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ctx = await requireAuth(req, res)
@@ -41,6 +42,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         wealthAccountBankName: wealthAccounts.bankName,
         wealthAccountType: wealthAccounts.type,
         wealthAccountIcon: wealthAccounts.icon,
+        cardId: transactions.cardId,
         groupId: transactions.groupId,
         kind: transactions.kind,
         type: transactions.type,
@@ -84,9 +86,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method === "PATCH") {
     if (!canWrite(role)) return res.status(403).json({ error: "Forbidden" })
-    const { type, amount, description, category, tags, date, wealth_account_id, kind } = req.body as {
-      type?: string; amount?: number; description?: string; category?: string; tags?: unknown; date?: string; wealth_account_id?: string | null; kind?: string
+    const { type, amount, description, category, tags, date, wealth_account_id: bodyAccountId, card_id, kind } = req.body as {
+      type?: string; amount?: number; description?: string; category?: string; tags?: unknown; date?: string; wealth_account_id?: string | null; card_id?: string | null; kind?: string
     }
+    let wealth_account_id = bodyAccountId
     if (type !== undefined && !["incoming", "outgoing"].includes(type)) {
       return res.status(400).json({ error: "type must be incoming or outgoing" })
     }
@@ -98,8 +101,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (amount !== undefined && amountExceedsLimit(amount)) return res.status(400).json({ error: "Amount is too large" })
     const [before] = await db.select().from(transactions).where(eq(transactions.id, id))
     if (!before) return res.status(404).json({ error: "Not found" })
-    if (before.kind === "transfer" && (kind !== undefined || type !== undefined || wealth_account_id !== undefined)) {
-      return res.status(400).json({ error: "A transfer leg can't change kind, direction or account — delete and recreate the transfer" })
+    if (before.kind === "transfer" && (kind !== undefined || type !== undefined || wealth_account_id !== undefined || card_id !== undefined)) {
+      return res.status(400).json({ error: "A transfer leg can't change kind, direction, account or card — delete and recreate the transfer" })
+    }
+    // The (card, account) pair moves together (api/_lib/cards.ts attributeCard):
+    // a card named → its own account; an account named without a card → that
+    // account's credit card (if it is one) or no card at all.
+    let nextCardId: string | null | undefined
+    if (card_id !== undefined || wealth_account_id !== undefined) {
+      const attributed = await attributeCard(orgId, {
+        cardId: card_id === undefined ? (wealth_account_id !== undefined ? null : before.cardId) : card_id,
+        // A card named on its own moves the row to that card's account.
+        wealthAccountId: wealth_account_id !== undefined ? wealth_account_id : card_id ? undefined : before.wealthAccountId,
+      })
+      if (!attributed.ok) return res.status(400).json({ error: attributed.error })
+      wealth_account_id = attributed.accountId
+      nextCardId = attributed.cardId
     }
     const nextKind = kind ?? before.kind
     const nextType = type ?? before.type
@@ -128,6 +145,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .update(transactions)
       .set({
         ...(wealth_account_id !== undefined ? { wealthAccountId: wealth_account_id } : {}),
+        ...(nextCardId !== undefined ? { cardId: nextCardId } : {}),
         ...(kind !== undefined ? { kind } : {}),
         ...(type !== undefined ? { type } : {}),
         ...(amount !== undefined ? { amount: String(amount) } : {}),
@@ -164,7 +182,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const changes = diffFields(
       before as Record<string, unknown>,
       updated as Record<string, unknown>,
-      ["type", "kind", "amount", "description", "category", "tags", "date", "wealthAccountId"],
+      ["type", "kind", "amount", "description", "category", "tags", "date", "wealthAccountId", "cardId"],
     )
     if (Object.keys(changes).length) await logAudit({ orgId, entityType: "transaction", entityId: id, action: "update", actorId: userId, changes })
     // An edit can push a budget over just as a create can (raising the amount,

@@ -9,6 +9,8 @@ import { useDataRefresh } from "@/lib/data-refresh-context"
 import { useCurrency } from "@/lib/currency-context"
 import { formatMoney } from "@/lib/wealth"
 import { cn } from "@/lib/utils"
+import { useCardMap } from "@/lib/use-cards"
+import { CardChip } from "@/components/cards/CardChip"
 import type { Transaction } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -55,6 +57,8 @@ export function CalendarPage() {
   const navigate = useNavigate()
   const { getToken } = useAuth()
   const { currency } = useCurrency()
+  // Card chips on the day's transaction rows.
+  const cardMap = useCardMap()
   const { revision } = useDataRefresh()
 
   const [granularity, setGranularity] = useState<Granularity>("month")
@@ -430,7 +434,9 @@ export function CalendarPage() {
               <p className="py-10 text-center text-sm text-muted-foreground">{t("calendar.noActivity")}</p>
             ) : (
               <ul className="space-y-1.5">
-                {inspectTx.map((tx) => (
+                {inspectTx.map((tx) => {
+                  const card = cardMap.forTx(tx)
+                  return (
                   <li key={tx.id} className="flex items-center gap-2.5 rounded-lg border p-2.5">
                     <span className={cn(
                       "flex size-8 shrink-0 items-center justify-center rounded-full",
@@ -447,13 +453,19 @@ export function CalendarPage() {
                         </span>
                         {tx.recurring_rule_id && <Repeat className="size-3 shrink-0 text-violet-500" />}
                       </span>
-                      {tx.category && <span className="block truncate text-xs text-muted-foreground">{tx.category}</span>}
+                      {(tx.category || card) && (
+                        <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+                          {tx.category && <span className="truncate">{tx.category}</span>}
+                          {card && <CardChip card={card} variant="compact" className="shrink-0" />}
+                        </span>
+                      )}
                     </span>
                     <span className={cn("shrink-0 text-sm font-semibold tabular-nums", tx.type === "incoming" ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400")}>
                       {tx.type === "incoming" ? "+" : "−"}{formatMoney(Number(tx.amount), currency)}
                     </span>
                   </li>
-                ))}
+                  )
+                })}
               </ul>
             )}
           </div>

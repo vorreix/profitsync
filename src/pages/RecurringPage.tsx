@@ -11,6 +11,8 @@ import { canDeleteRole, canWriteRole } from "@/lib/roles"
 import { accountTypeAllows } from "@/lib/types"
 import type { Client, RecurringRule, WealthAccount } from "@/lib/types"
 import { formatMoney } from "@/lib/wealth"
+import { cardDisplayName, maskedTail } from "@/lib/cards"
+import { usableCards, useCardMap } from "@/lib/use-cards"
 import { occurrenceAt, type Frequency } from "@/lib/recurring"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -24,6 +26,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { CategoryPicker } from "@/components/CategoryPicker"
 import { WealthAccountIcon } from "@/components/WealthAccountIcon"
+import { CardChip } from "@/components/cards/CardChip"
 import { AccountCombobox } from "@/components/wealth/AccountCombobox"
 
 type RuleForm = {
@@ -33,6 +36,7 @@ type RuleForm = {
   category: string
   client_id: string // "" = own company / personal
   wealth_account_id: string // "" = none
+  card_id: string // "" = paid straight from the account
   frequency_unit: "day" | "week" | "month" | "year"
   frequency_interval: string
   start_date: string
@@ -46,6 +50,7 @@ const emptyForm = (): RuleForm => ({
   category: "",
   client_id: "",
   wealth_account_id: "",
+  card_id: "",
   frequency_unit: "month",
   frequency_interval: "1",
   start_date: new Date().toISOString().split("T")[0],
@@ -70,6 +75,10 @@ export function RecurringPage() {
   const [editing, setEditing] = useState<RecurringRule | null>(null)
   const [deleting, setDeleting] = useState<RecurringRule | null>(null)
   const [form, setForm] = useState<RuleForm>(emptyForm())
+  // Cards: chips on the rows (incl. closed cards, so old rules keep theirs) and
+  // the "pay with" picker (usable ones only).
+  const cardMap = useCardMap()
+  const payableCards = useMemo(() => usableCards(cardMap.cards), [cardMap.cards])
 
   const load = useCallback(async (opts: { silent?: boolean } = {}) => {
     if (!opts.silent) setLoading(true)
@@ -133,29 +142,48 @@ export function RecurringPage() {
     else navigate("/transactions")
   }
 
-  // Optional account filter, e.g. from a wealth account's "recurring" button:
-  // /recurring?account=<id> shows only the rules tied to that account.
+  // Optional account / card filter, e.g. from a wealth account's or a card's
+  // "recurring" button: /recurring?account=<id> or ?card=<id> shows only the
+  // rules tied to it (a credit card's rules are the ones on its account).
   const accountFilter = searchParams.get("account")
+  const cardFilter = searchParams.get("card")
   const filterAccount = accountFilter ? accounts.find((a) => a.id === accountFilter) : null
+  const filterCard = cardFilter ? cardMap.byId.get(cardFilter) ?? null : null
   const visibleRules = useMemo(
-    () => (accountFilter ? rules.filter((r) => r.wealth_account_id === accountFilter) : rules),
-    [rules, accountFilter],
+    () => rules.filter((r) => {
+      if (accountFilter && r.wealth_account_id !== accountFilter) return false
+      if (cardFilter && !(r.card_id === cardFilter || (filterCard?.kind === "credit" && r.wealth_account_id === filterCard.account_id))) return false
+      return true
+    }),
+    [rules, accountFilter, cardFilter, filterCard],
   )
-  function clearAccountFilter() {
-    setSearchParams((p) => { const n = new URLSearchParams(p); n.delete("account"); return n }, { replace: true })
+  function clearFilter(key: "account" | "card") {
+    setSearchParams((p) => { const n = new URLSearchParams(p); n.delete(key); return n }, { replace: true })
   }
 
   const upcoming = useMemo(() => visibleRules.filter((r) => r.active), [visibleRules])
   const paused = useMemo(() => visibleRules.filter((r) => !r.active), [visibleRules])
 
-  function openCreate() {
+  const openCreate = useCallback((preset?: Partial<RuleForm>) => {
     setEditing(null)
-    setForm(emptyForm())
+    setForm({ ...emptyForm(), ...preset })
     // Re-arm: the dialog stays mounted between opens, so a request left in flight
     // when the user closed it must not freeze the save button on reopen.
     setSaving(false)
     setFormOpen(true)
-  }
+  }, [])
+
+  // /recurring?new=1[&card=<id>] (a card page's "Add recurring"): open the
+  // create dialog, preselected on that card while it can still pay. The card
+  // param stays as the list filter; only `new` is consumed.
+  const newParam = searchParams.get("new")
+  useEffect(() => {
+    if (newParam !== "1") return
+    if (cardFilter && cardMap.loading) return
+    const card = cardFilter ? payableCards.find((c) => c.id === cardFilter) : undefined
+    openCreate(card ? { wealth_account_id: card.account_id, card_id: card.id } : undefined)
+    setSearchParams((p) => { const n = new URLSearchParams(p); n.delete("new"); return n }, { replace: true })
+  }, [newParam, cardFilter, cardMap.loading, payableCards, openCreate, setSearchParams])
 
   function openEdit(rule: RecurringRule) {
     setEditing(rule)
@@ -167,6 +195,7 @@ export function RecurringPage() {
       category: rule.category,
       client_id: rule.client_id ?? "",
       wealth_account_id: rule.wealth_account_id ?? "",
+      card_id: rule.card_id ?? "",
       frequency_unit: rule.frequency_unit,
       frequency_interval: String(rule.frequency_interval),
       start_date: rule.start_date,
@@ -188,7 +217,9 @@ export function RecurringPage() {
         amount: Number(form.amount),
         category: form.category,
         client_id: form.client_id || null,
+        // The card decides the account server-side (it is always the card's own).
         wealth_account_id: form.wealth_account_id || null,
+        card_id: form.card_id || null,
         frequency_unit: form.frequency_unit,
         frequency_interval: Math.max(1, Math.floor(Number(form.frequency_interval) || 1)),
         start_date: form.start_date,
@@ -270,7 +301,9 @@ export function RecurringPage() {
       : t("recurring.everyOne", { unit })
   }
 
-  const renderRule = (rule: RecurringRule) => (
+  const renderRule = (rule: RecurringRule) => {
+    const ruleCard = cardMap.forTx({ card_id: rule.card_id, wealth_account_id: rule.wealth_account_id })
+    return (
     <li
       key={rule.id}
       id={`rule-${rule.id}`}
@@ -291,14 +324,24 @@ export function RecurringPage() {
           {rule.last_error && (
             <span title={rule.last_error}>
               <TriangleAlert className="size-3.5 shrink-0 text-amber-500" />
+              <span className="sr-only">{rule.last_error}</span>
             </span>
           )}
         </div>
-        <p className="mt-0.5 truncate text-xs text-muted-foreground">
-          {freqLabel(rule)}
-          {hasClients && <> · {rule.client_id ? rule.client_name : t("recurring.ownCompany")}</>}
-          {rule.account_name ? <> · {rule.account_name}</> : null}
-        </p>
+        <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-1 text-xs text-muted-foreground">
+          <span className="truncate">
+            {freqLabel(rule)}
+            {hasClients && <> · {rule.client_id ? rule.client_name : t("recurring.ownCompany")}</>}
+          </span>
+          {ruleCard ? (
+            <>
+              <span aria-hidden>·</span>
+              <CardChip card={ruleCard} />
+            </>
+          ) : rule.account_name ? (
+            <span className="truncate">· {rule.account_name}</span>
+          ) : null}
+        </div>
         <p className="mt-0.5 text-xs text-muted-foreground">
           {rule.active
             ? t("recurring.nextOn", { date: fmtDate(rule.next_due_at) })
@@ -329,13 +372,16 @@ export function RecurringPage() {
         </div>
       </div>
     </li>
-  )
+    )
+  }
+
+  const filterPillClass = "mt-2 inline-flex min-h-8 items-center gap-1.5 rounded-full border bg-muted/50 py-1 ps-1.5 pe-2.5 text-xs font-medium transition-colors hover:bg-muted"
 
   return (
     <div className="space-y-4 p-3 sm:space-y-6 sm:p-6">
       {cameFromTxn && (
         <Button variant="ghost" size="sm" className="-ml-2 h-8 gap-1.5 text-muted-foreground" onClick={goBack}>
-          <ArrowLeft className="size-4" /> {t("recurring.back")}
+          <ArrowLeft className="size-4 rtl:rotate-180" /> {t("recurring.back")}
         </Button>
       )}
       <div className="flex items-start justify-between gap-3">
@@ -343,19 +389,26 @@ export function RecurringPage() {
           <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">{t("recurring.title")}</h1>
           <p className="mt-0.5 text-sm text-muted-foreground sm:mt-1">{t("recurring.subtitle")}</p>
           {filterAccount && (
-            <button
-              type="button"
-              onClick={clearAccountFilter}
-              className="mt-2 inline-flex items-center gap-1.5 rounded-full border bg-muted/50 py-1 pl-1.5 pr-2.5 text-xs font-medium transition-colors hover:bg-muted"
-            >
+            <button type="button" onClick={() => clearFilter("account")} className={filterPillClass}>
               <WealthAccountIcon account={filterAccount} className="size-4" />
               <span className="truncate">{filterAccount.nickname || filterAccount.bank_name}</span>
               <X className="size-3.5 text-muted-foreground" />
             </button>
           )}
+          {cardFilter && filterCard && (
+            <button
+              type="button"
+              onClick={() => clearFilter("card")}
+              className={`${filterPillClass} ms-2`}
+              aria-label={`${t("recurring.cardFilter", { name: `${cardDisplayName(filterCard)} ${maskedTail(filterCard.last4)}` })} — ${t("recurring.cardClearFilter")}`}
+            >
+              <CardChip card={filterCard} linked={false} />
+              <X className="size-3.5 text-muted-foreground" aria-hidden />
+            </button>
+          )}
         </div>
         {canWrite && (
-          <Button onClick={openCreate} className="shrink-0">
+          <Button onClick={() => openCreate()} className="shrink-0">
             <Plus className="size-4" />
             <span className="hidden sm:inline">{t("recurring.add")}</span>
             <span className="sm:hidden">{t("recurring.addShort")}</span>
@@ -368,7 +421,7 @@ export function RecurringPage() {
       ) : rules.length === 0 ? (
         <button
           type="button"
-          onClick={canWrite ? openCreate : undefined}
+          onClick={canWrite ? () => openCreate() : undefined}
           className="flex w-full flex-col items-center justify-center gap-2 rounded-2xl border border-dashed py-16 text-center text-muted-foreground transition-colors hover:bg-muted/50"
         >
           <Repeat className="size-8 text-muted-foreground/50" />
@@ -432,16 +485,19 @@ export function RecurringPage() {
             )}
 
             <div className="space-y-1.5">
-              <Label>{t("recurring.account")}</Label>
+              <Label>{t("recurring.cardPayWith")}</Label>
+              {/* Accounts AND cards: picking a card also sets its account (the
+                  server enforces the pair — a card only ever pays from its own). */}
               <AccountCombobox
                 accounts={accounts}
-                value={form.wealth_account_id}
-                onChange={(v) => setForm((f) => ({ ...f, wealth_account_id: v }))}
+                cards={payableCards}
+                value={form.card_id || form.wealth_account_id}
+                onChange={(id, picked) => setForm((f) => ({ ...f, wealth_account_id: picked ? picked.account_id : id, card_id: picked?.card_id ?? "" }))}
                 currency={currency}
                 allowNone
                 noneLabel={t("recurring.noAccount")}
               />
-              <p className="text-[11px] text-muted-foreground">{t("recurring.accountHint")}</p>
+              <p className="text-[11px] text-muted-foreground">{t("recurring.cardPayWithHint")}</p>
             </div>
 
             <div className="space-y-1.5">

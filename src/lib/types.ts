@@ -137,6 +137,8 @@ export type TransactionLeg = {
   wealth_account_bank_name?: string | null
   wealth_account_type?: WealthAccountType | null
   wealth_account_icon?: string | null
+  // Which card paid this leg (attribution only — see Card).
+  card_id?: string | null
   type: "incoming" | "outgoing"
   amount: number
 }
@@ -150,6 +152,10 @@ export type Transaction = {
   wealth_account_bank_name?: string | null
   wealth_account_type?: WealthAccountType | null
   wealth_account_icon?: string | null
+  // Which CARD paid (debit or credit) — attribution only; the money always sits
+  // on wealth_account_id (the card's own ledger account). Drives the
+  // "C •••• 1234" / "D •••• 1234" chip (src/components/cards/CardChip.tsx).
+  card_id?: string | null
   type: "incoming" | "outgoing"
   amount: number
   description: string
@@ -181,6 +187,9 @@ export type Transaction = {
   group_id?: string | null
   leg_count?: number
   account_count?: number
+  // Distinct cards across a collapsed group's legs: > 1 → the list shows
+  // "N cards" instead of one arbitrary chip.
+  card_count?: number
   legs?: TransactionLeg[]
 }
 
@@ -229,6 +238,11 @@ export type WealthAccount = {
   credit_limit?: number | string | null
   statement_closing_day?: number | null
   payment_due_day?: number | null
+  // Cards on this account: how many are open (list responses — drives the
+  // Banks-tab badge), and, for a credit-card account, the CARD that IS it
+  // (single-account GET — /wealth/:id forwards to that card's screen).
+  card_count?: number
+  card_id?: string | null
 }
 
 // One CLOSED billing cycle of a credit card, as returned by the card summary
@@ -270,6 +284,76 @@ export type CreditCardSummary = {
   }
 }
 
+// ── Cards ────────────────────────────────────────────────────────────────────
+// A CARD (debit or credit) is identity + attribution linked to a bank. It never
+// holds money: `account_id` is the ledger account it posts to (a debit card's
+// bank; a credit card's liability account), `funding_account_id` (credit) is
+// the bank that pays the statement. See docs/cards/CARDS.md.
+export type CardKind = "debit" | "credit"
+export type CardNetwork = "visa" | "mastercard" | "amex" | "rupay" | "discover" | "jcb" | "unionpay" | "maestro" | "diners" | "other"
+export type CardTier = "standard" | "gold" | "platinum" | "metal" | "black" | "custom"
+export type CardStatus = "active" | "frozen" | "closed"
+export type CardPattern = "none" | "waves" | "mesh" | "dots"
+export type CardDesign = { from: string; to: string; text: "light" | "dark"; pattern: CardPattern }
+export type BrandColor = { hex: string; type: string; brightness?: number }
+
+export type Card = {
+  id: string
+  organization_id: string
+  kind: CardKind
+  account_id: string
+  funding_account_id: string | null
+  name: string
+  holder_name: string
+  network: CardNetwork
+  // Last four digits only ("" when unknown).
+  last4: string
+  expiry_month: number | null
+  expiry_year: number | null
+  tier: CardTier
+  design: CardDesign | null
+  brand_colors: BrandColor[] | null
+  brand_logo_url: string
+  autopay: boolean
+  autopay_since: string | null
+  status: CardStatus
+  position: number
+  created_at: string
+  updated_at: string
+  // Joined from the ledger account (GET /api/cards).
+  account_type?: WealthAccountType
+  account_bank_name?: string
+  account_nickname?: string
+  account_current_balance?: number | string
+  account_credit_limit?: number | string | null
+  account_statement_closing_day?: number | null
+  account_payment_due_day?: number | null
+  account_brand_domain?: string
+  account_logo_url?: string
+  account_logo_src?: string | null
+  account_archived_at?: string | null
+  // Joined from the funding bank (credit cards).
+  funding_account_bank_name?: string | null
+  funding_account_nickname?: string | null
+  funding_account_logo_src?: string | null
+  funding_account_archived_at?: string | null
+  transaction_count?: number
+}
+
+// GET /api/cards/:id/summary
+export type CardAutopayPreview = { date: string; amount: number }
+export type CardSummary = {
+  card: Card
+  // Credit cards: the ledger-derived view (same as GET /api/wealth/accounts/:id/card).
+  credit: Omit<CreditCardSummary, "account"> | null
+  // Debit cards: this month's activity on the card.
+  debit: { month_spent: number; month_refunds: number; last_used: string | null } | null
+  // When autopay will next pay and how much (null = nothing scheduled).
+  next_autopay: CardAutopayPreview | null
+  // What the last autopay attempt did (null = never ran).
+  last_autopay: { status: "paid" | "skipped" | "failed"; at: string | null; group_id: string | null; statement_id: string } | null
+}
+
 export type RecurringRule = {
   id: string
   organization_id: string
@@ -284,6 +368,11 @@ export type RecurringRule = {
   kind?: "standard" | "transfer"
   to_account_id?: string | null
   to_account_name?: string | null
+  // The card that pays each occurrence (copied onto the materialized rows).
+  card_id?: string | null
+  card_last4?: string | null
+  card_kind?: CardKind | null
+  card_name?: string | null
   name: string
   type: "incoming" | "outgoing"
   amount: number | string

@@ -119,6 +119,13 @@ S3_SECRET_KEY=...                          # server-only — never expose to bro
 S3_USE_SSL=true                            # "false" for plain HTTP (dev only)
 S3_FORCE_PATH_STYLE=true                   # true for Hetzner/MinIO; "false" = virtual-hosted
 
+# Bank branding (OPTIONAL — server-only). Powers the bank-name autocomplete
+# (GET /api/wealth/bank-search, Brandfetch Search API) and the card visuals'
+# brand colours + wordmark (Brandfetch Brand API, fetched once per card at
+# create, fail-soft → curated palette in src/lib/cards.ts). Brand API calls
+# are metered separately from search.
+BRANDFETCH_APIKEY=...                     # server-only — never expose to browser
+
 # AI quick add (OPTIONAL — the ✨ trigger in the Add-Transaction modal is
 # hidden entirely when no provider key is set). Provider + model are config:
 AI_PROVIDER=gemini                        # anthropic | gemini | openai (default: first key found, anthropic→gemini→openai)
@@ -155,7 +162,7 @@ All pages are lazy-loaded (`React.lazy` + `Suspense`) for code splitting. Route 
 | Invitation | `/invitations/:token` | None (handles sign-in inline) |
 | Auth | `/login/*`, `/signup/*`, `/forgot-password`, `/reset-password` | None (Clerk requires `/*` glob) |
 | Admin | `/admin`, `/admin/users`, `/admin/organizations`, `/admin/organizations/:id`, `/admin/subscriptions`, `/admin/invoices`, `/admin/billing-attempts`, `/admin/plans`, `/admin/blog`, `/admin/referrals`, `/admin/admins` | `AdminLayout` |
-| App | `/dashboard`, `/clients`, `/clients/closed`, `/clients/:id`, `/clients/:id/files`, `/transactions`, `/recurring`, `/calendar`, `/flow`, `/wealth`, `/wealth/:id`, `/analytics`, `/categories`, `/budgets`, `/budgets/:key`, `/referrals`, `/quotations`, `/organizations`, `/organizations/:id/members`, `/subscription`, `/trash`, `/profile`, `/onboarding`, `/organization-setup` | `AppLayout` |
+| App | `/dashboard`, `/clients`, `/clients/closed`, `/clients/:id`, `/clients/:id/files`, `/transactions`, `/recurring`, `/calendar`, `/flow`, `/wealth` (Banks; `?tab=cards` = Cards), `/wealth/cards/:cardId`, `/wealth/:id`, `/analytics`, `/categories`, `/budgets`, `/budgets/:key`, `/referrals`, `/quotations`, `/organizations`, `/organizations/:id/members`, `/subscription`, `/trash`, `/profile`, `/onboarding`, `/organization-setup` | `AppLayout` |
 
 ### AppLayout (`src/components/AppLayout.tsx`)
 
@@ -200,7 +207,8 @@ The sidebar has a floating action button (FAB) for quick access to Add Client, A
 | `Category` | `categories` | `organization_id`, per-org transaction category list (seeded on first access — re-seed only when empty, never on delete) |
 | `WealthAccount` | `wealth_accounts` | `organization_id`, `type`: `cash\|bank\|space\|credit_card`, `opening_balance`, `current_balance` (SIGNED asset-equivalent — a credit card's is negative = amount owed), `credit_limit`/`statement_closing_day`/`payment_due_day` (cards), `is_default`, `archived_at`; `Cash` auto-provisioned + permanent. Liability math lives in `src/lib/credit-card.ts` — never read the sign in a component |
 | `CreditCardStatement` | `credit_card_statements` | one CLOSED billing cycle per row (`closing_date`, `due_date`, `statement_balance` snapshot, `source`: `computed\|manual`); filed lazily by `api/_lib/credit-card.ts`; paid/remaining are DERIVED from the card's incoming transfer legs after the close. See `docs/credit-cards/CREDIT_CARDS.md` |
-| `RecurringRule` | `recurring_rules` | `organization_id`, anchor + frequency; lazily **materializes** due transactions on GETs (no cron). Tx carry `recurring_rule_id` |
+| `Card` | `cards` | a DEBIT or CREDIT card linked to a bank — **identity + attribution only, never money**: `account_id` = the ledger account it posts to (a debit card's bank; a credit card's liability account, 1:1), `funding_account_id` (credit: the bank that pays the statement), `last4` (only the last four digits are ever stored), network/expiry/holder/`tier`/`design`/`brand_colors`, `autopay` (+ `autopay_since`, opt-in), `status`: `active\|frozen\|closed` (derived `closed` when the account is archived). `transactions.card_id` / `recurring_rules.card_id` = which card paid; the server forces `wealth_account_id = card.account_id` on every write (`api/_lib/cards.ts attributeCard`). Autopay engine: `api/_lib/card-autopay.ts`. See `docs/cards/CARDS.md` |
+| `RecurringRule` | `recurring_rules` | `organization_id`, anchor + frequency; lazily **materializes** due transactions on GETs (no cron). Tx carry `recurring_rule_id` (+ `card_id` when the rule pays with a card; rules pause while the card is frozen/closed) |
 | `Budget` / `BudgetHistory` | `budgets`, `budget_history` | per-client/own-company spend caps + adherence/creep history (keyed by org+client so it survives "remove") |
 | `Subscription` attempt | `billing_attempts` | who clicked checkout, status, errors, admin follow-up (status/notes); see `subscription-system` skill |
 | `Referral` family | `referrals`, `referral_codes`, `referral_settings`, `payout_requests` | credited on real paid upgrade (webhook AND reconcile); payouts via `/admin/payouts` |
@@ -211,7 +219,7 @@ The sidebar has a floating action button (FAB) for quick access to Add Client, A
 
 **Drizzle helpers:**
 - `db` and `serialize()` are in `src/lib/db/index.ts`. `serialize()` converts Drizzle's camelCase row keys to snake_case before `res.json()` — call it on every row returned from an API route.
-- Migrations are in `drizzle/` and run automatically on `vercel-build` (`scripts/db-migrate.mjs`). Current head is **0062** (0060–0062 are hand-written — `drizzle-kit generate` is out of sync with them; write the SQL + journal entry by hand). **Journal gotcha:** a new migration can silently skip ("up to date" but column missing) when `drizzle/meta/_journal.json` `when` values were normalized — bump the new entry's `when` above the previous, then verify the column exists in `information_schema`.
+- Migrations are in `drizzle/` and run automatically on `vercel-build` (`scripts/db-migrate.mjs`). Current head is **0063** (0060–0063 are hand-written — `drizzle-kit generate` is out of sync with them; write the SQL + journal entry by hand). **Journal gotcha:** a new migration can silently skip ("up to date" but column missing) when `drizzle/meta/_journal.json` `when` values were normalized — bump the new entry's `when` above the previous, then verify the column exists in `information_schema`.
 - **Local database:** `docs/budget-v2/LOCAL_DB.md` sets up a Neon-protocol-compatible local Postgres (docker), so you can migrate and develop without touching the shared instance. **Never run `npm run db:push` against a shared database** — it diffs the live schema and will propose dropping columns that exist there from unmerged branches.
 
 ### API layer — consolidated router
@@ -310,7 +318,8 @@ The Android (`android/`) and iOS (`ios/`) apps are **[Capacitor](https://capacit
 | `/api/wealth/accounts/:id/card` | credit-card view: owed / available credit / latest statement (paid, remaining, textual status) / open cycle — all ledger-derived (`api/_lib/credit-card.ts`) |
 | `/api/wealth/transfer` | account-to-account transfer (`kind=transfer`; excluded from income/expense). **Paying a credit card is this** with the card as `to_account_id` — never an expense |
 | `/api/wealth/bank-search` · `/api/wealth/quota` | bank logo/name autocomplete · free-plan bank gating |
-| `/api/recurring` · `/api/recurring/:id` | recurring rules (materialize lazily on GETs) |
+| `/api/recurring` · `/api/recurring/:id` | recurring rules (materialize lazily on GETs); accept `card_id` (the rule pays with a card) |
+| `/api/cards` · `/api/cards/reorder` · `/api/cards/:id` · `/api/cards/:id/summary` | **Wealth & Cards**: debit/credit cards linked to banks (GET runs the card sync: statements → autopay → alerts; POST creates the bank inline via `new_bank` and, for credit, the liability account; PATCH identity/status/funding/autopay/credit config — close with debt → 409 `card_has_debt`; summary = credit view + `next_autopay`, or debit month activity). `GET /api/transactions?cardId=` lists a card's rows (flat, transfers included); every tx write accepts `card_id`; `/api/wealth/transfer` accepts `from_card_id`; `/api/search` returns a `cards` group. `docs/cards/CARDS.md` |
 | `/api/calendar` | per-day money aggregates (drives `/calendar`) |
 | `/api/flow` | money-flow graph; `?mode=timeline&bucket=…` for the running-balance chain |
 | `/api/budgets` · `/api/budgets/overview` · `/api/budgets/detail` | budgets + adherence/creep |
@@ -422,6 +431,7 @@ See `project_idea.md` for the full spec. Key domain concepts:
 - **Recurring rules** (`recurring_rules`): templates that **lazily materialize** due transactions on GETs (no cron) — anchor-based date math, race-proof; delete-is-final for occurrences (intentional).
 - **Calendar** (`/calendar`) + **Money flow** (`/flow`, React Flow): visual views of transactions — a day/week/month money calendar (with per-day figures) and a node graph in two modes (grouped by account/client/category, or a running-balance **timeline** chain). Both org-scoped + filterable; canvas state persists across navigation (sessionStorage `ps_flow_<org>`).
 - **Budgets** (`budgets` + `budget_history`): per-client / own-company spend caps with adherence + creep history (`/budgets`).
+- **Cards** (`cards` + `transactions.card_id`): **Wealth & Cards** — a debit or credit card linked to a bank. A card is identity + attribution, never money: a debit card's purchase is an outgoing on its bank; a credit card is its liability account (below) with card identity on top. `/wealth?tab=cards` lists them as realistic bank-branded visuals (`src/components/cards/CardVisual.tsx`, palette from Brandfetch brand colours → curated table → tier), `/wealth/cards/:id` is the card page, every transaction list shows the `CardChip`. Autopay (opt-in) records the statement payment from the funding bank on the due date — newest due statement only, dated today, atomic, exactly once. Full design + invariants: `docs/cards/CARDS.md`.
 - **Credit cards** (`wealth_accounts.type='credit_card'` + `credit_card_statements`): a LIABILITY account. A purchase is an ordinary outgoing on the card (expense, budget spend, debt up); paying the card is a TRANSFER bank → card (no expense, net worth unchanged); a refund is `kind='refund'` (reverses spending, not income). Statements are filed snapshots; what's paid is derived from payments after the close. Reporting aggregates MUST use `api/_lib/tx-sql.ts` (`tx-sql.test.ts` enforces it). Full design: `docs/credit-cards/CREDIT_CARDS.md`.
 - **Referrals**: credited on a real **paid** upgrade (from BOTH the `payment.succeeded` webhook AND the reconcile path — activation never depends on webhooks), payouts approved in `/admin/payouts`. See `docs/referrals/REFERRALS.md`.
 - **Admin console** (`/admin/**`) is restricted to `app_admins` rows; access is **capability-based** with system + custom roles (see *Platform-admin roles / RBAC* above). Seed the first admin via `scripts/seed-admin.ts`.

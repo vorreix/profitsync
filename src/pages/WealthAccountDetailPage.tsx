@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { useNavigate, useParams } from "react-router-dom"
+import { Navigate, useNavigate, useParams } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { toast } from "sonner"
 import {
@@ -32,6 +32,10 @@ import { AccountQuickAddSheet } from "@/components/wealth/AccountQuickAddSheet"
 import { AccountDetailsSection } from "@/components/wealth/AccountDetailsSection"
 import { CreditCardPanel } from "@/components/wealth/CreditCardPanel"
 import { PayCardSheet, type PayPreset } from "@/components/wealth/PayCardSheet"
+import { cardDisplayName } from "@/lib/cards"
+import { useCardMap } from "@/lib/use-cards"
+import { CardChip } from "@/components/cards/CardChip"
+import { BankCardsSection } from "@/components/cards/BankCardsSection"
 import { TxKindBadge } from "@/components/transactions/TxKindBadge"
 import { TransactionDetailModal } from "@/components/TransactionDetailModal"
 import {
@@ -98,6 +102,10 @@ export function WealthAccountDetailPage() {
 
   const view = useUrlModal("view")
   const [viewTx, setViewTx] = useState<Transaction | null>(null)
+  // Which card paid each row (the chip), and which cards this bank carries /
+  // funds (the close-account warning). Includes closed cards so old rows keep
+  // their chip.
+  const cardMap = useCardMap()
 
   const fmt = (n: number) =>
     new Intl.NumberFormat("en-US", { style: "currency", currency, minimumFractionDigits: 2 }).format(n)
@@ -237,6 +245,15 @@ export function WealthAccountDetailPage() {
 
   if (!account) return null
 
+  // A credit-card account IS its card: its page lives at /wealth/cards/:cardId
+  // (the account GET returns `card_id`). Rows that predate the cards table have
+  // none and keep rendering the account view below.
+  const accountCardId = account.card_id
+  if (isCard && accountCardId) return <Navigate replace to={`/wealth/cards/${accountCardId}`} />
+
+  const linkedDebitCards = cardMap.cards.filter((c) => c.kind === "debit" && c.account_id === account.id && c.status !== "closed")
+  const autopayCards = cardMap.cards.filter((c) => c.kind === "credit" && c.funding_account_id === account.id && c.autopay && c.status !== "closed")
+
   return (
     <div className="space-y-4 p-3 sm:space-y-6 sm:p-6">
       {/* Header */}
@@ -334,6 +351,9 @@ export function WealthAccountDetailPage() {
       </div>
       )}
 
+      {/* The debit cards on this bank + the credit cards it pays */}
+      {!isCard && !isCash && <BankCardsSection bank={account} canWrite={canWrite} />}
+
       {/* Bank details + attachments (bank accounts only) */}
       {!isCash && <AccountDetailsSection account={account} canWrite={canWrite} canDelete={canDelete} />}
 
@@ -360,7 +380,11 @@ export function WealthAccountDetailPage() {
         <>
           <div className="overflow-hidden rounded-2xl border">
             <div className="divide-y">
-              {transactions.map((tx) => (
+              {transactions.map((tx) => {
+                // The card that paid this row (a debit card on this bank). Not a
+                // link here: the whole row is already a button.
+                const paidWith = isCard ? undefined : cardMap.forTx(tx)
+                return (
                 <button
                   key={tx.id}
                   type="button"
@@ -381,6 +405,7 @@ export function WealthAccountDetailPage() {
                     <div className="mt-0.5 flex items-center gap-2">
                       <span className="text-xs text-muted-foreground">{formatDate(tx.date)}</span>
                       <TxKindBadge tx={{ ...tx, wealth_account_type: account.type }} />
+                      {paidWith && <CardChip card={paidWith} linked={false} />}
                       <SpaceLinkBadge tx={tx} />
                       {/* A transfer leg's category is the literal "Transfer" — the kind badge already says so. */}
                       {tx.category && tx.kind !== "transfer" && <Badge variant="outline" className="hidden py-0 text-xs sm:inline-flex">{tx.category}</Badge>}
@@ -391,7 +416,8 @@ export function WealthAccountDetailPage() {
                     {tx.type === "incoming" ? "+" : "−"}{balancesVisible ? fmt(Number(tx.amount)) : "•••"}
                   </p>
                 </button>
-              ))}
+                )
+              })}
             </div>
           </div>
           {hasMore && (
@@ -454,7 +480,12 @@ export function WealthAccountDetailPage() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{t("closeAccountTitle")}</AlertDialogTitle>
-            <AlertDialogDescription>{t("closeAccountDesc")}</AlertDialogDescription>
+            <AlertDialogDescription>
+              {t("closeAccountDesc")}
+              {/* What closing this bank does to the cards that depend on it */}
+              {linkedDebitCards.length > 0 && <> {t("cards.closeBankCards", { count: linkedDebitCards.length })}</>}
+              {autopayCards.length > 0 && <> {t("cards.closeBankAutopay", { names: autopayCards.map((c) => cardDisplayName(c)).join(", ") })}</>}
+            </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>

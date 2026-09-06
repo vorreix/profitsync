@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import { AlertTriangle, ChevronDown, CreditCard, Pencil, Plus, RotateCcw, Receipt, SlidersHorizontal } from "lucide-react"
 import type { CreditCardStatementView, CreditCardSummary, WealthAccount } from "@/lib/types"
@@ -51,6 +51,10 @@ export function CreditCardPanel({
   onAddPurchase,
   onAddRefund,
   onAddFee,
+  embedded = false,
+  frozen = false,
+  frozenHint,
+  extraActions,
 }: {
   account: WealthAccount
   summary: CreditCardSummary | null
@@ -62,6 +66,13 @@ export function CreditCardPanel({
   onAddPurchase: () => void
   onAddRefund: () => void
   onAddFee: () => void
+  /** Under a card visual (the card page): a flat surface instead of the hero gradient. */
+  embedded?: boolean
+  /** A frozen card takes no new purchases/refunds/fees — paying it stays allowed. */
+  frozen?: boolean
+  frozenHint?: string
+  /** Extra buttons in the actions row (e.g. "Add recurring"). */
+  extraActions?: ReactNode
 }) {
   const { t } = useTranslation("wealth")
   const [historyOpen, setHistoryOpen] = useState(false)
@@ -76,7 +87,7 @@ export function CreditCardPanel({
   return (
     <div className="space-y-4">
       {/* Amount owed + credit usage */}
-      <div className="rounded-2xl border bg-gradient-to-br from-primary/10 via-card to-card p-5 sm:p-6">
+      <div className={cn("rounded-2xl border p-5 sm:p-6", embedded ? "bg-card" : "bg-gradient-to-br from-primary/10 via-card to-card")}>
         <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
           {usage.debt > 0 || usage.credit === 0 ? t("amountOwed") : t("creditCard")}
         </p>
@@ -129,17 +140,19 @@ export function CreditCardPanel({
             <Button size="sm" onClick={() => onPay(statement && statement.remaining > 0 ? "statement" : "full")} disabled={!canPaySomething} className="pressable">
               <CreditCard className="size-4" /> {t("payCard")}
             </Button>
-            <Button size="sm" variant="outline" onClick={onAddPurchase} className="pressable">
+            <Button size="sm" variant="outline" onClick={onAddPurchase} className="pressable" disabled={frozen}>
               <Plus className="size-4" /> {t("addPurchase")}
             </Button>
-            <Button size="sm" variant="outline" onClick={onAddRefund} className="pressable">
+            <Button size="sm" variant="outline" onClick={onAddRefund} className="pressable" disabled={frozen}>
               <RotateCcw className="size-4" /> {t("addRefund")}
             </Button>
-            <Button size="sm" variant="outline" onClick={onAddFee} className="pressable">
+            <Button size="sm" variant="outline" onClick={onAddFee} className="pressable" disabled={frozen}>
               <Receipt className="size-4" /> {t("addFee")}
             </Button>
+            {extraActions}
           </div>
         )}
+        {canWrite && frozen && frozenHint && <p className="mt-2 text-xs text-muted-foreground">{frozenHint}</p>}
       </div>
 
       {/* Statement + new cycle — two clearly labelled, different concepts */}

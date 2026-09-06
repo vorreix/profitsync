@@ -4,6 +4,16 @@
 > smallest coherent extension of the existing ledger, and the invariants every
 > future change must keep. Companion to `src/lib/credit-card.ts` (the math) and
 > `api/_lib/credit-card.ts` (the engine).
+>
+> **Wealth & Cards** builds on this: the liability account is the *money* side
+> of a credit card; its *identity* (network, last four digits, expiry, holder,
+> design, funding bank, autopay) lives in `cards` (1:1 with the account), and
+> debit cards sit on banks the same way. Read `docs/cards/CARDS.md` for the
+> card entity, attribution (`transactions.card_id`) and the autopay engine.
+> Two engine details changed with it: statement filing never starts before the
+> day the card was added (no phantom €0 closes between an old known statement
+> and onboarding), and `ensureStatements` returns the rows it filed so they can
+> be announced.
 
 ## 1. What was there before
 
