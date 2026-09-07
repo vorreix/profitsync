@@ -4,13 +4,15 @@ import { db } from "../../../src/lib/db/index.js"
 import { budgets, budgetHistory, clients } from "../../../src/lib/db/schema.js"
 import { requireAuth, isPersonalAccount } from "../../_lib/auth.js"
 import { spendForWindows } from "../../_lib/budget-spend.js"
-import { isBudgetPeriod, type BudgetPeriod } from "../../../src/lib/budget.js"
+import { amountAt, isBudgetPeriod, todayUtc, windowsBack, type BudgetPeriod } from "../../../src/lib/budget.js"
+import { historyFor, listBudgets, primaryBudget, seriesFor, SERIES_BACK, toV1Period } from "../../_lib/spending-budgets.js"
 import {
   adherence,
   buildSeries,
   detectCreep,
   evolution,
   periodBoundaries,
+  seriesState,
   type BudgetAction,
   type HistoryRow,
 } from "../../../src/lib/budget-history.js"
@@ -29,6 +31,48 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const raw = (req.query.client_id as string | undefined)?.trim()
   const clientId = raw && raw !== "default" ? raw : null
+
+  // A personal workspace's budget is its primary spending budget; keep the old
+  // bundle's detail page truthful with the current figure, the past windows and
+  // a timeline read from the budget's audit trail.
+  if (personal) {
+    const today = todayUtc()
+    const primary = primaryBudget(await listBudgets(orgId, today))
+    if (!primary) {
+      return res.json({ key: "default", client_id: null, client_name: null, is_own: false, is_default: true, current: null, timeline: [], has_series: false, series: [], adherence: adherence([]), evolution: null, creep: detectCreep([]) })
+    }
+    const period = toV1Period(primary.period)
+    const windows = windowsBack(primary.period, SERIES_BACK[primary.period], today)
+    const [points, audit] = await Promise.all([seriesFor(orgId, primary, windows), historyFor(orgId, primary.id, 100)])
+    const history: HistoryRow[] = [...audit]
+      .reverse()
+      .filter((h) => h.changes.amount && typeof h.changes.amount.to !== "undefined")
+      .map((h) => {
+        const to = Number(h.changes.amount.to ?? 0)
+        const from = Number(h.changes.amount.from ?? 0)
+        const action: BudgetAction = h.action === "delete" ? "remove" : h.action === "create" ? "set" : to > from ? "raise" : to < from ? "lower" : "period_change"
+        return { amount: to, period, action, createdAt: h.created_at ?? new Date(0).toISOString() }
+      })
+    const series = windows.map((w, i) => {
+      const spent = points[i]?.spent ?? 0
+      const budget = amountAt(audit, `${w.endExclusive}T00:00:00.000Z`, primary.amount)
+      return { start: w.start!, spent, budget, state: seriesState(spent, budget) }
+    })
+    return res.json({
+      key: "default",
+      client_id: null,
+      client_name: null,
+      is_own: false,
+      is_default: true,
+      current: { amount: primary.amount, period },
+      timeline: history.map((h) => ({ amount: h.amount, period: h.period, action: h.action, created_at: h.createdAt })),
+      has_series: windows.length > 0,
+      series,
+      adherence: adherence(series),
+      evolution: evolution(history),
+      creep: detectCreep(history),
+    })
+  }
 
   const [budgetRow] = await db
     .select()

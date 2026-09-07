@@ -35,7 +35,7 @@ import { useCardMap, useCards } from "@/lib/use-cards"
 import { CardChip } from "@/components/cards/CardChip"
 import { WealthAccountIcon } from "@/components/WealthAccountIcon"
 import { BusinessBudgetCard } from "@/components/budget/BusinessBudgetCard"
-import { SafeToSpendCard } from "@/components/budget/SafeToSpendCard"
+import { BudgetsCard } from "@/components/budget/BudgetsCard"
 import { FeatureHelp } from "@/components/help/FeatureHelp"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { FitText } from "@/components/FitText"
@@ -1179,10 +1179,9 @@ export function Dashboard() {
         )}
       </div>
     ),
-    // Budget v2 owns the PERSONAL card (D-1: personal-first). A business
-    // workspace keeps its per-client cap card unchanged — client spend caps stay
-    // a separate concept (spec §23).
-    budget: isPersonal ? <SafeToSpendCard /> : ownClient ? <BusinessBudgetCard clientId={ownClient.id} clientName={ownClient.name} /> : null,
+    // A personal workspace shows its spending budgets; a business workspace
+    // keeps the own-company spend cap card (client caps are a separate concept).
+    budget: isPersonal ? <BudgetsCard /> : ownClient ? <BusinessBudgetCard clientId={ownClient.id} clientName={ownClient.name} /> : null,
     wealth: <WealthOverview accounts={wealthAccounts} loading={loading} currency={currency} />,
     // Lightweight teaser (no React Flow on the dashboard — keeps it fast): a
     // tiny connected revenue→net→expenses preview that opens the full map.

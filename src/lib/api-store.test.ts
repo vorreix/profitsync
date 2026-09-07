@@ -234,7 +234,7 @@ describe("persistence", () => {
 
   it("never writes money — or the active workspace — to disk", async () => {
     const api = await loadApi()
-    for (const p of ["/api/transactions", "/api/wealth/accounts", "/api/cards", "/api/budgets/v2", "/api/analytics", "/api/profile", "/api/admin/me"]) {
+    for (const p of ["/api/transactions", "/api/wealth/accounts", "/api/cards", "/api/spending-budgets", "/api/analytics", "/api/profile", "/api/admin/me"]) {
       await api.apiGet(p, A)
     }
     expect(diskKeys()).toEqual([])

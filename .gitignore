@@ -98,5 +98,3 @@ Thumbs.db
 .claude/settings.local.json
 .serena/cache/
 
-# Local Budget v2 development database credentials (docs/budget-v2/LOCAL_DB.md)
-docs/budget-v2/.env.localdb

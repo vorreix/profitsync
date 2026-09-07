@@ -1,10 +1,10 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { and, desc, eq } from "drizzle-orm"
 import { db, serialize } from "../../src/lib/db/index.js"
-import { auditLogs, clients, quotations, transactions } from "../../src/lib/db/schema.js"
+import { auditLogs, clients, quotations, spendingBudgets, transactions } from "../../src/lib/db/schema.js"
 import { requireAuth } from "../_lib/auth.js"
 
-const VALID = ["client", "transaction", "quotation"] as const
+const VALID = ["client", "transaction", "quotation", "budget"] as const
 
 // Verify the entity belongs to the active org before exposing its history.
 async function entityInOrg(type: string, id: string, orgId: string): Promise<boolean> {
@@ -14,6 +14,10 @@ async function entityInOrg(type: string, id: string, orgId: string): Promise<boo
   }
   if (type === "quotation") {
     const [r] = await db.select({ id: quotations.id }).from(quotations).where(and(eq(quotations.id, id), eq(quotations.organizationId, orgId)))
+    return !!r
+  }
+  if (type === "budget") {
+    const [r] = await db.select({ id: spendingBudgets.id }).from(spendingBudgets).where(and(eq(spendingBudgets.id, id), eq(spendingBudgets.organizationId, orgId)))
     return !!r
   }
   // transaction → scope via its client

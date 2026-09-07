@@ -504,7 +504,7 @@ export const ACCOUNT_TYPES: AccountType[] = ["personal", "business"]
  * Enforced in the UI (nav + route guards) and on the server (API authz).
  */
 export type BusinessFeature = "clients" | "quotations" | "members"
-export type PersonalFeature = "spaces" | "budget_plan"
+export type PersonalFeature = "spaces"
 export type GatedFeature = BusinessFeature | PersonalFeature
 
 export function accountTypeAllows(
@@ -514,12 +514,9 @@ export function accountTypeAllows(
   const isBusinessOnly = feature === "clients" || feature === "quotations" || feature === "members"
   // Personal-only sections (Spaces savings buckets). Legacy/unknown orgs are
   // treated as business, so Spaces show ONLY for an explicit personal account.
-  // `budget_plan` is the Budget v2 household plan (periods, envelopes, safe to
-  // spend). Business workspaces keep their per-client SPEND CAPS instead, which
-  // are a different concept and are not gated — see spec §23. Adding it here is
-  // what stops a business workspace creating a household plan it was never
-  // meant to have.
-  const isPersonalOnly = feature === "spaces" || feature === "budget_plan"
+  // Budgets are NOT gated: spending budgets work in both workspace types, and a
+  // business workspace additionally keeps its per-client spend caps.
+  const isPersonalOnly = feature === "spaces"
   // Unknown / legacy orgs default to the full (business) experience so we never
   // lock an existing user out of features they already use.
   if (isBusinessOnly && accountType === "personal") return false
@@ -724,255 +721,85 @@ export type UserGroupMember = {
   avatar_url: string | null
 }
 
-// ── Budget v2 ────────────────────────────────────────────────────────────────
-// Mirrors the GET /api/budgets/v2 payload (spec §11.3). Section shapes are
-// deliberately DIFFERENT from one another: income/commitment/debt/savings are
-// not commensurable with flexible spending, and collapsing them into one
-// "spent of planned" ratio is the error §8.7 exists to prevent.
+// ── Spending budgets ─────────────────────────────────────────────────────────
+// A named spending limit over a window, scoped to expense categories (or all
+// spending), with one level of sub-budgets. Mirrors GET /api/spending-budgets;
+// every figure is derived live on the server (api/_lib/spending-budgets.ts) from
+// the pure window math in src/lib/budget.ts. The v1 per-client caps above
+// (`Budget`) are a separate, business-only feature.
+export type SpendingPeriod = "daily" | "weekly" | "monthly" | "yearly" | "once"
+export type SpendingBudgetStatus = "active" | "paused"
+export type SpendingBudgetState = "ok" | "warn" | "over" | "none"
+export type SpendingWindowPhase = "upcoming" | "active" | "ended"
 
-export type BudgetSectionName = "income" | "commitment" | "flexible" | "savings" | "debt"
-export type BudgetStateV2 = "none" | "ok" | "warn" | "full" | "over"
-/** Which limit produced safe-to-spend, so the UI can say WHY. */
-export type SafeToSpendBinding = "cash" | "plan" | "both" | "cash_only"
-
-export type BudgetEnvelopeView = {
+export type SpendingBudget = {
   id: string
+  organization_id: string
+  parent_id: string | null
+  /** '' only on a row migrated from a v1 personal budget — label it "Personal budget". */
   name: string
-  section: BudgetSectionName
-  planned: number
-  rollover_in: number
-  authored_amount: number
-  authored_cadence: "period" | "month" | "week" | "day"
-  spent_gross: number
-  refunds_confirmed: number
-  refunds_provisional: number
-  spent_net: number
-  pending: number
-  /** SIGNED — negative when this envelope is over. Cards show this, not the netted figure. */
-  remaining: number
-  state: BudgetStateV2
-  priority: string
-  carry_policy: string
-  is_catch_all: boolean
-  reimbursable: boolean
-  funding_mode: "virtual" | "space_backed" | null
-  auto_fund: boolean
-  goal_amount: number | null
-  target_date: string | null
-  balance: number | null
-  contribution_status: "planned" | "confirmed" | "missed" | "skipped" | null
-  needs_attention: boolean
-  excluded_occurrence_count: number
-  /** Category keys this envelope claims. Empty for the catch-all. */
-  match_keys: string[]
-  /** Icon key; empty means "derive from the section". */
   icon: string
-  /**
-   * Goal progress for a savings fund, or null when it has no goal.
-   * Computed with the Spaces goal math, reused unchanged (spec §8.9).
-   */
-  goal_progress: { pct: number; remaining: number; reached: boolean } | null
-  /** Rises when a contribution is missed, so a fund tells the truth about being behind. */
-  suggested_monthly: number | null
-  /** Occurrence money settled inside this period (commitment and debt). */
-  settled: number
-  overdue_count: number
-  overdue_amount: number
-}
-
-export type BudgetOccurrenceAction = "settle" | "cancel" | "skip" | "reschedule"
-
-export type BudgetOccurrenceView = {
-  commitment_id: string
-  /** The commitment's name — an overdue row without it cannot be acted on. */
-  name: string
-  kind: string
-  needs_attention: boolean
-  envelope_id: string
-  due_date: string
+  period: SpendingPeriod
+  start_date: string | null
+  end_date: string | null
   amount: number
-  state: string
-  overdue: boolean
-  days_overdue?: number
-  from_previous_period?: boolean
-  /** Which actions the server will accept for this occurrence's current state. */
-  actions: BudgetOccurrenceAction[]
+  /** Expense category names in scope; empty = all spending. */
+  categories: string[]
+  status: SpendingBudgetStatus
+  position: number
+  created_at: string | null
+  updated_at: string | null
+  window: { start: string | null; end_exclusive: string | null; phase: SpendingWindowPhase; days_left: number | null }
+  spent: number
+  remaining: number
+  ratio: number | null
+  /** "none" when paused, ended or not yet started — the row is shown but not counted. */
+  state: SpendingBudgetState
+  per_day_left: number | null
+  /** Spend inside a main budget that none of its sub-budgets claim; null without sub-budgets. */
+  other_spent: number | null
+  children_count: number
 }
 
-/** A machine-readable limitation. Never a converted figure (spec §12.2). */
-export type BudgetCurrencyLimitation = {
-  code: "currency_mismatch"
-  plan_currency: string
-  org_currency: string
-  converted: false
+/**
+ * A period section's header figure: spend over the UNION of its active
+ * top-level scopes (never a sum of rows), and a limit only when those scopes
+ * are pairwise disjoint — otherwise the limits are not a cap on anything.
+ */
+export type SpendingBudgetSection = { spent: number; limit: number | null; overlapping: boolean; count: number; on_track: number }
+
+export type SpendingBudgetsResponse = {
+  budgets: SpendingBudget[]
+  sections?: Partial<Record<SpendingPeriod, SpendingBudgetSection>>
+  today: string
 }
 
-/** One inflow that currently nets against an envelope only by category match. */
-export type BudgetProvisionalRefund = {
-  transaction_id: string
+export type SpendingBudgetRecentTx = {
+  id: string
   date: string
+  description: string
+  category: string
+  /** Signed: a refund is negative. */
   amount: number
-  category: string | null
-  description: string | null
-  envelope: { id: string; name: string } | null
+  kind: string
+  client_name: string | null
+  wealth_account_id: string | null
 }
 
-/** One entry in a virtual fund's ledger. */
-export type BudgetFundEntry = {
+export type SpendingBudgetHistoryEntry = {
   id: string
-  envelope_id: string
-  period_id: string | null
-  kind: "contribution" | "withdrawal" | "adjustment"
-  amount: string
-  source: "confirmed" | "auto_fund" | "manual" | "conversion"
-  note: string
-  created_at: string
+  action: string
+  changes: Record<string, { from: unknown; to: unknown }>
+  actor_user_id: string | null
+  created_at: string | null
 }
 
-export type BudgetCommitmentView = {
-  id: string
-  envelope_id: string
-  kind: "one_time" | "recurring"
-  name: string
-  amount: string
-  due_date: string | null
-  recurring_rule_id: string | null
-  first_due_date: string
-  status: string
-  needs_attention: boolean
-  rule: {
-    name: string | null
-    active: boolean
-    missing: boolean
-    next_due_at: string | null
-    frequency_unit: string | null
-    frequency_interval: number | null
-    end_date: string | null
-  } | null
-}
-
-export type BudgetView = {
-  plan: {
-    id: string
-    status: "active" | "paused" | "archived"
-    cadence: "monthly" | "weekly" | "payday" | "custom"
-    timezone: string
-    income_mode: "expected" | "available"
-    expected_income: number | null
-    currency: string
-    next_period_seed: string
-    paused_at: string | null
-    updated_at: string | null
-  } | null
-  period: {
-    id: string
-    start: string
-    end_exclusive: string
-    status: "open" | "closed"
-    is_partial: boolean
-    days_left: number
-    funding_base: number
-    funding_base_source: string
-    funding_base_anchor_date: string
-    funding_base_as_of: string | null
-    income_accreted: number
-    funding_adjustments: number
-    funding_capacity: number
-  } | null
-  money: {
-    available_now: number
-    reserved: number
-    reserved_breakdown: {
-      commitments_outstanding: number
-      commitments_overdue: number
-      debt_outstanding: number
-      virtual_fund_balances: number
-      virtual_contributions_unconfirmed: number
-      space_contributions_due: number
-      protected_savings_due: number
-    }
-    cash_after_reservations: number
-    /** max(0, Σ planned − Σ spent_net − Σ pending) — netted, then floored ONCE. */
-    flexible_headroom: number
-    ceiling_defined: boolean
-    safe_to_spend: number
-    binding: SafeToSpendBinding
-    unallocated: number
-    unallocated_available: number
-    forecast_balance: number
-  } | null
-  sections: {
-    income: { expected: number | null; received: number; outstanding: number | null }
-    flexible: {
-      planned: number
-      spent_gross: number
-      refunds_confirmed: number
-      refunds_provisional: number
-      spent_net: number
-      pending: number
-      /** SIGNED. `headroom` is the floored value used in the min(). */
-      remaining: number
-      headroom: number
-      utilisation: BudgetStateV2
-      envelope_count: number
-      overspent_count: number
-      /** Outflow that matched no explicit envelope, i.e. what the catch-all absorbed. */
-      uncategorised: number
-      envelopes: BudgetEnvelopeView[]
-    }
-    commitment: {
-      planned: number
-      settled: number
-      outstanding: number
-      overdue: number
-      overdue_count: number
-      needs_attention_count: number
-      envelopes: BudgetEnvelopeView[]
-    }
-    debt: {
-      planned: number
-      paid: number
-      outstanding: number
-      overdue: number
-      overdue_count: number
-      needs_attention_count: number
-      envelopes: BudgetEnvelopeView[]
-    }
-    savings: {
-      planned: number
-      reserved: number
-      funded: number
-      funded_cash: number
-      missed: number
-      outstanding: number
-      balance: number
-      awaiting_confirmation: number
-      skipped_count: number
-      behind_count: number
-      envelopes: BudgetEnvelopeView[]
-    }
-  } | null
-  /** Identically the FLEXIBLE section's utilisation — never a cross-section ratio. */
-  plan_status: BudgetStateV2 | null
-  total_outflow: number | null
-  occurrences_upcoming: BudgetOccurrenceView[]
-  occurrences_overdue: BudgetOccurrenceView[]
-  /** The read told us it is stale; resolve with POST /api/budgets/v2/sync. */
-  sync_required: boolean
-  alerts: { kind: string; envelope_id?: string; amount?: number }[]
-  suggestions: { kind: string; envelope_id?: string; amount?: number | null; basis?: string }[]
-  currency_limitation?: BudgetCurrencyLimitation | null
-  /**
-   * Questions the MIGRATION deliberately did not answer (spec §13.4, §13.8).
-   * Absent for any plan created natively in v2.
-   */
-  prompts?: {
-    /** A v1 `lifetime` budget: no monthly equivalent, so the user chooses. */
-    lifetime_choice: { amount: number } | null
-    /** The catch-all target is within 5% of median monthly income. */
-    salary_vs_target: { target: number; median_income: number } | null
-  }
-  capabilities: { can_write: boolean; can_close: boolean; account_type: string | null }
-  /** Machine-readable honesty about what this build cannot do (§21.4). */
-  limitations: string[]
+export type SpendingBudgetDetail = {
+  budget: SpendingBudget
+  children: SpendingBudget[]
+  parent: { id: string; name: string } | null
+  series: { start: string; spent: number; amount: number }[]
+  recent: SpendingBudgetRecentTx[]
+  history: SpendingBudgetHistoryEntry[]
+  today: string
 }

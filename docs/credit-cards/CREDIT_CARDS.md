@@ -162,7 +162,7 @@ All in UTC ISO strings like `src/lib/recurring.ts`. Covered by
 ## 6. Invariants (tests)
 
 `src/lib/credit-card.test.ts`, `credit-card-ledger.test.ts`, `tx-classify.test.ts`,
-`api/_lib/tx-sql.test.ts`, `budget-spend.test.ts`, `budget-engine-refund.test.ts`:
+`api/_lib/tx-sql.test.ts`, `budget-spend.test.ts`, `spending-budgets.test.ts`:
 
 1. Purchase = expense + increased debt; payment = transfer, never an expense.
 2. Available credit is not an asset; card debt reduces net worth; a payment

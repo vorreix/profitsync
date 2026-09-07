@@ -49,14 +49,6 @@ export const NOTIFICATION_TYPES = {
   referral_payout: { category: "billing", i18nKey: "types.referral_payout" },
   budget_warning: { category: "budget", i18nKey: "types.budget_warning" },
   budget_exceeded: { category: "budget", i18nKey: "types.budget_exceeded" },
-  // Budget v2. Emitted from POST /api/budgets/v2/sync — the one place budget
-  // state is written — so none of these can be announced without having
-  // happened. See api/_lib/notify-budget-v2.ts for the dedupe cadences.
-  budget_overdue: { category: "budget", i18nKey: "types.budget_overdue" },
-  budget_envelope_over: { category: "budget", i18nKey: "types.budget_envelope_over" },
-  budget_contribution_missed: { category: "budget", i18nKey: "types.budget_contribution_missed" },
-  budget_period_closed: { category: "budget", i18nKey: "types.budget_period_closed" },
-  budget_period_restated: { category: "budget", i18nKey: "types.budget_period_restated" },
   recurring_posted: { category: "transactions", i18nKey: "types.recurring_posted" },
   space_autosaved: { category: "transactions", i18nKey: "types.space_autosaved" },
   add_transaction_reminder: { category: "transactions", i18nKey: "types.add_transaction_reminder" },

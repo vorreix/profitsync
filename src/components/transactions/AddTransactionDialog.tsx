@@ -6,7 +6,7 @@ import { toast } from "sonner"
 import { Loader as Loader2, Paperclip, Sparkles, X } from "lucide-react"
 import { apiDelete, apiErrorUpgradeHint, apiGet, apiPatch, apiPost } from "@/lib/api"
 import { amountExceedsLimit } from "@/lib/money"
-import { isPaidPlanKey, type Budget, type Card, type Client, type WealthAccount } from "@/lib/types"
+import { isPaidPlanKey, type Budget, type Card, type Client, type SpendingBudget, type SpendingBudgetsResponse, type WealthAccount } from "@/lib/types"
 import { tagLimitForPlan } from "@/lib/tags"
 import { usableCards } from "@/lib/use-cards"
 import { useCurrency } from "@/lib/currency-context"
@@ -79,6 +79,7 @@ export function AddTransactionDialog({
   const [accountsLoading, setAccountsLoading] = useState(true)
   const [clients, setClients] = useState<Client[]>([])
   const [budgetMap, setBudgetMap] = useState<Map<string, Budget>>(new Map())
+  const [spendingBudgets, setSpendingBudgets] = useState<SpendingBudget[]>([])
   const [pendingFiles, setPendingFiles] = useState<File[]>([])
   const [saving, setSaving] = useState(false)
   // The server refused the chosen card (frozen/closed since it was remembered):
@@ -145,13 +146,18 @@ export function AddTransactionDialog({
       if (!token) return
       // Cards load with the accounts so the seed below can settle on the
       // remembered CARD in one go (the picker's own useCards() dedupes this GET).
-      const [accs, cls, bdg, cardRows] = await Promise.all([
+      const [accs, cls, bdg, cardRows, sb] = await Promise.all([
         apiGet<WealthAccount[]>("/api/wealth/accounts", token).catch(() => [] as WealthAccount[]),
         !isPersonal
           ? apiGet<Client[] | { data: Client[] }>("/api/clients", token).catch(() => [] as Client[])
           : Promise.resolve([] as Client[]),
-        apiGet<{ budgets: Budget[] }>("/api/budgets", token).catch(() => ({ budgets: [] })),
+        // Per-client spend caps (business) …
+        !isPersonal
+          ? apiGet<{ budgets: Budget[] }>("/api/budgets", token).catch(() => ({ budgets: [] as Budget[] }))
+          : Promise.resolve({ budgets: [] as Budget[] }),
         apiGet<Card[]>("/api/cards", token).catch(() => [] as Card[]),
+        // … and the spending budgets (both workspace types) for the live hint.
+        apiGet<SpendingBudgetsResponse>("/api/spending-budgets", token).catch(() => ({ budgets: [] as SpendingBudget[], today: "" })),
       ])
       if (cancelled) return
       const active = (accs as WealthAccount[]).filter((a) => !a.archived_at)
@@ -162,6 +168,7 @@ export function AddTransactionDialog({
       const m = new Map<string, Budget>()
       for (const b of bdg.budgets ?? []) m.set(b.client_id ?? "", b)
       setBudgetMap(m)
+      setSpendingBudgets(sb.budgets ?? [])
       if (seeding) {
         // Fill in only the remembered source — the last-used CARD while it is
         // still usable, else the last-used account, else the default — and never
@@ -222,8 +229,8 @@ export function AddTransactionDialog({
     [getToken, catRows, refreshCats, t],
   )
 
-  const budgetFor = (clientId: string): Budget | null =>
-    (isPersonal ? budgetMap.get("") : clientId ? budgetMap.get(clientId) : undefined) ?? null
+  // A business workspace's per-client cap; a personal one quotes its spending budgets instead.
+  const budgetFor = (clientId: string): Budget | null => (!isPersonal && clientId ? budgetMap.get(clientId) : undefined) ?? null
 
   // ── AI quick add ──────────────────────────────────────────────────────────
   const AI_KEY_FOR_PATCH: Record<string, keyof AiFieldMeta> = {
@@ -441,6 +448,7 @@ export function AddTransactionDialog({
             onAddAccount={() => { onOpenChange(false); navigate("/wealth") }}
             currency={currency}
             budget={budgetFor(form.client_id)}
+            spendingBudgets={spendingBudgets}
             sourceError={sourceError}
           />
           <Separator />

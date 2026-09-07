@@ -40,7 +40,7 @@ export function isConfiguredCard(a: Pick<AccountRow, "type" | "statementClosingD
 /**
  * Signed balance effect (Σ balanceDelta) of the card's legs dated AFTER `date`
  * whose effect is currently applied — the same "applied" rule Budget v2 uses
- * (api/_lib/budget-engine.ts balanceMovedSince): a live row counts, and a
+ * (api/_lib/spending-budgets.ts spendByItem): a live row counts, and a
  * TRASHED SYSTEM row still counts because its balance effect was deliberately
  * not reversed (src/lib/wealth-ledger.ts reversesOnTrash).
  */

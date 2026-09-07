@@ -217,7 +217,7 @@ export async function materializeDueRecurring(orgId: string): Promise<Materializ
         // exactly like a manual one. Evaluated once per rule per batch, off the
         // response path so alerting can never fail materialization.
         if (!isTransfer && regularCreatedCount > 0 && rule.type === "outgoing") {
-          void notifyIfBudgetExceeded(orgId, clientId, rule.createdBy ?? "system").catch(() => {})
+          void notifyIfBudgetExceeded(orgId, clientId, rule.createdBy ?? "system", { category: rule.category }).catch(() => {})
         }
 
         // Regular recurring rules tell their creator what posted — best-effort,

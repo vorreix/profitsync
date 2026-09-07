@@ -508,8 +508,8 @@ export function ClientDetailPage() {
       <div
         role="button"
         tabIndex={0}
-        onClick={() => id && navigate(`/budgets/${id}`)}
-        onKeyDown={(e) => { if ((e.key === "Enter" || e.key === " ") && id) { e.preventDefault(); navigate(`/budgets/${id}`) } }}
+        onClick={() => id && navigate(`/budgets/clients/${id}`)}
+        onKeyDown={(e) => { if ((e.key === "Enter" || e.key === " ") && id) { e.preventDefault(); navigate(`/budgets/clients/${id}`) } }}
         className="group w-full text-left rounded-xl border p-3 sm:p-4 cursor-pointer transition-colors hover:border-primary/40 hover:bg-accent/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         <div className="flex items-center justify-between gap-2">

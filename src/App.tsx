@@ -36,8 +36,8 @@ const SpacesPage = lazy(() => import("@/pages/SpacesPage").then((m) => ({ defaul
 const SpaceDetailPage = lazy(() => import("@/pages/SpaceDetailPage").then((m) => ({ default: m.SpaceDetailPage })))
 const CategoryTagsPage = lazy(() => import("@/pages/CategoryTagsPage").then((m) => ({ default: m.CategoryTagsPage })))
 const BudgetsPage = lazy(() => import("@/pages/BudgetsPage").then((m) => ({ default: m.BudgetsPage })))
-const BudgetOverviewPage = lazy(() => import("@/pages/BudgetOverviewPage").then((m) => ({ default: m.BudgetOverviewPage })))
-const BudgetKeyPage = lazy(() => import("@/pages/BudgetKeyPage").then((m) => ({ default: m.BudgetKeyPage })))
+const BudgetDetailPage = lazy(() => import("@/pages/BudgetDetailPage").then((m) => ({ default: m.BudgetDetailPage })))
+const ClientBudgetDetailPage = lazy(() => import("@/pages/ClientBudgetDetailPage").then((m) => ({ default: m.ClientBudgetDetailPage })))
 const AnalyticsPage = lazy(() => import("@/pages/AnalyticsPage").then((m) => ({ default: m.AnalyticsPage })))
 const ReferralPage = lazy(() => import("@/pages/ReferralPage").then((m) => ({ default: m.ReferralPage })))
 const QuotationsPage = lazy(() => import("@/pages/QuotationsPage").then((m) => ({ default: m.QuotationsPage })))
@@ -237,20 +237,11 @@ export function App() {
             <Route path="spaces/:id" element={<PersonalOnlyRoute feature="spaces"><SpaceDetailPage /></PersonalOnlyRoute>} />
             <Route path="analytics" element={<AnalyticsPage />} />
             <Route path="categories" element={<CategoryTagsPage />} />
-            {/* Budget v2 is the /budgets surface. The v1 pages stay reachable at
-                /budgets/legacy so an existing bookmark never 404s (spec §13.6). */}
-            <Route
-              path="budgets"
-              element={
-                <PersonalOnlyRoute feature="budget_plan">
-                  <BudgetOverviewPage />
-                </PersonalOnlyRoute>
-              }
-            />
-            <Route path="budgets/legacy" element={<BudgetsPage />} />
-            {/* Legacy bookmarks resolve to a v2 envelope, or fall through to
-                the v1 page when this workspace has no plan (§13.6). Never a 404. */}
-            <Route path="budgets/:key" element={<BudgetKeyPage />} />
+            {/* Budgets: spending budgets for every workspace type; a business
+                workspace also keeps its per-client spend caps at /budgets/clients/:key. */}
+            <Route path="budgets" element={<BudgetsPage />} />
+            <Route path="budgets/clients/:key" element={<ClientBudgetDetailPage />} />
+            <Route path="budgets/:id" element={<BudgetDetailPage />} />
             <Route path="referrals" element={<ReferralPage />} />
             <Route path="quotations" element={<BusinessOnlyRoute feature="quotations"><QuotationsPage /></BusinessOnlyRoute>} />
             <Route path="organizations" element={<OrganizationsPage />} />

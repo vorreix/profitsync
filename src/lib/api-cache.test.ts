@@ -98,10 +98,26 @@ describe("policyFor", () => {
     expect(stats.maxStale).toBe(0)
   })
 
-  it("never serves a stale body to a reader that writes money off it", () => {
-    // BudgetProvider POSTs /api/budgets/v2/sync when this says sync_required.
-    expect(policyFor("/api/budgets/v2").maxStale).toBe(0)
-    expect(policyFor("/api/budgets/v2/overview").maxStale).toBe(0)
+  it("treats spending budgets as money: short reuse, never on disk, always refetched", () => {
+    // Live spend is a balance-shaped number, and the GET materialises due
+    // recurring rows before summing (like /api/calendar), so it must go out.
+    const pol = policyFor("/api/spending-budgets")
+    expect(pol.cls).toBe("money")
+    expect(pol.persist).toBe(false)
+    expect(pol.alwaysFetch).toBe(true)
+    // The detail is a live-money read under the same prefix and follows it.
+    expect(policyFor("/api/spending-budgets/1").cls).toBe("money")
+  })
+
+  it("drops spending budgets whenever money moves, and a budget edit drops only budgets", () => {
+    for (const write of ["/api/transactions", "/api/wealth/transfer", "/api/categories/1", "/api/categories/combined"]) {
+      expect(drops(write, "/api/spending-budgets"), write).toBe(true)
+    }
+    expect(drops("/api/spending-budgets/1", "/api/spending-budgets")).toBe(true)
+    expect(drops("/api/spending-budgets/1", "/api/transactions")).toBe(false)
+    // Creating a category inserts one row: nothing money-shaped goes stale.
+    expect(drops("/api/categories", "/api/categories")).toBe(true)
+    expect(drops("/api/categories", "/api/transactions")).toBe(false)
   })
 
   it("never paints the attention banner stale, and never puts it on disk", () => {
@@ -116,7 +132,7 @@ describe("policyFor", () => {
   })
 
   it("drops the attention banner whenever money moves", () => {
-    for (const write of ["/api/transactions", "/api/wealth/transfer", "/api/cards/1", "/api/recurring/1", "/api/budgets/v2/sync"]) {
+    for (const write of ["/api/transactions", "/api/wealth/transfer", "/api/cards/1", "/api/recurring/1", "/api/budgets"]) {
       expect(drops(write, "/api/alerts"), write).toBe(true)
     }
   })

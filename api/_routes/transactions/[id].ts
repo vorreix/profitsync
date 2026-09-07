@@ -189,7 +189,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // moving the date into the current window, or flipping income -> expense).
     // Fire-and-forget so alerting can never fail the write.
     if (updated.type === "outgoing" || before.type === "outgoing") {
-      void notifyIfBudgetExceeded(orgId, updated.clientId, userId).catch(() => {})
+      void notifyIfBudgetExceeded(orgId, updated.clientId, userId, { category: updated.category, date: updated.date }).catch(() => {})
     }
     return res.json(serialize(updated))
   }

@@ -3,6 +3,7 @@ import { and, eq, inArray, sql } from "drizzle-orm"
 import { db } from "../../../src/lib/db/index.js"
 import { categories, clients, quotations, transactions } from "../../../src/lib/db/schema.js"
 import { canDelete, canWrite, requireAuth } from "../../_lib/auth.js"
+import { applyCategoryRename, planCategoryRename } from "../../_lib/spending-budgets.js"
 
 const VALID_TYPES = ["incoming", "outgoing", "client", "quotation"]
 const MAX_NAME_LENGTH = 60
@@ -69,6 +70,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (clash) return res.status(409).json({ error: "A category with that name already exists" })
     }
 
+    // Spending budgets name categories too: plan their rewrite up front and
+    // refuse the rename outright if it would leave two sub-budgets of one main
+    // budget claiming the same category — nothing half-applied.
+    const budgetPlan = renaming ? await planCategoryRename(orgId, cleanedOld, cleanedNew) : { updates: [], clash: null }
+    if (budgetPlan.clash) return res.status(409).json({ error: "category_claimed", ...budgetPlan.clash })
+
     const currentTypes = new Set(existing.map((e) => e.type))
     const wanted = new Set(finalTypes)
     const finalColor = color !== undefined ? cleanName(color) : (existing[0].color ?? "")
@@ -97,7 +104,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .onConflictDoNothing()
     }
     // 4. Cascade the rename onto stored entity labels.
-    if (renaming) await cascadeRename(orgId, cleanedOld, cleanedNew)
+    if (renaming) {
+      await cascadeRename(orgId, cleanedOld, cleanedNew)
+      await applyCategoryRename(budgetPlan.updates)
+    }
 
     return res.json({ name: cleanedNew, color: finalColor, types: [...wanted].sort() })
   }

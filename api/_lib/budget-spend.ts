@@ -8,7 +8,8 @@ export type PeriodSums = { daily: number; weekly: number; monthly: number; lifet
 
 /**
  * The inclusion predicates EVERY budget-spend query must share:
- * org-scoped, not trashed, **not a system balance-defining row**, and one of
+ * org-scoped, client neither trashed nor closed, row not trashed, **not a
+ * system balance-defining row**, and one of
  *   • a standard OUTGOING (an expense — incl. a credit-card purchase), or
  *   • a REFUND (an incoming that gives money back for an earlier expense).
  * Transfers — including credit-card payments — never match: paying the card is
@@ -24,6 +25,9 @@ export function budgetSpendPredicates(orgId: string) {
   return [
     eq(clients.organizationId, orgId),
     isNull(clients.deletedAt),
+    // A CLOSED client is out of every report (analytics, calendar, the list),
+    // so it is out of the budgets too — the two must agree for one window.
+    isNull(clients.closedAt),
     isNull(transactions.deletedAt),
     inArray(transactions.kind, ["standard", "refund"]),
     or(eq(transactions.type, "outgoing"), eq(transactions.kind, "refund"))!,

@@ -188,7 +188,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   // A split is one logical expense spread over several accounts, so it can breach
   // a budget exactly like a single transaction. Evaluated once for the group.
-  if (type === "outgoing") void notifyIfBudgetExceeded(orgId, clientId, userId).catch(() => {})
+  if (type === "outgoing") void notifyIfBudgetExceeded(orgId, clientId, userId, { category: category ?? "", date }).catch(() => {})
 
   return res.status(201).json({
     group_id: groupId,

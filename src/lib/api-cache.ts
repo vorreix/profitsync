@@ -58,6 +58,9 @@ export const ALWAYS_FETCH = [
   "/api/recurring",
   "/api/calendar",
   "/api/flow",
+  // Materialises due recurring rows before summing, so the month's rent is in
+  // the figure even when this is the first screen opened today.
+  "/api/spending-budgets",
 ] as const
 
 /**
@@ -72,7 +75,7 @@ export const ALWAYS_FETCH = [
  *      thing in the app and is not: it carries `current_organization_id`, the
  *      ACTIVE WORKSPACE. Off disk, it puts you back in the workspace you left —
  *      switch on your phone, open your laptop tab, and the old one loads. On a
- *      personal-only route (`/budgets`) the guard then redirects you away
+ *      personal-only route (`/spaces`) the guard then redirects you away
  *      before the fresh copy has landed, so the correction never gets a chance
  *      to show. Same reasoning keeps `/api/admin/me` (which gates a whole
  *      console) in memory.
@@ -108,10 +111,6 @@ export const NO_STORE = [
 
 /** Reads that must never be served stale: their body drives a decision. */
 export const NO_STALE = [
-  // BudgetProvider fires POST /api/budgets/v2/sync when this reports
-  // sync_required — a real money write. That call may only be made on a body
-  // that came from the network.
-  "/api/budgets/v2",
   // The attention banner states things like "card payment overdue". Its whole
   // justification over the notification log is that it is true RIGHT NOW, so it
   // is the one read that must never be painted stale — and it is cheap to
@@ -175,6 +174,7 @@ export function policyFor(path: string): CachePolicy {
       "/api/calendar",
       "/api/flow",
       "/api/budgets",
+      "/api/spending-budgets",
       "/api/trash",
       "/api/alerts",
     ])
@@ -214,6 +214,8 @@ export const MONEY_PREFIXES = [
   "/api/calendar",
   "/api/flow",
   "/api/budgets",
+  // Spending budgets carry live spend, so anything that moves money moves them.
+  "/api/spending-budgets",
   "/api/search",
   "/api/audit",
   "/api/trash",
@@ -236,11 +238,20 @@ const FANOUT: { match: RegExp; drop: string[] }[] = [
   { match: /^\/api\/clients\b/, drop: [...MONEY_PREFIXES, "/api/quotations"] },
   { match: /^\/api\/trash\b/, drop: [...MONEY_PREFIXES, "/api/quotations"] },
   { match: /^\/api\/budgets\b/, drop: [...MONEY_PREFIXES, "/api/notifications"] },
+  // A spending-budget edit moves no money: it changes the budgets, their audit
+  // trail, and (through the alert dedupe) what the bell may say next.
+  { match: /^\/api\/spending-budgets\b/, drop: ["/api/spending-budgets", "/api/audit", "/api/notifications"] },
+
+  // Creating a category (the exact path) only inserts a row: nothing that was
+  // read before is wrong afterwards. The budget dialog creates categories
+  // inline, so this must not fall through to the rename rule below and empty
+  // every money screen for the sake of one new chip.
+  { match: /^\/api\/categories$/, drop: ["/api/categories"] },
 
   // A category or tag rename is not a config edit. PUT /api/categories/combined
   // rewrites `category` on transactions, clients AND quotations in one go, and
-  // budget envelopes match on lowered category names, so spend physically moves
-  // envelope. It is a re-attribution of money and everything derived from it.
+  // spending budgets match on lowered category names, so spend physically moves
+  // budget. It is a re-attribution of money and everything derived from it.
   { match: /^\/api\/(categories|tags)\b/, drop: [...MONEY_PREFIXES, "/api/categories", "/api/tags", "/api/quotations"] },
 
   { match: /^\/api\/quotations\b/, drop: ["/api/quotations", "/api/clients", "/api/search", "/api/trash", "/api/audit"] },

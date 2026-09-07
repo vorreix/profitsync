@@ -324,7 +324,7 @@ export function ClientsPage() {
     onOpen: (id: string) => navigate(`/clients/${id}`),
     onQuickView: (client: ClientWithStats) => setViewClient(client),
     onEditBudget: (client: ClientWithStats) => setBudgetClient(client),
-    onOpenBudget: (id: string) => navigate(`/budgets/${id}`),
+    onOpenBudget: (id: string) => navigate(`/budgets/clients/${id}`),
     onToggleSelect: sel.toggle,
     onEnterSelection: sel.enterSelection,
     formatAmount: formatCurrency,

@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, numeric, date, timestamp, integer, boolean, index, uniqueIndex, jsonb, check } from "drizzle-orm/pg-core"
+import { pgTable, uuid, text, numeric, date, timestamp, integer, boolean, index, uniqueIndex, jsonb, check, type AnyPgColumn } from "drizzle-orm/pg-core"
 import { sql } from "drizzle-orm"
 
 export const organizations = pgTable("organizations", {
@@ -1026,6 +1026,52 @@ export const budgetHistory = pgTable("budget_history", {
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => ({
   lookupIdx: index("budget_history_lookup_idx").on(table.organizationId, table.clientId, table.createdAt),
+}))
+
+// ── Spending budgets ───────────────────────────────────────────────────────────
+// A NAMED spending limit over a window, scoped to a set of expense categories —
+// or to all spending when `categories` is empty. Several coexist per workspace
+// (personal AND business), and a main budget can carry SUB-BUDGETS (`parent_id`,
+// one level) that break its scope down: each sub-budget names ≥ 1 category
+// inside the parent's scope, siblings never share one, and the parent's own
+// figure minus its children's is "everything else" in it. Like the v1 client
+// caps above, spend is NEVER stored — api/_lib/spending-budgets.ts sums it
+// live for the current window (src/lib/budget.ts budgetWindow). `period` is
+// daily | weekly | monthly | yearly | once; only `once` uses the date bounds
+// (both NULL = all time, which is what a v1 `lifetime` budget became).
+export const spendingBudgets = pgTable("spending_budgets", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  parentId: uuid("parent_id").references((): AnyPgColumn => spendingBudgets.id, { onDelete: "cascade" }),
+  // '' only on rows migrated from a v1 personal budget (the UI labels those
+  // "Personal budget"); the API requires a name on every write.
+  name: text("name").notNull().default(""),
+  icon: text("icon").notNull().default(""), // src/components/budget/budget-icons.tsx key; '' = suggest
+  period: text("period").notNull().default("monthly"), // daily | weekly | monthly | yearly | once
+  startDate: date("start_date"), // once only — first day, inclusive
+  endDate: date("end_date"), // once only — last day, inclusive
+  amount: numeric("amount", { precision: 20, scale: 2 }).notNull().default("0"),
+  categories: jsonb("categories").notNull().default([]), // string[] of expense category names; [] = all spending
+  status: text("status").notNull().default("active"), // active | paused (paused = counted nowhere, no alerts)
+  position: integer("position").notNull().default(0), // manual order among siblings
+  createdBy: text("created_by"),
+  updatedBy: text("updated_by"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  orgIdx: index("spending_budgets_org_idx").on(table.organizationId, table.parentId, table.position),
+  // Sibling names are unique, case-insensitively. A top-level row's "parent" is
+  // its org id for the purpose of this key — a sentinel a real parent id can
+  // never equal.
+  siblingNameUnique: uniqueIndex("spending_budgets_sibling_name_unique")
+    .on(table.organizationId, sql`coalesce(${table.parentId}, ${table.organizationId})`, sql`lower(${table.name})`),
+  periodCheck: check("spending_budgets_period_check", sql`period in ('daily','weekly','monthly','yearly','once')`),
+  statusCheck: check("spending_budgets_status_check", sql`status in ('active','paused')`),
+  amountCheck: check("spending_budgets_amount_check", sql`amount >= 0`),
+  datesOnlyOnceCheck: check("spending_budgets_dates_once_check", sql`period = 'once' or (start_date is null and end_date is null)`),
+  dateOrderCheck: check("spending_budgets_date_order_check", sql`start_date is null or end_date is null or end_date >= start_date`),
+  // A sub-budget's window is its parent's, resolved on read — it never stores one.
+  childDatesCheck: check("spending_budgets_child_dates_check", sql`parent_id is null or (start_date is null and end_date is null)`),
 }))
 
 // ── Push delivery log ──────────────────────────────────────────────────────────

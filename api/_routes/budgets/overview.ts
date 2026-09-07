@@ -4,7 +4,8 @@ import { db } from "../../../src/lib/db/index.js"
 import { budgets, budgetHistory, clients } from "../../../src/lib/db/schema.js"
 import { requireAuth, isPersonalAccount } from "../../_lib/auth.js"
 import { outgoingByClient, spentFor } from "../../_lib/budget-spend.js"
-import { isBudgetPeriod, type BudgetPeriod } from "../../../src/lib/budget.js"
+import { isBudgetPeriod, todayUtc, type BudgetPeriod } from "../../../src/lib/budget.js"
+import { listBudgets, primaryBudget, toV1Period } from "../../_lib/spending-budgets.js"
 import { detectCreep, seriesState, type BudgetAction, type HistoryRow } from "../../../src/lib/budget-history.js"
 
 const KEY = (clientId: string | null) => clientId ?? "default"
@@ -19,6 +20,40 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { orgId } = ctx
   const personal = isPersonalAccount(ctx)
   const now = new Date()
+
+  // A personal workspace's budget lives in `spending_budgets` now; an old
+  // bundle's Budgets page still reads this, so project the primary one.
+  if (personal) {
+    const primary = primaryBudget(await listBudgets(orgId, todayUtc(now)))
+    const items = primary
+      ? [{
+          key: "default",
+          client_id: null,
+          client_name: null,
+          is_own: false,
+          is_default: true,
+          period: toV1Period(primary.period),
+          amount: primary.amount,
+          spent: primary.spent,
+          state: seriesState(primary.spent, primary.amount),
+          ratio: primary.amount > 0 ? primary.spent / primary.amount : null,
+          creep_flagged: false,
+        }]
+      : []
+    const lite = items[0] ? { key: "default", client_name: null, is_default: true, ratio: items[0].ratio } : null
+    return res.json({
+      budgets: items,
+      account_type: ctx.accountType,
+      aggregate: {
+        total_budget: primary?.amount ?? 0,
+        total_spent: primary?.spent ?? 0,
+        on_track: primary && primary.spent <= primary.amount ? 1 : 0,
+        total: primary ? 1 : 0,
+        worst: lite,
+        best: lite,
+      },
+    })
+  }
 
   const [rows, clientRows, historyRows, byClient] = await Promise.all([
     db.select().from(budgets).where(eq(budgets.organizationId, orgId)),

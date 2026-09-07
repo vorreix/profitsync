@@ -32,7 +32,7 @@ is now.
 | `src/components/alerts/AlertsBanner.tsx` | The carousel. |
 | `src/components/alerts/alert-dismissals.ts` | Snoozing (pure, tested). |
 
-Same three-layer split as budget-v2, for the same reason: the unit gate is
+Same three-layer split as the spending budgets, for the same reason: the unit gate is
 DB-free, so money math is only testable if it lives in layer one.
 
 ## Invariants

@@ -444,7 +444,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .where(eq(wealthAccounts.id, wealth_account_id))
     await logAudit({ orgId, entityType: "transaction", entityId: row.id, action: "create", actorId: userId })
     // Budget-exceeded alert (fire-and-forget): never blocks or fails the write.
-    if (type === "outgoing") void notifyIfBudgetExceeded(orgId, clientId, userId).catch(() => {})
+    if (type === "outgoing") void notifyIfBudgetExceeded(orgId, clientId, userId, { category: row.category, date: row.date }).catch(() => {})
     return res.status(201).json(serialize(row))
   }
 

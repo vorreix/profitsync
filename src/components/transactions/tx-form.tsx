@@ -1,8 +1,9 @@
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
 import { ArrowDownRight, ArrowUpRight, Check, ChevronsUpDown, Pencil, Plus, RotateCcw, X } from "lucide-react"
-import type { Budget, Client, WealthAccount } from "@/lib/types"
-import { budgetState } from "@/lib/budget"
+import type { Budget, Client, SpendingBudget, WealthAccount } from "@/lib/types"
+import { budgetState, tightestBudget } from "@/lib/budget"
+import { budgetName } from "@/components/budget/budget-format"
 import { formatMoney } from "@/lib/wealth"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -229,7 +230,7 @@ function AiReviewDot({ show, label }: { show: boolean; label: string }) {
 }
 
 export function TxFormFields({
-  f, onChange, showClient, clients, accounts, accountsLoading, categories, onChangeCats, onAddAccount, currency, singleAccount = false, budget = null, tagSuggestions = [], tagLimit, onTagUpgrade, aiFields, sourceError = null,
+  f, onChange, showClient, clients, accounts, accountsLoading, categories, onChangeCats, onAddAccount, currency, singleAccount = false, budget = null, spendingBudgets = [], tagSuggestions = [], tagLimit, onTagUpgrade, aiFields, sourceError = null,
 }: {
   f: TxForm
   onChange: (patch: Partial<TxForm>) => void
@@ -245,6 +246,9 @@ export function TxFormFields({
   // The resolved expense budget for the current client (or personal/org budget),
   // used to show the live "x left after this expense" impact on outgoing.
   budget?: Budget | null
+  // The workspace's spending budgets: the tightest one whose scope holds the
+  // chosen category, and whose window holds the date, is quoted the same way.
+  spendingBudgets?: SpendingBudget[]
   // Tags already used elsewhere (drives the TagsInput suggestion chips).
   tagSuggestions?: string[]
   // Per-plan tag ceiling + the "go upgrade" handler (shows a premium chip at cap).
@@ -277,6 +281,16 @@ export function TxFormFields({
     return remaining >= 0
       ? { over: false, state, text: t("budget.remainingAfter", { ns: "translation", amount: formatMoney(remaining, currency) }) }
       : { over: true, state, text: t("budget.overAfter", { ns: "translation", amount: formatMoney(-remaining, currency) }) }
+  })()
+  const spendingHint = (() => {
+    if (f.type !== "outgoing" || txTotal <= 0) return null
+    const sb = tightestBudget(spendingBudgets, f.category, f.date)
+    if (!sb) return null
+    const { remaining, state } = budgetState(sb.spent + txTotal, sb.amount)
+    const name = budgetName(t, sb)
+    return remaining >= 0
+      ? { over: false, state, text: t("budgets.hint.after", { ns: "translation", name, amount: formatMoney(remaining, currency) }) }
+      : { over: true, state, text: t("budgets.hint.overAfter", { ns: "translation", name, amount: formatMoney(-remaining, currency) }) }
   })()
 
   return (
@@ -333,6 +347,11 @@ export function TxFormFields({
       {sourceError && (
         <p role="alert" className="-mt-1 text-xs text-destructive motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-top-1">
           {sourceError}
+        </p>
+      )}
+      {spendingHint && (
+        <p className={`-mt-1 text-xs ${spendingHint.over ? "text-red-600 dark:text-red-400" : spendingHint.state === "warn" ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"}`} data-testid="spending-budget-hint">
+          {spendingHint.text}
         </p>
       )}
       {budgetHint && (

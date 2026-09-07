@@ -88,7 +88,12 @@ export function notificationTitle(n: AppNotification, t: TFunction): string {
 export function notificationBody(n: AppNotification, t: TFunction): string {
   const { bodyKey } = notificationRenderKeys(n.data, resourceKind)
   if (bodyKey) {
-    const params = (n.data?.i18nParams ?? {}) as Record<string, unknown>
+    const params = { ...((n.data?.i18nParams ?? {}) as Record<string, unknown>) }
+    // Budget alerts carry the period as its enum value ("monthly"); say it in
+    // the reader's language rather than splicing English into every locale.
+    if (typeof params.period === "string" && ["daily", "weekly", "monthly", "yearly", "once", "lifetime"].includes(params.period)) {
+      params.period = t(`budget.${params.period}`, { ns: "translation", defaultValue: params.period })
+    }
     const translated = t(bodyKey, { ns: "notifications", defaultValue: n.body, ...params })
     if (typeof translated === "string" && translated) return translated
   }
