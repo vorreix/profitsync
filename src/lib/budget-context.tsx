@@ -83,7 +83,7 @@ export function BudgetProvider({ children }: { children: ReactNode }) {
     try {
       const token = await getToken()
       if (!token) return
-      const res = await apiPost<{ view?: BudgetView }>("/api/budgets/v2/sync", token, {}, ["/api/budgets"])
+      const res = await apiPost<{ view?: BudgetView }>("/api/budgets/v2/sync", token, {})
       if (res?.view) setData(res.view)
       else await refresh()
       setError(null)

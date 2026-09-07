@@ -102,7 +102,7 @@ export function CategoriesPanel() {
     try {
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
-      await apiPost("/api/categories", token, values, ["/api/categories"])
+      await apiPost("/api/categories", token, values)
       toast.success(t("categories.created"))
       setCatForm(null)
       void refresh()
@@ -127,7 +127,6 @@ export function CategoriesPanel() {
         "/api/categories/combined",
         token,
         { oldName, newName: values.name, types: values.types, color: values.color },
-        ["/api/categories", "/api/transactions", "/api/clients", "/api/quotations"],
       )
       toast.success(t("categories.updated"))
       setCatForm(null)
@@ -148,7 +147,7 @@ export function CategoriesPanel() {
     try {
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
-      await apiDelete(`/api/categories/combined?name=${encodeURIComponent(cat.name)}`, token, undefined, ["/api/categories"])
+      await apiDelete(`/api/categories/combined?name=${encodeURIComponent(cat.name)}`, token)
       toast.success(t("categories.deleted"))
     } catch {
       toast.error(t("categories.deleteFailed"))

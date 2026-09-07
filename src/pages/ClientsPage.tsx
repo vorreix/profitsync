@@ -248,7 +248,7 @@ export function ClientsPage() {
     await runOptimistic({
       apply: () => setDialogOpen(false),
       rollback: () => { setForm(snapshot); setDialogOpen(true) },
-      mutate: () => apiPost<Client>("/api/clients", token, body, ["/api/clients"]),
+      mutate: () => apiPost<Client>("/api/clients", token, body),
       errorMessage: t("createClientFailed"),
       // Insert the new client in place — no full-list reload.
       onSuccess: (created) => {

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { useAuth } from "@clerk/clerk-react"
 import { toast } from "sonner"
-import { apiPatch, clearApiCache } from "@/lib/api"
+import { apiPatch } from "@/lib/api"
 import { amountExceedsLimit } from "@/lib/money"
 import type { WealthAccount } from "@/lib/types"
 import { currencySymbol } from "@/lib/wealth"
@@ -80,7 +80,6 @@ export function WealthAccountDialogs({
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
       await apiPatch<WealthAccount>(`/api/wealth/accounts/${id}`, token, body)
-      clearApiCache()
       toast.success(success)
       onDone()
       onChanged()

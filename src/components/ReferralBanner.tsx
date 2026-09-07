@@ -1,44 +1,43 @@
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { useAuth } from "@clerk/clerk-react"
 import { Gift, X } from "lucide-react"
-import { apiGet } from "@/lib/api"
+import { useApiQuery } from "@/hooks/use-api-query"
 import { cn } from "@/lib/utils"
 
 const DISMISS_KEY = "ps_ref_banner_dismissed"
 
+type ReferralSettings = { settings?: { banner_enabled?: boolean; banner_text?: string } }
+
 // App-wide, closeable referral banner whose copy + visibility are controlled by
 // the platform admin (referral settings). Dismissal is remembered per banner
 // text, so editing/re-enabling it shows again.
+//
+// It renders on every screen, which is exactly why it reads through
+// `useApiQuery`: the settings are fetched once and then come from cache, so
+// moving between pages doesn't re-ask. There is no loading state to write —
+// the banner simply isn't there until there is something to say.
 export function ReferralBanner({ className }: { className?: string }) {
-  const { getToken } = useAuth()
   const navigate = useNavigate()
-  const [text, setText] = useState<string | null>(null)
+  const { data } = useApiQuery<ReferralSettings>("/api/referrals")
+  const [dismissed, setDismissed] = useState(() => {
+    try {
+      return localStorage.getItem(DISMISS_KEY) ?? ""
+    } catch {
+      return ""
+    }
+  })
 
-  useEffect(() => {
-    let cancelled = false
-    ;(async () => {
-      try {
-        const token = await getToken()
-        if (!token) return
-        const data = await apiGet<{ settings?: { banner_enabled?: boolean; banner_text?: string } }>("/api/referrals", token)
-        const s = data?.settings
-        if (cancelled || !s?.banner_enabled || !s.banner_text?.trim()) return
-        let dismissed = ""
-        try { dismissed = localStorage.getItem(DISMISS_KEY) ?? "" } catch { /* ignore */ }
-        if (dismissed !== s.banner_text) setText(s.banner_text)
-      } catch {
-        /* ignore */
-      }
-    })()
-    return () => { cancelled = true }
-  }, [getToken])
-
-  if (!text) return null
+  const settings = data?.settings
+  const text = settings?.banner_enabled ? (settings.banner_text?.trim() ?? "") : ""
+  if (!text || dismissed === text) return null
 
   function dismiss() {
-    try { localStorage.setItem(DISMISS_KEY, text ?? "") } catch { /* ignore */ }
-    setText(null)
+    try {
+      localStorage.setItem(DISMISS_KEY, text)
+    } catch {
+      /* private mode — it just comes back next load */
+    }
+    setDismissed(text)
   }
 
   return (

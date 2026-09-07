@@ -57,7 +57,6 @@ export function OverdueList({
         "/api/budgets/v2/occurrences",
         token,
         { commitment_id: o.commitment_id, due_date: o.due_date, action, ...extra },
-        ["/api/budgets"],
       )
       toast.success(
         action === "settle"

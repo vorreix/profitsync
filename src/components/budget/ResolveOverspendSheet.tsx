@@ -93,7 +93,6 @@ export function ResolveOverspendSheet({
         "/api/budgets/v2/reallocate",
         token,
         { ...(fromId ? { from_envelope_id: fromId } : {}), to_envelope_id: envelope.id, amount: asNumber },
-        ["/api/budgets"],
       )
       toast.success(t("budgetV2.overspendResolved", { name: envelope.name }))
       onResolved()
@@ -114,7 +113,6 @@ export function ResolveOverspendSheet({
         `/api/budgets/v2/envelopes/${envelope.id}`,
         token,
         { target_amount: round2(envelope.authored_amount + asNumber) },
-        ["/api/budgets"],
       )
       toast.success(t("budgetV2.targetRaised", { name: envelope.name }))
       onResolved()

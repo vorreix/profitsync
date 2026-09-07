@@ -94,7 +94,6 @@ export function SavingsSection({
         "/api/budgets/v2/contributions",
         token,
         { envelope_id: env.id, action },
-        ["/api/budgets"],
       );
       toast.success(
         action === "confirm"

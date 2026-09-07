@@ -63,7 +63,7 @@ export function SpaceTransferModal({
       const body = isFund
         ? { from_account_id: accountId, to_account_id: active.space.id, amount: amt }
         : { from_account_id: active.space.id, to_account_id: accountId, amount: amt }
-      await apiPost("/api/wealth/transfer", token, body, ["/api/spaces", "/api/wealth"])
+      await apiPost("/api/wealth/transfer", token, body)
       toast.success(isFund ? t("fundDone") : t("withdrawDone"))
       onDone()
     } catch (err) {

@@ -125,7 +125,6 @@ export function AddCommitmentDialog({
               amount: amountNum,
               due_date: dueDate,
             },
-        ["/api/budgets"],
       )
       toast.success(t("budgetV2.billAdded"))
       onOpenChange(false)

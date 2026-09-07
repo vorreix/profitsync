@@ -51,7 +51,7 @@ export function MigrationPrompts({
     try {
       const token = await getToken()
       if (!token) return
-      await apiPost("/api/budgets/v2/prompts", token, { prompt, choice, ...extra }, ["/api/budgets"])
+      await apiPost("/api/budgets/v2/prompts", token, { prompt, choice, ...extra })
       toast.success(t("budgetV2.promptSaved"))
       onResolved()
     } catch (err) {

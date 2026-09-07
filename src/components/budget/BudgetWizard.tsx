@@ -57,10 +57,9 @@ export function BudgetWizard({ onCreated, onSkip }: { onCreated: () => void; onS
           expected_income: incomeVaries ? null : Number(income),
           spending_target: Number(target),
         },
-        ["/api/budgets"],
       )
       // The plan exists; sync opens its first period.
-      await apiPost("/api/budgets/v2/sync", token, {}, ["/api/budgets"])
+      await apiPost("/api/budgets/v2/sync", token, {})
       toast.success(t("budgetV2.created"))
       onCreated()
     } catch (err) {

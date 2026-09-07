@@ -12,6 +12,7 @@ A set of skills (plus the Workflow tool) is installed for this repo. **When a ta
 | `brainstorming` | Before **any** creative work (new feature, component, behavior change) — explore intent, requirements, and design before implementing. |
 | `ui-ux-pro-max` | Planning, building, reviewing, or improving any UI/UX — styles, color systems, font pairings, layout, accessibility, charts. |
 | `transition-creator` | Adding/polishing animations or transitions (View More, accordions, lists, modals/drawers, hover, page changes) or fixing janky/flickering motion — then verifying it feels seamless in a real browser. |
+| `data-fetching-and-cache` | **Any** client data fetching, a new API route, a new `apiGet`/`apiPost`/… call, a screen that loads data, making a page feel faster, or stale-after-save bugs. Establishes the *warm-shell / live-money* model and the invalidation map — invoke it **before** adding a fetch, not after. |
 | `shadcn` | Working with shadcn/ui components (search + examples). Remember the repo rule: install via `npx shadcn@latest add`, never edit `src/components/ui/` directly. |
 | `work-finetuning` | A large multi-task brief to execute autonomously end-to-end — stacked branches, mobile-first UX, optimistic in-place updates (no full-screen reloads), Playwright verification, the full pre-commit gate, a pushed branch per task. |
 | `deep-research` | A deep, multi-source, fact-checked research report is needed. Narrow scope with 2–3 clarifying questions first if the ask is underspecified. |
@@ -359,13 +360,20 @@ All DB queries are scoped by `orgId`, not `userId`. Never bypass this.
 
 Capabilities: `read`, `write`, `blog`, `settings`, `manage_admins`, plus three **super-admin-EXCLUSIVE** ones excluded from `GRANTABLE_ADMIN_CAPS` — `org_transactions` (the org-detail Transactions tab + `/api/admin/transactions`), `manage_super_admins`, `manage_roles`. Custom-role capabilities are sanitized to the grantable set on **both write and read**, so a tampered row can't escalate. Visibility rule ("shouldn't even see it exists"): non-supers don't see the `super_admin` role in pickers, super-admin rows are redacted from their admins list, and the org Transactions tab is hidden. Enforcement is server-side everywhere; hiding is UX, the 403 is the security.
 
-### Client-side API (`src/lib/api.ts`)
+### Client-side API + cache (`src/lib/api.ts`, `src/lib/api-cache.ts`)
 
-`apiGet`, `apiPost`, `apiPatch`, `apiDelete` all attach `Authorization: Bearer <token>` and `x-org-id: <activeOrgId>`.
+`apiGet`, `apiPost`, `apiPatch`, `apiPut`, `apiDelete` attach `Authorization: Bearer <token>` and `x-org-id: <activeOrgId>`. **Skill: `data-fetching-and-cache` — read it before adding a fetch.**
 
-`apiGet` has a 30-second GET cache with in-flight deduplication (collapses concurrent identical fetches) and LRU eviction at 50 entries. Any mutation (`apiPost/apiPatch/apiDelete`) calls `clearApiCache()` to invalidate all cached responses.
+The model is **warm shell, live money**. `api-cache.ts` holds the pure policy tables (freshness class per path, what may persist, what each write invalidates); `api.ts` is the two-tier store that applies them, under every call site.
 
-Use `setActiveOrgId(id)` when the active org changes; it clears the cache and persists to `localStorage`.
+- **L1** — in-memory, every GET, in-flight de-duplication, LRU. Keyed `sub|org|path`, so the cache is **user-scoped**: two people sharing a browser can't see each other's rows.
+- **L2** — `localStorage`, **the org list + config only** (`/api/organizations`, `/api/categories`, `/api/tags`), so a cold start has part of the shell before the first request. `PERSIST_ALLOWLIST` is default-deny: a body is disqualified if it carries a balance **or decides what the user sees**. `/api/profile` fails the second test — it carries `current_organization_id`, so off disk it restores the workspace you left on another device and `/budgets` redirects away before the fresh copy lands. It and `/api/admin/me` stay memory-only (still with the long in-memory window, which is where most of the win is).
+- **Stale-while-revalidate, announced.** Past its freshness window a body is still painted and refreshed behind the paint; if the fresh copy differs, the store emits the same `DATA_CHANGED_EVENT` a mutation does, so the ~235 existing `apiGet` sites pick it up through `DataRefreshProvider` without being edited. New code should use **`useApiQuery`** (`src/hooks/use-api-query.ts`), whose `loading` is true only when there is nothing to draw — gate skeletons on that, never on `refreshing`.
+- **Nine GET routes materialise money while they serve** (recurring, autopay, statement filing): `/api/transactions`, `/api/wealth/accounts`, `/api/spaces`, `/api/cards`, `/api/recurring`, `/api/calendar`, `/api/flow` and two nested. They may paint from cache but the request must still go out (`ALWAYS_FETCH`) — skipping it doesn't error, it just silently never runs someone's autopay.
+- **Invalidation is one table, not a per-call argument.** `invalidationFor(path)` decides; there is deliberately no `invalidate` parameter (all 28 sites that once passed one were narrower than the truth). An unmapped write path purges everything — safe, but slow, so `scripts/check-cache-map.mjs` fails the build until it is mapped.
+- **`npm run cache:check`** (pre-commit + `pr.yml`, and a `PostToolUse` hook in `.claude/settings.json`) re-derives the side-effecting GET routes from the API source and every write path from `src/`, and fails when the map disagrees.
+
+Use `setActiveOrgId(id)` when the active org changes; `purgeApiCache()` on sign-out (mounted once as `useIdentityPurge()` in `App`).
 
 ### Quota enforcement (`api/_lib/quota.ts`)
 
@@ -410,7 +418,8 @@ Dark/light mode via `next-themes` (`ThemeProvider` in `src/components/theme-prov
 - **Serialization:** Always call `serialize(row)` before `res.json(row)` in API handlers to convert camelCase Drizzle output to snake_case.
 - **Adding a new API route:** (1) Create handler in `api/_routes/`, (2) import it in `api/index.ts`, (3) add an entry to the `routes` array (static before dynamic at same depth).
 - **Adding a Vercel function** that needs raw body (e.g. webhooks): place it directly in `api/` (not `_routes/`) so Vercel treats it as its own function. Count against the 12-function cap.
-- **Mutations invalidate cache:** any `apiPost/apiPatch/apiDelete` call clears the entire GET cache. Do not cache mutation responses.
+- **Mutations invalidate cache — centrally.** Never pass an invalidation scope at the call site (the parameter no longer exists): add the write path to `FANOUT` in `src/lib/api-cache.ts` with the read prefixes it *actually* makes wrong. A write with no rule purges the whole cache and fails `npm run cache:check`. A write made with a raw `fetch` (attachments) must call `invalidateKeys([...])` itself. Do not cache mutation responses.
+- **Never make a screen refetch what it already has.** `loading` gates a skeleton; `refreshing` gates nothing visible. If a client-side navigation to an already-visited screen fires any API request, something purged the cache mid-load — find the write and narrow its fanout rule.
 - **Role checks before writes:** call `canWrite(role)` or `canDelete(role)` and return 403 before any mutation.
 - **Quota checks before creates:** call the relevant `check*Quota` helper before inserting clients, transactions, quotations, or attachments.
 - **i18n strings:** all UI text goes through `useTranslation()`. Raw English strings in JSX are a bug.

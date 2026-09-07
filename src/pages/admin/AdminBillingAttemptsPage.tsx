@@ -120,7 +120,6 @@ export function AdminBillingAttemptsPage() {
         `/api/admin/billing-attempts/${detail.id}`,
         token,
         { follow_up_status: followUp, follow_up_notes: notes },
-        ["/api/admin/billing-attempts"],
       )
       // In-place row update — no list flash.
       setData((prev) =>

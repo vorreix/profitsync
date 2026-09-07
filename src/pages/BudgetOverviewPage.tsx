@@ -169,7 +169,7 @@ export function BudgetOverviewPage() {
     try {
       const token = await getToken()
       if (!token) return
-      await apiPatch("/api/budgets/v2", token, { status: paused ? "active" : "paused" }, ["/api/budgets"])
+      await apiPatch("/api/budgets/v2", token, { status: paused ? "active" : "paused" })
       await sync()
     } finally {
       setBusy(false)

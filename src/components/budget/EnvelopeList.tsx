@@ -78,7 +78,7 @@ export function EnvelopeList({
     try {
       const token = await getToken()
       if (!token) return
-      await apiPost("/api/budgets/v2/envelopes/reorder", token, { ids: next.map((e) => e.id) }, ["/api/budgets"])
+      await apiPost("/api/budgets/v2/envelopes/reorder", token, { ids: next.map((e) => e.id) })
       onChanged()
     } catch (err) {
       setOrder(previous) // the server refused; show the truth

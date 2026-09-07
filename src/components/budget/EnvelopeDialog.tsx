@@ -183,10 +183,10 @@ export function EnvelopeDialog({
           : {}),
       }
       if (editing && envelope) {
-        await apiPatch(`/api/budgets/v2/envelopes/${envelope.id}`, token, payload, ["/api/budgets"])
+        await apiPatch(`/api/budgets/v2/envelopes/${envelope.id}`, token, payload)
         toast.success(t("budgetV2.envelopeSaved"))
       } else {
-        await apiPost("/api/budgets/v2/envelopes", token, { section: activeSection, ...payload }, ["/api/budgets"])
+        await apiPost("/api/budgets/v2/envelopes", token, { section: activeSection, ...payload })
         toast.success(t("budgetV2.envelopeCreated"))
       }
       onOpenChange(false)
@@ -208,7 +208,7 @@ export function EnvelopeDialog({
     try {
       const token = await getToken()
       if (!token) return
-      await apiDelete(`/api/budgets/v2/envelopes/${envelope.id}`, token, ["/api/budgets"])
+      await apiDelete(`/api/budgets/v2/envelopes/${envelope.id}`, token)
       toast.success(t("budgetV2.envelopeRemoved", { name: envelope.name }))
       onOpenChange(false)
       onSaved()

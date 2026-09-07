@@ -226,11 +226,11 @@ export function RecurringPage() {
         end_date: form.end_date || null,
       }
       if (editing) {
-        const updated = await apiPatch<RecurringRule>(`/api/recurring/${editing.id}`, token, body, ["/api/recurring", "/api/transactions", "/api/wealth"])
+        const updated = await apiPatch<RecurringRule>(`/api/recurring/${editing.id}`, token, body)
         setRules((prev) => prev.map((r) => (r.id === updated.id ? { ...r, ...updated } : r)))
         toast.success(t("recurring.updated"))
       } else {
-        const created = await apiPost<RecurringRule & { created_now?: number }>("/api/recurring", token, body, ["/api/recurring", "/api/transactions", "/api/wealth"])
+        const created = await apiPost<RecurringRule & { created_now?: number }>("/api/recurring", token, body)
         toast.success(
           created.created_now
             ? t("recurring.createdWithTx", { count: created.created_now })
@@ -252,7 +252,7 @@ export function RecurringPage() {
     try {
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
-      await apiPatch(`/api/recurring/${rule.id}`, token, { active: next }, ["/api/recurring", "/api/transactions", "/api/wealth"])
+      await apiPatch(`/api/recurring/${rule.id}`, token, { active: next })
       if (next) await load({ silent: true }) // resuming may have materialized
     } catch {
       toast.error(t("recurring.saveFailed"))
@@ -268,7 +268,7 @@ export function RecurringPage() {
     try {
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
-      await apiDelete(`/api/recurring/${rule.id}`, token, undefined, ["/api/recurring"])
+      await apiDelete(`/api/recurring/${rule.id}`, token)
       toast.success(t("recurring.deleted"))
     } catch {
       toast.error(t("recurring.deleteFailed"))

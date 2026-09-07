@@ -34,7 +34,7 @@ import {
   Star,
   Wallet,
 } from "lucide-react"
-import { apiDelete, apiErrorMessage, apiGet, apiPatch, apiPost, clearApiCache } from "@/lib/api"
+import { apiDelete, apiErrorMessage, apiGet, apiPatch, apiPost } from "@/lib/api"
 import { WEALTH_CHANGED_EVENT } from "@/lib/data-events"
 import { amountExceedsLimit } from "@/lib/money"
 import type { WealthAccount } from "@/lib/types"
@@ -357,7 +357,7 @@ export function WealthPage() {
     try {
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
-      await apiPatch(`/api/wealth/accounts/${account.id}`, token, { set_default: next }, ["/api/wealth"])
+      await apiPatch(`/api/wealth/accounts/${account.id}`, token, { set_default: next })
     } catch {
       toast.error(t("couldNotUpdate"))
       await load()
@@ -385,7 +385,6 @@ export function WealthPage() {
         openingBalance: Number(form.opening_balance || 0),
         ...bankDetailsPayload(form),
       })
-      clearApiCache()
       toast.success(t("accountAdded"))
       setCreateOpen(false)
       await load()
@@ -402,7 +401,6 @@ export function WealthPage() {
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
       await apiDelete(`/api/wealth/accounts/${account.id}`, token)
-      clearApiCache()
       toast.success((account.transaction_count ?? 0) > 0 ? t("accountArchived") : t("accountRemoved"))
       await load()
     } catch {
@@ -418,7 +416,6 @@ export function WealthPage() {
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
       await apiPatch(`/api/wealth/accounts/${account.id}`, token, { restore: true })
-      clearApiCache()
       toast.success(t("accountRestored"))
       await load()
     } catch (err) {

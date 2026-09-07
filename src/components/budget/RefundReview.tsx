@@ -63,9 +63,7 @@ export function RefundReview({
     try {
       const token = await getToken()
       if (!token) return
-      await apiPost("/api/budgets/v2/refunds", token, { action: "reject", transaction_id: r.transaction_id }, [
-        "/api/budgets",
-      ])
+      await apiPost("/api/budgets/v2/refunds", token, { action: "reject", transaction_id: r.transaction_id })
       setRefunds((list) => list.filter((x) => x.transaction_id !== r.transaction_id))
       toast.success(t("budgetV2.refundRejected"))
       onChanged()

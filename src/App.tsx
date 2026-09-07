@@ -14,6 +14,7 @@ import { NativeShell } from "@/components/NativeShell"
 import { isNativeApp, nativeAuthLog, nativeAuthUrlLog, toInternalOAuthCallbackPath } from "@/lib/native-auth"
 import { useShouldRedirectToApp } from "@/lib/use-redirect-to-app"
 import { isStandalonePwa } from "@/lib/pwa/is-standalone"
+import { useIdentityPurge } from "@/hooks/use-identity-purge"
 
 // Route-level code splitting: each page becomes its own chunk so the initial
 // bundle stays small. Heavy deps (recharts on the Dashboard, the whole admin
@@ -112,6 +113,9 @@ function LandingRoute() {
 }
 
 export function App() {
+  // Sign-out makes no request, so nothing else would drop the last user's rows.
+  useIdentityPurge()
+
   useEffect(() => {
     let removeListener: (() => void) | undefined
 
