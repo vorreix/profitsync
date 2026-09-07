@@ -21,6 +21,9 @@ async function api<T>(page: Page, method: string, path: string, body?: unknown):
   }, { method, path, body })
 }
 
+/** Stable, so each run restores the same account instead of adding one. */
+const FUND_NAME = "E2E Alerts Bank"
+
 const iso = (base: string, days: number) => new Date(Date.parse(`${base}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10)
 
 /**
@@ -64,16 +67,27 @@ test("the dashboard attention rail shows, orders and mirrors correctly", async (
   }
 
   try {
-    // The shared e2e workspace has been swept down to Cash, so make the healthy
-    // account this run needs and take it away again at the end.
+    // The shared workspace gets swept down to Cash by other specs, so this one
+    // needs a healthy account of its own. It RESTORES the account it made last
+    // time rather than making another: deleting an account that has any
+    // transaction only ARCHIVES it — and an opening balance IS a transaction —
+    // so create-and-delete leaks one row per run, forever.
     let fund = healthy
     if (!fund) {
-      const created = await api<{ id: string }>(page, "POST", "/api/wealth/accounts", {
-        type: "bank", bankName: "E2E Alerts Bank", nickname: "E2E Alerts Bank", icon: "bank", openingBalance: 25000,
-      })
-        // A free plan allows one bank; if this workspace already spent it the
-      // seeding is skipped and the rail is asserted on what it does have.
-      if (created.status === 201) { madeAccounts.push(created.json.id); fund = { ...created.json, type: "bank", archived_at: null, current_balance: "25000" } as never }
+      const mine = accounts.find((a) => (a.nickname || a.bank_name) === FUND_NAME)
+      if (mine) {
+        const restored = await api(page, "PATCH", `/api/wealth/accounts/${mine.id}`, { restore: true })
+        if (restored.status === 200) fund = { ...mine, archived_at: null } as never
+      }
+      if (!fund) {
+        // A free plan allows one ACTIVE bank; if this workspace has already
+        // spent it, seeding is skipped and the rail is asserted on what it has.
+        const created = await api<{ id: string }>(page, "POST", "/api/wealth/accounts", {
+          type: "bank", bankName: FUND_NAME, nickname: FUND_NAME, icon: "bank", openingBalance: 25000,
+        })
+        if (created.status === 201) fund = { ...created.json, type: "bank", archived_at: null, current_balance: "25000" } as never
+      }
+      if (fund) madeAccounts.push(fund.id)
     }
 
     await mk("E2E Rent", Math.max(0, bal) + 5000, 1) // danger: shortfall tomorrow
@@ -122,6 +136,16 @@ test("the dashboard attention rail shows, orders and mirrors correctly", async (
     const ltrOverflow = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, client: document.documentElement.clientWidth }))
     expect(ltrOverflow.scroll).toBeLessThanOrEqual(ltrOverflow.client)
 
+    // Only what you can do nothing about is closable. An expiring card is the
+    // warning-tier exception; everything with an action behind it clears by
+    // being fixed, not by being waved away.
+    for (const kind of ["card_payment_overdue", "card_autopay_failed", "charge_shortfall", "card_expired", "card_payment_due_soon", "recurring_paused", "card_utilization_high"]) {
+      const el = page.locator(`[data-alert="${kind}"]`)
+      if (await el.count()) await expect(el.first().getByRole("button", { name: /dismiss/i })).toHaveCount(0)
+    }
+    const expiring = page.locator('[data-alert="card_expiring"]')
+    if (await expiring.count()) await expect(expiring.first().getByRole("button", { name: /dismiss/i })).toHaveCount(1)
+
     const hidden = await page.locator('[data-slot="carousel-item"][aria-hidden="true"]').count()
     expect(hidden).toBe(n - 1)
 
@@ -141,6 +165,7 @@ test("the dashboard attention rail shows, orders and mirrors correctly", async (
     await page.evaluate(() => localStorage.setItem("profitsync-language", "en"))
     for (const id of made) await api(page, "DELETE", `/api/recurring/${id}`).catch(() => {})
     for (const id of madeCards) await api(page, "DELETE", `/api/cards/${id}`).catch(() => {})
+    // Archives it — the next run restores it rather than adding another.
     for (const id of madeAccounts) await api(page, "DELETE", `/api/wealth/accounts/${id}`).catch(() => {})
   }
 })

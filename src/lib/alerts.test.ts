@@ -291,7 +291,25 @@ describe("cardAlerts", () => {
     expect(cardAlerts([card({ id: "c1", statement: stmt({ id: "s1", dueDate: "2026-03-01", remaining: 0 }) })], TODAY)).toEqual([])
   })
 
-  it("treats a card as valid through the LAST day of its expiry month", () => {
+  it("lets an expiring card be waved away, but never an expired one", () => {
+    // Nothing to do about next month's expiry but wait for the new card; an
+    // EXPIRED card is actively breaking payments and has an action behind it.
+    const soon = cardAlerts([card({ id: "c1", expiryMonth: 3, expiryYear: 2026 })], "2026-03-20")[0]
+    expect(soon.kind).toBe("card_expiring")
+    expect(soon.dismissible).toBe(true)
+    const gone = cardAlerts([card({ id: "c1", expiryMonth: 3, expiryYear: 2026 })], "2026-04-01")[0]
+    expect(gone.kind).toBe("card_expired")
+    expect(gone.dismissible).toBe(false)
+  })
+
+  it("never lets an actionable item be waved away", () => {
+    const overdue = cardAlerts([card({ id: "c1", expiryMonth: null, expiryYear: null, currentBalance: -500, statement: stmt({ dueDate: "2026-03-01" }) })], TODAY)[0]
+    expect(overdue.dismissible).toBe(false)
+    const util = cardAlerts([card({ id: "c2", expiryMonth: null, expiryYear: null, creditLimit: 1000, currentBalance: -950 })], TODAY)[0]
+    expect(util.dismissible).toBe(false)
+  })
+
+  it("treats a card as valid through the LAST day of its expiry month", () =>{
     // 03/2026 is good on the 31st and expired on April 1st.
     expect(cardAlerts([card({ id: "c1", expiryMonth: 3, expiryYear: 2026 })], "2026-03-31")[0].kind).toBe("card_expiring")
     expect(cardAlerts([card({ id: "c1", expiryMonth: 3, expiryYear: 2026 })], "2026-04-01")[0].kind).toBe("card_expired")

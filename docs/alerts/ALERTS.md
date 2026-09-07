@@ -72,9 +72,16 @@ DB-free, so money math is only testable if it lives in layer one.
    suppressed.** The walk stops at the first hit; keying the suppression off that
    single hit would leave a larger later charge showing a calm blue "coming up"
    behind the small one that tripped it.
-8. **Dismissal is a snooze, never a delete** (7 days), and only calm tiers are
-   dismissible at all. A danger item clears by being *fixed* — that is the whole
-   point of deriving it.
+8. **Dismissal is a snooze, never a delete** (7 days), and what may be dismissed
+   is decided by whether there is anything to DO — not by severity. An overdue
+   payment, a shortfall, an expired card and a paused rule all have an action
+   behind them, so they clear by being *fixed* and nothing else; that is the
+   whole point of deriving them fresh. `card_expiring` is the warning-tier
+   exception: there is nothing to do about a card expiring next month but wait
+   for the replacement, and nagging about it every visit for a month is how
+   someone learns to stop reading the rail. Its snooze id carries the expiry, so
+   it returns a few times as the date nears and disappears for good once the new
+   card's dates are saved.
 
 ## Time
 

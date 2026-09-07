@@ -82,7 +82,16 @@ export type Alert = {
    * severity turned that into "1 day ago".
    */
   tense?: "past" | "future"
-  /** Only informational items can be waved away; a warning clears by being fixed. */
+  /**
+   * Can this be waved away?
+   *
+   * Not a function of severity — of whether there is anything to DO right now.
+   * An overdue payment, a shortfall, an expired card and a paused rule all
+   * have an action behind them, so they clear by being FIXED and nothing else;
+   * that is the whole point of deriving them fresh. A card expiring next month
+   * has no action today, and nagging about it on every visit for a month is
+   * how someone learns to stop reading the rail.
+   */
   dismissible: boolean
 }
 
@@ -436,7 +445,12 @@ export function cardAlerts(cards: AlertCard[], today: string, nowMs = Date.now()
       if (days < 0) {
         out.push({ id: `card_expired:${card.id}`, kind: "card_expired", severity: "danger", key: "card_expired", params: { card: card.label, expiry }, link, at: end, dismissible: false })
       } else if (days <= 30) {
-        out.push({ id: `card_expiring:${card.id}:${expiry}`, kind: "card_expiring", severity: "warning", key: "card_expiring", params: { card: card.label, expiry, days }, link, at: end, dismissible: false })
+        // Closable, unlike every other warning: there is nothing to DO about a
+        // card expiring next month except wait for the replacement to arrive.
+        // Snoozing is 7 days and the id carries the expiry, so it comes back a
+        // few times as the date nears and disappears for good once the new
+        // card's dates are saved.
+        out.push({ id: `card_expiring:${card.id}:${expiry}`, kind: "card_expiring", severity: "warning", key: "card_expiring", params: { card: card.label, expiry, days }, link, at: end, dismissible: true })
       }
     }
 

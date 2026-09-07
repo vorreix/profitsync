@@ -273,7 +273,7 @@ function AlertSlide({
   const body = alert.kind === "referral" ? "" : t(`${alert.key}.body`, params)
 
   return (
-    <div className={cn("flex items-start gap-2.5 rounded-xl border px-3 py-2.5", tone.box)}>
+    <div data-alert={alert.kind} className={cn("flex items-start gap-2.5 rounded-xl border px-3 py-2.5", tone.box)}>
       <Icon className={cn("mt-0.5 size-4 shrink-0", tone.icon)} aria-hidden />
       <button type="button" onClick={onOpen} className="min-w-0 flex-1 text-start">
         {/* Both lines are clamped so a rail of mixed-length messages — and the
