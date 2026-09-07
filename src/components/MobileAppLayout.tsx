@@ -65,6 +65,7 @@ import { EntityAvatar } from "@/components/EntityAvatar"
 import { QuickAddModal, type QuickAddEntity, type QuickAddPrefill } from "@/components/QuickAddModal"
 import { AiVoiceAssistant } from "@/components/AiVoiceAssistant"
 import { useAiQuota } from "@/hooks/use-ai-quota"
+import { useChromeHidden } from "@/hooks/use-chrome-hidden"
 import type { AiAssistantResponse } from "@/lib/ai-parse"
 import type { SmartApply } from "@/components/transactions/AiQuickFill"
 import { AddTransactionDialog, type CreatedTxInfo } from "@/components/transactions/AddTransactionDialog"
@@ -203,6 +204,15 @@ export function MobileAppLayout() {
   // WhatsApp-style global search: an edge "bump" handle → full-screen overlay.
   // The handle's side + vertical position are user preferences (persisted).
   const [searchOpen, setSearchOpen] = useState(false)
+
+  // Scrolling down into content folds the shell's chrome away; scrolling up
+  // brings it back. Anything that overlays the page keeps it on screen — above
+  // all the quick-actions menu, whose close button IS the floating action
+  // button, so hiding it would trap the user in a menu with no way out.
+  const chromeHidden = useChromeHidden({
+    locked: fabOpen || moreOpen || orgSheetOpen || searchOpen || addTxOpen || quickAdd !== null,
+    resetKey: location.pathname,
+  })
   const [handlePref, setHandlePref] = useState<SearchHandlePref>(() => loadSearchHandlePref(localStorage))
   const updateHandlePref = (patch: Partial<SearchHandlePref>) => {
     setHandlePref((prev) => {
@@ -269,7 +279,7 @@ export function MobileAppLayout() {
 
   return (
     <div className="min-h-screen flex flex-col bg-background ios-tap overflow-x-clip">
-      <header className="safe-pt sticky top-0 z-30 bg-background/95 backdrop-blur border-b">
+      <header className={`safe-pt sticky top-0 z-30 bg-background/95 backdrop-blur border-b chrome-slide ${chromeHidden ? "chrome-hidden-top" : ""}`}>
         <div className="flex items-center gap-2 px-4 h-12">
           <button
             onClick={() => navigate("/dashboard")}
@@ -453,7 +463,7 @@ export function MobileAppLayout() {
         onOpen={() => setSearchOpen(true)}
         hidden={searchOpen || (!pageAction && fabOpen)}
       />
-      <div data-app-fab className="fixed bottom-24 right-4 z-50 flex flex-col items-end gap-2 safe-pb">
+      <div data-app-fab className={`fixed bottom-24 right-4 z-50 flex flex-col items-end gap-2 safe-pb chrome-slide ${chromeHidden ? "chrome-hidden-fab" : ""}`}>
         {/* AI voice assistant — hidden while the quick-actions menu is open so
             the stack stays uncluttered. */}
         {!(!pageAction && fabOpen) && (
@@ -518,7 +528,7 @@ export function MobileAppLayout() {
       />
 
       {/* Bottom tab bar — columns adapt to the (account-type-filtered) tab count. */}
-      <nav className="safe-pb fixed bottom-0 inset-x-0 z-40 bg-background/95 backdrop-blur border-t">
+      <nav className={`safe-pb fixed bottom-0 inset-x-0 z-40 bg-background/95 backdrop-blur border-t chrome-slide ${chromeHidden ? "chrome-hidden-bottom" : ""}`}>
         <div
           className="grid px-1 py-1"
           style={{ gridTemplateColumns: `repeat(${primaryTabs.length + 1}, minmax(0, 1fr))` }}
