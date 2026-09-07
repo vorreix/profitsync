@@ -1,12 +1,15 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
+import { useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { useAuth } from "@clerk/clerk-react"
 import { toast } from "sonner"
 import { ArrowRight, Paperclip, X } from "lucide-react"
-import { apiPost } from "@/lib/api"
+import { apiErrorMessage, apiErrorUpgradeHint, apiPost } from "@/lib/api"
 import { amountExceedsLimit } from "@/lib/money"
+import { availableCredit, isLiabilityType } from "@/lib/credit-card"
 import { ACCEPT_ATTR, attachmentsListPath, uploadAttachment, validateFile } from "@/lib/attachments-client"
 import type { WealthAccount } from "@/lib/types"
+import { usableCards, useCards } from "@/lib/use-cards"
 import { accountDisplayName, currencySymbol, formatMoney } from "@/lib/wealth"
 import { WealthAccountIcon } from "@/components/WealthAccountIcon"
 import { Button } from "@/components/ui/button"
@@ -36,13 +39,14 @@ function AccountPill({ account, currency }: { account?: WealthAccount; currency:
  * N26-style account-to-account transfer. Step 1 is just the amount (with the
  * from→to summary); step 2 collects the date, an optional note and attachments.
  * Opened either from the "Transfer" button (accounts chosen here) or by dragging
- * one account card onto another (from/to pre-filled).
+ * one account or card tile onto another (from/to pre-filled).
  */
 export function TransferWizard({
   open,
   onOpenChange,
   accounts,
   initialFromId,
+  initialFromCardId,
   initialToId,
   currency,
   onDone,
@@ -51,17 +55,27 @@ export function TransferWizard({
   onOpenChange: (open: boolean) => void
   accounts: WealthAccount[]
   initialFromId?: string
+  /** The CARD used on the source side (a drag from a card tile). */
+  initialFromCardId?: string
   initialToId?: string
   currency: string
   onDone?: () => void
 }) {
   const { t } = useTranslation("wealth")
   const { getToken } = useAuth()
+  const navigate = useNavigate()
   const symbol = currencySymbol(currency)
   const active = accounts.filter((a) => !a.archived_at)
+  // A debit card can be the paying instrument on the "from" side: the money
+  // still leaves its bank, and the card is recorded on that leg (from_card_id).
+  const { cards } = useCards({ enabled: open })
+  // Both kinds can be the source: a debit card is an instrument (the money
+  // leaves its bank), a credit card is a balance transfer or a cash advance.
+  const payWithCards = useMemo(() => usableCards(cards), [cards])
 
   const [step, setStep] = useState<1 | 2>(1)
   const [fromId, setFromId] = useState("")
+  const [fromCardId, setFromCardId] = useState("")
   const [toId, setToId] = useState("")
   const [amount, setAmount] = useState("")
   const [date, setDate] = useState(today())
@@ -74,6 +88,10 @@ export function TransferWizard({
     if (!open) return
     setStep(1)
     setFromId(initialFromId ?? "")
+    // Dragging a CARD onto another is a gesture about that card, so its identity
+    // has to survive onto the leg — otherwise the ledger shows a plain
+    // bank-to-bank transfer with no chip.
+    setFromCardId(initialFromCardId ?? "")
     setToId(initialToId ?? "")
     setAmount("")
     setDate(today())
@@ -82,14 +100,22 @@ export function TransferWizard({
     // Re-arm: the wizard stays mounted between opens, so a request left in flight
     // when the user closed it must not freeze the confirm button on reopen.
     setSaving(false)
-  }, [open, initialFromId, initialToId])
+  }, [open, initialFromId, initialFromCardId, initialToId])
 
   const from = active.find((a) => a.id === fromId)
   const to = active.find((a) => a.id === toId)
   const amt = parseFloat(amount)
   const amountValid = !!amt && !isNaN(amt) && amt > 0
   const accountsValid = !!fromId && !!toId && fromId !== toId
-  const overBalance = from && amountValid && amt > Number(from.current_balance)
+  // A credit card's balance is NEGATIVE by design (it is what you owe), so the
+  // plain comparison would flag every amount as "insufficient funds" the moment
+  // a card can be the source. What is short on a liability is CREDIT, not cash.
+  const overBalance =
+    from && amountValid
+      ? isLiabilityType(from.type)
+        ? amt > (availableCredit(from.credit_limit, from.current_balance) ?? Infinity)
+        : amt > Number(from.current_balance)
+      : false
 
   function onPickFiles(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.currentTarget.files || [])
@@ -108,6 +134,7 @@ export function TransferWizard({
       if (!token) throw new Error("Not authenticated")
       const res = await apiPost<{ group_id: string; attach_to: string }>("/api/wealth/transfer", token, {
         from_account_id: fromId,
+        from_card_id: fromCardId || null,
         to_account_id: toId,
         amount: amt,
         date,
@@ -123,7 +150,13 @@ export function TransferWizard({
       onOpenChange(false)
       onDone?.()
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : t("transferFailed"))
+      // The server's JSON body, not the raw thrown string — a free-plan 402
+      // would otherwise toast "{\"allowed\":false,\"reason\":…}".
+      if (apiErrorUpgradeHint(e)) {
+        toast.error(apiErrorMessage(e, t("transferFailed")), { action: { label: t("upgradeBanksCta"), onClick: () => navigate("/subscription") } })
+      } else {
+        toast.error(apiErrorMessage(e, t("transferFailed")))
+      }
     } finally {
       setSaving(false)
     }
@@ -141,7 +174,15 @@ export function TransferWizard({
           <div className="mb-4 flex items-center gap-2">
             <div className="min-w-0 flex-1 space-y-1">
               <Label className="text-xs text-muted-foreground">{t("fromAccount")}</Label>
-              <AccountCombobox accounts={active} value={fromId} onChange={setFromId} currency={currency} excludeIds={[toId]} />
+              <AccountCombobox
+                accounts={active}
+                cards={payWithCards}
+                cardsLayout="nested"
+                value={fromCardId || fromId}
+                onChange={(id, picked) => { setFromId(picked ? picked.account_id : id); setFromCardId(picked?.card_id ?? "") }}
+                currency={currency}
+                excludeIds={[toId]}
+              />
             </div>
             <ArrowRight className="mt-5 size-4 shrink-0 text-muted-foreground rtl:rotate-180" />
             <div className="min-w-0 flex-1 space-y-1">

@@ -16,7 +16,7 @@ import {
 } from "@dnd-kit/core"
 import { toast } from "sonner"
 import { apiGet, apiPatch } from "@/lib/api"
-import type { Client, Transaction, WealthAccount } from "@/lib/types"
+import type { Client, Transaction, WealthAccount, Card as CardModel } from "@/lib/types"
 import {
   normalizeLayout,
   moveCard,
@@ -29,10 +29,13 @@ import {
 import { useCurrency } from "@/lib/currency-context"
 import { useOrg } from "@/lib/org-context"
 import { useDataRefresh } from "@/lib/data-refresh-context"
-import { accountDisplayName, formatMoney, useBalancePrivacy, useWealthOverviewCollapsed, useWealthSummary } from "@/lib/wealth"
+import { accountBalanceLabel, accountDisplayName, formatMoney, useBalancePrivacy, useWealthOverviewCollapsed, useWealthSummary } from "@/lib/wealth"
+import { creditUsage, isLiabilityType } from "@/lib/credit-card"
+import { useCardMap, useCards } from "@/lib/use-cards"
+import { CardChip } from "@/components/cards/CardChip"
 import { WealthAccountIcon } from "@/components/WealthAccountIcon"
-import { PersonalBudgetCard } from "@/components/budget/PersonalBudgetCard"
 import { BusinessBudgetCard } from "@/components/budget/BusinessBudgetCard"
+import { BudgetsCard } from "@/components/budget/BudgetsCard"
 import { FeatureHelp } from "@/components/help/FeatureHelp"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { FitText } from "@/components/FitText"
@@ -66,6 +69,7 @@ import {
   X,
   Eye,
   EyeOff,
+  CreditCard,
 } from "lucide-react"
 import { useAutoAnimate } from "@formkit/auto-animate/react"
 import { cn } from "@/lib/utils"
@@ -94,6 +98,7 @@ import {
   YAxis,
   CartesianGrid,
 } from "recharts"
+import { AlertsBanner } from "@/components/alerts/AlertsBanner"
 
 function formatCurrency(amount: number, currency: string) {
   return new Intl.NumberFormat("en-US", {
@@ -446,12 +451,15 @@ function LatestTransactionsCard({
   currency,
   showClient,
   onSelect,
+  cardFor,
 }: {
   transactions: Transaction[]
   loading: boolean
   currency: string
   showClient: boolean
   onSelect: (tx: Transaction) => void
+  // Which card paid a row (page-level useCardMap), for the chip on the meta line.
+  cardFor?: (tx: Transaction) => CardModel | undefined
 }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
@@ -475,6 +483,7 @@ function LatestTransactionsCard({
               const sub = [showClient ? tx.client_name : null, tx.category?.trim() || null]
                 .filter(Boolean)
                 .join(" · ")
+              const card = cardFor?.(tx)
               return (
                 <button
                   key={tx.id}
@@ -495,9 +504,11 @@ function LatestTransactionsCard({
                     <p className="truncate text-sm font-medium">
                       {tx.description?.trim() || sub || t(`chart.${tx.type}`)}
                     </p>
-                    <p className="truncate text-xs text-muted-foreground">
-                      {sub ? `${sub} · ` : ""}{formatTxDate(tx.date)}
-                    </p>
+                    <div className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+                      <span className="truncate">{sub ? `${sub} · ` : ""}{formatTxDate(tx.date)}</span>
+                      {/* Inside a <button> row, so the chip stays a plain span (no nested link). */}
+                      {card && <CardChip card={card} variant="compact" linked={false} className="shrink-0" />}
+                    </div>
                   </div>
                   <p
                     className={`shrink-0 text-sm font-semibold tabular-nums ${
@@ -529,22 +540,39 @@ function WealthOverview({
   const navigate = useNavigate()
   const { balancesVisible, setBalancesVisible } = useBalancePrivacy()
   const { collapsed, setCollapsed } = useWealthOverviewCollapsed()
-  const { active, total } = useWealthSummary(accounts)
+  // "Total available" is the money the user HOLDS (cash + bank). Credit-card
+  // debt is shown separately as "Owed on cards" — available credit is never
+  // counted as money (src/lib/wealth.ts summarizeWealth).
+  const { active, liquid, liabilities } = useWealthSummary(accounts)
+  const total = liquid
+  // Cards (open ones): a count + what the credit cards owe, linking to the Cards tab.
+  const { cards } = useCards()
+  const cardsOwed = cards.reduce((sum, c) => (c.kind === "credit" ? sum + creditUsage(c.account_credit_limit, c.account_current_balance).debt : sum), 0)
+  const hasCreditCard = cards.some((c) => c.kind === "credit")
   // Glides account tiles into place when one is added, removed, or reordered.
   const [gridRef] = useAutoAnimate<HTMLDivElement>()
 
   // At-a-glance wealth health (data-driven, no arbitrary thresholds): red when the
   // total is in the red; amber when the total is positive but an account is
-  // overdrawn; green when everything's positive. Hidden under the privacy toggle so
-  // a coloured dot never leaks the sign of a masked balance.
-  const anyAccountNegative = active.some((a) => Number(a.current_balance) < 0)
-  const health: "good" | "warn" | "negative" =
-    total < 0 ? "negative" : anyAccountNegative ? "warn" : "good"
+  // overdrawn or a card is over its limit; green otherwise. A card's negative
+  // balance is normal (it is debt), so it is not "overdrawn". Hidden under the
+  // privacy toggle so a coloured dot never leaks the sign of a masked balance.
+  const anyAccountNegative = active.some((a) => !isLiabilityType(a.type) && Number(a.current_balance) < 0)
+  const anyCardOverLimit = active.some((a) => isLiabilityType(a.type) && creditUsage(a.credit_limit, a.current_balance).overLimit)
+  const health: "good" | "warn" | "cardOver" | "negative" =
+    total < 0 ? "negative" : anyAccountNegative ? "warn" : anyCardOverLimit ? "cardOver" : "good"
   const HEALTH = {
     good: { dot: "bg-emerald-500", label: t("wealth.healthGood") },
     warn: { dot: "bg-amber-500", label: t("wealth.healthWarn") },
+    cardOver: { dot: "bg-amber-500", label: t("wealth.healthCardOverLimit") },
     negative: { dot: "bg-red-500", label: t("wealth.healthNegative") },
   }[health]
+  const balanceOf = (a: WealthAccount) =>
+    accountBalanceLabel(a, currency, balancesVisible, {
+      owed: (amount) => t("wealth.owed", { amount }),
+      credit: (amount) => t("wealth.cardCredit", { amount }),
+      nothingOwed: t("wealth.nothingOwed"),
+    })
 
   return (
     <Card>
@@ -616,6 +644,16 @@ function WealthOverview({
                   <FitText className="mt-1" textClassName="text-2xl sm:text-3xl font-bold tabular-nums">
                     {formatMoney(total, currency, balancesVisible)}
                   </FitText>
+                  {/* Card debt is money that has to go back out, so it is
+                      red — the one figure on this card that works AGAINST the
+                      total above it. Red whenever the "owed" wording shows, in
+                      privacy mode too: the colour must not become the tell for
+                      whether anything is owed once the amount is masked. */}
+                  {liabilities > 0 && (
+                    <p className="mt-1 text-xs font-medium tabular-nums text-red-600 dark:text-red-400">
+                      {t("wealth.owedOnCards")}: {formatMoney(liabilities, currency, balancesVisible)}
+                    </p>
+                  )}
                 </div>
                 <Button
                   variant="outline"
@@ -639,6 +677,36 @@ function WealthOverview({
               </div>
             </div>
 
+            {/* Cards — count + what the credit cards owe; opens the Cards tab. */}
+            {cards.length > 0 && (
+              <button
+                type="button"
+                onClick={() => navigate("/wealth?tab=cards")}
+                aria-label={t("dashboard.cardsOpen")}
+                className="pressable group mt-2.5 flex min-h-11 w-full items-center gap-3 rounded-xl border bg-card px-3 py-2 text-start transition-colors hover:border-foreground/15 hover:bg-accent"
+              >
+                <span className="grid size-8 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground">
+                  <CreditCard className="size-4" aria-hidden />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium">{t("dashboard.cardsRow")}</span>
+                  <span className="block truncate text-xs text-muted-foreground">{t("dashboard.cardsCount", { count: cards.length })}</span>
+                </span>
+                {hasCreditCard && (
+                  <span
+                    className={`shrink-0 text-sm font-semibold tabular-nums ${
+                      cardsOwed > 0 || !balancesVisible ? "text-red-600 dark:text-red-400" : ""
+                    }`}
+                  >
+                    {cardsOwed > 0 || !balancesVisible
+                      ? t("dashboard.cardsOwed", { amount: formatMoney(cardsOwed, currency, balancesVisible) })
+                      : t("dashboard.cardsNothingOwed")}
+                  </span>
+                )}
+                <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform duration-200 group-hover:translate-x-0.5 rtl:rotate-180 rtl:group-hover:-translate-x-0.5" />
+              </button>
+            )}
+
             {/* Collapsible account list. The grid 0fr→1fr trick keeps open/close
                 on the compositor instead of animating height — no reflow, no
                 flicker. The list's top padding sits inside the overflow-hidden,
@@ -654,7 +722,8 @@ function WealthOverview({
                     // A negative (overdrawn) balance is flagged in red with a red dot
                     // — but only when balances are visible, so privacy mode never
                     // leaks the sign through colour.
-                    const negative = Number(account.current_balance) < 0
+                    // A card's negative balance is debt, not an overdraft — never flagged.
+                    const negative = !isLiabilityType(account.type) && Number(account.current_balance) < 0
                     const flagNegative = negative && balancesVisible
                     return (
                     <button
@@ -667,13 +736,13 @@ function WealthOverview({
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium">{accountDisplayName(account)}</p>
                         <p className="truncate text-xs text-muted-foreground">
-                          {account.type === "cash" ? t("wealth.cash") : t("wealth.bank")}
+                          {account.type === "cash" ? t("wealth.cash") : isLiabilityType(account.type) ? t("wealth.creditCard") : t("wealth.bank")}
                         </p>
                       </div>
                       <div className="flex shrink-0 items-center gap-1">
                         {flagNegative && <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-red-500" />}
                         <span className={`text-sm font-semibold tabular-nums ${flagNegative ? "text-red-600 dark:text-red-400" : ""}`}>
-                          {formatMoney(Number(account.current_balance), currency, balancesVisible)}
+                          {balanceOf(account)}
                         </span>
                         <ChevronRight className="size-4 text-muted-foreground transition-transform duration-200 group-hover:translate-x-0.5" />
                       </div>
@@ -1023,6 +1092,8 @@ export function Dashboard() {
   const activeClients = realClients.filter((c) => c.status === "active").length
   // The own/internal company client — surfaces its expense budget on the dashboard.
   const ownClient = clients.find((c) => c.is_own)
+  // Card chips on the latest-transactions rows.
+  const cardMap = useCardMap()
 
   const latestTx = useMemo(
     () =>
@@ -1117,7 +1188,9 @@ export function Dashboard() {
         )}
       </div>
     ),
-    budget: isPersonal ? <PersonalBudgetCard /> : ownClient ? <BusinessBudgetCard clientId={ownClient.id} clientName={ownClient.name} /> : null,
+    // A personal workspace shows its spending budgets; a business workspace
+    // keeps the own-company spend cap card (client caps are a separate concept).
+    budget: isPersonal ? <BudgetsCard /> : ownClient ? <BusinessBudgetCard clientId={ownClient.id} clientName={ownClient.name} /> : null,
     wealth: <WealthOverview accounts={wealthAccounts} loading={loading} currency={currency} />,
     // Lightweight teaser (no React Flow on the dashboard — keeps it fast): a
     // tiny connected revenue→net→expenses preview that opens the full map.
@@ -1271,12 +1344,17 @@ export function Dashboard() {
           </CardContent>
         </Card>
     ),
-    latest: <LatestTransactionsCard transactions={latestTx} loading={loading} currency={currency} showClient={!isPersonal} onSelect={setPeekTx} />,
+    latest: <LatestTransactionsCard transactions={latestTx} loading={loading} currency={currency} showClient={!isPersonal} onSelect={setPeekTx} cardFor={cardMap.forTx} />,
   }
   const visibleCards = layout.order.filter((id) => !layout.hidden.includes(id) && cardNodes[id] !== null)
 
   return (
     <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
+      {/* Only here, and deliberately: an attention rail on every screen eats the
+          top of the app permanently and starts reading as an ad. The dashboard
+          is where someone comes to ask "what's going on with my money", so this
+          is where the answer belongs. */}
+      <AlertsBanner />
       <CompanyUpsellBanner />
 
       <div className="flex items-start justify-between gap-2 sm:gap-4">

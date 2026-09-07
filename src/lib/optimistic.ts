@@ -8,7 +8,7 @@ import { toast } from "sonner"
  *   await runOptimistic({
  *     apply: () => setItems((xs) => [optimistic, ...xs]),
  *     rollback: () => setItems((xs) => xs.filter((x) => x.id !== optimistic.id)),
- *     mutate: () => apiPost("/api/clients", token, body, ["/api/clients"]),
+ *     mutate: () => apiPost("/api/clients", token, body),
  *     errorMessage: t("failedToCreate"),
  *   })
  *

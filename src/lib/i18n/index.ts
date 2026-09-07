@@ -14,7 +14,7 @@ export const LANGUAGE_STORAGE_KEY = "profitsync-language"
 const PAGE_NAMESPACES = [
   "clients", "transactions", "quotations", "organizations", "members",
   "trash", "subscription", "billing", "theme", "plan", "planGlossary", "pwa",
-  "wealth", "spaces", "notifications",
+  "wealth", "spaces", "notifications", "alerts",
 ] as const
 
 type Locale = Record<string, ResourceLanguage[string]>
@@ -100,9 +100,21 @@ i18n
 // A non-English device/detected language boots on English fallback only for
 // the few milliseconds its locale chunk takes to arrive, then re-renders in
 // place (changeLanguage re-emits even for the same code).
-const detected = i18n.resolvedLanguage ?? i18n.language
-if (baseLang(detected) !== DEFAULT_LANGUAGE) {
-  void ensureLocaleLoaded(detected).then(() => i18n.changeLanguage(detected))
+//
+// Read the REQUESTED language (`i18n.language`), not `resolvedLanguage`.
+// `resolvedLanguage` is the language i18next could actually resolve against the
+// bundles it currently HAS — and at this point it only has English, so a user
+// whose stored language is `te` resolves to `en`, this guard sees `en`, skips
+// the load, and the chunk never arrives. The check defeated itself: it asked
+// "did the locale load?" in order to decide whether to load it.
+//
+// The symptom was a returning non-English user seeing an English UI with
+// `<html lang="te">` — every translation present on disk and none of them on
+// screen — while picking the language again from the switcher worked, because
+// setAppLanguage() awaits ensureLocaleLoaded() explicitly.
+const requested = i18n.language ?? i18n.resolvedLanguage
+if (baseLang(requested) !== DEFAULT_LANGUAGE) {
+  void ensureLocaleLoaded(requested).then(() => i18n.changeLanguage(requested))
 }
 
 // Keep <html dir/lang> in sync with the active language (RTL for Arabic).

@@ -1,0 +1,378 @@
+// Shared money paths for wealth accounts, extracted from the routes so that the
+// Cards API (POST /api/cards creates a bank inline / a credit card's liability
+// account) and autopay (api/_lib/card-autopay.ts records a statement payment)
+// go through EXACTLY the same code as the user-facing routes — same quota,
+// same system rows, same balance deltas, same audit entries.
+//
+// NOTE: relative imports MUST keep the `.js` extension — these modules run as
+// unbundled ESM on @vercel/node (see scripts/check-esm-extensions.mjs).
+import { randomUUID } from "node:crypto"
+import { and, count, eq, isNull, max, sql } from "drizzle-orm"
+import { db, dbBatch } from "../../src/lib/db/index.js"
+import { cards, creditCardStatements, transactions, wealthAccounts } from "../../src/lib/db/schema.js"
+import { ensureDefaultClient } from "./auth.js"
+import { logAudit } from "./audit.js"
+import { type BankDetailInput, pickBankDetails, resolveLogoColumns } from "./bank-brand.js"
+import { amountExceedsLimit } from "../../src/lib/money.js"
+import { checkBankAccountQuota, checkCreditCardQuota, getOrgPlan } from "./quota.js"
+import { dueDateFor, isLiabilityType, signedBalanceFromDebt, validateCardOnboarding } from "../../src/lib/credit-card.js"
+import { todayIso } from "../../src/lib/recurring.js"
+
+export type AccountRow = typeof wealthAccounts.$inferSelect
+export type TransactionRow = typeof transactions.$inferSelect
+
+/** A route-shaped failure: the HTTP status + JSON body to send back. */
+export type Failure = { ok: false; status: number; body: Record<string, unknown> }
+const fail = (status: number, body: Record<string, unknown>): Failure => ({ ok: false, status, body })
+
+function money(value: unknown): number {
+  const n = Number(value)
+  return Number.isFinite(n) ? n : 0
+}
+
+const displayName = (a: { nickname: string; bankName: string }) => a.nickname.trim() || a.bankName
+
+// ── System rows ──────────────────────────────────────────────────────────────
+
+/**
+ * Insert an Opening Balance / Balance Adjustment row. System rows EXPLAIN a
+ * balance in the ledger (never income/expense, never reversed through Trash).
+ */
+export async function createSystemTransaction(input: {
+  orgId: string
+  userId: string
+  accountId: string
+  amount: number
+  type: "incoming" | "outgoing"
+  description: string
+  category: string
+}): Promise<void> {
+  if (input.amount <= 0) return
+  const clientId = await ensureDefaultClient(input.orgId, input.userId)
+  const [row] = await db
+    .insert(transactions)
+    .values({
+      clientId,
+      wealthAccountId: input.accountId,
+      type: input.type,
+      amount: String(input.amount),
+      description: input.description,
+      category: input.category,
+      date: todayIso(),
+      isSystem: true,
+      createdBy: input.userId,
+      updatedBy: input.userId,
+    })
+    .returning()
+  await logAudit({ orgId: input.orgId, entityType: "transaction", entityId: row.id, action: "create", actorId: input.userId })
+}
+
+// ── Create account ───────────────────────────────────────────────────────────
+
+export type CreateAccountInput = BankDetailInput & {
+  type?: string
+  bank_name?: string
+  bankName?: string
+  nickname?: string
+  opening_balance?: number | string
+  openingBalance?: number | string
+  icon?: string
+  // Credit card only (src/lib/credit-card.ts validateCardOnboarding):
+  credit_limit?: number | string
+  current_debt?: number | string
+  statement_closing_day?: number
+  payment_due_day?: number
+  // Optional latest statement the user still knows ("I don't know" = omit).
+  statement?: { balance?: number | string; closing_date?: string; due_date?: string } | null
+}
+
+/**
+ * Create a bank / cash / credit-card account: validation, plan quota, brand
+ * logo capture, the Opening Balance system row (a card's opening DEBT becomes a
+ * negative opening balance + an outgoing system row) and, for a card onboarded
+ * with a known statement, the seed `manual` statement. Returns the row, or the
+ * exact HTTP failure the route should send.
+ */
+export async function createWealthAccount(orgId: string, userId: string, body: CreateAccountInput): Promise<{ ok: true; row: AccountRow } | Failure> {
+  const { type, nickname, icon } = body
+  const bankName = body.bankName ?? body.bank_name ?? ""
+  let openingBalance: number | string = body.openingBalance ?? body.opening_balance ?? 0
+  if (type !== "bank" && type !== "cash" && type !== "credit_card") return fail(400, { error: "type must be bank, cash or credit_card" })
+
+  // A credit card is a LIABILITY: the amount owed is stored as a NEGATIVE
+  // balance (see src/lib/credit-card.ts) and its "opening balance" is that
+  // signed value, so the Opening Balance system row explains the debt.
+  let card: { creditLimit: number; currentDebt: number; statementClosingDay: number; paymentDueDay: number; statement: { balance: number; closingDate: string; dueDate?: string } | null } | null = null
+  if (type === "credit_card") {
+    const name = bankName.trim()
+    if (!name) return fail(400, { error: "bank_name is required" })
+    const st = body.statement && body.statement.closing_date
+      ? { balance: Number(body.statement.balance ?? 0), closingDate: String(body.statement.closing_date), dueDate: body.statement.due_date ? String(body.statement.due_date) : undefined }
+      : null
+    card = {
+      creditLimit: Number(body.credit_limit),
+      currentDebt: Number(body.current_debt ?? 0),
+      statementClosingDay: Number(body.statement_closing_day),
+      paymentDueDay: Number(body.payment_due_day),
+      statement: st,
+    }
+    const problem = validateCardOnboarding(card, todayIso())
+    if (problem) return fail(400, { error: `Invalid credit card: ${problem}`, code: problem })
+    if (amountExceedsLimit(card.creditLimit) || amountExceedsLimit(card.currentDebt)) return fail(400, { error: "Amount is too large" })
+    if (st && amountExceedsLimit(st.balance)) return fail(400, { error: "Amount is too large" })
+    if (st?.dueDate && !/^\d{4}-\d{2}-\d{2}$/.test(st.dueDate)) return fail(400, { error: "statement.due_date must be YYYY-MM-DD" })
+    const quota = await checkCreditCardQuota(orgId)
+    if (!quota.allowed) return fail(402, quota as unknown as Record<string, unknown>)
+    openingBalance = signedBalanceFromDebt(card.currentDebt)
+  }
+
+  if (type === "bank") {
+    const name = bankName.trim()
+    if (!name) return fail(400, { error: "bank_name is required" })
+    // Plan-based: free workspaces get 1 bank account, paid plans are unlimited.
+    const quota = await checkBankAccountQuota(orgId)
+    if (!quota.allowed) return fail(402, quota as unknown as Record<string, unknown>)
+  }
+
+  if (type === "cash") {
+    const [{ total }] = await db
+      .select({ total: count() })
+      .from(wealthAccounts)
+      .where(and(eq(wealthAccounts.organizationId, orgId), eq(wealthAccounts.type, "cash"), isNull(wealthAccounts.archivedAt)))
+    if (total >= 1) return fail(400, { error: "Only one Cash in Hand account allowed" })
+  }
+
+  const opening = money(openingBalance)
+  if (amountExceedsLimit(opening)) return fail(400, { error: "Amount is too large" })
+  // Bank-detail fields apply to bank + card accounts (Cash in Hand has none);
+  // a card reuses the issuer brand/logo lookup.
+  const details = type === "bank" || type === "credit_card" ? pickBankDetails(body) : null
+  const logo = details ? await resolveLogoColumns(details.brandDomain, details.logoUrl) : null
+  // Append new accounts after the user's existing order.
+  const [{ maxPos }] = await db
+    .select({ maxPos: max(wealthAccounts.position) })
+    .from(wealthAccounts)
+    .where(eq(wealthAccounts.organizationId, orgId))
+  const [row] = await db
+    .insert(wealthAccounts)
+    .values({
+      organizationId: orgId,
+      type,
+      bankName: type === "cash" ? "Cash in Hand" : bankName.trim(),
+      nickname: (nickname ?? "").trim(),
+      openingBalance: String(opening),
+      currentBalance: String(opening),
+      icon: icon || (type === "cash" ? "wallet" : type === "credit_card" ? "card" : "bank"),
+      ...(card
+        ? {
+            creditLimit: String(card.creditLimit),
+            statementClosingDay: card.statementClosingDay,
+            paymentDueDay: card.paymentDueDay,
+          }
+        : {}),
+      position: (maxPos ?? -1) + 1,
+      ...(details ?? {}),
+      ...(logo ? { logoUrl: logo.logoUrl, logoData: logo.logoData } : {}),
+      createdBy: userId,
+      updatedBy: userId,
+    })
+    .returning()
+
+  if (opening !== 0) {
+    // The Opening Balance row EXPLAINS the starting balance in the ledger: an
+    // incoming for money held, an outgoing for money owed (a card's opening
+    // debt, an overdrawn bank). System rows are not income/expense.
+    await createSystemTransaction({
+      orgId,
+      userId,
+      accountId: row.id,
+      amount: Math.abs(opening),
+      type: opening > 0 ? "incoming" : "outgoing",
+      description: "Opening Balance",
+      category: "Opening Balance",
+    })
+  }
+
+  // A known latest statement seeds statement tracking (source='manual'); its
+  // remaining amount is derived from payments dated after its close, so the
+  // opening-debt system row above never counts as a payment.
+  if (card?.statement) {
+    const closingDate = card.statement.closingDate
+    await db
+      .insert(creditCardStatements)
+      .values({
+        organizationId: orgId,
+        wealthAccountId: row.id,
+        cycleStart: null,
+        closingDate,
+        dueDate: card.statement.dueDate ?? dueDateFor(closingDate, card.paymentDueDay),
+        statementBalance: card.statement.balance.toFixed(2),
+        source: "manual",
+        createdBy: userId,
+      })
+      .onConflictDoNothing({ target: [creditCardStatements.wealthAccountId, creditCardStatements.closingDate] })
+  }
+
+  await logAudit({ orgId, entityType: "wealth_account", entityId: row.id, action: "create", actorId: userId })
+  return { ok: true, row }
+}
+
+// ── Transfer ─────────────────────────────────────────────────────────────────
+
+export type TransferInput = {
+  fromAccountId: string
+  toAccountId: string
+  amount: number
+  date?: string
+  note?: string
+  /** The DEBIT card used on the source side (attribution on the outgoing leg). */
+  fromCardId?: string | null
+  /** Override the leg descriptions (autopay labels its payment). */
+  descriptions?: { out: string; in: string }
+  /**
+   * Extra statements committed in the SAME atomic batch as the legs + balance
+   * updates (autopay marks its statement paid this way — either everything
+   * lands or nothing does).
+   */
+  extra?: Parameters<typeof dbBatch>[0][number][]
+}
+
+export type TransferResult = { ok: true; groupId: string; outLeg: TransactionRow; inLeg: TransactionRow }
+
+/** The credit card that IS this liability account (1:1), or null. */
+export async function creditCardIdForAccount(accountId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ id: cards.id })
+    .from(cards)
+    .where(and(eq(cards.accountId, accountId), eq(cards.kind, "credit")))
+    .limit(1)
+  return row?.id ?? null
+}
+
+/**
+ * Move money between two of the org's wealth accounts. Recorded as ONE logical
+ * transfer = two legs sharing a `group_id` with `kind='transfer'`: an outgoing
+ * leg on the source and an incoming leg on the destination, each syncing its own
+ * balance — all four writes in ONE atomic batch (src/lib/db dbBatch), so a
+ * transfer can never be observed half-applied. Transfers anchor to the org's
+ * default client and are excluded from the global transactions list, the
+ * income/expense summary, and analytics — they show only on each account's own
+ * list.
+ *
+ * PAYING A CREDIT CARD is exactly this: a transfer whose destination is a
+ * credit_card account. The card's stored balance is negative (debt), so the
+ * incoming leg reduces the debt; the bank leg is the cash movement. Neither leg
+ * is an expense — the purchases already were (src/lib/credit-card.ts). The
+ * incoming leg carries the credit card's id (every row on a liability account
+ * does — docs/cards/CARDS.md), so the payment shows on the card's own page.
+ */
+export async function createTransfer(orgId: string, userId: string, input: TransferInput): Promise<TransferResult | Failure> {
+  const amt = Number(input.amount)
+  if (!input.fromAccountId || !input.toAccountId) return fail(400, { error: "from_account_id and to_account_id are required" })
+  if (input.fromAccountId === input.toAccountId) return fail(400, { error: "Choose two different accounts" })
+  if (!amt || isNaN(amt) || amt <= 0) return fail(400, { error: "amount must be greater than 0" })
+  if (amountExceedsLimit(amt)) return fail(400, { error: "Amount is too large" })
+  if (input.date !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(input.date)) return fail(400, { error: "date must be YYYY-MM-DD" })
+
+  const accounts = await db
+    .select()
+    .from(wealthAccounts)
+    .where(and(eq(wealthAccounts.organizationId, orgId), isNull(wealthAccounts.archivedAt)))
+  const from = accounts.find((a) => a.id === input.fromAccountId)
+  const to = accounts.find((a) => a.id === input.toAccountId)
+  if (!from || !to) return fail(400, { error: "Select two active accounts" })
+
+  const clientId = await ensureDefaultClient(orgId, userId)
+
+  // A transfer is two transactions; on the free plan both legs must fit under the
+  // per-client limit (otherwise transfers would be a quota bypass). EXCEPTION:
+  // moving money in/out of a Space (savings bucket) is internal, off-P&L money
+  // movement — a free user must always be able to fund/empty their Space, so it
+  // is exempt from the per-client transaction quota.
+  const involvesSpace = from.type === "space" || to.type === "space"
+  const { planKey, limits } = await getOrgPlan(orgId)
+  if (planKey === "free" && !involvesSpace) {
+    const [{ current }] = await db
+      .select({ current: count() })
+      .from(transactions)
+      // Exclude internal system rows, consistent with checkTransactionQuota.
+      .where(and(eq(transactions.clientId, clientId), isNull(transactions.deletedAt), eq(transactions.isSystem, false)))
+    if (current + 2 > limits.transactionsPerClient) {
+      return fail(402, {
+        allowed: false,
+        reason: `Free plan is limited to ${limits.transactionsPerClient} transactions per client. Upgrade to Premium.`,
+        limit: limits.transactionsPerClient,
+        current,
+        upgradeHint: true,
+      })
+    }
+  }
+
+  const when = input.date ?? todayIso()
+  const groupId = randomUUID()
+  const noteText = (input.note ?? "").trim()
+  const suffix = noteText ? ` — ${noteText}` : ""
+  // Label a card payment as such so the ledger reads naturally on both accounts.
+  const cardPayment = isLiabilityType(to.type)
+  const outDescription = input.descriptions?.out ?? (cardPayment ? `Card payment to ${displayName(to)}${suffix}` : `Transfer to ${displayName(to)}${suffix}`)
+  const inDescription = input.descriptions?.in ?? (cardPayment ? `Card payment from ${displayName(from)}${suffix}` : `Transfer from ${displayName(from)}${suffix}`)
+  // Attribution: the incoming leg on a credit card IS on that card; a debit
+  // card on the source side is whatever the caller resolved (transfer route).
+  const inCardId = cardPayment ? await creditCardIdForAccount(to.id) : null
+  const outCardId = input.fromCardId ?? (isLiabilityType(from.type) ? await creditCardIdForAccount(from.id) : null)
+
+  const now = new Date()
+  const batch = [
+    db
+      .insert(transactions)
+      .values({
+        clientId,
+        wealthAccountId: from.id,
+        cardId: outCardId,
+        groupId,
+        kind: "transfer",
+        type: "outgoing",
+        amount: String(amt),
+        description: outDescription,
+        category: "Transfer",
+        date: when,
+        createdBy: userId,
+        updatedBy: userId,
+      })
+      .returning(),
+    db
+      .insert(transactions)
+      .values({
+        clientId,
+        wealthAccountId: to.id,
+        cardId: inCardId,
+        groupId,
+        kind: "transfer",
+        type: "incoming",
+        amount: String(amt),
+        description: inDescription,
+        category: "Transfer",
+        date: when,
+        createdBy: userId,
+        updatedBy: userId,
+      })
+      .returning(),
+    db
+      .update(wealthAccounts)
+      .set({ currentBalance: sql`${wealthAccounts.currentBalance}::numeric - ${amt}`, updatedBy: userId, updatedAt: now })
+      .where(eq(wealthAccounts.id, from.id)),
+    db
+      .update(wealthAccounts)
+      .set({ currentBalance: sql`${wealthAccounts.currentBalance}::numeric + ${amt}`, updatedBy: userId, updatedAt: now })
+      .where(eq(wealthAccounts.id, to.id)),
+    ...(input.extra ?? []),
+  ]
+  const results = (await dbBatch(batch as unknown as Parameters<typeof dbBatch>[0])) as unknown as [TransactionRow[], TransactionRow[], ...unknown[]]
+  const outLeg = results[0][0]
+  const inLeg = results[1][0]
+
+  await logAudit({ orgId, entityType: "transaction", entityId: outLeg.id, action: "create", actorId: userId })
+  await logAudit({ orgId, entityType: "transaction", entityId: inLeg.id, action: "create", actorId: userId })
+
+  return { ok: true, groupId, outLeg, inLeg }
+}

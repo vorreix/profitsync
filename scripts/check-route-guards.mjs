@@ -35,9 +35,13 @@ const AUTH_MARKERS = [
 
 let failures = 0
 
-const routeFiles = git(["ls-files", "api/_routes/**/*.ts"])
+// A directory pathspec, NOT `api/_routes/**\/*.ts`: that glob matches nothing at
+// the top level, so every route file directly under api/_routes (transactions,
+// cards, calendar, flow, spaces, recurring, …) went unchecked — an unguarded
+// handler among them passed this sweep.
+const routeFiles = git(["ls-files", "--", "api/_routes"])
   .split("\n")
-  .filter((f) => f && !f.endsWith(".test.ts"))
+  .filter((f) => f && f.endsWith(".ts") && !f.endsWith(".test.ts"))
 
 for (const file of routeFiles) {
   if (PUBLIC_ROUTES.some((re) => re.test(file))) continue

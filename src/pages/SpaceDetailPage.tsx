@@ -93,7 +93,7 @@ export function SpaceDetailPage() {
     try {
       const token = await getToken()
       if (!token) throw new Error("auth")
-      await apiDelete(`/api/spaces/${id}/auto-save`, token, undefined, ["/api/spaces"])
+      await apiDelete(`/api/spaces/${id}/auto-save`, token)
       setAutoSave(null)
       toast.success(t("autoSaveStopped"))
     } catch {
@@ -306,7 +306,7 @@ function AutoSaveModal({
         frequency_interval: Math.max(1, Math.floor(Number(interval) || 1)),
         start_date: start,
         end_date: end || null,
-      }, ["/api/spaces"])
+      })
       toast.success(t("autoSaveStarted"))
       onSaved(rule)
     } catch (err) {
@@ -400,9 +400,9 @@ function DeleteSpaceDialog({
         // then the empty Space can be deleted.
         const dest = destId || accounts.find((a) => a.is_default)?.id || accounts[0]?.id
         if (!dest) { toast.error(t("noSpendable")); setBusy(false); return }
-        await apiPost("/api/wealth/transfer", token, { from_account_id: space.id, to_account_id: dest, amount: balance }, ["/api/spaces", "/api/wealth"])
+        await apiPost("/api/wealth/transfer", token, { from_account_id: space.id, to_account_id: dest, amount: balance })
       }
-      await apiDelete(`/api/spaces/${space.id}`, token, undefined, ["/api/spaces", "/api/wealth"])
+      await apiDelete(`/api/spaces/${space.id}`, token)
       toast.success(t("deleted"))
       onDeleted()
     } catch (err) {

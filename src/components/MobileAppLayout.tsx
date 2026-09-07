@@ -60,12 +60,12 @@ import { ModeToggle } from "@/components/mode-toggle"
 import { LanguageSwitcher } from "@/components/LanguageSwitcher"
 import { InstallAppBanner } from "@/components/InstallAppBanner"
 import { InstallButton } from "@/components/InstallButton"
-import { ReferralBanner } from "@/components/ReferralBanner"
 import { NotificationBell } from "@/components/notifications/NotificationBell"
 import { EntityAvatar } from "@/components/EntityAvatar"
 import { QuickAddModal, type QuickAddEntity, type QuickAddPrefill } from "@/components/QuickAddModal"
 import { AiVoiceAssistant } from "@/components/AiVoiceAssistant"
 import { useAiQuota } from "@/hooks/use-ai-quota"
+import { useChromeHidden } from "@/hooks/use-chrome-hidden"
 import type { AiAssistantResponse } from "@/lib/ai-parse"
 import type { SmartApply } from "@/components/transactions/AiQuickFill"
 import { AddTransactionDialog, type CreatedTxInfo } from "@/components/transactions/AddTransactionDialog"
@@ -146,6 +146,12 @@ function pageFabAction(pathname: string, actions: QuickAction[]): QuickAction | 
   if (clientMatch && clientMatch[1] !== "closed") {
     return { labelKey: "actions.addTransaction", icon: ArrowLeftRight, href: `/clients/${clientMatch[1]}?newTx=1`, kind: "transaction" }
   }
+  // On a card's own page → add a purchase on THAT card (the page opens its
+  // quick-add sheet with the card preselected on ?new=1).
+  const cardMatch = pathname.match(/^\/wealth\/cards\/([^/]+)$/)
+  if (cardMatch) {
+    return { labelKey: "wealth.addPurchase", icon: CreditCard, href: `/wealth/cards/${cardMatch[1]}?new=1`, kind: "transaction" }
+  }
   const match = SECTION_FAB.find(
     (s) => pathname === s.prefix || pathname.startsWith(s.prefix + "/"),
   )
@@ -198,6 +204,15 @@ export function MobileAppLayout() {
   // WhatsApp-style global search: an edge "bump" handle → full-screen overlay.
   // The handle's side + vertical position are user preferences (persisted).
   const [searchOpen, setSearchOpen] = useState(false)
+
+  // Scrolling down into content folds the shell's chrome away; scrolling up
+  // brings it back. Anything that overlays the page keeps it on screen — above
+  // all the quick-actions menu, whose close button IS the floating action
+  // button, so hiding it would trap the user in a menu with no way out.
+  const chromeHidden = useChromeHidden({
+    locked: fabOpen || moreOpen || orgSheetOpen || searchOpen || addTxOpen || quickAdd !== null,
+    resetKey: location.pathname,
+  })
   const [handlePref, setHandlePref] = useState<SearchHandlePref>(() => loadSearchHandlePref(localStorage))
   const updateHandlePref = (patch: Partial<SearchHandlePref>) => {
     setHandlePref((prev) => {
@@ -264,7 +279,7 @@ export function MobileAppLayout() {
 
   return (
     <div className="min-h-screen flex flex-col bg-background ios-tap overflow-x-clip">
-      <header className="safe-pt sticky top-0 z-30 bg-background/95 backdrop-blur border-b">
+      <header className={`safe-pt sticky top-0 z-30 bg-background/95 backdrop-blur border-b chrome-slide ${chromeHidden ? "chrome-hidden-top" : ""}`}>
         <div className="flex items-center gap-2 px-4 h-12">
           <button
             onClick={() => navigate("/dashboard")}
@@ -426,7 +441,6 @@ export function MobileAppLayout() {
 
       <main className={`flex-1 overflow-y-auto overflow-x-hidden pb-32 ${routeEnterClass}`} key={location.pathname + (activeOrg?.id ?? "")}>
         <InstallAppBanner className="mx-4 mt-3" />
-        <ReferralBanner className="mx-4 mt-3" />
         {orgLoading ? (
           <div className="flex h-[60vh] items-center justify-center">
             <Loader className="size-6 animate-spin text-muted-foreground" />
@@ -449,7 +463,7 @@ export function MobileAppLayout() {
         onOpen={() => setSearchOpen(true)}
         hidden={searchOpen || (!pageAction && fabOpen)}
       />
-      <div className="fixed bottom-24 right-4 z-50 flex flex-col items-end gap-2 safe-pb">
+      <div data-app-fab className={`fixed bottom-24 right-4 z-50 flex flex-col items-end gap-2 safe-pb chrome-slide ${chromeHidden ? "chrome-hidden-fab" : ""}`}>
         {/* AI voice assistant — hidden while the quick-actions menu is open so
             the stack stays uncluttered. */}
         {!(!pageAction && fabOpen) && (
@@ -514,7 +528,7 @@ export function MobileAppLayout() {
       />
 
       {/* Bottom tab bar — columns adapt to the (account-type-filtered) tab count. */}
-      <nav className="safe-pb fixed bottom-0 inset-x-0 z-40 bg-background/95 backdrop-blur border-t">
+      <nav className={`safe-pb fixed bottom-0 inset-x-0 z-40 bg-background/95 backdrop-blur border-t chrome-slide ${chromeHidden ? "chrome-hidden-bottom" : ""}`}>
         <div
           className="grid px-1 py-1"
           style={{ gridTemplateColumns: `repeat(${primaryTabs.length + 1}, minmax(0, 1fr))` }}

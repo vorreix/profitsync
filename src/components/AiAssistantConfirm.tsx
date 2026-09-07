@@ -9,6 +9,7 @@ import type { Client, WealthAccount } from "@/lib/types"
 import { useOrg } from "@/lib/org-context"
 import { useCategories } from "@/lib/use-categories"
 import { accountDisplayName, formatMoney } from "@/lib/wealth"
+import { isLiabilityType } from "@/lib/credit-card"
 import { defaultAccountId } from "@/components/transactions/tx-form-utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -49,6 +50,11 @@ export function AiAssistantConfirm({ response, currency, onSaved, onEdit, onCanc
   // ── Editable gaps (only what the AI couldn't resolve) ─────────────────────
   const [amount, setAmount] = useState(() => tx?.fields.amount != null ? String(tx.fields.amount) : (quotation?.amount != null ? String(quotation.amount) : ""))
   const [clientId, setClientId] = useState(tx?.fields.client_id ?? "")
+  // Transfers / card payments: source + destination are editable gaps too.
+  const isTransfer = tx?.fields.kind === "transfer"
+  const isRefund = tx?.fields.kind === "refund"
+  const [fromId, setFromId] = useState(tx?.fields.account_id ?? "")
+  const [toId, setToId] = useState(tx?.fields.to_account_id ?? "")
   const [category, setCategory] = useState(tx?.fields.category ?? "")
   const [prospect, setProspect] = useState(quotation?.prospect_name ?? "")
 
@@ -78,20 +84,39 @@ export function AiAssistantConfirm({ response, currency, onSaved, onEdit, onCanc
     const matched = tx.fields.account_id ? accounts.find((a) => a.id === tx.fields.account_id) : null
     return matched ?? accounts.find((a) => a.id === defaultAccountId(accounts)) ?? null
   }, [tx, accounts])
+  // A card is paid FROM money you hold; you can transfer TO anything but the source.
+  const sources = accounts.filter((a) => !isLiabilityType(a.type) && a.type !== "space")
+  const fromAccount = accounts.find((a) => a.id === fromId) ?? null
+  const toAccount = accounts.find((a) => a.id === toId) ?? null
+  const needsFrom = Boolean(isTransfer && !fromAccount)
+  const needsTo = Boolean(isTransfer && (!toAccount || toId === fromId))
+  const cardPayment = Boolean(isTransfer && toAccount && isLiabilityType(toAccount.type))
 
   const matchedClient = clients.find((c) => c.id === clientId) ?? null
-  const catChips = tx ? (tx.fields.type === "incoming" ? categoriesByType.incoming : categoriesByType.outgoing).slice(0, 6) : []
+  // A refund reverses an EXPENSE, so it offers the expense categories; a transfer has none.
+  const catChips = tx && !isTransfer
+    ? (tx.fields.type === "incoming" && !isRefund ? categoriesByType.incoming : categoriesByType.outgoing).slice(0, 6)
+    : []
 
-  const needsClient = Boolean(tx && !isPersonal && !clientId)
+  const needsClient = Boolean(tx && !isPersonal && !isTransfer && !clientId)
   const needsAmount = Boolean((tx || quotation) && !(Number(amount) > 0))
   const needsProspect = Boolean(quotation && !prospect.trim())
-  const canSave = !saving && !needsClient && !needsAmount && !needsProspect && response.intent !== "unknown"
+  const canSave = !saving && !needsClient && !needsAmount && !needsProspect && !needsFrom && !needsTo && response.intent !== "unknown"
 
   const headline = (() => {
     if (tx) {
+      const money = Number(amount) > 0 ? formatMoney(Number(amount), currency) : "…"
+      if (isTransfer) {
+        return t(cardPayment ? "aiVoice.confirm.cardPayment" : "aiVoice.confirm.transfer", {
+          amount: money,
+          from: fromAccount ? accountDisplayName(fromAccount) : "…",
+          to: toAccount ? accountDisplayName(toAccount) : "…",
+        })
+      }
+      if (isRefund) return t("aiVoice.confirm.refund", { amount: money })
       return t("aiVoice.confirm.transaction", {
         type: t(`transactions:${tx.fields.type}`),
-        amount: Number(amount) > 0 ? formatMoney(Number(amount), currency) : "…",
+        amount: money,
       })
     }
     if (client) return t("aiVoice.confirm.client", { name: client.name })
@@ -105,10 +130,22 @@ export function AiAssistantConfirm({ response, currency, onSaved, onEdit, onCanc
     try {
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
-      if (tx) {
+      if (tx && isTransfer) {
+        // A card payment / transfer is recorded through the transfer endpoint —
+        // two legs, never an expense (src/lib/credit-card.ts).
+        await apiPost("/api/wealth/transfer", token, {
+          from_account_id: fromId,
+          to_account_id: toId,
+          amount: Number(amount),
+          date: tx.fields.date ?? today(),
+          note: tx.fields.description ?? "",
+        })
+        toast.success(t(cardPayment ? "aiVoice.savedCardPayment" : "aiVoice.savedTransfer", { amount: formatMoney(Number(amount), currency) }))
+      } else if (tx) {
         await apiPost("/api/transactions/group", token, {
           client_id: clientId,
           type: tx.fields.type,
+          kind: isRefund ? "refund" : "standard",
           description: tx.fields.description ?? "",
           category,
           tags: [],
@@ -166,7 +203,43 @@ export function AiAssistantConfirm({ response, currency, onSaved, onEdit, onCanc
         <div className="space-y-1 rounded-xl border bg-background/60 p-4">
           {tx && (
             <>
-              {!isPersonal && (
+              {isTransfer && (
+                <>
+                  <Row label={t("aiVoice.field.from")}>
+                    {fromAccount && !needsFrom ? (
+                      <span className="truncate">{accountDisplayName(fromAccount)}</span>
+                    ) : (
+                      <Select value={fromId} onValueChange={setFromId}>
+                        <SelectTrigger className="h-11 w-44" aria-label={t("aiVoice.whichAccount")}>
+                          <SelectValue placeholder={t("aiVoice.whichAccount")} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {sources.map((a) => (
+                            <SelectItem key={a.id} value={a.id}>{accountDisplayName(a)}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </Row>
+                  <Row label={t("aiVoice.field.to")}>
+                    {toAccount && !needsTo ? (
+                      <span className="truncate">{accountDisplayName(toAccount)}</span>
+                    ) : (
+                      <Select value={toId} onValueChange={setToId}>
+                        <SelectTrigger className="h-11 w-44" aria-label={t("aiVoice.whichAccount")}>
+                          <SelectValue placeholder={t("aiVoice.whichAccount")} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {accounts.filter((a) => a.id !== fromId && a.type !== "space").map((a) => (
+                            <SelectItem key={a.id} value={a.id}>{accountDisplayName(a)}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </Row>
+                </>
+              )}
+              {!isPersonal && !isTransfer && (
                 <Row label={t("transactions:client")}>
                   {matchedClient && !needsClient ? (
                     <span className="truncate">{matchedClient.name}</span>
@@ -195,9 +268,16 @@ export function AiAssistantConfirm({ response, currency, onSaved, onEdit, onCanc
                   />
                 </Row>
               ) : (
-                <Row label={t("transactions:amount")}>{formatMoney(Number(amount), currency)}</Row>
+                <Row label={t("transactions:amount")}>
+                  <span className="inline-flex flex-col items-end">
+                    <span>{formatMoney(Number(amount), currency)}</span>
+                    {tx.fields.amount_source === "statement" && (
+                      <span className="text-[11px] font-normal text-amber-600 dark:text-amber-400">{t("aiVoice.fromStatement")}</span>
+                    )}
+                  </span>
+                </Row>
               )}
-              {account && <Row label={t("transactions:account")}>{accountDisplayName(account)}</Row>}
+              {account && !isTransfer && <Row label={t("transactions:account")}>{accountDisplayName(account)}</Row>}
               <Row label={t("transactions:date")}>{tx.fields.date ?? today()}</Row>
               {tx.fields.description && <Row label={t("transactions:description")}><span className="truncate">{tx.fields.description}</span></Row>}
               {catChips.length > 0 && (

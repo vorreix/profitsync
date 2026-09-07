@@ -42,7 +42,7 @@ jobs:
       - name: Authed API routes reject cleanly (401), never crash (500)
         run: |
           fail=0
-          for p in /api/profile /api/clients /api/transactions /api/organizations /api/recurring /api/budgets; do
+          for p in /api/profile /api/clients /api/transactions /api/organizations /api/recurring /api/budgets /api/spending-budgets; do
             code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "https://profitsync.net$p")
             echo "GET $p -> $code"
             if [ "$code" != "401" ]; then echo "::error::$p returned $code (expected 401) — function crash or auth breakage"; fail=1; fi

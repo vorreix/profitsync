@@ -2,7 +2,7 @@ import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { useAuth } from "@clerk/clerk-react"
 import { toast } from "sonner"
-import { apiPatch, clearApiCache } from "@/lib/api"
+import { apiPatch } from "@/lib/api"
 import { amountExceedsLimit } from "@/lib/money"
 import type { WealthAccount } from "@/lib/types"
 import { currencySymbol } from "@/lib/wealth"
@@ -13,6 +13,9 @@ import { Label } from "@/components/ui/label"
 import { IconSelect } from "@/components/wealth/icon-select"
 import { BankAccountFormFields } from "@/components/wealth/BankAccountFormFields"
 import { type BankFormState, bankDetailsPayload, bankFormFromAccount, emptyBankForm } from "@/lib/bank-form"
+import { CreditCardFormFields } from "@/components/wealth/CreditCardFormFields"
+import { type CardFormState, cardEditPayload, cardFormFromAccount, emptyCardForm } from "@/lib/card-form"
+import { cardDebt, isLiabilityType, isValidDayOfMonth } from "@/lib/credit-card"
 
 // Re-exported for back-compat (was defined here originally).
 export { IconSelect } from "@/components/wealth/icon-select"
@@ -45,7 +48,10 @@ export function WealthAccountDialogs({
   const { getToken } = useAuth()
   const [saving, setSaving] = useState(false)
   const [editForm, setEditForm] = useState<EditForm>(emptyBankForm)
+  const [cardForm, setCardForm] = useState<CardFormState>(emptyCardForm)
   const [adjustBalance, setAdjustBalance] = useState("")
+  const symbol = currencySymbol(currency)
+  const adjustingCard = !!adjusting && isLiabilityType(adjusting.type)
 
   useEffect(() => {
     if (editing) {
@@ -53,6 +59,7 @@ export function WealthAccountDialogs({
         ...editing,
         icon: editing.icon || (editing.type === "cash" ? "wallet" : "bank"),
       }))
+      if (isLiabilityType(editing.type)) setCardForm(cardFormFromAccount(editing))
       // Re-arm: the dialogs stay mounted between opens, so a request left in
       // flight when the user closed one must not freeze the button on reopen.
       setSaving(false)
@@ -61,7 +68,8 @@ export function WealthAccountDialogs({
 
   useEffect(() => {
     if (adjusting) {
-      setAdjustBalance(String(adjusting.current_balance))
+      // A card is adjusted by the amount OWED (positive), never by its signed balance.
+      setAdjustBalance(isLiabilityType(adjusting.type) ? String(cardDebt(adjusting.current_balance)) : String(adjusting.current_balance))
       setSaving(false)
     }
   }, [adjusting])
@@ -72,7 +80,6 @@ export function WealthAccountDialogs({
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
       await apiPatch<WealthAccount>(`/api/wealth/accounts/${id}`, token, body)
-      clearApiCache()
       toast.success(success)
       onDone()
       onChanged()
@@ -85,6 +92,18 @@ export function WealthAccountDialogs({
 
   function handleEdit() {
     if (!editing) return
+    if (isLiabilityType(editing.type)) {
+      if (!cardForm.bank_name.trim()) { toast.error(t("bankNameRequired")); return }
+      const limit = Number(cardForm.credit_limit)
+      if (!Number.isFinite(limit) || limit <= 0) { toast.error(t("creditLimitRequired")); return }
+      if (amountExceedsLimit(limit)) { toast.error(t("common.amountTooLarge")); return }
+      const closing = Number(cardForm.statement_closing_day)
+      const due = Number(cardForm.payment_due_day)
+      if (!isValidDayOfMonth(closing) || !isValidDayOfMonth(due)) { toast.error(t("dayHint")); return }
+      if (closing === due) { toast.error(t("daysMustDiffer")); return }
+      patchAccount(editing.id, cardEditPayload(cardForm), t("accountUpdated"), () => onEditingChange(null))
+      return
+    }
     if (editing.type === "bank" && !editForm.bank_name.trim()) {
       toast.error(t("bankNameRequired"))
       return
@@ -125,6 +144,8 @@ export function WealthAccountDialogs({
                     <IconSelect value={editForm.icon} onChange={(icon) => setEditForm((f) => ({ ...f, icon }))} />
                   </div>
                 </div>
+              ) : isLiabilityType(editing.type) ? (
+                <CreditCardFormFields form={cardForm} onChange={(patch) => setCardForm((f) => ({ ...f, ...patch }))} mode="edit" symbol={symbol} />
               ) : (
                 <BankAccountFormFields form={editForm} onChange={(patch) => setEditForm((f) => ({ ...f, ...patch }))} />
               )}
@@ -139,10 +160,10 @@ export function WealthAccountDialogs({
 
       <Dialog open={!!adjusting} onOpenChange={(next) => { if (!next) onAdjustingChange(null) }}>
         <DialogContent className="sm:max-w-sm">
-          <DialogHeader><DialogTitle>{t("adjustBalance")}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{adjustingCard ? t("amountOwed") : t("adjustBalance")}</DialogTitle></DialogHeader>
           <div className="space-y-2 py-2">
-            <Label>{t("newBalance")} ({currencySymbol(currency)})</Label>
-            <Input type="number" step="0.01" value={adjustBalance} onChange={(e) => setAdjustBalance(e.target.value)} />
+            <Label htmlFor="adjust-balance">{adjustingCard ? t("amountOwedLabel", { symbol }) : `${t("newBalance")} (${symbol})`}</Label>
+            <Input id="adjust-balance" type="number" inputMode="decimal" step="0.01" min={adjustingCard ? "0" : undefined} value={adjustBalance} onChange={(e) => setAdjustBalance(e.target.value)} />
             <p className="text-xs text-muted-foreground">{t("adjustHint")}</p>
           </div>
           <DialogFooter>
@@ -151,11 +172,16 @@ export function WealthAccountDialogs({
               onClick={() => {
                 if (!adjusting) return
                 if (amountExceedsLimit(adjustBalance)) { toast.error(t("common.amountTooLarge")); return }
-                patchAccount(adjusting.id, { current_balance: Number(adjustBalance || 0) }, t("balanceAdjusted"), () => onAdjustingChange(null))
+                patchAccount(
+                  adjusting.id,
+                  adjustingCard ? { current_debt: Math.abs(Number(adjustBalance || 0)) } : { current_balance: Number(adjustBalance || 0) },
+                  t("balanceAdjusted"),
+                  () => onAdjustingChange(null),
+                )
               }}
               disabled={saving}
             >
-              {saving ? t("saving") : t("adjustBalance")}
+              {saving ? t("saving") : adjustingCard ? t("save") : t("adjustBalance")}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -1,8 +1,9 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { and, eq, gte, isNull, lte, ne, sql } from "drizzle-orm"
+import { and, eq, gte, isNull, lte, sql } from "drizzle-orm"
 import { db } from "../../src/lib/db/index.js"
 import { clients, transactions } from "../../src/lib/db/schema.js"
 import { requireAuth, isPersonalAccount } from "../_lib/auth.js"
+import { expenseSumSql, incomeSumSql, pnlKindFilter } from "../_lib/tx-sql.js"
 
 const GRANULARITIES = ["day", "week", "month", "year"] as const
 type Granularity = (typeof GRANULARITIES)[number]
@@ -35,14 +36,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     isNull(clients.deletedAt),
     isNull(clients.closedAt),
     isNull(transactions.deletedAt),
-    // Internal account-to-account transfers aren't income/expense — exclude them.
-    ne(transactions.kind, "transfer"),
+    // Internal account-to-account transfers (incl. credit-card payments) aren't
+    // income/expense — exclude them. Refunds stay in: they net against expense.
+    pnlKindFilter,
+    // Balance-DEFINING system entries ("Opening Balance", "Balance Adjustment")
+    // are not income or expense — they assert what an account balance IS at a
+    // point in time (src/lib/wealth-ledger.ts reversesOnTrash). Counting an
+    // opening balance as income overstated revenue. Budgets exclude them too
+    // (api/_lib/budget-spend.ts), so the two now agree.
+    eq(transactions.isSystem, false),
     gte(transactions.date, fromDate),
     lte(transactions.date, toDate),
   )
 
-  const incomeSum = sql<string>`coalesce(sum(case when ${transactions.type} = 'incoming' then ${transactions.amount}::numeric else 0 end), 0)`
-  const expenseSum = sql<string>`coalesce(sum(case when ${transactions.type} = 'outgoing' then ${transactions.amount}::numeric else 0 end), 0)`
+  // Shared reporting rules (api/_lib/tx-sql.ts): refunds reduce expense, never income.
+  const incomeSum = incomeSumSql
+  const expenseSum = expenseSumSql
 
   const [summaryRows, seriesRows, categoryRows, clientRows] = await Promise.all([
     db

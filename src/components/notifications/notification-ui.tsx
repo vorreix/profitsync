@@ -1,5 +1,5 @@
 import type { ComponentType } from "react"
-import { Users, CreditCard, ArrowLeftRight, FileText, Bell } from "lucide-react"
+import { Users, CreditCard, ArrowLeftRight, FileText, Bell, WalletCards } from "lucide-react"
 import type { TFunction } from "i18next"
 import i18n from "@/lib/i18n"
 import type { AppNotification } from "@/lib/types"
@@ -13,6 +13,7 @@ const CATEGORY_ICON: Record<NotificationCategory, ComponentType<{ className?: st
   billing: CreditCard,
   budget: MoneyBag,
   transactions: ArrowLeftRight,
+  cards: WalletCards,
   clients: FileText,
   system: Bell,
 }
@@ -22,6 +23,7 @@ const CATEGORY_TONE: Record<NotificationCategory, string> = {
   billing: "bg-amber-500/10 text-amber-600 dark:text-amber-300",
   budget: "bg-rose-500/10 text-rose-600 dark:text-rose-300",
   transactions: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-300",
+  cards: "bg-indigo-500/10 text-indigo-600 dark:text-indigo-300",
   clients: "bg-violet-500/10 text-violet-600 dark:text-violet-300",
   system: "bg-muted text-muted-foreground",
 }
@@ -86,7 +88,12 @@ export function notificationTitle(n: AppNotification, t: TFunction): string {
 export function notificationBody(n: AppNotification, t: TFunction): string {
   const { bodyKey } = notificationRenderKeys(n.data, resourceKind)
   if (bodyKey) {
-    const params = (n.data?.i18nParams ?? {}) as Record<string, unknown>
+    const params = { ...((n.data?.i18nParams ?? {}) as Record<string, unknown>) }
+    // Budget alerts carry the period as its enum value ("monthly"); say it in
+    // the reader's language rather than splicing English into every locale.
+    if (typeof params.period === "string" && ["daily", "weekly", "monthly", "yearly", "once", "lifetime"].includes(params.period)) {
+      params.period = t(`budget.${params.period}`, { ns: "translation", defaultValue: params.period })
+    }
     const translated = t(bodyKey, { ns: "notifications", defaultValue: n.body, ...params })
     if (typeof translated === "string" && translated) return translated
   }

@@ -135,8 +135,10 @@ export type TransactionLeg = {
   wealth_account_id: string | null
   wealth_account_name?: string | null
   wealth_account_bank_name?: string | null
-  wealth_account_type?: "bank" | "cash" | null
+  wealth_account_type?: WealthAccountType | null
   wealth_account_icon?: string | null
+  // Which card paid this leg (attribution only — see Card).
+  card_id?: string | null
   type: "incoming" | "outgoing"
   amount: number
 }
@@ -148,8 +150,12 @@ export type Transaction = {
   wealth_account_id?: string | null
   wealth_account_name?: string | null
   wealth_account_bank_name?: string | null
-  wealth_account_type?: "bank" | "cash" | null
+  wealth_account_type?: WealthAccountType | null
   wealth_account_icon?: string | null
+  // Which CARD paid (debit or credit) — attribution only; the money always sits
+  // on wealth_account_id (the card's own ledger account). Drives the
+  // "C •••• 1234" / "D •••• 1234" chip (src/components/cards/CardChip.tsx).
+  card_id?: string | null
   type: "incoming" | "outgoing"
   amount: number
   description: string
@@ -162,12 +168,15 @@ export type Transaction = {
   // "Recurring" badge in lists + the detail modal).
   recurring_rule_id?: string | null
   // 'transfer' marks the two legs of an account-to-account move (shown only on
-  // the account-detail list, never in the global list / analytics).
-  kind?: "standard" | "transfer"
+  // the account-detail list, never in the global list / analytics) — paying a
+  // credit card is a transfer bank → card. 'refund' is an incoming that gives
+  // money back for an earlier expense: reporting nets it against EXPENSE, never
+  // income (src/lib/tx-classify.ts).
+  kind?: "standard" | "transfer" | "refund"
   // For a transfer leg: the OTHER leg's account (id + type) — lets the UI badge a
-  // transfer to/from a Space and deep-link to it.
+  // transfer to/from a Space (or a card payment) and deep-link to it.
   counterpart_account_id?: string | null
-  counterpart_type?: "bank" | "cash" | "space" | null
+  counterpart_type?: WealthAccountType | null
   created_at: string
   updated_at: string
   attachment_count?: number
@@ -178,10 +187,16 @@ export type Transaction = {
   group_id?: string | null
   leg_count?: number
   account_count?: number
+  // Distinct cards across a collapsed group's legs: > 1 → the list shows
+  // "N cards" instead of one arbitrary chip.
+  card_count?: number
   legs?: TransactionLeg[]
 }
 
-export type WealthAccountType = "bank" | "cash" | "space"
+// `credit_card` is a LIABILITY account: `current_balance` stays the signed
+// asset-equivalent value (normally NEGATIVE = amount owed). Never read the sign
+// in a component — use cardDebt()/availableCredit() from src/lib/credit-card.ts.
+export type WealthAccountType = "bank" | "cash" | "space" | "credit_card"
 
 export type WealthAccount = {
   id: string
@@ -218,6 +233,142 @@ export type WealthAccount = {
   // progress are DERIVED (src/lib/spaces.ts), not stored.
   goal_amount?: number | null
   target_date?: string | null
+  // Credit card configuration (type='credit_card' only; null otherwise). Owed /
+  // available / statement figures are DERIVED (GET /api/wealth/accounts/:id/card).
+  credit_limit?: number | string | null
+  statement_closing_day?: number | null
+  payment_due_day?: number | null
+  // Cards on this account: how many are open (list responses — drives the
+  // Banks-tab badge), and, for a credit-card account, the CARD that IS it
+  // (single-account GET — /wealth/:id forwards to that card's screen).
+  card_count?: number
+  card_id?: string | null
+}
+
+// One CLOSED billing cycle of a credit card, as returned by the card summary
+// (statement_balance is the snapshot; paid/remaining/status are derived from
+// the payments dated after closing_date — src/lib/credit-card.ts statementView).
+export type CreditCardStatementView = {
+  id: string
+  cycle_start: string | null
+  closing_date: string
+  due_date: string
+  source: "computed" | "manual" | string
+  statementBalance: number
+  paid: number
+  remaining: number
+  status: "unpaid" | "partial" | "paid" | "overdue"
+  daysToDue: number
+}
+
+// GET /api/wealth/accounts/:id/card
+export type CreditCardSummary = {
+  account: WealthAccount
+  usage: {
+    debt: number
+    credit: number
+    limit: number | null
+    available: number | null
+    utilization: number | null
+    overLimit: boolean
+  }
+  statement: CreditCardStatementView | null
+  history: CreditCardStatementView[]
+  cycle: {
+    start: string
+    closes_on: string
+    next_due_date: string | null
+    spent: number
+    refunds: number
+    payments: number
+    /** Money that left this card to pay another one (a balance transfer). */
+    transfers_out: number
+  }
+}
+
+// ── Cards ────────────────────────────────────────────────────────────────────
+// A CARD (debit or credit) is identity + attribution linked to a bank. It never
+// holds money: `account_id` is the ledger account it posts to (a debit card's
+// bank; a credit card's liability account), `funding_account_id` (credit) is
+// the bank that pays the statement. See docs/cards/CARDS.md.
+export type CardKind = "debit" | "credit"
+export type CardNetwork = "visa" | "mastercard" | "amex" | "rupay" | "discover" | "jcb" | "unionpay" | "maestro" | "diners" | "other"
+export type CardTier = "standard" | "gold" | "platinum" | "metal" | "black" | "custom"
+export type CardStatus = "active" | "frozen" | "closed"
+export type CardPattern = "none" | "waves" | "mesh" | "dots"
+export type CardDesign = { from: string; to: string; text: "light" | "dark"; pattern: CardPattern }
+export type BrandColor = { hex: string; type: string; brightness?: number }
+
+export type Card = {
+  id: string
+  organization_id: string
+  kind: CardKind
+  account_id: string
+  funding_account_id: string | null
+  /** Credit only: the bank that ISSUED the card (null on cards predating mig 0065). */
+  issuer_account_id: string | null
+  /** Credit only: the CARD used to pay it, if any. Always resolves to funding_account_id. */
+  funding_card_id: string | null
+  name: string
+  holder_name: string
+  network: CardNetwork
+  // Last four digits only ("" when unknown).
+  last4: string
+  expiry_month: number | null
+  expiry_year: number | null
+  tier: CardTier
+  design: CardDesign | null
+  brand_colors: BrandColor[] | null
+  brand_logo_url: string
+  autopay: boolean
+  autopay_since: string | null
+  status: CardStatus
+  position: number
+  created_at: string
+  updated_at: string
+  // Joined from the ledger account (GET /api/cards).
+  account_type?: WealthAccountType
+  account_bank_name?: string
+  account_nickname?: string
+  account_current_balance?: number | string
+  account_credit_limit?: number | string | null
+  account_statement_closing_day?: number | null
+  account_payment_due_day?: number | null
+  account_brand_domain?: string
+  account_logo_url?: string
+  account_logo_src?: string | null
+  account_archived_at?: string | null
+  // Joined from the funding bank (credit cards).
+  funding_account_bank_name?: string | null
+  funding_account_nickname?: string | null
+  funding_account_logo_src?: string | null
+  funding_account_archived_at?: string | null
+  // Joined from the issuing bank (credit cards).
+  issuer_account_bank_name?: string | null
+  issuer_account_nickname?: string | null
+  issuer_account_logo_src?: string | null
+  issuer_account_archived_at?: string | null
+  // Joined from the card that pays this one, when one is set.
+  funding_card_name?: string | null
+  funding_card_kind?: CardKind | null
+  funding_card_last4?: string | null
+  funding_card_network?: CardNetwork | null
+  funding_card_status?: CardStatus | null
+  transaction_count?: number
+}
+
+// GET /api/cards/:id/summary
+export type CardAutopayPreview = { date: string; amount: number }
+export type CardSummary = {
+  card: Card
+  // Credit cards: the ledger-derived view (same as GET /api/wealth/accounts/:id/card).
+  credit: Omit<CreditCardSummary, "account"> | null
+  // Debit cards: this month's activity on the card.
+  debit: { month_spent: number; month_refunds: number; last_used: string | null } | null
+  // When autopay will next pay and how much (null = nothing scheduled).
+  next_autopay: CardAutopayPreview | null
+  // What the last autopay attempt did (null = never ran).
+  last_autopay: { status: "paid" | "skipped" | "failed"; at: string | null; group_id: string | null; statement_id: string } | null
 }
 
 export type RecurringRule = {
@@ -234,6 +385,11 @@ export type RecurringRule = {
   kind?: "standard" | "transfer"
   to_account_id?: string | null
   to_account_name?: string | null
+  // The card that pays each occurrence (copied onto the materialized rows).
+  card_id?: string | null
+  card_last4?: string | null
+  card_kind?: CardKind | null
+  card_name?: string | null
   name: string
   type: "incoming" | "outgoing"
   amount: number | string
@@ -358,6 +514,8 @@ export function accountTypeAllows(
   const isBusinessOnly = feature === "clients" || feature === "quotations" || feature === "members"
   // Personal-only sections (Spaces savings buckets). Legacy/unknown orgs are
   // treated as business, so Spaces show ONLY for an explicit personal account.
+  // Budgets are NOT gated: spending budgets work in both workspace types, and a
+  // business workspace additionally keeps its per-client spend caps.
   const isPersonalOnly = feature === "spaces"
   // Unknown / legacy orgs default to the full (business) experience so we never
   // lock an existing user out of features they already use.
@@ -561,4 +719,128 @@ export type UserGroupMember = {
   email: string | null
   name: string | null
   avatar_url: string | null
+}
+
+// ── Spending budgets ─────────────────────────────────────────────────────────
+// A named spending limit over a window, scoped to expense categories (or all
+// spending), with one level of sub-budgets. Mirrors GET /api/spending-budgets;
+// every figure is derived live on the server (api/_lib/spending-budgets.ts) from
+// the pure window math in src/lib/budget.ts. The v1 per-client caps above
+// (`Budget`) are a separate, business-only feature.
+export type SpendingPeriod = "daily" | "weekly" | "monthly" | "yearly" | "once"
+/** The four windows the page can be read in. A budget authored in any rhythm converts into them. */
+export type SpendingViewWindow = "daily" | "weekly" | "monthly" | "yearly"
+export type SpendingBudgetStatus = "active" | "closed"
+export type SpendingBudgetState = "ok" | "warn" | "over" | "none"
+export type SpendingWindowPhase = "upcoming" | "active" | "ended"
+
+export type SpendingBudget = {
+  id: string
+  organization_id: string
+  parent_id: string | null
+  /** '' only on a row migrated from a v1 personal budget — label it "Personal budget". */
+  name: string
+  icon: string
+  period: SpendingPeriod
+  start_date: string | null
+  end_date: string | null
+  amount: number
+  /** Expense category names in scope; empty = all spending. */
+  categories: string[]
+  status: SpendingBudgetStatus
+  position: number
+  created_at: string | null
+  updated_at: string | null
+  /** The OVERALL budget: top level, all spending, one per workspace. Shown as the page header. */
+  is_overall: boolean
+  window: { start: string | null; end_exclusive: string | null; phase: SpendingWindowPhase; days_left: number | null }
+  /** Spend over the budget's OWN window — what "am I over budget?" means. */
+  spent: number
+  /**
+   * Spend over each of the four view windows, so the page's Day/Week/Month/Year
+   * toggle is a re-render and not a request. A custom-date budget reports its
+   * own figure in all four: it is a fixed sum, not a rhythm.
+   */
+  spent_by_view: Record<SpendingViewWindow, number>
+  remaining: number
+  ratio: number | null
+  /** "none" when paused, ended or not yet started — the row is shown but not counted. */
+  state: SpendingBudgetState
+  per_day_left: number | null
+  /** Spend inside a main budget that none of its ACTIVE sub-budgets claim; null without any. */
+  other_spent: number | null
+  other_spent_by_view: Record<SpendingViewWindow, number> | null
+  children_count: number
+}
+
+/** What the individual budgets add up to against the overall budget, in the view window. */
+export type SpendingAllocation = {
+  allocated: number
+  unallocated: number | null
+  over: boolean
+  overall_limit: number | null
+  overall_spent: number | null
+  budgeted_spent: number
+}
+
+export type SpendingBudgetsResponse = {
+  budgets: SpendingBudget[]
+  today: string
+}
+
+export type SpendingBudgetAnalyticsWindow = {
+  start: string
+  end_exclusive: string
+  /** Not finished yet: drawn "so far", never judged. */
+  partial: boolean
+  /** No budget's scope has moved since this window closed, so its figures can be trusted. */
+  reliable: boolean
+  total: number
+  /** Spend no active category budget claims. Never negative. */
+  unclaimed: number
+  overall_limit: number | null
+  budgeted_limit: number
+  /** budget id → its own limit in this window; null before it existed. */
+  per_budget_limit: Record<string, number | null>
+  /** NOT a partition — the overall's entry equals `total` and a sub-budget's sits inside its parent's. */
+  per_budget: Record<string, number>
+}
+
+export type SpendingBudgetAnalytics = {
+  view: SpendingViewWindow
+  back: number
+  today: string
+  windows: SpendingBudgetAnalyticsWindow[]
+  categories: { name: string; spent: number; budget_id: string | null }[]
+  adherence: { periods: number; within: number; rate: number; streak: number; avg_delta: number }
+}
+
+export type SpendingBudgetRecentTx = {
+  id: string
+  date: string
+  description: string
+  category: string
+  /** Signed: a refund is negative. */
+  amount: number
+  kind: string
+  client_name: string | null
+  wealth_account_id: string | null
+}
+
+export type SpendingBudgetHistoryEntry = {
+  id: string
+  action: string
+  changes: Record<string, { from: unknown; to: unknown }>
+  actor_user_id: string | null
+  created_at: string | null
+}
+
+export type SpendingBudgetDetail = {
+  budget: SpendingBudget
+  children: SpendingBudget[]
+  parent: { id: string; name: string } | null
+  series: { start: string; spent: number; amount: number }[]
+  recent: SpendingBudgetRecentTx[]
+  history: SpendingBudgetHistoryEntry[]
+  today: string
 }

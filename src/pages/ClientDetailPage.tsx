@@ -5,6 +5,8 @@ import { apiGet, apiPost, apiPatch, apiDelete } from "@/lib/api"
 import { amountExceedsLimit } from "@/lib/money"
 import type { Budget, Client, Transaction, TransactionAttachment, WealthAccount } from "@/lib/types"
 import { AccountSelector, type Allocation } from "@/components/AccountSelector"
+import { CardChip } from "@/components/cards/CardChip"
+import { useCardMap } from "@/lib/use-cards"
 import { loadLastTx, saveLastTx } from "@/lib/last-tx"
 import { useCurrency } from "@/lib/currency-context"
 import { useOrg } from "@/lib/org-context"
@@ -57,6 +59,8 @@ export function ClientDetailPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const { getToken } = useAuth()
   const { currency } = useCurrency()
+  // Card chips on the transaction rows (by card id, or the credit card that IS the account).
+  const cardMap = useCardMap()
   const formatCurrency = (amount: number) => new Intl.NumberFormat("en-US", { style: "currency", currency, minimumFractionDigits: 2 }).format(amount)
   const [client, setClient] = useState<Client | null>(null)
   const [transactions, setTransactions] = useState<Transaction[]>([])
@@ -245,7 +249,7 @@ export function ClientDetailPage() {
         description: txForm.description,
         category: txForm.category,
         date: txForm.date,
-        allocations: allocs.map((a) => ({ wealth_account_id: a.account_id, amount: parseFloat(a.amount) })),
+        allocations: allocs.map((a) => ({ wealth_account_id: a.account_id, card_id: a.card_id ?? null, amount: parseFloat(a.amount) })),
       })
       const firstId = result.ids[0] ?? null
       if (firstId && pendingFiles.length > 0) {
@@ -260,7 +264,7 @@ export function ClientDetailPage() {
         }
         if (failed < pendingFiles.length) toast.success(pendingFiles.length - failed === 1 ? "File attached" : "Files attached")
       }
-      saveLastTx({ wealth_account_id: allocs[0]?.account_id })
+      saveLastTx({ wealth_account_id: allocs[0]?.account_id, card_id: allocs[0]?.card_id ?? null })
       toast.success(`${txForm.type === "incoming" ? "Income" : "Expense"} added`)
       setTxDialogOpen(false)
       setTxForm(defaultTxForm())
@@ -299,7 +303,7 @@ export function ClientDetailPage() {
           id: legs[0].id,
           group_id: tx.group_id,
           type: tx.type,
-          allocations: legs.map((l) => ({ account_id: l.wealth_account_id ?? "", amount: String(l.amount) })),
+          allocations: legs.map((l) => ({ account_id: l.wealth_account_id ?? "", card_id: l.card_id ?? null, amount: String(l.amount) })),
           description: tx.description,
           category: tx.category,
           date: tx.date,
@@ -314,7 +318,7 @@ export function ClientDetailPage() {
       id: tx.id,
       group_id: null,
       type: tx.type,
-      allocations: [{ account_id: tx.wealth_account_id ?? defaultAccountId(accounts), amount: String(tx.amount) }],
+      allocations: [{ account_id: tx.wealth_account_id ?? defaultAccountId(accounts), card_id: tx.wealth_account_id ? (tx.card_id ?? null) : null, amount: String(tx.amount) }],
       description: tx.description,
       category: tx.category,
       date: tx.date,
@@ -342,11 +346,11 @@ export function ClientDetailPage() {
           description: editTxForm.description,
           category: editTxForm.category,
           date: editTxForm.date,
-          allocations: allocs.map((a) => ({ wealth_account_id: a.account_id, amount: parseFloat(a.amount) })),
+          allocations: allocs.map((a) => ({ wealth_account_id: a.account_id, card_id: a.card_id ?? null, amount: parseFloat(a.amount) })),
         })
       } else {
         const alloc = allocs[0]
-        await apiPatch<Transaction>(`/api/transactions/${editTxForm.id}`, token, { type: editTxForm.type, amount: parseFloat(alloc.amount), wealth_account_id: alloc.account_id, description: editTxForm.description, category: editTxForm.category, date: editTxForm.date })
+        await apiPatch<Transaction>(`/api/transactions/${editTxForm.id}`, token, { type: editTxForm.type, amount: parseFloat(alloc.amount), wealth_account_id: alloc.account_id, card_id: alloc.card_id ?? null, description: editTxForm.description, category: editTxForm.category, date: editTxForm.date })
       }
       toast.success("Transaction updated")
       setEditTxDialogOpen(false)
@@ -504,8 +508,8 @@ export function ClientDetailPage() {
       <div
         role="button"
         tabIndex={0}
-        onClick={() => id && navigate(`/budgets/${id}`)}
-        onKeyDown={(e) => { if ((e.key === "Enter" || e.key === " ") && id) { e.preventDefault(); navigate(`/budgets/${id}`) } }}
+        onClick={() => id && navigate(`/budgets/clients/${id}`)}
+        onKeyDown={(e) => { if ((e.key === "Enter" || e.key === " ") && id) { e.preventDefault(); navigate(`/budgets/clients/${id}`) } }}
         className="group w-full text-left rounded-xl border p-3 sm:p-4 cursor-pointer transition-colors hover:border-primary/40 hover:bg-accent/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         <div className="flex items-center justify-between gap-2">
@@ -590,6 +594,15 @@ export function ClientDetailPage() {
                         <p className="text-sm font-medium truncate">{tx.description || (tx.type === "incoming" ? "Income" : "Expense")}</p>
                         <div className="flex items-center gap-2 mt-0.5">
                           <span className="text-xs text-muted-foreground">{formatDate(tx.date)}</span>
+                          {(() => {
+                            const card = cardMap.forTx(tx)
+                            // The chip is its own link (→ the card page): keep the row's open click out of it.
+                            return card ? (
+                              <span className="flex shrink-0" onClick={(e) => e.stopPropagation()}>
+                                <CardChip card={card} />
+                              </span>
+                            ) : null
+                          })()}
                           {tx.category && <Badge variant="outline" className="text-xs py-0">{tx.category}</Badge>}
                           {tx.recurring_rule_id && (
                             <Badge

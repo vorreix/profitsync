@@ -19,12 +19,20 @@ export type AiQuota = {
 
 export type AiParsedFields = {
   type: "incoming" | "outgoing"
+  // standard = spend/income; refund = money back (not income); transfer = between
+  // the user's own accounts, incl. paying a credit card — never an expense.
+  kind: "standard" | "refund" | "transfer"
   amount: number | null
+  // "statement" = the server filled the amount from the card's latest statement
+  // ("paid my Visa statement") — show it as something to CHECK, not as said.
+  amount_source: "stated" | "statement" | null
   date: string | null
   category: string | null
   description: string | null
   client_id: string | null
   account_id: string | null
+  // Transfers only: the destination account (e.g. the card being paid).
+  to_account_id: string | null
 }
 
 export type AiParseResponse = {

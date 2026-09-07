@@ -5,6 +5,7 @@ import { clients, recurringRules, wealthAccounts } from "../../src/lib/db/schema
 import { canWrite, requireAuth } from "../_lib/auth.js"
 import { validateRuleInput, type RecurringRuleInput } from "../_lib/recurring-validate.js"
 import { materializeDueRecurring } from "../_lib/recurring-materialize.js"
+import { attributeCard } from "../_lib/cards.js"
 
 async function assertRefsBelongToOrg(orgId: string, clientId: string | null, accountId: string | null): Promise<string | null> {
   if (clientId) {
@@ -39,6 +40,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         clientIsOwn: clients.isOwn,
         wealthAccountId: recurringRules.wealthAccountId,
         accountName: sql<string | null>`coalesce(nullif(${wealthAccounts.nickname}, ''), ${wealthAccounts.bankName})`,
+        cardId: recurringRules.cardId,
         name: recurringRules.name,
         type: recurringRules.type,
         amount: recurringRules.amount,
@@ -67,7 +69,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!canWrite(role)) return res.status(403).json({ error: "Forbidden" })
     const parsed = validateRuleInput(req.body as RecurringRuleInput)
     if ("error" in parsed) return res.status(400).json({ error: parsed.error })
-    const refError = await assertRefsBelongToOrg(orgId, parsed.value.clientId, parsed.value.wealthAccountId)
+    // The paying card decides the account (api/_lib/cards.ts attributeCard).
+    const attributed = await attributeCard(orgId, { cardId: parsed.value.cardId, wealthAccountId: parsed.value.wealthAccountId })
+    if (!attributed.ok) return res.status(400).json({ error: attributed.error })
+    const refError = await assertRefsBelongToOrg(orgId, parsed.value.clientId, attributed.accountId)
     if (refError) return res.status(400).json({ error: refError })
 
     const [row] = await db
@@ -75,7 +80,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .values({
         organizationId: orgId,
         clientId: parsed.value.clientId,
-        wealthAccountId: parsed.value.wealthAccountId,
+        wealthAccountId: attributed.accountId,
+        cardId: attributed.cardId,
         name: parsed.value.name,
         type: parsed.value.type,
         amount: parsed.value.amount,

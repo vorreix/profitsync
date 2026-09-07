@@ -15,7 +15,7 @@ import { FitText } from "@/components/FitText"
 import { AttachmentDetailModal, type AttachmentModalItem } from "@/components/AttachmentDetailModal"
 import { AuditHistory } from "@/components/AuditHistory"
 import { useCurrency } from "@/lib/currency-context"
-import { apiGet, clearApiCache } from "@/lib/api"
+import { apiGet } from "@/lib/api"
 import { dropModalBackEntry } from "@/hooks/use-back-close"
 import {
   ACCEPT_ATTR,
@@ -110,7 +110,7 @@ export function ClientOverviewModal({
       if (err) { toast.error(err); continue }
       try { await uploadAttachment(attachmentsListPath("client", client.id), file, token); n++ } catch (er) { toast.error(er instanceof Error ? er.message : "Upload failed") }
     }
-    if (n > 0) { clearApiCache(); toast.success(t("attachments.uploaded", { defaultValue: "Uploaded" })); await loadDocs() }
+    if (n > 0) { toast.success(t("attachments.uploaded", { defaultValue: "Uploaded" })); await loadDocs() }
     setUploading(false)
   }
 

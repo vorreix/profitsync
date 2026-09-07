@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ComponentType } from "react"
+import { useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import { useNavigate } from "react-router-dom"
 import {
@@ -21,6 +21,8 @@ import { useOrg } from "@/lib/org-context"
 import { loadRecents, recentSearchScope, recordRecent } from "@/lib/recent-searches"
 import { filterLocal, quickActions, searchablePages } from "@/lib/search-index"
 import { accountDisplayName, formatMoney } from "@/lib/wealth"
+import { cardDisplayName, maskedTail } from "@/lib/cards"
+import { CardSwatch } from "@/components/transactions/CardSwatch"
 import { useBackClose } from "@/hooks/use-back-close"
 import {
   SEARCH_MIN_CHARS,
@@ -46,11 +48,14 @@ function GroupHeading({ children }: { children: string }) {
 
 function ResultRow({
   icon: Icon,
+  leading,
   label,
   secondary,
   onClick,
 }: {
-  icon: ComponentType<{ className?: string }>
+  icon?: ComponentType<{ className?: string }>
+  // Replaces the icon (a card's colour swatch).
+  leading?: ReactNode
   label: string
   secondary?: string
   onClick: () => void
@@ -61,7 +66,7 @@ function ResultRow({
       onClick={onClick}
       className="pressable ios-tap flex min-h-11 w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left active:bg-muted/60"
     >
-      <Icon className="size-4 shrink-0 text-muted-foreground" />
+      {leading ?? (Icon ? <Icon className="size-4 shrink-0 text-muted-foreground" /> : null)}
       <span className="min-w-0 flex-1 truncate text-sm font-medium">{label}</span>
       {secondary && (
         <span className="max-w-[40%] shrink-0 truncate text-xs text-muted-foreground">{secondary}</span>
@@ -170,13 +175,15 @@ export function MobileSearchOverlay({
   const showTx = show("transactions") && results !== null && results.transactions.length > 0
   const showQuotes = show("quotations") && results !== null && results.quotations.length > 0
   const showAccounts = show("accounts") && results !== null && results.accounts.length > 0
+  // Cards ride the "Accounts" chip — one place for everything money sits on or is paid with.
+  const showCards = show("accounts") && results !== null && results.cards.length > 0
   const showCategories = chip === "all" && results !== null && results.categories.length > 0
   const showPages = show("pages") && hasQuery && pages.length > 0
   const showActions = show("pages") && hasQuery && actions.length > 0
   const nothingMatches =
     query.trim().length >= SEARCH_MIN_CHARS &&
     !loading &&
-    !showClients && !showTx && !showQuotes && !showAccounts && !showCategories &&
+    !showClients && !showTx && !showQuotes && !showAccounts && !showCards && !showCategories &&
     !showPages && !showActions
 
   return (
@@ -329,6 +336,20 @@ export function MobileSearchOverlay({
                 icon={account.type === "space" ? PiggyBank : Landmark}
                 label={accountDisplayName(account) || t("nav.wealth")}
                 onClick={() => go(searchHrefs.account(account))}
+              />
+            ))}
+          </>
+        )}
+        {showCards && results && (
+          <>
+            <GroupHeading>{t("search.cards")}</GroupHeading>
+            {results.cards.map((card) => (
+              <ResultRow
+                key={card.id}
+                leading={<CardSwatch card={card} />}
+                label={cardDisplayName(card)}
+                secondary={maskedTail(card.last4)}
+                onClick={() => go(searchHrefs.card(card))}
               />
             ))}
           </>

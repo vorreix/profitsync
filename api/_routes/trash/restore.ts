@@ -1,9 +1,9 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { and, eq, isNotNull, sql } from "drizzle-orm"
+import { and, eq, inArray, isNotNull, sql } from "drizzle-orm"
 import { db, serialize } from "../../../src/lib/db/index.js"
 import { clients, quotations, transactions, wealthAccounts } from "../../../src/lib/db/schema.js"
 import { canDelete, requireAuth } from "../../_lib/auth.js"
-import { applicationsByAccount, balanceDelta, reversesOnTrash } from "../../../src/lib/wealth-ledger.js"
+import { applicationsByAccount } from "../../../src/lib/wealth-ledger.js"
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ctx = await requireAuth(req, res)
@@ -22,28 +22,50 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (type === "transaction") {
     // Transactions are org-scoped via their client.
     const [tx] = await db
-      .select({ id: transactions.id, wealthAccountId: transactions.wealthAccountId, type: transactions.type, amount: transactions.amount, isSystem: transactions.isSystem })
+      .select({ id: transactions.id, groupId: transactions.groupId })
       .from(transactions)
       .innerJoin(clients, eq(transactions.clientId, clients.id))
       .where(and(eq(transactions.id, id), eq(clients.organizationId, orgId), isNotNull(transactions.deletedAt)))
     if (!tx) return res.status(404).json({ error: "Not found" })
-    const [updated] = await db
-      .update(transactions)
-      .set({ deletedAt: null, updatedAt: new Date() })
-      .where(eq(transactions.id, id))
-      .returning()
+
+    // A split or a TRANSFER is one logical entry: DELETE trashes every leg of the
+    // group, so restore must bring every trashed leg back and re-apply each
+    // leg's balance. Restoring a single leg of a card payment would reduce the
+    // card's debt while leaving the bank leg in Trash — money out of nothing.
+    const legs = await db
+      .select({
+        id: transactions.id,
+        wealthAccountId: transactions.wealthAccountId,
+        type: transactions.type,
+        amount: transactions.amount,
+        isSystem: transactions.isSystem,
+      })
+      .from(transactions)
+      .innerJoin(clients, eq(transactions.clientId, clients.id))
+      .where(
+        and(
+          tx.groupId ? eq(transactions.groupId, tx.groupId) : eq(transactions.id, id),
+          eq(clients.organizationId, orgId),
+          isNotNull(transactions.deletedAt),
+        ),
+      )
+    const legIds = legs.map((l) => l.id)
     // System balance-defining entries are not re-applied on restore — their
-    // balance effect was never reversed on delete (see reversesOnTrash).
-    if (tx.wealthAccountId && reversesOnTrash(tx)) {
+    // balance effect was never reversed on delete (see reversesOnTrash);
+    // applicationsByAccount skips them and collapses legs per account.
+    for (const [accountId, shift] of applicationsByAccount(legs)) {
       await db
         .update(wealthAccounts)
-        .set({
-          currentBalance: sql`${wealthAccounts.currentBalance}::numeric + ${balanceDelta(tx.type, tx.amount)}`,
-          updatedAt: new Date(),
-        })
-        .where(eq(wealthAccounts.id, tx.wealthAccountId))
+        .set({ currentBalance: sql`${wealthAccounts.currentBalance}::numeric + ${shift}`, updatedAt: new Date() })
+        .where(eq(wealthAccounts.id, accountId))
     }
-    return res.json(serialize(updated))
+    const restored = await db
+      .update(transactions)
+      .set({ deletedAt: null, updatedAt: new Date() })
+      .where(inArray(transactions.id, legIds))
+      .returning()
+    const updated = restored.find((r) => r.id === id) ?? restored[0]
+    return res.json(serialize({ ...updated, restoredLegCount: restored.length }))
   }
 
   if (type === "client") {

@@ -1,10 +1,11 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { and, desc, eq, gte, inArray, isNull, lte, ne, sql, type SQL } from "drizzle-orm"
+import { and, desc, eq, gte, inArray, isNull, lte, sql, type SQL } from "drizzle-orm"
 import { db } from "../../src/lib/db/index.js"
 import { clients, organizations, transactions, wealthAccounts } from "../../src/lib/db/schema.js"
 import { isPersonalAccount, requireAuth } from "../_lib/auth.js"
 import { materializeDueRecurring } from "../_lib/recurring-materialize.js"
 import { logoDataUrl } from "../../src/lib/logo-data.js"
+import { expenseSumSql, incomeSumSql, pnlKindFilter } from "../_lib/tx-sql.js"
 
 // SQL for "the account's display name" — reused to label leaves with the
 // account the money moved through (to/from).
@@ -91,7 +92,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     isNull(clients.deletedAt),
     isNull(clients.closedAt),
     isNull(transactions.deletedAt),
-    ne(transactions.kind, "transfer"),
+    // Transfers (incl. credit-card payments) are not P&L; refunds net against expense.
+    pnlKindFilter,
+    // See api/_routes/analytics.ts — system balance-defining rows are not
+    // income/expense, and budgets exclude them too.
+    eq(transactions.isSystem, false),
     gte(transactions.date, fromDate),
     lte(transactions.date, toDate),
   ]
@@ -102,8 +107,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (accountIds.length) conds.push(inArray(transactions.wealthAccountId, accountIds))
   const where = and(...conds)
 
-  const incomeSum = sql<string>`coalesce(sum(case when ${transactions.type} = 'incoming' then ${transactions.amount}::numeric else 0 end), 0)`
-  const expenseSum = sql<string>`coalesce(sum(case when ${transactions.type} = 'outgoing' then ${transactions.amount}::numeric else 0 end), 0)`
+  // Shared reporting rules (api/_lib/tx-sql.ts): refunds reduce expense, never income.
+  const incomeSum = incomeSumSql
+  const expenseSum = expenseSumSql
   // Count LOGICAL transactions: a split (shared group_id) counts once, matching
   // how the canvas collapses its legs into a single node.
   const countExpr = sql<number>`count(distinct coalesce(${transactions.groupId}::text, ${transactions.id}::text))::int`

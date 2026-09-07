@@ -1,0 +1,478 @@
+/*
+  Card visuals — src/components/cards/CardVisual.tsx + CardStack.tsx.
+
+  Only what Tailwind cannot express lives here:
+  - container-query typography: the card is fluid (the parent sets the width,
+    the intrinsic aspect ratio sets the height) and every detail — padding,
+    chip, number, labels, radius — scales with `cqw`, so one component serves
+    a 150px list tile and a 600px hero without a resize observer;
+  - the tier textures (metallic / brushed / matte) and the custom patterns
+    (masked SVG, so a pattern takes the card's ink colour, light or dark);
+  - the frosted "frozen" overlay and the ghost-stack float.
+
+  The component passes colours in as custom properties:
+    --cv-from / --cv-to   the base gradient
+    --cv-text             the readable text colour (#fff or #111827)
+    --cv-accent           labels / holder accent (gold on a black card)
+    --cv-ink              the text colour as an "r g b" triplet for alpha use
+    --cv-mesh             a lighter tint of --cv-from for the mesh pattern
+    --cv-holder-color     optional override for the holder name (black tier)
+
+  `cqw` resolves against the nearest ancestor container, so every unit lives on
+  `.cv-inner` (a child of the container), never on `.card-visual` itself.
+*/
+
+@layer components {
+.card-visual {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1.586 / 1;
+  container-type: inline-size;
+  direction: ltr;
+  unicode-bidi: isolate;
+  /* Stops iOS Safari from selecting/dragging the plastic. */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  transition: transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .card-visual:not([data-still]):hover {
+    transform: translateY(-2px);
+  }
+  .card-visual:not([data-still]):hover > .cv-inner > .cv-face {
+    box-shadow:
+      0 18px 42px -14px rgba(0, 0, 0, 0.55),
+      inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  }
+}
+
+.cv-inner {
+  position: absolute;
+  inset: 0;
+
+  /* Fallbacks first (engines without container units keep a sane size),
+     then the fluid values. */
+  --cv-radius: 14px;
+  --cv-radius: clamp(10px, 4.5cqw, 26px);
+  --cv-pad: 18px;
+  --cv-pad: clamp(8px, 6cqw, 28px);
+  --cv-gap: 8px;
+  --cv-gap: clamp(4px, 2.5cqw, 14px);
+  --cv-num: 20px;
+  --cv-num: clamp(10px, 5.4cqw, 26px);
+  --cv-bank: 16px;
+  --cv-bank: clamp(9px, 5cqw, 21px);
+  --cv-nick: 10px;
+  --cv-nick: clamp(7px, 3cqw, 13px);
+  --cv-label: 8px;
+  --cv-label: clamp(5.5px, 2.3cqw, 11px);
+  --cv-holder: 13px;
+  --cv-holder: clamp(8px, 3.4cqw, 17px);
+  --cv-kind: 10px;
+  --cv-kind: clamp(6.5px, 2.9cqw, 13px);
+  --cv-chip: 36px;
+  --cv-chip: clamp(20px, 11cqw, 50px);
+  --cv-mark: 28px;
+  --cv-mark: clamp(14px, 7.5cqw, 34px);
+  --cv-icon: 26px;
+  --cv-icon: clamp(18px, 8.5cqw, 36px);
+  --cv-logo: 32px;
+  --cv-logo: clamp(14px, 11cqw, 52px);
+  --cv-pill: 11px;
+  --cv-pill: clamp(9px, 3.4cqw, 13px);
+}
+
+/* Compact tiles (lists, bank page): a shorter number, bigger relative type,
+   and no holder / expiry / nickname lines. */
+.card-visual[data-size="sm"] > .cv-inner {
+  --cv-pad: clamp(8px, 6.5cqw, 16px);
+  --cv-gap: clamp(3px, 2cqw, 8px);
+  --cv-num: clamp(11px, 8.5cqw, 18px);
+  --cv-bank: clamp(9px, 6cqw, 16px);
+  --cv-kind: clamp(6px, 3.4cqw, 10px);
+  --cv-chip: clamp(18px, 12cqw, 32px);
+  --cv-mark: clamp(12px, 10cqw, 26px);
+  --cv-icon: clamp(16px, 10cqw, 26px);
+  --cv-logo: clamp(12px, 12cqw, 30px);
+  --cv-pill: clamp(8px, 4.5cqw, 11px);
+}
+.card-visual[data-size="sm"] .cv-fields,
+.card-visual[data-size="sm"] .cv-nick {
+  display: none;
+}
+
+/* Hero: a touch more presence on the embossed lines. */
+.card-visual[data-size="lg"] > .cv-inner {
+  --cv-holder: clamp(9px, 3.6cqw, 19px);
+  --cv-label: clamp(6px, 2.4cqw, 12px);
+  --cv-num: clamp(11px, 5.6cqw, 28px);
+}
+
+.cv-face {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: var(--cv-radius);
+  background: var(--cv-to);
+  box-shadow:
+    0 10px 30px -12px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  transition: box-shadow 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  /* Keeps the rounded corners crisp while the parent lifts on hover. */
+  transform: translateZ(0);
+  -webkit-mask-image: -webkit-radial-gradient(white, black);
+}
+.cv-face[data-closed] {
+  filter: grayscale(1);
+  opacity: 0.6;
+}
+
+.cv-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.cv-base {
+  background: linear-gradient(135deg, var(--cv-from) 0%, var(--cv-to) 100%);
+}
+.cv-light {
+  background:
+    radial-gradient(120% 90% at 100% 0%, rgba(255, 255, 255, 0.18) 0%, rgba(255, 255, 255, 0) 55%),
+    radial-gradient(110% 80% at 0% 100%, rgba(0, 0, 0, 0.25) 0%, rgba(0, 0, 0, 0) 55%);
+}
+.cv-sheen {
+  background: linear-gradient(100deg, transparent 40%, rgba(255, 255, 255, 0.09) 50%, transparent 60%);
+}
+
+/* Tier textures. */
+.cv-texture[data-texture="metallic"] {
+  background:
+    linear-gradient(115deg, transparent 28%, rgba(255, 255, 255, 0.24) 44%, rgba(255, 255, 255, 0.06) 50%, transparent 66%),
+    repeating-linear-gradient(115deg, rgba(255, 255, 255, 0.07) 0 2px, transparent 2px 6px);
+}
+.cv-texture[data-texture="brushed"] {
+  background:
+    radial-gradient(120% 120% at 50% 50%, transparent 55%, rgba(0, 0, 0, 0.38) 100%),
+    repeating-linear-gradient(180deg, rgba(255, 255, 255, 0.05) 0 1px, transparent 1px 3px);
+}
+.cv-texture[data-texture="matte"] {
+  background-image: radial-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1.3px);
+  background-size: 6px 6px;
+}
+
+/* Custom patterns (take the ink colour, so they work on light and dark). */
+.cv-pattern[data-pattern="dots"] {
+  background-image: radial-gradient(rgb(var(--cv-ink) / 0.09) 1.2px, transparent 1.5px);
+  background-size: 10px 10px;
+  background-size: clamp(6px, 3cqw, 12px) clamp(6px, 3cqw, 12px);
+}
+.cv-pattern[data-pattern="mesh"] {
+  background:
+    radial-gradient(60% 75% at 18% 28%, color-mix(in srgb, var(--cv-mesh) 42%, transparent) 0%, transparent 62%),
+    radial-gradient(55% 65% at 82% 78%, color-mix(in srgb, var(--cv-mesh) 30%, transparent) 0%, transparent 62%);
+}
+.cv-pattern[data-pattern="waves"] {
+  background-color: rgb(var(--cv-ink) / 0.1);
+  -webkit-mask-image: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 60'%3E%3Cg fill='none' stroke='white' stroke-width='1.5'%3E%3Cpath d='M0 12C33 -8 67 32 100 12S167 32 200 12'/%3E%3Cpath d='M0 30C33 10 67 50 100 30S167 50 200 30'/%3E%3Cpath d='M0 48C33 28 67 68 100 48S167 68 200 48'/%3E%3C/g%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 60'%3E%3Cg fill='none' stroke='white' stroke-width='1.5'%3E%3Cpath d='M0 12C33 -8 67 32 100 12S167 32 200 12'/%3E%3Cpath d='M0 30C33 10 67 50 100 30S167 50 200 30'/%3E%3Cpath d='M0 48C33 28 67 68 100 48S167 68 200 48'/%3E%3C/g%3E%3C/svg%3E");
+  -webkit-mask-repeat: repeat;
+  mask-repeat: repeat;
+  -webkit-mask-size: 160px auto;
+  mask-size: 160px auto;
+  -webkit-mask-size: clamp(90px, 42cqw, 240px) auto;
+  mask-size: clamp(90px, 42cqw, 240px) auto;
+}
+
+/* Printed content. */
+.cv-content {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  padding: var(--cv-pad);
+  color: var(--cv-text);
+  line-height: 1;
+}
+.cv-content[data-tone="light"] {
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+
+.cv-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--cv-gap);
+}
+.cv-brand {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 0.35em;
+  font-size: var(--cv-nick);
+}
+.cv-logo {
+  display: block;
+  height: var(--cv-logo);
+  width: auto;
+  max-width: 45cqw;
+  object-fit: contain;
+  object-position: left center;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.35));
+}
+.cv-bankrow {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  gap: clamp(4px, 1.8cqw, 9px);
+}
+.cv-bankicon {
+  display: flex;
+  width: var(--cv-icon);
+  height: var(--cv-icon);
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 9999px;
+  background: #fff;
+  color: #111827;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  text-shadow: none;
+}
+.cv-bankicon img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scale(1.1);
+}
+.cv-bankicon svg {
+  width: 56%;
+  height: 56%;
+}
+.cv-bankname {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--cv-bank);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+}
+.cv-nick {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--cv-nick);
+  font-weight: 500;
+  opacity: 0.85;
+}
+
+.cv-kind {
+  display: flex;
+  flex-shrink: 0;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.45em;
+  font-size: var(--cv-kind);
+  text-align: right;
+}
+.cv-kindtext {
+  white-space: nowrap;
+  font-size: var(--cv-kind);
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--cv-accent);
+  opacity: 0.92;
+}
+
+.cv-mid {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
+  justify-content: space-between;
+  padding-top: var(--cv-gap);
+}
+.cv-chiprow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  gap: clamp(4px, 2.4cqw, 12px);
+}
+.cv-chip {
+  width: var(--cv-chip);
+  height: auto;
+  flex-shrink: 0;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.3));
+}
+.cv-nfc {
+  height: calc(var(--cv-chip) * 0.6);
+  width: auto;
+  opacity: 0.85;
+}
+.cv-number {
+  overflow: hidden;
+  white-space: nowrap;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: var(--cv-num);
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  word-spacing: 0.2em;
+  line-height: 1;
+}
+
+.cv-bottom {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--cv-gap);
+  padding-top: calc(var(--cv-gap) * 1.5);
+}
+.cv-fields {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  gap: 16px;
+  gap: clamp(8px, 5cqw, 28px);
+}
+.cv-field {
+  min-width: 0;
+}
+.cv-field--expiry {
+  flex-shrink: 0;
+}
+.cv-label {
+  margin-bottom: 0.45em;
+  white-space: nowrap;
+  font-size: var(--cv-label);
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--cv-accent);
+  opacity: 0.75;
+}
+.cv-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--cv-holder);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  line-height: 1.1;
+  color: var(--cv-holder-color, var(--cv-text));
+}
+.cv-value--num {
+  font-variant-numeric: tabular-nums;
+}
+.cv-mark {
+  height: var(--cv-mark);
+  width: auto;
+  flex-shrink: 0;
+  margin-left: auto;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.25));
+}
+
+/* Status pills (UI overlays, localized — unlike the printed labels). */
+.cv-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  border-radius: 9999px;
+  padding: 0.35em 0.8em;
+  font-size: var(--cv-pill);
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  text-shadow: none;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+.cv-pill > svg {
+  width: 1.1em;
+  height: 1.1em;
+  flex-shrink: 0;
+}
+.cv-pill--expired {
+  background: #dc2626;
+  color: #fff;
+  padding: 0.3em 0.7em;
+}
+.cv-pill--frozen {
+  background: rgba(255, 255, 255, 0.92);
+  color: #0f172a;
+}
+.cv-pill--closed {
+  background: rgba(15, 23, 42, 0.82);
+  color: #fff;
+}
+
+.cv-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--cv-radius);
+  pointer-events: none;
+}
+.cv-overlay[data-status="frozen"] {
+  background:
+    radial-gradient(80% 60% at 50% 0%, rgba(255, 255, 255, 0.35) 0%, rgba(255, 255, 255, 0) 70%),
+    rgba(214, 232, 255, 0.28);
+  -webkit-backdrop-filter: blur(3px) saturate(0.8);
+  backdrop-filter: blur(3px) saturate(0.8);
+}
+
+/* Empty-state ghost stack. */
+.card-stack {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1.25 / 1;
+  pointer-events: none;
+}
+.cs-slot {
+  position: absolute;
+  left: 12%;
+  right: 12%;
+  top: 22%;
+  transform-origin: 50% 90%;
+}
+.cs-slot:nth-child(1) {
+  transform: translate(-13%, -16%) rotate(-10deg) scale(0.94);
+  opacity: 0.85;
+}
+.cs-slot:nth-child(2) {
+  transform: translate(0, 0) rotate(-2deg) scale(0.97);
+  opacity: 0.95;
+}
+.cs-slot:nth-child(3) {
+  transform: translate(13%, 16%) rotate(7deg);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .cs-float {
+    animation: cv-float 6s ease-in-out infinite;
+  }
+  .cs-slot:nth-child(2) .cs-float {
+    animation-delay: -2s;
+  }
+  .cs-slot:nth-child(3) .cs-float {
+    animation-delay: -4s;
+  }
+}
+@keyframes cv-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-5px);
+  }
+}
+}

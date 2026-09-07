@@ -15,6 +15,7 @@ export const NOTIFICATION_CATEGORIES = [
   "billing", // payments, subscription, plan changes
   "budget", // budget thresholds reached / exceeded
   "transactions", // recurring posted, notable transactions
+  "cards", // card statements, payments due, autopay, expiry
   "clients", // quotations, client lifecycle
   "system", // product / account-level announcements
 ] as const
@@ -51,6 +52,16 @@ export const NOTIFICATION_TYPES = {
   recurring_posted: { category: "transactions", i18nKey: "types.recurring_posted" },
   space_autosaved: { category: "transactions", i18nKey: "types.space_autosaved" },
   add_transaction_reminder: { category: "transactions", i18nKey: "types.add_transaction_reminder" },
+  // Cards (api/_lib/notify-cards.ts) — statement lifecycle, autopay, expiry.
+  // A due date is the one notification people want on their phone, hence the
+  // dedicated category (push on by default, see DEFAULT_PUSH_ON).
+  card_statement_ready: { category: "cards", i18nKey: "types.card_statement_ready" },
+  card_payment_due_soon: { category: "cards", i18nKey: "types.card_payment_due_soon" },
+  card_payment_overdue: { category: "cards", i18nKey: "types.card_payment_overdue" },
+  card_autopay_paid: { category: "cards", i18nKey: "types.card_autopay_paid" },
+  card_autopay_failed: { category: "cards", i18nKey: "types.card_autopay_failed" },
+  card_utilization_high: { category: "cards", i18nKey: "types.card_utilization_high" },
+  card_expiring: { category: "cards", i18nKey: "types.card_expiring" },
   quotation_accepted: { category: "clients", i18nKey: "types.quotation_accepted" },
   system_announcement: { category: "system", i18nKey: "types.system_announcement" },
   admin_broadcast: { category: "system", i18nKey: "types.admin_broadcast" },
@@ -79,7 +90,7 @@ export type PreferenceScope = (typeof PREFERENCE_SCOPES)[number]
 // System defaults, used when nothing in the cascade has an opinion. Everything
 // shows in-app; web_push defaults on only for the high-signal categories so the
 // out-of-the-box push experience isn't noisy.
-const DEFAULT_PUSH_ON: ReadonlySet<NotificationCategory> = new Set(["team", "billing", "budget"])
+const DEFAULT_PUSH_ON: ReadonlySet<NotificationCategory> = new Set(["team", "billing", "budget", "cards"])
 
 export function defaultChannelEnabled(category: NotificationCategory, channel: NotificationChannel): boolean {
   if (channel === "in_app") return true

@@ -10,6 +10,10 @@ import { amountExceedsLimit } from "../../src/lib/money.js"
 import { materializeDueRecurring } from "../_lib/recurring-materialize.js"
 import { notifyIfBudgetExceeded } from "../_lib/notify-budget.js"
 import { cleanTransactionTags } from "../../src/lib/transaction-tags.js"
+import { refundShapeValid } from "../../src/lib/tx-classify.js"
+import { expenseSumSql, incomeSumSql, pnlKindFilter, USER_KINDS } from "../_lib/tx-sql.js"
+import { attributeCard, cardTransactionFilter } from "../_lib/cards.js"
+import { syncCards } from "../_lib/card-autopay.js"
 
 const PAGE_SIZE = 20
 
@@ -36,6 +40,8 @@ const txFields = {
   wealthAccountBankName: wealthAccounts.bankName,
   wealthAccountType: wealthAccounts.type,
   wealthAccountIcon: wealthAccounts.icon,
+  // Which card paid (attribution only) — the list chip resolves it client-side.
+  cardId: transactions.cardId,
   groupId: transactions.groupId,
   kind: transactions.kind,
   type: transactions.type,
@@ -74,6 +80,10 @@ const groupedFields = {
   wealthAccountBankName: sql<string | null>`max(${wealthAccounts.bankName})`,
   wealthAccountType: sql<string | null>`max(${wealthAccounts.type})`,
   wealthAccountIcon: sql<string | null>`max(${wealthAccounts.icon})`,
+  // Card attribution of a collapsed group: real for one card, and the UI shows
+  // "N cards" (like "N accounts") when card_count > 1 instead of one arbitrary chip.
+  cardId: sql<string | null>`max(${transactions.cardId}::text)`,
+  cardCount: sql<number>`count(distinct ${transactions.cardId})::int`,
   groupId: sql<string | null>`max(${transactions.groupId}::text)`,
   kind: sql<string>`max(${transactions.kind})`,
   legCount: sql<number>`count(*)::int`,
@@ -143,9 +153,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // rows and their balance effects are visible on first load (lazy, indexed
     // short-circuit when nothing is due — no cron needed).
     await materializeDueRecurring(orgId)
+    // Card statements / autopay must have moved money before any list renders
+    // (idempotent, short-circuits when the org has no open credit card).
+    await syncCards(orgId).catch((err) => console.error("[cards] sync failed", err))
 
-    const { clientId, wealthAccountId, groupId, search, type, page, sort, limit, category, tag, from, to, includeClosed } = req.query as {
-      clientId?: string; wealthAccountId?: string; groupId?: string; search?: string; type?: string; page?: string; sort?: string; limit?: string; category?: string; tag?: string; from?: string; to?: string; includeClosed?: string
+    const { clientId, wealthAccountId: accountParam, cardId, groupId, search, type, page, sort, limit, category, tag, from, to, includeClosed } = req.query as {
+      clientId?: string; wealthAccountId?: string; cardId?: string; groupId?: string; search?: string; type?: string; page?: string; sort?: string; limit?: string; category?: string; tag?: string; from?: string; to?: string; includeClosed?: string
+    }
+    // `?cardId=` is an ACCOUNT-scoped view in disguise: a credit card owns its
+    // whole liability account, a debit card owns the rows that carry its id.
+    // Either way the list is flat and includes transfers, exactly like
+    // `?wealthAccountId=` (a card payment must show on the card's own page).
+    let wealthAccountId = accountParam
+    let cardFilter: ReturnType<typeof eq> | undefined
+    if (cardId) {
+      const scope = await cardTransactionFilter(orgId, cardId)
+      if (!scope) return res.status(404).json({ error: "Card not found" })
+      cardFilter = scope.where
+      wealthAccountId = wealthAccountId ?? "card" // marks the list as account-scoped below
     }
 
     // Fetch every leg of one split group (drives the detail breakdown). Always
@@ -161,8 +186,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.json(legs.map(serialize))
     }
 
-    // Scope to a single wealth account (drives the account-detail page).
-    const accountFilter = wealthAccountId ? eq(transactions.wealthAccountId, wealthAccountId) : undefined
+    // Scope to a single wealth account (drives the account-detail page) — or to
+    // a card (its own page), which resolves to the same flat, transfer-inclusive shape.
+    const accountFilter = cardFilter ?? (wealthAccountId ? eq(transactions.wealthAccountId, wealthAccountId) : undefined)
     // Collapse split legs into one row for the GLOBAL transactions list. An
     // account-scoped view (?wealthAccountId) shows the per-account leg; a
     // client-scoped view (?clientId, the client detail page) keeps its own
@@ -251,8 +277,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         isNull(transactions.deletedAt),
         closedClientFilter,
         accountFilter,
-        // The income/expense summary never counts internal transfers (net zero).
-        ne(transactions.kind, "transfer"),
+        // The income/expense summary never counts internal transfers (net zero);
+        // refunds are in scope and net against outgoing (api/_lib/tx-sql.ts).
+        pnlKindFilter,
         searchFilter,
         categoryFilter,
         tagFilter,
@@ -285,8 +312,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               .offset(offset),
         db
           .select({
-            incoming: sql<string>`coalesce(sum(case when ${transactions.type} = 'incoming' then ${transactions.amount}::numeric else 0 end), 0)`,
-            outgoing: sql<string>`coalesce(sum(case when ${transactions.type} = 'outgoing' then ${transactions.amount}::numeric else 0 end), 0)`,
+            incoming: incomeSumSql,
+            outgoing: expenseSumSql,
           })
           .from(transactions)
           .innerJoin(clients, eq(transactions.clientId, clients.id))
@@ -331,10 +358,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method === "POST") {
     if (!canWrite(role)) return res.status(403).json({ error: "Forbidden" })
-    const { client_id, type, amount, description, category, tags, date, wealth_account_id } = req.body as {
+    const { client_id, type, amount, description, category, tags, date, wealth_account_id: bodyAccountId, card_id, kind: rawKind } = req.body as {
       client_id: string; type: string; amount: number
-      description?: string; category?: string; tags?: unknown; date?: string; wealth_account_id?: string
+      description?: string; category?: string; tags?: unknown; date?: string; wealth_account_id?: string; card_id?: string | null; kind?: string
     }
+    // Which card paid, and therefore which account the money lands on — one
+    // rule for every write path (api/_lib/cards.ts attributeCard).
+    const attributed = await attributeCard(orgId, { cardId: card_id, wealthAccountId: bodyAccountId })
+    if (!attributed.ok) return res.status(400).json({ error: attributed.error })
+    const wealth_account_id = attributed.accountId ?? undefined
+    // 'standard' (default) or 'refund' — money given back for an earlier expense,
+    // which reporting nets against expense instead of counting as income.
+    // Transfers are never created here (POST /api/wealth/transfer).
+    const kind = rawKind ?? "standard"
+    if (!(USER_KINDS as readonly string[]).includes(kind)) return res.status(400).json({ error: "kind must be standard or refund" })
+    if (!refundShapeValid(type, kind)) return res.status(400).json({ error: "A refund must be incoming" })
 
     if (!amount || isNaN(Number(amount))) return res.status(400).json({ error: "amount is required" })
     if (amountExceedsLimit(amount)) return res.status(400).json({ error: "Amount is too large" })
@@ -379,6 +417,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .values({
         clientId,
         wealthAccountId: wealth_account_id,
+        cardId: attributed.cardId,
+        kind,
         type,
         amount: String(amount),
         description: description ?? "",
@@ -404,7 +444,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .where(eq(wealthAccounts.id, wealth_account_id))
     await logAudit({ orgId, entityType: "transaction", entityId: row.id, action: "create", actorId: userId })
     // Budget-exceeded alert (fire-and-forget): never blocks or fails the write.
-    if (type === "outgoing") void notifyIfBudgetExceeded(orgId, clientId, userId).catch(() => {})
+    if (type === "outgoing") void notifyIfBudgetExceeded(orgId, clientId, userId, { category: row.category, date: row.date }).catch(() => {})
     return res.status(201).json(serialize(row))
   }
 

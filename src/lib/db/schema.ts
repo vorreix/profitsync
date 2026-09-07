@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, numeric, date, timestamp, integer, boolean, index, uniqueIndex, jsonb, check } from "drizzle-orm/pg-core"
+import { pgTable, uuid, text, numeric, date, timestamp, integer, boolean, index, uniqueIndex, jsonb, check, type AnyPgColumn } from "drizzle-orm/pg-core"
 import { sql } from "drizzle-orm"
 
 export const organizations = pgTable("organizations", {
@@ -152,7 +152,12 @@ export const tags = pgTable("tags", {
 export const wealthAccounts = pgTable("wealth_accounts", {
   id: uuid("id").primaryKey().defaultRandom(),
   organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
-  type: text("type").notNull(), // bank | cash | space (space = a personal savings bucket)
+  // bank | cash | space | credit_card. `space` = a personal savings bucket;
+  // `credit_card` = a LIABILITY account: its current_balance is the signed
+  // asset-equivalent value, so it is normally NEGATIVE (−950 = €950 owed). The
+  // ledger (balanceDelta) is type-agnostic; only presentation reads the sign,
+  // through src/lib/credit-card.ts (cardDebt / availableCredit / …).
+  type: text("type").notNull(),
   bankName: text("bank_name").notNull().default(""),
   nickname: text("nickname").notNull().default(""),
   openingBalance: numeric("opening_balance", { precision: 20, scale: 2 }).notNull().default("0"),
@@ -179,6 +184,15 @@ export const wealthAccounts = pgTable("wealth_accounts", {
   // SUGGESTION is computed (src/lib/spaces.ts), never stored, so it can't drift.
   goalAmount: numeric("goal_amount", { precision: 20, scale: 2 }),
   targetDate: date("target_date"),
+  // ── Credit card (type='credit_card' only; NULL for every other type) ────────
+  // Configuration, never derived state: available credit, the amount owed, the
+  // statement remaining and the new-cycle spend are all computed from the
+  // ledger + credit_card_statements (src/lib/credit-card.ts), so nothing here
+  // can drift. Closing/due days are fixed days-of-month (1..31), clamped to the
+  // month's length at use (31 → Feb 28/29).
+  creditLimit: numeric("credit_limit", { precision: 20, scale: 2 }),
+  statementClosingDay: integer("statement_closing_day"),
+  paymentDueDay: integer("payment_due_day"),
   // User-defined card order within the org (lower = earlier). Set via the
   // drag-to-reorder UI; ties fall back to createdAt so pre-existing rows keep
   // their original order until first reordered.
@@ -200,6 +214,129 @@ export const wealthAccounts = pgTable("wealth_accounts", {
   // Trigram GIN for /api/search's ILIKE '%q%' on account names.
   bankNameTrgmIdx: index("wealth_accounts_bank_name_trgm_idx").using("gin", table.bankName.op("gin_trgm_ops")),
   nicknameTrgmIdx: index("wealth_accounts_nickname_trgm_idx").using("gin", table.nickname.op("gin_trgm_ops")),
+  closingDayCheck: check("wealth_accounts_closing_day_check", sql`statement_closing_day is null or (statement_closing_day between 1 and 31)`),
+  dueDayCheck: check("wealth_accounts_due_day_check", sql`payment_due_day is null or (payment_due_day between 1 and 31)`),
+}))
+
+// ── Credit-card statements ───────────────────────────────────────────────────
+// One row per CLOSED billing cycle of a credit card: a SNAPSHOT of the amount
+// owed at the end of the closing date (`statement_balance`). Filed lazily by
+// api/_lib/credit-card.ts when the account is read after a closing date has
+// passed (`source='computed'`, from the ledger), or entered by the user when
+// onboarding a card that already has history (`source='manual'`). Immutable
+// history: new purchases belong to the next cycle and never mutate a filed
+// statement. Payments are NOT stored here — what has been paid / is still owed
+// is DERIVED from the card's incoming transfer legs dated after `closing_date`
+// (src/lib/credit-card.ts statementView), so trash/restore/edit of a payment
+// recomputes deterministically. The unique index is the filing idempotency key.
+// Cascades with the account (and therefore with the org / factory reset).
+export const creditCardStatements = pgTable("credit_card_statements", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  wealthAccountId: uuid("wealth_account_id").notNull().references(() => wealthAccounts.id, { onDelete: "cascade" }),
+  // First day of the cycle (the day after the previous close); NULL when unknown (manual onboarding).
+  cycleStart: date("cycle_start"),
+  // The closing date — the last day whose transactions belong to this statement.
+  closingDate: date("closing_date").notNull(),
+  dueDate: date("due_date").notNull(),
+  // Amount owed at the end of the closing date. Signed like a debt (≥ 0 owed;
+  // negative = the card was in credit at close, nothing due).
+  statementBalance: numeric("statement_balance", { precision: 20, scale: 2 }).notNull().default("0"),
+  source: text("source").notNull().default("computed"), // computed | manual
+  // Autopay bookkeeping (api/_lib/card-autopay.ts) — a small state machine:
+  // NULL → 'processing' (the CLAIM: one conditional UPDATE … WHERE autopay_status
+  // IS NULL, the only idempotency gate Neon HTTP allows) → 'paid' (written in
+  // the SAME atomic batch as the transfer legs) | 'failed' (batch error or a
+  // stale claim; never retried automatically, `autopayError` says why) |
+  // 'skipped' (nothing left to pay, or superseded by a newer statement that
+  // already contains this debt). `autopayGroupId` = the transfer's group_id.
+  autopayStatus: text("autopay_status"),
+  autopayGroupId: uuid("autopay_group_id"),
+  autopayAt: timestamp("autopay_at"),
+  autopayError: text("autopay_error"),
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  accountCloseUnique: uniqueIndex("credit_card_statements_account_close_unique").on(table.wealthAccountId, table.closingDate),
+  orgIdx: index("credit_card_statements_org_idx").on(table.organizationId),
+  sourceCheck: check("credit_card_statements_source_check", sql`source in ('computed','manual')`),
+  autopayStatusCheck: check("credit_card_statements_autopay_status_check", sql`autopay_status is null or autopay_status in ('processing','paid','skipped','failed')`),
+}))
+
+// ── Cards ────────────────────────────────────────────────────────────────────
+// A first-class CARD (debit or credit) linked to a bank. A card row is IDENTITY
+// and ATTRIBUTION only — it never holds money. `accountId` is the ledger account
+// the card posts to: a debit card's bank, or a credit card's liability account
+// (wealth_accounts.type='credit_card' — signed balance, limit and statements
+// unchanged, docs/credit-cards). `fundingAccountId` (credit only) is the bank
+// that pays the statement (default "Pay from" + autopay source). Transactions
+// and recurring rules carry `cardId` so lists can show "C •••• 1234" — deleting
+// a card SETS NULL there, the money history is never touched. Cascades with its
+// ledger account (a liability account IS the credit card; a bank is only
+// hard-deleted when it has no transactions). Full design: docs/cards/CARDS.md.
+export const cards = pgTable("cards", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  kind: text("kind").notNull(), // debit | credit
+  accountId: uuid("account_id").notNull().references(() => wealthAccounts.id, { onDelete: "cascade" }),
+  fundingAccountId: uuid("funding_account_id").references(() => wealthAccounts.id, { onDelete: "set null" }),
+  // `issuerAccountId` (credit only) is the BANK THAT GAVE YOU THE CARD, as a
+  // real account rather than the free-text bank_name on the liability account.
+  // Usually the same bank as `fundingAccountId`, but not always — an HDFC card
+  // can be paid from an ICICI account. NULL on every card created before
+  // migration 0065, and every surface falls back to the liability account's
+  // bank_name, so a missing issuer is a supported state, not a broken one.
+  issuerAccountId: uuid("issuer_account_id").references(() => wealthAccounts.id, { onDelete: "set null" }),
+  // The optional INSTRUMENT on the paying side. `fundingAccountId` is always
+  // the account the money leaves; when `fundingCardId` is set it must resolve
+  // to that same account (api/_lib/cards.ts resolveFunding) — the rule every
+  // transaction write already applies. A debit card here is a label on money
+  // leaving its bank; a credit card here is a BALANCE TRANSFER, which is why
+  // autopay is refused on a liability funder on both write paths and again in
+  // the autopay engine.
+  fundingCardId: uuid("funding_card_id"),
+  name: text("name").notNull().default(""), // nickname; empty → "<Bank> <Network>" in the UI
+  holderName: text("holder_name").notNull().default(""),
+  network: text("network").notNull().default("other"), // visa | mastercard | amex | rupay | discover | jcb | unionpay | maestro | diners | other
+  // ONLY the last 4–6 digits are ever stored (truncation: the value can never
+  // be expanded back into a card number) — enough to tell two cards apart,
+  // useless to anyone who reads the database. Named `last4` for history;
+  // src/lib/cards.ts is the one place that formats it.
+  last4: text("last4").notNull().default(""),
+  expiryMonth: integer("expiry_month"),
+  expiryYear: integer("expiry_year"),
+  tier: text("tier").notNull().default("standard"), // standard | gold | platinum | metal | black | custom
+  // Custom look: { from, to, text: 'light'|'dark', pattern }. NULL → derived from
+  // the tier + the bank's brand colours (src/lib/cards.ts resolveCardPalette).
+  design: jsonb("design"),
+  // Brandfetch palette snapshot [{ hex, type, brightness }] for the linked bank's
+  // domain, captured at create (fail-soft) so the visual never re-fetches.
+  brandColors: jsonb("brand_colors"),
+  brandLogoUrl: text("brand_logo_url").notNull().default(""),
+  // Credit only. Effective only with a funding account. `autopaySince` is the
+  // day autopay was switched on: statements due BEFORE it are never auto-paid
+  // (onboarding a card with an old statement must not "pay" it retroactively).
+  autopay: boolean("autopay").notNull().default(false),
+  autopaySince: date("autopay_since"),
+  // active | frozen (hidden from pickers, no new transactions) | closed (archived).
+  status: text("status").notNull().default("active"),
+  position: integer("position").notNull().default(0),
+  createdBy: text("created_by"),
+  updatedBy: text("updated_by"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  orgIdx: index("cards_org_idx").on(table.organizationId),
+  accountIdx: index("cards_account_idx").on(table.accountId),
+  // One credit card per liability account: the card IS that account's identity.
+  creditAccountUnique: uniqueIndex("cards_credit_account_unique").on(table.accountId).where(sql`kind = 'credit'`),
+  kindCheck: check("cards_kind_check", sql`kind in ('debit','credit')`),
+  statusCheck: check("cards_status_check", sql`status in ('active','frozen','closed')`),
+  last4Check: check("cards_last4_check", sql`last4 ~ '^([0-9]{4,6})?$'`),
+  expiryMonthCheck: check("cards_expiry_month_check", sql`expiry_month is null or (expiry_month between 1 and 12)`),
+  expiryYearCheck: check("cards_expiry_year_check", sql`expiry_year is null or (expiry_year between 2000 and 2100)`),
+  expiryPairCheck: check("cards_expiry_pair_check", sql`(expiry_month is null) = (expiry_year is null)`),
+  tierCheck: check("cards_tier_check", sql`tier in ('standard','gold','platinum','metal','black','custom')`),
 }))
 
 export const wealthAccountAttachments = pgTable("wealth_account_attachments", {
@@ -225,16 +362,24 @@ export const transactions = pgTable("transactions", {
     .notNull()
     .references(() => clients.id, { onDelete: "cascade" }),
   wealthAccountId: uuid("wealth_account_id").references(() => wealthAccounts.id, { onDelete: "set null" }),
+  // WHICH card paid (attribution only — the money is on wealth_account_id, which
+  // is always the card's own ledger account). NULL for a plain account payment.
+  // SET NULL on card delete: the history outlives the card.
+  cardId: uuid("card_id").references(() => cards.id, { onDelete: "set null" }),
   // Links the legs of a single logical transaction that was paid from / split
   // across multiple wealth accounts (e.g. €100 = €30 cash + €25 AC1 + €45 AC2).
   // All legs share one group_id; a single-account transaction has group_id NULL.
   // Also used to pair the two legs of an account-to-account transfer.
   groupId: uuid("group_id"),
   // 'standard' for normal income/expense (incl. splits); 'transfer' for the two
-  // legs of an account-to-account move. Transfers are real, balance-affecting
-  // rows but are excluded from the global transactions list, the income/expense
-  // summary, and analytics (they net to zero and aren't P&L).
-  kind: text("kind").notNull().default("standard"), // standard | transfer
+  // legs of an account-to-account move (incl. paying a credit card from a bank
+  // account). Transfers are real, balance-affecting rows but are excluded from
+  // the global transactions list, the income/expense summary, and analytics
+  // (they net to zero and aren't P&L). 'refund' is an INCOMING row that gives
+  // money back for an earlier expense: it moves the balance like any incoming
+  // but reporting nets it against EXPENSE, never income (src/lib/tx-classify.ts
+  // + api/_lib/tx-sql.ts).
+  kind: text("kind").notNull().default("standard"), // standard | transfer | refund
   type: text("type").notNull(),
   amount: numeric("amount", { precision: 20, scale: 2 }).notNull().default("0"),
   description: text("description").default(""),
@@ -269,6 +414,7 @@ export const transactions = pgTable("transactions", {
   // so a separate single-column client index would be redundant.
   clientDateIdx: index("transactions_client_date_idx").on(table.clientId, table.date),
   accountIdx: index("transactions_account_idx").on(table.wealthAccountId),
+  cardIdx: index("transactions_card_idx").on(table.cardId),
   dateIdx: index("transactions_date_idx").on(table.date),
   // Containment lookups for the `?tag=` filter.
   tagsIdx: index("transactions_tags_idx").using("gin", table.tags),
@@ -303,6 +449,9 @@ export const recurringRules = pgTable("recurring_rules", {
   // (recurring_rule_id, recurring_due_date) never double-conflicts.
   kind: text("kind").notNull().default("standard"), // standard | transfer
   toAccountId: uuid("to_account_id").references(() => wealthAccounts.id, { onDelete: "set null" }),
+  // The card that pays each occurrence (copied onto every materialized row);
+  // `wealthAccountId` is then always that card's ledger account.
+  cardId: uuid("card_id").references(() => cards.id, { onDelete: "set null" }),
   name: text("name").notNull(),
   type: text("type").notNull(), // incoming | outgoing (for a transfer: the source-leg direction, always 'outgoing')
   amount: numeric("amount", { precision: 20, scale: 2 }).notNull(),
@@ -879,6 +1028,58 @@ export const budgetHistory = pgTable("budget_history", {
   lookupIdx: index("budget_history_lookup_idx").on(table.organizationId, table.clientId, table.createdAt),
 }))
 
+// ── Spending budgets ───────────────────────────────────────────────────────────
+// A NAMED spending limit over a window, scoped to a set of expense categories —
+// or to all spending when `categories` is empty. Several coexist per workspace
+// (personal AND business), and a main budget can carry SUB-BUDGETS (`parent_id`,
+// one level) that break its scope down: each sub-budget names ≥ 1 category
+// inside the parent's scope, siblings never share one, and the parent's own
+// figure minus its children's is "everything else" in it. Like the v1 client
+// caps above, spend is NEVER stored — api/_lib/spending-budgets.ts sums it
+// live for the current window (src/lib/budget.ts budgetWindow). `period` is
+// daily | weekly | monthly | yearly | once; only `once` uses the date bounds
+// (both NULL = all time, which is what a v1 `lifetime` budget became).
+export const spendingBudgets = pgTable("spending_budgets", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  parentId: uuid("parent_id").references((): AnyPgColumn => spendingBudgets.id, { onDelete: "cascade" }),
+  // '' only on rows migrated from a v1 personal budget (the UI labels those
+  // "Personal budget"); the API requires a name on every write.
+  name: text("name").notNull().default(""),
+  icon: text("icon").notNull().default(""), // src/components/budget/budget-icons.tsx key; '' = suggest
+  period: text("period").notNull().default("monthly"), // daily | weekly | monthly | yearly | once
+  startDate: date("start_date"), // once only — first day, inclusive
+  endDate: date("end_date"), // once only — last day, inclusive
+  amount: numeric("amount", { precision: 20, scale: 2 }).notNull().default("0"),
+  categories: jsonb("categories").notNull().default([]), // string[] of expense category names; [] = all spending
+  status: text("status").notNull().default("active"), // active | closed (closed = folded away, counted nowhere, no alerts)
+  position: integer("position").notNull().default(0), // manual order among siblings
+  createdBy: text("created_by"),
+  updatedBy: text("updated_by"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  orgIdx: index("spending_budgets_org_idx").on(table.organizationId, table.parentId, table.position),
+  // Sibling names are unique, case-insensitively. A top-level row's "parent" is
+  // its org id for the purpose of this key — a sentinel a real parent id can
+  // never equal.
+  siblingNameUnique: uniqueIndex("spending_budgets_sibling_name_unique")
+    .on(table.organizationId, sql`coalesce(${table.parentId}, ${table.organizationId})`, sql`lower(${table.name})`),
+  periodCheck: check("spending_budgets_period_check", sql`period in ('daily','weekly','monthly','yearly','once')`),
+  statusCheck: check("spending_budgets_status_check", sql`status in ('active','closed')`),
+  amountCheck: check("spending_budgets_amount_check", sql`amount >= 0`),
+  datesOnlyOnceCheck: check("spending_budgets_dates_once_check", sql`period = 'once' or (start_date is null and end_date is null)`),
+  dateOrderCheck: check("spending_budgets_date_order_check", sql`start_date is null or end_date is null or end_date >= start_date`),
+  // A sub-budget's window is its parent's, resolved on read — it never stores one.
+  childDatesCheck: check("spending_budgets_child_dates_check", sql`parent_id is null or (start_date is null and end_date is null)`),
+  // The OVERALL budget — top level, all spending — is the figure the page is
+  // built around and everything else is measured against, so there is exactly
+  // one. A closed one does not hold the slot.
+  overallUnique: uniqueIndex("spending_budgets_overall_unique")
+    .on(table.organizationId)
+    .where(sql`parent_id is null and categories = '[]'::jsonb and status = 'active'`),
+}))
+
 // ── Push delivery log ──────────────────────────────────────────────────────────
 // One row per sendWebPushToUser fan-out (aggregate counts, not per-device), so
 // admins can see WHETHER pushes go out and WHY they fail without prod console
@@ -1076,3 +1277,26 @@ export const userGroupMembers = pgTable("user_group_members", {
   groupIdx: index("user_group_members_group_idx").on(table.groupId),
   groupUserUnique: uniqueIndex("user_group_members_group_user_unique").on(table.groupId, table.userId),
 }))
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Budget v2 — the Smart Hybrid model.
+// Spec: docs/budget-v2/SMART_HYBRID_BUDGET_SPEC.md §10 (rev 4).
+//
+// Ten tables. Budget v1 (`budgets`, `budget_history`) is left completely intact
+// and readable throughout the compatibility window — nothing here mutates it.
+//
+// Two conventions repeated across these tables, worth stating once:
+//   • `organization_id` is DENORMALISED onto every child row so no query has to
+//     scope through a join chain (v1 scoped transactions via `clients`, which is
+//     a latent footgun).
+//   • Money is numeric(20,2); spend is NEVER stored — only a closed period's
+//     snapshot records it, and that is a report, not a cache.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// The Budget v2 engine's ten tables (budget_plans, budget_envelopes, …,
+// transaction_settlements) were removed with the engine itself. Their
+// migrations 0059–0061 were retired from the journal rather than kept, so
+// PRODUCTION never creates them; the shared development database still carries
+// them as orphans until the branch that still reads them is closed, and drizzle
+// ignores tables it does not declare. Budgets live in `spendingBudgets` above.
+

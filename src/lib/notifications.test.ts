@@ -11,6 +11,7 @@ import {
   notificationRenderKeys,
   NOTIFICATION_CATEGORIES,
   NOTIFICATION_CHANNELS,
+  NOTIFICATION_TYPES,
   type NotificationKeyKind,
   type NotificationPreferences,
 } from "./notifications"
@@ -247,5 +248,40 @@ describe("decideNoOrgSwitch", () => {
 
   it("strips but does not switch to a non-member org (stale push after leaving)", () => {
     expect(decideNoOrgSwitch("o9", "o1", members, false)).toEqual({ strip: true, switchTo: null })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Budget notification types
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("Budget notification types", () => {
+  const BUDGET = ["budget_warning", "budget_exceeded"] as const
+
+  it("are registered, and nothing from the retired v2 engine is", () => {
+    for (const type of BUDGET) expect(NOTIFICATION_TYPES, type).toHaveProperty(type)
+    for (const gone of ["budget_overdue", "budget_envelope_over", "budget_contribution_missed", "budget_period_closed", "budget_period_restated"]) {
+      expect(NOTIFICATION_TYPES, gone).not.toHaveProperty(gone)
+    }
+  })
+
+  it("all sit in the budget category, so ONE preference toggle governs them", () => {
+    for (const type of BUDGET) expect(categoryForType(type), type).toBe("budget")
+    // categoryForType falls back to "system" for anything unknown, so a typo in
+    // the registry would silently reroute a notification out of `budget`.
+    expect(categoryForType("budget_exceeded_typo")).toBe("system")
+  })
+
+  it("default to push ON, because a blown budget is worth a ping", () => {
+    for (const channel of ["web_push", "mobile_push"] as const) {
+      expect(defaultChannelEnabled("budget", channel), channel).toBe(true)
+    }
+    expect(defaultChannelEnabled("budget", "in_app")).toBe(true)
+  })
+
+  it("are silenced by muting the budget category", () => {
+    const optedOut = [{ categories: { budget: { in_app: false } } }]
+    expect(resolveChannelEnabled(optedOut, categoryForType("budget_exceeded"), "in_app")).toBe(false)
+    expect(resolveChannelEnabled([{ muted: true }], categoryForType("budget_exceeded"), "in_app")).toBe(false)
   })
 })

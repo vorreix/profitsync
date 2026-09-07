@@ -1,14 +1,13 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { and, asc, count, eq, isNull, max, ne, sql } from "drizzle-orm"
+import { and, asc, count, eq, isNull, ne, sql } from "drizzle-orm"
 import { db, serialize } from "../../../src/lib/db/index.js"
 import { transactions, wealthAccounts } from "../../../src/lib/db/schema.js"
-import { canWrite, ensureDefaultClient, requireAuth } from "../../_lib/auth.js"
-import { logAudit } from "../../_lib/audit.js"
-import { type BankDetailInput, fetchLogoData, pickBankDetails, resolveLogoColumns } from "../../_lib/bank-brand.js"
-import { amountExceedsLimit } from "../../../src/lib/money.js"
+import { canWrite, requireAuth } from "../../_lib/auth.js"
+import { fetchLogoData } from "../../_lib/bank-brand.js"
 import { logoDataUrl } from "../../../src/lib/logo-data.js"
-import { checkBankAccountQuota } from "../../_lib/quota.js"
 import { materializeDueRecurring } from "../../_lib/recurring-materialize.js"
+import { createWealthAccount, type CreateAccountInput } from "../../_lib/wealth-accounts.js"
+import { syncCards } from "../../_lib/card-autopay.js"
 
 // "Cash in Hand" is the default account every workspace always has. We lazily
 // provision it on first read so existing orgs (created before wealth tracking)
@@ -38,49 +37,6 @@ async function ensureCashAccount(orgId: string, userId: string) {
   }
 }
 
-function money(value: unknown): number {
-  const n = Number(value)
-  return Number.isFinite(n) ? n : 0
-}
-
-async function createSystemTransaction({
-  orgId,
-  userId,
-  accountId,
-  amount,
-  type,
-  description,
-  category,
-}: {
-  orgId: string
-  userId: string
-  accountId: string
-  amount: number
-  type: "incoming" | "outgoing"
-  description: string
-  category: string
-}) {
-  if (amount <= 0) return
-  const clientId = await ensureDefaultClient(orgId, userId)
-  const today = new Date().toISOString().split("T")[0]
-  const [row] = await db
-    .insert(transactions)
-    .values({
-      clientId,
-      wealthAccountId: accountId,
-      type,
-      amount: String(amount),
-      description,
-      category,
-      date: today,
-      isSystem: true,
-      createdBy: userId,
-      updatedBy: userId,
-    })
-    .returning()
-  await logAudit({ orgId, entityType: "transaction", entityId: row.id, action: "create", actorId: userId })
-}
-
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ctx = await requireAuth(req, res)
   if (!ctx) return
@@ -88,8 +44,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method === "GET") {
     await ensureCashAccount(orgId, userId)
-    // Due recurring occurrences must hit balances before the cards render.
+    // Due recurring occurrences must hit balances before the cards render, and
+    // due card autopays must have moved money (card-autopay.ts is idempotent
+    // and short-circuits cheaply when nothing is due).
     await materializeDueRecurring(orgId)
+    await syncCards(orgId).catch((err) => console.error("[cards] sync failed", err))
     const rows = await db
       .select({
         id: wealthAccounts.id,
@@ -114,6 +73,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         address: wealthAccounts.address,
         location: wealthAccounts.location,
         note: wealthAccounts.note,
+        creditLimit: wealthAccounts.creditLimit,
+        statementClosingDay: wealthAccounts.statementClosingDay,
+        paymentDueDay: wealthAccounts.paymentDueDay,
         position: wealthAccounts.position,
         isDefault: wealthAccounts.isDefault,
         archivedAt: wealthAccounts.archivedAt,
@@ -121,6 +83,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         updatedAt: wealthAccounts.updatedAt,
         transactionCount: count(transactions.id),
         attachmentCount: sql<number>`(select count(*)::int from wealth_account_attachments where wealth_account_id = ${wealthAccounts.id})`,
+        // How many non-closed cards live on this account (debit cards on a bank,
+        // the one credit card on a liability account) — the Banks tab badge.
+        // Cards this account is involved with, counting BOTH relationships the
+        // card overlay shows: the cards whose money IS this account (a debit
+        // card on a bank), the credit cards this account PAYS, and the credit
+        // cards this bank ISSUED. Counting fewer would make the tile badge
+        // disagree with the overlay (see components/cards/bank-cards.ts).
+        cardCount: sql<number>`(
+          select count(*)::int from cards c
+          where c.status <> 'closed'
+            and (c.account_id = ${wealthAccounts.id}
+                 or (c.kind = 'credit' and c.funding_account_id = ${wealthAccounts.id})
+                 or (c.kind = 'credit' and c.issuer_account_id = ${wealthAccounts.id}))
+        )`,
       })
       .from(wealthAccounts)
       .leftJoin(transactions, and(eq(transactions.wealthAccountId, wealthAccounts.id), isNull(transactions.deletedAt)))
@@ -164,78 +140,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method === "POST") {
     if (!canWrite(role)) return res.status(403).json({ error: "Forbidden" })
-    const body = req.body as BankDetailInput & {
-      type?: string
-      bank_name?: string
-      bankName?: string
-      nickname?: string
-      opening_balance?: number
-      openingBalance?: number
-      icon?: string
-    }
-    const { type, nickname, icon } = body
-    const bankName = body.bankName ?? body.bank_name ?? ""
-    const openingBalance = body.openingBalance ?? body.opening_balance ?? 0
-    if (type !== "bank" && type !== "cash") return res.status(400).json({ error: "type must be bank or cash" })
-
-    if (type === "bank") {
-      const name = bankName.trim()
-      if (!name) return res.status(400).json({ error: "bank_name is required" })
-      // Plan-based: free workspaces get 1 bank account, paid plans are unlimited.
-      const quota = await checkBankAccountQuota(orgId)
-      if (!quota.allowed) return res.status(402).json(quota)
-    }
-
-    if (type === "cash") {
-      const [{ total }] = await db
-        .select({ total: count() })
-        .from(wealthAccounts)
-        .where(and(eq(wealthAccounts.organizationId, orgId), eq(wealthAccounts.type, "cash"), isNull(wealthAccounts.archivedAt)))
-      if (total >= 1) return res.status(400).json({ error: "Only one Cash in Hand account allowed" })
-    }
-
-    const opening = money(openingBalance)
-    if (amountExceedsLimit(opening)) return res.status(400).json({ error: "Amount is too large" })
-    // Bank-detail fields apply to bank accounts only (Cash in Hand has none).
-    const details = type === "bank" ? pickBankDetails(body) : null
-    const logo = details ? await resolveLogoColumns(details.brandDomain, details.logoUrl) : null
-    // Append new accounts after the user's existing order.
-    const [{ maxPos }] = await db
-      .select({ maxPos: max(wealthAccounts.position) })
-      .from(wealthAccounts)
-      .where(eq(wealthAccounts.organizationId, orgId))
-    const [row] = await db
-      .insert(wealthAccounts)
-      .values({
-        organizationId: orgId,
-        type,
-        bankName: type === "cash" ? "Cash in Hand" : bankName.trim(),
-        nickname: (nickname ?? "").trim(),
-        openingBalance: String(opening),
-        currentBalance: String(opening),
-        icon: icon || (type === "cash" ? "wallet" : "bank"),
-        position: (maxPos ?? -1) + 1,
-        ...(details ?? {}),
-        ...(logo ? { logoUrl: logo.logoUrl, logoData: logo.logoData } : {}),
-        createdBy: userId,
-        updatedBy: userId,
-      })
-      .returning()
-
-    if (opening > 0) {
-      await createSystemTransaction({
-        orgId,
-        userId,
-        accountId: row.id,
-        amount: opening,
-        type: "incoming",
-        description: "Opening Balance",
-        category: "Opening Balance",
-      })
-    }
-
-    await logAudit({ orgId, entityType: "wealth_account", entityId: row.id, action: "create", actorId: userId })
-    const { logoData, ...safe } = row
+    // Validation, quota, brand logo, the Opening Balance system row and a card's
+    // seed statement all live in api/_lib/wealth-accounts.ts — shared with the
+    // Cards API so an inline "add bank" behaves exactly like this route.
+    const result = await createWealthAccount(orgId, userId, req.body as CreateAccountInput)
+    if (!result.ok) return res.status(result.status).json(result.body)
+    const { logoData, ...safe } = result.row
     return res.status(201).json(serialize({ ...safe, logoSrc: logoDataUrl(logoData) }))
   }
 

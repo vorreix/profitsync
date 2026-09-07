@@ -7,7 +7,10 @@ import { diffFields, logAudit } from "../../../_lib/audit.js"
 import { type BankDetailInput, pickBankDetails, resolveLogoColumns } from "../../../_lib/bank-brand.js"
 import { amountExceedsLimit } from "../../../../src/lib/money.js"
 import { logoDataUrl } from "../../../../src/lib/logo-data.js"
-import { checkBankAccountQuota } from "../../../_lib/quota.js"
+import { checkBankAccountQuota, checkCreditCardQuota } from "../../../_lib/quota.js"
+import { cardDebt, isLiabilityType, isValidDayOfMonth, signedBalanceFromDebt } from "../../../../src/lib/credit-card.js"
+import { cards } from "../../../../src/lib/db/schema.js"
+import { cardsFundedBy, creditCardIdFor, openCardsOnAccount, syncCardStatusWithAccount } from "../../../_lib/cards.js"
 
 function money(value: unknown): number {
   const n = Number(value)
@@ -33,7 +36,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     .where(and(eq(wealthAccounts.id, id), eq(wealthAccounts.organizationId, orgId)))
   if (!account) return res.status(404).json({ error: "Not found" })
 
-  if (req.method === "GET") return res.json(serialize(withLogoSrc(account)))
+  if (req.method === "GET") {
+    // A liability account IS a credit card: hand the client the card id so
+    // /wealth/:id can forward to the card screen.
+    const cardId = isLiabilityType(account.type) ? await creditCardIdFor(account.id) : null
+    return res.json(serialize({ ...withLogoSrc(account), cardId }))
+  }
 
   if (req.method === "PATCH") {
     if (!canWrite(role)) return res.status(403).json({ error: "Forbidden" })
@@ -44,6 +52,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       icon?: string
       current_balance?: number
       currentBalance?: number
+      // Credit card: the amount OWED (converted to the signed balance here, so
+      // no client ever handles the liability sign) + configuration.
+      current_debt?: number | string
+      credit_limit?: number | string
+      statement_closing_day?: number
+      payment_due_day?: number
       archive?: boolean
       restore?: boolean
       set_default?: boolean
@@ -51,15 +65,42 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const { nickname, icon, archive, restore } = body
     const setDefault = typeof body.set_default === "boolean" ? body.set_default : undefined
     const bankName = body.bankName ?? body.bank_name
-    const currentBalance = body.currentBalance ?? body.current_balance
+    const isCard = isLiabilityType(account.type)
+    let currentBalance = body.currentBalance ?? body.current_balance
+    if (isCard && body.current_debt !== undefined) {
+      const debt = Number(body.current_debt)
+      if (!Number.isFinite(debt) || debt < 0) return res.status(400).json({ error: "current_debt must be 0 or more" })
+      currentBalance = signedBalanceFromDebt(debt)
+    }
     if (currentBalance !== undefined && amountExceedsLimit(currentBalance)) return res.status(400).json({ error: "Amount is too large" })
+    // Card configuration (cards only). Changing the closing day only affects
+    // FUTURE filings; statements already on record are immutable history.
+    const cardPatch: { creditLimit?: string; statementClosingDay?: number; paymentDueDay?: number } = {}
+    if (isCard) {
+      if (body.credit_limit !== undefined) {
+        const limit = Number(body.credit_limit)
+        if (!Number.isFinite(limit) || limit <= 0 || amountExceedsLimit(limit)) return res.status(400).json({ error: "credit_limit must be greater than 0" })
+        cardPatch.creditLimit = String(limit)
+      }
+      if (body.statement_closing_day !== undefined) {
+        if (!isValidDayOfMonth(Number(body.statement_closing_day))) return res.status(400).json({ error: "statement_closing_day must be 1..31" })
+        cardPatch.statementClosingDay = Number(body.statement_closing_day)
+      }
+      if (body.payment_due_day !== undefined) {
+        if (!isValidDayOfMonth(Number(body.payment_due_day))) return res.status(400).json({ error: "payment_due_day must be 1..31" })
+        cardPatch.paymentDueDay = Number(body.payment_due_day)
+      }
+      const nextClosing = cardPatch.statementClosingDay ?? account.statementClosingDay
+      const nextDue = cardPatch.paymentDueDay ?? account.paymentDueDay
+      if (nextClosing != null && nextDue != null && nextClosing === nextDue) return res.status(400).json({ error: "Closing day and due day must differ" })
+    }
 
     // Bank-detail fields are only updated when at least one is present in the
     // body (so a plain rename/adjust PATCH doesn't wipe them). Logo is re-fetched
     // only when the brand domain / logo url is part of this update.
     const hasDetailUpdate = ["brand_domain", "logo_url", "country", "account_number", "routing_number", "swift", "address", "location", "note"]
       .some((k) => k in (body as Record<string, unknown>))
-    const details = account.type === "bank" && hasDetailUpdate ? pickBankDetails(body) : null
+    const details = (account.type === "bank" || isCard) && hasDetailUpdate ? pickBankDetails(body) : null
     const logo = details && ("brand_domain" in body || "logo_url" in body)
       ? await resolveLogoColumns(details.brandDomain, details.logoUrl)
       : null
@@ -69,8 +110,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (archive && account.type === "cash") {
       return res.status(400).json({ error: "Cash in Hand can't be archived" })
     }
+    // A credit card that still owes money can't be closed (nothing could pay it).
+    // A credit card that still owes money can't be closed (nothing could pay it
+    // afterwards) — but only when there IS money history behind the balance: a
+    // stored balance with no rows left is an artifact of a purge, not a debt.
+    if (archive && isCard && !account.archivedAt && cardDebt(account.currentBalance) > 0) {
+      const [{ rows }] = await db.select({ rows: count() }).from(transactions).where(eq(transactions.wealthAccountId, id))
+      if (rows > 0) return res.status(409).json({ error: "Pay off the card before closing it", code: "card_has_debt", debt: cardDebt(account.currentBalance) })
+    }
 
-    if (account.type === "bank" && bankName !== undefined && !bankName.trim()) {
+    if ((account.type === "bank" || isCard) && bankName !== undefined && !bankName.trim()) {
       return res.status(400).json({ error: "bankName is required" })
     }
     if (icon !== undefined && !icon.trim()) {
@@ -89,6 +138,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         // Reopening: free plans block if already at the 1-active limit (forcing an
         // upgrade); paid plans always allow (the bank already counts toward 20).
         const quota = await checkBankAccountQuota(orgId, { forRestore: true })
+        if (!quota.allowed) return res.status(402).json(quota)
+      }
+      if (isCard) {
+        const quota = await checkCreditCardQuota(orgId, { forRestore: true })
         if (!quota.allowed) return res.status(402).json(quota)
       }
     }
@@ -147,6 +200,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ...(nickname !== undefined ? { nickname: nickname.trim() } : {}),
         ...(icon !== undefined ? { icon } : {}),
         ...(currentBalance !== undefined ? { currentBalance: String(newBalance) } : {}),
+        ...cardPatch,
         ...(details ?? {}),
         ...(logo ? { logoUrl: logo.logoUrl, logoData: logo.logoData } : {}),
         // Archiving or restoring clears the default flag (an archived default is
@@ -160,10 +214,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .where(eq(wealthAccounts.id, id))
       .returning()
 
+    // Keep the cards on this account coherent with it (docs/cards/CARDS.md):
+    // closing a bank closes the debit cards that spend from it and switches
+    // autopay off for the credit cards it pays; a liability account's card
+    // follows it (closed ⇄ active). Reopening a bank does NOT reopen its cards
+    // — the user reopens the ones they still use.
+    if (archive && !before.archivedAt) {
+      if (isCard) {
+        await syncCardStatusWithAccount(id, true, userId)
+      } else {
+        await db
+          .update(cards)
+          .set({ status: "closed", updatedBy: userId, updatedAt: new Date() })
+          .where(and(eq(cards.accountId, id), eq(cards.organizationId, orgId), sql`${cards.status} <> 'closed'`))
+        await db
+          .update(cards)
+          .set({ autopay: false, autopaySince: null, updatedBy: userId, updatedAt: new Date() })
+          .where(and(eq(cards.fundingAccountId, id), eq(cards.organizationId, orgId), eq(cards.autopay, true)))
+      }
+    }
+    if (restore && before.archivedAt && isCard) await syncCardStatusWithAccount(id, false, userId)
+
     const changes = diffFields(
       before as Record<string, unknown>,
       updated as Record<string, unknown>,
-      ["bankName", "nickname", "icon", "currentBalance", "archivedAt", "isDefault", "country", "accountNumber", "routingNumber", "swift", "address", "location", "note"],
+      ["bankName", "nickname", "icon", "currentBalance", "archivedAt", "isDefault", "country", "accountNumber", "routingNumber", "swift", "address", "location", "note", "creditLimit", "statementClosingDay", "paymentDueDay"],
     )
     if (Object.keys(changes).length) {
       await logAudit({ orgId, entityType: "wealth_account", entityId: id, action: archive ? "close" : restore ? "reopen" : "update", actorId: userId, changes })
@@ -179,17 +254,37 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (account.type === "cash") {
       return res.status(400).json({ error: "Cash in Hand can't be removed" })
     }
+    const isCard = isLiabilityType(account.type)
+    // Trashed rows count too: a hard delete would strip their attribution.
     const [{ total }] = await db
       .select({ total: count() })
       .from(transactions)
-      .where(and(eq(transactions.wealthAccountId, id), isNull(transactions.deletedAt)))
+      .where(eq(transactions.wealthAccountId, id))
+    if (isCard && !account.archivedAt && total > 0 && cardDebt(account.currentBalance) > 0) {
+      return res.status(409).json({ error: "Pay off the card before closing it", code: "card_has_debt", debt: cardDebt(account.currentBalance) })
+    }
+    // Cards are identity the user typed in — never let a bank delete cascade
+    // them away silently; a bank with cards is archived instead.
+    const linkedCards = isCard ? [] : [...(await openCardsOnAccount(orgId, id)), ...(await cardsFundedBy(orgId, id))]
 
-    if (total > 0) {
+    if (total > 0 || linkedCards.length > 0) {
       const [updated] = await db
         .update(wealthAccounts)
-        .set({ archivedAt: new Date(), updatedBy: userId, updatedAt: new Date() })
+        .set({ archivedAt: new Date(), isDefault: false, updatedBy: userId, updatedAt: new Date() })
         .where(eq(wealthAccounts.id, id))
         .returning()
+      if (isCard) {
+        await syncCardStatusWithAccount(id, true, userId)
+      } else {
+        await db
+          .update(cards)
+          .set({ status: "closed", updatedBy: userId, updatedAt: new Date() })
+          .where(and(eq(cards.accountId, id), eq(cards.organizationId, orgId), sql`${cards.status} <> 'closed'`))
+        await db
+          .update(cards)
+          .set({ autopay: false, autopaySince: null, updatedBy: userId, updatedAt: new Date() })
+          .where(and(eq(cards.fundingAccountId, id), eq(cards.organizationId, orgId), eq(cards.autopay, true)))
+      }
       await logAudit({ orgId, entityType: "wealth_account", entityId: id, action: "close", actorId: userId })
       return res.json(serialize(withLogoSrc(updated)))
     }
