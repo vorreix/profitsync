@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react"
+import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react"
 import { useTranslation } from "react-i18next"
 import { ArrowLeftRight, ChevronLeft, ChevronRight, ExternalLink, GripHorizontal, Wallet } from "lucide-react"
 import { cardDisplayName, maskedTail } from "@/lib/cards"
@@ -24,7 +24,6 @@ type Gesture =
   | { mode: "idle" }
   | { mode: "swipe"; startX: number; startOffset: number }
   | { mode: "hold"; startX: number; from: number; target: number; dx: number }
-  | { mode: "vertical" }
 
 /**
  * The mobile card fan: every open card in one hand, pivoting from a point
@@ -65,19 +64,13 @@ export function CardFanSheet({
   const { t } = useTranslation("wealth")
   const money = (n: number) => formatMoney(n, currency, balancesVisible)
 
-  // A local mirror of the order: the held card is moved here at once, and the
-  // parent is told on release. Re-synced whenever the deck itself changes.
-  const [ids, setIds] = useState<string[]>(() => cards.map((c) => c.id))
-  const byId = useMemo(() => new Map(cards.map((c) => [c.id, c])), [cards])
-  useEffect(() => {
-    setIds((prev) => {
-      const live = new Set(cards.map((c) => c.id))
-      const kept = prev.filter((id) => live.has(id))
-      const added = cards.map((c) => c.id).filter((id) => !kept.includes(id))
-      return [...kept, ...added]
-    })
-  }, [cards])
-  const deck = useMemo(() => ids.map((id) => byId.get(id)).filter((c): c is Card => !!c), [ids, byId])
+  // NO local copy of the order. The parent owns it: a reorder is reported on
+  // release, the parent applies it at once and hands it straight back down, and
+  // if the write fails the parent rolls back and the fan follows. A mirror here
+  // would keep the failed order for the rest of the session while the grid
+  // behind it showed the real one. While a card is HELD the others are only
+  // renumbered for painting (displayIndexWhileHeld) — the array never moves.
+  const deck = cards
   const count = deck.length
 
   const [offset, setOffset] = useState(0)
@@ -96,15 +89,12 @@ export function CardFanSheet({
   const inHand = deck[selected]
   const setGestureBoth = (g: Gesture) => { gestureRef.current = g; setGesture(g) }
 
-  // The pointer handlers are attached NATIVELY to the stage (see stageRef
-  // below), so they are created once and would close over stale state. Everything
-  // they read lives here instead, refreshed on every render.
-  const latest = useRef({ offset, count, selected, ids, canWrite })
-  latest.current = { offset, count, selected, ids, canWrite }
-
   // Reset to the first card each time the sheet opens.
   useEffect(() => { if (open) { setOffset(0); setGestureBoth({ mode: "idle" }) } }, [open])
   useEffect(() => () => { if (holdTimer.current) clearTimeout(holdTimer.current) }, [])
+  // Every card closed or deleted while the sheet was open: there is nothing to
+  // hold, so close rather than leave an empty stage behind a title.
+  useEffect(() => { if (open && count === 0) onOpenChange(false) }, [open, count, onOpenChange])
 
   const px = pxPerStep()
 
@@ -115,10 +105,12 @@ export function CardFanSheet({
 
   function onPointerDown(e: ReactPointerEvent<HTMLDivElement>) {
     if (e.button !== 0 && e.pointerType === "mouse") return
-    const { selected, count, canWrite } = latest.current
+    // One pointer at a time. A second finger landing mid-swipe would otherwise
+    // reset the origin and make the fan jump under the first one.
+    if (activePointer.current !== null) return
     activePointer.current = e.pointerId
     pointerStart.current = { x: e.clientX, y: e.clientY }
-    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+    try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId) } catch { /* not capturable */ }
     clearHold()
     if (canWrite && count > 1) {
       // Only the card in hand can be picked up: holding a neighbour would be
@@ -136,7 +128,6 @@ export function CardFanSheet({
   function onPointerMove(e: ReactPointerEvent<HTMLDivElement>) {
     if (activePointer.current !== e.pointerId) return
     const g = gestureRef.current
-    const { offset, count } = latest.current
     const dx = e.clientX - pointerStart.current.x
     const dy = e.clientY - pointerStart.current.y
     if (g.mode === "idle") {
@@ -148,8 +139,16 @@ export function CardFanSheet({
         // move here does nothing rather than half-rotating the fan on the way
         // to a dismissal. The drawer is still dismissed from its handle or by
         // tapping the overlay — this only stops a wobble while browsing cards.
-        ;(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId)
-        setGestureBoth({ mode: "vertical" })
+        //
+        // This pointer is retired here, and the gesture goes straight back to
+        // idle. Parking it in a "vertical" state was a state we could never
+        // leave: releasing capture means the matching pointerup lands
+        // elsewhere, so nothing was left to reset it and the fan stopped
+        // responding to every later touch. Idle + no active pointer is inert
+        // on its own — the guard above drops this pointer's remaining moves.
+        try { (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId) } catch { /* already released */ }
+        activePointer.current = null
+        setGestureBoth({ mode: "idle" })
         return
       }
       setGestureBoth({ mode: "swipe", startX: pointerStart.current.x, startOffset: offset })
@@ -172,7 +171,6 @@ export function CardFanSheet({
     if (activePointer.current !== e.pointerId) return
     activePointer.current = null
     const g = gestureRef.current
-    const { offset, count, selected, ids } = latest.current
     clearHold()
     if (g.mode === "swipe") {
       setOffset(snapOffset(offset, count))
@@ -180,14 +178,13 @@ export function CardFanSheet({
       return
     }
     if (g.mode === "hold") {
+      const ids = deck.map((c) => c.id)
       const next = reorderIds(ids, g.from, g.target)
-      setIds(next)
       setOffset(g.target)
       setGestureBoth({ mode: "idle" })
       if (next !== ids) { void haptic("light"); onReorder(next) }
       return
     }
-    if (g.mode === "vertical") { setGestureBoth({ mode: "idle" }); return }
     // A tap: on the card in hand it opens; on a neighbour it rotates to it.
     const hit = hitIndex(e.target as HTMLElement)
     if (hit === null) return
@@ -198,7 +195,7 @@ export function CardFanSheet({
   function onPointerCancel() {
     activePointer.current = null
     clearHold()
-    if (gestureRef.current.mode === "swipe") setOffset(snapOffset(latest.current.offset, latest.current.count))
+    if (gestureRef.current.mode === "swipe") setOffset(snapOffset(offset, count))
     setGestureBoth({ mode: "idle" })
   }
 
@@ -208,7 +205,8 @@ export function CardFanSheet({
   const usage = inHand?.kind === "credit" ? creditUsage(inHand.account_credit_limit, inHand.account_current_balance) : null
   const canPay = !!inHand && inHand.kind === "credit" && canWrite && (usage?.debt ?? 0) > 0
   const usableSource = !!inHand && inHand.status === "active" && !inHand.account_archived_at
-  const canMove = usableSource && canWrite && count > 1
+  // No `count > 1`: the destination is any account, not necessarily another card.
+  const canMove = usableSource && canWrite
 
   const live = gesture.mode === "swipe" || gesture.mode === "hold"
 
