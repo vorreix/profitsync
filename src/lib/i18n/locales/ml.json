@@ -2110,6 +2110,68 @@
     },
     "settings_button": "അറിയിപ്പ് ക്രമീകരണങ്ങൾ"
   },
+  "alerts": {
+    "region": "നിങ്ങളുടെ ശ്രദ്ധ വേണം",
+    "slide": "{{total}}-ൽ {{index}}",
+    "goTo": "{{total}}-ൽ {{index}} കാണിക്കുക",
+    "dismiss": "മാറ്റുക",
+    "when": {
+      "today": "ഇന്ന്",
+      "tomorrow": "നാളെ",
+      "inDays_one": "{{count}} ദിവസത്തിനുള്ളിൽ",
+      "inDays_other": "{{count}} ദിവസത്തിനുള്ളിൽ",
+      "ago_one": "{{count}} ദിവസം മുൻപ്",
+      "ago_other": "{{count}} ദിവസം മുൻപ്"
+    },
+    "card_payment_overdue": {
+      "title": "കാർഡ് പേയ്‌മെന്റ് കാലാവധി കഴിഞ്ഞു",
+      "body": "{{card}} — {{amount}} {{when}} അടയ്ക്കേണ്ടതായിരുന്നു."
+    },
+    "card_autopay_failed": {
+      "title": "ഓട്ടോപേ നടന്നില്ല",
+      "body": "{{card}} — {{amount}} ഇപ്പോഴും അടയ്ക്കാനുണ്ട്. നേരിട്ട് അടയ്ക്കുക."
+    },
+    "card_payment_due_soon": {
+      "title": "കാർഡ് പേയ്‌മെന്റ് ഉടൻ",
+      "body": "{{card}} — {{amount}}, {{when}} അടയ്ക്കണം."
+    },
+    "card_autopay_scheduled": {
+      "title": "ഓട്ടോപേ ഇത് ചെയ്യും",
+      "body": "{{card}}-നായി {{amount}}, {{when}}."
+    },
+    "charge_shortfall": {
+      "title": "{{account}} തികഞ്ഞേക്കില്ല",
+      "body": "“{{name}}” {{when}} {{amount}} എടുക്കും — {{short}} കുറവാണ്."
+    },
+    "card_expired": {
+      "title": "കാർഡ് കാലഹരണപ്പെട്ടു",
+      "body": "{{card}} {{expiry}}-ന് കാലഹരണപ്പെട്ടു. പേയ്‌മെന്റുകൾ തുടരാൻ ഇത് പുതുക്കുക."
+    },
+    "card_expiring": {
+      "title": "കാർഡ് ഉടൻ കാലഹരണപ്പെടും",
+      "body": "{{card}} {{expiry}}-ന് കാലഹരണപ്പെടും."
+    },
+    "card_utilization_high": {
+      "title": "പരിധിയോട് അടുത്തു",
+      "body": "{{card}} {{pct}}% ആണ് — {{available}} ബാക്കി."
+    },
+    "recurring_paused": {
+      "title": "ഒരു ആവർത്തന പേയ്‌മെന്റ് നിർത്തിവച്ചു",
+      "body": "“{{name}}” രേഖപ്പെടുത്തുന്നില്ല. കാരണം അറിയാൻ തുറക്കുക."
+    },
+    "recurring_upcoming": {
+      "title": "പേയ്‌മെന്റ് വരാനുണ്ട്",
+      "body": "“{{name}}” — {{amount}}, {{when}}."
+    },
+    "recurring_posted": {
+      "title": "സ്വയമേവ രേഖപ്പെടുത്തി",
+      "body": "“{{name}}” — {{amount}}."
+    },
+    "income_received": {
+      "title": "പണം ലഭിച്ചു",
+      "body": "“{{name}}” — {{amount}}."
+    }
+  },
   "featureHelp": {
     "open": "{{feature}} സഹായം തുറക്കുക",
     "includes": "ഉൾപ്പെടുന്നത്",

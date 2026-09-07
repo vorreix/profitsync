@@ -2110,6 +2110,68 @@
     },
     "settings_button": "सूचना सेटिंग्स"
   },
+  "alerts": {
+    "region": "आपके ध्यान की ज़रूरत",
+    "slide": "{{total}} में से {{index}}",
+    "goTo": "{{total}} में से {{index}} दिखाएँ",
+    "dismiss": "हटाएँ",
+    "when": {
+      "today": "आज",
+      "tomorrow": "कल",
+      "inDays_one": "{{count}} दिन में",
+      "inDays_other": "{{count}} दिनों में",
+      "ago_one": "{{count}} दिन पहले",
+      "ago_other": "{{count}} दिन पहले"
+    },
+    "card_payment_overdue": {
+      "title": "कार्ड भुगतान बकाया",
+      "body": "{{card}} — {{amount}} की देय तिथि {{when}} थी।"
+    },
+    "card_autopay_failed": {
+      "title": "ऑटोपे नहीं हो पाया",
+      "body": "{{card}} — {{amount}} अब भी बकाया है। इसे मैन्युअल रूप से चुकाएँ।"
+    },
+    "card_payment_due_soon": {
+      "title": "कार्ड भुगतान जल्द देय",
+      "body": "{{card}} — {{amount}}, देय {{when}}।"
+    },
+    "card_autopay_scheduled": {
+      "title": "ऑटोपे यह संभाल लेगा",
+      "body": "{{card}} के लिए {{amount}}, {{when}}।"
+    },
+    "charge_shortfall": {
+      "title": "{{account}} में शायद पर्याप्त नहीं",
+      "body": "“{{name}}” {{when}} {{amount}} लेगा — {{short}} कम है।"
+    },
+    "card_expired": {
+      "title": "कार्ड समाप्त हो गया",
+      "body": "{{card}} {{expiry}} को समाप्त हो गया। भुगतान जारी रखने के लिए इसे अपडेट करें।"
+    },
+    "card_expiring": {
+      "title": "कार्ड जल्द समाप्त",
+      "body": "{{card}} {{expiry}} को समाप्त होगा।"
+    },
+    "card_utilization_high": {
+      "title": "सीमा के करीब",
+      "body": "{{card}} {{pct}}% पर है — {{available}} बचा है।"
+    },
+    "recurring_paused": {
+      "title": "एक आवर्ती भुगतान रुका है",
+      "body": "“{{name}}” दर्ज नहीं हो रहा। कारण देखने के लिए इसे खोलें।"
+    },
+    "recurring_upcoming": {
+      "title": "भुगतान आने वाला है",
+      "body": "“{{name}}” — {{amount}}, {{when}}।"
+    },
+    "recurring_posted": {
+      "title": "स्वतः दर्ज हुआ",
+      "body": "“{{name}}” — {{amount}}।"
+    },
+    "income_received": {
+      "title": "पैसा आया",
+      "body": "“{{name}}” — {{amount}}।"
+    }
+  },
   "featureHelp": {
     "open": "Open help for {{feature}}",
     "includes": "Includes",

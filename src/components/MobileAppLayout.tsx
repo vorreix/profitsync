@@ -60,7 +60,6 @@ import { ModeToggle } from "@/components/mode-toggle"
 import { LanguageSwitcher } from "@/components/LanguageSwitcher"
 import { InstallAppBanner } from "@/components/InstallAppBanner"
 import { InstallButton } from "@/components/InstallButton"
-import { ReferralBanner } from "@/components/ReferralBanner"
 import { NotificationBell } from "@/components/notifications/NotificationBell"
 import { EntityAvatar } from "@/components/EntityAvatar"
 import { QuickAddModal, type QuickAddEntity, type QuickAddPrefill } from "@/components/QuickAddModal"
@@ -432,7 +431,6 @@ export function MobileAppLayout() {
 
       <main className={`flex-1 overflow-y-auto overflow-x-hidden pb-32 ${routeEnterClass}`} key={location.pathname + (activeOrg?.id ?? "")}>
         <InstallAppBanner className="mx-4 mt-3" />
-        <ReferralBanner className="mx-4 mt-3" />
         {orgLoading ? (
           <div className="flex h-[60vh] items-center justify-center">
             <Loader className="size-6 animate-spin text-muted-foreground" />

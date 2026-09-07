@@ -2110,6 +2110,68 @@
     },
     "settings_button": "அறிவிப்பு அமைப்புகள்"
   },
+  "alerts": {
+    "region": "உங்கள் கவனம் தேவை",
+    "slide": "{{total}} இல் {{index}}",
+    "goTo": "{{total}} இல் {{index}} ஐக் காட்டு",
+    "dismiss": "நீக்கு",
+    "when": {
+      "today": "இன்று",
+      "tomorrow": "நாளை",
+      "inDays_one": "{{count}} நாளில்",
+      "inDays_other": "{{count}} நாட்களில்",
+      "ago_one": "{{count}} நாள் முன்பு",
+      "ago_other": "{{count}} நாட்களுக்கு முன்பு"
+    },
+    "card_payment_overdue": {
+      "title": "அட்டைப் பணம் தாமதம்",
+      "body": "{{card}} — {{amount}} {{when}} செலுத்த வேண்டியிருந்தது."
+    },
+    "card_autopay_failed": {
+      "title": "தானியங்கிக் கட்டணம் நடக்கவில்லை",
+      "body": "{{card}} — {{amount}} இன்னும் நிலுவையில் உள்ளது. நேரடியாகச் செலுத்துங்கள்."
+    },
+    "card_payment_due_soon": {
+      "title": "அட்டைப் பணம் விரைவில்",
+      "body": "{{card}} — {{amount}}, {{when}} செலுத்த வேண்டும்."
+    },
+    "card_autopay_scheduled": {
+      "title": "தானியங்கிக் கட்டணம் கவனிக்கும்",
+      "body": "{{card}}க்கு {{amount}}, {{when}}."
+    },
+    "charge_shortfall": {
+      "title": "{{account}} போதாமல் போகலாம்",
+      "body": "“{{name}}” {{when}} {{amount}} எடுக்கும் — {{short}} குறைவு."
+    },
+    "card_expired": {
+      "title": "அட்டை காலாவதியானது",
+      "body": "{{card}} {{expiry}} அன்று காலாவதியானது. கட்டணங்கள் தொடர இதைப் புதுப்பியுங்கள்."
+    },
+    "card_expiring": {
+      "title": "அட்டை விரைவில் காலாவதியாகும்",
+      "body": "{{card}} {{expiry}} அன்று காலாவதியாகும்."
+    },
+    "card_utilization_high": {
+      "title": "வரம்பை நெருங்குகிறது",
+      "body": "{{card}} {{pct}}% இல் உள்ளது — {{available}} மீதம்."
+    },
+    "recurring_paused": {
+      "title": "ஒரு தொடர் கட்டணம் இடைநிறுத்தப்பட்டுள்ளது",
+      "body": "“{{name}}” பதிவாகவில்லை. காரணத்தைப் பார்க்கத் திறக்கவும்."
+    },
+    "recurring_upcoming": {
+      "title": "கட்டணம் வரவுள்ளது",
+      "body": "“{{name}}” — {{amount}}, {{when}}."
+    },
+    "recurring_posted": {
+      "title": "தானாகப் பதிவானது",
+      "body": "“{{name}}” — {{amount}}."
+    },
+    "income_received": {
+      "title": "பணம் வந்தது",
+      "body": "“{{name}}” — {{amount}}."
+    }
+  },
   "featureHelp": {
     "open": "Open help for {{feature}}",
     "includes": "Includes",

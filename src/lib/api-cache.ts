@@ -112,6 +112,11 @@ export const NO_STALE = [
   // sync_required — a real money write. That call may only be made on a body
   // that came from the network.
   "/api/budgets/v2",
+  // The attention banner states things like "card payment overdue". Its whole
+  // justification over the notification log is that it is true RIGHT NOW, so it
+  // is the one read that must never be painted stale — and it is cheap to
+  // refetch, being a summary of one screen.
+  "/api/alerts",
 ] as const
 
 const startsWithAny = (path: string, list: readonly string[]) => list.some((p) => path === p || path.startsWith(p))
@@ -171,6 +176,7 @@ export function policyFor(path: string): CachePolicy {
       "/api/flow",
       "/api/budgets",
       "/api/trash",
+      "/api/alerts",
     ])
   ) {
     // 15s of reuse collapses the burst a single navigation makes; past that the
@@ -211,6 +217,10 @@ export const MONEY_PREFIXES = [
   "/api/search",
   "/api/audit",
   "/api/trash",
+  // The attention banner is derived from all of the above, so anything that
+  // moves money changes it. Leaving it out is how the banner ends up still
+  // saying "card payment overdue" on the screen the user just paid from.
+  "/api/alerts",
 ]
 
 /** A write path → the GET prefixes it invalidates. First match wins. */

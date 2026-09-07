@@ -2252,6 +2252,68 @@
       "edit_reminder": "Edit reminder"
     }
   },
+  "alerts": {
+    "region": "Needs your attention",
+    "slide": "{{index}} of {{total}}",
+    "goTo": "Show item {{index}} of {{total}}",
+    "dismiss": "Dismiss",
+    "when": {
+      "today": "today",
+      "tomorrow": "tomorrow",
+      "inDays_one": "in {{count}} day",
+      "inDays_other": "in {{count}} days",
+      "ago_one": "{{count}} day ago",
+      "ago_other": "{{count}} days ago"
+    },
+    "card_payment_overdue": {
+      "title": "Card payment overdue",
+      "body": "{{card}} — {{amount}} was due {{when}}."
+    },
+    "card_autopay_failed": {
+      "title": "Autopay didn’t go through",
+      "body": "{{card}} — {{amount}} is still owed. Pay it manually."
+    },
+    "card_payment_due_soon": {
+      "title": "Card payment due soon",
+      "body": "{{card}} — {{amount}}, due {{when}}."
+    },
+    "card_autopay_scheduled": {
+      "title": "Autopay has this covered",
+      "body": "{{amount}} for {{card}}, {{when}}."
+    },
+    "charge_shortfall": {
+      "title": "{{account}} may not cover this",
+      "body": "“{{name}}” takes {{amount}} {{when}} — {{short}} short."
+    },
+    "card_expired": {
+      "title": "Card expired",
+      "body": "{{card}} expired {{expiry}}. Update it to keep payments working."
+    },
+    "card_expiring": {
+      "title": "Card expiring soon",
+      "body": "{{card}} expires {{expiry}}."
+    },
+    "card_utilization_high": {
+      "title": "Close to the limit",
+      "body": "{{card}} is at {{pct}}% — {{available}} left."
+    },
+    "recurring_paused": {
+      "title": "A recurring payment is paused",
+      "body": "“{{name}}” isn’t posting. Open it to see why."
+    },
+    "recurring_upcoming": {
+      "title": "Payment coming up",
+      "body": "“{{name}}” — {{amount}}, {{when}}."
+    },
+    "recurring_posted": {
+      "title": "Posted automatically",
+      "body": "“{{name}}” — {{amount}}."
+    },
+    "income_received": {
+      "title": "Money came in",
+      "body": "“{{name}}” — {{amount}}."
+    }
+  },
   "featureHelp": {
     "open": "Open help for {{feature}}",
     "includes": "Includes",

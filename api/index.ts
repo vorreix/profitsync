@@ -40,6 +40,7 @@ import transactionsBulkDelete from "./_routes/transactions/bulk-delete.js"
 import transactionById from "./_routes/transactions/[id].js"
 import transactionAttachments from "./_routes/transactions/[id]/attachments.js"
 import analytics from "./_routes/analytics.js"
+import alerts from "./_routes/alerts.js"
 import calendar from "./_routes/calendar.js"
 import flow from "./_routes/flow.js"
 import audit from "./_routes/audit.js"
@@ -207,6 +208,7 @@ const routes: RoutePattern<ApiHandler>[] = [
   { segments: ["ai", "parse-transaction"], handler: aiParseTransaction },
 
   { segments: ["analytics"], handler: analytics },
+  { segments: ["alerts"], handler: alerts },
   { segments: ["calendar"], handler: calendar },
   { segments: ["flow"], handler: flow },
   { segments: ["audit"], handler: audit },

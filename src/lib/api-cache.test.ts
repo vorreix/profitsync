@@ -104,6 +104,23 @@ describe("policyFor", () => {
     expect(policyFor("/api/budgets/v2/overview").maxStale).toBe(0)
   })
 
+  it("never paints the attention banner stale, and never puts it on disk", () => {
+    // It says "card payment overdue" on every screen; its whole claim over the
+    // notification log is that it is true right now.
+    const pol = policyFor("/api/alerts")
+    expect(pol.maxStale).toBe(0)
+    expect(pol.persist).toBe(false)
+    // …and it must not be an ALWAYS_FETCH route: deriving it may never
+    // materialize money, or rendering a banner would file statements.
+    expect(pol.alwaysFetch).toBe(false)
+  })
+
+  it("drops the attention banner whenever money moves", () => {
+    for (const write of ["/api/transactions", "/api/wealth/transfer", "/api/cards/1", "/api/recurring/1", "/api/budgets/v2/sync"]) {
+      expect(drops(write, "/api/alerts"), write).toBe(true)
+    }
+  })
+
   it("allows a short stale window on ordinary money reads", () => {
     const pol = policyFor("/api/wealth/accounts")
     expect(pol.fresh).toBeGreaterThan(0)

@@ -2110,6 +2110,68 @@
     },
     "settings_button": "నోటిఫికేషన్ సెట్టింగ్‌లు"
   },
+  "alerts": {
+    "region": "మీ దృష్టి అవసరం",
+    "slide": "{{total}}లో {{index}}",
+    "goTo": "{{total}}లో {{index}}ని చూపు",
+    "dismiss": "తీసివేయి",
+    "when": {
+      "today": "ఈరోజు",
+      "tomorrow": "రేపు",
+      "inDays_one": "{{count}} రోజులో",
+      "inDays_other": "{{count}} రోజుల్లో",
+      "ago_one": "{{count}} రోజు క్రితం",
+      "ago_other": "{{count}} రోజుల క్రితం"
+    },
+    "card_payment_overdue": {
+      "title": "కార్డు చెల్లింపు గడువు దాటింది",
+      "body": "{{card}} — {{amount}} {{when}} చెల్లించాల్సి ఉంది."
+    },
+    "card_autopay_failed": {
+      "title": "ఆటోపే జరగలేదు",
+      "body": "{{card}} — {{amount}} ఇంకా బాకీ ఉంది. మాన్యువల్‌గా చెల్లించండి."
+    },
+    "card_payment_due_soon": {
+      "title": "కార్డు చెల్లింపు త్వరలో",
+      "body": "{{card}} — {{amount}}, {{when}} చెల్లించాలి."
+    },
+    "card_autopay_scheduled": {
+      "title": "ఆటోపే దీన్ని చూసుకుంటుంది",
+      "body": "{{card}} కోసం {{amount}}, {{when}}."
+    },
+    "charge_shortfall": {
+      "title": "{{account}} సరిపోకపోవచ్చు",
+      "body": "“{{name}}” {{when}} {{amount}} తీసుకుంటుంది — {{short}} తక్కువ."
+    },
+    "card_expired": {
+      "title": "కార్డు గడువు ముగిసింది",
+      "body": "{{card}} {{expiry}}న గడువు ముగిసింది. చెల్లింపులు కొనసాగడానికి దీన్ని అప్‌డేట్ చేయండి."
+    },
+    "card_expiring": {
+      "title": "కార్డు గడువు త్వరలో ముగుస్తుంది",
+      "body": "{{card}} {{expiry}}న గడువు ముగుస్తుంది."
+    },
+    "card_utilization_high": {
+      "title": "పరిమితికి దగ్గరగా",
+      "body": "{{card}} {{pct}}% వద్ద ఉంది — {{available}} మిగిలింది."
+    },
+    "recurring_paused": {
+      "title": "ఒక పునరావృత చెల్లింపు నిలిపివేయబడింది",
+      "body": "“{{name}}” నమోదు కావడం లేదు. కారణం చూడటానికి తెరవండి."
+    },
+    "recurring_upcoming": {
+      "title": "చెల్లింపు రాబోతోంది",
+      "body": "“{{name}}” — {{amount}}, {{when}}."
+    },
+    "recurring_posted": {
+      "title": "స్వయంచాలకంగా నమోదైంది",
+      "body": "“{{name}}” — {{amount}}."
+    },
+    "income_received": {
+      "title": "డబ్బు వచ్చింది",
+      "body": "“{{name}}” — {{amount}}."
+    }
+  },
   "featureHelp": {
     "open": "Open help for {{feature}}",
     "includes": "Includes",

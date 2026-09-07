@@ -2126,6 +2126,74 @@
     },
     "settings_button": "إعدادات الإشعارات"
   },
+  "alerts": {
+    "region": "يحتاج انتباهك",
+    "slide": "{{index}} من {{total}}",
+    "goTo": "عرض العنصر {{index}} من {{total}}",
+    "dismiss": "إخفاء",
+    "when": {
+      "today": "اليوم",
+      "tomorrow": "غدًا",
+      "inDays_one": "خلال يوم",
+      "inDays_two": "خلال يومين",
+      "inDays_few": "خلال {{count}} أيام",
+      "inDays_many": "خلال {{count}} يومًا",
+      "inDays_other": "خلال {{count}} يوم",
+      "ago_one": "قبل يوم",
+      "ago_two": "قبل يومين",
+      "ago_few": "قبل {{count}} أيام",
+      "ago_many": "قبل {{count}} يومًا",
+      "ago_other": "قبل {{count}} يوم"
+    },
+    "card_payment_overdue": {
+      "title": "دفعة البطاقة متأخرة",
+      "body": "{{card}} — كان موعد استحقاق {{amount}} {{when}}."
+    },
+    "card_autopay_failed": {
+      "title": "لم يتم الدفع التلقائي",
+      "body": "{{card}} — لا يزال {{amount}} مستحقًا. ادفعه يدويًا."
+    },
+    "card_payment_due_soon": {
+      "title": "دفعة البطاقة تستحق قريبًا",
+      "body": "{{card}} — {{amount}}، تستحق {{when}}."
+    },
+    "card_autopay_scheduled": {
+      "title": "الدفع التلقائي سيتولى ذلك",
+      "body": "{{amount}} لبطاقة {{card}}، {{when}}."
+    },
+    "charge_shortfall": {
+      "title": "قد لا يكفي {{account}}",
+      "body": "«{{name}}» سيسحب {{amount}} {{when}} — ينقص {{short}}."
+    },
+    "card_expired": {
+      "title": "انتهت صلاحية البطاقة",
+      "body": "انتهت صلاحية {{card}} في {{expiry}}. حدّثها لتستمر المدفوعات."
+    },
+    "card_expiring": {
+      "title": "صلاحية البطاقة تنتهي قريبًا",
+      "body": "تنتهي صلاحية {{card}} في {{expiry}}."
+    },
+    "card_utilization_high": {
+      "title": "قريب من الحد",
+      "body": "{{card}} عند {{pct}}٪ — يتبقى {{available}}."
+    },
+    "recurring_paused": {
+      "title": "دفعة متكررة متوقفة",
+      "body": "«{{name}}» لا يتم تسجيلها. افتحها لمعرفة السبب."
+    },
+    "recurring_upcoming": {
+      "title": "دفعة قادمة",
+      "body": "«{{name}}» — {{amount}}، {{when}}."
+    },
+    "recurring_posted": {
+      "title": "تم التسجيل تلقائيًا",
+      "body": "«{{name}}» — {{amount}}."
+    },
+    "income_received": {
+      "title": "وصلت أموال",
+      "body": "«{{name}}» — {{amount}}."
+    }
+  },
   "featureHelp": {
     "open": "Open help for {{feature}}",
     "includes": "Includes",

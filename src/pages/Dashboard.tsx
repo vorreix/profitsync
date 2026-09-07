@@ -98,6 +98,7 @@ import {
   YAxis,
   CartesianGrid,
 } from "recharts"
+import { AlertsBanner } from "@/components/alerts/AlertsBanner"
 
 function formatCurrency(amount: number, currency: string) {
   return new Intl.NumberFormat("en-US", {
@@ -1341,6 +1342,11 @@ export function Dashboard() {
 
   return (
     <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
+      {/* Only here, and deliberately: an attention rail on every screen eats the
+          top of the app permanently and starts reading as an ad. The dashboard
+          is where someone comes to ask "what's going on with my money", so this
+          is where the answer belongs. */}
+      <AlertsBanner />
       <CompanyUpsellBanner />
 
       <div className="flex items-start justify-between gap-2 sm:gap-4">

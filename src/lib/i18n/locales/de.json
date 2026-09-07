@@ -2110,6 +2110,68 @@
     },
     "settings_button": "Benachrichtigungseinstellungen"
   },
+  "alerts": {
+    "region": "Braucht Ihre Aufmerksamkeit",
+    "slide": "{{index}} von {{total}}",
+    "goTo": "Element {{index}} von {{total}} anzeigen",
+    "dismiss": "Ausblenden",
+    "when": {
+      "today": "heute",
+      "tomorrow": "morgen",
+      "inDays_one": "in {{count}} Tag",
+      "inDays_other": "in {{count}} Tagen",
+      "ago_one": "vor {{count}} Tag",
+      "ago_other": "vor {{count}} Tagen"
+    },
+    "card_payment_overdue": {
+      "title": "Kartenzahlung überfällig",
+      "body": "{{card}} — {{amount}} war {{when}} fällig."
+    },
+    "card_autopay_failed": {
+      "title": "Automatische Zahlung fehlgeschlagen",
+      "body": "{{card}} — {{amount}} ist weiterhin offen. Bitte manuell zahlen."
+    },
+    "card_payment_due_soon": {
+      "title": "Kartenzahlung bald fällig",
+      "body": "{{card}} — {{amount}}, fällig {{when}}."
+    },
+    "card_autopay_scheduled": {
+      "title": "Automatische Zahlung übernimmt das",
+      "body": "{{amount}} für {{card}}, {{when}}."
+    },
+    "charge_shortfall": {
+      "title": "{{account}} reicht möglicherweise nicht",
+      "body": "„{{name}}“ bucht {{amount}} {{when}} ab — {{short}} fehlen."
+    },
+    "card_expired": {
+      "title": "Karte abgelaufen",
+      "body": "{{card}} ist {{expiry}} abgelaufen. Bitte aktualisieren, damit Zahlungen weiterlaufen."
+    },
+    "card_expiring": {
+      "title": "Karte läuft bald ab",
+      "body": "{{card}} läuft {{expiry}} ab."
+    },
+    "card_utilization_high": {
+      "title": "Nahe am Limit",
+      "body": "{{card}} liegt bei {{pct}} % — {{available}} übrig."
+    },
+    "recurring_paused": {
+      "title": "Eine Daueranweisung pausiert",
+      "body": "„{{name}}“ wird nicht gebucht. Öffnen, um zu sehen warum."
+    },
+    "recurring_upcoming": {
+      "title": "Zahlung steht an",
+      "body": "„{{name}}“ — {{amount}}, {{when}}."
+    },
+    "recurring_posted": {
+      "title": "Automatisch gebucht",
+      "body": "„{{name}}“ — {{amount}}."
+    },
+    "income_received": {
+      "title": "Geld eingegangen",
+      "body": "„{{name}}“ — {{amount}}."
+    }
+  },
   "featureHelp": {
     "open": "Open help for {{feature}}",
     "includes": "Includes",

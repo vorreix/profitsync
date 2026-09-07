@@ -15,7 +15,7 @@ Two files own it:
 | File | Owns |
 |---|---|
 | `src/lib/api-cache.ts` | **Policy.** Pure tables: how long each path may be reused, what may reach disk, what each write invalidates. No browser APIs, no React. |
-| `src/hooks/use-api-query.ts` | The read hook new screens should use. `src/components/ReferralBanner.tsx` is the reference adoption. |
+| `src/hooks/use-api-query.ts` | The read hook new screens should use. `src/components/alerts/AlertsBanner.tsx` is the reference adoption. |
 | `src/lib/api.ts` | **Mechanism.** The two-tier store under `apiGet`/`apiPost`/…, applying those tables. |
 
 `scripts/check-cache-map.mjs` (in the pre-commit gate and `pr.yml`, `npm run cache:check`)

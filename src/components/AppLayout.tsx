@@ -45,7 +45,6 @@ import { MobileAppLayout } from "@/components/MobileAppLayout"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { InstallAppBanner } from "@/components/InstallAppBanner"
 import { InstallButton } from "@/components/InstallButton"
-import { ReferralBanner } from "@/components/ReferralBanner"
 import { QuickAddModal, type QuickAddEntity, type QuickAddPrefill } from "@/components/QuickAddModal"
 import { AddTransactionDialog, type CreatedTxInfo } from "@/components/transactions/AddTransactionDialog"
 import { AiVoiceAssistant } from "@/components/AiVoiceAssistant"
@@ -418,7 +417,6 @@ function AppLayoutInner() {
         </header>
 
         <InstallAppBanner className="mx-4 mt-4" />
-        <ReferralBanner className="mx-4 mt-4" />
         <div className="flex-1 overflow-auto">
           {orgLoading ? (
             <div className="flex h-[60vh] items-center justify-center">

@@ -2110,6 +2110,68 @@
     },
     "settings_button": "Impostazioni notifiche"
   },
+  "alerts": {
+    "region": "Da tenere d’occhio",
+    "slide": "{{index}} di {{total}}",
+    "goTo": "Mostra l’elemento {{index}} di {{total}}",
+    "dismiss": "Ignora",
+    "when": {
+      "today": "oggi",
+      "tomorrow": "domani",
+      "inDays_one": "tra {{count}} giorno",
+      "inDays_other": "tra {{count}} giorni",
+      "ago_one": "{{count}} giorno fa",
+      "ago_other": "{{count}} giorni fa"
+    },
+    "card_payment_overdue": {
+      "title": "Pagamento carta scaduto",
+      "body": "{{card}} — {{amount}} era in scadenza {{when}}."
+    },
+    "card_autopay_failed": {
+      "title": "L’addebito automatico non è riuscito",
+      "body": "{{card}} — {{amount}} è ancora dovuto. Paga manualmente."
+    },
+    "card_payment_due_soon": {
+      "title": "Pagamento carta in scadenza",
+      "body": "{{card}} — {{amount}}, in scadenza {{when}}."
+    },
+    "card_autopay_scheduled": {
+      "title": "Ci pensa l’addebito automatico",
+      "body": "{{amount}} per {{card}}, {{when}}."
+    },
+    "charge_shortfall": {
+      "title": "{{account}} potrebbe non bastare",
+      "body": "«{{name}}» preleva {{amount}} {{when}} — mancano {{short}}."
+    },
+    "card_expired": {
+      "title": "Carta scaduta",
+      "body": "{{card}} è scaduta {{expiry}}. Aggiornala per non interrompere i pagamenti."
+    },
+    "card_expiring": {
+      "title": "Carta in scadenza",
+      "body": "{{card}} scade {{expiry}}."
+    },
+    "card_utilization_high": {
+      "title": "Vicino al limite",
+      "body": "{{card}} è al {{pct}}% — restano {{available}}."
+    },
+    "recurring_paused": {
+      "title": "Un pagamento ricorrente è in pausa",
+      "body": "«{{name}}» non viene registrato. Aprilo per capire perché."
+    },
+    "recurring_upcoming": {
+      "title": "Pagamento in arrivo",
+      "body": "«{{name}}» — {{amount}}, {{when}}."
+    },
+    "recurring_posted": {
+      "title": "Registrato automaticamente",
+      "body": "«{{name}}» — {{amount}}."
+    },
+    "income_received": {
+      "title": "Entrata ricevuta",
+      "body": "«{{name}}» — {{amount}}."
+    }
+  },
   "featureHelp": {
     "open": "Apri la guida per {{feature}}",
     "includes": "Include",
