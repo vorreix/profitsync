@@ -106,7 +106,7 @@ export function BudgetsCard({ className = "" }: { className?: string }) {
                   </span>
                 </div>
                 <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-muted">
-                  <div className={`h-full rounded-full transition-[width] duration-300 ${BAR_COLOR[b.state]}`} style={{ width: `${barPct(b)}%` }} />
+                  <div className={`h-full rounded-full transition-[width] duration-300 ${BAR_COLOR[b.state]}`} style={{ width: `${barPct(b.ratio)}%` }} />
                 </div>
               </li>
             )

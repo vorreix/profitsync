@@ -97,6 +97,7 @@ import budgetsDetail from "./_routes/budgets/detail.js"
 import spendingBudgets from "./_routes/spending-budgets.js"
 import spendingBudget from "./_routes/spending-budgets/[id].js"
 import spendingBudgetsReorder from "./_routes/spending-budgets/reorder.js"
+import spendingBudgetsAnalytics from "./_routes/spending-budgets/analytics.js"
 import publicPricing from "./_routes/public/pricing.js"
 import publicBlog from "./_routes/public/blog.js"
 import publicBlogBySlug from "./_routes/public/blog/[slug].js"
@@ -271,6 +272,7 @@ const routes: RoutePattern<ApiHandler>[] = [
   // Spending budgets (v3): named limits scoped to categories, with sub-budgets.
   // Static before dynamic at the same depth.
   { segments: ["spending-budgets", "reorder"], handler: spendingBudgetsReorder },
+  { segments: ["spending-budgets", "analytics"], handler: spendingBudgetsAnalytics },
   { segments: ["spending-budgets", ":id"], handler: spendingBudget },
   { segments: ["spending-budgets"], handler: spendingBudgets },
   { segments: ["trash"], handler: trash },

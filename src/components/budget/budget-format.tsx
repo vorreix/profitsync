@@ -1,5 +1,6 @@
 import type { TFunction } from "i18next"
-import type { SpendingBudget, SpendingPeriod } from "@/lib/types"
+import { budgetState, daysLeft, limitForView, limitForWindow, perDayLeft, viewRange, type BudgetWindow } from "@/lib/budget"
+import type { SpendingBudget, SpendingBudgetState, SpendingPeriod, SpendingViewWindow } from "@/lib/types"
 
 /**
  * Small shared formatters for the budgets UI. Every date here is a UTC
@@ -14,6 +15,80 @@ export function fmtDay(iso: string, locale: string, opts: Intl.DateTimeFormatOpt
 /** "This month" / "This week" … for the periodic cadences. */
 export function periodLabel(t: TFunction, period: SpendingPeriod): string {
   return t(`budgets.section.${period}`)
+}
+
+/** The name of a view window as a scale ("a month"), for the toggle and rate hints. */
+export function viewLabel(t: TFunction, view: SpendingViewWindow): string {
+  return t(`budget.${view}`)
+}
+
+/**
+ * A budget as the page shows it in the chosen window.
+ *
+ * The page reports on ONE window, so everything here — spend, limit, bar,
+ * colour — is about that window. A budget authored in another rhythm has its
+ * limit pro-rated by the days this window really has (a 28-day February allows
+ * 28 days of a daily rate, not the mean month's 30.44), and `converted` is true
+ * so the row can say what was actually set.
+ *
+ * A custom-date budget never converts: it is a fixed sum over fixed dates.
+ */
+export type BudgetInView = {
+  window: BudgetWindow
+  limit: number
+  spent: number
+  remaining: number
+  ratio: number
+  state: SpendingBudgetState
+  days_left: number | null
+  per_day_left: number | null
+  other_spent: number | null
+  /** The view is not the rhythm this budget was authored in. */
+  converted: boolean
+}
+
+export function inView(b: SpendingBudget, view: SpendingViewWindow, today: string): BudgetInView {
+  const custom = b.period === "once"
+  const window: BudgetWindow = custom
+    ? { start: b.window.start, endExclusive: b.window.end_exclusive }
+    : viewRange(view, today)
+  const limit = custom ? b.amount : limitForWindow(b.amount, b.period, view, window)
+  const spent = custom ? b.spent : b.spent_by_view[view]
+  const { ratio, remaining, state } = budgetState(spent, limit)
+  const days = daysLeft(window, today)
+  const phaseOk = custom ? b.window.phase === "active" : true
+  const counted = b.status === "active" && limit > 0 && phaseOk
+  return {
+    window,
+    limit,
+    spent,
+    remaining,
+    ratio,
+    state: counted ? state : "none",
+    days_left: days,
+    per_day_left: counted ? perDayLeft(remaining, days) : null,
+    other_spent: custom ? b.other_spent : (b.other_spent_by_view?.[view] ?? null),
+    converted: !custom && b.period !== view,
+  }
+}
+
+/**
+ * "You set $300 a month" — what the row says under a converted figure.
+ *
+ * One sentence per rhythm rather than an interpolated period word: in several
+ * languages that word is an adjective, and "You set €500 monthly" comes out
+ * ungrammatical when it is dropped into a sentence built for English.
+ */
+export function authoredRate(t: TFunction, b: SpendingBudget, money: (n: number) => string): string {
+  if (b.period === "once") return ""
+  return t(`budgets.authored.${b.period}`, { amount: money(b.amount) })
+}
+
+/** "$9.86 a day · $69 a week · $3,600 a year" — the equivalences the dialog shows under a limit. */
+export function rateHints(t: TFunction, amount: number, period: SpendingPeriod, money: (n: number) => string): string {
+  if (period === "once" || !(amount > 0)) return ""
+  const others = (["daily", "weekly", "monthly", "yearly"] as const).filter((v) => v !== period)
+  return others.map((v) => t(`budgets.rate.${v}`, { amount: money(limitForView(amount, period, v)) })).join(" · ")
 }
 
 /** The window a `once` budget covers, in words: "All time", "From 1 Sep", "1 Sep – 30 Sep". */
@@ -52,8 +127,8 @@ export const DELTA_COLOR: Record<SpendingBudget["state"], string> = {
   none: "text-muted-foreground",
 }
 
-/** Bar fill 0–100, from the API's ratio. */
-export const barPct = (b: Pick<SpendingBudget, "ratio">): number => Math.max(0, Math.min(1, b.ratio ?? 0)) * 100
+/** Bar fill 0–100, from a ratio. */
+export const barPct = (ratio: number | null | undefined): number => Math.max(0, Math.min(1, ratio ?? 0)) * 100
 
 /** Group a flat list into main budgets with their sub-budgets, keeping API order. */
 export function nestBudgets(list: SpendingBudget[]): { budget: SpendingBudget; children: SpendingBudget[] }[] {
@@ -82,6 +157,8 @@ export function budgetErrorMessage(t: TFunction, raw: string, detail?: Record<st
       return t("budgets.errors.subNeedsCategories")
     case "child_outside_scope":
       return t("budgets.errors.childOutsideScope", { child: detail?.child ?? "" })
+    case "overall_exists":
+      return t("budgets.errors.overallExists", { name: detail?.by || t("budgets.overall") })
     case "too_many_budgets":
     case "too_many_sub_budgets":
       return t("budgets.errors.tooMany")

@@ -142,8 +142,6 @@
       "yearly": "This year",
       "once": "Custom dates"
     },
-    "onTrack": "{{count}} of {{total}} on track",
-    "spentSoFar": "{{amount}} spent",
     "spentOf": "{{spent}} of {{amount}}",
     "left": "{{amount}} left",
     "over": "{{amount}} over",
@@ -151,10 +149,7 @@
     "daysLeft_other": "{{count}} days left",
     "perDay": "about {{amount}} a day",
     "notInSubBudgets": "{{amount}} not in any sub-budget",
-    "paused": "Paused",
-    "pausedHint": "Not counted until you resume it.",
     "ended": "Ended",
-    "endedOn": "Ended {{date}}",
     "startsOn": "Starts {{date}}",
     "window": {
       "allTime": "All time",
@@ -165,11 +160,13 @@
     "menu": {
       "edit": "Edit",
       "addSub": "Add sub-budget",
-      "pause": "Pause",
-      "resume": "Resume",
       "moveUp": "Move up",
       "moveDown": "Move down",
-      "remove": "Remove"
+      "remove": "Remove",
+      "close": "Close",
+      "reopen": "Reopen",
+      "reorder": "Drag to reorder",
+      "for": "More actions for {{name}}"
     },
     "removeTitle": "Remove {{name}}?",
     "removeBody": "Your transactions are not affected.",
@@ -208,7 +205,10 @@
       "save": "Save",
       "add": "Add",
       "remove": "Remove",
-      "confirmRemove": "Tap again to remove"
+      "confirmRemove": "Tap again to remove",
+      "createOverallTitle": "Set an overall budget",
+      "editOverallTitle": "Edit overall budget",
+      "overallHint": "One limit for everything you spend. Your other budgets are measured against it."
     },
     "errors": {
       "nameTaken": "A budget with this name already exists.",
@@ -219,7 +219,8 @@
       "childOutsideScope": "{{child}} uses a category that would no longer be in this budget.",
       "tooMany": "You’ve reached the limit of budgets.",
       "hasSubBudgets": "A budget with sub-budgets can’t become a sub-budget.",
-      "renameClash": "Renaming would put {{categories}} in both {{a}} and {{b}}. Change one of those sub-budgets first."
+      "renameClash": "Renaming would put {{categories}} in both {{a}} and {{b}}. Change one of those sub-budgets first.",
+      "overallExists": "You already have an overall budget ({{name}}). Edit that one instead."
     },
     "detail": {
       "subBudgets": "Sub-budgets",
@@ -232,10 +233,10 @@
       "changes": "Changes",
       "noChanges": "No changes yet.",
       "notFound": "Budget not found.",
-      "pausedBanner": "This budget is paused and isn’t counted.",
       "endedBanner": "This budget ended on {{date}}.",
       "upcomingBanner": "This budget starts on {{date}}.",
-      "refund": "Refund"
+      "refund": "Refund",
+      "closedBanner": "This budget is closed and isn’t counted."
     },
     "history": {
       "create": "Created",
@@ -256,8 +257,7 @@
     },
     "clientBudgets": {
       "title": "Client spend caps",
-      "subtitle": "A cap per client, with its history.",
-      "link": "Client spend caps"
+      "subtitle": "A cap per client, with its history."
     },
     "card": {
       "title": "Budgets",
@@ -294,6 +294,63 @@
       "income": "Income",
       "cash": "Cash",
       "other": "Other"
+    },
+    "closed": "Closed",
+    "closedHint": "Not counted until you reopen it.",
+    "closedCount_one": "{{count}} closed budget",
+    "closedCount_other": "{{count}} closed budgets",
+    "tabBudgets": "Budgets",
+    "tabAnalytics": "Analytics",
+    "viewLabel": "Show amounts for",
+    "overall": "Overall budget",
+    "noOverall": "No overall budget",
+    "noOverallHint": "Set one to see how your budgets add up against it. Your budgets come to {{amount}}.",
+    "setOverall": "Set an overall budget",
+    "allocated": "Budgets use {{allocated}} of {{total}}",
+    "unallocated": "{{amount}} unallocated",
+    "overAllocated": "{{amount}} over-allocated",
+    "reorder": "Reorder",
+    "doneReordering": "Done",
+    "expand": "Show what is inside {{name}}",
+    "collapse": "Hide what is inside {{name}}",
+    "authored": {
+      "daily": "You set {{amount}} a day",
+      "weekly": "You set {{amount}} a week",
+      "monthly": "You set {{amount}} a month",
+      "yearly": "You set {{amount}} a year"
+    },
+    "rate": {
+      "daily": "{{amount}} a day",
+      "weekly": "{{amount}} a week",
+      "monthly": "{{amount}} a month",
+      "yearly": "{{amount}} a year"
+    },
+    "subFull": "Every category in {{name}} is already in a sub-budget.",
+    "subFullAction": "Add a category to it",
+    "noSubsHint": "Split this budget by category to see where it goes.",
+    "noneYet": "No budgets yet.",
+    "analytics": {
+      "trend": "Spending over time",
+      "focus": "Which budget",
+      "periods": "How far back",
+      "lastN_one": "Last {{count}} period",
+      "lastN_other": "Last {{count}} periods",
+      "trendNote": "Each period is measured against the limit that applied then. The current one is still running, so it is drawn faded and never judged.",
+      "notEnough": "Not enough history yet — come back after a few periods.",
+      "unclaimed": "Not in any budget",
+      "unclaimedTotal": "{{amount}} of this period’s spending is in no budget.",
+      "allClaimed": "Every category you spent in is covered by a budget.",
+      "uncategorised": "No category",
+      "budgetThis": "Budget this",
+      "adherence": "Are you keeping to it?",
+      "noJudgeable": "No finished period has a limit to judge yet.",
+      "onBudget": "On budget",
+      "streak": "Streak",
+      "avgDelta": "Average vs limit",
+      "judgedOver_one": "Over {{count}} finished period.",
+      "judgedOver_other": "Over {{count}} finished periods.",
+      "byBudget": "Where it went",
+      "byBudgetNote": "This period, worst first."
     }
   },
   "account": {

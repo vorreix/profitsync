@@ -12,7 +12,6 @@ import {
   loadRecords,
   nextPosition,
   parseBudgetInput,
-  sectionSummaries,
   toRecord,
   withSpend,
   type SpendingBudgetRecord,
@@ -36,9 +35,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method === "GET") {
     await materializeDueRecurring(orgId)
-    const budgets = await listBudgets(orgId, today)
-    const sections = await sectionSummaries(orgId, budgets, today)
-    return res.json({ budgets, sections, today })
+    // No `?view=` parameter on purpose: every budget carries its spend for all
+    // four view windows, so the page's toggle is a re-render, the dashboard and
+    // the detail page share this one cache entry, and nothing refetches.
+    return res.json({ budgets: await listBudgets(orgId, today), today })
   }
 
   if (req.method === "POST") {
@@ -108,8 +108,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // 201 body the same way so it never reports an all-time figure.
       const stored = toRecord(row)
       const record = parent ? { ...stored, period: parent.period, start_date: parent.start_date, end_date: parent.end_date } : stored
-      const [view] = await withSpend(orgId, [record], today, [...all, record])
-      return res.status(201).json(view)
+      const [created] = await withSpend(orgId, [record], today, [...all, record])
+      return res.status(201).json(created)
     } catch (err) {
       if (isSiblingNameClash(err)) return res.status(409).json({ error: "name_taken" })
       throw err

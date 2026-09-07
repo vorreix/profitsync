@@ -11,16 +11,19 @@ import { SPENDING_PERIODS, categoryKey, isIsoDate, type SpendingPeriod } from "@
 import type { Category, SpendingBudget } from "@/lib/types"
 import { budgetIcon, suggestBudgetIcon } from "@/components/budget/budget-icons"
 import { BudgetIconPicker } from "@/components/budget/BudgetIconPicker"
-import { budgetErrorMessage, budgetName, periodLabel } from "@/components/budget/budget-format"
+import { budgetErrorMessage, budgetName, periodLabel, rateHints } from "@/components/budget/budget-format"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 
 export type SpendingBudgetDialogMode =
-  | { kind: "create" }
+  /** A budget for some categories (or, when nothing is picked, for all spending). */
+  | { kind: "create"; prefillCategories?: string[] }
+  /** THE overall budget: all spending, one per workspace, the figure everything is measured against. */
+  | { kind: "createOverall" }
   | { kind: "createSub"; parent: SpendingBudget }
-  | { kind: "edit"; budget: SpendingBudget }
+  | { kind: "edit"; budget: SpendingBudget; openScope?: boolean }
 
 /**
  * Create or edit a budget — one dialog for both so they cannot drift apart.
@@ -56,6 +59,8 @@ export function SpendingBudgetDialog({
   const editing = mode.kind === "edit" ? mode.budget : null
   const parent = mode.kind === "createSub" ? mode.parent : editing?.parent_id ? all.find((b) => b.id === editing.parent_id) ?? null : null
   const isSub = !!parent
+  // The overall budget has no category scope to choose — that IS its scope.
+  const isOverall = mode.kind === "createOverall" || (!!editing && editing.is_overall)
   const children = editing ? all.filter((b) => b.parent_id === editing.id) : []
 
   const [name, setName] = useState("")
@@ -65,6 +70,7 @@ export function SpendingBudgetDialog({
   const [startDate, setStartDate] = useState("")
   const [endDate, setEndDate] = useState("")
   const [picked, setPicked] = useState<string[]>([])
+  const [scopeTouched, setScopeTouched] = useState(false)
   const [scopeOpen, setScopeOpen] = useState(false)
   const [icon, setIcon] = useState("")
   const [iconTouched, setIconTouched] = useState(false)
@@ -86,9 +92,11 @@ export function SpendingBudgetDialog({
     setIconTouched(false)
     setIconsOpen(false)
     setNewCategory("")
+    setScopeTouched(false)
     if (editing) {
       setName(editing.name)
       setNameTouched(true)
+      if (mode.kind === "edit" && mode.openScope) setScopeOpen(true)
       setAmount(editing.amount > 0 ? String(editing.amount) : "")
       setPeriod(editing.period)
       setStartDate(editing.start_date ?? "")
@@ -103,10 +111,12 @@ export function SpendingBudgetDialog({
       setPeriod("monthly")
       setStartDate("")
       setEndDate("")
-      setPicked([])
-      setScopeOpen(false)
+      const prefill = mode.kind === "create" ? (mode.prefillCategories ?? []) : []
+      setPicked(prefill)
+      setScopeOpen(prefill.length > 0)
       setIcon("")
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, editing])
 
   // The name follows the first picked category until the user types one, and
@@ -142,15 +152,31 @@ export function SpendingBudgetDialog({
     return m
   }, [all, parent, editing, t])
 
+  // A sub-budget SPLITS its parent by category, so when the parent names a
+  // scope, everything still free in it arrives already ticked — that is the
+  // common intent, and unticking is one tap. Not for an ALL-SPENDING parent:
+  // there the list is the whole category catalogue, ticking all of it is never
+  // what anyone means, and the first sub-budget would leave no room for a
+  // second. Stops as soon as the user touches a chip.
+  useEffect(() => {
+    if (!open || !isSub || editing || scopeTouched) return
+    if (!parent || parent.categories.length === 0) return
+    const free = options.filter((c) => !claimedBy.has(categoryKey(c)))
+    if (free.length && picked.length === 0) setPicked(free)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, isSub, editing, scopeTouched, parent?.id, options.length, claimedBy.size])
+
   const pickedKeys = new Set(picked.map(categoryKey))
   const toggle = (c: string) => {
     const k = categoryKey(c)
+    setScopeTouched(true)
     setPicked((list) => (list.some((x) => categoryKey(x) === k) ? list.filter((x) => categoryKey(x) !== k) : [...list, c]))
   }
 
   const amt = Number(amount)
   const childrenTotal = children.reduce((s, c) => s + c.amount, 0)
-  const nameOk = name.trim().length > 0 || (!isSub && picked.length === 0)
+  // Only the overall budget may be nameless.
+  const nameOk = name.trim().length > 0 || isOverall
   const datesOk = period !== "once" || ((!startDate || isIsoDate(startDate)) && (!endDate || isIsoDate(endDate)) && (!startDate || !endDate || endDate >= startDate))
   const canSave = !saving && !deleting && Number.isFinite(amt) && amt > 0 && nameOk && datesOk && (!isSub || picked.length > 0)
 
@@ -162,6 +188,7 @@ export function SpendingBudgetDialog({
       const token = await getToken()
       if (!token) return
       await apiPost("/api/categories", token, { name: value, type: "outgoing" })
+      setScopeTouched(true)
       setPicked((list) => (list.some((x) => categoryKey(x) === categoryKey(value)) ? list : [...list, value]))
       setNewCategory("")
       cats.refetch()
@@ -192,7 +219,7 @@ export function SpendingBudgetDialog({
       const body: Record<string, unknown> = {
         name: name.trim(),
         amount: amt,
-        categories: picked,
+        categories: isOverall ? [] : picked,
         icon,
       }
       if (!isSub) {
@@ -238,8 +265,16 @@ export function SpendingBudgetDialog({
   }
 
   const title = editing
-    ? isSub ? t("budgets.dialog.editSubTitle") : t("budgets.dialog.editTitle")
-    : isSub ? t("budgets.dialog.createSubTitle") : t("budgets.dialog.createTitle")
+    ? isOverall
+      ? t("budgets.dialog.editOverallTitle")
+      : isSub
+        ? t("budgets.dialog.editSubTitle")
+        : t("budgets.dialog.editTitle")
+    : isOverall
+      ? t("budgets.dialog.createOverallTitle")
+      : isSub
+        ? t("budgets.dialog.createSubTitle")
+        : t("budgets.dialog.createTitle")
   const Icon = budgetIcon(icon)
 
   const categoryChips = (
@@ -303,15 +338,27 @@ export function SpendingBudgetDialog({
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>
-            {parent ? t("budgets.dialog.subOf", { parent: budgetName(t, parent) }) : t("budgets.subtitle")}
+            {parent
+              ? t("budgets.dialog.subOf", { parent: budgetName(t, parent) })
+              : isOverall
+                ? t("budgets.dialog.overallHint")
+                : t("budgets.subtitle")}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
           {isSub && (
             <div className="space-y-1.5">
-              <Label>{t("budgets.dialog.categoriesLabel")} <span className="text-destructive">*</span></Label>
-              {categoryChips}
+              <Label>
+                {t("budgets.dialog.categoriesLabel")} <span className="text-destructive">*</span>
+              </Label>
+              {options.length > 0 && options.every((c) => claimedBy.has(categoryKey(c)) && !pickedKeys.has(categoryKey(c))) ? (
+                <p className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
+                  {t("budgets.subFull", { name: parent ? budgetName(t, parent) : "" })}
+                </p>
+              ) : (
+                categoryChips
+              )}
             </div>
           )}
 
@@ -332,7 +379,7 @@ export function SpendingBudgetDialog({
                 value={name}
                 autoFocus={!isSub}
                 onChange={(e) => { setName(e.target.value); setNameTouched(true) }}
-                placeholder={isSub ? t("budgets.dialog.namePlaceholder") : t("budgets.personal")}
+                placeholder={isOverall ? t("budgets.overall") : t("budgets.dialog.namePlaceholder")}
                 className="h-11 text-base sm:text-sm"
               />
             </div>
@@ -356,6 +403,9 @@ export function SpendingBudgetDialog({
                 className="h-11 ps-8 text-base sm:text-sm"
               />
             </div>
+            {!isSub && period !== "once" && amt > 0 && (
+              <p className="text-[11px] text-muted-foreground">{rateHints(t, amt, period, money)}</p>
+            )}
             {editing && !isSub && children.length > 0 && (
               <p className={`flex flex-wrap items-center gap-x-2 text-xs ${childrenTotal > amt && amt > 0 ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"}`}>
                 {childrenTotal > amt && amt > 0
@@ -408,7 +458,7 @@ export function SpendingBudgetDialog({
             </div>
           )}
 
-          {!isSub && (
+          {!isSub && !isOverall && (
             <div className="rounded-lg border">
               <button
                 type="button"

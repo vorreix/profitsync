@@ -260,6 +260,140 @@ export function otherSpent(parentSpent: number, childrenSpent: readonly number[]
   return Math.round((parentSpent - childrenSpent.reduce((s, n) => s + n, 0)) * 100) / 100
 }
 
+// ─── The view window ─────────────────────────────────────────────────────────
+//
+// Budgets are AUTHORED in the rhythm the user thinks in — rent monthly, coffee
+// weekly — but they can only be compared, summed and set against one overall
+// limit when they are all expressed in the SAME window. So the page carries one
+// toggle (Day / Week / Month / Year) and every limit is converted into it. The
+// window that matches how a budget was authored reads exactly; the others read
+// as its stated equivalent.
+//
+// Everything pivots through a MONTHLY equivalent and rounds ONCE at the end, so
+// a weekly 50 reads as exactly 2,600 a year rather than 2,600.04.
+
+export const VIEW_WINDOWS = ["daily", "weekly", "monthly", "yearly"] as const
+export type ViewWindow = (typeof VIEW_WINDOWS)[number]
+
+export function isViewWindow(v: unknown): v is ViewWindow {
+  return typeof v === "string" && (VIEW_WINDOWS as readonly string[]).includes(v)
+}
+
+/**
+ * How many days each rhythm spans. Conversions pivot through a DAY, not a
+ * month: a week must be exactly 7 days or "€10 a day" reads as "€70.24 a week"
+ * and the first thing a user checks in their head is wrong. The month and year
+ * are the Gregorian means, which is the only sensible answer for "a month".
+ */
+export const PERIOD_DAYS: Record<Exclude<SpendingPeriod, "once">, number> = {
+  daily: 1,
+  weekly: 7,
+  monthly: 30.436875,
+  yearly: 365.2425,
+}
+
+const round2 = (n: number) => Math.round(n * 100) / 100
+
+/** The view's calendar window containing `today` — the same windows a budget can be authored in. */
+export function viewRange(view: ViewWindow, today: string): BudgetWindow {
+  return budgetWindow(view, null, today)
+}
+
+/** An authored limit as a rate per day — the pivot every conversion goes through. */
+export function perDayRate(amount: number, period: SpendingPeriod): number {
+  if (!Number.isFinite(amount) || amount <= 0 || period === "once") return 0
+  return amount / PERIOD_DAYS[period]
+}
+
+/**
+ * The limit to QUOTE for a budget as a rate in another rhythm — "€300 a month
+ * is about €9.86 a day". Exact in the rhythm it was authored in. A `once`
+ * budget is a fixed sum over fixed dates, not a rate, so it never converts.
+ */
+export function limitForView(amount: number, period: SpendingPeriod, view: ViewWindow): number {
+  if (!Number.isFinite(amount) || amount <= 0) return 0
+  if (period === "once" || period === view) return round2(amount)
+  return round2(perDayRate(amount, period) * PERIOD_DAYS[view])
+}
+
+/** True when the view IS the rhythm the budget was authored in, so its figure is exact. */
+export const viewMatchesPeriod = (period: SpendingPeriod, view: ViewWindow): boolean => period === view
+
+/**
+ * The limit a window must actually be JUDGED against — which is not always the
+ * one on screen. `limitForView` pivots through the mean month so a headline
+ * reads sensibly ("€20 a day is about €609 a month"); but a real February is 28
+ * days, and marking an 8% overspend as "on budget" because the mean month is
+ * longer is a wrong verdict, not a rounding cosmetic.
+ *
+ * So: when the budget was authored in the window's own rhythm the limit is
+ * exactly what the user typed (a €300 month is €300 in February too); otherwise
+ * it is the daily rate times the days the window really has.
+ */
+export function limitForWindow(amount: number, period: SpendingPeriod, view: ViewWindow, window: BudgetWindow): number {
+  if (!Number.isFinite(amount) || amount <= 0) return 0
+  if (period === view) return round2(amount)
+  const days = window.start && window.endExclusive ? diffDays(window.start, window.endExclusive) : 0
+  return Math.round(perDayRate(amount, period) * days * 100) / 100
+}
+
+export type Allocation = {
+  /** Σ of the budgets' limits in the view window. */
+  allocated: number
+  /** What the overall budget has not handed out; null when there is no overall budget. */
+  unallocated: number | null
+  /** The budgets add up to more than the overall limit. */
+  over: boolean
+}
+
+/**
+ * How much of the overall budget the individual budgets account for. Their
+ * scopes are disjoint by rule, so this is a plain sum and means something.
+ */
+export function allocation(overallLimit: number | null, limits: readonly number[]): Allocation {
+  const raw = limits.reduce((s, n) => s + (Number.isFinite(n) ? n : 0), 0)
+  const allocated = round2(raw)
+  if (overallLimit === null || !Number.isFinite(overallLimit)) return { allocated, unallocated: null, over: false }
+  return {
+    allocated,
+    unallocated: round2(overallLimit - raw),
+    // Half a cent of slack: a rounding artefact must never paint the header amber.
+    over: raw > overallLimit + 0.005,
+  }
+}
+
+/**
+ * The limit in effect at `t`, or `null` when the budget did not exist yet.
+ *
+ * The distinction matters: without it a budget created last week is painted
+ * across a year of windows it was never part of, and every one of those
+ * fabricated verdicts lands in the on-budget rate and the streak.
+ */
+export function limitAt(
+  history: readonly AmountChange[],
+  t: string,
+  current: number,
+  createdAt: string | null,
+): number | null {
+  if (createdAt && t <= createdAt) return null
+  return amountAt(history, t, current)
+}
+
+/**
+ * The newest instant at which a field was CHANGED — creating the budget does
+ * not count. Without that distinction every window before a budget was made
+ * looks "unreliable" and nothing is ever judged.
+ */
+export function lastChangedAt(history: readonly AmountChange[], field: string): string | null {
+  let latest: string | null = null
+  for (const h of history) {
+    if (!h.created_at || !h.changes?.[field]) continue
+    if (h.action && h.action !== "update") continue
+    if (!latest || h.created_at > latest) latest = h.created_at
+  }
+  return latest
+}
+
 export type SpendingBudgetLite = {
   id: string
   parent_id: string | null
@@ -267,7 +401,7 @@ export type SpendingBudgetLite = {
   amount: number
   spent: number
   categories: string[]
-  status: "active" | "paused"
+  status: "active" | "closed"
   /** The current window, as the API reports it; a row outside it is not this budget's business. */
   window?: { start: string | null; end_exclusive: string | null } | null
 }
@@ -292,7 +426,12 @@ export function tightestBudget<T extends SpendingBudgetLite>(
   return [...matching].sort((a, b) => rank(a) - rank(b) || (a.amount - a.spent) - (b.amount - b.spent))[0]
 }
 
-export type AmountChange = { created_at: string | null; changes: Record<string, { from: unknown; to: unknown }> }
+export type AmountChange = {
+  created_at: string | null
+  /** create | update | delete, from the audit trail. */
+  action?: string
+  changes: Record<string, { from: unknown; to: unknown } | undefined>
+}
 
 /**
  * The limit in effect at instant `t` (ISO), read off the budget's audit trail —
@@ -305,9 +444,10 @@ export function amountAt(history: readonly AmountChange[], t: string, current: n
     .filter((h) => h.created_at && h.changes?.amount && typeof h.changes.amount.to === "number")
     .sort((a, b) => a.created_at!.localeCompare(b.created_at!))
   if (!asc.length) return current
-  let amount = typeof asc[0].changes.amount.from === "number" ? (asc[0].changes.amount.from as number) : current
+  const first = asc[0].changes.amount!
+  let amount = typeof first.from === "number" ? first.from : current
   for (const h of asc) {
-    if (h.created_at! <= t) amount = h.changes.amount.to as number
+    if (h.created_at! <= t) amount = h.changes.amount!.to as number
     else break
   }
   return amount

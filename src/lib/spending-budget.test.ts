@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import {
   addDays,
+  allocation,
   amountAt,
   budgetWindow,
   categoriesWithin,
@@ -11,12 +12,21 @@ import {
   inWindow,
   isIsoDate,
   isSpendingPeriod,
+  isViewWindow,
+  lastChangedAt,
+  perDayRate,
+  limitAt,
+  limitForView,
+  limitForWindow,
   normaliseCategories,
   otherSpent,
   perDayLeft,
   scopeMatches,
   tightestBudget,
   todayUtc,
+  VIEW_WINDOWS,
+  viewMatchesPeriod,
+  viewRange,
   windowPhase,
   windowsBack,
 } from "./budget"
@@ -171,11 +181,11 @@ describe("tightestBudget — what the transaction form quotes", () => {
     expect(tightestBudget([all, cat], "Groceries")?.id).toBe("cat")
     expect(tightestBudget([all, cat], "Fuel")?.id).toBe("all")
   })
-  it("among equals, the least room wins; paused and empty never speak", () => {
+  it("among equals, the least room wins; closed and empty never speak", () => {
     const a = b({ id: "a", categories: ["Dining"], amount: 200, spent: 150 })
     const c = b({ id: "c", categories: ["Dining"], amount: 200, spent: 190 })
     expect(tightestBudget([a, c], "Dining")?.id).toBe("c")
-    expect(tightestBudget([b({ status: "paused" })], "Dining")).toBeNull()
+    expect(tightestBudget([b({ status: "closed" })], "Dining")).toBeNull()
     expect(tightestBudget([], "Dining")).toBeNull()
   })
 })
@@ -211,5 +221,155 @@ describe("inWindow, upcoming days, the date-aware hint, amountAt", () => {
     expect(amountAt(h, "2026-08-01T00:00:00.000Z", 300)).toBe(500)
     expect(amountAt(h, "2026-10-01T00:00:00.000Z", 300)).toBe(300)
     expect(amountAt([], "2026-10-01T00:00:00.000Z", 42)).toBe(42)
+  })
+})
+
+describe("the view window — one toggle, every budget converted into it", () => {
+  it("recognises exactly the four view windows (a custom-date budget is not one)", () => {
+    for (const v of ["daily", "weekly", "monthly", "yearly"]) expect(isViewWindow(v)).toBe(true)
+    expect(isViewWindow("once")).toBe(false)
+    expect(isViewWindow(undefined)).toBe(false)
+    expect(VIEW_WINDOWS).toEqual(["daily", "weekly", "monthly", "yearly"])
+  })
+
+  it("uses the same calendar windows a budget can be authored in", () => {
+    expect(viewRange("weekly", "2026-09-13")).toEqual({ start: "2026-09-07", endExclusive: "2026-09-14" })
+    expect(viewRange("monthly", "2026-09-13")).toEqual({ start: "2026-09-01", endExclusive: "2026-10-01" })
+    expect(viewRange("yearly", "2026-09-13")).toEqual({ start: "2026-01-01", endExclusive: "2027-01-01" })
+    expect(viewRange("daily", "2026-09-13")).toEqual({ start: "2026-09-13", endExclusive: "2026-09-14" })
+  })
+
+  it("reads EXACTLY in the window it was authored in", () => {
+    expect(limitForView(300, "monthly", "monthly")).toBe(300)
+    expect(limitForView(50, "weekly", "weekly")).toBe(50)
+    expect(limitForView(10, "daily", "daily")).toBe(10)
+    expect(limitForView(1200, "yearly", "yearly")).toBe(1200)
+  })
+
+  it("a week is EXACTLY seven days, so a daily rate is checkable in your head", () => {
+    // The pivot is a day, not a month: through a month this would read 70.24.
+    expect(limitForView(10, "daily", "weekly")).toBe(70)
+    expect(limitForView(100, "weekly", "daily")).toBe(14.29)
+    expect(limitForView(1, "daily", "weekly")).toBe(7)
+  })
+
+  it("converts a monthly limit", () => {
+    expect(limitForView(300, "monthly", "yearly")).toBe(3600) // 12 exact months
+    expect(limitForView(300, "monthly", "daily")).toBe(9.86)
+    expect(limitForView(300, "monthly", "weekly")).toBe(69) // 300 × 7 / 30.436875
+  })
+
+  it("round-trips: converting out and back lands where it started", () => {
+    const there = limitForView(50, "weekly", "monthly")
+    expect(there).toBe(217.41)
+    expect(limitForView(there, "monthly", "weekly")).toBe(50)
+    expect(limitForView(limitForView(300, "monthly", "yearly"), "yearly", "monthly")).toBe(300)
+  })
+
+  it("a rate per day is the pivot", () => {
+    expect(perDayRate(300, "monthly")).toBeCloseTo(9.8564, 3)
+    expect(perDayRate(70, "weekly")).toBe(10)
+    expect(perDayRate(5, "once")).toBe(0)
+  })
+
+  it("a custom-date budget is a fixed sum, never a rate", () => {
+    for (const v of VIEW_WINDOWS) expect(limitForView(1500, "once", v)).toBe(1500)
+  })
+
+  it("zero, negative and non-finite limits convert to zero", () => {
+    for (const v of VIEW_WINDOWS) {
+      expect(limitForView(0, "monthly", v)).toBe(0)
+      expect(limitForView(-5, "monthly", v)).toBe(0)
+      expect(limitForView(Number.NaN, "monthly", v)).toBe(0)
+    }
+  })
+
+  it("viewMatchesPeriod says when the figure on screen is the authored one", () => {
+    expect(viewMatchesPeriod("monthly", "monthly")).toBe(true)
+    expect(viewMatchesPeriod("monthly", "weekly")).toBe(false)
+    expect(viewMatchesPeriod("once", "monthly")).toBe(false)
+  })
+})
+
+describe("allocation — what the overall budget has handed out", () => {
+  it("sums the budgets and reports the remainder", () => {
+    expect(allocation(2000, [600, 250, 600])).toEqual({ allocated: 1450, unallocated: 550, over: false })
+  })
+  it("flags over-allocation without hiding the number", () => {
+    expect(allocation(1000, [600, 700])).toEqual({ allocated: 1300, unallocated: -300, over: true })
+  })
+  it("allocating exactly the overall limit is not over", () => {
+    expect(allocation(1000, [400, 600])).toEqual({ allocated: 1000, unallocated: 0, over: false })
+  })
+  it("with no overall budget there is still a total, but nothing to be left of", () => {
+    expect(allocation(null, [600, 250])).toEqual({ allocated: 850, unallocated: null, over: false })
+    expect(allocation(null, [])).toEqual({ allocated: 0, unallocated: null, over: false })
+  })
+  it("rounds the sum once", () => {
+    expect(allocation(1, [0.1, 0.2]).allocated).toBe(0.3)
+  })
+})
+
+describe("judging a window — the limit that really applied", () => {
+  const feb = { start: "2026-02-01", endExclusive: "2026-03-01" } // 28 days
+  const jan = { start: "2026-01-01", endExclusive: "2026-02-01" } // 31 days
+
+  it("a budget authored in the window's own rhythm is exactly what was typed", () => {
+    expect(limitForWindow(300, "monthly", "monthly", feb)).toBe(300)
+    expect(limitForWindow(300, "monthly", "monthly", jan)).toBe(300)
+    expect(limitForWindow(50, "weekly", "weekly", { start: "2026-09-07", endExclusive: "2026-09-14" })).toBe(50)
+  })
+
+  it("a converted budget is pro-rated by the days the window really has", () => {
+    // €20 a day: February really allows 28 × 20, not the mean month's 30.44 × 20.
+    expect(limitForWindow(20, "daily", "monthly", feb)).toBe(560)
+    expect(limitForWindow(20, "daily", "monthly", jan)).toBe(620)
+    // …whereas the rate QUOTED for a month pivots through the mean month.
+    expect(limitForView(20, "daily", "monthly")).toBe(608.74)
+  })
+
+  it("an open-ended window cannot be judged", () => {
+    expect(limitForWindow(300, "monthly", "yearly", { start: null, endExclusive: null })).toBe(0)
+  })
+})
+
+describe("limitAt / lastChangedAt — history that does not invent a past", () => {
+  const h = [
+    { created_at: "2026-09-05T10:00:00.000Z", changes: { amount: { from: 500, to: 300 } } },
+    { created_at: "2026-07-01T10:00:00.000Z", changes: { categories: { from: [], to: ["Groceries"] } } },
+    { created_at: "2026-06-01T10:00:00.000Z", changes: { amount: { from: null, to: 500 } } },
+  ]
+  it("is null for a window that closed before the budget existed", () => {
+    expect(limitAt(h, "2026-05-01T00:00:00.000Z", 300, "2026-06-01T10:00:00.000Z")).toBeNull()
+    expect(limitAt(h, "2026-06-01T10:00:00.000Z", 300, "2026-06-01T10:00:00.000Z")).toBeNull()
+  })
+  it("is the limit in effect once it does exist", () => {
+    expect(limitAt(h, "2026-08-01T00:00:00.000Z", 300, "2026-06-01T10:00:00.000Z")).toBe(500)
+    expect(limitAt(h, "2026-10-01T00:00:00.000Z", 300, "2026-06-01T10:00:00.000Z")).toBe(300)
+  })
+  it("with no creation stamp it falls back to the plain reading", () => {
+    expect(limitAt(h, "2026-05-01T00:00:00.000Z", 300, null)).toBe(300)
+  })
+  it("finds when the scope last moved, so earlier windows can be marked", () => {
+    expect(lastChangedAt(h, "categories")).toBe("2026-07-01T10:00:00.000Z")
+    expect(lastChangedAt(h, "amount")).toBe("2026-09-05T10:00:00.000Z")
+    expect(lastChangedAt(h, "icon")).toBeNull()
+    expect(lastChangedAt([], "amount")).toBeNull()
+  })
+})
+
+describe("lastChangedAt ignores the budget being created", () => {
+  const trail = [
+    { created_at: "2026-09-05T10:00:00.000Z", action: "update", changes: { categories: { from: ["A"], to: ["A", "B"] } } },
+    { created_at: "2026-06-01T10:00:00.000Z", action: "create", changes: { categories: { from: null, to: ["A"] } } },
+  ]
+  it("reports only a real change", () => {
+    expect(lastChangedAt(trail, "categories")).toBe("2026-09-05T10:00:00.000Z")
+  })
+  it("a budget that has never been edited has no change instant", () => {
+    expect(lastChangedAt([trail[1]], "categories")).toBeNull()
+  })
+  it("entries with no action are still counted, so older trails keep working", () => {
+    expect(lastChangedAt([{ created_at: "2026-07-01T00:00:00.000Z", changes: { period: { from: "weekly", to: "monthly" } } }], "period")).toBe("2026-07-01T00:00:00.000Z")
   })
 })

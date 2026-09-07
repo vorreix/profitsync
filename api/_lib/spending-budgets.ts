@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, gte, isNull, sql, type SQL } from "drizzle-orm"
 import { db, serialize } from "../../src/lib/db/index.js"
 import { auditLogs, clients, spendingBudgets, transactions } from "../../src/lib/db/schema.js"
+import type { AmountChange } from "../../src/lib/budget.js"
 import {
   budgetState,
   budgetWindow,
@@ -10,11 +11,17 @@ import {
   daysLeft,
   isIsoDate,
   isSpendingPeriod,
+  lastChangedAt,
+  limitAt,
+  limitForWindow,
   normaliseCategories,
   perDayLeft,
+  viewRange,
   windowPhase,
+  windowsBack,
   type BudgetWindow,
   type SpendingPeriod,
+  type ViewWindow,
 } from "../../src/lib/budget.js"
 import { amountExceedsLimit } from "../../src/lib/money.js"
 import type { SpendingBudget, SpendingBudgetHistoryEntry, SpendingBudgetRecentTx, SpendingBudgetStatus } from "../../src/lib/types.js"
@@ -51,7 +58,17 @@ export const SERIES_BACK: Record<SpendingPeriod, number> = { daily: 14, weekly: 
 /** The stored row as the client sees it (snake_case, numbers parsed) — the view minus its derived figures. */
 export type SpendingBudgetRecord = Omit<
   SpendingBudget,
-  "window" | "spent" | "remaining" | "ratio" | "state" | "per_day_left" | "other_spent" | "children_count"
+  | "is_overall"
+  | "window"
+  | "spent"
+  | "spent_by_view"
+  | "remaining"
+  | "ratio"
+  | "state"
+  | "per_day_left"
+  | "other_spent"
+  | "other_spent_by_view"
+  | "children_count"
 > & { created_by: string | null; updated_by: string | null }
 
 /** With the live figures attached — exactly `SpendingBudget` in src/lib/types.ts. */
@@ -69,8 +86,21 @@ export function toRecord(row: Row): SpendingBudgetRecord {
     amount: Number(s.amount),
     categories: Array.isArray(s.categories) ? (s.categories as unknown[]).filter((c): c is string => typeof c === "string") : [],
     period: isSpendingPeriod(row.period) ? row.period : "monthly",
-    status: row.status === "paused" ? "paused" : "active",
+    status: row.status === "closed" ? "closed" : "active",
   }
+}
+
+/**
+ * The window a transaction falls in, as YYYY-MM-DD.
+ *
+ * The unit is inlined rather than bound: drizzle numbers each bind separately,
+ * so `date_trunc($1, …)` in the SELECT and `date_trunc($2, …)` in the GROUP BY
+ * are two different expressions to Postgres and it refuses the query
+ * ("column must appear in the GROUP BY clause"). `unit` comes from a fixed set,
+ * never from a request.
+ */
+function truncBucket(unit: "day" | "week" | "month" | "year") {
+  return sql<string>`to_char(date_trunc(${sql.raw(`'${unit}'`)}, ${transactions.date}::timestamp), 'YYYY-MM-DD')`
 }
 
 /** The normalised category key — the expression `transactions_category_key_idx` indexes. */
@@ -179,12 +209,23 @@ export async function loadRecords(orgId: string): Promise<SpendingBudgetRecord[]
   })
 }
 
+const VIEWS = ["daily", "weekly", "monthly", "yearly"] as const
+
 /**
- * Attach the live figures to a set of records for `today`. `all` must contain
- * every record of the org (children included) so a parent's remainder — spend
- * in its scope that no ACTIVE sub-budget claims — can be summed in the same
- * statement, as a real filter rather than a subtraction (two sub-budgets that
- * came to share a category through a rename would otherwise push it negative).
+ * Attach the live figures to a set of records for `today`.
+ *
+ * Every budget is measured in its OWN authored window — that is what "am I over
+ * budget?" means, and it is what the alerts, the dashboard card and the
+ * transaction-form hint all read — AND in each of the four view windows, so the
+ * page's Day / Week / Month / Year toggle is a re-render rather than a request.
+ * It is still ONE statement: each distinct (window, scope) pair is one more
+ * `sum(...) filter (...)` column, so a monthly budget read in the month view
+ * costs nothing extra.
+ *
+ * `all` must contain every record of the org (children included) so a parent's
+ * remainder can be derived. That remainder is a subtraction, exact only because
+ * sub-budgets are disjoint and inside their parent's scope — the rules
+ * `checkRelations` enforces on every write. It is clamped anyway.
  */
 export async function withSpend(
   orgId: string,
@@ -199,100 +240,66 @@ export async function withSpend(
   }
 
   const items: SpendItem[] = []
-  const windows = new Map<string, BudgetWindow>()
-  for (const r of records) {
-    const window = budgetWindow(r.period, r, today)
-    windows.set(r.id, window)
-    items.push({ key: r.id, window, categories: r.categories })
-    const active = (childrenOf.get(r.id) ?? []).filter((c) => c.status === "active")
-    if (active.length) {
-      items.push({ key: `rest:${r.id}`, window, categories: r.categories, exclude: active.flatMap((c) => c.categories) })
-    }
+  const columnFor = new Map<string, string>()
+  const column = (window: BudgetWindow, categories: string[]) => {
+    const key = `${window.start ?? "*"}|${window.endExclusive ?? "*"}|${categories.map(categoryKey).sort().join("\u0000")}`
+    const existing = columnFor.get(key)
+    if (existing) return existing
+    const id = `c${columnFor.size}`
+    columnFor.set(key, id)
+    items.push({ key: id, window, categories })
+    return id
   }
-  const spent = await spendByItem(orgId, items)
 
-  return records.map((r) => {
-    const w = windows.get(r.id)!
-    const s = spent.get(r.id) ?? 0
-    const phase = windowPhase(w, today)
-    const days = daysLeft(w, today)
+  const plan = records.map((r) => {
+    const authored = budgetWindow(r.period, r, today)
+    const authoredCol = column(authored, r.categories)
+    // A custom-date budget is a fixed sum over fixed dates: it does not convert,
+    // so every view reports the same figure — its own.
+    const viewCols = Object.fromEntries(
+      VIEWS.map((v) => [v, r.period === "once" ? authoredCol : column(viewRange(v, today), r.categories)]),
+    ) as Record<(typeof VIEWS)[number], string>
+    return { r, authored, authoredCol, viewCols }
+  })
+
+  const spent = await spendByItem(orgId, items)
+  const spentOf = (id: string) => spent.get(id) ?? 0
+  const byId = new Map(plan.map((p) => [p.r.id, p]))
+
+  return plan.map(({ r, authored, authoredCol, viewCols }) => {
+    const s = spentOf(authoredCol)
+    const phase = windowPhase(authored, today)
+    const days = daysLeft(authored, today)
     const { ratio, remaining, state } = budgetState(s, r.amount)
     const kids = childrenOf.get(r.id) ?? []
+    const activeKids = kids.filter((k) => k.status === "active")
     const counted = r.status === "active" && r.amount > 0 && phase === "active"
+    const spent_by_view = Object.fromEntries(VIEWS.map((v) => [v, spentOf(viewCols[v])])) as Record<(typeof VIEWS)[number], number>
+    const restIn = (get: (p: (typeof plan)[number]) => number) =>
+      money(Math.max(0, get(byId.get(r.id)!) - activeKids.reduce((sum, k) => { const p = byId.get(k.id); return sum + (p ? get(p) : 0) }, 0)))
     return {
       ...r,
-      window: { start: w.start, end_exclusive: w.endExclusive, phase, days_left: days },
+      is_overall: !r.parent_id && r.categories.length === 0,
+      window: { start: authored.start, end_exclusive: authored.endExclusive, phase, days_left: days },
       spent: s,
+      spent_by_view,
       remaining: money(remaining),
       ratio: r.amount > 0 && Number.isFinite(ratio) ? Math.round(ratio * 10_000) / 10_000 : null,
       state: counted ? state : "none",
       per_day_left: counted ? perDayLeft(remaining, days) : null,
-      other_spent: kids.some((k) => k.status === "active") ? (spent.get(`rest:${r.id}`) ?? 0) : null,
+      other_spent: activeKids.length ? restIn((p) => spentOf(p.authoredCol)) : null,
+      other_spent_by_view: activeKids.length
+        ? (Object.fromEntries(VIEWS.map((v) => [v, restIn((p) => spentOf(p.viewCols[v]))])) as Record<(typeof VIEWS)[number], number>)
+        : null,
       children_count: kids.length,
     }
   })
 }
 
+/** Every budget measured in its OWN authored window — for alerts and the v1 API shim. */
 export async function listBudgets(orgId: string, today: string): Promise<SpendingBudgetView[]> {
   const all = await loadRecords(orgId)
   return withSpend(orgId, all, today, all)
-}
-
-export type SectionSummary = {
-  /** Distinct ledger rows in the UNION of the section's active top-level scopes — never a sum of rows. */
-  spent: number
-  /** Σ limits, only when no two scopes overlap (then it IS a cap); null otherwise. */
-  limit: number | null
-  overlapping: boolean
-  count: number
-  on_track: number
-}
-
-/**
- * The header figure for each PERIODIC section of the list. Summing the rows
- * would count a grocery receipt twice when "All spending" and "Groceries" both
- * exist, so the section's spend is one more filter column over the UNION of
- * its scopes; its limit is quoted only when the scopes are pairwise disjoint,
- * because "All spending €1000 + Groceries €200" is a €1000 cap, not €1200.
- * `once` budgets have their own windows and get no header money at all.
- */
-export async function sectionSummaries(
-  orgId: string,
-  budgets: SpendingBudgetView[],
-  today: string,
-): Promise<Partial<Record<SpendingPeriod, SectionSummary>>> {
-  const periodic = (["daily", "weekly", "monthly", "yearly"] as const).filter((p) =>
-    budgets.some((b) => b.period === p && !b.parent_id),
-  )
-  const items: SpendItem[] = []
-  const meta = new Map<SpendingPeriod, { overlapping: boolean; limit: number; count: number; on_track: number }>()
-  for (const period of periodic) {
-    const tops = budgets.filter((b) => b.period === period && !b.parent_id)
-    const counted = tops.filter((b) => b.state !== "none")
-    const scopes = counted.map((b) => b.categories)
-    const allSpending = scopes.some((c) => c.length === 0)
-    let overlapping = allSpending && scopes.length > 1
-    for (let i = 0; i < scopes.length && !overlapping; i++) {
-      for (let j = i + 1; j < scopes.length; j++) {
-        if (categoryOverlap(scopes[i], scopes[j]).length) { overlapping = true; break }
-      }
-    }
-    meta.set(period, {
-      overlapping,
-      limit: counted.reduce((s, b) => s + b.amount, 0),
-      count: tops.length,
-      on_track: counted.filter((b) => b.spent <= b.amount).length,
-    })
-    if (counted.length) {
-      items.push({ key: period, window: budgetWindow(period, null, today), categories: allSpending ? [] : scopes.flat() })
-    }
-  }
-  const spent = await spendByItem(orgId, items)
-  const out: Partial<Record<SpendingPeriod, SectionSummary>> = {}
-  for (const [period, m] of meta) {
-    out[period] = { spent: spent.get(period) ?? 0, limit: m.overlapping ? null : money(m.limit), overlapping: m.overlapping, count: m.count, on_track: m.on_track }
-  }
-  return out
 }
 
 /**
@@ -317,13 +324,16 @@ export async function planCategoryRename(
     next.set(r.id, categories)
     updates.push({ id: r.id, categories })
   }
-  const parents = new Set(all.filter((r) => r.parent_id).map((r) => r.parent_id!))
-  for (const parentId of parents) {
-    const kids = all.filter((r) => r.parent_id === parentId)
-    for (let i = 0; i < kids.length; i++) {
-      for (let j = i + 1; j < kids.length; j++) {
-        const clash = categoryOverlap(next.get(kids[i].id)!, next.get(kids[j].id)!)
-        if (clash.length) return { updates, clash: { a: kids[i].name, b: kids[j].name, categories: clash } }
+  // Every sibling group, top level included — a rename must not make two
+  // budgets at the same level claim one category. The overall budget (empty
+  // scope) is skipped: covering everything is its job.
+  const groups = new Set(all.map((r) => r.parent_id ?? "top"))
+  for (const group of groups) {
+    const peers = all.filter((r) => (r.parent_id ?? "top") === group && next.get(r.id)!.length > 0)
+    for (let i = 0; i < peers.length; i++) {
+      for (let j = i + 1; j < peers.length; j++) {
+        const clash = categoryOverlap(next.get(peers[i].id)!, next.get(peers[j].id)!)
+        if (clash.length) return { updates, clash: { a: peers[i].name, b: peers[j].name, categories: clash } }
       }
     }
   }
@@ -369,7 +379,7 @@ export async function seriesFor(
   const first = windows[0].start!
   const last = windows[windows.length - 1].endExclusive!
   // date_trunc('week') is ISO — Monday-based — which is the app's week too.
-  const bucket = sql<string>`to_char(date_trunc(${unit}, ${transactions.date}::timestamp), 'YYYY-MM-DD')`
+  const bucket = truncBucket(unit)
   const rows = await db
     .select({ start: bucket, spent: sql<string>`coalesce(sum(${budgetSpendSignedAmount}), 0)` })
     .from(transactions)
@@ -378,6 +388,205 @@ export async function seriesFor(
     .groupBy(bucket)
   const byStart = new Map(rows.map((r) => [r.start, money(Number(r.spent))]))
   return windows.map((w) => ({ start: w.start!, spent: byStart.get(w.start!) ?? 0 }))
+}
+
+export type BudgetAnalyticsWindow = {
+  start: string
+  end_exclusive: string
+  /** The window has not finished — it is drawn "so far" and never judged. */
+  partial: boolean
+  /**
+   * The figures for this window can be trusted: a budget's scope has not moved
+   * since it closed. Folding today's categories onto an older window would
+   * otherwise rewrite history silently.
+   */
+  reliable: boolean
+  /** Every counted row in the window — the honest total, whatever is budgeted. */
+  total: number
+  /** Spend no ACTIVE category budget claims: the money nothing is watching. Never negative. */
+  unclaimed: number
+  /** The overall budget's cap as it was when this window closed; null before it existed. */
+  overall_limit: number | null
+  /** Σ of the category budgets' caps as they were then. */
+  budgeted_limit: number
+  /** budget id → its own cap in this window; null before it existed. */
+  per_budget_limit: Record<string, number | null>
+  /**
+   * budget id → spend in this window. NOT a partition: the overall budget's
+   * entry equals `total` and a sub-budget's is already inside its parent's, so
+   * never sum this map — read the entry you want.
+   */
+  per_budget: Record<string, number>
+}
+
+export type BudgetAnalytics = {
+  view: ViewWindow
+  back: number
+  today: string
+  windows: BudgetAnalyticsWindow[]
+  /** Where the money actually went in the CURRENT window, biggest first. */
+  categories: { name: string; spent: number; budget_id: string | null }[]
+  /** How the closed, judgeable windows went against the limit that applied then. */
+  adherence: { periods: number; within: number; rate: number; streak: number; avg_delta: number }
+}
+
+/**
+ * The analytics screen, in THREE round trips whatever the size of the plan: the
+ * budget rows, then one grouped read of the ledger (window × category key) and
+ * one of the audit trail, concurrently. Folding those rows onto budgets in JS
+ * is only legitimate because sibling scopes are disjoint — a category key
+ * belongs to at most one budget per level, so nothing is counted twice.
+ *
+ * Two rules keep the verdicts honest:
+ *   • a window is judged against the limit that applied WHEN IT CLOSED, and is
+ *     not judged at all before the budget existed (`limitAt` → null); and
+ *   • the open window is never judged, because month-to-date spend is trivially
+ *     under any limit on the 3rd.
+ */
+export async function analyticsFor(orgId: string, today: string, view: ViewWindow, back: number): Promise<BudgetAnalytics> {
+  const all = await loadRecords(orgId)
+  const windows = windowsBack(view, back, today)
+  const first = windows[0].start!
+  const last = windows[windows.length - 1].endExclusive!
+  const unit = view === "daily" ? "day" : view === "weekly" ? "week" : view === "yearly" ? "year" : "month"
+
+  // date_trunc('week') is ISO (Monday-based) — the same week the app cuts.
+  const bucket = truncBucket(unit)
+  const [rows, audit] = await Promise.all([
+    db
+      .select({
+        bucket,
+        ckey: sql<string>`lower(btrim(coalesce(${transactions.category}, '')))`,
+        // The category as the user actually spells it — the key is lowercased,
+        // and printing that back would rename their categories on screen.
+        label: sql<string>`max(btrim(coalesce(${transactions.category}, '')))`,
+        spent: sql<string>`coalesce(sum(${budgetSpendSignedAmount}), 0)`,
+      })
+      .from(transactions)
+      .innerJoin(clients, eq(transactions.clientId, clients.id))
+      .where(and(...budgetSpendPredicates(orgId), gte(transactions.date, first), sql`${transactions.date} < ${last}`))
+      .groupBy(bucket, CATEGORY_KEY_SQL),
+    db
+      .select({ entityId: auditLogs.entityId, action: auditLogs.action, changes: auditLogs.changes, createdAt: auditLogs.createdAt })
+      .from(auditLogs)
+      .where(and(eq(auditLogs.organizationId, orgId), eq(auditLogs.entityType, "budget")))
+      .orderBy(desc(auditLogs.createdAt)),
+  ])
+
+  const historyOf = new Map<string, AmountChange[]>()
+  for (const a of audit) {
+    const list = historyOf.get(a.entityId) ?? []
+    list.push({
+      created_at: a.createdAt ? a.createdAt.toISOString() : null,
+      action: a.action,
+      changes: (a.changes ?? {}) as Record<string, { from: unknown; to: unknown }>,
+    })
+    historyOf.set(a.entityId, list)
+  }
+
+  // A custom-date budget is a one-off sum, not a rhythm: it cannot be bucketed
+  // by a recurring window and takes no part here.
+  const active = all.filter((r) => r.status === "active" && r.period !== "once")
+  const overall = active.find((r) => !r.parent_id && r.categories.length === 0) ?? null
+  const lines = active.filter((r) => !r.parent_id && r.categories.length > 0)
+
+  // A category key → the budget that owns it, per level. Disjoint by rule.
+  const ownerOf = new Map<string, string>()
+  const subOwnerOf = new Map<string, string>()
+  for (const r of active) {
+    for (const c of r.categories) (r.parent_id ? subOwnerOf : ownerOf).set(categoryKey(c), r.id)
+  }
+
+  // The newest scope OR rhythm change among the budgets these figures rest on.
+  // Windows that closed before it are folded with settings they did not have —
+  // today's categories, and today's period for the converted limit — so they
+  // are reported but never judged.
+  let scopeStableFrom: string | null = null
+  for (const r of [overall, ...lines].filter(Boolean) as SpendingBudgetRecord[]) {
+    for (const field of ["categories", "period"] as const) {
+      const at = lastChangedAt(historyOf.get(r.id) ?? [], field)
+      if (at && (!scopeStableFrom || at > scopeStableFrom)) scopeStableFrom = at
+    }
+  }
+
+  const capAt = (r: SpendingBudgetRecord, w: BudgetWindow) => {
+    const amount = limitAt(historyOf.get(r.id) ?? [], `${w.endExclusive!}T00:00:00.000Z`, r.amount, r.created_at)
+    return amount === null ? null : limitForWindow(amount, r.period, view, w)
+  }
+
+  const byBucket = new Map<string, { ckey: string; label: string; spent: number }[]>()
+  for (const r of rows) {
+    const list = byBucket.get(r.bucket) ?? []
+    list.push({ ckey: r.ckey, label: r.label ?? "", spent: money(Number(r.spent)) })
+    byBucket.set(r.bucket, list)
+  }
+
+  const currentStart = windows[windows.length - 1].start!
+  const out: BudgetAnalyticsWindow[] = windows.map((w) => {
+    const list = byBucket.get(w.start!) ?? []
+    const per_budget: Record<string, number> = {}
+    let total = 0
+    let unclaimed = 0
+    for (const { ckey, spent } of list) {
+      total += spent
+      const top = ownerOf.get(ckey)
+      if (top) per_budget[top] = money((per_budget[top] ?? 0) + spent)
+      else unclaimed += spent
+      const sub = subOwnerOf.get(ckey)
+      if (sub) per_budget[sub] = money((per_budget[sub] ?? 0) + spent)
+    }
+    if (overall) per_budget[overall.id] = money(total)
+    const per_budget_limit: Record<string, number | null> = {}
+    for (const r of lines) per_budget_limit[r.id] = capAt(r, w)
+    if (overall) per_budget_limit[overall.id] = capAt(overall, w)
+    const budgetedCaps = lines.map((r) => per_budget_limit[r.id]).filter((n): n is number => n !== null)
+    return {
+      start: w.start!,
+      end_exclusive: w.endExclusive!,
+      partial: w.start === currentStart,
+      reliable: !scopeStableFrom || `${w.endExclusive!}T00:00:00.000Z` >= scopeStableFrom,
+      total: money(total),
+      unclaimed: money(Math.max(0, unclaimed)),
+      overall_limit: overall ? capAt(overall, w) : null,
+      budgeted_limit: money(budgetedCaps.reduce((s, n) => s + n, 0)),
+      per_budget_limit,
+      per_budget,
+    }
+  })
+
+  // Where the money went in the CURRENT window — including what no budget covers.
+  const nameOfKey = new Map<string, string>()
+  for (const r of active) for (const c of r.categories) if (!nameOfKey.has(categoryKey(c))) nameOfKey.set(categoryKey(c), c)
+  const categories = (byBucket.get(currentStart) ?? [])
+    .filter((c) => c.spent !== 0)
+    .map((c) => ({ name: c.ckey ? (nameOfKey.get(c.ckey) ?? c.label ?? c.ckey) : "", spent: c.spent, budget_id: ownerOf.get(c.ckey) ?? null }))
+    .sort((a, b) => b.spent - a.spent)
+    .slice(0, 12)
+
+  // Adherence over CLOSED, reliable windows that had a cap at all.
+  const capOf = (w: BudgetAnalyticsWindow) => (w.overall_limit !== null ? w.overall_limit : w.budgeted_limit)
+  const spendOf = (w: BudgetAnalyticsWindow) => (w.overall_limit !== null ? w.total : money(w.total - w.unclaimed))
+  const judged = out.filter((w) => !w.partial && w.reliable && capOf(w) > 0)
+  let streak = 0
+  for (let i = judged.length - 1; i >= 0; i--) {
+    if (spendOf(judged[i]) <= capOf(judged[i])) streak++
+    else break
+  }
+  const within = judged.filter((w) => spendOf(w) <= capOf(w)).length
+  return {
+    view,
+    back,
+    today,
+    windows: out,
+    categories,
+    adherence: {
+      periods: judged.length,
+      within,
+      rate: judged.length ? Math.round((within / judged.length) * 100) / 100 : 0,
+      streak,
+      avg_delta: judged.length ? money(judged.reduce((s, w) => s + (spendOf(w) - capOf(w)), 0) / judged.length) : 0,
+    },
+  }
 }
 
 export type RecentTx = SpendingBudgetRecentTx
@@ -502,7 +711,7 @@ export function parseBudgetInput(body: unknown, partial: boolean): Parsed {
     else return { ok: false, error: "parent_id must be an id or null" }
   }
   if (b.status !== undefined) {
-    if (b.status !== "active" && b.status !== "paused") return { ok: false, error: "status must be active or paused" }
+    if (b.status !== "active" && b.status !== "closed") return { ok: false, error: "status must be active or closed" }
     out.status = b.status
   }
   return { ok: true, value: out }
@@ -524,6 +733,8 @@ export function checkRelations(
   const others = all.filter((r) => r.id !== next.id)
   const children = others.filter((r) => r.parent_id === next.id)
 
+  // Only the overall budget may be nameless — that is the migrated v1 row, and
+  // the UI calls it "Overall budget".
   if (!next.name && (next.parent_id || next.categories.length)) return { ok: false, status: 400, error: "name_required" }
 
   if (next.parent_id) {
@@ -535,18 +746,41 @@ export function checkRelations(
     if (!categoriesWithin(next.categories, parent.categories)) return { ok: false, status: 400, error: "categories_outside_parent" }
     const siblings = others.filter((r) => r.parent_id === parent.id)
     for (const s of siblings) {
+      if (s.status !== "active") continue // a closed sub-budget releases its categories
       const clash = categoryOverlap(next.categories, s.categories)
       if (clash.length) return { ok: false, status: 409, error: "category_claimed", detail: { by: s.name, categories: clash } }
     }
     if (opts.creating && siblings.length >= MAX_CHILDREN) return { ok: false, status: 400, error: "too_many_sub_budgets" }
   } else {
+    // Only ACTIVE, recurring budgets compete for a scope: closing one releases
+    // its categories (that is the point of closing it), and a custom-date
+    // budget is a one-off sum, not a claim on a rhythm.
+    const tops = others.filter((r) => !r.parent_id && r.status === "active")
+    if (next.categories.length === 0) {
+      // The OVERALL budget: all spending, one per workspace, the figure every
+      // other budget is measured against. A closed one does not hold the slot.
+      const existing = tops.find((r) => r.categories.length === 0 && r.status === "active")
+      if (existing && next.status === "active") {
+        return { ok: false, status: 409, error: "overall_exists", detail: { by: existing.name } }
+      }
+    } else {
+      // Top-level budgets are disjoint too, so "allocated of overall" is a plain
+      // sum that means something. The overall budget is skipped: covering
+      // everything is its job.
+      for (const t of tops) {
+        if (t.categories.length === 0) continue
+        if (t.period === "once" || next.period === "once") continue
+        const clash = categoryOverlap(next.categories, t.categories)
+        if (clash.length) return { ok: false, status: 409, error: "category_claimed", detail: { by: t.name, categories: clash } }
+      }
+    }
     // A parent's scope must still contain every child's.
     for (const c of children) {
       if (!categoriesWithin(c.categories, next.categories)) {
         return { ok: false, status: 400, error: "child_outside_scope", detail: { child: c.name } }
       }
     }
-    if (opts.creating && others.filter((r) => !r.parent_id).length >= MAX_TOP_LEVEL) return { ok: false, status: 400, error: "too_many_budgets" }
+    if (opts.creating && tops.length >= MAX_TOP_LEVEL) return { ok: false, status: 400, error: "too_many_budgets" }
   }
   return { ok: true }
 }

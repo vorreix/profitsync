@@ -2448,8 +2448,6 @@
       "yearly": "هذه السنة",
       "once": "تواريخ مخصصة"
     },
-    "onTrack": "{{count}} من {{total}} ضمن المسار",
-    "spentSoFar": "أُنفق {{amount}}",
     "spentOf": "{{spent}} من {{amount}}",
     "left": "متبقٍ {{amount}}",
     "over": "تجاوز {{amount}}",
@@ -2457,10 +2455,7 @@
     "daysLeft_other": "متبقٍ {{count}} يوم",
     "perDay": "نحو {{amount}} في اليوم",
     "notInSubBudgets": "{{amount}} خارج أي ميزانية فرعية",
-    "paused": "متوقفة مؤقتًا",
-    "pausedHint": "لا تُحتسب حتى تستأنفها.",
     "ended": "انتهت",
-    "endedOn": "انتهت في {{date}}",
     "startsOn": "تبدأ في {{date}}",
     "window": {
       "allTime": "منذ البداية",
@@ -2471,11 +2466,13 @@
     "menu": {
       "edit": "تعديل",
       "addSub": "إضافة ميزانية فرعية",
-      "pause": "إيقاف مؤقت",
-      "resume": "استئناف",
       "moveUp": "نقل لأعلى",
       "moveDown": "نقل لأسفل",
-      "remove": "إزالة"
+      "remove": "إزالة",
+      "close": "إغلاق",
+      "reopen": "إعادة الفتح",
+      "reorder": "اسحب لإعادة الترتيب",
+      "for": "المزيد من الإجراءات لـ {{name}}"
     },
     "removeTitle": "إزالة {{name}}؟",
     "removeBody": "لن تتأثر معاملاتك.",
@@ -2514,7 +2511,10 @@
       "save": "حفظ",
       "add": "إضافة",
       "remove": "إزالة",
-      "confirmRemove": "اضغط مرة أخرى للإزالة"
+      "confirmRemove": "اضغط مرة أخرى للإزالة",
+      "createOverallTitle": "تعيين ميزانية إجمالية",
+      "editOverallTitle": "تعديل الميزانية الإجمالية",
+      "overallHint": "حدّ واحد لكل ما تنفقه. تُقاس ميزانياتك الأخرى مقابله."
     },
     "errors": {
       "nameTaken": "توجد ميزانية بهذا الاسم بالفعل.",
@@ -2525,7 +2525,8 @@
       "childOutsideScope": "{{child}} تستخدم فئة لن تبقى في هذه الميزانية.",
       "tooMany": "لقد بلغت الحد الأقصى لعدد الميزانيات.",
       "hasSubBudgets": "لا يمكن لميزانية لها ميزانيات فرعية أن تصبح ميزانية فرعية.",
-      "renameClash": "إعادة التسمية ستضع {{categories}} في {{a}} و{{b}} معًا. غيّر إحدى هاتين الميزانيتين الفرعيتين أولًا."
+      "renameClash": "إعادة التسمية ستضع {{categories}} في {{a}} و{{b}} معًا. غيّر إحدى هاتين الميزانيتين الفرعيتين أولًا.",
+      "overallExists": "لديك ميزانية إجمالية بالفعل ({{name}}). عدّل تلك بدلًا من إنشاء أخرى."
     },
     "detail": {
       "subBudgets": "الميزانيات الفرعية",
@@ -2538,10 +2539,10 @@
       "changes": "التغييرات",
       "noChanges": "لا تغييرات بعد.",
       "notFound": "لم يتم العثور على الميزانية.",
-      "pausedBanner": "هذه الميزانية متوقفة مؤقتًا ولا تُحتسب.",
       "endedBanner": "انتهت هذه الميزانية في {{date}}.",
       "upcomingBanner": "تبدأ هذه الميزانية في {{date}}.",
-      "refund": "استرداد"
+      "refund": "استرداد",
+      "closedBanner": "هذه الميزانية مغلقة ولا تُحتسب."
     },
     "history": {
       "create": "تم الإنشاء",
@@ -2562,8 +2563,7 @@
     },
     "clientBudgets": {
       "title": "حدود إنفاق العملاء",
-      "subtitle": "حد لكل عميل، مع سجلّه.",
-      "link": "حدود إنفاق العملاء"
+      "subtitle": "حد لكل عميل، مع سجلّه."
     },
     "card": {
       "title": "الميزانيات",
@@ -2586,6 +2586,63 @@
     "daysLeft_zero": "متبقٍ {{count}} أيام",
     "daysLeft_two": "متبقٍ {{count}} يومان",
     "daysLeft_few": "متبقٍ {{count}} أيام",
-    "daysLeft_many": "متبقٍ {{count}} يومًا"
+    "daysLeft_many": "متبقٍ {{count}} يومًا",
+    "closed": "مغلقة",
+    "closedHint": "لا تُحتسب حتى تعيد فتحها.",
+    "closedCount_one": "{{count}} ميزانية مغلقة",
+    "closedCount_other": "{{count}} ميزانية مغلقة",
+    "tabBudgets": "الميزانيات",
+    "tabAnalytics": "التحليلات",
+    "viewLabel": "عرض المبالغ حسب الفترة",
+    "overall": "الميزانية الإجمالية",
+    "noOverall": "لا توجد ميزانية إجمالية",
+    "noOverallHint": "عيّن واحدة لترى كيف تتجمّع ميزانياتك مقابلها. مجموع ميزانياتك {{amount}}.",
+    "setOverall": "تعيين ميزانية إجمالية",
+    "allocated": "الميزانيات تستخدم {{allocated}} من {{total}}",
+    "unallocated": "{{amount}} غير مخصّصة",
+    "overAllocated": "{{amount}} زائدة عن الإجمالي",
+    "reorder": "إعادة ترتيب",
+    "doneReordering": "تم",
+    "expand": "عرض ما داخل {{name}}",
+    "collapse": "إخفاء ما داخل {{name}}",
+    "authored": {
+      "daily": "حدّدت {{amount}} يوميًا",
+      "weekly": "حدّدت {{amount}} أسبوعيًا",
+      "monthly": "حدّدت {{amount}} شهريًا",
+      "yearly": "حدّدت {{amount}} سنويًا"
+    },
+    "rate": {
+      "daily": "{{amount}} يوميًا",
+      "weekly": "{{amount}} أسبوعيًا",
+      "monthly": "{{amount}} شهريًا",
+      "yearly": "{{amount}} سنويًا"
+    },
+    "subFull": "كل فئة في {{name}} موجودة بالفعل في ميزانية فرعية.",
+    "subFullAction": "أضف فئة إليها",
+    "noSubsHint": "قسّم هذه الميزانية حسب الفئة لترى أين يذهب المال.",
+    "noneYet": "لا توجد ميزانيات بعد.",
+    "analytics": {
+      "trend": "الإنفاق بمرور الوقت",
+      "focus": "أي ميزانية",
+      "periods": "المدى الزمني",
+      "lastN_one": "آخر {{count}} فترة",
+      "lastN_other": "آخر {{count}} فترة",
+      "trendNote": "تُقاس كل فترة مقابل الحدّ الذي كان ساريًا فيها. الفترة الحالية ما زالت جارية، لذا تظهر باهتة ولا يُحكم عليها.",
+      "notEnough": "لا يوجد سجل كافٍ بعد — عُد بعد بضع فترات.",
+      "unclaimed": "خارج أي ميزانية",
+      "unclaimedTotal": "{{amount}} من إنفاق هذه الفترة خارج أي ميزانية.",
+      "allClaimed": "كل فئة أنفقت فيها تغطيها ميزانية.",
+      "uncategorised": "بدون فئة",
+      "budgetThis": "ضع لها ميزانية",
+      "adherence": "هل تلتزم بها؟",
+      "noJudgeable": "لا توجد فترة منتهية لها حدّ يمكن الحكم عليها بعد.",
+      "onBudget": "ضمن الميزانية",
+      "streak": "التتابع",
+      "avgDelta": "المتوسط مقابل الحد",
+      "judgedOver_one": "على مدى {{count}} فترة منتهية.",
+      "judgedOver_other": "على مدى {{count}} فترة منتهية.",
+      "byBudget": "أين ذهب المال",
+      "byBudgetNote": "هذه الفترة، الأسوأ أولًا."
+    }
   }
 }

@@ -3,7 +3,7 @@ import { useNavigate, useParams } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
-import { ArrowLeft, History as HistoryIcon, MoreHorizontal, Pause, Pencil, Play, Plus, Trash2 } from "lucide-react"
+import { ArrowLeft, History as HistoryIcon, MoreHorizontal, Pencil, Play, Plus, Square, Trash2 } from "lucide-react"
 import { Bar, CartesianGrid, Cell, ComposedChart, Line, XAxis, YAxis } from "recharts"
 import { apiDelete, apiErrorMessage, apiPatch, peekApiCache } from "@/lib/api"
 import { useApiQuery } from "@/hooks/use-api-query"
@@ -98,7 +98,7 @@ export function BudgetDetailPage() {
   const actions: BudgetRowActions = {
     onEdit: (b) => setDialog({ kind: "edit", budget: b }),
     onAddSub: (parent) => setDialog({ kind: "createSub", parent }),
-    onToggleStatus: (b) => void withToken(async (token) => { await apiPatch(`/api/spending-budgets/${b.id}`, token, { status: b.status === "paused" ? "active" : "paused" }) }),
+    onToggleStatus: (b) => void withToken(async (token) => { await apiPatch(`/api/spending-budgets/${b.id}`, token, { status: b.status === "closed" ? "active" : "closed" }) }),
     onMove: () => {},
     onRemove: (b) => setRemoving(b),
   }
@@ -136,7 +136,7 @@ export function BudgetDetailPage() {
 
   const name = budgetName(t, budget)
   const Icon = budgetIcon(budget.icon)
-  const paused = budget.status === "paused"
+  const closed = budget.status === "closed"
   const phase = budget.window.phase
   const parentName = detail.data?.parent?.name ?? (budget.parent_id ? budgetName(t, all.find((b) => b.id === budget.parent_id) ?? { name: "" }) : null)
   const delta = budget.remaining >= 0 ? t("budgets.left", { amount: money(budget.remaining) }) : t("budgets.over", { amount: money(-budget.remaining) })
@@ -170,7 +170,7 @@ export function BudgetDetailPage() {
           <h1 className="flex items-center gap-2 truncate text-xl font-semibold tracking-tight sm:text-2xl">
             <Icon className="size-5 shrink-0 text-muted-foreground" aria-hidden />
             <span className="truncate">{name}</span>
-            {paused && <Badge variant="outline" className="shrink-0">{t("budgets.paused")}</Badge>}
+            {closed && <Badge variant="outline" className="shrink-0">{t("budgets.closed")}</Badge>}
           </h1>
           <p className="text-sm text-muted-foreground">
             {parentName ? t("budgets.dialog.subOf", { parent: parentName }) : windowLabel(t, budget, i18n.language)}
@@ -195,7 +195,7 @@ export function BudgetDetailPage() {
                   </DropdownMenuItem>
                 )}
                 <DropdownMenuItem className="min-h-11 sm:min-h-9" onSelect={() => actions.onToggleStatus(budget)}>
-                  {paused ? <Play className="size-4" /> : <Pause className="size-4" />} {paused ? t("budgets.menu.resume") : t("budgets.menu.pause")}
+                  {closed ? <Play className="size-4" /> : <Square className="size-4" />} {closed ? t("budgets.menu.reopen") : t("budgets.menu.close")}
                 </DropdownMenuItem>
                 {canDelete && (
                   <>
@@ -211,11 +211,11 @@ export function BudgetDetailPage() {
         )}
       </div>
 
-      {paused && <Banner>{t("budgets.detail.pausedBanner")}</Banner>}
-      {!paused && phase === "ended" && budget.window.end_exclusive && (
+      {closed && <Banner>{t("budgets.detail.closedBanner")}</Banner>}
+      {!closed && phase === "ended" && budget.window.end_exclusive && (
         <Banner>{t("budgets.detail.endedBanner", { date: fmtDay(budget.window.end_exclusive, i18n.language, { day: "numeric", month: "short", year: "numeric" }) })}</Banner>
       )}
-      {!paused && phase === "upcoming" && budget.window.start && (
+      {!closed && phase === "upcoming" && budget.window.start && (
         <Banner>{t("budgets.detail.upcomingBanner", { date: fmtDay(budget.window.start, i18n.language, { day: "numeric", month: "short", year: "numeric" }) })}</Banner>
       )}
 
@@ -228,8 +228,8 @@ export function BudgetDetailPage() {
             </p>
             <p className={`text-sm font-medium tabular-nums ${DELTA_COLOR[budget.state]}`}>{delta}</p>
           </div>
-          <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-muted" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(barPct(budget))} aria-label={name}>
-            <div className={`h-full rounded-full transition-[width] duration-500 ${BAR_COLOR[budget.state]}`} style={{ width: `${barPct(budget)}%` }} />
+          <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-muted" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(barPct(budget.ratio))} aria-label={name}>
+            <div className={`h-full rounded-full transition-[width] duration-500 ${BAR_COLOR[budget.state]}`} style={{ width: `${barPct(budget.ratio)}%` }} />
           </div>
           <p className="mt-2 text-xs text-muted-foreground">
             {budget.window.days_left !== null && phase === "active" && t("budgets.daysLeft", { count: budget.window.days_left })}
@@ -256,7 +256,7 @@ export function BudgetDetailPage() {
             ) : (
               <ul className="space-y-1" data-testid="sub-budgets">
                 {children.map((c, i) => (
-                  <BudgetRow key={c.id} budget={c} depth={1} isFirst={i === 0} isLast={i === children.length - 1} canWrite={canWrite} canDelete={canDelete} actions={actions} />
+                  <BudgetRow key={c.id} budget={c} view={c.period === "once" ? "monthly" : c.period} today={detail.data?.today ?? ""} depth={1} isFirst={i === 0} isLast={i === children.length - 1} canWrite={canWrite} canDelete={canDelete} actions={actions} />
                 ))}
               </ul>
             )}
@@ -376,7 +376,7 @@ export function BudgetDetailPage() {
     if (Array.isArray(v)) return v.length ? v.join(", ") : t("budgets.allSpending")
     if (field === "amount" && typeof v === "number") return money(v)
     if (field === "period" && typeof v === "string") return t(`budget.${v}`, { defaultValue: v })
-    if (field === "status" && typeof v === "string") return v === "paused" ? t("budgets.paused") : t("budgets.menu.resume")
+    if (field === "status" && typeof v === "string") return v === "closed" ? t("budgets.closed") : t("budgets.menu.reopen")
     if ((field === "start_date" || field === "end_date") && typeof v === "string") return fmtDay(v, i18n.language, { day: "numeric", month: "short", year: "numeric" })
     if (field === "parent_id" && typeof v === "string") return budgetName(t, all.find((b) => b.id === v) ?? { name: "" })
     return String(v)

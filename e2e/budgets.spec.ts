@@ -30,6 +30,7 @@ let activeOrgId = ""
 let restoreOrgId = ""
 let budgetId = ""
 let txId = ""
+const extraIds: string[] = []
 
 async function waitForClerk(page: Page) {
   await page.waitForFunction(() => {
@@ -116,6 +117,7 @@ test.describe.serial("Budgets", () => {
     await inFreshTab(browser, async (page) => {
       await switchWorkspace(page, "personal")
       if (budgetId) await api(page, "DELETE", `/api/spending-budgets/${budgetId}`)
+      for (const id of extraIds) await api(page, "DELETE", `/api/spending-budgets/${id}`)
       if (txId) {
         await api(page, "POST", "/api/transactions/bulk-delete", { ids: [txId] })
         await api(page, "POST", "/api/trash/clear")
@@ -177,14 +179,30 @@ test.describe.serial("Budgets", () => {
     await expect(row).toContainText(/255/)
   })
 
+  test("a budget with no sub-budgets still offers a way to add one", async ({ page }) => {
+    await page.goto("/budgets")
+    await expectAppShell(page)
+    const row = page.locator(`li[data-budget="${budgetId}"]`)
+    await expect(row).toBeVisible({ timeout: 15_000 })
+    // Every budget folds open, whether or not it already has sub-budgets — that
+    // is where "add a sub-budget" used to be unreachable. Retried as a unit: the
+    // list revalidates in the background, and a tap that lands mid-render is
+    // lost rather than wrong.
+    await expect(async () => {
+      await row.getByRole("button", { name: /show what is inside/i }).click()
+      await expect(page.getByTestId("add-sub-inline")).toBeVisible({ timeout: 2_000 })
+    }).toPass({ timeout: 20_000 })
+  })
+
   test("the detail page adds a sub-budget that counts inside its parent", async ({ page }) => {
     await page.goto(`/budgets/${budgetId}`)
     await expectAppShell(page)
     await expect(page.getByTestId("budget-hero")).toBeVisible({ timeout: 15_000 })
     await page.getByTestId("budget-add-sub").click()
-    // Categories first, and required: the name follows the first pick.
-    await page.getByRole("button", { name: CATEGORY, exact: true }).click()
-    await expect(page.locator("#sb-name")).toHaveValue(CATEGORY)
+    // The parent's free categories arrive already ticked — splitting by category
+    // is the whole point — and the name follows the first of them.
+    await expect(page.locator("#sb-name")).toHaveValue(CATEGORY, { timeout: 10_000 })
+    await expect(page.getByRole("button", { name: CATEGORY, exact: true })).toHaveAttribute("aria-pressed", "true")
     await page.locator("#sb-name").fill(SUB_NAME)
     await page.locator("#sb-amount").fill("100")
     await page.getByTestId("budget-save").click()
@@ -216,20 +234,86 @@ test.describe.serial("Budgets", () => {
     expect(res.json.by).toBe(SUB_NAME)
   })
 
-  test("the ⋯ menu pauses and resumes", async ({ page }) => {
+  test("the view toggle re-expresses every budget without asking the server again", async ({ page }) => {
+    await page.goto("/budgets")
+    await expectAppShell(page)
+    await expect(page.getByTestId("view-toggle")).toBeVisible({ timeout: 15_000 })
+    const row = page.locator(`li[data-budget="${budgetId}"]`)
+    const monthly = await row.innerText()
+
+    const calls: string[] = []
+    page.on("request", (r) => { if (r.url().includes("/api/spending-budgets")) calls.push(r.url()) })
+    await page.getByTestId("view-weekly").click()
+    await expect(row).not.toHaveText(monthly, { timeout: 10_000 })
+    // A monthly 300 read by the week is 300 / 30.436875 × 7 ≈ 69.
+    await expect(row).toContainText("69")
+    // …and it says what was actually set, so the converted figure cannot mislead.
+    await expect(row).toContainText(/300/)
+    expect(calls, "the toggle is a re-render, not a request").toEqual([])
+    await page.getByTestId("view-monthly").click()
+    await expect(row).toContainText("300.00")
+  })
+
+  test("the ⋯ menu closes and reopens a budget, and closed ones fold away", async ({ page }) => {
     await page.goto("/budgets")
     await expectAppShell(page)
     const row = page.locator(`li[data-budget="${budgetId}"]`)
     await expect(row).toBeVisible({ timeout: 15_000 })
     await row.getByRole("button", { name: /more actions/i }).first().click()
-    await page.getByRole("menuitem", { name: /^pause$/i }).click()
-    await expect(row.getByText(/^paused$/i).first()).toBeVisible({ timeout: 15_000 })
-    expect((await listing(page)).find((b) => b.id === budgetId)!.status).toBe("paused")
+    await page.getByRole("menuitem", { name: /^close$/i }).click()
+    await expect(page.getByTestId("closed-toggle")).toBeVisible({ timeout: 15_000 })
+    expect((await listing(page)).find((b) => b.id === budgetId)!.status).toBe("closed")
+    // Closing a parent closes what is inside it, so nothing keeps counting off-screen.
+    expect((await listing(page)).filter((b) => b.parent_id === budgetId).every((b) => b.status === "closed")).toBe(true)
 
-    await row.getByRole("button", { name: /more actions/i }).first().click()
-    await page.getByRole("menuitem", { name: /^resume$/i }).click()
-    await expect(row.getByText(/^paused$/i)).toHaveCount(0, { timeout: 15_000 })
+    await page.getByTestId("closed-toggle").click()
+    const closedRow = page.getByTestId("closed-list").locator(`li[data-budget="${budgetId}"]`)
+    await expect(closedRow).toBeVisible({ timeout: 10_000 })
+    await closedRow.getByRole("button", { name: /more actions/i }).first().click()
+    await page.getByRole("menuitem", { name: /^reopen$/i }).click()
+    await expect(page.getByTestId("budget-list").locator(`li[data-budget="${budgetId}"]`)).toBeVisible({ timeout: 15_000 })
     expect((await listing(page)).find((b) => b.id === budgetId)!.status).toBe("active")
+  })
+
+  test("reorder mode puts a grip on every budget and the new order sticks", async ({ page }) => {
+    await page.goto("/budgets")
+    await expectAppShell(page)
+    // A second budget, so there is an order to change.
+    const second = await api<{ id: string }>(page, "POST", "/api/spending-budgets", {
+      name: `${E2E_PREFIX} Travel`, amount: 120, period: "monthly", categories: ["Travel"],
+    })
+    expect(second.status, JSON.stringify(second.json)).toBe(201)
+    extraIds.push(second.json.id)
+
+    await page.reload()
+    await expectAppShell(page)
+    await page.getByTestId("reorder-toggle").click()
+    const grips = page.getByRole("button", { name: /drag to reorder/i })
+    await expect(grips.first()).toBeVisible({ timeout: 10_000 })
+    expect(await grips.count()).toBeGreaterThanOrEqual(2)
+
+    // The keyboard/menu path is the accessible equivalent of the drag.
+    await page.getByTestId("reorder-toggle").click()
+    const before = (await listing(page)).filter((b) => !b.parent_id && b.name.startsWith(E2E_PREFIX)).map((b) => b.id)
+    // The FIRST row: the floating action button sits over the bottom-right of
+    // the viewport, where the last row's menu would be.
+    const first = page.locator(`li[data-budget="${before[0]}"]`)
+    await first.getByRole("button", { name: /more actions/i }).first().click()
+    await page.getByRole("menuitem", { name: /move down/i }).click()
+    await page.waitForTimeout(1500)
+    const after = (await listing(page)).filter((b) => !b.parent_id && b.name.startsWith(E2E_PREFIX)).map((b) => b.id)
+    expect(after).not.toEqual(before)
+  })
+
+  test("the analytics tab answers what the list cannot", async ({ page }) => {
+    await page.goto("/budgets?tab=analytics")
+    await expectAppShell(page)
+    const panel = page.getByTestId("budget-analytics")
+    await expect(panel).toBeVisible({ timeout: 20_000 })
+    const headings = await panel.locator("h2").allTextContents()
+    expect(headings.length).toBeGreaterThanOrEqual(3)
+    // The one number only this screen has: spend no budget covers.
+    await expect(panel).toContainText(/not in any budget/i)
   })
 
   test("controls meet the 44 px touch floor at a phone width, with no sideways scroll", async ({ page }) => {

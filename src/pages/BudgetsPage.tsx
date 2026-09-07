@@ -1,8 +1,9 @@
-import { useMemo, useState } from "react"
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react"
+import { useSearchParams } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
-import { Plus } from "lucide-react"
+import { ArrowUpDown, Check, Plus } from "lucide-react"
 import { MoneyBag } from "@/components/icons/MoneyBag"
 import { apiDelete, apiErrorMessage, apiPatch, apiPost } from "@/lib/api"
 import { useApiQuery } from "@/hooks/use-api-query"
@@ -10,12 +11,12 @@ import { useCurrency } from "@/lib/currency-context"
 import { useOrg } from "@/lib/org-context"
 import { canDeleteRole, canWriteRole } from "@/lib/roles"
 import { formatMoney } from "@/lib/wealth"
-import type { SpendingPeriod } from "@/lib/budget"
-import type { SpendingBudget, SpendingBudgetsResponse } from "@/lib/types"
-import { BudgetRow, type BudgetRowActions } from "@/components/budget/BudgetRow"
+import { allocation, isViewWindow, todayUtc, VIEW_WINDOWS } from "@/lib/budget"
+import type { Category, SpendingBudget, SpendingBudgetsResponse, SpendingViewWindow } from "@/lib/types"
+import { BudgetList } from "@/components/budget/BudgetList"
 import { SpendingBudgetDialog, type SpendingBudgetDialogMode } from "@/components/budget/SpendingBudgetDialog"
 import { ClientBudgetsSection } from "@/components/budget/ClientBudgetsSection"
-import { budgetName, nestBudgets, periodLabel } from "@/components/budget/budget-format"
+import { BAR_COLOR, DELTA_COLOR, barPct, budgetName, inView } from "@/components/budget/budget-format"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -30,18 +31,23 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 
-const SECTION_ORDER: SpendingPeriod[] = ["daily", "weekly", "monthly", "yearly", "once"]
+const BudgetAnalyticsPanel = lazy(() =>
+  import("@/components/budget/BudgetAnalyticsPanel").then((m) => ({ default: m.BudgetAnalyticsPanel })),
+)
+
+const VIEW_KEY = (orgId: string | undefined) => `ps_budget_view_${orgId ?? ""}`
 
 /**
  * /budgets — where am I with each budget?
  *
- * One card, one list. Main budgets with their sub-budgets underneath, grouped
- * by window only when more than one is in use (a single monthly budget gets no
- * "This month" header above it). A section header never SUMS its rows — an
- * all-spending budget and a groceries budget would count the same receipt
- * twice — it shows the server's union figure, and quotes a limit only when
- * the scopes are disjoint. A business workspace keeps its per-client spend
- * caps in a second section below.
+ * The page reports on ONE window at a time (Day / Week / Month / Year). Every
+ * budget is authored in the rhythm its owner thinks in — rent monthly, coffee
+ * weekly — and converted into the chosen window, which is the only way budgets
+ * of different rhythms can be compared, added up, and measured against one
+ * overall limit. The toggle costs no request: every row already carries its
+ * spend for all four windows.
+ *
+ * A business workspace keeps its per-client spend caps in a section below.
  */
 export function BudgetsPage() {
   const { t } = useTranslation()
@@ -54,45 +60,80 @@ export function BudgetsPage() {
   const money = (n: number) => formatMoney(n, currency)
 
   const { data, loading, refetch } = useApiQuery<SpendingBudgetsResponse>("/api/spending-budgets")
+  const cats = useApiQuery<Category[]>("/api/categories?type=outgoing")
   const budgets = useMemo(() => data?.budgets ?? [], [data])
-  const groups = useMemo(() => nestBudgets(budgets), [budgets])
+  const today = data?.today ?? todayUtc()
 
-  const [dialog, setDialog] = useState<SpendingBudgetDialogMode | null>(null)
-  const [removing, setRemoving] = useState<SpendingBudget | null>(null)
-  const [busy, setBusy] = useState(false)
+  const [searchParams, setSearchParams] = useSearchParams()
+  const tab = searchParams.get("tab") === "analytics" ? "analytics" : "budgets"
+  const setTab = (next: "budgets" | "analytics") => {
+    const p = new URLSearchParams(searchParams)
+    if (next === "budgets") p.delete("tab")
+    else p.set("tab", next)
+    setSearchParams(p, { replace: true })
+  }
 
-  const sections = useMemo(
-    () =>
-      SECTION_ORDER.map((period) => ({ period, groups: groups.filter((g) => g.budget.period === period) })).filter((s) => s.groups.length),
-    [groups],
-  )
-  const showHeaders = sections.length > 1
-
-  const withToken = async (fn: (token: string) => Promise<void>) => {
-    if (busy) return
-    setBusy(true)
+  // The window the page is read in, remembered per workspace.
+  const [view, setViewState] = useState<SpendingViewWindow>("monthly")
+  useEffect(() => {
     try {
-      const token = await getToken()
-      if (!token) return
-      await fn(token)
-      refetch()
-    } catch (err) {
-      toast.error(apiErrorMessage(err, t("budgets.saveFailed")))
-    } finally {
-      setBusy(false)
+      const saved = localStorage.getItem(VIEW_KEY(activeOrg?.id))
+      if (isViewWindow(saved)) setViewState(saved)
+    } catch {
+      /* private mode */
+    }
+  }, [activeOrg?.id])
+  const setView = (v: SpendingViewWindow) => {
+    setViewState(v)
+    try {
+      localStorage.setItem(VIEW_KEY(activeOrg?.id), v)
+    } catch {
+      /* private mode */
     }
   }
 
-  const actions: BudgetRowActions = {
-    onEdit: (b) => setDialog({ kind: "edit", budget: b }),
-    onAddSub: (parent) => setDialog({ kind: "createSub", parent }),
-    onToggleStatus: (b) =>
+  const [dialog, setDialog] = useState<SpendingBudgetDialogMode | null>(null)
+  const [removing, setRemoving] = useState<SpendingBudget | null>(null)
+  const [reordering, setReordering] = useState(false)
+  const [busy, setBusy] = useState(false)
+
+  const withToken = useCallback(
+    async (fn: (token: string) => Promise<void>) => {
+      if (busy) return
+      setBusy(true)
+      try {
+        const token = await getToken()
+        if (!token) return
+        await fn(token)
+        refetch()
+      } catch (err) {
+        toast.error(apiErrorMessage(err, t("budgets.saveFailed")))
+      } finally {
+        setBusy(false)
+      }
+    },
+    [busy, getToken, refetch, t],
+  )
+
+  const overall = budgets.find((b) => b.is_overall && b.status === "active") ?? null
+  const lines = budgets.filter((b) => !b.parent_id && !b.is_overall && b.status === "active" && b.period !== "once")
+  const overallView = overall ? inView(overall, view, today) : null
+  const alloc = allocation(
+    overallView ? overallView.limit : null,
+    lines.map((b) => inView(b, view, today).limit),
+  )
+
+  const actions = {
+    onEdit: (b: SpendingBudget) => setDialog({ kind: "edit", budget: b }),
+    onAddSub: (parent: SpendingBudget) => setDialog({ kind: "createSub", parent }),
+    onWidenScope: (parent: SpendingBudget) => setDialog({ kind: "edit", budget: parent, openScope: true }),
+    onToggleStatus: (b: SpendingBudget) =>
       void withToken(async (token) => {
-        await apiPatch(`/api/spending-budgets/${b.id}`, token, { status: b.status === "paused" ? "active" : "paused" })
+        await apiPatch(`/api/spending-budgets/${b.id}`, token, { status: b.status === "closed" ? "active" : "closed" })
       }),
-    onMove: (b, dir) =>
+    onMove: (b: SpendingBudget, dir: "up" | "down") =>
       void withToken(async (token) => {
-        const siblings = budgets.filter((x) => x.parent_id === b.parent_id)
+        const siblings = budgets.filter((x) => x.parent_id === b.parent_id && x.status === b.status && !x.is_overall)
         const i = siblings.findIndex((x) => x.id === b.id)
         const j = dir === "up" ? i - 1 : i + 1
         if (i < 0 || j < 0 || j >= siblings.length) return
@@ -100,8 +141,13 @@ export function BudgetsPage() {
         ;[ids[i], ids[j]] = [ids[j], ids[i]]
         await apiPost("/api/spending-budgets/reorder", token, { ids })
       }),
-    onRemove: (b) => setRemoving(b),
+    onRemove: (b: SpendingBudget) => setRemoving(b),
   }
+
+  const reorder = (ids: string[]) =>
+    void withToken(async (token) => {
+      await apiPost("/api/spending-budgets/reorder", token, { ids })
+    })
 
   const confirmRemove = () => {
     const b = removing
@@ -113,10 +159,25 @@ export function BudgetsPage() {
     })
   }
 
+  const tabButton = (key: "budgets" | "analytics", label: string) => (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={tab === key}
+      onClick={() => setTab(key)}
+      data-testid={`tab-${key}`}
+      className={`pressable min-h-11 flex-1 rounded-md px-3 text-sm font-medium transition-colors sm:min-h-9 ${
+        tab === key ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+      }`}
+    >
+      {label}
+    </button>
+  )
+
   return (
-    <div className="space-y-4 p-3 sm:space-y-6 sm:p-6">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div className="min-w-0">
+    <div className="space-y-4 p-3 sm:space-y-5 sm:p-6">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
           <h1 className="flex items-center gap-2 text-xl font-semibold tracking-tight sm:text-2xl">
             <MoneyBag className="size-5 shrink-0 text-muted-foreground" aria-hidden /> {t("budgets.title")}
           </h1>
@@ -129,7 +190,41 @@ export function BudgetsPage() {
         )}
       </div>
 
-      {loading ? (
+      <div role="tablist" aria-label={t("budgets.title")} className="flex gap-1 rounded-lg bg-muted p-1">
+        {tabButton("budgets", t("budgets.tabBudgets"))}
+        {tabButton("analytics", t("budgets.tabAnalytics"))}
+      </div>
+
+      {/* The scale everything on the page is read at. */}
+      <div role="group" aria-label={t("budgets.viewLabel")} className="flex gap-1 rounded-lg bg-muted p-1" data-testid="view-toggle">
+        {VIEW_WINDOWS.map((v) => (
+          <button
+            key={v}
+            type="button"
+            aria-pressed={view === v}
+            onClick={() => setView(v)}
+            data-testid={`view-${v}`}
+            className={`pressable min-h-11 flex-1 truncate rounded-md px-2 text-sm font-medium transition-colors sm:min-h-9 ${
+              view === v ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {t(`budget.${v}`)}
+          </button>
+        ))}
+      </div>
+
+      {tab === "analytics" ? (
+        <Suspense fallback={<Skeleton className="h-64 w-full rounded-xl" />}>
+          <BudgetAnalyticsPanel
+            view={view}
+            budgets={budgets}
+            onBudgetCategory={(category) => {
+              setTab("budgets")
+              setDialog({ kind: "create", prefillCategories: [category] })
+            }}
+          />
+        </Suspense>
+      ) : loading ? (
         <Card className="py-0">
           <CardContent className="space-y-4 p-4">
             {[0, 1, 2].map((i) => (
@@ -144,7 +239,9 @@ export function BudgetsPage() {
         <div className="rounded-2xl border border-dashed py-12 text-center sm:py-16">
           <MoneyBag className="mx-auto mb-3 size-10 text-muted-foreground/50" aria-hidden />
           <p className="text-sm font-medium">{t("budgets.empty")}</p>
-          <p className="mx-auto mt-1 max-w-md px-6 text-xs text-muted-foreground">{canWrite ? t("budgets.emptyHint") : t("budgets.emptyReadOnly")}</p>
+          <p className="mx-auto mt-1 max-w-md px-6 text-xs text-muted-foreground">
+            {canWrite ? t("budgets.emptyHint") : t("budgets.emptyReadOnly")}
+          </p>
           {canWrite && (
             <Button className="mt-4 h-11 sm:h-9" onClick={() => setDialog({ kind: "create" })} data-testid="budget-add">
               <Plus className="size-4" /> {t("budgets.setFirst")}
@@ -152,58 +249,125 @@ export function BudgetsPage() {
           )}
         </div>
       ) : (
-        <Card className="py-0">
-          <CardContent className="p-2 sm:p-4">
-            {sections.map(({ period, groups: list }) => {
-              const summary = data?.sections?.[period]
-              const first = list[0].budget
-              return (
-                <section key={period} className="py-1" aria-label={periodLabel(t, period)}>
-                  {showHeaders && (
-                    <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 px-2 pb-1 pt-2 sm:px-1">
-                      <h2 className="text-sm font-semibold">{periodLabel(t, period)}</h2>
-                      <p className="text-xs text-muted-foreground tabular-nums">
-                        {summary && (summary.limit !== null
-                          ? t("budgets.spentOf", { spent: money(summary.spent), amount: money(summary.limit) })
-                          : t("budgets.spentSoFar", { amount: money(summary.spent) }))}
-                        {summary && summary.count > 1 && <> · {t("budgets.onTrack", { count: summary.on_track, total: summary.count })}</>}
-                        {period !== "once" && first.window.days_left !== null && <> · {t("budgets.daysLeft", { count: first.window.days_left })}</>}
+        <>
+          {/* The overall budget: the one figure everything else is measured against. */}
+          <Card className="py-0" data-testid="overall-card">
+            <CardContent className="p-4">
+              {overall && overallView ? (
+                <>
+                  <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                    <div className="min-w-0">
+                      <p className="text-xs font-medium text-muted-foreground">{t("budgets.overall")}</p>
+                      <p className="mt-0.5 text-2xl font-bold tabular-nums">
+                        {money(overallView.spent)}{" "}
+                        <span className="text-base font-normal text-muted-foreground">/ {money(overallView.limit)}</span>
                       </p>
                     </div>
+                    <p className={`text-sm font-medium tabular-nums ${DELTA_COLOR[overallView.state]}`}>
+                      {overallView.remaining >= 0
+                        ? t("budgets.left", { amount: money(overallView.remaining) })
+                        : t("budgets.over", { amount: money(-overallView.remaining) })}
+                    </p>
+                  </div>
+                  <div
+                    className="mt-3 h-2 w-full overflow-hidden rounded-full bg-muted"
+                    role="progressbar"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={Math.round(barPct(overallView.ratio))}
+                    aria-label={t("budgets.overall")}
+                  >
+                    <div className={`h-full rounded-full transition-[width] duration-500 ${BAR_COLOR[overallView.state]}`} style={{ width: `${barPct(overallView.ratio)}%` }} />
+                  </div>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    {overallView.days_left !== null && t("budgets.daysLeft", { count: overallView.days_left })}
+                    {overallView.per_day_left !== null && <> · {t("budgets.perDay", { amount: money(overallView.per_day_left) })}</>}
+                  </p>
+                  {lines.length > 0 && (
+                    <div className="mt-3 border-t pt-3">
+                      <p className="text-xs text-muted-foreground">
+                        {t("budgets.allocated", { allocated: money(alloc.allocated), total: money(overallView.limit) })}
+                        {alloc.unallocated !== null && (
+                          <span className={alloc.over ? "text-amber-600 dark:text-amber-400" : ""}>
+                            {" · "}
+                            {alloc.over
+                              ? t("budgets.overAllocated", { amount: money(-alloc.unallocated) })
+                              : t("budgets.unallocated", { amount: money(alloc.unallocated) })}
+                          </span>
+                        )}
+                      </p>
+                      <div className="mt-2 flex h-1.5 w-full gap-0.5 overflow-hidden rounded-full bg-muted" aria-hidden>
+                        {lines.map((b) => {
+                          const pct = overallView.limit > 0 ? Math.min(100, (inView(b, view, today).limit / overallView.limit) * 100) : 0
+                          return <span key={b.id} className="h-full rounded-full bg-primary/70" style={{ width: `${pct}%` }} title={budgetName(t, b)} />
+                        })}
+                      </div>
+                    </div>
                   )}
-                  <ul className="space-y-1" data-testid={`budgets-${period}`}>
-                    {list.map(({ budget, children }, i) => (
-                      <BudgetRow
-                        key={budget.id}
-                        budget={budget}
-                        children={children}
-                        isFirst={i === 0}
-                        isLast={i === list.length - 1}
-                        canWrite={canWrite}
-                        canDelete={canDelete}
-                        actions={actions}
-                      />
-                    ))}
-                  </ul>
-                </section>
-              )
-            })}
-            {!showHeaders && sections[0] && sections[0].period !== "once" && sections[0].groups[0].budget.window.days_left !== null && (
-              <p className="px-2 pt-2 text-[11px] text-muted-foreground sm:px-1">
-                {periodLabel(t, sections[0].period)} · {t("budgets.daysLeft", { count: sections[0].groups[0].budget.window.days_left })}
-              </p>
-            )}
-          </CardContent>
-        </Card>
+                </>
+              ) : (
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium">{t("budgets.noOverall")}</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">{t("budgets.noOverallHint", { amount: money(alloc.allocated) })}</p>
+                  </div>
+                  {canWrite && (
+                    <Button variant="outline" size="sm" className="h-11 sm:h-9" onClick={() => setDialog({ kind: "createOverall" })} data-testid="set-overall">
+                      <Plus className="size-4" /> {t("budgets.setOverall")}
+                    </Button>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="py-0">
+            <CardContent className="p-2 sm:p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2 px-2 pb-2 sm:px-1">
+                <h2 className="text-sm font-semibold">{t("budgets.yourBudgets")}</h2>
+                {canWrite && lines.length + budgets.filter((b) => !b.parent_id && !b.is_overall && b.period === "once").length > 1 && (
+                  <Button
+                    variant={reordering ? "default" : "ghost"}
+                    size="sm"
+                    className="h-11 text-xs sm:h-8"
+                    onClick={() => setReordering((v) => !v)}
+                    data-testid="reorder-toggle"
+                  >
+                    {reordering ? <Check className="size-3.5" /> : <ArrowUpDown className="size-3.5" />}
+                    {reordering ? t("budgets.doneReordering") : t("budgets.reorder")}
+                  </Button>
+                )}
+              </div>
+              <BudgetList
+                budgets={budgets}
+                view={view}
+                today={today}
+                canWrite={canWrite}
+                canDelete={canDelete}
+                reordering={reordering}
+                categoryNames={(cats.data ?? []).map((c) => c.name)}
+                actions={actions}
+                onReorder={reorder}
+              />
+            </CardContent>
+          </Card>
+        </>
       )}
 
-      {!isPersonal && <ClientBudgetsSection />}
+      {!isPersonal && tab === "budgets" && <ClientBudgetsSection />}
 
       {/* Mounted closed and OPENED, never mounted open: the dialog's back-gesture
-          hook pushes a history entry on the false→true transition, and a
-          mount-with-open under StrictMode's double effect would pop it straight
-          back and slam the dialog shut. */}
-      <SpendingBudgetDialog open={dialog !== null} onOpenChange={(o) => { if (!o) setDialog(null) }} mode={dialog ?? { kind: "create" }} all={budgets} onSaved={refetch} />
+          hook pushes a history entry on the false→true transition, and mounting
+          with `open` already true pops it straight back. */}
+      <SpendingBudgetDialog
+        open={dialog !== null}
+        onOpenChange={(o) => {
+          if (!o) setDialog(null)
+        }}
+        mode={dialog ?? { kind: "create" }}
+        all={budgets}
+        onSaved={refetch}
+      />
 
       <AlertDialog open={!!removing} onOpenChange={(o) => { if (!o) setRemoving(null) }}>
         <AlertDialogContent>

@@ -2426,8 +2426,6 @@
       "yearly": "Dieses Jahr",
       "once": "Eigener Zeitraum"
     },
-    "onTrack": "{{count}} von {{total}} im Plan",
-    "spentSoFar": "{{amount}} ausgegeben",
     "spentOf": "{{spent}} von {{amount}}",
     "left": "{{amount}} übrig",
     "over": "{{amount}} darüber",
@@ -2435,10 +2433,7 @@
     "daysLeft_other": "Noch {{count}} Tage",
     "perDay": "etwa {{amount}} pro Tag",
     "notInSubBudgets": "{{amount}} in keinem Unterbudget",
-    "paused": "Pausiert",
-    "pausedHint": "Zählt erst wieder, wenn du es fortsetzt.",
     "ended": "Beendet",
-    "endedOn": "Beendet am {{date}}",
     "startsOn": "Beginnt am {{date}}",
     "window": {
       "allTime": "Gesamter Zeitraum",
@@ -2449,11 +2444,13 @@
     "menu": {
       "edit": "Bearbeiten",
       "addSub": "Unterbudget hinzufügen",
-      "pause": "Pausieren",
-      "resume": "Fortsetzen",
       "moveUp": "Nach oben",
       "moveDown": "Nach unten",
-      "remove": "Entfernen"
+      "remove": "Entfernen",
+      "close": "Schließen",
+      "reopen": "Wieder öffnen",
+      "reorder": "Zum Sortieren ziehen",
+      "for": "Weitere Aktionen für {{name}}"
     },
     "removeTitle": "{{name}} entfernen?",
     "removeBody": "Deine Transaktionen bleiben unverändert.",
@@ -2492,7 +2489,10 @@
       "save": "Speichern",
       "add": "Hinzufügen",
       "remove": "Entfernen",
-      "confirmRemove": "Zum Entfernen erneut tippen"
+      "confirmRemove": "Zum Entfernen erneut tippen",
+      "createOverallTitle": "Gesamtbudget festlegen",
+      "editOverallTitle": "Gesamtbudget bearbeiten",
+      "overallHint": "Ein Limit für alles, was du ausgibst. Deine anderen Budgets werden daran gemessen."
     },
     "errors": {
       "nameTaken": "Ein Budget mit diesem Namen existiert bereits.",
@@ -2503,7 +2503,8 @@
       "childOutsideScope": "{{child}} nutzt eine Kategorie, die dann nicht mehr in diesem Budget wäre.",
       "tooMany": "Du hast das Limit an Budgets erreicht.",
       "hasSubBudgets": "Ein Budget mit Unterbudgets kann kein Unterbudget werden.",
-      "renameClash": "Durch das Umbenennen wäre {{categories}} sowohl in {{a}} als auch in {{b}}. Ändere zuerst eines dieser Unterbudgets."
+      "renameClash": "Durch das Umbenennen wäre {{categories}} sowohl in {{a}} als auch in {{b}}. Ändere zuerst eines dieser Unterbudgets.",
+      "overallExists": "Du hast bereits ein Gesamtbudget ({{name}}). Bearbeite stattdessen dieses."
     },
     "detail": {
       "subBudgets": "Unterbudgets",
@@ -2516,10 +2517,10 @@
       "changes": "Änderungen",
       "noChanges": "Noch keine Änderungen.",
       "notFound": "Budget nicht gefunden.",
-      "pausedBanner": "Dieses Budget ist pausiert und zählt nicht.",
       "endedBanner": "Dieses Budget endete am {{date}}.",
       "upcomingBanner": "Dieses Budget beginnt am {{date}}.",
-      "refund": "Erstattung"
+      "refund": "Erstattung",
+      "closedBanner": "Dieses Budget ist geschlossen und wird nicht gezählt."
     },
     "history": {
       "create": "Erstellt",
@@ -2540,8 +2541,7 @@
     },
     "clientBudgets": {
       "title": "Ausgabenlimits pro Kunde",
-      "subtitle": "Ein Limit pro Kunde, mit Verlauf.",
-      "link": "Ausgabenlimits pro Kunde"
+      "subtitle": "Ein Limit pro Kunde, mit Verlauf."
     },
     "card": {
       "title": "Budgets",
@@ -2552,6 +2552,63 @@
     "hint": {
       "after": "{{name}}: danach {{amount}} übrig",
       "overAfter": "{{name}}: danach {{amount}} darüber"
+    },
+    "closed": "Geschlossen",
+    "closedHint": "Zählt nicht, bis du es wieder öffnest.",
+    "closedCount_one": "{{count}} geschlossenes Budget",
+    "closedCount_other": "{{count}} geschlossene Budgets",
+    "tabBudgets": "Budgets",
+    "tabAnalytics": "Analysen",
+    "viewLabel": "Beträge anzeigen für",
+    "overall": "Gesamtbudget",
+    "noOverall": "Kein Gesamtbudget",
+    "noOverallHint": "Lege eines fest, um zu sehen, wie viel deine Budgets davon beanspruchen. Deine Budgets ergeben zusammen {{amount}}.",
+    "setOverall": "Gesamtbudget festlegen",
+    "allocated": "Budgets nutzen {{allocated}} von {{total}}",
+    "unallocated": "{{amount}} nicht verplant",
+    "overAllocated": "{{amount}} zu viel verplant",
+    "reorder": "Sortieren",
+    "doneReordering": "Fertig",
+    "expand": "Inhalt von {{name}} anzeigen",
+    "collapse": "Inhalt von {{name}} ausblenden",
+    "authored": {
+      "daily": "Du hast {{amount}} pro Tag festgelegt",
+      "weekly": "Du hast {{amount}} pro Woche festgelegt",
+      "monthly": "Du hast {{amount}} pro Monat festgelegt",
+      "yearly": "Du hast {{amount}} pro Jahr festgelegt"
+    },
+    "rate": {
+      "daily": "{{amount}} pro Tag",
+      "weekly": "{{amount}} pro Woche",
+      "monthly": "{{amount}} pro Monat",
+      "yearly": "{{amount}} pro Jahr"
+    },
+    "subFull": "Jede Kategorie in {{name}} ist bereits in einem Unterbudget.",
+    "subFullAction": "Kategorie hinzufügen",
+    "noSubsHint": "Teile dieses Budget nach Kategorien auf, um zu sehen, wohin das Geld geht.",
+    "noneYet": "Noch keine Budgets.",
+    "analytics": {
+      "trend": "Ausgaben im Zeitverlauf",
+      "focus": "Welches Budget",
+      "periods": "Wie weit zurück",
+      "lastN_one": "{{count}} Zeitraum zurück",
+      "lastN_other": "{{count}} Zeiträume zurück",
+      "trendNote": "Jeder Zeitraum wird an dem Limit gemessen, das damals galt. Der laufende Zeitraum ist noch nicht vorbei — er wird blass dargestellt und nie bewertet.",
+      "notEnough": "Noch zu wenig Verlauf — schau nach ein paar Zeiträumen wieder vorbei.",
+      "unclaimed": "In keinem Budget",
+      "unclaimedTotal": "{{amount}} der Ausgaben in diesem Zeitraum sind in keinem Budget.",
+      "allClaimed": "Jede Kategorie, in der du ausgegeben hast, ist von einem Budget abgedeckt.",
+      "uncategorised": "Ohne Kategorie",
+      "budgetThis": "Budget dafür",
+      "adherence": "Hältst du dich daran?",
+      "noJudgeable": "Noch kein abgeschlossener Zeitraum mit Limit zum Bewerten.",
+      "onBudget": "Im Budget",
+      "streak": "Serie",
+      "avgDelta": "Ø vs. Limit",
+      "judgedOver_one": "Über {{count}} abgeschlossenen Zeitraum.",
+      "judgedOver_other": "Über {{count}} abgeschlossene Zeiträume.",
+      "byBudget": "Wohin das Geld ging",
+      "byBudgetNote": "Dieser Zeitraum, die kritischsten zuerst."
     }
   }
 }

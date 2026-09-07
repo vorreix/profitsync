@@ -127,6 +127,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // A sub-budget's period/dates are its parent's on both sides of the diff
       // (`current` carries the derived values), so they never show as changed.
       const nextForDiff = parent ? { ...next, period: current.period, start_date: current.start_date, end_date: current.end_date } : next
+      // Closing a budget closes what is inside it: an active sub-budget of a
+      // closed parent would vanish from the page while still counting and still
+      // alerting. Reopening brings them back the same way.
+      if (!next.parent_id && next.status !== current.status) {
+        await db
+          .update(spendingBudgets)
+          .set({ status: next.status, updatedBy: userId, updatedAt: new Date() })
+          .where(and(eq(spendingBudgets.parentId, id), eq(spendingBudgets.organizationId, orgId)))
+      }
+
       const changes = diffFields(
         { ...current, categories: JSON.stringify(current.categories) },
         { ...nextForDiff, categories: JSON.stringify(next.categories) },

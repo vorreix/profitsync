@@ -728,7 +728,9 @@ export type UserGroupMember = {
 // the pure window math in src/lib/budget.ts. The v1 per-client caps above
 // (`Budget`) are a separate, business-only feature.
 export type SpendingPeriod = "daily" | "weekly" | "monthly" | "yearly" | "once"
-export type SpendingBudgetStatus = "active" | "paused"
+/** The four windows the page can be read in. A budget authored in any rhythm converts into them. */
+export type SpendingViewWindow = "daily" | "weekly" | "monthly" | "yearly"
+export type SpendingBudgetStatus = "active" | "closed"
 export type SpendingBudgetState = "ok" | "warn" | "over" | "none"
 export type SpendingWindowPhase = "upcoming" | "active" | "ended"
 
@@ -749,29 +751,68 @@ export type SpendingBudget = {
   position: number
   created_at: string | null
   updated_at: string | null
+  /** The OVERALL budget: top level, all spending, one per workspace. Shown as the page header. */
+  is_overall: boolean
   window: { start: string | null; end_exclusive: string | null; phase: SpendingWindowPhase; days_left: number | null }
+  /** Spend over the budget's OWN window — what "am I over budget?" means. */
   spent: number
+  /**
+   * Spend over each of the four view windows, so the page's Day/Week/Month/Year
+   * toggle is a re-render and not a request. A custom-date budget reports its
+   * own figure in all four: it is a fixed sum, not a rhythm.
+   */
+  spent_by_view: Record<SpendingViewWindow, number>
   remaining: number
   ratio: number | null
   /** "none" when paused, ended or not yet started — the row is shown but not counted. */
   state: SpendingBudgetState
   per_day_left: number | null
-  /** Spend inside a main budget that none of its sub-budgets claim; null without sub-budgets. */
+  /** Spend inside a main budget that none of its ACTIVE sub-budgets claim; null without any. */
   other_spent: number | null
+  other_spent_by_view: Record<SpendingViewWindow, number> | null
   children_count: number
 }
 
-/**
- * A period section's header figure: spend over the UNION of its active
- * top-level scopes (never a sum of rows), and a limit only when those scopes
- * are pairwise disjoint — otherwise the limits are not a cap on anything.
- */
-export type SpendingBudgetSection = { spent: number; limit: number | null; overlapping: boolean; count: number; on_track: number }
+/** What the individual budgets add up to against the overall budget, in the view window. */
+export type SpendingAllocation = {
+  allocated: number
+  unallocated: number | null
+  over: boolean
+  overall_limit: number | null
+  overall_spent: number | null
+  budgeted_spent: number
+}
 
 export type SpendingBudgetsResponse = {
   budgets: SpendingBudget[]
-  sections?: Partial<Record<SpendingPeriod, SpendingBudgetSection>>
   today: string
+}
+
+export type SpendingBudgetAnalyticsWindow = {
+  start: string
+  end_exclusive: string
+  /** Not finished yet: drawn "so far", never judged. */
+  partial: boolean
+  /** No budget's scope has moved since this window closed, so its figures can be trusted. */
+  reliable: boolean
+  total: number
+  /** Spend no active category budget claims. Never negative. */
+  unclaimed: number
+  overall_limit: number | null
+  budgeted_limit: number
+  /** budget id → its own limit in this window; null before it existed. */
+  per_budget_limit: Record<string, number | null>
+  /** NOT a partition — the overall's entry equals `total` and a sub-budget's sits inside its parent's. */
+  per_budget: Record<string, number>
+}
+
+export type SpendingBudgetAnalytics = {
+  view: SpendingViewWindow
+  back: number
+  today: string
+  windows: SpendingBudgetAnalyticsWindow[]
+  categories: { name: string; spent: number; budget_id: string | null }[]
+  adherence: { periods: number; within: number; rate: number; streak: number; avg_delta: number }
 }
 
 export type SpendingBudgetRecentTx = {
