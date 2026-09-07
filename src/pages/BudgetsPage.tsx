@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react"
+import { lazy, Suspense, useCallback, useMemo, useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
@@ -11,8 +11,9 @@ import { useCurrency } from "@/lib/currency-context"
 import { useOrg } from "@/lib/org-context"
 import { canDeleteRole, canWriteRole } from "@/lib/roles"
 import { formatMoney } from "@/lib/wealth"
-import { allocation, isViewWindow, todayUtc, VIEW_WINDOWS } from "@/lib/budget"
-import type { Category, SpendingBudget, SpendingBudgetsResponse, SpendingViewWindow } from "@/lib/types"
+import { allocation, todayUtc, VIEW_WINDOWS } from "@/lib/budget"
+import { useBudgetView } from "@/lib/budget-view"
+import type { Category, SpendingBudget, SpendingBudgetsResponse } from "@/lib/types"
 import { BudgetList } from "@/components/budget/BudgetList"
 import { SpendingBudgetDialog, type SpendingBudgetDialogMode } from "@/components/budget/SpendingBudgetDialog"
 import { ClientBudgetsSection } from "@/components/budget/ClientBudgetsSection"
@@ -34,8 +35,6 @@ import {
 const BudgetAnalyticsPanel = lazy(() =>
   import("@/components/budget/BudgetAnalyticsPanel").then((m) => ({ default: m.BudgetAnalyticsPanel })),
 )
-
-const VIEW_KEY = (orgId: string | undefined) => `ps_budget_view_${orgId ?? ""}`
 
 /**
  * /budgets — where am I with each budget?
@@ -73,24 +72,9 @@ export function BudgetsPage() {
     setSearchParams(p, { replace: true })
   }
 
-  // The window the page is read in, remembered per workspace.
-  const [view, setViewState] = useState<SpendingViewWindow>("monthly")
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem(VIEW_KEY(activeOrg?.id))
-      if (isViewWindow(saved)) setViewState(saved)
-    } catch {
-      /* private mode */
-    }
-  }, [activeOrg?.id])
-  const setView = (v: SpendingViewWindow) => {
-    setViewState(v)
-    try {
-      localStorage.setItem(VIEW_KEY(activeOrg?.id), v)
-    } catch {
-      /* private mode */
-    }
-  }
+  // The window the page is read in, remembered per workspace — the same
+  // preference the dashboard card reads, so the two never disagree.
+  const [view, setView] = useBudgetView(activeOrg?.id)
 
   const [dialog, setDialog] = useState<SpendingBudgetDialogMode | null>(null)
   const [removing, setRemoving] = useState<SpendingBudget | null>(null)

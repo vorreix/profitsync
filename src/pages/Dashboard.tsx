@@ -644,8 +644,13 @@ function WealthOverview({
                   <FitText className="mt-1" textClassName="text-2xl sm:text-3xl font-bold tabular-nums">
                     {formatMoney(total, currency, balancesVisible)}
                   </FitText>
+                  {/* Card debt is money that has to go back out, so it is
+                      red — the one figure on this card that works AGAINST the
+                      total above it. Red whenever the "owed" wording shows, in
+                      privacy mode too: the colour must not become the tell for
+                      whether anything is owed once the amount is masked. */}
                   {liabilities > 0 && (
-                    <p className="mt-1 text-xs text-muted-foreground tabular-nums">
+                    <p className="mt-1 text-xs font-medium tabular-nums text-red-600 dark:text-red-400">
                       {t("wealth.owedOnCards")}: {formatMoney(liabilities, currency, balancesVisible)}
                     </p>
                   )}
@@ -688,7 +693,11 @@ function WealthOverview({
                   <span className="block truncate text-xs text-muted-foreground">{t("dashboard.cardsCount", { count: cards.length })}</span>
                 </span>
                 {hasCreditCard && (
-                  <span className="shrink-0 text-sm font-semibold tabular-nums">
+                  <span
+                    className={`shrink-0 text-sm font-semibold tabular-nums ${
+                      cardsOwed > 0 || !balancesVisible ? "text-red-600 dark:text-red-400" : ""
+                    }`}
+                  >
                     {cardsOwed > 0 || !balancesVisible
                       ? t("dashboard.cardsOwed", { amount: formatMoney(cardsOwed, currency, balancesVisible) })
                       : t("dashboard.cardsNothingOwed")}
