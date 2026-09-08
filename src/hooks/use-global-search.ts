@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import { useAuth } from "@clerk/clerk-react"
 import { apiGet } from "@/lib/api"
+import type { BrandColor, CardDesign, CardKind, CardNetwork, CardTier } from "@/lib/types"
 
 export type SearchClient = { id: string; name: string; company: string; status: string }
 export type SearchTransaction = {
@@ -16,6 +17,20 @@ export type SearchTransaction = {
 export type SearchQuotation = { id: string; title: string; prospect_name: string; status: string; amount: string }
 export type SearchAccount = { id: string; bank_name: string; nickname: string; type: string; icon: string }
 export type SearchCategory = { id: string; name: string; type: string; color: string }
+// A card hit (api/_routes/search.ts): enough to draw its swatch + "•••• 1234".
+export type SearchCard = {
+  id: string
+  kind: CardKind
+  name: string
+  network: CardNetwork
+  last4: string
+  tier: CardTier
+  design: CardDesign | null
+  brand_colors: BrandColor[] | null
+  status: string
+  account_bank_name: string
+  account_brand_domain: string
+}
 
 export type SearchResults = {
   clients: SearchClient[]
@@ -23,6 +38,7 @@ export type SearchResults = {
   quotations: SearchQuotation[]
   accounts: SearchAccount[]
   categories: SearchCategory[]
+  cards: SearchCard[]
 }
 
 export const SEARCH_MIN_CHARS = 2
@@ -36,7 +52,21 @@ export const searchHrefs = {
   transaction: (tx: SearchTransaction) => `/transactions?view=${tx.id}`,
   quotation: (qt: SearchQuotation) => `/quotations?view=${qt.id}`,
   account: (a: SearchAccount) => (a.type === "space" ? "/spaces" : `/wealth/${a.id}`),
+  card: (c: SearchCard) => `/wealth/cards/${c.id}`,
   category: () => "/categories",
+}
+
+/** True when the server found nothing in any group (local pages/actions are judged separately). */
+export function searchResultsEmpty(results: SearchResults | null): boolean {
+  return (
+    !results ||
+    (results.clients.length === 0 &&
+      results.transactions.length === 0 &&
+      results.quotations.length === 0 &&
+      results.accounts.length === 0 &&
+      results.categories.length === 0 &&
+      (results.cards?.length ?? 0) === 0)
+  )
 }
 
 /**
@@ -66,7 +96,7 @@ export function useGlobalSearch(query: string): { results: SearchResults | null;
           const token = await getToken()
           if (!token || requestId.current !== id) return
           const data = await apiGet<SearchResults>(`/api/search?q=${encodeURIComponent(q)}`, token)
-          if (requestId.current === id) setResults(data)
+          if (requestId.current === id) setResults({ ...data, cards: data.cards ?? [] })
         } catch {
           if (requestId.current === id) setResults(null)
         } finally {

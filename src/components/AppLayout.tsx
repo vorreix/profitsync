@@ -44,7 +44,6 @@ import { MobileAppLayout } from "@/components/MobileAppLayout"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { InstallAppBanner } from "@/components/InstallAppBanner"
 import { InstallButton } from "@/components/InstallButton"
-import { ReferralBanner } from "@/components/ReferralBanner"
 import { QuickAddModal, type QuickAddEntity, type QuickAddPrefill } from "@/components/QuickAddModal"
 import { AddTransactionDialog, type CreatedTxInfo } from "@/components/transactions/AddTransactionDialog"
 import { AiVoiceAssistant } from "@/components/AiVoiceAssistant"
@@ -417,7 +416,6 @@ function AppLayoutInner() {
         </header>
 
         <InstallAppBanner className="mx-4 mt-4" />
-        <ReferralBanner className="mx-4 mt-4" />
         <div className="flex-1 overflow-auto">
           {orgLoading ? (
             <div className="flex h-[60vh] items-center justify-center">
@@ -431,7 +429,7 @@ function AppLayoutInner() {
       {!pageAction && fabOpen && (
         <div className="fixed inset-0 z-40" onClick={() => setFabOpen(false)} />
       )}
-      <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3">
+      <div data-app-fab className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3">
         {/* AI voice assistant — hidden while the quick-actions menu is open so
             the stack stays uncluttered (same rule as mobile). */}
         {!(!pageAction && fabOpen) && (

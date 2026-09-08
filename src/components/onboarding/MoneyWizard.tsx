@@ -164,6 +164,13 @@ export function MoneyWizard({
         const n = num(amt)
         if (n) tasks.push(apiPost("/api/budgets", token, { client_id: clientId, amount: n, period }).catch(() => {}))
       }
+      // A personal workspace's budget is a SPENDING budget (all spending, no
+      // name → shown as "Personal budget"); a v1 "lifetime" is a custom-dates
+      // budget with no dates.
+      const addPersonalBudget = (amt: string, period: BudgetPeriod) => {
+        const n = num(amt)
+        if (n) tasks.push(apiPost("/api/spending-budgets", token, { name: "", amount: n, period: period === "lifetime" ? "once" : period, categories: [] }).catch(() => {}))
+      }
       if (isBusiness) {
         let companyClientId = ownClientId
         if (num(companyAmt) && !companyClientId) {
@@ -176,7 +183,7 @@ export function MoneyWizard({
         if (companyClientId) addBudget(companyClientId, companyAmt, companyPeriod)
         if (showDefault) addBudget(null, defaultAmt, defaultPeriod)
       } else {
-        addBudget(null, personalAmt, personalPeriod)
+        addPersonalBudget(personalAmt, personalPeriod)
       }
       await Promise.all(tasks)
       onDone()

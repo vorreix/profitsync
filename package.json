@@ -19,6 +19,7 @@
     "db:push": "drizzle-kit push",
     "seed-blog": "tsx scripts/seed-blog.ts",
     "i18n:check": "node scripts/check-i18n.mjs",
+    "cache:check": "node scripts/check-cache-map.mjs",
     "make-admin": "node scripts/make-admin.mjs",
     "lint": "eslint .",
     "test": "vitest",
@@ -75,10 +76,10 @@
     "react-i18next": "^17.0.8",
     "react-markdown": "^9.1.0",
     "react-resizable-panels": "^4.7.6",
-    "react-router-dom": "^7.15.1",
+    "react-router-dom": "^7.18.3",
     "recharts": "^3.8.0",
     "remark-gfm": "^4.0.1",
-    "sanitize-html": "^2.17.4",
+    "sanitize-html": "^2.17.7",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.5.0",
     "tailwindcss": "^4.2.1",
@@ -119,5 +120,16 @@
     "vite": "^7.3.1",
     "vite-plugin-pwa": "^1.3.0",
     "vitest": "^4.1.7"
+  },
+  "allowScripts": {
+    "@clerk/shared@3.47.6": true,
+    "esbuild@0.18.20": true,
+    "esbuild@0.14.47": true,
+    "esbuild@0.25.12": true,
+    "esbuild@0.27.4": true,
+    "esbuild@0.28.0": true,
+    "fsevents@2.3.3": true,
+    "fsevents@2.3.2": true,
+    "sharp@0.33.5": true
   }
 }

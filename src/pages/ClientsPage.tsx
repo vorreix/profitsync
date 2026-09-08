@@ -248,7 +248,7 @@ export function ClientsPage() {
     await runOptimistic({
       apply: () => setDialogOpen(false),
       rollback: () => { setForm(snapshot); setDialogOpen(true) },
-      mutate: () => apiPost<Client>("/api/clients", token, body, ["/api/clients"]),
+      mutate: () => apiPost<Client>("/api/clients", token, body),
       errorMessage: t("createClientFailed"),
       // Insert the new client in place — no full-list reload.
       onSuccess: (created) => {
@@ -324,7 +324,7 @@ export function ClientsPage() {
     onOpen: (id: string) => navigate(`/clients/${id}`),
     onQuickView: (client: ClientWithStats) => setViewClient(client),
     onEditBudget: (client: ClientWithStats) => setBudgetClient(client),
-    onOpenBudget: (id: string) => navigate(`/budgets/${id}`),
+    onOpenBudget: (id: string) => navigate(`/budgets/clients/${id}`),
     onToggleSelect: sel.toggle,
     onEnterSelection: sel.enterSelection,
     formatAmount: formatCurrency,

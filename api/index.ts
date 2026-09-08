@@ -40,6 +40,7 @@ import transactionsBulkDelete from "./_routes/transactions/bulk-delete.js"
 import transactionById from "./_routes/transactions/[id].js"
 import transactionAttachments from "./_routes/transactions/[id]/attachments.js"
 import analytics from "./_routes/analytics.js"
+import alerts from "./_routes/alerts.js"
 import calendar from "./_routes/calendar.js"
 import flow from "./_routes/flow.js"
 import audit from "./_routes/audit.js"
@@ -54,12 +55,17 @@ import wealthAccounts from "./_routes/wealth/accounts.js"
 import wealthAccountsReorder from "./_routes/wealth/accounts/reorder.js"
 import wealthAccountById from "./_routes/wealth/accounts/[id].js"
 import wealthAccountAttachments from "./_routes/wealth/accounts/[id]/attachments.js"
+import wealthAccountCard from "./_routes/wealth/accounts/[id]/card.js"
 import wealthAccountAttachmentById from "./_routes/wealth-account-attachments/[id].js"
 import wealthBankSearch from "./_routes/wealth/bank-search.js"
 import wealthQuota from "./_routes/wealth/quota.js"
 import recurring from "./_routes/recurring.js"
 import recurringById from "./_routes/recurring/[id].js"
 import wealthTransfer from "./_routes/wealth/transfer.js"
+import cardsList from "./_routes/cards.js"
+import cardsReorder from "./_routes/cards/reorder.js"
+import cardById from "./_routes/cards/[id].js"
+import cardSummary from "./_routes/cards/[id]/summary.js"
 import spaces from "./_routes/spaces.js"
 import spacesReorder from "./_routes/spaces/reorder.js"
 import spaceById from "./_routes/spaces/[id].js"
@@ -88,6 +94,10 @@ import trashClear from "./_routes/trash/clear.js"
 import budgets from "./_routes/budgets.js"
 import budgetsOverview from "./_routes/budgets/overview.js"
 import budgetsDetail from "./_routes/budgets/detail.js"
+import spendingBudgets from "./_routes/spending-budgets.js"
+import spendingBudget from "./_routes/spending-budgets/[id].js"
+import spendingBudgetsReorder from "./_routes/spending-budgets/reorder.js"
+import spendingBudgetsAnalytics from "./_routes/spending-budgets/analytics.js"
 import publicPricing from "./_routes/public/pricing.js"
 import publicBlog from "./_routes/public/blog.js"
 import publicBlogBySlug from "./_routes/public/blog/[slug].js"
@@ -189,6 +199,7 @@ const routes: RoutePattern<ApiHandler>[] = [
   { segments: ["ai", "parse-transaction"], handler: aiParseTransaction },
 
   { segments: ["analytics"], handler: analytics },
+  { segments: ["alerts"], handler: alerts },
   { segments: ["calendar"], handler: calendar },
   { segments: ["flow"], handler: flow },
   { segments: ["audit"], handler: audit },
@@ -204,6 +215,11 @@ const routes: RoutePattern<ApiHandler>[] = [
   { segments: ["recurring"], handler: recurring },
   { segments: ["recurring", ":id"], handler: recurringById },
   { segments: ["wealth", "transfer"], handler: wealthTransfer },
+  // Cards (debit + credit, linked to banks). Static "reorder" before ":id".
+  { segments: ["cards"], handler: cardsList },
+  { segments: ["cards", "reorder"], handler: cardsReorder },
+  { segments: ["cards", ":id"], handler: cardById },
+  { segments: ["cards", ":id", "summary"], handler: cardSummary },
   // Spaces (personal savings buckets). Static "reorder" before the dynamic ":id".
   { segments: ["spaces"], handler: spaces },
   { segments: ["spaces", "reorder"], handler: spacesReorder },
@@ -213,6 +229,7 @@ const routes: RoutePattern<ApiHandler>[] = [
   { segments: ["wealth", "accounts", "reorder"], handler: wealthAccountsReorder },
   { segments: ["wealth", "accounts", ":id"], handler: wealthAccountById },
   { segments: ["wealth", "accounts", ":id", "attachments"], handler: wealthAccountAttachments },
+  { segments: ["wealth", "accounts", ":id", "card"], handler: wealthAccountCard },
   { segments: ["wealth-accounts"], handler: wealthAccounts },
   { segments: ["wealth-accounts", ":id"], handler: wealthAccountById },
   { segments: ["wealth-account-attachments", ":id"], handler: wealthAccountAttachmentById },
@@ -252,6 +269,12 @@ const routes: RoutePattern<ApiHandler>[] = [
   { segments: ["budgets", "overview"], handler: budgetsOverview },
   { segments: ["budgets", "detail"], handler: budgetsDetail },
   { segments: ["budgets"], handler: budgets },
+  // Spending budgets (v3): named limits scoped to categories, with sub-budgets.
+  // Static before dynamic at the same depth.
+  { segments: ["spending-budgets", "reorder"], handler: spendingBudgetsReorder },
+  { segments: ["spending-budgets", "analytics"], handler: spendingBudgetsAnalytics },
+  { segments: ["spending-budgets", ":id"], handler: spendingBudget },
+  { segments: ["spending-budgets"], handler: spendingBudgets },
   { segments: ["trash"], handler: trash },
   { segments: ["trash", "restore"], handler: trashRestore },
   { segments: ["trash", "purge"], handler: trashPurge },

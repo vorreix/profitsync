@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import type { WealthAccount } from "@/lib/types"
+import { cardCredit, cardDebt, isLiabilityType } from "@/lib/credit-card"
 
 const PRIVACY_KEY = "ps_wealth_balances_visible"
 const COLLAPSED_KEY = "ps_wealth_overview_collapsed"
@@ -107,12 +108,62 @@ export function accountDisplayName(account: Pick<WealthAccount, "bank_name" | "n
   return account.nickname.trim() || account.bank_name
 }
 
+/**
+ * Net-worth arithmetic for a set of accounts. `total` is the signed sum of every
+ * active balance (assets − liabilities): a credit card's negative balance
+ * reduces it, and its AVAILABLE credit is never part of it. `liquid` is the
+ * money the user actually holds (cash + bank, i.e. non-liability accounts) —
+ * what the dashboard calls "Total available". `liabilities` is the total owed on
+ * cards (positive number). Any card in credit counts toward liquid.
+ */
+export function summarizeWealth(accounts: WealthAccount[]) {
+  const active = accounts.filter((a) => !a.archived_at)
+  let liquid = 0
+  let liabilities = 0
+  for (const a of active) {
+    const bal = Number(a.current_balance)
+    if (isLiabilityType(a.type)) {
+      liabilities += cardDebt(bal)
+      liquid += cardCredit(bal)
+    } else {
+      liquid += bal
+    }
+  }
+  const round = (n: number) => Math.round(n * 100) / 100
+  return {
+    active,
+    total: round(liquid - liabilities),
+    assets: round(liquid),
+    liquid: round(liquid),
+    liabilities: round(liabilities),
+    cards: active.filter((a) => isLiabilityType(a.type)),
+  }
+}
+
 export function useWealthSummary(accounts: WealthAccount[]) {
-  return useMemo(() => {
-    const active = accounts.filter((a) => !a.archived_at)
-    const total = active.reduce((sum, account) => sum + Number(account.current_balance), 0)
-    return { active, total }
-  }, [accounts])
+  return useMemo(() => summarizeWealth(accounts), [accounts])
+}
+
+/**
+ * The one-line balance every list/picker shows for an account. Banks/cash show
+ * the balance; a credit card shows what is OWED ("€950 owed") or its credit —
+ * never a bare negative number. Callers pass the translated templates so this
+ * stays a pure formatter.
+ */
+export function accountBalanceLabel(
+  account: Pick<WealthAccount, "type" | "current_balance">,
+  currency: string,
+  visible: boolean,
+  labels: { owed: (amount: string) => string; credit: (amount: string) => string; nothingOwed: string },
+): string {
+  const bal = Number(account.current_balance)
+  if (!isLiabilityType(account.type)) return formatMoney(bal, currency, visible)
+  if (!visible) return formatMoney(0, currency, false)
+  const debt = cardDebt(bal)
+  if (debt > 0) return labels.owed(formatMoney(debt, currency, true))
+  const credit = cardCredit(bal)
+  if (credit > 0) return labels.credit(formatMoney(credit, currency, true))
+  return labels.nothingOwed
 }
 
 // Immutable move of arr[from] to land *before* index `before` (in the original

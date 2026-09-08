@@ -19,11 +19,13 @@ import { FilterSheet, FilterSection } from "@/components/filters/FilterSheet"
 import { AttachmentDetailModal, type AttachmentModalItem } from "@/components/AttachmentDetailModal"
 import type { Client } from "@/lib/types"
 import { useOrg } from "@/lib/org-context"
-import { apiGet, clearApiCache } from "@/lib/api"
+import { apiGet } from "@/lib/api"
 import {
   ACCEPT_ATTR,
   attachmentItemPath,
   attachmentsListPath,
+  deleteAttachment,
+  invalidateAttachmentCache,
   uploadAttachment,
   validateFile,
   type AttachmentParent,
@@ -186,7 +188,6 @@ export function ClientFilesPage() {
       }
     }
     if (uploaded > 0) {
-      clearApiCache()
       toast.success(uploaded === 1 ? "File attached" : `${uploaded} files attached`)
       await load()
     }
@@ -216,12 +217,7 @@ export function ClientFilesPage() {
     try {
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
-      const res = await fetch(attachmentItemPath(deleteItem.source, deleteItem.id), {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      if (!res.ok) throw new Error()
-      clearApiCache()
+      await deleteAttachment(deleteItem.source, deleteItem.id, token)
       toast.success("Attachment deleted")
       setDeleteItem(null)
       load()
@@ -391,7 +387,7 @@ export function ClientFilesPage() {
         onDeleted={(deletedId) => {
           setItems((prev) => prev.filter((i) => i.id !== deletedId))
           fileModal.close()
-          clearApiCache()
+          invalidateAttachmentCache()
         }}
       />
     </div>

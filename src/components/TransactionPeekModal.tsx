@@ -10,6 +10,9 @@ import {
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { txTags } from "@/lib/transaction-tags"
+import { accountDisplayName } from "@/lib/wealth"
+import { useCardMap } from "@/lib/use-cards"
+import { CardChip } from "@/components/cards/CardChip"
 import type { Transaction } from "@/lib/types"
 
 const formatDate = (d: string) =>
@@ -35,10 +38,13 @@ export function TransactionPeekModal({
 }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const cardMap = useCardMap({ enabled: open })
   if (!tx) return null
 
   const incoming = tx.type === "incoming"
   const amount = new Intl.NumberFormat("en-US", { style: "currency", currency, minimumFractionDigits: 2 }).format(Number(tx.amount))
+  const card = cardMap.forTx(tx)
+  const accountLabel = tx.wealth_account_name?.trim() || tx.wealth_account_bank_name?.trim()
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -71,6 +77,22 @@ export function TransactionPeekModal({
                 <Badge variant="outline">{tx.category}</Badge>
               </div>
             )}
+            {card ? (
+              <div>
+                <p className="text-xs text-muted-foreground">{t("transactions.cardPaidWith")}</p>
+                {/* The chip links to the card page — close the modal on the way out. */}
+                <div className="mt-1 flex" onClickCapture={() => onOpenChange(false)}>
+                  <CardChip card={card} />
+                </div>
+              </div>
+            ) : accountLabel ? (
+              <div>
+                <p className="text-xs text-muted-foreground">{t("transactions.account")}</p>
+                <p className="font-medium truncate">
+                  {accountDisplayName({ bank_name: tx.wealth_account_bank_name ?? "", nickname: tx.wealth_account_name ?? "" })}
+                </p>
+              </div>
+            ) : null}
             {txTags(tx).length > 0 && (
               <div className="col-span-2">
                 <p className="text-xs text-muted-foreground">{t("transactions.tags")}</p>

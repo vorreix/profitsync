@@ -5,7 +5,7 @@ import { useAuth } from "@clerk/clerk-react"
 import { toast } from "sonner"
 import { AlertTriangle, Loader as Loader2, RotateCcw } from "lucide-react"
 
-import { apiPost, clearApiCache } from "@/lib/api"
+import { apiPost } from "@/lib/api"
 import { useOrg } from "@/lib/org-context"
 import {
   Dialog,
@@ -50,10 +50,10 @@ export function ResetDataDialog({ open, onOpenChange }: { open: boolean; onOpenC
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
       await apiPost("/api/account/reset", token, {})
-      // Drop any cached GETs so nothing stale shows post-reset, refresh the
-      // shared profile/org state (now onboarded_at === null), then land the
-      // user in the clean first-use flow. Session/login is untouched.
-      clearApiCache()
+      // /api/account/** maps to a full cache purge in src/lib/api-cache.ts, so
+      // nothing stale survives the reset. Refresh the shared profile/org state
+      // (now onboarded_at === null), then land the user in the clean first-use
+      // flow. Session/login is untouched.
       await refresh()
       toast.success(t("resetData.success"))
       onOpenChange(false)

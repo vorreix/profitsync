@@ -9,12 +9,14 @@
 //
 // Relative imports keep the `.js` extension (unbundled ESM on @vercel/node).
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { and, eq, lte } from "drizzle-orm"
+import { and, eq, lte, ne } from "drizzle-orm"
 import { db } from "../../../src/lib/db/index.js"
 import { broadcasts, notificationSchedulerState } from "../../../src/lib/db/schema.js"
 import { requireServiceToken } from "../../_lib/auth.js"
 import { deliverBroadcast } from "../../_lib/broadcast-deliver.js"
 import { enqueueNotificationTickAt } from "../../_lib/worker-jobs.js"
+import { syncCards } from "../../_lib/card-autopay.js"
+import { cards } from "../../../src/lib/db/schema.js"
 import { nextRecurringFire } from "../../../src/lib/schedule-notifications.js"
 import type { BroadcastAudience, BroadcastSchedule, BroadcastStats } from "../../../src/lib/types.js"
 
@@ -107,6 +109,23 @@ export async function runNotificationTick(
       console.error("[cron/notifications] broadcast delivery failed", claimed.id, err)
       await db.update(broadcasts).set({ status: "scheduled", updatedAt: now }).where(eq(broadcasts.id, claimed.id))
     }
+  }
+
+  // ── Cards ────────────────────────────────────────────────────────────────────
+  // Statement filing, autopay and due-date alerts are otherwise evaluated only
+  // when someone opens a card page; the tick runs the same idempotent sync for
+  // every workspace with an open credit card so a card nobody looks at still
+  // pays on its due date and still warns three days before. Best-effort.
+  try {
+    const orgs = await db
+      .selectDistinct({ orgId: cards.organizationId })
+      .from(cards)
+      .where(and(eq(cards.kind, "credit"), ne(cards.status, "closed")))
+    for (const { orgId } of orgs) {
+      await syncCards(orgId).catch((err) => console.error("[cron/notifications] card sync failed", orgId, err))
+    }
+  } catch (err) {
+    console.error("[cron/notifications] card sweep failed", err)
   }
 
   // ── Heartbeat ────────────────────────────────────────────────────────────────

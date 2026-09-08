@@ -1,16 +1,25 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import { Check, ChevronDown, Plus, Split, Star } from "lucide-react"
-import type { WealthAccount } from "@/lib/types"
+import type { Card, WealthAccount } from "@/lib/types"
 import { cn } from "@/lib/utils"
-import { accountDisplayName, currencySymbol, formatMoney } from "@/lib/wealth"
+import { accountBalanceLabel, accountDisplayName, currencySymbol, formatMoney, useBalancePrivacy } from "@/lib/wealth"
+import { cardDisplayName, maskedTail, resolveCardPalette } from "@/lib/cards"
+import { creditUsage } from "@/lib/credit-card"
+import { todayIso } from "@/lib/recurring"
+import { useCards } from "@/lib/use-cards"
 import { WealthAccountIcon } from "@/components/WealthAccountIcon"
+import { NetworkMark } from "@/components/cards/NetworkMark"
+import { allocationKey, buildPayOptions, optionAllocation, type PayOption } from "@/components/transactions/pay-options"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 
-export type Allocation = { account_id: string; amount: string }
+// One leg of a transaction: the account the money lands on and, when a card
+// paid, which card (attribution only — the server forces account_id to the
+// card's own account). `card_id` null/absent = paid straight from the account.
+export type Allocation = { account_id: string; card_id?: string | null; amount: string }
 
 /**
  * Smoothly expands/collapses to auto height via the grid `0fr → 1fr` trick — the
@@ -34,16 +43,22 @@ function Collapse({ open, children, className }: { open: boolean; children: Reac
 }
 
 /**
- * Amount + source picker for the transaction form.
+ * Amount + "pay with" picker for the transaction form: accounts AND cards.
  *
  * - Single-pay (default): one amount field, then Cash in Hand pinned + ONE
- *   rotating bank slot beside it; "+more" grid-expands the rest.
- * - Split (header toggle, 2+ accounts and `max` > 1): the single view collapses
+ *   rotating slot beside it (the last-used account or card); "+more" grid-expands
+ *   the rest — remaining accounts, then a small "Cards" group.
+ * - Split (header toggle, 2+ options and `max` > 1): the single view collapses
  *   and a vertical multi-select view expands in — each a grid-collapsible that
  *   cross-fades, so the section grows/shrinks in place with no reflow or pop.
  *
+ * Cards come from useCards() (see pay-options.ts for the rules: a credit card
+ * stands in for its account, a debit card sits beside its bank, frozen/closed
+ * cards are not offered, expired ones are — with an "Expired" pill). Selection
+ * is keyed by `card_id ?? account_id`.
+ *
  * `max={1}` (edit) forces single-pay and hides the split toggle.
- * Allocations are the single source of truth — one per selected account.
+ * Allocations are the single source of truth — one per selected option.
  */
 export function AccountSelector({
   accounts,
@@ -65,32 +80,44 @@ export function AccountSelector({
   disabled?: boolean
 }) {
   const { t } = useTranslation("transactions")
+  const { balancesVisible } = useBalancePrivacy()
+  const { cards } = useCards()
   const symbol = currencySymbol(currency)
   const single = max === 1
-  const canSplit = !single && accounts.length > 1
   const [split, setSplit] = useState(() => !single && allocations.length > 1)
   const [expanded, setExpanded] = useState(false)
-  // The bank shown in the second collapsed slot. Initialised from the opening
-  // selection (the last-used account) and then left ALONE for this entry, so
-  // clicking accounts never repositions the grid — it only "follows" the chosen
-  // account on the next add (the form reopens with it pre-selected).
-  const [secondaryId, setSecondaryId] = useState<string>(() => {
+
+  const today = useMemo(() => todayIso(), [])
+  const keepCardIds = allocations.map((a) => a.card_id)
+  const options = useMemo(
+    () => buildPayOptions(accounts, cards, { todayIso: today, keepCardIds }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [accounts, cards, today, keepCardIds.join("|")],
+  )
+  const canSplit = !single && options.all.length > 1
+
+  const keyOf = (a: Allocation) => allocationKey(a, options.creditByAccount)
+  const selectedKeys = useMemo(() => new Set(allocations.map(keyOf)), [allocations, options.creditByAccount]) // eslint-disable-line react-hooks/exhaustive-deps
+  const isSelected = (key: string) => selectedKeys.has(key)
+  const amountFor = (key: string) => allocations.find((a) => keyOf(a) === key)?.amount ?? ""
+
+  const cash = useMemo(() => options.accounts.find((o) => o.kind === "account" && o.account.type === "cash"), [options])
+  // Everything that can take the rotating second slot: banks + cards.
+  const rotating = useMemo(() => options.all.filter((o) => o !== cash), [options, cash])
+
+  // The option shown in the second collapsed slot. Initialised from the opening
+  // selection (the last-used account or card) and then left ALONE for this entry,
+  // so clicking never repositions the grid — it only "follows" the chosen option
+  // on the next add (the form reopens with it pre-selected).
+  const [secondaryKey, setSecondaryKey] = useState<string>(() => {
     const s = allocations[0]
-    const cashAcc = accounts.find((a) => a.type === "cash")
-    if (s && cashAcc && s.account_id !== cashAcc.id) return s.account_id
+    if (s) {
+      const k = allocationKey(s, options.creditByAccount)
+      if (!cash || k !== cash.key) return k
+    }
     // No opening selection → surface the user's default bank in the second slot.
-    return accounts.find((a) => a.type === "bank" && a.is_default)?.id ?? accounts.find((a) => a.type === "bank")?.id ?? ""
+    return rotating.find((o) => o.kind === "account" && o.account.is_default)?.key ?? rotating[0]?.key ?? ""
   })
-
-  const selectedIds = useMemo(() => new Set(allocations.map((a) => a.account_id)), [allocations])
-  const isSelected = (id: string) => selectedIds.has(id)
-  const amountFor = (id: string) => allocations.find((a) => a.account_id === id)?.amount ?? ""
-  // Preselect order: the user's chosen default account → Cash → first.
-  const fallbackId = () =>
-    accounts.find((a) => a.is_default)?.id ?? accounts.find((a) => a.type === "cash")?.id ?? accounts[0]?.id ?? ""
-
-  const cash = useMemo(() => accounts.find((a) => a.type === "cash"), [accounts])
-  const banks = useMemo(() => accounts.filter((a) => a.type === "bank"), [accounts])
 
   const total = allocations.reduce((sum, a) => sum + (Number(a.amount) || 0), 0)
   const selectedCount = allocations.length
@@ -98,31 +125,38 @@ export function AccountSelector({
 
   const sole = allocations[0]
 
-  // Lazy one-time init for the cold-load case (accounts arrive after mount).
+  // Preselect order: the user's chosen default account → Cash → first.
+  const fallback = () =>
+    options.accounts.find((o) => o.kind === "account" && o.account.is_default) ?? cash ?? options.all[0]
+  const fallbackAlloc = () => {
+    const o = fallback()
+    return o ? optionAllocation(o) : { account_id: "", card_id: null }
+  }
+
+  // Lazy one-time init for the cold-load case (accounts/cards arrive after mount).
   // Never updates afterwards, so the grid never reshuffles while selecting.
   useEffect(() => {
-    if (secondaryId || banks.length === 0) return
-    setSecondaryId(sole && cash && sole.account_id !== cash.id ? sole.account_id : banks[0].id)
+    if (secondaryKey || rotating.length === 0) return
+    const k = sole ? keyOf(sole) : ""
+    setSecondaryKey(k && (!cash || k !== cash.key) && options.byKey.has(k) ? k : rotating[0].key)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [secondaryId, banks.length])
+  }, [secondaryKey, rotating.length])
 
-  const selectSingle = (id: string) => onChange([{ account_id: id, amount: sole?.amount ?? "" }])
-  const setSingleAmount = (amount: string) => onChange([{ account_id: sole?.account_id ?? fallbackId(), amount }])
-  // Selecting an account keeps "+more" open and does NOT move it to the second
-  // slot — positions stay put for this entry (per user request).
-  const pickSingle = (id: string) => selectSingle(id)
+  const selectSingle = (o: PayOption) => onChange([{ ...optionAllocation(o), amount: sole?.amount ?? "" }])
+  const setSingleAmount = (amount: string) =>
+    onChange([{ ...(sole ? { account_id: sole.account_id, card_id: sole.card_id ?? null } : fallbackAlloc()), amount }])
 
-  const toggleSplitAccount = (id: string) =>
-    isSelected(id)
-      ? onChange(allocations.filter((a) => a.account_id !== id))
-      : onChange([...allocations, { account_id: id, amount: "" }])
-  const setAmount = (id: string, amount: string) =>
-    onChange(allocations.map((a) => (a.account_id === id ? { ...a, amount } : a)))
+  const toggleSplit = (o: PayOption) =>
+    isSelected(o.key)
+      ? onChange(allocations.filter((a) => keyOf(a) !== o.key))
+      : onChange([...allocations, { ...optionAllocation(o), amount: "" }])
+  const setAmount = (key: string, amount: string) =>
+    onChange(allocations.map((a) => (keyOf(a) === key ? { ...a, amount } : a)))
 
   const enterSplit = () => setSplit(true)
   const exitSplit = () => {
     setSplit(false)
-    onChange([allocations[0] ?? { account_id: fallbackId(), amount: "" }])
+    onChange([allocations[0] ?? { ...fallbackAlloc(), amount: "" }])
   }
 
   const header = (
@@ -134,7 +168,7 @@ export function AccountSelector({
           onClick={() => (split ? exitSplit() : enterSplit())}
           aria-pressed={split}
           className={cn(
-            "pressable inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium transition-colors",
+            "pressable inline-flex min-h-8 items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium transition-colors",
             split ? "border-primary/50 bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted",
           )}
         >
@@ -148,7 +182,7 @@ export function AccountSelector({
     <button
       type="button"
       onClick={onAddAccount}
-      className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+      className="inline-flex min-h-8 items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
     >
       <Plus className="size-3.5" /> {t("addAccount")}
     </button>
@@ -183,24 +217,31 @@ export function AccountSelector({
     )
   }
 
-  const secondary = banks.find((b) => b.id === secondaryId) ?? banks[0]
-  const primary = [cash, secondary].filter((a): a is WealthAccount => !!a)
-  const extras = accounts.filter((a) => !primary.some((p) => p.id === a.id))
-  const hiddenCount = extras.length
+  const secondary = options.byKey.get(secondaryKey) ?? rotating[0]
+  const primary = [cash, secondary].filter((o): o is PayOption => !!o)
+  const inPrimary = (o: PayOption) => primary.some((p) => p.key === o.key)
+  const extraAccounts = options.accounts.filter((o) => !inPrimary(o))
+  const extraCards = options.cards.filter((o) => !inPrimary(o))
+  const hiddenCount = extraAccounts.length + extraCards.length
 
-  const renderCard = (account: WealthAccount, mode: "single" | "split") => (
-    <AccountCard
-      key={account.id}
-      account={account}
+  const renderTile = (o: PayOption, mode: "single" | "split") => (
+    <PayTile
+      key={o.key}
+      option={o}
       currency={currency}
       symbol={symbol}
+      balancesVisible={balancesVisible}
       split={mode === "split"}
       disabled={disabled}
-      selected={mode === "split" ? isSelected(account.id) : sole?.account_id === account.id}
-      amount={amountFor(account.id)}
-      onPrimary={mode === "split" ? toggleSplitAccount : pickSingle}
-      onAmount={setAmount}
+      selected={mode === "split" ? isSelected(o.key) : (sole ? keyOf(sole) : "") === o.key}
+      amount={amountFor(o.key)}
+      onPrimary={mode === "split" ? toggleSplit : selectSingle}
+      onAmount={(amount) => setAmount(o.key, amount)}
     />
+  )
+
+  const cardsHeading = (
+    <p className="pt-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{t("cardsHeading")}</p>
   )
 
   return (
@@ -212,12 +253,24 @@ export function AccountSelector({
         <div className="space-y-2">
           <MoneyInput symbol={symbol} value={sole?.amount ?? ""} onChange={setSingleAmount} size="lg" />
           <div className={cn("grid gap-2", primary.length === 1 ? "grid-cols-1" : "grid-cols-2")}>
-            {primary.map((a) => renderCard(a, "single"))}
+            {primary.map((o) => renderTile(o, "single"))}
           </div>
           {hiddenCount > 0 && (
             <Collapse open={expanded}>
-              <div className="grid grid-cols-2 gap-2 pt-2">
-                {extras.map((a) => renderCard(a, "single"))}
+              <div className="space-y-2 pt-2">
+                {extraAccounts.length > 0 && (
+                  <div className="grid grid-cols-2 gap-2">
+                    {extraAccounts.map((o) => renderTile(o, "single"))}
+                  </div>
+                )}
+                {extraCards.length > 0 && (
+                  <div className="space-y-2">
+                    {cardsHeading}
+                    <div className="grid grid-cols-2 gap-2">
+                      {extraCards.map((o) => renderTile(o, "single"))}
+                    </div>
+                  </div>
+                )}
               </div>
             </Collapse>
           )}
@@ -228,7 +281,7 @@ export function AccountSelector({
                 type="button"
                 onClick={() => setExpanded((v) => !v)}
                 aria-expanded={expanded}
-                className="inline-flex items-center gap-1 text-xs font-medium text-primary"
+                className="inline-flex min-h-8 items-center gap-1 text-xs font-medium text-primary"
               >
                 <ChevronDown className={cn("size-3.5 transition-transform duration-300", expanded && "rotate-180")} />
                 {expanded ? t("showLess") : t("moreAccounts", { count: hiddenCount })}
@@ -245,12 +298,21 @@ export function AccountSelector({
         <Collapse open={split}>
           <div className="space-y-2">
             <div className="grid grid-cols-1 gap-2">
-              {accounts.map((a) => renderCard(a, "split"))}
+              {options.accounts.map((o) => renderTile(o, "split"))}
             </div>
+            {options.cards.length > 0 && (
+              <div className="space-y-2">
+                {cardsHeading}
+                <div className="grid grid-cols-1 gap-2">
+                  {options.cards.map((o) => renderTile(o, "split"))}
+                </div>
+              </div>
+            )}
             <div className="flex items-center justify-between rounded-lg bg-muted px-3 py-2 text-sm">
               <span className="text-muted-foreground">
                 {selectedCount > 0 ? t("splitAcross", { count: selectedCount }) : t("selectAtLeastOneAccount")}
               </span>
+              {/* The user's own typed total — never masked by privacy mode (that hides balances). */}
               <span className="font-semibold tabular-nums">{formatMoney(total, currency)}</span>
             </div>
             {selectedCount > 0 && incomplete && (
@@ -264,19 +326,47 @@ export function AccountSelector({
   )
 }
 
-function AccountCard({
-  account, currency, symbol, split, selected, amount, disabled, onPrimary, onAmount,
+/** "Credit · €780 owed" / "Debit · €2,651" — the one-line status under a card's name. */
+function cardSubline(card: Card, account: WealthAccount | null, currency: string, visible: boolean, t: (k: string, o?: Record<string, unknown>) => string): string {
+  if (card.kind === "credit") {
+    if (!visible) return t("cardCreditOwed", { amount: formatMoney(0, currency, false) })
+    const { debt } = creditUsage(card.account_credit_limit, card.account_current_balance)
+    return debt > 0 ? t("cardCreditOwed", { amount: formatMoney(debt, currency) }) : t("cardCreditNothingOwed")
+  }
+  const balance = Number(account?.current_balance ?? card.account_current_balance ?? 0)
+  return t("cardDebitBalance", { amount: formatMoney(balance, currency, visible) })
+}
+
+function PayTile({
+  option, currency, symbol, balancesVisible, split, selected, amount, disabled, onPrimary, onAmount,
 }: {
-  account: WealthAccount
+  option: PayOption
   currency: string
   symbol: string
+  balancesVisible: boolean
   split: boolean
   selected: boolean
   amount: string
   disabled: boolean
-  onPrimary: (id: string) => void
-  onAmount: (id: string, amount: string) => void
+  onPrimary: (o: PayOption) => void
+  onAmount: (amount: string) => void
 }) {
+  const { t } = useTranslation("transactions")
+  const isCard = option.kind === "card"
+  const isDefault = !isCard && !!option.account.is_default
+  const name = isCard ? cardDisplayName(option.card) : accountDisplayName(option.account)
+  const tail = isCard ? maskedTail(option.card.last4) : ""
+  const kindWord = isCard ? (option.card.kind === "credit" ? t("cardCredit") : t("cardDebit")) : ""
+  const subline = isCard
+    ? cardSubline(option.card, option.account, currency, balancesVisible, t)
+    : accountBalanceLabel(option.account, currency, balancesVisible, {
+        owed: (amt) => t("owedShort", { amount: amt }),
+        credit: (amt) => t("cardCreditShort", { amount: amt }),
+        nothingOwed: formatMoney(0, currency),
+      })
+  const bank = isCard ? (option.account ? accountDisplayName(option.account) : option.card.account_bank_name ?? "") : ""
+  const ariaLabel = isCard ? `${kindWord} · ${name} ${tail}${bank ? ` · ${bank}` : ""}` : name
+
   return (
     <div
       className={cn(
@@ -287,16 +377,37 @@ function AccountCard({
       <button
         type="button"
         disabled={disabled}
-        onClick={() => onPrimary(account.id)}
+        onClick={() => onPrimary(option)}
         aria-pressed={selected}
-        className="pressable ios-tap flex min-w-0 flex-1 items-center gap-2.5 text-left"
+        aria-label={ariaLabel}
+        className="pressable ios-tap flex min-h-11 min-w-0 flex-1 items-center gap-2.5 text-start"
       >
-        <AccountAvatar account={account} selected={selected} />
+        <span className="relative shrink-0">
+          {/* A card wears its own colours as a mini card (same 32px column as the
+              bank logo) — instantly tells a card tile from an account tile. */}
+          {isCard ? <CardMini card={option.card} /> : <WealthAccountIcon account={option.account} className="size-8" />}
+          {selected ? (
+            <span className="absolute -end-1 -top-1 flex size-4 items-center justify-center rounded-full bg-primary text-primary-foreground motion-safe:animate-in motion-safe:zoom-in-50 motion-safe:duration-200">
+              <Check className="size-2.5" strokeWidth={3} />
+            </span>
+          ) : isDefault ? (
+            // The org's default account — preselected for new transactions.
+            <span className="absolute -end-1 -top-1 flex size-4 items-center justify-center rounded-full border border-amber-500/40 bg-amber-100 text-amber-600 dark:bg-amber-900/60 dark:text-amber-300">
+              <Star className="size-2.5 fill-current" />
+            </span>
+          ) : null}
+        </span>
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-medium">{accountDisplayName(account)}</span>
-          <span className="block truncate text-xs text-muted-foreground tabular-nums">
-            {formatMoney(Number(account.current_balance), currency)}
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span className="truncate text-sm font-medium">{name}</span>
+            {isCard && <span className="shrink-0 text-[11px] text-muted-foreground tabular-nums" dir="ltr">{tail}</span>}
+            {isCard && option.expired && (
+              <span className="shrink-0 rounded-full border border-amber-500/40 bg-amber-500/10 px-1.5 py-px text-[10px] font-medium leading-4 text-amber-700 dark:text-amber-300">
+                {t("cardExpired")}
+              </span>
+            )}
           </span>
+          <span className="block truncate text-xs text-muted-foreground tabular-nums">{subline}</span>
         </span>
         {split && !selected && (
           <span className="flex size-5 shrink-0 items-center justify-center rounded-full border text-muted-foreground">
@@ -308,7 +419,7 @@ function AccountCard({
         <MoneyInput
           symbol={symbol}
           value={amount}
-          onChange={(v) => onAmount(account.id, v)}
+          onChange={onAmount}
           autoFocus={amount === ""}
           className="w-28 shrink-0 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-right-2 motion-safe:duration-200"
         />
@@ -317,20 +428,18 @@ function AccountCard({
   )
 }
 
-function AccountAvatar({ account, selected }: { account: WealthAccount; selected: boolean }) {
+/** A 32×20 mini card in the card's palette with its network mark — the tile avatar. */
+function CardMini({ card }: { card: Card }) {
+  const p = resolveCardPalette({ tier: card.tier, design: card.design, brand_colors: card.brand_colors, brand_domain: card.account_brand_domain })
   return (
-    <span className="relative shrink-0">
-      <WealthAccountIcon account={account} className="size-8" />
-      {selected ? (
-        <span className="absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full bg-primary text-primary-foreground motion-safe:animate-in motion-safe:zoom-in-50 motion-safe:duration-200">
-          <Check className="size-2.5" strokeWidth={3} />
-        </span>
-      ) : account.is_default ? (
-        // The org's default account — preselected for new transactions.
-        <span className="absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full border border-amber-500/40 bg-amber-100 text-amber-600 dark:bg-amber-900/60 dark:text-amber-300">
-          <Star className="size-2.5 fill-current" />
-        </span>
-      ) : null}
+    <span className="flex size-8 items-center justify-center" aria-hidden>
+      <span
+        className="relative block h-5 w-8 overflow-hidden rounded-[4px] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.18),0_1px_2px_rgba(0,0,0,0.18)]"
+        style={{ backgroundImage: `linear-gradient(135deg, ${p.from} 0%, ${p.to} 100%)` }}
+      >
+        <span className="absolute left-1 top-1 h-[5px] w-[7px] rounded-[1px] bg-white/35" />
+        <NetworkMark network={card.network} tone={p.text} className="absolute bottom-[3px] right-[3px] h-[7px]" />
+      </span>
     </span>
   )
 }

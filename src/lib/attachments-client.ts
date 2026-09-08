@@ -2,6 +2,8 @@
 // authoritative gate — these mirror its allowlist and size cap purely for fast,
 // friendly feedback before an upload is attempted.
 
+import { invalidateKeys } from "@/lib/api"
+
 export type AttachmentParent = "client" | "transaction" | "quotation" | "wealth_account"
 
 // Mirror of the server's extension allowlist.
@@ -52,6 +54,27 @@ const ITEM_BASE: Record<AttachmentParent, string> = {
 }
 
 // List + upload endpoint for a parent record.
+/**
+ * Attachments are written with a raw fetch (base64 body, no shared mutate
+ * path), so nothing invalidates the cache for them automatically. These are the
+ * reads an upload or a delete makes wrong: the attachment lists themselves, and
+ * the parent rows, which carry an attachment count and feed the storage quota.
+ */
+const ATTACHMENT_SCOPES = [
+  "/api/clients",
+  "/api/transactions",
+  "/api/quotations",
+  "/api/wealth/accounts",
+  "/api/attachments",
+  "/api/client-attachments",
+  "/api/quotation-attachments",
+  "/api/wealth-account-attachments",
+]
+
+export function invalidateAttachmentCache(): void {
+  invalidateKeys(ATTACHMENT_SCOPES)
+}
+
 export function attachmentsListPath(type: AttachmentParent, parentId: string): string {
   return `/api/${LIST_BASE[type]}/${parentId}/attachments`
 }
@@ -127,6 +150,7 @@ export function uploadAttachment(path: string, file: File, token: string): Promi
           reject(new Error(err.error || err.reason || "Upload failed"))
           return
         }
+        invalidateAttachmentCache()
         resolve()
       } catch (e) {
         reject(e instanceof Error ? e : new Error("Upload failed"))
@@ -135,4 +159,14 @@ export function uploadAttachment(path: string, file: File, token: string): Promi
     reader.onerror = () => reject(new Error("Failed to read file"))
     reader.readAsDataURL(file)
   })
+}
+
+/** Delete one attachment and drop every read it made stale. */
+export async function deleteAttachment(type: AttachmentParent, attachmentId: string, token: string): Promise<void> {
+  const res = await fetch(attachmentItemPath(type, attachmentId), {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!res.ok) throw new Error("Failed to delete attachment")
+  invalidateAttachmentCache()
 }

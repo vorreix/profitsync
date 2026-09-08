@@ -14,6 +14,7 @@ import { NativeShell } from "@/components/NativeShell"
 import { isNativeApp, nativeAuthLog, nativeAuthUrlLog, toInternalOAuthCallbackPath } from "@/lib/native-auth"
 import { useShouldRedirectToApp } from "@/lib/use-redirect-to-app"
 import { isStandalonePwa } from "@/lib/pwa/is-standalone"
+import { useIdentityPurge } from "@/hooks/use-identity-purge"
 
 // Route-level code splitting: each page becomes its own chunk so the initial
 // bundle stays small. Heavy deps (recharts on the Dashboard, the whole admin
@@ -29,11 +30,14 @@ const CalendarPage = lazy(() => import("@/pages/CalendarPage").then((m) => ({ de
 const MoneyFlowPage = lazy(() => import("@/pages/MoneyFlowPage").then((m) => ({ default: m.MoneyFlowPage })))
 const WealthPage = lazy(() => import("@/pages/WealthPage").then((m) => ({ default: m.WealthPage })))
 const WealthAccountDetailPage = lazy(() => import("@/pages/WealthAccountDetailPage").then((m) => ({ default: m.WealthAccountDetailPage })))
+const CardDetailPage = lazy(() => import("@/pages/CardDetailPage").then((m) => ({ default: m.CardDetailPage })))
+const CardGalleryPage = import.meta.env.DEV ? lazy(() => import("@/pages/CardGalleryPage").then((m) => ({ default: m.CardGalleryPage }))) : () => null
 const SpacesPage = lazy(() => import("@/pages/SpacesPage").then((m) => ({ default: m.SpacesPage })))
 const SpaceDetailPage = lazy(() => import("@/pages/SpaceDetailPage").then((m) => ({ default: m.SpaceDetailPage })))
 const CategoryTagsPage = lazy(() => import("@/pages/CategoryTagsPage").then((m) => ({ default: m.CategoryTagsPage })))
 const BudgetsPage = lazy(() => import("@/pages/BudgetsPage").then((m) => ({ default: m.BudgetsPage })))
 const BudgetDetailPage = lazy(() => import("@/pages/BudgetDetailPage").then((m) => ({ default: m.BudgetDetailPage })))
+const ClientBudgetDetailPage = lazy(() => import("@/pages/ClientBudgetDetailPage").then((m) => ({ default: m.ClientBudgetDetailPage })))
 const AnalyticsPage = lazy(() => import("@/pages/AnalyticsPage").then((m) => ({ default: m.AnalyticsPage })))
 const ReferralPage = lazy(() => import("@/pages/ReferralPage").then((m) => ({ default: m.ReferralPage })))
 const QuotationsPage = lazy(() => import("@/pages/QuotationsPage").then((m) => ({ default: m.QuotationsPage })))
@@ -109,6 +113,9 @@ function LandingRoute() {
 }
 
 export function App() {
+  // Sign-out makes no request, so nothing else would drop the last user's rows.
+  useIdentityPurge()
+
   useEffect(() => {
     let removeListener: (() => void) | undefined
 
@@ -217,14 +224,24 @@ export function App() {
             <Route path="recurring" element={<RecurringPage />} />
             <Route path="calendar" element={<CalendarPage />} />
             <Route path="flow" element={<MoneyFlowPage />} />
+            {/* Wealth & Cards: /wealth (Banks) and /wealth?tab=cards (Cards) are ONE
+                page — a query param, so switching never remounts the mobile shell.
+                The card routes are declared BEFORE wealth/:id so "cards" is never
+                read as an account id. */}
             <Route path="wealth" element={<WealthPage />} />
+            <Route path="wealth/cards" element={<Navigate replace to="/wealth?tab=cards" />} />
+            <Route path="wealth/cards/:cardId" element={<CardDetailPage />} />
             <Route path="wealth/:id" element={<WealthAccountDetailPage />} />
+            {import.meta.env.DEV && <Route path="dev/card-gallery" element={<CardGalleryPage />} />}
             <Route path="spaces" element={<PersonalOnlyRoute feature="spaces"><SpacesPage /></PersonalOnlyRoute>} />
             <Route path="spaces/:id" element={<PersonalOnlyRoute feature="spaces"><SpaceDetailPage /></PersonalOnlyRoute>} />
             <Route path="analytics" element={<AnalyticsPage />} />
             <Route path="categories" element={<CategoryTagsPage />} />
+            {/* Budgets: spending budgets for every workspace type; a business
+                workspace also keeps its per-client spend caps at /budgets/clients/:key. */}
             <Route path="budgets" element={<BudgetsPage />} />
-            <Route path="budgets/:key" element={<BudgetDetailPage />} />
+            <Route path="budgets/clients/:key" element={<ClientBudgetDetailPage />} />
+            <Route path="budgets/:id" element={<BudgetDetailPage />} />
             <Route path="referrals" element={<ReferralPage />} />
             <Route path="quotations" element={<BusinessOnlyRoute feature="quotations"><QuotationsPage /></BusinessOnlyRoute>} />
             <Route path="organizations" element={<OrganizationsPage />} />
