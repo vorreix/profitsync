@@ -79,7 +79,7 @@
     "react-router-dom": "^7.18.3",
     "recharts": "^3.8.0",
     "remark-gfm": "^4.0.1",
-    "sanitize-html": "^2.17.7",
+    "sanitize-html": "^2.17.4",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.5.0",
     "tailwindcss": "^4.2.1",
