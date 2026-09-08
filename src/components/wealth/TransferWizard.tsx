@@ -10,7 +10,7 @@ import { availableCredit, isLiabilityType } from "@/lib/credit-card"
 import { ACCEPT_ATTR, attachmentsListPath, uploadAttachment, validateFile } from "@/lib/attachments-client"
 import type { WealthAccount } from "@/lib/types"
 import { usableCards, useCards } from "@/lib/use-cards"
-import { accountDisplayName, currencySymbol, formatMoney } from "@/lib/wealth"
+import { accountBalanceLabel, accountDisplayName, accountSpendableLabel, currencySymbol, useBalancePrivacy } from "@/lib/wealth"
 import { WealthAccountIcon } from "@/components/WealthAccountIcon"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -22,14 +22,41 @@ import { AccountCombobox } from "@/components/wealth/AccountCombobox"
 const today = () => new Date().toISOString().split("T")[0]
 const formatFileSize = (b: number) => (b < 1024 ? `${b} B` : b < 1024 * 1024 ? `${(b / 1024).toFixed(1)} KB` : `${(b / (1024 * 1024)).toFixed(1)} MB`)
 
-function AccountPill({ account, currency }: { account?: WealthAccount; currency: string }) {
+/**
+ * One end of the transfer, with the figure that side actually needs.
+ *
+ * `spendable` marks the SOURCE: there the question is how much can leave, so a
+ * credit card shows the credit it has left — which is also what this wizard's
+ * own insufficient-funds check has always measured against. The destination
+ * asks the opposite, so a card being PAID still shows what it owes.
+ *
+ * Either way the raw signed balance never reaches the screen. It used to, so a
+ * card rendered here as "-€950.00", the one thing src/lib/credit-card.ts says
+ * no component may do.
+ */
+function AccountPill({
+  account, currency, visible, spendable, t,
+}: {
+  account?: WealthAccount
+  currency: string
+  visible: boolean
+  spendable: boolean
+  t: (k: string, o?: Record<string, unknown>) => string
+}) {
   if (!account) return null
+  const labels = {
+    owed: (amount: string) => t("owed", { amount }),
+    nothingOwed: t("nothingOwed"),
+  }
+  const figure = spendable
+    ? accountSpendableLabel(account, currency, visible, { ...labels, available: (amount) => t("creditAvailableShort", { amount }) })
+    : accountBalanceLabel(account, currency, visible, { ...labels, credit: (amount) => t("cardCredit", { amount }) })
   return (
     <div className="flex min-w-0 items-center gap-2 rounded-xl border bg-card px-3 py-2">
       <WealthAccountIcon account={account} className="size-8" />
       <div className="min-w-0">
         <p className="truncate text-sm font-medium">{accountDisplayName(account)}</p>
-        <p className="truncate text-xs text-muted-foreground tabular-nums">{formatMoney(Number(account.current_balance), currency, true)}</p>
+        <p className="truncate text-xs text-muted-foreground tabular-nums">{figure}</p>
       </div>
     </div>
   )
@@ -62,6 +89,7 @@ export function TransferWizard({
   onDone?: () => void
 }) {
   const { t } = useTranslation("wealth")
+  const { balancesVisible } = useBalancePrivacy()
   const { getToken } = useAuth()
   const navigate = useNavigate()
   const symbol = currencySymbol(currency)
@@ -211,9 +239,9 @@ export function TransferWizard({
               </div>
               {overBalance && <p className="text-center text-xs text-amber-600 dark:text-amber-500">{t("insufficientFunds")}</p>}
               <div className="flex items-center justify-center gap-2 pt-1">
-                <AccountPill account={from} currency={currency} />
+                <AccountPill account={from} currency={currency} visible={balancesVisible} spendable t={t} />
                 <ArrowRight className="size-4 shrink-0 text-muted-foreground rtl:rotate-180" />
-                <AccountPill account={to} currency={currency} />
+                <AccountPill account={to} currency={currency} visible={balancesVisible} spendable={false} t={t} />
               </div>
             </div>
           ) : (

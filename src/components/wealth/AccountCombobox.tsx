@@ -8,9 +8,9 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { WealthAccountIcon } from "@/components/WealthAccountIcon"
 import { CardSwatch } from "@/components/transactions/CardSwatch"
 import { buildPayOptions, type PayOption } from "@/components/transactions/pay-options"
-import { accountBalanceLabel, accountDisplayName, formatMoney } from "@/lib/wealth"
+import { accountBalanceLabel, accountDisplayName, accountSpendableLabel, formatMoney } from "@/lib/wealth"
 import { cardDisplayName, maskedTail } from "@/lib/cards"
-import { creditUsage } from "@/lib/credit-card"
+import { CREDIT_CARD_TYPE } from "@/lib/credit-card"
 import { todayIso } from "@/lib/recurring"
 import type { Card, WealthAccount } from "@/lib/types"
 
@@ -89,10 +89,18 @@ export function AccountCombobox({
     })
   const balanceOfOption = (o: PayOption) => {
     if (o.kind === "account") return balanceOf(o.account)
+    // Every caller that passes `cards` is a "what do I pay with / pay from"
+    // picker, so a credit card answers with the credit it has LEFT. Showing what
+    // it owes here made this dropdown disagree with the tile picker on the same
+    // screen, and disagree with this wizard's own affordability check, which has
+    // always measured the amount against available credit.
     if (o.card.kind === "credit") {
-      if (!balancesVisible) return formatMoney(0, currency, false)
-      const { debt } = creditUsage(o.card.account_credit_limit, o.card.account_current_balance)
-      return debt > 0 ? t("owed", { amount: formatMoney(debt, currency) }) : t("nothingOwed")
+      return accountSpendableLabel(
+        { type: CREDIT_CARD_TYPE, current_balance: String(o.card.account_current_balance ?? 0), credit_limit: o.card.account_credit_limit ?? null },
+        currency,
+        balancesVisible,
+        { available: (amount) => t("creditAvailableShort", { amount }), owed: (amount) => t("owed", { amount }), nothingOwed: t("nothingOwed") },
+      )
     }
     return formatMoney(Number(o.account?.current_balance ?? o.card.account_current_balance ?? 0), currency, balancesVisible)
   }

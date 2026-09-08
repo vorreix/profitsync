@@ -3,9 +3,9 @@ import { useTranslation } from "react-i18next"
 import { Check, ChevronDown, Plus, Split, Star } from "lucide-react"
 import type { Card, WealthAccount } from "@/lib/types"
 import { cn } from "@/lib/utils"
-import { accountBalanceLabel, accountDisplayName, currencySymbol, formatMoney, useBalancePrivacy } from "@/lib/wealth"
+import { accountBalanceLabel, accountDisplayName, accountSpendableLabel, currencySymbol, formatMoney, useBalancePrivacy } from "@/lib/wealth"
 import { cardDisplayName, maskedTail, resolveCardPalette } from "@/lib/cards"
-import { creditUsage } from "@/lib/credit-card"
+import { CREDIT_CARD_TYPE, isLiabilityType } from "@/lib/credit-card"
 import { todayIso } from "@/lib/recurring"
 import { useCards } from "@/lib/use-cards"
 import { WealthAccountIcon } from "@/components/WealthAccountIcon"
@@ -327,11 +327,43 @@ export function AccountSelector({
 }
 
 /** "Credit · €780 owed" / "Debit · €2,651" — the one-line status under a card's name. */
-function cardSubline(card: Card, account: WealthAccount | null, currency: string, visible: boolean, t: (k: string, o?: Record<string, unknown>) => string): string {
+type SublineT = (k: string, o?: Record<string, unknown>) => string
+
+/**
+ * What a CREDIT card says under its name in this picker.
+ *
+ * AVAILABLE CREDIT, not debt. This picker asks one question — where should the
+ * money come out of? — and every other tile answers it with what is there to
+ * spend. A card answering "€900 owed" replies to a question nobody asked here,
+ * and buries the only figure that decides the tap: whether the charge will even
+ * fit. Debt is the right number on the wealth screens, which are about what is
+ * owed; it is the wrong one in front of a payment.
+ *
+ * A card with no credit limit set has no available figure to give, so it falls
+ * back to what it owes — the only number it actually has.
+ */
+function creditSubline(
+  creditLimit: number | string | null | undefined,
+  currentBalance: number | string | null | undefined,
+  currency: string,
+  visible: boolean,
+  t: SublineT,
+): string {
+  return accountSpendableLabel(
+    { type: CREDIT_CARD_TYPE, current_balance: String(currentBalance ?? 0), credit_limit: creditLimit ?? null },
+    currency,
+    visible,
+    {
+      available: (amount) => t("cardCreditAvailable", { amount }),
+      owed: (amount) => t("cardCreditOwed", { amount }),
+      nothingOwed: t("cardCreditNothingOwed"),
+    },
+  )
+}
+
+function cardSubline(card: Card, account: WealthAccount | null, currency: string, visible: boolean, t: SublineT): string {
   if (card.kind === "credit") {
-    if (!visible) return t("cardCreditOwed", { amount: formatMoney(0, currency, false) })
-    const { debt } = creditUsage(card.account_credit_limit, card.account_current_balance)
-    return debt > 0 ? t("cardCreditOwed", { amount: formatMoney(debt, currency) }) : t("cardCreditNothingOwed")
+    return creditSubline(card.account_credit_limit, card.account_current_balance, currency, visible, t)
   }
   const balance = Number(account?.current_balance ?? card.account_current_balance ?? 0)
   return t("cardDebitBalance", { amount: formatMoney(balance, currency, visible) })
@@ -359,11 +391,16 @@ function PayTile({
   const kindWord = isCard ? (option.card.kind === "credit" ? t("cardCredit") : t("cardDebit")) : ""
   const subline = isCard
     ? cardSubline(option.card, option.account, currency, balancesVisible, t)
-    : accountBalanceLabel(option.account, currency, balancesVisible, {
-        owed: (amt) => t("owedShort", { amount: amt }),
-        credit: (amt) => t("cardCreditShort", { amount: amt }),
-        nothingOwed: formatMoney(0, currency),
-      })
+    : // A credit-card account with no card row of its own (data predating the
+      // card backfill) still reaches this picker as a plain account tile, and
+      // it is just as much a thing you pay WITH — same rule, same figure.
+      isLiabilityType(option.account.type)
+      ? creditSubline(option.account.credit_limit, option.account.current_balance, currency, balancesVisible, t)
+      : accountBalanceLabel(option.account, currency, balancesVisible, {
+          owed: (amt) => t("owedShort", { amount: amt }),
+          credit: (amt) => t("cardCreditShort", { amount: amt }),
+          nothingOwed: formatMoney(0, currency),
+        })
   const bank = isCard ? (option.account ? accountDisplayName(option.account) : option.card.account_bank_name ?? "") : ""
   const ariaLabel = isCard ? `${kindWord} · ${name} ${tail}${bank ? ` · ${bank}` : ""}` : name
 

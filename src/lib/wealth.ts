@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import type { WealthAccount } from "@/lib/types"
-import { cardCredit, cardDebt, isLiabilityType } from "@/lib/credit-card"
+import { cardCredit, cardDebt, creditUsage, isLiabilityType } from "@/lib/credit-card"
 
 const PRIVACY_KEY = "ps_wealth_balances_visible"
 const COLLAPSED_KEY = "ps_wealth_overview_collapsed"
@@ -164,6 +164,35 @@ export function accountBalanceLabel(
   const credit = cardCredit(bal)
   if (credit > 0) return labels.credit(formatMoney(credit, currency, true))
   return labels.nothingOwed
+}
+
+/**
+ * What an account can still put TOWARD a payment — the figure a picker needs.
+ *
+ * The mirror of `accountBalanceLabel`. That one answers the wealth screens'
+ * question, "what is this worth, what do I owe". In front of a payment the
+ * question is the opposite one: how much can come out of this? For cash and a
+ * bank that is the balance. For a credit card it is the credit still LEFT —
+ * never the debt, which answers a question nobody asked while picking, and
+ * never the raw negative balance, which is the one thing no component may read
+ * (src/lib/credit-card.ts owns that minus sign).
+ *
+ * A card with no credit limit set has no available figure to give, so it falls
+ * back to what it owes: the only number it actually has.
+ */
+export function accountSpendableLabel(
+  // Structural, not Pick<WealthAccount>: the card pickers hold a Card row whose
+  // account figures are plain strings, and a real WealthAccount satisfies this too.
+  account: { type: string | null | undefined; current_balance: number | string | null | undefined; credit_limit?: number | string | null },
+  currency: string,
+  visible: boolean,
+  labels: { available: (amount: string) => string; owed: (amount: string) => string; nothingOwed: string },
+): string {
+  if (!isLiabilityType(account.type)) return formatMoney(Number(account.current_balance), currency, visible)
+  const { debt, available } = creditUsage(account.credit_limit, account.current_balance)
+  if (available !== null) return labels.available(formatMoney(available, currency, visible))
+  if (!visible) return labels.owed(formatMoney(0, currency, false))
+  return debt > 0 ? labels.owed(formatMoney(debt, currency, true)) : labels.nothingOwed
 }
 
 // Immutable move of arr[from] to land *before* index `before` (in the original
