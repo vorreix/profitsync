@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test"
-import { E2E_PREFIX } from "./helpers"
+import { E2E_PREFIX, ensureBank } from "./helpers"
 
 /** Mobile shell smoke: bottom tab bar present, core tabs navigate. */
 test("mobile shell renders with bottom tabs", async ({ page }) => {
@@ -11,7 +11,6 @@ test("mobile shell renders with bottom tabs", async ({ page }) => {
 })
 
 type OrgRow = { id: string; is_personal: boolean }
-type Account = { id: string; type: string; archived_at: string | null }
 type CardRow = { id: string; name: string }
 
 async function api<T>(page: Page, method: string, path: string, body?: unknown): Promise<{ status: number; json: T }> {
@@ -67,14 +66,14 @@ test("the card fan browses and reorders on a phone", async ({ page }) => {
   await page.evaluate((id) => { try { localStorage.setItem("ps_active_org", id) } catch { /* private mode */ } }, personal!.id)
 
   try {
-    const { json: accounts } = await api<Account[]>(page, "GET", "/api/wealth/accounts")
-    const bank = accounts.find((a) => a.type === "bank" && !a.archived_at)
-    expect(bank, "an active bank account to hang debit cards on").toBeTruthy()
+    // Created rather than assumed: this used to pass only because an earlier
+    // run had left a bank behind (see ensureBank).
+    const bank = await ensureBank(page, api)
 
     for (const [i, tail] of [["a", "7311"], ["b", "7322"]].entries()) {
       const { status, json } = await api<CardRow>(page, "POST", "/api/cards", {
         kind: "debit",
-        account_id: bank!.id,
+        account_id: bank.id,
         name: `${E2E_PREFIX}-fan-${tail[0]}`,
         network: i === 0 ? "visa" : "mastercard",
         last4: tail[1],

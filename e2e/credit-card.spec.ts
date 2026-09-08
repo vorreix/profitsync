@@ -1,5 +1,5 @@
 import { expect, test, type Browser, type Page } from "@playwright/test"
-import { E2E_PREFIX, dismissBanners, expectAppShell } from "./helpers"
+import { E2E_PREFIX, dismissBanners, ensureBank, expectAppShell } from "./helpers"
 
 /**
  * Credit cards — end-to-end through the real UI, the real auth guard and the
@@ -163,6 +163,9 @@ test.describe.serial("Credit cards", () => {
       restoreOrgId = await page.evaluate(() => localStorage.getItem("ps_active_org") ?? "")
       await useWorkspace(page, "personal")
       await cleanup(page)
+      // Step 1 of the wizard asks WHICH BANK issued the card, so there has to
+      // be one. Created rather than assumed (see ensureBank).
+      await ensureBank(page, api)
       // The free plan includes ONE credit card. If anything else is holding
       // that slot, the wizard silently opens an upgrade modal over itself and
       // the next click times out after 45s with "element is not stable" — an

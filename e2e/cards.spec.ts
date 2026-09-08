@@ -1,5 +1,5 @@
 import { expect, test, type Browser, type Page } from "@playwright/test"
-import { E2E_PREFIX, dismissBanners, expectAppShell } from "./helpers"
+import { E2E_PREFIX, dismissBanners, ensureBank, expectAppShell } from "./helpers"
 
 /**
  * Wealth & Cards — end to end through the real UI, the real auth guard and the
@@ -139,10 +139,11 @@ test.describe.serial("Wealth & Cards", () => {
       await useWorkspace(page, "personal")
       expect(activeOrgId, "switched into the personal workspace").toBeTruthy()
       await cleanup(page)
-      const bank = (await accounts(page)).find((a) => a.type === "bank" && !a.archived_at)
-      expect(bank, "the personal workspace needs an active bank account").toBeTruthy()
-      bankId = bank!.id
-      bankName = bank!.nickname || bank!.bank_name
+      // Created here rather than assumed: this spec used to pass only because a
+      // previous run had left a bank behind (see ensureBank).
+      const bank = await ensureBank(page, api)
+      bankId = bank.id
+      bankName = bank.nickname || bank.bank_name
     })
   })
 
