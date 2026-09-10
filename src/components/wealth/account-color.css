@@ -1,0 +1,100 @@
+/*
+  Per-account colour identity for wealth tiles (/wealth, /spaces and the two
+  account detail headers). The colour itself is resolved in JS
+  (src/lib/account-color.ts) and handed to the element as `--acct-*` custom
+  properties; only what Tailwind cannot express lives here:
+
+  - the light/dark PAIR. A 10% wash of a navy brand colour is invisible on a
+    near-black card, so the dark theme washes with a lightened copy of the same
+    colour. Both members travel on the element; this file picks one.
+  - the inline-start rail, which must mirror in RTL (`inset-inline-start`) and
+    inherit the tile's own corner radius.
+
+  Nothing in here paints unless a tile opts in with `.acct-colored`.
+*/
+
+@layer components {
+
+/* Resolve the light/dark member of every pair exactly once, on the tile. */
+.acct-colored {
+  --acct-rail: var(--acct-rail-light);
+  --acct-wash: var(--acct-wash-light);
+  --acct-halo: var(--acct-halo-light);
+  --acct-ring: var(--acct-ring-light);
+}
+
+.dark .acct-colored {
+  --acct-rail: var(--acct-rail-dark);
+  --acct-wash: var(--acct-wash-dark);
+  --acct-halo: var(--acct-halo-dark);
+  --acct-ring: var(--acct-ring-dark);
+}
+
+/* ── Subtle ───────────────────────────────────────────────────────────────
+   The tile keeps its normal card surface and gains a wash that fades out
+   before it reaches the balance, so the money stays the loudest thing on it. */
+.acct-subtle {
+  background-image: linear-gradient(155deg, var(--acct-wash) 0%, transparent 58%);
+}
+
+.acct-subtle:hover {
+  border-color: var(--acct-ring);
+}
+
+/* The rail. z-index 1 clears the tile's full-bleed click target (z-0) so the
+   button's hover wash can't dull it; pointer-events stay off it entirely. */
+.acct-rail::before {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  inset-block: 0;
+  inset-inline-start: 0;
+  width: 3px;
+  background: var(--acct-rail);
+  border-start-start-radius: inherit;
+  border-end-start-radius: inherit;
+  pointer-events: none;
+}
+
+/* ── Bold ─────────────────────────────────────────────────────────────────
+   The tile IS the colour (the gradient is inline, from boldSurface()). The
+   border disappears into it and a coloured lift replaces the flat shadow. */
+.acct-bold {
+  border-color: transparent;
+  box-shadow: 0 10px 24px -16px var(--acct-base);
+}
+
+/* ── The logo/glyph circle ────────────────────────────────────────────────
+   On a subtle tile it wears the colour; on a bold one it becomes glass so a
+   white bank logo still has something to sit on. */
+.acct-icon {
+  background: var(--acct-halo) !important;
+  border-color: var(--acct-ring) !important;
+  color: var(--acct-rail);
+}
+
+.acct-icon-bold {
+  background: rgba(255, 255, 255, 0.18) !important;
+  border-color: rgba(255, 255, 255, 0.38) !important;
+  color: #fff;
+}
+
+/* A bold tile with a light colour (a custom pale hex) needs the opposite. */
+.acct-icon-bold-dark {
+  background: rgba(15, 23, 42, 0.12) !important;
+  border-color: rgba(15, 23, 42, 0.28) !important;
+  color: #0f172a;
+}
+
+/* ── Picker ───────────────────────────────────────────────────────────────
+   The swatch button: the colour fills it, selection is a ring drawn outside
+   so the colour itself is never covered. */
+.acct-swatch {
+  background: var(--acct-swatch);
+}
+
+.acct-swatch[data-selected="true"] {
+  box-shadow: 0 0 0 2px var(--background), 0 0 0 4px var(--acct-swatch);
+}
+
+}

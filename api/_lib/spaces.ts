@@ -17,6 +17,8 @@ export const spaceFields = {
   openingBalance: wealthAccounts.openingBalance,
   currentBalance: wealthAccounts.currentBalance,
   icon: wealthAccounts.icon,
+  color: wealthAccounts.color,
+  colorStyle: wealthAccounts.colorStyle,
   goalAmount: wealthAccounts.goalAmount,
   targetDate: wealthAccounts.targetDate,
   note: wealthAccounts.note,

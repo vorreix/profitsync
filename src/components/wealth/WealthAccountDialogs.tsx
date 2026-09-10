@@ -11,8 +11,9 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { IconSelect } from "@/components/wealth/icon-select"
+import { AccountAppearanceFields } from "@/components/wealth/AccountAppearanceFields"
 import { BankAccountFormFields } from "@/components/wealth/BankAccountFormFields"
-import { type BankFormState, bankDetailsPayload, bankFormFromAccount, emptyBankForm } from "@/lib/bank-form"
+import { type BankFormState, appearancePayload, bankDetailsPayload, bankFormFromAccount, emptyBankForm } from "@/lib/bank-form"
 import { CreditCardFormFields } from "@/components/wealth/CreditCardFormFields"
 import { type CardFormState, cardEditPayload, cardFormFromAccount, emptyCardForm } from "@/lib/card-form"
 import { cardDebt, isLiabilityType, isValidDayOfMonth } from "@/lib/credit-card"
@@ -116,6 +117,7 @@ export function WealthAccountDialogs({
       bankName: editForm.bank_name.trim(),
       nickname: editForm.nickname.trim(),
       icon: editForm.icon,
+      ...appearancePayload(editForm),
     }
     // Banking details only apply to bank accounts.
     if (editing.type === "bank") Object.assign(body, bankDetailsPayload(editForm))
@@ -143,11 +145,17 @@ export function WealthAccountDialogs({
                     <Label>{t("logoIcon")}</Label>
                     <IconSelect value={editForm.icon} onChange={(icon) => setEditForm((f) => ({ ...f, icon }))} />
                   </div>
+                  <AccountAppearanceFields
+                    value={{ color: editForm.color, color_style: editForm.color_style }}
+                    onChange={(patch) => setEditForm((f) => ({ ...f, ...patch }))}
+                    account={{ id: editing.id, type: "cash" }}
+                    previewName={editForm.nickname || editForm.bank_name}
+                  />
                 </div>
               ) : isLiabilityType(editing.type) ? (
                 <CreditCardFormFields form={cardForm} onChange={(patch) => setCardForm((f) => ({ ...f, ...patch }))} mode="edit" symbol={symbol} />
               ) : (
-                <BankAccountFormFields form={editForm} onChange={(patch) => setEditForm((f) => ({ ...f, ...patch }))} />
+                <BankAccountFormFields form={editForm} onChange={(patch) => setEditForm((f) => ({ ...f, ...patch }))} accountId={editing.id} />
               )}
             </div>
           )}

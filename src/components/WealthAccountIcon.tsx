@@ -2,17 +2,26 @@ import { useState } from "react"
 import { Banknote, BriefcaseBusiness, Building2, CreditCard, Landmark, Star, Wallet } from "lucide-react"
 import type { WealthAccount } from "@/lib/types"
 import { spaceIconFor } from "@/components/wealth/space-icons"
+import "@/components/wealth/account-color.css"
 
 const bankIconClass = "size-4"
 
 export function WealthAccountIcon({
   account,
   className = "size-10",
+  accent,
 }: {
   account: Pick<WealthAccount, "type" | "icon"> & { logo_url?: string | null; logo_src?: string | null }
   className?: string
+  /**
+   * Wear the surrounding tile's account colour (account-color.css reads the
+   * `--acct-*` variables set on that tile): "tint" on a subtle tile, "glass"
+   * / "glass-dark" on a bold one, where the circle floats on the colour itself.
+   */
+  accent?: "tint" | "glass" | "glass-dark"
 }) {
   const [failedSrc, setFailedSrc] = useState<string | null>(null)
+  const accentClass = accent === "tint" ? "acct-icon" : accent === "glass" ? "acct-icon-bold" : accent === "glass-dark" ? "acct-icon-bold-dark" : ""
 
   // Prefer the durable DB-served copy (data URL) — hotlinked logo_url's expire
   // after a while in production. Fall back to the remote URL, then the glyph.
@@ -20,7 +29,7 @@ export function WealthAccountIcon({
 
   if (src && failedSrc !== src) {
     return (
-      <div className={`flex shrink-0 items-center justify-center overflow-hidden rounded-full border bg-card ${className}`}>
+      <div className={`flex shrink-0 items-center justify-center overflow-hidden rounded-full border bg-card ${accentClass} ${className}`}>
         {/* Fill the circle (object-cover) so the brand logo reads large instead of
             a tiny contained glyph; a touch of scale crops any built-in padding. */}
         <img
@@ -56,7 +65,7 @@ export function WealthAccountIcon({
           : Landmark
 
   return (
-    <div className={`flex shrink-0 items-center justify-center rounded-full border bg-muted/50 text-foreground ${className}`}>
+    <div className={`flex shrink-0 items-center justify-center rounded-full border bg-muted/50 text-foreground ${accentClass} ${className}`}>
       <Icon className={bankIconClass} />
     </div>
   )

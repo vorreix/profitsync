@@ -4,6 +4,7 @@ import { accountFieldsForCountry, PRIMARY_LABEL_KEY, SECONDARY_LABEL_KEY } from 
 import type { BankFormState } from "@/lib/bank-form"
 import { BankNameCombobox } from "@/components/wealth/BankNameCombobox"
 import { IconSelect } from "@/components/wealth/icon-select"
+import { AccountAppearanceFields } from "@/components/wealth/AccountAppearanceFields"
 import { CountryCombobox } from "@/components/CountryCombobox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -14,10 +15,13 @@ export function BankAccountFormFields({
   onChange,
   autoFocusName,
   beforeBankDetails,
+  accountId,
 }: {
   form: BankFormState
   onChange: (patch: Partial<BankFormState>) => void
   autoFocusName?: boolean
+  /** The saved account's id, when editing — AUTO's fallback swatch keys off it. */
+  accountId?: string
   /** Optional content rendered just above the "Bank Details" section (e.g. Opening Balance on create). */
   beforeBankDetails?: ReactNode
 }) {
@@ -56,6 +60,13 @@ export function BankAccountFormFields({
       </div>
 
       {beforeBankDetails}
+
+      <AccountAppearanceFields
+        value={{ color: form.color, color_style: form.color_style }}
+        onChange={onChange}
+        account={{ id: accountId, type: "bank", brand_domain: form.brand_domain }}
+        previewName={form.nickname || form.bank_name}
+      />
 
       <div className="space-y-3 rounded-xl border bg-muted/20 p-3">
         <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">

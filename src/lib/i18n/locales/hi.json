@@ -1559,7 +1559,18 @@
       }
     },
     "balanceTransferWarning": "इससे कर्ज़ {{card}} पर चला जाएगा। कुल मिलाकर उतना ही बकाया रहेगा — यह चुकता नहीं हुआ।",
-    "movedToOtherCards": "{{amount}} दूसरे कार्डों पर भेजे गए"
+    "movedToOtherCards": "{{amount}} दूसरे कार्डों पर भेजे गए",
+    "appearance": {
+      "title": "रूप",
+      "color": "रंग",
+      "auto": "स्वतः",
+      "autoHint": "बैंक का अपना रंग या इस खाते के लिए चुना गया रंग इस्तेमाल करें",
+      "custom": "कस्टम रंग",
+      "style": "शैली",
+      "subtle": "हल्का",
+      "bold": "गहरा",
+      "preview": "पूर्वावलोकन"
+    }
   },
   "errorBoundary": {
     "title": "कुछ ग़लत हो गया",

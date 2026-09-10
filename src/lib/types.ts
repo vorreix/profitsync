@@ -207,6 +207,12 @@ export type WealthAccount = {
   opening_balance: number
   current_balance: number
   icon: string
+  // Colour identity (migration 0075) — presentation only. `color` is "" for
+  // AUTO (bank brand → stable per-row swatch) or a "#RRGGBB" override;
+  // `color_style` is how loudly the tile wears it. Resolver:
+  // src/lib/account-color.ts.
+  color?: string
+  color_style?: string
   // Brand + banking details (see migration 0027). `logo_data` (base64) is stored
   // server-side; responses expose it as `logo_src` (a durable data: URL) which
   // the UI prefers over the expiring hotlinked `logo_url`.
