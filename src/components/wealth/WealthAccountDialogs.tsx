@@ -141,16 +141,17 @@ export function WealthAccountDialogs({
                     <Label>{t("nickname")}</Label>
                     <Input value={editForm.nickname} placeholder={t("cashInHand")} onChange={(e) => setEditForm((f) => ({ ...f, nickname: e.target.value }))} />
                   </div>
-                  <div className="space-y-1.5">
-                    <Label>{t("logoIcon")}</Label>
-                    <IconSelect value={editForm.icon} onChange={(icon) => setEditForm((f) => ({ ...f, icon }))} />
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label>{t("logoIcon")}</Label>
+                      <IconSelect value={editForm.icon} onChange={(icon) => setEditForm((f) => ({ ...f, icon }))} />
+                    </div>
+                    <AccountAppearanceFields
+                      value={{ color: editForm.color, color_style: editForm.color_style }}
+                      onChange={(patch) => setEditForm((f) => ({ ...f, ...patch }))}
+                      account={{ id: editing.id, type: "cash" }}
+                    />
                   </div>
-                  <AccountAppearanceFields
-                    value={{ color: editForm.color, color_style: editForm.color_style }}
-                    onChange={(patch) => setEditForm((f) => ({ ...f, ...patch }))}
-                    account={{ id: editing.id, type: "cash" }}
-                    previewName={editForm.nickname || editForm.bank_name}
-                  />
                 </div>
               ) : isLiabilityType(editing.type) ? (
                 <CreditCardFormFields form={cardForm} onChange={(patch) => setCardForm((f) => ({ ...f, ...patch }))} mode="edit" symbol={symbol} />

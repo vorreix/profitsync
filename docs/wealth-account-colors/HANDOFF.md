@@ -65,6 +65,11 @@ the **Auto** chip puts it back.
   `left-0`. Arabic is a supported locale.
 - **The rail sits at `z-index: 1`.** The wealth tile's click target is a full-bleed
   button at `z-0` whose hover wash would otherwise dull the rail.
+- **The colour field stays one field.** The first version put an always-open
+  Appearance panel (swatch grid + style toggle + live preview) in the form, and it
+  read as more important than the opening balance. It is now a single
+  select-sized control sharing a row with Logo/icon; anything added to the picker
+  belongs inside the popover, not in the form.
 
 ## Files that matter
 
@@ -73,7 +78,7 @@ the **Auto** chip puts it back.
 | `src/lib/account-color.ts` | The resolver + the palette + the CSS-variable maths. Pure, no React, no DOM. |
 | `src/lib/account-color.test.ts` | 18 tests. The palette-contrast one is a guard, not a formality. |
 | `api/_lib/account-appearance.ts` | `pickAppearance(body)` — the only place a colour is validated. |
-| `src/components/wealth/AccountAppearanceFields.tsx` | The Appearance block used by every account form. 44 px targets. |
+| `src/components/wealth/AccountAppearanceFields.tsx` | The **Colour field** used by every account form — one select-sized trigger beside Logo/icon, with the palette and the Subtle/Bold choice in a popover behind it. |
 | `src/components/wealth/account-color.css` | Only what Tailwind cannot say: the light/dark pair, the RTL rail, the icon halo. |
 | `src/components/WealthAccountIcon.tsx` | Gained an `accent` prop (`tint` / `glass` / `glass-dark`) that reads the ancestor tile's variables. |
 | `drizzle/0075_wealth_account_appearance.sql` | The two columns + their CHECKs. |

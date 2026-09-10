@@ -48,25 +48,26 @@ export function BankAccountFormFields({
         </div>
       </div>
 
+      <div className="space-y-1.5">
+        <Label>{t("nickname")}</Label>
+        <Input value={form.nickname} placeholder={t("mainAccountPlaceholder")} onChange={(e) => onChange({ nickname: e.target.value })} />
+      </div>
+
+      {/* Icon and colour are the same size of decision, so they share a row —
+          and neither outweighs the opening balance below them. */}
       <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1.5">
-          <Label>{t("nickname")}</Label>
-          <Input value={form.nickname} placeholder={t("mainAccountPlaceholder")} onChange={(e) => onChange({ nickname: e.target.value })} />
-        </div>
         <div className="space-y-1.5">
           <Label>{t("logoIcon")}</Label>
           <IconSelect value={form.icon} onChange={(icon) => onChange({ icon })} />
         </div>
+        <AccountAppearanceFields
+          value={{ color: form.color, color_style: form.color_style }}
+          onChange={onChange}
+          account={{ id: accountId, type: "bank", brand_domain: form.brand_domain }}
+        />
       </div>
 
       {beforeBankDetails}
-
-      <AccountAppearanceFields
-        value={{ color: form.color, color_style: form.color_style }}
-        onChange={onChange}
-        account={{ id: accountId, type: "bank", brand_domain: form.brand_domain }}
-        previewName={form.nickname || form.bank_name}
-      />
 
       <div className="space-y-3 rounded-xl border bg-muted/20 p-3">
         <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">

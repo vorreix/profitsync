@@ -115,7 +115,6 @@ export function SpaceFormModal({
             value={{ color: form.color, color_style: form.color_style }}
             onChange={(patch) => setForm((f) => ({ ...f, ...patch }))}
             account={{ id: space?.id, type: "space" }}
-            previewName={form.name}
           />
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">

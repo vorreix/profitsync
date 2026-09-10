@@ -88,13 +88,14 @@
 
 /* ── Picker ───────────────────────────────────────────────────────────────
    The swatch button: the colour fills it, selection is a ring drawn outside
-   so the colour itself is never covered. */
+   so the colour itself is never covered. Sits inside a popover, so the gap
+   between swatch and ring is the POPOVER's ground, not the page's. */
 .acct-swatch {
   background: var(--acct-swatch);
 }
 
 .acct-swatch[data-selected="true"] {
-  box-shadow: 0 0 0 2px var(--background), 0 0 0 4px var(--acct-swatch);
+  box-shadow: 0 0 0 2px var(--popover, var(--background)), 0 0 0 3.5px var(--acct-swatch);
 }
 
 }

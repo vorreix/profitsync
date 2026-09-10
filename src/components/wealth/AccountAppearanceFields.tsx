@@ -1,6 +1,6 @@
-import { useId } from "react"
+import { useId, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { Check, Sparkles } from "lucide-react"
+import { Check, ChevronDown, Sparkles } from "lucide-react"
 import {
   ACCOUNT_SWATCHES,
   accountAppearance,
@@ -10,137 +10,165 @@ import {
 import { isHexColor, normalizeHex } from "@/lib/cards"
 import { cn } from "@/lib/utils"
 import { Label } from "@/components/ui/label"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import "@/components/wealth/account-color.css"
 
 export type AppearanceValue = { color: string; color_style: AccountColorStyle }
 
 /**
- * The Appearance block of every account form (bank create/edit, Cash edit,
- * Space create/edit): a colour and how loudly the tile wears it.
+ * The colour field of an account form (bank create/edit, Cash edit, Space
+ * create/edit).
  *
- * "Auto" is a first-class choice, not an empty state — it is what a brand-new
- * account already looks like (the bank's own colour, else a stable swatch), so
- * clearing back to it must be one tap. The preview is the real tile treatment
- * at small scale, because "Subtle vs Bold" means nothing as words.
+ * It is ONE field, the same size and weight as the Logo/icon select beside it.
+ * A colour is a smaller decision than the opening balance, and the first
+ * version — a bordered panel holding a swatch grid, a style toggle and a live
+ * preview, all permanently open — shouted louder than the money on the same
+ * form. Everything now lives behind the swatch: the trigger says what the
+ * account will look like, the popover is where you change it.
+ *
+ * "Auto" stays a first-class choice, not an empty state: it is what a
+ * brand-new account already looks like (the bank's own colour, else a stable
+ * swatch), so getting back to it is one tap.
  */
 export function AccountAppearanceFields({
   value,
   onChange,
   /** The account being edited — AUTO resolves against its brand/type/id. */
   account,
-  /** Name shown in the preview (falls back to a placeholder while empty). */
-  previewName,
 }: {
   value: AppearanceValue
   onChange: (patch: Partial<AppearanceValue>) => void
   account: AccountColorSource
-  previewName?: string
 }) {
   const { t } = useTranslation("wealth")
   const customId = useId()
+  const [open, setOpen] = useState(false)
   const appearance = accountAppearance({ ...account, color: value.color, color_style: value.color_style })
   const isAuto = !isHexColor(value.color)
   // The custom well always shows a real colour to open the OS picker on.
   const customValue = isHexColor(value.color) ? normalizeHex(value.color) : appearance.hex
-  const isPresetSelected = ACCOUNT_SWATCHES.some((hex) => hex === normalizeHex(value.color || "#000000")) && !isAuto
+  const isPreset = !isAuto && ACCOUNT_SWATCHES.includes(normalizeHex(value.color))
 
   return (
-    <div className="space-y-3 rounded-xl border bg-muted/20 p-3">
-      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("appearance.title")}</p>
-
-      <div className="space-y-2">
-        <Label className="text-xs font-normal text-muted-foreground">{t("appearance.color")}</Label>
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => onChange({ color: "" })}
-            aria-pressed={isAuto}
-            title={t("appearance.autoHint")}
-            className={cn(
-              "ios-tap inline-flex h-11 min-h-11 items-center gap-1.5 rounded-full border px-3.5 text-xs font-medium transition-colors",
-              isAuto ? "border-primary bg-primary/10 text-foreground" : "text-muted-foreground hover:bg-muted",
-            )}
-          >
-            <Sparkles className="size-3.5" aria-hidden /> {t("appearance.auto")}
-          </button>
-
-          {ACCOUNT_SWATCHES.map((hex) => {
-            const selected = !isAuto && normalizeHex(value.color) === hex
-            return (
-              <button
-                key={hex}
-                type="button"
-                onClick={() => onChange({ color: hex })}
-                aria-label={hex}
-                aria-pressed={selected}
-                data-selected={selected}
-                style={{ "--acct-swatch": hex } as React.CSSProperties}
-                className="acct-swatch ios-tap flex size-11 min-h-11 items-center justify-center rounded-full transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-              >
-                {selected && <Check className="size-5 text-white drop-shadow" aria-hidden />}
-              </button>
-            )
-          })}
-
-          {/* Anything outside the palette. The native well is the picker; the
-              label around it is what carries the 44px touch target. */}
-          <Label
-            htmlFor={customId}
-            title={t("appearance.custom")}
-            className={cn(
-              "ios-tap flex size-11 min-h-11 cursor-pointer items-center justify-center rounded-full border-2 border-dashed transition-colors hover:bg-muted",
-              !isAuto && !isPresetSelected && "border-solid border-primary",
-            )}
-            style={!isAuto && !isPresetSelected ? { background: customValue } : undefined}
-          >
-            <span className="sr-only">{t("appearance.custom")}</span>
-            {(isAuto || isPresetSelected) && <span className="size-5 rounded-full bg-[conic-gradient(#DC2626,#CA8A04,#059669,#2563EB,#9333EA,#DC2626)]" aria-hidden />}
-            <input
-              id={customId}
-              type="color"
-              value={customValue}
-              onChange={(e) => onChange({ color: normalizeHex(e.target.value) })}
-              className="sr-only"
+    <div className="space-y-1.5">
+      <Label>{t("appearance.color")}</Label>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger
+          className={cn(
+            "flex h-9 w-full items-center justify-between gap-2 rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs outline-none transition-[color,box-shadow]",
+            "focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 dark:bg-input/30 dark:hover:bg-input/50",
+          )}
+        >
+          <span className="flex min-w-0 items-center gap-2">
+            <span
+              className="size-4 shrink-0 rounded-full border border-black/10"
+              style={{ background: appearance.hex }}
+              aria-hidden
             />
-          </Label>
-        </div>
-      </div>
+            <span className="truncate">
+              {isAuto ? t("appearance.auto") : t("appearance.custom")}
+              <span className="text-muted-foreground">
+                {" · "}
+                {value.color_style === "bold" ? t("appearance.bold") : t("appearance.subtle")}
+              </span>
+            </span>
+          </span>
+          <ChevronDown className="size-4 shrink-0 opacity-50" aria-hidden />
+        </PopoverTrigger>
 
-      <div className="space-y-2">
-        <Label className="text-xs font-normal text-muted-foreground">{t("appearance.style")}</Label>
-        <div className="grid grid-cols-2 gap-2">
-          {(["subtle", "bold"] as const).map((style) => (
+        <PopoverContent align="start" className="w-[min(20rem,calc(100vw-2rem))] space-y-3 p-3">
+          {/* Small rectangles in a tidy grid, not big dots: twelve colours read
+              as a palette at a glance instead of a row of buttons. */}
+          <div className="grid grid-cols-6 gap-1.5">
+            {ACCOUNT_SWATCHES.map((hex) => {
+              const selected = !isAuto && normalizeHex(value.color) === hex
+              return (
+                <button
+                  key={hex}
+                  type="button"
+                  onClick={() => onChange({ color: hex })}
+                  aria-label={hex}
+                  aria-pressed={selected}
+                  data-selected={selected}
+                  style={{ "--acct-swatch": hex } as React.CSSProperties}
+                  className="acct-swatch ios-tap flex h-7 w-full items-center justify-center rounded transition-transform hover:scale-[1.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+                >
+                  {selected && <Check className="size-3.5 text-white drop-shadow" aria-hidden />}
+                </button>
+              )
+            })}
+          </div>
+
+          <div className="flex items-center gap-2">
             <button
-              key={style}
               type="button"
-              onClick={() => onChange({ color_style: style })}
-              aria-pressed={value.color_style === style}
+              onClick={() => onChange({ color: "" })}
+              aria-pressed={isAuto}
+              title={t("appearance.autoHint")}
               className={cn(
-                "ios-tap min-h-11 rounded-lg border px-3 text-sm font-medium transition-colors",
-                value.color_style === style ? "border-primary bg-primary/10 text-foreground" : "text-muted-foreground hover:bg-muted",
+                "ios-tap inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded border text-xs font-medium transition-colors",
+                isAuto ? "border-primary bg-primary/10 text-foreground" : "text-muted-foreground hover:bg-muted",
               )}
             >
-              {style === "subtle" ? t("appearance.subtle") : t("appearance.bold")}
+              <Sparkles className="size-3.5" aria-hidden /> {t("appearance.auto")}
             </button>
-          ))}
-        </div>
-      </div>
 
-      {/* Preview — the same treatment the real tile gets, one third the size. */}
-      <div
-        style={appearance.vars as React.CSSProperties}
-        className={cn(
-          "acct-colored relative overflow-hidden rounded-xl border p-3",
-          appearance.bold ? "acct-bold" : "acct-subtle acct-rail bg-card",
-        )}
-      >
-        <p className={cn("truncate text-xs font-semibold", appearance.bold && (appearance.text === "light" ? "text-white" : "text-slate-900"))}>
-          {previewName?.trim() || t("appearance.preview")}
-        </p>
-        <p className={cn("mt-1 text-lg font-bold tabular-nums", appearance.bold ? (appearance.text === "light" ? "text-white" : "text-slate-900") : "text-foreground")}>
-          1,234.00
-        </p>
-      </div>
+            {/* Anything outside the palette. The native well is the picker; the
+                label around it is the clickable target. */}
+            <Label
+              htmlFor={customId}
+              title={t("appearance.custom")}
+              className={cn(
+                "ios-tap flex h-8 w-14 cursor-pointer items-center justify-center rounded border border-dashed transition-colors hover:bg-muted",
+                !isAuto && !isPreset && "border-solid border-primary",
+              )}
+              style={!isAuto && !isPreset ? { background: customValue } : undefined}
+            >
+              <span className="sr-only">{t("appearance.custom")}</span>
+              {(isAuto || isPreset) && <span className="size-3.5 rounded-full bg-[conic-gradient(#DC2626,#CA8A04,#059669,#2563EB,#9333EA,#DC2626)]" aria-hidden />}
+              <input
+                id={customId}
+                type="color"
+                value={customValue}
+                onChange={(e) => onChange({ color: normalizeHex(e.target.value) })}
+                className="sr-only"
+              />
+            </Label>
+          </div>
+
+          {/* Subtle vs Bold means nothing as words, so each option is drawn in
+              the colour it would actually paint — the preview IS the choice. */}
+          <div className="grid grid-cols-2 gap-2">
+            {(["subtle", "bold"] as const).map((style) => {
+              const look = accountAppearance({ ...account, color: value.color, color_style: style })
+              const active = value.color_style === style
+              return (
+                <button
+                  key={style}
+                  type="button"
+                  onClick={() => onChange({ color_style: style })}
+                  aria-pressed={active}
+                  className={cn(
+                    "ios-tap rounded-lg p-0.5 transition-colors",
+                    active ? "ring-2 ring-primary" : "hover:bg-muted",
+                  )}
+                >
+                  <span
+                    style={look.vars as React.CSSProperties}
+                    className={cn(
+                      "acct-colored relative flex min-h-10 items-center overflow-hidden rounded-md border px-2.5 text-xs font-medium",
+                      look.bold ? "acct-bold" : "acct-subtle acct-rail bg-card",
+                      look.bold && (look.text === "light" ? "text-white" : "text-slate-900"),
+                    )}
+                  >
+                    {style === "subtle" ? t("appearance.subtle") : t("appearance.bold")}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        </PopoverContent>
+      </Popover>
     </div>
   )
 }
