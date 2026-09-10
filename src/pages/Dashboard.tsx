@@ -1247,14 +1247,20 @@ export function Dashboard() {
             </Button>
           </CardHeader>
           <CardContent>
+            {/* One height for all three states, so the card doesn't resize as the
+                data lands. It is EXPLICIT, like every other chart in the app,
+                because ChartContainer's default is `aspect-video`: with no height
+                of its own this chart grew with the page width — 471px tall on an
+                1800px screen, which dragged its row (and the card beside it) to
+                577px and left a large empty pane below the content. */}
             {loading ? (
-              <Skeleton className="h-48 w-full" />
+              <Skeleton className="h-[240px] w-full" />
             ) : chartData.length === 0 ? (
-              <div className="h-48 flex items-center justify-center text-sm text-muted-foreground">
+              <div className="h-[240px] flex items-center justify-center text-sm text-muted-foreground">
                 {t("dashboard.noDataYet")}
               </div>
             ) : (
-              <ChartContainer config={chartConfig} className="min-h-[200px] w-full">
+              <ChartContainer config={chartConfig} className="h-[240px] w-full">
                 <BarChart data={chartData} accessibilityLayer>
                   <CartesianGrid vertical={false} className="stroke-border" />
                   <XAxis dataKey="name" tickLine={false} axisLine={false} tick={{ fontSize: 12 }} />
