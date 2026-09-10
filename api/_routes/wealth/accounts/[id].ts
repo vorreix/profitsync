@@ -3,9 +3,10 @@ import { and, count, eq, isNull, sql } from "drizzle-orm"
 import { db, serialize } from "../../../../src/lib/db/index.js"
 import { transactions, wealthAccounts } from "../../../../src/lib/db/schema.js"
 import { canDelete, canWrite, ensureDefaultClient, requireAuth } from "../../../_lib/auth.js"
+import { DEFAULT_CASH_NAME } from "../../../_lib/wealth-accounts.js"
 import { diffFields, logAudit } from "../../../_lib/audit.js"
 import { type BankDetailInput, pickBankDetails, resolveLogoColumns } from "../../../_lib/bank-brand.js"
-import { amountExceedsLimit } from "../../../../src/lib/money.js"
+import { amountExceedsLimit, normalizeCurrencyCode } from "../../../../src/lib/money.js"
 import { logoDataUrl } from "../../../../src/lib/logo-data.js"
 import { checkBankAccountQuota, checkCreditCardQuota } from "../../../_lib/quota.js"
 import { cardDebt, isLiabilityType, isValidDayOfMonth, signedBalanceFromDebt } from "../../../../src/lib/credit-card.js"
@@ -52,6 +53,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       icon?: string
       current_balance?: number
       currentBalance?: number
+      currency_code?: string
       // Credit card: the amount OWED (converted to the signed balance here, so
       // no client ever handles the liability sign) + configuration.
       current_debt?: number | string
@@ -66,6 +68,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const setDefault = typeof body.set_default === "boolean" ? body.set_default : undefined
     const bankName = body.bankName ?? body.bank_name
     const isCard = isLiabilityType(account.type)
+    let currencyCode = account.currencyCode
+    if (body.currency_code !== undefined) {
+      try {
+        currencyCode = normalizeCurrencyCode(body.currency_code)
+      } catch {
+        return res.status(400).json({ error: "Invalid currency code", code: "invalid_currency" })
+      }
+      if (currencyCode !== account.currencyCode) {
+        const [{ rows }] = await db.select({ rows: count() }).from(transactions).where(eq(transactions.wealthAccountId, id))
+        const currencySensitiveConfig = isCard || Number(account.goalAmount ?? 0) !== 0
+        if (rows > 0 || currencySensitiveConfig) {
+          return res.status(409).json({
+            error: "This account's currency cannot be changed after financial history exists. Create another account and transfer the money instead.",
+            code: "account_currency_locked",
+          })
+        }
+      }
+    }
     let currentBalance = body.currentBalance ?? body.current_balance
     if (isCard && body.current_debt !== undefined) {
       const debt = Number(body.current_debt)
@@ -182,6 +202,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           wealthAccountId: id,
           type: txType,
           amount: String(Math.abs(delta)),
+          currencyCode: account.currencyCode,
           description: "Balance Adjustment",
           category: "Adjustment",
           date: new Date().toISOString().split("T")[0],
@@ -199,6 +220,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ...(bankName !== undefined ? { bankName: bankName.trim() || "Cash in Hand" } : {}),
         ...(nickname !== undefined ? { nickname: nickname.trim() } : {}),
         ...(icon !== undefined ? { icon } : {}),
+        ...(body.currency_code !== undefined ? { currencyCode } : {}),
         ...(currentBalance !== undefined ? { currentBalance: String(newBalance) } : {}),
         ...cardPatch,
         ...(details ?? {}),
@@ -238,7 +260,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const changes = diffFields(
       before as Record<string, unknown>,
       updated as Record<string, unknown>,
-      ["bankName", "nickname", "icon", "currentBalance", "archivedAt", "isDefault", "country", "accountNumber", "routingNumber", "swift", "address", "location", "note", "creditLimit", "statementClosingDay", "paymentDueDay"],
+      ["bankName", "nickname", "icon", "currencyCode", "currentBalance", "archivedAt", "isDefault", "country", "accountNumber", "routingNumber", "swift", "address", "location", "note", "creditLimit", "statementClosingDay", "paymentDueDay"],
     )
     if (Object.keys(changes).length) {
       await logAudit({ orgId, entityType: "wealth_account", entityId: id, action: archive ? "close" : restore ? "reopen" : "update", actorId: userId, changes })
@@ -250,9 +272,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Matches the other entity DELETEs (owner/admin only). Editors can still
     // CLOSE an account via PATCH { archive: true }.
     if (!canDelete(role)) return res.status(403).json({ error: "Forbidden" })
-    // Cash in Hand is permanent — never deleted or archived.
-    if (account.type === "cash") {
-      return res.status(400).json({ error: "Cash in Hand can't be removed" })
+    // The DEFAULT cash wallet is permanent — it is auto-provisioned on first
+    // read (api/_routes/wealth/accounts.ts ensureCashAccount) and would simply
+    // come back. Any OTHER cash wallet is one the user made, and since a
+    // workspace may now hold several (one per currency — mig 0069 lifted the
+    // one-wallet rule), it follows the ordinary rules below: archived when it
+    // has history, deleted when it is clean. `bank_name` is the discriminator
+    // the provisioner and that migration's unique index both use.
+    if (account.type === "cash" && account.bankName === DEFAULT_CASH_NAME) {
+      return res.status(400).json({ error: "Cash in Hand can't be removed", code: "default_cash_permanent" })
     }
     const isCard = isLiabilityType(account.type)
     // Trashed rows count too: a hard delete would strip their attribution.

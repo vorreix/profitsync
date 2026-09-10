@@ -1,8 +1,9 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { and, asc, count, eq, isNull, ne, sql } from "drizzle-orm"
 import { db, serialize } from "../../../src/lib/db/index.js"
-import { transactions, wealthAccounts } from "../../../src/lib/db/schema.js"
+import { organizations, transactions, wealthAccounts } from "../../../src/lib/db/schema.js"
 import { canWrite, requireAuth } from "../../_lib/auth.js"
+import { DEFAULT_CASH_NAME } from "../../_lib/wealth-accounts.js"
 import { fetchLogoData } from "../../_lib/bank-brand.js"
 import { logoDataUrl } from "../../../src/lib/logo-data.js"
 import { materializeDueRecurring } from "../../_lib/recurring-materialize.js"
@@ -20,12 +21,15 @@ async function ensureCashAccount(orgId: string, userId: string) {
     .from(wealthAccounts)
     .where(and(eq(wealthAccounts.organizationId, orgId), eq(wealthAccounts.type, "cash"), isNull(wealthAccounts.archivedAt)))
   if (existing) return
+  const [org] = await db.select({ currency: organizations.currency, reportingCurrency: organizations.reportingCurrency }).from(organizations).where(eq(organizations.id, orgId)).limit(1)
+  if (!org) return
   try {
     await db.insert(wealthAccounts).values({
       organizationId: orgId,
       type: "cash",
-      bankName: "Cash in Hand",
+      bankName: DEFAULT_CASH_NAME,
       nickname: "",
+      currencyCode: org.reportingCurrency ?? org.currency,
       openingBalance: "0",
       currentBalance: "0",
       icon: "wallet",
@@ -56,6 +60,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         type: wealthAccounts.type,
         bankName: wealthAccounts.bankName,
         nickname: wealthAccounts.nickname,
+        currencyCode: wealthAccounts.currencyCode,
         openingBalance: wealthAccounts.openingBalance,
         currentBalance: wealthAccounts.currentBalance,
         icon: wealthAccounts.icon,

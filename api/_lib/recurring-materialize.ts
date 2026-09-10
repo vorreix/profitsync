@@ -15,18 +15,17 @@
 // short-circuit when nothing is due), so lists and balances are correct before
 // they render — no cron required.
 
-import { randomUUID } from "node:crypto"
 import { and, eq, lte, sql } from "drizzle-orm"
 import { db } from "../../src/lib/db/index.js"
 import { cards, recurringRules, transactions, wealthAccounts } from "../../src/lib/db/schema.js"
 import { balanceDelta } from "../../src/lib/wealth-ledger.js"
-import { buildRecurringTransferLegs } from "../../src/lib/recurring-transfer.js"
 import { occurrencesDue, ruleExhausted, todayIso, type Frequency, type FrequencyUnit } from "../../src/lib/recurring.js"
 import { ensureDefaultClient } from "./auth.js"
 import { checkTransactionQuota } from "./quota.js"
 import { logAudit } from "./audit.js"
 import { createNotification } from "./notifications.js"
 import { notifyIfBudgetExceeded } from "./notify-budget.js"
+import { createTransfer } from "./wealth-accounts.js"
 
 export type MaterializeResult = { created: number; skipped: string[] }
 
@@ -99,6 +98,11 @@ export async function materializeDueRecurring(orgId: string): Promise<Materializ
         }
 
         const clientId = rule.clientId ?? (await ensureDefaultClient(orgId, rule.createdBy ?? "system"))
+        if (!rule.currencyCode) {
+          await setRuleError(rule.id, "Currency is missing — edit and save this recurring rule")
+          result.skipped.push(rule.name)
+          continue
+        }
 
         // Plan quota: a blocked rule pauses (cursor NOT advanced) and surfaces
         // the reason, so occurrences materialize after an upgrade/cleanup.
@@ -111,36 +115,28 @@ export async function materializeDueRecurring(orgId: string): Promise<Materializ
 
         for (const dueDate of due) {
           if (isTransfer && rule.wealthAccountId && rule.toAccountId) {
-            // Auto-save → a two-leg transfer. The OUTGOING leg is the idempotency
-            // anchor (carries the recurring keys); the incoming Space leg + both
-            // balance updates only fire when that insert actually returns a row,
-            // so a repeated/concurrent catch-up can't double-move money.
-            const groupId = randomUUID()
-            const legs = buildRecurringTransferLegs(
-              { id: rule.id, wealthAccountId: rule.wealthAccountId, toAccountId: rule.toAccountId, amount: rule.amount, name: rule.name, createdBy: rule.createdBy },
-              clientId,
-              dueDate,
-              groupId,
-            )
-            const inserted = await db
-              .insert(transactions)
-              .values(legs.outLeg)
-              .onConflictDoNothing({ target: [transactions.recurringRuleId, transactions.recurringDueDate] })
-              .returning({ id: transactions.id })
-            if (inserted.length > 0) {
+            const [existingOccurrence] = await db
+              .select({ id: transactions.id })
+              .from(transactions)
+              .where(and(eq(transactions.recurringRuleId, rule.id), eq(transactions.recurringDueDate, dueDate)))
+              .limit(1)
+            if (!existingOccurrence) {
+              const transfer = await createTransfer(orgId, rule.createdBy ?? "system", {
+                fromAccountId: rule.wealthAccountId,
+                toAccountId: rule.toAccountId,
+                amount: rule.amount,
+                date: dueDate,
+                descriptions: { out: rule.name, in: rule.name },
+                recurringRuleId: rule.id,
+                recurringDueDate: dueDate,
+              })
+              if (!transfer.ok) {
+                await setRuleError(rule.id, typeof transfer.body.error === "string" ? transfer.body.error : "Transfer could not be recorded")
+                result.skipped.push(rule.name)
+                continue
+              }
               result.created++
               transferCreatedCount++
-              const [inLeg] = await db.insert(transactions).values(legs.inLeg).returning({ id: transactions.id })
-              await db
-                .update(wealthAccounts)
-                .set({ currentBalance: sql`${wealthAccounts.currentBalance} + ${legs.sourceDelta.toFixed(2)}::numeric`, updatedAt: new Date() })
-                .where(eq(wealthAccounts.id, rule.wealthAccountId))
-              await db
-                .update(wealthAccounts)
-                .set({ currentBalance: sql`${wealthAccounts.currentBalance} + ${legs.destDelta.toFixed(2)}::numeric`, updatedAt: new Date() })
-                .where(eq(wealthAccounts.id, rule.toAccountId))
-              await logAudit({ orgId, entityType: "transaction", entityId: inserted[0].id, action: "create", actorId: rule.createdBy })
-              if (inLeg) await logAudit({ orgId, entityType: "transaction", entityId: inLeg.id, action: "create", actorId: rule.createdBy })
             }
             continue
           }
@@ -154,6 +150,7 @@ export async function materializeDueRecurring(orgId: string): Promise<Materializ
               cardId: rule.cardId,
               type: rule.type,
               amount: rule.amount,
+              currencyCode: rule.currencyCode,
               description: rule.name,
               category: rule.category,
               date: dueDate,

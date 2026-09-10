@@ -158,6 +158,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         kind,
         type,
         amount: String(leg.amount),
+        currencyCode: byId.get(leg.accountId)?.currencyCode,
         description: description ?? "",
         category: category ?? "",
         tags: cleanTags,
