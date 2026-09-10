@@ -234,7 +234,9 @@ export async function materializeDueRecurring(orgId: string): Promise<Materializ
               i18nBodyKey: regularCreatedCount === 1 ? "types.recurring_posted.body" : "types.recurring_posted.body_many",
               i18nParams: { name: rule.name, count: regularCreatedCount },
             },
-            link: "/recurring",
+            // The rule's own page — it lists exactly the rows this notification
+            // is about.
+            link: `/recurring/${rule.id}`,
             dedupeKey: `recurring_posted:${rule.id}:${nextCursor}`,
           }).catch(() => {})
         }

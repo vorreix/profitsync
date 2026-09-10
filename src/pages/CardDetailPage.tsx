@@ -489,7 +489,7 @@ export function CardDetailPage() {
                 <button
                   key={r.id}
                   type="button"
-                  onClick={() => navigate(`/recurring?view=${r.id}`)}
+                  onClick={() => navigate(`/recurring/${r.id}`)}
                   className="pressable ios-tap flex w-full items-center gap-3 px-3 py-3 text-start transition-colors hover:bg-muted/50 sm:px-4"
                 >
                   <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10">

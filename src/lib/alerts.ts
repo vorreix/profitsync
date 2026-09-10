@@ -516,7 +516,9 @@ export function shortfallAlerts(shortfalls: Shortfall[], accounts: AlertAccount[
       // The shortfall is ON this account, so its figures are in this account's money.
       currency: account?.currency ?? null,
       tense: "future",
-      link: s.source.kind === "autopay" ? cardLink(s.source.id) : "/recurring",
+      // Symmetrical with autopay → its card: a recurring charge opens the rule
+      // that will make it (`scheduled` has no page of its own).
+      link: s.source.kind === "autopay" ? cardLink(s.source.id) : s.source.kind === "recurring" ? `/recurring/${s.source.id}` : "/recurring",
       at: s.date,
       dismissible: false,
     }
@@ -537,7 +539,7 @@ export function recurringAlerts(rules: AlertRule[], events: ProjectionEvent[], c
   for (const rule of rules) {
     if (!rule.active) continue
     if (rule.lastError) {
-      out.push({ id: `recurring_paused:${rule.id}`, kind: "recurring_paused", severity: "warning", key: "recurring_paused", params: { name: rule.name }, link: "/recurring", dismissible: false })
+      out.push({ id: `recurring_paused:${rule.id}`, kind: "recurring_paused", severity: "warning", key: "recurring_paused", params: { name: rule.name }, link: `/recurring/${rule.id}`, dismissible: false })
     }
   }
 
@@ -562,7 +564,7 @@ export function recurringAlerts(rules: AlertRule[], events: ProjectionEvent[], c
       money: { amount: -e.delta },
       currency: e.source.currency ?? null,
       tense: "future",
-      link: "/recurring",
+      link: `/recurring/${e.source.id}`,
       at: e.date,
       dismissible: true,
     })
