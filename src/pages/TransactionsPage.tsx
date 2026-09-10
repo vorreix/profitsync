@@ -43,8 +43,14 @@ import { TxFormFields } from "@/components/transactions/tx-form"
 import { allocationFor, allocationPayload, formatFileSize, isCardUnusableError, type TxForm } from "@/components/transactions/tx-form-utils"
 import { mergeTags, txTags } from "@/lib/transaction-tags"
 import { AddTransactionDialog } from "@/components/transactions/AddTransactionDialog"
+import { FxExcludedNotice } from "@/components/FxExcludedNotice"
+import { rowCurrency } from "@/lib/reporting-fields"
 
-type PaginatedResponse<T> = { data: T[]; total: number; summary?: { incoming: number; outgoing: number } }
+// The summary is converted server-side into the workspace's reporting currency
+// (`summary.currency`), each row at its own date; `excluded_count` is what had
+// no rate. Rows themselves stay NATIVE — see rowCurrency.
+type TxSummary = { incoming: number; outgoing: number; currency?: string; excluded_count?: number }
+type PaginatedResponse<T> = { data: T[]; total: number; currency?: string; summary?: TxSummary }
 
 // A collapsed split row also reports how many DISTINCT cards paid its legs
 // (GET /api/transactions groupedFields.cardCount) — "3 cards" beats one
@@ -89,8 +95,10 @@ const TransactionRow = memo(function TransactionRow({
 }: TransactionRowProps) {
   const { t } = useTranslation("transactions")
   const navigate = useNavigate()
+  // The row's amount is NATIVE: its account's currency, falling back to the
+  // workspace's only for a legacy row with no tag.
   const fmt = (n: number) =>
-    new Intl.NumberFormat("en-US", { style: "currency", currency, minimumFractionDigits: 2 }).format(n)
+    new Intl.NumberFormat("en-US", { style: "currency", currency: rowCurrency(tx, currency), minimumFractionDigits: 2 }).format(n)
   const legCount = tx.leg_count ?? 1
   const cardCount = tx.card_count ?? 0
 
@@ -245,8 +253,10 @@ export function TransactionsPage() {
   const sel = useMultiSelect()
   const longPress = useLongPress()
   const [bulkDeleting, setBulkDeleting] = useState(false)
-  const fmt = (n: number) =>
-    new Intl.NumberFormat("en-US", { style: "currency", currency, minimumFractionDigits: 2 }).format(n)
+  // `code` names the currency a figure is in: a row's own for a row, the
+  // summary's reporting currency for the totals.
+  const fmt = (n: number, code: string = currency) =>
+    new Intl.NumberFormat("en-US", { style: "currency", currency: code, minimumFractionDigits: 2 }).format(n)
 
   const [transactions, setTransactions] = useState<TxRow[]>([])
   const [total, setTotal] = useState(0)
@@ -269,7 +279,7 @@ export function TransactionsPage() {
   // calendar's "Open in Transactions" lands here pre-filtered).
   const [dateFrom, setDateFrom] = useState(() => searchParams.get("from") ?? "")
   const [dateTo, setDateTo] = useState(() => searchParams.get("to") ?? "")
-  const [summary, setSummary] = useState<{ incoming: number; outgoing: number }>({ incoming: 0, outgoing: 0 })
+  const [summary, setSummary] = useState<TxSummary>({ incoming: 0, outgoing: 0 })
 
   // URL → state for the deep-linkable filters. The initial useState reads run
   // only on MOUNT, so in-app navigations to /transactions?from=…&category=…
@@ -493,9 +503,12 @@ export function TransactionsPage() {
   }
 
   // Income/expense totals come from the server (full filtered set), so they stay
-  // correct across pagination and reflect the search + category filters.
+  // correct across pagination and reflect the search + category filters. They are
+  // in the reporting currency the server converted them into.
   const totalIncoming = summary.incoming
   const totalOutgoing = summary.outgoing
+  const summaryCurrency = summary.currency || currency
+  const summaryExcluded = summary.excluded_count ?? 0
   const ownClientIds = useMemo(() => new Set(clients.filter((c) => c.is_own).map((c) => c.id)), [clients])
 
   // Identity-stable row callbacks (latest-ref pattern) so the memoized
@@ -834,21 +847,24 @@ export function TransactionsPage() {
       </div>
 
       {!loading && (
-        <div className="grid grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-4">
-          <div className="rounded-xl border p-3 sm:p-4">
-            <p className="text-[10px] sm:text-xs text-muted-foreground font-medium uppercase tracking-wide">{t("income")}</p>
-            <FitText className="text-emerald-600 dark:text-emerald-400 mt-1" textClassName="text-base sm:text-xl font-bold tabular-nums">{fmt(totalIncoming)}</FitText>
+        <div className="space-y-2">
+          <div className="grid grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-4">
+            <div className="rounded-xl border p-3 sm:p-4">
+              <p className="text-[10px] sm:text-xs text-muted-foreground font-medium uppercase tracking-wide">{t("income")}</p>
+              <FitText className="text-emerald-600 dark:text-emerald-400 mt-1" textClassName="text-base sm:text-xl font-bold tabular-nums">{fmt(totalIncoming, summaryCurrency)}</FitText>
+            </div>
+            <div className="rounded-xl border p-3 sm:p-4">
+              <p className="text-[10px] sm:text-xs text-muted-foreground font-medium uppercase tracking-wide">{t("expenses")}</p>
+              <FitText className="text-red-600 dark:text-red-400 mt-1" textClassName="text-base sm:text-xl font-bold tabular-nums">{fmt(totalOutgoing, summaryCurrency)}</FitText>
+            </div>
+            <div className="rounded-xl border p-3 sm:p-4">
+              <p className="text-[10px] sm:text-xs text-muted-foreground font-medium uppercase tracking-wide">{t("net")}</p>
+              <FitText className={`mt-1 ${totalIncoming - totalOutgoing >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"}`} textClassName="text-base sm:text-xl font-bold tabular-nums">
+                {fmt(totalIncoming - totalOutgoing, summaryCurrency)}
+              </FitText>
+            </div>
           </div>
-          <div className="rounded-xl border p-3 sm:p-4">
-            <p className="text-[10px] sm:text-xs text-muted-foreground font-medium uppercase tracking-wide">{t("expenses")}</p>
-            <FitText className="text-red-600 dark:text-red-400 mt-1" textClassName="text-base sm:text-xl font-bold tabular-nums">{fmt(totalOutgoing)}</FitText>
-          </div>
-          <div className="rounded-xl border p-3 sm:p-4">
-            <p className="text-[10px] sm:text-xs text-muted-foreground font-medium uppercase tracking-wide">{t("net")}</p>
-            <FitText className={`mt-1 ${totalIncoming - totalOutgoing >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"}`} textClassName="text-base sm:text-xl font-bold tabular-nums">
-              {fmt(totalIncoming - totalOutgoing)}
-            </FitText>
-          </div>
+          <FxExcludedNotice count={summaryExcluded} />
         </div>
       )}
 
@@ -984,7 +1000,7 @@ export function TransactionsPage() {
                   <div>
                     <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">{t("amount")}</p>
                     <p className={`font-semibold mt-0.5 ${viewTx.type === "incoming" ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
-                      {viewTx.type === "incoming" ? "+" : "−"}{fmt(Number(viewTx.amount))}
+                      {viewTx.type === "incoming" ? "+" : "−"}{fmt(Number(viewTx.amount), rowCurrency(viewTx, currency))}
                     </p>
                   </div>
                   <div>
@@ -1071,7 +1087,7 @@ export function TransactionsPage() {
                               )}
                             </span>
                             <span className={`shrink-0 text-sm font-semibold tabular-nums ${viewTx.type === "incoming" ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
-                              {viewTx.type === "incoming" ? "+" : "−"}{fmt(Number(leg.amount))}
+                              {viewTx.type === "incoming" ? "+" : "−"}{fmt(Number(leg.amount), rowCurrency(leg, currency))}
                             </span>
                           </div>
                           )

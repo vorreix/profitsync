@@ -54,6 +54,7 @@ import { useDataRefresh } from "@/lib/data-refresh-context"
 import { useOrg } from "@/lib/org-context"
 import { useCurrency } from "@/lib/currency-context"
 import { useTheme } from "@/components/theme-provider"
+import { FxExcludedNotice } from "@/components/FxExcludedNotice"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { useBackClose } from "@/hooks/use-back-close"
 import { formatMoney } from "@/lib/wealth"
@@ -80,6 +81,17 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 
 type GroupBy = "account" | "client" | "category"
 type Option = { id: string; label: string }
+
+// The multi-currency facts the flow payload now carries (see api/_routes/flow.ts):
+// every income/expense/net/balance figure is in `currency` (the workspace's
+// reporting currency, each row converted at its own date); `excluded_count` is
+// what had no rate; an ACCOUNT group's own balances stay native in
+// `account_currency`; a leaf's amount stays native in `currency_code`.
+type FxMeta = { currency?: string; excluded_count?: number }
+type FxRoot = { excluded_count?: number; balance_excluded_count?: number }
+type FxGroup = { excluded_count?: number; account_currency?: string | null }
+type FxLeaf = { currency_code?: string | null }
+const leafCurrency = (leaf: FlowLeaf, fallback: string) => (leaf as FlowLeaf & FxLeaf).currency_code || fallback
 
 // ── Hover focus ──────────────────────────────────────────────────────────────
 // When a node is hovered we light up that node + the edges/nodes it touches and
@@ -224,12 +236,14 @@ function RootNode({ id, data }: NodeProps<Node<RootData>>) {
 
 const GROUP_ICON = { account: Landmark, client: Users, category: Tag } as const
 
-type GroupData = FlowGroup & { expanded: boolean; currency: string; onToggle: () => void; onDetail?: () => void }
+type GroupData = FlowGroup & FxGroup & { expanded: boolean; currency: string; onToggle: () => void; onDetail?: () => void }
 function GroupNode({ id, data }: NodeProps<Node<GroupData>>) {
   const { t } = useTranslation()
   const focus = useFocus(id)
   const Icon = data.kind === "account" ? (data.account_type === "cash" ? Wallet : Landmark) : GROUP_ICON[data.kind]
   const showBalances = data.kind === "account" && data.current_balance != null
+  // An account's own balances are native money — its currency, not the reporting one.
+  const balanceCurrency = data.account_currency || data.currency
   const pos = data.net >= 0
   return (
     <div
@@ -259,8 +273,8 @@ function GroupNode({ id, data }: NodeProps<Node<GroupData>>) {
 
       {showBalances ? (
         <div className="mt-2.5 grid grid-cols-2 gap-2 rounded-xl bg-muted/40 px-2.5 py-1.5 text-[11px]">
-          <div><dt className="text-[9px] uppercase text-muted-foreground">{t("flow.opening")}</dt><dd><Money value={data.opening_balance ?? 0} currency={data.currency} /></dd></div>
-          <div className="text-right"><dt className="text-[9px] uppercase text-muted-foreground">{t("flow.current")}</dt><dd><Money value={data.current_balance ?? 0} currency={data.currency} className="font-semibold" /></dd></div>
+          <div><dt className="text-[9px] uppercase text-muted-foreground">{t("flow.opening")}</dt><dd><Money value={data.opening_balance ?? 0} currency={balanceCurrency} /></dd></div>
+          <div className="text-right"><dt className="text-[9px] uppercase text-muted-foreground">{t("flow.current")}</dt><dd><Money value={data.current_balance ?? 0} currency={balanceCurrency} className="font-semibold" /></dd></div>
         </div>
       ) : (
         <div className="mt-2.5 flex items-center justify-between rounded-xl bg-muted/40 px-2.5 py-1.5 text-[11px]">
@@ -285,12 +299,14 @@ function GroupNode({ id, data }: NodeProps<Node<GroupData>>) {
   )
 }
 
-type LeafData = FlowLeaf & { currency: string; formatDate: (d: string) => string; onOpen: () => void; enterIndex?: number; splitExpanded?: boolean }
+type LeafData = FlowLeaf & FxLeaf & { currency: string; formatDate: (d: string) => string; onOpen: () => void; enterIndex?: number; splitExpanded?: boolean }
 function LeafNode({ id, data }: NodeProps<Node<LeafData>>) {
   const { t } = useTranslation()
   const focus = useFocus(id)
   const inc = data.type === "incoming"
   const isSplit = (data.leg_count ?? 1) > 1
+  // A transaction leaf shows its NATIVE amount in its own currency.
+  const nativeCurrency = data.currency_code || data.currency
   return (
     // The leaf is DRAGGABLE (no `nodrag`) yet still opens its transaction. To
     // avoid a drag accidentally opening it, mouse-open goes through React Flow's
@@ -335,7 +351,7 @@ function LeafNode({ id, data }: NodeProps<Node<LeafData>>) {
             </span>
           ) : null}
         </span>
-        <Money value={data.amount} sign={inc ? "+" : "−"} currency={data.currency} className={cn("shrink-0 self-start font-semibold", inc ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400")} />
+        <Money value={data.amount} sign={inc ? "+" : "−"} currency={nativeCurrency} className={cn("shrink-0 self-start font-semibold", inc ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400")} />
       </span>
       {/* full-width legs breakdown (each account's share of the split) */}
       {isSplit && data.splitExpanded && data.legs && (
@@ -346,7 +362,7 @@ function LeafNode({ id, data }: NodeProps<Node<LeafData>>) {
                 <Landmark className="size-2.5 shrink-0" />
                 <span className="truncate">{leg.account_name || t("flow.unassignedAccount")}</span>
               </span>
-              <Money value={leg.amount} sign={inc ? "+" : "−"} currency={data.currency} className={cn("shrink-0 font-medium tabular-nums", inc ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400")} />
+              <Money value={leg.amount} sign={inc ? "+" : "−"} currency={nativeCurrency} className={cn("shrink-0 font-medium tabular-nums", inc ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400")} />
             </span>
           ))}
         </span>
@@ -661,7 +677,7 @@ function TxPopup({ leaf, currency, formatDate, onViewDetails, onClose }: { leaf:
         </div>
         <div className="flex items-center justify-between gap-2 border-t px-3 py-2">
           <span className={cn("truncate text-base font-bold tabular-nums", inc ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400")}>
-            {inc ? "+" : "−"}{formatMoney(Math.abs(leaf.amount), currency)}
+            {inc ? "+" : "−"}{formatMoney(Math.abs(leaf.amount), leafCurrency(leaf, currency))}
           </span>
           <Button size="sm" variant="outline" className="h-7 shrink-0 px-2.5 text-xs" onClick={() => onViewDetails(leaf.id)}>
             {t("flow.viewDetails")} <ArrowUpRight className="size-3.5" />
@@ -770,7 +786,7 @@ export function MoneyFlowPage() {
   const navigate = useNavigate()
   const { getToken } = useAuth()
   const { activeOrg } = useOrg()
-  const { currency } = useCurrency()
+  const { currency: orgCurrency } = useCurrency()
   const { revision } = useDataRefresh()
   const { theme } = useTheme()
   const isMobile = useIsMobile()
@@ -790,6 +806,16 @@ export function MoneyFlowPage() {
   const saved = useMemo<SavedFlowState>(() => readSavedFlow(storageKey), [storageKey])
 
   const [data, setData] = useState<FlowData | TimelineData | null>(null)
+  // Every aggregate on the canvas is in the currency the server converted it
+  // into (the reporting currency); the org's is only the fallback before the
+  // first payload lands.
+  const currency = (data as (FlowData | TimelineData) & FxMeta | null)?.currency || orgCurrency
+  const fxExcluded = useMemo(() => {
+    if (!data) return 0
+    const meta = data as (FlowData | TimelineData) & FxMeta
+    const root = (data.mode === "timeline" ? data.final : data.root) as FxRoot
+    return (meta.excluded_count ?? root.excluded_count ?? 0) + (root.balance_excluded_count ?? 0)
+  }, [data])
   const [loading, setLoading] = useState(true)
   const [viewMode, setViewMode] = useState<"grouped" | "timeline">(saved.viewMode ?? "grouped")
   const [bucket, setBucket] = useState<"day" | "week" | "month" | "year">(saved.bucket ?? "month")
@@ -983,8 +1009,10 @@ export function MoneyFlowPage() {
     const tone = (v: number): "income" | "expense" => (v >= 0 ? "income" : "expense")
     switch (n.type) {
       case "branch": {
-        const g = n.data as unknown as FlowGroup
+        const g = n.data as unknown as FlowGroup & FxGroup
         const acc = g.kind === "account" && g.current_balance != null
+        // Balances are the account's own money; income/expense are reporting-currency.
+        const native = (v: number) => formatMoney(v, g.account_currency || currency)
         return {
           title: g.label,
           kindLabel: g.kind === "account" ? t("flow.kindAccount") : g.kind === "client" ? t("flow.kindClient") : t("flow.kindCategory"),
@@ -996,7 +1024,7 @@ export function MoneyFlowPage() {
             { label: t("flow.expenses"), value: `−${money(g.expense)}`, tone: "expense" },
             { label: t("flow.net"), value: signed(g.net), tone: tone(g.net) },
             { label: t("flow.txCount"), value: String(g.tx_count) },
-            ...(acc ? [{ label: t("flow.opening"), value: money(g.opening_balance ?? 0) }, { label: t("flow.current"), value: money(g.current_balance ?? 0) }] : []),
+            ...(acc ? [{ label: t("flow.opening"), value: native(g.opening_balance ?? 0) }, { label: t("flow.current"), value: native(g.current_balance ?? 0) }] : []),
           ],
           goLabel: g.kind === "category" ? t("flow.viewTransactions") : t("flow.openPage"),
           onGo: () => openMoreForGroup(g),
@@ -1297,6 +1325,10 @@ export function MoneyFlowPage() {
             {t("flow.title")}
           </h1>
           <p className="mt-0.5 text-sm text-muted-foreground">{viewMode === "timeline" ? t("flow.timelineSubtitle") : t("flow.subtitle")}</p>
+          {/* Rows the server could not convert into the reporting currency are
+              left OUT of every figure on the canvas — say so rather than let a
+              partial total read as complete. */}
+          {!loading && <FxExcludedNotice count={fxExcluded} className="mt-1" />}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {/* View-mode toggle: grouped mind-map vs running-balance timeline */}

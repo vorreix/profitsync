@@ -113,6 +113,30 @@ export function budgetName(t: TFunction, b: Pick<SpendingBudget, "name">): strin
   return b.name || t("budgets.personal")
 }
 
+// ── Currency facts on a budget row ─────────────────────────────────────────
+// The API measures each budget in ITS currency (`currency`: its own
+// currency_code, else the workspace's reporting currency), every ledger row
+// converted at its own date; `excluded_count` is the rows in the budget's own
+// window that had no rate and were left out. Both are read through these so a
+// cached body from before they shipped still renders (org currency, zero).
+
+type BudgetFx = { currency?: string | null; currency_code?: string | null; excluded_count?: number | null }
+
+/** The currency every figure on this budget is in. */
+export function budgetCurrency(b: Pick<SpendingBudget, "amount"> & BudgetFx, fallback: string): string {
+  return b.currency || b.currency_code || fallback
+}
+
+/** Rows the budget's spend could not include (no exchange rate for their day). */
+export function budgetExcluded(b: BudgetFx | null | undefined): number {
+  return Math.max(0, Number(b?.excluded_count ?? 0) || 0)
+}
+
+/** How many rows a set of budgets left out, altogether — for one page-level notice. */
+export function budgetsExcluded(list: BudgetFx[]): number {
+  return list.reduce((s, b) => s + budgetExcluded(b), 0)
+}
+
 export const BAR_COLOR: Record<SpendingBudget["state"], string> = {
   ok: "bg-emerald-500",
   warn: "bg-amber-500",

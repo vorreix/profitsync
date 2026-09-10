@@ -60,6 +60,18 @@ function Collapse({ open, children, className }: { open: boolean; children: Reac
  * `max={1}` (edit) forces single-pay and hides the split toggle.
  * Allocations are the single source of truth — one per selected option.
  */
+/**
+ * The currency an option's money is actually in — its account's native one.
+ *
+ * Every figure this picker shows belongs to ONE account, so it must be
+ * formatted in that account's currency. Using the workspace's for all of them
+ * printed a rupee balance as "$12,000.00" and put a "$" in front of an amount
+ * that was about to be recorded in rupees.
+ */
+function optionCurrency(option: PayOption, fallback: string): string {
+  return (option.kind === "card" ? option.account?.currency_code : option.account.currency_code) || fallback
+}
+
 export function AccountSelector({
   accounts,
   allocations,
@@ -82,7 +94,6 @@ export function AccountSelector({
   const { t } = useTranslation("transactions")
   const { balancesVisible } = useBalancePrivacy()
   const { cards } = useCards()
-  const symbol = currencySymbol(currency)
   const single = max === 1
   const [split, setSplit] = useState(() => !single && allocations.length > 1)
   const [expanded, setExpanded] = useState(false)
@@ -118,6 +129,18 @@ export function AccountSelector({
     // No opening selection → surface the user's default bank in the second slot.
     return rotating.find((o) => o.kind === "account" && o.account.is_default)?.key ?? rotating[0]?.key ?? ""
   })
+
+  // Which currency is this entry in? The first selected account decides, and in
+  // split mode every other account must match it — one purchase paid from
+  // several accounts is one amount, and amounts in different currencies cannot
+  // be added. Nothing is restricted while nothing is selected.
+  const currencyOfKey = (key: string) => {
+    const opt = options.all.find((o) => o.key === key)
+    return opt ? optionCurrency(opt, currency) : currency
+  }
+  const activeCurrency = allocations.length > 0 ? currencyOfKey(keyOf(allocations[0])) : null
+  const entryCurrency = activeCurrency ?? currency
+  const entrySymbol = currencySymbol(entryCurrency)
 
   const total = allocations.reduce((sum, a) => sum + (Number(a.amount) || 0), 0)
   const selectedCount = allocations.length
@@ -224,21 +247,27 @@ export function AccountSelector({
   const extraCards = options.cards.filter((o) => !inPrimary(o))
   const hiddenCount = extraAccounts.length + extraCards.length
 
-  const renderTile = (o: PayOption, mode: "single" | "split") => (
+  const renderTile = (o: PayOption, mode: "single" | "split") => {
+    const own = optionCurrency(o, currency)
+    // In a split, an account in another currency cannot join this entry.
+    const wrongCurrency = mode === "split" && !!activeCurrency && own !== activeCurrency && !isSelected(o.key)
+    return (
     <PayTile
       key={o.key}
       option={o}
-      currency={currency}
-      symbol={symbol}
+      currency={own}
+      symbol={currencySymbol(own)}
       balancesVisible={balancesVisible}
       split={mode === "split"}
-      disabled={disabled}
+      disabled={disabled || wrongCurrency}
+      note={wrongCurrency ? t("splitSameCurrency", { currency: activeCurrency }) : null}
       selected={mode === "split" ? isSelected(o.key) : (sole ? keyOf(sole) : "") === o.key}
       amount={amountFor(o.key)}
       onPrimary={mode === "split" ? toggleSplit : selectSingle}
       onAmount={(amount) => setAmount(o.key, amount)}
     />
-  )
+    )
+  }
 
   const cardsHeading = (
     <p className="pt-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{t("cardsHeading")}</p>
@@ -251,7 +280,7 @@ export function AccountSelector({
       {/* ── SINGLE-PAY VIEW ─────────────────────────────────────────────── */}
       <Collapse open={!split}>
         <div className="space-y-2">
-          <MoneyInput symbol={symbol} value={sole?.amount ?? ""} onChange={setSingleAmount} size="lg" />
+          <MoneyInput symbol={entrySymbol} value={sole?.amount ?? ""} onChange={setSingleAmount} size="lg" />
           <div className={cn("grid gap-2", primary.length === 1 ? "grid-cols-1" : "grid-cols-2")}>
             {primary.map((o) => renderTile(o, "single"))}
           </div>
@@ -313,7 +342,7 @@ export function AccountSelector({
                 {selectedCount > 0 ? t("splitAcross", { count: selectedCount }) : t("selectAtLeastOneAccount")}
               </span>
               {/* The user's own typed total — never masked by privacy mode (that hides balances). */}
-              <span className="font-semibold tabular-nums">{formatMoney(total, currency)}</span>
+              <span className="font-semibold tabular-nums">{formatMoney(total, entryCurrency)}</span>
             </div>
             {selectedCount > 0 && incomplete && (
               <p className="text-xs text-muted-foreground">{t("enterAmountForEachAccount")}</p>
@@ -370,9 +399,10 @@ function cardSubline(card: Card, account: WealthAccount | null, currency: string
 }
 
 function PayTile({
-  option, currency, symbol, balancesVisible, split, selected, amount, disabled, onPrimary, onAmount,
+  option, currency, symbol, balancesVisible, split, selected, amount, disabled, note = null, onPrimary, onAmount,
 }: {
   option: PayOption
+  /** The ACCOUNT's own currency — every figure on this tile is in it. */
   currency: string
   symbol: string
   balancesVisible: boolean
@@ -380,6 +410,8 @@ function PayTile({
   selected: boolean
   amount: string
   disabled: boolean
+  /** Why this tile cannot be picked right now (a split is one currency). */
+  note?: string | null
   onPrimary: (o: PayOption) => void
   onAmount: (amount: string) => void
 }) {
@@ -409,6 +441,7 @@ function PayTile({
       className={cn(
         "flex items-center gap-2 rounded-xl border px-3 py-2.5 transition-colors",
         selected ? "border-primary/60 bg-primary/5 ring-1 ring-primary/30" : "hover:bg-muted/50",
+        note && "opacity-55",
       )}
     >
       <button
@@ -445,6 +478,8 @@ function PayTile({
             )}
           </span>
           <span className="block truncate text-xs text-muted-foreground tabular-nums">{subline}</span>
+          {/* Why this one is greyed out: a split has to stay in one currency. */}
+          {note && <span className="block truncate text-[11px] text-muted-foreground/80">{note}</span>}
         </span>
         {split && !selected && (
           <span className="flex size-5 shrink-0 items-center justify-center rounded-full border text-muted-foreground">

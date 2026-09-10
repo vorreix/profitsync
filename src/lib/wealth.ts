@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import type { WealthAccount } from "@/lib/types"
 import { cardCredit, cardDebt, creditUsage, isLiabilityType } from "@/lib/credit-card"
+import i18n from "@/lib/i18n"
 
 const PRIVACY_KEY = "ps_wealth_balances_visible"
 const COLLAPSED_KEY = "ps_wealth_overview_collapsed"
@@ -94,14 +95,78 @@ export function currencySymbol(currency: string) {
   return part?.value ?? currency
 }
 
+// UI language -> number locale. Money is formatted the way the reader's language
+// groups digits; rupees under an English UI use Indian grouping (₹1,23,456.78).
+const LOCALE_FOR_LANGUAGE: Record<string, string> = { en: "en-US", it: "it-IT", de: "de-DE", hi: "hi-IN", ml: "ml-IN", ta: "ta-IN", te: "te-IN", ar: "ar-AE" }
+
+export function moneyLocale(currency: string): string {
+  const lang = (i18n.language ?? "en").split("-")[0]
+  if (currency === "INR" && lang === "en") return "en-IN"
+  return LOCALE_FOR_LANGUAGE[lang] ?? "en-US"
+}
+
+/**
+ * Format an amount IN ITS OWN CURRENCY. The currency's ISO minor-unit count
+ * decides the decimals (JPY has none, KWD has three), and the symbol is the
+ * locale's — "CA$" / "A$" beside a plain "$" so two dollar accounts never look
+ * alike. Callers must pass the money's native currency (an account's
+ * `currency_code`), never the workspace currency by habit.
+ */
 export function formatMoney(amount: number, currency: string, visible = true) {
   if (!visible) return `${currencySymbol(currency)} *****`
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency,
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(amount)
+  try {
+    return new Intl.NumberFormat(moneyLocale(currency), { style: "currency", currency }).format(amount)
+  } catch {
+    return `${currency} ${amount.toFixed(2)}`
+  }
+}
+
+/** "≈ €730" — the approximate value of a foreign-currency figure in the reporting currency. */
+export function formatApprox(amount: number, currency: string, visible = true) {
+  return visible ? `≈ ${formatMoney(amount, currency, true)}` : `≈ ${currencySymbol(currency)} *****`
+}
+
+/** The locale the UI language reads dates in (mirrors moneyLocale, minus the INR special case). */
+export function uiLocale(): string {
+  const lang = (i18n.language ?? "en").split("-")[0]
+  return LOCALE_FOR_LANGUAGE[lang] ?? "en-US"
+}
+
+/**
+ * "9 Sep 2026" in the UI language. Accepts a plain YYYY-MM-DD (rate dates,
+ * transfer dates) or a full ISO timestamp; a date-only value is pinned to local
+ * midnight so it never slips a day west of UTC.
+ */
+export function formatDateLabel(iso: string, opts: Intl.DateTimeFormatOptions = { day: "numeric", month: "short", year: "numeric" }) {
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(iso) ? new Date(`${iso}T00:00:00`) : new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso
+  return d.toLocaleDateString(uiLocale(), opts)
+}
+
+/**
+ * "1 INR = €0.0090" — one unit of `base` in `quote`. Rates under 1 keep four
+ * decimals so a small rate never rounds to a meaningless "€0.01"; rates of 1 or
+ * more read like money (two decimals).
+ */
+export function formatRate(base: string, quote: string, rate: string | number) {
+  const r = Number(rate)
+  if (!Number.isFinite(r) || r <= 0) return `1 ${base} = ${quote} ${rate}`
+  try {
+    const formatted = new Intl.NumberFormat(moneyLocale(quote), {
+      style: "currency",
+      currency: quote,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: r >= 1 ? 2 : 4,
+    }).format(r)
+    return `1 ${base} = ${formatted}`
+  } catch {
+    return `1 ${base} = ${quote} ${r}`
+  }
+}
+
+/** The currency an account's balances are IN — its own, falling back to the workspace's during the legacy rollout. */
+export function accountCurrency(account: Pick<WealthAccount, "currency_code"> | null | undefined, fallback: string) {
+  return account?.currency_code ?? fallback
 }
 
 export function accountDisplayName(account: Pick<WealthAccount, "bank_name" | "nickname">) {
