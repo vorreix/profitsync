@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { and, asc, count, desc, eq, gte, ilike, isNull, lte, ne, or, sql } from "drizzle-orm"
 import { db, serialize } from "../../src/lib/db/index.js"
-import { clients, transactions, wealthAccounts } from "../../src/lib/db/schema.js"
+import { clients, recurringRules, transactions, wealthAccounts } from "../../src/lib/db/schema.js"
 import { canWrite, ensureDefaultClient, isPersonalAccount, requireAuth } from "../_lib/auth.js"
 import { checkTransactionQuota, checkTransactionTagQuota } from "../_lib/quota.js"
 import { logAudit } from "../_lib/audit.js"
@@ -16,6 +16,8 @@ import { attributeCard, cardTransactionFilter } from "../_lib/cards.js"
 import { syncCards } from "../_lib/card-autopay.js"
 
 const PAGE_SIZE = 20
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 function pickOrder(sort: string | undefined) {
   switch (sort) {
@@ -157,8 +159,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // (idempotent, short-circuits when the org has no open credit card).
     await syncCards(orgId).catch((err) => console.error("[cards] sync failed", err))
 
-    const { clientId, wealthAccountId: accountParam, cardId, groupId, search, type, page, sort, limit, category, tag, from, to, includeClosed } = req.query as {
-      clientId?: string; wealthAccountId?: string; cardId?: string; groupId?: string; search?: string; type?: string; page?: string; sort?: string; limit?: string; category?: string; tag?: string; from?: string; to?: string; includeClosed?: string
+    const { clientId, wealthAccountId: accountParam, cardId, recurringRuleId, groupId, search, type, page, sort, limit, category, tag, from, to, includeClosed } = req.query as {
+      clientId?: string; wealthAccountId?: string; cardId?: string; recurringRuleId?: string; groupId?: string; search?: string; type?: string; page?: string; sort?: string; limit?: string; category?: string; tag?: string; from?: string; to?: string; includeClosed?: string
     }
     // `?cardId=` is an ACCOUNT-scoped view in disguise: a credit card owns its
     // whole liability account, a debit card owns the rows that carry its id.
@@ -171,6 +173,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!scope) return res.status(404).json({ error: "Card not found" })
       cardFilter = scope.where
       wealthAccountId = wealthAccountId ?? "card" // marks the list as account-scoped below
+    }
+
+    // `?recurringRuleId=` — everything ONE recurring rule has created. Scoped
+    // like the rule's own page: flat (a materialized occurrence is never a
+    // split), transfers included (a Space auto-save materialises transfer legs)
+    // and closed clients included, so the list can't disagree with the count the
+    // rule itself reports.
+    let recurringFilter: ReturnType<typeof eq> | undefined
+    if (recurringRuleId) {
+      // A non-uuid would reach Postgres as an invalid uuid literal (a 500); the
+      // org check is what stops another workspace's rule id from listing rows.
+      if (!UUID_RE.test(recurringRuleId)) return res.status(404).json({ error: "Recurring rule not found" })
+      const [rule] = await db
+        .select({ id: recurringRules.id })
+        .from(recurringRules)
+        .where(and(eq(recurringRules.id, recurringRuleId), eq(recurringRules.organizationId, orgId)))
+      if (!rule) return res.status(404).json({ error: "Recurring rule not found" })
+      recurringFilter = eq(transactions.recurringRuleId, recurringRuleId)
     }
 
     // Fetch every leg of one split group (drives the detail breakdown). Always
@@ -193,18 +213,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // account-scoped view (?wealthAccountId) shows the per-account leg; a
     // client-scoped view (?clientId, the client detail page) keeps its own
     // per-leg display + edit flow, so it stays flat too.
-    const grouped = !wealthAccountId && !clientId
+    const grouped = !wealthAccountId && !clientId && !recurringRuleId
     // Transfers are internal account-to-account moves: show them ONLY on the
     // account-detail list (so you can see the movement), never in the global or
     // client lists. The income/expense summary always excludes them.
-    const listExcludesTransfers = wealthAccountId ? undefined : ne(transactions.kind, "transfer")
+    const listExcludesTransfers = wealthAccountId || recurringRuleId ? undefined : ne(transactions.kind, "transfer")
 
     const isDate = (v: string | undefined): v is string => !!v && /^\d{4}-\d{2}-\d{2}$/.test(v)
     const dateFromFilter = isDate(from) ? gte(transactions.date, from) : undefined
     const dateToFilter = isDate(to) ? lte(transactions.date, to) : undefined
     // Exclude transactions of closed clients from the default list/analytics;
     // `?includeClosed=1` brings them back (dashboard "show closed" toggle).
-    const closedClientFilter = includeClosed === "1" ? undefined : isNull(clients.closedAt)
+    const closedClientFilter = includeClosed === "1" || recurringRuleId ? undefined : isNull(clients.closedAt)
 
     const orderBy = pickOrder(sort)
 
@@ -256,6 +276,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       isNull(transactions.deletedAt),
       closedClientFilter,
       accountFilter,
+      recurringFilter,
       listExcludesTransfers,
       searchFilter,
       typeFilter,
@@ -277,6 +298,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         isNull(transactions.deletedAt),
         closedClientFilter,
         accountFilter,
+        recurringFilter,
         // The income/expense summary never counts internal transfers (net zero);
         // refunds are in scope and net against outgoing (api/_lib/tx-sql.ts).
         pnlKindFilter,

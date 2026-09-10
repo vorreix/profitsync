@@ -26,6 +26,7 @@ const ClientDetailPage = lazy(() => import("@/pages/ClientDetailPage").then((m) 
 const ClientFilesPage = lazy(() => import("@/pages/ClientFilesPage").then((m) => ({ default: m.ClientFilesPage })))
 const TransactionsPage = lazy(() => import("@/pages/TransactionsPage").then((m) => ({ default: m.TransactionsPage })))
 const RecurringPage = lazy(() => import("@/pages/RecurringPage").then((m) => ({ default: m.RecurringPage })))
+const RecurringDetailPage = lazy(() => import("@/pages/RecurringDetailPage").then((m) => ({ default: m.RecurringDetailPage })))
 const CalendarPage = lazy(() => import("@/pages/CalendarPage").then((m) => ({ default: m.CalendarPage })))
 const MoneyFlowPage = lazy(() => import("@/pages/MoneyFlowPage").then((m) => ({ default: m.MoneyFlowPage })))
 const WealthPage = lazy(() => import("@/pages/WealthPage").then((m) => ({ default: m.WealthPage })))
@@ -222,6 +223,7 @@ export function App() {
             <Route path="clients/:id/files" element={<BusinessOnlyRoute feature="clients"><ClientFilesPage /></BusinessOnlyRoute>} />
             <Route path="transactions" element={<TransactionsPage />} />
             <Route path="recurring" element={<RecurringPage />} />
+            <Route path="recurring/:id" element={<RecurringDetailPage />} />
             <Route path="calendar" element={<CalendarPage />} />
             <Route path="flow" element={<MoneyFlowPage />} />
             {/* Wealth & Cards: /wealth (Banks) and /wealth?tab=cards (Cards) are ONE

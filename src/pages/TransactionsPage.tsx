@@ -145,7 +145,7 @@ const TransactionRow = memo(function TransactionRow({
                 e.stopPropagation()
                 // Remember where we left so Back returns to this exact row.
                 sessionStorage.setItem("tx-return-scroll", tx.id)
-                navigate(`/recurring?view=${tx.recurring_rule_id}`)
+                navigate(`/recurring/${tx.recurring_rule_id}`)
               }}
             >
               <Repeat className="size-3" /> <span className="hidden sm:inline">{t("recurringBadge")}</span>
@@ -1003,7 +1003,7 @@ export function TransactionsPage() {
                         onClick={() => {
                           // Keep the ?view=<txId> entry in history (don't strip it) so
                           // browser/Back returns straight to this open modal, unchanged.
-                          navigate(`/recurring?view=${viewTx.recurring_rule_id}`)
+                          navigate(`/recurring/${viewTx.recurring_rule_id}`)
                         }}
                       >
                         <Repeat className="size-3" /> {t("recurringBadge")}
