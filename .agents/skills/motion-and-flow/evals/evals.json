@@ -1,0 +1,61 @@
+{
+  "skill_name": "motion-and-flow",
+  "evals": [
+    {
+      "id": 1,
+      "name": "react-flow-custom-node",
+      "prompt": "Add a new custom node type to the money-flow graph (src/pages/MoneyFlowPage.tsx) that shows a per-account sparkline, with a target handle on the left and a source handle on the right.",
+      "expected_output": "A new node component typed as NodeProps<Node<TData>>, registered by adding it to the module-scope NODE_TYPES object (NOT an inline nodeTypes prop), using the Handle component with Position.Left/Right. Data passed through node.data (not closed over). No new @xyflow import path mistakes; CSS already imported. Keeps the /flow route lazy and does not pull @xyflow into an eager chunk.",
+      "files": ["src/pages/MoneyFlowPage.tsx"],
+      "assertions": []
+    },
+    {
+      "id": 2,
+      "name": "motion-modal-exit",
+      "prompt": "Our confirmation dialog just disappears instantly when it closes — there's no exit animation. Make it fade + scale out smoothly when dismissed.",
+      "expected_output": "Recognizes that exit-on-unmount requires Motion: npm i motion, import { motion, AnimatePresence } from 'motion/react'; wraps the conditionally-rendered dialog in <AnimatePresence> with a keyed motion element carrying initial/animate/exit (opacity + scale, transform-based), reduced-motion respected. Notes the key + direct-child + exit requirements. Does not try to do unmount-exit with raw CSS.",
+      "files": [],
+      "assertions": []
+    },
+    {
+      "id": 3,
+      "name": "motion-shared-element",
+      "prompt": "When a user taps a small account card it should expand into a full detail panel and feel like the same element growing into place (a magic-move), not a new panel appearing.",
+      "expected_output": "Uses Motion layout animations — a shared layoutId on the card and the expanded panel (with AnimatePresence if it mounts/unmounts), letting Motion FLIP between them; transform-based, interruptible, reduced-motion aware. Mentions LayoutGroup only if siblings need grouping. Correctly cites references/motion.md layout section.",
+      "files": [],
+      "assertions": []
+    },
+    {
+      "id": 4,
+      "name": "auto-animate-list",
+      "prompt": "On a list page the rows pop in and out instantly when items are added, removed, or filtered. Make the list animate those changes with the least code possible.",
+      "expected_output": "Chooses AutoAnimate (already installed) over Motion because it's zero-config list motion: const [ref] = useAutoAnimate() with the ref on the DIRECT parent of the rows. Notes the direct-parent constraint and that reduced-motion is honored automatically. No hand-rolled height animation, no new dependency.",
+      "files": [],
+      "assertions": []
+    },
+    {
+      "id": 5,
+      "name": "choosing-the-tool",
+      "prompt": "I need a draggable, zoomable canvas where users connect boxes with lines to design a pipeline. Should I build this with Motion's drag, or something else?",
+      "expected_output": "Routes to React Flow (@xyflow/react), not Motion — a canvas of connected nodes with pan/zoom/handles/edges is exactly React Flow's domain; Motion drag is for element gestures, not a node graph. References the decision matrix and references/react-flow.md.",
+      "files": [],
+      "assertions": []
+    },
+    {
+      "id": 6,
+      "name": "jank-debugging",
+      "prompt": "My sidebar slide-in animation stutters and feels laggy on lower-end devices. It animates the element's left and width. How do I make it smooth?",
+      "expected_output": "Identifies that animating left/width triggers layout/reflow (not compositor) → jank; switches to animating transform: translateX (and avoids width — animate a fixed-width element's transform, or use Motion layout/FLIP). Recommends verifying with a performance trace per references/verification.md and gating behind reduced-motion. Cites the 60fps / compositor-only rule.",
+      "files": [],
+      "assertions": []
+    },
+    {
+      "id": 7,
+      "name": "boundary-defer-to-transition-creator",
+      "prompt": "The 'View More' section on a settings page toggles with {open && ...} and snaps open. Make it expand/collapse smoothly with plain Tailwind — I don't want to add an animation library.",
+      "expected_output": "Recognizes this is generic CSS/Tailwind transition work with no library, which is the transition-creator skill's territory, and defers there (grid 0fr→1fr height trick, scoped transition, reduced-motion) rather than reaching for Motion/AutoAnimate/React Flow. Demonstrates the skill knows its boundaries.",
+      "files": [],
+      "assertions": []
+    }
+  ]
+}
