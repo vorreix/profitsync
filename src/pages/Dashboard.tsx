@@ -606,7 +606,7 @@ function WealthOverview({
         {loading ? (
           <div className="space-y-3">
             <Skeleton className="h-24 rounded-2xl" />
-            <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
               {[1, 2, 3].map((i) => <Skeleton key={i} className="h-[60px] rounded-xl" />)}
             </div>
           </div>
@@ -717,7 +717,11 @@ function WealthOverview({
               style={{ gridTemplateRows: collapsed ? "0fr" : "1fr" }}
             >
               <div className="overflow-hidden">
-                <div ref={gridRef} className="grid grid-cols-1 gap-2.5 pt-3 sm:grid-cols-2 lg:grid-cols-3">
+                {/* Three across only from xl: the breakpoint is the WINDOW, but
+                    these tiles live in the column left by the 16rem sidebar, so
+                    at lg (1024px) three of them are ~230px each and the account
+                    names truncate to "Ba…". Two is the honest fit there. */}
+                <div ref={gridRef} className="grid grid-cols-1 gap-2.5 pt-3 sm:grid-cols-2 xl:grid-cols-3">
                   {active.map((account) => {
                     // A negative (overdrawn) balance is flagged in red with a red dot
                     // — but only when balances are visible, so privacy mode never
