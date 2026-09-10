@@ -1566,6 +1566,7 @@
       "auto": "Auto",
       "autoHint": "Usa il colore della banca o uno scelto per questo conto",
       "custom": "Colore personalizzato",
+      "customShort": "Personalizzata",
       "style": "Stile",
       "subtle": "Discreto",
       "bold": "Deciso",

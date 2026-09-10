@@ -1125,6 +1125,7 @@
       "auto": "Auto",
       "autoHint": "Use the bank's own colour, or one picked for this account",
       "custom": "Custom colour",
+      "customShort": "Custom",
       "style": "Style",
       "subtle": "Subtle",
       "bold": "Bold",

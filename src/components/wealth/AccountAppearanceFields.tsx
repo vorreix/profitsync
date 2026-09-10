@@ -48,30 +48,35 @@ export function AccountAppearanceFields({
   // The custom well always shows a real colour to open the OS picker on.
   const customValue = isHexColor(value.color) ? normalizeHex(value.color) : appearance.hex
   const isPreset = !isAuto && ACCOUNT_SWATCHES.includes(normalizeHex(value.color))
+  // Screen readers get the full sentence the visible chip conveys silently.
+  const styleLabel = `${isAuto ? t("appearance.auto") : t("appearance.custom")} · ${
+    value.color_style === "bold" ? t("appearance.bold") : t("appearance.subtle")
+  }`
 
   return (
     <div className="space-y-1.5">
       <Label>{t("appearance.color")}</Label>
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger
+          aria-label={`${t("appearance.color")}: ${styleLabel}`}
           className={cn(
             "flex h-9 w-full items-center justify-between gap-2 rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs outline-none transition-[color,box-shadow]",
             "focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 dark:bg-input/30 dark:hover:bg-input/50",
           )}
         >
           <span className="flex min-w-0 items-center gap-2">
+            {/* The chip is the tile in miniature — it carries the colour AND
+                the style, so the label stays one short word and no locale
+                ends up with "Custom colo…" in a half-width field. */}
             <span
-              className="size-4 shrink-0 rounded-full border border-black/10"
-              style={{ background: appearance.hex }}
+              style={appearance.vars as React.CSSProperties}
+              className={cn(
+                "acct-colored relative h-4 w-6 shrink-0 overflow-hidden rounded-sm border",
+                appearance.bold ? "acct-bold" : "acct-subtle acct-rail bg-card",
+              )}
               aria-hidden
             />
-            <span className="truncate">
-              {isAuto ? t("appearance.auto") : t("appearance.custom")}
-              <span className="text-muted-foreground">
-                {" · "}
-                {value.color_style === "bold" ? t("appearance.bold") : t("appearance.subtle")}
-              </span>
-            </span>
+            <span className="truncate">{isAuto ? t("appearance.auto") : t("appearance.customShort")}</span>
           </span>
           <ChevronDown className="size-4 shrink-0 opacity-50" aria-hidden />
         </PopoverTrigger>
