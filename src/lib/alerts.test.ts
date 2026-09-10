@@ -21,12 +21,12 @@ import {
 const TODAY = "2026-03-10"
 
 const account = (over: Partial<AlertAccount> & { id: string }): AlertAccount => ({
-  name: over.id, type: "bank", balanceToday: 1000, creditLimit: null, archived: false, ...over,
+  name: over.id, type: "bank", balanceToday: 1000, creditLimit: null, archived: false, currency: null, ...over,
 })
 const card = (over: Partial<AlertCard> & { id: string }): AlertCard => ({
   label: `Card ${over.id}`, kind: "credit", status: "active", autopay: false,
   expiryMonth: 12, expiryYear: 2030, accountId: `acct_${over.id}`, creditLimit: 2000,
-  currentBalance: -100, fundingAccountId: "bank", autopaySince: null, statement: null, ...over,
+  currentBalance: -100, fundingAccountId: "bank", autopaySince: null, statement: null, currency: null, ...over,
 })
 /** A filed statement with autopay's bookkeeping untouched. */
 const stmt = (over: Partial<AlertStatement> = {}): AlertStatement => ({
@@ -35,7 +35,7 @@ const stmt = (over: Partial<AlertStatement> = {}): AlertStatement => ({
 const rule = (over: Partial<AlertRule> & { id: string }): AlertRule => ({
   name: over.id, type: "outgoing", kind: "standard", amount: 100, accountId: "bank",
   toAccountId: null, cardId: null, anchor: "2026-01-15", freq: { unit: "month", interval: 1 },
-  cursor: "2026-03-15", end: null, active: true, lastError: "", ...over,
+  cursor: "2026-03-15", end: null, active: true, lastError: "", currency: null, ...over,
 })
 
 describe("upcomingEvents", () => {
@@ -124,8 +124,10 @@ describe("autopayEvents", () => {
   it("debits the funding bank and credits the card on the due date", () => {
     const events = autopayEvents([withStatement], TODAY, "2026-03-24")
     expect(events).toEqual([
-      { date: "2026-03-15", accountId: "bank", delta: -500, source: { kind: "autopay", id: "c1", name: "Card c1" } },
-      { date: "2026-03-15", accountId: "acct_c1", delta: 500, source: { kind: "autopay", id: "c1", name: "Card c1" } },
+      // `currency` is the card account's native currency — null on this legacy
+      // fixture, which is exactly what the renderer falls back on.
+      { date: "2026-03-15", accountId: "bank", delta: -500, source: { kind: "autopay", id: "c1", name: "Card c1", currency: null } },
+      { date: "2026-03-15", accountId: "acct_c1", delta: 500, source: { kind: "autopay", id: "c1", name: "Card c1", currency: null } },
     ])
   })
 
@@ -400,7 +402,7 @@ describe("recurringAlerts", () => {
 })
 
 describe("postedAlerts", () => {
-  const posted = (over: Partial<AlertPosted>): AlertPosted => ({ ruleId: "r1", ruleName: "Salary", type: "incoming", amount: 3000, date: TODAY, count: 1, ...over })
+  const posted = (over: Partial<AlertPosted>): AlertPosted => ({ ruleId: "r1", ruleName: "Salary", type: "incoming", amount: 3000, date: TODAY, count: 1, currency: null, ...over })
 
   it("gives incoming money its own wording", () => {
     expect(postedAlerts([posted({})], TODAY)[0].kind).toBe("income_received")
@@ -415,6 +417,40 @@ describe("postedAlerts", () => {
 
   it("is dismissible — there is nothing to fix", () => {
     expect(postedAlerts([posted({})], TODAY)[0].dismissible).toBe(true)
+  })
+})
+
+describe("alert money is labelled with the ACCOUNT's currency, never converted", () => {
+  // A workspace reporting in EUR with an INR bank account: the shortfall is on
+  // the INR account, so its figures are rupees. The banner formats with
+  // `alert.currency` and only falls back to the org currency for a legacy row.
+  it("a shortfall on an INR account is labelled INR", () => {
+    const accounts = [account({ id: "inr", balanceToday: 50, currency: "INR" })]
+    const events = upcomingEvents([rule({ id: "rent", accountId: "inr", amount: 500, cursor: "2026-03-12" })], TODAY, "2026-03-24")
+    const [a] = shortfallAlerts(projectShortfalls({ accounts, events }), accounts, TODAY)
+    expect(a.currency).toBe("INR")
+    expect(a.money).toEqual({ amount: 500, short: 450 })
+  })
+
+  it("a card alert carries its liability account's currency", () => {
+    const [a] = cardAlerts([card({ id: "c1", currency: "INR", currentBalance: -500, statement: stmt({ dueDate: "2026-03-01" }) })], TODAY)
+    expect(a.kind).toBe("card_payment_overdue")
+    expect(a.currency).toBe("INR")
+  })
+
+  it("an upcoming charge and a posted row carry their rule's account currency", () => {
+    // Anchored on the 12th so the occurrence lands INSIDE the 3-day upcoming
+    // window (a rule anchored on the 15th is projected but not yet "coming up").
+    const events = upcomingEvents([rule({ id: "netflix", currency: "INR", anchor: "2026-01-12", cursor: "2026-03-12" })], TODAY, "2026-03-24")
+    const [up] = recurringAlerts([], events, new Set(), TODAY)
+    expect(up.currency).toBe("INR")
+    const [posted] = postedAlerts([{ ruleId: "r1", ruleName: "Salary", type: "incoming", amount: 3000, date: TODAY, count: 1, currency: "INR" }], TODAY)
+    expect(posted.currency).toBe("INR")
+  })
+
+  it("a legacy account with no tag leaves the currency null for the renderer's fallback", () => {
+    const [a] = cardAlerts([card({ id: "c2", currentBalance: -500, statement: stmt({ dueDate: "2026-03-01" }) })], TODAY)
+    expect(a.currency).toBeNull()
   })
 })
 
@@ -440,7 +476,7 @@ describe("buildAlerts", () => {
       accounts: [account({ id: "bank", name: "Federal", balanceToday: 200 }), account({ id: "acct_c1", type: "credit_card", balanceToday: -1900, creditLimit: 2000 })],
       cards: [card({ id: "c1", statement: stmt({ id: "s1", dueDate: "2026-03-01", remaining: 500 }), currentBalance: -1900, expiryMonth: 3, expiryYear: 2026 })],
       rules: [rule({ id: "rent", amount: 900, anchor: "2026-01-12", cursor: "2026-03-01" })],
-      posted: [{ ruleId: "sal", ruleName: "Salary", type: "incoming", amount: 3000, date: TODAY, count: 1 }],
+      posted: [{ ruleId: "sal", ruleName: "Salary", type: "incoming", amount: 3000, date: TODAY, count: 1, currency: null }],
     })
     const kinds = alerts.map((a) => a.kind)
     expect(kinds[0]).toBe("card_payment_overdue") // danger leads

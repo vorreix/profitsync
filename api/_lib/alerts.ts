@@ -139,8 +139,12 @@ async function materializedOccurrences(orgId: string, today: string, until: stri
  */
 async function recentlyPosted(orgId: string, today: string): Promise<AlertPosted[]> {
   const since = isoAddDays(today, -POSTED_WINDOW_DAYS)
+  // Grouped by the posting account's currency as well: a rule posts to ONE
+  // account, so this never splits a rule's day — it only labels the sum with
+  // the money it is in, so two currencies can never be added together here.
   const { rows } = (await db.execute(sql`
     select t.recurring_rule_id as rule_id, r.name as rule_name, t.type, t.date,
+           wa.currency_code as currency,
            sum(t.amount::numeric) as amount, count(*)::int as count
     from transactions t
     join wealth_accounts wa on wa.id = t.wealth_account_id
@@ -150,9 +154,9 @@ async function recentlyPosted(orgId: string, today: string): Promise<AlertPosted
       and t.deleted_at is null
       and t.date >= ${since} and t.date <= ${today}
       and t.kind <> 'transfer'
-    group by t.recurring_rule_id, r.name, t.type, t.date
+    group by t.recurring_rule_id, r.name, t.type, t.date, wa.currency_code
     order by t.date desc
-  `)) as unknown as { rows: { rule_id: string; rule_name: string; type: string; date: string; amount: string; count: number }[] }
+  `)) as unknown as { rows: { rule_id: string; rule_name: string; type: string; date: string; currency: string | null; amount: string; count: number }[] }
 
   return rows.map((r) => ({
     ruleId: r.rule_id,
@@ -161,6 +165,7 @@ async function recentlyPosted(orgId: string, today: string): Promise<AlertPosted
     amount: num(r.amount),
     date: String(r.date).slice(0, 10),
     count: r.count,
+    currency: r.currency ?? null,
   }))
 }
 
@@ -223,6 +228,7 @@ export async function loadAlertData(orgId: string, today: string): Promise<Alert
         currentBalance: wealthAccounts.currentBalance,
         creditLimit: wealthAccounts.creditLimit,
         archivedAt: wealthAccounts.archivedAt,
+        currencyCode: wealthAccounts.currencyCode,
       })
       .from(wealthAccounts)
       .where(eq(wealthAccounts.organizationId, orgId)),
@@ -244,6 +250,12 @@ export async function loadAlertData(orgId: string, today: string): Promise<Alert
   const future = new Map<string, number>()
   for (const e of scheduled) future.set(e.accountId, (future.get(e.accountId) ?? 0) + e.delta)
 
+  // Every figure an alert carries is labelled with ITS account's currency and
+  // never converted — an alert is about one account, so its money is that
+  // account's money. Cards and rules look theirs up through the account they
+  // post to.
+  const currencyByAccount = new Map(accountRows.map((a) => [a.id, a.currencyCode ?? null]))
+
   const accounts: AlertAccount[] = accountRows.map((a) => ({
     id: a.id,
     name: a.nickname.trim() || a.bankName,
@@ -251,6 +263,7 @@ export async function loadAlertData(orgId: string, today: string): Promise<Alert
     balanceToday: Math.round((num(a.currentBalance) - (future.get(a.id) ?? 0)) * 100) / 100,
     creditLimit: a.creditLimit === null ? null : num(a.creditLimit),
     archived: !!a.archivedAt,
+    currency: a.currencyCode ?? null,
   }))
 
   const cards: AlertCard[] = cardRows.map((c) => ({
@@ -267,6 +280,7 @@ export async function loadAlertData(orgId: string, today: string): Promise<Alert
     fundingAccountId: c.fundingAccountId,
     autopaySince: c.autopaySince ? String(c.autopaySince).slice(0, 10) : null,
     statement: statements.get(c.accountId) ?? null,
+    currency: currencyByAccount.get(c.accountId) ?? null,
   }))
 
   const rules: AlertRule[] = ruleRows.map((r) => ({
@@ -284,6 +298,7 @@ export async function loadAlertData(orgId: string, today: string): Promise<Alert
     end: r.endDate ? String(r.endDate).slice(0, 10) : null,
     active: r.active,
     lastError: r.lastError ?? "",
+    currency: r.wealthAccountId ? (currencyByAccount.get(r.wealthAccountId) ?? null) : null,
   }))
 
   return { accounts, cards, rules, posted, scheduled, alreadyPosted }

@@ -6,6 +6,7 @@ import { db } from "../../src/lib/db/index.js"
 import { budgets, clients } from "../../src/lib/db/schema.js"
 import { inWindow, periodStart, scopeMatches, todayUtc, type BudgetPeriod, type SpendingPeriod } from "../../src/lib/budget.js"
 import { outgoingByClient, spentFor, type PeriodSums } from "./budget-spend.js"
+import { ensureRatesForOrg, reportingCurrencyFor } from "./fx-rates.js"
 import { notifyOrgMembers } from "./notifications.js"
 import { listBudgets } from "./spending-budgets.js"
 
@@ -21,6 +22,19 @@ export function budgetAlertTier(spent: number, amount: number): "budget_exceeded
   if (spent > amount) return "budget_exceeded"
   if (spent >= amount * BUDGET_WARNING_RATIO) return "budget_warning"
   return null
+}
+
+/**
+ * "₹1,200.00" — an amount in the budget's currency, for notification copy.
+ * Locale-neutral (en) on purpose: the row is rendered for every member, and the
+ * client re-formats from `data.spent`/`data.amount`/`data.currency` when it can.
+ */
+export function formatBudgetMoney(amount: number, currency: string): string {
+  try {
+    return new Intl.NumberFormat("en", { style: "currency", currency }).format(amount)
+  } catch {
+    return `${currency} ${amount.toFixed(2)}`
+  }
 }
 
 /** Sum every client's per-window spend into one whole-workspace total. Exported for the DB-free suite. */
@@ -46,12 +60,14 @@ async function emitBudgetAlert(input: {
   period: BudgetPeriod | SpendingPeriod
   spent: number
   amount: number
+  /** The currency `spent` and `amount` are in — the budget's own. */
+  currency: string
   /** The dedupe scope + window: `sb:<budget id>` and its window start for a spending budget. */
   scope: string
   windowKey: string
   link: string
 }): Promise<void> {
-  const { orgId, actorUserId, clientId, name, period, spent, amount, scope, windowKey, link } = input
+  const { orgId, actorUserId, clientId, name, period, spent, amount, currency, scope, windowKey, link } = input
   const tier = budgetAlertTier(spent, amount)
   if (!tier) return
   const exceeded = tier === "budget_exceeded"
@@ -62,6 +78,10 @@ async function emitBudgetAlert(input: {
   // namespace a bare uuid can never collide with.
   const dedupeKey = `${tier}:${scope}:${period}:${windowKey}`
   const percent = Math.round((spent / amount) * 100)
+  // The figures travel with their currency so every renderer (bell, push, mail)
+  // formats them in the BUDGET's currency, never in whatever the viewer's is.
+  const spentLabel = formatBudgetMoney(spent, currency)
+  const amountLabel = formatBudgetMoney(amount, currency)
 
   await notifyOrgMembers(
     orgId,
@@ -69,11 +89,14 @@ async function emitBudgetAlert(input: {
       ? {
           type: "budget_exceeded",
           title: "Budget exceeded",
-          body: `${name || "A budget"} has gone over its ${period} budget.`,
+          body: `${name || "A budget"} has gone over its ${period} budget (${spentLabel} of ${amountLabel}).`,
           data: {
             i18nKey: "types.budget_exceeded.title",
             i18nBodyKey: "types.budget_exceeded.body",
-            i18nParams: { name, period },
+            i18nParams: { name, period, spent: spentLabel, amount: amountLabel, currency },
+            currency,
+            spent,
+            amount,
           },
           link,
           ...(clientId ? { clientId } : {}),
@@ -83,11 +106,14 @@ async function emitBudgetAlert(input: {
       : {
           type: "budget_warning",
           title: "Budget almost used up",
-          body: `${name || "A budget"} has used ${percent}% of its ${period} budget.`,
+          body: `${name || "A budget"} has used ${percent}% of its ${period} budget (${spentLabel} of ${amountLabel}).`,
           data: {
             i18nKey: "types.budget_warning.title",
             i18nBodyKey: "types.budget_warning.body",
-            i18nParams: { name, period, percent },
+            i18nParams: { name, period, percent, spent: spentLabel, amount: amountLabel, currency },
+            currency,
+            spent,
+            amount,
           },
           link,
           ...(clientId ? { clientId } : {}),
@@ -121,9 +147,13 @@ export async function notifyIfBudgetExceeded(
   const now = new Date()
   const today = todayUtc(now)
 
+  // A per-client cap is judged in the workspace's reporting currency; a spending
+  // budget in its own (listBudgets resolves that per row).
+  const reporting = await reportingCurrencyFor(orgId)
+  await ensureRatesForOrg(orgId, reporting).catch(() => undefined)
   const [rows, byClient, spending] = await Promise.all([
     db.select().from(budgets).where(eq(budgets.organizationId, orgId)),
-    outgoingByClient(orgId, now),
+    outgoingByClient(orgId, now, reporting),
     listBudgets(orgId, today),
   ])
 
@@ -139,6 +169,7 @@ export async function notifyIfBudgetExceeded(
       period,
       spent: spentFor(byClient.get(clientId), period),
       amount: Number(clientBudget.amount),
+      currency: reporting,
       scope: clientId,
       windowKey: periodStart(period, now) ?? "lifetime",
       link: `/budgets/clients/${clientId}`,
@@ -164,6 +195,7 @@ export async function notifyIfBudgetExceeded(
         period: b.period,
         spent: b.spent,
         amount: b.amount,
+        currency: b.currency,
         scope: `sb:${b.id}`,
         // The amount is part of the key so a raised (or lowered) limit re-arms
         // the alert once in the same window.

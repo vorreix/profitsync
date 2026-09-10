@@ -7,6 +7,8 @@ import { checkNoteLength } from "../../_lib/quota.js"
 import { diffFields, logAudit } from "../../_lib/audit.js"
 import { reversalsByAccount } from "../../../src/lib/wealth-ledger.js"
 import { cleanTags } from "../../../src/lib/tags.js"
+import { ensureRatesForOrg, reportingCurrencyFor } from "../../_lib/fx-rates.js"
+import { expenseSumSqlIn, incomeSumSqlIn, missingRateCountSql } from "../../_lib/tx-sql.js"
 
 const VALID_STATUSES = ["active", "inactive", "archived"]
 
@@ -22,7 +24,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .from(clients)
       .where(and(eq(clients.id, id), eq(clients.organizationId, orgId), isNull(clients.deletedAt)))
     if (!row) return res.status(404).json({ error: "Not found" })
-    return res.json(serialize(row))
+    // The client's lifetime totals in the workspace's reporting currency, each
+    // row converted at its own date (api/_lib/tx-sql.ts) — the detail page must
+    // not add native amounts of different currencies. Rows with no rate are
+    // left out and counted in `excluded_count`.
+    const reporting = await reportingCurrencyFor(orgId)
+    await ensureRatesForOrg(orgId, reporting).catch(() => undefined)
+    const [totals] = await db
+      .select({
+        totalIncoming: incomeSumSqlIn(reporting),
+        totalOutgoing: expenseSumSqlIn(reporting),
+        excludedCount: missingRateCountSql(reporting),
+      })
+      .from(transactions)
+      // Same scope as the list's per-client totals (api/_routes/clients.ts), so
+      // the two figures agree: live rows, transfers dropped by the sums themselves.
+      .where(and(eq(transactions.clientId, id), isNull(transactions.deletedAt)))
+    return res.json({
+      ...serialize(row),
+      total_incoming: Number(totals?.totalIncoming ?? 0),
+      total_outgoing: Number(totals?.totalOutgoing ?? 0),
+      totals_currency: reporting,
+      excluded_count: Number(totals?.excludedCount ?? 0),
+    })
   }
 
   if (req.method === "PATCH") {
