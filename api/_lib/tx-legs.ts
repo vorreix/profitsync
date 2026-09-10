@@ -6,6 +6,8 @@ import { clients, transactions } from "../../src/lib/db/schema.js"
 export type TxLeg = {
   id: string
   groupId: string | null
+  transferId: string | null
+  kind: string
   wealthAccountId: string | null
   type: string
   amount: string
@@ -15,6 +17,8 @@ export type TxLeg = {
 const legCols = {
   id: transactions.id,
   groupId: transactions.groupId,
+  transferId: transactions.transferId,
+  kind: transactions.kind,
   wealthAccountId: transactions.wealthAccountId,
   type: transactions.type,
   amount: transactions.amount,

@@ -12,6 +12,8 @@ import { notifyIfBudgetExceeded } from "../../_lib/notify-budget.js"
 import { refundShapeValid } from "../../../src/lib/tx-classify.js"
 import { USER_KINDS } from "../../_lib/tx-sql.js"
 import { attributeCard } from "../../_lib/cards.js"
+import { currencyForFinancialWrite } from "../../_lib/transaction-currency.js"
+import { setTransferTrashed } from "../../_lib/wealth-accounts.js"
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ctx = await requireAuth(req, res)
@@ -101,8 +103,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (amount !== undefined && amountExceedsLimit(amount)) return res.status(400).json({ error: "Amount is too large" })
     const [before] = await db.select().from(transactions).where(eq(transactions.id, id))
     if (!before) return res.status(404).json({ error: "Not found" })
-    if (before.kind === "transfer" && (kind !== undefined || type !== undefined || wealth_account_id !== undefined || card_id !== undefined)) {
-      return res.status(400).json({ error: "A transfer leg can't change kind, direction, account or card — delete and recreate the transfer" })
+    if (before.kind === "transfer") {
+      // A transfer leg may be relabelled (description, category, tags) but its
+      // MONEY is owned by the logical transfer: amount, date, direction, account
+      // and card can only change through the transfer service (reverse and
+      // re-create), otherwise the two legs desync from each other and from the
+      // header's stored facts.
+      if (kind !== undefined || type !== undefined || wealth_account_id !== undefined || card_id !== undefined) {
+        return res.status(400).json({ error: "A transfer leg can't change kind, direction, account or card — delete and recreate the transfer" })
+      }
+      const amountChanged = amount !== undefined && Number(amount) !== Number(before.amount)
+      const dateChanged = date !== undefined && date !== before.date
+      if (amountChanged || dateChanged) {
+        return res.status(409).json({ error: "A transfer's amount or date can't be edited leg by leg. Reverse the transfer and record it again.", code: "transfer_mutation_requires_transfer_service" })
+      }
     }
     // The (card, account) pair moves together (api/_lib/cards.ts attributeCard):
     // a card named → its own account; an account named without a card → that
@@ -132,19 +146,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!tagQuota.allowed) return res.status(402).json(tagQuota)
     }
     const nextAccountId = wealth_account_id !== undefined ? wealth_account_id : before.wealthAccountId
+    let nextCurrencyCode = before.currencyCode
     if (nextAccountId) {
       const [account] = await db
-        .select({ id: wealthAccounts.id })
+        .select({ id: wealthAccounts.id, currencyCode: wealthAccounts.currencyCode })
         .from(wealthAccounts)
         .where(and(eq(wealthAccounts.id, nextAccountId), eq(wealthAccounts.organizationId, orgId), isNull(wealthAccounts.archivedAt)))
       if (!account && nextAccountId !== before.wealthAccountId) {
         return res.status(400).json({ error: "Select an active bank or cash account" })
       }
+      if (!account?.currencyCode) return res.status(409).json({ error: "Account currency migration is incomplete", code: "currency_missing" })
+      nextCurrencyCode = account.currencyCode
+    } else {
+      nextCurrencyCode = await currencyForFinancialWrite(orgId)
+      if (!nextCurrencyCode) return res.status(409).json({ error: "Organization currency migration is incomplete", code: "currency_missing" })
     }
     const [updated] = await db
       .update(transactions)
       .set({
         ...(wealth_account_id !== undefined ? { wealthAccountId: wealth_account_id } : {}),
+        currencyCode: nextCurrencyCode,
         ...(nextCardId !== undefined ? { cardId: nextCardId } : {}),
         ...(kind !== undefined ? { kind } : {}),
         ...(type !== undefined ? { type } : {}),
@@ -199,6 +220,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Soft-delete: the transaction moves to Trash (restorable) rather than vanishing.
     const [before] = await db.select().from(transactions).where(eq(transactions.id, id))
     if (!before) return res.status(404).json({ error: "Not found" })
+    if (before.kind === "transfer" && before.transferId) {
+      // A leg of a logical transfer: trash the WHOLE transfer — both legs, its
+      // fee row and every balance — in one database function, never one leg.
+      // Legacy legs without a header (ambiguous groups the 0071 backfill left
+      // alone) fall through to the group path below, which trashes both legs.
+      const result = await setTransferTrashed(orgId, userId, before.transferId, false)
+      if (!result.ok) return res.status(result.status).json(result.body)
+      return res.status(204).end()
+    }
 
     // A split transaction is one logical entry, so deleting any leg deletes the
     // whole group and reverses each leg's balance. The legs share one client, so
