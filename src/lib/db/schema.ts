@@ -12,6 +12,9 @@ export const organizations = pgTable("organizations", {
   // historical rows; treated as "business" (full features) when absent.
   accountType: text("account_type"), // personal | business
   currency: text("currency").notNull().default("USD"),
+  // Reporting/display currency for consolidated values. `currency` remains the
+  // compatibility alias until every native client has migrated.
+  reportingCurrency: text("reporting_currency"),
   // Workspace logo: base64 bytes + sniffed mime (client resizes to ≤256px before
   // upload, server re-validates). Exposed to the UI as a `logo_src` data URL.
   logoData: text("logo_data").notNull().default(""),
@@ -160,6 +163,10 @@ export const wealthAccounts = pgTable("wealth_accounts", {
   type: text("type").notNull(),
   bankName: text("bank_name").notNull().default(""),
   nickname: text("nickname").notNull().default(""),
+  // Native currency of every balance and limit on this account. Nullable only
+  // during the staged legacy backfill; application reads fall back to the
+  // organization's reporting currency until the audit allows NOT NULL.
+  currencyCode: text("currency_code"),
   openingBalance: numeric("opening_balance", { precision: 20, scale: 2 }).notNull().default("0"),
   currentBalance: numeric("current_balance", { precision: 20, scale: 2 }).notNull().default("0"),
   icon: text("icon").notNull().default("bank"),
@@ -216,6 +223,47 @@ export const wealthAccounts = pgTable("wealth_accounts", {
   nicknameTrgmIdx: index("wealth_accounts_nickname_trgm_idx").using("gin", table.nickname.op("gin_trgm_ops")),
   closingDayCheck: check("wealth_accounts_closing_day_check", sql`statement_closing_day is null or (statement_closing_day between 1 and 31)`),
   dueDayCheck: check("wealth_accounts_due_day_check", sql`payment_due_day is null or (payment_due_day between 1 and 31)`),
+}))
+
+// ── Transfers ────────────────────────────────────────────────────────────────
+// The logical movement above the two ledger legs. Same-currency transfers have
+// equal amounts; cross-currency transfers will keep each native amount and the
+// exact rate used. `group_id` remains for compatibility with existing clients.
+export const transfers = pgTable("transfers", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  groupId: uuid("group_id").notNull(),
+  // CASCADE with the accounts (as the debts tables do): the factory reset
+  // deletes wealth_accounts directly, and RESTRICT would block it.
+  sourceAccountId: uuid("source_account_id").notNull().references(() => wealthAccounts.id, { onDelete: "cascade" }),
+  destinationAccountId: uuid("destination_account_id").notNull().references(() => wealthAccounts.id, { onDelete: "cascade" }),
+  sourceAmount: numeric("source_amount", { precision: 20, scale: 4 }).notNull(),
+  sourceCurrency: text("source_currency").notNull(),
+  destinationAmount: numeric("destination_amount", { precision: 20, scale: 4 }).notNull(),
+  destinationCurrency: text("destination_currency").notNull(),
+  effectiveRate: numeric("effective_rate", { precision: 30, scale: 14 }),
+  rateSource: text("rate_source"),
+  sourceFeeAmount: numeric("source_fee_amount", { precision: 20, scale: 4 }).notNull().default("0"),
+  status: text("status").notNull().default("completed"),
+  transferDate: date("transfer_date").notNull(),
+  note: text("note").notNull().default(""),
+  reversesTransferId: uuid("reverses_transfer_id"),
+  completedAt: timestamp("completed_at"),
+  deletedAt: timestamp("deleted_at"),
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  groupUnique: uniqueIndex("transfers_group_unique").on(table.groupId),
+  orgDateIdx: index("transfers_org_date_idx").on(table.organizationId, table.transferDate),
+  reversalUnique: uniqueIndex("transfers_one_reversal_idx").on(table.reversesTransferId).where(sql`${table.reversesTransferId} is not null`),
+  accountsCheck: check("transfers_accounts_check", sql`source_account_id <> destination_account_id`),
+  amountsCheck: check("transfers_amounts_check", sql`source_amount > 0 and destination_amount > 0`),
+  statusCheck: check("transfers_status_check", sql`status in ('planned','pending','completed','cancelled')`),
+  rateCheck: check("transfers_rate_check", sql`effective_rate is null or effective_rate > 0`),
+  feeCheck: check("transfers_fee_check", sql`source_fee_amount >= 0`),
+  sameCurrencyCheck: check("transfers_same_currency_amount_check", sql`source_currency <> destination_currency or source_amount = destination_amount`),
+  currencyCheck: check("transfers_currency_check", sql`source_currency ~ '^[A-Z]{3}$' and destination_currency ~ '^[A-Z]{3}$'`),
 }))
 
 // ── Credit-card statements ───────────────────────────────────────────────────
@@ -371,6 +419,9 @@ export const transactions = pgTable("transactions", {
   // All legs share one group_id; a single-account transaction has group_id NULL.
   // Also used to pair the two legs of an account-to-account transfer.
   groupId: uuid("group_id"),
+  // The logical transfer this leg (or fee row) belongs to; SET NULL on header
+  // deletion (mig 0071) so no teardown order is ever blocked by it.
+  transferId: uuid("transfer_id"),
   // 'standard' for normal income/expense (incl. splits); 'transfer' for the two
   // legs of an account-to-account move (incl. paying a credit card from a bank
   // account). Transfers are real, balance-affecting rows but are excluded from
@@ -382,6 +433,9 @@ export const transactions = pgTable("transactions", {
   kind: text("kind").notNull().default("standard"), // standard | transfer | refund
   type: text("type").notNull(),
   amount: numeric("amount", { precision: 20, scale: 2 }).notNull().default("0"),
+  // Historical currency snapshot. For account-linked rows this must equal the
+  // account's native currency. Nullable only during staged migration.
+  currencyCode: text("currency_code"),
   description: text("description").default(""),
   category: text("category").default(""),
   // User hashtags ("#business", "#travel"): jsonb string array, normalized and
@@ -406,6 +460,7 @@ export const transactions = pgTable("transactions", {
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => ({
   groupIdx: index("transactions_group_idx").on(table.groupId),
+  transferIdx: index("transactions_transfer_idx").on(table.transferId),
   recurringOnceIdx: uniqueIndex("transactions_recurring_once_idx").on(table.recurringRuleId, table.recurringDueDate),
   // Hot predicates at scale: per-client lists + quota counts, per-account
   // ledgers, and date-range scans (calendar / analytics / from-to filters).
@@ -423,6 +478,35 @@ export const transactions = pgTable("transactions", {
   descriptionTrgmIdx: index("transactions_description_trgm_idx").using("gin", table.description.op("gin_trgm_ops")),
   categoryTrgmIdx: index("transactions_category_trgm_idx").using("gin", table.category.op("gin_trgm_ops")),
   tagsTextTrgmIdx: index("transactions_tags_text_trgm_idx").using("gin", sql`(${table.tags}::text) gin_trgm_ops`),
+}))
+
+// Immutable market-rate observations. Financial amounts never live here: an FX
+// provider receives only a pair and optional date, and conversion happens in
+// ProfitSync. Actual transfer rates are facts on the logical transfer entity,
+// introduced separately from these market observations.
+export const fxRateSnapshots = pgTable("fx_rate_snapshots", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  baseCurrency: text("base_currency").notNull(),
+  quoteCurrency: text("quote_currency").notNull(),
+  rate: numeric("rate", { precision: 30, scale: 14 }).notNull(),
+  rateDate: date("rate_date").notNull(),
+  provider: text("provider").notNull(),
+  sourceType: text("source_type").notNull(), // market | historical_market | manual
+  isFallback: boolean("is_fallback").notNull().default(false),
+  observedAt: timestamp("observed_at").notNull(),
+  fetchedAt: timestamp("fetched_at").notNull().defaultNow(),
+}, (table) => ({
+  pairDateIdx: index("fx_rate_snapshots_pair_date_idx").on(table.baseCurrency, table.quoteCurrency, table.rateDate),
+  observationUnique: uniqueIndex("fx_rate_snapshots_observation_unique").on(
+    table.baseCurrency,
+    table.quoteCurrency,
+    table.rateDate,
+    table.provider,
+    table.sourceType,
+  ),
+  pairCheck: check("fx_rate_snapshots_pair_check", sql`base_currency <> quote_currency`),
+  rateCheck: check("fx_rate_snapshots_rate_check", sql`rate > 0`),
+  sourceCheck: check("fx_rate_snapshots_source_check", sql`source_type in ('market','historical_market','manual')`),
 }))
 
 // ── Recurring payments ───────────────────────────────────────────────────────
@@ -455,6 +539,7 @@ export const recurringRules = pgTable("recurring_rules", {
   name: text("name").notNull(),
   type: text("type").notNull(), // incoming | outgoing (for a transfer: the source-leg direction, always 'outgoing')
   amount: numeric("amount", { precision: 20, scale: 2 }).notNull(),
+  currencyCode: text("currency_code"),
   category: text("category").notNull().default(""),
   frequencyUnit: text("frequency_unit").notNull(), // day | week | month | year
   frequencyInterval: integer("frequency_interval").notNull().default(1),
@@ -1051,6 +1136,7 @@ export const spendingBudgets = pgTable("spending_budgets", {
   startDate: date("start_date"), // once only — first day, inclusive
   endDate: date("end_date"), // once only — last day, inclusive
   amount: numeric("amount", { precision: 20, scale: 2 }).notNull().default("0"),
+  currencyCode: text("currency_code"),
   categories: jsonb("categories").notNull().default([]), // string[] of expense category names; [] = all spending
   status: text("status").notNull().default("active"), // active | closed (closed = folded away, counted nowhere, no alerts)
   position: integer("position").notNull().default(0), // manual order among siblings

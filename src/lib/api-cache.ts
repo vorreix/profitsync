@@ -147,6 +147,12 @@ export function policyFor(path: string): CachePolicy {
   if (p === "/api/profile" || p === "/api/organizations" || p === "/api/admin/me") {
     return { cls: "identity", fresh: 5 * MINUTE, maxStale: 30 * MINUTE, persist: true, alwaysFetch: false }
   }
+  // A market rate changes once a day and is not anyone's balance: reuse it for
+  // a few minutes so a transfer form asking on every keystroke costs one call.
+  if (p === "/api/fx/rate") {
+    return { cls: "config", fresh: 5 * MINUTE, maxStale: 60 * MINUTE, persist: false, alwaysFetch: false }
+  }
+
   if (p === "/api/categories" || p === "/api/tags") {
     return { cls: "config", fresh: 5 * MINUTE, maxStale: 60 * MINUTE, persist: true, alwaysFetch: false }
   }
