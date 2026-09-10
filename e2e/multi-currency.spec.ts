@@ -304,7 +304,20 @@ test.describe("multi-currency", () => {
     const eurBefore = await balanceOf(page, eurId)
     const inrBefore = await balanceOf(page, inrId)
 
-    const list = await api<{ transfers: Transfer[] }>(page, "GET", "/api/wealth/transfers?status=completed&limit=5")
+    const list = await api<{ transfers: (Transfer & { reversed_by_transfer_id?: string | null })[] }>(page, "GET", "/api/wealth/transfers?status=completed&limit=20")
+
+    // A reversal chain is immutable (mig 0073), so its rows can never be
+    // trashed and every run would permanently consume free-plan quota. If this
+    // workspace already carries one, assert the invariant ON IT — that a
+    // transfer cannot be reversed twice — instead of minting another pair.
+    const already = list.json.transfers.find((t) => t.reversed_by_transfer_id)
+    if (already) {
+      const second = await api<{ code?: string }>(page, "POST", `/api/wealth/transfers/${already.id}/reverse`, {})
+      expect(second.status, "a transfer reverses exactly once").toBe(409)
+      expect(second.json.code).toBe("transfer_already_reversed")
+      return
+    }
+
     const original = list.json.transfers[0]
     const rev = await api<{ transfer_id: string }>(page, "POST", `/api/wealth/transfers/${original.id}/reverse`, {})
     expect(rev.status, JSON.stringify(rev.json)).toBe(201)

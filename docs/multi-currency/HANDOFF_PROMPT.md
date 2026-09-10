@@ -5,9 +5,11 @@ working copy. It is written for an agent that has never seen this work.
 
 ---
 
-You are picking up a **finished but uncommitted** feature in the ProfitSync
-working copy at `C:\Dev\ProfitSync-Codex` (branch `dev`, same GitHub origin as
-`C:\Dev\ProfitSync`, which is untouched and must stay that way).
+You are picking up a **finished feature awaiting review** in the ProfitSync
+working copy at `C:\Dev\ProfitSync-Codex`, on branch `feat/multi-currency`,
+which is pushed and open as a pull request against `dev`. The original clone at
+`C:\Dev\ProfitSync` is untouched and must stay that way. The repo is PR-only
+into `dev` and Maqbool owns the merge — never push to a shared branch.
 
 ## What is already done — do not rebuild it
 
@@ -52,9 +54,7 @@ that adds a migration — in particular Maqbool's Debt & Loans branch.
 1. **Native parity.** `npm run cap:sync:android` and `npm run cap:sync:ios` have
    NOT been run. CLAUDE.md makes this mandatory before the task is considered
    done, because the Android and iOS shells wrap the same `dist/` bundle.
-2. **Commit and open the PR.** Nothing is committed. Suggested split is in the
-   report; the repo is PR-only into `dev` and Maqbool owns the merge — never
-   push to a shared branch.
+2. **Address review feedback** on the open PR, then let Maqbool merge it.
 3. **Destination-side fees.** Only a source-side fee is modelled. A fee the
    receiving bank deducts needs its own row on the destination account.
 4. **Historical net-worth chart.** Rate snapshots are stored per day, so the
@@ -99,15 +99,15 @@ that a scheduled transfer moves nothing until completed. Its two wallets are
 DURABLE FIXTURES — a wallet that took part in a reversed transfer can only be
 archived, never deleted, so the spec reuses them instead of creating new ones.
 
-`e2e/zz-personal.spec.ts` is a scratch personal-workspace walkthrough used to
-produce the report screenshots. Delete it before committing.
-
 ## Two things that will trip you up
 
 - The unit gate is DB-free, and `src/test-setup.ts` pins the UI language by
   stubbing `navigator` BEFORE importing i18n. Money formatting follows the
   reader's language, so without that pin the same assertion passes on a US CI
   runner and fails on an Italian laptop. Do not remove it.
+- A reversal chain is immutable, so its rows can never be trashed. On a FREE
+  workspace they permanently consume the 30-transactions-per-client quota, which
+  is why the reversal test reuses an existing pair rather than minting one.
 - `e2e/smoke.spec.ts` "create a client" already fails on the untouched original
   repo: its locator resolves to the hidden floating-action-button item named
   "Add Client" before the visible "New Client" button. Not caused by this work.
