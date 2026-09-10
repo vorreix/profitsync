@@ -609,7 +609,7 @@ export function ClientDetailPage() {
                               variant="secondary"
                               className="text-[10px] py-0 shrink-0 gap-1 cursor-pointer hover:bg-secondary/80"
                               title="Recurring"
-                              onClick={(e) => { e.stopPropagation(); navigate(`/recurring?view=${tx.recurring_rule_id}`) }}
+                              onClick={(e) => { e.stopPropagation(); navigate(`/recurring/${tx.recurring_rule_id}`) }}
                             >
                               <Repeat className="size-3" /> Recurring
                             </Badge>
@@ -862,7 +862,7 @@ export function ClientDetailPage() {
                       variant="secondary"
                       className="gap-1 cursor-pointer hover:bg-secondary/80"
                       title="Recurring"
-                      onClick={() => { const ruleId = viewTx.recurring_rule_id; dropModalBackEntry(); setViewTx(null); navigate(`/recurring?view=${ruleId}`) }}
+                      onClick={() => { const ruleId = viewTx.recurring_rule_id; dropModalBackEntry(); setViewTx(null); navigate(`/recurring/${ruleId}`) }}
                     >
                       <Repeat className="size-3" /> Recurring
                     </Badge>

@@ -48,8 +48,13 @@ export function occurrenceAt(anchor: string, freq: Frequency, n: number): string
   return toIso(ny, nm, nd)
 }
 
-/** Smallest n with occurrenceAt(n) >= date (binary search — n can be large). */
-function firstIndexAtOrAfter(anchor: string, freq: Frequency, date: string): number {
+/**
+ * Smallest n with occurrenceAt(n) >= date (binary search — n can be large).
+ * Exported because the UI walks forward from a rule's cursor to preview the
+ * next few occurrences, and a rule anchored years ago must not be stepped one
+ * occurrence at a time to get there.
+ */
+export function firstIndexAtOrAfter(anchor: string, freq: Frequency, date: string): number {
   if (occurrenceAt(anchor, freq, 0) >= date) return 0
   let lo = 0
   let hi = 1

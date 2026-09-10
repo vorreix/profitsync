@@ -380,6 +380,9 @@ export type RecurringRule = {
   client_is_own?: boolean | null
   wealth_account_id: string | null
   account_name?: string | null
+  account_type?: WealthAccountType | null
+  account_icon?: string | null
+  account_logo_url?: string | null
   // 'standard' = normal income/outgoing rule. 'transfer' = a Space auto-save:
   // money moves from `wealth_account_id` (source) to `to_account_id` (the Space).
   kind?: "standard" | "transfer"
@@ -403,6 +406,18 @@ export type RecurringRule = {
   last_error: string
   generated_count?: number
   created_at: string
+}
+
+/**
+ * One rule as its own page reads it (`GET /api/recurring/:id`) — the list row's
+ * fields plus what the rule has actually posted, summed from the ledger so a
+ * manually deleted occurrence stops counting the moment it goes.
+ */
+export type RecurringRuleDetail = RecurringRule & {
+  generated_count: number
+  posted_total: string | number
+  first_posted_date: string | null
+  last_posted_date: string | null
 }
 
 export type WealthAccountAttachment = AttachmentMeta & {
