@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { useNavigate } from "react-router-dom"
+import { useLocation, useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { useAuth } from "@clerk/clerk-react"
 import { ArrowDownRight, ArrowUpRight, Paperclip, Pencil, Repeat } from "lucide-react"
@@ -49,6 +49,7 @@ export function TransactionDetailModal({
   const { t } = useTranslation("transactions")
   const { getToken } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
   const [attachments, setAttachments] = useState<TransactionAttachment[]>([])
   const [viewAttachment, setViewAttachment] = useState<AttachmentModalItem | null>(null)
   // The card that paid (by id, or the credit card that IS the row's account).
@@ -100,9 +101,11 @@ export function TransactionDetailModal({
                       className="gap-1 cursor-pointer hover:bg-secondary/80"
                       title={t("recurringBadge")}
                       onClick={() => {
-                        const ruleId = tx.recurring_rule_id
+                        const target = `/recurring/${tx.recurring_rule_id}`
                         onClose()
-                        navigate(`/recurring?view=${ruleId}`)
+                        // Already on that rule's page (its own payment list) —
+                        // closing IS the whole action; don't stack a history entry.
+                        if (location.pathname !== target) navigate(target)
                       }}
                     >
                       <Repeat className="size-3" /> {t("recurringBadge")}

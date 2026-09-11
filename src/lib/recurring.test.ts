@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { MAX_OCCURRENCES_PER_RUN, occurrenceAt, occurrencesDue, ruleExhausted } from "./recurring"
+import { firstIndexAtOrAfter, MAX_OCCURRENCES_PER_RUN, occurrenceAt, occurrencesDue, ruleExhausted } from "./recurring"
 
 describe("occurrenceAt", () => {
   it("steps days and weeks", () => {
@@ -98,6 +98,26 @@ describe("occurrencesDue", () => {
       until: "2026-04-30",
     })
     expect(due).toEqual(["2026-02-28", "2026-03-31", "2026-04-30"])
+  })
+})
+
+describe("firstIndexAtOrAfter", () => {
+  const monthly = { unit: "month" as const, interval: 1 }
+
+  it("lands exactly on an occurrence that IS the date", () => {
+    // What the rule page does: walk forward from next_due_at, which is always
+    // itself an occurrence, so the first preview date must be that same day.
+    expect(occurrenceAt("2026-01-15", monthly, firstIndexAtOrAfter("2026-01-15", monthly, "2026-04-15"))).toBe("2026-04-15")
+  })
+
+  it("rounds a date between occurrences UP to the next one", () => {
+    expect(firstIndexAtOrAfter("2026-01-15", monthly, "2026-01-01")).toBe(0)
+    expect(occurrenceAt("2026-01-15", monthly, firstIndexAtOrAfter("2026-01-15", monthly, "2026-03-20"))).toBe("2026-04-15")
+  })
+
+  it("reaches a far-away date without stepping through every occurrence", () => {
+    const daily = { unit: "day" as const, interval: 1 }
+    expect(firstIndexAtOrAfter("2020-01-01", daily, "2026-01-01")).toBe(2192)
   })
 })
 

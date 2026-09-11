@@ -355,10 +355,10 @@ describe("shortfallAlerts", () => {
     expect(a.money).toEqual({ amount: 500, short: 100 })
   })
 
-  it("links an autopay shortfall to the card and a recurring one to the rules", () => {
+  it("links an autopay shortfall to the card and a recurring one to its rule", () => {
     const auto = { ...hit("2026-03-12"), source: { kind: "autopay" as const, id: "c1", name: "Visa" } }
     expect(shortfallAlerts([auto], [account({ id: "bank" })], TODAY)[0].link).toBe("/wealth/cards/c1")
-    expect(shortfallAlerts([hit("2026-03-12")], [account({ id: "bank" })], TODAY)[0].link).toBe("/recurring")
+    expect(shortfallAlerts([hit("2026-03-12")], [account({ id: "bank" })], TODAY)[0].link).toBe("/recurring/r1")
   })
 })
 
