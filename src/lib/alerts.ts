@@ -70,8 +70,17 @@ export type Alert = {
   severity: AlertSeverity
   key: string
   params: Record<string, string | number>
-  /** Amount params to render in the org's currency rather than as bare numbers. */
+  /** Amount params to render as money rather than as bare numbers. */
   money?: Record<string, number>
+  /**
+   * The currency every `money` figure is in — the ACCOUNT's native currency
+   * (a card's liability account, the bank a shortfall is on, the account a
+   * rule posts to). Nothing here is converted: an alert is about one account,
+   * and its figures stay in that account's money. `null`/absent means the
+   * account predates currency tagging and the renderer falls back to the
+   * workspace's reporting currency.
+   */
+  currency?: string | null
   /** Where tapping the slide goes. */
   link?: string
   /** When it happens or happened — orders items within a severity. */
@@ -134,6 +143,8 @@ export type AlertAccount = {
   balanceToday: number
   creditLimit: number | null
   archived: boolean
+  /** The account's native currency (`wealth_accounts.currency_code`); null on a legacy row. */
+  currency: string | null
 }
 
 export type AlertCard = {
@@ -155,6 +166,8 @@ export type AlertCard = {
   autopaySince: string | null
   /** The newest closed statement, with autopay's own bookkeeping on it. */
   statement: AlertStatement | null
+  /** The ledger account's native currency — what every figure on this card is in. */
+  currency: string | null
 }
 
 export type AlertStatement = {
@@ -231,6 +244,8 @@ export type AlertRule = {
   active: boolean
   /** Why the last materialization skipped this rule. Empty = healthy. */
   lastError: string
+  /** The currency of the account the rule posts to — what `amount` is in. */
+  currency: string | null
 }
 
 /** A recurring transaction that actually landed, grouped by rule and day. */
@@ -241,11 +256,19 @@ export type AlertPosted = {
   amount: number
   date: string
   count: number
+  /** The posting account's currency — what `amount` is in. */
+  currency: string | null
 }
 
 // ── The forward projection ───────────────────────────────────────────────────
 
-export type ProjectionSource = { kind: "recurring" | "autopay" | "scheduled"; id: string; name: string }
+export type ProjectionSource = {
+  kind: "recurring" | "autopay" | "scheduled"
+  id: string
+  name: string
+  /** The currency the source's amount is in (its account's). */
+  currency?: string | null
+}
 
 export type ProjectionEvent = {
   date: string
@@ -297,7 +320,7 @@ export function upcomingEvents(rules: AlertRule[], today: string, until: string,
       // backstop against a malformed frequency, not a product limit.
       cap: HORIZON_DAYS + 2,
     })
-    const source: ProjectionSource = { kind: "recurring", id: rule.id, name: rule.name }
+    const source: ProjectionSource = { kind: "recurring", id: rule.id, name: rule.name, currency: rule.currency }
     for (const date of due) {
       if (date < today) continue
       // An occurrence that already posted is inside `current_balance` — a
@@ -336,7 +359,7 @@ export function autopayEvents(cards: AlertCard[], today: string, until: string, 
     if (autopayOutlook(card, s, nowMs) !== "pending") continue
     const owed = autopayAmount(s.remaining, cardDebt(card.currentBalance))
     if (owed <= 0) continue
-    const source: ProjectionSource = { kind: "autopay", id: card.id, name: card.label }
+    const source: ProjectionSource = { kind: "autopay", id: card.id, name: card.label, currency: card.currency }
     events.push({ date: s.dueDate, accountId: card.fundingAccountId, delta: -owed, source })
     events.push({ date: s.dueDate, accountId: card.accountId, delta: owed, source })
   }
@@ -423,17 +446,19 @@ export function cardAlerts(cards: AlertCard[], today: string, nowMs = Date.now()
       const days = daysBetween(today, s.dueDate)
       const outlook = autopayOutlook(card, s, nowMs)
       const base = { card: card.label, date: s.dueDate }
+      // Every figure is the card account's own money — labelled, never converted.
+      const currency = card.currency
       if (outlook === "failed") {
-        out.push({ id: `card_autopay_failed:${s.id}`, kind: "card_autopay_failed", severity: "danger", key: "card_autopay_failed", params: { ...base, days: Math.abs(days) }, money: { amount: owed }, link, at: s.dueDate, tense: "past", dismissible: false })
+        out.push({ id: `card_autopay_failed:${s.id}`, kind: "card_autopay_failed", severity: "danger", key: "card_autopay_failed", params: { ...base, days: Math.abs(days) }, money: { amount: owed }, currency, link, at: s.dueDate, tense: "past", dismissible: false })
       } else if (outlook === "pending") {
         // Autopay owns this one. Saying "pay your card" next to a payment the
         // app is about to make itself is how a banner teaches people to ignore
         // it.
-        out.push({ id: `card_autopay:${s.id}`, kind: "card_autopay_scheduled", severity: "info", key: "card_autopay_scheduled", params: { ...base, days }, money: { amount: owed }, link, at: s.dueDate, tense: "future", dismissible: true })
+        out.push({ id: `card_autopay:${s.id}`, kind: "card_autopay_scheduled", severity: "info", key: "card_autopay_scheduled", params: { ...base, days }, money: { amount: owed }, currency, link, at: s.dueDate, tense: "future", dismissible: true })
       } else if (days < 0) {
-        out.push({ id: `card_overdue:${s.id}`, kind: "card_payment_overdue", severity: "danger", key: "card_payment_overdue", params: { ...base, days: -days }, money: { amount: owed }, link, at: s.dueDate, tense: "past", dismissible: false })
+        out.push({ id: `card_overdue:${s.id}`, kind: "card_payment_overdue", severity: "danger", key: "card_payment_overdue", params: { ...base, days: -days }, money: { amount: owed }, currency, link, at: s.dueDate, tense: "past", dismissible: false })
       } else if (days <= DUE_SOON_DAYS) {
-        out.push({ id: `card_due:${s.id}`, kind: "card_payment_due_soon", severity: "warning", key: "card_payment_due_soon", params: { ...base, days }, money: { amount: owed }, link, at: s.dueDate, tense: "future", dismissible: false })
+        out.push({ id: `card_due:${s.id}`, kind: "card_payment_due_soon", severity: "warning", key: "card_payment_due_soon", params: { ...base, days }, money: { amount: owed }, currency, link, at: s.dueDate, tense: "future", dismissible: false })
       }
     }
 
@@ -464,6 +489,7 @@ export function cardAlerts(cards: AlertCard[], today: string, nowMs = Date.now()
           key: "card_utilization_high",
           params: { card: card.label, pct: Math.round(usage.utilization * 100) },
           money: { available: usage.available },
+          currency: card.currency,
           link,
           dismissible: false,
         })
@@ -475,17 +501,20 @@ export function cardAlerts(cards: AlertCard[], today: string, nowMs = Date.now()
 
 /** A charge the account will not cover — the "you won't have enough" case. */
 export function shortfallAlerts(shortfalls: Shortfall[], accounts: AlertAccount[], today: string): Alert[] {
-  const name = new Map(accounts.map((a) => [a.id, a.name]))
+  const byId = new Map(accounts.map((a) => [a.id, a]))
   return shortfalls.map((s) => {
     const days = daysBetween(today, s.date)
+    const account = byId.get(s.accountId)
     return {
       id: `shortfall:${s.accountId}:${s.date}:${s.source.id}`,
       kind: "charge_shortfall" as const,
       // Today or tomorrow there is nothing left to arrange; further out there is.
       severity: days <= 1 ? ("danger" as const) : ("warning" as const),
       key: "charge_shortfall",
-      params: { name: s.source.name, account: name.get(s.accountId) ?? "", date: s.date, days },
+      params: { name: s.source.name, account: account?.name ?? "", date: s.date, days },
       money: { amount: s.amount, short: s.short },
+      // The shortfall is ON this account, so its figures are in this account's money.
+      currency: account?.currency ?? null,
       tense: "future",
       // Symmetrical with autopay → its card: a recurring charge opens the rule
       // that will make it (`scheduled` has no page of its own).
@@ -533,6 +562,7 @@ export function recurringAlerts(rules: AlertRule[], events: ProjectionEvent[], c
       key: "recurring_upcoming",
       params: { name: e.source.name, date: e.date, days: daysBetween(today, e.date) },
       money: { amount: -e.delta },
+      currency: e.source.currency ?? null,
       tense: "future",
       link: `/recurring/${e.source.id}`,
       at: e.date,
@@ -557,6 +587,7 @@ export function postedAlerts(posted: AlertPosted[], today: string): Alert[] {
       key: p.type === "incoming" ? "income_received" : "recurring_posted",
       params: { name: p.ruleName, date: p.date, count: p.count },
       money: { amount: p.amount },
+      currency: p.currency,
       link: "/transactions",
       at: p.date,
       dismissible: true,

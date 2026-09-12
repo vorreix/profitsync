@@ -1,12 +1,13 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { and, asc, count, eq, isNull, max, sql } from "drizzle-orm"
 import { db, serialize } from "../../src/lib/db/index.js"
-import { transactions, wealthAccounts } from "../../src/lib/db/schema.js"
+import { organizations, transactions, wealthAccounts } from "../../src/lib/db/schema.js"
 import { canWrite, isPersonalAccount, requireAuth } from "../_lib/auth.js"
 import { logAudit } from "../_lib/audit.js"
 import { checkSpaceQuota } from "../_lib/quota.js"
 import { materializeDueRecurring } from "../_lib/recurring-materialize.js"
 import { parseGoal, parseTargetDate, spaceFields } from "../_lib/spaces.js"
+import { normalizeCurrencyCode } from "../../src/lib/money.js"
 
 // Spaces = personal savings buckets (wealth_accounts rows with type='space').
 // Money only ever TRANSFERS in/out (kind='transfer'); you can never spend FROM a
@@ -44,12 +45,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!canWrite(role)) return res.status(403).json({ error: "Forbidden" })
     const body = req.body as {
       name?: string
+      currency_code?: string
       goal_amount?: number | string | null
       target_date?: string | null
       icon?: string
     }
     const name = (body.name ?? "").trim()
     if (!name) return res.status(400).json({ error: "name is required" })
+    const [org] = await db.select({ currency: organizations.currency, reportingCurrency: organizations.reportingCurrency }).from(organizations).where(eq(organizations.id, orgId)).limit(1)
+    if (!org) return res.status(404).json({ error: "Organization not found" })
+    let currencyCode: string
+    try {
+      currencyCode = normalizeCurrencyCode(body.currency_code ?? org.reportingCurrency ?? org.currency)
+    } catch {
+      return res.status(400).json({ error: "Invalid currency code", code: "invalid_currency" })
+    }
 
     const goalAmount = parseGoal(body.goal_amount)
     if (goalAmount === "invalid") return res.status(400).json({ error: "goal_amount is invalid" })
@@ -73,6 +83,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         type: "space",
         bankName: "",
         nickname: name,
+        currencyCode,
         openingBalance: "0", // a Space starts empty; you fund it via transfer
         currentBalance: "0",
         icon: body.icon || "piggy",

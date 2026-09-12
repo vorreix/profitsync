@@ -13,6 +13,8 @@ import { useOrg } from "@/lib/org-context"
 import { canWriteRole, canDeleteRole } from "@/lib/roles"
 import { CategoryPicker } from "@/components/CategoryPicker"
 import { ClientOverviewModal } from "@/components/ClientOverviewModal"
+import { FxExcludedNotice } from "@/components/FxExcludedNotice"
+import { clientTotalsCurrency, excludedCountOf, rowCurrency } from "@/lib/reporting-fields"
 import { BudgetDialog } from "@/components/budget/BudgetDialog"
 import { BudgetIndicator } from "@/components/budget/BudgetIndicator"
 import { AttachmentBadge } from "@/components/AttachmentBadge"
@@ -61,7 +63,9 @@ export function ClientDetailPage() {
   const { currency } = useCurrency()
   // Card chips on the transaction rows (by card id, or the credit card that IS the account).
   const cardMap = useCardMap()
-  const formatCurrency = (amount: number) => new Intl.NumberFormat("en-US", { style: "currency", currency, minimumFractionDigits: 2 }).format(amount)
+  // A transaction row is formatted in ITS currency (the account it posted to);
+  // the client's totals below come converted from the server, in `totalsCurrency`.
+  const formatCurrency = (amount: number, code: string = currency) => new Intl.NumberFormat("en-US", { style: "currency", currency: code, minimumFractionDigits: 2 }).format(amount)
   const [client, setClient] = useState<Client | null>(null)
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [accounts, setAccounts] = useState<WealthAccount[]>([])
@@ -212,8 +216,13 @@ export function ClientDetailPage() {
     }
   }, [searchParams, setSearchParams, client])
 
-  const totalIncoming = transactions.filter((t) => t.type === "incoming").reduce((s, t) => s + Number(t.amount), 0)
-  const totalOutgoing = transactions.filter((t) => t.type === "outgoing").reduce((s, t) => s + Number(t.amount), 0)
+  // Totals come from GET /api/clients/:id, converted into the reporting currency
+  // at each row's date — never a raw sum of this list, whose rows may be in
+  // different currencies. `excluded_count` is what had no rate and was left out.
+  const totalIncoming = Number(client?.total_incoming ?? 0)
+  const totalOutgoing = Number(client?.total_outgoing ?? 0)
+  const totalsCurrency = clientTotalsCurrency(client, currency)
+  const totalsExcluded = excludedCountOf(client as { excluded_count?: number } | null)
   const netProfit = totalIncoming - totalOutgoing
 
   const filteredTx = transactions
@@ -489,20 +498,21 @@ export function ClientDetailPage() {
       <div className="grid grid-cols-3 gap-2 sm:gap-4">
         <div className="rounded-xl border p-3 sm:p-4">
           <p className="text-[10px] sm:text-xs text-muted-foreground font-medium uppercase tracking-wide truncate">Income</p>
-          <FitText className="text-emerald-600 dark:text-emerald-400 mt-1" textClassName="text-base sm:text-xl font-bold tabular-nums">{formatCurrency(totalIncoming)}</FitText>
+          <FitText className="text-emerald-600 dark:text-emerald-400 mt-1" textClassName="text-base sm:text-xl font-bold tabular-nums">{formatCurrency(totalIncoming, totalsCurrency)}</FitText>
           <p className="hidden sm:flex text-xs text-muted-foreground mt-1 items-center gap-1"><ArrowUpRight className="size-3" />{transactions.filter((t) => t.type === "incoming").length} transaction{transactions.filter((t) => t.type === "incoming").length !== 1 ? "s" : ""}</p>
         </div>
         <div className="rounded-xl border p-3 sm:p-4">
           <p className="text-[10px] sm:text-xs text-muted-foreground font-medium uppercase tracking-wide truncate">Expenses</p>
-          <FitText className="text-destructive mt-1" textClassName="text-base sm:text-xl font-bold tabular-nums">{formatCurrency(totalOutgoing)}</FitText>
+          <FitText className="text-destructive mt-1" textClassName="text-base sm:text-xl font-bold tabular-nums">{formatCurrency(totalOutgoing, totalsCurrency)}</FitText>
           <p className="hidden sm:flex text-xs text-muted-foreground mt-1 items-center gap-1"><ArrowDownRight className="size-3" />{transactions.filter((t) => t.type === "outgoing").length} transaction{transactions.filter((t) => t.type === "outgoing").length !== 1 ? "s" : ""}</p>
         </div>
         <div className="rounded-xl border p-3 sm:p-4">
           <p className="text-[10px] sm:text-xs text-muted-foreground font-medium uppercase tracking-wide truncate">Net</p>
-          <FitText className={`mt-1 ${netProfit >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"}`} textClassName="text-base sm:text-xl font-bold tabular-nums">{formatCurrency(netProfit)}</FitText>
+          <FitText className={`mt-1 ${netProfit >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"}`} textClassName="text-base sm:text-xl font-bold tabular-nums">{formatCurrency(netProfit, totalsCurrency)}</FitText>
           <p className="hidden sm:block text-xs text-muted-foreground mt-1">{totalIncoming > 0 ? ((netProfit / totalIncoming) * 100).toFixed(1) : 0}% margin</p>
         </div>
       </div>
+      <FxExcludedNotice count={totalsExcluded} />
 
       {/* Budget — tap to open this client's full budget history & insights; quick-edit inline. */}
       <div
@@ -619,7 +629,7 @@ export function ClientDetailPage() {
                       </div>
                       <div className="text-right shrink-0">
                         <p className={`text-sm font-semibold ${tx.type === "incoming" ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
-                          {tx.type === "incoming" ? "+" : "−"}{formatCurrency(Number(tx.amount))}
+                          {tx.type === "incoming" ? "+" : "−"}{formatCurrency(Number(tx.amount), rowCurrency(tx, currency))}
                         </p>
                       </div>
                       <div className="flex gap-0.5 sm:gap-1 shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
@@ -855,7 +865,7 @@ export function ClientDetailPage() {
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
                   <p className={`text-2xl font-bold tabular-nums ${viewTx.type === "incoming" ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
-                    {viewTx.type === "incoming" ? "+" : "−"}{formatCurrency(Number(viewTx.amount))}
+                    {viewTx.type === "incoming" ? "+" : "−"}{formatCurrency(Number(viewTx.amount), rowCurrency(viewTx, currency))}
                   </p>
                   {viewTx.recurring_rule_id && (
                     <Badge

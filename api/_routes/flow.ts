@@ -5,7 +5,8 @@ import { clients, organizations, transactions, wealthAccounts } from "../../src/
 import { isPersonalAccount, requireAuth } from "../_lib/auth.js"
 import { materializeDueRecurring } from "../_lib/recurring-materialize.js"
 import { logoDataUrl } from "../../src/lib/logo-data.js"
-import { expenseSumSql, incomeSumSql, pnlKindFilter } from "../_lib/tx-sql.js"
+import { ensureRatesForOrg, reportingCurrencyFor } from "../_lib/fx-rates.js"
+import { accountBalanceInSql, expenseSumSqlIn, incomeSumSqlIn, missingRateCountSql, pnlKindFilter } from "../_lib/tx-sql.js"
 
 // SQL for "the account's display name" — reused to label leaves with the
 // account the money moved through (to/from).
@@ -68,6 +69,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   // Recurring occurrences due in range must exist before we aggregate.
   await materializeDueRecurring(orgId)
+  // Every figure below is in the workspace's reporting currency: each row is
+  // converted at its own date, each account balance at today's rate. Rows and
+  // accounts with no stored rate are left out and COUNTED (`excluded_count`,
+  // `balance_excluded_count`), never silently summed raw.
+  const reporting = await reportingCurrencyFor(orgId)
+  await ensureRatesForOrg(orgId, reporting).catch(() => undefined)
 
   const q = req.query as Record<string, string | string[] | undefined>
   const personal = isPersonalAccount(ctx)
@@ -107,9 +114,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (accountIds.length) conds.push(inArray(transactions.wealthAccountId, accountIds))
   const where = and(...conds)
 
-  // Shared reporting rules (api/_lib/tx-sql.ts): refunds reduce expense, never income.
-  const incomeSum = incomeSumSql
-  const expenseSum = expenseSumSql
+  // Shared reporting rules (api/_lib/tx-sql.ts): refunds reduce expense, never
+  // income — converted into the reporting currency at each row's date.
+  const incomeSum = incomeSumSqlIn(reporting)
+  const expenseSum = expenseSumSqlIn(reporting)
+  const excludedExpr = missingRateCountSql(reporting)
   // Count LOGICAL transactions: a split (shared group_id) counts once, matching
   // how the canvas collapses its legs into a single node.
   const countExpr = sql<number>`count(distinct coalesce(${transactions.groupId}::text, ${transactions.id}::text))::int`
@@ -148,6 +157,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         id: transactions.id,
         type: transactions.type,
         amount: transactions.amount,
+        currencyCode: transactions.currencyCode,
         description: transactions.description,
         category: transactions.category,
         date: sql<string>`${transactions.date}::text`,
@@ -171,6 +181,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       id: l.id,
       type: l.type,
       amount: Number(l.amount),
+      currency_code: l.currencyCode,
       description: l.description,
       category: l.category,
       date: l.date,
@@ -195,14 +206,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const [periodRows, accountMetaT, ownerOrgT, leafPoolT] = await Promise.all([
       db
-        .select({ key: periodExpr, income: incomeSum, expense: expenseSum, txCount: countExpr })
+        .select({ key: periodExpr, income: incomeSum, expense: expenseSum, txCount: countExpr, excluded: excludedExpr })
         .from(transactions)
         .innerJoin(clients, eq(transactions.clientId, clients.id))
         .where(where)
         .groupBy(periodExpr)
         .orderBy(sql`1 asc`),
+      // Each account's balance in the reporting currency at today's rate; NULL
+      // (no rate) is skipped by the sum and counted instead.
       db
-        .select({ current: wealthAccounts.currentBalance })
+        .select({ currentIn: accountBalanceInSql(reporting) })
         .from(wealthAccounts)
         .where(and(eq(wealthAccounts.organizationId, orgId), isNull(wealthAccounts.archivedAt))),
       db.select({ name: organizations.name }).from(organizations).where(eq(organizations.id, orgId)),
@@ -211,6 +224,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           id: transactions.id,
           type: transactions.type,
           amount: transactions.amount,
+          currencyCode: transactions.currencyCode,
           description: transactions.description,
           category: transactions.category,
           date: sql<string>`${transactions.date}::text`,
@@ -249,6 +263,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let running = 0
     let totalIn = 0
     let totalOut = 0
+    let totalExcluded = 0
     const periods = periodRows.map((p) => {
       const income = Number(p.income)
       const expense = Number(p.expense)
@@ -257,10 +272,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       running += net
       totalIn += income
       totalOut += expense
+      totalExcluded += Number(p.excluded ?? 0)
       const leaves = (leavesByPeriod.get(p.key) ?? []).map((l) => ({
         id: l.id,
         type: l.type,
         amount: Number(l.amount),
+        currency_code: l.currencyCode,
         description: l.description,
         category: l.category,
         date: l.date,
@@ -279,15 +296,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         before,
         after: running,
         tx_count: Number(p.txCount),
+        excluded_count: Number(p.excluded ?? 0),
         leaves,
         more_count: Math.max(0, Number(p.txCount) - (logicalByPeriod.get(p.key)?.size ?? 0)),
       }
     })
 
+    // Consolidated balance: only accounts with a rate into the reporting
+    // currency today; the rest are counted, never added raw.
+    const balanceT = accountMetaT.reduce((s, a) => (a.currentIn === null ? s : s + Number(a.currentIn)), 0)
+    const balanceExcludedT = accountMetaT.filter((a) => a.currentIn === null).length
+
     return res.json({
       mode: "timeline",
       bucket,
       personal,
+      currency: reporting,
+      excluded_count: totalExcluded,
       range: { from: fromDate, to: toDate },
       periods,
       final: {
@@ -295,7 +320,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         total_in: totalIn,
         total_out: totalOut,
         total_net: totalIn - totalOut,
-        balance: accountMetaT.reduce((s, a) => s + Number(a.current), 0),
+        balance: balanceT,
+        excluded_count: totalExcluded,
+        balance_excluded_count: balanceExcludedT,
       },
       filters: { category: categories, client_id: clientIds, account_id: accountIds },
     })
@@ -311,18 +338,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const [summaryRows, groupRows, accountMeta, ownerOrg, leafPoolRaw] = await Promise.all([
     db
-      .select({ income: incomeSum, expense: expenseSum, txCount: countExpr })
+      .select({ income: incomeSum, expense: expenseSum, txCount: countExpr, excluded: excludedExpr })
       .from(transactions)
       .innerJoin(clients, eq(transactions.clientId, clients.id))
       .where(where),
     db
-      .select({ key: groupKeyExpr, income: incomeSum, expense: expenseSum, txCount: countExpr })
+      .select({ key: groupKeyExpr, income: incomeSum, expense: expenseSum, txCount: countExpr, excluded: excludedExpr })
       .from(transactions)
       .innerJoin(clients, eq(transactions.clientId, clients.id))
       .where(where)
       .groupBy(groupKeyExpr)
       .orderBy(sql`(${incomeSum} + ${expenseSum}) desc`),
-    // Account labels + balances for the accounts dimension (and the root balance).
+    // Account labels + balances for the accounts dimension (and the root
+    // balance). `opening`/`current` stay NATIVE (labelled by `currencyCode`);
+    // `currentIn` is today's conversion for the consolidated root figure.
     db
       .select({
         id: wealthAccounts.id,
@@ -331,6 +360,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         icon: wealthAccounts.icon,
         opening: wealthAccounts.openingBalance,
         current: wealthAccounts.currentBalance,
+        currencyCode: wealthAccounts.currencyCode,
+        currentIn: accountBalanceInSql(reporting),
         logoUrl: wealthAccounts.logoUrl,
         logoData: wealthAccounts.logoData,
       })
@@ -342,6 +373,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         id: transactions.id,
         type: transactions.type,
         amount: transactions.amount,
+        currencyCode: transactions.currencyCode,
         description: transactions.description,
         category: transactions.category,
         date: sql<string>`${transactions.date}::text`,
@@ -402,6 +434,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       id: l.id,
       type: l.type,
       amount: Number(l.amount),
+      currency_code: l.currencyCode,
       description: l.description,
       category: l.category,
       date: l.date,
@@ -422,8 +455,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       expense,
       net: income - expense,
       tx_count: count,
+      excluded_count: Number(g.excluded ?? 0),
+      // An account's own balances are NATIVE — format them with account_currency,
+      // not with the reporting currency the income/expense figures are in.
       opening_balance: acc ? Number(acc.opening) : null,
       current_balance: acc ? Number(acc.current) : null,
+      account_currency: acc?.currencyCode ?? null,
       leaves,
       // count is logical txs; subtract the logical txs already sampled (a split
       // is one), not the raw leg count.
@@ -431,15 +468,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   })
 
-  const s = summaryRows[0] ?? { income: "0", expense: "0", txCount: 0 }
+  const s = summaryRows[0] ?? { income: "0", expense: "0", txCount: 0, excluded: 0 }
   const income = Number(s.income)
   const expense = Number(s.expense)
-  const balance = accountMeta.reduce((sum, a) => sum + Number(a.current), 0)
+  // Consolidated balance: each account converted at today's rate; an account
+  // with no rate is counted, never added raw.
+  const balance = accountMeta.reduce((sum, a) => (a.currentIn === null ? sum : sum + Number(a.currentIn)), 0)
+  const balanceExcluded = accountMeta.filter((a) => a.currentIn === null).length
 
   return res.json({
     mode: "grouped",
     group_by: groupBy,
     personal,
+    currency: reporting,
+    excluded_count: Number(s.excluded ?? 0),
     range: { from: fromDate, to: toDate },
     root: {
       label: ownerOrg[0]?.name ?? "Workspace",
@@ -448,6 +490,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       net: income - expense,
       tx_count: Number(s.txCount),
       balance,
+      excluded_count: Number(s.excluded ?? 0),
+      balance_excluded_count: balanceExcluded,
     },
     groups,
     filters: { category: categories, client_id: clientIds, account_id: accountIds },

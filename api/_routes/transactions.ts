@@ -11,7 +11,8 @@ import { materializeDueRecurring } from "../_lib/recurring-materialize.js"
 import { notifyIfBudgetExceeded } from "../_lib/notify-budget.js"
 import { cleanTransactionTags } from "../../src/lib/transaction-tags.js"
 import { refundShapeValid } from "../../src/lib/tx-classify.js"
-import { expenseSumSql, incomeSumSql, pnlKindFilter, USER_KINDS } from "../_lib/tx-sql.js"
+import { expenseSumSqlIn, incomeSumSqlIn, missingRateCountSql, pnlKindFilter, reportingAmountSql, USER_KINDS } from "../_lib/tx-sql.js"
+import { ensureRatesForOrg, reportingCurrencyFor } from "../_lib/fx-rates.js"
 import { attributeCard, cardTransactionFilter } from "../_lib/cards.js"
 import { syncCards } from "../_lib/card-autopay.js"
 
@@ -33,7 +34,12 @@ function pickOrder(sort: string | undefined) {
   }
 }
 
-const txFields = {
+// A row's money is NATIVE: `amount` in `currency_code` (its account's currency).
+// `reporting_amount` is the same figure converted at the row's date into the
+// workspace's reporting currency — NULL when no rate is stored for that day —
+// so a screen that sums rows client-side (the dashboard) can add like with like
+// and count what it could not convert, instead of adding EUR to INR.
+const txFieldsFor = (reporting: string) => ({
   id: transactions.id,
   clientId: transactions.clientId,
   clientName: clients.name,
@@ -48,6 +54,8 @@ const txFields = {
   kind: transactions.kind,
   type: transactions.type,
   amount: transactions.amount,
+  currencyCode: transactions.currencyCode,
+  reportingAmount: reportingAmountSql(reporting),
   description: transactions.description,
   category: transactions.category,
   tags: transactions.tags,
@@ -62,7 +70,7 @@ const txFields = {
   // the UI can badge a transfer to/from a Space and deep-link to it.
   counterpartAccountId: sql<string | null>`(select t2.wealth_account_id::text from transactions t2 where t2.group_id = ${transactions.groupId} and t2.id <> ${transactions.id} and ${transactions.kind} = 'transfer' limit 1)`,
   counterpartType: sql<string | null>`(select wa.type from transactions t2 join wealth_accounts wa on wa.id = t2.wealth_account_id where t2.group_id = ${transactions.groupId} and t2.id <> ${transactions.id} and ${transactions.kind} = 'transfer' limit 1)`,
-}
+})
 
 // A split transaction's legs share a `group_id`; everywhere that isn't scoped to
 // a single account we collapse them into ONE representative row. The grouping key
@@ -70,7 +78,10 @@ const txFields = {
 // each form their own one-row "group" and pass through unchanged.
 const groupKey = sql`coalesce(${transactions.groupId}, ${transactions.id})`
 
-const groupedFields = {
+// How many currencies a collapsed group's legs were posted in (NULL = legacy, one bucket).
+const groupCurrencyCount = sql<number>`count(distinct coalesce(${transactions.currencyCode}, ''))`
+
+const groupedFieldsFor = (reporting: string) => ({
   // Representative leg id (earliest-created) — used to open the detail view.
   id: sql<string>`(array_agg(${transactions.id} order by ${transactions.createdAt} asc, ${transactions.id} asc))[1]`,
   clientId: sql<string>`max(${transactions.clientId}::text)`,
@@ -91,7 +102,15 @@ const groupedFields = {
   legCount: sql<number>`count(*)::int`,
   accountCount: sql<number>`count(distinct ${transactions.wealthAccountId})::int`,
   type: sql<string>`max(${transactions.type})`,
-  amount: sql<string>`sum(${transactions.amount}::numeric)`,
+  // A split's legs add up ONLY when they share a currency. Legs posted to
+  // accounts in different currencies are summed in the reporting currency
+  // instead (each at its own date) and the row says so via currency_code —
+  // never a raw sum of EUR and INR. NULL when a leg has no rate.
+  amount: sql<string>`case when ${groupCurrencyCount} <= 1 then sum(${transactions.amount}::numeric) else sum(${reportingAmountSql(reporting)}) end`,
+  currencyCode: sql<string | null>`case when ${groupCurrencyCount} <= 1 then max(${transactions.currencyCode}) else ${reporting} end`,
+  currencyCount: sql<number>`${groupCurrencyCount}::int`,
+  // The whole group in the reporting currency; NULL as soon as one leg has no rate.
+  reportingAmount: sql<string | null>`case when bool_or(${reportingAmountSql(reporting)} is null) then null else sum(${reportingAmountSql(reporting)}) end`,
   description: sql<string>`max(${transactions.description})`,
   category: sql<string>`max(${transactions.category})`,
   // Group-level metadata: every leg carries the same tags, take the first leg's.
@@ -104,7 +123,7 @@ const groupedFields = {
   createdAt: sql<string>`max(${transactions.createdAt})`,
   updatedAt: sql<string>`max(${transactions.updatedAt})`,
   attachmentCount: sql<number>`coalesce(sum((select count(*) from transaction_attachments where transaction_id = ${transactions.id})), 0)::int`,
-}
+})
 
 function groupedOrder(sort: string | undefined) {
   switch (sort) {
@@ -122,9 +141,9 @@ function groupedOrder(sort: string | undefined) {
 
 type SqlWhere = ReturnType<typeof and>
 
-async function groupedRows(where: SqlWhere, sort: string | undefined, limit?: number, offset?: number) {
+async function groupedRows(where: SqlWhere, sort: string | undefined, reporting: string, limit?: number, offset?: number) {
   const q = db
-    .select(groupedFields)
+    .select(groupedFieldsFor(reporting))
     .from(transactions)
     .innerJoin(clients, eq(transactions.clientId, clients.id))
     .leftJoin(wealthAccounts, eq(transactions.wealthAccountId, wealthAccounts.id))
@@ -158,6 +177,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Card statements / autopay must have moved money before any list renders
     // (idempotent, short-circuits when the org has no open credit card).
     await syncCards(orgId).catch((err) => console.error("[cards] sync failed", err))
+    // Rows stay native; the summary and each row's `reporting_amount` are in the
+    // workspace's reporting currency, converted at the row's own date.
+    const reporting = await reportingCurrencyFor(orgId)
+    await ensureRatesForOrg(orgId, reporting).catch(() => undefined)
+    const txFields = txFieldsFor(reporting)
 
     const { clientId, wealthAccountId: accountParam, cardId, recurringRuleId, groupId, search, type, page, sort, limit, category, tag, from, to, includeClosed } = req.query as {
       clientId?: string; wealthAccountId?: string; cardId?: string; recurringRuleId?: string; groupId?: string; search?: string; type?: string; page?: string; sort?: string; limit?: string; category?: string; tag?: string; from?: string; to?: string; includeClosed?: string
@@ -237,7 +261,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       const clientWhere = and(eq(transactions.clientId, clientId), isNull(transactions.deletedAt), accountFilter, listExcludesTransfers)
       const rows = grouped
-        ? await groupedRows(clientWhere, sort)
+        ? await groupedRows(clientWhere, sort, reporting)
         : await db
             .select(txFields)
             .from(transactions)
@@ -322,7 +346,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               .where(whereClause)
               .then((r) => Number(r[0]?.total ?? 0)),
         grouped
-          ? groupedRows(whereClause, sort, PAGE_SIZE, offset)
+          ? groupedRows(whereClause, sort, reporting, PAGE_SIZE, offset)
           : db
               .select(txFields)
               .from(transactions)
@@ -334,8 +358,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               .offset(offset),
         db
           .select({
-            incoming: incomeSumSql,
-            outgoing: expenseSumSql,
+            incoming: incomeSumSqlIn(reporting),
+            outgoing: expenseSumSqlIn(reporting),
+            excluded: missingRateCountSql(reporting),
           })
           .from(transactions)
           .innerJoin(clients, eq(transactions.clientId, clients.id))
@@ -345,7 +370,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.json({
         data: rows.map(serialize),
         total,
-        summary: { incoming: Number(summaryRow.incoming), outgoing: Number(summaryRow.outgoing) },
+        currency: reporting,
+        summary: {
+          incoming: Number(summaryRow.incoming),
+          outgoing: Number(summaryRow.outgoing),
+          currency: reporting,
+          excluded_count: Number(summaryRow.excluded ?? 0),
+        },
       })
     }
 
@@ -354,7 +385,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (limit !== undefined) {
       const limitNum = Math.max(1, Math.min(100, parseInt(limit, 10) || 20))
       const rows = grouped
-        ? await groupedRows(whereClause, sort, limitNum)
+        ? await groupedRows(whereClause, sort, reporting, limitNum)
         : await db
             .select(txFields)
             .from(transactions)
@@ -367,7 +398,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const rows = grouped
-      ? await groupedRows(whereClause, sort)
+      ? await groupedRows(whereClause, sort, reporting)
       : await db
           .select(txFields)
           .from(transactions)
@@ -443,6 +474,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         kind,
         type,
         amount: String(amount),
+        currencyCode: account.currencyCode,
         description: description ?? "",
         category: category ?? "",
         tags: cleanedTags,

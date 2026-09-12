@@ -62,6 +62,11 @@ import wealthQuota from "./_routes/wealth/quota.js"
 import recurring from "./_routes/recurring.js"
 import recurringById from "./_routes/recurring/[id].js"
 import wealthTransfer from "./_routes/wealth/transfer.js"
+import wealthSummary from "./_routes/wealth/summary.js"
+import fxRate from "./_routes/fx/rate.js"
+import wealthTransfers from "./_routes/wealth/transfers.js"
+import wealthTransferById from "./_routes/wealth/transfers/[id].js"
+import wealthTransferReverse from "./_routes/wealth/transfers/[id]/reverse.js"
 import cardsList from "./_routes/cards.js"
 import cardsReorder from "./_routes/cards/reorder.js"
 import cardById from "./_routes/cards/[id].js"
@@ -215,6 +220,11 @@ const routes: RoutePattern<ApiHandler>[] = [
   { segments: ["recurring"], handler: recurring },
   { segments: ["recurring", ":id"], handler: recurringById },
   { segments: ["wealth", "transfer"], handler: wealthTransfer },
+  { segments: ["wealth", "summary"], handler: wealthSummary },
+  { segments: ["fx", "rate"], handler: fxRate },
+  { segments: ["wealth", "transfers"], handler: wealthTransfers },
+  { segments: ["wealth", "transfers", ":id"], handler: wealthTransferById },
+  { segments: ["wealth", "transfers", ":id", "reverse"], handler: wealthTransferReverse },
   // Cards (debit + credit, linked to banks). Static "reorder" before ":id".
   { segments: ["cards"], handler: cardsList },
   { segments: ["cards", "reorder"], handler: cardsReorder },

@@ -3,12 +3,12 @@ import { useTranslation } from "react-i18next"
 import { useAuth } from "@clerk/clerk-react"
 import { toast } from "sonner"
 import { AlertTriangle, ArrowRight, CreditCard } from "lucide-react"
-import { apiPost } from "@/lib/api"
+import { apiErrorMessage, apiPost } from "@/lib/api"
 import { amountExceedsLimit } from "@/lib/money"
 import { isLiabilityType } from "@/lib/credit-card"
 import { usableCards, useCards } from "@/lib/use-cards"
 import type { CreditCardSummary, WealthAccount } from "@/lib/types"
-import { accountDisplayName, currencySymbol, formatMoney } from "@/lib/wealth"
+import { accountCurrency, accountDisplayName, currencySymbol, formatMoney, formatRate } from "@/lib/wealth"
 import { cn } from "@/lib/utils"
 import { WealthAccountIcon } from "@/components/WealthAccountIcon"
 import { AccountCombobox } from "@/components/wealth/AccountCombobox"
@@ -71,7 +71,10 @@ export function PayCardSheet({
   const { t } = useTranslation("wealth")
   const { t: tTx } = useTranslation("transactions")
   const { getToken } = useAuth()
-  const symbol = currencySymbol(currency)
+  // The card's own currency: what it owes is denominated there, whatever the
+  // workspace reports in. `currency` is only the legacy fallback.
+  const cardCurrency = accountCurrency(card, currency)
+  const symbol = currencySymbol(cardCurrency)
 
   // Sources: every active non-Space account except this card's own — a card can
   // never pay itself. Other credit cards stay in: buildPayOptions shows each as
@@ -93,6 +96,9 @@ export function PayCardSheet({
   const [amount, setAmount] = useState("")
   const [date, setDate] = useState(today())
   const [note, setNote] = useState("")
+  // Paying from an account in ANOTHER currency: the amount above is what the
+  // card receives (its currency); this is what leaves the source (its own).
+  const [sourceAmount, setSourceAmount] = useState("")
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -103,6 +109,7 @@ export function PayCardSheet({
     setAmount(startPreset === "statement" ? String(statementRemaining) : startPreset === "full" ? String(debt) : "")
     setDate(today())
     setNote("")
+    setSourceAmount("")
     setSaving(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
@@ -138,20 +145,29 @@ export function PayCardSheet({
   const amountValid = !!amt && !isNaN(amt) && amt > 0
   const from = sources.find((a) => a.id === fromId)
   const fromCard = fromCardId ? payWith.find((c) => c.id === fromCardId) : undefined
+  const fromCurrency = accountCurrency(from, currency)
+  const crossCurrency = !!from && fromCurrency !== cardCurrency
+  const sourceAmt = parseFloat(sourceAmount)
+  const sourceValid = !crossCurrency || (!!sourceAmt && !isNaN(sourceAmt) && sourceAmt > 0)
 
   async function submit() {
     if (!fromId) { toast.error(t("selectAccount")); return }
     if (!amountValid) { toast.error(t("payAmount")); return }
-    if (amountExceedsLimit(amt)) { toast.error(t("common.amountTooLarge")); return }
+    if (!sourceValid) { toast.error(t("payAmountLeaving", { account: from ? accountDisplayName(from) : "", currency: fromCurrency })); return }
+    if (amountExceedsLimit(amt) || (crossCurrency && amountExceedsLimit(sourceAmt))) { toast.error(t("common.amountTooLarge")); return }
     setSaving(true)
     try {
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
+      // Same currency keeps the historical body (`amount`); a cross-currency
+      // payment names both native sides so the server records the real rate.
       await apiPost("/api/wealth/transfer", token, {
         from_account_id: fromId,
         from_card_id: fromCardId || null,
         to_account_id: card.id,
-        amount: amt,
+        ...(crossCurrency
+          ? { source_amount: sourceAmt, destination_amount: amt, source_currency: fromCurrency, destination_currency: cardCurrency }
+          : { amount: amt }),
         date,
         note,
       })
@@ -159,7 +175,7 @@ export function PayCardSheet({
       onOpenChange(false)
       onDone?.()
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : t("payFailed"))
+      toast.error(apiErrorMessage(e, t("payFailed")))
     } finally {
       setSaving(false)
     }
@@ -215,7 +231,7 @@ export function PayCardSheet({
                     )}
                   >
                     <span className="font-medium">{o.label}</span>
-                    {o.value !== null && <span className="tabular-nums text-muted-foreground">{formatMoney(o.value, currency, balancesVisible)}</span>}
+                    {o.value !== null && <span className="tabular-nums text-muted-foreground">{formatMoney(o.value, cardCurrency, balancesVisible)}</span>}
                   </button>
                 )
               })}
@@ -237,6 +253,17 @@ export function PayCardSheet({
             </div>
             {debt <= 0 && <p className="text-center text-xs text-muted-foreground">{t("nothingToPay")}</p>}
           </div>
+
+          {/* The source holds a different currency: ask what actually leaves it. */}
+          {crossCurrency && from && (
+            <div className="space-y-1.5">
+              <Label htmlFor="pay-source-amount">{t("payAmountLeaving", { account: accountDisplayName(from), currency: fromCurrency })}</Label>
+              <Input id="pay-source-amount" inputMode="decimal" type="number" min="0" step="0.01" value={sourceAmount} onChange={(e) => setSourceAmount(e.target.value)} placeholder="0.00" />
+              {sourceValid && amountValid && (
+                <p className="text-xs text-muted-foreground tabular-nums">{formatRate(fromCurrency, cardCurrency, amt / sourceAmt)}</p>
+              )}
+            </div>
+          )}
 
           <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
             <span className="truncate">
@@ -273,7 +300,7 @@ export function PayCardSheet({
 
         <DialogFooter className="shrink-0 border-t px-6 pb-6 pt-3">
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>{t("cancel")}</Button>
-          <Button onClick={submit} disabled={saving || !amountValid || !fromId}>
+          <Button onClick={submit} disabled={saving || !amountValid || !sourceValid || !fromId}>
             <CreditCard className="size-4" /> {saving ? t("saving") : t("recordPayment")}
           </Button>
         </DialogFooter>

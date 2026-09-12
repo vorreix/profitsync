@@ -4,6 +4,7 @@ import { db } from "../../../src/lib/db/index.js"
 import { budgets, budgetHistory, clients } from "../../../src/lib/db/schema.js"
 import { requireAuth, isPersonalAccount } from "../../_lib/auth.js"
 import { spendForWindows } from "../../_lib/budget-spend.js"
+import { ensureRatesForOrg, reportingCurrencyFor } from "../../_lib/fx-rates.js"
 import { amountAt, isBudgetPeriod, todayUtc, windowsBack, type BudgetPeriod } from "../../../src/lib/budget.js"
 import { historyFor, listBudgets, primaryBudget, seriesFor, SERIES_BACK, toV1Period } from "../../_lib/spending-budgets.js"
 import {
@@ -37,13 +38,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // a timeline read from the budget's audit trail.
   if (personal) {
     const today = todayUtc()
-    const primary = primaryBudget(await listBudgets(orgId, today))
+    const reporting = await reportingCurrencyFor(orgId)
+    const primary = primaryBudget(await listBudgets(orgId, today, reporting))
     if (!primary) {
-      return res.json({ key: "default", client_id: null, client_name: null, is_own: false, is_default: true, current: null, timeline: [], has_series: false, series: [], adherence: adherence([]), evolution: null, creep: detectCreep([]) })
+      return res.json({ key: "default", client_id: null, client_name: null, is_own: false, is_default: true, current: null, currency: reporting, excluded_count: 0, timeline: [], has_series: false, series: [], adherence: adherence([]), evolution: null, creep: detectCreep([]) })
     }
     const period = toV1Period(primary.period)
     const windows = windowsBack(primary.period, SERIES_BACK[primary.period], today)
-    const [points, audit] = await Promise.all([seriesFor(orgId, primary, windows), historyFor(orgId, primary.id, 100)])
+    const [points, audit] = await Promise.all([seriesFor(orgId, primary, windows, reporting), historyFor(orgId, primary.id, 100)])
     const history: HistoryRow[] = [...audit]
       .reverse()
       .filter((h) => h.changes.amount && typeof h.changes.amount.to !== "undefined")
@@ -56,7 +58,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const series = windows.map((w, i) => {
       const spent = points[i]?.spent ?? 0
       const budget = amountAt(audit, `${w.endExclusive}T00:00:00.000Z`, primary.amount)
-      return { start: w.start!, spent, budget, state: seriesState(spent, budget) }
+      return { start: w.start!, spent, budget, state: seriesState(spent, budget), excluded_count: points[i]?.excluded_count ?? 0 }
     })
     return res.json({
       key: "default",
@@ -65,6 +67,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       is_own: false,
       is_default: true,
       current: { amount: primary.amount, period },
+      currency: primary.currency,
+      excluded_count: primary.excluded_count,
       timeline: history.map((h) => ({ amount: h.amount, period: h.period, action: h.action, created_at: h.createdAt })),
       has_series: windows.length > 0,
       series,
@@ -109,11 +113,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // budget, or the personal org's whole-workspace budget. The business default
   // (null client) is a template with no single spend → timeline only.
   const tracksSpend = period !== "lifetime" && (clientId !== null || personal)
-  let series: ReturnType<typeof buildSeries> = []
+  // The cap and its series are in the workspace's reporting currency, each row
+  // converted at its own date; rows with no rate are counted per window.
+  const reporting = await reportingCurrencyFor(orgId)
+  let series: (ReturnType<typeof buildSeries>[number] & { excluded_count?: number })[] = []
+  let excludedTotal = 0
   if (tracksSpend) {
+    await ensureRatesForOrg(orgId, reporting).catch(() => undefined)
     const windows = periodBoundaries(period, LOOKBACK[period], new Date())
-    const spentByStart = await spendForWindows(orgId, clientId, windows)
-    series = buildSeries(windows, spentByStart, history)
+    const { spent: spentByStart, excluded } = await spendForWindows(orgId, clientId, windows, reporting)
+    series = buildSeries(windows, spentByStart, history).map((p) => ({ ...p, excluded_count: excluded[p.start] ?? 0 }))
+    excludedTotal = Object.values(excluded).reduce((s, n) => s + n, 0)
   }
 
   return res.json({
@@ -123,6 +133,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     is_own: clientRow?.isOwn ?? false,
     is_default: !clientId,
     current: budgetRow ? { amount: Number(budgetRow.amount), period } : null,
+    currency: reporting,
+    excluded_count: excludedTotal,
     timeline: history.map((h) => ({ amount: h.amount, period: h.period, action: h.action, created_at: h.createdAt })),
     has_series: tracksSpend,
     series,

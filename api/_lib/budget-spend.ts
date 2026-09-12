@@ -3,8 +3,13 @@ import { db } from "../../src/lib/db/index.js"
 import { clients, transactions } from "../../src/lib/db/schema.js"
 import { periodStart, type BudgetPeriod } from "../../src/lib/budget.js"
 import type { PeriodWindow } from "../../src/lib/budget-history.js"
+import { missingRateSql, reportingAmountSql } from "./tx-sql.js"
 
-export type PeriodSums = { daily: number; weekly: number; monthly: number; lifetime: number }
+export type PeriodCounts = { daily: number; weekly: number; monthly: number; lifetime: number }
+export type PeriodSums = PeriodCounts & {
+  /** Rows in each window that could NOT be converted into the target currency (no rate for their day). */
+  excluded?: PeriodCounts
+}
 
 /**
  * The inclusion predicates EVERY budget-spend query must share:
@@ -35,8 +40,20 @@ export function budgetSpendPredicates(orgId: string) {
   ]
 }
 
-/** +amount for an expense row, −amount for a refund row (the SQL twin of tx-classify.expenseContribution). */
+/** +amount for an expense row, −amount for a refund row (the SQL twin of tx-classify.expenseContribution) — NATIVE, unconverted. */
 export const budgetSpendSignedAmount = sql<string>`case when ${transactions.kind} = 'refund' then -${transactions.amount}::numeric else ${transactions.amount}::numeric end`
+
+/**
+ * The same signed amount converted AT THE ROW'S DATE into `target` (a budget's
+ * own currency, or the workspace's reporting currency for the v1 client caps).
+ * NULL when no rate is stored for that day — a sum skips it, so every caller
+ * also counts `budgetSpendMissingRate(target)` rows and reports them.
+ */
+export const budgetSpendSignedAmountIn = (target: string) =>
+  sql<string>`case when ${transactions.kind} = 'refund' then -${reportingAmountSql(target)} else ${reportingAmountSql(target)} end`
+
+/** "this spend row could not be converted into `target`" — for the excluded counts. */
+export const budgetSpendMissingRate = (target: string) => missingRateSql(target)
 
 // Per-client OUTGOING (expense) spend for each current budget window, in ONE grouped
 // query, so a budget of any period just reads its column. Spend is derived here — the
@@ -48,17 +65,27 @@ export const budgetSpendSignedAmount = sql<string>`case when ${transactions.kind
 // src/lib/wealth-ledger.ts reversesOnTrash); they are not spending. Without this
 // filter, zeroing a wallet registered as an expense and silently consumed the
 // budget. `api/_lib/quota.ts` already excludes them for the same reason.
-export async function outgoingByClient(orgId: string, now: Date): Promise<Map<string, PeriodSums>> {
+//
+// Every figure is in `reporting` (the workspace's reporting currency), each row
+// converted at its own date; rows with no rate are skipped and counted in
+// `excluded` per window so a cap is never judged against a silently partial total.
+export async function outgoingByClient(orgId: string, now: Date, reporting: string): Promise<Map<string, PeriodSums>> {
   const today = periodStart("daily", now)!
   const weekStart = periodStart("weekly", now)!
   const monthStart = periodStart("monthly", now)!
+  const signed = budgetSpendSignedAmountIn(reporting)
+  const missing = budgetSpendMissingRate(reporting)
   const rows = await db
     .select({
       clientId: transactions.clientId,
-      daily: sql<string>`coalesce(sum(${budgetSpendSignedAmount}) filter (where ${transactions.date} >= ${today}), 0)`,
-      weekly: sql<string>`coalesce(sum(${budgetSpendSignedAmount}) filter (where ${transactions.date} >= ${weekStart}), 0)`,
-      monthly: sql<string>`coalesce(sum(${budgetSpendSignedAmount}) filter (where ${transactions.date} >= ${monthStart}), 0)`,
-      lifetime: sql<string>`coalesce(sum(${budgetSpendSignedAmount}), 0)`,
+      daily: sql<string>`coalesce(sum(${signed}) filter (where ${transactions.date} >= ${today}), 0)`,
+      weekly: sql<string>`coalesce(sum(${signed}) filter (where ${transactions.date} >= ${weekStart}), 0)`,
+      monthly: sql<string>`coalesce(sum(${signed}) filter (where ${transactions.date} >= ${monthStart}), 0)`,
+      lifetime: sql<string>`coalesce(sum(${signed}), 0)`,
+      exDaily: sql<number>`count(*) filter (where ${transactions.date} >= ${today} and ${missing})::int`,
+      exWeekly: sql<number>`count(*) filter (where ${transactions.date} >= ${weekStart} and ${missing})::int`,
+      exMonthly: sql<number>`count(*) filter (where ${transactions.date} >= ${monthStart} and ${missing})::int`,
+      exLifetime: sql<number>`count(*) filter (where ${missing})::int`,
     })
     .from(transactions)
     .innerJoin(clients, eq(transactions.clientId, clients.id))
@@ -72,26 +99,41 @@ export async function outgoingByClient(orgId: string, now: Date): Promise<Map<st
       weekly: Number(r.weekly),
       monthly: Number(r.monthly),
       lifetime: Number(r.lifetime),
+      excluded: {
+        daily: Number(r.exDaily),
+        weekly: Number(r.exWeekly),
+        monthly: Number(r.exMonthly),
+        lifetime: Number(r.exLifetime),
+      },
     })
   }
   return map
 }
 
 export const spentFor = (sums: PeriodSums | undefined, period: BudgetPeriod): number => (sums ? sums[period] : 0)
+/** Rows the window's spend could not include (no rate) — 0 when everything converted. */
+export const excludedFor = (sums: PeriodSums | undefined, period: BudgetPeriod): number => sums?.excluded?.[period] ?? 0
 
 /**
  * OUTGOING spend bucketed into the given period windows, for a budget's spend-vs-budget
  * chart. Scoped to one client when `clientId` is set; when null it sums the whole
- * workspace (the personal org's single budget). Returns { windowStart: spent }.
+ * workspace (the personal org's single budget). Returns { windowStart: spent } in
+ * the reporting currency plus { windowStart: excludedCount } for the rows no rate
+ * could convert.
  */
 export async function spendForWindows(
   orgId: string,
   clientId: string | null,
   windows: PeriodWindow[],
-): Promise<Record<string, number>> {
-  const out: Record<string, number> = {}
-  for (const w of windows) out[w.start] = 0
-  if (!windows.length) return out
+  reporting: string,
+): Promise<{ spent: Record<string, number>; excluded: Record<string, number> }> {
+  const spent: Record<string, number> = {}
+  const excluded: Record<string, number> = {}
+  for (const w of windows) {
+    spent[w.start] = 0
+    excluded[w.start] = 0
+  }
+  if (!windows.length) return { spent, excluded }
 
   const first = windows[0].start
   const lastEnd = windows[windows.length - 1].endExclusive
@@ -103,7 +145,7 @@ export async function spendForWindows(
   if (clientId) conds.push(eq(transactions.clientId, clientId))
 
   const rows = await db
-    .select({ date: transactions.date, amount: budgetSpendSignedAmount })
+    .select({ date: transactions.date, amount: budgetSpendSignedAmountIn(reporting) })
     .from(transactions)
     .innerJoin(clients, eq(transactions.clientId, clients.id))
     .where(and(...conds))
@@ -111,10 +153,11 @@ export async function spendForWindows(
   for (const r of rows) {
     for (const w of windows) {
       if (r.date >= w.start && r.date < w.endExclusive) {
-        out[w.start] += Number(r.amount)
+        if (r.amount === null || r.amount === undefined) excluded[w.start] += 1
+        else spent[w.start] += Number(r.amount)
         break
       }
     }
   }
-  return out
+  return { spent, excluded }
 }

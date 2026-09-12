@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ProfitSync — Multi-currency</title>
+<style>
+  @page { size: A4; margin: 16mm 14mm; }
+  :root { --ink:#111827; --muted:#6b7280; --line:#e5e7eb; --accent:#0f766e; --warn:#b45309; --bad:#b91c1c; --good:#15803d; }
+  * { box-sizing: border-box; }
+  body { margin:0; font: 10.5pt/1.55 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; color: var(--ink); }
+  h1 { font-size: 25pt; line-height:1.15; margin: 0 0 6pt; letter-spacing:-0.02em; }
+  h2 { font-size: 14pt; margin: 22pt 0 7pt; padding-bottom:4pt; border-bottom:2px solid var(--ink); letter-spacing:-0.01em; }
+  h3 { font-size: 11.5pt; margin: 14pt 0 4pt; }
+  p { margin: 0 0 8pt; }
+  ul, ol { margin: 0 0 8pt; padding-left: 17pt; }
+  li { margin-bottom: 3pt; }
+  code, pre { font-family: "SF Mono", Consolas, "Liberation Mono", monospace; font-size: 9pt; }
+  code { background:#f3f4f6; padding:1px 4px; border-radius:3px; }
+  pre { background:#f8fafc; border:1px solid var(--line); border-left:3px solid var(--accent); padding:8pt 10pt; border-radius:4px; overflow:visible; white-space:pre-wrap; margin:0 0 10pt; }
+  .lede { font-size: 12pt; color:#374151; margin-bottom: 14pt; }
+  .meta { color: var(--muted); font-size: 9pt; border-top:1px solid var(--line); padding-top:7pt; margin-top:2pt; }
+  table { width:100%; border-collapse: collapse; margin: 0 0 10pt; font-size: 9.5pt; }
+  th, td { text-align:left; padding:5pt 7pt; border-bottom:1px solid var(--line); vertical-align: top; }
+  th { background:#f9fafb; font-weight:600; }
+  figure { margin: 10pt 0 14pt; page-break-inside: avoid; }
+  figure img { width:100%; border:1px solid var(--line); border-radius:5px; display:block; }
+  figure.narrow img { width:62%; margin:0 auto; }
+  figcaption { font-size: 8.8pt; color: var(--muted); margin-top: 5pt; }
+  .box { border:1px solid var(--line); border-left:3px solid var(--accent); background:#f8fafc; padding:9pt 11pt; border-radius:4px; margin:0 0 11pt; }
+  .box.warn { border-left-color: var(--warn); background:#fffbeb; }
+  .box.bad { border-left-color: var(--bad); background:#fef2f2; }
+  .box h3 { margin-top:0; }
+  .pill { display:inline-block; font-size:8pt; font-weight:600; padding:1.5pt 6pt; border-radius:99px; background:#ecfdf5; color:var(--good); border:1px solid #a7f3d0; }
+  .pill.todo { background:#fffbeb; color:var(--warn); border-color:#fde68a; }
+  .page-break { page-break-before: always; }
+  .kv { display:grid; grid-template-columns: 34% 66%; gap:0; font-size:9.5pt; }
+  .kv div { padding:4pt 0; border-bottom:1px solid var(--line); }
+  .kv div:nth-child(odd) { color:var(--muted); }
+  .cols { display:grid; grid-template-columns:1fr 1fr; gap:0 18pt; }
+</style>
+</head>
+<body>
+
+<h1>Multi-currency accounts, wealth&nbsp;and transfers</h1>
+<p class="lede">One workspace, many currencies. Every account keeps its own money; every total says what it is worth, at which rate, and what it had to leave out.</p>
+<p class="meta">
+  ProfitSync · 10 September 2026 · working copy <code>C:\Dev\ProfitSync-Codex</code> (branch <code>dev</code>, uncommitted)<br>
+  Verified on <code>npm run dev</code> · full pre-commit gate and production build green · 925 unit tests across 78 files
+</p>
+
+<h2>1. What a user gets</h2>
+<p>A person with money in Italy and India adds a euro account and a rupee account to the same workspace. Nothing else about the app changes: the euro account is in euros, the rupee account is in rupees, and the totals are in whichever currency they chose to read in.</p>
+
+<figure>
+  <img src="screenshots/01-wealth-by-currency.png" alt="The wealth screen: net worth in dollars, a by-currency card listing USD, EUR and INR with rates and shares, and account tiles each in their own currency with an approximate value beneath.">
+  <figcaption><strong>Figure 1 — Wealth.</strong> Net worth is the consolidated figure. The <em>By currency</em> card gives each currency's native total, its approximate value, the rate used and the date, and its share of assets. Every account tile shows its native balance, with <code>≈</code> underneath only when it differs from the reporting currency. Rupee amounts are grouped the Indian way.</figcaption>
+</figure>
+
+<div class="box">
+  <h3>The one rule everything follows</h3>
+  <p style="margin:0">A native balance is a <strong>fact</strong>. ₹75,000 stays ₹75,000 tomorrow. A converted value is an <strong>approximation</strong> at a stated rate on a stated date, and the screen says so in words. If a currency has no rate, it is listed natively and <strong>excluded</strong> from the total, with the exclusion named. Nothing is ever silently counted as 1:1.</p>
+</div>
+
+<h2>2. Adding money in a foreign account</h2>
+<p>The transaction form follows the account you pick. Choose the rupee wallet and the amount field asks for rupees; every account in the list shows its own balance in its own currency.</p>
+
+<figure>
+  <img src="screenshots/02-add-transaction-native.png" alt="The Add Transaction dialog with the rupee wallet selected: the amount field shows a rupee sign and each account tile shows its own currency.">
+  <figcaption><strong>Figure 2 — Add Transaction (personal workspace).</strong> The amount carries <strong>₹</strong> because the rupee wallet is selected. Cash in Hand reads $897.00, the euro wallet €900.00, the rupee wallet ₹85,000.00. The transaction is stored in the account's currency, and the ledger keeps that currency forever.</figcaption>
+</figure>
+
+<div class="box warn">
+  <h3>A split stays in one currency</h3>
+  <p style="margin:0">A split is one purchase paid from several accounts, so it is one amount — and amounts in different currencies cannot be added. Picking a second account in another currency is refused with <em>“Same currency as USD only”</em> rather than producing a meaningless total.</p>
+</div>
+
+<figure class="narrow">
+  <img src="screenshots/04-split-same-currency.png" alt="The split view of the account picker, with an account in another currency greyed out and labelled Same currency as USD only.">
+  <figcaption><strong>Figure 3 — Split, guarded.</strong> Cash in Hand (USD) is chosen, so both foreign wallets dim and say <em>“Same currency as USD only”</em> — the rule explains itself on the tile instead of failing at save.</figcaption>
+</figure>
+
+<h2 class="page-break">3. Moving money between currencies</h2>
+<p>The transfer form asks what leaves and what arrives. It fills the arrival in for you at today's market rate, and then gets out of the way: banks rarely give the market rate, so the moment you edit the figure it is yours, and what the ledger stores is what you actually received.</p>
+
+<figure>
+  <img src="screenshots/03-transfer-auto-rate.png" alt="The transfer dialog: euro source, rupee destination, amount 100, received field filled with 11082.25, and a line reading 1 EUR = 110.82 rupees.">
+  <figcaption><strong>Figure 4 — Cross-currency transfer.</strong> €100 proposes ₹11,082.25 at <em>1 EUR = ₹110.82</em>, labelled <em>“Suggested at today's rate — change it if your bank gave you a different one.”</em> The fee field is in the source currency.</figcaption>
+</figure>
+
+<h3>What a transfer does to the books</h3>
+<table>
+  <tr><th>Event</th><th>Source</th><th>Destination</th><th>Income</th><th>Expense</th><th>Net worth</th></tr>
+  <tr><td>€300 → €300, same currency</td><td>−€300</td><td>+€300</td><td>0</td><td>0</td><td>unchanged</td></tr>
+  <tr><td>€500 → ₹51,350, no fee</td><td>−€500</td><td>+₹51,350</td><td>0</td><td>0</td><td>≈ unchanged</td></tr>
+  <tr><td>€500 → ₹51,350, €5 fee</td><td>−€505</td><td>+₹51,350</td><td>0</td><td><strong>€5</strong></td><td>−€5</td></tr>
+  <tr><td>Reversal of the above</td><td>+€505</td><td>−₹51,350</td><td>0</td><td>fee refunded</td><td>restored</td></tr>
+  <tr><td>Scheduled, not yet done</td><td>—</td><td>—</td><td>0</td><td>0</td><td>unchanged</td></tr>
+</table>
+<p>The principal is never spending. Only the fee is. Both native amounts and the rate actually obtained are stored on the transfer and never recalculated from a later rate.</p>
+
+<h2>4. Reports</h2>
+<p>Every report converts <strong>each row at its own date</strong>, not at today's rate, so a chart of last year does not move when the rate moves this morning. Each response names the currency it is in and how many rows it could not convert; the screen says so in one calm line rather than under-reporting in silence.</p>
+
+<div class="cols">
+  <figure><img src="screenshots/05-dashboard.png" alt="Dashboard"><figcaption><strong>Figure 5 — Dashboard.</strong></figcaption></figure>
+  <figure><img src="screenshots/06-analytics.png" alt="Analytics"><figcaption><strong>Figure 6 — Analytics.</strong></figcaption></figure>
+  <figure><img src="screenshots/07-budgets.png" alt="Budgets"><figcaption><strong>Figure 7 — Budgets.</strong></figcaption></figure>
+  <figure><img src="screenshots/08-money-flow.png" alt="Money flow"><figcaption><strong>Figure 8 — Money flow.</strong></figcaption></figure>
+</div>
+
+<h2 class="page-break">5. How it is built</h2>
+<div class="kv">
+  <div>Account currency</div><div><code>wealth_accounts.currency_code</code> — set at creation, locked once the account has history</div>
+  <div>Row currency</div><div><code>transactions.currency_code</code> — snapshotted from the account on every write</div>
+  <div>Reporting currency</div><div><code>organizations.reporting_currency</code>; <code>currency</code> stays as the compatibility alias</div>
+  <div>Rates</div><div><code>fx_rate_snapshots</code> — one row per pair per day, with provider and source; weekends carried forward and flagged</div>
+  <div>Providers</div><div>Frankfurter (European Central Bank, has history) then open.er-api for pairs the ECB does not publish, such as AED and SAR</div>
+  <div>Conversion</div><div>SQL functions <code>fx_rate_on()</code> and <code>reporting_amount()</code> (migration 0074), so every aggregate converts per row without a join</div>
+  <div>Transfers</div><div><code>transfers</code> — one logical row above the two legs, holding both native amounts, the effective rate and the fee</div>
+  <div>Arithmetic</div><div><code>decimal.js</code> throughout the money paths; no binary floating point in the ledger</div>
+</div>
+
+<h3>New API</h3>
+<table>
+  <tr><th>Route</th><th>What it does</th></tr>
+  <tr><td><code>GET /api/wealth/summary</code></td><td>Native totals per currency, converted equivalents, net worth, rate dates, <code>complete</code> and <code>excluded_currencies</code></td></tr>
+  <tr><td><code>GET /api/fx/rate?from=&amp;to=</code></td><td>Today's market rate for one pair; 404 when none exists, so the form just asks for both amounts</td></tr>
+  <tr><td><code>GET /api/wealth/transfers</code></td><td>Planned and pending transfers (and completed on request)</td></tr>
+  <tr><td><code>PATCH /api/wealth/transfers/:id</code></td><td>planned → pending → completed, or cancelled</td></tr>
+  <tr><td><code>POST /api/wealth/transfers/:id/reverse</code></td><td>Reverses a completed transfer once, using its own stored amounts</td></tr>
+</table>
+
+<h3>Privacy</h3>
+<p>A rate provider receives a currency pair and a date. It never receives an amount, an account name or a description. Conversion happens inside ProfitSync or in the database.</p>
+
+<h2>6. What Maqbool needs to do</h2>
+<ol>
+  <li><strong>Nothing is committed.</strong> The work sits in <code>C:\Dev\ProfitSync-Codex</code>. <code>C:\Dev\ProfitSync</code> is untouched.</li>
+  <li><strong>Migrations 0069–0074 are already applied to the shared dev database.</strong> Do not re-run them. <span class="pill">done</span></li>
+  <li><strong>Check the migration journal before merging anything else.</strong> These entries carry <code>when</code> values from <code>1788980400000</code> up. A branch whose migration has a lower value will be <em>silently skipped</em> on a database that already ran these — the Debt &amp; Loans branch is the one to check. <span class="pill todo">action</span></li>
+  <li><strong>Native parity has not been run</strong> — <code>npm run cap:sync:android</code> and <code>npm run cap:sync:ios</code>. <span class="pill todo">action</span></li>
+  <li><strong>Suggested commit split</strong>, in order: currency and FX foundations; native currency on every financial write; cross-currency transfers, fees and lifecycle; conversion-aware reports; multi-currency UI and localisation; docs and end-to-end coverage.</li>
+</ol>
+
+<div class="box bad">
+  <h3>Two behaviours worth a decision</h3>
+  <p><strong>A reversed transfer cannot be trashed.</strong> By design: trashing one half of a reversal pair would leave balances wrong. The consequence is that an account which took part in one can only be archived, never deleted. Reasonable for an audit trail, but it is a product choice, not an accident.</p>
+  <p style="margin:0"><strong>Extra cash wallets used to be undeletable.</strong> The old guard refused to delete <em>any</em> cash account, which was correct when a workspace had exactly one. Now that a workspace can hold one wallet per currency, only the auto-provisioned “Cash in Hand” is permanent. Fixed here.</p>
+</div>
+
+<h2>7. Verification</h2>
+<table>
+  <tr><th>Check</th><th>Result</th></tr>
+  <tr><td>Type check, lint, secret scan, route guards</td><td>pass</td></tr>
+  <tr><td>Unit tests</td><td>925 passed across 78 files</td></tr>
+  <tr><td>Translations, cache map, ESM extensions, function boot</td><td>pass</td></tr>
+  <tr><td>Production build</td><td>pass</td></tr>
+  <tr><td><code>e2e/multi-currency.spec.ts</code> against localhost</td><td>7 passed</td></tr>
+  <tr><td>Personal-workspace walkthrough</td><td>5 passed</td></tr>
+  <tr><td>Existing smoke, alerts and budgets suites</td><td>pass, except one pre-existing failure below</td></tr>
+</table>
+<p><code>e2e/smoke.spec.ts</code> “create a client” fails because its locator finds the hidden floating-action-button item named “Add Client” before the visible “New Client” button. It fails identically on the untouched original repository, so it predates this work.</p>
+
+<h3>What the money tests pin</h3>
+<ul>
+  <li>An account's native balance does not move when a rate moves.</li>
+  <li>A cross-currency transfer keeps both native amounts and its own effective rate.</li>
+  <li>The fee is the only expense; the principal is never spending; a transfer is never income.</li>
+  <li>Reversal restores both sides exactly once and refuses a second time.</li>
+  <li>A planned or cancelled transfer moves no money; completing one moves it exactly once.</li>
+  <li>Net worth is the sum of converted balances, never of raw numbers across currencies.</li>
+</ul>
+
+<h2>8. Not built yet</h2>
+<ul>
+  <li><strong>Destination-side fees.</strong> Only a source-side fee is modelled.</li>
+  <li><strong>Historical net-worth chart.</strong> The per-day rate snapshots exist; no chart values balances at each point's own date yet.</li>
+  <li><strong>Currency-movement attribution</strong> — separating “I saved” from “the rate moved”. Designed for, not built.</li>
+  <li><strong>Cross-currency recurring transfers</strong> are refused with a clear message until they carry an explicit rate policy.</li>
+  <li><strong>A foreign key on <code>clients.organization_id</code></strong>, which has none; the dev database holds ten orphaned client rows. Unrelated to this feature.</li>
+</ul>
+
+<p class="meta">Companion documents: <code>docs/multi-currency/HANDOFF_PROMPT.md</code> (paste into a fresh Claude Code session), <code>docs/multi-currency/ARCHITECTURE.md</code> (design and invariants), <code>docs/multi-currency/STATUS.md</code> (per-writer audit).</p>
+
+</body>
+</html>

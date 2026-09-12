@@ -3,7 +3,8 @@ import { and, eq, isNull } from "drizzle-orm"
 import { db } from "../../../src/lib/db/index.js"
 import { budgets, budgetHistory, clients } from "../../../src/lib/db/schema.js"
 import { requireAuth, isPersonalAccount } from "../../_lib/auth.js"
-import { outgoingByClient, spentFor } from "../../_lib/budget-spend.js"
+import { excludedFor, outgoingByClient, spentFor } from "../../_lib/budget-spend.js"
+import { ensureRatesForOrg, reportingCurrencyFor } from "../../_lib/fx-rates.js"
 import { isBudgetPeriod, todayUtc, type BudgetPeriod } from "../../../src/lib/budget.js"
 import { listBudgets, primaryBudget, toV1Period } from "../../_lib/spending-budgets.js"
 import { detectCreep, seriesState, type BudgetAction, type HistoryRow } from "../../../src/lib/budget-history.js"
@@ -35,6 +36,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           period: toV1Period(primary.period),
           amount: primary.amount,
           spent: primary.spent,
+          currency: primary.currency,
+          excluded_count: primary.excluded_count,
           state: seriesState(primary.spent, primary.amount),
           ratio: primary.amount > 0 ? primary.spent / primary.amount : null,
           creep_flagged: false,
@@ -44,6 +47,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.json({
       budgets: items,
       account_type: ctx.accountType,
+      currency: primary?.currency ?? (await reportingCurrencyFor(orgId)),
+      excluded_count: primary?.excluded_count ?? 0,
       aggregate: {
         total_budget: primary?.amount ?? 0,
         total_spent: primary?.spent ?? 0,
@@ -55,11 +60,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     })
   }
 
+  // Every cap is judged in the workspace's reporting currency (rows converted
+  // at their own date); what could not be converted is counted, never summed raw.
+  const reporting = await reportingCurrencyFor(orgId)
+  await ensureRatesForOrg(orgId, reporting).catch(() => undefined)
   const [rows, clientRows, historyRows, byClient] = await Promise.all([
     db.select().from(budgets).where(eq(budgets.organizationId, orgId)),
     db.select({ id: clients.id, name: clients.name, isOwn: clients.isOwn }).from(clients).where(and(eq(clients.organizationId, orgId), isNull(clients.deletedAt))),
     db.select().from(budgetHistory).where(eq(budgetHistory.organizationId, orgId)),
-    outgoingByClient(orgId, now),
+    outgoingByClient(orgId, now, reporting),
   ])
 
   const nameById = new Map(clientRows.map((c) => [c.id, c.name]))
@@ -94,6 +103,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Spend: per-client → that client; personal org-level (null) → whole workspace;
     // business default template (null) → null (no single spend number).
     const spent = b.clientId ? spentFor(byClient.get(b.clientId), period) : personal ? orgTotals[period] : null
+    const excluded_count = b.clientId ? excludedFor(byClient.get(b.clientId), period) : 0
     const ratio = spent !== null && amount > 0 ? spent / amount : null
     const creep = detectCreep(histByKey.get(KEY(b.clientId)) ?? [])
     return {
@@ -105,6 +115,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       period,
       amount,
       spent,
+      currency: reporting,
+      excluded_count,
       state: spent !== null ? seriesState(spent, amount) : "none",
       ratio,
       creep_flagged: creep.flagged,
@@ -123,6 +135,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   return res.json({
     budgets: out,
     account_type: ctx.accountType,
+    currency: reporting,
+    excluded_count: out.reduce((s, b) => s + b.excluded_count, 0),
     aggregate: {
       total_budget: totalBudget,
       total_spent: totalSpent,

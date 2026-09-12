@@ -29,13 +29,17 @@ import {
 import { useCurrency } from "@/lib/currency-context"
 import { useOrg } from "@/lib/org-context"
 import { useDataRefresh } from "@/lib/data-refresh-context"
-import { accountBalanceLabel, accountDisplayName, formatMoney, useBalancePrivacy, useWealthOverviewCollapsed, useWealthSummary } from "@/lib/wealth"
+import { accountBalanceLabel, accountCurrency, accountDisplayName, formatMoney, useBalancePrivacy, useWealthOverviewCollapsed, useWealthSummary } from "@/lib/wealth"
+import { ApproxBalance } from "@/components/wealth/ApproxBalance"
+import { liquidFromSummary, useConsolidatedWealth } from "@/components/wealth/use-consolidated-wealth"
 import { creditUsage, isLiabilityType } from "@/lib/credit-card"
 import { useCardMap, useCards } from "@/lib/use-cards"
 import { CardChip } from "@/components/cards/CardChip"
 import { WealthAccountIcon } from "@/components/WealthAccountIcon"
 import { BusinessBudgetCard } from "@/components/budget/BusinessBudgetCard"
 import { BudgetsCard } from "@/components/budget/BudgetsCard"
+import { FxExcludedNotice } from "@/components/FxExcludedNotice"
+import { reportingAmountOf, rowCurrency, sumInReporting } from "@/lib/reporting-fields"
 import { FeatureHelp } from "@/components/help/FeatureHelp"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { FitText } from "@/components/FitText"
@@ -515,7 +519,7 @@ function LatestTransactionsCard({
                       incoming ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"
                     }`}
                   >
-                    {incoming ? "+" : "−"}{formatCurrency(Number(tx.amount), currency)}
+                    {incoming ? "+" : "−"}{formatCurrency(Number(tx.amount), rowCurrency(tx, currency))}
                   </p>
                 </button>
               )
@@ -543,11 +547,20 @@ function WealthOverview({
   // "Total available" is the money the user HOLDS (cash + bank). Credit-card
   // debt is shown separately as "Owed on cards" — available credit is never
   // counted as money (src/lib/wealth.ts summarizeWealth).
-  const { active, liquid, liabilities } = useWealthSummary(accounts)
-  const total = liquid
+  const { active, liquid: localLiquid, liabilities: localLiabilities } = useWealthSummary(accounts)
+  // The server's consolidated figures (every account converted into the
+  // reporting currency) once they land; the browser sum until then. For a
+  // single-currency workspace both are the same numbers, so nothing jumps.
+  const { summary, byAccount } = useConsolidatedWealth(!loading)
+  const reporting = summary?.reporting_currency ?? currency
+  const total = summary ? liquidFromSummary(summary) : localLiquid
+  const liabilities = summary ? summary.liabilities : localLiabilities
+  const partial = !!summary && !summary.complete
   // Cards (open ones): a count + what the credit cards owe, linking to the Cards tab.
   const { cards } = useCards()
-  const cardsOwed = cards.reduce((sum, c) => (c.kind === "credit" ? sum + creditUsage(c.account_credit_limit, c.account_current_balance).debt : sum), 0)
+  const localCardsOwed = cards.reduce((sum, c) => (c.kind === "credit" ? sum + creditUsage(c.account_credit_limit, c.account_current_balance).debt : sum), 0)
+  // Every liability account is a credit card, so the summary's liabilities ARE what the cards owe.
+  const cardsOwed = summary ? summary.liabilities : localCardsOwed
   const hasCreditCard = cards.some((c) => c.kind === "credit")
   // Glides account tiles into place when one is added, removed, or reordered.
   const [gridRef] = useAutoAnimate<HTMLDivElement>()
@@ -568,7 +581,7 @@ function WealthOverview({
     negative: { dot: "bg-red-500", label: t("wealth.healthNegative") },
   }[health]
   const balanceOf = (a: WealthAccount) =>
-    accountBalanceLabel(a, currency, balancesVisible, {
+    accountBalanceLabel(a, accountCurrency(a, currency), balancesVisible, {
       owed: (amount) => t("wealth.owed", { amount }),
       credit: (amount) => t("wealth.cardCredit", { amount }),
       nothingOwed: t("wealth.nothingOwed"),
@@ -642,8 +655,14 @@ function WealthOverview({
                     )}
                   </p>
                   <FitText className="mt-1" textClassName="text-2xl sm:text-3xl font-bold tabular-nums">
-                    {formatMoney(total, currency, balancesVisible)}
+                    {formatMoney(total, reporting, balancesVisible)}
                   </FitText>
+                  {/* A total that leaves a currency out must say so beside the number. */}
+                  {partial && (
+                    <p className="mt-1 text-[11px] font-medium text-amber-700 dark:text-amber-300">
+                      {t("wealth.excludesCurrencies", { currencies: summary.excluded_currencies.join(", ") })}
+                    </p>
+                  )}
                   {/* Card debt is money that has to go back out, so it is
                       red — the one figure on this card that works AGAINST the
                       total above it. Red whenever the "owed" wording shows, in
@@ -651,7 +670,7 @@ function WealthOverview({
                       whether anything is owed once the amount is masked. */}
                   {liabilities > 0 && (
                     <p className="mt-1 text-xs font-medium tabular-nums text-red-600 dark:text-red-400">
-                      {t("wealth.owedOnCards")}: {formatMoney(liabilities, currency, balancesVisible)}
+                      {t("wealth.owedOnCards")}: {formatMoney(liabilities, reporting, balancesVisible)}
                     </p>
                   )}
                 </div>
@@ -699,7 +718,7 @@ function WealthOverview({
                     }`}
                   >
                     {cardsOwed > 0 || !balancesVisible
-                      ? t("dashboard.cardsOwed", { amount: formatMoney(cardsOwed, currency, balancesVisible) })
+                      ? t("dashboard.cardsOwed", { amount: formatMoney(cardsOwed, reporting, balancesVisible) })
                       : t("dashboard.cardsNothingOwed")}
                   </span>
                 )}
@@ -745,8 +764,11 @@ function WealthOverview({
                       </div>
                       <div className="flex shrink-0 items-center gap-1">
                         {flagNegative && <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-red-500" />}
-                        <span className={`text-sm font-semibold tabular-nums ${flagNegative ? "text-red-600 dark:text-red-400" : ""}`}>
-                          {balanceOf(account)}
+                        <span className="text-end">
+                          <span className={`block text-sm font-semibold tabular-nums ${flagNegative ? "text-red-600 dark:text-red-400" : ""}`}>
+                            {balanceOf(account)}
+                          </span>
+                          <ApproxBalance account={byAccount.get(account.id)} reportingCurrency={summary?.reporting_currency} visible={balancesVisible} className="justify-end text-[11px]" />
                         </span>
                         <ChevronRight className="size-4 text-muted-foreground transition-transform duration-200 group-hover:translate-x-0.5" />
                       </div>
@@ -1081,8 +1103,15 @@ export function Dashboard() {
     [transactions, selectedClientIds, selectedCategories, isPersonal],
   )
 
-  const displayIncoming = filteredTx.reduce((s, t) => (t.type === "incoming" ? s + Number(t.amount) : s), 0)
-  const displayOutgoing = filteredTx.reduce((s, t) => (t.type === "outgoing" ? s + Number(t.amount) : s), 0)
+  // Rows are NATIVE (their account's currency); the KPIs add each row's
+  // `reporting_amount` — converted server-side at the row's date into the
+  // workspace currency — and COUNT the rows that had no rate rather than add
+  // them raw. `currency` (the org's) is the reporting currency.
+  const incomingSum = sumInReporting(filteredTx, currency, (t) => t.type === "incoming")
+  const outgoingSum = sumInReporting(filteredTx, currency, (t) => t.type === "outgoing")
+  const displayIncoming = incomingSum.total
+  const displayOutgoing = outgoingSum.total
+  const fxExcluded = incomingSum.excluded + outgoingSum.excluded
   const netProfit = displayIncoming - displayOutgoing
   const profitMargin = displayIncoming > 0 ? ((netProfit / displayIncoming) * 100).toFixed(1) : "0"
   const filtersActive = selectedClientIds.size > 0 || selectedCategories.size > 0
@@ -1115,13 +1144,18 @@ export function Dashboard() {
       const key = isPersonal ? catKey(tx) : tx.client_id
       const name = isPersonal ? catLabel(catKey(tx)) : clientsById.get(tx.client_id)?.name ?? "—"
       const b = m.get(key) ?? { key, name, incoming: 0, outgoing: 0 }
-      if (tx.type === "incoming") b.incoming += Number(tx.amount)
-      else b.outgoing += Number(tx.amount)
+      // In the reporting currency, like the KPIs; a row with no rate is left out
+      // (it is already counted in fxExcluded).
+      const v = reportingAmountOf(tx, currency)
+      if (v !== null) {
+        if (tx.type === "incoming") b.incoming += v
+        else b.outgoing += v
+      }
       m.set(key, b)
     }
     return [...m.values()]
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filteredTx, isPersonal, clientsById])
+  }, [filteredTx, isPersonal, clientsById, currency])
 
   // Cap the chart to the top 10 by combined volume so it stays readable (the
   // full breakdown lives on Analytics, reachable via "View all"). Respects the
@@ -1140,6 +1174,7 @@ export function Dashboard() {
   // ── Card registry: every dashboard section by stable id (custom layout) ────
   const cardNodes: Record<DashboardCardId, ReactNode | null> = {
     kpis: (
+      <div className="space-y-2">
       <div className="grid gap-2.5 sm:gap-4 grid-cols-2 lg:grid-cols-4">
         <StatCard
           loading={loading}
@@ -1190,6 +1225,8 @@ export function Dashboard() {
             hint={t("dashboard.totalClients", { count: realClients.length })}
           />
         )}
+      </div>
+      {!loading && <FxExcludedNotice count={fxExcluded} />}
       </div>
     ),
     // A personal workspace shows its spending budgets; a business workspace

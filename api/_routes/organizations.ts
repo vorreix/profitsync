@@ -48,7 +48,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         slug: organizations.slug,
         isPersonal: organizations.isPersonal,
         accountType: organizations.accountType,
-        currency: organizations.currency,
+        // `currency` remains the native-client compatibility name for the
+        // reporting preference; it no longer describes every account.
+        currency: sql<string>`coalesce(${organizations.reportingCurrency}, ${organizations.currency})`,
+        reportingCurrency: sql<string>`coalesce(${organizations.reportingCurrency}, ${organizations.currency})`,
         logoData: organizations.logoData,
         logoMime: organizations.logoMime,
         createdAt: organizations.createdAt,
@@ -96,7 +99,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         slug: organizations.slug,
         isPersonal: organizations.isPersonal,
         accountType: organizations.accountType,
-        currency: organizations.currency,
+        currency: sql<string>`coalesce(${organizations.reportingCurrency}, ${organizations.currency})`,
+        reportingCurrency: sql<string>`coalesce(${organizations.reportingCurrency}, ${organizations.currency})`,
         createdAt: organizations.createdAt,
         updatedAt: organizations.updatedAt,
         role: sql<string>`'owner'`,

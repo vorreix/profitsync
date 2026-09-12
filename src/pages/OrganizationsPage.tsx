@@ -363,10 +363,10 @@ export function OrganizationsPage() {
               )}
             </div>
             <div className="space-y-1.5">
-              <Label>{t("organizations.currency")}</Label>
+              <Label>{t("organizations.reportingCurrency")}</Label>
               <CurrencyCombobox value={editCurrency} onValueChange={setEditCurrency} disabled={saving} />
               <p className="text-[11px] text-muted-foreground">
-                {t("organizations.currencyUsedForFormatting")}
+                {t("organizations.reportingCurrencyHint")}
               </p>
             </div>
           </div>

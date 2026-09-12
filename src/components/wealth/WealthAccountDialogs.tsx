@@ -5,7 +5,7 @@ import { toast } from "sonner"
 import { apiPatch } from "@/lib/api"
 import { amountExceedsLimit } from "@/lib/money"
 import type { WealthAccount } from "@/lib/types"
-import { currencySymbol } from "@/lib/wealth"
+import { accountCurrency, currencySymbol } from "@/lib/wealth"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
@@ -16,6 +16,7 @@ import { type BankFormState, bankDetailsPayload, bankFormFromAccount, emptyBankF
 import { CreditCardFormFields } from "@/components/wealth/CreditCardFormFields"
 import { type CardFormState, cardEditPayload, cardFormFromAccount, emptyCardForm } from "@/lib/card-form"
 import { cardDebt, isLiabilityType, isValidDayOfMonth } from "@/lib/credit-card"
+import { CurrencyCombobox } from "@/components/CurrencyCombobox"
 
 // Re-exported for back-compat (was defined here originally).
 export { IconSelect } from "@/components/wealth/icon-select"
@@ -50,7 +51,11 @@ export function WealthAccountDialogs({
   const [editForm, setEditForm] = useState<EditForm>(emptyBankForm)
   const [cardForm, setCardForm] = useState<CardFormState>(emptyCardForm)
   const [adjustBalance, setAdjustBalance] = useState("")
-  const symbol = currencySymbol(currency)
+  const [editCurrency, setEditCurrency] = useState(currency)
+  // Symbols follow the ACCOUNT being edited/adjusted, not the workspace: a USD
+  // account's balance is typed in dollars even inside a EUR workspace.
+  const symbol = currencySymbol(accountCurrency(editing, currency))
+  const adjustSymbol = currencySymbol(accountCurrency(adjusting, currency))
   const adjustingCard = !!adjusting && isLiabilityType(adjusting.type)
 
   useEffect(() => {
@@ -60,11 +65,12 @@ export function WealthAccountDialogs({
         icon: editing.icon || (editing.type === "cash" ? "wallet" : "bank"),
       }))
       if (isLiabilityType(editing.type)) setCardForm(cardFormFromAccount(editing))
+      setEditCurrency(editing.currency_code ?? currency)
       // Re-arm: the dialogs stay mounted between opens, so a request left in
       // flight when the user closed one must not freeze the button on reopen.
       setSaving(false)
     }
-  }, [editing])
+  }, [editing, currency])
 
   useEffect(() => {
     if (adjusting) {
@@ -116,6 +122,7 @@ export function WealthAccountDialogs({
       bankName: editForm.bank_name.trim(),
       nickname: editForm.nickname.trim(),
       icon: editForm.icon,
+      currency_code: editCurrency,
     }
     // Banking details only apply to bank accounts.
     if (editing.type === "bank") Object.assign(body, bankDetailsPayload(editForm))
@@ -129,6 +136,15 @@ export function WealthAccountDialogs({
           <DialogHeader className="shrink-0 border-b px-6 pb-3 pt-6"><DialogTitle>{t("editAccount")}</DialogTitle></DialogHeader>
           {editing && (
             <div className="min-h-0 flex-1 overflow-y-auto scrollbar-thin px-6 py-4">
+              {!isLiabilityType(editing.type) && (
+                <div className="mb-4 space-y-1.5">
+                  <Label>{t("accountCurrency")}</Label>
+                  <CurrencyCombobox value={editCurrency} onValueChange={setEditCurrency} disabled={(editing.transaction_count ?? 0) > 0 || saving} />
+                  {(editing.transaction_count ?? 0) > 0 && (
+                    <p className="text-xs text-muted-foreground">{t("accountCurrencyLocked", { currency: editing.currency_code ?? currency })}</p>
+                  )}
+                </div>
+              )}
               {editing.type === "cash" ? (
                 <div className="space-y-4">
                   <div className="space-y-1.5">
@@ -162,7 +178,7 @@ export function WealthAccountDialogs({
         <DialogContent className="sm:max-w-sm">
           <DialogHeader><DialogTitle>{adjustingCard ? t("amountOwed") : t("adjustBalance")}</DialogTitle></DialogHeader>
           <div className="space-y-2 py-2">
-            <Label htmlFor="adjust-balance">{adjustingCard ? t("amountOwedLabel", { symbol }) : `${t("newBalance")} (${symbol})`}</Label>
+            <Label htmlFor="adjust-balance">{adjustingCard ? t("amountOwedLabel", { symbol: adjustSymbol }) : `${t("newBalance")} (${adjustSymbol})`}</Label>
             <Input id="adjust-balance" type="number" inputMode="decimal" step="0.01" min={adjustingCard ? "0" : undefined} value={adjustBalance} onChange={(e) => setAdjustBalance(e.target.value)} />
             <p className="text-xs text-muted-foreground">{t("adjustHint")}</p>
           </div>

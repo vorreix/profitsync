@@ -8,6 +8,8 @@ import { apiGet } from "@/lib/api"
 import { useDataRefresh } from "@/lib/data-refresh-context"
 import { useCurrency } from "@/lib/currency-context"
 import { formatMoney } from "@/lib/wealth"
+import { excludedCountOf, reportingCurrencyOf, rowCurrency } from "@/lib/reporting-fields"
+import { FxExcludedNotice } from "@/components/FxExcludedNotice"
 import { cn } from "@/lib/utils"
 import { useCardMap } from "@/lib/use-cards"
 import { CardChip } from "@/components/cards/CardChip"
@@ -17,8 +19,15 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 
-type DayAgg = { date: string; incoming: number; outgoing: number; count: number }
-type CalendarResponse = { days: DayAgg[]; summary: { incoming: number; outgoing: number; count: number } }
+// Figures are in `currency` (the workspace's reporting currency), each row
+// converted at its own date; `excluded_count` is what had no rate that day.
+type DayAgg = { date: string; incoming: number; outgoing: number; count: number; excluded_count?: number }
+type CalendarResponse = {
+  days: DayAgg[]
+  summary: { incoming: number; outgoing: number; count: number; excluded_count?: number }
+  currency?: string
+  excluded_count?: number
+}
 type Granularity = "month" | "week" | "day"
 
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
@@ -56,7 +65,7 @@ export function CalendarPage() {
   const { t, i18n } = useTranslation()
   const navigate = useNavigate()
   const { getToken } = useAuth()
-  const { currency } = useCurrency()
+  const { currency: orgCurrency } = useCurrency()
   // Card chips on the day's transaction rows.
   const cardMap = useCardMap()
   const { revision } = useDataRefresh()
@@ -65,6 +74,9 @@ export function CalendarPage() {
   // The anchor date the current view is centered on.
   const [anchor, setAnchor] = useState(() => new Date())
   const [data, setData] = useState<CalendarResponse | null>(null)
+  // Aggregates are in the currency the server converted them into; a listed
+  // transaction row stays in its own (rowCurrency).
+  const currency = reportingCurrencyOf(data, orgCurrency)
   const [loading, setLoading] = useState(true)
   // Drill-down modal: the [from, to] range being inspected.
   const [inspect, setInspect] = useState<{ from: string; to: string; label: string } | null>(null)
@@ -77,13 +89,15 @@ export function CalendarPage() {
     let incoming = 0
     let outgoing = 0
     let count = 0
+    let excluded = 0
     for (const d of data.days) {
       if (d.date < inspect.from || d.date > inspect.to) continue
       incoming += d.incoming
       outgoing += d.outgoing
       count += d.count
+      excluded += d.excluded_count ?? 0
     }
-    return { incoming, outgoing, count }
+    return { incoming, outgoing, count, excluded }
   }, [inspect, data])
 
   const todayIso = iso(new Date())
@@ -199,6 +213,7 @@ export function CalendarPage() {
 
   const periodProfit = periodSummary.incoming - periodSummary.outgoing
   const summaryBar = (
+    <div className="space-y-2">
     <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
       {[
         { label: t("calendar.incoming"), value: periodSummary.incoming, cls: "text-emerald-600 dark:text-emerald-400" },
@@ -226,6 +241,8 @@ export function CalendarPage() {
           )}
         </button>
       ))}
+    </div>
+    {!loading && <FxExcludedNotice count={excludedCountOf(data)} />}
     </div>
   )
 
@@ -425,6 +442,7 @@ export function CalendarPage() {
                   <p className={cn("truncate text-sm font-bold tabular-nums", s.cls)} title={s.value}>{s.value}</p>
                 </div>
               ))}
+              <FxExcludedNotice count={inspectSummary.excluded} className="col-span-2 sm:col-span-4" />
             </div>
           )}
           <div className="min-h-0 flex-1 overflow-y-auto scrollbar-thin p-3">
@@ -461,7 +479,7 @@ export function CalendarPage() {
                       )}
                     </span>
                     <span className={cn("shrink-0 text-sm font-semibold tabular-nums", tx.type === "incoming" ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400")}>
-                      {tx.type === "incoming" ? "+" : "−"}{formatMoney(Number(tx.amount), currency)}
+                      {tx.type === "incoming" ? "+" : "−"}{formatMoney(Number(tx.amount), rowCurrency(tx, currency))}
                     </span>
                   </li>
                   )

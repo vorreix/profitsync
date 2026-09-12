@@ -7,6 +7,7 @@ import { validateRuleInput, type RecurringRuleInput } from "../_lib/recurring-va
 import { materializeDueRecurring } from "../_lib/recurring-materialize.js"
 import { ruleFields } from "../_lib/recurring-query.js"
 import { attributeCard } from "../_lib/cards.js"
+import { currencyForFinancialWrite } from "../_lib/transaction-currency.js"
 
 async function assertRefsBelongToOrg(orgId: string, clientId: string | null, accountId: string | null): Promise<string | null> {
   if (clientId) {
@@ -53,6 +54,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!attributed.ok) return res.status(400).json({ error: attributed.error })
     const refError = await assertRefsBelongToOrg(orgId, parsed.value.clientId, attributed.accountId)
     if (refError) return res.status(400).json({ error: refError })
+    const currencyCode = await currencyForFinancialWrite(orgId, attributed.accountId)
+    if (!currencyCode) return res.status(409).json({ error: "Currency migration is incomplete", code: "currency_missing" })
 
     const [row] = await db
       .insert(recurringRules)
@@ -64,6 +67,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         name: parsed.value.name,
         type: parsed.value.type,
         amount: parsed.value.amount,
+        currencyCode,
         category: parsed.value.category,
         frequencyUnit: parsed.value.frequencyUnit,
         frequencyInterval: parsed.value.frequencyInterval,

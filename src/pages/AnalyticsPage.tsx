@@ -14,14 +14,20 @@ import { FilterSheet, FilterSection } from "@/components/filters/FilterSheet"
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart"
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid } from "recharts"
 import { TrendingUp, ArrowUpRight, ArrowDownRight, Tag } from "lucide-react"
+import { FxExcludedNotice } from "@/components/FxExcludedNotice"
+import { excludedCountOf, reportingCurrencyOf } from "@/lib/reporting-fields"
 
 type Granularity = "day" | "week" | "month" | "year"
+// Every figure is in `currency` (the workspace's reporting currency), each row
+// converted at its own date; `excluded_count` is what could not be converted.
 type Analytics = {
   range: { from: string; to: string; granularity: Granularity }
-  summary: { income: number; expense: number; profit: number; tx_count: number }
-  series: { period: string; income: number; expense: number; profit: number }[]
-  by_category: { category: string; income: number; expense: number }[]
-  by_client: { id: string; name: string; income: number; expense: number; profit: number }[]
+  currency?: string
+  excluded_count?: number
+  summary: { income: number; expense: number; profit: number; tx_count: number; excluded_count?: number }
+  series: { period: string; income: number; expense: number; profit: number; excluded_count?: number }[]
+  by_category: { category: string; income: number; expense: number; excluded_count?: number }[]
+  by_client: { id: string; name: string; income: number; expense: number; profit: number; excluded_count?: number }[]
 }
 
 function formatCurrency(n: number, currency: string) {
@@ -51,13 +57,15 @@ function labelFor(period: string, gran: Granularity): string {
 export function AnalyticsPage() {
   const { t } = useTranslation()
   const { getToken } = useAuth()
-  const { currency } = useCurrency()
+  const { currency: orgCurrency } = useCurrency()
   const { activeOrg } = useOrg()
   const isPersonal = activeOrg?.account_type === "personal"
 
   const [granularity, setGranularity] = useState<Granularity>("month")
   const [custom, setCustom] = useState<{ from: string; to: string } | null>(null)
   const [data, setData] = useState<Analytics | null>(null)
+  // The figures are in the currency the server converted them into.
+  const currency = reportingCurrencyOf(data, orgCurrency)
   const [loading, setLoading] = useState(true)
 
   const range = custom ?? defaultRange(granularity)
@@ -139,6 +147,7 @@ export function AnalyticsPage() {
         <KpiCard loading={loading} label={t("analytics.netProfit")} value={formatCurrency(data?.summary.profit ?? 0, currency)} className={(data?.summary.profit ?? 0) >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"} icon={<TrendingUp className="size-3.5 text-muted-foreground" />} />
         <KpiCard loading={loading} label={t("analytics.transactions")} value={String(data?.summary.tx_count ?? 0)} icon={<Tag className="size-3.5 text-muted-foreground" />} />
       </div>
+      {!loading && <FxExcludedNotice count={excludedCountOf(data)} />}
 
       {/* Trend chart */}
       <Card>

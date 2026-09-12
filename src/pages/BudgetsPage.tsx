@@ -11,13 +11,14 @@ import { useCurrency } from "@/lib/currency-context"
 import { useOrg } from "@/lib/org-context"
 import { canDeleteRole, canWriteRole } from "@/lib/roles"
 import { formatMoney } from "@/lib/wealth"
+import { FxExcludedNotice } from "@/components/FxExcludedNotice"
 import { allocation, todayUtc, VIEW_WINDOWS } from "@/lib/budget"
 import { useBudgetView } from "@/lib/budget-view"
 import type { Category, SpendingBudget, SpendingBudgetsResponse } from "@/lib/types"
 import { BudgetList } from "@/components/budget/BudgetList"
 import { SpendingBudgetDialog, type SpendingBudgetDialogMode } from "@/components/budget/SpendingBudgetDialog"
 import { ClientBudgetsSection } from "@/components/budget/ClientBudgetsSection"
-import { BAR_COLOR, DELTA_COLOR, barPct, budgetName, inView } from "@/components/budget/budget-format"
+import { BAR_COLOR, DELTA_COLOR, barPct, budgetName, inView, budgetsExcluded } from "@/components/budget/budget-format"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -56,9 +57,12 @@ export function BudgetsPage() {
   const isPersonal = activeOrg?.account_type === "personal"
   const canWrite = canWriteRole(activeOrg?.role)
   const canDelete = canDeleteRole(activeOrg?.role)
-  const money = (n: number) => formatMoney(n, currency)
-
   const { data, loading, refetch } = useApiQuery<SpendingBudgetsResponse>("/api/spending-budgets")
+  // Spend is measured in the currency the server reported (the workspace's
+  // reporting currency; the org's is only the fallback before the first payload
+  // lands), with every ledger row converted at its own date.
+  const budgetsCurrency = data?.currency || currency
+  const money = (n: number) => formatMoney(n, budgetsCurrency)
   const cats = useApiQuery<Category[]>("/api/categories?type=outgoing")
   const budgets = useMemo(() => data?.budgets ?? [], [data])
   const today = data?.today ?? todayUtc()
@@ -322,6 +326,9 @@ export function BudgetsPage() {
                   </Button>
                 )}
               </div>
+              {/* Rows in another currency with no rate for their day are not in
+                  any figure below — say so instead of quietly under-reporting. */}
+              {!loading && <FxExcludedNotice count={budgetsExcluded(budgets)} className="mb-2" />}
               <BudgetList
                 budgets={budgets}
                 view={view}
