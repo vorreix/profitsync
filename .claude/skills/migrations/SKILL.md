@@ -54,8 +54,8 @@ individually re-runnable.
 
 ## Adding a migration
 
-1. Write `drizzle/NNNN_name.sql`, where `NNNN` is the next free number. **Never reuse a
-   number**, even if the numbering has gaps.
+1. Write `drizzle/NNNN_name.sql`, where `NNNN` is **one more than the current head**. Never
+   reuse a number, and never leave a hole.
 2. Add a journal entry with `when: Date.now()` — a real clock reading, not a hand-typed
    number. It must be strictly greater than the last entry's.
 3. Append it **last** in `entries`. Array order is apply order.
@@ -69,13 +69,25 @@ individually re-runnable.
 6. Apply it, then **verify the object exists** in `information_schema`. "Up to date" is not
    evidence.
 
-## Things that are NOT errors
+## Renumbering, and why it is safe
 
-- **Gaps in the numbering.** `0059`–`0061` are the retired Budget v2 migrations, pulled
-  from the journal deliberately because production never ran them. A gap is fine; a
-  duplicate is not.
-- **Renumbering your own unmerged migration.** Safe and expected when your number collides
-  with one that landed on `dev` first.
+The numbering is **contiguous**: 0001, 0002, … with no holes. Retiring a migration no
+database ever ran is legitimate — the Budget v2 trio was pulled that way — but the ones
+after it are then renumbered to close the hole.
+
+Renaming is safe precisely because of what the migrator reads. It resolves
+`drizzle/<tag>.sql` and compares `when`. It never compares `idx`, the filename number, or
+the recorded `hash`. So renaming a file, updating its `tag` and `idx`, and **leaving `when`
+exactly as it is** changes nothing for a database that has already migrated: every entry
+still sorts the same way and still evaluates to "already applied".
+
+The one rule: **never edit an existing `when`.** Lower it and the migration re-applies on
+some databases; raise it and it is skipped on others. After any renumber, prove it — run
+`db:migrate` against a migrated database and check the row count and watermark are
+unchanged.
+
+A renumber does churn the journal, so expect conflicts with any other open branch that
+adds a migration. Resolve them by keeping every `when` and re-closing the numbering.
 
 ## Things that are errors, and what they look like
 
@@ -83,7 +95,7 @@ individually re-runnable.
 |---|---|
 | "column/relation does not exist" during migrate | An earlier migration was skipped; a later one that depends on it ran. |
 | `db:migrate` says up to date, object missing | The entry's `when` is at or below the database's watermark. |
-| A migration never runs anywhere | Its `.sql` file has no journal entry. |
+| A migration never runs anywhere | Its `.sql` file has no journal entry — the migrator reads the journal, never the folder. |
 | Works on a fresh DB, not on an existing one | Out-of-order `when`, or a duplicate `when`. |
 | Every new migration is skipped on one database | That database has a **future-dated** row. |
 
@@ -95,7 +107,7 @@ is the watermark, and **every** migration written afterwards with a real clock s
 it and is skipped — until wall-clock time passes the poisoned value.
 
 On 2026-09-12 the shared dev database held a row stamped `1789600000000` (2026-09-16). All
-67 journal entries evaluated to "skip" against it.
+67 journal entries evaluated to "skip" against it. It was repaired with the UPDATE below.
 
 `check-migrations.mjs` rejects a future `when`. To repair a database that already has one,
 lower that row's `created_at` to just above the next-highest recorded value — the migration

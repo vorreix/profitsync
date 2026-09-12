@@ -22,7 +22,7 @@ You are reviewing and continuing PR **"feat(debts): Debt & Loans — liabilities
 5. Money math is integer cents (`toCents` / `fromCents`). Amortization uses `finalPaymentTolerance` so schedules converge without a phantom period. The minimum-only strategy has NO pool and NO rollover; the other strategies roll a cleared debt's payment into the next target.
 6. No FX is invented. Totals are per currency (`owedByCurrency`); only same-currency debts are folded into `/wealth` net worth. A receivable is an asset but never liquid.
 7. Debt accounts are hidden from `GET /api/wealth/accounts` (like Spaces) and rejected by the plain transaction endpoints. Everything goes through `/api/debts/**`.
-8. The unit gate is DB-free. Route behaviour is verified with the dev server and Playwright against the **Neon dev branch** in `.env.local` — there is no local database, and `db:push` is never run against a shared instance. The debt migration is `0069_debt_loans`, hand-written like everything from 0060 on; `drizzle-kit generate` is out of sync with them, so write the SQL and the journal entry by hand, stamp `when` with `Date.now()`, and run `npm run migrations:check`. Read the `migrations` skill first — the migrator keeps ONE watermark per database and skips anything at or below it, silently.
+8. The unit gate is DB-free. Route behaviour is verified with the dev server and Playwright against the **Neon dev branch** in `.env.local` — there is no local database, and `db:push` is never run against a shared instance. The debt migration is `0066_debt_loans`, hand-written like everything from 0059 on; `drizzle-kit generate` is out of sync with them, so write the SQL and the journal entry by hand, stamp `when` with `Date.now()`, and run `npm run migrations:check`. Read the `migrations` skill first — the migrator keeps ONE watermark per database and skips anything at or below it, silently.
 
 ## How to verify anything you change
 
@@ -30,7 +30,7 @@ You are reviewing and continuing PR **"feat(debts): Debt & Loans — liabilities
 # There is NO local database. Everything runs against the Neon dev branch in
 # .env.local, which db-migrate.mjs loads itself. Migrations stay additive and
 # `db:push` is never run against it.
-npm run db:migrate                                      # head is 0069_debt_loans
+npm run db:migrate                                      # head is 0066_debt_loans
 VITE_DISABLE_DEV_TOOLS=1 npm run dev -- --port 5190 --strictPort &
 PLAYWRIGHT_BASE_URL=http://localhost:5190 \
   npx playwright test --project=setup --project=chromium e2e/debts.spec.ts e2e/credit-card.spec.ts e2e/smoke.spec.ts

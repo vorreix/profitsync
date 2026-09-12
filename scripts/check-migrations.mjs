@@ -13,8 +13,8 @@
 //   • 2026-09-08 — the e2e database sat at a watermark between 0062 and 0063, so
 //     the migration that CREATEs credit_card_statements was skipped and the one
 //     that ALTERs it ran. Every e2e run died on "relation does not exist".
-//   • 2026-09-12 — a feature branch shipped 0063_debt_loans alongside an
-//     existing 0063_cards, with its journal entry appended LAST but stamped
+//   • 2026-09-12 — a feature branch shipped a debt migration numbered 0063
+//     alongside the existing 0063 (cards), with its journal entry appended LAST but stamped
 //     BELOW the entry before it. On any database already migrated it would never
 //     have run, and the debt tables would simply never have existed.
 //   • The same day: a migration stamped 2026-09-16 — four days in the FUTURE —
@@ -23,11 +23,12 @@
 //
 // None of those needed a database to catch. They are all visible in the repo.
 //
-// Gaps in the numbering are NOT an error: 0059–0061 are the retired Budget v2
-// migrations, deliberately dropped from the journal and never run in production.
-// Removing a migration that no database has applied is legitimate; what is never
-// legitimate is two migrations sharing a number, or a sequence that does not
-// increase.
+// The numbering is CONTIGUOUS — 0001, 0002, … with no holes. Retiring a
+// migration that no database ever ran (the Budget v2 trio was pulled this way)
+// is legitimate, but the ones after it are then renumbered to close the hole, so
+// the folder always reads as the order things actually run in. A hole is not
+// dangerous to drizzle, which only ever reads `tag` and `when` — it is dangerous
+// to the person reading the folder and guessing what comes next.
 //
 // Run by the pre-commit hook and CI. Keep both in sync.
 
@@ -61,6 +62,18 @@ for (const f of files) {
       `Renumber the newer one to the next free slot after ${String(Math.max(...[...byNumber.keys()].map(Number))).padStart(4, "0")}.`,
     )
   } else byNumber.set(n, f)
+}
+
+// ── 1b. No holes ───────────────────────────────────────────────────────────
+const numbers = [...byNumber.keys()].map(Number).sort((a, b) => a - b)
+for (let i = 1; i < numbers.length; i++) {
+  if (numbers[i] !== numbers[i - 1] + 1) {
+    const gap = numbers[i] - numbers[i - 1] - 1
+    fail(
+      `The numbering jumps from ${String(numbers[i - 1]).padStart(4, "0")} to ${String(numbers[i]).padStart(4, "0")} (${gap} missing).`,
+      "Renumber the migrations after the hole so the folder reads in order. Keep every journal `when` EXACTLY as it is — it is the only field the migrator compares, so changing it re-applies or skips.",
+    )
+  }
 }
 
 // ── 2. Journal and folder agree ────────────────────────────────────────────
@@ -129,7 +142,7 @@ for (const e of entries) {
 // existed and is already applied everywhere; editing an applied migration is a
 // no-op anyway, because the migrator records a hash and never compares it. They
 // are history — read them, don't rewrite them.
-const ENFORCE_RERUNNABLE_FROM = 69
+const ENFORCE_RERUNNABLE_FROM = 66
 const GUARDED = /IF (NOT )?EXISTS/i
 for (const f of files) {
   if (Number(/^(\d{4})_/.exec(f)?.[1] ?? 0) < ENFORCE_RERUNNABLE_FROM) continue

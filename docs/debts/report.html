@@ -48,7 +48,7 @@
   <div class="kpi"><b>793</b><span>unit tests green (68 files, +58 new)</span></div>
   <div class="kpi"><b>11 / 11</b><span>end-to-end debt scenarios on a real database</span></div>
   <div class="kpi"><b>19 / 19</b><span>credit-card + smoke e2e regression still green</span></div>
-  <div class="kpi"><b>1</b><span>migration (0063), additive, legacy rows untouched</span></div>
+  <div class="kpi"><b>1</b><span>migration (0066), additive, legacy rows untouched</span></div>
 </div>
 
 <h2>1. What I found (audit)</h2>
@@ -81,7 +81,7 @@
 <p><code>src/lib/debt-math.ts</code>: periodic rate per frequency, one-period interest, annuity payment, amortization with a final-payment tolerance (<code>min(payment, max(€1, 2 %))</code>) so schedules converge without a phantom extra period, and a non-convergence flag when the payment does not cover interest. <code>src/lib/debt-planner.ts</code>: month-by-month simulation of <b>minimum only</b> (no pool, no rollover), <b>avalanche</b> (highest rate first), <b>snowball</b> (smallest balance first), <b>free-up-cash</b> (highest payment-to-balance first) and <b>custom order</b>, with a cleared debt's payment rolling into the next target, what-if extra per month and a one-off lump sum, side-by-side comparison, an affordability check that switches to a stabilisation message when scheduled payments exceed the budget, and a debt-payment-to-income ratio. Debts without a rate are simulated at 0 % and labelled as such.</p>
 
 <h2>3. Data model</h2>
-<p>Migration <b>0063</b> (hand-written like 0060–0062; <code>drizzle-kit generate</code> is out of sync), purely additive:</p>
+<p>Migration <b>0066</b> (hand-written like 0059–0065; <code>drizzle-kit generate</code> is out of sync), purely additive:</p>
 <ul>
   <li><code>wealth_accounts.type</code> accepts <code>loan</code> and <code>receivable</code> (existing rows untouched).</li>
   <li><code>debt_details</code>: one row per debt account (unique <code>wealth_account_id</code>, cascades), CHECK constraints on kind, rate type, frequency, lifecycle and split source, non-negative amounts.</li>
@@ -140,7 +140,7 @@
   <tr><td><code>e2e/credit-card.spec.ts</code> · <code>e2e/smoke.spec.ts</code></td><td>Regression after the debts changes.</td><td class="num ok">10 / 10 · 9 / 9</td></tr>
   <tr><td>Full unit suite</td><td>68 files</td><td class="num ok">793 / 793</td></tr>
 </table>
-<p>Gate: secret scan · <code>check-esm-extensions</code> (235 files) · <code>boot-functions</code> (every function boots under Node ESM) · <code>check-route-guards</code> (126 handlers) · <code>i18n:check</code> · <code>lint</code> · <code>typecheck</code> · <code>vitest run</code> · <code>npm run build</code> + chunk-cycle grep (empty) — all green. Migration 0063 applied to the local Docker database only; the shared Neon database was never touched.</p>
+<p>Gate: secret scan · <code>check-esm-extensions</code> (235 files) · <code>boot-functions</code> (every function boots under Node ESM) · <code>check-route-guards</code> (126 handlers) · <code>i18n:check</code> · <code>lint</code> · <code>typecheck</code> · <code>vitest run</code> · <code>npm run build</code> + chunk-cycle grep (empty) — all green. Migration 0066 applied to the Neon dev branch (there is no local database).</p>
 
 <h3>Fixed along the way</h3>
 <p>The credit-card e2e spec called the API without <code>x-org-id</code> and relied on the server's profile fallback; that fallback is served from a 60-second per-user cache, so right after a workspace switch it could still name the previous workspace and cleanup ran against the wrong org. Both specs now pin the workspace id returned by the switch. The "Owed on cards" assertion was updated to the new "Owed" line.</p>
@@ -151,7 +151,7 @@
   <li>A typed split is trusted user input; the server checks only that the components sum to the total.</li>
   <li>The org-resolution cache described above affects any client code that omits <code>x-org-id</code> after a switch (pre-existing).</li>
 </ul>
-<p><b>Recommendation: internal-test ready.</b> The accounting core and planner are tested unit-level and end to end on a real database. Before production: real translations, a read-through of the planner copy by a finance-literate reviewer, and a staging run of migration 0063.</p>
+<p><b>Recommendation: internal-test ready.</b> The accounting core and planner are tested unit-level and end to end on a real database. Before production: real translations, a read-through of the planner copy by a finance-literate reviewer, and a staging run of migration 0066.</p>
 
 </body>
 </html>
