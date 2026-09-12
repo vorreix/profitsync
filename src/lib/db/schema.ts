@@ -163,6 +163,12 @@ export const wealthAccounts = pgTable("wealth_accounts", {
   openingBalance: numeric("opening_balance", { precision: 20, scale: 2 }).notNull().default("0"),
   currentBalance: numeric("current_balance", { precision: 20, scale: 2 }).notNull().default("0"),
   icon: text("icon").notNull().default("bank"),
+  // Colour identity (migration 0075) — presentation ONLY, never money. `color`
+  // is "" for AUTO (resolved from the bank brand, then a stable per-row swatch)
+  // or a "#RRGGBB" override; `colorStyle` is how loudly it is worn. One
+  // resolver for both: src/lib/account-color.ts.
+  color: text("color").notNull().default(""),
+  colorStyle: text("color_style").notNull().default("subtle"),
   // Bank brand: the logo source URL (rendered) + a base64 copy stored for
   // resilience ("logo stored on backend"); `brandDomain` is the resolved domain
   // used to (re)fetch the logo.
@@ -216,6 +222,8 @@ export const wealthAccounts = pgTable("wealth_accounts", {
   nicknameTrgmIdx: index("wealth_accounts_nickname_trgm_idx").using("gin", table.nickname.op("gin_trgm_ops")),
   closingDayCheck: check("wealth_accounts_closing_day_check", sql`statement_closing_day is null or (statement_closing_day between 1 and 31)`),
   dueDayCheck: check("wealth_accounts_due_day_check", sql`payment_due_day is null or (payment_due_day between 1 and 31)`),
+  colorCheck: check("wealth_accounts_color_check", sql`color = '' or color ~ '^#[0-9A-Fa-f]{6}$'`),
+  colorStyleCheck: check("wealth_accounts_color_style_check", sql`color_style in ('subtle','bold')`),
 }))
 
 // ── Credit-card statements ───────────────────────────────────────────────────

@@ -1559,7 +1559,19 @@
       }
     },
     "balanceTransferWarning": "Questo sposta il debito su {{card}}. Nel complesso dovrai la stessa cifra: non è stato saldato.",
-    "movedToOtherCards": "{{amount}} spostati su altre carte"
+    "movedToOtherCards": "{{amount}} spostati su altre carte",
+    "appearance": {
+      "title": "Aspetto",
+      "color": "Colore",
+      "auto": "Auto",
+      "autoHint": "Usa il colore della banca o uno scelto per questo conto",
+      "custom": "Colore personalizzato",
+      "customShort": "Personalizzata",
+      "style": "Stile",
+      "subtle": "Discreto",
+      "bold": "Deciso",
+      "preview": "Anteprima"
+    }
   },
   "errorBoundary": {
     "title": "Qualcosa è andato storto",

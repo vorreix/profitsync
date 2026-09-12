@@ -4,6 +4,7 @@ import { accountFieldsForCountry, PRIMARY_LABEL_KEY, SECONDARY_LABEL_KEY } from 
 import type { BankFormState } from "@/lib/bank-form"
 import { BankNameCombobox } from "@/components/wealth/BankNameCombobox"
 import { IconSelect } from "@/components/wealth/icon-select"
+import { AccountAppearanceFields } from "@/components/wealth/AccountAppearanceFields"
 import { CountryCombobox } from "@/components/CountryCombobox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -14,10 +15,13 @@ export function BankAccountFormFields({
   onChange,
   autoFocusName,
   beforeBankDetails,
+  accountId,
 }: {
   form: BankFormState
   onChange: (patch: Partial<BankFormState>) => void
   autoFocusName?: boolean
+  /** The saved account's id, when editing — AUTO's fallback swatch keys off it. */
+  accountId?: string
   /** Optional content rendered just above the "Bank Details" section (e.g. Opening Balance on create). */
   beforeBankDetails?: ReactNode
 }) {
@@ -44,15 +48,23 @@ export function BankAccountFormFields({
         </div>
       </div>
 
+      <div className="space-y-1.5">
+        <Label>{t("nickname")}</Label>
+        <Input value={form.nickname} placeholder={t("mainAccountPlaceholder")} onChange={(e) => onChange({ nickname: e.target.value })} />
+      </div>
+
+      {/* Icon and colour are the same size of decision, so they share a row —
+          and neither outweighs the opening balance below them. */}
       <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1.5">
-          <Label>{t("nickname")}</Label>
-          <Input value={form.nickname} placeholder={t("mainAccountPlaceholder")} onChange={(e) => onChange({ nickname: e.target.value })} />
-        </div>
         <div className="space-y-1.5">
           <Label>{t("logoIcon")}</Label>
           <IconSelect value={form.icon} onChange={(icon) => onChange({ icon })} />
         </div>
+        <AccountAppearanceFields
+          value={{ color: form.color, color_style: form.color_style }}
+          onChange={onChange}
+          account={{ id: accountId, type: "bank", brand_domain: form.brand_domain }}
+        />
       </div>
 
       {beforeBankDetails}

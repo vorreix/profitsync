@@ -1559,7 +1559,19 @@
       }
     },
     "balanceTransferWarning": "Das verschiebt die Schuld auf {{card}}. Insgesamt schuldest du dasselbe — sie ist nicht getilgt.",
-    "movedToOtherCards": "{{amount}} auf andere Karten verschoben"
+    "movedToOtherCards": "{{amount}} auf andere Karten verschoben",
+    "appearance": {
+      "title": "Darstellung",
+      "color": "Farbe",
+      "auto": "Auto",
+      "autoHint": "Die Farbe der Bank verwenden oder eine für dieses Konto gewählte",
+      "custom": "Eigene Farbe",
+      "customShort": "Individuell",
+      "style": "Stil",
+      "subtle": "Dezent",
+      "bold": "Kräftig",
+      "preview": "Vorschau"
+    }
   },
   "errorBoundary": {
     "title": "Etwas ist schiefgelaufen",

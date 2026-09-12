@@ -33,6 +33,8 @@ import { AccountDetailsSection } from "@/components/wealth/AccountDetailsSection
 import { CreditCardPanel } from "@/components/wealth/CreditCardPanel"
 import { PayCardSheet, type PayPreset } from "@/components/wealth/PayCardSheet"
 import { cardDisplayName } from "@/lib/cards"
+import { accountAppearance } from "@/lib/account-color"
+import { cn } from "@/lib/utils"
 import { useCardMap } from "@/lib/use-cards"
 import { CardChip } from "@/components/cards/CardChip"
 import { BankCardsButton } from "@/components/cards/BankCardsButton"
@@ -212,6 +214,9 @@ export function WealthAccountDetailPage() {
   const net = summary.incoming - summary.outgoing
   const isCash = account?.type === "cash"
   const isCard = !!account && isLiabilityType(account.type)
+  // The account's colour (src/lib/account-color.ts) — the same one its tile
+  // wears on /wealth, so arriving here feels like opening that tile.
+  const look = accountAppearance(account ?? {})
   const hasMore = transactions.length < total
 
   // Card quick actions: open the in-place add sheet pre-set to a purchase, a
@@ -261,8 +266,8 @@ export function WealthAccountDetailPage() {
         <Button variant="ghost" size="icon" onClick={() => navigate("/wealth")} className="-ml-2 mt-0.5 shrink-0" aria-label={t("back")}>
           <ArrowLeft className="size-4 rtl:rotate-180" />
         </Button>
-        <div className="flex min-w-0 flex-1 items-center gap-2.5 sm:gap-3">
-          <WealthAccountIcon account={account} className="size-10 shrink-0 sm:size-11" />
+        <div style={look.vars as React.CSSProperties} className="acct-colored flex min-w-0 flex-1 items-center gap-2.5 sm:gap-3">
+          <WealthAccountIcon account={account} className="size-10 shrink-0 sm:size-11" accent="tint" />
           {/* The account type reads as a quiet meta line rather than a badge
               beside the name: on a phone the name then keeps the full width the
               header's action buttons leave it. */}
@@ -334,15 +339,28 @@ export function WealthAccountDetailPage() {
 
       {/* Balance hero (bank / cash) */}
       {!isCard && (
-      <div className="rounded-2xl border bg-gradient-to-br from-primary/10 via-card to-card p-5 sm:p-6">
-        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("balance")}</p>
+      <div
+        style={look.vars as React.CSSProperties}
+        className={cn(
+          "acct-colored relative overflow-hidden rounded-2xl border p-5 sm:p-6",
+          // The hero wears the account's colour the way its tile does: a wash
+          // in "subtle", the full gradient in "bold".
+          look.bold ? "acct-bold" : "acct-subtle acct-rail bg-card",
+        )}
+      >
+        <p className={cn("text-xs font-medium uppercase tracking-wide", look.bold ? (look.text === "light" ? "text-white/75" : "text-slate-900/70") : "text-muted-foreground")}>{t("balance")}</p>
         <div className="mt-1 flex items-center gap-2">
-          <p className="text-3xl font-bold tabular-nums sm:text-4xl">{formatMoney(Number(account.current_balance), currency, balancesVisible)}</p>
+          <p className={cn("text-3xl font-bold tabular-nums sm:text-4xl", look.bold && (look.text === "light" ? "text-white" : "text-slate-900"))}>{formatMoney(Number(account.current_balance), currency, balancesVisible)}</p>
           {canWrite && (
             <Button
               variant="ghost"
               size="icon"
-              className="size-8 shrink-0 text-muted-foreground hover:text-foreground"
+              className={cn(
+                "size-8 shrink-0",
+                look.bold
+                  ? cn(look.text === "light" ? "text-white/75 hover:text-white" : "text-slate-900/70 hover:text-slate-900", "hover:bg-white/15")
+                  : "text-muted-foreground hover:text-foreground",
+              )}
               aria-label={t("adjust")}
               title={t("adjust")}
               onClick={() => setAdjusting(account)}

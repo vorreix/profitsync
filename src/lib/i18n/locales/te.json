@@ -1559,7 +1559,19 @@
       }
     },
     "balanceTransferWarning": "ఇది అప్పును {{card}}కి మారుస్తుంది. మొత్తంగా అంతే బాకీ ఉంటుంది — అది తీరలేదు.",
-    "movedToOtherCards": "{{amount}} ఇతర కార్డులకు మార్చారు"
+    "movedToOtherCards": "{{amount}} ఇతర కార్డులకు మార్చారు",
+    "appearance": {
+      "title": "రూపం",
+      "color": "రంగు",
+      "auto": "ఆటో",
+      "autoHint": "బ్యాంక్ సొంత రంగును లేదా ఈ ఖాతా కోసం ఎంచుకున్న రంగును ఉపయోగించండి",
+      "custom": "అనుకూల రంగు",
+      "customShort": "అనుకూలం",
+      "style": "శైలి",
+      "subtle": "మృదువైనది",
+      "bold": "గాఢమైనది",
+      "preview": "ప్రివ్యూ"
+    }
   },
   "errorBoundary": {
     "title": "ఏదో తప్పు జరిగింది",

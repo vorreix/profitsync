@@ -463,6 +463,13 @@
       "when": 1788345426510,
       "tag": "0068_budget_view_and_overall",
       "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1789600000000,
+      "tag": "0075_wealth_account_appearance",
+      "breakpoints": true
     }
   ]
 }

@@ -1119,6 +1119,18 @@
     "name": "Name",
     "displayName": "Display name",
     "logoIcon": "Logo / icon",
+    "appearance": {
+      "title": "Appearance",
+      "color": "Colour",
+      "auto": "Auto",
+      "autoHint": "Use the bank's own colour, or one picked for this account",
+      "custom": "Custom colour",
+      "customShort": "Custom",
+      "style": "Style",
+      "subtle": "Subtle",
+      "bold": "Bold",
+      "preview": "Preview"
+    },
     "addAccount": "Add Account",
     "addBank": "Add Bank",
     "addBankAccount": "Add Bank Account",

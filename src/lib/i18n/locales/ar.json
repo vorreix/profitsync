@@ -1575,7 +1575,19 @@
       }
     },
     "balanceTransferWarning": "هذا ينقل الدين إلى {{card}}. سيبقى إجمالي ما عليك كما هو — لم يُسدَّد.",
-    "movedToOtherCards": "{{amount}} نُقلت إلى بطاقات أخرى"
+    "movedToOtherCards": "{{amount}} نُقلت إلى بطاقات أخرى",
+    "appearance": {
+      "title": "المظهر",
+      "color": "اللون",
+      "auto": "تلقائي",
+      "autoHint": "استخدم لون البنك نفسه أو لونًا مختارًا لهذا الحساب",
+      "custom": "لون مخصص",
+      "customShort": "مخصص",
+      "style": "النمط",
+      "subtle": "هادئ",
+      "bold": "بارز",
+      "preview": "معاينة"
+    }
   },
   "errorBoundary": {
     "title": "حدث خطأ ما",

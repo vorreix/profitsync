@@ -6,14 +6,17 @@ import { apiErrorMessage, apiPatch, apiPost } from "@/lib/api"
 import type { WealthAccount } from "@/lib/types"
 import { useCurrency } from "@/lib/currency-context"
 import { currencySymbol } from "@/lib/wealth"
+import { accountColorStyle, type AccountColorStyle } from "@/lib/account-color"
 import { SPACE_ICONS } from "@/components/wealth/space-icons"
+import { AccountAppearanceFields } from "@/components/wealth/AccountAppearanceFields"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 
 const todayIso = () => new Date().toISOString().split("T")[0]
-type SpaceForm = { name: string; goal: string; date: string; icon: string }
+type SpaceForm = { name: string; goal: string; date: string; icon: string; color: string; color_style: AccountColorStyle }
+const emptySpaceForm: SpaceForm = { name: "", goal: "", date: "", icon: "piggy", color: "", color_style: "subtle" }
 
 /**
  * Create or edit a Space (name, savings icon, optional goal + target date).
@@ -32,15 +35,22 @@ export function SpaceFormModal({
   const { getToken } = useAuth()
   const { currency } = useCurrency()
   const symbol = currencySymbol(currency)
-  const [form, setForm] = useState<SpaceForm>({ name: "", goal: "", date: "", icon: "piggy" })
+  const [form, setForm] = useState<SpaceForm>(emptySpaceForm)
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     if (!open) return
     setSaving(false)
     setForm(space
-      ? { name: space.nickname, goal: space.goal_amount != null ? String(space.goal_amount) : "", date: space.target_date ?? "", icon: space.icon || "piggy" }
-      : { name: "", goal: "", date: "", icon: "piggy" })
+      ? {
+          name: space.nickname,
+          goal: space.goal_amount != null ? String(space.goal_amount) : "",
+          date: space.target_date ?? "",
+          icon: space.icon || "piggy",
+          color: space.color ?? "",
+          color_style: accountColorStyle(space.color_style),
+        }
+      : emptySpaceForm)
   }, [open, space])
 
   async function handleSave() {
@@ -49,7 +59,14 @@ export function SpaceFormModal({
     try {
       const token = await getToken()
       if (!token) throw new Error("auth")
-      const body = { name: form.name.trim(), goal_amount: form.goal === "" ? null : Number(form.goal), target_date: form.date || null, icon: form.icon }
+      const body = {
+        name: form.name.trim(),
+        goal_amount: form.goal === "" ? null : Number(form.goal),
+        target_date: form.date || null,
+        icon: form.icon,
+        color: form.color,
+        color_style: form.color_style,
+      }
       if (space) {
         const updated = await apiPatch<WealthAccount>(`/api/spaces/${space.id}`, token, body)
         toast.success(t("updated"))
@@ -94,6 +111,11 @@ export function SpaceFormModal({
               ))}
             </div>
           </div>
+          <AccountAppearanceFields
+            value={{ color: form.color, color_style: form.color_style }}
+            onChange={(patch) => setForm((f) => ({ ...f, ...patch }))}
+            account={{ id: space?.id, type: "space" }}
+          />
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="space-goal">{t("goalLabel")}</Label>

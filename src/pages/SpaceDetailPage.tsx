@@ -11,7 +11,10 @@ import { canDeleteRole, canWriteRole } from "@/lib/roles"
 import type { Transaction, WealthAccount } from "@/lib/types"
 import { formatMoney } from "@/lib/wealth"
 import { autoSavePace, spaceGoalStatus, spaceProgress, suggestedMonthly } from "@/lib/spaces"
+import { accountAppearance } from "@/lib/account-color"
+import { cn } from "@/lib/utils"
 import { spaceIconFor } from "@/components/wealth/space-icons"
+import "@/components/wealth/account-color.css"
 import { SpaceTransferModal } from "@/components/spaces/SpaceTransferModal"
 import { SpaceFormModal } from "@/components/spaces/SpaceFormModal"
 import { AccountCombobox } from "@/components/wealth/AccountCombobox"
@@ -112,6 +115,8 @@ export function SpaceDetailPage() {
   }
 
   const Icon = spaceIconFor(space.icon)
+  const look = accountAppearance(space)
+  const ink = look.text === "light" ? "text-white" : "text-slate-900"
   const accountName = (accId: string) => { const a = accounts.find((x) => x.id === accId); return a ? (a.nickname?.trim() || a.bank_name) : "—" }
 
   return (
@@ -121,14 +126,27 @@ export function SpaceDetailPage() {
       </Button>
 
       {/* Main card — everything for this Space lives here */}
-      <div className="rounded-2xl border bg-gradient-to-br from-emerald-500/10 to-transparent p-5">
+      <div
+        style={look.vars as React.CSSProperties}
+        className={cn(
+          // The Space wears the colour it was given on /spaces (src/lib
+          // /account-color.ts) instead of the old fixed emerald.
+          "acct-colored relative overflow-hidden rounded-2xl border p-5",
+          look.bold ? "acct-bold" : "acct-subtle acct-rail bg-card",
+        )}
+      >
         <div className="flex items-start gap-3">
-          <span className="flex size-12 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+          <span
+            className={cn(
+              "flex size-12 shrink-0 items-center justify-center rounded-full border",
+              look.bold ? (look.text === "light" ? "acct-icon-bold" : "acct-icon-bold-dark") : "acct-icon",
+            )}
+          >
             <Icon className="size-6" />
           </span>
           <div className="min-w-0 flex-1">
-            <h1 className="truncate text-lg font-semibold tracking-tight">{space.nickname}</h1>
-            <p className="mt-0.5 text-3xl font-bold tabular-nums">{formatMoney(balance, currency)}</p>
+            <h1 className={cn("truncate text-lg font-semibold tracking-tight", look.bold && ink)}>{space.nickname}</h1>
+            <p className={cn("mt-0.5 text-3xl font-bold tabular-nums", look.bold && ink)}>{formatMoney(balance, currency)}</p>
           </div>
           <div className="flex shrink-0 items-center gap-1">
             {/* Special "Set up auto-save" affordance — the standout action on this card. */}

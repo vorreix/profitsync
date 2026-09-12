@@ -12,6 +12,7 @@ import { db, dbBatch } from "../../src/lib/db/index.js"
 import { cards, creditCardStatements, transactions, wealthAccounts } from "../../src/lib/db/schema.js"
 import { ensureDefaultClient } from "./auth.js"
 import { logAudit } from "./audit.js"
+import { type AppearanceInput, pickAppearance } from "./account-appearance.js"
 import { type BankDetailInput, pickBankDetails, resolveLogoColumns } from "./bank-brand.js"
 import { amountExceedsLimit } from "../../src/lib/money.js"
 import { checkBankAccountQuota, checkCreditCardQuota, getOrgPlan } from "./quota.js"
@@ -69,7 +70,7 @@ export async function createSystemTransaction(input: {
 
 // ── Create account ───────────────────────────────────────────────────────────
 
-export type CreateAccountInput = BankDetailInput & {
+export type CreateAccountInput = BankDetailInput & AppearanceInput & {
   type?: string
   bank_name?: string
   bankName?: string
@@ -144,6 +145,10 @@ export async function createWealthAccount(orgId: string, userId: string, body: C
 
   const opening = money(openingBalance)
   if (amountExceedsLimit(opening)) return fail(400, { error: "Amount is too large" })
+  // Colour identity is presentation only, but an invalid value would fail the
+  // DB CHECK instead of the request, so it is validated here like any input.
+  const appearance = pickAppearance(body)
+  if (!appearance.ok) return fail(400, { error: appearance.error })
   // Bank-detail fields apply to bank + card accounts (Cash in Hand has none);
   // a card reuses the issuer brand/logo lookup.
   const details = type === "bank" || type === "credit_card" ? pickBankDetails(body) : null
@@ -171,6 +176,7 @@ export async function createWealthAccount(orgId: string, userId: string, body: C
           }
         : {}),
       position: (maxPos ?? -1) + 1,
+      ...appearance.patch,
       ...(details ?? {}),
       ...(logo ? { logoUrl: logo.logoUrl, logoData: logo.logoData } : {}),
       createdBy: userId,

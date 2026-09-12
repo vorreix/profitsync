@@ -59,6 +59,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         openingBalance: wealthAccounts.openingBalance,
         currentBalance: wealthAccounts.currentBalance,
         icon: wealthAccounts.icon,
+        color: wealthAccounts.color,
+        colorStyle: wealthAccounts.colorStyle,
         // Brand/detail fields for the cards + detail page. logo_data (base64) is
         // selected so the response can carry a durable `logo_src` data URL — the
         // hotlinked logo_url expires, the stored copy doesn't. The raw column is

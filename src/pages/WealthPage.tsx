@@ -59,7 +59,8 @@ import { WealthAccountDialogs } from "@/components/wealth/WealthAccountDialogs"
 import { TransferWizard } from "@/components/wealth/TransferWizard"
 import { BankAccountFormFields } from "@/components/wealth/BankAccountFormFields"
 import { CardsTab } from "@/components/cards/CardsTab"
-import { type BankFormState, bankDetailsPayload, emptyBankForm } from "@/lib/bank-form"
+import { type BankFormState, appearancePayload, bankDetailsPayload, emptyBankForm } from "@/lib/bank-form"
+import { accountAppearance } from "@/lib/account-color"
 import { isLiabilityType } from "@/lib/credit-card"
 import { accountDisplayName, currencySymbol, formatMoney, moveBefore, useBalancePrivacy, useWealthSummary } from "@/lib/wealth"
 import { useTranslation } from "react-i18next"
@@ -383,6 +384,7 @@ export function WealthPage() {
         nickname: form.nickname.trim(),
         icon: form.icon,
         openingBalance: Number(form.opening_balance || 0),
+        ...appearancePayload(form),
         ...bankDetailsPayload(form),
       })
       toast.success(t("accountAdded"))
@@ -877,6 +879,18 @@ function AccountCard({
   const isCash = account.type === "cash"
   const kindLabel = isCash ? t("cash") : t("bank")
   const cardCount = account.card_count ?? 0
+  // The account's own colour (src/lib/account-color.ts): a rail + a wash in
+  // "subtle", the whole tile in "bold". On a bold tile every foreground colour
+  // has to come off the palette instead of the theme, or the muted greys and
+  // the secondary badges dissolve into the gradient.
+  const look = accountAppearance(account)
+  const onColor = look.bold
+  const ink = look.text === "light" ? "text-white" : "text-slate-900"
+  const inkSoft = look.text === "light" ? "text-white/75" : "text-slate-900/70"
+  const inkHover = look.text === "light" ? "hover:text-white" : "hover:text-slate-900"
+  const chip = look.text === "light"
+    ? "border-white/25 bg-white/15 text-white"
+    : "border-slate-900/20 bg-slate-900/10 text-slate-900"
 
   return (
     // "Stretched overlay" card: a single full-bleed button is the click target
@@ -884,33 +898,50 @@ function AccountCard({
     // genuinely interactive bits — Adjust, the cards badge + the actions menu —
     // re-enable pointer events. This keeps the Adjust control right next to the
     // balance without nesting interactive elements inside another button.
-    <div className={`group relative rounded-2xl border bg-card transition-colors hover:border-primary/40 ${isCash ? "ring-1 ring-primary/20" : ""}`}>
+    <div
+      style={look.vars as React.CSSProperties}
+      className={cn(
+        "acct-colored group relative rounded-2xl border transition-colors",
+        onColor ? "acct-bold" : "acct-subtle acct-rail bg-card hover:border-primary/40",
+        isCash && !onColor && "ring-1 ring-primary/20",
+      )}
+    >
       <button
         type="button"
         onClick={onOpen}
         aria-label={`${accountDisplayName(account)} — ${t("viewTransactions")}`}
-        className="pressable ios-tap absolute inset-0 z-0 rounded-2xl outline-none hover:bg-muted/30 focus-visible:ring-2 focus-visible:ring-ring"
+        className={cn(
+          "pressable ios-tap absolute inset-0 z-0 rounded-2xl outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          onColor ? "hover:bg-black/10" : "hover:bg-muted/30",
+        )}
       />
 
       <div className="pointer-events-none relative z-10 flex flex-col p-4">
         <div className="flex min-w-0 items-center gap-3 pe-16">
-          <WealthAccountIcon account={account} className="size-10" />
+          <WealthAccountIcon
+            account={account}
+            className="size-10"
+            accent={onColor ? (look.text === "light" ? "glass" : "glass-dark") : "tint"}
+          />
           <div className="min-w-0">
-            <p className="truncate text-sm font-semibold">{accountDisplayName(account)}</p>
-            <p className="truncate text-xs text-muted-foreground">
+            <p className={cn("truncate text-sm font-semibold", onColor && ink)}>{accountDisplayName(account)}</p>
+            <p className={cn("truncate text-xs", onColor ? inkSoft : "text-muted-foreground")}>
               {isCash ? t("cash") : (account.nickname ? account.bank_name : kindLabel)}
             </p>
           </div>
         </div>
 
         <div className="mt-4 flex items-start gap-1.5">
-          <p className="text-2xl font-bold tabular-nums">
+          <p className={cn("text-2xl font-bold tabular-nums", onColor && ink)}>
             {formatMoney(Number(account.current_balance), currency, balancesVisible)}
           </p>
           <Button
             variant="ghost"
             size="icon"
-            className="pointer-events-auto size-7 shrink-0 -translate-y-1.5 text-muted-foreground hover:text-foreground"
+            className={cn(
+              "pointer-events-auto size-7 shrink-0 -translate-y-1.5",
+              onColor ? cn(inkSoft, inkHover, "hover:bg-white/15") : "text-muted-foreground hover:text-foreground",
+            )}
             aria-label={t("adjust")}
             title={t("adjust")}
             onClick={(e) => { e.stopPropagation(); onAdjust() }}
@@ -921,12 +952,22 @@ function AccountCard({
 
         <div className="mt-3 flex items-center justify-between">
           <span className="flex items-center gap-1.5">
-            <Badge variant="secondary" className="gap-1">
-              {isCash ? <Wallet className="size-3" /> : null}
-              {kindLabel}
-            </Badge>
+            {onColor ? (
+              <span className={cn("inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-medium", chip)}>
+                {isCash ? <Wallet className="size-3" /> : null}
+                {kindLabel}
+              </span>
+            ) : (
+              <Badge variant="secondary" className="gap-1">
+                {isCash ? <Wallet className="size-3" /> : null}
+                {kindLabel}
+              </Badge>
+            )}
             {account.is_default && (
-              <Badge className="gap-1 border-amber-500/40 bg-amber-500/15 text-amber-700 dark:text-amber-300" variant="outline">
+              <Badge
+                className={cn("gap-1", onColor ? chip : "border-amber-500/40 bg-amber-500/15 text-amber-700 dark:text-amber-300")}
+                variant="outline"
+              >
                 <Star className="size-3 fill-current" /> {t("defaultBadge")}
               </Badge>
             )}
@@ -936,13 +977,21 @@ function AccountCard({
                 to={`/wealth/${account.id}#cards`}
                 onClick={(e) => e.stopPropagation()}
                 aria-label={`${t("cards.cardsOnBank", { count: cardCount })} — ${t("cards.viewCards")}`}
-                className="pointer-events-auto ios-tap inline-flex min-h-6 items-center gap-1 rounded-md border bg-card px-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+                className={cn(
+                  "pointer-events-auto ios-tap inline-flex min-h-6 items-center gap-1 rounded-md border px-1.5 text-[11px] font-medium transition-colors",
+                  onColor ? chip : "bg-card text-muted-foreground hover:border-primary/40 hover:text-foreground",
+                )}
               >
                 <CreditCard className="size-3" aria-hidden /> {t("cards.cardsOnBank", { count: cardCount })}
               </Link>
             )}
           </span>
-          <span className="inline-flex items-center gap-0.5 text-xs font-medium text-muted-foreground transition-colors group-hover:text-primary">
+          <span
+            className={cn(
+              "inline-flex items-center gap-0.5 text-xs font-medium transition-colors",
+              onColor ? inkSoft : "text-muted-foreground group-hover:text-primary",
+            )}
+          >
             {t("viewTransactions")} <ChevronRight className="size-3.5 rtl:rotate-180" />
           </span>
         </div>
@@ -958,13 +1007,21 @@ function AccountCard({
           {...handle.attributes}
           aria-label={t("dragHandle")}
           title={t("dragHandle")}
-          className="ios-tap flex size-8 cursor-grab touch-none items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:cursor-grabbing"
+          className={cn(
+            "ios-tap flex size-8 cursor-grab touch-none items-center justify-center rounded-md transition-colors active:cursor-grabbing",
+            onColor ? cn(inkSoft, inkHover, "hover:bg-white/15") : "text-muted-foreground hover:bg-muted hover:text-foreground",
+          )}
         >
           <GripVertical className="size-4" />
         </button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon-sm" className="text-muted-foreground" aria-label={t("account")}>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className={onColor ? cn(inkSoft, inkHover, "hover:bg-white/15") : "text-muted-foreground"}
+              aria-label={t("account")}
+            >
               <MoreVertical className="size-4" />
             </Button>
           </DropdownMenuTrigger>
