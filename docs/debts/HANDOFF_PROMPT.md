@@ -4,7 +4,7 @@ Paste the block below into a fresh Claude Code session in the ProfitSync repo.
 
 ---
 
-You are reviewing and continuing PR **"feat(debts): Debt & Loans — liabilities, receivables, split repayments, payoff planner"** (branch `feat/debt-loans`, stacked on `feat/credit-card-accounts` / PR #365, which is stacked on `feat/smart-hybrid-budget-v2` / PR #364, all targeting `dev`). Read these first, in order:
+You are reviewing and continuing PR **"feat(debts): Debt & Loans — liabilities, receivables, split repayments, payoff planner"** (branch `feat/debt-loans`, PR #366, targeting `dev` directly — it used to be stacked on `feat/credit-card-accounts` / #365 and `feat/smart-hybrid-budget-v2` / #364, but the first has shipped and the second was superseded by v3 spending budgets, so `dev` is now merged in and the branch carries only the debt feature). Read these first, in order:
 
 1. `docs/debts/DEBTS.md` — the design: a debt IS a wealth account, terms vs derived facts, the payment-group model, the engine.
 2. `src/lib/debt-math.ts`, `src/lib/debt-status.ts`, `src/lib/debt-planner.ts` — every calculation. Nothing else may compute interest, schedules, statuses or plans.
@@ -22,20 +22,20 @@ You are reviewing and continuing PR **"feat(debts): Debt & Loans — liabilities
 5. Money math is integer cents (`toCents` / `fromCents`). Amortization uses `finalPaymentTolerance` so schedules converge without a phantom period. The minimum-only strategy has NO pool and NO rollover; the other strategies roll a cleared debt's payment into the next target.
 6. No FX is invented. Totals are per currency (`owedByCurrency`); only same-currency debts are folded into `/wealth` net worth. A receivable is an asset but never liquid.
 7. Debt accounts are hidden from `GET /api/wealth/accounts` (like Spaces) and rejected by the plain transaction endpoints. Everything goes through `/api/debts/**`.
-8. The unit gate is DB-free. Route behaviour is verified against the local Docker Postgres (`docs/budget-v2/LOCAL_DB.md`) with the dev server and Playwright — never against the shared Neon dev database, and never with `db:push`. Migration 0063 is hand-written; `drizzle-kit generate` is out of sync with 0060+, so write SQL + journal entries by hand and bump `when`.
+8. The unit gate is DB-free. Route behaviour is verified with the dev server and Playwright against the **Neon dev branch** in `.env.local` — there is no local database, and `db:push` is never run against a shared instance. The debt migration is `0069_debt_loans`, hand-written like everything from 0060 on; `drizzle-kit generate` is out of sync with them, so write the SQL and the journal entry by hand, stamp `when` with `Date.now()`, and run `npm run migrations:check`. Read the `migrations` skill first — the migrator keeps ONE watermark per database and skips anything at or below it, silently.
 
 ## How to verify anything you change
 
 ```bash
-docker start ps-budget-pg ps-budget-neonproxy          # local DB (creds in docs/budget-v2/.env.localdb)
-set -a; . docs/budget-v2/.env.localdb; set +a
-export DATABASE_URL="postgres://$LOCAL_DB_USER:$LOCAL_DB_PASSWORD@db.localtest.me:4444/$LOCAL_DB_NAME?sslmode=require"
-export NODE_TLS_REJECT_UNAUTHORIZED=0
-node scripts/db-migrate.mjs                             # applies 0063 (64 migrations)
-VITE_DISABLE_DEV_TOOLS=1 npm run dev -- --port 5173 --strictPort &
-PLAYWRIGHT_BASE_URL=http://localhost:5173 CLERK_PUBLISHABLE_KEY=$VITE_CLERK_PUBLISHABLE_KEY \
-  npx playwright test --project=chromium e2e/debts.spec.ts e2e/credit-card.spec.ts e2e/smoke.spec.ts
-npm run i18n:check && npm run lint && npm run typecheck && npx vitest run
+# There is NO local database. Everything runs against the Neon dev branch in
+# .env.local, which db-migrate.mjs loads itself. Migrations stay additive and
+# `db:push` is never run against it.
+npm run db:migrate                                      # head is 0069_debt_loans
+VITE_DISABLE_DEV_TOOLS=1 npm run dev -- --port 5190 --strictPort &
+PLAYWRIGHT_BASE_URL=http://localhost:5190 \
+  npx playwright test --project=setup --project=chromium e2e/debts.spec.ts e2e/credit-card.spec.ts e2e/smoke.spec.ts
+npm run migrations:check && npm run cache:check && npm run i18n:check
+npm run lint && npm run typecheck && npx vitest run
 node scripts/check-esm-extensions.mjs && node scripts/boot-functions.mjs
 ```
 
