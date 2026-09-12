@@ -470,6 +470,13 @@
       "when": 1789213625836,
       "tag": "0066_debt_loans",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1789250478681,
+      "tag": "0067_debt_recurring",
+      "breakpoints": true
     }
   ]
 }

@@ -1,6 +1,6 @@
 import { and, desc, eq, gte, inArray, isNull, lt, or, sql } from "drizzle-orm"
-import { db, serialize } from "../../src/lib/db/index.js"
-import { categories, clients, debtDetails, debtPayments, transactions, wealthAccounts } from "../../src/lib/db/schema.js"
+import { db, dbBatch, serialize } from "../../src/lib/db/index.js"
+import { categories, clients, debtDetails, debtPayments, recurringRules, transactions, wealthAccounts } from "../../src/lib/db/schema.js"
 import { cardDebt, isLiabilityType } from "../../src/lib/credit-card.js"
 import { addPeriods, amortize, fromCents, monthKey, monthlyEquivalent, nextDueAfter, periodsPerYear, splitPayment, toCents, type PaymentFrequency } from "../../src/lib/debt-math.js"
 import {
@@ -19,7 +19,8 @@ import {
   type DebtLifecycle,
   type DebtLike,
 } from "../../src/lib/debt-status.js"
-import { todayIso } from "../../src/lib/recurring.js"
+import { todayIso, type FrequencyUnit } from "../../src/lib/recurring.js"
+import { recurringToFrequency } from "../../src/lib/debt-recurring.js"
 import { logoDataUrl } from "../../src/lib/logo-data.js"
 import { balanceDelta } from "../../src/lib/wealth-ledger.js"
 import { logAudit } from "./audit.js"
@@ -98,8 +99,15 @@ export function toDebtLike(row: DebtRow): DebtLike {
   }
 }
 
-/** The JSON shape of one debt (snake_case like every other row) + derived facts. */
-export function serializeDebt(row: DebtRow, today: string) {
+/**
+ * The JSON shape of one debt (snake_case like every other row) + derived facts.
+ *
+ * `repaymentActive` says whether a recurring repayment is currently servicing
+ * it. Which debts pay themselves and which need the user to act is the first
+ * thing a list of debts has to answer, and it cannot be derived from the debt's
+ * own columns — the schedule fields look identical either way.
+ */
+export function serializeDebt(row: DebtRow, today: string, opts: { repaymentActive?: boolean } = {}) {
   const like = toDebtLike(row)
   const estimate = debtFreeEstimate(like, today)
   const { logoData, ...account } = row.account
@@ -137,6 +145,7 @@ export function serializeDebt(row: DebtRow, today: string) {
     refinancedIntoAccountId: row.details.refinancedIntoAccountId,
     closedAt: row.details.closedAt,
     notes: row.details.notes,
+    repaymentActive: opts.repaymentActive ?? false,
     updatedAt: row.details.updatedAt,
   })
 }
@@ -195,6 +204,12 @@ export async function buildDebtsOverview(orgId: string, orgCurrency: string, tod
   const receivableLike = receivableRows.map(toDebtLike)
   const ids = active.map((r) => r.account.id)
 
+  // Which debts are being serviced by a live repayment — one query for all of
+  // them, rather than one per row.
+  const allRules = await loadDebtRules(orgId, active.map((r) => r.account.id))
+  const servicing = new Set(allRules.filter((r) => r.active && r.debtAccountId).map((r) => r.debtAccountId as string))
+  const withRule = (row: DebtRow) => ({ repaymentActive: servicing.has(row.account.id) })
+
   const monthStart = `${monthKey(today)}-01`
   const nextMonthStart = addPeriods(monthStart, "monthly", 1)
   const threeMonthsOut = addPeriods(monthStart, "monthly", 3)
@@ -231,8 +246,8 @@ export async function buildDebtsOverview(orgId: string, orgCurrency: string, tod
   return {
     today,
     currency: orgCurrency,
-    debts: owedRows.map((r) => serializeDebt(r, today)),
-    receivables: receivableRows.map((r) => serializeDebt(r, today)),
+    debts: owedRows.map((r) => serializeDebt(r, today, withRule(r))),
+    receivables: receivableRows.map((r) => serializeDebt(r, today, withRule(r))),
     closed: rows.filter((r) => !!r.account.archivedAt).map((r) => serializeDebt(r, today)),
     summary: serialize({
       openCount: open.length,
@@ -297,10 +312,20 @@ export type RecordPaymentInput = {
   note?: string
   /** Advance next_due_date / remaining_installments after recording (default true). */
   advanceSchedule?: boolean
+  /**
+   * Set by the recurring materializer. Makes the FIRST leg carry the recurring
+   * keys, so the unique index on (recurring_rule_id, recurring_due_date) is what
+   * decides whether this occurrence has already posted — the same idempotency
+   * contract every other recurring money path uses. Never set by a hand-recorded
+   * payment.
+   */
+  recurring?: { ruleId: string; dueDate: string }
 }
 
 export type RecordPaymentResult =
-  | { ok: true; payment: PaymentRow }
+  | { ok: true; payment: PaymentRow; skipped?: false }
+  /** The recurring occurrence was already posted — nothing was written. */
+  | { ok: true; payment: null; skipped: true }
   | { ok: false; status: number; error: string; quota?: unknown }
 
 /**
@@ -315,6 +340,21 @@ export type RecordPaymentResult =
  * Split resolution: an explicit principal/interest/fees split is used as typed
  * ("entered"); otherwise a known rate splits one period's interest off the top
  * ("calculated"); otherwise everything is principal ("principal_only").
+ *
+ * ATOMICITY. Every write lands in ONE dbBatch — the legs, each account's
+ * balance, the allocation row and the schedule advance — so a payment can never
+ * be observed half-applied (a balance moved with no row to explain it, or an
+ * allocation pointing at a leg that was never inserted). The ids are generated
+ * here rather than by the database precisely so the whole set can be one batch:
+ * neon-http has no interactive transactions, so nothing may depend on reading
+ * back an earlier statement's result.
+ *
+ * The one exception is a RECURRING occurrence, which needs two round trips by
+ * construction: the anchor leg is inserted first with ON CONFLICT DO NOTHING,
+ * and the batch only runs when that insert actually returned a row. That is the
+ * same two-step the transfer materializer uses, for the same reason — the
+ * conflict is the idempotency check, and its answer has to be known before the
+ * rest of the money moves.
  */
 export async function recordDebtPayment(orgId: string, userId: string, row: DebtRow, input: RecordPaymentInput): Promise<RecordPaymentResult> {
   const direction = directionOf(row.account.type)
@@ -378,95 +418,131 @@ export async function recordDebtPayment(orgId: string, userId: string, row: Debt
   const noteText = (input.note ?? "").trim()
   const suffix = noteText ? ` — ${noteText}` : ""
   const groupId = crypto.randomUUID()
-  const insertedIds: string[] = []
-  const shifts = new Map<string, number>()
-  const bump = (accountId: string, delta: number) => shifts.set(accountId, (shifts.get(accountId) ?? 0) + delta)
 
-  const insertLeg = async (values: {
-    accountId: string; kind: "transfer" | "standard"; type: "incoming" | "outgoing"; amount: number; description: string; category: string
-  }) => {
-    const [leg] = await db
-      .insert(transactions)
-      .values({
-        clientId,
-        wealthAccountId: values.accountId,
-        groupId,
-        kind: values.kind,
-        type: values.type,
-        amount: fromCents(values.amount).toFixed(2),
-        description: values.description,
-        category: values.category,
-        date: input.date,
-        createdBy: userId,
-        updatedBy: userId,
-      })
-      .returning({ id: transactions.id })
-    insertedIds.push(leg.id)
-    bump(values.accountId, balanceDelta(values.type, fromCents(values.amount)))
-  }
+  // Describe every leg first — nothing is written until the whole shape is known.
+  type Leg = { id: string; accountId: string; kind: "transfer" | "standard"; type: "incoming" | "outgoing"; amount: number; description: string; category: string }
+  const legs: Leg[] = []
+  const leg = (v: Omit<Leg, "id">) => legs.push({ id: crypto.randomUUID(), ...v })
 
   if (split.principal > 0) {
     if (direction === "owed") {
-      await insertLeg({ accountId: counter.id, kind: "transfer", type: "outgoing", amount: split.principal, description: `Loan payment to ${name}${suffix}`, category: "Transfer" })
-      await insertLeg({ accountId: row.account.id, kind: "transfer", type: "incoming", amount: split.principal, description: `Loan payment from ${counterName}${suffix}`, category: "Transfer" })
+      leg({ accountId: counter.id, kind: "transfer", type: "outgoing", amount: split.principal, description: `Loan payment to ${name}${suffix}`, category: "Transfer" })
+      leg({ accountId: row.account.id, kind: "transfer", type: "incoming", amount: split.principal, description: `Loan payment from ${counterName}${suffix}`, category: "Transfer" })
     } else {
-      await insertLeg({ accountId: row.account.id, kind: "transfer", type: "outgoing", amount: split.principal, description: `Repayment to ${counterName}${suffix}`, category: "Transfer" })
-      await insertLeg({ accountId: counter.id, kind: "transfer", type: "incoming", amount: split.principal, description: `Repayment from ${name}${suffix}`, category: "Transfer" })
+      leg({ accountId: row.account.id, kind: "transfer", type: "outgoing", amount: split.principal, description: `Repayment to ${counterName}${suffix}`, category: "Transfer" })
+      leg({ accountId: counter.id, kind: "transfer", type: "incoming", amount: split.principal, description: `Repayment from ${name}${suffix}`, category: "Transfer" })
     }
   }
   if (split.interest > 0) {
     // Interest I pay is an expense; interest paid TO me is income.
-    await insertLeg({
+    leg({
       accountId: counter.id, kind: "standard", type: direction === "owed" ? "outgoing" : "incoming",
       amount: split.interest, description: `Interest — ${name}${suffix}`, category: cats.interest,
     })
   }
-  if (split.fees > 0) await insertLeg({ accountId: counter.id, kind: "standard", type: "outgoing", amount: split.fees, description: `Fees — ${name}${suffix}`, category: cats.fees })
-  if (split.other > 0) await insertLeg({ accountId: counter.id, kind: "standard", type: "outgoing", amount: split.other, description: `Charges — ${name}${suffix}`, category: cats.other })
+  if (split.fees > 0) leg({ accountId: counter.id, kind: "standard", type: "outgoing", amount: split.fees, description: `Fees — ${name}${suffix}`, category: cats.fees })
+  if (split.other > 0) leg({ accountId: counter.id, kind: "standard", type: "outgoing", amount: split.other, description: `Charges — ${name}${suffix}`, category: cats.other })
 
-  // Relative balance updates — one UPDATE per account (same pattern as every money path).
-  for (const [accountId, delta] of shifts) {
-    await db
-      .update(wealthAccounts)
-      .set({ currentBalance: sql`${wealthAccounts.currentBalance}::numeric + ${delta.toFixed(2)}::numeric`, updatedBy: userId, updatedAt: new Date() })
-      .where(eq(wealthAccounts.id, accountId))
+  const shifts = new Map<string, number>()
+  for (const l of legs) shifts.set(l.accountId, (shifts.get(l.accountId) ?? 0) + balanceDelta(l.type, fromCents(l.amount)))
+
+  const legValues = (l: Leg) => ({
+    id: l.id,
+    clientId,
+    wealthAccountId: l.accountId,
+    groupId,
+    kind: l.kind,
+    type: l.type,
+    amount: fromCents(l.amount).toFixed(2),
+    description: l.description,
+    category: l.category,
+    date: input.date,
+    createdBy: userId,
+    updatedBy: userId,
+    // Only the ANCHOR carries the due date — the unique index it sits on must
+    // never be able to conflict twice for one occurrence.
+    //
+    // The interest and fee legs carry the rule id with a NULL due date. The
+    // index is NULLS DISTINCT, so they cannot collide, and the rule's page then
+    // reports what the repayment actually costs: a €250 instalment that is €244
+    // of principal and €6 of interest reads as €250, not €244. The debt-side
+    // transfer leg is deliberately left out — attributing both halves of a
+    // transfer to the rule would count the same money twice.
+    ...(input.recurring && l.id === legs[0].id
+      ? { recurringRuleId: input.recurring.ruleId, recurringDueDate: input.recurring.dueDate }
+      : input.recurring && l.kind === "standard"
+        ? { recurringRuleId: input.recurring.ruleId }
+        : {}),
+  })
+
+  // Step 1 (recurring only): claim the occurrence. An empty result means another
+  // catch-up already posted it, and NOTHING below runs.
+  if (input.recurring) {
+    const claimed = await db
+      .insert(transactions)
+      .values(legValues(legs[0]))
+      .onConflictDoNothing({ target: [transactions.recurringRuleId, transactions.recurringDueDate] })
+      .returning({ id: transactions.id })
+    if (claimed.length === 0) return { ok: true, payment: null, skipped: true }
   }
 
-  const [payment] = await db
-    .insert(debtPayments)
-    .values({
-      organizationId: orgId,
-      wealthAccountId: row.account.id,
-      transactionId: insertedIds[0],
-      groupId,
-      date: input.date,
-      total: fromCents(split.total).toFixed(2),
-      principal: fromCents(split.principal).toFixed(2),
-      interest: fromCents(split.interest).toFixed(2),
-      fees: fromCents(split.fees).toFixed(2),
-      other: fromCents(split.other).toFixed(2),
-      splitSource,
-      note: noteText,
-      createdBy: userId,
-    })
-    .returning()
+  const paymentId = crypto.randomUUID()
+  const now = new Date()
+  const rest = input.recurring ? legs.slice(1) : legs
+  const batch = [
+    ...rest.map((l) => db.insert(transactions).values(legValues(l))),
+    // Relative balance updates — one UPDATE per account (same pattern as every money path).
+    ...[...shifts].map(([accountId, delta]) =>
+      db
+        .update(wealthAccounts)
+        .set({ currentBalance: sql`${wealthAccounts.currentBalance}::numeric + ${delta.toFixed(2)}::numeric`, updatedBy: userId, updatedAt: now })
+        .where(eq(wealthAccounts.id, accountId)),
+    ),
+    db
+      .insert(debtPayments)
+      .values({
+        id: paymentId,
+        organizationId: orgId,
+        wealthAccountId: row.account.id,
+        transactionId: legs[0].id,
+        groupId,
+        date: input.date,
+        total: fromCents(split.total).toFixed(2),
+        principal: fromCents(split.principal).toFixed(2),
+        interest: fromCents(split.interest).toFixed(2),
+        fees: fromCents(split.fees).toFixed(2),
+        other: fromCents(split.other).toFixed(2),
+        splitSource,
+        note: noteText,
+        createdBy: userId,
+      })
+      .returning(),
+  ]
 
   // Move the schedule forward: the next due date is the first scheduled date
   // after this payment (paying early still counts for the coming instalment).
+  // A debt driven by a recurring rule advances with the RULE instead — the rule
+  // is the single source of truth for when the next payment is due, and moving
+  // both would skip an instalment.
   if (input.advanceSchedule !== false && row.details.nextDueDate && row.details.paymentFrequency && row.details.paymentFrequency !== "irregular") {
     const freq = row.details.paymentFrequency as PaymentFrequency
     const nextDue = input.date < row.details.nextDueDate ? addPeriods(row.details.nextDueDate, freq, 1) : nextDueAfter(row.details.nextDueDate, freq, input.date)
-    await db
-      .update(debtDetails)
-      .set({
-        nextDueDate: nextDue,
-        ...(row.details.remainingInstallments != null && row.details.remainingInstallments > 0 ? { remainingInstallments: row.details.remainingInstallments - 1 } : {}),
-        updatedAt: new Date(),
-      })
-      .where(eq(debtDetails.id, row.details.id))
+    batch.push(
+      db
+        .update(debtDetails)
+        .set({
+          nextDueDate: nextDue,
+          ...(row.details.remainingInstallments != null && row.details.remainingInstallments > 0 ? { remainingInstallments: row.details.remainingInstallments - 1 } : {}),
+          updatedAt: now,
+        })
+        .where(eq(debtDetails.id, row.details.id)) as unknown as (typeof batch)[number],
+    )
   }
 
-  for (const id of insertedIds) await logAudit({ orgId, entityType: "transaction", entityId: id, action: "create", actorId: userId })
+  const results = (await dbBatch(batch as unknown as Parameters<typeof dbBatch>[0])) as unknown as unknown[]
+  const payment = (results[rest.length + shifts.size] as PaymentRow[])[0]
+
+  for (const l of legs) await logAudit({ orgId, entityType: "transaction", entityId: l.id, action: "create", actorId: userId })
   await logAudit({ orgId, entityType: "wealth_account", entityId: row.account.id, action: "update", actorId: userId, changes: { debt_payment: { from: null, to: fromCents(split.total) } } })
   return { ok: true, payment }
 }
@@ -499,3 +575,225 @@ export function scheduleFor(row: DebtRow, today: string, maxRows = 360) {
 export const isLiabilityOrDebtType = (type: string | null | undefined) => isLiabilityType(type) || isDebtAccountType(type)
 
 export { or }
+
+// ── The recurring repayment that drives a debt ───────────────────────────────
+//
+// A debt can be repaid by a recurring rule (kind='debt', debt_account_id = the
+// debt). When one exists it is the SINGLE SOURCE OF TRUTH for the schedule:
+// what is paid, how often, and when next. `debt_details.payment_amount /
+// payment_frequency / next_due_date` are then a MIRROR of it, kept in step by
+// debtScheduleMirror() below, because the planner, the amortization schedule,
+// the month's obligations and the debt-free estimate all read the debt's own
+// fields and would otherwise quietly describe a different schedule from the one
+// actually taking the money.
+
+/** Active + inactive repayment rules for these debts, newest first. */
+export async function loadDebtRules(orgId: string, debtAccountIds: string[]) {
+  if (debtAccountIds.length === 0) return []
+  return db
+    .select()
+    .from(recurringRules)
+    .where(and(eq(recurringRules.organizationId, orgId), inArray(recurringRules.debtAccountId, debtAccountIds)))
+    .orderBy(desc(recurringRules.active), desc(recurringRules.createdAt))
+}
+
+export type DebtRuleRow = Awaited<ReturnType<typeof loadDebtRules>>[number]
+
+/** The one rule that currently drives a debt's schedule, or null. Active wins over paused. */
+export const drivingRule = <T extends { active: boolean }>(rules: T[]): T | null =>
+  rules.find((r) => r.active) ?? rules[0] ?? null
+
+/**
+ * The debt_details patch that mirrors a rule's schedule. Returns the fields
+ * only — the caller decides whether to issue it alone or inside a batch.
+ *
+ * A rhythm the debt vocabulary cannot name (every 10 days) mirrors as
+ * `irregular`: the amount and the next date are still true, and "irregular" is
+ * exactly how the rest of the feature already says "there is no named period
+ * here", so the schedule table and the payoff estimate stand down instead of
+ * inventing a periods-per-year.
+ */
+export function debtScheduleMirror(rule: Pick<DebtRuleRow, "amount" | "frequencyUnit" | "frequencyInterval" | "nextDueAt" | "active">) {
+  const frequency = recurringToFrequency(rule.frequencyUnit as FrequencyUnit, rule.frequencyInterval)
+  return {
+    paymentAmount: String(rule.amount),
+    paymentFrequency: frequency ?? "irregular",
+    nextDueDate: String(rule.nextDueAt).slice(0, 10),
+    updatedAt: new Date(),
+  }
+}
+
+/**
+ * Pause or resume every repayment rule on a debt.
+ *
+ * Resuming RE-ANCHORS the cursor to today rather than letting it catch up. A
+ * paused debt is a deliberate holiday from paying, so resuming after six months
+ * must not fire six back-dated instalments the user never authorised — that is
+ * the opposite of the archived-account case, where the charges really did
+ * happen and catching up is the correct repair.
+ */
+export async function setDebtRulesActive(orgId: string, debtAccountId: string, active: boolean, userId: string, today: string): Promise<void> {
+  await db
+    .update(recurringRules)
+    .set({
+      active,
+      ...(active ? { nextDueAt: sql`GREATEST(${recurringRules.nextDueAt}, ${today})` } : {}),
+      lastError: "",
+      updatedBy: userId,
+      updatedAt: new Date(),
+    })
+    .where(and(eq(recurringRules.organizationId, orgId), eq(recurringRules.debtAccountId, debtAccountId)))
+}
+
+// ── Everything that ever moved on this debt ──────────────────────────────────
+
+export type DebtActivityKind = "opening" | "adjustment" | "borrow" | "payment" | "other"
+
+export type DebtActivityRow = {
+  id: string
+  date: string
+  kind: DebtActivityKind
+  description: string
+  /** How much the amount owed moved: POSITIVE reduces the debt, negative grows it. */
+  principal: number
+  interest: number
+  fees: number
+  other: number
+  /** Out of pocket for a payment (principal + the expense legs); the amount received for a borrow. */
+  total: number
+  counter_account_id: string | null
+  counter_account_name: string | null
+  group_id: string | null
+  transaction_id: string
+  payment_id: string | null
+  split_source: string | null
+  recurring_rule_id: string | null
+  is_system: boolean
+}
+
+/**
+ * Every money event that touched this debt, newest first — not just the
+ * repayments. The opening balance, the money when it was borrowed, each
+ * repayment with its interest and fees, and every reconciliation are all part
+ * of "what happened to this debt", and a screen that shows only the repayments
+ * cannot explain the balance it is displaying.
+ *
+ * One row per ledger GROUP: a repayment's principal transfer and its interest
+ * and fee expenses are one event to a person, and reading them as three
+ * unrelated lines is how a €500 payment looks like €920 of activity. The split
+ * comes from the debt_payments allocation when there is one (authoritative,
+ * because it records what the user or the rate actually decided) and is
+ * otherwise derived from the sibling legs.
+ */
+export async function buildDebtActivity(debtAccountId: string, direction: DebtDirection, limit = 200): Promise<DebtActivityRow[]> {
+  const own = await db
+    .select({ groupId: transactions.groupId, id: transactions.id })
+    .from(transactions)
+    .where(and(eq(transactions.wealthAccountId, debtAccountId), isNull(transactions.deletedAt)))
+    .orderBy(desc(transactions.date), desc(transactions.createdAt))
+    .limit(limit)
+  if (own.length === 0) return []
+
+  const groupIds = [...new Set(own.map((r) => r.groupId).filter((g): g is string => !!g))]
+  const soloIds = own.filter((r) => !r.groupId).map((r) => r.id)
+
+  // Both the debt's own legs and their siblings on the paying account — the
+  // interest and fee legs never touch the debt account, so a query scoped to it
+  // would report a mortgage payment as principal only.
+  const legs = await db
+    .select({
+      id: transactions.id,
+      groupId: transactions.groupId,
+      accountId: transactions.wealthAccountId,
+      accountName: sql<string | null>`coalesce(nullif(${wealthAccounts.nickname}, ''), ${wealthAccounts.bankName})`,
+      kind: transactions.kind,
+      type: transactions.type,
+      amount: transactions.amount,
+      description: transactions.description,
+      category: transactions.category,
+      date: transactions.date,
+      isSystem: transactions.isSystem,
+      recurringRuleId: transactions.recurringRuleId,
+      createdAt: transactions.createdAt,
+    })
+    .from(transactions)
+    .leftJoin(wealthAccounts, eq(wealthAccounts.id, transactions.wealthAccountId))
+    .where(
+      and(
+        isNull(transactions.deletedAt),
+        or(
+          groupIds.length ? inArray(transactions.groupId, groupIds) : undefined,
+          soloIds.length ? inArray(transactions.id, soloIds) : undefined,
+        ),
+      ),
+    )
+
+  const allocations = await db
+    .select()
+    .from(debtPayments)
+    .where(eq(debtPayments.wealthAccountId, debtAccountId))
+  const byGroup = new Map(allocations.filter((a) => a.groupId).map((a) => [a.groupId!, a]))
+  const byTx = new Map(allocations.map((a) => [a.transactionId, a]))
+
+  type Bucket = { legs: typeof legs }
+  const buckets = new Map<string, Bucket>()
+  for (const l of legs) {
+    const key = l.groupId ?? l.id
+    const b = buckets.get(key) ?? { legs: [] }
+    b.legs.push(l)
+    buckets.set(key, b)
+  }
+
+  const rows: DebtActivityRow[] = []
+  for (const [key, bucket] of buckets) {
+    const debtLeg = bucket.legs.find((l) => l.accountId === debtAccountId)
+    if (!debtLeg) continue
+    const counter = bucket.legs.find((l) => l.accountId !== debtAccountId) ?? null
+    const allocation = byGroup.get(key) ?? byTx.get(debtLeg.id) ?? null
+
+    // Effect on what is owed. A loan's debt shrinks on an INCOMING leg (money
+    // arriving at the liability account pays it down); a receivable's claim
+    // shrinks on an OUTGOING one.
+    const reduces = direction === "owed" ? debtLeg.type === "incoming" : debtLeg.type === "outgoing"
+    const magnitude = num(debtLeg.amount)
+    const principal = allocation ? num(allocation.principal) : magnitude
+    const signedPrincipal = reduces ? principal : -principal
+
+    const expenseLegs = bucket.legs.filter((l) => l.accountId !== debtAccountId && l.kind === "standard")
+    const interest = allocation
+      ? num(allocation.interest)
+      : expenseLegs.filter((l) => /interest/i.test(l.category ?? "")).reduce((s, l) => s + num(l.amount), 0)
+    const fees = allocation
+      ? num(allocation.fees)
+      : expenseLegs.filter((l) => !/interest/i.test(l.category ?? "")).reduce((s, l) => s + num(l.amount), 0)
+    const other = allocation ? num(allocation.other) : 0
+
+    let kind: DebtActivityKind = "other"
+    if (debtLeg.isSystem) kind = /adjust/i.test(debtLeg.category ?? "") ? "adjustment" : "opening"
+    else if (debtLeg.kind === "transfer") kind = reduces ? "payment" : "borrow"
+
+    rows.push({
+      id: key,
+      date: String(debtLeg.date).slice(0, 10),
+      kind,
+      description: debtLeg.description ?? "",
+      principal: Math.round(signedPrincipal * 100) / 100,
+      interest,
+      fees,
+      other,
+      total: Math.round((principal + interest + fees + other) * 100) / 100,
+      counter_account_id: counter?.accountId ?? null,
+      counter_account_name: counter?.accountName ?? null,
+      group_id: debtLeg.groupId,
+      transaction_id: debtLeg.id,
+      payment_id: allocation?.id ?? null,
+      split_source: allocation?.splitSource ?? null,
+      // The occurrence's recurring keys live on the ANCHOR leg, which is the one
+      // on the paying account — so look across the whole group, not just here.
+      recurring_rule_id: bucket.legs.find((l) => l.recurringRuleId)?.recurringRuleId ?? null,
+      is_system: debtLeg.isSystem,
+    })
+  }
+
+  return rows.sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id))
+}

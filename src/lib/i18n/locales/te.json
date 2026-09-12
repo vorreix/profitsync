@@ -1717,7 +1717,8 @@
     "noPaymentsHint": "మొదటిది {{date}}న సృష్టించబడుతుంది.",
     "noPaymentsPaused": "దీని నుండి ఇంకా ఏమీ సృష్టించబడలేదు.",
     "loadMore": "మరో {{count}} లోడ్ చేయండి",
-    "loadingMore": "లోడ్ అవుతోంది…"
+    "loadingMore": "లోడ్ అవుతోంది…",
+    "repaysDebt": "తిరిగి చెల్లిస్తుంది"
   },
   "calendar": {
     "title": "క్యాలెండర్",
@@ -2071,6 +2072,15 @@
       "card_expiring": {
         "title": "కార్డ్ గడువు త్వరలో ముగుస్తుంది",
         "body": "{{card}} గడువు {{expiry}}న ముగుస్తుంది."
+      },
+      "debt_payment_posted": {
+        "title": "తిరిగి చెల్లింపు నమోదైంది",
+        "body": "“{{name}}” దానంతట అదే చెల్లించబడింది.",
+        "body_many": "“{{name}}” {{count}} తిరిగి చెల్లింపులు నమోదు చేసింది."
+      },
+      "debt_repaid": {
+        "title": "అప్పు తీరింది",
+        "body": "“{{name}}” చివరి భాగాన్ని కూడా తీర్చింది. ఇక చెల్లించాల్సింది ఏమీ లేదు."
       }
     },
     "client": {
@@ -2901,6 +2911,78 @@
     "viewDebt": "View debt",
     "payments": "Payments",
     "receivablesTitle": "Owed to you",
-    "receivablesHint": "Money others owe you counts toward your net worth, but it is not money in hand."
+    "receivablesHint": "Money others owe you counts toward your net worth, but it is not money in hand.",
+    "common": {
+      "amountTooLarge": "ఈ మొత్తం చాలా పెద్దది"
+    },
+    "kindPlaceholder": "రకాన్ని ఎంచుకోండి లేదా టైప్ చేయండి",
+    "kindSearchPlaceholder": "వెతకండి, లేదా మీ స్వంతది టైప్ చేయండి…",
+    "kindSuggestions": "సూచనలు",
+    "useThisType": "“{{type}}” వాడండి",
+    "originalInvalid": "అసలు మొత్తం 0 లేదా అంతకంటే ఎక్కువ ఉండాలి",
+    "howRepaidOut": "దీన్ని ఎలా తిరిగి చెల్లిస్తున్నారు?",
+    "howRepaidIn": "వాళ్ళు మీకు ఎలా తిరిగి చెల్లిస్తున్నారు?",
+    "repayManually": "చెల్లింపులు నేనే నమోదు చేస్తాను",
+    "repayAutoOut": "నిర్ణీత వ్యవధిలో దానంతట అదే చెల్లించు",
+    "repayAutoIn": "వాళ్ళు నిర్ణీత వ్యవధిలో దానంతట అదే చెల్లిస్తారు",
+    "repayFrom": "దీని నుండి చెల్లించు",
+    "repayInto": "దీనిలోకి స్వీకరించు",
+    "repayAmount": "ప్రతి చెల్లింపు",
+    "repayFromRequired": "తిరిగి చెల్లింపు వెళ్ళే ఖాతాను ఎంచుకోండి",
+    "repayAmountRequired": "ప్రతి చెల్లింపు ఎంతో నమోదు చేయండి",
+    "repayStartRequired": "మొదటి చెల్లింపు ఎప్పుడో ఎంచుకోండి",
+    "firstPayment": "మొదటి చెల్లింపు",
+    "firstPaymentNow": "సేవ్ చేయగానే మొదటి చెల్లింపు నమోదవుతుంది.",
+    "firstPaymentHint": "ఈ తేదీ నుండి చెల్లింపులు దానంతట అవే నమోదవుతాయి, వడ్డీని అసలు నుండి వేరుగా ఉంచుతూ.",
+    "repaymentNameOut": "తిరిగి చెల్లింపు — {{name}}",
+    "repaymentNameIn": "{{name}} నుండి తిరిగి చెల్లింపు",
+    "moreDetails": "మరిన్ని వివరాలు (ఐచ్ఛికం)",
+    "formalName": "ఒప్పందంలోని పూర్తి పేరు",
+    "formalNamePlaceholder": "పైన ఉన్న పేరు కంటే వేరుగా ఉంటే మాత్రమే",
+    "rateTypeLabel": "రేటు",
+    "rateHelp": "రేటు ఉంటే, ప్రతి చెల్లింపు వడ్డీని అసలు నుండి దానంతట అదే వేరు చేస్తుంది.",
+    "lendMoneyHint": "మీ ఖాతా నుండి వెళ్ళే డబ్బును నమోదు చేస్తుంది. దీన్ని ఎప్పుడూ ఖర్చుగా లెక్కించరు.",
+    "useScheduled": "నిర్ణీతం · {{amount}}",
+    "payItOff": "పూర్తిగా చెల్లించు · {{amount}}",
+    "overpayWarning": "ఈరోజు దీన్ని తీర్చడానికి కావలసిన దాని ({{amount}}) కంటే ఇది ఎక్కువ. మిగిలినది అప్పుపై జమగా ఉండిపోతుంది.",
+    "countsAsScheduled": "ఇది నిర్ణీత చెల్లింపు",
+    "countsAsScheduledOn": "తదుపరి గడువు {{date}} నుండి ముందుకు కదులుతుంది.",
+    "extraPayment": "ఒక అదనపు చెల్లింపు. తదుపరి గడువు తేదీ అలాగే ఉంటుంది.",
+    "extraPaymentWithRule": "నియమిత చెల్లింపుకు అదనంగా ఒక చెల్లింపు. తదుపరి గడువు తేదీ అలాగే ఉంటుంది.",
+    "repaymentSection": "నియమిత తిరిగి చెల్లింపు",
+    "repaymentEvery": "ప్రతి {{frequency}} {{amount}}",
+    "frequencyCustom": "{{interval}} {{unit}}",
+    "unit": {
+      "day": "రోజులు",
+      "week": "వారాలు",
+      "month": "నెలలు",
+      "year": "సంవత్సరాలు"
+    },
+    "repaymentFromAccount": "{{account}} నుండి",
+    "repaymentIntoAccount": "{{account}} లోకి",
+    "repaymentNoAccount": "ఖాతా ఎంచుకోలేదు",
+    "repaymentNext": "తదుపరి {{date}}",
+    "repaymentPaused": "నిలిపివేయబడింది",
+    "pauseRepayment": "నిలిపివేయి",
+    "resumeRepayment": "కొనసాగించు",
+    "openRepayment": "నిర్వహించు",
+    "noRepayment": "నియమిత తిరిగి చెల్లింపు లేదు — చెల్లింపులు చేతితో నమోదవుతాయి.",
+    "setUpRepayment": "ఒకటి సెట్ చేయి",
+    "activityTitle": "కార్యకలాపం",
+    "noActivityYet": "ఈ అప్పుపై ఇంకా ఏమీ జరగలేదు",
+    "activity": {
+      "paid": "చెల్లింపు",
+      "received": "తిరిగి చెల్లింపు అందింది",
+      "borrowed": "అప్పు తీసుకున్నారు",
+      "lent": "అప్పు ఇచ్చారు",
+      "adjusted": "నిల్వ సవరించబడింది",
+      "opening": "ప్రారంభ నిల్వ",
+      "automatic": "స్వయంచాలకం",
+      "outOfPocket": "{{amount}} జేబు నుండి"
+    },
+    "paymentDay": "చెల్లింపు రోజు",
+    "paymentDayHint": "ఈ రోజునే వ్యవధి అనుసరిస్తుంది. నెలలో ఏ రోజున చెల్లింపు జరగాలో మార్చడానికి దీన్ని మార్చండి.",
+    "auto": "ఆటో",
+    "rateNoneHelp": "వడ్డీ లేకపోతే, లేదా తెలియకపోతే దీన్ని ఖాళీగా వదిలేయండి."
   }
 }

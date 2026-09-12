@@ -6,6 +6,7 @@ import { toast } from "sonner"
 import {
   ArrowDownRight, ArrowLeft, ArrowLeftRight, ArrowUpRight, CalendarClock,
   Pause, Pencil, Play, Repeat, Trash2, TriangleAlert,
+  HandCoins,
 } from "lucide-react"
 import { apiDelete, apiErrorMessage, apiGet, apiPatch } from "@/lib/api"
 import { useApiQuery } from "@/hooks/use-api-query"
@@ -417,8 +418,22 @@ export function RecurringDetailPage() {
       <div className="rounded-2xl border bg-card p-3 sm:p-4">
         <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
           <div className="min-w-0">
-            <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{t("recurring.category")}</dt>
-            <dd className="mt-0.5 truncate font-medium">{rule.category || "—"}</dd>
+            {/* A debt repayment's category is always "Transfer", which says
+                nothing. What it services does — and it is the screen the user
+                actually wants from here. */}
+            <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              {rule.kind === "debt" ? t("recurring.repaysDebt") : t("recurring.category")}
+            </dt>
+            <dd className="mt-0.5 flex min-w-0 items-center gap-1.5 truncate font-medium">
+              {rule.kind === "debt" && rule.debt_account_id ? (
+                <Link to={`/debts/${rule.debt_account_id}`} className="flex min-w-0 items-center gap-1.5 underline-offset-2 hover:underline">
+                  <HandCoins className="size-4 shrink-0 text-muted-foreground" />
+                  <span className="truncate">{rule.debt_name || t("nav.debts")}</span>
+                </Link>
+              ) : (
+                rule.category || "—"
+              )}
+            </dd>
           </div>
           <div className="min-w-0">
             <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{t("recurring.cardPayWith")}</dt>

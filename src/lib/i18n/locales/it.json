@@ -1717,7 +1717,8 @@
     "noPaymentsHint": "Il primo verrà creato il {{date}}.",
     "noPaymentsPaused": "Da questo non è ancora stato creato nulla.",
     "loadMore": "Carica altri {{count}}",
-    "loadingMore": "Caricamento…"
+    "loadingMore": "Caricamento…",
+    "repaysDebt": "Rimborsa"
   },
   "calendar": {
     "title": "Calendario",
@@ -2071,6 +2072,15 @@
       "card_expiring": {
         "title": "Carta in scadenza",
         "body": "{{card}} scade {{expiry}}."
+      },
+      "debt_payment_posted": {
+        "title": "Rimborso registrato",
+        "body": "“{{name}}” è stato pagato automaticamente.",
+        "body_many": "“{{name}}” ha registrato {{count}} rimborsi."
+      },
+      "debt_repaid": {
+        "title": "Debito estinto",
+        "body": "“{{name}}” ha saldato l'ultima parte. Non resta nulla da pagare."
       }
     },
     "client": {
@@ -2901,6 +2911,78 @@
     "viewDebt": "View debt",
     "payments": "Payments",
     "receivablesTitle": "Owed to you",
-    "receivablesHint": "Money others owe you counts toward your net worth, but it is not money in hand."
+    "receivablesHint": "Money others owe you counts toward your net worth, but it is not money in hand.",
+    "common": {
+      "amountTooLarge": "Importo troppo grande"
+    },
+    "kindPlaceholder": "Scegli o scrivi un tipo",
+    "kindSearchPlaceholder": "Cerca, o scrivi il tuo…",
+    "kindSuggestions": "Suggerimenti",
+    "useThisType": "Usa “{{type}}”",
+    "originalInvalid": "L'importo iniziale deve essere 0 o più",
+    "howRepaidOut": "Come lo stai rimborsando?",
+    "howRepaidIn": "Come ti stanno rimborsando?",
+    "repayManually": "Registro io i pagamenti",
+    "repayAutoOut": "Paga automaticamente a cadenza fissa",
+    "repayAutoIn": "Mi pagano automaticamente a cadenza fissa",
+    "repayFrom": "Paga da",
+    "repayInto": "Ricevi su",
+    "repayAmount": "Ogni pagamento",
+    "repayFromRequired": "Scegli il conto da cui parte il rimborso",
+    "repayAmountRequired": "Inserisci l'importo di ogni pagamento",
+    "repayStartRequired": "Scegli quando avviene il primo pagamento",
+    "firstPayment": "Primo pagamento",
+    "firstPaymentNow": "Il primo pagamento viene registrato appena salvi.",
+    "firstPaymentHint": "I pagamenti vengono registrati automaticamente da questa data, tenendo gli interessi separati dal capitale.",
+    "repaymentNameOut": "Rimborso — {{name}}",
+    "repaymentNameIn": "Rimborso da {{name}}",
+    "moreDetails": "Altri dettagli (facoltativo)",
+    "formalName": "Nome completo sul contratto",
+    "formalNamePlaceholder": "Solo se diverso dal nome qui sopra",
+    "rateTypeLabel": "Tasso",
+    "rateHelp": "Con un tasso, ogni pagamento separa da solo interessi e capitale.",
+    "lendMoneyHint": "Registra l'uscita di denaro dal tuo conto. Non viene mai contata come spesa.",
+    "useScheduled": "Previsto · {{amount}}",
+    "payItOff": "Estingui · {{amount}}",
+    "overpayWarning": "È più di quanto serve per chiudere oggi ({{amount}}). L'eccedenza resterà come credito sul debito.",
+    "countsAsScheduled": "Questo è il pagamento previsto",
+    "countsAsScheduledOn": "La prossima scadenza avanza dal {{date}}.",
+    "extraPayment": "Un pagamento extra. La prossima scadenza resta dov'è.",
+    "extraPaymentWithRule": "Un pagamento extra oltre a quello ricorrente. La prossima scadenza resta dov'è.",
+    "repaymentSection": "Rimborso ricorrente",
+    "repaymentEvery": "{{amount}} ogni {{frequency}}",
+    "frequencyCustom": "{{interval}} {{unit}}",
+    "unit": {
+      "day": "giorni",
+      "week": "settimane",
+      "month": "mesi",
+      "year": "anni"
+    },
+    "repaymentFromAccount": "Da {{account}}",
+    "repaymentIntoAccount": "Su {{account}}",
+    "repaymentNoAccount": "Nessun conto scelto",
+    "repaymentNext": "prossimo {{date}}",
+    "repaymentPaused": "in pausa",
+    "pauseRepayment": "Metti in pausa",
+    "resumeRepayment": "Riprendi",
+    "openRepayment": "Gestisci",
+    "noRepayment": "Nessun rimborso ricorrente — i pagamenti si registrano a mano.",
+    "setUpRepayment": "Impostane uno",
+    "activityTitle": "Attività",
+    "noActivityYet": "Su questo debito non si è ancora mosso nulla",
+    "activity": {
+      "paid": "Pagamento",
+      "received": "Rimborso ricevuto",
+      "borrowed": "Preso in prestito",
+      "lent": "Prestato",
+      "adjusted": "Saldo corretto",
+      "opening": "Saldo iniziale",
+      "automatic": "Automatico",
+      "outOfPocket": "{{amount}} di tasca"
+    },
+    "paymentDay": "Giorno del pagamento",
+    "paymentDayHint": "La cadenza mantiene questo giorno. Cambialo per spostare il giorno del mese in cui avviene il pagamento.",
+    "auto": "Auto",
+    "rateNoneHelp": "Lascialo vuoto se non ce n'è, o se non lo sai."
   }
 }

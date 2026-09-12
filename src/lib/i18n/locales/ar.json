@@ -1741,7 +1741,8 @@
     "noPaymentsHint": "ستُنشأ الأولى في {{date}}.",
     "noPaymentsPaused": "لم يُنشأ شيء من هذه بعد.",
     "loadMore": "تحميل {{count}} أخرى",
-    "loadingMore": "جارٍ التحميل…"
+    "loadingMore": "جارٍ التحميل…",
+    "repaysDebt": "يسدّد"
   },
   "calendar": {
     "title": "التقويم",
@@ -2095,6 +2096,15 @@
       "card_expiring": {
         "title": "بطاقة على وشك الانتهاء",
         "body": "تنتهي صلاحية {{card}} في {{expiry}}."
+      },
+      "debt_payment_posted": {
+        "title": "تم تسجيل السداد",
+        "body": "تم دفع ”{{name}}“ تلقائيًا.",
+        "body_many": "سجّل ”{{name}}“ {{count}} دفعات سداد."
+      },
+      "debt_repaid": {
+        "title": "تم سداد الدين",
+        "body": "أنهى ”{{name}}“ ما تبقّى. لم يعد هناك ما يُدفع."
       }
     },
     "client": {
@@ -2943,6 +2953,78 @@
     "viewDebt": "View debt",
     "payments": "Payments",
     "receivablesTitle": "Owed to you",
-    "receivablesHint": "Money others owe you counts toward your net worth, but it is not money in hand."
+    "receivablesHint": "Money others owe you counts toward your net worth, but it is not money in hand.",
+    "common": {
+      "amountTooLarge": "هذا المبلغ كبير جدًا"
+    },
+    "kindPlaceholder": "اختر نوعًا أو اكتبه",
+    "kindSearchPlaceholder": "ابحث، أو اكتب نوعك الخاص…",
+    "kindSuggestions": "اقتراحات",
+    "useThisType": "استخدم ”{{type}}“",
+    "originalInvalid": "يجب أن يكون المبلغ الأصلي 0 أو أكثر",
+    "howRepaidOut": "كيف يتم سداده؟",
+    "howRepaidIn": "كيف يسددون لك؟",
+    "repayManually": "سأسجّل الدفعات بنفسي",
+    "repayAutoOut": "ادفع تلقائيًا وفق جدول",
+    "repayAutoIn": "يدفعون لي تلقائيًا وفق جدول",
+    "repayFrom": "ادفع من",
+    "repayInto": "استلم في",
+    "repayAmount": "كل دفعة",
+    "repayFromRequired": "اختر الحساب الذي يخرج منه السداد",
+    "repayAmountRequired": "أدخل قيمة كل دفعة",
+    "repayStartRequired": "اختر موعد الدفعة الأولى",
+    "firstPayment": "الدفعة الأولى",
+    "firstPaymentNow": "تُسجَّل الدفعة الأولى بمجرد الحفظ.",
+    "firstPaymentHint": "تُسجَّل الدفعات تلقائيًا من هذا التاريخ، مع فصل الفائدة عن أصل الدين.",
+    "repaymentNameOut": "سداد — {{name}}",
+    "repaymentNameIn": "سداد من {{name}}",
+    "moreDetails": "تفاصيل أخرى (اختياري)",
+    "formalName": "الاسم الكامل في الاتفاقية",
+    "formalNamePlaceholder": "فقط إذا كان مختلفًا عن الاسم أعلاه",
+    "rateTypeLabel": "الفائدة",
+    "rateHelp": "بوجود نسبة فائدة، تفصل كل دفعة الفائدة عن أصل الدين تلقائيًا.",
+    "lendMoneyHint": "يسجّل خروج المال من حسابك. لا يُحتسب أبدًا كمصروف.",
+    "useScheduled": "المجدولة · {{amount}}",
+    "payItOff": "سدّده بالكامل · {{amount}}",
+    "overpayWarning": "هذا أكثر مما يلزم لتصفيته اليوم ({{amount}}). سيبقى الفائض رصيدًا دائنًا على الدين.",
+    "countsAsScheduled": "هذه هي الدفعة المجدولة",
+    "countsAsScheduledOn": "يتقدّم موعد الاستحقاق التالي بدءًا من {{date}}.",
+    "extraPayment": "دفعة إضافية. يبقى موعد الاستحقاق التالي كما هو.",
+    "extraPaymentWithRule": "دفعة إضافية فوق الدفعة المتكرّرة. يبقى موعد الاستحقاق التالي كما هو.",
+    "repaymentSection": "سداد متكرّر",
+    "repaymentEvery": "{{amount}} كل {{frequency}}",
+    "frequencyCustom": "{{interval}} {{unit}}",
+    "unit": {
+      "day": "أيام",
+      "week": "أسابيع",
+      "month": "أشهر",
+      "year": "سنوات"
+    },
+    "repaymentFromAccount": "من {{account}}",
+    "repaymentIntoAccount": "إلى {{account}}",
+    "repaymentNoAccount": "لم يُختَر حساب",
+    "repaymentNext": "التالي {{date}}",
+    "repaymentPaused": "متوقّف مؤقتًا",
+    "pauseRepayment": "إيقاف مؤقت",
+    "resumeRepayment": "استئناف",
+    "openRepayment": "إدارة",
+    "noRepayment": "لا يوجد سداد متكرّر — تُسجَّل الدفعات يدويًا.",
+    "setUpRepayment": "أنشئ واحدًا",
+    "activityTitle": "النشاط",
+    "noActivityYet": "لم يتحرّك شيء على هذا الدين بعد",
+    "activity": {
+      "paid": "دفعة",
+      "received": "سداد مستلَم",
+      "borrowed": "اقتُرِض",
+      "lent": "أُقرِض",
+      "adjusted": "تم تعديل الرصيد",
+      "opening": "الرصيد الافتتاحي",
+      "automatic": "تلقائي",
+      "outOfPocket": "{{amount}} من جيبك"
+    },
+    "paymentDay": "يوم الدفع",
+    "paymentDayHint": "يحافظ الجدول على هذا اليوم. غيّره لتنقل يوم الشهر الذي تتم فيه الدفعة.",
+    "auto": "تلقائي",
+    "rateNoneHelp": "اتركه فارغًا إن لم تكن هناك فائدة، أو كنت لا تعرفها."
   }
 }

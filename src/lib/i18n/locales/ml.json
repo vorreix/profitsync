@@ -1717,7 +1717,8 @@
     "noPaymentsHint": "ആദ്യത്തേത് {{date}}-ന് സൃഷ്ടിക്കപ്പെടും.",
     "noPaymentsPaused": "ഇതിൽ നിന്ന് ഇതുവരെ ഒന്നും സൃഷ്ടിച്ചിട്ടില്ല.",
     "loadMore": "{{count}} എണ്ണം കൂടി കാണിക്കുക",
-    "loadingMore": "ലോഡ് ചെയ്യുന്നു…"
+    "loadingMore": "ലോഡ് ചെയ്യുന്നു…",
+    "repaysDebt": "തിരിച്ചടയ്ക്കുന്നു"
   },
   "calendar": {
     "title": "കലണ്ടർ",
@@ -2071,6 +2072,15 @@
       "card_expiring": {
         "title": "കാർഡിന്റെ കാലാവധി അവസാനിക്കാറായി",
         "body": "{{card}}-ന്റെ കാലാവധി {{expiry}}-ന് അവസാനിക്കും."
+      },
+      "debt_payment_posted": {
+        "title": "തിരിച്ചടവ് രേഖപ്പെടുത്തി",
+        "body": "“{{name}}” സ്വയം അടച്ചു.",
+        "body_many": "“{{name}}” {{count}} തിരിച്ചടവുകൾ രേഖപ്പെടുത്തി."
+      },
+      "debt_repaid": {
+        "title": "കടം തീർന്നു",
+        "body": "“{{name}}” അവസാന ഭാഗവും തീർത്തു. ഇനി അടയ്ക്കാൻ ഒന്നുമില്ല."
       }
     },
     "client": {
@@ -2901,6 +2911,78 @@
     "viewDebt": "View debt",
     "payments": "Payments",
     "receivablesTitle": "Owed to you",
-    "receivablesHint": "Money others owe you counts toward your net worth, but it is not money in hand."
+    "receivablesHint": "Money others owe you counts toward your net worth, but it is not money in hand.",
+    "common": {
+      "amountTooLarge": "ഈ തുക വളരെ വലുതാണ്"
+    },
+    "kindPlaceholder": "തരം തിരഞ്ഞെടുക്കുക അല്ലെങ്കിൽ ടൈപ്പ് ചെയ്യുക",
+    "kindSearchPlaceholder": "തിരയുക, അല്ലെങ്കിൽ സ്വന്തമായി ടൈപ്പ് ചെയ്യുക…",
+    "kindSuggestions": "നിർദ്ദേശങ്ങൾ",
+    "useThisType": "“{{type}}” ഉപയോഗിക്കുക",
+    "originalInvalid": "യഥാർത്ഥ തുക 0 അല്ലെങ്കിൽ അതിൽ കൂടുതൽ ആയിരിക്കണം",
+    "howRepaidOut": "ഇത് എങ്ങനെ തിരിച്ചടയ്ക്കുന്നു?",
+    "howRepaidIn": "അവർ എങ്ങനെ നിങ്ങൾക്ക് തിരിച്ചുതരുന്നു?",
+    "repayManually": "പേയ്‌മെന്റുകൾ ഞാൻ തന്നെ രേഖപ്പെടുത്താം",
+    "repayAutoOut": "നിശ്ചിത ഇടവേളയിൽ സ്വയം അടയ്ക്കുക",
+    "repayAutoIn": "അവർ നിശ്ചിത ഇടവേളയിൽ സ്വയം അടയ്ക്കുന്നു",
+    "repayFrom": "ഇവിടെ നിന്ന് അടയ്ക്കുക",
+    "repayInto": "ഇതിലേക്ക് സ്വീകരിക്കുക",
+    "repayAmount": "ഓരോ പേയ്‌മെന്റും",
+    "repayFromRequired": "തിരിച്ചടവ് പോകുന്ന അക്കൗണ്ട് തിരഞ്ഞെടുക്കുക",
+    "repayAmountRequired": "ഓരോ പേയ്‌മെന്റും എത്രയാണെന്ന് നൽകുക",
+    "repayStartRequired": "ആദ്യ പേയ്‌മെന്റ് എപ്പോഴാണെന്ന് തിരഞ്ഞെടുക്കുക",
+    "firstPayment": "ആദ്യ പേയ്‌മെന്റ്",
+    "firstPaymentNow": "സേവ് ചെയ്യുന്നതോടെ ആദ്യ പേയ്‌മെന്റ് രേഖപ്പെടുത്തും.",
+    "firstPaymentHint": "ഈ തീയതി മുതൽ പേയ്‌മെന്റുകൾ സ്വയം രേഖപ്പെടുത്തും, പലിശ മുതലിൽ നിന്ന് വേറിട്ട് നിലനിർത്തും.",
+    "repaymentNameOut": "തിരിച്ചടവ് — {{name}}",
+    "repaymentNameIn": "{{name}} നിന്നുള്ള തിരിച്ചടവ്",
+    "moreDetails": "കൂടുതൽ വിവരങ്ങൾ (ഐച്ഛികം)",
+    "formalName": "കരാറിലെ പൂർണ്ണ പേര്",
+    "formalNamePlaceholder": "മുകളിലെ പേരിൽ നിന്ന് വ്യത്യസ്തമാണെങ്കിൽ മാത്രം",
+    "rateTypeLabel": "നിരക്ക്",
+    "rateHelp": "നിരക്ക് ഉണ്ടെങ്കിൽ ഓരോ പേയ്‌മെന്റും പലിശയും മുതലും തനിയെ വേർതിരിക്കും.",
+    "lendMoneyHint": "നിങ്ങളുടെ അക്കൗണ്ടിൽ നിന്ന് പോകുന്ന പണം രേഖപ്പെടുത്തുന്നു. ഇത് ഒരിക്കലും ചെലവായി കണക്കാക്കില്ല.",
+    "useScheduled": "നിശ്ചയിച്ചത് · {{amount}}",
+    "payItOff": "പൂർണ്ണമായി അടയ്ക്കുക · {{amount}}",
+    "overpayWarning": "ഇന്ന് ഇത് തീർക്കാൻ വേണ്ടതിലും ({{amount}}) കൂടുതലാണിത്. ബാക്കി തുക കടത്തിൽ ക്രെഡിറ്റായി നിൽക്കും.",
+    "countsAsScheduled": "ഇത് നിശ്ചയിച്ച പേയ്‌മെന്റാണ്",
+    "countsAsScheduledOn": "അടുത്ത അടവ് {{date}} മുതൽ മുന്നോട്ട് നീങ്ങും.",
+    "extraPayment": "ഒരു അധിക പേയ്‌മെന്റ്. അടുത്ത അടവ് തീയതി മാറില്ല.",
+    "extraPaymentWithRule": "പതിവ് പേയ്‌മെന്റിന് പുറമെ ഒരു അധിക പേയ്‌മെന്റ്. അടുത്ത അടവ് തീയതി മാറില്ല.",
+    "repaymentSection": "പതിവ് തിരിച്ചടവ്",
+    "repaymentEvery": "ഓരോ {{frequency}} {{amount}}",
+    "frequencyCustom": "{{interval}} {{unit}}",
+    "unit": {
+      "day": "ദിവസം",
+      "week": "ആഴ്ച",
+      "month": "മാസം",
+      "year": "വർഷം"
+    },
+    "repaymentFromAccount": "{{account}} നിന്ന്",
+    "repaymentIntoAccount": "{{account}} ലേക്ക്",
+    "repaymentNoAccount": "അക്കൗണ്ട് തിരഞ്ഞെടുത്തിട്ടില്ല",
+    "repaymentNext": "അടുത്തത് {{date}}",
+    "repaymentPaused": "താൽക്കാലികമായി നിർത്തി",
+    "pauseRepayment": "നിർത്തുക",
+    "resumeRepayment": "തുടരുക",
+    "openRepayment": "കൈകാര്യം ചെയ്യുക",
+    "noRepayment": "പതിവ് തിരിച്ചടവ് ഇല്ല — പേയ്‌മെന്റുകൾ സ്വയം രേഖപ്പെടുത്തുന്നു.",
+    "setUpRepayment": "ഒന്ന് സജ്ജമാക്കുക",
+    "activityTitle": "പ്രവർത്തനം",
+    "noActivityYet": "ഈ കടത്തിൽ ഇതുവരെ ഒന്നും നടന്നിട്ടില്ല",
+    "activity": {
+      "paid": "പേയ്‌മെന്റ്",
+      "received": "തിരിച്ചടവ് ലഭിച്ചു",
+      "borrowed": "കടം വാങ്ങി",
+      "lent": "കടം കൊടുത്തു",
+      "adjusted": "ബാലൻസ് ക്രമീകരിച്ചു",
+      "opening": "ഉദ്ഘാടന ബാലൻസ്",
+      "automatic": "സ്വയമേവ",
+      "outOfPocket": "{{amount}} കൈയിൽ നിന്ന്"
+    },
+    "paymentDay": "പേയ്‌മെന്റ് ദിവസം",
+    "paymentDayHint": "ഈ ദിവസമാണ് താളം പിന്തുടരുന്നത്. മാസത്തിലെ ഏത് ദിവസം പണം പോകണമെന്ന് മാറ്റാൻ ഇത് മാറ്റുക.",
+    "auto": "സ്വയം",
+    "rateNoneHelp": "പലിശ ഇല്ലെങ്കിൽ, അല്ലെങ്കിൽ അറിയില്ലെങ്കിൽ ഇത് ശൂന്യമായി വിടുക."
   }
 }

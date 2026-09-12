@@ -310,6 +310,8 @@ export type Debt = {
   refinanced_into_account_id: string | null
   closed_at: string | null
   notes: string
+  /** A recurring repayment is currently servicing this debt. */
+  repayment_active: boolean
   updated_at: string
 }
 
@@ -353,9 +355,59 @@ export type DebtsOverview = {
 }
 
 export type DebtScheduleRow = { period: number; date: string; payment: number; interest: number; principal: number; balance: number }
+
+/** The recurring repayment that services a debt, as the debt screens read it. */
+export type DebtRepayment = {
+  id: string
+  name: string
+  active: boolean
+  amount: number
+  /** Null when the rule's rhythm has no name in the debt vocabulary (every 10 days). */
+  frequency: PaymentFrequency | null
+  frequency_unit: "day" | "week" | "month" | "year"
+  frequency_interval: number
+  start_date: string
+  end_date: string | null
+  next_due_at: string
+  from_account_id: string | null
+  from_account_name: string | null
+  last_error: string
+}
+
+/**
+ * One money event on a debt — not just repayments. The opening balance, the
+ * money as it was borrowed, each repayment with its interest and fees, and
+ * every reconciliation: a screen that shows only repayments cannot explain the
+ * balance it is displaying.
+ */
+export type DebtActivityKind = "opening" | "adjustment" | "borrow" | "payment" | "other"
+export type DebtActivityRow = {
+  id: string
+  date: string
+  kind: DebtActivityKind
+  description: string
+  /** How much the amount owed moved: POSITIVE reduces the debt, negative grows it. */
+  principal: number
+  interest: number
+  fees: number
+  other: number
+  /** Out of pocket for a payment (principal + the expense legs); the amount received for a borrow. */
+  total: number
+  counter_account_id: string | null
+  counter_account_name: string | null
+  group_id: string | null
+  transaction_id: string
+  payment_id: string | null
+  split_source: DebtPayment["split_source"] | null
+  recurring_rule_id: string | null
+  is_system: boolean
+}
+
 export type DebtDetailResponse = {
   debt: Debt
   payments: DebtPayment[]
+  activity: DebtActivityRow[]
+  repayment: DebtRepayment | null
   schedule: { converges: boolean; total_interest: number; periods: number; assumed_zero_rate: boolean; rows: DebtScheduleRow[] } | null
 }
 
@@ -483,7 +535,12 @@ export type RecurringRule = {
   account_logo_url?: string | null
   // 'standard' = normal income/outgoing rule. 'transfer' = a Space auto-save:
   // money moves from `wealth_account_id` (source) to `to_account_id` (the Space).
-  kind?: "standard" | "transfer"
+  // 'debt' = a repayment: `wealth_account_id` is the account it is PAID FROM and
+  // `debt_account_id` is the debt, because the instalment splits into principal
+  // (a transfer) and interest and fees (expenses).
+  kind?: "standard" | "transfer" | "debt"
+  debt_account_id?: string | null
+  debt_name?: string | null
   to_account_id?: string | null
   to_account_name?: string | null
   // The card that pays each occurrence (copied onto the materialized rows).

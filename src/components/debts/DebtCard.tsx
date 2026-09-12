@@ -1,7 +1,7 @@
 import { useTranslation } from "react-i18next"
-import { ChevronRight } from "lucide-react"
+import { ChevronRight, Repeat } from "lucide-react"
 import type { Debt } from "@/lib/types"
-import { debtMoney, formatMonthYear, formatShortDate } from "@/lib/debt-format"
+import { debtMoney, formatMonthYear, formatShortDate, debtKindLabel } from "@/lib/debt-format"
 import { cn } from "@/lib/utils"
 import { WealthAccountIcon } from "@/components/WealthAccountIcon"
 import { Progress } from "@/components/ui/progress"
@@ -30,9 +30,16 @@ export function DebtCard({ debt, onOpen, balancesVisible = true }: { debt: Debt;
           <div className="flex flex-wrap items-center gap-2">
             <p className="truncate text-sm font-semibold">{debt.name}</p>
             <DebtStatusBadge status={debt.status} />
+            {/* Which debts pay themselves and which still need you is the first
+                thing this list has to answer. */}
+            {debt.repayment_active && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+                <Repeat className="size-2.5" aria-hidden /> {t("auto")}
+              </span>
+            )}
           </div>
           <p className="truncate text-xs text-muted-foreground">
-            {t(`kinds.${debt.kind}`)}{debt.counterparty && debt.counterparty !== debt.name ? ` · ${debt.counterparty}` : ""}
+            {debtKindLabel(debt.kind, t)}{debt.counterparty && debt.counterparty !== debt.name ? ` · ${debt.counterparty}` : ""}
           </p>
         </div>
         <ChevronRight className="mt-2 size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 rtl:rotate-180" aria-hidden />

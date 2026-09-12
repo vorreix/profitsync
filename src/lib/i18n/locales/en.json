@@ -2093,7 +2093,8 @@
     "noPaymentsHint": "The first one is created on {{date}}.",
     "noPaymentsPaused": "Nothing has been created from this yet.",
     "loadMore": "Load {{count}} more",
-    "loadingMore": "Loading…"
+    "loadingMore": "Loading…",
+    "repaysDebt": "Repays"
   },
   "calendar": {
     "title": "Calendar",
@@ -2448,6 +2449,15 @@
       "card_expiring": {
         "title": "Card expiring soon",
         "body": "{{card}} expires {{expiry}}."
+      },
+      "debt_payment_posted": {
+        "title": "Repayment posted",
+        "body": "“{{name}}” was paid automatically.",
+        "body_many": "“{{name}}” posted {{count}} repayments."
+      },
+      "debt_repaid": {
+        "title": "Debt repaid",
+        "body": "“{{name}}” cleared the last of it. Nothing left to pay."
       }
     },
     "client": {
@@ -2901,6 +2911,78 @@
     "viewDebt": "View debt",
     "payments": "Payments",
     "receivablesTitle": "Owed to you",
-    "receivablesHint": "Money others owe you counts toward your net worth, but it is not money in hand."
+    "receivablesHint": "Money others owe you counts toward your net worth, but it is not money in hand.",
+    "common": {
+      "amountTooLarge": "That amount is too large"
+    },
+    "kindPlaceholder": "Choose or type a type",
+    "kindSearchPlaceholder": "Search, or type your own…",
+    "kindSuggestions": "Suggestions",
+    "useThisType": "Use “{{type}}”",
+    "originalInvalid": "The original amount must be 0 or more",
+    "howRepaidOut": "How is it being repaid?",
+    "howRepaidIn": "How are they repaying you?",
+    "repayManually": "I'll record payments myself",
+    "repayAutoOut": "Pay it automatically on a schedule",
+    "repayAutoIn": "They pay me automatically on a schedule",
+    "repayFrom": "Pay from",
+    "repayInto": "Receive into",
+    "repayAmount": "Each payment",
+    "repayFromRequired": "Choose the account the repayment comes from",
+    "repayAmountRequired": "Enter how much each payment is",
+    "repayStartRequired": "Choose when the first payment is",
+    "firstPayment": "First payment",
+    "firstPaymentNow": "The first payment is recorded as soon as you save.",
+    "firstPaymentHint": "Payments are recorded automatically from this date, with interest kept apart from principal.",
+    "repaymentNameOut": "Repayment — {{name}}",
+    "repaymentNameIn": "Repayment from {{name}}",
+    "moreDetails": "More details (optional)",
+    "formalName": "Full name on the agreement",
+    "formalNamePlaceholder": "Only if it differs from the name above",
+    "rateTypeLabel": "Rate",
+    "rateHelp": "With a rate, every payment splits interest from principal on its own.",
+    "lendMoneyHint": "Records the money leaving your account. It is never counted as spending.",
+    "useScheduled": "Scheduled · {{amount}}",
+    "payItOff": "Pay it off · {{amount}}",
+    "overpayWarning": "That is more than it takes to clear this today ({{amount}}). The extra will sit as credit on the debt.",
+    "countsAsScheduled": "This is the scheduled payment",
+    "countsAsScheduledOn": "The next payment moves on from {{date}}.",
+    "extraPayment": "An extra payment. The next due date stays where it is.",
+    "extraPaymentWithRule": "An extra payment on top of the recurring one. The next due date stays where it is.",
+    "repaymentSection": "Recurring repayment",
+    "repaymentEvery": "{{amount}} every {{frequency}}",
+    "frequencyCustom": "{{interval}} {{unit}}",
+    "unit": {
+      "day": "days",
+      "week": "weeks",
+      "month": "months",
+      "year": "years"
+    },
+    "repaymentFromAccount": "From {{account}}",
+    "repaymentIntoAccount": "Into {{account}}",
+    "repaymentNoAccount": "No account chosen",
+    "repaymentNext": "next {{date}}",
+    "repaymentPaused": "paused",
+    "pauseRepayment": "Pause",
+    "resumeRepayment": "Resume",
+    "openRepayment": "Manage",
+    "noRepayment": "No recurring repayment — payments are recorded by hand.",
+    "setUpRepayment": "Set one up",
+    "activityTitle": "Activity",
+    "noActivityYet": "Nothing has moved on this debt yet",
+    "activity": {
+      "paid": "Payment",
+      "received": "Repayment received",
+      "borrowed": "Borrowed",
+      "lent": "Lent",
+      "adjusted": "Balance adjusted",
+      "opening": "Opening balance",
+      "automatic": "Automatic",
+      "outOfPocket": "{{amount}} out of pocket"
+    },
+    "paymentDay": "Payment day",
+    "paymentDayHint": "The rhythm keeps this day. Change it to move which day of the month the payment lands on.",
+    "auto": "Auto",
+    "rateNoneHelp": "Leave it empty if there is none, or you don't know."
   }
 }

@@ -55,6 +55,64 @@ interest / fees / other + `split_source ∈ entered | calculated | principal_onl
 anchored on the group's first ledger leg: live while that leg is not trashed
 (derived), cascaded away on purge.
 
+## 2b. The recurring repayment
+
+A debt can be serviced by a **recurring rule** (`recurring_rules.kind = 'debt'`,
+`debt_account_id` = the debt). It is created in the SAME atomic batch as the debt
+itself (`dbBatch` — neon-http has no interactive transactions, so every id is
+generated up front): a debt whose repayment silently failed to be created is
+money that silently never moves.
+
+It is neither an ordinary recurring expense nor a Space auto-save, and
+`api/_lib/recurring-debt.ts` exists because of three differences:
+
+- **It splits.** Part of an instalment repays principal (a transfer, never
+  spending); the rest is interest and fees (real expenses on the paying
+  account). Posted as a plain transfer, a €1,200 mortgage payment would pay down
+  €1,200 of a loan that only fell by €800, and the €400 of interest would never
+  appear as money spent.
+- **The split is recomputed from the LIVE balance every occurrence**, so it
+  tracks a real amortization on its own: interest shrinks and principal grows
+  month after month with nothing stored.
+- **The last instalment is capped at the payoff figure**
+  (`payoffCappedAmount`). A rule paying €500 against €120 owed must move €120
+  plus that period's interest — uncapped, the balance crosses zero into credit
+  and every screen reports "nothing owed" while the extra money is simply gone
+  from view.
+
+Idempotency is unchanged from every other recurring money path: the first leg
+carries `(recurring_rule_id, recurring_due_date)` and is inserted with `ON
+CONFLICT DO NOTHING`; nothing else is written unless that insert returned a row.
+
+**The rule is the single source of truth for the schedule.** `payment_amount`,
+`payment_frequency` and `next_due_date` on `debt_details` are a MIRROR of it
+(`debtScheduleMirror`), refreshed whenever the rule moves — materialization,
+create, edit, pause. The planner, the payoff estimate, the month's obligations
+and the amortization table all read the debt's own fields, so without the mirror
+the plan would describe a schedule nobody is paying.
+
+Lifecycle, both directions:
+
+| Event | What happens to the rule |
+|---|---|
+| Debt paused / written off / marked repaid / refinanced | Deactivated |
+| Debt resumed | Reactivated, cursor re-anchored to **today** — a payment holiday must not fire six back-dated instalments |
+| Debt closed (archived) | Deactivated |
+| Debt hard-deleted | Cascades away (`ON DELETE cascade`, unlike `wealth_account_id`) |
+| Balance reaches zero | Rule retires itself and notifies (`debt_repaid`) |
+| Paying account archived / quota hit | Rule pauses with `last_error`, cursor NOT advanced, so it resumes when fixed |
+
+A **hand-recorded payment while a rule is live is an EXTRA one**: it does not
+advance the due date, because doing so would silently cancel the next instalment
+the user is still expecting to be taken (`advancesScheduleByDefault`). Without a
+rule, the payment the user records IS the scheduled one and the date moves. The
+sheet exposes the choice either way.
+
+A recurring repayment must come from a **bank or cash** account. A credit card
+may pay a loan by hand — a real, expensive thing people do — but on a schedule it
+moves debt from one place to another forever with no cash ever leaving, and the
+balance that grows is the one nobody is looking at.
+
 ## 3. Engine (`src/lib/debt-math.ts`, `debt-planner.ts`)
 
 Integer cents throughout; interest rounded once per period; the final payment
@@ -78,15 +136,31 @@ last three months' income.
 
 ## 4. API
 
-- `GET /api/debts` — hub payload: debts, receivables, closed, summary, insights, 3-month upcoming schedule.
-- `POST /api/debts` — create (quick or detailed fields; `disbursement_account_id` records the borrowed money as a transfer).
-- `GET/PATCH/DELETE /api/debts/:id` — detail + payments + schedule; edit terms / lifecycle / reconcile (`current_balance` → system Balance Adjustment); close (archive) or delete when there is no history.
+- `GET /api/debts` — hub payload: debts, receivables, closed, summary, insights, 3-month upcoming schedule. Materialises due repayments first (hence `ALWAYS_FETCH`).
+- `POST /api/debts` — create the debt AND its optional `repayment` rule in one atomic batch; `disbursement_account_id` records borrowed money as a transfer.
+- `GET/PATCH/DELETE /api/debts/:id` — detail (`debt`, `activity`, `payments`, `schedule`, `repayment`); edit terms / lifecycle / the repayment / reconcile (`current_balance` → system Balance Adjustment); close (archive) or delete when there is no history.
 - `GET/POST /api/debts/:id/payments`, `DELETE /api/debts/:id/payments/:paymentId`.
+- A debt repayment also appears at `/api/recurring` and `/api/recurring/:id`, which keep the debt's mirror in step on every edit.
 
 ## 5. UI
 
 `/debts` (hub: Overview · Your debts · Plan · Upcoming) and `/debts/:id`.
-Quick/Detailed add sheet, Record payment sheet (auto or typed split), status
+
+The **add sheet is four fields** — who it is with, what kind (free text, with
+suggestions), what it started at, what is left — then the one question that
+decides everything else: is a repayment being made on a schedule? Saying yes
+builds the recurring rule in the same screen. Everything a loan document has and
+a person rarely remembers (rate, formal name, notes, whether the money is
+arriving now) sits behind one closed disclosure. It is not a second MODE: the
+form never rearranges itself, it only gets longer if you ask it to.
+
+The **detail screen shows ACTIVITY, not just repayments** — the opening balance,
+the money as it was borrowed, each repayment with its interest and fees, and
+every reconciliation, one row per ledger group. A screen that lists only the
+repayments cannot explain the balance it is displaying.
+
+Record payment sheet (auto or typed split, one-tap "scheduled" / "pay it off"
+amounts, an overpayment warning, and the extra-vs-scheduled choice), status
 badges in words, progress, schedule table, payment history with delete, planner
 with strategy cards, what-if (extra per month, lump sum), comparison table,
 payoff chart, custom order, stabilisation mode, debt-payment ratio; empty and
@@ -105,8 +179,8 @@ Refinancing comparison UI (the data model supports it: `refinanced_into_account_
 integration with `/calendar` and planned transactions; milestones beyond progress
 %; variable-rate modelling; per-debt FX conversion for totals (none is invented);
 AI voice recording of loan payments with a split (a transfer to the loan works,
-interest is not separated); translations for the new `debts` keys (English
-placeholders per repo convention).
+interest is not separated). More than one repayment rule per debt is possible in
+the schema (`drivingRule` picks the active one) but no UI creates a second.
 
 ## 8. Screenshots
 

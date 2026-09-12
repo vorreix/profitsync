@@ -1,7 +1,8 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { serialize } from "../../../../src/lib/db/index.js"
 import { canWrite, requireAuth } from "../../../_lib/auth.js"
-import { loadDebt, loadPayments, recordDebtPayment, serializeDebt } from "../../../_lib/debts.js"
+import { drivingRule, loadDebt, loadDebtRules, loadPayments, recordDebtPayment, serializeDebt } from "../../../_lib/debts.js"
+import { advancesScheduleByDefault } from "../../../../src/lib/debt-recurring.js"
 import { amountExceedsLimit } from "../../../../src/lib/money.js"
 import { todayIso } from "../../../../src/lib/recurring.js"
 
@@ -43,6 +44,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const parts = { principal: opt("principal"), interest: opt("interest"), fees: opt("fees"), other: opt("other") }
     for (const v of Object.values(parts)) if (typeof v === "number" && (Number.isNaN(v) || v < 0)) return res.status(400).json({ error: "Split amounts must be 0 or more" })
 
+    // Does moving the due date make sense? While a recurring repayment is live
+    // the RULE owns the schedule, so a payment recorded by hand is an EXTRA one
+    // and advancing the date would silently cancel the next instalment the user
+    // is still expecting to be taken. Without a rule, the payment they record IS
+    // the scheduled one. Either way an explicit `advance_schedule` wins.
+    const rules = await loadDebtRules(orgId, [id])
+    const live = drivingRule(rules)
+    const advanceSchedule = typeof b.advance_schedule === "boolean" ? b.advance_schedule : advancesScheduleByDefault(!!live?.active)
+
     const result = await recordDebtPayment(orgId, userId, row, {
       counterAccountId: String(b.from_account_id ?? b.to_account_id ?? ""),
       date: typeof b.date === "string" && b.date ? b.date : todayIso(),
@@ -52,9 +62,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       fees: parts.fees ?? undefined,
       other: parts.other ?? undefined,
       note: typeof b.note === "string" ? b.note : "",
-      advanceSchedule: b.advance_schedule !== false,
+      advanceSchedule,
     })
     if (!result.ok) return res.status(result.status).json(result.quota ?? { error: result.error })
+    // `skipped` only happens on the recurring path (an occurrence already
+    // posted); a hand-recorded payment always writes.
+    if (!result.payment) return res.status(409).json({ error: "This payment was already recorded" })
     const after = (await loadDebt(orgId, id))!
     return res.status(201).json({ payment: serialize(result.payment), debt: serializeDebt(after, todayIso()) })
   }

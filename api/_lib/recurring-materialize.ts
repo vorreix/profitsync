@@ -22,6 +22,7 @@ import { cards, recurringRules, transactions, wealthAccounts } from "../../src/l
 import { balanceDelta } from "../../src/lib/wealth-ledger.js"
 import { buildRecurringTransferLegs } from "../../src/lib/recurring-transfer.js"
 import { occurrencesDue, ruleExhausted, todayIso, type Frequency, type FrequencyUnit } from "../../src/lib/recurring.js"
+import { mirrorDebtSchedule, postDebtOccurrences, reloadRule } from "./recurring-debt.js"
 import { ensureDefaultClient } from "./auth.js"
 import { checkTransactionQuota } from "./quota.js"
 import { logAudit } from "./audit.js"
@@ -56,7 +57,47 @@ export async function materializeDueRecurring(orgId: string): Promise<Materializ
         end: rule.endDate,
       })
 
-      if (due.length > 0) {
+      // A debt repayment splits into principal (a transfer) and interest/fees
+      // (expenses) and has to write the allocation row that records the split,
+      // so it runs through the debt engine rather than either branch below.
+      // api/_lib/recurring-debt.ts explains why it cannot be a plain transfer.
+      let debtFullyRepaid = false
+      if (rule.kind === "debt") {
+        if (due.length > 0) {
+          const outcome = await postDebtOccurrences(orgId, rule, due)
+          if (!outcome.ok) {
+            await setRuleError(rule.id, outcome.error)
+            result.skipped.push(rule.name)
+            continue
+          }
+          result.created += outcome.created
+          debtFullyRepaid = outcome.fullyRepaid
+          if (outcome.created > 0 && rule.createdBy && rule.debtAccountId) {
+            const recipient = rule.createdBy
+            const debtId = rule.debtAccountId
+            const count = outcome.created
+            const cursor = nextCursor
+            void createNotification({
+              userId: recipient,
+              organizationId: orgId,
+              type: debtFullyRepaid ? "debt_repaid" : "debt_payment_posted",
+              title: debtFullyRepaid ? "Debt repaid" : "Repayment posted",
+              body: debtFullyRepaid
+                ? `"${rule.name}" cleared the last of it. Nothing left to pay.`
+                : count === 1
+                  ? `"${rule.name}" was paid automatically.`
+                  : `"${rule.name}" posted ${count} repayments.`,
+              data: {
+                i18nKey: debtFullyRepaid ? "types.debt_repaid.title" : "types.debt_payment_posted.title",
+                i18nBodyKey: debtFullyRepaid ? "types.debt_repaid.body" : count === 1 ? "types.debt_payment_posted.body" : "types.debt_payment_posted.body_many",
+                i18nParams: { name: rule.name, count },
+              },
+              link: `/debts/${debtId}`,
+              dedupeKey: `debt_payment:${rule.id}:${cursor}`,
+            }).catch(() => {})
+          }
+        }
+      } else if (due.length > 0) {
         // The source/target account(s) must still be active — materializing onto
         // an archived account would silently corrupt a balance nobody looks at. A
         // transfer (Space auto-save) needs BOTH the source and the destination.
@@ -245,16 +286,27 @@ export async function materializeDueRecurring(orgId: string): Promise<Materializ
         }
       }
 
-      // Advance the cursor (never backwards) + auto-finish exhausted rules.
+      // Advance the cursor (never backwards) + auto-finish exhausted rules. A
+      // debt repayment also retires when the debt reaches zero: leaving it
+      // active would keep moving money into a settled loan every month, and the
+      // balance would cross into credit where nothing reports it.
       await db
         .update(recurringRules)
         .set({
           nextDueAt: sql`GREATEST(${recurringRules.nextDueAt}, ${nextCursor})`,
-          ...(ruleExhausted(nextCursor, rule.endDate) ? { active: false } : {}),
+          ...(ruleExhausted(nextCursor, rule.endDate) || debtFullyRepaid ? { active: false } : {}),
           lastError: "",
           updatedAt: new Date(),
         })
         .where(eq(recurringRules.id, rule.id))
+
+      // Keep the debt's own schedule fields equal to the rule that drives them,
+      // so the payoff estimate and the planner never describe a different
+      // schedule from the one taking the money.
+      if (rule.kind === "debt" && rule.debtAccountId) {
+        const fresh = await reloadRule(rule.id)
+        if (fresh) await mirrorDebtSchedule(rule.debtAccountId, fresh)
+      }
     } catch (err) {
       await setRuleError(rule.id, err instanceof Error ? err.message : "Materialization failed")
       result.skipped.push(rule.name)

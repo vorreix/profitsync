@@ -1717,7 +1717,8 @@
     "noPaymentsHint": "Die erste wird am {{date}} erstellt.",
     "noPaymentsPaused": "Daraus wurde noch nichts erstellt.",
     "loadMore": "{{count}} weitere laden",
-    "loadingMore": "Wird geladen…"
+    "loadingMore": "Wird geladen…",
+    "repaysDebt": "Tilgt"
   },
   "calendar": {
     "title": "Kalender",
@@ -2071,6 +2072,15 @@
       "card_expiring": {
         "title": "Karte läuft bald ab",
         "body": "{{card}} läuft {{expiry}} ab."
+      },
+      "debt_payment_posted": {
+        "title": "Rückzahlung gebucht",
+        "body": "„{{name}}“ wurde automatisch bezahlt.",
+        "body_many": "„{{name}}“ hat {{count}} Rückzahlungen gebucht."
+      },
+      "debt_repaid": {
+        "title": "Schuld getilgt",
+        "body": "„{{name}}“ hat den Rest beglichen. Es bleibt nichts mehr zu zahlen."
       }
     },
     "client": {
@@ -2901,6 +2911,78 @@
     "viewDebt": "View debt",
     "payments": "Payments",
     "receivablesTitle": "Owed to you",
-    "receivablesHint": "Money others owe you counts toward your net worth, but it is not money in hand."
+    "receivablesHint": "Money others owe you counts toward your net worth, but it is not money in hand.",
+    "common": {
+      "amountTooLarge": "Dieser Betrag ist zu groß"
+    },
+    "kindPlaceholder": "Art wählen oder eingeben",
+    "kindSearchPlaceholder": "Suchen oder eigene eingeben…",
+    "kindSuggestions": "Vorschläge",
+    "useThisType": "„{{type}}“ verwenden",
+    "originalInvalid": "Der ursprüngliche Betrag muss 0 oder mehr sein",
+    "howRepaidOut": "Wie wird zurückgezahlt?",
+    "howRepaidIn": "Wie wird an dich zurückgezahlt?",
+    "repayManually": "Ich erfasse die Zahlungen selbst",
+    "repayAutoOut": "Automatisch nach Zeitplan zahlen",
+    "repayAutoIn": "Ich werde automatisch nach Zeitplan bezahlt",
+    "repayFrom": "Zahlen von",
+    "repayInto": "Empfangen auf",
+    "repayAmount": "Je Zahlung",
+    "repayFromRequired": "Wähle das Konto, von dem die Rückzahlung kommt",
+    "repayAmountRequired": "Gib an, wie hoch jede Zahlung ist",
+    "repayStartRequired": "Wähle, wann die erste Zahlung erfolgt",
+    "firstPayment": "Erste Zahlung",
+    "firstPaymentNow": "Die erste Zahlung wird sofort beim Speichern erfasst.",
+    "firstPaymentHint": "Zahlungen werden ab diesem Datum automatisch erfasst, Zinsen bleiben dabei von der Tilgung getrennt.",
+    "repaymentNameOut": "Rückzahlung — {{name}}",
+    "repaymentNameIn": "Rückzahlung von {{name}}",
+    "moreDetails": "Weitere Angaben (optional)",
+    "formalName": "Vollständiger Name im Vertrag",
+    "formalNamePlaceholder": "Nur wenn er vom Namen oben abweicht",
+    "rateTypeLabel": "Zins",
+    "rateHelp": "Mit einem Zinssatz trennt jede Zahlung Zinsen und Tilgung von selbst.",
+    "lendMoneyHint": "Erfasst das Geld, das dein Konto verlässt. Es zählt nie als Ausgabe.",
+    "useScheduled": "Geplant · {{amount}}",
+    "payItOff": "Ablösen · {{amount}}",
+    "overpayWarning": "Das ist mehr, als heute zur Ablösung nötig ist ({{amount}}). Der Überschuss bleibt als Guthaben auf der Schuld stehen.",
+    "countsAsScheduled": "Das ist die geplante Zahlung",
+    "countsAsScheduledOn": "Die nächste Fälligkeit rückt vom {{date}} weiter.",
+    "extraPayment": "Eine Sonderzahlung. Die nächste Fälligkeit bleibt, wo sie ist.",
+    "extraPaymentWithRule": "Eine Sonderzahlung zusätzlich zur wiederkehrenden. Die nächste Fälligkeit bleibt, wo sie ist.",
+    "repaymentSection": "Wiederkehrende Rückzahlung",
+    "repaymentEvery": "{{amount}} alle {{frequency}}",
+    "frequencyCustom": "{{interval}} {{unit}}",
+    "unit": {
+      "day": "Tage",
+      "week": "Wochen",
+      "month": "Monate",
+      "year": "Jahre"
+    },
+    "repaymentFromAccount": "Von {{account}}",
+    "repaymentIntoAccount": "Auf {{account}}",
+    "repaymentNoAccount": "Kein Konto gewählt",
+    "repaymentNext": "nächste {{date}}",
+    "repaymentPaused": "pausiert",
+    "pauseRepayment": "Pausieren",
+    "resumeRepayment": "Fortsetzen",
+    "openRepayment": "Verwalten",
+    "noRepayment": "Keine wiederkehrende Rückzahlung — Zahlungen werden von Hand erfasst.",
+    "setUpRepayment": "Einrichten",
+    "activityTitle": "Aktivität",
+    "noActivityYet": "Auf dieser Schuld hat sich noch nichts bewegt",
+    "activity": {
+      "paid": "Zahlung",
+      "received": "Rückzahlung erhalten",
+      "borrowed": "Aufgenommen",
+      "lent": "Verliehen",
+      "adjusted": "Saldo korrigiert",
+      "opening": "Anfangssaldo",
+      "automatic": "Automatisch",
+      "outOfPocket": "{{amount}} aus eigener Tasche"
+    },
+    "paymentDay": "Zahltag",
+    "paymentDayHint": "Der Rhythmus behält diesen Tag. Ändere ihn, um den Tag im Monat zu verschieben, an dem gezahlt wird.",
+    "auto": "Auto",
+    "rateNoneHelp": "Leer lassen, wenn es keinen gibt oder du ihn nicht kennst."
   }
 }

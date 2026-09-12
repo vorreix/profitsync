@@ -3,14 +3,14 @@ import { useNavigate, useParams } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
-import { ArrowLeft, Archive, CheckCircle2, ChevronDown, MoreVertical, PauseCircle, Pencil, PlayCircle, Plus, SlidersHorizontal, Trash2 } from "lucide-react"
+import { ArrowLeft, Archive, ArrowDownLeft, ArrowUpRight, CheckCircle2, ChevronDown, ChevronRight, CircleDollarSign, MoreVertical, PauseCircle, Pencil, PlayCircle, Plus, Repeat, Scale, SlidersHorizontal, Trash2, TriangleAlert } from "lucide-react"
 import { apiDelete, apiErrorMessage, apiGet, apiPatch } from "@/lib/api"
 import { WEALTH_CHANGED_EVENT } from "@/lib/data-events"
 import { useOrg } from "@/lib/org-context"
 import { canDeleteRole, canWriteRole } from "@/lib/roles"
-import type { Debt, DebtDetailResponse, DebtPayment } from "@/lib/types"
+import type { Debt, DebtActivityRow, DebtDetailResponse, DebtPayment } from "@/lib/types"
 import { useBalancePrivacy } from "@/lib/wealth"
-import { debtMoney, formatLongDate, formatMonthYear } from "@/lib/debt-format"
+import { debtKindLabel, debtMoney, formatLongDate, formatMonthYear } from "@/lib/debt-format"
 import { fromCents } from "@/lib/debt-math"
 import { cn } from "@/lib/utils"
 import { WealthAccountIcon } from "@/components/WealthAccountIcon"
@@ -126,7 +126,7 @@ export function DebtDetailPage() {
     )
   }
 
-  const { debt, payments, schedule } = data
+  const { debt, activity, repayment, schedule } = data
   const money = (n: number) => debtMoney(n, debt, balancesVisible)
   const isOpen = debt.lifecycle === "active" || debt.lifecycle === "paused"
   const receivable = debt.direction === "receivable"
@@ -148,7 +148,7 @@ export function DebtDetailPage() {
               <DebtStatusBadge status={debt.status} />
               {receivable && <Badge variant="secondary">{t("owedToMe")}</Badge>}
             </div>
-            <p className="truncate text-sm text-muted-foreground">{t(`kinds.${debt.kind}`)}{debt.counterparty && debt.counterparty !== debt.name ? ` · ${debt.counterparty}` : ""}</p>
+            <p className="truncate text-sm text-muted-foreground">{debtKindLabel(debt.kind, t)}{debt.counterparty && debt.counterparty !== debt.name ? ` · ${debt.counterparty}` : ""}</p>
           </div>
         </div>
         {canWrite && (
@@ -213,33 +213,81 @@ export function DebtDetailPage() {
         )}
       </section>
 
-      {/* Payment history */}
+      {/* The recurring repayment that services this debt */}
+      <section aria-labelledby="dr" className="space-y-2">
+        <h2 id="dr" className="text-sm font-semibold">{t("repaymentSection")}</h2>
+        {repayment ? (
+          <div className="space-y-3 rounded-2xl border bg-card p-4">
+            <div className="flex items-start gap-3">
+              <span className={cn("mt-0.5 grid size-9 shrink-0 place-items-center rounded-full", repayment.active ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground")}>
+                <Repeat className="size-4" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium">
+                  {t("repaymentEvery", {
+                    amount: money(repayment.amount),
+                    frequency: repayment.frequency ? t(`frequency.${repayment.frequency}`) : t("frequencyCustom", { interval: repayment.frequency_interval, unit: t(`unit.${repayment.frequency_unit}`) }),
+                  })}
+                </p>
+                <p className="truncate text-xs text-muted-foreground">
+                  {repayment.from_account_name
+                    ? receivable ? t("repaymentIntoAccount", { account: repayment.from_account_name }) : t("repaymentFromAccount", { account: repayment.from_account_name })
+                    : t("repaymentNoAccount")}
+                  {repayment.active ? ` · ${t("repaymentNext", { date: formatLongDate(repayment.next_due_at) })}` : ` · ${t("repaymentPaused")}`}
+                </p>
+              </div>
+            </div>
+            {repayment.last_error && (
+              <p className="flex items-start gap-2 rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+                <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
+                <span>{repayment.last_error}</span>
+              </p>
+            )}
+            {canWrite && (
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="pressable"
+                  disabled={busy}
+                  onClick={() => void patch({ repayment: { enabled: !repayment.active } }, t("updated"))}
+                >
+                  {repayment.active ? <><PauseCircle className="size-4" /> {t("pauseRepayment")}</> : <><PlayCircle className="size-4" /> {t("resumeRepayment")}</>}
+                </Button>
+                <Button size="sm" variant="ghost" className="pressable" onClick={() => navigate(`/recurring/${repayment.id}`)}>
+                  {t("openRepayment")} <ChevronRight className="size-4 rtl:rotate-180" />
+                </Button>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border bg-card px-4 py-4">
+            <p className="text-sm text-muted-foreground">{t("noRepayment")}</p>
+            {canWrite && isOpen && !debt.archived_at && (
+              <Button size="sm" variant="outline" className="pressable" onClick={() => setEditing(true)}><Repeat className="size-4" /> {t("setUpRepayment")}</Button>
+            )}
+          </div>
+        )}
+      </section>
+
+      {/* Everything that ever moved on this debt */}
       <section aria-labelledby="dh" className="space-y-2">
-        <h2 id="dh" className="text-sm font-semibold">{t("paymentHistory")} {payments.length > 0 && <span className="text-muted-foreground">({payments.length})</span>}</h2>
-        {payments.length === 0 ? (
-          <div className="rounded-2xl border py-10 text-center text-sm text-muted-foreground">{t("noPaymentsYet")}</div>
+        <h2 id="dh" className="text-sm font-semibold">{t("activityTitle")} {activity.length > 0 && <span className="text-muted-foreground">({activity.length})</span>}</h2>
+        {activity.length === 0 ? (
+          <div className="rounded-2xl border py-10 text-center text-sm text-muted-foreground">{t("noActivityYet")}</div>
         ) : (
           <ul className="divide-y overflow-hidden rounded-2xl border bg-card">
-            {payments.map((p) => {
-              const interest = Number(p.interest) + Number(p.fees) + Number(p.other)
-              return (
-                <li key={p.id} className="flex items-center gap-3 px-4 py-3">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium tabular-nums">{money(Number(p.total))}</p>
-                    <p className="truncate text-xs text-muted-foreground tabular-nums">
-                      {formatLongDate(p.date)} · {t("principal")} {money(Number(p.principal))}{interest > 0 && ` · ${t("interest")} ${money(interest)}`}
-                      {p.split_source !== "entered" && <span className="ml-1 rounded bg-muted px-1 text-[10px] uppercase">{t(p.split_source === "calculated" ? "calculated" : "principalOnly")}</span>}
-                      {p.note && ` · ${p.note}`}
-                    </p>
-                  </div>
-                  {canDelete && (
-                    <Button variant="ghost" size="icon" className="size-8 text-muted-foreground hover:text-destructive" aria-label={t("deletePaymentTitle")} onClick={() => setDeletingPayment(p)}>
-                      <Trash2 className="size-4" />
-                    </Button>
-                  )}
-                </li>
-              )
-            })}
+            {activity.map((a) => (
+              <ActivityRow
+                key={a.id}
+                row={a}
+                receivable={receivable}
+                money={money}
+                t={t}
+                canDelete={canDelete && a.kind === "payment" && !!a.payment_id}
+                onDelete={() => setDeletingPayment({ id: a.payment_id! } as DebtPayment)}
+              />
+            ))}
           </ul>
         )}
       </section>
@@ -286,8 +334,8 @@ export function DebtDetailPage() {
 
       {debt.notes && <p className="whitespace-pre-wrap text-sm text-muted-foreground">{debt.notes}</p>}
 
-      <RecordPaymentSheet open={paying} onOpenChange={setPaying} debt={debt} onSaved={() => void load({ silent: true })} />
-      <DebtFormSheet open={editing} onOpenChange={setEditing} direction={debt.direction} editing={debt} orgCurrency={debt.currency} onSaved={() => void load({ silent: true })} />
+      <RecordPaymentSheet open={paying} onOpenChange={setPaying} debt={debt} repayment={repayment} onSaved={() => void load({ silent: true })} />
+      <DebtFormSheet open={editing} onOpenChange={setEditing} direction={debt.direction} editing={debt} repayment={repayment} orgCurrency={debt.currency} onSaved={() => void load({ silent: true })} />
 
       {/* Reconcile */}
       <Dialog open={reconcile !== null} onOpenChange={(o) => { if (!o) setReconcile(null) }}>
@@ -334,5 +382,77 @@ function Stat({ label, value }: { label: string; value: string }) {
       <p className="truncate text-[10px] font-medium uppercase tracking-wide text-muted-foreground sm:text-xs">{label}</p>
       <p className="mt-1 text-sm font-semibold sm:text-base">{value}</p>
     </div>
+  )
+}
+
+/**
+ * One money event on the debt. The icon and the sign say what happened to what
+ * is owed: money that reduced it, money that grew it, and the two system rows
+ * that define or correct the figure without anyone having paid anything.
+ */
+function ActivityRow({
+  row,
+  receivable,
+  money,
+  t,
+  canDelete,
+  onDelete,
+}: {
+  row: DebtActivityRow
+  receivable: boolean
+  money: (n: number) => string
+  t: (key: string, opts?: Record<string, unknown>) => string
+  canDelete: boolean
+  onDelete: () => void
+}) {
+  const reduces = row.principal > 0
+  const extras = row.interest + row.fees + row.other
+  const Icon = row.kind === "payment" ? (receivable ? ArrowDownLeft : ArrowUpRight)
+    : row.kind === "borrow" ? (receivable ? ArrowUpRight : ArrowDownLeft)
+    : row.kind === "adjustment" ? Scale
+    : CircleDollarSign
+
+  const title = row.kind === "payment" ? (receivable ? t("activity.received") : t("activity.paid"))
+    : row.kind === "borrow" ? (receivable ? t("activity.lent") : t("activity.borrowed"))
+    : row.kind === "adjustment" ? t("activity.adjusted")
+    : row.kind === "opening" ? t("activity.opening")
+    : row.description
+
+  return (
+    <li className="flex items-center gap-3 px-4 py-3">
+      <span
+        className={cn(
+          "grid size-9 shrink-0 place-items-center rounded-full",
+          row.kind === "payment" ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+            : row.kind === "borrow" ? "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+            : "bg-muted text-muted-foreground",
+        )}
+      >
+        <Icon className="size-4" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="flex flex-wrap items-center gap-1.5 text-sm font-medium">
+          {title}
+          {row.recurring_rule_id && <Badge variant="secondary" className="px-1.5 py-0 text-[10px] font-normal">{t("activity.automatic")}</Badge>}
+        </p>
+        <p className="truncate text-xs text-muted-foreground tabular-nums">
+          {formatLongDate(row.date)}
+          {row.counter_account_name && ` · ${row.counter_account_name}`}
+          {extras > 0 && ` · ${t("interest")} ${money(extras)}`}
+        </p>
+      </div>
+      <div className="shrink-0 text-right">
+        <p className={cn("text-sm font-semibold tabular-nums", reduces ? "text-emerald-600 dark:text-emerald-400" : "text-foreground")}>
+          {reduces ? "−" : "+"}{money(Math.abs(row.principal))}
+        </p>
+        {/* What it actually cost, when that differs from what came off the debt. */}
+        {extras > 0 && <p className="text-[11px] text-muted-foreground tabular-nums">{t("activity.outOfPocket", { amount: money(row.total) })}</p>}
+      </div>
+      {canDelete && (
+        <Button variant="ghost" size="icon" className="size-8 shrink-0 text-muted-foreground hover:text-destructive" aria-label={t("deletePaymentTitle")} onClick={onDelete}>
+          <Trash2 className="size-4" />
+        </Button>
+      )}
+    </li>
   )
 }

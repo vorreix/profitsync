@@ -51,7 +51,11 @@ export const searchHrefs = {
   // it isn't in the visible page — no scroll/highlight machinery needed.
   transaction: (tx: SearchTransaction) => `/transactions?view=${tx.id}`,
   quotation: (qt: SearchQuotation) => `/quotations?view=${qt.id}`,
-  account: (a: SearchAccount) => (a.type === "space" ? "/spaces" : `/wealth/${a.id}`),
+  // A debt IS a wealth account, but its screen is /debts/:id — /wealth/:id is
+  // the bank-account page and cannot explain a loan (no principal, no interest,
+  // no schedule). Searching for "Marco" has to land on the money he owes you.
+  account: (a: SearchAccount) =>
+    a.type === "space" ? "/spaces" : a.type === "loan" || a.type === "receivable" ? `/debts/${a.id}` : `/wealth/${a.id}`,
   card: (c: SearchCard) => `/wealth/cards/${c.id}`,
   category: () => "/categories",
 }

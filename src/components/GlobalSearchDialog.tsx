@@ -7,6 +7,7 @@ import {
   FileText,
   Landmark,
   Loader2,
+  HandCoins,
   PiggyBank,
   Tag,
   Users,
@@ -231,6 +232,8 @@ export function GlobalSearchDialog({
                   >
                     {account.type === "space" ? (
                       <PiggyBank className="text-muted-foreground" />
+                    ) : account.type === "loan" || account.type === "receivable" ? (
+                      <HandCoins className="text-muted-foreground" />
                     ) : (
                       <Landmark className="text-muted-foreground" />
                     )}

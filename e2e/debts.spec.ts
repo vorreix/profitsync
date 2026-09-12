@@ -55,8 +55,9 @@ const cashOf = async (page: Page) => Number((await accounts(page)).find((a) => a
 const expenseOf = (rows: TxRow[]) => rows.reduce((s, t) => (!t.is_system && t.kind === "standard" && t.type === "outgoing" ? s + Number(t.amount) : s), 0)
 const incomeOf = (rows: TxRow[]) => rows.reduce((s, t) => (!t.is_system && t.kind === "standard" && t.type === "incoming" ? s + Number(t.amount) : s), 0)
 const cashRows = async (page: Page) => (await api<{ data: TxRow[] }>(page, "GET", `/api/transactions?wealthAccountId=${(await accounts(page)).find((a) => a.type === "cash")!.id}&page=1`)).json.data
+const rowsOf = async (page: Page, accountId: string) => (await api<{ data: TxRow[] }>(page, "GET", `/api/transactions?wealthAccountId=${accountId}&page=1`)).json.data
 
-const NAMES = { loan: `${E2E_PREFIX}-loan`, marco: `${E2E_PREFIX}-marco`, luca: `${E2E_PREFIX}-luca` }
+const NAMES = { loan: `${E2E_PREFIX}-loan`, marco: `${E2E_PREFIX}-marco`, luca: `${E2E_PREFIX}-luca`, auto: `${E2E_PREFIX}-auto` }
 
 async function cleanup(page: Page) {
   const o = await overview(page)
@@ -98,12 +99,11 @@ test.describe.serial("Debt & Loans", () => {
     const dialog = page.getByRole("dialog", { name: /add debt/i })
     await expect(dialog).toBeVisible()
     await expect(dialog.getByRole("radio", { name: /^i owe$/i })).toHaveAttribute("aria-checked", "true")
-    await dialog.getByLabel(/who do you owe/i).fill("Marco")
-    await dialog.getByLabel(/name \(optional\)/i).fill(NAMES.marco)
+    await dialog.getByLabel(/who do you owe/i).fill(NAMES.marco)
     await dialog.getByLabel(/how much is left/i).fill("700")
-    // Informal: no fixed payment → irregular.
-    await dialog.getByRole("combobox", { name: /^every$/i }).click()
-    await page.getByRole("option", { name: /irregular/i }).click()
+    // The default is "I'll record payments myself" — an informal debt has no
+    // schedule, so nothing is set up and no date can be estimated.
+    await expect(dialog.getByRole("radio", { name: /record payments myself/i })).toHaveAttribute("aria-checked", "true")
     await dialog.getByRole("button", { name: /^add$/i }).click()
     await expect(dialog).toBeHidden({ timeout: 15_000 })
     // Lands on the detail page.
@@ -178,8 +178,11 @@ test.describe.serial("Debt & Loans", () => {
     expect(expenseOf(await cashRows(page))).toBeCloseTo(expenseBefore + 80, 2)
     const o = await overview(page)
     expect(o.summary.month.paid).toBe(500)
-    // Payment appears in history with its split.
-    await expect(page.getByText(/principal \D*420\.00/i)).toBeVisible()
+    // The payment appears in Activity with what came off the debt (420) and what
+    // it actually cost on top (70 interest + 10 fees).
+    await expect(page.getByRole("heading", { name: /^activity/i })).toBeVisible()
+    await expect(page.getByText(/420\.00/).first()).toBeVisible()
+    await expect(page.getByText(/interest \D*80\.00/i).first()).toBeVisible()
   })
 
   test("auto split uses the rate: one month of interest off the top, the rest principal", async ({ page }) => {
@@ -224,6 +227,81 @@ test.describe.serial("Debt & Loans", () => {
     await expect(page.getByRole("table")).toBeVisible()
     await page.getByRole("tab", { name: /upcoming/i }).click()
     await expect(page.getByText(new RegExp(NAMES.loan)).first()).toBeVisible()
+  })
+
+  test("a recurring repayment posts itself: principal is a transfer, interest is the only expense, and it stops when the debt does", async ({ page }) => {
+    await page.goto("/debts"); await expectAppShell(page)
+    const bank = (await accounts(page)).find((a) => a.type === "bank" || a.type === "cash")!
+    const bankBefore = Number(bank.current_balance)
+    const expenseBefore = expenseOf(await rowsOf(page, bank.id))
+    const today = new Date().toISOString().slice(0, 10)
+
+    // 600 owed at 12 %, repaying 250 a month starting today: the first
+    // instalment posts on create, and the third has to be CAPPED at the payoff
+    // figure or the balance sails past zero into invisible credit.
+    const created = await api<{ id: string }>(page, "POST", "/api/debts", {
+      direction: "owed", name: NAMES.auto, kind: "Chit fund", current_balance: 600, original_amount: 600,
+      annual_rate_pct: 12,
+      repayment: { enabled: true, from_account_id: bank.id, amount: 250, frequency: "monthly", start_date: today },
+    })
+    expect(created.status).toBe(201)
+    const autoId = created.json.id
+
+    type Detail = {
+      debt: Debt & { payment_amount: number | null; next_due_date: string | null; kind: string }
+      repayment: { id: string; active: boolean; amount: number; frequency: string; from_account_id: string } | null
+      activity: { kind: string; principal: number; interest: number; recurring_rule_id: string | null }[]
+    }
+    const detail = async () => (await api<Detail>(page, "GET", `/api/debts/${autoId}`)).json
+    let d = await detail()
+
+    // The rule exists, is linked, and IS the debt's schedule.
+    expect(d.repayment).toBeTruthy()
+    expect(d.repayment!.amount).toBe(250)
+    expect(d.repayment!.frequency).toBe("monthly")
+    expect(d.repayment!.from_account_id).toBe(bank.id)
+    expect(d.debt.payment_amount).toBe(250)
+    expect(d.debt.kind).toBe("Chit fund") // free text survives the round trip
+
+    // The first instalment posted: 600 × 12 %/12 = 6.00 interest, 244 principal.
+    const first = d.activity.find((a) => a.kind === "payment")!
+    expect(first.interest).toBe(6)
+    expect(first.principal).toBe(244)
+    expect(first.recurring_rule_id).toBe(d.repayment!.id)
+    expect(d.debt.balance).toBe(356)
+    expect(Number((await accounts(page)).find((a) => a.id === bank.id)!.current_balance)).toBeCloseTo(bankBefore - 250, 2)
+    // Only the interest is spending — 6.00, not the 250 that left the account.
+    // The 244 of principal is a transfer, so net worth did not move by it.
+    const payerRows = await rowsOf(page, bank.id)
+    expect(expenseOf(payerRows)).toBeCloseTo(expenseBefore + 6, 2)
+    expect(payerRows.some((r) => r.kind === "transfer" && r.type === "outgoing" && Number(r.amount) === 244)).toBe(true)
+
+    // Re-reading must not post it twice.
+    const again = await detail()
+    expect(again.debt.balance).toBe(356)
+    expect(again.activity.filter((a) => a.kind === "payment")).toHaveLength(1)
+
+    // Pausing the debt stops the rule dead.
+    expect((await api(page, "PATCH", `/api/debts/${autoId}`, { lifecycle: "paused" })).status).toBe(200)
+    d = await detail()
+    expect(d.repayment!.active).toBe(false)
+    // Resuming re-anchors to today rather than back-paying the holiday.
+    expect((await api(page, "PATCH", `/api/debts/${autoId}`, { lifecycle: "active" })).status).toBe(200)
+    d = await detail()
+    expect(d.repayment!.active).toBe(true)
+
+    // A hand-recorded payment alongside a live rule is an EXTRA one: the next
+    // due date must not move, or the instalment the user still expects is
+    // silently cancelled.
+    const dueBefore = d.debt.next_due_date
+    expect((await api(page, "POST", `/api/debts/${autoId}/payments`, { from_account_id: bank.id, amount: 50, date: today })).status).toBe(201)
+    d = await detail()
+    expect(d.debt.next_due_date).toBe(dueBefore)
+
+    // Closing the debt stops the rule too — a closed debt that kept taking money
+    // every month is the worst version of this bug.
+    expect((await api(page, "DELETE", `/api/debts/${autoId}`)).status).toBe(200)
+    expect((await detail()).repayment!.active).toBe(false)
   })
 
   test("owed to me: lending is a transfer out, a repayment comes back, no expense or income", async ({ page }) => {

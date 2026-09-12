@@ -457,7 +457,7 @@ export const transactions = pgTable("transactions", {
   // money back for an earlier expense: it moves the balance like any incoming
   // but reporting nets it against EXPENSE, never income (src/lib/tx-classify.ts
   // + api/_lib/tx-sql.ts).
-  kind: text("kind").notNull().default("standard"), // standard | transfer | refund
+  kind: text("kind").notNull().default("standard"), // standard | transfer | debt | refund
   type: text("type").notNull(),
   amount: numeric("amount", { precision: 20, scale: 2 }).notNull().default("0"),
   description: text("description").default(""),
@@ -530,6 +530,11 @@ export const recurringRules = pgTable("recurring_rules", {
   // The card that pays each occurrence (copied onto every materialized row);
   // `wealthAccountId` is then always that card's ledger account.
   cardId: uuid("card_id").references(() => cards.id, { onDelete: "set null" }),
+  // kind='debt': the debt account this rule repays. `wealthAccountId` stays the
+  // BANK (the account whose cash flow the projection cares about) and `type`
+  // says which way the money moves for the user — outgoing for a loan, incoming
+  // for a receivable. Cascades with the debt: the rule is meaningless without it.
+  debtAccountId: uuid("debt_account_id").references(() => wealthAccounts.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   type: text("type").notNull(), // incoming | outgoing (for a transfer: the source-leg direction, always 'outgoing')
   amount: numeric("amount", { precision: 20, scale: 2 }).notNull(),
@@ -549,6 +554,7 @@ export const recurringRules = pgTable("recurring_rules", {
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => ({
   dueIdx: index("recurring_rules_due_idx").on(table.organizationId, table.active, table.nextDueAt),
+  debtIdx: index("recurring_rules_debt_idx").on(table.debtAccountId),
 }))
 
 export const quotations = pgTable("quotations", {

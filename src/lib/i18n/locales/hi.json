@@ -1717,7 +1717,8 @@
     "noPaymentsHint": "पहला भुगतान {{date}} को बनेगा।",
     "noPaymentsPaused": "इससे अभी तक कुछ नहीं बना है।",
     "loadMore": "{{count}} और लोड करें",
-    "loadingMore": "लोड हो रहा है…"
+    "loadingMore": "लोड हो रहा है…",
+    "repaysDebt": "चुकाता है"
   },
   "calendar": {
     "title": "कैलेंडर",
@@ -2071,6 +2072,15 @@
       "card_expiring": {
         "title": "कार्ड जल्द एक्सपायर हो रहा है",
         "body": "{{card}} {{expiry}} को एक्सपायर हो जाएगा।"
+      },
+      "debt_payment_posted": {
+        "title": "चुकौती दर्ज हुई",
+        "body": "“{{name}}” अपने आप चुका दिया गया।",
+        "body_many": "“{{name}}” ने {{count}} चुकौतियाँ दर्ज कीं।"
+      },
+      "debt_repaid": {
+        "title": "कर्ज़ चुक गया",
+        "body": "“{{name}}” का आखिरी हिस्सा भी चुक गया। अब कुछ बाकी नहीं।"
       }
     },
     "client": {
@@ -2901,6 +2911,78 @@
     "viewDebt": "View debt",
     "payments": "Payments",
     "receivablesTitle": "Owed to you",
-    "receivablesHint": "Money others owe you counts toward your net worth, but it is not money in hand."
+    "receivablesHint": "Money others owe you counts toward your net worth, but it is not money in hand.",
+    "common": {
+      "amountTooLarge": "यह राशि बहुत बड़ी है"
+    },
+    "kindPlaceholder": "प्रकार चुनें या लिखें",
+    "kindSearchPlaceholder": "खोजें, या अपना लिखें…",
+    "kindSuggestions": "सुझाव",
+    "useThisType": "“{{type}}” का उपयोग करें",
+    "originalInvalid": "मूल राशि 0 या उससे अधिक होनी चाहिए",
+    "howRepaidOut": "इसे कैसे चुकाया जा रहा है?",
+    "howRepaidIn": "वे आपको कैसे चुका रहे हैं?",
+    "repayManually": "भुगतान मैं खुद दर्ज करूँगा",
+    "repayAutoOut": "तय समय पर अपने आप भुगतान करें",
+    "repayAutoIn": "वे तय समय पर अपने आप मुझे भुगतान करते हैं",
+    "repayFrom": "यहाँ से भुगतान करें",
+    "repayInto": "यहाँ प्राप्त करें",
+    "repayAmount": "हर भुगतान",
+    "repayFromRequired": "वह खाता चुनें जिससे भुगतान जाएगा",
+    "repayAmountRequired": "हर भुगतान कितना है, यह दर्ज करें",
+    "repayStartRequired": "पहला भुगतान कब है, यह चुनें",
+    "firstPayment": "पहला भुगतान",
+    "firstPaymentNow": "सहेजते ही पहला भुगतान दर्ज हो जाएगा।",
+    "firstPaymentHint": "इस तारीख से भुगतान अपने आप दर्ज होंगे, ब्याज मूलधन से अलग रखा जाएगा।",
+    "repaymentNameOut": "चुकौती — {{name}}",
+    "repaymentNameIn": "{{name}} से चुकौती",
+    "moreDetails": "और विवरण (वैकल्पिक)",
+    "formalName": "अनुबंध पर पूरा नाम",
+    "formalNamePlaceholder": "केवल तब जब ऊपर के नाम से अलग हो",
+    "rateTypeLabel": "दर",
+    "rateHelp": "दर होने पर हर भुगतान खुद ही ब्याज और मूलधन में बँट जाता है।",
+    "lendMoneyHint": "आपके खाते से जाने वाला पैसा दर्ज करता है। इसे कभी खर्च नहीं गिना जाता।",
+    "useScheduled": "निर्धारित · {{amount}}",
+    "payItOff": "पूरा चुकाएँ · {{amount}}",
+    "overpayWarning": "यह आज इसे पूरा चुकाने ({{amount}}) से ज़्यादा है। अतिरिक्त राशि कर्ज़ पर जमा के रूप में रह जाएगी।",
+    "countsAsScheduled": "यह निर्धारित भुगतान है",
+    "countsAsScheduledOn": "अगली देय तारीख {{date}} से आगे बढ़ेगी।",
+    "extraPayment": "एक अतिरिक्त भुगतान। अगली देय तारीख वहीं रहेगी।",
+    "extraPaymentWithRule": "नियमित भुगतान के अलावा एक अतिरिक्त भुगतान। अगली देय तारीख वहीं रहेगी।",
+    "repaymentSection": "नियमित चुकौती",
+    "repaymentEvery": "हर {{frequency}} {{amount}}",
+    "frequencyCustom": "{{interval}} {{unit}}",
+    "unit": {
+      "day": "दिन",
+      "week": "सप्ताह",
+      "month": "महीने",
+      "year": "साल"
+    },
+    "repaymentFromAccount": "{{account}} से",
+    "repaymentIntoAccount": "{{account}} में",
+    "repaymentNoAccount": "कोई खाता नहीं चुना",
+    "repaymentNext": "अगला {{date}}",
+    "repaymentPaused": "रुका हुआ",
+    "pauseRepayment": "रोकें",
+    "resumeRepayment": "फिर शुरू करें",
+    "openRepayment": "प्रबंधित करें",
+    "noRepayment": "कोई नियमित चुकौती नहीं — भुगतान हाथ से दर्ज होते हैं।",
+    "setUpRepayment": "सेट करें",
+    "activityTitle": "गतिविधि",
+    "noActivityYet": "इस कर्ज़ पर अभी कुछ नहीं हुआ है",
+    "activity": {
+      "paid": "भुगतान",
+      "received": "चुकौती मिली",
+      "borrowed": "उधार लिया",
+      "lent": "उधार दिया",
+      "adjusted": "शेष सुधारा गया",
+      "opening": "प्रारंभिक शेष",
+      "automatic": "स्वचालित",
+      "outOfPocket": "{{amount}} जेब से"
+    },
+    "paymentDay": "भुगतान का दिन",
+    "paymentDayHint": "चक्र यही दिन रखता है। महीने का कौन-सा दिन भुगतान होगा, यह बदलने के लिए इसे बदलें।",
+    "auto": "स्वतः",
+    "rateNoneHelp": "अगर कोई ब्याज नहीं है, या पता नहीं है, तो इसे खाली छोड़ दें।"
   }
 }

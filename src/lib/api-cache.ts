@@ -61,6 +61,11 @@ export const ALWAYS_FETCH = [
   // Materialises due recurring rows before summing, so the month's rent is in
   // the figure even when this is the first screen opened today.
   "/api/spending-budgets",
+  // Runs due debt repayments, so the amount owed is the amount owed AFTER
+  // everything that should already have been paid. Painted from cache, this
+  // screen would keep showing last month's balance until some other page
+  // happened to run the materializer.
+  "/api/debts",
 ] as const
 
 /**

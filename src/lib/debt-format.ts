@@ -1,4 +1,5 @@
 // Small presentation helpers for Debt & Loans (client only).
+import { isSuggestedDebtKind } from "@/lib/debt-recurring"
 import type { Debt } from "@/lib/types"
 import { formatMoney } from "@/lib/wealth"
 
@@ -27,4 +28,14 @@ export function monthsFromNow(months: number, today: string): string {
   const ny = Math.floor(total / 12)
   const nm = (total % 12) + 1
   return formatMonthYear(`${ny}-${String(nm).padStart(2, "0")}-01`)
+}
+
+/**
+ * The debt's type as a person should read it. The nine suggestions are stored
+ * as keys and translate; anything the user typed themselves ("Chit fund", a
+ * flatmate's name) is shown exactly as they wrote it — translating it is not
+ * possible and guessing at it would be worse than leaving it alone.
+ */
+export function debtKindLabel(kind: string, t: (key: string) => string): string {
+  return isSuggestedDebtKind(kind) ? t(`kinds.${kind}`) : kind
 }

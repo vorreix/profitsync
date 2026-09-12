@@ -5,14 +5,16 @@ import { toast } from "sonner"
 import { apiErrorMessage, apiGet, apiPost } from "@/lib/api"
 import { amountExceedsLimit } from "@/lib/money"
 import { fromCents, splitPayment, toCents } from "@/lib/debt-math"
-import type { Debt, DebtPayment, WealthAccount } from "@/lib/types"
-import { debtMoney } from "@/lib/debt-format"
+import { advancesScheduleByDefault, payoffCappedAmount } from "@/lib/debt-recurring"
+import type { Debt, DebtPayment, DebtRepayment, WealthAccount } from "@/lib/types"
+import { debtMoney, formatLongDate } from "@/lib/debt-format"
 import { getCurrencySymbol } from "@/lib/currencies"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { AccountCombobox } from "@/components/wealth/AccountCombobox"
 
@@ -29,11 +31,14 @@ export function RecordPaymentSheet({
   open,
   onOpenChange,
   debt,
+  repayment = null,
   onSaved,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   debt: Debt
+  /** The recurring repayment servicing this debt, when there is one. */
+  repayment?: DebtRepayment | null
   onSaved: (payment: DebtPayment, debt: Debt) => void
 }) {
   const { t } = useTranslation("debts")
@@ -50,13 +55,19 @@ export function RecordPaymentSheet({
   const [fees, setFees] = useState("")
   const [other, setOther] = useState("")
   const [note, setNote] = useState("")
+  const [advance, setAdvance] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const scheduled = !!repayment?.active
 
   useEffect(() => {
     if (!open) return
     setSaving(false); setError(null); setManual(false)
     setDate(today()); setTotal(debt.payment_amount ? String(debt.payment_amount) : ""); setPrincipal(""); setInterest(""); setFees(""); setOther(""); setNote("")
+    // With a live recurring repayment the RULE owns the schedule, so a payment
+    // recorded by hand is an EXTRA one: moving the due date would silently
+    // cancel the next instalment the user is still expecting to be taken.
+    setAdvance(advancesScheduleByDefault(scheduled))
     let cancelled = false
     ;(async () => {
       const token = await getToken()
@@ -74,11 +85,30 @@ export function RecordPaymentSheet({
   const totalNum = Number(total)
   const preview = useMemo(() => {
     if (!(totalNum > 0)) return null
-    return splitPayment({ total: toCents(totalNum), balance: toCents(debt.balance), annualRatePct: debt.annual_rate_pct, frequency: debt.payment_frequency })
+    const s = splitPayment({ total: toCents(totalNum), balance: toCents(debt.balance), annualRatePct: debt.annual_rate_pct, frequency: debt.payment_frequency })
+    // splitPayment CLAMPS principal at the balance; the server does not — it
+    // takes one period's interest off the top and the whole remainder is
+    // principal, so an overpayment lands as credit rather than vanishing. Show
+    // what will actually be recorded, or the preview quietly contradicts the
+    // warning right above it.
+    return { ...s, principal: toCents(totalNum) - s.interest }
   }, [totalNum, debt.balance, debt.annual_rate_pct, debt.payment_frequency])
 
   const manualSum = [principal, interest, fees, other].reduce((s, v) => s + (Number(v) || 0), 0)
   const manualOk = !manual || Math.abs(manualSum - totalNum) < 0.005
+
+  // What it would take to close the debt today: the balance plus this period's
+  // interest. Paying MORE than this is not an error — the user may be settling a
+  // figure the lender quoted — but it is worth saying out loud, because the
+  // excess lands as principal and pushes the balance into credit, where every
+  // screen reports "nothing owed" and the extra money stops being visible.
+  const payoff = fromCents(payoffCappedAmount({
+    scheduled: Number.MAX_SAFE_INTEGER,
+    outstanding: toCents(debt.balance),
+    annualRatePct: debt.annual_rate_pct,
+    frequency: debt.payment_frequency,
+  }))
+  const overpaying = payoff > 0 && totalNum > payoff + 0.005
 
   async function submit() {
     if (!accountId) { setError(t("payFrom")); return }
@@ -95,6 +125,7 @@ export function RecordPaymentSheet({
         amount: totalNum,
         ...(manual ? { principal: Number(principal) || 0, interest: Number(interest) || 0, fees: Number(fees) || 0, other: Number(other) || 0 } : {}),
         note,
+        advance_schedule: advance,
       })
       toast.success(t("paymentRecorded"))
       onOpenChange(false)
@@ -138,6 +169,23 @@ export function RecordPaymentSheet({
             </div>
           </div>
 
+          {(debt.payment_amount || payoff > 0) && (
+            <div className="flex flex-wrap gap-2">
+              {debt.payment_amount ? (
+                <QuickAmount label={t("useScheduled", { amount: debtMoney(debt.payment_amount, debt) })} onClick={() => { setTotal(String(debt.payment_amount)); setError(null) }} />
+              ) : null}
+              {payoff > 0 && (
+                <QuickAmount label={t("payItOff", { amount: debtMoney(payoff, debt) })} onClick={() => { setTotal(String(payoff)); setError(null) }} />
+              )}
+            </div>
+          )}
+
+          {overpaying && (
+            <p className="rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+              {t("overpayWarning", { amount: debtMoney(payoff, debt) })}
+            </p>
+          )}
+
           <div className="space-y-3 rounded-xl border bg-muted/20 p-3">
             <div className="flex items-center justify-between gap-2">
               <p className="text-sm font-medium">{t("splitTitle")}</p>
@@ -173,6 +221,18 @@ export function RecordPaymentSheet({
             )}
           </div>
 
+          {debt.next_due_date && debt.payment_frequency && debt.payment_frequency !== "irregular" && (
+            <label className="flex items-start justify-between gap-3 rounded-xl border bg-muted/20 px-3 py-2.5">
+              <span className="min-w-0">
+                <span className="block text-sm font-medium">{t("countsAsScheduled")}</span>
+                <span className="block text-xs text-muted-foreground">
+                  {advance ? t("countsAsScheduledOn", { date: formatLongDate(debt.next_due_date) }) : scheduled ? t("extraPaymentWithRule") : t("extraPayment")}
+                </span>
+              </span>
+              <Switch checked={advance} onCheckedChange={setAdvance} aria-label={t("countsAsScheduled")} />
+            </label>
+          )}
+
           <div className="space-y-1.5">
             <Label htmlFor="dp-note">{t("notes")}</Label>
             <Textarea id="dp-note" rows={1} className="min-h-9 resize-none" value={note} onChange={(e) => setNote(e.target.value)} />
@@ -185,5 +245,18 @@ export function RecordPaymentSheet({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  )
+}
+
+/** A one-tap amount: the instalment, or what it would take to close it today. */
+function QuickAmount({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="pressable min-h-8 rounded-full border bg-background px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+    >
+      {label}
+    </button>
   )
 }
