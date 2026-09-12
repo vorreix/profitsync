@@ -34,10 +34,38 @@ export const defaultTxForm = (): TxForm => ({
 export const defaultAccountId = (accounts: WealthAccount[]) =>
   accounts.find((a) => a.type === "cash")?.id ?? accounts[0]?.id ?? ""
 
+// Seed the edit form from a row: its account and, when a card paid, that card
+// (so the picker highlights the card tile and a save keeps the attribution).
 export const allocationFor = (
-  tx: { wealth_account_id?: string | null; amount: number },
+  tx: { wealth_account_id?: string | null; card_id?: string | null; amount: number },
   accounts: WealthAccount[],
-): Allocation[] => [{ account_id: tx.wealth_account_id ?? defaultAccountId(accounts), amount: String(tx.amount) }]
+): Allocation[] => [{
+  account_id: tx.wealth_account_id ?? defaultAccountId(accounts),
+  card_id: tx.wealth_account_id ? (tx.card_id ?? null) : null,
+  amount: String(tx.amount),
+}]
+
+// The wire shape of one allocation for POST /api/transactions/group and the
+// split re-create: the server forces wealth_account_id to the card's account.
+export const allocationPayload = (a: Allocation) => ({
+  wealth_account_id: a.account_id,
+  card_id: a.card_id ?? null,
+  amount: parseFloat(a.amount),
+})
+
+// Did the server refuse the leg because its card can't take new payments?
+// (api/_lib/cards.ts resolveCardForLeg — "frozen" / "closed" / archived.)
+export function isCardUnusableError(err: unknown): boolean {
+  const text = err instanceof Error ? err.message : ""
+  let message = text
+  try {
+    const parsed = JSON.parse(text) as { error?: unknown }
+    if (parsed && typeof parsed.error === "string") message = parsed.error
+  } catch {
+    /* plain text */
+  }
+  return /\bcard\b/i.test(message) && /frozen|closed|archived/i.test(message)
+}
 
 export const formatFileSize = (bytes: number) => {
   if (bytes < 1024) return `${bytes} B`

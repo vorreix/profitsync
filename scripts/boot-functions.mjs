@@ -34,6 +34,29 @@ import { fileURLToPath, pathToFileURL } from "node:url"
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..")
 
+// PROD PARITY — require() of a pure-ESM package.
+//
+// Vercel's runtime cannot require() an ES module from CommonJS. Node 22.12+
+// CAN (require-of-ESM is on by default), so a dependency that only PRODUCTION
+// chokes on boots perfectly here and ships green. That is precisely how
+// sanitize-html 2.17.7 took every SSR route down on 2026-09-08: its
+// htmlparser2 bumped to v12, which dropped the CommonJS half of its export map,
+// and CommonJS sanitize-html could no longer require() it — ERR_REQUIRE_ESM at
+// module load, /blog, the legal pages, sitemap.xml and robots.txt all 500.
+// Local Node happily loaded the ESM build and this gate stayed green.
+//
+// Re-exec with the behaviour OFF so the resolver matches production.
+const NO_REQUIRE_ESM = "--no-experimental-require-module"
+if (!process.execArgv.includes(NO_REQUIRE_ESM) && process.allowedNodeEnvironmentFlags.has(NO_REQUIRE_ESM)) {
+  const { spawnSync } = await import("node:child_process")
+  const child = spawnSync(
+    process.execPath,
+    [NO_REQUIRE_ESM, fileURLToPath(import.meta.url), ...process.argv.slice(2)],
+    { stdio: "inherit" },
+  )
+  process.exit(child.status ?? 1)
+}
+
 const ENTRYPOINTS = ["api/index.ts", "api/billing/webhook.ts", "api/ssr.ts"]
 
 // Files some function loads at MODULE scope from disk (vercel.json

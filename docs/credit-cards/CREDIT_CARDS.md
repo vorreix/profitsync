@@ -4,6 +4,16 @@
 > smallest coherent extension of the existing ledger, and the invariants every
 > future change must keep. Companion to `src/lib/credit-card.ts` (the math) and
 > `api/_lib/credit-card.ts` (the engine).
+>
+> **Wealth & Cards** builds on this: the liability account is the *money* side
+> of a credit card; its *identity* (network, last four digits, expiry, holder,
+> design, funding bank, autopay) lives in `cards` (1:1 with the account), and
+> debit cards sit on banks the same way. Read `docs/cards/CARDS.md` for the
+> card entity, attribution (`transactions.card_id`) and the autopay engine.
+> Two engine details changed with it: statement filing never starts before the
+> day the card was added (no phantom €0 closes between an old known statement
+> and onboarding), and `ensureStatements` returns the rows it filed so they can
+> be announced.
 
 ## 1. What was there before
 
@@ -152,7 +162,7 @@ All in UTC ISO strings like `src/lib/recurring.ts`. Covered by
 ## 6. Invariants (tests)
 
 `src/lib/credit-card.test.ts`, `credit-card-ledger.test.ts`, `tx-classify.test.ts`,
-`api/_lib/tx-sql.test.ts`, `budget-spend.test.ts`, `budget-engine-refund.test.ts`:
+`api/_lib/tx-sql.test.ts`, `budget-spend.test.ts`, `spending-budgets.test.ts`:
 
 1. Purchase = expense + increased debt; payment = transfer, never an expense.
 2. Available credit is not an asset; card debt reduces net worth; a payment

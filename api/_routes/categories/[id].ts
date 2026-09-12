@@ -1,8 +1,9 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { and, eq, inArray } from "drizzle-orm"
+import { and, eq, inArray, sql } from "drizzle-orm"
 import { db, serialize } from "../../../src/lib/db/index.js"
 import { categories, clients, transactions } from "../../../src/lib/db/schema.js"
 import { canDelete, canWrite, requireAuth } from "../../_lib/auth.js"
+import { applyCategoryRename, planCategoryRename } from "../../_lib/spending-budgets.js"
 
 const MAX_NAME_LENGTH = 60
 // eslint-disable-next-line no-control-regex
@@ -37,6 +38,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const renamed = updates.name !== undefined && updates.name !== category.name
 
+    // Refuse a rename that would collide with another category of this type
+    // (case-insensitively — the picker treats "Food" and "food" as one), or
+    // leave two sub-budgets of one main budget claiming the same category.
+    let budgetPlan: Awaited<ReturnType<typeof planCategoryRename>> = { updates: [], clash: null }
+    if (renamed) {
+      const [taken] = await db
+        .select({ id: categories.id })
+        .from(categories)
+        .where(and(eq(categories.organizationId, orgId), eq(categories.type, category.type), sql`lower(${categories.name}) = lower(${updates.name!})`, sql`${categories.id} <> ${id}`))
+      if (taken) return res.status(409).json({ error: "A category with this name already exists" })
+      budgetPlan = await planCategoryRename(orgId, category.name, updates.name!)
+      if (budgetPlan.clash) return res.status(409).json({ error: "category_claimed", ...budgetPlan.clash })
+    }
+
     const [updated] = await db
       .update(categories)
       .set({ ...updates, updatedAt: new Date() })
@@ -58,6 +73,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             ),
           ),
         )
+      // Spending budgets name categories too — move them with the rename or
+      // their spend would silently drop to zero.
+      await applyCategoryRename(budgetPlan.updates)
     }
 
     return res.json(serialize(updated))

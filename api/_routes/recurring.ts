@@ -1,10 +1,12 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { and, asc, desc, eq, ne, sql } from "drizzle-orm"
+import { and, asc, desc, eq, ne } from "drizzle-orm"
 import { db, serialize } from "../../src/lib/db/index.js"
 import { clients, recurringRules, wealthAccounts } from "../../src/lib/db/schema.js"
 import { canWrite, requireAuth } from "../_lib/auth.js"
 import { validateRuleInput, type RecurringRuleInput } from "../_lib/recurring-validate.js"
 import { materializeDueRecurring } from "../_lib/recurring-materialize.js"
+import { ruleFields } from "../_lib/recurring-query.js"
+import { attributeCard } from "../_lib/cards.js"
 
 async function assertRefsBelongToOrg(orgId: string, clientId: string | null, accountId: string | null): Promise<string | null> {
   if (clientId) {
@@ -31,28 +33,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Catch up first so "next due" + the generated count below are truthful.
     await materializeDueRecurring(orgId)
     const rows = await db
-      .select({
-        id: recurringRules.id,
-        organizationId: recurringRules.organizationId,
-        clientId: recurringRules.clientId,
-        clientName: clients.name,
-        clientIsOwn: clients.isOwn,
-        wealthAccountId: recurringRules.wealthAccountId,
-        accountName: sql<string | null>`coalesce(nullif(${wealthAccounts.nickname}, ''), ${wealthAccounts.bankName})`,
-        name: recurringRules.name,
-        type: recurringRules.type,
-        amount: recurringRules.amount,
-        category: recurringRules.category,
-        frequencyUnit: recurringRules.frequencyUnit,
-        frequencyInterval: recurringRules.frequencyInterval,
-        startDate: recurringRules.startDate,
-        endDate: recurringRules.endDate,
-        nextDueAt: recurringRules.nextDueAt,
-        active: recurringRules.active,
-        lastError: recurringRules.lastError,
-        createdAt: recurringRules.createdAt,
-        generatedCount: sql<number>`(select count(*)::int from transactions t where t.recurring_rule_id = ${recurringRules.id} and t.deleted_at is null)`,
-      })
+      .select(ruleFields)
       .from(recurringRules)
       .leftJoin(clients, eq(clients.id, recurringRules.clientId))
       .leftJoin(wealthAccounts, eq(wealthAccounts.id, recurringRules.wealthAccountId))
@@ -67,7 +48,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!canWrite(role)) return res.status(403).json({ error: "Forbidden" })
     const parsed = validateRuleInput(req.body as RecurringRuleInput)
     if ("error" in parsed) return res.status(400).json({ error: parsed.error })
-    const refError = await assertRefsBelongToOrg(orgId, parsed.value.clientId, parsed.value.wealthAccountId)
+    // The paying card decides the account (api/_lib/cards.ts attributeCard).
+    const attributed = await attributeCard(orgId, { cardId: parsed.value.cardId, wealthAccountId: parsed.value.wealthAccountId })
+    if (!attributed.ok) return res.status(400).json({ error: attributed.error })
+    const refError = await assertRefsBelongToOrg(orgId, parsed.value.clientId, attributed.accountId)
     if (refError) return res.status(400).json({ error: refError })
 
     const [row] = await db
@@ -75,7 +59,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .values({
         organizationId: orgId,
         clientId: parsed.value.clientId,
-        wealthAccountId: parsed.value.wealthAccountId,
+        wealthAccountId: attributed.accountId,
+        cardId: attributed.cardId,
         name: parsed.value.name,
         type: parsed.value.type,
         amount: parsed.value.amount,

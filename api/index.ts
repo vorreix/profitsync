@@ -40,6 +40,7 @@ import transactionsBulkDelete from "./_routes/transactions/bulk-delete.js"
 import transactionById from "./_routes/transactions/[id].js"
 import transactionAttachments from "./_routes/transactions/[id]/attachments.js"
 import analytics from "./_routes/analytics.js"
+import alerts from "./_routes/alerts.js"
 import calendar from "./_routes/calendar.js"
 import flow from "./_routes/flow.js"
 import audit from "./_routes/audit.js"
@@ -65,6 +66,10 @@ import wealthQuota from "./_routes/wealth/quota.js"
 import recurring from "./_routes/recurring.js"
 import recurringById from "./_routes/recurring/[id].js"
 import wealthTransfer from "./_routes/wealth/transfer.js"
+import cardsList from "./_routes/cards.js"
+import cardsReorder from "./_routes/cards/reorder.js"
+import cardById from "./_routes/cards/[id].js"
+import cardSummary from "./_routes/cards/[id]/summary.js"
 import spaces from "./_routes/spaces.js"
 import spacesReorder from "./_routes/spaces/reorder.js"
 import spaceById from "./_routes/spaces/[id].js"
@@ -93,19 +98,10 @@ import trashClear from "./_routes/trash/clear.js"
 import budgets from "./_routes/budgets.js"
 import budgetsOverview from "./_routes/budgets/overview.js"
 import budgetsDetail from "./_routes/budgets/detail.js"
-import budgetsV2 from "./_routes/budgets/v2.js"
-import budgetsV2Sync from "./_routes/budgets/v2/sync.js"
-import budgetsV2Envelopes from "./_routes/budgets/v2/envelopes.js"
-import budgetsV2Envelope from "./_routes/budgets/v2/envelopes/[id].js"
-import budgetsV2EnvelopeReorder from "./_routes/budgets/v2/envelopes/reorder.js"
-import budgetsV2Contributions from "./_routes/budgets/v2/contributions.js"
-import budgetsV2Prompts from "./_routes/budgets/v2/prompts.js"
-import budgetsV2EnvelopeDetail from "./_routes/budgets/v2/envelopes/[id]/detail.js"
-import budgetsV2Commitments from "./_routes/budgets/v2/commitments.js"
-import budgetsV2Commitment from "./_routes/budgets/v2/commitments/[id].js"
-import budgetsV2Occurrences from "./_routes/budgets/v2/occurrences.js"
-import budgetsV2Reallocate from "./_routes/budgets/v2/reallocate.js"
-import budgetsV2Refunds from "./_routes/budgets/v2/refunds.js"
+import spendingBudgets from "./_routes/spending-budgets.js"
+import spendingBudget from "./_routes/spending-budgets/[id].js"
+import spendingBudgetsReorder from "./_routes/spending-budgets/reorder.js"
+import spendingBudgetsAnalytics from "./_routes/spending-budgets/analytics.js"
 import publicPricing from "./_routes/public/pricing.js"
 import publicBlog from "./_routes/public/blog.js"
 import publicBlogBySlug from "./_routes/public/blog/[slug].js"
@@ -207,6 +203,7 @@ const routes: RoutePattern<ApiHandler>[] = [
   { segments: ["ai", "parse-transaction"], handler: aiParseTransaction },
 
   { segments: ["analytics"], handler: analytics },
+  { segments: ["alerts"], handler: alerts },
   { segments: ["calendar"], handler: calendar },
   { segments: ["flow"], handler: flow },
   { segments: ["audit"], handler: audit },
@@ -222,6 +219,11 @@ const routes: RoutePattern<ApiHandler>[] = [
   { segments: ["recurring"], handler: recurring },
   { segments: ["recurring", ":id"], handler: recurringById },
   { segments: ["wealth", "transfer"], handler: wealthTransfer },
+  // Cards (debit + credit, linked to banks). Static "reorder" before ":id".
+  { segments: ["cards"], handler: cardsList },
+  { segments: ["cards", "reorder"], handler: cardsReorder },
+  { segments: ["cards", ":id"], handler: cardById },
+  { segments: ["cards", ":id", "summary"], handler: cardSummary },
   // Spaces (personal savings buckets). Static "reorder" before the dynamic ":id".
   { segments: ["spaces"], handler: spaces },
   { segments: ["spaces", "reorder"], handler: spacesReorder },
@@ -272,28 +274,15 @@ const routes: RoutePattern<ApiHandler>[] = [
   { segments: ["invitations", ":token"], handler: invitationByToken },
   { segments: ["legal", "accept"], handler: legalAccept },
 
-  // Budget v2 lives under a versioned path so /api/budgets can keep its v1
-  // contract indefinitely for store-pinned native bundles (spec §11.1).
-  // Static segments FIRST, then the dynamic siblings at the same depth. The
-  // router matches on exact segment length, so a 4-segment envelope id can
-  // never be confused with the 3-segment collection route.
-  { segments: ["budgets", "v2", "sync"], handler: budgetsV2Sync },
-  { segments: ["budgets", "v2", "envelopes"], handler: budgetsV2Envelopes },
-  { segments: ["budgets", "v2", "commitments"], handler: budgetsV2Commitments },
-  { segments: ["budgets", "v2", "occurrences"], handler: budgetsV2Occurrences },
-  { segments: ["budgets", "v2", "reallocate"], handler: budgetsV2Reallocate },
-  { segments: ["budgets", "v2", "refunds"], handler: budgetsV2Refunds },
-  { segments: ["budgets", "v2", "contributions"], handler: budgetsV2Contributions },
-  { segments: ["budgets", "v2", "prompts"], handler: budgetsV2Prompts },
-  // "reorder" is a STATIC 4th segment and must precede the dynamic :id sibling.
-  { segments: ["budgets", "v2", "envelopes", "reorder"], handler: budgetsV2EnvelopeReorder },
-  { segments: ["budgets", "v2", "envelopes", ":id", "detail"], handler: budgetsV2EnvelopeDetail },
-  { segments: ["budgets", "v2", "envelopes", ":id"], handler: budgetsV2Envelope },
-  { segments: ["budgets", "v2", "commitments", ":id"], handler: budgetsV2Commitment },
-  { segments: ["budgets", "v2"], handler: budgetsV2 },
   { segments: ["budgets", "overview"], handler: budgetsOverview },
   { segments: ["budgets", "detail"], handler: budgetsDetail },
   { segments: ["budgets"], handler: budgets },
+  // Spending budgets (v3): named limits scoped to categories, with sub-budgets.
+  // Static before dynamic at the same depth.
+  { segments: ["spending-budgets", "reorder"], handler: spendingBudgetsReorder },
+  { segments: ["spending-budgets", "analytics"], handler: spendingBudgetsAnalytics },
+  { segments: ["spending-budgets", ":id"], handler: spendingBudget },
+  { segments: ["spending-budgets"], handler: spendingBudgets },
   { segments: ["trash"], handler: trash },
   { segments: ["trash", "restore"], handler: trashRestore },
   { segments: ["trash", "purge"], handler: trashPurge },

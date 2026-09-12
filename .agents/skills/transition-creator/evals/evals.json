@@ -1,0 +1,29 @@
+{
+  "skill_name": "transition-creator",
+  "evals": [
+    {
+      "id": 1,
+      "name": "expand-collapse",
+      "prompt": "use transition creator — on the Subscription page (src/pages/SubscriptionPage.tsx) the plan cards and the invoices section are toggled with `{showCards && …}` and `{showInvoices && …}`, so they snap in and out instantly. Make them expand and collapse smoothly like the rest of the app, with no flicker.",
+      "expected_output": "SubscriptionPage edited so the toggled sections animate height open/closed using the grid 0fr→1fr trick (with an inner overflow-hidden wrapper) + opacity, scoped transition, ease-out ~300ms, reduced-motion aware. No animation of raw height/width/top.",
+      "files": ["src/pages/SubscriptionPage.tsx"],
+      "assertions": []
+    },
+    {
+      "id": 2,
+      "name": "list-enter-exit",
+      "prompt": "use transition creator — on the Transactions page (src/pages/TransactionsPage.tsx) the transaction rows appear and disappear instantly when added, deleted, or filtered. Make the rows animate in and out and have the remaining ones glide to fill the gap.",
+      "expected_output": "TransactionsPage list wrapped with useAutoAnimate (the project's installed @formkit/auto-animate) on the list container, reusing the ANIM config shape, so add/remove/reorder animate and siblings reflow. No hand-rolled height animation; no new dependency.",
+      "files": ["src/pages/TransactionsPage.tsx"],
+      "assertions": []
+    },
+    {
+      "id": 3,
+      "name": "hover-press",
+      "prompt": "use transition creator — make the client cards on the Clients page (src/pages/ClientsPage.tsx) feel more tactile: a subtle lift on hover and a press response. Premium and understated, not bouncy.",
+      "expected_output": "Client cards get scoped transition-transform/-colors with a small hover:-translate-y and the .pressable utility (or equivalent active:scale), durations ≤200ms, focus-visible preserved, reduced-motion aware. No transition-all catching unintended props; no layout-property animation.",
+      "files": ["src/pages/ClientsPage.tsx"],
+      "assertions": []
+    }
+  ]
+}

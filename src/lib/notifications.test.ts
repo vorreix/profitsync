@@ -252,40 +252,27 @@ describe("decideNoOrgSwitch", () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Budget v2 notification types
+// Budget notification types
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe("Budget v2 notification types", () => {
-  const V2 = [
-    "budget_overdue",
-    "budget_envelope_over",
-    "budget_contribution_missed",
-    "budget_period_closed",
-    "budget_period_restated",
-  ] as const
+describe("Budget notification types", () => {
+  const BUDGET = ["budget_warning", "budget_exceeded"] as const
 
-  it("are all registered", () => {
-    for (const type of V2) {
-      expect(NOTIFICATION_TYPES, type).toHaveProperty(type)
+  it("are registered, and nothing from the retired v2 engine is", () => {
+    for (const type of BUDGET) expect(NOTIFICATION_TYPES, type).toHaveProperty(type)
+    for (const gone of ["budget_overdue", "budget_envelope_over", "budget_contribution_missed", "budget_period_closed", "budget_period_restated"]) {
+      expect(NOTIFICATION_TYPES, gone).not.toHaveProperty(gone)
     }
   })
 
   it("all sit in the budget category, so ONE preference toggle governs them", () => {
-    // If any of these leaked into another category, a user who muted budget
-    // notifications would still be pinged by their budget.
-    for (const type of V2) {
-      expect(categoryForType(type), type).toBe("budget")
-    }
-  })
-
-  it("resolve their category from the registry, not a default", () => {
+    for (const type of BUDGET) expect(categoryForType(type), type).toBe("budget")
     // categoryForType falls back to "system" for anything unknown, so a typo in
     // the registry would silently reroute a notification out of `budget`.
-    expect(categoryForType("budget_overdue")).toBe("budget")
-    expect(categoryForType("budget_overdue_typo")).toBe("system")
+    expect(categoryForType("budget_exceeded_typo")).toBe("system")
   })
 
-  it("default to push ON, because a missed bill is worth a ping", () => {
+  it("default to push ON, because a blown budget is worth a ping", () => {
     for (const channel of ["web_push", "mobile_push"] as const) {
       expect(defaultChannelEnabled("budget", channel), channel).toBe(true)
     }
@@ -293,11 +280,8 @@ describe("Budget v2 notification types", () => {
   })
 
   it("are silenced by muting the budget category", () => {
-    // The cascade is what a user actually reaches for, so prove the new types
-    // obey it rather than assuming category membership is enough.
     const optedOut = [{ categories: { budget: { in_app: false } } }]
-    expect(resolveChannelEnabled(optedOut, categoryForType("budget_overdue"), "in_app")).toBe(false)
-    // A master mute blocks every channel regardless of category opinions.
-    expect(resolveChannelEnabled([{ muted: true }], categoryForType("budget_overdue"), "in_app")).toBe(false)
+    expect(resolveChannelEnabled(optedOut, categoryForType("budget_exceeded"), "in_app")).toBe(false)
+    expect(resolveChannelEnabled([{ muted: true }], categoryForType("budget_exceeded"), "in_app")).toBe(false)
   })
 })

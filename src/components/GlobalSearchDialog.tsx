@@ -33,9 +33,12 @@ import { useOrg } from "@/lib/org-context"
 import { loadRecents, recentSearchScope, recordRecent } from "@/lib/recent-searches"
 import { filterLocal, quickActions, searchablePages } from "@/lib/search-index"
 import { accountDisplayName, formatMoney } from "@/lib/wealth"
+import { cardDisplayName, maskedTail } from "@/lib/cards"
+import { CardSwatch } from "@/components/transactions/CardSwatch"
 import {
   SEARCH_MIN_CHARS,
   searchHrefs,
+  searchResultsEmpty,
   useGlobalSearch,
 } from "@/hooks/use-global-search"
 
@@ -92,13 +95,7 @@ export function GlobalSearchDialog({
     navigate(href)
   }
 
-  const serverEmpty =
-    !results ||
-    (results.clients.length === 0 &&
-      results.transactions.length === 0 &&
-      results.quotations.length === 0 &&
-      results.accounts.length === 0 &&
-      results.categories.length === 0)
+  const serverEmpty = searchResultsEmpty(results)
   const nothingMatches =
     query.trim().length >= SEARCH_MIN_CHARS &&
     !loading &&
@@ -238,6 +235,22 @@ export function GlobalSearchDialog({
                       <Landmark className="text-muted-foreground" />
                     )}
                     <span className="truncate">{accountDisplayName(account) || t("nav.wealth")}</span>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            )}
+
+            {results && results.cards.length > 0 && (
+              <CommandGroup heading={t("search.cards")}>
+                {results.cards.map((card) => (
+                  <CommandItem
+                    key={card.id}
+                    value={`card-${card.id}`}
+                    onSelect={() => go(searchHrefs.card(card))}
+                  >
+                    <CardSwatch card={card} />
+                    <span className="truncate">{cardDisplayName(card)}</span>
+                    <span className="ml-auto shrink-0 text-xs text-muted-foreground tabular-nums" dir="ltr">{maskedTail(card.last4)}</span>
                   </CommandItem>
                 ))}
               </CommandGroup>

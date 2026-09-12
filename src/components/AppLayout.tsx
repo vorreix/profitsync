@@ -35,7 +35,6 @@ import { useNotificationOrgSwitch } from "@/lib/use-notification-org-switch"
 import { AdminProvider, useAdmin } from "@/lib/admin-context"
 import { PageFilterProvider } from "@/lib/page-filter-context"
 import { DataRefreshProvider } from "@/lib/data-refresh-context"
-import { BudgetProvider } from "@/lib/budget-context"
 import { NotificationProvider } from "@/lib/notification-context"
 import { NotificationBell } from "@/components/notifications/NotificationBell"
 import { EntityAvatar } from "@/components/EntityAvatar"
@@ -45,7 +44,6 @@ import { MobileAppLayout } from "@/components/MobileAppLayout"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { InstallAppBanner } from "@/components/InstallAppBanner"
 import { InstallButton } from "@/components/InstallButton"
-import { ReferralBanner } from "@/components/ReferralBanner"
 import { QuickAddModal, type QuickAddEntity, type QuickAddPrefill } from "@/components/QuickAddModal"
 import { AddTransactionDialog, type CreatedTxInfo } from "@/components/transactions/AddTransactionDialog"
 import { AiVoiceAssistant } from "@/components/AiVoiceAssistant"
@@ -374,7 +372,14 @@ function AppLayoutInner() {
         </SidebarFooter>
       </Sidebar>
 
-      <SidebarInset>
+      {/* min-w-0: the inset is a flex item beside the 16rem sidebar, and a flex
+          item's automatic minimum size is its CONTENT's minimum — so one wide
+          thing inside a page (the dashboard's alert carousel, whose slides are
+          `basis-full`, and any wide table or chart) stops the column shrinking
+          and pushes the whole app sideways instead. With this, the column is
+          always exactly the space left by the sidebar and anything wider
+          scrolls inside its own container. */}
+      <SidebarInset className="min-w-0">
         <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
           <SidebarTrigger className="-ml-1" />
           <Separator orientation="vertical" className="h-4" />
@@ -420,7 +425,6 @@ function AppLayoutInner() {
         </header>
 
         <InstallAppBanner className="mx-4 mt-4" />
-        <ReferralBanner className="mx-4 mt-4" />
         <div className="flex-1 overflow-auto">
           {orgLoading ? (
             <div className="flex h-[60vh] items-center justify-center">
@@ -434,7 +438,7 @@ function AppLayoutInner() {
       {!pageAction && fabOpen && (
         <div className="fixed inset-0 z-40" onClick={() => setFabOpen(false)} />
       )}
-      <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3">
+      <div data-app-fab className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3">
         {/* AI voice assistant — hidden while the quick-actions menu is open so
             the stack stays uncluttered (same rule as mobile). */}
         {!(!pageAction && fabOpen) && (
@@ -514,15 +518,11 @@ export function AppLayout() {
       <AdminProvider>
         <CurrencyProvider>
           <DataRefreshProvider>
-            {/* Inside DataRefreshProvider: the budget refetches on `revision`,
-                which every mutation bumps (spec §11.5). */}
-            <BudgetProvider>
-              <NotificationProvider>
-                <PageFilterProvider>
-                  <AppLayoutInner />
-                </PageFilterProvider>
-              </NotificationProvider>
-            </BudgetProvider>
+            <NotificationProvider>
+              <PageFilterProvider>
+                <AppLayoutInner />
+              </PageFilterProvider>
+            </NotificationProvider>
           </DataRefreshProvider>
         </CurrencyProvider>
       </AdminProvider>

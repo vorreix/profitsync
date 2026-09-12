@@ -19,6 +19,7 @@ export function CreditCardFormFields({
   symbol,
   autoFocusName,
   errors = {},
+  hideIdentity = false,
 }: {
   form: CardFormState
   onChange: (patch: Partial<CardFormState>) => void
@@ -26,12 +27,15 @@ export function CreditCardFormFields({
   symbol: string
   autoFocusName?: boolean
   errors?: Partial<Record<keyof CardFormState, string>>
+  /** Embedded in the add-card wizard: the issuer / nickname / icon live on an earlier step. */
+  hideIdentity?: boolean
 }) {
   const { t } = useTranslation("wealth")
   const err = (k: keyof CardFormState) => (errors[k] ? <p className="text-xs text-destructive">{errors[k]}</p> : null)
 
   return (
     <div className="space-y-4">
+      {!hideIdentity && (
       <div className="space-y-1.5">
         <Label>{t("cardIssuer")}</Label>
         <div className="flex items-start gap-2">
@@ -50,7 +54,9 @@ export function CreditCardFormFields({
         </div>
         {err("bank_name")}
       </div>
+      )}
 
+      {!hideIdentity && (
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1.5">
           <Label htmlFor="cc-nickname">{t("nickname")}</Label>
@@ -61,6 +67,7 @@ export function CreditCardFormFields({
           <IconSelect value={form.icon} onChange={(icon) => onChange({ icon })} />
         </div>
       </div>
+      )}
 
       <div className={mode === "create" ? "grid grid-cols-2 gap-3" : "space-y-1.5"}>
         <div className="space-y-1.5">

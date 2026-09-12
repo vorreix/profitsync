@@ -86,7 +86,7 @@ export function SpacesPage() {
     try {
       const token = await getToken()
       if (!token) throw new Error("auth")
-      const restored = await apiPatch<WealthAccount>(`/api/spaces/${space.id}`, token, { archived: false }, ["/api/spaces", "/api/wealth"])
+      const restored = await apiPatch<WealthAccount>(`/api/spaces/${space.id}`, token, { archived: false })
       setSpaces((prev) => prev.map((s) => (s.id === restored.id ? { ...s, ...restored } : s)))
       setQuota((q) => (q ? { ...q, spaces: { ...q.spaces, current: q.spaces.current + 1 } } : q))
       toast.success(t("restored"))
@@ -122,7 +122,7 @@ export function SpacesPage() {
     try {
       const token = await getToken()
       if (!token) throw new Error("auth")
-      await apiDelete(`/api/spaces/${space.id}`, token, undefined, ["/api/spaces", "/api/wealth"])
+      await apiDelete(`/api/spaces/${space.id}`, token)
       setSpaces((prev) => prev.filter((s) => s.id !== space.id))
       setQuota((q) => (q ? { ...q, spaces: { ...q.spaces, current: Math.max(0, q.spaces.current - 1) } } : q))
       toast.success(t("deleted"))

@@ -154,6 +154,18 @@ test.describe.serial("Debt & Loans", () => {
     const expenseBefore = expenseOf(await cashRows(page))
     await page.getByRole("button", { name: /record payment/i }).first().click()
     const sheet = page.getByRole("dialog", { name: /record payment/i })
+    // Pick the paying account EXPLICITLY. The sheet defaults to the first bank
+    // (or whichever account is marked default), so a workspace that happens to
+    // have a bank sends the money from there and the cash assertions below fail
+    // for a reason that has nothing to do with debts.
+    const cashName = (await accounts(page)).find((a) => a.type === "cash")!.nickname || "Cash in Hand"
+    await sheet.getByRole("combobox").first().click()
+    const picker = page.locator("[data-slot=popover-content]")
+    await expect(picker).toBeVisible({ timeout: 10_000 })
+    await picker.getByPlaceholder(/search accounts/i).fill(cashName)
+    // The rows are plain buttons, not listbox options.
+    await picker.getByRole("button", { name: new RegExp(cashName, "i") }).first().click()
+    await expect(picker).toBeHidden({ timeout: 10_000 })
     await sheet.locator("#dp-total").fill("500")
     await sheet.getByRole("radio", { name: /i know the split/i }).click()
     await sheet.locator("#dp-principal").fill("420")
@@ -236,10 +248,28 @@ test.describe.serial("Debt & Loans", () => {
   test("net worth on /wealth includes loans as liabilities and receivables as assets", async ({ page }) => {
     await page.goto("/wealth"); await expectAppShell(page)
     await expect(page.getByText(/^owed:/i).first()).toBeVisible({ timeout: 15_000 })
-    const cash = await cashOf(page)
-    const expected = cash + 300 - 4160.37 - 700
+
+    // Computed from the API, not hardcoded: this workspace is shared and carries
+    // whatever other branches and runs have left in it, so "net worth == cash
+    // plus these debts" only ever held on an empty database. What is actually
+    // being asserted is the CLAIM — a loan comes off net worth, a receivable
+    // goes on — and that holds whatever else the workspace contains.
+    const spendable = (await accounts(page)).filter((a) => !a.archived_at)
+      .reduce((sum, a) => sum + Number(a.current_balance), 0)
+    const spaces = (await api<Account[]>(page, "GET", "/api/spaces")).json ?? []
+    const saved = spaces.filter((s) => !s.archived_at).reduce((sum, s) => sum + Number(s.current_balance), 0)
+    const o = await overview(page)
+    // The workspace currency, from the API — NOT a hardcoded one. Only debts in
+    // it join net worth (no exchange rate is invented), and this workspace is
+    // not necessarily in euros.
+    const sameCurrency = (xs: { currency: string; amount: number }[] | undefined) =>
+      (xs ?? []).filter((x) => x.currency === o.currency).reduce((sum, x) => sum + x.amount, 0)
+    const expected = spendable + saved + sameCurrency(o.summary.receivable_by_currency) - sameCurrency(o.summary.owed_by_currency)
+
     const text = await page.locator("p.text-3xl.font-bold").first().textContent()
     expect(Number(text!.replace(/[^\d.-]/g, ""))).toBeCloseTo(expected, 2)
+    // And the debts really are in there: drop them and the figure would differ.
+    expect(sameCurrency(o.summary.owed_by_currency)).toBeGreaterThan(0)
   })
 
   test("mark paid off, close, and the cash account ends exactly where the payments left it", async ({ page }) => {

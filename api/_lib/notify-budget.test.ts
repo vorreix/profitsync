@@ -76,19 +76,26 @@ describe("budget alert wiring (defect #6 — every spend-changing path evaluates
     })
   }
 
-  it("evaluates the org-level budget, not just per-client", () => {
+  it("evaluates every spending budget, not just the per-client cap", () => {
     const src = readFileSync("api/_lib/notify-budget.ts", "utf8")
-    // The org-level row is selected by clientId === null, and its dedupe key is
-    // namespaced "org" so it can never collide with a client uuid.
-    expect(src).toContain("b.clientId === null")
-    expect(src).toContain('clientId ?? "org"')
+    // Spending budgets come from the same one-statement read the page uses, and
+    // their dedupe key is namespaced `sb:<id>` so it can never collide with a
+    // client uuid.
+    expect(src).toContain("listBudgets(orgId, today)")
+    expect(src).toContain("scope: `sb:${b.id}`")
+  })
+
+  it("never alerts a paused, ended or upcoming spending budget", () => {
+    const src = readFileSync("api/_lib/notify-budget.ts", "utf8")
+    expect(src).toContain('if (b.state === "none" || b.amount <= 0) return false')
   })
 
   it("does not alert a business org's default template", () => {
-    // On a business workspace the NULL-client row is a template for new clients
-    // with no single spend figure (GET /api/budgets reports spent: null), so
-    // alerting on it would be meaningless.
+    // The NULL-client `budgets` row is a template for new clients with no
+    // single spend figure (GET /api/budgets reports spent: null); only the row
+    // FOR this client is ever evaluated.
     const src = readFileSync("api/_lib/notify-budget.ts", "utf8")
-    expect(src).toContain("isPersonal")
+    expect(src).toContain("rows.find((b) => b.clientId === clientId)")
+    expect(src).not.toContain("b.clientId === null")
   })
 })

@@ -1,15 +1,25 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { and, eq, isNull } from "drizzle-orm"
 import { db, serialize } from "../../src/lib/db/index.js"
-import { budgetHistory, budgets, clients } from "../../src/lib/db/schema.js"
+import { budgetHistory, budgets, clients, spendingBudgets } from "../../src/lib/db/schema.js"
 import { canWrite, isPersonalAccount, requireAuth } from "../_lib/auth.js"
 import { amountExceedsLimit } from "../../src/lib/money.js"
-import { isBudgetPeriod, type BudgetPeriod } from "../../src/lib/budget.js"
+import { isBudgetPeriod, todayUtc, type BudgetPeriod } from "../../src/lib/budget.js"
 import { budgetChangeAction } from "../../src/lib/budget-history.js"
-import { outgoingByClient, spentFor, type PeriodSums } from "../_lib/budget-spend.js"
-import { applyV1Write, noteAdapterRead, projectPlanToV1 } from "../_lib/budget-v1-adapter.js"
-import { loadPlan } from "../_lib/budget-engine.js"
+import { outgoingByClient, spentFor } from "../_lib/budget-spend.js"
+import { logAudit } from "../_lib/audit.js"
+import { listBudgets, primaryBudget, toV1Period, fromV1Period } from "../_lib/spending-budgets.js"
 
+/**
+ * The v1 budgets API — per-client spend CAPS for business workspaces, with the
+ * response shape store-pinned native bundles expect: `{ budgets, account_type }`.
+ *
+ * A PERSONAL workspace no longer has a `budgets` row (its single v1 budget
+ * became its first spending budget in migration 0067). An old bundle still
+ * asks here for it, so on a personal org this route PROJECTS the primary
+ * spending budget — top level, all spending — into the v1 row, and a v1 write
+ * upserts that same spending budget. Two clients, one row, no drift.
+ */
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ctx = await requireAuth(req, res)
   if (!ctx) return
@@ -17,18 +27,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const personal = isPersonalAccount(ctx)
 
   if (req.method === "GET") {
-    // v1 CONTRACT, PRESERVED. When this org has a Budget v2 plan, project it down
-    // to the v1 shape rather than changing this path's response — the Android and
-    // iOS apps run a store-pinned bundle and cannot be pushed a fix (spec §11.1).
-    const projected = await projectPlanToV1(orgId, role, ctx.accountType)
-    if (projected) {
-      const [plan] = [await loadPlan(orgId)]
-      if (plan) noteAdapterRead(orgId, plan.id)
-      // `projected` IS the v1 envelope — { budgets, account_type } — so it is
-      // returned as-is. Wrapping it again would nest budgets inside budgets and
-      // give every store-pinned native bundle an empty list, which is exactly
-      // the breakage this adapter exists to prevent.
-      return res.json(projected)
+    if (personal) {
+      const primary = primaryBudget(await listBudgets(orgId, todayUtc()))
+      return res.json({
+        budgets: primary
+          ? [{
+              id: primary.id,
+              organization_id: orgId,
+              client_id: null,
+              period: toV1Period(primary.period),
+              amount: primary.amount,
+              spent: primary.spent,
+              created_at: primary.created_at,
+              updated_at: primary.updated_at,
+            }]
+          : [],
+        account_type: ctx.accountType,
+      })
     }
 
     const now = new Date()
@@ -36,32 +51,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       db.select().from(budgets).where(eq(budgets.organizationId, orgId)),
       outgoingByClient(orgId, now),
     ])
-    // Org-wide totals (used for the personal budget's spend — a personal org has a
-    // single anchor client, so this is just its spend).
-    const orgTotals: PeriodSums = { daily: 0, weekly: 0, monthly: 0, lifetime: 0 }
-    for (const s of byClient.values()) {
-      orgTotals.daily += s.daily; orgTotals.weekly += s.weekly
-      orgTotals.monthly += s.monthly; orgTotals.lifetime += s.lifetime
-    }
-
     const out = rows.map((b) => {
       const period = (isBudgetPeriod(b.period) ? b.period : "monthly") as BudgetPeriod
-      let spent: number | null
-      if (b.clientId) {
-        spent = spentFor(byClient.get(b.clientId), period)
-      } else if (personal) {
-        spent = orgTotals[period] // personal budget = whole-workspace spend
-      } else {
-        spent = null // business default is a template (per-client spend isn't one number)
-      }
+      // A per-client cap carries that client's spend; the NULL-client row is the
+      // default-for-new-clients template and has no single spend figure.
+      const spent = b.clientId ? spentFor(byClient.get(b.clientId), period) : null
       return { ...serialize(b), spent }
     })
     return res.json({ budgets: out, account_type: ctx.accountType })
   }
 
   // POST = upsert a budget for (org, client_id). amount <= 0 clears it. This is the
-  // single endpoint the budget dialog calls (set / change / remove), so the client
-  // never has to track the budget row id.
+  // single endpoint the budget dialog calls (set / change / remove), so the
+  // client never has to track the budget row id.
   if (req.method === "POST") {
     if (!canWrite(role)) return res.status(403).json({ error: "Forbidden" })
     const { client_id, period, amount } = req.body as { client_id?: string | null; period?: string; amount?: number }
@@ -76,14 +78,35 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!Number.isFinite(amt) || amt < 0) return res.status(400).json({ error: "amount must be a non-negative number" })
     if (amountExceedsLimit(amt)) return res.status(400).json({ error: "Amount is too large" })
 
-    // v1 WRITE, PRESERVED. An old client editing a workspace budget is routed to
-    // the v2 plan's catch-all envelope. amount <= 0 PAUSES the plan rather than
-    // deleting it: deleting a v2 plan from a v1 client would silently destroy
-    // envelopes, commitments and funds the old client cannot even see (§11.1).
-    const v2Plan = await loadPlan(orgId)
-    if (v2Plan && clientId === null) {
-      const { paused } = await applyV1Write({ orgId, plan: v2Plan, period, amount: amt, actorUserId: userId })
-      return paused ? res.json({ ok: true, removed: true }) : res.json({ ok: true })
+    // A personal workspace's "budget" IS its primary spending budget.
+    if (personal) {
+      const primary = primaryBudget(await listBudgets(orgId, todayUtc()))
+      if (amt === 0) {
+        if (primary) {
+          await db.delete(spendingBudgets).where(and(eq(spendingBudgets.id, primary.id), eq(spendingBudgets.organizationId, orgId)))
+          await logAudit({ orgId, entityType: "budget", entityId: primary.id, action: "delete", actorId: userId, changes: { amount: { from: primary.amount, to: null } } })
+        }
+        return res.json({ ok: true, removed: true })
+      }
+      const v3 = fromV1Period(resolvedPeriod)
+      if (primary) {
+        const [row] = await db
+          .update(spendingBudgets)
+          .set({ amount: String(amt), period: v3, startDate: null, endDate: null, status: "active", updatedBy: userId, updatedAt: new Date() })
+          .where(and(eq(spendingBudgets.id, primary.id), eq(spendingBudgets.organizationId, orgId)))
+          .returning()
+        await logAudit({ orgId, entityType: "budget", entityId: primary.id, action: "update", actorId: userId, changes: {
+          ...(primary.amount !== amt ? { amount: { from: primary.amount, to: amt } } : {}),
+          ...(primary.period !== v3 ? { period: { from: primary.period, to: v3 } } : {}),
+        } })
+        return res.json({ ...serialize(row), client_id: null, period: resolvedPeriod, amount: amt, spent: primary.spent })
+      }
+      const [row] = await db
+        .insert(spendingBudgets)
+        .values({ organizationId: orgId, name: "", period: v3, amount: String(amt), categories: [], createdBy: userId, updatedBy: userId })
+        .returning()
+      await logAudit({ orgId, entityType: "budget", entityId: row.id, action: "create", actorId: userId, changes: { amount: { from: null, to: amt }, period: { from: null, to: v3 } } })
+      return res.status(201).json({ ...serialize(row), client_id: null, period: resolvedPeriod, amount: amt, spent: 0 })
     }
 
     // Validate the client belongs to the org (when targeting a specific client).

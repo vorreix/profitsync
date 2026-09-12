@@ -40,7 +40,7 @@ export function isConfiguredCard(a: Pick<AccountRow, "type" | "statementClosingD
 /**
  * Signed balance effect (Σ balanceDelta) of the card's legs dated AFTER `date`
  * whose effect is currently applied — the same "applied" rule Budget v2 uses
- * (api/_lib/budget-engine.ts balanceMovedSince): a live row counts, and a
+ * (api/_lib/spending-budgets.ts spendByItem): a live row counts, and a
  * TRASHED SYSTEM row still counts because its balance effect was deliberately
  * not reversed (src/lib/wealth-ledger.ts reversesOnTrash).
  */
@@ -64,14 +64,19 @@ async function movementAfter(accountId: string, date: string): Promise<number> {
  * File every statement whose closing date has passed and is not on record yet.
  *
  * The anchor is the latest filed statement (any source), else the day the card
- * was added — so a card onboarded with "I don't know my last statement" starts
- * authoritative tracking at its first close after creation, and one onboarded
- * with a known statement continues from that close. Idempotent: the unique
- * (account, closing_date) index + onConflictDoNothing make a concurrent or
- * repeated run harmless. Capped per run (closingsDue) — the next read continues.
+ * was added — but never EARLIER than the day the card was added: the ledger
+ * only knows the card from that day (its opening debt is a system row dated
+ * then), so a close that fell between an old known statement and onboarding
+ * cannot be reconstructed and must not be filed as a phantom €0 statement.
+ * A card onboarded with "I don't know my last statement" starts authoritative
+ * tracking at its first close after creation; one onboarded with a known
+ * statement keeps that statement and continues from its first close after
+ * creation. Idempotent: the unique (account, closing_date) index +
+ * onConflictDoNothing make a concurrent or repeated run harmless. Capped per
+ * run (closingsDue) — the next read continues.
  */
-export async function ensureStatements(account: AccountRow, today = todayIso()): Promise<void> {
-  if (!isConfiguredCard(account)) return
+export async function ensureStatements(account: AccountRow, today = todayIso()): Promise<StatementRow[]> {
+  if (!isConfiguredCard(account)) return []
   const closingDay = account.statementClosingDay!
   const dueDay = account.paymentDueDay!
 
@@ -83,24 +88,25 @@ export async function ensureStatements(account: AccountRow, today = todayIso()):
     .limit(1)
 
   const createdOn = account.createdAt ? account.createdAt.toISOString().slice(0, 10) : today
-  const anchor = latest?.closingDate ?? createdOn
+  const anchor = latest?.closingDate && latest.closingDate > createdOn ? latest.closingDate : createdOn
   const due = closingsDue(anchor, closingDay, today)
-  if (due.length === 0) return
+  if (due.length === 0) return []
 
   // The balance at each close is reconstructed from the AUTHORITATIVE stored
   // balance minus everything that moved it after the close.
+  const filed: StatementRow[] = []
   let prevClose = anchor
   for (const closingDate of due) {
     const moved = await movementAfter(account.id, closingDate)
     const balance = debtAtClose(account.currentBalance, moved)
-    await db
+    const inserted = await db
       .insert(creditCardStatements)
       .values({
         organizationId: account.organizationId,
         wealthAccountId: account.id,
-        // First cycle after onboarding starts the day the card was added (or the
-        // day after the previous close for every later cycle).
-        cycleStart: prevClose === createdOn && !latest ? createdOn : addDays(prevClose, 1),
+        // The first cycle after onboarding starts the day the card was added
+        // (the day after the previous close for every later cycle).
+        cycleStart: prevClose === createdOn ? createdOn : addDays(prevClose, 1),
         closingDate,
         dueDate: dueDateFor(closingDate, dueDay),
         statementBalance: balance.toFixed(2),
@@ -108,12 +114,17 @@ export async function ensureStatements(account: AccountRow, today = todayIso()):
         createdBy: account.createdBy,
       })
       .onConflictDoNothing({ target: [creditCardStatements.wealthAccountId, creditCardStatements.closingDate] })
+      .returning()
+    // `returning()` is empty on conflict, so only statements THIS run filed are
+    // reported — the caller announces exactly those (api/_lib/notify-cards.ts).
+    filed.push(...inserted)
     prevClose = closingDate
   }
+  return filed
 }
 
 /** Card payments (incoming TRANSFER legs, live) dated strictly after `date`. */
-async function paymentsAfter(accountId: string, date: string): Promise<number> {
+export async function paymentsAfter(accountId: string, date: string): Promise<number> {
   const [row] = await db
     .select({ paid: sql<string>`coalesce(sum(${transactions.amount}::numeric), 0)` })
     .from(transactions)
@@ -135,6 +146,10 @@ export type StatementSummary = StatementView & {
   closing_date: string
   due_date: string
   source: string
+  // Autopay bookkeeping (null until autopay looks at the statement).
+  autopay_status: "paid" | "skipped" | "failed" | null
+  autopay_group_id: string | null
+  autopay_at: string | null
 }
 
 export type CardSummary = {
@@ -160,6 +175,9 @@ function summarizeStatement(row: StatementRow, payments: number, today: string):
     closing_date: row.closingDate,
     due_date: row.dueDate,
     source: row.source,
+    autopay_status: (row.autopayStatus as StatementSummary["autopay_status"]) ?? null,
+    autopay_group_id: row.autopayGroupId ?? null,
+    autopay_at: row.autopayAt ? row.autopayAt.toISOString() : null,
   }
 }
 

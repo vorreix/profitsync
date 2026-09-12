@@ -4,6 +4,7 @@ import {
   auditLogs,
   budgetHistory,
   budgets,
+  spendingBudgets,
   categories,
   clients,
   quotations,
@@ -29,7 +30,7 @@ export type ResetDataResult = { organizationId: string }
  *    which is just rows with `deleted_at` set).
  *  - `quotations` — same (cascades quotation attachments + pdfs).
  *  - `wealth_accounts` (+ their attachments), `recurring_rules`, `budgets` +
- *    `budget_history`, `categories`, `tags`, and the `audit_logs` history.
+ *    `budget_history`, `spending_budgets`, `categories`, `tags`, and the `audit_logs` history.
  *
  * Preserves: `subscriptions` / `invoices` / billing attempts, `ai_*` credits,
  * the `organizations` row + `organization_members`, and `user_profiles`
@@ -50,6 +51,7 @@ export async function resetOrgData(orgId: string, userId: string): Promise<Reset
   await db.delete(recurringRules).where(eq(recurringRules.organizationId, orgId))
   await db.delete(budgetHistory).where(eq(budgetHistory.organizationId, orgId))
   await db.delete(budgets).where(eq(budgets.organizationId, orgId))
+  await db.delete(spendingBudgets).where(eq(spendingBudgets.organizationId, orgId))
   await db.delete(wealthAccounts).where(eq(wealthAccounts.organizationId, orgId))
   await db.delete(categories).where(eq(categories.organizationId, orgId))
   await db.delete(tags).where(eq(tags.organizationId, orgId))

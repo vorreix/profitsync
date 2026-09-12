@@ -35,7 +35,7 @@ describe("accountTypeAllows", () => {
 
   // Personal-only features gate the OTHER way, and their unknown-account
   // default is the opposite too — see the individual cases below.
-  const PERSONAL_FEATURES: PersonalFeature[] = ["spaces", "budget_plan"]
+  const PERSONAL_FEATURES: PersonalFeature[] = ["spaces"]
 
   it("blocks every personal-only feature for business accounts", () => {
     for (const feature of PERSONAL_FEATURES) {
@@ -67,8 +67,6 @@ describe("accountTypeAllows", () => {
     // client, so expected income, funding base and safe-to-spend have no
     // business meaning. The server refuses to create a plan for one, and the
     // migration skips them; this is the same rule in the UI.
-    expect(accountTypeAllows("business", "budget_plan")).toBe(false)
-    expect(accountTypeAllows("personal", "budget_plan")).toBe(true)
     // Client caps are reached through business-only surfaces, which stay open.
     expect(accountTypeAllows("business", "clients")).toBe(true)
   })

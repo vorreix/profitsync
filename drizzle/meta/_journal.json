@@ -416,27 +416,6 @@
       "breakpoints": true
     },
     {
-      "idx": 59,
-      "version": "7",
-      "when": 1788345426420,
-      "tag": "0059_dazzling_stark_industries",
-      "breakpoints": true
-    },
-    {
-      "idx": 60,
-      "version": "7",
-      "when": 1788345426421,
-      "tag": "0060_budget_v2_phase2",
-      "breakpoints": true
-    },
-    {
-      "idx": 61,
-      "version": "7",
-      "when": 1788345426422,
-      "tag": "0061_budget_envelope_icon",
-      "breakpoints": true
-    },
-    {
       "idx": 62,
       "version": "7",
       "when": 1788345426423,
@@ -446,8 +425,50 @@
     {
       "idx": 63,
       "version": "7",
-      "when": 1788345426424,
-      "tag": "0063_debt_loans",
+      "when": 1788345426460,
+      "tag": "0063_cards",
+      "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1788345426470,
+      "tag": "0064_card_last_digits",
+      "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1788345426480,
+      "tag": "0065_card_issuer_account",
+      "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1788345426490,
+      "tag": "0066_card_funding_card",
+      "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1788345426500,
+      "tag": "0067_spending_budgets",
+      "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1788345426510,
+      "tag": "0068_budget_view_and_overall",
+      "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1789213625836,
+      "tag": "0069_debt_loans",
       "breakpoints": true
     }
   ]

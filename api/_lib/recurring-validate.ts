@@ -10,6 +10,9 @@ export type RecurringRuleInput = {
   category?: string
   client_id?: string | null
   wealth_account_id?: string | null
+  // The card that pays each occurrence (its account then becomes
+  // wealth_account_id — api/_lib/cards.ts attributeCard).
+  card_id?: string | null
   frequency_unit?: string
   frequency_interval?: number
   start_date?: string
@@ -23,6 +26,7 @@ export type ValidatedRule = {
   category: string
   clientId: string | null
   wealthAccountId: string | null
+  cardId: string | null
   frequencyUnit: FrequencyUnit
   frequencyInterval: number
   startDate: string
@@ -55,6 +59,7 @@ export function validateRuleInput(body: RecurringRuleInput): { error: string } |
       category: typeof body.category === "string" ? body.category.trim().slice(0, 60) : "",
       clientId: body.client_id ?? null,
       wealthAccountId: body.wealth_account_id ?? null,
+      cardId: body.card_id ?? null,
       frequencyUnit,
       frequencyInterval,
       startDate,

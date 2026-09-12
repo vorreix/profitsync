@@ -69,6 +69,66 @@ export async function searchBrands(query: string): Promise<BrandResult[]> {
   return []
 }
 
+// ── Brand palette (cards) ────────────────────────────────────────────────────
+
+export type BrandPalette = {
+  /** Brandfetch colours: [{ hex, type: 'brand'|'accent'|'dark'|'light'|…, brightness }] */
+  colors: { hex: string; type: string; brightness?: number }[]
+  /** Wordmark logo URL for a DARK surface (light-coloured logo), if any. */
+  logo_dark_url: string
+  /** Wordmark logo URL for a LIGHT surface (dark-coloured logo), if any. */
+  logo_light_url: string
+}
+
+// Per-process cache: a domain's palette barely changes and the card wizard may
+// resolve the same bank several times in a session. Bounded like the auth cache.
+const paletteCache = new Map<string, { at: number; value: BrandPalette | null }>()
+const PALETTE_TTL_MS = 6 * 60 * 60 * 1000
+const PALETTE_CACHE_MAX = 200
+
+/**
+ * The colours (+ themed wordmarks) a bank is known by, from Brandfetch's Brand
+ * API. Best-effort: null when the key is missing, the domain is unknown, or the
+ * upstream is slow — a card is created without a palette and the visual falls
+ * back to the curated table / a neutral look (src/lib/cards.ts).
+ */
+export async function fetchBrandPalette(domain: string): Promise<BrandPalette | null> {
+  const d = domain.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "")
+  if (!d || !BRANDFETCH_KEY || !/^[a-z0-9.-]+\.[a-z]{2,}$/.test(d)) return null
+  const hit = paletteCache.get(d)
+  if (hit && Date.now() - hit.at < PALETTE_TTL_MS) return hit.value
+
+  let value: BrandPalette | null = null
+  try {
+    const res = await fetchWithTimeout(`https://api.brandfetch.io/v2/brands/${encodeURIComponent(d)}`, { headers: { Authorization: `Bearer ${BRANDFETCH_KEY}` } }, 4500)
+    if (res.ok) {
+      const data = (await res.json()) as {
+        colors?: { hex?: string; type?: string; brightness?: number }[]
+        logos?: { type?: string; theme?: string; formats?: { src?: string; format?: string }[] }[]
+      }
+      const colors = (data.colors ?? [])
+        .filter((c) => typeof c.hex === "string" && /^#?[0-9a-f]{6}$/i.test(c.hex))
+        .map((c) => ({ hex: c.hex!.startsWith("#") ? c.hex!.toUpperCase() : `#${c.hex!.toUpperCase()}`, type: String(c.type ?? "other"), ...(typeof c.brightness === "number" ? { brightness: c.brightness } : {}) }))
+      // Prefer the wordmark ("logo") over the square icon; SVG over PNG (crisp
+      // at every card size). Only the Brandfetch CDN is ever rendered (SSRF guard).
+      const pick = (theme: string) => {
+        const logo = (data.logos ?? []).find((l) => l.type === "logo" && l.theme === theme) ?? (data.logos ?? []).find((l) => l.type === "logo")
+        const formats = logo?.formats ?? []
+        const src = (formats.find((f) => f.format === "svg") ?? formats.find((f) => f.format === "png") ?? formats[0])?.src ?? ""
+        return src && isSafeLogoUrl(src) ? src : ""
+      }
+      if (colors.length || pick("dark") || pick("light")) {
+        value = { colors, logo_dark_url: pick("dark"), logo_light_url: pick("light") }
+      }
+    }
+  } catch {
+    value = null
+  }
+  if (paletteCache.size >= PALETTE_CACHE_MAX) paletteCache.delete(paletteCache.keys().next().value as string)
+  paletteCache.set(d, { at: Date.now(), value })
+  return value
+}
+
 // Optional bank-detail fields shared by account create + update. Accepts the
 // snake_case keys the client sends and maps them to Drizzle camelCase columns.
 export type BankDetailInput = {

@@ -10,8 +10,11 @@ import { ACCEPT_ATTR, attachmentsListPath, uploadAttachment, validateFile } from
 import type { Client, Transaction, WealthAccount } from "@/lib/types"
 import { MAX_MONEY } from "@/lib/money"
 import { accountDisplayName, currencySymbol } from "@/lib/wealth"
+import { useCardMap } from "@/lib/use-cards"
 import { WealthAccountIcon } from "@/components/WealthAccountIcon"
+import { CardChip } from "@/components/cards/CardChip"
 import { CategoryPicker } from "@/components/CategoryPicker"
+import { isCardUnusableError } from "@/components/transactions/tx-form-utils"
 import { useModalDraft } from "@/hooks/use-modal-draft"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -34,6 +37,11 @@ const formatFileSize = (bytes: number) =>
  * Pass `editTx` to reuse the same sheet for EDITING a single account leg: it
  * seeds the form from the transaction and PATCHes /api/transactions/:id (which
  * re-syncs the account balance) instead of creating a new one.
+ *
+ * Pass `cardId` (the card page's quick actions) to record the entry as paid
+ * WITH that card: the leg carries `card_id` and the money lands on the card's
+ * account (which must be `account`). A credit-card account needs no `cardId` —
+ * the server attributes its card automatically (the card IS the account).
  */
 export function AccountQuickAddSheet({
   account,
@@ -46,6 +54,7 @@ export function AccountQuickAddSheet({
   initialType,
   initialKind,
   initialCategory,
+  cardId = null,
 }: {
   account: WealthAccount
   open: boolean
@@ -58,11 +67,21 @@ export function AccountQuickAddSheet({
   initialType?: "incoming" | "outgoing"
   initialKind?: "standard" | "refund"
   initialCategory?: string
+  // The card that pays (debit: on this bank account; credit: this account's card).
+  cardId?: string | null
 }) {
   const { t } = useTranslation("transactions")
   const { getToken } = useAuth()
   const symbol = currencySymbol(currency)
   const isEdit = !!editTx
+  // Which card this entry is on — for the header chip: the edited row's card,
+  // the preselected one, or (credit-card account) the card that IS the account.
+  const cardMap = useCardMap({ enabled: open })
+  const chipCard = editTx
+    ? cardMap.forTx(editTx)
+    : cardId
+      ? cardMap.byId.get(cardId)
+      : cardMap.forTx({ wealth_account_id: account.id })
 
   const [type, setType] = useState<"incoming" | "outgoing">("outgoing")
   // 'refund' = money back for an earlier expense (always incoming; nets against
@@ -180,7 +199,9 @@ export function AccountQuickAddSheet({
             description,
             category,
             date,
-            allocations: [{ wealth_account_id: account.id, amount: amt }],
+            // The card's account is `account` (the caller guarantees it); the
+            // server re-checks and forces the pair (api/_lib/cards.ts).
+            allocations: [{ wealth_account_id: account.id, card_id: cardId ?? null, amount: amt }],
           },
         )
         firstId = result.ids[0] ?? null
@@ -198,8 +219,9 @@ export function AccountQuickAddSheet({
       draft.clearDraft()
       onOpenChange(false)
       onSaved?.(firstId)
-    } catch {
-      toast.error(isEdit ? t("failedToUpdateTransaction") : t("failedToAddTransaction"))
+    } catch (err) {
+      if (isCardUnusableError(err)) toast.error(t("cardFrozenError"))
+      else toast.error(isEdit ? t("failedToUpdateTransaction") : t("failedToAddTransaction"))
     } finally {
       setSaving(false)
     }
@@ -212,6 +234,7 @@ export function AccountQuickAddSheet({
           <DialogTitle className="flex items-center gap-2">
             <WealthAccountIcon account={account} className="size-7" />
             <span className="truncate">{isEdit ? t("editTransaction") : accountDisplayName(account)}</span>
+            {chipCard && <CardChip card={chipCard} linked={false} className="ms-auto me-6 shrink-0" />}
           </DialogTitle>
         </DialogHeader>
 

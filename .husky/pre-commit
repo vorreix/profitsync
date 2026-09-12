@@ -22,6 +22,12 @@ node scripts/boot-functions.mjs || { echo "✗ a serverless function fails to lo
 echo "→ route auth guards + raw-HTML sweep..."
 node scripts/check-route-guards.mjs || { echo "✗ route-guard sweep failed — every api/_routes handler must call an auth guard (requireAuth/requireAdminCap/getUserId/requireServiceToken)"; exit 1; }
 
+echo "→ migration sequence (linear, replayable)..."
+node scripts/check-migrations.mjs || { echo "✗ migration check failed — drizzle applies the journal in order against ONE watermark, so anything out of order is skipped SILENTLY. See .claude/skills/migrations/SKILL.md"; exit 1; }
+
+echo "→ cache policy map (freshness + invalidation)..."
+node scripts/check-cache-map.mjs || { echo "✗ cache-map check failed — a GET that materializes money must be in ALWAYS_FETCH, and every write path needs a fanout rule, in src/lib/api-cache.ts"; exit 1; }
+
 echo "→ i18n parity (all locales must match en.json)..."
 npm run i18n:check || { echo "✗ i18n parity check failed — add the missing translations to every locale in src/lib/i18n/locales/"; exit 1; }
 

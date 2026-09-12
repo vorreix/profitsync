@@ -3,10 +3,11 @@
 // Notifies the workspace's editing members once per budget window per tier.
 import { eq } from "drizzle-orm"
 import { db } from "../../src/lib/db/index.js"
-import { budgets, clients, organizations } from "../../src/lib/db/schema.js"
-import { periodStart, type BudgetPeriod } from "../../src/lib/budget.js"
+import { budgets, clients } from "../../src/lib/db/schema.js"
+import { inWindow, periodStart, scopeMatches, todayUtc, type BudgetPeriod, type SpendingPeriod } from "../../src/lib/budget.js"
 import { outgoingByClient, spentFor, type PeriodSums } from "./budget-spend.js"
 import { notifyOrgMembers } from "./notifications.js"
+import { listBudgets } from "./spending-budgets.js"
 
 // Warn when a budget window reaches this share of its cap (before it's blown).
 export const BUDGET_WARNING_RATIO = 0.8
@@ -38,26 +39,28 @@ export function orgTotals(byClient: Map<string, PeriodSums>): PeriodSums {
 async function emitBudgetAlert(input: {
   orgId: string
   actorUserId: string
-  /** Client id for a per-client budget; null for the org-level (personal) budget. */
+  /** Client id for a per-client cap; null for a spending budget. */
   clientId: string | null
-  /** Display name: the client's name, or the workspace name for the personal budget. */
+  /** Display name: the client's name, or the spending budget's name. */
   name: string
-  period: BudgetPeriod
+  period: BudgetPeriod | SpendingPeriod
   spent: number
   amount: number
-  now: Date
+  /** The dedupe scope + window: `sb:<budget id>` and its window start for a spending budget. */
+  scope: string
+  windowKey: string
+  link: string
 }): Promise<void> {
-  const { orgId, actorUserId, clientId, name, period, spent, amount, now } = input
+  const { orgId, actorUserId, clientId, name, period, spent, amount, scope, windowKey, link } = input
   const tier = budgetAlertTier(spent, amount)
   if (!tier) return
   const exceeded = tier === "budget_exceeded"
 
   // One alert per budget window PER TIER: dedupe on (tier, scope, period, window
   // start). A window can produce one warning and later one exceeded. The scope
-  // segment is the client id, or the literal "org" for the org-level budget —
-  // a namespace a uuid can never collide with.
-  const windowKey = periodStart(period, now) ?? "lifetime"
-  const dedupeKey = `${tier}:${clientId ?? "org"}:${period}:${windowKey}`
+  // segment is the client id for a cap, or `sb:<id>` for a spending budget — a
+  // namespace a bare uuid can never collide with.
+  const dedupeKey = `${tier}:${scope}:${period}:${windowKey}`
   const percent = Math.round((spent / amount) * 100)
 
   await notifyOrgMembers(
@@ -72,7 +75,7 @@ async function emitBudgetAlert(input: {
             i18nBodyKey: "types.budget_exceeded.body",
             i18nParams: { name, period },
           },
-          link: "/budgets",
+          link,
           ...(clientId ? { clientId } : {}),
           actorUserId,
           dedupeKey,
@@ -86,7 +89,7 @@ async function emitBudgetAlert(input: {
             i18nBodyKey: "types.budget_warning.body",
             i18nParams: { name, period, percent },
           },
-          link: "/budgets",
+          link,
           ...(clientId ? { clientId } : {}),
           actorUserId,
           dedupeKey,
@@ -96,42 +99,35 @@ async function emitBudgetAlert(input: {
 }
 
 /**
- * Evaluate every budget that the given client's spend could have pushed over a
- * threshold, and alert on those that crossed one.
+ * Evaluate everything the given client's spend could have pushed over a
+ * threshold, and alert on what crossed one. Two kinds of budget exist:
  *
- * Two scopes are checked, because a single expense can breach both:
- *
- *  1. The **per-client** budget (`client_id = clientId`).
- *  2. The **org-level** budget (`client_id IS NULL`) — but only on a PERSONAL
- *     workspace, where it is the user's one real budget and its spend is the
- *     whole workspace's outgoing. On a business workspace the same row is a
- *     *template* for new clients with no single spend figure (exactly as
- *     `GET /api/budgets` reports `spent: null`), so alerting on it would be
- *     meaningless.
- *
- * Scope 2 was previously unreachable — the query filtered `client_id = clientId`,
- * which a NULL row can never match — so a personal workspace's only budget never
- * alerted. That gap was documented in docs/notifications/PLAN.md.
+ *  1. The **per-client cap** (`budgets.client_id = clientId`) — the business
+ *     workspace feature. (A business workspace's NULL-client row is a template
+ *     for new clients with no single spend figure, so it is never alerted.)
+ *  2. The **spending budgets** (`spending_budgets`) the written row can have
+ *     moved: those whose scope contains its category and whose window contains
+ *     its date. Tiers only fire on the way up, so a row leaving a budget can
+ *     never need one — and a workspace with a dozen budgets past 80 % is not
+ *     re-notified (and re-deduped) a dozen times on every unrelated expense.
+ *     Without `row`, every active budget is evaluated.
  */
-export async function notifyIfBudgetExceeded(orgId: string, clientId: string, actorUserId: string): Promise<void> {
+export async function notifyIfBudgetExceeded(
+  orgId: string,
+  clientId: string,
+  actorUserId: string,
+  row?: { category?: string | null; date?: string | null },
+): Promise<void> {
   const now = new Date()
+  const today = todayUtc(now)
 
-  const [rows, byClient, orgRow] = await Promise.all([
-    // Every budget for the org in one round trip, then both scopes are picked out
-    // in memory. An org has at most one budget per client plus one org-level row,
-    // so this set is bounded by the client quota — cheaper than two queries.
+  const [rows, byClient, spending] = await Promise.all([
     db.select().from(budgets).where(eq(budgets.organizationId, orgId)),
     outgoingByClient(orgId, now),
-    db
-      .select({ name: organizations.name, accountType: organizations.accountType })
-      .from(organizations)
-      .where(eq(organizations.id, orgId)),
+    listBudgets(orgId, today),
   ])
 
   const clientBudget = rows.find((b) => b.clientId === clientId)
-  const orgBudget = rows.find((b) => b.clientId === null)
-  const isPersonal = orgRow[0]?.accountType === "personal"
-
   if (clientBudget && Number(clientBudget.amount) > 0) {
     const period = (clientBudget.period ?? "monthly") as BudgetPeriod
     const [client] = await db.select({ name: clients.name }).from(clients).where(eq(clients.id, clientId))
@@ -143,21 +139,37 @@ export async function notifyIfBudgetExceeded(orgId: string, clientId: string, ac
       period,
       spent: spentFor(byClient.get(clientId), period),
       amount: Number(clientBudget.amount),
-      now,
+      scope: clientId,
+      windowKey: periodStart(period, now) ?? "lifetime",
+      link: `/budgets/clients/${clientId}`,
     })
   }
 
-  if (isPersonal && orgBudget && Number(orgBudget.amount) > 0) {
-    const period = (orgBudget.period ?? "monthly") as BudgetPeriod
-    await emitBudgetAlert({
-      orgId,
-      actorUserId,
-      clientId: null,
-      name: orgRow[0]?.name ?? "Your budget",
-      period,
-      spent: orgTotals(byClient)[period],
-      amount: Number(orgBudget.amount),
-      now,
-    })
-  }
+  // A paused, ended or not-yet-started budget reports state "none" and is
+  // skipped; a sub-budget alerts on its own, its parent on its own.
+  const touched = spending.filter((b) => {
+    if (b.state === "none" || b.amount <= 0) return false
+    if (!row) return true
+    if (row.category !== undefined && !scopeMatches(b.categories, row.category)) return false
+    if (row.date && !inWindow({ start: b.window.start, endExclusive: b.window.end_exclusive }, row.date)) return false
+    return true
+  })
+  await Promise.all(
+    touched.map((b) =>
+      emitBudgetAlert({
+        orgId,
+        actorUserId,
+        clientId: null,
+        name: b.name || "Personal budget",
+        period: b.period,
+        spent: b.spent,
+        amount: b.amount,
+        scope: `sb:${b.id}`,
+        // The amount is part of the key so a raised (or lowered) limit re-arms
+        // the alert once in the same window.
+        windowKey: `${b.window.start ?? "all"}:${b.amount}`,
+        link: `/budgets/${b.id}`,
+      }),
+    ),
+  )
 }

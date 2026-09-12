@@ -61,7 +61,7 @@ export function CategoryPicker({
     try {
       const token = await getToken()
       if (!token) return
-      const created = await apiPost<Category>("/api/categories", token, { name, type }, ["/api/categories"])
+      const created = await apiPost<Category>("/api/categories", token, { name, type })
       mutateLocal((prev) => [created, ...prev.filter((c) => c.id !== created.id)])
       onChange(name)
       close()
@@ -81,7 +81,7 @@ export function CategoryPicker({
     try {
       const token = await getToken()
       if (!token) return
-      const updated = await apiPatch<Category>(`/api/categories/${cat.id}`, token, { name }, ["/api/categories", "/api/transactions"])
+      const updated = await apiPatch<Category>(`/api/categories/${cat.id}`, token, { name })
       mutateLocal((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
       if (value === cat.name) onChange(name)
     } catch { /* keep previous */ }
@@ -94,7 +94,7 @@ export function CategoryPicker({
     try {
       const token = await getToken()
       if (!token) return
-      await apiDelete(`/api/categories/${cat.id}`, token, undefined, ["/api/categories"])
+      await apiDelete(`/api/categories/${cat.id}`, token)
     } catch {
       await refresh()
     }

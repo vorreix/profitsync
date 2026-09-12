@@ -51,11 +51,11 @@ export function SpaceFormModal({
       if (!token) throw new Error("auth")
       const body = { name: form.name.trim(), goal_amount: form.goal === "" ? null : Number(form.goal), target_date: form.date || null, icon: form.icon }
       if (space) {
-        const updated = await apiPatch<WealthAccount>(`/api/spaces/${space.id}`, token, body, ["/api/spaces", "/api/wealth"])
+        const updated = await apiPatch<WealthAccount>(`/api/spaces/${space.id}`, token, body)
         toast.success(t("updated"))
         onSaved(updated, false)
       } else {
-        const created = await apiPost<WealthAccount>("/api/spaces", token, body, ["/api/spaces", "/api/wealth"])
+        const created = await apiPost<WealthAccount>("/api/spaces", token, body)
         toast.success(t("created"))
         onSaved(created, true)
       }

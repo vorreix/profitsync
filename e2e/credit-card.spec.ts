@@ -1,5 +1,5 @@
 import { expect, test, type Browser, type Page } from "@playwright/test"
-import { E2E_PREFIX, dismissBanners, expectAppShell } from "./helpers"
+import { E2E_PREFIX, dismissBanners, ensureBank, expectAppShell } from "./helpers"
 
 /**
  * Credit cards — end-to-end through the real UI, the real auth guard and the
@@ -50,16 +50,15 @@ async function waitForClerk(page: Page) {
 }
 
 /**
- * The workspace every API call in this file targets. Pinned explicitly via
- * `x-org-id` once beforeAll has switched to the personal workspace: the saved
- * storage state carries a STALE `ps_active_org` mirror (the business org), and
- * the server's header-less fallback is served from a short-lived per-user cache
- * that can still name the previous workspace right after a switch — so neither
- * implicit source is right at every moment of a test.
+ * The workspace every call in this spec targets. NEVER read from
+ * `localStorage.ps_active_org` (the saved storage state carries the stale
+ * business org, and the app re-switches the PROFILE from it on boot — which
+ * used to race with this spec's own switch): it is set once by
+ * `switchWorkspace` and sent explicitly on every request.
  */
-let orgIdForApi = ""
+let activeOrgId = ""
 
-/** Call the app's own API with the page's real Clerk session. */
+/** Call the app's own API with the page's real Clerk session, pinned to `activeOrgId`. */
 async function api<T>(page: Page, method: string, path: string, body?: unknown): Promise<{ status: number; json: T }> {
   await waitForClerk(page)
   return page.evaluate(
@@ -80,7 +79,7 @@ async function api<T>(page: Page, method: string, path: string, body?: unknown):
       try { json = text ? JSON.parse(text) : null } catch { json = text }
       return { status: res.status, json: json as never }
     },
-    { method, path, body, orgId: orgIdForApi },
+    { method, path, body, orgId: activeOrgId },
   )
 }
 
@@ -90,7 +89,10 @@ async function switchWorkspace(page: Page, want: "personal" | string): Promise<s
   expect(pick, `no ${want} workspace among ${orgs.length}`).toBeTruthy()
   const res = await api(page, "POST", "/api/organizations/switch", { organization_id: pick!.id })
   expect(res.status).toBe(200)
-  await page.evaluate(() => { try { localStorage.removeItem("ps_active_org") } catch { /* private mode */ } })
+  // Pin it for the API calls AND for the app the browser is about to boot —
+  // leaving the stale mirror in place made the app switch the profile back.
+  activeOrgId = pick!.id
+  await page.evaluate((id) => { try { localStorage.setItem("ps_active_org", id) } catch { /* private mode */ } }, pick!.id)
   return pick!.id
 }
 
@@ -159,30 +161,80 @@ test.describe.serial("Credit cards", () => {
   test.beforeAll(async ({ browser }) => {
     await inFreshTab(browser, async (page) => {
       restoreOrgId = await page.evaluate(() => localStorage.getItem("ps_active_org") ?? "")
-      orgIdForApi = await useWorkspace(page, "personal")
+      await useWorkspace(page, "personal")
       await cleanup(page)
+      // Step 1 of the wizard asks WHICH BANK issued the card, so there has to
+      // be one. Created rather than assumed (see ensureBank).
+      await ensureBank(page, api)
+      // The free plan includes ONE credit card. If anything else is holding
+      // that slot, the wizard silently opens an upgrade modal over itself and
+      // the next click times out after 45s with "element is not stable" — an
+      // hour of trace-reading to find a one-line cause. Say it here instead.
+      const { json: quota } = await api<{ credit_cards?: { current: number; limit: number } }>(page, "GET", "/api/wealth/quota")
+      const cc = quota?.credit_cards
+      if (cc) {
+        expect(
+          cc.current,
+          `this workspace already holds ${cc.current} of ${cc.limit} credit cards — the wizard will hit the plan limit. Remove the other credit card first.`,
+        ).toBeLessThan(cc.limit)
+      }
     })
+  })
+
+  // Every test gets a FRESH page from the saved storage state, whose
+  // `ps_active_org` still points at the business workspace. Seed it before the
+  // first navigation so the UI boots into the personal workspace this suite
+  // prepared (the API calls carry `x-org-id` for the same reason).
+  test.beforeEach(async ({ page }) => {
+    await page.addInitScript((id) => {
+      try { localStorage.setItem("ps_active_org", id) } catch { /* private mode */ }
+    }, activeOrgId)
   })
 
   test.afterAll(async ({ browser }) => {
     await inFreshTab(browser, async (page) => {
-      orgIdForApi = await useWorkspace(page, "personal")
+      await useWorkspace(page, "personal")
       await cleanup(page)
       if (restoreOrgId) await switchWorkspace(page, restoreOrgId).catch(() => {})
     })
   })
 
   test("create a card with a known statement — the tile shows what is owed, not a negative balance", async ({ page }) => {
-    await page.goto("/wealth")
+    // Credit cards live on the Cards tab now and are created by the wizard
+    // (Type & bank → Card details → Look → Credit details). docs/cards/CARDS.md.
+    await page.goto("/wealth?tab=cards")
     await expectAppShell(page)
     await dismissBanners(page)
     await page.getByRole("button", { name: /add card/i }).first().click()
-    const dialog = page.getByRole("dialog", { name: /add credit card/i })
+    // Scoped to the wizard itself, not any role="dialog": Radix leaves a
+    // popover's content mounted after it closes, and a bare getByRole("dialog")
+    // then matches two elements and fails strict mode.
+    const dialog = page.locator("[data-card-wizard]")
     await expect(dialog).toBeVisible()
 
-    await dialog.getByPlaceholder(/search bank name/i).fill("E2E Card Bank")
-    await page.keyboard.press("Tab")
+    // Step 1 — a credit card, and WHICH BANK ISSUED IT. The issuer is a real
+    // account now, not typed text: a credit card is given to you by a bank, and
+    // only a row can show up on that bank's page (docs/cards/CARDS.md §1).
+    await dialog.getByRole("radio", { name: /credit/i }).first().click()
+    const issuerPicker = dialog.locator('[data-bank-picker="issuer"]')
+    await expect(issuerPicker).toBeVisible({ timeout: 15_000 })
+    await issuerPicker.locator("[data-bank-option]").first().click()
+    await dialog.getByRole("button", { name: /^next$/i }).click()
+
+    // Step 2 — the card's own details. Every one of these is required now, so
+    // a card can never be saved nameless and numberless.
+    await dialog.getByRole("radio", { name: /^visa$/i }).first().click()
+    await dialog.getByLabel(/last 4/i).fill("4577")
+    await dialog.getByLabel(/expiry/i).fill("0931")
+    await dialog.getByLabel(/name on card/i).fill("E2E BOT")
     await dialog.getByLabel(/nickname/i).fill(CARD_NAME)
+    await dialog.getByRole("button", { name: /^next$/i }).click()
+
+    // Step 3 — keep the default look.
+    await dialog.getByRole("button", { name: /^next$/i }).click()
+
+    // Step 4 — the money: limit, what is owed today, the cycle and the
+    // statement the user already has.
     await dialog.getByLabel(/credit limit/i).fill("2000")
     await dialog.getByLabel(/amount you owe/i).fill("950")
     await dialog.getByLabel(/statement closes on day/i).fill("1")
@@ -192,29 +244,67 @@ test.describe.serial("Credit cards", () => {
     await dialog.getByLabel(/statement balance/i).fill("800")
     await dialog.getByLabel(/statement closing date/i).fill(closing)
     await dialog.getByLabel(/payment due date/i).fill(due)
-    await dialog.getByRole("button", { name: /^add card$/i }).click()
+
+    // "Pay this card from" now offers everything the Pay sheet does — a bank,
+    // cash, or another card — not just banks. Cash proves the widened list,
+    // and that autopay stays available for money the user actually holds.
+    const payFrom = dialog.getByRole("combobox").last()
+    await payFrom.click()
+    const options = page.locator("[data-slot=popover-content]").last()
+    await expect(options).toBeVisible({ timeout: 10_000 })
+    await expect(options).toContainText(/cash/i)
+    await page.keyboard.press("Escape")
+
+    await dialog.getByRole("button", { name: /save card/i }).click()
     await expect(dialog).toBeHidden({ timeout: 15_000 })
 
-    // The tile: "€950.00 owed" + "€1,050.00 available of €2,000.00".
-    const tile = page.locator("[data-account-card]").filter({ hasText: CARD_NAME }).first()
+    // The tile's meter: "Used $950.00 48%" over the filled half, "Left
+    // $1,050.00 of $2,000.00" over the empty one — never a bare negative
+    // balance. The canonical "available of" sentence survives as the
+    // progressbar's aria-valuetext, which is what a screen reader hears.
+    const tile = page.locator("[data-card-tile]").filter({ hasText: CARD_NAME }).first()
     await expect(tile).toBeVisible({ timeout: 15_000 })
-    await expect(tile).toContainText(/950\.00 owed/)
-    await expect(tile).toContainText(/1,050\.00 available of .*2,000\.00/)
+    await expect(tile).toContainText(/Used/i)
+    await expect(tile).toContainText(/950\.00/)
+    await expect(tile).toContainText(/1,050\.00\s+of\s+.*2,000\.00/)
     await expect(tile).not.toContainText(/-950/)
+    await expect(tile.getByRole("progressbar")).toHaveAttribute("aria-valuetext", /1,050\.00 available of .*2,000\.00/)
 
     // Net worth shows the liability separately.
-    await expect(page.getByText(/^owed( on cards)?:/i).first()).toBeVisible()
+    // Scoped to the Cards panel: the Banks panel is only `hidden`, so it is
+    // still in the DOM with its own (hidden) "Owed on cards" line.
+    await expect(page.locator("#wealth-panel-cards").getByText(/owed on cards/i).first()).toBeVisible()
 
     const accs = await accounts(page)
     const card = accs.find((a) => a.nickname === CARD_NAME)
     expect(card).toBeTruthy()
     cardId = card!.id
     expect(Number(card!.current_balance)).toBe(-950)
-    // The account we will pay from: the default or first non-card, non-space account.
-    const source = accs.find((a) => a.is_default && a.type !== "credit_card") ?? accs.find((a) => a.type === "bank" || a.type === "cash")
-    expect(source).toBeTruthy()
+    // The account the Pay-card sheet will preselect, and therefore the one every
+    // payment below leaves from: the org default, else a bank, else the first
+    // money account (src/components/wealth/PayCardSheet.tsx). Derived rather
+    // than guessed so the balance assertions can't drift from the real source.
+    const payable = accs.filter((a) => !a.archived_at && a.type !== "credit_card" && a.type !== "space")
+    const source = payable.find((a) => a.is_default) ?? payable.find((a) => a.type === "bank") ?? payable[0]
+    expect(source, "an account to pay the card from").toBeTruthy()
     sourceId = source!.id
     sourceBefore = Number(source!.current_balance)
+
+    // The issuer is a REAL bank account, and the bank it names is the one the
+    // wizard offered. Without this the card is invisible on that bank's page.
+    const { json: allCards } = await api<{ id: string; nickname?: string; name: string; issuer_account_id: string | null; funding_account_id: string | null }[]>(page, "GET", "/api/cards")
+    const created = allCards.find((c) => c.name === CARD_NAME)
+    expect(created, "the created card is in /api/cards").toBeTruthy()
+    const issuerBank = accs.find((a) => a.id === created!.issuer_account_id)
+    expect(issuerBank, "the card names an existing bank account as its issuer").toBeTruthy()
+    expect(issuerBank!.type).toBe("bank")
+    // Picking the issuer also answers "who pays it", until step 4 says otherwise.
+    expect(created!.funding_account_id).toBe(created!.issuer_account_id)
+
+    // …and the issuing bank's own page lists it.
+    await page.goto(`/wealth/${created!.issuer_account_id}#cards`)
+    await expect(page.locator("#cards")).toBeVisible({ timeout: 20_000 })
+    await expect(page.locator("#cards")).toContainText(CARD_NAME)
 
     const s = await cardSummary(page, cardId)
     expect(s.usage).toMatchObject({ debt: 950, credit: 0, available: 1050 })
@@ -397,9 +487,12 @@ test.describe.serial("Credit cards", () => {
     await expect(page.getByText(/80\.00 card credit/)).toBeVisible({ timeout: 15_000 })
     await expect(page.getByText(/110\.00 spent/)).toBeVisible()
     await expect(page.getByText(/^\s*paid\s*$/i).first()).toBeVisible()
-    await page.goto("/wealth")
-    const tile = page.locator("[data-account-card]").filter({ hasText: CARD_NAME }).first()
+    // Cards live on the Cards tab; the Banks tab never lists them again.
+    await page.goto("/wealth?tab=cards")
+    const tile = page.locator("[data-card-tile]").filter({ hasText: CARD_NAME }).first()
     await expect(tile).toContainText(/80\.00 card credit/, { timeout: 15_000 })
+    await page.goto("/wealth")
+    await expect(page.locator("[data-account-card]").filter({ hasText: CARD_NAME })).toHaveCount(0)
   })
 })
 

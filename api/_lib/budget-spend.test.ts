@@ -49,9 +49,13 @@ describe("budget spend predicates (defect #1 — is_system must not consume budg
     expect(sql).toMatch(/"clients"\."organization_id"/)
   })
 
-  it("exposes exactly the six shared predicates", () => {
+  it("exposes exactly the seven shared predicates", () => {
     // A guard against someone adding a condition here but not to both queries.
-    expect(budgetSpendPredicates("x")).toHaveLength(6)
+    expect(budgetSpendPredicates("x")).toHaveLength(7)
+  })
+
+  it("leaves a closed client out, exactly as analytics does", () => {
+    expect(sql).toMatch(/"clients"\."closed_at" is null/)
   })
 })
 

@@ -19,7 +19,7 @@
 //   • system            → NEITHER
 //
 // Budgets consume exactly the EXPENSE rows (minus refunds) — see
-// api/_lib/budget-spend.ts / budget-engine.ts.
+// api/_lib/budget-spend.ts / spending-budgets.ts.
 
 export const TRANSACTION_KINDS = ["standard", "transfer", "refund"] as const
 export type TransactionKind = (typeof TRANSACTION_KINDS)[number]

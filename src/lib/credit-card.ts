@@ -308,6 +308,13 @@ export type CycleActivity = {
   refunds: number
   /** Card payments received in the cycle (incoming transfer legs). */
   payments: number
+  /**
+   * Money that LEFT this card as a transfer in the cycle — i.e. this card was
+   * used to pay another one (a balance transfer). Not spending: nothing was
+   * bought, the debt was moved here from somewhere else. Without this line the
+   * cycle breakdown would silently omit money the card really owes for.
+   */
+  transfers_out: number
 }
 
 /**
@@ -318,11 +325,13 @@ export function cycleActivity(legs: CardLeg[]): CycleActivity {
   let spent = 0
   let refunds = 0
   let payments = 0
+  let transfersOut = 0
   for (const leg of legs) {
     const amt = num(leg.amount)
     if (leg.isSystem) continue
     if (leg.kind === "transfer") {
       if (leg.type === "incoming") payments += amt
+      else transfersOut += amt
       continue
     }
     if (leg.kind === "refund") {
@@ -331,7 +340,7 @@ export function cycleActivity(legs: CardLeg[]): CycleActivity {
     }
     if (leg.type === "outgoing") spent += amt
   }
-  return { spent: round2(spent), refunds: round2(refunds), payments: round2(payments) }
+  return { spent: round2(spent), refunds: round2(refunds), payments: round2(payments), transfers_out: round2(transfersOut) }
 }
 
 /** Card payments = incoming TRANSFER legs on the card. A refund or a cashback credit is not a payment. */

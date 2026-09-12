@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
 import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
+import { availableCredit, isLiabilityType } from "@/lib/credit-card"
 import { toast } from "sonner"
 import { TriangleAlert } from "lucide-react"
 import { apiErrorMessage, apiPost } from "@/lib/api"
@@ -47,7 +48,16 @@ export function SpaceTransferModal({
   const balance = active ? Number(active.space.current_balance) : 0
   const amt = Number(amount)
   const source = accounts.find((a) => a.id === accountId)
-  const projected = isFund && source && amt > 0 ? Number(source.current_balance) - amt : null
+  // What the source can actually put in: a bank's balance, a credit card's
+  // REMAINING CREDIT. Subtracting from a liability's signed balance produced a
+  // meaningless "-€1,050.00 after this" and flagged an overdraw on every card.
+  // A card with no limit set has no honest figure to project, so it shows none.
+  const spendable = source
+    ? isLiabilityType(source.type)
+      ? availableCredit(source.credit_limit, source.current_balance)
+      : Number(source.current_balance)
+    : null
+  const projected = isFund && source && amt > 0 && spendable != null ? spendable - amt : null
   const overdraw = projected != null && projected < 0
 
   async function submit() {
@@ -63,7 +73,7 @@ export function SpaceTransferModal({
       const body = isFund
         ? { from_account_id: accountId, to_account_id: active.space.id, amount: amt }
         : { from_account_id: active.space.id, to_account_id: accountId, amount: amt }
-      await apiPost("/api/wealth/transfer", token, body, ["/api/spaces", "/api/wealth"])
+      await apiPost("/api/wealth/transfer", token, body)
       toast.success(isFund ? t("fundDone") : t("withdrawDone"))
       onDone()
     } catch (err) {

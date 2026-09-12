@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react"
-import { useNavigate } from "react-router-dom"
+import { useLocation, useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { useAuth } from "@clerk/clerk-react"
 import { ArrowDownRight, ArrowUpRight, Paperclip, Pencil, Repeat } from "lucide-react"
 import type { Transaction, TransactionAttachment } from "@/lib/types"
 import { apiGet } from "@/lib/api"
 import { accountDisplayName } from "@/lib/wealth"
+import { useCardMap } from "@/lib/use-cards"
 import { WealthAccountIcon } from "@/components/WealthAccountIcon"
+import { CardChip } from "@/components/cards/CardChip"
 import { AuditHistory } from "@/components/AuditHistory"
 import { AttachmentDetailModal, type AttachmentModalItem } from "@/components/AttachmentDetailModal"
 import { Badge } from "@/components/ui/badge"
@@ -47,8 +49,12 @@ export function TransactionDetailModal({
   const { t } = useTranslation("transactions")
   const { getToken } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
   const [attachments, setAttachments] = useState<TransactionAttachment[]>([])
   const [viewAttachment, setViewAttachment] = useState<AttachmentModalItem | null>(null)
+  // The card that paid (by id, or the credit card that IS the row's account).
+  const cardMap = useCardMap({ enabled: open })
+  const card = tx ? cardMap.forTx(tx) : undefined
   const fmt = (n: number) =>
     new Intl.NumberFormat("en-US", { style: "currency", currency, minimumFractionDigits: 2 }).format(n)
 
@@ -95,9 +101,11 @@ export function TransactionDetailModal({
                       className="gap-1 cursor-pointer hover:bg-secondary/80"
                       title={t("recurringBadge")}
                       onClick={() => {
-                        const ruleId = tx.recurring_rule_id
+                        const target = `/recurring/${tx.recurring_rule_id}`
                         onClose()
-                        navigate(`/recurring?view=${ruleId}`)
+                        // Already on that rule's page (its own payment list) —
+                        // closing IS the whole action; don't stack a history entry.
+                        if (location.pathname !== target) navigate(target)
                       }}
                     >
                       <Repeat className="size-3" /> {t("recurringBadge")}
@@ -117,7 +125,15 @@ export function TransactionDetailModal({
                       <Badge variant="outline">{tx.category}</Badge>
                     </div>
                   )}
-                  {accountLabel && (
+                  {card ? (
+                    <div className="col-span-2">
+                      <p className="text-xs text-muted-foreground">{t("cardPaidWith")}</p>
+                      {/* The chip links to the card page — close the modal on the way out. */}
+                      <div className="mt-1 flex" onClickCapture={onClose}>
+                        <CardChip card={card} />
+                      </div>
+                    </div>
+                  ) : accountLabel ? (
                     <div className="col-span-2">
                       <p className="text-xs text-muted-foreground">{t("account")}</p>
                       <span className="mt-0.5 inline-flex items-center gap-1.5">
@@ -130,7 +146,7 @@ export function TransactionDetailModal({
                         </span>
                       </span>
                     </div>
-                  )}
+                  ) : null}
                   {tx.client_name && (
                     <div className="col-span-2">
                       <p className="text-xs text-muted-foreground">{t("client")}</p>

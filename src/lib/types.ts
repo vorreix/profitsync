@@ -137,6 +137,8 @@ export type TransactionLeg = {
   wealth_account_bank_name?: string | null
   wealth_account_type?: WealthAccountType | null
   wealth_account_icon?: string | null
+  // Which card paid this leg (attribution only — see Card).
+  card_id?: string | null
   type: "incoming" | "outgoing"
   amount: number
 }
@@ -150,6 +152,10 @@ export type Transaction = {
   wealth_account_bank_name?: string | null
   wealth_account_type?: WealthAccountType | null
   wealth_account_icon?: string | null
+  // Which CARD paid (debit or credit) — attribution only; the money always sits
+  // on wealth_account_id (the card's own ledger account). Drives the
+  // "C •••• 1234" / "D •••• 1234" chip (src/components/cards/CardChip.tsx).
+  card_id?: string | null
   type: "incoming" | "outgoing"
   amount: number
   description: string
@@ -181,6 +187,9 @@ export type Transaction = {
   group_id?: string | null
   leg_count?: number
   account_count?: number
+  // Distinct cards across a collapsed group's legs: > 1 → the list shows
+  // "N cards" instead of one arbitrary chip.
+  card_count?: number
   legs?: TransactionLeg[]
 }
 
@@ -231,6 +240,11 @@ export type WealthAccount = {
   credit_limit?: number | string | null
   statement_closing_day?: number | null
   payment_due_day?: number | null
+  // Cards on this account: how many are open (list responses — drives the
+  // Banks-tab badge), and, for a credit-card account, the CARD that IS it
+  // (single-account GET — /wealth/:id forwards to that card's screen).
+  card_count?: number
+  card_id?: string | null
 }
 
 // One CLOSED billing cycle of a credit card, as returned by the card summary
@@ -365,7 +379,94 @@ export type CreditCardSummary = {
     spent: number
     refunds: number
     payments: number
+    /** Money that left this card to pay another one (a balance transfer). */
+    transfers_out: number
   }
+}
+
+// ── Cards ────────────────────────────────────────────────────────────────────
+// A CARD (debit or credit) is identity + attribution linked to a bank. It never
+// holds money: `account_id` is the ledger account it posts to (a debit card's
+// bank; a credit card's liability account), `funding_account_id` (credit) is
+// the bank that pays the statement. See docs/cards/CARDS.md.
+export type CardKind = "debit" | "credit"
+export type CardNetwork = "visa" | "mastercard" | "amex" | "rupay" | "discover" | "jcb" | "unionpay" | "maestro" | "diners" | "other"
+export type CardTier = "standard" | "gold" | "platinum" | "metal" | "black" | "custom"
+export type CardStatus = "active" | "frozen" | "closed"
+export type CardPattern = "none" | "waves" | "mesh" | "dots"
+export type CardDesign = { from: string; to: string; text: "light" | "dark"; pattern: CardPattern }
+export type BrandColor = { hex: string; type: string; brightness?: number }
+
+export type Card = {
+  id: string
+  organization_id: string
+  kind: CardKind
+  account_id: string
+  funding_account_id: string | null
+  /** Credit only: the bank that ISSUED the card (null on cards predating mig 0065). */
+  issuer_account_id: string | null
+  /** Credit only: the CARD used to pay it, if any. Always resolves to funding_account_id. */
+  funding_card_id: string | null
+  name: string
+  holder_name: string
+  network: CardNetwork
+  // Last four digits only ("" when unknown).
+  last4: string
+  expiry_month: number | null
+  expiry_year: number | null
+  tier: CardTier
+  design: CardDesign | null
+  brand_colors: BrandColor[] | null
+  brand_logo_url: string
+  autopay: boolean
+  autopay_since: string | null
+  status: CardStatus
+  position: number
+  created_at: string
+  updated_at: string
+  // Joined from the ledger account (GET /api/cards).
+  account_type?: WealthAccountType
+  account_bank_name?: string
+  account_nickname?: string
+  account_current_balance?: number | string
+  account_credit_limit?: number | string | null
+  account_statement_closing_day?: number | null
+  account_payment_due_day?: number | null
+  account_brand_domain?: string
+  account_logo_url?: string
+  account_logo_src?: string | null
+  account_archived_at?: string | null
+  // Joined from the funding bank (credit cards).
+  funding_account_bank_name?: string | null
+  funding_account_nickname?: string | null
+  funding_account_logo_src?: string | null
+  funding_account_archived_at?: string | null
+  // Joined from the issuing bank (credit cards).
+  issuer_account_bank_name?: string | null
+  issuer_account_nickname?: string | null
+  issuer_account_logo_src?: string | null
+  issuer_account_archived_at?: string | null
+  // Joined from the card that pays this one, when one is set.
+  funding_card_name?: string | null
+  funding_card_kind?: CardKind | null
+  funding_card_last4?: string | null
+  funding_card_network?: CardNetwork | null
+  funding_card_status?: CardStatus | null
+  transaction_count?: number
+}
+
+// GET /api/cards/:id/summary
+export type CardAutopayPreview = { date: string; amount: number }
+export type CardSummary = {
+  card: Card
+  // Credit cards: the ledger-derived view (same as GET /api/wealth/accounts/:id/card).
+  credit: Omit<CreditCardSummary, "account"> | null
+  // Debit cards: this month's activity on the card.
+  debit: { month_spent: number; month_refunds: number; last_used: string | null } | null
+  // When autopay will next pay and how much (null = nothing scheduled).
+  next_autopay: CardAutopayPreview | null
+  // What the last autopay attempt did (null = never ran).
+  last_autopay: { status: "paid" | "skipped" | "failed"; at: string | null; group_id: string | null; statement_id: string } | null
 }
 
 export type RecurringRule = {
@@ -377,11 +478,19 @@ export type RecurringRule = {
   client_is_own?: boolean | null
   wealth_account_id: string | null
   account_name?: string | null
+  account_type?: WealthAccountType | null
+  account_icon?: string | null
+  account_logo_url?: string | null
   // 'standard' = normal income/outgoing rule. 'transfer' = a Space auto-save:
   // money moves from `wealth_account_id` (source) to `to_account_id` (the Space).
   kind?: "standard" | "transfer"
   to_account_id?: string | null
   to_account_name?: string | null
+  // The card that pays each occurrence (copied onto the materialized rows).
+  card_id?: string | null
+  card_last4?: string | null
+  card_kind?: CardKind | null
+  card_name?: string | null
   name: string
   type: "incoming" | "outgoing"
   amount: number | string
@@ -395,6 +504,18 @@ export type RecurringRule = {
   last_error: string
   generated_count?: number
   created_at: string
+}
+
+/**
+ * One rule as its own page reads it (`GET /api/recurring/:id`) — the list row's
+ * fields plus what the rule has actually posted, summed from the ledger so a
+ * manually deleted occurrence stops counting the moment it goes.
+ */
+export type RecurringRuleDetail = RecurringRule & {
+  generated_count: number
+  posted_total: string | number
+  first_posted_date: string | null
+  last_posted_date: string | null
 }
 
 export type WealthAccountAttachment = AttachmentMeta & {
@@ -496,7 +617,7 @@ export const ACCOUNT_TYPES: AccountType[] = ["personal", "business"]
  * Enforced in the UI (nav + route guards) and on the server (API authz).
  */
 export type BusinessFeature = "clients" | "quotations" | "members"
-export type PersonalFeature = "spaces" | "budget_plan"
+export type PersonalFeature = "spaces"
 export type GatedFeature = BusinessFeature | PersonalFeature
 
 export function accountTypeAllows(
@@ -506,12 +627,9 @@ export function accountTypeAllows(
   const isBusinessOnly = feature === "clients" || feature === "quotations" || feature === "members"
   // Personal-only sections (Spaces savings buckets). Legacy/unknown orgs are
   // treated as business, so Spaces show ONLY for an explicit personal account.
-  // `budget_plan` is the Budget v2 household plan (periods, envelopes, safe to
-  // spend). Business workspaces keep their per-client SPEND CAPS instead, which
-  // are a different concept and are not gated — see spec §23. Adding it here is
-  // what stops a business workspace creating a household plan it was never
-  // meant to have.
-  const isPersonalOnly = feature === "spaces" || feature === "budget_plan"
+  // Budgets are NOT gated: spending budgets work in both workspace types, and a
+  // business workspace additionally keeps its per-client spend caps.
+  const isPersonalOnly = feature === "spaces"
   // Unknown / legacy orgs default to the full (business) experience so we never
   // lock an existing user out of features they already use.
   if (isBusinessOnly && accountType === "personal") return false
@@ -716,255 +834,126 @@ export type UserGroupMember = {
   avatar_url: string | null
 }
 
-// ── Budget v2 ────────────────────────────────────────────────────────────────
-// Mirrors the GET /api/budgets/v2 payload (spec §11.3). Section shapes are
-// deliberately DIFFERENT from one another: income/commitment/debt/savings are
-// not commensurable with flexible spending, and collapsing them into one
-// "spent of planned" ratio is the error §8.7 exists to prevent.
+// ── Spending budgets ─────────────────────────────────────────────────────────
+// A named spending limit over a window, scoped to expense categories (or all
+// spending), with one level of sub-budgets. Mirrors GET /api/spending-budgets;
+// every figure is derived live on the server (api/_lib/spending-budgets.ts) from
+// the pure window math in src/lib/budget.ts. The v1 per-client caps above
+// (`Budget`) are a separate, business-only feature.
+export type SpendingPeriod = "daily" | "weekly" | "monthly" | "yearly" | "once"
+/** The four windows the page can be read in. A budget authored in any rhythm converts into them. */
+export type SpendingViewWindow = "daily" | "weekly" | "monthly" | "yearly"
+export type SpendingBudgetStatus = "active" | "closed"
+export type SpendingBudgetState = "ok" | "warn" | "over" | "none"
+export type SpendingWindowPhase = "upcoming" | "active" | "ended"
 
-export type BudgetSectionName = "income" | "commitment" | "flexible" | "savings" | "debt"
-export type BudgetStateV2 = "none" | "ok" | "warn" | "full" | "over"
-/** Which limit produced safe-to-spend, so the UI can say WHY. */
-export type SafeToSpendBinding = "cash" | "plan" | "both" | "cash_only"
-
-export type BudgetEnvelopeView = {
+export type SpendingBudget = {
   id: string
+  organization_id: string
+  parent_id: string | null
+  /** '' only on a row migrated from a v1 personal budget — label it "Personal budget". */
   name: string
-  section: BudgetSectionName
-  planned: number
-  rollover_in: number
-  authored_amount: number
-  authored_cadence: "period" | "month" | "week" | "day"
-  spent_gross: number
-  refunds_confirmed: number
-  refunds_provisional: number
-  spent_net: number
-  pending: number
-  /** SIGNED — negative when this envelope is over. Cards show this, not the netted figure. */
-  remaining: number
-  state: BudgetStateV2
-  priority: string
-  carry_policy: string
-  is_catch_all: boolean
-  reimbursable: boolean
-  funding_mode: "virtual" | "space_backed" | null
-  auto_fund: boolean
-  goal_amount: number | null
-  target_date: string | null
-  balance: number | null
-  contribution_status: "planned" | "confirmed" | "missed" | "skipped" | null
-  needs_attention: boolean
-  excluded_occurrence_count: number
-  /** Category keys this envelope claims. Empty for the catch-all. */
-  match_keys: string[]
-  /** Icon key; empty means "derive from the section". */
   icon: string
-  /**
-   * Goal progress for a savings fund, or null when it has no goal.
-   * Computed with the Spaces goal math, reused unchanged (spec §8.9).
-   */
-  goal_progress: { pct: number; remaining: number; reached: boolean } | null
-  /** Rises when a contribution is missed, so a fund tells the truth about being behind. */
-  suggested_monthly: number | null
-  /** Occurrence money settled inside this period (commitment and debt). */
-  settled: number
-  overdue_count: number
-  overdue_amount: number
-}
-
-export type BudgetOccurrenceAction = "settle" | "cancel" | "skip" | "reschedule"
-
-export type BudgetOccurrenceView = {
-  commitment_id: string
-  /** The commitment's name — an overdue row without it cannot be acted on. */
-  name: string
-  kind: string
-  needs_attention: boolean
-  envelope_id: string
-  due_date: string
+  period: SpendingPeriod
+  start_date: string | null
+  end_date: string | null
   amount: number
-  state: string
-  overdue: boolean
-  days_overdue?: number
-  from_previous_period?: boolean
-  /** Which actions the server will accept for this occurrence's current state. */
-  actions: BudgetOccurrenceAction[]
+  /** Expense category names in scope; empty = all spending. */
+  categories: string[]
+  status: SpendingBudgetStatus
+  position: number
+  created_at: string | null
+  updated_at: string | null
+  /** The OVERALL budget: top level, all spending, one per workspace. Shown as the page header. */
+  is_overall: boolean
+  window: { start: string | null; end_exclusive: string | null; phase: SpendingWindowPhase; days_left: number | null }
+  /** Spend over the budget's OWN window — what "am I over budget?" means. */
+  spent: number
+  /**
+   * Spend over each of the four view windows, so the page's Day/Week/Month/Year
+   * toggle is a re-render and not a request. A custom-date budget reports its
+   * own figure in all four: it is a fixed sum, not a rhythm.
+   */
+  spent_by_view: Record<SpendingViewWindow, number>
+  remaining: number
+  ratio: number | null
+  /** "none" when paused, ended or not yet started — the row is shown but not counted. */
+  state: SpendingBudgetState
+  per_day_left: number | null
+  /** Spend inside a main budget that none of its ACTIVE sub-budgets claim; null without any. */
+  other_spent: number | null
+  other_spent_by_view: Record<SpendingViewWindow, number> | null
+  children_count: number
 }
 
-/** A machine-readable limitation. Never a converted figure (spec §12.2). */
-export type BudgetCurrencyLimitation = {
-  code: "currency_mismatch"
-  plan_currency: string
-  org_currency: string
-  converted: false
+/** What the individual budgets add up to against the overall budget, in the view window. */
+export type SpendingAllocation = {
+  allocated: number
+  unallocated: number | null
+  over: boolean
+  overall_limit: number | null
+  overall_spent: number | null
+  budgeted_spent: number
 }
 
-/** One inflow that currently nets against an envelope only by category match. */
-export type BudgetProvisionalRefund = {
-  transaction_id: string
+export type SpendingBudgetsResponse = {
+  budgets: SpendingBudget[]
+  today: string
+}
+
+export type SpendingBudgetAnalyticsWindow = {
+  start: string
+  end_exclusive: string
+  /** Not finished yet: drawn "so far", never judged. */
+  partial: boolean
+  /** No budget's scope has moved since this window closed, so its figures can be trusted. */
+  reliable: boolean
+  total: number
+  /** Spend no active category budget claims. Never negative. */
+  unclaimed: number
+  overall_limit: number | null
+  budgeted_limit: number
+  /** budget id → its own limit in this window; null before it existed. */
+  per_budget_limit: Record<string, number | null>
+  /** NOT a partition — the overall's entry equals `total` and a sub-budget's sits inside its parent's. */
+  per_budget: Record<string, number>
+}
+
+export type SpendingBudgetAnalytics = {
+  view: SpendingViewWindow
+  back: number
+  today: string
+  windows: SpendingBudgetAnalyticsWindow[]
+  categories: { name: string; spent: number; budget_id: string | null }[]
+  adherence: { periods: number; within: number; rate: number; streak: number; avg_delta: number }
+}
+
+export type SpendingBudgetRecentTx = {
+  id: string
   date: string
+  description: string
+  category: string
+  /** Signed: a refund is negative. */
   amount: number
-  category: string | null
-  description: string | null
-  envelope: { id: string; name: string } | null
+  kind: string
+  client_name: string | null
+  wealth_account_id: string | null
 }
 
-/** One entry in a virtual fund's ledger. */
-export type BudgetFundEntry = {
+export type SpendingBudgetHistoryEntry = {
   id: string
-  envelope_id: string
-  period_id: string | null
-  kind: "contribution" | "withdrawal" | "adjustment"
-  amount: string
-  source: "confirmed" | "auto_fund" | "manual" | "conversion"
-  note: string
-  created_at: string
+  action: string
+  changes: Record<string, { from: unknown; to: unknown }>
+  actor_user_id: string | null
+  created_at: string | null
 }
 
-export type BudgetCommitmentView = {
-  id: string
-  envelope_id: string
-  kind: "one_time" | "recurring"
-  name: string
-  amount: string
-  due_date: string | null
-  recurring_rule_id: string | null
-  first_due_date: string
-  status: string
-  needs_attention: boolean
-  rule: {
-    name: string | null
-    active: boolean
-    missing: boolean
-    next_due_at: string | null
-    frequency_unit: string | null
-    frequency_interval: number | null
-    end_date: string | null
-  } | null
-}
-
-export type BudgetView = {
-  plan: {
-    id: string
-    status: "active" | "paused" | "archived"
-    cadence: "monthly" | "weekly" | "payday" | "custom"
-    timezone: string
-    income_mode: "expected" | "available"
-    expected_income: number | null
-    currency: string
-    next_period_seed: string
-    paused_at: string | null
-    updated_at: string | null
-  } | null
-  period: {
-    id: string
-    start: string
-    end_exclusive: string
-    status: "open" | "closed"
-    is_partial: boolean
-    days_left: number
-    funding_base: number
-    funding_base_source: string
-    funding_base_anchor_date: string
-    funding_base_as_of: string | null
-    income_accreted: number
-    funding_adjustments: number
-    funding_capacity: number
-  } | null
-  money: {
-    available_now: number
-    reserved: number
-    reserved_breakdown: {
-      commitments_outstanding: number
-      commitments_overdue: number
-      debt_outstanding: number
-      virtual_fund_balances: number
-      virtual_contributions_unconfirmed: number
-      space_contributions_due: number
-      protected_savings_due: number
-    }
-    cash_after_reservations: number
-    /** max(0, Σ planned − Σ spent_net − Σ pending) — netted, then floored ONCE. */
-    flexible_headroom: number
-    ceiling_defined: boolean
-    safe_to_spend: number
-    binding: SafeToSpendBinding
-    unallocated: number
-    unallocated_available: number
-    forecast_balance: number
-  } | null
-  sections: {
-    income: { expected: number | null; received: number; outstanding: number | null }
-    flexible: {
-      planned: number
-      spent_gross: number
-      refunds_confirmed: number
-      refunds_provisional: number
-      spent_net: number
-      pending: number
-      /** SIGNED. `headroom` is the floored value used in the min(). */
-      remaining: number
-      headroom: number
-      utilisation: BudgetStateV2
-      envelope_count: number
-      overspent_count: number
-      /** Outflow that matched no explicit envelope, i.e. what the catch-all absorbed. */
-      uncategorised: number
-      envelopes: BudgetEnvelopeView[]
-    }
-    commitment: {
-      planned: number
-      settled: number
-      outstanding: number
-      overdue: number
-      overdue_count: number
-      needs_attention_count: number
-      envelopes: BudgetEnvelopeView[]
-    }
-    debt: {
-      planned: number
-      paid: number
-      outstanding: number
-      overdue: number
-      overdue_count: number
-      needs_attention_count: number
-      envelopes: BudgetEnvelopeView[]
-    }
-    savings: {
-      planned: number
-      reserved: number
-      funded: number
-      funded_cash: number
-      missed: number
-      outstanding: number
-      balance: number
-      awaiting_confirmation: number
-      skipped_count: number
-      behind_count: number
-      envelopes: BudgetEnvelopeView[]
-    }
-  } | null
-  /** Identically the FLEXIBLE section's utilisation — never a cross-section ratio. */
-  plan_status: BudgetStateV2 | null
-  total_outflow: number | null
-  occurrences_upcoming: BudgetOccurrenceView[]
-  occurrences_overdue: BudgetOccurrenceView[]
-  /** The read told us it is stale; resolve with POST /api/budgets/v2/sync. */
-  sync_required: boolean
-  alerts: { kind: string; envelope_id?: string; amount?: number }[]
-  suggestions: { kind: string; envelope_id?: string; amount?: number | null; basis?: string }[]
-  currency_limitation?: BudgetCurrencyLimitation | null
-  /**
-   * Questions the MIGRATION deliberately did not answer (spec §13.4, §13.8).
-   * Absent for any plan created natively in v2.
-   */
-  prompts?: {
-    /** A v1 `lifetime` budget: no monthly equivalent, so the user chooses. */
-    lifetime_choice: { amount: number } | null
-    /** The catch-all target is within 5% of median monthly income. */
-    salary_vs_target: { target: number; median_income: number } | null
-  }
-  capabilities: { can_write: boolean; can_close: boolean; account_type: string | null }
-  /** Machine-readable honesty about what this build cannot do (§21.4). */
-  limitations: string[]
+export type SpendingBudgetDetail = {
+  budget: SpendingBudget
+  children: SpendingBudget[]
+  parent: { id: string; name: string } | null
+  series: { start: string; spent: number; amount: number }[]
+  recent: SpendingBudgetRecentTx[]
+  history: SpendingBudgetHistoryEntry[]
+  today: string
 }

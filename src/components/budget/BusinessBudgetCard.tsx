@@ -69,8 +69,8 @@ export function BusinessBudgetCard({
     <Card
       role="button"
       tabIndex={0}
-      onClick={() => navigate(`/budgets/${clientId}`)}
-      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate(`/budgets/${clientId}`) } }}
+      onClick={() => navigate(`/budgets/clients/${clientId}`)}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate(`/budgets/clients/${clientId}`) } }}
       className={`group py-0 cursor-pointer transition-colors hover:border-primary/40 hover:bg-accent/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${className}`}
     >
       <CardContent className="p-4">

@@ -2,10 +2,11 @@ import { useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { useAuth } from "@clerk/clerk-react"
 import { toast } from "sonner"
-import { ArrowRight, CreditCard } from "lucide-react"
+import { AlertTriangle, ArrowRight, CreditCard } from "lucide-react"
 import { apiPost } from "@/lib/api"
 import { amountExceedsLimit } from "@/lib/money"
 import { isLiabilityType } from "@/lib/credit-card"
+import { usableCards, useCards } from "@/lib/use-cards"
 import type { CreditCardSummary, WealthAccount } from "@/lib/types"
 import { accountDisplayName, currencySymbol, formatMoney } from "@/lib/wealth"
 import { cn } from "@/lib/utils"
@@ -26,6 +27,12 @@ export type PayPreset = "statement" | "full" | "other"
  * remaining, everything owed, or another amount — and ProfitSync records the
  * proper TRANSFER (POST /api/wealth/transfer, bank → card). The user never has
  * to know it is a transfer, and it is never an expense.
+ *
+ * "Pay from" offers every way the user can pay: banks, cash, each bank's DEBIT
+ * cards ("via •••• 1234" — the money still leaves the bank and the card is
+ * recorded on that leg via `from_card_id`), and other CREDIT cards, which is a
+ * BALANCE TRANSFER: the payer's debt goes up as this card's goes down, so
+ * nothing is cleared, only moved.
  */
 export function PayCardSheet({
   open,
@@ -34,7 +41,11 @@ export function PayCardSheet({
   summary,
   accounts,
   currency,
+  balancesVisible = true,
   initialPreset = "statement",
+  initialFromId,
+  initialFromCardId,
+  fallbackDebt,
   onDone,
 }: {
   open: boolean
@@ -43,22 +54,41 @@ export function PayCardSheet({
   summary: CreditCardSummary | null
   accounts: WealthAccount[]
   currency: string
+  /** Privacy mode: masks the preset amounts so the sheet can't unmask the grid. */
+  balancesVisible?: boolean
   initialPreset?: PayPreset
+  /** Preselect where the money comes from (a drag onto this card). */
+  initialFromId?: string
+  initialFromCardId?: string
+  /**
+   * What the card owes according to the CARD ROW, used until the async summary
+   * lands. Without it the sheet can open saying "nothing to pay" on a tile that
+   * is simultaneously rendering a debt.
+   */
+  fallbackDebt?: number
   onDone?: () => void
 }) {
   const { t } = useTranslation("wealth")
+  const { t: tTx } = useTranslation("transactions")
   const { getToken } = useAuth()
   const symbol = currencySymbol(currency)
 
-  // Sources: active, non-card, non-Space accounts (a card is paid from money you hold).
+  // Sources: every active non-Space account except this card's own — a card can
+  // never pay itself. Other credit cards stay in: buildPayOptions shows each as
+  // its card, and choosing one records a balance transfer.
   const sources = useMemo(
-    () => accounts.filter((a) => !a.archived_at && a.id !== card.id && !isLiabilityType(a.type) && a.type !== "space"),
+    () => accounts.filter((a) => !a.archived_at && a.id !== card.id && a.type !== "space"),
     [accounts, card.id],
   )
-  const statementRemaining = summary?.statement?.remaining ?? 0
-  const debt = summary?.usage.debt ?? 0
+  const { cards } = useCards({ enabled: open })
+  const payWith = useMemo(() => usableCards(cards).filter((c) => c.account_id !== card.id), [cards, card.id])
+  const debt = summary?.usage.debt ?? fallbackDebt ?? 0
+  // A statement can't be paid beyond what the card owes right now (a payment
+  // recorded before the close, or a mistyped onboarding statement).
+  const statementRemaining = Math.max(0, Math.min(summary?.statement?.remaining ?? 0, debt))
 
   const [fromId, setFromId] = useState("")
+  const [fromCardId, setFromCardId] = useState("")
   const [preset, setPreset] = useState<PayPreset>("statement")
   const [amount, setAmount] = useState("")
   const [date, setDate] = useState(today())
@@ -67,8 +97,7 @@ export function PayCardSheet({
 
   useEffect(() => {
     if (!open) return
-    const defaultSource = sources.find((a) => a.is_default) ?? sources.find((a) => a.type === "bank") ?? sources[0]
-    setFromId(defaultSource?.id ?? "")
+    setFromCardId("")
     const startPreset: PayPreset = initialPreset === "statement" && statementRemaining <= 0 ? (debt > 0 ? "full" : "other") : initialPreset
     setPreset(startPreset)
     setAmount(startPreset === "statement" ? String(statementRemaining) : startPreset === "full" ? String(debt) : "")
@@ -77,6 +106,26 @@ export function PayCardSheet({
     setSaving(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
+
+  // Preselect where the money comes from. Kept separate from the open-effect
+  // because the accounts can arrive AFTER the sheet opens (the card screen
+  // loads them in parallel) — without this the sheet would sit there with no
+  // source and a permanently disabled button. Only fills an empty choice, so it
+  // never overrides the user.
+  useEffect(() => {
+    if (!open || fromId) return
+    // An explicit choice (dragging a card onto this one) wins over the default.
+    if (initialFromId && sources.some((a) => a.id === initialFromId)) {
+      setFromId(initialFromId)
+      setFromCardId(initialFromCardId ?? "")
+      return
+    }
+    // Otherwise default to money the user HOLDS — never pre-select a balance
+    // transfer, which moves debt rather than clearing it.
+    const holding = sources.filter((a) => !isLiabilityType(a.type))
+    const defaultSource = holding.find((a) => a.is_default) ?? holding.find((a) => a.type === "bank") ?? holding[0]
+    if (defaultSource) setFromId(defaultSource.id)
+  }, [open, fromId, sources, initialFromId, initialFromCardId])
 
   function choose(p: PayPreset) {
     setPreset(p)
@@ -88,6 +137,7 @@ export function PayCardSheet({
   const amt = parseFloat(amount)
   const amountValid = !!amt && !isNaN(amt) && amt > 0
   const from = sources.find((a) => a.id === fromId)
+  const fromCard = fromCardId ? payWith.find((c) => c.id === fromCardId) : undefined
 
   async function submit() {
     if (!fromId) { toast.error(t("selectAccount")); return }
@@ -99,6 +149,7 @@ export function PayCardSheet({
       if (!token) throw new Error("Not authenticated")
       await apiPost("/api/wealth/transfer", token, {
         from_account_id: fromId,
+        from_card_id: fromCardId || null,
         to_account_id: card.id,
         amount: amt,
         date,
@@ -133,7 +184,14 @@ export function PayCardSheet({
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto scrollbar-thin px-6 py-4">
           <div className="space-y-1.5">
             <Label className="text-xs text-muted-foreground">{t("payFrom")}</Label>
-            <AccountCombobox accounts={sources} value={fromId} onChange={setFromId} currency={currency} />
+            <AccountCombobox
+              accounts={sources}
+              cards={payWith}
+              cardsLayout="nested"
+              value={fromCardId || fromId}
+              onChange={(id, picked) => { setFromId(picked ? picked.account_id : id); setFromCardId(picked?.card_id ?? "") }}
+              currency={currency}
+            />
           </div>
 
           <div className="space-y-2" role="radiogroup" aria-label={t("payAmount")}>
@@ -151,13 +209,13 @@ export function PayCardSheet({
                     disabled={disabled}
                     onClick={() => choose(o.key)}
                     className={cn(
-                      "pressable ios-tap flex min-h-11 items-center justify-between gap-3 rounded-xl border px-3 py-2 text-left text-sm transition-colors",
+                      "pressable ios-tap flex min-h-11 items-center justify-between gap-3 rounded-xl border px-3 py-2 text-start text-sm transition-colors",
                       selected ? "border-primary/60 bg-primary/5 ring-1 ring-primary/30" : "hover:bg-muted/50",
                       disabled && "opacity-50",
                     )}
                   >
                     <span className="font-medium">{o.label}</span>
-                    {o.value !== null && <span className="tabular-nums text-muted-foreground">{formatMoney(o.value, currency)}</span>}
+                    {o.value !== null && <span className="tabular-nums text-muted-foreground">{formatMoney(o.value, currency, balancesVisible)}</span>}
                   </button>
                 )
               })}
@@ -181,10 +239,23 @@ export function PayCardSheet({
           </div>
 
           <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
-            <span className="truncate">{from ? accountDisplayName(from) : "…"}</span>
+            <span className="truncate">
+              {from ? accountDisplayName(from) : "…"}
+              {fromCard && <span className="ms-1" dir="ltr">{fromCard.last4 ? tTx("cardVia", { last4: fromCard.last4 }) : tTx("cardViaNoTail")}</span>}
+            </span>
             <ArrowRight className="size-3.5 shrink-0 rtl:rotate-180" aria-hidden />
             <span className="truncate">{accountDisplayName(card)}</span>
           </div>
+
+          {/* Paying a card WITH a card moves the debt; it does not reduce it.
+              Saying so here is the whole point — the confirmation line above
+              otherwise reads exactly like a real payment. */}
+          {from && isLiabilityType(from.type) && (
+            <p className="flex items-start gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 p-2.5 text-xs text-amber-800 dark:bg-amber-500/15 dark:text-amber-200">
+              <AlertTriangle className="mt-px size-3.5 shrink-0" aria-hidden />
+              <span>{t("balanceTransferWarning", { card: accountDisplayName(from) })}</span>
+            </p>
+          )}
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">

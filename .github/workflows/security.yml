@@ -36,6 +36,9 @@ jobs:
       - name: ESM import extensions (api/ function graph)
         run: node scripts/check-esm-extensions.mjs
 
+      - name: Migration sequence (linear, replayable)
+        run: node scripts/check-migrations.mjs
+
       # Production dependencies only, high+ severity. Dev-tooling advisories are
       # visible in Dependabot instead of failing every PR.
       - name: Dependency audit (prod, high+)
