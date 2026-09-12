@@ -33,6 +33,8 @@ const WealthPage = lazy(() => import("@/pages/WealthPage").then((m) => ({ defaul
 const WealthAccountDetailPage = lazy(() => import("@/pages/WealthAccountDetailPage").then((m) => ({ default: m.WealthAccountDetailPage })))
 const CardDetailPage = lazy(() => import("@/pages/CardDetailPage").then((m) => ({ default: m.CardDetailPage })))
 const CardGalleryPage = import.meta.env.DEV ? lazy(() => import("@/pages/CardGalleryPage").then((m) => ({ default: m.CardGalleryPage }))) : () => null
+const DebtsPage = lazy(() => import("@/pages/DebtsPage").then((m) => ({ default: m.DebtsPage })))
+const DebtDetailPage = lazy(() => import("@/pages/DebtDetailPage").then((m) => ({ default: m.DebtDetailPage })))
 const SpacesPage = lazy(() => import("@/pages/SpacesPage").then((m) => ({ default: m.SpacesPage })))
 const SpaceDetailPage = lazy(() => import("@/pages/SpaceDetailPage").then((m) => ({ default: m.SpaceDetailPage })))
 const CategoryTagsPage = lazy(() => import("@/pages/CategoryTagsPage").then((m) => ({ default: m.CategoryTagsPage })))
@@ -235,6 +237,8 @@ export function App() {
             <Route path="wealth/cards/:cardId" element={<CardDetailPage />} />
             <Route path="wealth/:id" element={<WealthAccountDetailPage />} />
             {import.meta.env.DEV && <Route path="dev/card-gallery" element={<CardGalleryPage />} />}
+            <Route path="debts" element={<DebtsPage />} />
+            <Route path="debts/:id" element={<DebtDetailPage />} />
             <Route path="spaces" element={<PersonalOnlyRoute feature="spaces"><SpacesPage /></PersonalOnlyRoute>} />
             <Route path="spaces/:id" element={<PersonalOnlyRoute feature="spaces"><SpaceDetailPage /></PersonalOnlyRoute>} />
             <Route path="analytics" element={<AnalyticsPage />} />

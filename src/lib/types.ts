@@ -196,7 +196,9 @@ export type Transaction = {
 // `credit_card` is a LIABILITY account: `current_balance` stays the signed
 // asset-equivalent value (normally NEGATIVE = amount owed). Never read the sign
 // in a component — use cardDebt()/availableCredit() from src/lib/credit-card.ts.
-export type WealthAccountType = "bank" | "cash" | "space" | "credit_card"
+// `loan` (I owe) and `receivable` (owed to me) are debt accounts managed on
+// /debts; their terms live in debt_details (see Debt below).
+export type WealthAccountType = "bank" | "cash" | "space" | "credit_card" | "loan" | "receivable"
 
 export type WealthAccount = {
   id: string
@@ -259,6 +261,102 @@ export type CreditCardStatementView = {
   remaining: number
   status: "unpaid" | "partial" | "paid" | "overdue"
   daysToDue: number
+}
+
+// ── Debt & Loans ─────────────────────────────────────────────────────────────
+export type DebtDirection = "owed" | "receivable"
+export type DebtKind = "mortgage" | "personal" | "car" | "student" | "business" | "bnpl" | "overdraft" | "informal" | "other"
+export type DebtLifecycle = "active" | "paused" | "paid_off" | "refinanced" | "written_off"
+export type DebtStatus = DebtLifecycle | "overdue" | "due_soon"
+export type PaymentFrequency = "weekly" | "biweekly" | "monthly" | "quarterly" | "yearly" | "irregular"
+
+export type DebtFreeEstimate =
+  | { kind: "date"; date: string; periods: number; remainingInterest: number; assumedZeroRate: boolean }
+  | { kind: "unknown"; reason: "no_schedule" | "payment_too_small" | "no_balance" }
+
+// One debt as returned by /api/debts (the wealth account + its terms + derived facts).
+export type Debt = {
+  id: string
+  direction: DebtDirection
+  name: string
+  icon: string
+  logo_src?: string | null
+  brand_domain?: string
+  position?: number
+  archived_at: string | null
+  created_at: string
+  kind: DebtKind
+  counterparty: string
+  currency: string
+  /** Outstanding amount, always positive, in the debt's native currency. */
+  balance: number
+  balance_signed: number
+  original_amount: number | null
+  annual_rate_pct: number | null
+  rate_type: "fixed" | "variable" | null
+  payment_amount: number | null
+  payment_frequency: PaymentFrequency | null
+  payment_monthly: number
+  next_due_date: string | null
+  start_date: string | null
+  maturity_date: string | null
+  remaining_installments: number | null
+  balance_is_estimate: boolean
+  lifecycle: DebtLifecycle
+  status: DebtStatus
+  progress_pct: number | null
+  // remainingInterest is in cents (engine units); the UI converts.
+  estimate: DebtFreeEstimate
+  refinanced_into_account_id: string | null
+  closed_at: string | null
+  notes: string
+  updated_at: string
+}
+
+export type DebtPayment = {
+  id: string
+  wealth_account_id: string
+  transaction_id: string
+  group_id: string | null
+  date: string
+  total: number | string
+  principal: number | string
+  interest: number | string
+  fees: number | string
+  other: number | string
+  split_source: "entered" | "calculated" | "principal_only"
+  note: string
+  created_at: string
+}
+
+export type DebtsOverview = {
+  today: string
+  currency: string
+  debts: Debt[]
+  receivables: Debt[]
+  closed: Debt[]
+  summary: {
+    open_count: number
+    owed_by_currency: { currency: string; amount: number }[]
+    receivable_by_currency: { currency: string; amount: number }[]
+    required_monthly: number
+    month: { required: number; paid: number; remaining: number; overdue: number }
+    next_payment: { debt_id: string; name: string; date: string; amount: number; currency: string } | null
+    overdue_count: number
+    interest_this_month: number
+    debt_free_date: string | null
+    total_repaid: number
+    average_monthly_income: number
+    insights: { key: string; params: Record<string, string | number> }[]
+  }
+  upcoming: { debt_id: string; date: string; amount: number; paid: boolean; paid_amount: number }[]
+}
+
+export type DebtScheduleRow = { period: number; date: string; payment: number; interest: number; principal: number; balance: number }
+export type DebtDetailResponse = {
+  debt: Debt
+  payments: DebtPayment[]
+  schedule: { converges: boolean; total_interest: number; periods: number; assumed_zero_rate: boolean; rows: DebtScheduleRow[] } | null
 }
 
 // GET /api/wealth/accounts/:id/card

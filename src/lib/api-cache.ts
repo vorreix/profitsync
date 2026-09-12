@@ -174,6 +174,7 @@ export function policyFor(path: string): CachePolicy {
       "/api/calendar",
       "/api/flow",
       "/api/budgets",
+      "/api/debts",
       "/api/spending-budgets",
       "/api/trash",
       "/api/alerts",
@@ -216,6 +217,9 @@ export const MONEY_PREFIXES = [
   "/api/budgets",
   // Spending budgets carry live spend, so anything that moves money moves them.
   "/api/spending-budgets",
+  // A debt IS a wealth account, and its progress, status and debt-free date are
+  // all derived from the ledger — so every money move can change them.
+  "/api/debts",
   "/api/search",
   "/api/audit",
   "/api/trash",
@@ -234,6 +238,7 @@ const FANOUT: { match: RegExp; drop: string[] }[] = [
   { match: /^\/api\/wealth-accounts\b/, drop: MONEY_PREFIXES },
   { match: /^\/api\/spaces\b/, drop: MONEY_PREFIXES },
   { match: /^\/api\/cards\b/, drop: MONEY_PREFIXES },
+  { match: /^\/api\/debts\b/, drop: MONEY_PREFIXES },
   { match: /^\/api\/recurring\b/, drop: MONEY_PREFIXES },
   { match: /^\/api\/clients\b/, drop: [...MONEY_PREFIXES, "/api/quotations"] },
   { match: /^\/api\/trash\b/, drop: [...MONEY_PREFIXES, "/api/quotations"] },

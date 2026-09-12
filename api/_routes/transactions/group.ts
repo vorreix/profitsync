@@ -90,6 +90,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!account) return res.status(400).json({ error: "Select an active bank or cash account" })
     // A Space is a savings bucket — money only ever TRANSFERS in/out of it.
     if (account.type === "space") return res.status(400).json({ error: "You can't record a transaction on a Space — move money in or out with a transfer instead." })
+    // A debt's principal and interest have to be split, which only the debt's
+    // own payment route does — a raw transaction here would blur them.
+    if (account.type === "loan" || account.type === "receivable") return res.status(400).json({ error: "Record a payment from the debt's page instead — that keeps principal and interest apart." })
   }
 
   // Resolve the anchoring client (personal orgs use their hidden default client).

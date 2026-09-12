@@ -29,6 +29,7 @@ import {
   Gift,
   Landmark,
   PiggyBank,
+  HandCoins,
   Repeat,
   CalendarDays,
   Network,
@@ -94,6 +95,7 @@ function buildMoreItems(activeOrgId: string | undefined, accountType: AccountTyp
   const items: (MoreItem | false)[] = [
     accountTypeAllows(accountType, "members") && { labelKey: "nav.users", href: usersHref, icon: UserPlus },
     { labelKey: "nav.wealth", href: "/wealth", icon: Landmark },
+    { labelKey: "nav.debts", href: "/debts", icon: HandCoins },
     accountTypeAllows(accountType, "spaces") && { labelKey: "nav.spaces", href: "/spaces", icon: PiggyBank },
     { labelKey: "nav.analytics", href: "/analytics", icon: ChartColumn },
     { labelKey: "nav.categoryTags", href: "/categories", icon: Tag },

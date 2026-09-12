@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { and, asc, count, eq, isNull, ne, sql } from "drizzle-orm"
+import { and, asc, count, eq, isNull, notInArray, sql } from "drizzle-orm"
 import { db, serialize } from "../../../src/lib/db/index.js"
 import { transactions, wealthAccounts } from "../../../src/lib/db/schema.js"
 import { canWrite, requireAuth } from "../../_lib/auth.js"
@@ -104,7 +104,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // spendable account here (transaction pickers, transfer wizard, wealth list).
       // The server's transaction guard is the real boundary; this keeps them out of
       // every account UI in one place. Net worth re-adds the Spaces total on /wealth.
-      .where(and(eq(wealthAccounts.organizationId, orgId), ne(wealthAccounts.type, "space")))
+      // Debts (loan / receivable) are managed on /debts; like Spaces they are not
+      // spendable accounts and stay out of every picker. Net worth adds them back.
+      .where(and(eq(wealthAccounts.organizationId, orgId), notInArray(wealthAccounts.type, ["space", "loan", "receivable"])))
       .groupBy(wealthAccounts.id)
       // Active before archived, then the user's drag-to-reorder order
       // (`position`), falling back to creation order for ties (so never-reordered
