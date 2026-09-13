@@ -2142,7 +2142,11 @@
       "week": "week",
       "month": "month",
       "year": "year"
-    }
+    },
+    "perMonthOut": "Out each month",
+    "perMonthIn": "In each month",
+    "notRunning_one": "{{count}} payment isn't being created",
+    "notRunning_other": "{{count}} payments aren't being created"
   },
   "calendar": {
     "title": "Calendar",
@@ -2235,7 +2239,12 @@
     "kindPeriod": "Period",
     "kindWorkspace": "Workspace",
     "splitAccounts": "Split · {{count}} accounts",
-    "unassignedAccount": "Unassigned"
+    "unassignedAccount": "Unassigned",
+    "clearFrom": "Clear the start date",
+    "clearTo": "Clear the end date",
+    "earlierPeriods_one": "{{count}} earlier period",
+    "earlierPeriods_other": "{{count}} earlier periods",
+    "loadEarlier": "Load earlier"
   },
   "spaces": {
     "title": "Spaces",

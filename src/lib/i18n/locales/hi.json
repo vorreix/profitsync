@@ -1765,7 +1765,11 @@
     "debtRuleEnded": "यह कुछ भी चुकाने से पहले ही समाप्त हो जाता है।",
     "debtAlreadyLinked": "यह पहले से किसी और कर्ज़ को चुका रहा है। पहले वहाँ से अनलिंक करें।",
     "debtHasPending": "कुछ भुगतान अभी दर्ज होने बाकी हैं। पहले इस भुगतान को खोलकर उन्हें पूरा होने दें।",
-    "categoryRequired": "एक श्रेणी चुनें — इससे बनने वाले हर भुगतान पर यही लगेगी।"
+    "categoryRequired": "एक श्रेणी चुनें — इससे बनने वाले हर भुगतान पर यही लगेगी।",
+    "perMonthOut": "हर महीने जाने वाला",
+    "perMonthIn": "हर महीने आने वाला",
+    "notRunning_one": "{{count}} भुगतान नहीं बन रहा",
+    "notRunning_other": "{{count}} भुगतान नहीं बन रहे"
   },
   "calendar": {
     "title": "कैलेंडर",
@@ -1858,7 +1862,12 @@
     "kindPeriod": "अवधि",
     "kindWorkspace": "वर्कस्पेस",
     "splitAccounts": "विभाजित · {{count}} खाते",
-    "unassignedAccount": "अनिर्धारित"
+    "unassignedAccount": "अनिर्धारित",
+    "clearFrom": "आरंभ तिथि हटाएँ",
+    "clearTo": "समाप्ति तिथि हटाएँ",
+    "earlierPeriods_one": "{{count}} पिछली अवधि",
+    "earlierPeriods_other": "{{count}} पिछली अवधियाँ",
+    "loadEarlier": "पिछले लोड करें"
   },
   "spaces": {
     "title": "स्पेस",

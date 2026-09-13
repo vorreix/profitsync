@@ -38,6 +38,7 @@ import { BusinessBudgetCard } from "@/components/budget/BusinessBudgetCard"
 import { BudgetsCard } from "@/components/budget/BudgetsCard"
 import { SummaryCard } from "@/components/dashboard/SummaryCard"
 import { DebtsCard } from "@/components/debts/DebtsCard"
+import { RecurringCard } from "@/components/recurring/RecurringCard"
 import { SpacesCard } from "@/components/spaces/SpacesCard"
 import { FeatureHelp } from "@/components/help/FeatureHelp"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -150,6 +151,7 @@ const CARD_SPANS: Record<DashboardCardId, string> = {
   budget: "lg:col-span-6",
   wealth: SUMMARY_SPAN,
   debts: SUMMARY_SPAN,
+  recurring: SUMMARY_SPAN,
   spaces: SUMMARY_SPAN,
   flow: SUMMARY_SPAN,
   chart: "lg:col-span-4",
@@ -163,6 +165,7 @@ const CARD_LABEL_KEYS: Record<DashboardCardId, string> = {
   // The nav labels: the same words the sidebar uses for the same places, and
   // already translated everywhere.
   debts: "nav.debts",
+  recurring: "nav.recurring",
   spaces: "nav.spaces",
   flow: "flow.card",
   chart: "dashboard.cardChart",
@@ -628,7 +631,9 @@ function WealthOverview({
   return (
     <SummaryCard
       icon={<Wallet className="size-4" aria-hidden />}
-      title={t("wealth.title")}
+      // The name of the PLACE it opens — the sidebar and the page itself both
+      // say "Wealth & Cards", and this card carries the card count too.
+      title={t("nav.wealth")}
       count={active.length}
       headline={formatMoney(total, currency, balancesVisible)}
       // Card debt is money that has to go back out — the one figure here that
@@ -1193,6 +1198,9 @@ export function Dashboard() {
     // hidden card costs nothing at all, because a hidden card is never
     // rendered and therefore never mounts its query.
     debts: <DebtsCard />,
+    // Same contract as the debts card: its own cached read, and null when the
+    // workspace has nothing scheduled and this user could not add one anyway.
+    recurring: <RecurringCard />,
     // Personal only, and not merely by taste: GET /api/spaces answers 403 for a
     // non-personal workspace, so a card here would be a guaranteed failed
     // request on every business dashboard load. null takes it out of the grid
