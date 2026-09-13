@@ -1765,7 +1765,11 @@
     "debtRuleEnded": "Finisce prima di poter pagare qualcosa.",
     "debtAlreadyLinked": "Questo pagamento rimborsa già un altro debito. Scollegalo prima da lì.",
     "debtHasPending": "Ci sono pagamenti ancora da registrare. Apri questo pagamento e lasciali passare prima.",
-    "categoryRequired": "Scegli una categoria — ogni pagamento creato la porterà con sé."
+    "categoryRequired": "Scegli una categoria — ogni pagamento creato la porterà con sé.",
+    "perMonthOut": "In uscita ogni mese",
+    "perMonthIn": "In entrata ogni mese",
+    "notRunning_one": "{{count}} pagamento non viene creato",
+    "notRunning_other": "{{count}} pagamenti non vengono creati"
   },
   "calendar": {
     "title": "Calendario",
@@ -1858,7 +1862,9 @@
     "kindPeriod": "Periodo",
     "kindWorkspace": "Spazio di lavoro",
     "splitAccounts": "Diviso · {{count}} conti",
-    "unassignedAccount": "Non assegnato"
+    "unassignedAccount": "Non assegnato",
+    "clearFrom": "Cancella la data iniziale",
+    "clearTo": "Cancella la data finale"
   },
   "spaces": {
     "title": "Spazi",

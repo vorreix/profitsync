@@ -10,7 +10,7 @@
 // normalizeCtx only ever adds to `order`, never to `hidden`, so a card that
 // should not be seen has to say so by rendering null (see Dashboard.tsx
 // `cardNodes`), not by shipping hidden.
-export const DASHBOARD_CARD_IDS = ["kpis", "budget", "wealth", "debts", "spaces", "flow", "chart", "breakdown", "latest"] as const
+export const DASHBOARD_CARD_IDS = ["kpis", "budget", "wealth", "debts", "recurring", "spaces", "flow", "chart", "breakdown", "latest"] as const
 export type DashboardCardId = (typeof DASHBOARD_CARD_IDS)[number]
 
 export type DashboardContext = "personal" | "business"

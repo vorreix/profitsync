@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { applyExtraLeaves, buildFlowGraph, buildTimelineGraph, collapseLegs, groupKeyId, logicalCount, type FlowData, type FlowLeaf, type TimelineData } from "./money-flow"
+import { applyExtraLeaves, buildFlowGraph, buildTimelineGraph, collapseLegs, graphBounds, groupKeyId, logicalCount, type FlowData, type FlowLeaf, type TimelineData } from "./money-flow"
 
 function leaf(id: string, amount = 100): FlowData["groups"][number]["leaves"][number] {
   return { id, type: "incoming", amount, description: "x", category: "Sales", date: "2026-06-01" }
@@ -269,5 +269,30 @@ describe("buildTimelineGraph", () => {
     const final = edges.find((e) => e.data.kind === "final")!
     expect(final.target).toBe("final")
     expect(final.data.inWidth).toBeGreaterThan(0)
+  })
+})
+
+describe("graphBounds", () => {
+  it("is zero for an empty graph", () => {
+    expect(graphBounds([])).toEqual({ width: 0, height: 0 })
+  })
+
+  it("covers the node bodies, not just their origins", () => {
+    // One node at the origin still occupies its own card.
+    const { width, height } = graphBounds([{ type: "tlperiod", position: { x: 0, y: 0 } }])
+    expect(width).toBeGreaterThan(0)
+    expect(height).toBeGreaterThan(0)
+  })
+
+  it("grows with the timeline it measures — the reason the zoom floor is dynamic", () => {
+    const short = graphBounds(buildTimelineGraph(TIMELINE, new Set()).nodes)
+    const many: TimelineData = {
+      ...TIMELINE,
+      periods: Array.from({ length: 120 }, (_, i) => ({ ...TIMELINE.periods[0], key: `2026-01-${String(i + 1).padStart(2, "0")}` })),
+    }
+    const long = graphBounds(buildTimelineGraph(many, new Set()).nodes)
+    expect(long.width).toBeGreaterThan(short.width * 10)
+    // A chain is wide, not tall: the height is one card either way.
+    expect(long.height).toBe(short.height)
   })
 })

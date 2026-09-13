@@ -241,14 +241,28 @@ export function DebtsPage() {
 
       {tab === "debts" && (
         <div className="space-y-6">
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {data.debts.filter((d) => d.lifecycle === "active" || d.lifecycle === "paused").map((d) => <DebtCard key={d.id} debt={d} onOpen={() => openDebt(d.id)} balancesVisible={balancesVisible} />)}
-            {data.debts.filter((d) => d.lifecycle !== "active" && d.lifecycle !== "paused").map((d) => <DebtCard key={d.id} debt={d} onOpen={() => openDebt(d.id)} balancesVisible={balancesVisible} />)}
-          </div>
+          {/* Every section says HOW MANY it holds, so the page answers "how many
+              debts do I have" without counting cards by eye — and the three
+              counts add up to everything this tab holds. */}
+          {data.debts.length > 0 && (
+            <section className="space-y-3">
+              <h2 className="text-sm font-semibold">
+                {t("tabs.debts")} <span className="tabular-nums text-muted-foreground">({data.debts.length})</span>
+                {" "}<span className="tabular-nums text-muted-foreground">· {formatByCurrency(s.owed_by_currency, balancesVisible) || money(0)}</span>
+              </h2>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {data.debts.filter((d) => d.lifecycle === "active" || d.lifecycle === "paused").map((d) => <DebtCard key={d.id} debt={d} onOpen={() => openDebt(d.id)} balancesVisible={balancesVisible} />)}
+                {data.debts.filter((d) => d.lifecycle !== "active" && d.lifecycle !== "paused").map((d) => <DebtCard key={d.id} debt={d} onOpen={() => openDebt(d.id)} balancesVisible={balancesVisible} />)}
+              </div>
+            </section>
+          )}
           {data.receivables.length > 0 && (
             <section className="space-y-3">
               <div>
-                <h2 className="text-sm font-semibold">{t("receivablesTitle")} <span className="text-muted-foreground tabular-nums">· {formatByCurrency(s.receivable_by_currency, balancesVisible)}</span></h2>
+                <h2 className="text-sm font-semibold">
+                  {t("receivablesTitle")} <span className="tabular-nums text-muted-foreground">({data.receivables.length})</span>
+                  {" "}<span className="tabular-nums text-muted-foreground">· {formatByCurrency(s.receivable_by_currency, balancesVisible)}</span>
+                </h2>
                 <p className="text-xs text-muted-foreground">{t("receivablesHint")}</p>
               </div>
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">

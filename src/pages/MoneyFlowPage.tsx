@@ -63,6 +63,7 @@ import {
   applyExtraLeaves,
   buildFlowGraph,
   buildTimelineGraph,
+  graphBounds,
   groupKeyId,
   type FlowData,
   type FlowEdgeData,
@@ -726,7 +727,63 @@ function NodeDetailModal({ detail, onClose }: { detail: NodeDetail; onClose: () 
   )
 }
 
+/**
+ * One end of the date range.
+ *
+ * A native `<input type="date">` has no way back to empty once a date is in it:
+ * the picker can only pick a day, and on a phone there is no keyboard path to
+ * the field at all — so a range set by accident was permanent until the whole
+ * filter set was cleared. The × does that one job, and only appears when there
+ * is something to clear. It sits INSIDE the field but clear of the browser's
+ * own calendar button (which keeps working, and is the only way to open the
+ * picker on desktop), with the text padded so a long date never runs under it.
+ */
+function DateFilterField({
+  id, label, clearLabel, value, min, max, onChange,
+}: {
+  id: string
+  label: string
+  clearLabel: string
+  value: string
+  min?: string
+  max?: string
+  onChange: (next: string) => void
+}) {
+  return (
+    <div className="space-y-1">
+      <Label htmlFor={id} className="text-[11px] text-muted-foreground">{label}</Label>
+      <div className="relative">
+        <Input
+          id={id}
+          type="date"
+          value={value}
+          min={min}
+          max={max}
+          onChange={(e) => onChange(e.target.value)}
+          className={cn("h-9", value && "pe-14")}
+        />
+        {value && (
+          <button
+            type="button"
+            onClick={() => onChange("")}
+            aria-label={clearLabel}
+            title={clearLabel}
+            className="absolute end-7 top-1/2 grid size-7 -translate-y-1/2 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <X className="size-3.5" aria-hidden />
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
 const GROUP_BYS: GroupBy[] = ["account", "client", "category"]
+
+/** The zoom floor for an ordinary graph — and the ceiling on the computed one. */
+const BASE_MIN_ZOOM = 0.2
+/** Past this, a card is a few pixels: further out stops being a view of anything. */
+const ABSOLUTE_MIN_ZOOM = 0.02
 
 // ── Session persistence ──────────────────────────────────────────────────────
 type SavedFlowState = {
@@ -907,11 +964,48 @@ export function MoneyFlowPage() {
 
   const flowRef = useRef<ReactFlowInstance<Node, Edge> | null>(null)
 
+  // ── How far out may you zoom? As far as the graph needs. ───────────────────
+  // A fixed floor cannot serve both shapes this canvas draws. A grouped map is
+  // a couple of thousand pixels wide; a timeline bucketed by DAY over a year is
+  // ~120,000 — at the old flat 0.2 the two ends were simply unreachable, and
+  // "fit view" silently framed a slice of the chain because fitView clamps to
+  // minZoom too. So the floor is derived from the content: low enough that the
+  // whole graph always fits with room to spare, never lower than that (zooming
+  // out into empty space is not a feature), and never HIGHER than the old 0.2,
+  // which stays the limit for ordinary graphs.
+  const [canvasSize, setCanvasSize] = useState({ w: 0, h: 0 })
+  const [graphSize, setGraphSize] = useState({ width: 0, height: 0 })
+  const canvasRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    const el = canvasRef.current
+    if (!el || typeof ResizeObserver === "undefined") return
+    const ro = new ResizeObserver((entries) => {
+      const r = entries[0]?.contentRect
+      if (!r) return
+      setCanvasSize((prev) => (Math.abs(prev.w - r.width) < 1 && Math.abs(prev.h - r.height) < 1 ? prev : { w: r.width, h: r.height }))
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  const minZoom = useMemo(() => {
+    const { w, h } = canvasSize
+    if (!w || !h || !graphSize.width || !graphSize.height) return BASE_MIN_ZOOM
+    // The same 20% padding fitView uses, plus a little slack so the outermost
+    // nodes are never flush against the edge at the very limit.
+    const fit = Math.min(w / (graphSize.width * 1.2), h / (graphSize.height * 1.2))
+    return Math.min(BASE_MIN_ZOOM, Math.max(ABSOLUTE_MIN_ZOOM, fit * 0.9))
+  }, [canvasSize, graphSize])
+  // Read by the imperative fits below, which must not re-run when it changes.
+  const minZoomRef = useRef(minZoom)
+  minZoomRef.current = minZoom
+  const fitOptions = useMemo(() => ({ padding: 0.2, maxZoom: 1, minZoom }), [minZoom])
+
   useEffect(() => {
     let raf = 0
     const onResize = () => {
       cancelAnimationFrame(raf)
-      raf = requestAnimationFrame(() => flowRef.current?.fitView({ padding: 0.2, maxZoom: 1 }))
+      raf = requestAnimationFrame(() => flowRef.current?.fitView({ padding: 0.2, maxZoom: 1, minZoom: minZoomRef.current }))
     }
     window.addEventListener("resize", onResize)
     return () => { window.removeEventListener("resize", onResize); cancelAnimationFrame(raf) }
@@ -1173,6 +1267,10 @@ export function MoneyFlowPage() {
     })
     setNodes(rf)
     setEdges(built.edges.map((e) => ({ ...e, type: "flow" })) as Edge[])
+    // Measured from the BUILT graph (positions included user drags above), once
+    // per structural change — not on every drag frame, which would rewrite the
+    // zoom floor mid-gesture.
+    setGraphSize(graphBounds(rf))
     // eslint-disable-next-line react-hooks/exhaustive-deps -- structuralKey is the intentional trigger
   }, [structuralKey])
 
@@ -1180,7 +1278,7 @@ export function MoneyFlowPage() {
   useEffect(() => {
     if (dataVersion === 0) return
     if (skipNextFit.current) { skipNextFit.current = false; return }
-    const id = requestAnimationFrame(() => flowRef.current?.fitView({ padding: 0.2, maxZoom: 1, duration: 400 }))
+    const id = requestAnimationFrame(() => flowRef.current?.fitView({ padding: 0.2, maxZoom: 1, minZoom: minZoomRef.current, duration: 400 }))
     return () => cancelAnimationFrame(id)
   }, [dataVersion])
 
@@ -1265,14 +1363,22 @@ export function MoneyFlowPage() {
       <div className="space-y-2">
         <Label className="text-xs font-medium text-muted-foreground">{t("flow.dateRange")}</Label>
         <div className="grid grid-cols-2 gap-2">
-          <div className="space-y-1">
-            <Label htmlFor="flow-from" className="text-[11px] text-muted-foreground">{t("flow.from")}</Label>
-            <Input id="flow-from" type="date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} className="h-9" />
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="flow-to" className="text-[11px] text-muted-foreground">{t("flow.to")}</Label>
-            <Input id="flow-to" type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} className="h-9" />
-          </div>
+          <DateFilterField
+            id="flow-from"
+            label={t("flow.from")}
+            clearLabel={t("flow.clearFrom")}
+            value={from}
+            max={to || undefined}
+            onChange={setFrom}
+          />
+          <DateFilterField
+            id="flow-to"
+            label={t("flow.to")}
+            clearLabel={t("flow.clearTo")}
+            value={to}
+            min={from || undefined}
+            onChange={setTo}
+          />
         </div>
       </div>
       <MultiCheck label={t("flow.categories")} searchPlaceholder={t("flow.searchCategories")} options={catOptions} selected={selCats} onChange={setSelCats} />
@@ -1363,7 +1469,7 @@ export function MoneyFlowPage() {
       </div>
 
       {/* ps-flow scopes the node transform-transition + canvas theming */}
-      <div className="ps-flow relative mt-4 min-h-0 flex-1 overflow-hidden rounded-3xl border bg-muted/20 shadow-inner">
+      <div ref={canvasRef} className="ps-flow relative mt-4 min-h-0 flex-1 overflow-hidden rounded-3xl border bg-muted/20 shadow-inner">
         {empty ? (
           <div className="flex h-full flex-col items-center justify-center gap-3 text-center text-muted-foreground">
             <span className="grid size-14 place-items-center rounded-2xl bg-muted/60"><Sparkles className="size-7 opacity-50" /></span>
@@ -1395,8 +1501,8 @@ export function MoneyFlowPage() {
                 edgeTypes={EDGE_TYPES}
                 colorMode={colorMode}
                 {...(savedViewport.current ? { defaultViewport: savedViewport.current } : { fitView: true })}
-                fitViewOptions={{ padding: 0.2, maxZoom: 1 }}
-                minZoom={0.2}
+                fitViewOptions={fitOptions}
+                minZoom={minZoom}
                 maxZoom={1.5}
                 nodeDragThreshold={3}
                 nodesDraggable
@@ -1406,7 +1512,9 @@ export function MoneyFlowPage() {
                 defaultEdgeOptions={{ type: "flow" }}
               >
                 <Background variant={BackgroundVariant.Dots} gap={26} size={1.5} />
-                <Controls showInteractive={false} className="!rounded-xl !border !shadow-lg" />
+                {/* The fit button must be allowed the same floor, or it frames
+                    a slice of a long timeline and calls it "fit". */}
+                <Controls showInteractive={false} fitViewOptions={fitOptions} className="!rounded-xl !border !shadow-lg" />
                 {!isMobile && (
                   <MiniMap
                     pannable

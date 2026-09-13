@@ -131,6 +131,45 @@ const GROUP_GAP = 40 // breathing room between group blocks
 const LEAF_V = 80 // vertical pitch of a stacked leaf
 const SPLIT_LEG_H = 22 // extra height an expanded split reserves per leg row
 const ROOT_H = 232
+const TL_COL_W = 320 // horizontal pitch of the timeline chain
+const TL_PERIOD_H = 200 // a period card's vertical footprint
+
+/**
+ * How much canvas each node type actually occupies, for measuring the graph.
+ * These mirror the rendered cards (the same numbers the layout above spaces
+ * things by), so the bounds are known the moment the graph is built — before
+ * React Flow has measured a single DOM node.
+ */
+const NODE_SIZE: Record<FlowNodeType, { w: number; h: number }> = {
+  root: { w: 300, h: ROOT_H },
+  branch: { w: 300, h: GROUP_H },
+  leaf: { w: LEAF_W, h: 64 },
+  more: { w: LEAF_W, h: 56 },
+  tlperiod: { w: 280, h: TL_PERIOD_H },
+  tlfinal: { w: 280, h: ROOT_H },
+}
+
+/**
+ * The bounding box of a built graph, in canvas units.
+ *
+ * The page turns this into the LOWEST zoom worth allowing: a timeline bucketed
+ * by day over a long range is tens of thousands of pixels wide, and a fixed
+ * minimum zoom (0.2) simply cannot show both ends of it — you pan forever and
+ * never see the shape. Empty graph → a zero box, which the caller reads as "no
+ * constraint".
+ */
+export function graphBounds(nodes: { type?: string; position: { x: number; y: number } }[]): { width: number; height: number } {
+  if (nodes.length === 0) return { width: 0, height: 0 }
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+  for (const n of nodes) {
+    const size = NODE_SIZE[n.type as FlowNodeType] ?? { w: 280, h: 160 }
+    minX = Math.min(minX, n.position.x)
+    minY = Math.min(minY, n.position.y)
+    maxX = Math.max(maxX, n.position.x + size.w)
+    maxY = Math.max(maxY, n.position.y + size.h)
+  }
+  return { width: Math.max(0, maxX - minX), height: Math.max(0, maxY - minY) }
+}
 
 /** Extra vertical space an expanded split leaf needs for its inline legs. */
 const splitExtra = (leaf: FlowLeaf | undefined, expandedSplit?: string | null): number =>
@@ -287,8 +326,6 @@ export function buildFlowGraph(data: FlowData, state: CollapseState): { nodes: F
 // sits in its own column; expanding a period stacks its leaves directly below
 // it (they don't push the chain — the row stays readable). The final entity is
 // one column past the last period.
-const TL_COL_W = 320
-const TL_PERIOD_H = 200
 
 export function buildTimelineGraph(data: TimelineData, expandedPeriods: Set<string>, expandedSplit?: string | null): { nodes: FlowNode[]; edges: FlowEdge[] } {
   const nodes: FlowNode[] = []
