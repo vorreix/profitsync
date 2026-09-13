@@ -36,6 +36,8 @@ import { CardChip } from "@/components/cards/CardChip"
 import { WealthAccountIcon } from "@/components/WealthAccountIcon"
 import { BusinessBudgetCard } from "@/components/budget/BusinessBudgetCard"
 import { BudgetsCard } from "@/components/budget/BudgetsCard"
+import { DebtsCard } from "@/components/debts/DebtsCard"
+import { SpacesCard } from "@/components/spaces/SpacesCard"
 import { FeatureHelp } from "@/components/help/FeatureHelp"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { FitText } from "@/components/FitText"
@@ -135,6 +137,10 @@ const CARD_SPANS: Record<DashboardCardId, string> = {
   kpis: "lg:col-span-5",
   budget: "lg:col-span-5",
   wealth: "lg:col-span-5",
+  // Full rows, not a 3+2 pair: a span cannot vary by workspace type, and Spaces
+  // is null on business — the pair would leave a permanent 2/5 hole there.
+  debts: "lg:col-span-5",
+  spaces: "lg:col-span-5",
   flow: "lg:col-span-5",
   chart: "lg:col-span-3",
   breakdown: "lg:col-span-2",
@@ -144,6 +150,10 @@ const CARD_LABEL_KEYS: Record<DashboardCardId, string> = {
   kpis: "dashboard.cardKpis",
   budget: "dashboard.cardBudget",
   wealth: "dashboard.cardWealth",
+  // The nav labels: the same words the sidebar uses for the same places, and
+  // already translated everywhere.
+  debts: "nav.debts",
+  spaces: "nav.spaces",
   flow: "flow.card",
   chart: "dashboard.cardChart",
   breakdown: "dashboard.cardBreakdown",
@@ -1196,6 +1206,16 @@ export function Dashboard() {
     // keeps the own-company spend cap card (client caps are a separate concept).
     budget: isPersonal ? <BudgetsCard /> : ownClient ? <BusinessBudgetCard clientId={ownClient.id} clientName={ownClient.name} /> : null,
     wealth: <WealthOverview accounts={wealthAccounts} loading={loading} currency={currency} />,
+    // Both fetch their own body through the shared cache, so arriving from
+    // /debts or /spaces costs no request and paints with no skeleton — and a
+    // hidden card costs nothing at all, because a hidden card is never
+    // rendered and therefore never mounts its query.
+    debts: <DebtsCard />,
+    // Personal only, and not merely by taste: GET /api/spaces answers 403 for a
+    // non-personal workspace, so a card here would be a guaranteed failed
+    // request on every business dashboard load. null takes it out of the grid
+    // AND out of the customise list.
+    spaces: isPersonal ? <SpacesCard /> : null,
     // Lightweight teaser (no React Flow on the dashboard — keeps it fast): a
     // tiny connected revenue→net→expenses preview that opens the full map.
     flow: (
@@ -1357,6 +1377,8 @@ export function Dashboard() {
     latest: <LatestTransactionsCard transactions={latestTx} loading={loading} currency={currency} showClient={!isPersonal} onSelect={setPeekTx} cardFor={cardMap.forTx} />,
   }
   const visibleCards = layout.order.filter((id) => !layout.hidden.includes(id) && cardNodes[id] !== null)
+  // Same test: a card that renders nothing here is not something to offer back.
+  const hiddenCards = layout.hidden.filter((id) => cardNodes[id] !== null)
 
   return (
     <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
@@ -1454,11 +1476,15 @@ export function Dashboard() {
         </div>
       </div>
 
-      {/* Hidden cards (edit mode): tap to bring one back */}
-      {editMode && layout.hidden.length > 0 && (
+      {/* Hidden cards (edit mode): tap to bring one back.
+          Only ones that would actually come back — `visibleCards` already drops
+          a card whose node is null, so without the same test here a workspace
+          could offer a chip that adds nothing (hide Spaces on a personal
+          workspace, switch to a business one, and there it was). */}
+      {editMode && hiddenCards.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-dashed p-2.5">
           <span className="text-xs font-medium text-muted-foreground">{t("dashboard.hiddenCards")}</span>
-          {layout.hidden.map((id) => (
+          {hiddenCards.map((id) => (
             <button
               key={id}
               type="button"
