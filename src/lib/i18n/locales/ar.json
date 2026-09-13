@@ -1892,7 +1892,14 @@
     "splitAccounts": "مقسّم · {{count}} حسابات",
     "unassignedAccount": "غير مُعيّن",
     "clearFrom": "مسح تاريخ البداية",
-    "clearTo": "مسح تاريخ النهاية"
+    "clearTo": "مسح تاريخ النهاية",
+    "earlierPeriods_zero": "لا توجد فترات سابقة",
+    "earlierPeriods_one": "فترة سابقة واحدة",
+    "earlierPeriods_two": "فترتان سابقتان",
+    "earlierPeriods_few": "{{count}} فترات سابقة",
+    "earlierPeriods_many": "{{count}} فترة سابقة",
+    "earlierPeriods_other": "{{count}} فترة سابقة",
+    "loadEarlier": "تحميل الفترات السابقة"
   },
   "spaces": {
     "title": "مساحات الادخار",

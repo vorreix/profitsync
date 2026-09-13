@@ -1864,7 +1864,10 @@
     "splitAccounts": "பிரிப்பு · {{count}} கணக்குகள்",
     "unassignedAccount": "ஒதுக்கப்படவில்லை",
     "clearFrom": "தொடக்க நாளை அழி",
-    "clearTo": "முடிவு நாளை அழி"
+    "clearTo": "முடிவு நாளை அழி",
+    "earlierPeriods_one": "{{count}} முந்தைய காலம்",
+    "earlierPeriods_other": "{{count}} முந்தைய காலங்கள்",
+    "loadEarlier": "முந்தையவற்றை ஏற்று"
   },
   "spaces": {
     "title": "ஸ்பேஸ்கள்",

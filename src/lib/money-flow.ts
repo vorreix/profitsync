@@ -76,12 +76,17 @@ export type TimelineData = {
   range: { from: string; to: string }
   periods: TimelinePeriod[]
   final: { label: string; total_in: number; total_out: number; total_net: number; balance: number }
+  /** Periods in the whole range — `periods` holds only the newest window of it. */
+  period_total?: number
+  period_limit?: number
+  /** There are older periods the chain is not drawing yet. */
+  has_more_periods?: boolean
 }
 
 // NB: "group" is a RESERVED React Flow built-in node type (it ships default
 // background/border/width styling for `.react-flow__node-group`). We call ours
 // "branch" so RF doesn't paint a ghost box behind our card or clamp its width.
-export type FlowNodeType = "root" | "branch" | "leaf" | "more" | "tlperiod" | "tlfinal"
+export type FlowNodeType = "root" | "branch" | "leaf" | "more" | "tlperiod" | "tlfinal" | "tlolder"
 
 export type FlowNode = {
   id: string
@@ -147,6 +152,7 @@ const NODE_SIZE: Record<FlowNodeType, { w: number; h: number }> = {
   more: { w: LEAF_W, h: 56 },
   tlperiod: { w: 280, h: TL_PERIOD_H },
   tlfinal: { w: 280, h: ROOT_H },
+  tlolder: { w: 236, h: 96 },
 }
 
 /**
@@ -370,6 +376,21 @@ export function buildTimelineGraph(data: TimelineData, expandedPeriods: Set<stri
       }
     }
   })
+
+  // The chain draws the NEWEST window of the range. When older periods exist,
+  // it opens with a card saying so — at the far left, where the timeline
+  // already reads "earlier", rather than as a control somewhere in the chrome.
+  if (data.has_more_periods && data.periods.length > 0) {
+    const first = data.periods[0]
+    const remaining = Math.max(0, (data.period_total ?? 0) - data.periods.length)
+    nodes.push({ id: "older", type: "tlolder", position: { x: -TL_COL_W, y: (TL_PERIOD_H - 96) / 2 }, data: { remaining, bucket: data.bucket } })
+    edges.push({
+      id: "e:older-first",
+      source: "older",
+      target: `p:${first.key}`,
+      data: { income: 0, expense: 0, inWidth: 0, outWidth: 0, kind: "more", animated: false },
+    })
+  }
 
   // Final entity node at the end of the chain.
   const finalX = data.periods.length * TL_COL_W

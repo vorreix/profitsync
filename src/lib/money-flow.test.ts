@@ -296,3 +296,22 @@ describe("graphBounds", () => {
     expect(long.height).toBe(short.height)
   })
 })
+
+describe("buildTimelineGraph — windowed range", () => {
+  it("opens the chain with a load-earlier card when older periods exist", () => {
+    const windowed: TimelineData = { ...TIMELINE, period_total: 90, has_more_periods: true }
+    const { nodes, edges } = buildTimelineGraph(windowed, new Set())
+    const older = nodes.find((n) => n.type === "tlolder")
+    expect(older).toBeTruthy()
+    // It says how many are NOT drawn, and sits to the left of the first period.
+    expect(older!.data.remaining).toBe(88)
+    expect(older!.position.x).toBeLessThan(nodes.find((n) => n.type === "tlperiod")!.position.x)
+    expect(edges.some((e) => e.source === "older")).toBe(true)
+  })
+
+  it("has no such card when the whole range is drawn", () => {
+    expect(buildTimelineGraph(TIMELINE, new Set()).nodes.some((n) => n.type === "tlolder")).toBe(false)
+    const exact: TimelineData = { ...TIMELINE, period_total: TIMELINE.periods.length, has_more_periods: false }
+    expect(buildTimelineGraph(exact, new Set()).nodes.some((n) => n.type === "tlolder")).toBe(false)
+  })
+})

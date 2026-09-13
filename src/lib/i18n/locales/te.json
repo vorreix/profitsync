@@ -1864,7 +1864,10 @@
     "splitAccounts": "విభజన · {{count}} ఖాతాలు",
     "unassignedAccount": "కేటాయించబడలేదు",
     "clearFrom": "ప్రారంభ తేదీని తొలగించు",
-    "clearTo": "ముగింపు తేదీని తొలగించు"
+    "clearTo": "ముగింపు తేదీని తొలగించు",
+    "earlierPeriods_one": "{{count}} మునుపటి కాలం",
+    "earlierPeriods_other": "{{count}} మునుపటి కాలాలు",
+    "loadEarlier": "మునుపటివి లోడ్ చేయి"
   },
   "spaces": {
     "title": "స్పేస్‌లు",

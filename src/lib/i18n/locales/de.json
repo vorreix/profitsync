@@ -1864,7 +1864,10 @@
     "splitAccounts": "Aufgeteilt · {{count}} Konten",
     "unassignedAccount": "Nicht zugewiesen",
     "clearFrom": "Startdatum löschen",
-    "clearTo": "Enddatum löschen"
+    "clearTo": "Enddatum löschen",
+    "earlierPeriods_one": "{{count}} früherer Zeitraum",
+    "earlierPeriods_other": "{{count}} frühere Zeiträume",
+    "loadEarlier": "Frühere laden"
   },
   "spaces": {
     "title": "Sparräume",

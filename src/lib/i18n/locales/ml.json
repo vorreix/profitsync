@@ -1864,7 +1864,10 @@
     "splitAccounts": "വിഭജിച്ചത് · {{count}} അക്കൗണ്ടുകൾ",
     "unassignedAccount": "നിയോഗിക്കാത്തത്",
     "clearFrom": "ആരംഭ തീയതി മായ്ക്കുക",
-    "clearTo": "അവസാന തീയതി മായ്ക്കുക"
+    "clearTo": "അവസാന തീയതി മായ്ക്കുക",
+    "earlierPeriods_one": "{{count}} മുൻ കാലയളവ്",
+    "earlierPeriods_other": "{{count}} മുൻ കാലയളവുകൾ",
+    "loadEarlier": "മുൻപുള്ളവ കാണിക്കുക"
   },
   "spaces": {
     "title": "സ്‌പേസുകൾ",

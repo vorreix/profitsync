@@ -5,8 +5,13 @@
 // fast-path; ALWAYS normalized against the registry on read so unknown ids
 // (from older/newer app versions) drop out and new cards appear at the end.
 
-// Order here is the default for a FRESH layout only. Anyone with a saved one
-// keeps their arrangement and gets new cards appended at the end, visible —
+// Order here is the default, and it is also where a NEW card lands on a layout
+// somebody already arranged: normalizeCtx slots a missing card in beside the
+// neighbour it has here, rather than dropping it at the bottom. A card added
+// between two hub summaries belongs between them — appended at the end it sits
+// under the transaction list, which is not where anyone would look for it, and
+// nobody re-arranges a dashboard to find out.
+//
 // normalizeCtx only ever adds to `order`, never to `hidden`, so a card that
 // should not be seen has to say so by rendering null (see Dashboard.tsx
 // `cardNodes`), not by shipping hidden.
@@ -38,7 +43,19 @@ export function normalizeCtx(raw: unknown): LayoutCtx {
       }
     }
   }
-  for (const id of DEFAULT_ORDER) if (!seen.has(id)) order.push(id)
+  // A registry card the saved order has never seen goes where this file says it
+  // belongs: directly after the nearest card that precedes it by default AND is
+  // actually present. That keeps the user's arrangement intact while putting a
+  // new card among its own kind; only a card with no surviving predecessor
+  // (the first one) goes to the front.
+  for (const id of DEFAULT_ORDER) {
+    if (seen.has(id)) continue
+    const precede = DEFAULT_ORDER.slice(0, DEFAULT_ORDER.indexOf(id))
+    let at = -1
+    for (let i = precede.length - 1; i >= 0 && at === -1; i--) at = order.indexOf(precede[i])
+    order.splice(at + 1, 0, id)
+    seen.add(id)
+  }
   const hidden: DashboardCardId[] = []
   if (Array.isArray(r.hidden)) {
     for (const id of r.hidden) {

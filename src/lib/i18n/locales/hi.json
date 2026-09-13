@@ -1864,7 +1864,10 @@
     "splitAccounts": "विभाजित · {{count}} खाते",
     "unassignedAccount": "अनिर्धारित",
     "clearFrom": "आरंभ तिथि हटाएँ",
-    "clearTo": "समाप्ति तिथि हटाएँ"
+    "clearTo": "समाप्ति तिथि हटाएँ",
+    "earlierPeriods_one": "{{count}} पिछली अवधि",
+    "earlierPeriods_other": "{{count}} पिछली अवधियाँ",
+    "loadEarlier": "पिछले लोड करें"
   },
   "spaces": {
     "title": "स्पेस",

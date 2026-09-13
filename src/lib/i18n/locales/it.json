@@ -1864,7 +1864,10 @@
     "splitAccounts": "Diviso · {{count}} conti",
     "unassignedAccount": "Non assegnato",
     "clearFrom": "Cancella la data iniziale",
-    "clearTo": "Cancella la data finale"
+    "clearTo": "Cancella la data finale",
+    "earlierPeriods_one": "{{count}} periodo precedente",
+    "earlierPeriods_other": "{{count}} periodi precedenti",
+    "loadEarlier": "Carica i precedenti"
   },
   "spaces": {
     "title": "Spazi",

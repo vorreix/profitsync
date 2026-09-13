@@ -29,6 +29,7 @@ import {
   ArrowUpRight,
   CalendarClock,
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   Info,
   Landmark,
@@ -555,7 +556,42 @@ function FlowEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targ
 // memo() so a node/edge re-renders only when ITS data or focus changes — not on
 // every pan/zoom/select/drag of an unrelated node (React Flow re-renders the
 // canvas often; the bounded graph still stays smooth).
-const NODE_TYPES = { root: memo(RootNode), branch: memo(GroupNode), leaf: memo(LeafNode), more: memo(MoreNode), tlperiod: memo(TimelinePeriodNode), tlfinal: memo(TimelineFinalNode) }
+type OlderData = { remaining: number; loading?: boolean; onLoadMore?: () => void }
+
+/**
+ * The head of a windowed timeline: "there are N earlier periods, load them".
+ *
+ * The chain draws the newest 30 periods and grows backwards from here, because
+ * a day-bucketed year is 365 cards of mostly-empty canvas to pan through and a
+ * payload to match. It sits at the far left, where the timeline already reads
+ * "earlier", so the thing that extends the chain is at the end of the chain.
+ */
+function OlderPeriodsNode({ id, data }: NodeProps<Node<OlderData>>) {
+  const { t } = useTranslation()
+  const focus = useFocus(id)
+  return (
+    <div
+      className={cn(
+        "flex w-[236px] cursor-grab flex-col gap-2 rounded-2xl border border-dashed bg-card/70 p-2.5 text-xs text-muted-foreground shadow-sm active:cursor-grabbing",
+        nodeFx(focus),
+      )}
+    >
+      <p className="text-center font-medium">{t("flow.earlierPeriods", { count: data.remaining })}</p>
+      <button
+        type="button"
+        onClick={data.onLoadMore}
+        disabled={data.loading}
+        className="nodrag flex items-center justify-center gap-1 rounded-lg border bg-background/70 py-1.5 font-medium transition-colors hover:bg-muted hover:text-foreground disabled:cursor-default disabled:opacity-60"
+      >
+        {data.loading ? <Loader2 className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />}
+        {data.loading ? t("flow.loadingMore") : t("flow.loadEarlier")}
+      </button>
+      <Handle type="source" position={Position.Right} className={HANDLE_CLS} />
+    </div>
+  )
+}
+
+const NODE_TYPES = { root: memo(RootNode), branch: memo(GroupNode), leaf: memo(LeafNode), more: memo(MoreNode), tlperiod: memo(TimelinePeriodNode), tlfinal: memo(TimelineFinalNode), tlolder: memo(OlderPeriodsNode) }
 const EDGE_TYPES = { flow: memo(FlowEdge) }
 
 // Minimap node fills are set as SVG `fill` attributes, where CSS var() does NOT
@@ -784,6 +820,12 @@ const GROUP_BYS: GroupBy[] = ["account", "client", "category"]
 const BASE_MIN_ZOOM = 0.2
 /** Past this, a card is a few pixels: further out stops being a view of anything. */
 const ABSOLUTE_MIN_ZOOM = 0.02
+/** Timeline periods drawn per page — and how many each "load earlier" adds.
+ *  Must match PERIOD_PAGE in api/_routes/flow.ts (the server clamps anyway). */
+const PERIOD_PAGE = 30
+/** Below this, a period card is unreadable — so a graph that only fits below it
+ *  opens at its newest end rather than as an illegible full-width smear. */
+const READABLE_ZOOM = 0.4
 
 // ── Session persistence ──────────────────────────────────────────────────────
 type SavedFlowState = {
@@ -889,6 +931,12 @@ export function MoneyFlowPage() {
   // unrelated rebuild (expanding another group) doesn't wipe the spinner.
   const loadingKeysRef = useRef<Set<string>>(new Set())
 
+  // How many PERIOD pages the timeline has asked for. A ref, not state, because
+  // it must not re-create `load` — that effect would refetch with a skeleton;
+  // "load earlier" refetches silently and keeps the canvas on screen.
+  const periodPagesRef = useRef(1)
+  const [loadingPeriods, setLoadingPeriods] = useState(false)
+
   // Filter options (loaded once).
   useEffect(() => {
     let cancelled = false
@@ -921,7 +969,11 @@ export function MoneyFlowPage() {
       const token = await getToken()
       if (!token) return
       const params = new URLSearchParams()
-      if (viewMode === "timeline") { params.set("mode", "timeline"); params.set("bucket", bucket) }
+      if (viewMode === "timeline") {
+        params.set("mode", "timeline")
+        params.set("bucket", bucket)
+        params.set("periodLimit", String(PERIOD_PAGE * periodPagesRef.current))
+      }
       else params.set("groupBy", groupBy)
       if (from) params.set("from", from)
       if (to) params.set("to", to)
@@ -940,6 +992,19 @@ export function MoneyFlowPage() {
 
   useEffect(() => { load() }, [load])
 
+  // "Load earlier": widen the window by one page and refetch SILENTLY, so the
+  // canvas keeps what it is showing while the older half arrives.
+  const loadMorePeriods = useCallback(async () => {
+    if (loadingPeriods) return
+    periodPagesRef.current += 1
+    setLoadingPeriods(true)
+    try {
+      await load({ silent: true })
+    } finally {
+      setLoadingPeriods(false)
+    }
+  }, [load, loadingPeriods])
+
   useEffect(() => {
     if (revision > 0) void load({ silent: true })
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only react to the signal
@@ -952,6 +1017,15 @@ export function MoneyFlowPage() {
     () => [viewMode, groupBy, bucket, from, to, [...selCats].sort().join(","), [...selClients].sort().join(","), [...selAccounts].sort().join(",")].join("|"),
     [viewMode, groupBy, bucket, from, to, selCats, selClients, selAccounts],
   )
+  // A new query is a new chain: go back to the newest window. Done during
+  // render (not in the effect below) because the load effect runs FIRST, and a
+  // filter change must not re-request the previous query's page count.
+  const pagesSig = useRef(querySig)
+  if (pagesSig.current !== querySig) {
+    pagesSig.current = querySig
+    periodPagesRef.current = 1
+  }
+
   const prevQuerySig = useRef(querySig)
   useEffect(() => {
     if (prevQuerySig.current === querySig) return
@@ -1202,8 +1276,12 @@ export function MoneyFlowPage() {
   const extraSig = useMemo(() => Object.entries(extraLeaves).map(([k, v]) => `${k}:${v.length}`).sort().join(","), [extraLeaves])
   const structuralKey = useMemo(() => {
     if (!data) return "none"
-    return [viewMode, groupBy, bucket, dataVersion, rootCollapsed, [...expanded].sort().join(","), extraSig, [...exhausted].sort().join(","), expandedSplit ?? ""].join("|")
-  }, [data, viewMode, groupBy, bucket, dataVersion, rootCollapsed, expanded, extraSig, exhausted, expandedSplit])
+    // `loadingPeriods` is in here for one reason: the "load earlier" card's
+    // spinner. Its fetch is silent, so nothing else would rebuild the graph
+    // between the click and the response, and the button would sit there
+    // looking untouched.
+    return [viewMode, groupBy, bucket, dataVersion, rootCollapsed, [...expanded].sort().join(","), extraSig, [...exhausted].sort().join(","), expandedSplit ?? "", loadingPeriods].join("|")
+  }, [data, viewMode, groupBy, bucket, dataVersion, rootCollapsed, expanded, extraSig, exhausted, expandedSplit, loadingPeriods])
 
   useEffect(() => {
     if (!data) { setNodes([]); setEdges([]); return }
@@ -1229,6 +1307,9 @@ export function MoneyFlowPage() {
           const p = n.data as unknown as TimelinePeriod
           const toggle = () => toggleKey(p.key)
           return { ...n, position, data: { ...n.data, currency, formatPeriod, onToggle: toggle, onOpen: toggle, onDetail: () => { const d = buildDetail(n); if (d) setDetailNode(d) } } } as Node
+        }
+        case "tlolder": {
+          return { ...n, position, data: { ...n.data, loading: loadingPeriods, onLoadMore: loadMorePeriods } } as Node
         }
         case "tlfinal": {
           // not expandable → a card click opens its detail modal too
@@ -1274,11 +1355,35 @@ export function MoneyFlowPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- structuralKey is the intentional trigger
   }, [structuralKey])
 
+  // Where a fresh data set opens.
+  //
+  // Fitting a 30-day chain into a laptop canvas lands around 0.09 zoom — every
+  // card a grey smear. So when the whole graph cannot be framed READABLY, the
+  // opening view is the newest end of the chain instead (a timeline's "now",
+  // and the end the final node sits at), at a zoom you can actually read. The
+  // whole shape is still one tap away: the fit button and the zoom floor both
+  // go all the way out. Short graphs are unaffected — they fit readably, so
+  // they are fitted, exactly as before.
+  const openingFitRef = useRef<{ nodes?: { id: string }[] } | null>(null)
+  openingFitRef.current = (() => {
+    if (!data || data.mode !== "timeline" || !canvasSize.w) return null
+    const fit = graphSize.width ? Math.min(canvasSize.w / (graphSize.width * 1.2), canvasSize.h / (graphSize.height * 1.2)) : 1
+    if (fit >= READABLE_ZOOM) return null
+    // As many of the newest periods as the canvas can hold side by side.
+    // One card is ~280px wide plus the gap to the next: on a phone that is a
+    // single period beside the final card, on a laptop four or five.
+    const perScreen = Math.max(1, Math.min(8, Math.round(canvasSize.w / 340)))
+    const tail = data.periods.slice(-perScreen).map((p) => ({ id: `p:${p.key}` }))
+    return { nodes: [...tail, { id: "final" }] }
+  })()
+
   // Re-fit ONLY when the data set itself changes — never on expand/collapse.
   useEffect(() => {
     if (dataVersion === 0) return
     if (skipNextFit.current) { skipNextFit.current = false; return }
-    const id = requestAnimationFrame(() => flowRef.current?.fitView({ padding: 0.2, maxZoom: 1, minZoom: minZoomRef.current, duration: 400 }))
+    const id = requestAnimationFrame(() =>
+      flowRef.current?.fitView({ padding: 0.2, maxZoom: 1, minZoom: minZoomRef.current, duration: 400, ...(openingFitRef.current ?? {}) }),
+    )
     return () => cancelAnimationFrame(id)
   }, [dataVersion])
 
@@ -1340,6 +1445,11 @@ export function MoneyFlowPage() {
     if (performance.now() - lastDragEndRef.current < 250) return
     ;(node.data as { onOpen?: () => void }).onOpen?.()
   }, [])
+
+  // Periods the range holds that the chain is not drawing yet.
+  const olderPeriods = data && data.mode === "timeline" && data.has_more_periods
+    ? Math.max(0, (data.period_total ?? 0) - data.periods.length)
+    : 0
 
   const activeFilterCount = selCats.size + selClients.size + selAccounts.size + (from ? 1 : 0) + (to ? 1 : 0)
   const empty = !loading && data && (data.mode === "timeline" ? data.periods.length === 0 : data.root.tx_count === 0)
@@ -1527,16 +1637,36 @@ export function MoneyFlowPage() {
                   />
                 )}
                 {/* Expand / collapse every transaction list at once. */}
-                {expandableKeys.length > 0 && (
+                {(expandableKeys.length > 0 || olderPeriods > 0) && (
                   <Panel position="top-right" className="!m-3">
-                    <button
-                      type="button"
-                      onClick={toggleExpandAll}
-                      className="flex items-center gap-1.5 rounded-xl border bg-card/90 px-3 py-1.5 text-[11px] font-medium shadow-sm backdrop-blur-sm transition-colors hover:bg-muted"
-                    >
-                      {allExpanded ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
-                      {allExpanded ? t("flow.collapseAll") : t("flow.expandAll")}
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      {/* The chain's own "load earlier" card sits at its far
+                          left, which is off-screen the moment you are reading
+                          the recent end — so the same action lives here too,
+                          pinned to the canvas where it is always in reach. */}
+                      {olderPeriods > 0 && (
+                        <button
+                          type="button"
+                          onClick={loadMorePeriods}
+                          disabled={loadingPeriods}
+                          title={t("flow.earlierPeriods", { count: olderPeriods })}
+                          className="flex items-center gap-1.5 rounded-xl border bg-card/90 px-3 py-1.5 text-[11px] font-medium shadow-sm backdrop-blur-sm transition-colors hover:bg-muted disabled:opacity-60"
+                        >
+                          {loadingPeriods ? <Loader2 className="size-3.5 animate-spin" /> : <ChevronLeft className="size-3.5 rtl:rotate-180" />}
+                          {loadingPeriods ? t("flow.loadingMore") : t("flow.loadEarlier")}
+                        </button>
+                      )}
+                      {expandableKeys.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={toggleExpandAll}
+                          className="flex items-center gap-1.5 rounded-xl border bg-card/90 px-3 py-1.5 text-[11px] font-medium shadow-sm backdrop-blur-sm transition-colors hover:bg-muted"
+                        >
+                          {allExpanded ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
+                          {allExpanded ? t("flow.collapseAll") : t("flow.expandAll")}
+                        </button>
+                      )}
+                    </div>
                   </Panel>
                 )}
                 {!isMobile && (

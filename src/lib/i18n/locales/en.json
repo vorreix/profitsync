@@ -2241,7 +2241,10 @@
     "splitAccounts": "Split · {{count}} accounts",
     "unassignedAccount": "Unassigned",
     "clearFrom": "Clear the start date",
-    "clearTo": "Clear the end date"
+    "clearTo": "Clear the end date",
+    "earlierPeriods_one": "{{count}} earlier period",
+    "earlierPeriods_other": "{{count}} earlier periods",
+    "loadEarlier": "Load earlier"
   },
   "spaces": {
     "title": "Spaces",
