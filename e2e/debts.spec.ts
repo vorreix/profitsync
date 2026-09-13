@@ -1,5 +1,5 @@
 import { expect, test, type Browser, type Page } from "@playwright/test"
-import { E2E_PREFIX, dismissBanners, expectAppShell } from "./helpers"
+import { E2E_PREFIX, dismissBanners, ensureBank, expectAppShell } from "./helpers"
 
 /**
  * Debt & Loans — through the real UI, auth and database. The engine is pinned by
@@ -231,14 +231,17 @@ test.describe.serial("Debt & Loans", () => {
 
   test("a partial disbursement adds up: what arrives is a transfer, the rest is an opening balance", async ({ page }) => {
     await page.goto("/debts"); await expectAppShell(page)
-    const cash = (await accounts(page)).find((a) => a.type === "cash")!
-    const cashBefore = Number(cash.current_balance)
-    const incomeBefore = incomeOf(await cashRows(page))
+    // A dedicated BANK, never cash: the last test in this spec audits the cash
+    // account across the WHOLE suite, so money moved here would break an
+    // assertion that has nothing to do with disbursements.
+    const bank = await ensureBank(page, api)
+    const bankBefore = Number((await accounts(page)).find((a) => a.id === bank.id)!.current_balance)
+    const incomeBefore = incomeOf(await rowsOf(page, bank.id))
 
     // Borrow 1,000; only 600 reaches the account. You owe 1,000 either way.
     const created = await api<{ id: string }>(page, "POST", "/api/debts", {
       direction: "owed", name: NAMES.partial, current_balance: 1000, original_amount: 1000,
-      disbursement_account_id: cash.id, disbursement_amount: 600,
+      disbursement_account_id: bank.id, disbursement_amount: 600,
     })
     expect(created.status).toBe(201)
     const id = created.json.id
@@ -246,8 +249,8 @@ test.describe.serial("Debt & Loans", () => {
     type Detail = { debt: Debt; activity: { kind: string; principal: number }[] }
     const d = (await api<Detail>(page, "GET", `/api/debts/${id}`)).json
     expect(d.debt.balance).toBe(1000)
-    expect(await cashOf(page)).toBeCloseTo(cashBefore + 600, 2)
-    expect(incomeOf(await cashRows(page))).toBe(incomeBefore) // still never income
+    expect(Number((await accounts(page)).find((a) => a.id === bank.id)!.current_balance)).toBeCloseTo(bankBefore + 600, 2)
+    expect(incomeOf(await rowsOf(page, bank.id))).toBe(incomeBefore) // still never income
 
     // Two events, and they account for the whole debt: 600 borrowed, 400 already owed.
     const borrow = d.activity.find((a) => a.kind === "borrow")!
@@ -259,7 +262,7 @@ test.describe.serial("Debt & Loans", () => {
     // More arriving than the debt itself is refused.
     const tooMuch = await api(page, "POST", "/api/debts", {
       direction: "owed", name: `${NAMES.partial}-bad`, current_balance: 100,
-      disbursement_account_id: cash.id, disbursement_amount: 500,
+      disbursement_account_id: bank.id, disbursement_amount: 500,
     })
     expect(tooMuch.status).toBe(400)
   })
@@ -276,8 +279,9 @@ test.describe.serial("Debt & Loans", () => {
 
   test("a recurring repayment posts itself: principal is a transfer, interest is the only expense, and it stops when the debt does", async ({ page }) => {
     await page.goto("/debts"); await expectAppShell(page)
-    const bank = (await accounts(page)).find((a) => a.type === "bank" || a.type === "cash")!
-    const bankBefore = Number(bank.current_balance)
+    // The BANK again, never cash — see the partial-disbursement test above.
+    const bank = await ensureBank(page, api)
+    const bankBefore = Number((await accounts(page)).find((a) => a.id === bank.id)!.current_balance)
     const expenseBefore = expenseOf(await rowsOf(page, bank.id))
     const today = new Date().toISOString().slice(0, 10)
 
@@ -401,6 +405,12 @@ test.describe.serial("Debt & Loans", () => {
     await page.reload(); await expectAppShell(page)
     await expect(page.getByText(/^\s*paid off\s*$/i).first()).toBeVisible({ timeout: 15_000 })
     // Cash moved by: +5000 (borrowed) −500 −438.71 (payments) −400 +100 (lent / repaid).
+    //
+    // This is a ledger of EVERY cash movement the spec makes, which is the
+    // point: it proves the whole feature's money adds up rather than each
+    // operation in isolation. A new test that touches cash must be added to
+    // this sum — or, better, use ensureBank() and leave cash alone, which is
+    // what the disbursement and recurring tests above do.
     expect(await cashOf(page)).toBeCloseTo(cashStart + 5000 - 500 - 438.71 - 400 + 100, 2)
   })
 })
