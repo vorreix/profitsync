@@ -477,6 +477,13 @@
       "when": 1789250478681,
       "tag": "0067_debt_recurring",
       "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1789303202014,
+      "tag": "0068_one_repayment_per_debt",
+      "breakpoints": true
     }
   ]
 }

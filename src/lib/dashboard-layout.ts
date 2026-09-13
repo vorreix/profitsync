@@ -5,7 +5,12 @@
 // fast-path; ALWAYS normalized against the registry on read so unknown ids
 // (from older/newer app versions) drop out and new cards appear at the end.
 
-export const DASHBOARD_CARD_IDS = ["kpis", "budget", "wealth", "flow", "chart", "breakdown", "latest"] as const
+// Order here is the default for a FRESH layout only. Anyone with a saved one
+// keeps their arrangement and gets new cards appended at the end, visible —
+// normalizeCtx only ever adds to `order`, never to `hidden`, so a card that
+// should not be seen has to say so by rendering null (see Dashboard.tsx
+// `cardNodes`), not by shipping hidden.
+export const DASHBOARD_CARD_IDS = ["kpis", "budget", "wealth", "debts", "spaces", "flow", "chart", "breakdown", "latest"] as const
 export type DashboardCardId = (typeof DASHBOARD_CARD_IDS)[number]
 
 export type DashboardContext = "personal" | "business"

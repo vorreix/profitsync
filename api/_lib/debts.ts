@@ -108,7 +108,7 @@ export function toDebtLike(row: DebtRow): DebtLike {
  * thing a list of debts has to answer, and it cannot be derived from the debt's
  * own columns — the schedule fields look identical either way.
  */
-export function serializeDebt(row: DebtRow, today: string, opts: { repaymentActive?: boolean } = {}) {
+export function serializeDebt(row: DebtRow, today: string, opts: { repaymentActive?: boolean; repaymentLinked?: boolean } = {}) {
   const like = toDebtLike(row)
   const estimate = debtFreeEstimate(like, today)
   const { logoData, ...account } = row.account
@@ -147,6 +147,10 @@ export function serializeDebt(row: DebtRow, today: string, opts: { repaymentActi
     closedAt: row.details.closedAt,
     notes: row.details.notes,
     repaymentActive: opts.repaymentActive ?? false,
+    // Linked but perhaps PAUSED. The two differ, and the difference matters:
+    // the "Auto" badge means actively paying, while "can another rule be linked
+    // here?" is answered by whether ANY rule is already attached.
+    repaymentLinked: opts.repaymentLinked ?? opts.repaymentActive ?? false,
     updatedAt: row.details.updatedAt,
   })
 }
@@ -209,7 +213,8 @@ export async function buildDebtsOverview(orgId: string, orgCurrency: string, tod
   // them, rather than one per row.
   const allRules = await loadDebtRules(orgId, active.map((r) => r.account.id))
   const servicing = new Set(allRules.filter((r) => r.active && r.debtAccountId).map((r) => r.debtAccountId as string))
-  const withRule = (row: DebtRow) => ({ repaymentActive: servicing.has(row.account.id) })
+  const attached = new Set(allRules.filter((r) => r.debtAccountId).map((r) => r.debtAccountId as string))
+  const withRule = (row: DebtRow) => ({ repaymentActive: servicing.has(row.account.id), repaymentLinked: attached.has(row.account.id) })
 
   const monthStart = `${monthKey(today)}-01`
   const nextMonthStart = addPeriods(monthStart, "monthly", 1)
@@ -530,7 +535,7 @@ export async function recordDebtPayment(orgId: string, userId: string, row: Debt
     let claimed = await claim()
     if (claimed.length === 0) {
       const [held] = await db
-        .select({ id: transactions.id, createdAt: transactions.createdAt })
+        .select({ id: transactions.id, createdAt: transactions.createdAt, groupId: transactions.groupId })
         .from(transactions)
         .where(and(eq(transactions.recurringRuleId, input.recurring.ruleId), eq(transactions.recurringDueDate, input.recurring.dueDate)))
       // Gone between the conflict and this read: the other run rolled its own
@@ -541,9 +546,18 @@ export async function recordDebtPayment(orgId: string, userId: string, row: Debt
       } else {
         const [allocation] = await db.select({ id: debtPayments.id }).from(debtPayments).where(eq(debtPayments.transactionId, held.id))
         if (allocation) return { ok: true, payment: null, skipped: "posted" }
+        // A row with no group_id was never written by this engine — every leg
+        // it writes carries one. It is an ORDINARY occurrence the rule posted
+        // before it was adopted as a repayment, and it is complete: its balance
+        // update already ran. Deleting it would take the money off the ledger
+        // without giving it back and then charge the account a second time.
+        // It stays the plain expense it was; the debt is squared up with the
+        // reconcile operation, never by rewriting the past (DEBTS.md, forward
+        // only).
+        if (held.groupId == null) return { ok: true, payment: null, skipped: "posted" }
         const ageMs = Date.now() - new Date(held.createdAt ?? Date.now()).getTime()
         if (ageMs < STALE_CLAIM_MS) return { ok: true, payment: null, skipped: "inflight" }
-        // Wreckage: a leg with no payment behind it. Clear it and take over.
+        // Wreckage: one of OUR legs with no payment behind it. Clear it and take over.
         await db.delete(transactions).where(eq(transactions.id, held.id))
         claimed = await claim()
         if (claimed.length === 0) return { ok: true, payment: null, skipped: "inflight" }
@@ -704,7 +718,11 @@ export function debtScheduleMirror(rule: Pick<DebtRuleRow, "amount" | "frequency
   return {
     paymentAmount: String(rule.amount),
     paymentFrequency: frequency ?? "irregular",
-    nextDueDate: String(rule.nextDueAt).slice(0, 10),
+    // A PAUSED rule has a cursor but no next payment. Mirroring it anyway put a
+    // date on the debt that nothing would honour — and derivedStatus reads that
+    // date, so an active debt whose rule was merely paused started reporting
+    // itself overdue. The amount and the rhythm still describe the intent.
+    nextDueDate: rule.active ? String(rule.nextDueAt).slice(0, 10) : null,
     updatedAt: new Date(),
   }
 }

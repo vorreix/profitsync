@@ -312,6 +312,8 @@ export type Debt = {
   notes: string
   /** A recurring repayment is currently servicing this debt. */
   repayment_active: boolean
+  /** A rule is ATTACHED, active or paused — only one is ever allowed. */
+  repayment_linked?: boolean
   updated_at: string
 }
 
@@ -531,6 +533,7 @@ export type RecurringRule = {
   wealth_account_id: string | null
   account_name?: string | null
   account_type?: WealthAccountType | null
+  account_archived?: boolean | null
   account_icon?: string | null
   account_logo_url?: string | null
   // 'standard' = normal income/outgoing rule. 'transfer' = a Space auto-save:

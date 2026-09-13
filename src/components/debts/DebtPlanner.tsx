@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { ArrowDown, ArrowUp, Info } from "lucide-react"
+import { ArrowDown, ArrowUp, Check, Info } from "lucide-react"
 import type { Debt } from "@/lib/types"
 import { fromCents, monthlyEquivalent, toCents } from "@/lib/debt-math"
 import { affordability, comparePlans, debtPaymentRatio, simulatePlan, STRATEGIES, type PlannerDebt, type PlanResult, type Strategy } from "@/lib/debt-planner"
@@ -91,11 +91,15 @@ export function DebtPlanner({ debts, currency, today, averageMonthlyIncome, bala
           <p className="text-xs text-muted-foreground">{t("requiredMinimums")}</p>
           <p className="text-xl font-bold tabular-nums">{money(required)}<span className="text-xs font-normal text-muted-foreground">{t("perMonth")}</span></p>
         </div>
-        <div className="space-y-1.5 sm:col-span-2">
+        <div className="space-y-2 sm:col-span-2">
           <Label htmlFor="plan-budget">{t("monthlyBudget")}</Label>
-          <div className="flex items-center gap-3">
-            <Input id="plan-budget" type="number" inputMode="decimal" min="0" step="1" value={budgetText} onChange={(e) => { setBudgetText(e.target.value); setSaved((s) => ({ ...s, extra: Math.max(0, fromCents(toCents(Number(e.target.value) || 0) - required)) })) }} className="w-36 tabular-nums" />
-            <Slider value={[budget]} min={0} max={sliderMax} step={100} onValueChange={([v]) => { setBudgetText(String(fromCents(v))); setSaved((s) => ({ ...s, extra: Math.max(0, fromCents(v - required)) })) }} aria-label={t("monthlyBudget")} className="flex-1" />
+          {/* Stacked on a phone. Sharing one row left the slider ~200px of rail
+              to drag next to an input that needed none of it, and the thumb is
+              16px — so the slider gets the full width and `py-3` gives it a
+              hit area a thumb can actually find. */}
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <Input id="plan-budget" type="number" inputMode="decimal" min="0" step="1" value={budgetText} onChange={(e) => { setBudgetText(e.target.value); setSaved((s) => ({ ...s, extra: Math.max(0, fromCents(toCents(Number(e.target.value) || 0) - required)) })) }} className="h-11 w-full tabular-nums sm:h-9 sm:w-36" />
+            <Slider value={[budget]} min={0} max={sliderMax} step={100} onValueChange={([v]) => { setBudgetText(String(fromCents(v))); setSaved((s) => ({ ...s, extra: Math.max(0, fromCents(v - required)) })) }} aria-label={t("monthlyBudget")} className="w-full py-3 sm:flex-1 sm:py-0" />
           </div>
           <p className="text-xs text-muted-foreground">{t("planBudgetHint", { required: money(required) })}</p>
         </div>
@@ -130,16 +134,32 @@ export function DebtPlanner({ debts, currency, today, averageMonthlyIncome, bala
         </section>
       ) : comparison && chosen && (
         <>
-          {/* Strategy choice */}
-          <div className="grid gap-2 sm:grid-cols-5" role="radiogroup" aria-label={t("compare.strategy")}>
+          {/* Strategy choice.
+              Five full-width cards, each carrying its own explanation, took
+              about a third of a phone screen to answer one question. Below
+              `sm` they pair up and show the name alone, with a tick on the one
+              that is chosen — and the explanation is said ONCE underneath, for
+              the strategy actually selected, which is the only one being
+              decided. The five-across row with inline hints is unchanged on a
+              wider screen, where there is room for it. */}
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-5" role="radiogroup" aria-label={t("compare.strategy")}>
             {STRATEGIES.map((s) => (
               <button key={s} type="button" role="radio" aria-checked={saved.strategy === s} onClick={() => setSaved((v) => ({ ...v, strategy: s }))}
-                className={cn("pressable ios-tap min-h-11 rounded-xl border p-3 text-left transition-colors", saved.strategy === s ? "border-primary/60 bg-primary/5 ring-1 ring-primary/30" : "hover:bg-muted/40")}>
-                <p className="text-sm font-medium">{t(`strategy.${s}`)}</p>
-                <p className="text-xs text-muted-foreground">{t(`strategyHint.${s}`)}</p>
+                className={cn(
+                  "pressable ios-tap flex min-h-11 items-center gap-2 rounded-xl border p-3 text-left transition-colors last:odd:col-span-2 sm:block sm:last:odd:col-span-1",
+                  saved.strategy === s ? "border-primary/60 bg-primary/5 ring-1 ring-primary/30" : "hover:bg-muted/40",
+                )}>
+                <Check className={cn("size-4 shrink-0 text-primary transition-opacity sm:hidden", saved.strategy === s ? "opacity-100" : "opacity-0")} aria-hidden />
+                {/* Spans, not paragraphs: a button may only contain phrasing
+                    content, and these were <p> inside <button>. */}
+                <span className="min-w-0">
+                  <span className="block text-sm font-medium">{t(`strategy.${s}`)}</span>
+                  <span className="mt-0.5 hidden text-xs text-muted-foreground sm:block">{t(`strategyHint.${s}`)}</span>
+                </span>
               </button>
             ))}
           </div>
+          <p className="-mt-2 text-xs text-muted-foreground sm:hidden" aria-live="polite">{t(`strategyHint.${saved.strategy}`)}</p>
 
           {saved.strategy === "custom" && (
             <div className="rounded-2xl border bg-card p-3">

@@ -30,6 +30,11 @@ export const ruleFields = {
   // Enough to draw the account exactly as the wealth screens do (glyph + brand
   // logo), so a rule's row and page never fall back to a generic bank icon.
   accountType: wealthAccounts.type,
+  // The link pickers run the SAME eligibility predicate as the server
+  // (src/lib/debt-recurring.ts). Without this they had to assume the payer was
+  // live, and offered rules whose account had been archived — which the server
+  // then refused on click.
+  accountArchived: sql<boolean>`${wealthAccounts.archivedAt} is not null`,
   accountIcon: wealthAccounts.icon,
   accountLogoUrl: wealthAccounts.logoUrl,
   cardId: recurringRules.cardId,

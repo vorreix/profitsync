@@ -109,7 +109,9 @@
     "cancel": "إلغاء",
     "save": "حفظ التغييرات",
     "saving": "جارٍ الحفظ...",
-    "amountTooLarge": "المبلغ كبير جدًا"
+    "amountTooLarge": "المبلغ كبير جدًا",
+    "expand": "توسيع",
+    "collapse": "طي"
   },
   "dashboard": {
     "title": "لوحة التحكم",
@@ -1743,7 +1745,51 @@
     "noPaymentsPaused": "لم يُنشأ شيء من هذه بعد.",
     "loadMore": "تحميل {{count}} أخرى",
     "loadingMore": "جارٍ التحميل…",
-    "repaysDebt": "يسدّد"
+    "repaysDebt": "يسدّد",
+    "linkDebt": "اربط بدَين",
+    "unlinkDebt": "افصل عن الدين",
+    "linkDebtTitle": "أي دَين تسدّده هذه الدفعة؟",
+    "linkDebtDesc": "من الآن تُقسَّم هذه الدفعة إلى أصل وفائدة على ذلك الدين.",
+    "linkDebtNone": "لا يوجد دَين مناسب. يجب أن يتحرّك المال في الاتجاه نفسه، وألا يكون للدين سداد بالفعل.",
+    "linkDebtForwardOnly": "تبقى الدفعات المسجّلة سابقًا كما هي تمامًا.",
+    "linkedToDebt": "تم الربط بالدين",
+    "unlinkedFromDebt": "تم الفصل",
+    "unlinkDebtTitle": "فصل هذا السداد؟",
+    "unlinkDebtDesc": "يعود دفعة عادية: يتوقّف عن المساس بـ {{name}}، وتُسجَّل كل دفعة لاحقة كمصروف بلا فئة. الدفعات التي تمّت لا تتغيّر.",
+    "failedToUpdate": "تعذّر تحديث هذه الدفعة المتكرّرة",
+    "comesInto": "يصل إلى",
+    "comesIntoHint": "الحساب الذي يصل إليه هذا المال.",
+    "paysDebtQ": "هل يسدّد هذا دَينًا؟",
+    "collectsDebtQ": "هل يردّ لك أحد؟",
+    "noDebt": "لا، إنها دفعة عادية",
+    "createDebt": "أنشئ واحدًا جديدًا…",
+    "debtWhoOwed": "لمن تدين؟",
+    "debtWhoOwes": "من يدين لك؟",
+    "debtBalance": "كم المتبقّي",
+    "debtRate": "الفائدة (%)",
+    "debtWillBeLoan": "يُسجَّل كمال عليك، وتُقسَّم هذه الدفعة عليه إلى أصل وفائدة.",
+    "debtWillBeReceivable": "يُسجَّل كمال لك، وتُنقص هذه الدفعة منه كلما دفعوا.",
+    "debtNameRequired": "حدّد مع من هذا الدين",
+    "debtBalanceRequired": "أدخل المبلغ المتبقّي على الدين",
+    "debtCreatedAndLinked": "أُنشئ الدين ورُبط",
+    "debtLinkForwardOnly": "تبقى الدفعات المسجّلة كما هي — تُقسَّم الدفعات من الآن فقط.",
+    "noEligibleDebts": "لا يوجد دَين حالي مناسب. أنشئ واحدًا أعلاه.",
+    "createDebtForThis": "أنشئ دَينًا لهذا",
+    "previewPerYear": "{{amount}} سنويًا",
+    "previewNeverRuns": "ينتهي قبل أن يبدأ أصلًا.",
+    "unitWord": {
+      "day": "يوم",
+      "week": "أسبوع",
+      "month": "شهر",
+      "year": "سنة"
+    },
+    "debtNeedsAccount": "اختر أولًا الحساب الذي يُدفع منه.",
+    "debtNotCard": "لا يمكن للبطاقة سداد دَين. اختر الحساب البنكي الذي تُسوّى منه.",
+    "debtNeedsCash": "يُسدَّد الدَّين من حساب بنكي أو نقدي.",
+    "debtRuleEnded": "ينتهي قبل أن يسدّد أي شيء.",
+    "debtAlreadyLinked": "هذه الدفعة تسدّد دَينًا آخر بالفعل. ألغِ ربطها هناك أولًا.",
+    "debtHasPending": "لا تزال هناك دفعات في انتظار التسجيل. افتح هذه الدفعة ودعها تمر أولًا.",
+    "categoryRequired": "اختر فئة — كل دفعة ينشئها هذا ستحملها."
   },
   "calendar": {
     "title": "التقويم",
@@ -3041,6 +3087,20 @@
     "arrivingAccountRequired": "اختر الحساب الذي يصل إليه المال",
     "arrivingRequired": "أدخل المبلغ الذي يصل إلى ذلك الحساب",
     "arrivingTooMuch": "هذا أكثر من الدين نفسه",
-    "customRhythmHint": "يُضبط إيقاع هذا السداد في صفحته الخاصة."
+    "customRhythmHint": "يُضبط إيقاع هذا السداد في صفحته الخاصة.",
+    "linkExistingRepayment": "اربط واحدًا موجودًا",
+    "linkRepaymentTitle": "استخدم سدادًا موجودًا لديك",
+    "linkRepaymentDesc": "اختر الدفعة المتكرّرة التي تسدّد هذا الدين بالفعل.",
+    "linkRepaymentNone": "لا توجد دفعة متكرّرة مناسبة. يجب أن تكون {{direction}} وتُدفع من حساب بنكي أو نقدي.",
+    "linkRepaymentForwardOnly": "تُقسَّم الدفعات من الآن فقط إلى أصل وفائدة. أما المسجّلة سابقًا فتبقى كما هي — فإن اختلّ الرصيد فسوِّه.",
+    "linkIncoming": "مالًا واردًا",
+    "linkOutgoing": "مالًا صادرًا",
+    "repaymentLinked": "تم الربط بهذا الدين",
+    "unitEvery": {
+      "day": "كل يوم",
+      "week": "كل أسبوع",
+      "month": "كل شهر",
+      "year": "كل سنة"
+    }
   }
 }
