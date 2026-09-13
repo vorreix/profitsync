@@ -2,9 +2,10 @@ import { useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { useAuth } from "@clerk/clerk-react"
 import { toast } from "sonner"
-import { HandCoins } from "lucide-react"
+import { HandCoins, Plus } from "lucide-react"
 import { apiErrorMessage, apiGet, apiPatch } from "@/lib/api"
 import { isLinkable, type LinkCandidateRule } from "@/lib/debt-recurring"
+import { dropModalBackEntry } from "@/hooks/use-back-close"
 import type { Debt, DebtsOverview, RecurringRuleDetail } from "@/lib/types"
 import { formatMoney } from "@/lib/wealth"
 import { cn } from "@/lib/utils"
@@ -26,11 +27,14 @@ export function LinkDebtDialog({
   onOpenChange,
   rule,
   onLinked,
+  onCreateDebt,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   rule: RecurringRuleDetail
   onLinked: () => void
+  /** Nothing fits: open the edit dialog, where a debt can be made on the spot. */
+  onCreateDebt: () => void
 }) {
   const { t } = useTranslation()
   const { getToken } = useAuth()
@@ -109,9 +113,17 @@ export function LinkDebtDialog({
           {data === null ? (
             <>{[1, 2].map((i) => <Skeleton key={i} className="h-14 rounded-xl" />)}</>
           ) : eligible.length === 0 ? (
-            <p className="rounded-xl border bg-muted/20 px-3 py-6 text-center text-sm text-muted-foreground">
-              {t("recurring.linkDebtNone")}
-            </p>
+            <div className="space-y-3 rounded-xl border bg-muted/20 px-3 py-6 text-center">
+              <p className="text-sm text-muted-foreground">{t("recurring.linkDebtNone")}</p>
+              {/* Nothing fits usually means the debt simply is not in the app
+                  yet, which is a thing to offer rather than a dead end.
+                  dropModalBackEntry first: chaining straight into another modal
+                  otherwise pops OUR back-entry, and the pop slams the new one
+                  shut before it has painted. */}
+              <Button variant="outline" size="sm" className="pressable" onClick={() => { dropModalBackEntry(); onOpenChange(false); onCreateDebt() }}>
+                <Plus className="size-4" /> {t("recurring.createDebtForThis")}
+              </Button>
+            </div>
           ) : (
             eligible.map((d) => (
               <button

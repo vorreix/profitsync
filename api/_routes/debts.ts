@@ -7,11 +7,12 @@ import { checkTransactionQuota } from "../_lib/quota.js"
 import { logAudit } from "../_lib/audit.js"
 import { resolveLogoColumns } from "../_lib/bank-brand.js"
 import { buildDebtsOverview, loadDebt, loadDebtRules, serializeDebt } from "../_lib/debts.js"
+import { payerShape, refusalForNew, refusalMessage, refusalStatus } from "../_lib/recurring-debt.js"
 import { materializeDueRecurring } from "../_lib/recurring-materialize.js"
 import { amountExceedsLimit } from "../../src/lib/money.js"
 import { PAYMENT_FREQUENCIES, type PaymentFrequency } from "../../src/lib/debt-math.js"
-import { frequencyToRecurring, MAX_DEBT_KIND_LENGTH, normalizeDebtKind } from "../../src/lib/debt-recurring.js"
-import { todayIso } from "../../src/lib/recurring.js"
+import { frequencyToRecurring, MAX_DEBT_KIND_LENGTH, normalizeDebtKind, recurringToFrequency } from "../../src/lib/debt-recurring.js"
+import { todayIso, type FrequencyUnit } from "../../src/lib/recurring.js"
 import { isValidCurrency } from "../../src/lib/currencies.js"
 
 const ISO = /^\d{4}-\d{2}-\d{2}$/
@@ -82,6 +83,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (installments !== null && (!Number.isInteger(installments) || installments < 0)) return res.status(400).json({ error: "remaining_installments is invalid" })
     const notes = String(b.notes ?? "").slice(0, 2000)
     const isEstimate = b.balance_is_estimate === true
+
+    // ── Adopting a rule that already exists, in the SAME write ──────────────
+    //
+    // "This standing order pays a loan I have not added yet" is one intention,
+    // so it is one operation: the debt, its terms and the rule's adoption all
+    // commit together or not at all. Creating the debt and then linking would
+    // leave a debt nobody pays if the second request never landed.
+    const linkRuleId = typeof b.link_rule_id === "string" && b.link_rule_id.trim() ? b.link_rule_id.trim() : null
+    if (linkRuleId && b.repayment) {
+      return res.status(400).json({ error: "Either adopt an existing payment or set a new one up, not both", code: "link_or_create" })
+    }
 
     // ── The recurring repayment (optional) ──────────────────────────────────
     // When present it becomes the debt's schedule: payment_amount /
@@ -158,6 +170,42 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // What the ledger has no movement for: the part that was already owed before
     // this workspace ever saw it.
     const openingPart = Math.round((balance - received) * 100) / 100
+
+    // Adopting an existing rule: it has to be eligible, and once it is, IT owns
+    // the schedule — the debt's payment fields mirror the rule rather than
+    // anything typed here.
+    let adopt: (typeof recurringRules.$inferSelect) | null = null
+    let adoptCursor = today
+    if (linkRuleId) {
+      // Post anything already due in its OLD shape first; the adoption starts
+      // from the next occurrence (docs/debts/DEBTS.md).
+      await materializeDueRecurring(orgId)
+      const [r] = await db
+        .select()
+        .from(recurringRules)
+        .where(and(eq(recurringRules.id, linkRuleId), eq(recurringRules.organizationId, orgId)))
+      if (!r) return res.status(404).json({ error: "Not found" })
+      const payer = await payerShape(orgId, r.wealthAccountId)
+      const refusal = refusalForNew(
+        {
+          id: r.id, kind: r.kind, type: r.type, cardId: r.cardId, accountId: r.wealthAccountId,
+          accountType: payer.type, accountArchived: payer.archived, debtAccountId: r.debtAccountId,
+          endDate: r.endDate ? String(r.endDate).slice(0, 10) : null,
+          nextDueAt: String(r.nextDueAt).slice(0, 10), active: r.active,
+        },
+        // The debt does not exist yet: nothing is archived, nothing services it.
+        { id: "new", direction, archived: false, linkedRuleIds: [] },
+        today,
+      )
+      if (refusal) return res.status(refusalStatus(refusal)).json({ error: refusalMessage(refusal), code: refusal })
+      adopt = r
+      // Forward only, never back onto an occurrence that already posted.
+      const cur = String(r.nextDueAt).slice(0, 10)
+      adoptCursor = cur > today ? cur : today
+      payment = Number(r.amount)
+      frequency = recurringToFrequency(r.frequencyUnit as FrequencyUnit, r.frequencyInterval) ?? "irregular"
+      nextDue = r.active ? adoptCursor : null
+    }
 
     const type = direction === "receivable" ? "receivable" : "loan"
     const signed = direction === "receivable" ? balance : -balance
@@ -302,6 +350,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           createdBy: userId,
           updatedBy: userId,
         }),
+      )
+    }
+
+    if (adopt) {
+      batch.push(
+        db
+          .update(recurringRules)
+          .set({
+            kind: "debt",
+            debtAccountId: accountId,
+            clientId: null,
+            toAccountId: null,
+            category: "Transfer",
+            nextDueAt: adoptCursor,
+            lastError: "",
+            updatedBy: userId,
+            updatedAt: now,
+          })
+          .where(eq(recurringRules.id, adopt.id)),
       )
     }
 

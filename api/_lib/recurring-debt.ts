@@ -283,3 +283,65 @@ export async function linkRuleToDebt(
   await mirrorDebtSchedule(debtAccountId, fresh)
   return { ok: true, rule: fresh }
 }
+
+/**
+ * The eligibility answer for a rule that does not exist yet, or for a debt that
+ * does not exist yet — the two "create both at once" paths.
+ *
+ * Shared so the atomic create routes apply exactly the rules the link applies.
+ * A brand-new rule has nothing pending and has not ended; a brand-new debt is
+ * not archived and has no repayment yet. Everything else still has to hold.
+ */
+export function refusalForNew(
+  rule: {
+    id: string
+    kind?: string | null
+    type: string
+    cardId: string | null
+    accountId: string | null
+    accountType: string | null
+    accountArchived: boolean
+    debtAccountId: string | null
+    endDate?: string | null
+    nextDueAt?: string | null
+    active?: boolean
+  },
+  debt: { id: string; direction: "owed" | "receivable"; archived: boolean; linkedRuleIds: string[] },
+  today: string,
+): LinkRefusal | null {
+  return linkRefusal(
+    {
+      id: rule.id,
+      kind: rule.kind === "transfer" ? "transfer" : rule.kind === "debt" ? "debt" : "standard",
+      type: rule.type === "incoming" ? "incoming" : "outgoing",
+      cardId: rule.cardId,
+      accountId: rule.accountId,
+      accountType: rule.accountType,
+      accountArchived: rule.accountArchived,
+      debtAccountId: rule.debtAccountId,
+      ended: !!rule.endDate && rule.endDate < today,
+      hasPending: rule.active === true && !!rule.nextDueAt && rule.nextDueAt <= today,
+    },
+    debt,
+  )
+}
+
+/** The message for a refusal code, for a route that builds its own response. */
+export const refusalMessage = (code: LinkRefusal): string => REFUSAL_MESSAGES[code]
+
+/** 409 for "something already has this job", 400 for "this cannot do the job". */
+export const refusalStatus = (code: LinkRefusal): number =>
+  code === "repayment_exists" || code === "rule_linked_elsewhere" ? 409 : 400
+
+/**
+ * The account a rule pays from, as the eligibility rules need to see it.
+ * Null id means the rule names no account at all, which is its own refusal.
+ */
+export async function payerShape(orgId: string, accountId: string | null): Promise<{ type: string | null; archived: boolean }> {
+  if (!accountId) return { type: null, archived: false }
+  const [a] = await db
+    .select({ type: wealthAccounts.type, archivedAt: wealthAccounts.archivedAt })
+    .from(wealthAccounts)
+    .where(and(eq(wealthAccounts.id, accountId), eq(wealthAccounts.organizationId, orgId)))
+  return { type: a?.type ?? null, archived: !!a?.archivedAt }
+}

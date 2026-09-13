@@ -34,7 +34,7 @@ import { TxKindBadge } from "@/components/transactions/TxKindBadge"
 import { AttachmentBadge } from "@/components/AttachmentBadge"
 import { TransactionDetailModal } from "@/components/TransactionDetailModal"
 import { AccountQuickAddSheet } from "@/components/wealth/AccountQuickAddSheet"
-import { RecurringRuleDialog, DeleteRecurringDialog } from "@/components/recurring/RecurringRuleDialog"
+import { RecurringRuleDialog, DeleteRecurringDialog, type RuleForm } from "@/components/recurring/RecurringRuleDialog"
 
 type TxPage = { data: Transaction[]; total: number; summary: { incoming: number; outgoing: number } }
 
@@ -70,6 +70,9 @@ export function RecurringDetailPage() {
   const { data: rule, error, refetch } = useApiQuery<RecurringRuleDetail>(id ? `/api/recurring/${id}` : null)
 
   const [editOpen, setEditOpen] = useState(false)
+  // Set only when the edit dialog is opened FOR something ("create a debt for
+  // this"); a plain Edit clears it so the answer does not linger.
+  const [editPreset, setEditPreset] = useState<Partial<RuleForm> | undefined>(undefined)
   const [deleting, setDeleting] = useState<RecurringRule | null>(null)
   const [pausing, setPausing] = useState(false)
   const [linkingDebt, setLinkingDebt] = useState(false)
@@ -369,7 +372,7 @@ export function RecurringDetailPage() {
             </Button>
           )}
           {canWrite && (
-            <Button variant="outline" size="icon" onClick={() => setEditOpen(true)} aria-label={t("recurring.edit")} title={t("recurring.edit")}>
+            <Button variant="outline" size="icon" onClick={() => { setEditPreset(undefined); setEditOpen(true) }} aria-label={t("recurring.edit")} title={t("recurring.edit")}>
               <Pencil className="size-4" />
             </Button>
           )}
@@ -605,13 +608,21 @@ export function RecurringDetailPage() {
         open={editOpen}
         onOpenChange={setEditOpen}
         rule={rule}
+        preset={editPreset}
         accounts={accounts}
         clients={clients}
         cards={payableCards}
         onSaved={() => refetch()}
       />
 
-      <LinkDebtDialog open={linkingDebt} onOpenChange={setLinkingDebt} rule={rule} onLinked={() => refetch()} />
+      <LinkDebtDialog
+        open={linkingDebt}
+        onOpenChange={setLinkingDebt}
+        rule={rule}
+        onLinked={() => refetch()}
+        // Nothing fits: hand the edit dialog the answer it was going to ask for.
+        onCreateDebt={() => { setEditPreset({ debt_choice: "new" }); setEditOpen(true) }}
+      />
 
       {/* Unlinking is a real decision: the same money starts posting as an
           ordinary expense again, and stops touching the debt at all. */}

@@ -213,6 +213,36 @@ may pay a loan by hand — a real, expensive thing people do — but on a schedu
 moves debt from one place to another forever with no cash ever leaving, and the
 balance that grows is the one nobody is looking at.
 
+### Making the other half from here
+
+Adoption assumes both halves exist. Usually only one does, and the answer to
+"which debt does this pay?" is "one I have not entered yet" — so both screens
+can make the missing half without leaving, and each is a SINGLE request,
+because half of it landing is the failure worth designing against: a debt
+nobody pays, or a repayment against nothing.
+
+| From | Request | What the one batch writes |
+|---|---|---|
+| Add debt, with a repayment | `POST /api/debts { repayment }` | account + `debt_details` + opening balance + the new rule |
+| Add debt, adopting a rule | `POST /api/debts { link_rule_id }` | the same, and the `recurring_rules` UPDATE that adopts it |
+| Add recurring, existing debt | `POST /api/recurring { debt_account_id }` | the rule and the debt's mirrored schedule |
+| Add recurring, new debt | `POST /api/debts` (as above) | the recurring dialog posts to the DEBT route, because the debt route owns the write |
+
+`link_rule_id` and `repayment` are refused TOGETHER (`link_or_create`): they are
+two answers to one question, and honouring both would make two repayments for a
+debt that may have none.
+
+The rule is validated by `refusalForNew` — `linkRefusal` against a synthetic
+debt that does not exist yet — so adopting into a brand-new debt obeys exactly
+the table above. The dialog runs the same predicate client-side and only offers
+"Create a new one…" while it passes, which is why picking a card or leaving the
+account empty removes the option and says which one it is rather than claiming
+no debt fits.
+
+The direction is DERIVED, never asked twice: money going out makes a debt you
+owe, money coming in makes one owed to you. There is no second control to
+disagree with the first.
+
 ## 3. Engine (`src/lib/debt-math.ts`, `debt-planner.ts`)
 
 Integer cents throughout; interest rounded once per period; the final payment
@@ -237,10 +267,11 @@ last three months' income.
 ## 4. API
 
 - `GET /api/debts` — hub payload: debts, receivables, closed, summary, insights, 3-month upcoming schedule. Materialises due repayments first (hence `ALWAYS_FETCH`).
-- `POST /api/debts` — create the debt AND its optional `repayment` rule in one atomic batch; `disbursement_account_id` records borrowed money as a transfer.
+- `POST /api/debts` — create the debt AND its repayment in one atomic batch: a NEW rule via `repayment`, or one you already have via `link_rule_id` (the two are mutually exclusive — `link_or_create`). `disbursement_account_id` records borrowed money as a transfer.
 - `GET/PATCH/DELETE /api/debts/:id` — detail (`debt`, `activity`, `payments`, `schedule`, `repayment`); edit terms / lifecycle / the repayment / reconcile (`current_balance` → system Balance Adjustment); close (archive) or delete when there is no history.
 - `GET/POST /api/debts/:id/payments`, `DELETE /api/debts/:id/payments/:paymentId`.
 - A debt repayment also appears at `/api/recurring` and `/api/recurring/:id`, which keep the debt's mirror in step on every edit. `PATCH /api/recurring/:id { debt_account_id }` links or unlinks it; that field must arrive ON ITS OWN, because combined with other edits the link could not be atomic.
+- `POST /api/recurring { debt_account_id }` creates a rule already linked — the rule and the debt's mirrored schedule in one batch. Making a rule and then linking it would leave a plain expense behind whenever the second request failed.
 
 ## 5. UI
 
@@ -273,6 +304,15 @@ The direction chooser uses the **same colour language as the add-transaction
 form**: money leaving is red, money arriving is green. A debt you owe is the red
 one, and the colour should say so before the label is read.
 
+The **recurring dialog mirrors all of it.** `/recurring` asks the same
+question — "does this pay a debt?", or "is someone paying you back?" when the
+money comes in — and answers it with the same three options: no, one you have,
+or a new one made right there. It uses the same direction chips, the same
+preview card, and hides category and client when a debt is involved because a
+repayment's are the engine's. Its account label follows the direction too:
+money arriving COMES INTO an account, it is not paid with one. When nothing
+fits, the picker offers to make the debt rather than ending in a sentence.
+
 Record payment sheet (auto or typed split, one-tap "scheduled" / "pay it off"
 amounts, an overpayment warning, and the extra-vs-scheduled choice), status
 badges in words, progress, schedule table, payment history with delete, planner
@@ -283,7 +323,9 @@ debt-free states.
 ## 6. Verification
 
 Unit (DB-free): `debt-math.test.ts`, `debt-planner.test.ts`, `debt-status.test.ts`,
-`debt-ledger.test.ts`. End to end on the local database: `e2e/debts.spec.ts`
+`debt-ledger.test.ts`, `debt-recurring.test.ts` (the refusal table and the
+cursor), `debt-preview.test.ts` and `recurring-preview.test.ts` (the two live
+previews). End to end on the local database: `e2e/debts.spec.ts`
 (informal debt, borrowing ≠ income, split payment, auto split, delete + restore,
 hub tabs, receivable, net worth, paid off).
 

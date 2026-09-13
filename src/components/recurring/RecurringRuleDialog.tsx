@@ -1,14 +1,21 @@
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import { useAuth } from "@clerk/clerk-react"
 import { toast } from "sonner"
-import { CalendarClock } from "lucide-react"
-import { apiPatch, apiPost } from "@/lib/api"
+import { ArrowDownRight, ArrowUpRight, CalendarClock, HandCoins, Plus, TriangleAlert } from "lucide-react"
+import { apiGet, apiPatch, apiPost } from "@/lib/api"
 import { useOrg } from "@/lib/org-context"
 import { useCurrency } from "@/lib/currency-context"
 import { accountTypeAllows } from "@/lib/types"
-import type { Card, Client, RecurringRule, WealthAccount } from "@/lib/types"
-import { occurrenceAt, type Frequency } from "@/lib/recurring"
+import type { Card, Client, Debt, DebtsOverview, RecurringRule, WealthAccount } from "@/lib/types"
+import { previewRecurring } from "@/lib/recurring-preview"
+import { isLinkable, linkRefusal, recurringToFrequency, type LinkCandidateRule, type LinkRefusal } from "@/lib/debt-recurring"
+import { previewDebt } from "@/lib/debt-preview"
+import { toCents } from "@/lib/debt-math"
+import { formatMoney } from "@/lib/wealth"
+import { getCurrencySymbol } from "@/lib/currencies"
+import { cn } from "@/lib/utils"
+import { DebtPreviewCard } from "@/components/debts/DebtPreviewCard"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -33,6 +40,26 @@ export type RuleForm = {
   frequency_interval: string
   start_date: string
   end_date: string
+  /** "" = an ordinary payment, "new" = create one here, otherwise a debt id. */
+  debt_choice: string
+  debt_name: string
+  debt_balance: string
+  debt_rate: string
+}
+
+/**
+ * Why a payment cannot start a debt from here, in the user's terms. Only the
+ * refusals this form can actually produce are named; the rest are unreachable
+ * (an autosave rule is managed on its Space, a direction mismatch cannot happen
+ * when the direction is derived) and simply hide the option.
+ */
+const NEW_DEBT_HINTS: Partial<Record<LinkRefusal, string>> = {
+  rule_has_no_account: "recurring.debtNeedsAccount",
+  rule_pays_with_card: "recurring.debtNotCard",
+  account_archived: "recurring.debtNeedsCash",
+  account_not_cash: "recurring.debtNeedsCash",
+  rule_ended: "recurring.debtRuleEnded",
+  rule_linked_elsewhere: "recurring.debtAlreadyLinked",
 }
 
 const emptyRuleForm = (): RuleForm => ({
@@ -47,6 +74,10 @@ const emptyRuleForm = (): RuleForm => ({
   frequency_interval: "1",
   start_date: new Date().toISOString().split("T")[0],
   end_date: "",
+  debt_choice: "",
+  debt_name: "",
+  debt_balance: "",
+  debt_rate: "",
 })
 
 const formFromRule = (rule: RecurringRule): RuleForm => ({
@@ -61,6 +92,10 @@ const formFromRule = (rule: RecurringRule): RuleForm => ({
   frequency_interval: String(rule.frequency_interval),
   start_date: rule.start_date,
   end_date: rule.end_date ?? "",
+  debt_choice: rule.debt_account_id ?? "",
+  debt_name: "",
+  debt_balance: "",
+  debt_rate: "",
 })
 
 const fmtDate = (d: string) =>
@@ -108,58 +143,227 @@ export function RecurringRuleDialog({
   presetRef.current = preset
 
   // Seed on each OPEN (the dialog stays mounted between opens): the rule's own
-  // values when editing, the preset when creating. Re-arming `saving` matters
-  // too — a request still in flight when the user closed it would otherwise
-  // leave the save button dead on reopen.
+  // values when editing, an empty form when creating, and the preset over both
+  // — a caller can open this already pointed at something ("Create a debt for
+  // this" arrives here with the debt question answered). Re-arming `saving`
+  // matters too: a request still in flight when the user closed it would
+  // otherwise leave the save button dead on reopen.
   useEffect(() => {
     if (!open) return
-    setForm(rule ? formFromRule(rule) : { ...emptyRuleForm(), ...presetRef.current })
+    const seeded = { ...(rule ? formFromRule(rule) : emptyRuleForm()), ...presetRef.current }
+    setForm(seeded.debt_choice === "new" && !seeded.debt_name ? { ...seeded, debt_name: seeded.name } : seeded)
     setSaving(false)
   }, [open, rule])
 
-  // Live preview of the next three occurrences for the form's schedule.
-  const preview = useMemo(() => {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(form.start_date)) return []
-    const freq: Frequency = {
-      unit: form.frequency_unit,
-      interval: Math.max(1, Math.floor(Number(form.frequency_interval) || 1)),
-    }
-    const out: string[] = []
-    for (let n = 0; n < 3; n++) {
-      const d = occurrenceAt(form.start_date, freq, n)
-      if (form.end_date && d > form.end_date) break
-      out.push(d)
-    }
-    return out
-  }, [form.start_date, form.frequency_unit, form.frequency_interval, form.end_date])
+  // The debts this payment could be attached to. Loaded once per open; the
+  // eligibility predicate is the SAME one the server enforces, so nothing is
+  // offered that would be refused on save.
+  const [debts, setDebts] = useState<Debt[] | null>(null)
+  useEffect(() => {
+    if (!open) return
+    setDebts(null)
+    let cancelled = false
+    ;(async () => {
+      const token = await getToken()
+      if (!token) return
+      const o = await apiGet<DebtsOverview>("/api/debts", token).catch(() => null)
+      if (!cancelled) setDebts(o ? [...o.debts, ...o.receivables] : [])
+    })()
+    return () => { cancelled = true }
+  }, [open, getToken])
 
+  const interval = Math.max(1, Math.floor(Number(form.frequency_interval) || 1))
+  const today = new Date().toISOString().split("T")[0]
+  const symbol = getCurrencySymbol(currency)
+  const incoming = form.type === "incoming"
+
+  const candidate: LinkCandidateRule = useMemo(() => ({
+    id: rule?.id ?? "new",
+    kind: "standard",
+    type: form.type,
+    cardId: form.card_id || null,
+    accountId: form.wealth_account_id || null,
+    accountType: accounts.find((a) => a.id === form.wealth_account_id)?.type ?? null,
+    accountArchived: false,
+    // The debt it ALREADY repays: a rule services one debt, so while it has
+    // one, no other debt — and no new one — may be offered here. Unlinking is
+    // a deliberate step on its own page.
+    debtAccountId: rule?.debt_account_id ?? null,
+    ended: !!form.end_date && form.end_date < today,
+  }), [rule?.id, rule?.debt_account_id, form.type, form.card_id, form.wealth_account_id, form.end_date, today, accounts])
+
+  const eligibleDebts = useMemo(
+    () => (debts ?? []).filter((d) => isLinkable(candidate, {
+      id: d.id,
+      direction: d.direction,
+      archived: !!d.archived_at,
+      // A PAUSED rule counts too, so a debt that already has one is not offered.
+      linkedRuleIds: (d.repayment_linked ?? d.repayment_active) ? (rule?.debt_account_id === d.id ? [rule.id] : ["other"]) : [],
+    })),
+    [debts, candidate, rule?.id, rule?.debt_account_id],
+  )
+
+  const creatingDebt = form.debt_choice === "new"
+  const linkedDebt = creatingDebt ? null : (debts ?? []).find((d) => d.id === form.debt_choice) ?? null
+  const withDebt = creatingDebt || !!linkedDebt
+
+  // A repayment's direction decides which side of the debt it is: money going
+  // out pays something you owe, money coming in collects something owed to you.
+  // Deriving it removes the whole class of "the rule and the debt disagree".
+  const newDebtDirection = incoming ? "receivable" : "owed"
+
+  // Can this payment take on a debt that does not exist yet? Exactly the
+  // server's own test (api/_lib/recurring-debt.ts refusalForNew): the same
+  // predicate against the same synthetic debt. Deriving the direction from the
+  // rule makes a mismatch impossible, so what is left is the payer's shape —
+  // no account, a card, a credit line — and the rule's own life.
+  const createRefusal: LinkRefusal | null = useMemo(
+    () => linkRefusal(candidate, { id: "new", direction: newDebtDirection, archived: false, linkedRuleIds: [] }),
+    [candidate, newDebtDirection],
+  )
+  const createHintKey = createRefusal ? NEW_DEBT_HINTS[createRefusal] : null
+
+  // The payer can stop being able to service a debt AFTER one was chosen —
+  // switch to a card, clear the account, flip the direction. Dropping the
+  // choice keeps the form honest instead of letting it claim a repayment the
+  // save would refuse. Wait for the debts to load: an edit seeds its own link
+  // before the list arrives, and clearing it then would silently unlink.
+  useEffect(() => {
+    if (debts === null) return
+    setForm((f) => {
+      if (!f.debt_choice) return f
+      if (f.debt_choice === "new") return createRefusal ? { ...f, debt_choice: "" } : f
+      return eligibleDebts.some((d) => d.id === f.debt_choice) ? f : { ...f, debt_choice: "" }
+    })
+  }, [debts, createRefusal, eligibleDebts])
+
+  // Live preview: the debt's whole story when one is involved, the schedule and
+  // what it costs a year otherwise.
+  const schedulePreview = useMemo(
+    () => previewRecurring({
+      amount: Number(form.amount) || 0,
+      unit: form.frequency_unit,
+      interval,
+      startDate: form.start_date,
+      endDate: form.end_date || null,
+      today,
+    }),
+    [form.amount, form.frequency_unit, interval, form.start_date, form.end_date, today],
+  )
+
+  const debtPreview = useMemo(() => {
+    if (!withDebt) return null
+    const owed = creatingDebt ? Number(form.debt_balance) || 0 : linkedDebt?.balance ?? 0
+    const rate = creatingDebt
+      ? (form.debt_rate.trim() !== "" && Number.isFinite(Number(form.debt_rate)) ? Number(form.debt_rate) : null)
+      : linkedDebt?.annual_rate_pct ?? null
+    // Null for a rhythm the debt vocabulary cannot name (every 10 days); the
+    // preview then has no periods to amortise over and stands down.
+    const frequency = recurringToFrequency(form.frequency_unit, interval)
+    const scheduled = frequency && frequency !== "irregular" ? frequency : null
+    const first = form.start_date > today ? form.start_date : today
+    return previewDebt({
+      owed: toCents(owed),
+      original: creatingDebt ? toCents(owed) : linkedDebt?.original_amount == null ? null : toCents(linkedDebt.original_amount),
+      annualRatePct: rate,
+      repayment: scheduled && Number(form.amount) > 0 && form.start_date
+        ? { amount: toCents(Number(form.amount)), frequency: scheduled, firstPayment: first }
+        : null,
+    })
+  }, [withDebt, creatingDebt, linkedDebt, form.debt_balance, form.debt_rate, form.amount, form.frequency_unit, interval, form.start_date, today])
+
+  /**
+   * Four shapes, and every one of them is ONE request, because every one of
+   * them is one intention:
+   *
+   *   new rule, no debt          POST /api/recurring
+   *   new rule + existing debt   POST /api/recurring { debt_account_id }
+   *   new debt (either case)     POST /api/debts { repayment } / { link_rule_id }
+   *   existing rule              PATCH /api/recurring/:id, link separately
+   *
+   * Creating a debt and then attaching it would leave a debt nobody pays, or a
+   * plain expense, if the second request never landed.
+   */
   async function handleSave() {
     if (!form.name.trim()) { toast.error(t("recurring.nameRequired")); return }
     if (!(Number(form.amount) > 0)) { toast.error(t("recurring.amountRequired")); return }
+    if (creatingDebt) {
+      if (!form.debt_name.trim()) { toast.error(t("recurring.debtNameRequired")); return }
+      if (!(Number(form.debt_balance) >= 0) || form.debt_balance.trim() === "") { toast.error(t("recurring.debtBalanceRequired")); return }
+    }
     setSaving(true)
     try {
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
+      const frequency_interval = Math.max(1, Math.floor(Number(form.frequency_interval) || 1))
       const body = {
         name: form.name.trim(),
         type: form.type,
         amount: Number(form.amount),
-        category: form.category,
-        client_id: form.client_id || null,
+        // A debt repayment's category and client are the engine's, not the
+        // form's; the server forces them too, this just stops sending noise.
+        category: withDebt ? "" : form.category,
+        client_id: withDebt ? null : form.client_id || null,
         // The card decides the account server-side (it is always the card's own).
         wealth_account_id: form.wealth_account_id || null,
         card_id: form.card_id || null,
         frequency_unit: form.frequency_unit,
-        frequency_interval: Math.max(1, Math.floor(Number(form.frequency_interval) || 1)),
+        frequency_interval,
         start_date: form.start_date,
         end_date: form.end_date || null,
       }
+
+      // Creating the debt here: the debt route owns the write, and it carries
+      // the rule with it — a new one in `repayment`, an existing one by id.
+      if (creatingDebt) {
+        const debtBody = {
+          direction: newDebtDirection,
+          name: form.debt_name.trim(),
+          current_balance: Number(form.debt_balance),
+          original_amount: Number(form.debt_balance),
+          annual_rate_pct: form.debt_rate.trim() === "" ? null : Number(form.debt_rate),
+          ...(rule
+            ? { link_rule_id: rule.id }
+            : {
+                repayment: {
+                  enabled: true,
+                  from_account_id: form.wealth_account_id,
+                  amount: Number(form.amount),
+                  frequency: recurringToFrequency(form.frequency_unit, frequency_interval) ?? "monthly",
+                  start_date: form.start_date,
+                  end_date: form.end_date || null,
+                  name: form.name.trim(),
+                },
+              }),
+        }
+        const saved = await apiPost<{ id: string; repayment_rule_id?: string | null }>("/api/debts", token, debtBody)
+        toast.success(t("recurring.debtCreatedAndLinked"))
+        if (rule) {
+          const updated = await apiPatch<RecurringRule>(`/api/recurring/${rule.id}`, token, body)
+          onSaved(updated, { created: false })
+        } else {
+          onSaved({ ...(body as unknown as RecurringRule), id: saved.repayment_rule_id ?? "" }, { created: true })
+        }
+        onOpenChange(false)
+        return
+      }
+
       if (rule) {
         const updated = await apiPatch<RecurringRule>(`/api/recurring/${rule.id}`, token, body)
+        // Attaching or detaching is its own request by design: it cannot be
+        // atomic alongside an edit, so the server refuses the combination.
+        const want = form.debt_choice || null
+        const have = rule.debt_account_id ?? null
+        const linked = want !== have
+          ? await apiPatch<RecurringRule>(`/api/recurring/${rule.id}`, token, { debt_account_id: want })
+          : updated
         toast.success(t("recurring.updated"))
-        onSaved(updated, { created: false })
+        onSaved(linked, { created: false })
       } else {
-        const created = await apiPost<RecurringRule & { created_now?: number }>("/api/recurring", token, body)
+        const created = await apiPost<RecurringRule & { created_now?: number }>("/api/recurring", token, {
+          ...body,
+          ...(form.debt_choice ? { debt_account_id: form.debt_choice } : {}),
+        })
         toast.success(
           created.created_now
             ? t("recurring.createdWithTx", { count: created.created_now })
@@ -187,57 +391,48 @@ export function RecurringRuleDialog({
             <Input id="rec-name" value={form.name} maxLength={120} placeholder={t("recurring.namePlaceholder")} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} autoFocus />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label>{t("recurring.direction")}</Label>
-              <Select value={form.type} onValueChange={(v) => setForm((f) => ({ ...f, type: v as RuleForm["type"] }))}>
-                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="outgoing">{t("recurring.outgoing")}</SelectItem>
-                  <SelectItem value="incoming">{t("recurring.incoming")}</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="rec-amount">{t("recurring.amount")}</Label>
-              <Input id="rec-amount" type="number" inputMode="decimal" min="0" step="0.01" placeholder="0.00" value={form.amount} onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))} />
+          {/* Which way the money goes, in the add-transaction colour language:
+              leaving is red, arriving is green. It decides the account label,
+              the categories offered and which side of a debt this can pay, so
+              it earns a full row rather than a dropdown. */}
+          <div className="space-y-1.5">
+            <Label>{t("recurring.direction")}</Label>
+            <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label={t("recurring.direction")}>
+              {([
+                { v: "outgoing", label: t("recurring.outgoing"), Icon: ArrowDownRight, on: "border-red-500 bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400 dark:border-red-600" },
+                { v: "incoming", label: t("recurring.incoming"), Icon: ArrowUpRight, on: "border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400 dark:border-emerald-600" },
+              ] as const).map((o) => (
+                <button
+                  key={o.v}
+                  type="button"
+                  role="radio"
+                  aria-checked={form.type === o.v}
+                  onClick={() => setForm((f) => ({
+                    ...f,
+                    type: o.v,
+                    // The categories differ per direction, and a debt chosen for
+                    // the other side would now be the wrong one.
+                    category: "",
+                    debt_choice: f.debt_choice === "new" ? "new" : "",
+                  }))}
+                  className={cn(
+                    "flex min-h-11 items-center justify-center gap-1.5 rounded-md border px-2 py-2.5 text-sm font-medium transition-colors",
+                    form.type === o.v ? o.on : "border-border hover:bg-muted",
+                  )}
+                >
+                  <o.Icon className="size-4 shrink-0" aria-hidden />
+                  <span className="truncate">{o.label}</span>
+                </button>
+              ))}
             </div>
           </div>
 
-          {hasClients && (
-            <div className="space-y-1.5">
-              <Label>{t("recurring.client")}</Label>
-              <Select value={form.client_id || "own"} onValueChange={(v) => setForm((f) => ({ ...f, client_id: v === "own" ? "" : v }))}>
-                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="own">{t("recurring.ownCompany")}</SelectItem>
-                  {clients.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+          <div className="space-y-1.5">
+            <Label htmlFor="rec-amount">{t("recurring.amount")}</Label>
+            <div className="relative">
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-lg font-medium text-muted-foreground">{symbol}</span>
+              <Input id="rec-amount" type="number" inputMode="decimal" min="0" step="0.01" placeholder="0.00" value={form.amount} className="h-12 pl-9 text-lg font-semibold tabular-nums" onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))} />
             </div>
-          )}
-
-          <div className="space-y-1.5">
-            <Label>{t("recurring.cardPayWith")}</Label>
-            {/* Accounts AND cards: picking a card also sets its account (the
-                server enforces the pair — a card only ever pays from its own). */}
-            <AccountCombobox
-              accounts={accounts}
-              cards={cards}
-              value={form.card_id || form.wealth_account_id}
-              onChange={(id, picked) => setForm((f) => ({ ...f, wealth_account_id: picked ? picked.account_id : id, card_id: picked?.card_id ?? "" }))}
-              currency={currency}
-              allowNone
-              noneLabel={t("recurring.noAccount")}
-            />
-            <p className="text-[11px] text-muted-foreground">{t("recurring.cardPayWithHint")}</p>
-          </div>
-
-          <div className="space-y-1.5">
-            <Label>{t("recurring.category")}</Label>
-            <CategoryPicker type={form.type} value={form.category} onChange={(name) => setForm((f) => ({ ...f, category: name }))} />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -267,18 +462,149 @@ export function RecurringRuleDialog({
             <div className="space-y-1.5">
               <Label htmlFor="rec-end">{t("recurring.endsOn")}</Label>
               <Input id="rec-end" type="date" value={form.end_date} min={form.start_date} onChange={(e) => setForm((f) => ({ ...f, end_date: e.target.value }))} />
-              <p className="text-[11px] text-muted-foreground">{t("recurring.endsOnHint")}</p>
             </div>
           </div>
+          <p className="-mt-2 text-[11px] text-muted-foreground">{t("recurring.endsOnHint")}</p>
 
-          {preview.length > 0 && (
-            <div className="rounded-lg bg-muted/60 p-3">
-              <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-                <CalendarClock className="size-3.5" /> {t("recurring.previewTitle")}
+          <div className="space-y-1.5">
+            {/* "Pay with" is only true one way round. Money arriving lands
+                somewhere; it is not paid with anything. */}
+            <Label>{incoming ? t("recurring.comesInto") : t("recurring.cardPayWith")}</Label>
+            {/* Accounts AND cards: picking a card also sets its account (the
+                server enforces the pair — a card only ever pays from its own). */}
+            <AccountCombobox
+              accounts={accounts}
+              cards={cards}
+              value={form.card_id || form.wealth_account_id}
+              onChange={(id, picked) => setForm((f) => ({ ...f, wealth_account_id: picked ? picked.account_id : id, card_id: picked?.card_id ?? "" }))}
+              currency={currency}
+              allowNone
+              noneLabel={t("recurring.noAccount")}
+            />
+            <p className="text-[11px] text-muted-foreground">{incoming ? t("recurring.comesIntoHint") : t("recurring.cardPayWithHint")}</p>
+          </div>
+
+          {/* Does this pay a debt? The standing order is usually older than the
+              debt, and the debt often does not exist here at all — so both
+              joining an existing one and making one are the same question. */}
+          <div className="space-y-3 rounded-xl border bg-muted/20 p-3">
+            <Label htmlFor="rec-debt">{incoming ? t("recurring.collectsDebtQ") : t("recurring.paysDebtQ")}</Label>
+            <Select
+              value={form.debt_choice || "none"}
+              onValueChange={(v) => setForm((f) => ({
+                ...f,
+                debt_choice: v === "none" ? "" : v,
+                debt_name: v === "new" && !f.debt_name ? f.name : f.debt_name,
+              }))}
+            >
+              <SelectTrigger id="rec-debt" className="w-full"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">{t("recurring.noDebt")}</SelectItem>
+                {/* Offered only while the save would accept it — see createRefusal. */}
+                {!createRefusal && <SelectItem value="new">{t("recurring.createDebt")}</SelectItem>}
+                {eligibleDebts.map((d) => (
+                  <SelectItem key={d.id} value={d.id}>{d.name} · {formatMoney(d.balance, d.currency, true)}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {linkedDebt && (
+              <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <HandCoins className="size-3.5 shrink-0" aria-hidden /> {t("recurring.debtLinkForwardOnly")}
               </p>
-              <p className="mt-1 text-sm">{preview.map(fmtDate).join(" · ")}{preview.length === 3 ? " …" : ""}</p>
-              {!rule && form.start_date < new Date().toISOString().split("T")[0] && (
-                <p className="mt-1 text-[11px] text-muted-foreground">{t("recurring.backdatedHint")}</p>
+            )}
+
+            <Collapse open={creatingDebt}>
+              <div className="space-y-3 pt-1">
+                <div className="space-y-1.5">
+                  <Label htmlFor="rec-debt-name">{incoming ? t("recurring.debtWhoOwes") : t("recurring.debtWhoOwed")}</Label>
+                  <Input id="rec-debt-name" value={form.debt_name} maxLength={120} onChange={(e) => setForm((f) => ({ ...f, debt_name: e.target.value }))} />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="rec-debt-balance">{t("recurring.debtBalance")}</Label>
+                    <div className="relative">
+                      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-medium text-muted-foreground">{symbol}</span>
+                      <Input id="rec-debt-balance" type="number" inputMode="decimal" min="0" step="0.01" placeholder="0.00" value={form.debt_balance} className="pl-7 tabular-nums" onChange={(e) => setForm((f) => ({ ...f, debt_balance: e.target.value }))} />
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="rec-debt-rate">{t("recurring.debtRate")}</Label>
+                    <Input id="rec-debt-rate" type="number" inputMode="decimal" min="0" step="0.01" placeholder="0.00" value={form.debt_rate} onChange={(e) => setForm((f) => ({ ...f, debt_rate: e.target.value }))} />
+                  </div>
+                </div>
+                <p className="flex items-start gap-1.5 text-[11px] text-muted-foreground">
+                  <Plus className="mt-0.5 size-3 shrink-0" aria-hidden />
+                  {t(newDebtDirection === "receivable" ? "recurring.debtWillBeReceivable" : "recurring.debtWillBeLoan")}
+                </p>
+              </div>
+            </Collapse>
+
+            {/* Say WHY there is nothing to pick. "No debt fits" is only the
+                truth once the payment could service one at all; before that the
+                real answer is the account, the card or the end date. */}
+            {!withDebt && debts !== null && (createRefusal
+              ? createHintKey && <p className="text-[11px] text-muted-foreground">{t(createHintKey)}</p>
+              : eligibleDebts.length === 0 && <p className="text-[11px] text-muted-foreground">{t("recurring.noEligibleDebts")}</p>
+            )}
+          </div>
+
+          {/* Category and client belong to an ordinary payment. A repayment's
+              are the engine's: "Transfer", and the workspace's own client. */}
+          {!withDebt && (
+            <div className="space-y-1.5">
+              <Label>{t("recurring.category")}</Label>
+              <CategoryPicker type={form.type} value={form.category} onChange={(name) => setForm((f) => ({ ...f, category: name }))} />
+            </div>
+          )}
+
+          {hasClients && !withDebt && (
+            <div className="space-y-1.5">
+              <Label>{t("recurring.client")}</Label>
+              <Select value={form.client_id || "own"} onValueChange={(v) => setForm((f) => ({ ...f, client_id: v === "own" ? "" : v }))}>
+                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="own">{t("recurring.ownCompany")}</SelectItem>
+                  {clients.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {/* What all of it adds up to. With a debt that is the payoff date and
+              the interest; without one it is the schedule and the annual cost,
+              which is the figure nobody works out in their head. */}
+          {withDebt && debtPreview ? (
+            <DebtPreviewCard
+              preview={debtPreview}
+              currency={currency}
+              receivable={incoming}
+              frequencyWord={t(`recurring.unitWord.${form.frequency_unit}`)}
+              arriving={null}
+            />
+          ) : schedulePreview.kind === "schedule" && (
+            <div className="space-y-1.5 rounded-xl border border-primary/30 bg-primary/5 p-3">
+              <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-primary">
+                <CalendarClock className="size-3.5" aria-hidden /> {t("recurring.previewTitle")}
+              </p>
+              {schedulePreview.neverRuns ? (
+                <p className="flex items-start gap-1.5 text-sm text-amber-700 dark:text-amber-300">
+                  <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden /> {t("recurring.previewNeverRuns")}
+                </p>
+              ) : (
+                <>
+                  <p className="text-sm">{schedulePreview.dates.map(fmtDate).join(" · ")}{schedulePreview.more ? " …" : ""}</p>
+                  {schedulePreview.perYear > 0 && (
+                    <p className="text-sm font-medium tabular-nums">
+                      {t("recurring.previewPerYear", { amount: formatMoney(schedulePreview.perYear, currency, true) })}
+                    </p>
+                  )}
+                </>
+              )}
+              {!rule && schedulePreview.backdated && (
+                <p className="text-[11px] text-muted-foreground">{t("recurring.backdatedHint")}</p>
               )}
             </div>
           )}
@@ -320,5 +646,24 @@ export function DeleteRecurringDialog({
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
+  )
+}
+
+/**
+ * Expand to auto height via the grid `0fr → 1fr` trick: the track size is
+ * interpolable (unlike `height: auto`) so the fold stays on the compositor, and
+ * the inner `overflow-hidden` clips content instead of letting it spill.
+ */
+function Collapse({ open, children }: { open: boolean; children: ReactNode }) {
+  return (
+    <div
+      inert={open ? undefined : true}
+      className={cn(
+        "grid transition-[grid-template-rows,opacity] duration-300 ease-out motion-reduce:transition-none",
+        open ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
+      )}
+    >
+      <div className="overflow-hidden">{children}</div>
+    </div>
   )
 }
