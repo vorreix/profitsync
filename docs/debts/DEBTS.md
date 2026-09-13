@@ -338,6 +338,29 @@ The direction chooser uses the **same colour language as the add-transaction
 form**: money leaving is red, money arriving is green. A debt you owe is the red
 one, and the colour should say so before the label is read.
 
+The inline **create-a-debt** block asks the two amounts the debt screen asks —
+what it started at and what is left, in that order and in the same words — and
+puts the rate behind a closed **More details** disclosure, labelled "Interest
+rate (% per year)" rather than "Rate (%)", which said neither per what nor of
+what. The original is what `progress_pct` is measured against and the ONLY thing
+it feeds; sending the remaining balance for both, as this form used to, filed
+every debt it made as 0% repaid of a figure that was never its original.
+
+A **category is required** for an ordinary recurring payment and never asked for
+a repayment. A rule stamps its category onto every occurrence it will ever post,
+and a blank one is unreachable by every category-scoped budget — the money lands
+where nobody can plan against it. A repayment's category is the engine's, so the
+picker is not rendered and the requirement does not apply. Enforcement is in the
+dialog, NOT in `validateRuleInput`: the validator is shared with Space auto-save
+and with the debt paths that legitimately send "" or "Transfer", and a server
+rule would also lock users out of editing every rule that predates it.
+
+Dismissing the dialog — Escape, the overlay, the X, the Back gesture — **keeps
+what was typed** (`useModalDraft`, the same keeper four other modals use). An
+explicit Cancel or a successful save clears it. The draft is keyed on the rule,
+the workspace and the preset's CONTENT, so "Create a debt for this" re-seeds
+rather than landing on an older draft with its question unanswered.
+
 The **recurring dialog mirrors all of it.** `/recurring` asks the same
 question — "does this pay a debt?", or "is someone paying you back?" when the
 money comes in — and answers it with the same three options: no, one you have,
@@ -355,6 +378,11 @@ payoff chart, custom order, stabilisation mode, debt-payment ratio; empty and
 debt-free states.
 
 ## 6. Verification
+
+End to end through the real form: `e2e/recurring-debt.spec.ts` — creating the
+debt from the recurring side actually creates it, an unnameable rhythm survives
+the round trip, the answer survives a background revalidation landing mid-form,
+the category requirement, and the draft policy.
 
 Unit (DB-free): `debt-math.test.ts`, `debt-planner.test.ts`, `debt-status.test.ts`,
 `debt-ledger.test.ts`, `debt-recurring.test.ts` (the refusal table and the

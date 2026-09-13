@@ -1762,7 +1762,8 @@
     "debtNeedsCash": "Un debito si rimborsa da un conto bancario o in contanti.",
     "debtRuleEnded": "Finisce prima di poter pagare qualcosa.",
     "debtAlreadyLinked": "Questo pagamento rimborsa già un altro debito. Scollegalo prima da lì.",
-    "debtHasPending": "Ci sono pagamenti ancora da registrare. Apri questo pagamento e lasciali passare prima."
+    "debtHasPending": "Ci sono pagamenti ancora da registrare. Apri questo pagamento e lasciali passare prima.",
+    "categoryRequired": "Scegli una categoria — ogni pagamento creato la porterà con sé."
   },
   "calendar": {
     "title": "Calendario",

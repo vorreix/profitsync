@@ -2021,6 +2021,7 @@
     "nameRequired": "Give it a name",
     "amount": "Amount",
     "amountRequired": "Enter an amount greater than zero",
+    "categoryRequired": "Choose a category — every payment this makes will carry it.",
     "direction": "Direction",
     "incoming": "Money in",
     "outgoing": "Money out",

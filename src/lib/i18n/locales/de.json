@@ -1762,7 +1762,8 @@
     "debtNeedsCash": "Eine Schuld wird von einem Bank- oder Bargeldkonto zurückgezahlt.",
     "debtRuleEnded": "Das endet, bevor es je zahlen könnte.",
     "debtAlreadyLinked": "Diese Zahlung tilgt bereits eine andere Schuld. Löse sie dort zuerst.",
-    "debtHasPending": "Es warten noch Zahlungen auf die Buchung. Öffne diese Zahlung und lass sie zuerst durch."
+    "debtHasPending": "Es warten noch Zahlungen auf die Buchung. Öffne diese Zahlung und lass sie zuerst durch.",
+    "categoryRequired": "Wähle eine Kategorie — jede daraus entstehende Zahlung trägt sie."
   },
   "calendar": {
     "title": "Kalender",

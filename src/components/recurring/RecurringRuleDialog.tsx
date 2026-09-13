@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
+
 import { useTranslation } from "react-i18next"
 import { useAuth } from "@clerk/clerk-react"
 import { toast } from "sonner"
-import { ArrowDownRight, ArrowUpRight, CalendarClock, HandCoins, Plus, TriangleAlert } from "lucide-react"
+import { ArrowDownRight, ArrowUpRight, CalendarClock, ChevronDown, HandCoins, Plus, TriangleAlert } from "lucide-react"
 import { apiGet, apiPatch, apiPost } from "@/lib/api"
 import { useOrg } from "@/lib/org-context"
+import { useModalDraft } from "@/hooks/use-modal-draft"
 import { useCurrency } from "@/lib/currency-context"
 import { accountTypeAllows } from "@/lib/types"
 import type { Card, Client, Debt, DebtsOverview, RecurringRule, WealthAccount } from "@/lib/types"
@@ -43,6 +45,8 @@ export type RuleForm = {
   /** "" = an ordinary payment, "new" = create one here, otherwise a debt id. */
   debt_choice: string
   debt_name: string
+  /** What it started at. Drives "x% repaid" — the ONLY thing it feeds. */
+  debt_original: string
   debt_balance: string
   debt_rate: string
 }
@@ -77,6 +81,7 @@ const emptyRuleForm = (): RuleForm => ({
   end_date: "",
   debt_choice: "",
   debt_name: "",
+  debt_original: "",
   debt_balance: "",
   debt_rate: "",
 })
@@ -95,6 +100,7 @@ const formFromRule = (rule: RecurringRule): RuleForm => ({
   end_date: rule.end_date ?? "",
   debt_choice: rule.debt_account_id ?? "",
   debt_name: "",
+  debt_original: "",
   debt_balance: "",
   debt_rate: "",
 })
@@ -140,6 +146,10 @@ export function RecurringRuleDialog({
   const [saving, setSaving] = useState(false)
   // Did the user actually choose "no debt"? See the debt Select's onValueChange.
   const [unlinkAsked, setUnlinkAsked] = useState(false)
+  // The optional loan-document facts, closed by default.
+  const [moreDebt, setMoreDebt] = useState(false)
+  // Set when Save was pressed with no category; cleared the moment one is picked.
+  const [categoryError, setCategoryError] = useState(false)
   // Read at open time only — a fresh object identity each render must not
   // re-seed the form while the user is typing in it.
   const presetRef = useRef(preset)
@@ -157,14 +167,36 @@ export function RecurringRuleDialog({
   // away everything the user had typed, mid-sentence.
   const ruleRef = useRef(rule)
   ruleRef.current = rule
+
+  // What the form looked like the moment it was seeded. "Dirty" is measured
+  // against THIS, not against emptiness — an edit arrives fully populated, and
+  // calling that dirty would leave a draft shadowing the rule's real values on
+  // every later open.
+  const seedRef = useRef<RuleForm>(form)
+  // A different rule, or a different preset, is a different intention and must
+  // re-seed. Derived from the preset's CONTENT: its identity churns per render.
+  const contextKey = `${rule?.id ?? "new"}:${activeOrg?.id ?? ""}:${JSON.stringify(Object.entries(preset ?? {}).sort())}`
+  const dirty = JSON.stringify(form) !== JSON.stringify(seedRef.current) || unlinkAsked
+  const draft = useModalDraft({ open, dirty, contextKey })
+
   useEffect(() => {
     if (!open) return
+    // ALWAYS, outside the seed branch: a save still in flight when the user
+    // dismissed would otherwise leave both footer buttons disabled forever.
+    setSaving(false)
+    // A dismissal — Escape, the overlay, the X, the Back gesture — keeps what
+    // was typed. Only an explicit Cancel or a successful save clears it.
+    if (!draft.shouldSeed()) return
     const seedFrom = ruleRef.current
     const seeded = { ...(seedFrom ? formFromRule(seedFrom) : emptyRuleForm()), ...presetRef.current }
-    setForm(seeded.debt_choice === "new" && !seeded.debt_name ? { ...seeded, debt_name: seeded.name } : seeded)
-    setSaving(false)
+    const next = seeded.debt_choice === "new" && !seeded.debt_name ? { ...seeded, debt_name: seeded.name } : seeded
+    seedRef.current = next
+    setForm(next)
     setUnlinkAsked(false)
+    setMoreDebt(false)
+    setCategoryError(false)
     // `open` ONLY — see ruleRef above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
   // The debts this payment could be attached to. Loaded once per open; the
@@ -299,13 +331,18 @@ export function RecurringRuleDialog({
     const first = form.start_date > today ? form.start_date : today
     return previewDebt({
       owed: toCents(owed),
-      original: creatingDebt ? toCents(owed) : linkedDebt?.original_amount == null ? null : toCents(linkedDebt.original_amount),
+      // The real original when one was typed, otherwise NOTHING. Passing the
+      // remaining balance made previewDebt print "0 % repaid so far." about a
+      // debt that does not exist yet.
+      original: creatingDebt
+        ? (form.debt_original.trim() !== "" && Number.isFinite(Number(form.debt_original)) ? toCents(Number(form.debt_original)) : null)
+        : linkedDebt?.original_amount == null ? null : toCents(linkedDebt.original_amount),
       annualRatePct: rate,
       repayment: scheduled && Number(form.amount) > 0 && form.start_date
         ? { amount: toCents(Number(form.amount)), frequency: scheduled, firstPayment: first }
         : null,
     })
-  }, [withDebt, creatingDebt, linkedDebt, form.debt_balance, form.debt_rate, form.amount, form.frequency_unit, interval, form.start_date, today])
+  }, [withDebt, creatingDebt, linkedDebt, form.debt_balance, form.debt_original, form.debt_rate, form.amount, form.frequency_unit, interval, form.start_date, today])
 
   /**
    * Four shapes, and every one of them is ONE request, because every one of
@@ -322,6 +359,17 @@ export function RecurringRuleDialog({
   async function handleSave() {
     if (!form.name.trim()) { toast.error(t("recurring.nameRequired")); return }
     if (!(Number(form.amount) > 0)) { toast.error(t("recurring.amountRequired")); return }
+    // A recurring rule stamps its category onto every occurrence it will ever
+    // post, so a blank one is not one uncategorised row — it is a standing
+    // order's worth. A blank category is also unreachable by every
+    // category-scoped budget, so the money lands nowhere anyone can plan
+    // against. Only asked for when the picker is on screen: a repayment's
+    // category is the engine's.
+    if (!withDebt && !form.category.trim()) {
+      setCategoryError(true)
+      toast.error(t("recurring.categoryRequired"))
+      return
+    }
     if (creatingDebt) {
       if (!form.debt_name.trim()) { toast.error(t("recurring.debtNameRequired")); return }
       if (!(Number(form.debt_balance) >= 0) || form.debt_balance.trim() === "") { toast.error(t("recurring.debtBalanceRequired")); return }
@@ -366,7 +414,11 @@ export function RecurringRuleDialog({
           direction: newDebtDirection,
           name: form.debt_name.trim(),
           current_balance: Number(form.debt_balance),
-          original_amount: Number(form.debt_balance),
+          // What it started at, when it is known. The route defaults a missing
+          // original to the balance, so sending the balance twice was the same
+          // as saying "nothing has ever been repaid on this" — every debt made
+          // here was born at 0% against a figure that was not its original.
+          original_amount: form.debt_original.trim() === "" ? Number(form.debt_balance) : Number(form.debt_original),
           annual_rate_pct: form.debt_rate.trim() === "" ? null : Number(form.debt_rate),
           ...(rule
             ? { link_rule_id: rule.id }
@@ -391,6 +443,7 @@ export function RecurringRuleDialog({
         toast.success(t("recurring.debtCreatedAndLinked"))
         if (rule) onSaved(edited ?? rule, { created: false })
         else onSaved({ ...(body as unknown as RecurringRule), id: saved.repayment_rule_id ?? "" }, { created: true })
+        draft.clearDraft()
         onOpenChange(false)
         return
       }
@@ -421,6 +474,7 @@ export function RecurringRuleDialog({
         )
         onSaved(created, { created: true, createdNow: created.created_now })
       }
+      draft.clearDraft()
       onOpenChange(false)
     } catch (err) {
       toast.error(err instanceof Error && err.message ? err.message : t("recurring.saveFailed"))
@@ -577,19 +631,50 @@ export function RecurringRuleDialog({
                   <Label htmlFor="rec-debt-name">{incoming ? t("recurring.debtWhoOwes") : t("recurring.debtWhoOwed")}</Label>
                   <Input id="rec-debt-name" value={form.debt_name} maxLength={120} onChange={(e) => setForm((f) => ({ ...f, debt_name: e.target.value }))} />
                 </div>
+                {/* The two amounts, in the debt sheet's order and vocabulary:
+                    what it started at, and what is left. Only the second is
+                    required — the first exists so "40% repaid" can be true
+                    rather than every debt made here starting life at zero. */}
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
-                    <Label htmlFor="rec-debt-balance">{t("recurring.debtBalance")}</Label>
+                    <Label htmlFor="rec-debt-original">{t("debts.originalAmount")}</Label>
+                    <div className="relative">
+                      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-medium text-muted-foreground">{symbol}</span>
+                      <Input id="rec-debt-original" type="number" inputMode="decimal" min="0" step="0.01" placeholder="0.00" value={form.debt_original} className="pl-7 tabular-nums" onChange={(e) => setForm((f) => ({ ...f, debt_original: e.target.value }))} />
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="rec-debt-balance">{incoming ? t("debts.howMuchOwed") : t("debts.howMuchLeft")}</Label>
                     <div className="relative">
                       <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-medium text-muted-foreground">{symbol}</span>
                       <Input id="rec-debt-balance" type="number" inputMode="decimal" min="0" step="0.01" placeholder="0.00" value={form.debt_balance} className="pl-7 tabular-nums" onChange={(e) => setForm((f) => ({ ...f, debt_balance: e.target.value }))} />
                     </div>
                   </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="rec-debt-rate">{t("recurring.debtRate")}</Label>
-                    <Input id="rec-debt-rate" type="number" inputMode="decimal" min="0" step="0.01" placeholder="0.00" value={form.debt_rate} onChange={(e) => setForm((f) => ({ ...f, debt_rate: e.target.value }))} />
-                  </div>
                 </div>
+
+                {/* The rate is a loan-document fact people rarely have to hand,
+                    and it is optional. Behind a closed disclosure, labelled with
+                    what it actually is — "Rate (%)" did not say per what, or of
+                    what. Same pattern and same words as the debt sheet. */}
+                <div className="rounded-xl border">
+                  <button
+                    type="button"
+                    onClick={() => setMoreDebt((v) => !v)}
+                    aria-expanded={moreDebt}
+                    className="flex min-h-11 w-full items-center justify-between px-3 text-sm font-medium"
+                  >
+                    {t("debts.moreDetails")}
+                    <ChevronDown className={cn("size-4 text-muted-foreground transition-transform duration-200", moreDebt && "rotate-180")} aria-hidden />
+                  </button>
+                  <Collapse open={moreDebt}>
+                    <div className="space-y-1.5 border-t px-3 py-3">
+                      <Label htmlFor="rec-debt-rate">{t("debts.interestRate")}</Label>
+                      <Input id="rec-debt-rate" type="number" inputMode="decimal" min="0" step="0.01" placeholder="0.00" value={form.debt_rate} onChange={(e) => setForm((f) => ({ ...f, debt_rate: e.target.value }))} />
+                      <p className="text-xs text-muted-foreground">{t("debts.rateNoneHelp")} {t("debts.rateHelp")}</p>
+                    </div>
+                  </Collapse>
+                </div>
+
                 <p className="flex items-start gap-1.5 text-[11px] text-muted-foreground">
                   <Plus className="mt-0.5 size-3 shrink-0" aria-hidden />
                   {t(newDebtDirection === "receivable" ? "recurring.debtWillBeReceivable" : "recurring.debtWillBeLoan")}
@@ -611,7 +696,13 @@ export function RecurringRuleDialog({
           {!withDebt && (
             <div className="space-y-1.5">
               <Label>{t("recurring.category")}</Label>
-              <CategoryPicker type={form.type} value={form.category} onChange={(name) => setForm((f) => ({ ...f, category: name }))} />
+              <CategoryPicker
+                type={form.type}
+                value={form.category}
+                invalid={categoryError}
+                onChange={(name) => { if (name.trim()) setCategoryError(false); setForm((f) => ({ ...f, category: name })) }}
+              />
+              {categoryError && <p className="text-[11px] text-destructive">{t("recurring.categoryRequired")}</p>}
             </div>
           )}
 
@@ -667,7 +758,9 @@ export function RecurringRuleDialog({
           )}
         </div>
         <DialogFooter className="shrink-0 border-t px-6 pb-6 pt-3">
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>{t("common.cancel")}</Button>
+          {/* Cancel is a decision, so it throws the draft away. Escape, the
+              overlay and the Back gesture are accidents, so they keep it. */}
+          <Button variant="outline" onClick={() => { draft.clearDraft(); onOpenChange(false) }} disabled={saving}>{t("common.cancel")}</Button>
           <Button onClick={handleSave} disabled={saving}>{saving ? t("common.saving") : rule ? t("common.save") : t("recurring.add")}</Button>
         </DialogFooter>
       </DialogContent>
