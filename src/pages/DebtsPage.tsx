@@ -149,8 +149,19 @@ export function DebtsPage() {
       {header}
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)}>
-        <TabsList className="w-full justify-start overflow-x-auto sm:w-auto">
-          {TABS.map((k) => <TabsTrigger key={k} value={k}>{t(`tabs.${k}`)}</TabsTrigger>)}
+        {/* On a phone the four triggers are `flex-1` with `whitespace-nowrap`,
+            so they refuse to shrink below their own text and the last one
+            spills past the container — "Upcoming" was clipped by 9px in
+            English, and German and Tamil are longer still. Below `sm` they
+            keep their natural width and the ROW scrolls, and the height goes
+            to 44px because every one of them is a thumb target. Overriding
+            here rather than in ui/tabs.tsx: that file is vendored. */}
+        <TabsList className="w-full justify-start gap-1 overflow-x-auto scrollbar-none group-data-[orientation=horizontal]/tabs:h-auto sm:w-auto sm:gap-0 sm:group-data-[orientation=horizontal]/tabs:h-9">
+          {TABS.map((k) => (
+            <TabsTrigger key={k} value={k} className="min-h-11 shrink-0 grow-0 px-3.5 sm:min-h-0 sm:flex-1 sm:px-2">
+              {t(`tabs.${k}`)}
+            </TabsTrigger>
+          ))}
         </TabsList>
       </Tabs>
 
