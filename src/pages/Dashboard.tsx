@@ -29,7 +29,7 @@ import {
 import { useCurrency } from "@/lib/currency-context"
 import { useOrg } from "@/lib/org-context"
 import { useDataRefresh } from "@/lib/data-refresh-context"
-import { accountBalanceLabel, accountDisplayName, formatMoney, useBalancePrivacy, useWealthSummary } from "@/lib/wealth"
+import { accountBalanceLabel, accountDisplayName, currencySymbol, formatMoney, useBalancePrivacy, useWealthSummary } from "@/lib/wealth"
 import { creditUsage, isLiabilityType } from "@/lib/credit-card"
 import { useCardMap, useCards } from "@/lib/use-cards"
 import { CardChip } from "@/components/cards/CardChip"
@@ -103,7 +103,9 @@ import {
 } from "recharts"
 import { AlertsBanner } from "@/components/alerts/AlertsBanner"
 
-function formatCurrency(amount: number, currency: string) {
+function formatCurrency(amount: number, currency: string, visible = true) {
+  // Masked the same way formatMoney masks, so the page hides consistently.
+  if (!visible) return `${currencySymbol(currency)} *****`
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency,
@@ -559,7 +561,7 @@ function WealthOverview({
 }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const { balancesVisible, setBalancesVisible } = useBalancePrivacy()
+  const { balancesVisible } = useBalancePrivacy()
   // "Total available" is the money the user HOLDS (cash + bank). Credit-card
   // debt is shown separately as "Owed on cards" — available credit is never
   // counted as money (src/lib/wealth.ts summarizeWealth).
@@ -638,17 +640,6 @@ function WealthOverview({
         : balancesVisible ? <span className="inline-flex items-center gap-1"><span role="img" aria-label={HEALTH.label} className={`size-1.5 rounded-full ${HEALTH.dot}`} />{HEALTH.label}</span> : undefined}
       storageKey={`ps_dash_wealth_open_${orgId}`}
       onOpen={() => navigate("/wealth")}
-      action={
-        <Button
-          variant="ghost"
-          size="icon"
-          className="pressable size-11 shrink-0 text-muted-foreground hover:text-foreground"
-          aria-label={balancesVisible ? t("wealth.hideBalances") : t("wealth.showBalances")}
-          onClick={() => setBalancesVisible((v) => !v)}
-        >
-          {balancesVisible ? <Eye className="size-4" /> : <EyeOff className="size-4" />}
-        </Button>
-      }
     >
           <div>
             {/* Cards — count + what the credit cards owe; opens the Cards tab. */}
@@ -731,6 +722,9 @@ const UNCATEGORIZED = "__uncat__"
 
 export function Dashboard() {
   const { t } = useTranslation()
+  // One toggle for the page; every card reads the same value (useBalancePrivacy
+  // broadcasts, so they stay in step).
+  const { balancesVisible, setBalancesVisible } = useBalancePrivacy()
   const navigate = useNavigate()
   const { getToken } = useAuth()
   const { currency } = useCurrency()
@@ -1108,7 +1102,7 @@ export function Dashboard() {
         <StatCard
           loading={loading}
           label={t("dashboard.totalRevenue")}
-          value={formatCurrency(displayIncoming, currency)}
+          value={formatCurrency(displayIncoming, currency, balancesVisible)}
           hint={
             <>
               <ArrowUpRight className="size-3 text-emerald-500 shrink-0" />
@@ -1119,7 +1113,7 @@ export function Dashboard() {
         <StatCard
           loading={loading}
           label={t("dashboard.totalExpenses")}
-          value={formatCurrency(displayOutgoing, currency)}
+          value={formatCurrency(displayOutgoing, currency, balancesVisible)}
           hint={
             <>
               <ArrowDownRight className="size-3 text-destructive shrink-0" />
@@ -1135,7 +1129,7 @@ export function Dashboard() {
               <FeatureHelp feature="netProfit" className="-my-1" />
             </>
           }
-          value={formatCurrency(netProfit, currency)}
+          value={formatCurrency(netProfit, currency, balancesVisible)}
           valueClass={netProfit >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"}
           hint={t("dashboard.margin", { value: profitMargin })}
         />
@@ -1162,7 +1156,7 @@ export function Dashboard() {
       <SummaryCard
         icon={<Network className="size-4" aria-hidden />}
         title={t("flow.card")}
-        headline={formatCurrency(netProfit, currency)}
+        headline={formatCurrency(netProfit, currency, balancesVisible)}
         headlineClass={netProfit >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"}
         subline={t("flow.net")}
         storageKey={`ps_dash_flow_open_${activeOrg?.id ?? ""}`}
@@ -1175,17 +1169,17 @@ export function Dashboard() {
         >
           <span className="min-w-0 rounded-lg border bg-card px-2 py-1 text-center">
             <span className="block text-[10px] uppercase tracking-wide text-muted-foreground">{t("flow.revenue")}</span>
-            <span className="block truncate text-sm font-bold tabular-nums text-emerald-600 dark:text-emerald-400">{formatCurrency(displayIncoming, currency)}</span>
+            <span className="block truncate text-sm font-bold tabular-nums text-emerald-600 dark:text-emerald-400">{formatCurrency(displayIncoming, currency, balancesVisible)}</span>
           </span>
           <ArrowRight className="size-4 shrink-0 text-muted-foreground rtl:rotate-180" />
           <span className="min-w-0 rounded-lg border-2 border-primary/40 bg-card px-2 py-1 text-center">
             <span className="block text-[10px] uppercase tracking-wide text-muted-foreground">{t("flow.net")}</span>
-            <span className={`block truncate text-sm font-bold tabular-nums ${netProfit >= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-destructive"}`}>{formatCurrency(netProfit, currency)}</span>
+            <span className={`block truncate text-sm font-bold tabular-nums ${netProfit >= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-destructive"}`}>{formatCurrency(netProfit, currency, balancesVisible)}</span>
           </span>
           <ArrowRight className="size-4 shrink-0 text-muted-foreground rtl:rotate-180" />
           <span className="min-w-0 rounded-lg border bg-card px-2 py-1 text-center">
             <span className="block text-[10px] uppercase tracking-wide text-muted-foreground">{t("flow.expenses")}</span>
-            <span className="block truncate text-sm font-bold tabular-nums text-red-600 dark:text-red-400">{formatCurrency(displayOutgoing, currency)}</span>
+            <span className="block truncate text-sm font-bold tabular-nums text-red-600 dark:text-red-400">{formatCurrency(displayOutgoing, currency, balancesVisible)}</span>
           </span>
         </button>
       </SummaryCard>
@@ -1255,7 +1249,7 @@ export function Dashboard() {
                                 {chartConfig[String(name)]?.label ?? name}
                               </span>
                               <span className="font-mono font-medium tabular-nums text-foreground">
-                                {formatCurrency(Number(value), currency)}
+                                {formatCurrency(Number(value), currency, balancesVisible)}
                               </span>
                             </div>
                           </>
@@ -1301,11 +1295,11 @@ export function Dashboard() {
                           {own && <Badge variant="outline" className="text-[10px] py-0">{t("dashboard.ownLabel")}</Badge>}
                         </p>
                         <p className="text-xs text-muted-foreground truncate">
-                          {formatCurrency(b.incoming, currency)} · {formatCurrency(b.outgoing, currency)}
+                          {formatCurrency(b.incoming, currency, balancesVisible)} · {formatCurrency(b.outgoing, currency, balancesVisible)}
                         </p>
                       </div>
                       <p className={`text-sm font-semibold tabular-nums shrink-0 ml-2 ${b.profit >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"}`}>
-                        {formatCurrency(b.profit, currency)}
+                        {formatCurrency(b.profit, currency, balancesVisible)}
                       </p>
                     </>
                   )
@@ -1364,6 +1358,25 @@ export function Dashboard() {
             {filtersActive ? t("dashboard.filtered") : t("dashboard.overview")}
           </p>
         </div>
+        {/* The page's controls travel together at the right edge. As a third
+            child of a justify-between row the eye was stranded in the middle of
+            the header, nowhere near the filters it belongs beside. */}
+        <div className="flex shrink-0 items-center gap-2">
+        {/* One privacy control for the whole page, immediately left of the
+            filters at every width. It used to live inside the Wealth card,
+            which meant hiding "balances" left the totals, the debt, the savings
+            and the net beside it in plain view. Transactions are deliberately
+            NOT masked: the list is what the page is for, and a row's amount is
+            the thing being read, not a balance being exposed. */}
+        <Button
+          variant="outline"
+          size="icon"
+          className="pressable size-10 shrink-0"
+          aria-label={balancesVisible ? t("wealth.hideBalances") : t("wealth.showBalances")}
+          onClick={() => setBalancesVisible((v) => !v)}
+        >
+          {balancesVisible ? <Eye className="size-4" /> : <EyeOff className="size-4" />}
+        </Button>
         {/* Desktop: filters inline beside the title. Mobile: a single filter
             button on the same line (req #1), opening a sheet with both. */}
         <div className="hidden sm:flex sm:items-center sm:gap-2 shrink-0">
@@ -1425,6 +1438,7 @@ export function Dashboard() {
               />
             </FilterSection>
           </FilterSheet>
+        </div>
         </div>
       </div>
 

@@ -21,11 +21,16 @@ import { Card } from "@/components/ui/card"
  * them fit where two used to, and the state persists per card per workspace.
  * The same component runs on a phone, so the fold is not a desktop-only trick.
  *
- * TWO CONTROLS, TWO JOBS. The row itself opens the full page — from the folded
- * card, in one tap, which is the whole point of putting the answer in the
- * header. The chevron beside it folds. Burying the way through to the page at
- * the BOTTOM of the expanded body meant expanding a card you did not want
- * expanded and then scrolling past its detail to leave it.
+ * TWO ZONES, SPLIT AT THE ARROW. Everything up to and including the little
+ * chevron after the title opens the full page — from the folded card, in one
+ * tap, which is the whole point of putting the answer in the header. Everything
+ * to the RIGHT of it, the figure itself, folds the card open and shut, as does
+ * the chevron at the end. So the name takes you there and the number opens the
+ * detail behind it, which is what each of them already means.
+ *
+ * Burying the way through to the page at the BOTTOM of the expanded body meant
+ * expanding a card you did not want expanded and scrolling past its detail to
+ * leave it.
  */
 export function SummaryCard({
   icon,
@@ -36,7 +41,6 @@ export function SummaryCard({
   subline,
   storageKey,
   onOpen,
-  action,
   children,
   className = "",
 }: {
@@ -52,8 +56,6 @@ export function SummaryCard({
   storageKey: string
   /** Opens the full page this card summarises — the row itself is the link. */
   onOpen?: () => void
-  /** An extra control on the title row (the Wealth card's privacy eye). */
-  action?: ReactNode
   children: ReactNode
   className?: string
 }) {
@@ -64,13 +66,13 @@ export function SummaryCard({
   return (
     <Card className={cn("flex h-full min-w-0 flex-col gap-0 py-0", className)}>
       <div className="flex items-center gap-1 px-3 sm:px-4">
-        {/* The row goes to the page. Named by its own content, so the label
-            reads "Wealth 6 €32,176.90" to a screen reader. */}
+        {/* NAME → the page. Named by its own content, so a screen reader hears
+            "Wealth 6" and knows where it goes. */}
         <button
           type="button"
           onClick={onOpen}
           disabled={!onOpen}
-          className="pressable group flex min-h-12 min-w-0 flex-1 items-center gap-2.5 py-2 text-left disabled:pointer-events-none"
+          className="pressable group flex min-h-12 shrink-0 items-center gap-2.5 py-2 text-left disabled:pointer-events-none"
         >
           <span className="shrink-0 text-primary">{icon}</span>
           <span className="flex min-w-0 items-center gap-1.5">
@@ -79,19 +81,29 @@ export function SummaryCard({
               <span className="shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground">{count}</span>
             )}
             {/* Says "this goes somewhere" without waiting for a hover that a
-                phone never gets. */}
+                phone never gets. It is the last thing inside the link, so the
+                split between the two zones is visible, not guessed at. */}
             {onOpen && (
               <ChevronRight className="size-3.5 shrink-0 text-muted-foreground transition-transform duration-200 group-hover:translate-x-0.5 rtl:rotate-180 rtl:group-hover:-translate-x-0.5" aria-hidden />
             )}
           </span>
+        </button>
+        {/* NUMBER → the detail behind it. Fills the rest of the row so there is
+            no dead strip between the two zones. */}
+        <button
+          type="button"
+          onClick={toggle}
+          aria-expanded={open}
+          aria-label={t(open ? "common.collapse" : "common.expand")}
+          className="pressable flex min-h-12 min-w-0 flex-1 items-center justify-end py-2 text-end"
+        >
           {headline != null && (
-            <span className="ms-auto min-w-0 ps-2 text-end">
+            <span className="min-w-0 ps-2">
               <span className={cn("block truncate text-base font-bold tabular-nums sm:text-lg", headlineClass)}>{headline}</span>
               {subline != null && <span className="block truncate text-[11px] text-muted-foreground">{subline}</span>}
             </span>
           )}
         </button>
-        {action}
         <button
           type="button"
           onClick={toggle}

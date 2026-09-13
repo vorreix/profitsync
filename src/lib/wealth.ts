@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { WealthAccount } from "@/lib/types"
 import { cardCredit, cardDebt, creditUsage, isLiabilityType } from "@/lib/credit-card"
 
@@ -41,6 +41,14 @@ export function usePersistedOpen(key: string, fallback = true) {
   return [open, setOpen] as const
 }
 
+/**
+ * Fires when ANY component flips the privacy toggle, so every other one on the
+ * page follows. Without it the state was per-component: one dashboard used to
+ * carry five separate copies, and hiding balances on the Wealth card left the
+ * totals beside it in plain view — which is not privacy, it is a decoration.
+ */
+const PRIVACY_EVENT = "ps:balance-privacy"
+
 export function useBalancePrivacy() {
   const [visible, setVisible] = useState(() => {
     try {
@@ -51,14 +59,36 @@ export function useBalancePrivacy() {
   })
 
   useEffect(() => {
-    try {
-      localStorage.setItem(PRIVACY_KEY, visible ? "1" : "0")
-    } catch {
-      // Ignore storage failures.
+    const onChange = (e: Event) => setVisible((e as CustomEvent<boolean>).detail)
+    window.addEventListener(PRIVACY_EVENT, onChange)
+    // Another TAB can change it too; `storage` only fires in the others.
+    const onStorage = (e: StorageEvent) => { if (e.key === PRIVACY_KEY) setVisible(e.newValue !== "0") }
+    window.addEventListener("storage", onStorage)
+    return () => {
+      window.removeEventListener(PRIVACY_EVENT, onChange)
+      window.removeEventListener("storage", onStorage)
     }
-  }, [visible])
+  }, [])
 
-  return { balancesVisible: visible, setBalancesVisible: setVisible }
+  // Read through a ref so the setter can resolve `v => !v` WITHOUT doing its
+  // work inside a state updater: React double-invokes those, and dispatching an
+  // event from one re-enters setState during render.
+  const visibleRef = useRef(visible)
+  visibleRef.current = visible
+
+  const setBalancesVisible = useCallback((next: boolean | ((v: boolean) => boolean)) => {
+    const value = typeof next === "function" ? next(visibleRef.current) : next
+    try {
+      localStorage.setItem(PRIVACY_KEY, value ? "1" : "0")
+    } catch {
+      // Ignore storage failures (private mode, etc.).
+    }
+    // Only the broadcast sets state — for the caller too, so every instance on
+    // the page goes through the exact same path and none can drift.
+    window.dispatchEvent(new CustomEvent<boolean>(PRIVACY_EVENT, { detail: value }))
+  }, [])
+
+  return { balancesVisible: visible, setBalancesVisible }
 }
 
 export function currencySymbol(currency: string) {
