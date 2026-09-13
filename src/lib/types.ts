@@ -312,6 +312,8 @@ export type Debt = {
   notes: string
   /** A recurring repayment is currently servicing this debt. */
   repayment_active: boolean
+  /** A rule is ATTACHED, active or paused — only one is ever allowed. */
+  repayment_linked?: boolean
   updated_at: string
 }
 

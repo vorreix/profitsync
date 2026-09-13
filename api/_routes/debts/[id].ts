@@ -88,7 +88,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     ])
     const live = drivingRule(rules)
     return res.json({
-      debt: serializeDebt(fresh, today, { repaymentActive: !!live?.active }),
+      debt: serializeDebt(fresh, today, { repaymentActive: !!live?.active, repaymentLinked: rules.length > 0 }),
       payments: payments.map(serialize),
       activity,
       schedule: scheduleFor(fresh, today),

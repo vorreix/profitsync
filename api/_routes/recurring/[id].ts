@@ -8,7 +8,8 @@ import { materializeDueRecurring } from "../../_lib/recurring-materialize.js"
 import { validateRuleInput, type RecurringRuleInput } from "../../_lib/recurring-validate.js"
 import { ruleFields, ruleStatsFields } from "../../_lib/recurring-query.js"
 import { attributeCard } from "../../_lib/cards.js"
-import { greatestDate, mirrorDebtSchedule, reloadRule } from "../../_lib/recurring-debt.js"
+import { directionOf, loadDebt } from "../../_lib/debts.js"
+import { greatestDate, linkRuleToDebt, mirrorDebtSchedule, reloadRule } from "../../_lib/recurring-debt.js"
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -55,7 +56,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method === "PATCH") {
     if (!canWrite(role)) return res.status(403).json({ error: "Forbidden" })
-    const body = req.body as RecurringRuleInput & { active?: boolean }
+    const body = req.body as RecurringRuleInput & { active?: boolean; debt_account_id?: string | null }
+
+    // Link this rule to a debt (or hand it back). BOTH screens come through
+    // here — the debt adopting a rule and the rule being pointed at a debt are
+    // the same operation, so there is one implementation and one set of rules
+    // (api/_lib/recurring-debt.ts linkRuleToDebt). It is FORWARD ONLY:
+    // occurrences already posted stay exactly as they were posted.
+    if (body.debt_account_id !== undefined) {
+      // Linking is its OWN request. Combined with other edits it could not be
+      // atomic — the link commits first and a later validation error would
+      // return 400 on a rule that had already been linked and re-anchored.
+      if (Object.keys(body).filter((k) => k !== "debt_account_id").length > 0) {
+        return res.status(400).json({ error: "Link this payment to a debt on its own, then edit it", code: "link_alone" })
+      }
+      // Post anything ALREADY due before the change takes effect — in BOTH
+      // directions. Linking and unlinking each move the cursor forward, so an
+      // occurrence due last week but not yet materialised would otherwise be
+      // stepped over entirely, or post in the wrong shape. This way the past
+      // lands as what it was and the change starts from the next one, which is
+      // what "forward only" has to mean.
+      await materializeDueRecurring(orgId)
+      const linked = await linkRuleToDebt(orgId, userId, id, body.debt_account_id || null, todayIso())
+      if (!linked.ok) return res.status(linked.status).json({ error: linked.error, code: linked.code })
+      // Post anything that became due the moment it changed hands.
+      if (linked.rule.active) await materializeDueRecurring(orgId)
+      const fresh = await readRule(orgId, id)
+      return res.json(serialize(fresh ?? linked.rule))
+    }
 
     // Pause / resume is a lightweight toggle that skips full validation.
     const onlyActive = typeof body.active === "boolean" && Object.keys(body).filter((k) => k !== "active").length === 0
@@ -112,6 +140,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // a debt account would make the rule pay a loan out of a loan, which the
     // engine has no meaning for.
     if (rule.kind === "debt") {
+      // The eligibility rules are enforced at LINK time; an edit must not be a
+      // way around them. A card would move the debt rather than clear it, and a
+      // direction flip would turn a repayment into money arriving from nowhere.
+      if (attributed.cardId) return res.status(400).json({ error: "A repayment can't be paid with a card — a card would move the debt, not clear it", code: "rule_pays_with_card" })
+      if (rule.debtAccountId) {
+        const target = await loadDebt(orgId, rule.debtAccountId)
+        const wanted = target && directionOf(target.account.type) === "receivable" ? "incoming" : "outgoing"
+        if (parsed.value.type !== wanted) return res.status(400).json({ error: "This rule moves money the wrong way for that debt", code: "direction_mismatch" })
+      }
       if (!attributed.accountId) return res.status(400).json({ error: "Choose the account this repayment is paid from" })
       const [payer] = await db
         .select({ type: wealthAccounts.type, archivedAt: wealthAccounts.archivedAt })

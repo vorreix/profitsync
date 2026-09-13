@@ -22,12 +22,12 @@
 // CONFLICT DO NOTHING, and nothing else is written unless that insert returned a
 // row (api/_lib/debts.ts recordDebtPayment).
 
-import { eq, sql } from "drizzle-orm"
+import { and, eq, sql } from "drizzle-orm"
 import { db } from "../../src/lib/db/index.js"
-import { debtDetails, recurringRules } from "../../src/lib/db/schema.js"
+import { debtDetails, recurringRules, wealthAccounts } from "../../src/lib/db/schema.js"
 import { fromCents, toCents } from "../../src/lib/debt-math.js"
-import { payoffCappedAmount, periodsPerYearForRule } from "../../src/lib/debt-recurring.js"
-import { debtScheduleMirror, loadDebt, recordDebtPayment, toDebtLike } from "./debts.js"
+import { linkRefusal, payoffCappedAmount, periodsPerYearForRule, type LinkRefusal } from "../../src/lib/debt-recurring.js"
+import { debtScheduleMirror, directionOf, loadDebt, recordDebtPayment, toDebtLike } from "./debts.js"
 import type { FrequencyUnit } from "../../src/lib/recurring.js"
 
 type RuleRow = typeof recurringRules.$inferSelect
@@ -133,3 +133,153 @@ export async function reloadRule(ruleId: string): Promise<RuleRow | null> {
 }
 
 export const greatestDate = (column: typeof recurringRules.nextDueAt, date: string) => sql`GREATEST(${column}, ${date})`
+
+// ── Linking an existing rule to a debt, and unlinking it again ───────────────
+
+const REFUSAL_MESSAGES: Record<LinkRefusal, string> = {
+  rule_is_autosave: "A Space auto-save is managed on the Space, not here",
+  rule_pays_with_card: "A repayment can't be paid with a card — a card would move the debt, not clear it",
+  rule_has_no_account: "Give this rule the account it is paid from first",
+  account_archived: "That account is archived — point the rule at an active one first",
+  account_not_cash: "A recurring repayment must come from a bank or cash account",
+  direction_mismatch: "This rule moves money the wrong way for that debt",
+  debt_closed: "That debt is closed — reopen it first",
+  repayment_exists: "That debt already has a recurring repayment. Stop the current one first.",
+  rule_linked_elsewhere: "That payment is already repaying another debt. Unlink it there first.",
+  rule_ended: "That payment has already ended — it would never pay anything.",
+  rule_has_pending: "That payment still has instalments waiting to post. Open it and clear those first.",
+}
+
+export type LinkResult =
+  | { ok: true; rule: RuleRow }
+  | { ok: false; status: number; error: string; code: LinkRefusal | "not_found" }
+
+/**
+ * Make an existing recurring rule this debt's repayment, or (debtAccountId
+ * null) hand it back as an ordinary rule.
+ *
+ * FORWARD ONLY, and that is the whole design. The occurrences this rule has
+ * already posted were plain expenses; they stay plain expenses. Rebuilding them
+ * as repayments would move balances, rewrite budget periods that have already
+ * been reported on, and invent an interest split nobody recorded at the time. A
+ * debt whose balance does not reflect them is reconciled instead — which is an
+ * existing, visible, single-row operation.
+ *
+ * The cursor re-anchors to today the same way resuming does: everything before
+ * the link was, by definition, not a repayment. GREATEST() so it can only ever
+ * move forward, never back onto an occurrence that already posted.
+ */
+export async function linkRuleToDebt(
+  orgId: string,
+  userId: string,
+  ruleId: string,
+  debtAccountId: string | null,
+  today: string,
+): Promise<LinkResult> {
+  const [rule] = await db
+    .select()
+    .from(recurringRules)
+    .where(and(eq(recurringRules.id, ruleId), eq(recurringRules.organizationId, orgId)))
+  if (!rule) return { ok: false, status: 404, error: "Not found", code: "not_found" }
+
+  // ── Unlink ───────────────────────────────────────────────────────────────
+  if (!debtAccountId) {
+    if (!rule.debtAccountId) return { ok: true, rule }
+    const [updated] = await db
+      .update(recurringRules)
+      .set({
+        kind: "standard",
+        debtAccountId: null,
+        // "Transfer" is the debt engine's category and means nothing on an
+        // ordinary expense. Cleared rather than guessed at, so the rule shows
+        // up as uncategorised and asks to be told what it is.
+        category: "",
+        // Forward only, here too. The resume re-anchor only fires for a debt
+        // repayment, so a PAUSED rule handed back with a cursor frozen six
+        // months ago would fire the whole holiday the moment it was resumed —
+        // as plain expenses, which is worse again.
+        nextDueAt: sql`GREATEST(${recurringRules.nextDueAt}, ${today})`,
+        lastError: "",
+        updatedBy: userId,
+        updatedAt: new Date(),
+      })
+      .where(eq(recurringRules.id, rule.id))
+      .returning()
+    // The debt keeps the schedule it was given: without a rule those fields are
+    // its own intent again, exactly as they are for a hand-tracked debt.
+    return { ok: true, rule: updated ?? rule }
+  }
+
+  // ── Link ─────────────────────────────────────────────────────────────────
+  const row = await loadDebt(orgId, debtAccountId)
+  if (!row) return { ok: false, status: 404, error: "Not found", code: "not_found" }
+
+  const [account] = rule.wealthAccountId
+    ? await db
+        .select({ type: wealthAccounts.type, archivedAt: wealthAccounts.archivedAt })
+        .from(wealthAccounts)
+        .where(and(eq(wealthAccounts.id, rule.wealthAccountId), eq(wealthAccounts.organizationId, orgId)))
+    : [undefined]
+
+  // EVERY rule linked to this debt, active or not. Counting only the active ones
+  // let a debt quietly take a second rule while the first was paused, and
+  // resuming then paid it twice a month.
+  const siblings = await db
+    .select({ id: recurringRules.id })
+    .from(recurringRules)
+    .where(and(eq(recurringRules.organizationId, orgId), eq(recurringRules.debtAccountId, debtAccountId)))
+
+  const refusal = linkRefusal(
+    {
+      id: rule.id,
+      kind: rule.kind === "transfer" ? "transfer" : rule.kind === "debt" ? "debt" : "standard",
+      type: rule.type === "incoming" ? "incoming" : "outgoing",
+      cardId: rule.cardId,
+      accountId: rule.wealthAccountId,
+      accountType: account?.type ?? null,
+      accountArchived: !!account?.archivedAt,
+      debtAccountId: rule.debtAccountId,
+      ended: !!rule.endDate && String(rule.endDate).slice(0, 10) < today,
+      // The caller runs the catch-up first, so an ACTIVE rule still sitting on
+      // or behind today is one the materializer refused (a plan limit, an
+      // archived account). Its instalments have to land in their old shape
+      // before the link moves the cursor past them.
+      hasPending: rule.active && String(rule.nextDueAt).slice(0, 10) <= today,
+    },
+    {
+      id: row.account.id,
+      direction: directionOf(row.account.type),
+      archived: !!row.account.archivedAt,
+      linkedRuleIds: siblings.map((s) => s.id),
+    },
+  )
+  if (refusal) return { ok: false, status: refusal === "repayment_exists" || refusal === "rule_linked_elsewhere" ? 409 : 400, error: REFUSAL_MESSAGES[refusal], code: refusal }
+
+  const [updated] = await db
+    .update(recurringRules)
+    .set({
+      kind: "debt",
+      debtAccountId,
+      // Debt repayments anchor to the org's own client at materialize time, so
+      // a client this rule used to belong to is no longer true of it.
+      clientId: null,
+      toAccountId: null,
+      category: "Transfer",
+      // Never backwards: an active rule whose next occurrence is already in the
+      // future must keep that date, or linking would re-post it.
+      nextDueAt: sql`GREATEST(${recurringRules.nextDueAt}, ${today})`,
+      // A debt that is paused, written off or settled does not take money; the
+      // rule follows it, exactly as the lifecycle path does.
+      ...(row.details.lifecycle === "active" ? {} : { active: false }),
+      lastError: "",
+      updatedBy: userId,
+      updatedAt: new Date(),
+    })
+    .where(eq(recurringRules.id, rule.id))
+    .returning()
+
+  const fresh = updated ?? rule
+  // The rule is now the schedule; the debt's own fields mirror it.
+  await mirrorDebtSchedule(debtAccountId, fresh)
+  return { ok: true, rule: fresh }
+}

@@ -3,7 +3,7 @@ import { useNavigate, useParams } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
-import { ArrowLeft, Archive, ArrowDownLeft, ArrowUpRight, CheckCircle2, ChevronDown, ChevronRight, CircleDollarSign, MoreVertical, PauseCircle, Pencil, PlayCircle, Plus, Repeat, Scale, SlidersHorizontal, Trash2, TriangleAlert } from "lucide-react"
+import { ArrowLeft, Archive, ArrowDownLeft, ArrowUpRight, CheckCircle2, ChevronDown, ChevronRight, CircleDollarSign, Link2, MoreVertical, PauseCircle, Pencil, PlayCircle, Plus, Repeat, Scale, SlidersHorizontal, Trash2, TriangleAlert } from "lucide-react"
 import { apiDelete, apiErrorMessage, apiGet, apiPatch } from "@/lib/api"
 import { WEALTH_CHANGED_EVENT } from "@/lib/data-events"
 import { useOrg } from "@/lib/org-context"
@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils"
 import { WealthAccountIcon } from "@/components/WealthAccountIcon"
 import { DebtStatusBadge } from "@/components/debts/DebtStatusBadge"
 import { DebtFormSheet } from "@/components/debts/DebtFormSheet"
+import { LinkRepaymentDialog } from "@/components/debts/LinkRepaymentDialog"
 import { RecordPaymentSheet } from "@/components/debts/RecordPaymentSheet"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -48,6 +49,7 @@ export function DebtDetailPage() {
   const [closeConfirm, setCloseConfirm] = useState(false)
   const [deletingPayment, setDeletingPayment] = useState<DebtPayment | null>(null)
   const [scheduleOpen, setScheduleOpen] = useState(false)
+  const [linking, setLinking] = useState(false)
   const [busy, setBusy] = useState(false)
 
   const load = useCallback(async ({ silent = false } = {}) => {
@@ -264,7 +266,11 @@ export function DebtDetailPage() {
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border bg-card px-4 py-4">
             <p className="text-sm text-muted-foreground">{t("noRepayment")}</p>
             {canWrite && isOpen && !debt.archived_at && (
-              <Button size="sm" variant="outline" className="pressable" onClick={() => setEditing(true)}><Repeat className="size-4" /> {t("setUpRepayment")}</Button>
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" variant="outline" className="pressable" onClick={() => setEditing(true)}><Repeat className="size-4" /> {t("setUpRepayment")}</Button>
+                {/* The standing order usually exists BEFORE the debt does. */}
+                <Button size="sm" variant="ghost" className="pressable" onClick={() => setLinking(true)}><Link2 className="size-4" /> {t("linkExistingRepayment")}</Button>
+              </div>
             )}
           </div>
         )}
@@ -334,6 +340,14 @@ export function DebtDetailPage() {
 
       {debt.notes && <p className="whitespace-pre-wrap text-sm text-muted-foreground">{debt.notes}</p>}
 
+      <LinkRepaymentDialog
+        open={linking}
+        onOpenChange={setLinking}
+        debt={debt}
+        // Paused counts: a debt with a paused rule must not take a second.
+        linkedRuleIds={repayment ? [repayment.id] : []}
+        onLinked={() => void load({ silent: true })}
+      />
       <RecordPaymentSheet open={paying} onOpenChange={setPaying} debt={debt} repayment={repayment} onSaved={() => void load({ silent: true })} />
       <DebtFormSheet open={editing} onOpenChange={setEditing} direction={debt.direction} editing={debt} repayment={repayment} orgCurrency={debt.currency} onSaved={() => void load({ silent: true })} />
 

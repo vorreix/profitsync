@@ -555,6 +555,14 @@ export const recurringRules = pgTable("recurring_rules", {
 }, (table) => ({
   dueIdx: index("recurring_rules_due_idx").on(table.organizationId, table.active, table.nextDueAt),
   debtIdx: index("recurring_rules_debt_idx").on(table.debtAccountId),
+  // ONE repayment per debt. debt_details mirrors exactly one rule and the
+  // planner, the payoff estimate and the month's obligations all read that
+  // mirror; a second rule makes every one of them fiction. Enforced here
+  // because the application check was read-then-write, so two links arriving
+  // together both saw an empty debt (mig 0068).
+  oneRepaymentPerDebt: uniqueIndex("recurring_rules_one_per_debt_idx")
+    .on(table.debtAccountId)
+    .where(sql`${table.debtAccountId} is not null`),
 }))
 
 export const quotations = pgTable("quotations", {

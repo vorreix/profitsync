@@ -1719,7 +1719,18 @@
     "noPaymentsPaused": "Daraus wurde noch nichts erstellt.",
     "loadMore": "{{count}} weitere laden",
     "loadingMore": "Wird geladen…",
-    "repaysDebt": "Tilgt"
+    "repaysDebt": "Tilgt",
+    "linkDebt": "Mit einer Schuld verknüpfen",
+    "unlinkDebt": "Von der Schuld lösen",
+    "linkDebtTitle": "Welche Schuld wird damit bezahlt?",
+    "linkDebtDesc": "Ab jetzt wird diese Zahlung auf diese Schuld in Tilgung und Zinsen geteilt.",
+    "linkDebtNone": "Keine Schuld passt. Das Geld muss in dieselbe Richtung fließen, und die Schuld darf noch keine Rückzahlung haben.",
+    "linkDebtForwardOnly": "Bereits erfasste Zahlungen bleiben unverändert.",
+    "linkedToDebt": "Mit der Schuld verknüpft",
+    "unlinkedFromDebt": "Gelöst",
+    "unlinkDebtTitle": "Diese Rückzahlung lösen?",
+    "unlinkDebtDesc": "Sie wird wieder eine gewöhnliche Zahlung: sie berührt {{name}} nicht mehr, und jede künftige wird als Ausgabe ohne Kategorie erfasst. Bereits geleistete Zahlungen bleiben unangetastet.",
+    "failedToUpdate": "Diese wiederkehrende Zahlung konnte nicht aktualisiert werden"
   },
   "calendar": {
     "title": "Kalender",
@@ -2999,6 +3010,20 @@
     "arrivingAccountRequired": "Wähle das Konto, auf dem das Geld ankommt",
     "arrivingRequired": "Gib an, wie viel auf diesem Konto ankommt",
     "arrivingTooMuch": "Das ist mehr als die Schuld selbst",
-    "customRhythmHint": "Der Rhythmus dieser Rückzahlung wird auf ihrer eigenen Seite festgelegt."
+    "customRhythmHint": "Der Rhythmus dieser Rückzahlung wird auf ihrer eigenen Seite festgelegt.",
+    "linkExistingRepayment": "Vorhandene verknüpfen",
+    "linkRepaymentTitle": "Eine vorhandene Rückzahlung verwenden",
+    "linkRepaymentDesc": "Wähle die wiederkehrende Zahlung, die diese Schuld bereits bezahlt.",
+    "linkRepaymentNone": "Keine wiederkehrende Zahlung passt. Sie muss {{direction}} sein und von einem Bank- oder Bargeldkonto kommen.",
+    "linkRepaymentForwardOnly": "Nur Zahlungen ab jetzt werden in Tilgung und Zinsen geteilt. Bereits erfasste bleiben unverändert — stimmt der Saldo nicht, gleiche ihn ab.",
+    "linkIncoming": "eingehendes Geld",
+    "linkOutgoing": "ausgehendes Geld",
+    "repaymentLinked": "Mit dieser Schuld verknüpft",
+    "unitEvery": {
+      "day": "Täglich",
+      "week": "Wöchentlich",
+      "month": "Monatlich",
+      "year": "Jährlich"
+    }
   }
 }

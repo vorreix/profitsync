@@ -7,6 +7,7 @@ import {
   ArrowDownRight, ArrowLeft, ArrowLeftRight, ArrowUpRight, CalendarClock,
   Pause, Pencil, Play, Repeat, Trash2, TriangleAlert,
   HandCoins,
+  Link2,
 } from "lucide-react"
 import { apiDelete, apiErrorMessage, apiGet, apiPatch } from "@/lib/api"
 import { useApiQuery } from "@/hooks/use-api-query"
@@ -14,6 +15,10 @@ import { useDataRefresh } from "@/lib/data-refresh-context"
 import { useOrg } from "@/lib/org-context"
 import { useCurrency } from "@/lib/currency-context"
 import { canDeleteRole, canWriteRole } from "@/lib/roles"
+import { LinkDebtDialog } from "@/components/recurring/LinkDebtDialog"
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { accountTypeAllows } from "@/lib/types"
 import type { Client, RecurringRule, RecurringRuleDetail, Transaction, WealthAccount } from "@/lib/types"
 import { formatMoney } from "@/lib/wealth"
@@ -67,6 +72,8 @@ export function RecurringDetailPage() {
   const [editOpen, setEditOpen] = useState(false)
   const [deleting, setDeleting] = useState<RecurringRule | null>(null)
   const [pausing, setPausing] = useState(false)
+  const [linkingDebt, setLinkingDebt] = useState(false)
+  const [unlinking, setUnlinking] = useState(false)
   const [accounts, setAccounts] = useState<WealthAccount[]>([])
   const [clients, setClients] = useState<Client[]>([])
   const cardMap = useCardMap()
@@ -96,6 +103,19 @@ export function RecurringDetailPage() {
   }, [rule, navigate])
 
   // ── The rule's transactions (paged) ────────────────────────────────────────
+  async function unlinkDebt() {
+    try {
+      const token = await getToken()
+      if (!token) throw new Error("Not authenticated")
+      await apiPatch(`/api/recurring/${id}`, token, { debt_account_id: null })
+      toast.success(t("recurring.unlinkedFromDebt"))
+      setUnlinking(false)
+      refetch()
+    } catch (err) {
+      toast.error(apiErrorMessage(err, t("recurring.failedToUpdate")))
+    }
+  }
+
   const [txs, setTxs] = useState<Transaction[]>([])
   const [txTotal, setTxTotal] = useState(0)
   const [txPage, setTxPage] = useState(1)
@@ -434,6 +454,21 @@ export function RecurringDetailPage() {
                 rule.category || "—"
               )}
             </dd>
+            {/* The standing order is usually older than the debt it pays, so
+                joining them has to be possible from this side too. */}
+            {canWrite && rule.kind !== "transfer" && (
+              <dd className="mt-1">
+                {rule.kind === "debt" ? (
+                  <button type="button" className="text-xs text-muted-foreground underline-offset-2 hover:underline" onClick={() => setUnlinking(true)}>
+                    {t("recurring.unlinkDebt")}
+                  </button>
+                ) : (
+                  <button type="button" className="flex items-center gap-1 text-xs text-primary underline-offset-2 hover:underline" onClick={() => setLinkingDebt(true)}>
+                    <Link2 className="size-3" aria-hidden /> {t("recurring.linkDebt")}
+                  </button>
+                )}
+              </dd>
+            )}
           </div>
           <div className="min-w-0">
             <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{t("recurring.cardPayWith")}</dt>
@@ -575,6 +610,23 @@ export function RecurringDetailPage() {
         cards={payableCards}
         onSaved={() => refetch()}
       />
+
+      <LinkDebtDialog open={linkingDebt} onOpenChange={setLinkingDebt} rule={rule} onLinked={() => refetch()} />
+
+      {/* Unlinking is a real decision: the same money starts posting as an
+          ordinary expense again, and stops touching the debt at all. */}
+      <AlertDialog open={unlinking} onOpenChange={setUnlinking}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("recurring.unlinkDebtTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>{t("recurring.unlinkDebtDesc", { name: rule.debt_name ?? "" })}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void unlinkDebt()}>{t("recurring.unlinkDebt")}</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <DeleteRecurringDialog
         rule={deleting}

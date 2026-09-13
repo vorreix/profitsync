@@ -162,6 +162,52 @@ arrives at the edit dialog looking like a lone grouped row; editing it there
 would delete the group and rebuild it as plain allocations. Both the list and
 `PATCH /api/transactions/:id` refuse, and point at the debt.
 
+### Adopting a repayment you already have
+
+The standing order is almost always older than the debt. "Car loan €300" runs as
+a plain expense for eight months, the loan gets added, and the same money is in
+the app twice. Either screen can join them — the debt adopting a rule, or the
+rule being pointed at a debt — and both go through the ONE operation,
+`linkRuleToDebt`, so there is one set of rules.
+
+**Forward only, and that is the whole design.** The eight occurrences already
+posted were expenses; they stay expenses. Rebuilding them would move balances,
+rewrite budget periods already reported on, and invent an interest split nobody
+recorded at the time. A debt whose balance does not reflect them is RECONCILED
+instead, which is one visible row. The route materialises BEFORE the change in
+both directions, so an occurrence already due lands in the shape it was owed in
+rather than being stepped over.
+
+A rule is refused when it cannot honestly become a repayment:
+
+| Refusal | Why |
+|---|---|
+| `direction_mismatch` | Never auto-flipped. Silently flipping an incoming €3,000 salary rule dropped on a loan would start taking €3,000 a month OUT of the account. |
+| `rule_pays_with_card` | A card would move the debt, not clear it. |
+| `account_not_cash` / `rule_has_no_account` / `account_archived` | A repayment needs somewhere real to be paid from. |
+| `rule_is_autosave` | A Space auto-save belongs to the Space. |
+| `rule_linked_elsewhere` | Moving it would leave the other debt with a schedule describing a rule that had walked away. |
+| `rule_ended` | Past its end date: it would never pay anything. |
+| `rule_has_pending` | Instalments are waiting to post; the link moves the cursor past them and they would be recorded in neither shape. |
+| `repayment_exists` | ONE repayment per debt — see below. |
+| `debt_closed` | |
+
+**One repayment per debt, active or paused**, enforced by a partial unique index
+(mig 0068) as well as in code, because the application check was read-then-write
+and two links arriving together both saw an empty debt. Counting only the ACTIVE
+ones was the subtler bug: a debt quietly took a second rule while the first was
+paused, and resuming paid it twice a month.
+
+Linking and unlinking both re-anchor the cursor with `GREATEST(next_due_at,
+today)`. Unlinking has to as well: the resume re-anchor only fires for a debt
+repayment, so a paused rule handed back with a cursor frozen six months ago
+would fire the whole holiday the moment it was resumed.
+
+A PAUSED rule's cursor is NOT mirrored onto the debt. It has a cursor but no
+next payment, and `derivedStatus` reads that date — an active debt whose rule
+was merely paused started reporting itself overdue. The amount and the rhythm
+still describe the intent.
+
 A recurring repayment must come from a **bank or cash** account. A credit card
 may pay a loan by hand — a real, expensive thing people do — but on a schedule it
 moves debt from one place to another forever with no cash ever leaving, and the
@@ -194,7 +240,7 @@ last three months' income.
 - `POST /api/debts` — create the debt AND its optional `repayment` rule in one atomic batch; `disbursement_account_id` records borrowed money as a transfer.
 - `GET/PATCH/DELETE /api/debts/:id` — detail (`debt`, `activity`, `payments`, `schedule`, `repayment`); edit terms / lifecycle / the repayment / reconcile (`current_balance` → system Balance Adjustment); close (archive) or delete when there is no history.
 - `GET/POST /api/debts/:id/payments`, `DELETE /api/debts/:id/payments/:paymentId`.
-- A debt repayment also appears at `/api/recurring` and `/api/recurring/:id`, which keep the debt's mirror in step on every edit.
+- A debt repayment also appears at `/api/recurring` and `/api/recurring/:id`, which keep the debt's mirror in step on every edit. `PATCH /api/recurring/:id { debt_account_id }` links or unlinks it; that field must arrive ON ITS OWN, because combined with other edits the link could not be atomic.
 
 ## 5. UI
 

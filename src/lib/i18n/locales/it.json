@@ -1719,7 +1719,18 @@
     "noPaymentsPaused": "Da questo non è ancora stato creato nulla.",
     "loadMore": "Carica altri {{count}}",
     "loadingMore": "Caricamento…",
-    "repaysDebt": "Rimborsa"
+    "repaysDebt": "Rimborsa",
+    "linkDebt": "Collega a un debito",
+    "unlinkDebt": "Scollega dal debito",
+    "linkDebtTitle": "Quale debito paga?",
+    "linkDebtDesc": "D'ora in poi questo pagamento viene diviso tra capitale e interessi su quel debito.",
+    "linkDebtNone": "Nessun debito è adatto. Deve muovere il denaro nello stesso verso e non avere già un rimborso.",
+    "linkDebtForwardOnly": "I pagamenti già registrati restano esattamente come sono.",
+    "linkedToDebt": "Collegato al debito",
+    "unlinkedFromDebt": "Scollegato",
+    "unlinkDebtTitle": "Scollegare questo rimborso?",
+    "unlinkDebtDesc": "Torna a essere un pagamento normale: smette di toccare {{name}} e ogni pagamento futuro viene registrato come spesa senza categoria. I pagamenti già fatti non cambiano.",
+    "failedToUpdate": "Impossibile aggiornare questo pagamento ricorrente"
   },
   "calendar": {
     "title": "Calendario",
@@ -2999,6 +3010,20 @@
     "arrivingAccountRequired": "Scegli il conto su cui arriva il denaro",
     "arrivingRequired": "Inserisci quanto arriva su quel conto",
     "arrivingTooMuch": "È più del debito stesso",
-    "customRhythmHint": "La cadenza di questo rimborso si imposta sulla sua pagina."
+    "customRhythmHint": "La cadenza di questo rimborso si imposta sulla sua pagina.",
+    "linkExistingRepayment": "Collega uno che ho già",
+    "linkRepaymentTitle": "Usa un rimborso che hai già",
+    "linkRepaymentDesc": "Scegli il pagamento ricorrente che sta già pagando questo debito.",
+    "linkRepaymentNone": "Nessun pagamento ricorrente è adatto. Deve essere {{direction}} e partire da un conto bancario o contanti.",
+    "linkRepaymentForwardOnly": "Solo i pagamenti da qui in avanti vengono divisi tra capitale e interessi. Quelli già registrati restano come sono: se il saldo non torna, riconcilialo.",
+    "linkIncoming": "denaro in entrata",
+    "linkOutgoing": "denaro in uscita",
+    "repaymentLinked": "Collegato a questo debito",
+    "unitEvery": {
+      "day": "Ogni giorno",
+      "week": "Ogni settimana",
+      "month": "Ogni mese",
+      "year": "Ogni anno"
+    }
   }
 }

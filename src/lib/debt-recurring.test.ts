@@ -3,6 +3,10 @@ import { fromCents, toCents } from "./debt-math"
 import {
   advancesScheduleByDefault,
   repaymentCursor,
+  linkRefusal,
+  isLinkable,
+  type LinkCandidateRule,
+  type LinkTargetDebt,
   DEBT_KIND_SUGGESTIONS,
   frequencyToRecurring,
   isSuggestedDebtKind,
@@ -213,5 +217,92 @@ describe("payoffCappedAmount with a rule's true rhythm", () => {
       frequency: "monthly", periodsPerYear: periodsPerYearForRule("month", 6),
     })
     expect(fromCents(halfYearly)).toBe(10_600) // six months of interest
+  })
+})
+
+describe("linkRefusal", () => {
+  const rule = (over: Partial<LinkCandidateRule> = {}): LinkCandidateRule => ({
+    id: "r1", kind: "standard", type: "outgoing", cardId: null,
+    accountId: "bank", accountType: "bank", accountArchived: false, debtAccountId: null, ...over,
+  })
+  const debt = (over: Partial<LinkTargetDebt> = {}): LinkTargetDebt => ({
+    id: "d1", direction: "owed", archived: false, linkedRuleIds: [], ...over,
+  })
+
+  it("adopts an ordinary outgoing rule paid from a bank", () => {
+    expect(linkRefusal(rule(), debt())).toBeNull()
+    expect(isLinkable(rule(), debt())).toBe(true)
+  })
+
+  it("adopts a cash-funded rule too", () => {
+    expect(linkRefusal(rule({ accountType: "cash" }), debt())).toBeNull()
+  })
+
+  it("refuses a Space auto-save — it belongs to the Space", () => {
+    expect(linkRefusal(rule({ kind: "transfer" }), debt())).toBe("rule_is_autosave")
+  })
+
+  it("refuses a rule that pays with a card", () => {
+    expect(linkRefusal(rule({ cardId: "c1" }), debt())).toBe("rule_pays_with_card")
+  })
+
+  it("refuses a rule with no account, or an archived one", () => {
+    expect(linkRefusal(rule({ accountId: null }), debt())).toBe("rule_has_no_account")
+    expect(linkRefusal(rule({ accountArchived: true }), debt())).toBe("account_archived")
+  })
+
+  it("refuses anything that is not bank or cash", () => {
+    for (const t of ["credit_card", "space", "loan", "receivable", null]) {
+      expect(linkRefusal(rule({ accountType: t }), debt())).toBe("account_not_cash")
+    }
+  })
+
+  it("REFUSES a direction mismatch rather than flipping it", () => {
+    // The whole point: silently flipping an incoming salary rule dropped on a
+    // loan would start taking that money OUT of the account every month.
+    expect(linkRefusal(rule({ type: "incoming" }), debt({ direction: "owed" }))).toBe("direction_mismatch")
+    expect(linkRefusal(rule({ type: "outgoing" }), debt({ direction: "receivable" }))).toBe("direction_mismatch")
+  })
+
+  it("a receivable is COLLECTED, so it wants an incoming rule", () => {
+    expect(linkRefusal(rule({ type: "incoming" }), debt({ direction: "receivable" }))).toBeNull()
+  })
+
+  it("refuses a closed debt", () => {
+    expect(linkRefusal(rule(), debt({ archived: true }))).toBe("debt_closed")
+  })
+
+  it("allows only ONE repayment per debt — even a PAUSED one still counts", () => {
+    // Counting only active siblings let a debt collect a second rule while the
+    // first was paused; resuming then paid it twice a month.
+    expect(linkRefusal(rule({ id: "r1" }), debt({ linkedRuleIds: ["r9"] }))).toBe("repayment_exists")
+  })
+
+  it("refuses a rule whose end date has passed — nothing would ever fire", () => {
+    expect(linkRefusal(rule({ ended: true }), debt())).toBe("rule_ended")
+  })
+
+  it("refuses a rule with instalments still waiting to post", () => {
+    // Linking moves the cursor forward, so those would be recorded in neither
+    // shape: not as the expenses they were, not as the repayments they were not.
+    expect(linkRefusal(rule({ hasPending: true }), debt())).toBe("rule_has_pending")
+  })
+
+  it("but re-linking the rule that is ALREADY the repayment is fine", () => {
+    // Re-pointing a rule at the same debt (e.g. saving the form again) must not
+    // trip the one-repayment guard against itself.
+    expect(linkRefusal(rule({ id: "r1", kind: "debt", debtAccountId: "d1" }), debt({ linkedRuleIds: ["r1"] }))).toBeNull()
+  })
+
+  it("REFUSES a rule that is already servicing another debt", () => {
+    // Moving it would leave the other debt with a payment amount, a due date and
+    // a place in the planner describing a rule that had quietly walked away.
+    expect(linkRefusal(rule({ id: "r1", kind: "debt", debtAccountId: "other" }), debt({ id: "d1", linkedRuleIds: [] })))
+      .toBe("rule_linked_elsewhere")
+  })
+
+  it("checks the debt before the rule's own shape, so 'closed' is what you hear", () => {
+    // A closed debt cannot take a repayment however good the rule is.
+    expect(linkRefusal(rule({ cardId: "c1" }), debt({ archived: true }))).toBe("debt_closed")
   })
 })

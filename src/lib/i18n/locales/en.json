@@ -2096,7 +2096,18 @@
     "noPaymentsPaused": "Nothing has been created from this yet.",
     "loadMore": "Load {{count}} more",
     "loadingMore": "Loading…",
-    "repaysDebt": "Repays"
+    "repaysDebt": "Repays",
+    "linkDebt": "Link to a debt",
+    "unlinkDebt": "Unlink from the debt",
+    "linkDebtTitle": "Which debt does this pay?",
+    "linkDebtDesc": "From now on this payment is split into principal and interest against that debt.",
+    "linkDebtNone": "No debt fits this payment. It has to move money the same way, and the debt cannot already have a repayment.",
+    "linkDebtForwardOnly": "Payments already recorded stay exactly as they are.",
+    "linkedToDebt": "Linked to the debt",
+    "unlinkedFromDebt": "Unlinked",
+    "unlinkDebtTitle": "Unlink this repayment?",
+    "unlinkDebtDesc": "It goes back to being an ordinary payment: it stops touching {{name}}, and every future one is recorded as spending with no category. Payments already made are untouched.",
+    "failedToUpdate": "Could not update this recurring payment"
   },
   "calendar": {
     "title": "Calendar",
@@ -2999,6 +3010,20 @@
     "arrivingAccountRequired": "Choose the account the money lands in",
     "arrivingRequired": "Enter how much lands in that account",
     "arrivingTooMuch": "That is more than the debt itself",
-    "customRhythmHint": "This repayment's rhythm is set on its own page."
+    "customRhythmHint": "This repayment's rhythm is set on its own page.",
+    "linkExistingRepayment": "Link one I already have",
+    "linkRepaymentTitle": "Use a repayment you already have",
+    "linkRepaymentDesc": "Pick the recurring payment that has been paying this debt.",
+    "linkRepaymentNone": "No recurring payment fits. It has to be {{direction}} and paid from a bank or cash account.",
+    "linkRepaymentForwardOnly": "Only payments from here on are split into principal and interest. The ones already recorded stay exactly as they are — reconcile the balance if it is out.",
+    "linkIncoming": "money coming in",
+    "linkOutgoing": "money going out",
+    "repaymentLinked": "Linked to this debt",
+    "unitEvery": {
+      "day": "Every day",
+      "week": "Every week",
+      "month": "Every month",
+      "year": "Every year"
+    }
   }
 }

@@ -108,7 +108,7 @@ export function toDebtLike(row: DebtRow): DebtLike {
  * thing a list of debts has to answer, and it cannot be derived from the debt's
  * own columns — the schedule fields look identical either way.
  */
-export function serializeDebt(row: DebtRow, today: string, opts: { repaymentActive?: boolean } = {}) {
+export function serializeDebt(row: DebtRow, today: string, opts: { repaymentActive?: boolean; repaymentLinked?: boolean } = {}) {
   const like = toDebtLike(row)
   const estimate = debtFreeEstimate(like, today)
   const { logoData, ...account } = row.account
@@ -147,6 +147,10 @@ export function serializeDebt(row: DebtRow, today: string, opts: { repaymentActi
     closedAt: row.details.closedAt,
     notes: row.details.notes,
     repaymentActive: opts.repaymentActive ?? false,
+    // Linked but perhaps PAUSED. The two differ, and the difference matters:
+    // the "Auto" badge means actively paying, while "can another rule be linked
+    // here?" is answered by whether ANY rule is already attached.
+    repaymentLinked: opts.repaymentLinked ?? opts.repaymentActive ?? false,
     updatedAt: row.details.updatedAt,
   })
 }
@@ -209,7 +213,8 @@ export async function buildDebtsOverview(orgId: string, orgCurrency: string, tod
   // them, rather than one per row.
   const allRules = await loadDebtRules(orgId, active.map((r) => r.account.id))
   const servicing = new Set(allRules.filter((r) => r.active && r.debtAccountId).map((r) => r.debtAccountId as string))
-  const withRule = (row: DebtRow) => ({ repaymentActive: servicing.has(row.account.id) })
+  const attached = new Set(allRules.filter((r) => r.debtAccountId).map((r) => r.debtAccountId as string))
+  const withRule = (row: DebtRow) => ({ repaymentActive: servicing.has(row.account.id), repaymentLinked: attached.has(row.account.id) })
 
   const monthStart = `${monthKey(today)}-01`
   const nextMonthStart = addPeriods(monthStart, "monthly", 1)
@@ -704,7 +709,11 @@ export function debtScheduleMirror(rule: Pick<DebtRuleRow, "amount" | "frequency
   return {
     paymentAmount: String(rule.amount),
     paymentFrequency: frequency ?? "irregular",
-    nextDueDate: String(rule.nextDueAt).slice(0, 10),
+    // A PAUSED rule has a cursor but no next payment. Mirroring it anyway put a
+    // date on the debt that nothing would honour — and derivedStatus reads that
+    // date, so an active debt whose rule was merely paused started reporting
+    // itself overdue. The amount and the rhythm still describe the intent.
+    nextDueDate: rule.active ? String(rule.nextDueAt).slice(0, 10) : null,
     updatedAt: new Date(),
   }
 }
