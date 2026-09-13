@@ -109,7 +109,9 @@
     "cancel": "إلغاء",
     "save": "حفظ التغييرات",
     "saving": "جارٍ الحفظ...",
-    "amountTooLarge": "المبلغ كبير جدًا"
+    "amountTooLarge": "المبلغ كبير جدًا",
+    "expand": "توسيع",
+    "collapse": "طي"
   },
   "dashboard": {
     "title": "لوحة التحكم",

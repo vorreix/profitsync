@@ -1167,7 +1167,6 @@ export function Dashboard() {
         subline={t("flow.net")}
         storageKey={`ps_dash_flow_open_${activeOrg?.id ?? ""}`}
         onOpen={() => navigate("/flow")}
-        openLabel={t("flow.cardCta")}
       >
         <button
           type="button"

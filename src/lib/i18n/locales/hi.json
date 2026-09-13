@@ -109,7 +109,9 @@
     "cancel": "रद्द करें",
     "save": "परिवर्तन सहेजें",
     "saving": "सहेजा जा रहा है...",
-    "amountTooLarge": "राशि बहुत बड़ी है"
+    "amountTooLarge": "राशि बहुत बड़ी है",
+    "expand": "विस्तार करें",
+    "collapse": "समेटें"
   },
   "dashboard": {
     "title": "डैशबोर्ड",

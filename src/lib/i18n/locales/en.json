@@ -413,6 +413,8 @@
     "clear": "Clear",
     "done": "Done",
     "viewAll": "View all",
+    "expand": "Expand",
+    "collapse": "Collapse",
     "cancel": "Cancel",
     "save": "Save Changes",
     "saving": "Saving...",

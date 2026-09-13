@@ -109,7 +109,9 @@
     "cancel": "Abbrechen",
     "save": "Änderungen speichern",
     "saving": "Speichern...",
-    "amountTooLarge": "Betrag ist zu groß"
+    "amountTooLarge": "Betrag ist zu groß",
+    "expand": "Ausklappen",
+    "collapse": "Einklappen"
   },
   "dashboard": {
     "title": "Dashboard",
