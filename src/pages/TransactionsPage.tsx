@@ -553,6 +553,14 @@ export function TransactionsPage() {
         const token = await getToken()
         const legs = token ? await apiGet<Transaction[]>(`/api/transactions?groupId=${tx.group_id}`, token) : []
         if (!legs.length) { toast.error(t("failedToUpdateTransaction")); return }
+        // A group that contains TRANSFER legs is not a split — it is one money
+        // movement with more than one meaning, and a debt repayment is the
+        // common case: a principal transfer plus interest and fee expenses.
+        // Only the expenses survive this list's transfer filter, so it arrives
+        // here looking like a lone grouped row. Saving would delete the group
+        // and try to rebuild it as plain allocations, which the server refuses
+        // — leaving the repayment trashed and nothing in its place.
+        if (legs.some((l) => l.kind === "transfer")) { toast.info(t("editOnItsOwnPage")); return }
         setEditForm({
           id: legs[0].id,
           group_id: tx.group_id,

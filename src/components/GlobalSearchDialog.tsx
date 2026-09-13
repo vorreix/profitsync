@@ -7,6 +7,7 @@ import {
   FileText,
   Landmark,
   Loader2,
+  HandCoins,
   PiggyBank,
   Tag,
   Users,
@@ -235,6 +236,20 @@ export function GlobalSearchDialog({
                       <Landmark className="text-muted-foreground" />
                     )}
                     <span className="truncate">{accountDisplayName(account) || t("nav.wealth")}</span>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            )}
+
+            {results && results.debts?.length > 0 && (
+              <CommandGroup heading={t("search.debts")}>
+                {results.debts.map((debt) => (
+                  <CommandItem key={debt.id} value={`debt-${debt.id}`} onSelect={() => go(searchHrefs.debt(debt))}>
+                    <HandCoins className="text-muted-foreground" />
+                    <span className="truncate">{debt.name}</span>
+                    <span className="ms-auto shrink-0 text-xs text-muted-foreground">
+                      {debt.direction === "receivable" ? t("debts:owedToMe") : t("debts:iOwe")}
+                    </span>
                   </CommandItem>
                 ))}
               </CommandGroup>

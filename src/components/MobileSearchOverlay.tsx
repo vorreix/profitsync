@@ -7,6 +7,7 @@ import {
   FileText,
   Landmark,
   Loader2,
+  HandCoins,
   PiggyBank,
   Search,
   Settings2,
@@ -175,8 +176,10 @@ export function MobileSearchOverlay({
   const showTx = show("transactions") && results !== null && results.transactions.length > 0
   const showQuotes = show("quotations") && results !== null && results.quotations.length > 0
   const showAccounts = show("accounts") && results !== null && results.accounts.length > 0
-  // Cards ride the "Accounts" chip — one place for everything money sits on or is paid with.
+  // Cards and debts ride the "Accounts" chip — one place for everything money
+  // sits on, is paid with, or is owed on.
   const showCards = show("accounts") && results !== null && results.cards.length > 0
+  const showDebts = show("accounts") && results !== null && (results.debts?.length ?? 0) > 0
   const showCategories = chip === "all" && results !== null && results.categories.length > 0
   const showPages = show("pages") && hasQuery && pages.length > 0
   const showActions = show("pages") && hasQuery && actions.length > 0
@@ -336,6 +339,20 @@ export function MobileSearchOverlay({
                 icon={account.type === "space" ? PiggyBank : Landmark}
                 label={accountDisplayName(account) || t("nav.wealth")}
                 onClick={() => go(searchHrefs.account(account))}
+              />
+            ))}
+          </>
+        )}
+        {showDebts && results && (
+          <>
+            <GroupHeading>{t("search.debts")}</GroupHeading>
+            {results.debts.map((debt) => (
+              <ResultRow
+                key={debt.id}
+                icon={HandCoins}
+                label={debt.name}
+                secondary={debt.direction === "receivable" ? t("debts:owedToMe") : t("debts:iOwe")}
+                onClick={() => go(searchHrefs.debt(debt))}
               />
             ))}
           </>
