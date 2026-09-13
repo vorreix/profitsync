@@ -2130,6 +2130,7 @@
     "debtNeedsCash": "A debt is repaid from a bank or cash account.",
     "debtRuleEnded": "This ends before it could ever pay.",
     "debtAlreadyLinked": "This already repays another debt. Unlink it there first.",
+    "debtHasPending": "Payments are still waiting to post. Open this payment and let them through first.",
     "createDebtForThis": "Create a debt for this",
     "previewPerYear": "{{amount}} a year",
     "previewNeverRuns": "It ends before it would ever run.",

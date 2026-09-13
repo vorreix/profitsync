@@ -1761,7 +1761,8 @@
     "debtNotCard": "Eine Karte kann keine Schuld tilgen. Wähle das Bankkonto, von dem sie beglichen wird.",
     "debtNeedsCash": "Eine Schuld wird von einem Bank- oder Bargeldkonto zurückgezahlt.",
     "debtRuleEnded": "Das endet, bevor es je zahlen könnte.",
-    "debtAlreadyLinked": "Diese Zahlung tilgt bereits eine andere Schuld. Löse sie dort zuerst."
+    "debtAlreadyLinked": "Diese Zahlung tilgt bereits eine andere Schuld. Löse sie dort zuerst.",
+    "debtHasPending": "Es warten noch Zahlungen auf die Buchung. Öffne diese Zahlung und lass sie zuerst durch."
   },
   "calendar": {
     "title": "Kalender",

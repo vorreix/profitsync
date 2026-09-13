@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { fromCents, toCents } from "./debt-math"
+import { amortize, fromCents, toCents } from "./debt-math"
 import {
   advancesScheduleByDefault,
   repaymentCursor,
@@ -304,5 +304,83 @@ describe("linkRefusal", () => {
   it("checks the debt before the rule's own shape, so 'closed' is what you hear", () => {
     // A closed debt cannot take a repayment however good the rule is.
     expect(linkRefusal(rule({ cardId: "c1" }), debt({ archived: true }))).toBe("debt_closed")
+  })
+})
+
+describe("payoffCappedAmount agrees with the schedule on the last instalment", () => {
+  // The engine and the schedule table must end a debt on the SAME instalment.
+  // Capping at the scheduled amount left the rounding residue outstanding and
+  // billed one more instalment for it — a payment no preview ever promised.
+  it("folds a residue within the tolerance into the final payment", () => {
+    // €500 left, 0% — one more period of €500 would leave €4 behind, and €4 is
+    // inside finalPaymentTolerance(€500) = €10.
+    const amount = payoffCappedAmount({
+      scheduled: toCents(500),
+      outstanding: toCents(504),
+      annualRatePct: null,
+      frequency: "monthly",
+    })
+    expect(amount).toBe(toCents(504))
+  })
+
+  it("still pays only the scheduled amount when the residue is a real instalment", () => {
+    const amount = payoffCappedAmount({
+      scheduled: toCents(500),
+      outstanding: toCents(700),
+      annualRatePct: null,
+      frequency: "monthly",
+    })
+    expect(amount).toBe(toCents(500))
+  })
+
+  it("matches the schedule's own final row", () => {
+    const owed = toCents(1_000)
+    const scheduled = toCents(104)
+    const plan = amortize({ balance: owed, annualRatePct: 0, payment: scheduled })
+    // Walk the engine's cap the way postDebtOccurrences does and count instalments.
+    let balance = owed
+    let engineCount = 0
+    while (balance > 0 && engineCount < 50) {
+      const pay = payoffCappedAmount({ scheduled, outstanding: balance, annualRatePct: 0, frequency: "monthly" })
+      balance -= pay
+      engineCount++
+    }
+    expect(engineCount).toBe(plan.periods)
+  })
+})
+
+describe("a debt's lifecycle in the link predicate", () => {
+  const rule = {
+    id: "r1",
+    kind: "standard" as const,
+    type: "outgoing" as const,
+    cardId: null,
+    accountId: "bank",
+    accountType: "bank",
+    accountArchived: false,
+    debtAccountId: null,
+  }
+  const debt = { id: "d1", direction: "owed" as const, archived: false, linkedRuleIds: [] }
+
+  it("accepts an active debt", () => {
+    expect(linkRefusal(rule, { ...debt, lifecycle: "active" })).toBeNull()
+  })
+
+  it("accepts a PAUSED debt — the rule follows it and is stored inactive", () => {
+    // Refusing here would break the debt screen's own "link an existing
+    // repayment", which deliberately offers paused debts.
+    expect(linkRefusal(rule, { ...debt, lifecycle: "paused" })).toBeNull()
+  })
+
+  it.each(["paid_off", "refinanced", "written_off"] as const)("refuses a %s debt", (lifecycle) => {
+    expect(linkRefusal(rule, { ...debt, lifecycle })).toBe("debt_settled")
+  })
+
+  it("is unchanged when the caller has no lifecycle to give", () => {
+    expect(linkRefusal(rule, debt)).toBeNull()
+  })
+
+  it("still reports the closed debt first", () => {
+    expect(linkRefusal(rule, { ...debt, archived: true, lifecycle: "written_off" })).toBe("debt_closed")
   })
 })

@@ -84,3 +84,67 @@ describe("previewRecurring", () => {
     expect(schedule(previewRecurring({ ...base, amount: -50 })).perYear).toBe(0)
   })
 })
+
+describe("previewRecurring with a cursor", () => {
+  // Editing a rule that has been running for a year must not list last year's
+  // dates under "Next payments" — every one of them has already posted.
+  it("skips occurrences behind the cursor", () => {
+    const p = previewRecurring({
+      amount: 100,
+      unit: "month",
+      interval: 1,
+      startDate: "2025-03-10",
+      today: "2026-09-13",
+      from: "2026-10-10",
+    })
+    expect(p.kind).toBe("schedule")
+    if (p.kind !== "schedule") return
+    expect(p.dates).toEqual(["2026-10-10", "2026-11-10", "2026-12-10"])
+    expect(p.more).toBe(true)
+    // A cursor means nothing back-posts, whatever the anchor says.
+    expect(p.backdated).toBe(false)
+  })
+
+  it("still lists from the anchor when there is no cursor", () => {
+    const p = previewRecurring({
+      amount: 100,
+      unit: "month",
+      interval: 1,
+      startDate: "2026-07-01",
+      today: "2026-09-13",
+    })
+    expect(p.kind).toBe("schedule")
+    if (p.kind !== "schedule") return
+    expect(p.dates[0]).toBe("2026-07-01")
+    expect(p.backdated).toBe(true)
+  })
+
+  it("lists nothing when the rule ends before the cursor", () => {
+    const p = previewRecurring({
+      amount: 100,
+      unit: "month",
+      interval: 1,
+      startDate: "2025-01-01",
+      endDate: "2025-06-01",
+      today: "2026-09-13",
+      from: "2026-09-13",
+    })
+    expect(p.kind).toBe("schedule")
+    if (p.kind !== "schedule") return
+    expect(p.neverRuns).toBe(true)
+  })
+
+  it("does not spin on a daily rule anchored years ago", () => {
+    const p = previewRecurring({
+      amount: 1,
+      unit: "day",
+      interval: 1,
+      startDate: "2020-01-01",
+      today: "2026-09-13",
+      from: "2026-09-14",
+    })
+    expect(p.kind).toBe("schedule")
+    if (p.kind !== "schedule") return
+    expect(p.dates).toEqual(["2026-09-14", "2026-09-15", "2026-09-16"])
+  })
+})

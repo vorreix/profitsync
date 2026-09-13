@@ -60,6 +60,7 @@ const NEW_DEBT_HINTS: Partial<Record<LinkRefusal, string>> = {
   account_not_cash: "recurring.debtNeedsCash",
   rule_ended: "recurring.debtRuleEnded",
   rule_linked_elsewhere: "recurring.debtAlreadyLinked",
+  rule_has_pending: "recurring.debtHasPending",
 }
 
 const emptyRuleForm = (): RuleForm => ({
@@ -137,6 +138,8 @@ export function RecurringRuleDialog({
 
   const [form, setForm] = useState<RuleForm>(emptyRuleForm)
   const [saving, setSaving] = useState(false)
+  // Did the user actually choose "no debt"? See the debt Select's onValueChange.
+  const [unlinkAsked, setUnlinkAsked] = useState(false)
   // Read at open time only — a fresh object identity each render must not
   // re-seed the form while the user is typing in it.
   const presetRef = useRef(preset)
@@ -148,12 +151,21 @@ export function RecurringRuleDialog({
   // this" arrives here with the debt question answered). Re-arming `saving`
   // matters too: a request still in flight when the user closed it would
   // otherwise leave the save button dead on reopen.
+  // `rule` is read through a ref for the same reason `preset` is: this screen
+  // revalidates in the background (data-fetching-and-cache), so a fresh object
+  // identity arrives while the dialog is open — and depending on it here threw
+  // away everything the user had typed, mid-sentence.
+  const ruleRef = useRef(rule)
+  ruleRef.current = rule
   useEffect(() => {
     if (!open) return
-    const seeded = { ...(rule ? formFromRule(rule) : emptyRuleForm()), ...presetRef.current }
+    const seedFrom = ruleRef.current
+    const seeded = { ...(seedFrom ? formFromRule(seedFrom) : emptyRuleForm()), ...presetRef.current }
     setForm(seeded.debt_choice === "new" && !seeded.debt_name ? { ...seeded, debt_name: seeded.name } : seeded)
     setSaving(false)
-  }, [open, rule])
+    setUnlinkAsked(false)
+    // `open` ONLY — see ruleRef above.
+  }, [open])
 
   // The debts this payment could be attached to. Loaded once per open; the
   // eligibility predicate is the SAME one the server enforces, so nothing is
@@ -167,7 +179,11 @@ export function RecurringRuleDialog({
       const token = await getToken()
       if (!token) return
       const o = await apiGet<DebtsOverview>("/api/debts", token).catch(() => null)
-      if (!cancelled) setDebts(o ? [...o.debts, ...o.receivables] : [])
+      // A FAILED fetch must stay null, not become "no debts". The clearing
+      // effect below treats an empty list as "the debt you had is gone" and
+      // drops the link — so collapsing the two turned an offline blink into a
+      // silent unlink on the next save.
+      if (!cancelled && o) setDebts([...o.debts, ...o.receivables])
     })()
     return () => { cancelled = true }
   }, [open, getToken])
@@ -190,7 +206,11 @@ export function RecurringRuleDialog({
     // a deliberate step on its own page.
     debtAccountId: rule?.debt_account_id ?? null,
     ended: !!form.end_date && form.end_date < today,
-  }), [rule?.id, rule?.debt_account_id, form.type, form.card_id, form.wealth_account_id, form.end_date, today, accounts])
+    // From the STORED rule, not the form: an occurrence that is already due has
+    // to post in the shape it was owed in, and no edit in this dialog changes
+    // whether that is true.
+    hasPending: !!rule && rule.active && String(rule.next_due_at).slice(0, 10) <= today,
+  }), [rule, form.type, form.card_id, form.wealth_account_id, form.end_date, today, accounts])
 
   const eligibleDebts = useMemo(
     () => (debts ?? []).filter((d) => isLinkable(candidate, {
@@ -198,6 +218,7 @@ export function RecurringRuleDialog({
       direction: d.direction,
       archived: !!d.archived_at,
       // A PAUSED rule counts too, so a debt that already has one is not offered.
+      lifecycle: d.lifecycle,
       linkedRuleIds: (d.repayment_linked ?? d.repayment_active) ? (rule?.debt_account_id === d.id ? [rule.id] : ["other"]) : [],
     })),
     [debts, candidate, rule?.id, rule?.debt_account_id],
@@ -218,7 +239,7 @@ export function RecurringRuleDialog({
   // rule makes a mismatch impossible, so what is left is the payer's shape —
   // no account, a card, a credit line — and the rule's own life.
   const createRefusal: LinkRefusal | null = useMemo(
-    () => linkRefusal(candidate, { id: "new", direction: newDebtDirection, archived: false, linkedRuleIds: [] }),
+    () => linkRefusal(candidate, { id: "new", direction: newDebtDirection, archived: false, lifecycle: "active", linkedRuleIds: [] }),
     [candidate, newDebtDirection],
   )
   const createHintKey = createRefusal ? NEW_DEBT_HINTS[createRefusal] : null
@@ -239,6 +260,19 @@ export function RecurringRuleDialog({
 
   // Live preview: the debt's whole story when one is involved, the schedule and
   // what it costs a year otherwise.
+  // Where the NEXT payment actually comes from, mirroring what the server will
+  // do on save: an untouched schedule keeps the rule's cursor, a changed one is
+  // re-anchored forward to today, and a rule being created starts at its anchor
+  // (the documented catch-up). Without this the preview listed dates from a
+  // year ago under the heading "Next payments".
+  const previewFrom = useMemo(() => {
+    if (!rule) return null
+    const changed = form.start_date !== String(rule.start_date).slice(0, 10)
+      || form.frequency_unit !== rule.frequency_unit
+      || interval !== rule.frequency_interval
+    return changed ? today : String(rule.next_due_at).slice(0, 10)
+  }, [rule, form.start_date, form.frequency_unit, interval, today])
+
   const schedulePreview = useMemo(
     () => previewRecurring({
       amount: Number(form.amount) || 0,
@@ -247,8 +281,9 @@ export function RecurringRuleDialog({
       startDate: form.start_date,
       endDate: form.end_date || null,
       today,
+      from: previewFrom,
     }),
-    [form.amount, form.frequency_unit, interval, form.start_date, form.end_date, today],
+    [form.amount, form.frequency_unit, interval, form.start_date, form.end_date, today, previewFrom],
   )
 
   const debtPreview = useMemo(() => {
@@ -302,8 +337,12 @@ export function RecurringRuleDialog({
         amount: Number(form.amount),
         // A debt repayment's category and client are the engine's, not the
         // form's; the server forces them too, this just stops sending noise.
-        category: withDebt ? "" : form.category,
-        client_id: withDebt ? null : form.client_id || null,
+        // On the create-a-debt path they are OMITTED rather than blanked — the
+        // debt route sets them a moment later, and if it fails the rule keeps
+        // what it had instead of being left uncategorised with its client gone.
+        ...(creatingDebt && rule
+          ? {}
+          : { category: withDebt ? "" : form.category, client_id: withDebt ? null : form.client_id || null }),
         // The card decides the account server-side (it is always the card's own).
         wealth_account_id: form.wealth_account_id || null,
         card_id: form.card_id || null,
@@ -316,6 +355,13 @@ export function RecurringRuleDialog({
       // Creating the debt here: the debt route owns the write, and it carries
       // the rule with it — a new one in `repayment`, an existing one by id.
       if (creatingDebt) {
+        // An EDIT goes first, and this is not a preference. The debt route
+        // validates the rule AS STORED, so a save that changes the payer or the
+        // direction AND creates a debt would be judged on the old values and
+        // refused. Going first also means a rejected edit has created nothing:
+        // the alternative leaves a debt the user cannot see a way to undo.
+        let edited: RecurringRule | null = null
+        if (rule) edited = await apiPatch<RecurringRule>(`/api/recurring/${rule.id}`, token, body)
         const debtBody = {
           direction: newDebtDirection,
           name: form.debt_name.trim(),
@@ -329,7 +375,11 @@ export function RecurringRuleDialog({
                   enabled: true,
                   from_account_id: form.wealth_account_id,
                   amount: Number(form.amount),
-                  frequency: recurringToFrequency(form.frequency_unit, frequency_interval) ?? "monthly",
+                  // The RULE's rhythm, not a debt word. The debt vocabulary names
+                  // five rhythms; a rule can repeat on any of 365 intervals, and
+                  // naming the nearest one turned "every 2 years" into "monthly".
+                  frequency_unit: form.frequency_unit,
+                  frequency_interval,
                   start_date: form.start_date,
                   end_date: form.end_date || null,
                   name: form.name.trim(),
@@ -337,13 +387,10 @@ export function RecurringRuleDialog({
               }),
         }
         const saved = await apiPost<{ id: string; repayment_rule_id?: string | null }>("/api/debts", token, debtBody)
+        // One success, said once, after everything has actually landed.
         toast.success(t("recurring.debtCreatedAndLinked"))
-        if (rule) {
-          const updated = await apiPatch<RecurringRule>(`/api/recurring/${rule.id}`, token, body)
-          onSaved(updated, { created: false })
-        } else {
-          onSaved({ ...(body as unknown as RecurringRule), id: saved.repayment_rule_id ?? "" }, { created: true })
-        }
+        if (rule) onSaved(edited ?? rule, { created: false })
+        else onSaved({ ...(body as unknown as RecurringRule), id: saved.repayment_rule_id ?? "" }, { created: true })
         onOpenChange(false)
         return
       }
@@ -354,7 +401,10 @@ export function RecurringRuleDialog({
         // atomic alongside an edit, so the server refuses the combination.
         const want = form.debt_choice || null
         const have = rule.debt_account_id ?? null
-        const linked = want !== have
+        // Detaching needs both: the field changed AND the user said so. An
+        // empty field on its own is ambiguous — see unlinkAsked.
+        const change = want !== have && (want !== null || unlinkAsked)
+        const linked = change
           ? await apiPatch<RecurringRule>(`/api/recurring/${rule.id}`, token, { debt_account_id: want })
           : updated
         toast.success(t("recurring.updated"))
@@ -491,11 +541,18 @@ export function RecurringRuleDialog({
             <Label htmlFor="rec-debt">{incoming ? t("recurring.collectsDebtQ") : t("recurring.paysDebtQ")}</Label>
             <Select
               value={form.debt_choice || "none"}
-              onValueChange={(v) => setForm((f) => ({
-                ...f,
-                debt_choice: v === "none" ? "" : v,
-                debt_name: v === "new" && !f.debt_name ? f.name : f.debt_name,
-              }))}
+              onValueChange={(v) => {
+                // Only a deliberate "no" detaches a live repayment. Everything
+                // else that empties this field — a failed fetch, an archived
+                // account, a debt that stopped being eligible — is the form
+                // losing track, not the user changing their mind.
+                if (v === "none") setUnlinkAsked(true)
+                setForm((f) => ({
+                  ...f,
+                  debt_choice: v === "none" ? "" : v,
+                  debt_name: v === "new" && !f.debt_name ? f.name : f.debt_name,
+                }))
+              }}
             >
               <SelectTrigger id="rec-debt" className="w-full"><SelectValue /></SelectTrigger>
               <SelectContent>

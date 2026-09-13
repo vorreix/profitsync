@@ -171,7 +171,11 @@ rule being pointed at a debt — and both go through the ONE operation,
 `linkRuleToDebt`, so there is one set of rules.
 
 **Forward only, and that is the whole design.** The eight occurrences already
-posted were expenses; they stay expenses. Rebuilding them would move balances,
+posted were expenses; they stay expenses — including when the cursor lands back
+on a date one of them already claimed. The engine tells its own crashed claim
+from a complete ordinary occurrence by `group_id`: every leg it writes carries
+one, a plain materialized row has none. Deleting the latter as wreckage took the
+money off the ledger without giving it back and then charged the account again. Rebuilding them would move balances,
 rewrite budget periods already reported on, and invent an interest split nobody
 recorded at the time. A debt whose balance does not reflect them is RECONCILED
 instead, which is one visible row. The route materialises BEFORE the change in
@@ -188,6 +192,7 @@ A rule is refused when it cannot honestly become a repayment:
 | `rule_is_autosave` | A Space auto-save belongs to the Space. |
 | `rule_linked_elsewhere` | Moving it would leave the other debt with a schedule describing a rule that had walked away. |
 | `rule_ended` | Past its end date: it would never pay anything. |
+| `debt_settled` | Paid off, refinanced or written off. The debt-side twin of `rule_ended`: the rule would be deactivated on the spot by the follow-the-debt rule, so what the user gets is a repayment that stops the moment it is made. **Paused is NOT refused** — linking to a paused debt is a real thing people do, the rule simply follows it (stored inactive, no next date mirrored), and the debt screen deliberately offers paused debts. |
 | `rule_has_pending` | Instalments are waiting to post; the link moves the cursor past them and they would be recorded in neither shape. |
 | `repayment_exists` | ONE repayment per debt — see below. |
 | `debt_closed` | |
@@ -202,6 +207,19 @@ Linking and unlinking both re-anchor the cursor with `GREATEST(next_due_at,
 today)`. Unlinking has to as well: the resume re-anchor only fires for a debt
 repayment, so a paused rule handed back with a cursor frozen six months ago
 would fire the whole holiday the moment it was resumed.
+
+**Linking is ONE write.** The rule becoming a repayment and the debt starting to
+mirror it are the same fact, so they commit together (`dbBatch`); the cursor is
+computed in JS rather than left to SQL's `GREATEST` precisely so both statements
+can carry the identical value without reading one back into the other.
+
+**Stopping a repayment mirrors the stop.** `repayment: { enabled: false }`
+returns the deactivated rule so `debtScheduleMirror` writes `next_due_date:
+null`. Swallowing it left the debt holding a due date nothing would ever honour,
+and `derivedStatus` called the debt overdue from that date onwards, forever.
+Silence about `active` means "leave it as it is", never "switch it on" — the
+debt's edit sheet sends the whole repayment block when the amount changes, and
+defaulting to true quietly RESUMED a paused repayment.
 
 A PAUSED rule's cursor is NOT mirrored onto the debt. It has a cursor but no
 next payment, and `derivedStatus` reads that date — an active debt whose rule
@@ -242,6 +260,22 @@ no debt fits.
 The direction is DERIVED, never asked twice: money going out makes a debt you
 owe, money coming in makes one owed to you. There is no second control to
 disagree with the first.
+
+**The rhythm travels as the RULE's rhythm, not as a debt word.** The debt
+vocabulary names five (weekly, fortnightly, monthly, quarterly, yearly); a rule
+repeats on any (unit, 1..365) pair. `repayment` therefore carries
+`frequency_unit` + `frequency_interval`, and `debt_details.payment_frequency` is
+DERIVED from the pair — `irregular` when there is no word for it, exactly as
+`debtScheduleMirror` does everywhere else. Collapsing to the nearest name turned
+"every 2 years" into "monthly" and started taking the money twenty-four times as
+often; the named `frequency` is still accepted for the debt form, but nothing is
+defaulted any more, so an omitted rhythm is a 400 rather than an invented one.
+
+**On an EDIT the rule's own changes go first**, then the debt is created. The
+debt route validates the rule AS STORED, so a save that changes the payer or the
+direction AND creates a debt would otherwise be judged on the old values and
+refused — and a rejected edit that has already created a debt leaves the user
+with something they cannot see a way to undo.
 
 ## 3. Engine (`src/lib/debt-math.ts`, `debt-planner.ts`)
 

@@ -5,7 +5,7 @@ import { toast } from "sonner"
 import { apiErrorMessage, apiGet, apiPost } from "@/lib/api"
 import { amountExceedsLimit } from "@/lib/money"
 import { fromCents, splitPayment, toCents } from "@/lib/debt-math"
-import { advancesScheduleByDefault, payoffCappedAmount } from "@/lib/debt-recurring"
+import { advancesScheduleByDefault, payoffCappedAmount, periodsPerYearForRule } from "@/lib/debt-recurring"
 import type { Debt, DebtPayment, DebtRepayment, WealthAccount } from "@/lib/types"
 import { debtMoney, formatLongDate } from "@/lib/debt-format"
 import { getCurrencySymbol } from "@/lib/currencies"
@@ -58,6 +58,11 @@ export function RecordPaymentSheet({
   const [advance, setAdvance] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // The interest basis the SERVER will use: the rule's real rhythm when a rule
+  // drives this debt, the debt's named frequency otherwise. Reading it off the
+  // debt alone made the preview disagree with the receipt on any rhythm the
+  // debt vocabulary has no word for.
+  const rulePpy = repayment ? periodsPerYearForRule(repayment.frequency_unit, repayment.frequency_interval) : null
   const scheduled = !!repayment?.active
 
   useEffect(() => {
@@ -85,14 +90,14 @@ export function RecordPaymentSheet({
   const totalNum = Number(total)
   const preview = useMemo(() => {
     if (!(totalNum > 0)) return null
-    const s = splitPayment({ total: toCents(totalNum), balance: toCents(debt.balance), annualRatePct: debt.annual_rate_pct, frequency: debt.payment_frequency })
+    const s = splitPayment({ total: toCents(totalNum), balance: toCents(debt.balance), annualRatePct: debt.annual_rate_pct, frequency: debt.payment_frequency, periodsPerYear: rulePpy })
     // splitPayment CLAMPS principal at the balance; the server does not — it
     // takes one period's interest off the top and the whole remainder is
     // principal, so an overpayment lands as credit rather than vanishing. Show
     // what will actually be recorded, or the preview quietly contradicts the
     // warning right above it.
     return { ...s, principal: toCents(totalNum) - s.interest }
-  }, [totalNum, debt.balance, debt.annual_rate_pct, debt.payment_frequency])
+  }, [totalNum, debt.balance, debt.annual_rate_pct, debt.payment_frequency, rulePpy])
 
   const manualSum = [principal, interest, fees, other].reduce((s, v) => s + (Number(v) || 0), 0)
   const manualOk = !manual || Math.abs(manualSum - totalNum) < 0.005
@@ -107,6 +112,7 @@ export function RecordPaymentSheet({
     outstanding: toCents(debt.balance),
     annualRatePct: debt.annual_rate_pct,
     frequency: debt.payment_frequency,
+    periodsPerYear: rulePpy,
   }))
   const overpaying = payoff > 0 && totalNum > payoff + 0.005
 

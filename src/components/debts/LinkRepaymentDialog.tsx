@@ -45,6 +45,7 @@ export function LinkRepaymentDialog({
   const { getToken } = useAuth()
   const [rules, setRules] = useState<RecurringRule[] | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
+  const today = new Date().toISOString().split("T")[0]
 
   useEffect(() => {
     if (!open) return
@@ -60,8 +61,8 @@ export function LinkRepaymentDialog({
   }, [open, getToken])
 
   const target: LinkTargetDebt = useMemo(
-    () => ({ id: debt.id, direction: debt.direction, archived: !!debt.archived_at, linkedRuleIds }),
-    [debt.id, debt.direction, debt.archived_at, linkedRuleIds],
+    () => ({ id: debt.id, direction: debt.direction, archived: !!debt.archived_at, lifecycle: debt.lifecycle, linkedRuleIds }),
+    [debt.id, debt.direction, debt.archived_at, debt.lifecycle, linkedRuleIds],
   )
 
   // The SAME predicate the server enforces (src/lib/debt-recurring.ts), so the
@@ -76,14 +77,19 @@ export function LinkRepaymentDialog({
             type: r.type,
             cardId: r.card_id ?? null,
             accountId: r.wealth_account_id,
+      // Everything the server fills in, filled in here too. Guessing any of
+      // these (an archived payer, an expired rule, instalments still waiting)
+      // is how a picker offers a row that is refused the moment it is clicked.
             accountType: r.account_type ?? null,
-            accountArchived: false,
+            accountArchived: !!r.account_archived,
             debtAccountId: r.debt_account_id ?? null,
+            ended: !!r.end_date && r.end_date < today,
+            hasPending: r.active && String(r.next_due_at).slice(0, 10) <= today,
           },
           target,
         ),
       ),
-    [rules, target],
+    [rules, target, today],
   )
 
   async function link(rule: RecurringRule) {

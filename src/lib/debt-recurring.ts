@@ -4,7 +4,7 @@
 //
 // `.js` extensions: this module is reachable from the api/ functions, which run
 // as unbundled ESM on @vercel/node.
-import { interestForPeriod, periodsPerYear, type Cents, type PaymentFrequency } from "./debt-math.js"
+import { finalPaymentTolerance, interestForPeriod, periodsPerYear, type Cents, type PaymentFrequency } from "./debt-math.js"
 import type { Frequency, FrequencyUnit } from "./recurring.js"
 
 /**
@@ -118,7 +118,14 @@ export function payoffCappedAmount(input: {
   if (outstanding <= 0 || scheduled <= 0) return 0
   const ppy = input.periodsPerYear ?? periodsPerYear(input.frequency) ?? 12
   const interest = interestForPeriod(outstanding, input.annualRatePct, ppy)
-  return Math.min(scheduled, outstanding + interest)
+  const due = outstanding + interest
+  // Fold a residue smaller than the tolerance into THIS instalment, exactly as
+  // the amortisation schedule does (debt-math.ts). Capping at `scheduled`
+  // instead left a few cents outstanding and posted one more instalment for
+  // them — an instalment no schedule table, no payoff date and no preview in
+  // the app ever promised.
+  if (due - scheduled <= finalPaymentTolerance(scheduled)) return due
+  return scheduled
 }
 
 /**
@@ -201,6 +208,7 @@ export type LinkRefusal =
   | "account_not_cash"      // bank or cash only — see the card rule in DEBTS.md
   | "direction_mismatch"    // an incoming rule cannot pay a loan
   | "debt_closed"
+  | "debt_settled"          // paid off / refinanced / written off: it is over
   | "repayment_exists"      // one repayment per debt keeps the mirror honest
   | "rule_linked_elsewhere" // already servicing a different debt
   | "rule_ended"            // its end date has passed: it can never fire again
@@ -230,6 +238,22 @@ export type LinkTargetDebt = {
   direction: "owed" | "receivable"
   archived: boolean
   /**
+   * Lifecycle decides two different things, and conflating them is a bug.
+   *
+   * TERMINAL (paid_off | refinanced | written_off) is a refusal: the debt can
+   * never take money again, so a repayment pointed at it would be a schedule
+   * nothing will ever honour — the mirror image of `rule_ended`.
+   *
+   * PAUSED is NOT a refusal. Linking to a paused debt is a real thing people
+   * do, and the rule simply follows the debt: it is stored inactive and the
+   * mirror carries no next date. Refusing it would break the debt screen's own
+   * "link an existing repayment", which deliberately offers paused debts.
+   *
+   * Optional so callers that genuinely have no lifecycle (the synthetic debt a
+   * brand-new one is validated against) need not invent one.
+   */
+  lifecycle?: "active" | "paused" | "paid_off" | "refinanced" | "written_off"
+  /**
    * Ids of EVERY rule already linked to this debt, active or not.
    *
    * Counting only the active ones let a debt quietly collect a second rule
@@ -249,6 +273,10 @@ export type LinkTargetDebt = {
 export function linkRefusal(rule: LinkCandidateRule, debt: LinkTargetDebt): LinkRefusal | null {
   if (rule.kind === "transfer") return "rule_is_autosave"
   if (debt.archived) return "debt_closed"
+  // A settled debt is over. A rule pointed at one would be deactivated on the
+  // spot by the follow-the-debt rule, so what the user actually gets is a
+  // repayment that stops the moment it is made — better said than done.
+  if (debt.lifecycle && debt.lifecycle !== "active" && debt.lifecycle !== "paused") return "debt_settled"
   if (rule.cardId) return "rule_pays_with_card"
   if (!rule.accountId) return "rule_has_no_account"
   if (rule.accountArchived) return "account_archived"

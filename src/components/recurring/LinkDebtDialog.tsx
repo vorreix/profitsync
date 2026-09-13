@@ -38,6 +38,7 @@ export function LinkDebtDialog({
 }) {
   const { t } = useTranslation()
   const { getToken } = useAuth()
+  const today = new Date().toISOString().split("T")[0]
   const [data, setData] = useState<DebtsOverview | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
 
@@ -61,11 +62,16 @@ export function LinkDebtDialog({
       type: rule.type,
       cardId: rule.card_id ?? null,
       accountId: rule.wealth_account_id,
+      // Everything the server fills in, filled in here too. Guessing any of
+      // these (an archived payer, an expired rule, instalments still waiting)
+      // is how a picker offers a row that is refused the moment it is clicked.
       accountType: rule.account_type ?? null,
-      accountArchived: false,
+      accountArchived: !!rule.account_archived,
       debtAccountId: rule.debt_account_id ?? null,
+      ended: !!rule.end_date && rule.end_date < today,
+      hasPending: rule.active && String(rule.next_due_at).slice(0, 10) <= today,
     }),
-    [rule],
+    [rule, today],
   )
 
   // Exactly the predicate the server applies, so nothing on this list can be
@@ -80,6 +86,7 @@ export function LinkDebtDialog({
         // Only a boolean is exposed, which is all the one-repayment rule needs:
         // is something OTHER than this rule already attached? PAUSED counts —
         // a debt with a paused rule must not quietly take a second one.
+        lifecycle: d.lifecycle,
         linkedRuleIds: (d.repayment_linked ?? d.repayment_active) ? (rule.debt_account_id === d.id ? [rule.id] : ["other"]) : [],
       }),
     )

@@ -535,7 +535,7 @@ export async function recordDebtPayment(orgId: string, userId: string, row: Debt
     let claimed = await claim()
     if (claimed.length === 0) {
       const [held] = await db
-        .select({ id: transactions.id, createdAt: transactions.createdAt })
+        .select({ id: transactions.id, createdAt: transactions.createdAt, groupId: transactions.groupId })
         .from(transactions)
         .where(and(eq(transactions.recurringRuleId, input.recurring.ruleId), eq(transactions.recurringDueDate, input.recurring.dueDate)))
       // Gone between the conflict and this read: the other run rolled its own
@@ -546,9 +546,18 @@ export async function recordDebtPayment(orgId: string, userId: string, row: Debt
       } else {
         const [allocation] = await db.select({ id: debtPayments.id }).from(debtPayments).where(eq(debtPayments.transactionId, held.id))
         if (allocation) return { ok: true, payment: null, skipped: "posted" }
+        // A row with no group_id was never written by this engine — every leg
+        // it writes carries one. It is an ORDINARY occurrence the rule posted
+        // before it was adopted as a repayment, and it is complete: its balance
+        // update already ran. Deleting it would take the money off the ledger
+        // without giving it back and then charge the account a second time.
+        // It stays the plain expense it was; the debt is squared up with the
+        // reconcile operation, never by rewriting the past (DEBTS.md, forward
+        // only).
+        if (held.groupId == null) return { ok: true, payment: null, skipped: "posted" }
         const ageMs = Date.now() - new Date(held.createdAt ?? Date.now()).getTime()
         if (ageMs < STALE_CLAIM_MS) return { ok: true, payment: null, skipped: "inflight" }
-        // Wreckage: a leg with no payment behind it. Clear it and take over.
+        // Wreckage: one of OUR legs with no payment behind it. Clear it and take over.
         await db.delete(transactions).where(eq(transactions.id, held.id))
         claimed = await claim()
         if (claimed.length === 0) return { ok: true, payment: null, skipped: "inflight" }

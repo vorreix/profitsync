@@ -23,10 +23,10 @@
 // row (api/_lib/debts.ts recordDebtPayment).
 
 import { and, eq, sql } from "drizzle-orm"
-import { db } from "../../src/lib/db/index.js"
+import { db, dbBatch } from "../../src/lib/db/index.js"
 import { debtDetails, recurringRules, wealthAccounts } from "../../src/lib/db/schema.js"
 import { fromCents, toCents } from "../../src/lib/debt-math.js"
-import { linkRefusal, payoffCappedAmount, periodsPerYearForRule, type LinkRefusal } from "../../src/lib/debt-recurring.js"
+import { linkRefusal, payoffCappedAmount, periodsPerYearForRule, type LinkRefusal, type LinkTargetDebt } from "../../src/lib/debt-recurring.js"
 import { debtScheduleMirror, directionOf, loadDebt, recordDebtPayment, toDebtLike } from "./debts.js"
 import type { FrequencyUnit } from "../../src/lib/recurring.js"
 
@@ -144,6 +144,7 @@ const REFUSAL_MESSAGES: Record<LinkRefusal, string> = {
   account_not_cash: "A recurring repayment must come from a bank or cash account",
   direction_mismatch: "This rule moves money the wrong way for that debt",
   debt_closed: "That debt is closed — reopen it first",
+  debt_settled: "That debt is settled — a repayment would stop the moment it was made",
   repayment_exists: "That debt already has a recurring repayment. Stop the current one first.",
   rule_linked_elsewhere: "That payment is already repaying another debt. Unlink it there first.",
   rule_ended: "That payment has already ended — it would never pay anything.",
@@ -250,39 +251,67 @@ export async function linkRuleToDebt(
       id: row.account.id,
       direction: directionOf(row.account.type),
       archived: !!row.account.archivedAt,
+      lifecycle: row.details.lifecycle as LinkTargetDebt["lifecycle"],
       linkedRuleIds: siblings.map((s) => s.id),
     },
   )
   if (refusal) return { ok: false, status: refusal === "repayment_exists" || refusal === "rule_linked_elsewhere" ? 409 : 400, error: REFUSAL_MESSAGES[refusal], code: refusal }
 
-  const [updated] = await db
-    .update(recurringRules)
-    .set({
-      kind: "debt",
-      debtAccountId,
-      // Debt repayments anchor to the org's own client at materialize time, so
-      // a client this rule used to belong to is no longer true of it.
-      clientId: null,
-      toAccountId: null,
-      category: "Transfer",
-      // Never backwards: an active rule whose next occurrence is already in the
-      // future must keep that date, or linking would re-post it.
-      nextDueAt: sql`GREATEST(${recurringRules.nextDueAt}, ${today})`,
-      // A debt that is paused, written off or settled does not take money; the
-      // rule follows it, exactly as the lifecycle path does.
-      ...(row.details.lifecycle === "active" ? {} : { active: false }),
-      lastError: "",
-      updatedBy: userId,
-      updatedAt: new Date(),
-    })
-    .where(eq(recurringRules.id, rule.id))
-    .returning()
+  // Never backwards: an active rule whose next occurrence is already in the
+  // future must keep that date, or linking would re-post it. Computed HERE
+  // rather than left to SQL's GREATEST so the mirror below can carry the exact
+  // same value — the two must not be able to disagree, and a batch cannot read
+  // one statement's result into the next (neon-http has no interactive
+  // transactions).
+  const cursor = greatest(String(rule.nextDueAt).slice(0, 10), today)
+  // A debt that is paused does not take money; the rule follows it, exactly as
+  // the lifecycle path does. (A settled debt is refused outright above.)
+  const live = row.details.lifecycle === "active"
+  const fresh: typeof rule = {
+    ...rule,
+    kind: "debt",
+    debtAccountId,
+    clientId: null,
+    toAccountId: null,
+    category: "Transfer",
+    nextDueAt: cursor,
+    active: live ? rule.active : false,
+    lastError: "",
+  }
 
-  const fresh = updated ?? rule
-  // The rule is now the schedule; the debt's own fields mirror it.
-  await mirrorDebtSchedule(debtAccountId, fresh)
+  // ONE write. The rule becoming a repayment and the debt starting to mirror it
+  // are the same fact; landing only the first leaves a debt whose planner,
+  // payoff estimate and month's obligations describe a schedule it no longer
+  // has.
+  await dbBatch([
+    db
+      .update(recurringRules)
+      .set({
+        kind: "debt",
+        debtAccountId,
+        // Debt repayments anchor to the org's own client at materialize time, so
+        // a client this rule used to belong to is no longer true of it.
+        clientId: null,
+        toAccountId: null,
+        category: "Transfer",
+        nextDueAt: cursor,
+        ...(live ? {} : { active: false }),
+        lastError: "",
+        updatedBy: userId,
+        updatedAt: new Date(),
+      })
+      .where(eq(recurringRules.id, rule.id)),
+    db
+      .update(debtDetails)
+      .set(debtScheduleMirror(fresh))
+      .where(eq(debtDetails.wealthAccountId, debtAccountId)),
+  ] as unknown as Parameters<typeof dbBatch>[0])
+
   return { ok: true, rule: fresh }
 }
+
+/** Later of two ISO dates. Plain string compare is correct for YYYY-MM-DD. */
+const greatest = (a: string, b: string) => (a > b ? a : b)
 
 /**
  * The eligibility answer for a rule that does not exist yet, or for a debt that
@@ -306,7 +335,7 @@ export function refusalForNew(
     nextDueAt?: string | null
     active?: boolean
   },
-  debt: { id: string; direction: "owed" | "receivable"; archived: boolean; linkedRuleIds: string[] },
+  debt: LinkTargetDebt,
   today: string,
 ): LinkRefusal | null {
   return linkRefusal(

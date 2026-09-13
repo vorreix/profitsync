@@ -9,6 +9,7 @@ import { ruleFields } from "../_lib/recurring-query.js"
 import { attributeCard } from "../_lib/cards.js"
 import { debtScheduleMirror, directionOf, loadDebt } from "../_lib/debts.js"
 import { payerShape, refusalForNew, refusalMessage, refusalStatus } from "../_lib/recurring-debt.js"
+import type { LinkTargetDebt } from "../../src/lib/debt-recurring.js"
 import { todayIso } from "../../src/lib/recurring.js"
 
 async function assertRefsBelongToOrg(orgId: string, clientId: string | null, accountId: string | null): Promise<string | null> {
@@ -85,6 +86,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           id: debtRow.account.id,
           direction: directionOf(debtRow.account.type),
           archived: !!debtRow.account.archivedAt,
+          lifecycle: debtRow.details.lifecycle as LinkTargetDebt["lifecycle"],
           linkedRuleIds: siblings.map((x) => x.id),
         },
         today,
@@ -96,6 +98,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // was a repayment, so its cursor starts no earlier than today. An ordinary
     // rule keeps the documented catch-up from its anchor.
     const cursor = debtRow ? (parsed.value.startDate > today ? parsed.value.startDate : today) : parsed.value.startDate
+    // The rule follows the debt, exactly as linkRuleToDebt does. A paused debt
+    // takes no money, so its repayment is born inactive rather than born active
+    // and immediately refused by the engine on every materialize — which is how
+    // a rule ends up wearing a permanent last_error nobody asked for.
+    const live = !debtRow || debtRow.details.lifecycle === "active"
     const ruleId = crypto.randomUUID()
     const values = {
       id: ruleId,
@@ -114,6 +121,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       startDate: parsed.value.startDate,
       endDate: parsed.value.endDate,
       nextDueAt: cursor,
+      ...(live ? {} : { active: false }),
       createdBy: userId,
       updatedBy: userId,
     }
@@ -123,7 +131,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       await dbBatch([
         db.insert(recurringRules).values(values),
         db.update(debtDetails)
-          .set(debtScheduleMirror({ amount: values.amount, frequencyUnit: values.frequencyUnit, frequencyInterval: values.frequencyInterval, nextDueAt: cursor, active: true }))
+          // active: live — a paused debt mirrors no next date, or derivedStatus
+          // reads a date nothing will honour and calls the debt overdue.
+          .set(debtScheduleMirror({ amount: values.amount, frequencyUnit: values.frequencyUnit, frequencyInterval: values.frequencyInterval, nextDueAt: cursor, active: live }))
           .where(eq(debtDetails.wealthAccountId, debtRow.account.id)),
       ] as unknown as Parameters<typeof dbBatch>[0])
     } else {

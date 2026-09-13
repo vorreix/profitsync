@@ -1761,7 +1761,8 @@
     "debtNotCard": "Una carta non può pagare un debito. Scegli il conto bancario da cui viene saldata.",
     "debtNeedsCash": "Un debito si rimborsa da un conto bancario o in contanti.",
     "debtRuleEnded": "Finisce prima di poter pagare qualcosa.",
-    "debtAlreadyLinked": "Questo pagamento rimborsa già un altro debito. Scollegalo prima da lì."
+    "debtAlreadyLinked": "Questo pagamento rimborsa già un altro debito. Scollegalo prima da lì.",
+    "debtHasPending": "Ci sono pagamenti ancora da registrare. Apri questo pagamento e lasciali passare prima."
   },
   "calendar": {
     "title": "Calendario",
