@@ -119,12 +119,17 @@ export function accountDisplayName(account: Pick<WealthAccount, "bank_name" | "n
 export function summarizeWealth(accounts: WealthAccount[]) {
   const active = accounts.filter((a) => !a.archived_at)
   let liquid = 0
+  let receivables = 0
   let liabilities = 0
   for (const a of active) {
     const bal = Number(a.current_balance)
     if (isLiabilityType(a.type)) {
+      // Credit cards and loans: what is owed is a liability; a credit is liquid.
       liabilities += cardDebt(bal)
       liquid += cardCredit(bal)
+    } else if (a.type === "receivable") {
+      // Money owed TO the user: an asset, but not money in hand.
+      receivables += Math.max(0, bal)
     } else {
       liquid += bal
     }
@@ -132,11 +137,12 @@ export function summarizeWealth(accounts: WealthAccount[]) {
   const round = (n: number) => Math.round(n * 100) / 100
   return {
     active,
-    total: round(liquid - liabilities),
-    assets: round(liquid),
+    total: round(liquid + receivables - liabilities),
+    assets: round(liquid + receivables),
     liquid: round(liquid),
+    receivables: round(receivables),
     liabilities: round(liabilities),
-    cards: active.filter((a) => isLiabilityType(a.type)),
+    cards: active.filter((a) => a.type === "credit_card"),
   }
 }
 

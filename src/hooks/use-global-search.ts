@@ -32,6 +32,19 @@ export type SearchCard = {
   account_brand_domain: string
 }
 
+// A debt hit: its own group, because /wealth/:id is the bank-account page and
+// cannot explain a loan. Matched on the counterparty too — people search for
+// "Marco", which may only ever have been typed into the formal-name field.
+export type SearchDebt = {
+  id: string
+  name: string
+  direction: "owed" | "receivable"
+  counterparty: string
+  currency: string
+  current_balance: string | number
+  icon: string
+}
+
 export type SearchResults = {
   clients: SearchClient[]
   transactions: SearchTransaction[]
@@ -39,6 +52,7 @@ export type SearchResults = {
   accounts: SearchAccount[]
   categories: SearchCategory[]
   cards: SearchCard[]
+  debts: SearchDebt[]
 }
 
 export const SEARCH_MIN_CHARS = 2
@@ -52,6 +66,7 @@ export const searchHrefs = {
   transaction: (tx: SearchTransaction) => `/transactions?view=${tx.id}`,
   quotation: (qt: SearchQuotation) => `/quotations?view=${qt.id}`,
   account: (a: SearchAccount) => (a.type === "space" ? "/spaces" : `/wealth/${a.id}`),
+  debt: (d: SearchDebt) => `/debts/${d.id}`,
   card: (c: SearchCard) => `/wealth/cards/${c.id}`,
   category: () => "/categories",
 }
@@ -65,7 +80,8 @@ export function searchResultsEmpty(results: SearchResults | null): boolean {
       results.quotations.length === 0 &&
       results.accounts.length === 0 &&
       results.categories.length === 0 &&
-      (results.cards?.length ?? 0) === 0)
+      (results.cards?.length ?? 0) === 0 &&
+      (results.debts?.length ?? 0) === 0)
   )
 }
 

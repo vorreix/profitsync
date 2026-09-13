@@ -56,6 +56,10 @@ import wealthAccountsReorder from "./_routes/wealth/accounts/reorder.js"
 import wealthAccountById from "./_routes/wealth/accounts/[id].js"
 import wealthAccountAttachments from "./_routes/wealth/accounts/[id]/attachments.js"
 import wealthAccountCard from "./_routes/wealth/accounts/[id]/card.js"
+import debts from "./_routes/debts.js"
+import debtById from "./_routes/debts/[id].js"
+import debtPayments from "./_routes/debts/[id]/payments.js"
+import debtPaymentById from "./_routes/debts/[id]/payments/[paymentId].js"
 import wealthAccountAttachmentById from "./_routes/wealth-account-attachments/[id].js"
 import wealthBankSearch from "./_routes/wealth/bank-search.js"
 import wealthQuota from "./_routes/wealth/quota.js"
@@ -230,6 +234,10 @@ const routes: RoutePattern<ApiHandler>[] = [
   { segments: ["wealth", "accounts", ":id"], handler: wealthAccountById },
   { segments: ["wealth", "accounts", ":id", "attachments"], handler: wealthAccountAttachments },
   { segments: ["wealth", "accounts", ":id", "card"], handler: wealthAccountCard },
+  { segments: ["debts"], handler: debts },
+  { segments: ["debts", ":id"], handler: debtById },
+  { segments: ["debts", ":id", "payments"], handler: debtPayments },
+  { segments: ["debts", ":id", "payments", ":paymentId"], handler: debtPaymentById },
   { segments: ["wealth-accounts"], handler: wealthAccounts },
   { segments: ["wealth-accounts", ":id"], handler: wealthAccountById },
   { segments: ["wealth-account-attachments", ":id"], handler: wealthAccountAttachmentById },

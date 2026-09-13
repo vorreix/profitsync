@@ -61,6 +61,11 @@ export const ALWAYS_FETCH = [
   // Materialises due recurring rows before summing, so the month's rent is in
   // the figure even when this is the first screen opened today.
   "/api/spending-budgets",
+  // Runs due debt repayments, so the amount owed is the amount owed AFTER
+  // everything that should already have been paid. Painted from cache, this
+  // screen would keep showing last month's balance until some other page
+  // happened to run the materializer.
+  "/api/debts",
 ] as const
 
 /**
@@ -174,6 +179,7 @@ export function policyFor(path: string): CachePolicy {
       "/api/calendar",
       "/api/flow",
       "/api/budgets",
+      "/api/debts",
       "/api/spending-budgets",
       "/api/trash",
       "/api/alerts",
@@ -216,6 +222,9 @@ export const MONEY_PREFIXES = [
   "/api/budgets",
   // Spending budgets carry live spend, so anything that moves money moves them.
   "/api/spending-budgets",
+  // A debt IS a wealth account, and its progress, status and debt-free date are
+  // all derived from the ledger — so every money move can change them.
+  "/api/debts",
   "/api/search",
   "/api/audit",
   "/api/trash",
@@ -234,6 +243,7 @@ const FANOUT: { match: RegExp; drop: string[] }[] = [
   { match: /^\/api\/wealth-accounts\b/, drop: MONEY_PREFIXES },
   { match: /^\/api\/spaces\b/, drop: MONEY_PREFIXES },
   { match: /^\/api\/cards\b/, drop: MONEY_PREFIXES },
+  { match: /^\/api\/debts\b/, drop: MONEY_PREFIXES },
   { match: /^\/api\/recurring\b/, drop: MONEY_PREFIXES },
   { match: /^\/api\/clients\b/, drop: [...MONEY_PREFIXES, "/api/quotations"] },
   { match: /^\/api\/trash\b/, drop: [...MONEY_PREFIXES, "/api/quotations"] },

@@ -8,6 +8,7 @@ import { materializeDueRecurring } from "../../_lib/recurring-materialize.js"
 import { validateRuleInput, type RecurringRuleInput } from "../../_lib/recurring-validate.js"
 import { ruleFields, ruleStatsFields } from "../../_lib/recurring-query.js"
 import { attributeCard } from "../../_lib/cards.js"
+import { greatestDate, mirrorDebtSchedule, reloadRule } from "../../_lib/recurring-debt.js"
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -61,12 +62,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (onlyActive) {
       const [updated] = await db
         .update(recurringRules)
-        .set({ active: body.active, lastError: "", updatedBy: userId, updatedAt: new Date() })
+        .set({
+          active: body.active,
+          // Resuming a DEBT repayment re-anchors to today. An inactive rule's
+          // cursor is frozen, so a six-month payment holiday resumed from this
+          // screen would otherwise post six back-dated instalments and take
+          // thousands out of the bank in one tap — see the same rule on the
+          // debt's own screen (src/lib/debt-recurring.ts repaymentCursor) and
+          // docs/debts/DEBTS.md. Other rule kinds keep the documented catch-up.
+          ...(body.active && rule.kind === "debt" ? { nextDueAt: greatestDate(recurringRules.nextDueAt, todayIso()) } : {}),
+          lastError: "",
+          updatedBy: userId,
+          updatedAt: new Date(),
+        })
         // Defense-in-depth: re-scope by org even though the load above 404s
         // cross-org ids (matches every other [id] route's mutation pattern).
         .where(and(eq(recurringRules.id, id), eq(recurringRules.organizationId, orgId)))
         .returning()
       if (body.active) await materializeDueRecurring(orgId)
+      await syncDebt(rule.kind, rule.debtAccountId, id)
       const fresh = await readRule(orgId, id)
       return res.json(serialize(fresh ?? updated))
     }
@@ -93,6 +107,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     })
     if (!attributed.ok) return res.status(400).json({ error: attributed.error })
 
+    // On a debt repayment, `wealth_account_id` names the account the money is
+    // PAID FROM — the debt itself is in `debt_account_id`. Pointing the payer at
+    // a debt account would make the rule pay a loan out of a loan, which the
+    // engine has no meaning for.
+    if (rule.kind === "debt") {
+      if (!attributed.accountId) return res.status(400).json({ error: "Choose the account this repayment is paid from" })
+      const [payer] = await db
+        .select({ type: wealthAccounts.type, archivedAt: wealthAccounts.archivedAt })
+        .from(wealthAccounts)
+        .where(and(eq(wealthAccounts.id, attributed.accountId), eq(wealthAccounts.organizationId, orgId)))
+      if (!payer || payer.archivedAt || (payer.type !== "bank" && payer.type !== "cash")) {
+        return res.status(400).json({ error: "A recurring repayment must come from a bank or cash account" })
+      }
+    }
+
     // Editing the schedule re-anchors FORWARD-ONLY: already-created transactions
     // stay, and the cursor never goes back in time (no retroactive catch-up on
     // edit — that's a create-time behavior).
@@ -101,7 +130,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       parsed.value.frequencyUnit !== rule.frequencyUnit ||
       parsed.value.frequencyInterval !== rule.frequencyInterval
     const today = todayIso()
-    const nextDueAt = scheduleChanged
+    // A debt repayment coming back to life re-anchors too, whether it is being
+    // resumed on its own or alongside other edits.
+    const resumingDebt = rule.kind === "debt" && !rule.active && body.active === true
+    const nextDueAt = scheduleChanged || resumingDebt
       ? (parsed.value.startDate > today ? parsed.value.startDate : today)
       : rule.nextDueAt
 
@@ -129,6 +161,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .returning()
 
     await materializeDueRecurring(orgId)
+    await syncDebt(rule.kind, rule.debtAccountId, id)
     const fresh = await readRule(orgId, id)
     return res.json(serialize(fresh ?? updated))
   }
@@ -143,4 +176,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   return res.status(405).json({ error: "Method not allowed" })
+}
+
+/**
+ * Copy a debt repayment's schedule back onto the debt it services. The rule is
+ * the single source of truth for what is paid and when; the debt's own
+ * payment_amount / payment_frequency / next_due_date are a mirror, and the
+ * planner, the payoff estimate and the month's obligations all read the mirror.
+ * Skipping this is how the plan comes to describe a schedule nobody is paying.
+ */
+async function syncDebt(kind: string, debtAccountId: string | null, ruleId: string): Promise<void> {
+  if (kind !== "debt" || !debtAccountId) return
+  const fresh = await reloadRule(ruleId)
+  if (fresh) await mirrorDebtSchedule(debtAccountId, fresh)
 }

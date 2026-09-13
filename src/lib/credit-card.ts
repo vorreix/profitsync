@@ -18,9 +18,9 @@
 
 export const CREDIT_CARD_TYPE = "credit_card" as const
 
-/** Account types whose stored balance is a DEBT the user owes (asset-equivalent < 0). */
+/** Account types whose stored balance is a DEBT the user owes (asset-equivalent < 0): credit cards and loans. */
 export function isLiabilityType(type: string | null | undefined): boolean {
-  return type === CREDIT_CARD_TYPE
+  return type === CREDIT_CARD_TYPE || type === "loan"
 }
 
 const round2 = (n: number): number => Math.round(n * 100) / 100
