@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
-import { ArrowRight, HandCoins, Plus } from "lucide-react"
+import { HandCoins, Plus } from "lucide-react"
 import { useApiQuery } from "@/hooks/use-api-query"
 import { useCurrency } from "@/lib/currency-context"
 import { useOrg } from "@/lib/org-context"
@@ -10,7 +10,8 @@ import { formatMoney, useBalancePrivacy } from "@/lib/wealth"
 import type { DebtsOverview } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
+import { SummaryCard } from "@/components/dashboard/SummaryCard"
 import { Skeleton } from "@/components/ui/skeleton"
 
 /**
@@ -44,12 +45,12 @@ export function DebtsCard({ className = "" }: { className?: string }) {
 
   if (loading) {
     return (
-      <Card className={`min-w-0 ${className}`}>
-        <CardContent className="space-y-3 p-4">
-          <Skeleton className="h-24 rounded-2xl" />
-          <div className="grid grid-cols-2 gap-3">
-            <Skeleton className="h-[60px] rounded-xl" />
-            <Skeleton className="h-[60px] rounded-xl" />
+      <Card className={`h-full min-w-0 ${className}`}>
+        <CardContent className="space-y-2.5 p-3 sm:p-4">
+          <Skeleton className="h-6 w-40" />
+          <div className="grid grid-cols-2 gap-2">
+            <Skeleton className="h-12 rounded-xl" />
+            <Skeleton className="h-12 rounded-xl" />
           </div>
         </CardContent>
       </Card>
@@ -93,84 +94,61 @@ export function DebtsCard({ className = "" }: { className?: string }) {
   const clear = open.length === 0
 
   return (
-    <Card className={`min-w-0 ${className}`}>
-      <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
-        <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-          <HandCoins className="size-4 text-primary" aria-hidden /> {t("debts.title")}
-          {open.length > 0 && (
-            <span className="rounded-full border px-2 py-0.5 text-[10px] tabular-nums text-muted-foreground">{open.length}</span>
+    <SummaryCard
+      className={className}
+      icon={<HandCoins className="size-4" aria-hidden />}
+      title={t("debts.title")}
+      count={open.length}
+      // Cleared, but with history: what was repaid is the number that matters.
+      headline={clear ? money(s.total_repaid) : owed}
+      headlineClass={clear ? "text-emerald-600 dark:text-emerald-400" : undefined}
+      subline={clear ? t("debts.totalRepaidLifetime") : s.debt_free_date ? formatMonthYear(s.debt_free_date) : undefined}
+      storageKey={`ps_dash_debts_open_${activeOrg?.id ?? ""}`}
+      onOpen={() => navigate("/debts")}
+    >
+      {!clear && (
+        <div className="grid grid-cols-2 gap-2">
+          <Tile label={t("debts.stillToPay")} value={money(s.month.remaining)} />
+          {s.overdue_count > 0 ? (
+            <Tile label={t("debts.overdue")} value={money(s.month.overdue)} tone="warn" />
+          ) : (
+            <Tile label={t("debts.alreadyPaid")} value={money(s.month.paid)} tone="good" />
           )}
-        </CardTitle>
-        {/* h-11 on a phone: `size="sm"` is 32px, and this is the card's only
-            way through to the full page. */}
-        <Button variant="ghost" size="sm" className="h-11 shrink-0 text-xs sm:h-8" onClick={() => navigate("/debts")}>
-          {t("common.viewAll")} <ArrowRight className="size-3 ml-1 rtl:rotate-180" />
-        </Button>
-      </CardHeader>
-      <CardContent className="space-y-3 pt-0">
-        {/* Everything cleared, but there IS history: the number that matters is
-            what was paid off, not what is left. */}
-        {clear ? (
-          <div className="rounded-2xl border bg-gradient-to-br from-emerald-500/10 to-transparent p-4">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("debts.totalRepaidLifetime")}</p>
-            <p className="mt-1 text-2xl font-bold tabular-nums text-emerald-600 dark:text-emerald-400">{money(s.total_repaid)}</p>
-          </div>
-        ) : (
-          <>
-            <div className="rounded-2xl border bg-gradient-to-br from-primary/10 to-transparent p-4">
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("debts.totalDebt")}</p>
-              <p className="mt-1 truncate text-2xl font-bold tabular-nums sm:text-3xl">{owed}</p>
-              {/* Only when the server could actually compute one — the hub's
-                  two-sentence explanation of why it could not is too long here. */}
-              {s.debt_free_date && (
-                <p className="mt-1 text-xs text-muted-foreground">{t("debts.currentPace", { date: formatMonthYear(s.debt_free_date) })}</p>
-              )}
-            </div>
+        </div>
+      )}
 
-            <div className="grid grid-cols-2 gap-3">
-              <Tile label={t("debts.stillToPay")} value={money(s.month.remaining)} />
-              {s.overdue_count > 0 ? (
-                <Tile label={t("debts.overdue")} value={money(s.month.overdue)} tone="warn" />
-              ) : (
-                <Tile label={t("debts.alreadyPaid")} value={money(s.month.paid)} tone="good" />
-              )}
-            </div>
-          </>
-        )}
+      {owedToMe && (
+        <p className="text-xs text-muted-foreground">
+          {t("debts.owedToMe")}: <span className="font-medium tabular-nums text-foreground">{owedToMe}</span>
+        </p>
+      )}
 
-        {owedToMe && (
-          <p className="text-xs text-muted-foreground">
-            {t("debts.owedToMe")}: <span className="font-medium tabular-nums text-foreground">{owedToMe}</span>
-          </p>
-        )}
-
-        {s.next_payment && (
-          <button
-            type="button"
-            onClick={() => navigate(`/debts/${s.next_payment!.debt_id}`)}
-            className="pressable flex min-h-11 w-full items-center justify-between gap-3 rounded-xl border bg-muted/20 px-3 py-2.5 text-left transition-colors hover:border-primary/40"
-          >
-            <span className="min-w-0">
-              <span className="block text-[11px] text-muted-foreground">{t("debts.nextPayment")}</span>
-              <span className="block truncate text-sm font-semibold">{s.next_payment.name}</span>
-            </span>
-            <span className="shrink-0 text-end">
-              <span className="block text-sm font-bold tabular-nums">{money(s.next_payment.amount, s.next_payment.currency)}</span>
-              <span className="block text-[11px] text-muted-foreground">{formatLongDate(s.next_payment.date)}</span>
-            </span>
-          </button>
-        )}
-      </CardContent>
-    </Card>
+      {s.next_payment && (
+        <button
+          type="button"
+          onClick={() => navigate(`/debts/${s.next_payment!.debt_id}`)}
+          className="pressable flex min-h-11 w-full items-center justify-between gap-3 rounded-xl border bg-muted/20 px-3 py-2 text-left transition-colors hover:border-primary/40"
+        >
+          <span className="min-w-0">
+            <span className="block text-[11px] text-muted-foreground">{t("debts.nextPayment")}</span>
+            <span className="block truncate text-sm font-semibold">{s.next_payment.name}</span>
+          </span>
+          <span className="shrink-0 text-end">
+            <span className="block text-sm font-bold tabular-nums">{money(s.next_payment.amount, s.next_payment.currency)}</span>
+            <span className="block text-[11px] text-muted-foreground">{formatLongDate(s.next_payment.date)}</span>
+          </span>
+        </button>
+      )}
+    </SummaryCard>
   )
 }
 
 function Tile({ label, value, tone }: { label: string; value: string; tone?: "good" | "warn" }) {
   return (
-    <div className="min-w-0 rounded-xl border p-3">
+    <div className="min-w-0 rounded-xl border p-2.5">
       <p className="truncate text-[11px] text-muted-foreground">{label}</p>
       <p className={cn(
-        "mt-0.5 truncate text-base font-semibold tabular-nums",
+        "mt-0.5 truncate text-sm font-semibold tabular-nums",
         tone === "good" && "text-emerald-600 dark:text-emerald-400",
         tone === "warn" && "text-amber-600 dark:text-amber-400",
       )}>{value}</p>

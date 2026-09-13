@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 
 import { useTranslation } from "react-i18next"
 import { useAuth } from "@clerk/clerk-react"
@@ -17,6 +17,7 @@ import { toCents } from "@/lib/debt-math"
 import { formatMoney } from "@/lib/wealth"
 import { getCurrencySymbol } from "@/lib/currencies"
 import { cn } from "@/lib/utils"
+import { Collapse } from "@/components/Collapse"
 import { DebtPreviewCard } from "@/components/debts/DebtPreviewCard"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -796,24 +797,5 @@ export function DeleteRecurringDialog({
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
-  )
-}
-
-/**
- * Expand to auto height via the grid `0fr → 1fr` trick: the track size is
- * interpolable (unlike `height: auto`) so the fold stays on the compositor, and
- * the inner `overflow-hidden` clips content instead of letting it spill.
- */
-function Collapse({ open, children }: { open: boolean; children: ReactNode }) {
-  return (
-    <div
-      inert={open ? undefined : true}
-      className={cn(
-        "grid transition-[grid-template-rows,opacity] duration-300 ease-out motion-reduce:transition-none",
-        open ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
-      )}
-    >
-      <div className="overflow-hidden">{children}</div>
-    </div>
   )
 }

@@ -3,7 +3,6 @@ import type { WealthAccount } from "@/lib/types"
 import { cardCredit, cardDebt, creditUsage, isLiabilityType } from "@/lib/credit-card"
 
 const PRIVACY_KEY = "ps_wealth_balances_visible"
-const COLLAPSED_KEY = "ps_wealth_overview_collapsed"
 
 /**
  * Disclosure (open/closed) state for a collapsible, persisted to localStorage so
@@ -60,28 +59,6 @@ export function useBalancePrivacy() {
   }, [visible])
 
   return { balancesVisible: visible, setBalancesVisible: setVisible }
-}
-
-// Whether the dashboard Wealth Overview's account list is collapsed. Persisted
-// so the user's choice (e.g. "keep it tucked away") survives reloads/sessions.
-export function useWealthOverviewCollapsed() {
-  const [collapsed, setCollapsed] = useState(() => {
-    try {
-      return localStorage.getItem(COLLAPSED_KEY) === "1"
-    } catch {
-      return false
-    }
-  })
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(COLLAPSED_KEY, collapsed ? "1" : "0")
-    } catch {
-      // Ignore storage failures.
-    }
-  }, [collapsed])
-
-  return { collapsed, setCollapsed }
 }
 
 export function currencySymbol(currency: string) {
