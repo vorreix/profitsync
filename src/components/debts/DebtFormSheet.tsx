@@ -2,11 +2,15 @@ import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import { useAuth } from "@clerk/clerk-react"
 import { toast } from "sonner"
-import { ChevronDown } from "lucide-react"
+import { ArrowDownRight, ArrowUpRight, ChevronDown } from "lucide-react"
 import { apiErrorMessage, apiGet, apiPatch, apiPost } from "@/lib/api"
 import { amountExceedsLimit } from "@/lib/money"
+import { toCents } from "@/lib/debt-math"
+import { previewDebt } from "@/lib/debt-preview"
+import { frequencyToRecurring, repaymentCursor } from "@/lib/debt-recurring"
 import type { Debt, DebtDirection, DebtRepayment, PaymentFrequency, WealthAccount } from "@/lib/types"
 import { getCurrencySymbol } from "@/lib/currencies"
+import { formatMoney } from "@/lib/wealth"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -17,6 +21,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { AccountCombobox } from "@/components/wealth/AccountCombobox"
 import { DebtKindCombobox } from "@/components/debts/DebtKindCombobox"
+import { DebtPreviewCard } from "@/components/debts/DebtPreviewCard"
 
 const SHEET = "inset-x-0 bottom-0 top-auto flex max-h-[92svh] w-full max-w-full translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-t-2xl p-0 sm:inset-x-auto sm:bottom-auto sm:top-[7svh] sm:left-1/2 sm:max-h-[86svh] sm:w-full sm:max-w-md sm:-translate-x-1/2 sm:rounded-2xl"
 /** The rhythms a repayment can run on — "irregular" has no schedule to run. */
@@ -42,12 +47,14 @@ type Form = {
   balanceIsEstimate: boolean
   moveMoneyNow: boolean
   moveAccountId: string
+  /** How much of it actually lands in that account; the rest was already owed. */
+  moveAmount: string
 }
 
 const empty = (direction: DebtDirection): Form => ({
   name: "", kind: direction === "receivable" ? "informal" : "personal", original: "", balance: "",
   repay: false, repayFrom: "", repayAmount: "", repayFrequency: "monthly", repayStart: today(),
-  counterparty: "", rate: "", rateType: "", notes: "", balanceIsEstimate: false, moveMoneyNow: false, moveAccountId: "",
+  counterparty: "", rate: "", rateType: "", notes: "", balanceIsEstimate: false, moveMoneyNow: false, moveAccountId: "", moveAmount: "",
 })
 
 const fromDebt = (d: Debt, r: DebtRepayment | null): Form => ({
@@ -71,6 +78,7 @@ const fromDebt = (d: Debt, r: DebtRepayment | null): Form => ({
   balanceIsEstimate: d.balance_is_estimate,
   moveMoneyNow: false,
   moveAccountId: "",
+  moveAmount: "",
 })
 
 /**
@@ -142,16 +150,84 @@ export function DebtFormSheet({
       if (!cancelled) setAccounts(accs.filter((a) => !a.archived_at && (a.type === "bank" || a.type === "cash")))
     })()
     return () => { cancelled = true }
+    // Keyed on IDENTITY, not on the objects: the detail page reloads on every
+    // background revalidation and hands back fresh instances, which would wipe
+    // whatever the user had typed halfway through editing.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, editing, repayment])
+  }, [open, editing?.id, repayment?.id])
 
   // A repayment needs somewhere to come from; default to the account the user
   // actually uses rather than making them choose before they can say yes.
   const defaultSource = useMemo(() => accounts.find((a) => a.is_default)?.id ?? accounts.find((a) => a.type === "bank")?.id ?? accounts[0]?.id ?? "", [accounts])
+
+  // A repayment edited on its own page can run on a rhythm this form has no
+  // word for (every 10 days, every 6 months). Offering it a five-option picker
+  // would silently rewrite it to monthly on the next save, so the rhythm is
+  // shown as it is and left out of what this form sends.
+  const customRhythm = !!repayment && repayment.frequency === null
+  const balanceNum = Number(form.balance) || 0
+  // The money landing in an account defaults to ALL of it; a partial amount is
+  // the normal case when a lender pays someone else directly on your behalf.
+  const arrivingNum = form.moveAmount.trim() === "" ? balanceNum : Number(form.moveAmount) || 0
+  const arrivingValid = form.moveMoneyNow && arrivingNum > 0 && arrivingNum <= balanceNum + 0.005
+  const arrivingAccount = accounts.find((a) => a.id === form.moveAccountId)
+  const arrivingAccountName = arrivingAccount ? arrivingAccount.nickname.trim() || arrivingAccount.bank_name : ""
+
+  // Editing an existing rule, `repayStart` is its ANCHOR — often months in the
+  // past — while the next instalment lands on the cursor. Previewing from the
+  // anchor dated the payoff in the past and contradicted the debt-free date on
+  // the same screen, so the preview asks the same pure rule the server uses.
+  const previewFirstPayment = useMemo(() => {
+    const freq = customRhythm && repayment
+      ? { unit: repayment.frequency_unit, interval: repayment.frequency_interval }
+      : frequencyToRecurring(form.repayFrequency)
+    if (!freq || !form.repayStart) return form.repayStart
+    return repaymentCursor({
+      current: repayment
+        ? {
+            startDate: repayment.start_date,
+            frequencyUnit: repayment.frequency_unit,
+            frequencyInterval: repayment.frequency_interval,
+            nextDueAt: repayment.next_due_at,
+            active: repayment.active,
+          }
+        : null,
+      startDate: form.repayStart,
+      freq,
+      wantActive: form.repay,
+      today: today(),
+    })
+  }, [repayment, customRhythm, form.repayStart, form.repayFrequency, form.repay])
+
+  const preview = useMemo(
+    () =>
+      previewDebt({
+        owed: toCents(Number(form.balance) || 0),
+        original: form.original.trim() === "" ? null : toCents(Number(form.original) || 0),
+        // A half-typed rate ("1.", "-", "e") must read as NO rate rather than
+        // NaN: the engine guards against NaN arithmetic, but the preview would
+        // then quietly stop flagging its own 0 % assumption.
+        annualRatePct: Number.isFinite(Number(form.rate)) && form.rate.trim() !== "" ? Number(form.rate) : null,
+        repayment:
+          form.repay && Number(form.repayAmount) > 0 && form.repayStart
+            ? { amount: toCents(Number(form.repayAmount)), frequency: form.repayFrequency, firstPayment: previewFirstPayment }
+            : null,
+      }),
+    [form.balance, form.original, form.rate, form.repay, form.repayAmount, form.repayFrequency, form.repayStart, previewFirstPayment],
+  )
   useEffect(() => {
     if (form.repay && !form.repayFrom && defaultSource) patch({ repayFrom: defaultSource })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.repay, defaultSource])
+
+  // The account a repayment was funded from may since have been archived. The
+  // picker can no longer show it, so the field LOOKS empty — clear it too, or
+  // saving silently resubmits an id the server will reject with a message about
+  // a field the user cannot see.
+  useEffect(() => {
+    if (!form.repayFrom || accounts.length === 0) return
+    if (!accounts.some((a) => a.id === form.repayFrom)) patch({ repayFrom: "" })
+  }, [accounts, form.repayFrom])
 
   async function submit() {
     const balance = Number(form.balance)
@@ -159,6 +235,11 @@ export function DebtFormSheet({
     if (form.balance.trim() === "" || !Number.isFinite(balance) || balance < 0) { setError(t("balanceRequired")); return }
     if (amountExceedsLimit(balance)) { setError(t("common.amountTooLarge")); return }
     if (form.original.trim() !== "" && !(Number(form.original) >= 0)) { setError(t("originalInvalid")); return }
+    if (form.moveMoneyNow) {
+      if (!form.moveAccountId) { setError(t("arrivingAccountRequired")); return }
+      if (!(arrivingNum > 0)) { setError(t("arrivingRequired")); return }
+      if (arrivingNum > balanceNum + 0.005) { setError(t("arrivingTooMuch")); return }
+    }
     if (form.repay) {
       if (!form.repayFrom) { setError(t("repayFromRequired")); return }
       if (!(Number(form.repayAmount) > 0)) { setError(t("repayAmountRequired")); return }
@@ -174,7 +255,9 @@ export function DebtFormSheet({
             enabled: true,
             from_account_id: form.repayFrom,
             amount: Number(form.repayAmount),
-            frequency: form.repayFrequency,
+            // Omitted for a rhythm this form cannot express — the server then
+            // keeps the rule's own (unit, interval) untouched.
+            ...(customRhythm ? {} : { frequency: form.repayFrequency }),
             start_date: form.repayStart,
             name: receivable ? t("repaymentNameIn", { name: form.name.trim() || form.counterparty.trim() }) : t("repaymentNameOut", { name: form.name.trim() || form.counterparty.trim() }),
           }
@@ -192,7 +275,9 @@ export function DebtFormSheet({
         rate_type: form.rateType || null,
         notes: form.notes,
         repayment: repaymentBody,
-        ...(!isEdit && form.moveMoneyNow && form.moveAccountId ? { disbursement_account_id: form.moveAccountId } : {}),
+        ...(!isEdit && form.moveMoneyNow && form.moveAccountId
+          ? { disbursement_account_id: form.moveAccountId, disbursement_amount: arrivingNum }
+          : {}),
       }
       const saved = isEdit
         ? await apiPatch<Debt>(`/api/debts/${editing.id}`, token, { ...body, current_balance: undefined })
@@ -225,19 +310,29 @@ export function DebtFormSheet({
         </DialogHeader>
 
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto scrollbar-thin px-6 py-4">
-          {/* I owe / Owed to me (adding only) */}
+          {/* I owe / Owed to me (adding only). Same colour language as the
+              add-transaction form: money leaving is red, money arriving is
+              green. A debt you owe is the red one — it is a liability, and the
+              colour should say so before the label is read. */}
           {!isEdit && (
-            <div className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1" role="radiogroup" aria-label={t("addDebt")}>
-              {(["owed", "receivable"] as const).map((d) => (
+            <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label={t("addDebt")}>
+              {([
+                { d: "owed", label: t("iOwe"), Icon: ArrowDownRight, on: "border-red-500 bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400 dark:border-red-600" },
+                { d: "receivable", label: t("owedToMe"), Icon: ArrowUpRight, on: "border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400 dark:border-emerald-600" },
+              ] as const).map((o) => (
                 <button
-                  key={d}
+                  key={o.d}
                   type="button"
                   role="radio"
-                  aria-checked={direction === d}
-                  onClick={() => { setDirection(d); patch({ kind: d === "receivable" ? "informal" : form.kind === "informal" ? "personal" : form.kind }) }}
-                  className={cn("min-h-10 rounded-md text-sm font-medium transition-colors", direction === d ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground")}
+                  aria-checked={direction === o.d}
+                  onClick={() => { setDirection(o.d); patch({ kind: o.d === "receivable" ? "informal" : form.kind === "informal" ? "personal" : form.kind }) }}
+                  className={cn(
+                    "flex min-h-11 items-center justify-center gap-1.5 rounded-md border px-2 py-2.5 text-sm font-medium transition-colors",
+                    direction === o.d ? o.on : "border-border hover:bg-muted",
+                  )}
                 >
-                  {d === "owed" ? t("iOwe") : t("owedToMe")}
+                  <o.Icon className="size-4 shrink-0" aria-hidden />
+                  <span className="truncate">{o.label}</span>
                 </button>
               ))}
             </div>
@@ -257,6 +352,40 @@ export function DebtFormSheet({
             {money("debt-original", t("originalAmount"), form.original, (v) => patch({ original: v }))}
             {money("debt-balance", receivable ? t("howMuchOwed") : t("howMuchLeft"), form.balance, (v) => patch({ balance: v }))}
           </div>
+
+          {/* Did any of it actually land in an account? PARTIAL is normal: you
+              borrow 10,000 for a car, 6,000 reaches your account and the dealer
+              is paid the rest directly. Without this the money is invisible and
+              the loan looks like debt that bought nothing. */}
+          {!isEdit && balanceNum > 0 && accounts.length > 0 && (
+            <div className="space-y-3 rounded-xl border bg-muted/20 p-3">
+              <label className="flex items-start justify-between gap-3">
+                <span className="min-w-0">
+                  <span className="block text-sm font-medium">{receivable ? t("givingMoneyNow") : t("moneyArrivedTitle")}</span>
+                  <span className="block text-xs text-muted-foreground">{receivable ? t("lendMoneyHint") : t("receiveMoneyHint")}</span>
+                </span>
+                <Switch
+                  checked={form.moveMoneyNow}
+                  onCheckedChange={(v) => patch({ moveMoneyNow: v, moveAccountId: v ? form.moveAccountId || defaultSource : "", moveAmount: v ? form.moveAmount || form.balance : "" })}
+                  aria-label={receivable ? t("givingMoneyNow") : t("moneyArrivedTitle")}
+                />
+              </label>
+              <Collapse open={form.moveMoneyNow}>
+                <div className="space-y-3 pt-1">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">{receivable ? t("lendMoneyFrom") : t("receiveMoneyInto")}</Label>
+                    <AccountCombobox accounts={accounts} value={form.moveAccountId} onChange={(id) => patch({ moveAccountId: id })} currency={currency} />
+                  </div>
+                  {money("debt-arriving", receivable ? t("amountGiving") : t("amountArriving"), form.moveAmount, (v) => patch({ moveAmount: v }))}
+                  <p className="text-xs text-muted-foreground">
+                    {arrivingNum > 0 && arrivingNum < balanceNum - 0.005
+                      ? t("arrivingPartial", { amount: formatMoney(Math.round((balanceNum - arrivingNum) * 100) / 100, currency, true) })
+                      : t("arrivingHint")}
+                  </p>
+                </div>
+              </Collapse>
+            </div>
+          )}
 
           {/* How is it being repaid? */}
           <div className="space-y-3 rounded-xl border bg-muted/20 p-3">
@@ -290,24 +419,41 @@ export function DebtFormSheet({
                   {money("debt-repay-amount", t("repayAmount"), form.repayAmount, (v) => patch({ repayAmount: v }))}
                   <div className="space-y-1.5">
                     <Label>{t("perFrequency")}</Label>
-                    <Select value={form.repayFrequency} onValueChange={(v) => patch({ repayFrequency: v as Exclude<PaymentFrequency, "irregular"> })}>
-                      <SelectTrigger className="w-full" aria-label={t("perFrequency")}><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        {FREQS.map((f) => <SelectItem key={f} value={f}>{t(`frequencyLabel.${f}`)}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
+                    {customRhythm && repayment ? (
+                      <div className="flex min-h-9 items-center rounded-md border bg-muted/40 px-3 text-sm text-muted-foreground">
+                        <span className="truncate">
+                          {t("frequencyCustom", { interval: repayment.frequency_interval, unit: t(`unit.${repayment.frequency_unit}`) })}
+                        </span>
+                      </div>
+                    ) : (
+                      <Select value={form.repayFrequency} onValueChange={(v) => patch({ repayFrequency: v as Exclude<PaymentFrequency, "irregular"> })}>
+                        <SelectTrigger className="w-full" aria-label={t("perFrequency")}><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {FREQS.map((f) => <SelectItem key={f} value={f}>{t(`frequencyLabel.${f}`)}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    )}
                   </div>
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="debt-repay-start">{isEdit ? t("paymentDay") : t("firstPayment")}</Label>
                   <Input id="debt-repay-start" type="date" value={form.repayStart} onChange={(e) => patch({ repayStart: e.target.value })} />
                   <p className="text-xs text-muted-foreground">
-                    {isEdit ? t("paymentDayHint") : form.repayStart && form.repayStart <= today() ? t("firstPaymentNow") : t("firstPaymentHint")}
+                    {customRhythm ? t("customRhythmHint") : isEdit ? t("paymentDayHint") : form.repayStart && form.repayStart <= today() ? t("firstPaymentNow") : t("firstPaymentHint")}
                   </p>
                 </div>
               </div>
             </Collapse>
           </div>
+
+          {/* What all of that adds up to, live. */}
+          <DebtPreviewCard
+            preview={preview}
+            currency={currency}
+            receivable={receivable}
+            frequencyWord={t(`frequency.${form.repayFrequency}`)}
+            arriving={arrivingValid && arrivingAccountName ? { amount: arrivingNum, accountName: arrivingAccountName } : null}
+          />
 
           {/* Everything else, closed by default. */}
           <div className="rounded-xl border">
@@ -351,27 +497,6 @@ export function DebtFormSheet({
                   <span>{t("balanceIsEstimate")}</span>
                   <Switch checked={form.balanceIsEstimate} onCheckedChange={(v) => patch({ balanceIsEstimate: v })} aria-label={t("balanceIsEstimate")} />
                 </label>
-                {!isEdit && Number(form.balance) > 0 && accounts.length > 0 && (
-                  <>
-                    <label className="flex items-start justify-between gap-3">
-                      <span>
-                        <span className="block text-sm font-medium">{receivable ? t("lendMoneyNow") : t("receiveMoneyNow")}</span>
-                        <span className="block text-xs text-muted-foreground">{receivable ? t("lendMoneyHint") : t("receiveMoneyHint")}</span>
-                      </span>
-                      <Switch
-                        checked={form.moveMoneyNow}
-                        onCheckedChange={(v) => patch({ moveMoneyNow: v, moveAccountId: v ? form.moveAccountId || defaultSource : "" })}
-                        aria-label={receivable ? t("lendMoneyNow") : t("receiveMoneyNow")}
-                      />
-                    </label>
-                    <Collapse open={form.moveMoneyNow}>
-                      <div className="space-y-1.5 pt-1">
-                        <Label className="text-xs text-muted-foreground">{receivable ? t("lendMoneyFrom") : t("receiveMoneyInto")}</Label>
-                        <AccountCombobox accounts={accounts} value={form.moveAccountId} onChange={(id) => patch({ moveAccountId: id })} currency={currency} />
-                      </div>
-                    </Collapse>
-                  </>
-                )}
                 <div className="space-y-1.5">
                   <Label htmlFor="debt-notes">{t("notes")}</Label>
                   <Textarea id="debt-notes" rows={2} className="resize-none" value={form.notes} onChange={(e) => patch({ notes: e.target.value })} />

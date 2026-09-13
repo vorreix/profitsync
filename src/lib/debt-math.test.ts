@@ -144,3 +144,21 @@ describe("debt-math — schedule dates", () => {
     expect(nextDueAfter("2026-10-01", "monthly", "2026-09-04")).toBe("2026-10-01")
   })
 })
+
+describe("splitPayment with an explicit periods-per-year", () => {
+  it("uses the rhythm it is given rather than guessing monthly", () => {
+    // 10,000 at 12 %: a month is 100.00 of interest, ten days is 32.88.
+    const guessed = splitPayment({ total: toCents(300), balance: toCents(10_000), annualRatePct: 12, frequency: "irregular" })
+    expect(fromCents(guessed.interest)).toBe(100)
+    const tenDay = splitPayment({ total: toCents(300), balance: toCents(10_000), annualRatePct: 12, frequency: "irregular", periodsPerYear: 36.5 })
+    expect(fromCents(tenDay.interest)).toBe(32.88)
+    // …and the rest is principal, so nothing is lost between them.
+    expect(tenDay.principal + tenDay.interest).toBe(toCents(300))
+  })
+
+  it("ignores the override when there is no rate to apply it to", () => {
+    const s = splitPayment({ total: toCents(300), balance: toCents(10_000), annualRatePct: null, frequency: "irregular", periodsPerYear: 36.5 })
+    expect(s.source).toBe("principal_only")
+    expect(s.interest).toBe(0)
+  })
+})

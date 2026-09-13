@@ -463,7 +463,8 @@
     "cardViaNoTail": "عبر البطاقة",
     "cardAutopayBadge": "سداد تلقائي",
     "nCards_one": "بطاقة واحدة",
-    "nCards_other": "{{count}} بطاقات"
+    "nCards_other": "{{count}} بطاقات",
+    "editOnItsOwnPage": "هذا جزء من دفعة واحدة — افتحها حيث سُجِّلت لتعديلها."
   },
   "clients": {
     "pageTitle": "العملاء",
@@ -2388,7 +2389,8 @@
     "sideLeft": "الحافة اليسرى",
     "sideRight": "الحافة اليمنى",
     "handleDragHint": "انقر على المقبض أو اسحبه للداخل للبحث. اسحبه لأعلى أو لأسفل على طول الحافة لوضعه حيث تريد.",
-    "cards": "البطاقات"
+    "cards": "البطاقات",
+    "debts": "الديون والقروض"
   },
   "aiVoice": {
     "openLabel": "مساعد الصوت بالذكاء الاصطناعي",
@@ -2723,19 +2725,12 @@
     "addReceivable": "Someone owes me",
     "iOwe": "I owe",
     "owedToMe": "Owed to me",
-    "quickSetup": "Quick",
-    "detailedSetup": "Detailed",
     "whoDoYouOwe": "Who do you owe?",
     "whoOwesYou": "Who owes you?",
     "counterpartyPlaceholder": "Bank, shop or a person — e.g. Intesa, Marco",
-    "debtName": "Name (optional)",
-    "debtNamePlaceholder": "e.g. Car loan",
     "howMuchLeft": "How much is left?",
     "howMuchOwed": "How much do they owe you?",
     "balanceIsEstimate": "This is an estimate",
-    "currency": "Currency",
-    "whatDoYouPay": "What do you normally pay?",
-    "whatDoTheyPay": "What do they normally pay you?",
     "perFrequency": "every",
     "frequency": {
       "weekly": "week",
@@ -2753,17 +2748,12 @@
       "yearly": "Yearly",
       "irregular": "Irregular"
     },
-    "nextPaymentDate": "When is the next payment?",
     "interestRate": "Interest rate (% per year)",
-    "interestRateOptional": "Interest rate — leave empty if none or unknown",
     "rateType": {
       "fixed": "Fixed",
       "variable": "Variable"
     },
     "originalAmount": "Original amount",
-    "startDate": "Start date",
-    "maturityDate": "Final payment date",
-    "remainingInstallments": "Remaining instalments",
     "notes": "Notes",
     "kind": "Type",
     "kinds": {
@@ -2777,10 +2767,8 @@
       "informal": "Friend or family",
       "other": "Other"
     },
-    "receiveMoneyNow": "I'm receiving the money now",
     "receiveMoneyInto": "Into which account?",
     "receiveMoneyHint": "Records the borrowed money arriving in your account. It is never counted as income.",
-    "lendMoneyNow": "I'm giving the money now",
     "lendMoneyFrom": "From which account?",
     "create": "Add",
     "saveChanges": "Save changes",
@@ -2838,8 +2826,6 @@
     "paymentDeleted": "Payment moved to Trash",
     "deletePaymentTitle": "Remove this payment?",
     "deletePaymentDesc": "The bank movement, the principal reduction and any interest or fee expenses are all reversed together. You can restore it from Trash.",
-    "paymentHistory": "Payment history",
-    "noPaymentsYet": "No payments recorded yet",
     "schedule": "Schedule",
     "scheduleHint": "Based on the balance, payment and rate entered.",
     "scheduleDoesNotConverge": "At this payment the balance never reaches zero — the payment does not cover the interest.",
@@ -3025,6 +3011,36 @@
     "paymentDay": "يوم الدفع",
     "paymentDayHint": "يحافظ الجدول على هذا اليوم. غيّره لتنقل يوم الشهر الذي تتم فيه الدفعة.",
     "auto": "تلقائي",
-    "rateNoneHelp": "اتركه فارغًا إن لم تكن هناك فائدة، أو كنت لا تعرفها."
+    "rateNoneHelp": "اتركه فارغًا إن لم تكن هناك فائدة، أو كنت لا تعرفها.",
+    "previewTitle": "كيف سيبدو هذا",
+    "previewNote": "تقدير مما أدخلته. لا يُحفظ شيء حتى تضيفه.",
+    "previewPaidOffBy": "يُسدَّد بالكامل بحلول",
+    "previewRepaidToYouBy": "يُعاد إليك بحلول",
+    "previewPayments": "الدفعات",
+    "previewPaymentsValue": "{{count}} × {{amount}}",
+    "previewInterest": "الفائدة",
+    "previewTotalOut": "إجمالي ما ستدفعه",
+    "previewTotalIn": "إجمالي ما سيدفعونه",
+    "previewFinal": "الأخيرة {{amount}}.",
+    "previewAssumedZero": "يفترض 0 % — أدخل نسبة فائدة للحصول على رقم أدق.",
+    "previewManualOut": "{{amount}} متبقّية، تُسجَّل يدويًا.",
+    "previewManualIn": "{{amount}} مستحقة لك، تُسجَّل يدويًا.",
+    "previewRepaidPct": "سُدِّد {{pct}} % حتى الآن.",
+    "previewManualHint": "أنشئ سدادًا متكرّرًا لترى متى ينتهي وكم يكلّف.",
+    "previewNever": "{{amount}} كل {{frequency}} لا تغطّي الفائدة، لذا لن يزيد الرصيد إلا نموًا.",
+    "previewNeverMin": "يلزم {{amount}} على الأقل ليبدأ بالانخفاض.",
+    "previewTooLong": "بهذه الوتيرة يتجاوز {{years}} سنة. جرّب دفعة أكبر.",
+    "previewArrives": "ستصل {{amount}} إلى {{account}} عند إضافة هذا.",
+    "previewLeaves": "ستخرج {{amount}} من {{account}} عند إضافة هذا.",
+    "moneyArrivedTitle": "هل وصل هذا المال إلى حساب؟",
+    "givingMoneyNow": "هل تعطي المال الآن؟",
+    "amountArriving": "المبلغ الوارد",
+    "amountGiving": "المبلغ الذي تعطيه",
+    "arrivingHint": "يصل كله إلى ذلك الحساب.",
+    "arrivingPartial": "تُسجَّل الـ {{amount}} المتبقّية على أنها مستحقة من قبل.",
+    "arrivingAccountRequired": "اختر الحساب الذي يصل إليه المال",
+    "arrivingRequired": "أدخل المبلغ الذي يصل إلى ذلك الحساب",
+    "arrivingTooMuch": "هذا أكثر من الدين نفسه",
+    "customRhythmHint": "يُضبط إيقاع هذا السداد في صفحته الخاصة."
   }
 }

@@ -463,7 +463,8 @@
     "cardViaNoTail": "కార్డ్ ద్వారా",
     "cardAutopayBadge": "ఆటోపే",
     "nCards_one": "{{count}} కార్డ్",
-    "nCards_other": "{{count}} కార్డ్‌లు"
+    "nCards_other": "{{count}} కార్డ్‌లు",
+    "editOnItsOwnPage": "ఇది ఒకే చెల్లింపులో భాగం — మార్చడానికి అది నమోదైన చోట తెరవండి."
   },
   "clients": {
     "pageTitle": "క్లయింట్‌లు",
@@ -2358,7 +2359,8 @@
     "sideLeft": "ఎడమ అంచు",
     "sideRight": "కుడి అంచు",
     "handleDragHint": "శోధించడానికి హ్యాండిల్‌ను నొక్కండి లేదా లోపలికి స్వైప్ చేయండి. అంచు వెంట పైకి లేదా కిందికి లాగి మీకు నచ్చిన చోట ఉంచండి.",
-    "cards": "కార్డ్‌లు"
+    "cards": "కార్డ్‌లు",
+    "debts": "అప్పులు & రుణాలు"
   },
   "aiVoice": {
     "openLabel": "AI వాయిస్ అసిస్టెంట్",
@@ -2681,19 +2683,12 @@
     "addReceivable": "Someone owes me",
     "iOwe": "I owe",
     "owedToMe": "Owed to me",
-    "quickSetup": "Quick",
-    "detailedSetup": "Detailed",
     "whoDoYouOwe": "Who do you owe?",
     "whoOwesYou": "Who owes you?",
     "counterpartyPlaceholder": "Bank, shop or a person — e.g. Intesa, Marco",
-    "debtName": "Name (optional)",
-    "debtNamePlaceholder": "e.g. Car loan",
     "howMuchLeft": "How much is left?",
     "howMuchOwed": "How much do they owe you?",
     "balanceIsEstimate": "This is an estimate",
-    "currency": "Currency",
-    "whatDoYouPay": "What do you normally pay?",
-    "whatDoTheyPay": "What do they normally pay you?",
     "perFrequency": "every",
     "frequency": {
       "weekly": "week",
@@ -2711,17 +2706,12 @@
       "yearly": "Yearly",
       "irregular": "Irregular"
     },
-    "nextPaymentDate": "When is the next payment?",
     "interestRate": "Interest rate (% per year)",
-    "interestRateOptional": "Interest rate — leave empty if none or unknown",
     "rateType": {
       "fixed": "Fixed",
       "variable": "Variable"
     },
     "originalAmount": "Original amount",
-    "startDate": "Start date",
-    "maturityDate": "Final payment date",
-    "remainingInstallments": "Remaining instalments",
     "notes": "Notes",
     "kind": "Type",
     "kinds": {
@@ -2735,10 +2725,8 @@
       "informal": "Friend or family",
       "other": "Other"
     },
-    "receiveMoneyNow": "I'm receiving the money now",
     "receiveMoneyInto": "Into which account?",
     "receiveMoneyHint": "Records the borrowed money arriving in your account. It is never counted as income.",
-    "lendMoneyNow": "I'm giving the money now",
     "lendMoneyFrom": "From which account?",
     "create": "Add",
     "saveChanges": "Save changes",
@@ -2796,8 +2784,6 @@
     "paymentDeleted": "Payment moved to Trash",
     "deletePaymentTitle": "Remove this payment?",
     "deletePaymentDesc": "The bank movement, the principal reduction and any interest or fee expenses are all reversed together. You can restore it from Trash.",
-    "paymentHistory": "Payment history",
-    "noPaymentsYet": "No payments recorded yet",
     "schedule": "Schedule",
     "scheduleHint": "Based on the balance, payment and rate entered.",
     "scheduleDoesNotConverge": "At this payment the balance never reaches zero — the payment does not cover the interest.",
@@ -2983,6 +2969,36 @@
     "paymentDay": "చెల్లింపు రోజు",
     "paymentDayHint": "ఈ రోజునే వ్యవధి అనుసరిస్తుంది. నెలలో ఏ రోజున చెల్లింపు జరగాలో మార్చడానికి దీన్ని మార్చండి.",
     "auto": "ఆటో",
-    "rateNoneHelp": "వడ్డీ లేకపోతే, లేదా తెలియకపోతే దీన్ని ఖాళీగా వదిలేయండి."
+    "rateNoneHelp": "వడ్డీ లేకపోతే, లేదా తెలియకపోతే దీన్ని ఖాళీగా వదిలేయండి.",
+    "previewTitle": "ఇది ఇలా ఉంటుంది",
+    "previewNote": "మీరు నమోదు చేసిన దాని నుండి ఒక అంచనా. మీరు జోడించే వరకు ఏదీ సేవ్ కాదు.",
+    "previewPaidOffBy": "పూర్తిగా తీరుతుంది",
+    "previewRepaidToYouBy": "మీకు తిరిగి అందుతుంది",
+    "previewPayments": "చెల్లింపులు",
+    "previewPaymentsValue": "{{count}} × {{amount}}",
+    "previewInterest": "వడ్డీ",
+    "previewTotalOut": "మీరు మొత్తం చెల్లించేది",
+    "previewTotalIn": "వాళ్ళు మొత్తం చెల్లించేది",
+    "previewFinal": "చివరిది {{amount}}.",
+    "previewAssumedZero": "0 % అనుకుంటోంది — కచ్చితమైన లెక్క కోసం రేటు నమోదు చేయండి.",
+    "previewManualOut": "{{amount}} మిగిలి ఉంది, చేతితో నమోదు.",
+    "previewManualIn": "{{amount}} మీకు రావాలి, చేతితో నమోదు.",
+    "previewRepaidPct": "ఇప్పటివరకు {{pct}} % తీరింది.",
+    "previewManualHint": "ఎప్పుడు ముగుస్తుందో, ఎంత ఖర్చవుతుందో చూడటానికి నియమిత తిరిగి చెల్లింపు సెట్ చేయండి.",
+    "previewNever": "ప్రతి {{frequency}} {{amount}} వడ్డీని కూడా కవర్ చేయదు, కాబట్టి బ్యాలెన్స్ పెరుగుతూనే ఉంటుంది.",
+    "previewNeverMin": "తగ్గడం మొదలవ్వాలంటే కనీసం {{amount}} కావాలి.",
+    "previewTooLong": "ఈ వేగంతో {{years}} సంవత్సరాలకు మించి పడుతుంది. ఎక్కువ మొత్తం ప్రయత్నించండి.",
+    "previewArrives": "దీన్ని జోడించగానే {{amount}} {{account}} లోకి వస్తాయి.",
+    "previewLeaves": "దీన్ని జోడించగానే {{amount}} {{account}} నుండి వెళ్తాయి.",
+    "moneyArrivedTitle": "ఈ డబ్బు ఏదైనా ఖాతాలోకి వచ్చిందా?",
+    "givingMoneyNow": "మీరు ఇప్పుడు డబ్బు ఇస్తున్నారా?",
+    "amountArriving": "వచ్చే మొత్తం",
+    "amountGiving": "మీరు ఇస్తున్న మొత్తం",
+    "arrivingHint": "మొత్తం ఆ ఖాతాలోకే వస్తుంది.",
+    "arrivingPartial": "మిగిలిన {{amount}} ఇప్పటికే బాకీగా నమోదవుతుంది.",
+    "arrivingAccountRequired": "డబ్బు వచ్చే ఖాతాను ఎంచుకోండి",
+    "arrivingRequired": "ఆ ఖాతాలోకి ఎంత వస్తుందో నమోదు చేయండి",
+    "arrivingTooMuch": "ఇది అప్పు కంటే ఎక్కువ",
+    "customRhythmHint": "ఈ తిరిగి చెల్లింపు వ్యవధి దాని సొంత పేజీలో సెట్ చేయబడుతుంది."
   }
 }

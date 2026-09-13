@@ -16,6 +16,7 @@ cases:
 | Event | Ledger rows | Bank | Debt balance | Expense | Income | Net worth |
 |---|---|---|---|---|---|---|
 | Borrow €5,000 into the bank | transfer debt → bank | +5,000 | −5,000 | 0 | **0** | 0 |
+| Borrow €10,000, €6,000 of it into the bank | transfer debt → bank (6,000) + system Opening Balance (4,000) | +6,000 | −10,000 | 0 | **0** | −4,000 |
 | Already owe €700 (onboarding) | system Opening Balance on the debt | — | −700 | 0 | 0 | −700 |
 | Pay €500 = €420 principal + €70 interest + €10 fees | transfer bank → debt (420) + expense 70 + expense 10 | −500 | +420 | **80** | 0 | −80 |
 | Lend €400 to Luca (receivable) | transfer bank → receivable | −400 | +400 | 0 | 0 | 0 |
@@ -31,7 +32,11 @@ deletion cascade through `wealth_accounts` into the two debt tables.
 Debt accounts are excluded from `GET /api/wealth/accounts` (like Spaces) so they
 never appear as spendable sources; `/wealth` fetches `/api/debts` to add loans to
 liabilities and receivables to assets in net worth. Posting a plain transaction
-on a debt account is rejected with a pointer to the debt's page.
+on a debt account is rejected with a pointer to the debt's page, and so is a
+plain TRANSFER (`createTransfer`) — money reaching a loan has to go through the
+debt engine, which splits principal from interest. Global search returns debts as
+their own group (matched on the counterparty too, because people search for
+"Marco"), never as bank accounts: `/wealth/:id` has no way to explain a loan.
 
 ## 2. Terms vs derived facts
 
@@ -54,6 +59,23 @@ estimated — never invented), plain-language insights, and per-currency totals
 interest / fees / other + `split_source ∈ entered | calculated | principal_only`),
 anchored on the group's first ledger leg: live while that leg is not trashed
 (derived), cascaded away on purge.
+
+## 2a. Money that lands, and money that never did
+
+Creating a debt asks whether any of it arrived in a real account, and **how
+much**. Partial is the normal case, not an edge case: you borrow 10,000 for a
+car, 6,000 reaches your account and the dealer is paid the rest directly. You
+owe 10,000 either way.
+
+So the amount received is a TRANSFER (bank +6,000, debt −6,000) and the
+remainder is a system Opening Balance on the debt (−4,000). The two always sum
+to what is owed, `wealth_accounts.opening_balance` holds only the part with no
+ledger movement behind it, and nothing is ever counted as income. Answering "no"
+is the same thing with a received amount of zero — the whole balance becomes the
+opening row, which is exactly the pre-existing behaviour.
+
+This is also why a loan no longer reads as an account that is permanently short:
+the money it produced is visible in the account it actually landed in.
 
 ## 2b. The recurring repayment
 
@@ -84,6 +106,32 @@ Idempotency is unchanged from every other recurring money path: the first leg
 carries `(recurring_rule_id, recurring_due_date)` and is inserted with `ON
 CONFLICT DO NOTHING`; nothing else is written unless that insert returned a row.
 
+**A conflict is diagnosed, not trusted.** The claim is an inserted ledger row,
+so a run that died between claiming an occurrence and committing it would take
+that (rule, date) pair forever and the instalment could never post again. So on
+a conflict:
+
+| What is there | What it means | What happens |
+|---|---|---|
+| A `debt_payments` allocation | the occurrence really posted | step over it; the balance read next already includes it |
+| No allocation, claim newer than `STALE_CLAIM_MS` | another run is mid-batch | **stop and keep the cursor** — sizing the next instalment against a balance that is about to change is how two runs pay 1,000 against a 600 debt |
+| No allocation, older | wreckage | delete it and take over |
+
+A batch that fails also takes its own claim back out, so the stale path is the
+backstop rather than the normal repair.
+
+The **anchor is always the leg on the counter account** — the one whose cash
+actually moved, in the direction the user experienced. Everything that
+summarises "what this rule did" reads the anchor, and anchoring a receivable on
+the debt side made €500 arriving in the bank report as €6 of interest.
+
+The instalment's interest follows the rule's **real** rhythm, not the debt's
+mirrored name. `payment_frequency` can only name five rhythms, so a rule running
+every 10 days mirrors as `irregular` — and every interest calculation would fall
+back to a whole month, booking roughly two thirds of each instalment's principal
+as spending. `periodsPerYearForRule` answers for any (unit, interval), and the
+materializer passes it into the split and the payoff cap.
+
 **The rule is the single source of truth for the schedule.** `payment_amount`,
 `payment_frequency` and `next_due_date` on `debt_details` are a MIRROR of it
 (`debtScheduleMirror`), refreshed whenever the rule moves — materialization,
@@ -96,7 +144,7 @@ Lifecycle, both directions:
 | Event | What happens to the rule |
 |---|---|
 | Debt paused / written off / marked repaid / refinanced | Deactivated |
-| Debt resumed | Reactivated, cursor re-anchored to **today** — a payment holiday must not fire six back-dated instalments |
+| Debt resumed | Reactivated, cursor re-anchored to **today** — a payment holiday must not fire six back-dated instalments. Enforced on all three doors: the debt's lifecycle, its repayment block, and the rule's own pause/resume on `/recurring` |
 | Debt closed (archived) | Deactivated |
 | Debt hard-deleted | Cascades away (`ON DELETE cascade`, unlike `wealth_account_id`) |
 | Balance reaches zero | Rule retires itself and notifies (`debt_repaid`) |
@@ -107,6 +155,12 @@ advance the due date, because doing so would silently cancel the next instalment
 the user is still expecting to be taken (`advancesScheduleByDefault`). Without a
 rule, the payment the user records IS the scheduled one and the date moves. The
 sheet exposes the choice either way.
+
+A debt repayment posts as ONE ledger group mixing a transfer with expenses,
+which is not a split. The transactions list shows only its expense legs, so it
+arrives at the edit dialog looking like a lone grouped row; editing it there
+would delete the group and rebuild it as plain allocations. Both the list and
+`PATCH /api/transactions/:id` refuse, and point at the debt.
 
 A recurring repayment must come from a **bank or cash** account. A credit card
 may pay a loan by hand — a real, expensive thing people do — but on a schedule it
@@ -158,6 +212,20 @@ The **detail screen shows ACTIVITY, not just repayments** — the opening balanc
 the money as it was borrowed, each repayment with its interest and fees, and
 every reconciliation, one row per ledger group. A screen that lists only the
 repayments cannot explain the balance it is displaying.
+
+A **live preview** sits above the optional details and answers the question the
+form cannot: what will this actually do? It is recomputed from what has been
+typed on every keystroke (`src/lib/debt-preview.ts`, pure and unit-tested) and
+reports the payoff date, the number of instalments, the interest and the total —
+or refuses to invent a date and says what the instalment would have to be, when
+the amount entered does not even cover the interest. It says out loud that it is
+an estimate and that nothing is saved yet, because a card full of confident
+figures on an unsubmitted form otherwise reads like a record of something that
+happened.
+
+The direction chooser uses the **same colour language as the add-transaction
+form**: money leaving is red, money arriving is green. A debt you owe is the red
+one, and the colour should say so before the label is read.
 
 Record payment sheet (auto or typed split, one-tap "scheduled" / "pay it off"
 amounts, an overpayment warning, and the extra-vs-scheduled choice), status

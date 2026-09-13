@@ -8,7 +8,7 @@ import { materializeDueRecurring } from "../../_lib/recurring-materialize.js"
 import { validateRuleInput, type RecurringRuleInput } from "../../_lib/recurring-validate.js"
 import { ruleFields, ruleStatsFields } from "../../_lib/recurring-query.js"
 import { attributeCard } from "../../_lib/cards.js"
-import { mirrorDebtSchedule, reloadRule } from "../../_lib/recurring-debt.js"
+import { greatestDate, mirrorDebtSchedule, reloadRule } from "../../_lib/recurring-debt.js"
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -62,7 +62,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (onlyActive) {
       const [updated] = await db
         .update(recurringRules)
-        .set({ active: body.active, lastError: "", updatedBy: userId, updatedAt: new Date() })
+        .set({
+          active: body.active,
+          // Resuming a DEBT repayment re-anchors to today. An inactive rule's
+          // cursor is frozen, so a six-month payment holiday resumed from this
+          // screen would otherwise post six back-dated instalments and take
+          // thousands out of the bank in one tap — see the same rule on the
+          // debt's own screen (src/lib/debt-recurring.ts repaymentCursor) and
+          // docs/debts/DEBTS.md. Other rule kinds keep the documented catch-up.
+          ...(body.active && rule.kind === "debt" ? { nextDueAt: greatestDate(recurringRules.nextDueAt, todayIso()) } : {}),
+          lastError: "",
+          updatedBy: userId,
+          updatedAt: new Date(),
+        })
         // Defense-in-depth: re-scope by org even though the load above 404s
         // cross-org ids (matches every other [id] route's mutation pattern).
         .where(and(eq(recurringRules.id, id), eq(recurringRules.organizationId, orgId)))
@@ -118,7 +130,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       parsed.value.frequencyUnit !== rule.frequencyUnit ||
       parsed.value.frequencyInterval !== rule.frequencyInterval
     const today = todayIso()
-    const nextDueAt = scheduleChanged
+    // A debt repayment coming back to life re-anchors too, whether it is being
+    // resumed on its own or alongside other edits.
+    const resumingDebt = rule.kind === "debt" && !rule.active && body.active === true
+    const nextDueAt = scheduleChanged || resumingDebt
       ? (parsed.value.startDate > today ? parsed.value.startDate : today)
       : rule.nextDueAt
 

@@ -463,7 +463,8 @@
     "cardViaNoTail": "കാർഡ് വഴി",
     "cardAutopayBadge": "ഓട്ടോപേ",
     "nCards_one": "{{count}} കാർഡ്",
-    "nCards_other": "{{count}} കാർഡുകൾ"
+    "nCards_other": "{{count}} കാർഡുകൾ",
+    "editOnItsOwnPage": "ഇത് ഒരൊറ്റ പേയ്‌മെന്റിന്റെ ഭാഗമാണ് — മാറ്റാൻ അത് രേഖപ്പെടുത്തിയ ഇടത്ത് തുറക്കുക."
   },
   "clients": {
     "pageTitle": "ക്ലയന്റുകൾ",
@@ -2358,7 +2359,8 @@
     "sideLeft": "ഇടത് അരിക്",
     "sideRight": "വലത് അരിക്",
     "handleDragHint": "തിരയാൻ ഹാൻഡിൽ ടാപ്പ് ചെയ്യുക അല്ലെങ്കിൽ അകത്തേക്ക് സ്വൈപ്പ് ചെയ്യുക. അരികിലൂടെ മുകളിലേക്കോ താഴേക്കോ വലിച്ച് ഇഷ്ടമുള്ളിടത്ത് വയ്ക്കുക.",
-    "cards": "കാർഡുകൾ"
+    "cards": "കാർഡുകൾ",
+    "debts": "കടങ്ങളും വായ്പകളും"
   },
   "aiVoice": {
     "openLabel": "AI വോയ്സ് അസിസ്റ്റന്റ്",
@@ -2681,19 +2683,12 @@
     "addReceivable": "Someone owes me",
     "iOwe": "I owe",
     "owedToMe": "Owed to me",
-    "quickSetup": "Quick",
-    "detailedSetup": "Detailed",
     "whoDoYouOwe": "Who do you owe?",
     "whoOwesYou": "Who owes you?",
     "counterpartyPlaceholder": "Bank, shop or a person — e.g. Intesa, Marco",
-    "debtName": "Name (optional)",
-    "debtNamePlaceholder": "e.g. Car loan",
     "howMuchLeft": "How much is left?",
     "howMuchOwed": "How much do they owe you?",
     "balanceIsEstimate": "This is an estimate",
-    "currency": "Currency",
-    "whatDoYouPay": "What do you normally pay?",
-    "whatDoTheyPay": "What do they normally pay you?",
     "perFrequency": "every",
     "frequency": {
       "weekly": "week",
@@ -2711,17 +2706,12 @@
       "yearly": "Yearly",
       "irregular": "Irregular"
     },
-    "nextPaymentDate": "When is the next payment?",
     "interestRate": "Interest rate (% per year)",
-    "interestRateOptional": "Interest rate — leave empty if none or unknown",
     "rateType": {
       "fixed": "Fixed",
       "variable": "Variable"
     },
     "originalAmount": "Original amount",
-    "startDate": "Start date",
-    "maturityDate": "Final payment date",
-    "remainingInstallments": "Remaining instalments",
     "notes": "Notes",
     "kind": "Type",
     "kinds": {
@@ -2735,10 +2725,8 @@
       "informal": "Friend or family",
       "other": "Other"
     },
-    "receiveMoneyNow": "I'm receiving the money now",
     "receiveMoneyInto": "Into which account?",
     "receiveMoneyHint": "Records the borrowed money arriving in your account. It is never counted as income.",
-    "lendMoneyNow": "I'm giving the money now",
     "lendMoneyFrom": "From which account?",
     "create": "Add",
     "saveChanges": "Save changes",
@@ -2796,8 +2784,6 @@
     "paymentDeleted": "Payment moved to Trash",
     "deletePaymentTitle": "Remove this payment?",
     "deletePaymentDesc": "The bank movement, the principal reduction and any interest or fee expenses are all reversed together. You can restore it from Trash.",
-    "paymentHistory": "Payment history",
-    "noPaymentsYet": "No payments recorded yet",
     "schedule": "Schedule",
     "scheduleHint": "Based on the balance, payment and rate entered.",
     "scheduleDoesNotConverge": "At this payment the balance never reaches zero — the payment does not cover the interest.",
@@ -2983,6 +2969,36 @@
     "paymentDay": "പേയ്‌മെന്റ് ദിവസം",
     "paymentDayHint": "ഈ ദിവസമാണ് താളം പിന്തുടരുന്നത്. മാസത്തിലെ ഏത് ദിവസം പണം പോകണമെന്ന് മാറ്റാൻ ഇത് മാറ്റുക.",
     "auto": "സ്വയം",
-    "rateNoneHelp": "പലിശ ഇല്ലെങ്കിൽ, അല്ലെങ്കിൽ അറിയില്ലെങ്കിൽ ഇത് ശൂന്യമായി വിടുക."
+    "rateNoneHelp": "പലിശ ഇല്ലെങ്കിൽ, അല്ലെങ്കിൽ അറിയില്ലെങ്കിൽ ഇത് ശൂന്യമായി വിടുക.",
+    "previewTitle": "ഇത് ഇങ്ങനെയായിരിക്കും",
+    "previewNote": "നിങ്ങൾ നൽകിയതിൽ നിന്നുള്ള ഒരു കണക്ക്. ചേർക്കുന്നതുവരെ ഒന്നും സേവ് ചെയ്യില്ല.",
+    "previewPaidOffBy": "പൂർണ്ണമായി അടച്ചുതീരുക",
+    "previewRepaidToYouBy": "നിങ്ങൾക്ക് തിരികെ കിട്ടുക",
+    "previewPayments": "പേയ്‌മെന്റുകൾ",
+    "previewPaymentsValue": "{{count}} × {{amount}}",
+    "previewInterest": "പലിശ",
+    "previewTotalOut": "നിങ്ങൾ ആകെ അടയ്ക്കുന്നത്",
+    "previewTotalIn": "അവർ ആകെ അടയ്ക്കുന്നത്",
+    "previewFinal": "അവസാനത്തേത് {{amount}} ആണ്.",
+    "previewAssumedZero": "0 % ആയി കണക്കാക്കുന്നു — കൃത്യമായ കണക്കിന് നിരക്ക് നൽകുക.",
+    "previewManualOut": "{{amount}} ബാക്കി, സ്വയം രേഖപ്പെടുത്തുന്നു.",
+    "previewManualIn": "{{amount}} നിങ്ങൾക്ക് കിട്ടാനുണ്ട്, സ്വയം രേഖപ്പെടുത്തുന്നു.",
+    "previewRepaidPct": "ഇതുവരെ {{pct}} % അടച്ചു.",
+    "previewManualHint": "എപ്പോൾ തീരും, എത്ര ചെലവാകും എന്നറിയാൻ പതിവ് തിരിച്ചടവ് സജ്ജമാക്കുക.",
+    "previewNever": "ഓരോ {{frequency}} {{amount}} പലിശ പോലും മറികടക്കുന്നില്ല, അതിനാൽ ബാക്കി കൂടുകയേ ഉള്ളൂ.",
+    "previewNeverMin": "കുറയാൻ തുടങ്ങാൻ കുറഞ്ഞത് {{amount}} വേണം.",
+    "previewTooLong": "ഈ വേഗത്തിൽ {{years}} വർഷത്തിലേറെ എടുക്കും. കൂടുതൽ തുക നൽകി നോക്കൂ.",
+    "previewArrives": "ഇത് ചേർക്കുമ്പോൾ {{amount}} {{account}} ലേക്ക് എത്തും.",
+    "previewLeaves": "ഇത് ചേർക്കുമ്പോൾ {{amount}} {{account}} നിന്ന് പോകും.",
+    "moneyArrivedTitle": "ഈ പണം ഏതെങ്കിലും അക്കൗണ്ടിൽ എത്തിയോ?",
+    "givingMoneyNow": "നിങ്ങൾ ഇപ്പോൾ പണം നൽകുകയാണോ?",
+    "amountArriving": "എത്തുന്ന തുക",
+    "amountGiving": "നിങ്ങൾ നൽകുന്ന തുക",
+    "arrivingHint": "മുഴുവനും ആ അക്കൗണ്ടിൽ എത്തുന്നു.",
+    "arrivingPartial": "ബാക്കി {{amount}} നേരത്തെ തന്നെ കടമായി രേഖപ്പെടുത്തും.",
+    "arrivingAccountRequired": "പണം എത്തുന്ന അക്കൗണ്ട് തിരഞ്ഞെടുക്കുക",
+    "arrivingRequired": "ആ അക്കൗണ്ടിൽ എത്ര എത്തുന്നുവെന്ന് നൽകുക",
+    "arrivingTooMuch": "ഇത് കടത്തേക്കാൾ കൂടുതലാണ്",
+    "customRhythmHint": "ഈ തിരിച്ചടവിന്റെ താളം അതിന്റെ സ്വന്തം പേജിലാണ് സജ്ജമാക്കുന്നത്."
   }
 }

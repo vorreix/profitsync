@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest"
-import { toCents } from "./debt-math"
+import { fromCents, toCents } from "./debt-math"
 import {
   advancesScheduleByDefault,
+  repaymentCursor,
   DEBT_KIND_SUGGESTIONS,
   frequencyToRecurring,
   isSuggestedDebtKind,
   normalizeDebtKind,
   payoffCappedAmount,
+  periodsPerYearForRule,
   recurringToFrequency,
 } from "./debt-recurring"
 
@@ -111,5 +113,105 @@ describe("advancesScheduleByDefault", () => {
 
   it("without a rule the payment the user records IS the scheduled one", () => {
     expect(advancesScheduleByDefault(false)).toBe(true)
+  })
+})
+
+describe("repaymentCursor", () => {
+  const TODAY = "2026-09-13"
+  const monthly = { unit: "month" as const, interval: 1 }
+  const live = { startDate: "2026-01-15", frequencyUnit: "month" as const, frequencyInterval: 1, nextDueAt: "2026-01-15", active: true }
+
+  it("leaves the cursor alone when only the amount or the payer changed", () => {
+    expect(repaymentCursor({ current: live, startDate: "2026-01-15", freq: monthly, wantActive: true, today: TODAY }))
+      .toBe("2026-01-15")
+  })
+
+  it("re-anchors forward when the schedule changed", () => {
+    expect(repaymentCursor({ current: live, startDate: "2026-02-20", freq: monthly, wantActive: true, today: TODAY }))
+      .toBe(TODAY)
+    expect(repaymentCursor({ current: live, startDate: "2026-01-15", freq: { unit: "week", interval: 2 }, wantActive: true, today: TODAY }))
+      .toBe(TODAY)
+  })
+
+  it("RESUMING re-anchors to today — a payment holiday must not back-post in one click", () => {
+    const paused = { ...live, active: false }
+    expect(repaymentCursor({ current: paused, startDate: "2026-01-15", freq: monthly, wantActive: true, today: TODAY }))
+      .toBe(TODAY)
+  })
+
+  it("but pausing leaves the cursor where it is", () => {
+    expect(repaymentCursor({ current: live, startDate: "2026-01-15", freq: monthly, wantActive: false, today: TODAY }))
+      .toBe("2026-01-15")
+  })
+
+  it("an already-active rule is not 'resuming', so editing it never moves the cursor", () => {
+    expect(repaymentCursor({ current: live, startDate: "2026-01-15", freq: monthly, wantActive: true, today: TODAY }))
+      .toBe("2026-01-15")
+  })
+
+  it("a future first payment keeps its own date rather than snapping to today", () => {
+    expect(repaymentCursor({ current: null, startDate: "2026-12-01", freq: monthly, wantActive: true, today: TODAY }))
+      .toBe("2026-12-01")
+  })
+
+  it("a brand new rule starts at the later of its anchor and today", () => {
+    expect(repaymentCursor({ current: null, startDate: "2020-01-01", freq: monthly, wantActive: true, today: TODAY }))
+      .toBe(TODAY)
+  })
+
+  it("a rhythm the debt vocabulary cannot name is NOT a schedule change", () => {
+    // "every 10 days" is reachable from /api/recurring/:id. Pause and Resume
+    // must not quietly turn it into a monthly rule.
+    const tenDaily = { ...live, frequencyUnit: "day" as const, frequencyInterval: 10, active: false }
+    const cursor = repaymentCursor({ current: tenDaily, startDate: "2026-01-15", freq: { unit: "day", interval: 10 }, wantActive: true, today: TODAY })
+    expect(cursor).toBe(TODAY) // re-anchored because it is RESUMING, not because the rhythm moved
+    const editAmountOnly = repaymentCursor({ current: { ...tenDaily, active: true }, startDate: "2026-01-15", freq: { unit: "day", interval: 10 }, wantActive: true, today: TODAY })
+    expect(editAmountOnly).toBe("2026-01-15")
+  })
+})
+
+describe("periodsPerYearForRule", () => {
+  it("agrees with the named rhythms", () => {
+    expect(periodsPerYearForRule("week", 1)).toBe(52)
+    expect(periodsPerYearForRule("week", 2)).toBe(26)
+    expect(periodsPerYearForRule("month", 1)).toBe(12)
+    expect(periodsPerYearForRule("month", 3)).toBe(4)
+    expect(periodsPerYearForRule("year", 1)).toBe(1)
+  })
+
+  it("answers for the rhythms the debt vocabulary cannot name", () => {
+    expect(periodsPerYearForRule("day", 10)).toBe(36.5)
+    expect(periodsPerYearForRule("month", 6)).toBe(2)
+    expect(periodsPerYearForRule("week", 3)).toBeCloseTo(17.333, 3)
+    expect(periodsPerYearForRule("day", 1)).toBe(365)
+  })
+
+  it("never divides by zero", () => {
+    expect(periodsPerYearForRule("month", 0)).toBe(12)
+    expect(periodsPerYearForRule("month", -3)).toBe(12)
+  })
+})
+
+describe("payoffCappedAmount with a rule's true rhythm", () => {
+  it("charges ten days of interest for a ten-day rhythm, not a month", () => {
+    // 10,000 at 12 %: a month accrues 100.00, ten days accrue 32.88.
+    const tenDay = payoffCappedAmount({
+      scheduled: toCents(50_000), outstanding: toCents(10_000), annualRatePct: 12,
+      frequency: "irregular", periodsPerYear: periodsPerYearForRule("day", 10),
+    })
+    expect(fromCents(tenDay)).toBe(10_032.88)
+    // Without the override the "irregular" fallback would charge a whole month.
+    const guessed = payoffCappedAmount({
+      scheduled: toCents(50_000), outstanding: toCents(10_000), annualRatePct: 12, frequency: "irregular",
+    })
+    expect(fromCents(guessed)).toBe(10_100)
+  })
+
+  it("the override wins over a named frequency too", () => {
+    const halfYearly = payoffCappedAmount({
+      scheduled: toCents(50_000), outstanding: toCents(10_000), annualRatePct: 12,
+      frequency: "monthly", periodsPerYear: periodsPerYearForRule("month", 6),
+    })
+    expect(fromCents(halfYearly)).toBe(10_600) // six months of interest
   })
 })

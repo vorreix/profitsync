@@ -20,7 +20,8 @@ import {
 import { materializeDueRecurring } from "../../_lib/recurring-materialize.js"
 import { amountExceedsLimit } from "../../../src/lib/money.js"
 import { PAYMENT_FREQUENCIES, type PaymentFrequency } from "../../../src/lib/debt-math.js"
-import { frequencyToRecurring, MAX_DEBT_KIND_LENGTH, normalizeDebtKind, recurringToFrequency } from "../../../src/lib/debt-recurring.js"
+import { frequencyToRecurring, MAX_DEBT_KIND_LENGTH, normalizeDebtKind, recurringToFrequency, repaymentCursor } from "../../../src/lib/debt-recurring.js"
+import type { Frequency } from "../../../src/lib/recurring.js"
 import { DEBT_LIFECYCLES } from "../../../src/lib/debt-status.js"
 import { todayIso, type FrequencyUnit } from "../../../src/lib/recurring.js"
 import { isValidCurrency } from "../../../src/lib/currencies.js"
@@ -189,8 +190,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const reconcile = num(b.current_balance)
     if (reconcile !== undefined && reconcile !== null) {
       if (Number.isNaN(reconcile) || reconcile < 0 || amountExceedsLimit(reconcile)) return res.status(400).json({ error: "current_balance must be 0 or more" })
+      // Read the balance HERE, not from the copy loaded at the top of the
+      // handler: applyRepayment and the lookups above are several round trips,
+      // and a repayment materialising in between would be erased by an absolute
+      // stamp. The adjustment row and the balance move by the same delta, so
+      // the ledger and the stored figure stay in step the way every other money
+      // path in the repo keeps them (balance = balance + delta).
+      const [live] = await db.select({ currentBalance: wealthAccounts.currentBalance }).from(wealthAccounts).where(eq(wealthAccounts.id, id))
       const signedNew = directionOf(row.account.type) === "receivable" ? reconcile : -reconcile
-      const delta = Math.round((signedNew - Number(row.account.currentBalance)) * 100) / 100
+      const delta = Math.round((signedNew - Number(live?.currentBalance ?? row.account.currentBalance)) * 100) / 100
       if (delta !== 0) {
         const clientId = await ensureDefaultClient(orgId, userId)
         const [tx] = await db
@@ -202,7 +210,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           .returning({ id: transactions.id })
         await db
           .update(wealthAccounts)
-          .set({ currentBalance: signedNew.toFixed(2), updatedBy: userId, updatedAt: new Date() })
+          .set({ currentBalance: sql`${wealthAccounts.currentBalance}::numeric + ${delta.toFixed(2)}::numeric`, updatedBy: userId, updatedAt: new Date() })
           .where(eq(wealthAccounts.id, id))
         await logAudit({ orgId, entityType: "transaction", entityId: tx.id, action: "create", actorId: userId })
       }
@@ -305,12 +313,19 @@ async function applyRepayment(
   if (!Number.isFinite(amount) || amount <= 0) return { error: "The repayment amount must be more than 0" }
   if (amountExceedsLimit(amount)) return { error: "Amount is too large" }
 
-  const frequencyRaw = typeof r.frequency === "string"
-    ? r.frequency
-    : current
-      ? recurringToFrequency(current.frequencyUnit as FrequencyUnit, current.frequencyInterval) ?? "monthly"
-      : "monthly"
-  const freq = frequencyToRecurring(frequencyRaw as PaymentFrequency)
+  // The rhythm the caller asked for, or the one the rule already has — taken
+  // from its (unit, interval) DIRECTLY, never round-tripped through the debt's
+  // named vocabulary. A rule editable from /api/recurring/:id can legitimately
+  // run every 10 days, which has no name here; round-tripping it turned Pause
+  // and Resume into "silently make this monthly".
+  let freq: Frequency | null
+  if (typeof r.frequency === "string") {
+    freq = frequencyToRecurring(r.frequency as PaymentFrequency)
+  } else if (current) {
+    freq = { unit: current.frequencyUnit as FrequencyUnit, interval: current.frequencyInterval }
+  } else {
+    freq = frequencyToRecurring("monthly")
+  }
   if (!freq) return { error: "Choose how often the repayment is made" }
 
   const startDate = typeof r.start_date === "string" && ISO.test(r.start_date)
@@ -325,12 +340,22 @@ async function applyRepayment(
   // Editing the schedule re-anchors FORWARD ONLY — the same contract
   // /api/recurring/:id uses. Nothing already posted moves, and no instalment is
   // back-dated into a balance that already accounts for it.
-  const scheduleChanged =
-    !current ||
-    String(current.startDate).slice(0, 10) !== startDate ||
-    current.frequencyUnit !== freq.unit ||
-    current.frequencyInterval !== freq.interval
-  const nextDueAt = scheduleChanged ? (startDate > today ? startDate : today) : String(current.nextDueAt).slice(0, 10)
+  const wantActive = r.active !== false
+  const nextDueAt = repaymentCursor({
+    current: current
+      ? {
+          startDate: String(current.startDate).slice(0, 10),
+          frequencyUnit: current.frequencyUnit as FrequencyUnit,
+          frequencyInterval: current.frequencyInterval,
+          nextDueAt: String(current.nextDueAt).slice(0, 10),
+          active: current.active,
+        }
+      : null,
+    startDate,
+    freq,
+    wantActive,
+    today,
+  })
 
   if (current) {
     const [updated] = await db
@@ -345,7 +370,7 @@ async function applyRepayment(
         startDate,
         endDate,
         nextDueAt,
-        active: r.active === false ? false : true,
+        active: wantActive,
         lastError: "",
         updatedBy: userId,
         updatedAt: new Date(),

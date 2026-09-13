@@ -26,13 +26,24 @@ import { eq, sql } from "drizzle-orm"
 import { db } from "../../src/lib/db/index.js"
 import { debtDetails, recurringRules } from "../../src/lib/db/schema.js"
 import { fromCents, toCents } from "../../src/lib/debt-math.js"
-import { payoffCappedAmount } from "../../src/lib/debt-recurring.js"
+import { payoffCappedAmount, periodsPerYearForRule } from "../../src/lib/debt-recurring.js"
 import { debtScheduleMirror, loadDebt, recordDebtPayment, toDebtLike } from "./debts.js"
+import type { FrequencyUnit } from "../../src/lib/recurring.js"
 
 type RuleRow = typeof recurringRules.$inferSelect
 
 export type DebtOccurrenceOutcome =
-  | { ok: true; created: number; fullyRepaid: boolean }
+  | {
+      ok: true
+      created: number
+      fullyRepaid: boolean
+      /**
+       * Another materializer is mid-batch on one of these occurrences. The
+       * caller must leave the cursor where it is: advancing past occurrences
+       * this run did not post, and the other run may not finish, loses them.
+       */
+      hold?: boolean
+    }
   | { ok: false; error: string }
 
 /**
@@ -55,6 +66,13 @@ export async function postDebtOccurrences(orgId: string, rule: RuleRow, due: str
   // so reaching this is belt and braces.
   if (row.details.lifecycle !== "active") return { ok: false, error: "This debt is not active" }
 
+  // The rhythm ACTUALLY taking the money. The debt's own payment_frequency is a
+  // mirror that can only name five rhythms, so a rule running every 10 days
+  // mirrors as "irregular" and every interest calculation downstream would fall
+  // back to a whole month — booking roughly two thirds of each instalment's
+  // principal as spending.
+  const ppy = periodsPerYearForRule(rule.frequencyUnit as FrequencyUnit, rule.frequencyInterval)
+
   let created = 0
   for (const dueDate of due) {
     const like = toDebtLike(row)
@@ -63,6 +81,7 @@ export async function postDebtOccurrences(orgId: string, rule: RuleRow, due: str
       outstanding: like.owed,
       annualRatePct: like.annualRatePct,
       frequency: like.frequency,
+      periodsPerYear: ppy,
     })
     // Nothing left to pay: stop here and let the caller retire the rule. The
     // occurrences already posted still count, and the cursor still advances.
@@ -76,9 +95,16 @@ export async function postDebtOccurrences(orgId: string, rule: RuleRow, due: str
       // debt's next due date (mirrorDebtSchedule below). Advancing here as well
       // would skip an instalment every time one posted.
       advanceSchedule: false,
+      periodsPerYear: ppy,
       recurring: { ruleId: rule.id, dueDate },
     })
     if (!result.ok) return { ok: false, error: result.error }
+
+    // Somebody else is mid-batch on this occurrence. Stop where we are and keep
+    // the cursor: the amount for the NEXT instalment is capped against a
+    // balance that is about to change, so carrying on is how two concurrent
+    // materializers pay 1,000 against a 600 debt and push it into credit.
+    if (result.skipped === "inflight") return { ok: true, created, fullyRepaid: false, hold: true }
     if (!result.skipped) created++
 
     const refreshed = await loadDebt(orgId, rule.debtAccountId)

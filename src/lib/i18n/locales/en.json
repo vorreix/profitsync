@@ -775,7 +775,8 @@
     "sideLeft": "Left edge",
     "sideRight": "Right edge",
     "handleDragHint": "Tap or swipe the handle inward to search. Drag it up or down along the edge to place it wherever you like.",
-    "cards": "Cards"
+    "cards": "Cards",
+    "debts": "Debts & loans"
   },
   "resetData": {
     "title": "Reset all data",
@@ -1086,7 +1087,8 @@
     "cardViaNoTail": "via card",
     "cardAutopayBadge": "Autopay",
     "nCards_one": "{{count}} card",
-    "nCards_other": "{{count}} cards"
+    "nCards_other": "{{count}} cards",
+    "editOnItsOwnPage": "This is part of one payment — open it where it was recorded to change it."
   },
   "wealth": {
     "title": "Wealth",
@@ -2681,19 +2683,12 @@
     "addReceivable": "Someone owes me",
     "iOwe": "I owe",
     "owedToMe": "Owed to me",
-    "quickSetup": "Quick",
-    "detailedSetup": "Detailed",
     "whoDoYouOwe": "Who do you owe?",
     "whoOwesYou": "Who owes you?",
     "counterpartyPlaceholder": "Bank, shop or a person — e.g. Intesa, Marco",
-    "debtName": "Name (optional)",
-    "debtNamePlaceholder": "e.g. Car loan",
     "howMuchLeft": "How much is left?",
     "howMuchOwed": "How much do they owe you?",
     "balanceIsEstimate": "This is an estimate",
-    "currency": "Currency",
-    "whatDoYouPay": "What do you normally pay?",
-    "whatDoTheyPay": "What do they normally pay you?",
     "perFrequency": "every",
     "frequency": {
       "weekly": "week",
@@ -2711,17 +2706,12 @@
       "yearly": "Yearly",
       "irregular": "Irregular"
     },
-    "nextPaymentDate": "When is the next payment?",
     "interestRate": "Interest rate (% per year)",
-    "interestRateOptional": "Interest rate — leave empty if none or unknown",
     "rateType": {
       "fixed": "Fixed",
       "variable": "Variable"
     },
     "originalAmount": "Original amount",
-    "startDate": "Start date",
-    "maturityDate": "Final payment date",
-    "remainingInstallments": "Remaining instalments",
     "notes": "Notes",
     "kind": "Type",
     "kinds": {
@@ -2735,10 +2725,8 @@
       "informal": "Friend or family",
       "other": "Other"
     },
-    "receiveMoneyNow": "I'm receiving the money now",
     "receiveMoneyInto": "Into which account?",
     "receiveMoneyHint": "Records the borrowed money arriving in your account. It is never counted as income.",
-    "lendMoneyNow": "I'm giving the money now",
     "lendMoneyFrom": "From which account?",
     "create": "Add",
     "saveChanges": "Save changes",
@@ -2796,8 +2784,6 @@
     "paymentDeleted": "Payment moved to Trash",
     "deletePaymentTitle": "Remove this payment?",
     "deletePaymentDesc": "The bank movement, the principal reduction and any interest or fee expenses are all reversed together. You can restore it from Trash.",
-    "paymentHistory": "Payment history",
-    "noPaymentsYet": "No payments recorded yet",
     "schedule": "Schedule",
     "scheduleHint": "Based on the balance, payment and rate entered.",
     "scheduleDoesNotConverge": "At this payment the balance never reaches zero — the payment does not cover the interest.",
@@ -2983,6 +2969,36 @@
     "paymentDay": "Payment day",
     "paymentDayHint": "The rhythm keeps this day. Change it to move which day of the month the payment lands on.",
     "auto": "Auto",
-    "rateNoneHelp": "Leave it empty if there is none, or you don't know."
+    "rateNoneHelp": "Leave it empty if there is none, or you don't know.",
+    "previewTitle": "What this will look like",
+    "previewNote": "An estimate from what you've entered. Nothing is saved until you add it.",
+    "previewPaidOffBy": "Paid off by",
+    "previewRepaidToYouBy": "Repaid to you by",
+    "previewPayments": "Payments",
+    "previewPaymentsValue": "{{count}} × {{amount}}",
+    "previewInterest": "Interest",
+    "previewTotalOut": "Total you'll pay",
+    "previewTotalIn": "Total they'll pay",
+    "previewFinal": "The last one is {{amount}}.",
+    "previewAssumedZero": "Assumes 0 % — add a rate for a truer figure.",
+    "previewManualOut": "{{amount}} owed, recorded by hand.",
+    "previewManualIn": "{{amount}} owed to you, recorded by hand.",
+    "previewRepaidPct": "{{pct}} % repaid so far.",
+    "previewManualHint": "Set up a recurring repayment to see when it ends and what it costs.",
+    "previewNever": "{{amount}} every {{frequency}} doesn't cover the interest, so the balance would only grow.",
+    "previewNeverMin": "It needs at least {{amount}} to start coming down.",
+    "previewTooLong": "At this pace it runs past {{years}} years. Try a larger payment.",
+    "previewArrives": "{{amount}} arrives in {{account}} when you add this.",
+    "previewLeaves": "{{amount}} leaves {{account}} when you add this.",
+    "moneyArrivedTitle": "Did this money arrive in an account?",
+    "givingMoneyNow": "Are you giving the money now?",
+    "amountArriving": "Amount arriving",
+    "amountGiving": "Amount you're giving",
+    "arrivingHint": "All of it lands in that account.",
+    "arrivingPartial": "The other {{amount}} is recorded as already owed.",
+    "arrivingAccountRequired": "Choose the account the money lands in",
+    "arrivingRequired": "Enter how much lands in that account",
+    "arrivingTooMuch": "That is more than the debt itself",
+    "customRhythmHint": "This repayment's rhythm is set on its own page."
   }
 }

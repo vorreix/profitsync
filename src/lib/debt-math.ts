@@ -165,10 +165,17 @@ export function splitPayment(input: {
   balance: Cents
   annualRatePct: number | null | undefined
   frequency: PaymentFrequency | null | undefined
+  /**
+   * The true periods-per-year, when the caller knows it exactly. Wins over
+   * `frequency`, which only names five rhythms and otherwise falls back to
+   * monthly — a guess for a debt nobody scheduled, and a real error for a
+   * repayment rule that runs every 10 days.
+   */
+  periodsPerYear?: number | null
 }): { principal: Cents; interest: Cents; source: "calculated" | "principal_only" } {
   const total = Math.max(0, Math.round(input.total))
   const balance = Math.max(0, Math.round(input.balance))
-  const ppy = periodsPerYear(input.frequency) ?? 12
+  const ppy = input.periodsPerYear ?? periodsPerYear(input.frequency) ?? 12
   if (input.annualRatePct == null || input.annualRatePct <= 0) {
     return { principal: Math.min(total, balance) || total, interest: 0, source: "principal_only" }
   }

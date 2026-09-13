@@ -54,6 +54,23 @@ const TO_RECURRING: Record<Exclude<PaymentFrequency, "irregular">, Frequency> = 
   yearly: { unit: "year", interval: 1 },
 }
 
+/**
+ * Periods per year for ANY recurring rhythm, including the ones the debt
+ * vocabulary has no word for.
+ *
+ * `periodsPerYear` in debt-math only knows the five NAMED rhythms and returns
+ * null otherwise, and every caller then falls back to 12. That fallback is a
+ * guess for a debt nobody scheduled, and a real error for a rule that runs
+ * every 10 days: it charges a whole month of interest on a ten-day period, so
+ * roughly two thirds of what the user paid as principal is booked as spending
+ * instead. When there IS a rule, its rhythm is known exactly — this is how.
+ */
+export function periodsPerYearForRule(unit: FrequencyUnit, interval: number): number {
+  const per = interval > 0 ? interval : 1
+  const yearly = unit === "day" ? 365 : unit === "week" ? 52 : unit === "month" ? 12 : 1
+  return yearly / per
+}
+
 /** The (unit, interval) a recurring rule needs. Null for "irregular" — an irregular debt has no schedule to run. */
 export function frequencyToRecurring(frequency: PaymentFrequency | null | undefined): Frequency | null {
   if (!frequency || frequency === "irregular") return null
@@ -93,11 +110,13 @@ export function payoffCappedAmount(input: {
   outstanding: Cents
   annualRatePct: number | null | undefined
   frequency: PaymentFrequency | null | undefined
+  /** The rule's true periods-per-year, when one drives this debt. Wins over `frequency`. */
+  periodsPerYear?: number | null
 }): Cents {
   const scheduled = Math.max(0, Math.round(input.scheduled))
   const outstanding = Math.max(0, Math.round(input.outstanding))
   if (outstanding <= 0 || scheduled <= 0) return 0
-  const ppy = periodsPerYear(input.frequency) ?? 12
+  const ppy = input.periodsPerYear ?? periodsPerYear(input.frequency) ?? 12
   const interest = interestForPeriod(outstanding, input.annualRatePct, ppy)
   return Math.min(scheduled, outstanding + interest)
 }
@@ -112,3 +131,49 @@ export function payoffCappedAmount(input: {
  * date should move. The user can always override; this is only the default.
  */
 export const advancesScheduleByDefault = (hasActiveRule: boolean): boolean => !hasActiveRule
+
+// ── Where the cursor goes when a repayment is edited ─────────────────────────
+
+/** The parts of a live rule the cursor decision depends on. */
+export type CursorState = {
+  startDate: string
+  frequencyUnit: FrequencyUnit
+  frequencyInterval: number
+  nextDueAt: string
+  active: boolean
+}
+
+/**
+ * The next-due date a repayment should carry after an edit.
+ *
+ * Two cases re-anchor to today, and both exist because the alternative posts
+ * money nobody asked for:
+ *
+ *   • The SCHEDULE changed (a new anchor day or rhythm). Re-anchoring forward
+ *     keeps everything already posted and back-dates nothing into a balance
+ *     that already accounts for it.
+ *   • The rule is being RESUMED. A paused repayment is a deliberate holiday
+ *     from paying; coming back after six months must not fire six back-dated
+ *     instalments in one click.
+ *
+ * Everything else — changing the amount, the paying account, the name — leaves
+ * the cursor exactly where it was, so a due-but-unposted occurrence is not
+ * stepped over.
+ */
+export function repaymentCursor(input: {
+  current: CursorState | null
+  startDate: string
+  freq: Frequency
+  wantActive: boolean
+  today: string
+}): string {
+  const { current, startDate, freq, wantActive, today } = input
+  const scheduleChanged =
+    !current ||
+    current.startDate !== startDate ||
+    current.frequencyUnit !== freq.unit ||
+    current.frequencyInterval !== freq.interval
+  const resuming = !!current && !current.active && wantActive
+  if (scheduleChanged || resuming) return startDate > today ? startDate : today
+  return current.nextDueAt
+}

@@ -26,6 +26,7 @@ import { balanceDelta } from "../../src/lib/wealth-ledger.js"
 import { logAudit } from "./audit.js"
 import { ensureDefaultClient } from "./auth.js"
 import { getOrgPlan } from "./quota.js"
+import { notifyIfBudgetExceeded } from "./notify-budget.js"
 
 // Debt & Loans engine: SQL + orchestration only. Every formula lives in
 // src/lib/debt-math.ts / debt-status.ts (pure, unit-tested); the routes stay thin.
@@ -320,13 +321,42 @@ export type RecordPaymentInput = {
    * payment.
    */
   recurring?: { ruleId: string; dueDate: string }
+  /**
+   * The paying rule's true periods-per-year. Set by the materializer, because
+   * a rule may run on a rhythm the debt's own `payment_frequency` has no word
+   * for ("every 10 days" mirrors as "irregular"), and the interest for one
+   * period must follow the rhythm that is actually taking the money.
+   */
+  periodsPerYear?: number | null
 }
 
+/**
+ * Why a recurring occurrence wrote nothing.
+ *
+ *   "posted"   — a COMPLETE occurrence already exists (its allocation row is
+ *                there). The caller may safely carry on to the next one: the
+ *                balance it reads next will include this payment.
+ *   "inflight" — the occurrence is claimed but not finished, and the claim is
+ *                recent, so another materializer is mid-batch right now. The
+ *                caller must STOP and leave its cursor alone; carrying on would
+ *                size the next instalment against a balance that is about to
+ *                change, and two runs would overshoot the debt into credit.
+ */
+export type SkippedReason = "posted" | "inflight"
+
 export type RecordPaymentResult =
-  | { ok: true; payment: PaymentRow; skipped?: false }
-  /** The recurring occurrence was already posted — nothing was written. */
-  | { ok: true; payment: null; skipped: true }
+  | { ok: true; payment: PaymentRow; skipped?: undefined }
+  | { ok: true; payment: null; skipped: SkippedReason }
   | { ok: false; status: number; error: string; quota?: unknown }
+
+/**
+ * How long a claimed-but-unfinished occurrence is assumed to be someone else's
+ * work in progress. A batch is ONE HTTP round trip, so anything older than this
+ * is not in flight — it is the wreckage of a run that died between claiming the
+ * occurrence and committing it, and it must be cleared or that instalment can
+ * never post again. Mirrors the credit-card autopay engine's stale-claim window.
+ */
+export const STALE_CLAIM_MS = 2 * 60 * 1000
 
 /**
  * Record one repayment as ONE ledger group:
@@ -381,7 +411,7 @@ export async function recordDebtPayment(orgId: string, userId: string, row: Debt
     split = n
     splitSource = "entered"
   } else {
-    const s = splitPayment({ total: totalCents, balance: like.owed, annualRatePct: like.annualRatePct, frequency: like.frequency })
+    const s = splitPayment({ total: totalCents, balance: like.owed, annualRatePct: like.annualRatePct, frequency: like.frequency, periodsPerYear: input.periodsPerYear })
     // A payment larger than what is owed: the excess is principal (the ledger may
     // go into credit; the UI shows an overpayment) — but interest never exceeds
     // one period's worth.
@@ -424,13 +454,18 @@ export async function recordDebtPayment(orgId: string, userId: string, row: Debt
   const legs: Leg[] = []
   const leg = (v: Omit<Leg, "id">) => legs.push({ id: crypto.randomUUID(), ...v })
 
+  // The COUNTER-ACCOUNT leg is always first, which makes it the anchor: it is
+  // the leg on the account whose cash actually moved, in the direction the user
+  // experienced. Everything that summarises "what this rule did" reads the
+  // anchor, so anchoring on the debt side made a €500 repayment received into
+  // the bank report as €6 of interest.
   if (split.principal > 0) {
     if (direction === "owed") {
       leg({ accountId: counter.id, kind: "transfer", type: "outgoing", amount: split.principal, description: `Loan payment to ${name}${suffix}`, category: "Transfer" })
       leg({ accountId: row.account.id, kind: "transfer", type: "incoming", amount: split.principal, description: `Loan payment from ${counterName}${suffix}`, category: "Transfer" })
     } else {
-      leg({ accountId: row.account.id, kind: "transfer", type: "outgoing", amount: split.principal, description: `Repayment to ${counterName}${suffix}`, category: "Transfer" })
       leg({ accountId: counter.id, kind: "transfer", type: "incoming", amount: split.principal, description: `Repayment from ${name}${suffix}`, category: "Transfer" })
+      leg({ accountId: row.account.id, kind: "transfer", type: "outgoing", amount: split.principal, description: `Repayment to ${counterName}${suffix}`, category: "Transfer" })
     }
   }
   if (split.interest > 0) {
@@ -475,15 +510,45 @@ export async function recordDebtPayment(orgId: string, userId: string, row: Debt
         : {}),
   })
 
-  // Step 1 (recurring only): claim the occurrence. An empty result means another
-  // catch-up already posted it, and NOTHING below runs.
+  // Step 1 (recurring only): claim the occurrence.
+  //
+  // An empty result means the (rule, date) pair is taken — but NOT necessarily
+  // that the payment happened. The claim is an inserted ledger row, so a run
+  // that died between claiming and committing leaves the pair taken forever and
+  // the instalment could never post again. So a conflict is diagnosed rather
+  // than trusted: a complete occurrence has an allocation row; a recent
+  // incomplete one is another run mid-batch; an old incomplete one is wreckage
+  // and is cleared so this run can take over.
   if (input.recurring) {
-    const claimed = await db
-      .insert(transactions)
-      .values(legValues(legs[0]))
-      .onConflictDoNothing({ target: [transactions.recurringRuleId, transactions.recurringDueDate] })
-      .returning({ id: transactions.id })
-    if (claimed.length === 0) return { ok: true, payment: null, skipped: true }
+    const claim = async () =>
+      db
+        .insert(transactions)
+        .values(legValues(legs[0]))
+        .onConflictDoNothing({ target: [transactions.recurringRuleId, transactions.recurringDueDate] })
+        .returning({ id: transactions.id })
+
+    let claimed = await claim()
+    if (claimed.length === 0) {
+      const [held] = await db
+        .select({ id: transactions.id, createdAt: transactions.createdAt })
+        .from(transactions)
+        .where(and(eq(transactions.recurringRuleId, input.recurring.ruleId), eq(transactions.recurringDueDate, input.recurring.dueDate)))
+      // Gone between the conflict and this read: the other run rolled its own
+      // claim back, so try once more before giving up.
+      if (!held) {
+        claimed = await claim()
+        if (claimed.length === 0) return { ok: true, payment: null, skipped: "inflight" }
+      } else {
+        const [allocation] = await db.select({ id: debtPayments.id }).from(debtPayments).where(eq(debtPayments.transactionId, held.id))
+        if (allocation) return { ok: true, payment: null, skipped: "posted" }
+        const ageMs = Date.now() - new Date(held.createdAt ?? Date.now()).getTime()
+        if (ageMs < STALE_CLAIM_MS) return { ok: true, payment: null, skipped: "inflight" }
+        // Wreckage: a leg with no payment behind it. Clear it and take over.
+        await db.delete(transactions).where(eq(transactions.id, held.id))
+        claimed = await claim()
+        if (claimed.length === 0) return { ok: true, payment: null, skipped: "inflight" }
+      }
+    }
   }
 
   const paymentId = crypto.randomUUID()
@@ -539,11 +604,32 @@ export async function recordDebtPayment(orgId: string, userId: string, row: Debt
     )
   }
 
-  const results = (await dbBatch(batch as unknown as Parameters<typeof dbBatch>[0])) as unknown as unknown[]
+  let results: unknown[]
+  try {
+    results = (await dbBatch(batch as unknown as Parameters<typeof dbBatch>[0])) as unknown as unknown[]
+  } catch (err) {
+    // The claim is already committed and the batch is not. Take the claim back
+    // out, or the occurrence is wedged until the stale window passes — and the
+    // orphan leg would sit on the paying account as an outgoing transfer that
+    // never moved any money.
+    if (input.recurring) await db.delete(transactions).where(eq(transactions.id, legs[0].id)).catch(() => {})
+    throw err
+  }
   const payment = (results[rest.length + shifts.size] as PaymentRow[])[0]
 
   for (const l of legs) await logAudit({ orgId, entityType: "transaction", entityId: l.id, action: "create", actorId: userId })
   await logAudit({ orgId, entityType: "wealth_account", entityId: row.account.id, action: "update", actorId: userId, changes: { debt_payment: { from: null, to: fromCents(split.total) } } })
+
+  // Interest and fees are ordinary spending in an ordinary category, so they can
+  // breach a budget exactly like any other expense — and a €400 interest line
+  // the user never typed is precisely the kind they would want to hear about.
+  // Principal is a transfer and is correctly invisible to this. Off the response
+  // path, so alerting can never fail a payment that already committed.
+  for (const l of legs) {
+    if (l.kind === "standard" && l.type === "outgoing") {
+      void notifyIfBudgetExceeded(orgId, clientId, userId, { category: l.category, date: input.date }).catch(() => {})
+    }
+  }
   return { ok: true, payment }
 }
 
@@ -692,10 +778,31 @@ export async function buildDebtActivity(debtAccountId: string, direction: DebtDi
     .where(and(eq(transactions.wealthAccountId, debtAccountId), isNull(transactions.deletedAt)))
     .orderBy(desc(transactions.date), desc(transactions.createdAt))
     .limit(limit)
-  if (own.length === 0) return []
 
-  const groupIds = [...new Set(own.map((r) => r.groupId).filter((g): g is string => !!g))]
-  const soloIds = own.filter((r) => !r.groupId).map((r) => r.id)
+  // An INTEREST-ONLY payment writes nothing on the debt account — there is no
+  // principal to transfer — so it would be missing from a list built only from
+  // the debt's own legs, even though the user paid real money against this
+  // debt. The allocation rows know about it, so they are a second way in.
+  const allocationGroups = await db
+    .select({ groupId: debtPayments.groupId, transactionId: debtPayments.transactionId })
+    .from(debtPayments)
+    .innerJoin(transactions, eq(transactions.id, debtPayments.transactionId))
+    .where(and(eq(debtPayments.wealthAccountId, debtAccountId), isNull(transactions.deletedAt)))
+    .orderBy(desc(debtPayments.date))
+    .limit(limit)
+  if (own.length === 0 && allocationGroups.length === 0) return []
+
+  const groupIds = [
+    ...new Set(
+      [...own.map((r) => r.groupId), ...allocationGroups.map((r) => r.groupId)].filter((g): g is string => !!g),
+    ),
+  ]
+  const soloIds = [
+    ...new Set([
+      ...own.filter((r) => !r.groupId).map((r) => r.id),
+      ...allocationGroups.filter((r) => !r.groupId).map((r) => r.transactionId),
+    ]),
+  ]
 
   // Both the debt's own legs and their siblings on the paying account — the
   // interest and fee legs never touch the debt account, so a query scoped to it
@@ -746,16 +853,22 @@ export async function buildDebtActivity(debtAccountId: string, direction: DebtDi
 
   const rows: DebtActivityRow[] = []
   for (const [key, bucket] of buckets) {
-    const debtLeg = bucket.legs.find((l) => l.accountId === debtAccountId)
+    // An interest-only payment has no leg on the debt account at all; its
+    // allocation row is what makes it part of this debt's story, and the
+    // anchor leg (on the paying account) carries its date and description.
+    const allocation = byGroup.get(key) ?? bucket.legs.map((l) => byTx.get(l.id)).find(Boolean) ?? null
+    const debtLeg = bucket.legs.find((l) => l.accountId === debtAccountId) ?? (allocation ? bucket.legs.find((l) => l.id === allocation.transactionId) ?? bucket.legs[0] : null)
     if (!debtLeg) continue
+    const onDebt = debtLeg.accountId === debtAccountId
     const counter = bucket.legs.find((l) => l.accountId !== debtAccountId) ?? null
-    const allocation = byGroup.get(key) ?? byTx.get(debtLeg.id) ?? null
 
     // Effect on what is owed. A loan's debt shrinks on an INCOMING leg (money
     // arriving at the liability account pays it down); a receivable's claim
     // shrinks on an OUTGOING one.
-    const reduces = direction === "owed" ? debtLeg.type === "incoming" : debtLeg.type === "outgoing"
-    const magnitude = num(debtLeg.amount)
+    // Nothing on the debt account means nothing came off the debt: the payment
+    // was all interest. It still belongs here, it just moved no principal.
+    const reduces = !onDebt || (direction === "owed" ? debtLeg.type === "incoming" : debtLeg.type === "outgoing")
+    const magnitude = onDebt ? num(debtLeg.amount) : 0
     const principal = allocation ? num(allocation.principal) : magnitude
     const signedPrincipal = reduces ? principal : -principal
 
@@ -769,7 +882,8 @@ export async function buildDebtActivity(debtAccountId: string, direction: DebtDi
     const other = allocation ? num(allocation.other) : 0
 
     let kind: DebtActivityKind = "other"
-    if (debtLeg.isSystem) kind = /adjust/i.test(debtLeg.category ?? "") ? "adjustment" : "opening"
+    if (allocation && !onDebt) kind = "payment"
+    else if (debtLeg.isSystem) kind = /adjust/i.test(debtLeg.category ?? "") ? "adjustment" : "opening"
     else if (debtLeg.kind === "transfer") kind = reduces ? "payment" : "borrow"
 
     rows.push({

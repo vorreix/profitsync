@@ -463,7 +463,8 @@
     "cardViaNoTail": "கார்டு மூலம்",
     "cardAutopayBadge": "ஆட்டோ பே",
     "nCards_one": "{{count}} கார்டு",
-    "nCards_other": "{{count}} கார்டுகள்"
+    "nCards_other": "{{count}} கார்டுகள்",
+    "editOnItsOwnPage": "இது ஒரே கட்டணத்தின் பகுதி — மாற்ற, அது பதிவான இடத்தில் திறக்கவும்."
   },
   "clients": {
     "pageTitle": "வாடிக்கையாளர்கள்",
@@ -2358,7 +2359,8 @@
     "sideLeft": "இடது விளிம்பு",
     "sideRight": "வலது விளிம்பு",
     "handleDragHint": "தேட கைப்பிடியைத் தட்டவும் அல்லது உள்நோக்கி ஸ்வைப் செய்யவும். விளிம்பில் மேலே அல்லது கீழே இழுத்து விரும்பிய இடத்தில் வைக்கவும்.",
-    "cards": "கார்டுகள்"
+    "cards": "கார்டுகள்",
+    "debts": "கடன்கள்"
   },
   "aiVoice": {
     "openLabel": "AI குரல் உதவியாளர்",
@@ -2681,19 +2683,12 @@
     "addReceivable": "Someone owes me",
     "iOwe": "I owe",
     "owedToMe": "Owed to me",
-    "quickSetup": "Quick",
-    "detailedSetup": "Detailed",
     "whoDoYouOwe": "Who do you owe?",
     "whoOwesYou": "Who owes you?",
     "counterpartyPlaceholder": "Bank, shop or a person — e.g. Intesa, Marco",
-    "debtName": "Name (optional)",
-    "debtNamePlaceholder": "e.g. Car loan",
     "howMuchLeft": "How much is left?",
     "howMuchOwed": "How much do they owe you?",
     "balanceIsEstimate": "This is an estimate",
-    "currency": "Currency",
-    "whatDoYouPay": "What do you normally pay?",
-    "whatDoTheyPay": "What do they normally pay you?",
     "perFrequency": "every",
     "frequency": {
       "weekly": "week",
@@ -2711,17 +2706,12 @@
       "yearly": "Yearly",
       "irregular": "Irregular"
     },
-    "nextPaymentDate": "When is the next payment?",
     "interestRate": "Interest rate (% per year)",
-    "interestRateOptional": "Interest rate — leave empty if none or unknown",
     "rateType": {
       "fixed": "Fixed",
       "variable": "Variable"
     },
     "originalAmount": "Original amount",
-    "startDate": "Start date",
-    "maturityDate": "Final payment date",
-    "remainingInstallments": "Remaining instalments",
     "notes": "Notes",
     "kind": "Type",
     "kinds": {
@@ -2735,10 +2725,8 @@
       "informal": "Friend or family",
       "other": "Other"
     },
-    "receiveMoneyNow": "I'm receiving the money now",
     "receiveMoneyInto": "Into which account?",
     "receiveMoneyHint": "Records the borrowed money arriving in your account. It is never counted as income.",
-    "lendMoneyNow": "I'm giving the money now",
     "lendMoneyFrom": "From which account?",
     "create": "Add",
     "saveChanges": "Save changes",
@@ -2796,8 +2784,6 @@
     "paymentDeleted": "Payment moved to Trash",
     "deletePaymentTitle": "Remove this payment?",
     "deletePaymentDesc": "The bank movement, the principal reduction and any interest or fee expenses are all reversed together. You can restore it from Trash.",
-    "paymentHistory": "Payment history",
-    "noPaymentsYet": "No payments recorded yet",
     "schedule": "Schedule",
     "scheduleHint": "Based on the balance, payment and rate entered.",
     "scheduleDoesNotConverge": "At this payment the balance never reaches zero — the payment does not cover the interest.",
@@ -2983,6 +2969,36 @@
     "paymentDay": "கட்டண நாள்",
     "paymentDayHint": "இந்த நாளையே சுழற்சி பின்பற்றும். மாதத்தின் எந்த நாளில் கட்டணம் செல்ல வேண்டும் என்பதை மாற்ற இதை மாற்றுங்கள்.",
     "auto": "தானியங்கி",
-    "rateNoneHelp": "வட்டி இல்லை என்றாலோ, தெரியவில்லை என்றாலோ இதைக் காலியாக விடுங்கள்."
+    "rateNoneHelp": "வட்டி இல்லை என்றாலோ, தெரியவில்லை என்றாலோ இதைக் காலியாக விடுங்கள்.",
+    "previewTitle": "இது இப்படி இருக்கும்",
+    "previewNote": "நீங்கள் உள்ளிட்டதிலிருந்து ஒரு மதிப்பீடு. சேர்க்கும் வரை எதுவும் சேமிக்கப்படாது.",
+    "previewPaidOffBy": "முழுவதும் அடைபடும்",
+    "previewRepaidToYouBy": "உங்களுக்குத் திரும்பக் கிடைக்கும்",
+    "previewPayments": "கட்டணங்கள்",
+    "previewPaymentsValue": "{{count}} × {{amount}}",
+    "previewInterest": "வட்டி",
+    "previewTotalOut": "நீங்கள் மொத்தம் செலுத்துவது",
+    "previewTotalIn": "அவர்கள் மொத்தம் செலுத்துவது",
+    "previewFinal": "கடைசியது {{amount}}.",
+    "previewAssumedZero": "0 % எனக் கொள்கிறது — துல்லியமான எண்ணுக்கு விகிதத்தை உள்ளிடவும்.",
+    "previewManualOut": "{{amount}} மீதம், கையால் பதிவு.",
+    "previewManualIn": "{{amount}} உங்களுக்குக் கிடைக்க வேண்டும், கையால் பதிவு.",
+    "previewRepaidPct": "இதுவரை {{pct}} % அடைக்கப்பட்டது.",
+    "previewManualHint": "எப்போது முடியும், எவ்வளவு செலவாகும் என்பதைக் காண வழக்கமான திருப்பிச் செலுத்தலை அமைக்கவும்.",
+    "previewNever": "ஒவ்வொரு {{frequency}} {{amount}} வட்டியைக்கூட ஈடுசெய்யாது, எனவே நிலுவை கூடவே செய்யும்.",
+    "previewNeverMin": "குறையத் தொடங்க குறைந்தது {{amount}} தேவை.",
+    "previewTooLong": "இந்த வேகத்தில் {{years}} ஆண்டுகளுக்கும் மேல் ஆகும். அதிகத் தொகையை முயற்சிக்கவும்.",
+    "previewArrives": "இதைச் சேர்க்கும்போது {{amount}} {{account}} இல் வந்து சேரும்.",
+    "previewLeaves": "இதைச் சேர்க்கும்போது {{amount}} {{account}} இலிருந்து செல்லும்.",
+    "moneyArrivedTitle": "இந்தப் பணம் ஏதேனும் கணக்கில் வந்ததா?",
+    "givingMoneyNow": "இப்போது பணத்தைக் கொடுக்கிறீர்களா?",
+    "amountArriving": "வரும் தொகை",
+    "amountGiving": "நீங்கள் கொடுக்கும் தொகை",
+    "arrivingHint": "முழுவதும் அந்தக் கணக்கில் வந்து சேரும்.",
+    "arrivingPartial": "மீதி {{amount}} ஏற்கனவே கடனாகப் பதிவு செய்யப்படும்.",
+    "arrivingAccountRequired": "பணம் வந்து சேரும் கணக்கைத் தேர்வு செய்யவும்",
+    "arrivingRequired": "அந்தக் கணக்கில் எவ்வளவு வருகிறது என்று உள்ளிடவும்",
+    "arrivingTooMuch": "இது கடனையே விட அதிகம்",
+    "customRhythmHint": "இந்தத் திருப்பிச் செலுத்தலின் சுழற்சி அதன் சொந்தப் பக்கத்தில் அமைக்கப்படுகிறது."
   }
 }

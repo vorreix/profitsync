@@ -3,6 +3,7 @@ import { and, eq, max, sql } from "drizzle-orm"
 import { db, dbBatch } from "../../src/lib/db/index.js"
 import { debtDetails, organizations, recurringRules, transactions, wealthAccounts } from "../../src/lib/db/schema.js"
 import { canWrite, ensureDefaultClient, requireAuth } from "../_lib/auth.js"
+import { checkTransactionQuota } from "../_lib/quota.js"
 import { logAudit } from "../_lib/audit.js"
 import { resolveLogoColumns } from "../_lib/bank-brand.js"
 import { buildDebtsOverview, loadDebt, loadDebtRules, serializeDebt } from "../_lib/debts.js"
@@ -128,9 +129,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       payFrom = acc
     }
 
-    // Optional: the borrowed money is being received now, into this account.
+    // Optional: some or all of the money is landing in a real account right now.
+    //
+    // PARTIAL is the normal case, not an edge case. You borrow 10,000 for a car,
+    // 6,000 reaches your account and the dealer is paid the rest directly; you
+    // owe 10,000 either way. So the amount received is recorded as a TRANSFER
+    // (bank +6,000, debt −6,000) and the remainder as a system Opening Balance
+    // on the debt (−4,000). The two always add up to what is owed, and nothing
+    // is ever counted as income.
     const disbursementAccountId = typeof b.disbursement_account_id === "string" ? b.disbursement_account_id : null
     let disbursement: typeof wealthAccounts.$inferSelect | null = null
+    let received = 0
     if (disbursementAccountId) {
       const [acc] = await db
         .select()
@@ -139,8 +148,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!acc || acc.archivedAt || acc.type === "space" || acc.type === "loan" || acc.type === "receivable") {
         return res.status(400).json({ error: "Choose an active bank or cash account to receive the money" })
       }
+      const asked = num(b.disbursement_amount)
+      if (asked !== null && Number.isNaN(asked)) return res.status(400).json({ error: "disbursement_amount is invalid" })
+      received = Math.round((asked ?? balance) * 100) / 100
+      if (received <= 0) return res.status(400).json({ error: "The amount arriving must be more than 0" })
+      if (received > balance) return res.status(400).json({ error: "The amount arriving cannot be more than the debt itself" })
       disbursement = acc
     }
+    // What the ledger has no movement for: the part that was already owed before
+    // this workspace ever saw it.
+    const openingPart = Math.round((balance - received) * 100) / 100
 
     const type = direction === "receivable" ? "receivable" : "loan"
     const signed = direction === "receivable" ? balance : -balance
@@ -149,6 +166,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const logo = brandDomain || logoUrl ? await resolveLogoColumns(brandDomain, logoUrl) : null
     const [{ maxPos }] = await db.select({ maxPos: max(wealthAccounts.position) }).from(wealthAccounts).where(eq(wealthAccounts.organizationId, orgId))
     const clientId = balance > 0 ? await ensureDefaultClient(orgId, userId) : null
+    // The disbursement legs are ordinary, non-system transactions on the anchor
+    // client, so they count against the free plan exactly like any other. Every
+    // other create path checks this; skipping it here let a workspace drift
+    // past its limit, and then the repayment rule could never post.
+    if (clientId && disbursement && received > 0) {
+      const quota = await checkTransactionQuota(orgId, clientId)
+      if (!quota.allowed) return res.status(403).json(quota)
+    }
 
     // Everything below lands in ONE batch. The ids are generated here rather
     // than by the database precisely so that can be true: neon-http has no
@@ -167,9 +192,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         type,
         bankName: counterparty || name,
         nickname: name,
-        // With a disbursement the TRANSFER is the single source of the figure,
-        // so the account opens at zero and the legs below define the balance.
-        openingBalance: disbursement ? "0" : signed.toFixed(2),
+        // Only the part with no ledger movement behind it is an opening balance;
+        // whatever arrives is defined by the transfer legs below.
+        openingBalance: (direction === "receivable" ? openingPart : -openingPart).toFixed(2),
         currentBalance: signed.toFixed(2),
         icon: typeof b.icon === "string" && b.icon ? b.icon : direction === "receivable" ? "custom" : "bank",
         brandDomain,
@@ -201,7 +226,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const legIds: string[] = []
     if (balance > 0 && clientId) {
-      if (disbursement) {
+      if (openingPart > 0) {
+        // Already owed before today: a balance-defining system row (not income,
+        // not expense). With a partial disbursement this is only the remainder.
+        const id = crypto.randomUUID()
+        legIds.push(id)
+        batch.push(
+          db.insert(transactions).values({
+            id, clientId, wealthAccountId: accountId, type: direction === "owed" ? "outgoing" : "incoming",
+            amount: openingPart.toFixed(2), description: "Opening Balance", category: "Opening Balance", date: today,
+            isSystem: true, createdBy: userId, updatedBy: userId,
+          }),
+        )
+      }
+      if (disbursement && received > 0) {
         // Borrowing: a TRANSFER debt → bank (bank +X, debt −X, income 0).
         const groupId = crypto.randomUUID()
         const legs = direction === "owed"
@@ -219,30 +257,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           batch.push(
             db.insert(transactions).values({
               id, clientId, wealthAccountId: leg.accountId, groupId, kind: "transfer", type: leg.type,
-              amount: balance.toFixed(2), description: leg.description, category: "Transfer", date: startDate ?? today,
+              amount: received.toFixed(2), description: leg.description, category: "Transfer", date: startDate ?? today,
               createdBy: userId, updatedBy: userId,
             }),
           )
         }
         // Only the OTHER account needs moving: the debt account was inserted at
         // its post-transfer balance already.
-        const delta = direction === "owed" ? balance : -balance
+        const delta = direction === "owed" ? received : -received
         batch.push(
           db
             .update(wealthAccounts)
             .set({ currentBalance: sql`${wealthAccounts.currentBalance}::numeric + ${delta.toFixed(2)}::numeric`, updatedBy: userId, updatedAt: now })
             .where(eq(wealthAccounts.id, disbursement.id)),
-        )
-      } else {
-        // Amount already owed: a balance-defining system row (not income, not expense).
-        const id = crypto.randomUUID()
-        legIds.push(id)
-        batch.push(
-          db.insert(transactions).values({
-            id, clientId, wealthAccountId: accountId, type: direction === "owed" ? "outgoing" : "incoming",
-            amount: balance.toFixed(2), description: "Opening Balance", category: "Opening Balance", date: today,
-            isSystem: true, createdBy: userId, updatedBy: userId,
-          }),
         )
       }
     }

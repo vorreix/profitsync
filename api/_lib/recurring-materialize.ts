@@ -96,6 +96,11 @@ export async function materializeDueRecurring(orgId: string): Promise<Materializ
               dedupeKey: `debt_payment:${rule.id}:${cursor}`,
             }).catch(() => {})
           }
+          // Another materializer owns the rest of this catch-up. Whatever this
+          // run posted stands and has been announced, but the cursor stays put:
+          // stepping over occurrences nobody has posted loses them, and the
+          // other run may still die.
+          if (outcome.hold) continue
         }
       } else if (due.length > 0) {
         // The source/target account(s) must still be active — materializing onto

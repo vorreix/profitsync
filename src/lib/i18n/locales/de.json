@@ -463,7 +463,8 @@
     "cardViaNoTail": "über Karte",
     "cardAutopayBadge": "Autom. Zahlung",
     "nCards_one": "{{count}} Karte",
-    "nCards_other": "{{count}} Karten"
+    "nCards_other": "{{count}} Karten",
+    "editOnItsOwnPage": "Das gehört zu einer einzigen Zahlung — öffne sie dort, wo sie erfasst wurde, um sie zu ändern."
   },
   "clients": {
     "pageTitle": "Klienten",
@@ -2358,7 +2359,8 @@
     "sideLeft": "Linker Rand",
     "sideRight": "Rechter Rand",
     "handleDragHint": "Tippe auf den Griff oder wische ihn nach innen, um zu suchen. Ziehe ihn am Rand nach oben oder unten, um ihn beliebig zu platzieren.",
-    "cards": "Karten"
+    "cards": "Karten",
+    "debts": "Schulden & Kredite"
   },
   "aiVoice": {
     "openLabel": "KI-Sprachassistent",
@@ -2681,19 +2683,12 @@
     "addReceivable": "Someone owes me",
     "iOwe": "I owe",
     "owedToMe": "Owed to me",
-    "quickSetup": "Quick",
-    "detailedSetup": "Detailed",
     "whoDoYouOwe": "Who do you owe?",
     "whoOwesYou": "Who owes you?",
     "counterpartyPlaceholder": "Bank, shop or a person — e.g. Intesa, Marco",
-    "debtName": "Name (optional)",
-    "debtNamePlaceholder": "e.g. Car loan",
     "howMuchLeft": "How much is left?",
     "howMuchOwed": "How much do they owe you?",
     "balanceIsEstimate": "This is an estimate",
-    "currency": "Currency",
-    "whatDoYouPay": "What do you normally pay?",
-    "whatDoTheyPay": "What do they normally pay you?",
     "perFrequency": "every",
     "frequency": {
       "weekly": "week",
@@ -2711,17 +2706,12 @@
       "yearly": "Yearly",
       "irregular": "Irregular"
     },
-    "nextPaymentDate": "When is the next payment?",
     "interestRate": "Interest rate (% per year)",
-    "interestRateOptional": "Interest rate — leave empty if none or unknown",
     "rateType": {
       "fixed": "Fixed",
       "variable": "Variable"
     },
     "originalAmount": "Original amount",
-    "startDate": "Start date",
-    "maturityDate": "Final payment date",
-    "remainingInstallments": "Remaining instalments",
     "notes": "Notes",
     "kind": "Type",
     "kinds": {
@@ -2735,10 +2725,8 @@
       "informal": "Friend or family",
       "other": "Other"
     },
-    "receiveMoneyNow": "I'm receiving the money now",
     "receiveMoneyInto": "Into which account?",
     "receiveMoneyHint": "Records the borrowed money arriving in your account. It is never counted as income.",
-    "lendMoneyNow": "I'm giving the money now",
     "lendMoneyFrom": "From which account?",
     "create": "Add",
     "saveChanges": "Save changes",
@@ -2796,8 +2784,6 @@
     "paymentDeleted": "Payment moved to Trash",
     "deletePaymentTitle": "Remove this payment?",
     "deletePaymentDesc": "The bank movement, the principal reduction and any interest or fee expenses are all reversed together. You can restore it from Trash.",
-    "paymentHistory": "Payment history",
-    "noPaymentsYet": "No payments recorded yet",
     "schedule": "Schedule",
     "scheduleHint": "Based on the balance, payment and rate entered.",
     "scheduleDoesNotConverge": "At this payment the balance never reaches zero — the payment does not cover the interest.",
@@ -2983,6 +2969,36 @@
     "paymentDay": "Zahltag",
     "paymentDayHint": "Der Rhythmus behält diesen Tag. Ändere ihn, um den Tag im Monat zu verschieben, an dem gezahlt wird.",
     "auto": "Auto",
-    "rateNoneHelp": "Leer lassen, wenn es keinen gibt oder du ihn nicht kennst."
+    "rateNoneHelp": "Leer lassen, wenn es keinen gibt oder du ihn nicht kennst.",
+    "previewTitle": "So wird es aussehen",
+    "previewNote": "Eine Schätzung aus deinen Eingaben. Nichts wird gespeichert, bis du es hinzufügst.",
+    "previewPaidOffBy": "Abbezahlt bis",
+    "previewRepaidToYouBy": "An dich zurückgezahlt bis",
+    "previewPayments": "Zahlungen",
+    "previewPaymentsValue": "{{count}} × {{amount}}",
+    "previewInterest": "Zinsen",
+    "previewTotalOut": "Insgesamt zahlst du",
+    "previewTotalIn": "Insgesamt zahlen sie",
+    "previewFinal": "Die letzte beträgt {{amount}}.",
+    "previewAssumedZero": "Nimmt 0 % an — gib einen Zinssatz ein für eine genauere Zahl.",
+    "previewManualOut": "{{amount}} offen, von Hand erfasst.",
+    "previewManualIn": "{{amount}} schuldet man dir, von Hand erfasst.",
+    "previewRepaidPct": "{{pct}} % bereits getilgt.",
+    "previewManualHint": "Richte eine wiederkehrende Rückzahlung ein, um Ende und Kosten zu sehen.",
+    "previewNever": "{{amount}} alle {{frequency}} decken die Zinsen nicht — der Saldo könnte nur wachsen.",
+    "previewNeverMin": "Mindestens {{amount}} sind nötig, damit er sinkt.",
+    "previewTooLong": "In diesem Tempo dauert es über {{years}} Jahre. Versuch es mit einer höheren Zahlung.",
+    "previewArrives": "{{amount}} landen auf {{account}}, wenn du das hinzufügst.",
+    "previewLeaves": "{{amount}} verlassen {{account}}, wenn du das hinzufügst.",
+    "moneyArrivedTitle": "Ist dieses Geld auf einem Konto angekommen?",
+    "givingMoneyNow": "Gibst du das Geld jetzt?",
+    "amountArriving": "Ankommender Betrag",
+    "amountGiving": "Betrag, den du gibst",
+    "arrivingHint": "Alles landet auf diesem Konto.",
+    "arrivingPartial": "Die übrigen {{amount}} werden als bereits geschuldet erfasst.",
+    "arrivingAccountRequired": "Wähle das Konto, auf dem das Geld ankommt",
+    "arrivingRequired": "Gib an, wie viel auf diesem Konto ankommt",
+    "arrivingTooMuch": "Das ist mehr als die Schuld selbst",
+    "customRhythmHint": "Der Rhythmus dieser Rückzahlung wird auf ihrer eigenen Seite festgelegt."
   }
 }

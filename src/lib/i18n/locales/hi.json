@@ -463,7 +463,8 @@
     "cardViaNoTail": "कार्ड से",
     "cardAutopayBadge": "ऑटो-पे",
     "nCards_one": "{{count}} कार्ड",
-    "nCards_other": "{{count}} कार्ड"
+    "nCards_other": "{{count}} कार्ड",
+    "editOnItsOwnPage": "यह एक ही भुगतान का हिस्सा है — बदलने के लिए इसे वहीं खोलें जहाँ यह दर्ज हुआ था।"
   },
   "clients": {
     "pageTitle": "ग्राहक",
@@ -2358,7 +2359,8 @@
     "sideLeft": "बायाँ किनारा",
     "sideRight": "दायाँ किनारा",
     "handleDragHint": "खोजने के लिए हैंडल को टैप करें या अंदर की ओर स्वाइप करें। इसे किनारे पर ऊपर या नीचे खींचकर जहाँ चाहें रखें।",
-    "cards": "कार्ड"
+    "cards": "कार्ड",
+    "debts": "कर्ज़ और ऋण"
   },
   "aiVoice": {
     "openLabel": "AI वॉइस असिस्टेंट",
@@ -2681,19 +2683,12 @@
     "addReceivable": "Someone owes me",
     "iOwe": "I owe",
     "owedToMe": "Owed to me",
-    "quickSetup": "Quick",
-    "detailedSetup": "Detailed",
     "whoDoYouOwe": "Who do you owe?",
     "whoOwesYou": "Who owes you?",
     "counterpartyPlaceholder": "Bank, shop or a person — e.g. Intesa, Marco",
-    "debtName": "Name (optional)",
-    "debtNamePlaceholder": "e.g. Car loan",
     "howMuchLeft": "How much is left?",
     "howMuchOwed": "How much do they owe you?",
     "balanceIsEstimate": "This is an estimate",
-    "currency": "Currency",
-    "whatDoYouPay": "What do you normally pay?",
-    "whatDoTheyPay": "What do they normally pay you?",
     "perFrequency": "every",
     "frequency": {
       "weekly": "week",
@@ -2711,17 +2706,12 @@
       "yearly": "Yearly",
       "irregular": "Irregular"
     },
-    "nextPaymentDate": "When is the next payment?",
     "interestRate": "Interest rate (% per year)",
-    "interestRateOptional": "Interest rate — leave empty if none or unknown",
     "rateType": {
       "fixed": "Fixed",
       "variable": "Variable"
     },
     "originalAmount": "Original amount",
-    "startDate": "Start date",
-    "maturityDate": "Final payment date",
-    "remainingInstallments": "Remaining instalments",
     "notes": "Notes",
     "kind": "Type",
     "kinds": {
@@ -2735,10 +2725,8 @@
       "informal": "Friend or family",
       "other": "Other"
     },
-    "receiveMoneyNow": "I'm receiving the money now",
     "receiveMoneyInto": "Into which account?",
     "receiveMoneyHint": "Records the borrowed money arriving in your account. It is never counted as income.",
-    "lendMoneyNow": "I'm giving the money now",
     "lendMoneyFrom": "From which account?",
     "create": "Add",
     "saveChanges": "Save changes",
@@ -2796,8 +2784,6 @@
     "paymentDeleted": "Payment moved to Trash",
     "deletePaymentTitle": "Remove this payment?",
     "deletePaymentDesc": "The bank movement, the principal reduction and any interest or fee expenses are all reversed together. You can restore it from Trash.",
-    "paymentHistory": "Payment history",
-    "noPaymentsYet": "No payments recorded yet",
     "schedule": "Schedule",
     "scheduleHint": "Based on the balance, payment and rate entered.",
     "scheduleDoesNotConverge": "At this payment the balance never reaches zero — the payment does not cover the interest.",
@@ -2983,6 +2969,36 @@
     "paymentDay": "भुगतान का दिन",
     "paymentDayHint": "चक्र यही दिन रखता है। महीने का कौन-सा दिन भुगतान होगा, यह बदलने के लिए इसे बदलें।",
     "auto": "स्वतः",
-    "rateNoneHelp": "अगर कोई ब्याज नहीं है, या पता नहीं है, तो इसे खाली छोड़ दें।"
+    "rateNoneHelp": "अगर कोई ब्याज नहीं है, या पता नहीं है, तो इसे खाली छोड़ दें।",
+    "previewTitle": "यह ऐसा दिखेगा",
+    "previewNote": "आपने जो भरा है उसी से एक अनुमान। जब तक आप जोड़ते नहीं, कुछ भी सहेजा नहीं जाता।",
+    "previewPaidOffBy": "पूरा चुकता",
+    "previewRepaidToYouBy": "आपको वापस मिलेगा",
+    "previewPayments": "भुगतान",
+    "previewPaymentsValue": "{{count}} × {{amount}}",
+    "previewInterest": "ब्याज",
+    "previewTotalOut": "कुल जो आप देंगे",
+    "previewTotalIn": "कुल जो वे देंगे",
+    "previewFinal": "आखिरी भुगतान {{amount}} है।",
+    "previewAssumedZero": "0 % मानकर चला गया है — सही आंकड़े के लिए दर भरें।",
+    "previewManualOut": "{{amount}} बाकी, हाथ से दर्ज।",
+    "previewManualIn": "{{amount}} आपको मिलने हैं, हाथ से दर्ज।",
+    "previewRepaidPct": "{{pct}} % अब तक चुका।",
+    "previewManualHint": "कब खत्म होगा और कितना लगेगा, यह देखने के लिए नियमित चुकौती सेट करें।",
+    "previewNever": "हर {{frequency}} {{amount}} ब्याज तक नहीं पहुंचता, इसलिए बकाया सिर्फ बढ़ेगा।",
+    "previewNeverMin": "घटना शुरू होने के लिए कम से कम {{amount}} चाहिए।",
+    "previewTooLong": "इस गति से {{years}} साल से भी ज़्यादा लगेंगे। बड़ा भुगतान आज़माएँ।",
+    "previewArrives": "जोड़ते ही {{amount}} {{account}} में आ जाएंगे।",
+    "previewLeaves": "जोड़ते ही {{amount}} {{account}} से चले जाएंगे।",
+    "moneyArrivedTitle": "क्या यह पैसा किसी खाते में आया?",
+    "givingMoneyNow": "क्या आप अभी पैसा दे रहे हैं?",
+    "amountArriving": "आने वाली राशि",
+    "amountGiving": "आप जितना दे रहे हैं",
+    "arrivingHint": "पूरा पैसा उसी खाते में आता है।",
+    "arrivingPartial": "बाकी {{amount}} पहले से बकाया के रूप में दर्ज होंगे।",
+    "arrivingAccountRequired": "वह खाता चुनें जिसमें पैसा आता है",
+    "arrivingRequired": "उस खाते में कितना आता है, यह भरें",
+    "arrivingTooMuch": "यह कर्ज़ से भी ज़्यादा है",
+    "customRhythmHint": "इस चुकौती का चक्र उसके अपने पेज पर तय होता है।"
   }
 }

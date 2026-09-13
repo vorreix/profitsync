@@ -57,7 +57,7 @@ const incomeOf = (rows: TxRow[]) => rows.reduce((s, t) => (!t.is_system && t.kin
 const cashRows = async (page: Page) => (await api<{ data: TxRow[] }>(page, "GET", `/api/transactions?wealthAccountId=${(await accounts(page)).find((a) => a.type === "cash")!.id}&page=1`)).json.data
 const rowsOf = async (page: Page, accountId: string) => (await api<{ data: TxRow[] }>(page, "GET", `/api/transactions?wealthAccountId=${accountId}&page=1`)).json.data
 
-const NAMES = { loan: `${E2E_PREFIX}-loan`, marco: `${E2E_PREFIX}-marco`, luca: `${E2E_PREFIX}-luca`, auto: `${E2E_PREFIX}-auto` }
+const NAMES = { loan: `${E2E_PREFIX}-loan`, marco: `${E2E_PREFIX}-marco`, luca: `${E2E_PREFIX}-luca`, auto: `${E2E_PREFIX}-auto`, partial: `${E2E_PREFIX}-partial` }
 
 async function cleanup(page: Page) {
   const o = await overview(page)
@@ -227,6 +227,51 @@ test.describe.serial("Debt & Loans", () => {
     await expect(page.getByRole("table")).toBeVisible()
     await page.getByRole("tab", { name: /upcoming/i }).click()
     await expect(page.getByText(new RegExp(NAMES.loan)).first()).toBeVisible()
+  })
+
+  test("a partial disbursement adds up: what arrives is a transfer, the rest is an opening balance", async ({ page }) => {
+    await page.goto("/debts"); await expectAppShell(page)
+    const cash = (await accounts(page)).find((a) => a.type === "cash")!
+    const cashBefore = Number(cash.current_balance)
+    const incomeBefore = incomeOf(await cashRows(page))
+
+    // Borrow 1,000; only 600 reaches the account. You owe 1,000 either way.
+    const created = await api<{ id: string }>(page, "POST", "/api/debts", {
+      direction: "owed", name: NAMES.partial, current_balance: 1000, original_amount: 1000,
+      disbursement_account_id: cash.id, disbursement_amount: 600,
+    })
+    expect(created.status).toBe(201)
+    const id = created.json.id
+
+    type Detail = { debt: Debt; activity: { kind: string; principal: number }[] }
+    const d = (await api<Detail>(page, "GET", `/api/debts/${id}`)).json
+    expect(d.debt.balance).toBe(1000)
+    expect(await cashOf(page)).toBeCloseTo(cashBefore + 600, 2)
+    expect(incomeOf(await cashRows(page))).toBe(incomeBefore) // still never income
+
+    // Two events, and they account for the whole debt: 600 borrowed, 400 already owed.
+    const borrow = d.activity.find((a) => a.kind === "borrow")!
+    const opening = d.activity.find((a) => a.kind === "opening")!
+    expect(borrow.principal).toBe(-600)
+    expect(opening.principal).toBe(-400)
+    expect(d.activity.reduce((s, a) => s + a.principal, 0)).toBe(-1000)
+
+    // More arriving than the debt itself is refused.
+    const tooMuch = await api(page, "POST", "/api/debts", {
+      direction: "owed", name: `${NAMES.partial}-bad`, current_balance: 100,
+      disbursement_account_id: cash.id, disbursement_amount: 500,
+    })
+    expect(tooMuch.status).toBe(400)
+  })
+
+  test("global search finds a debt in its own group, never as a bank account", async ({ page }) => {
+    await page.goto("/debts"); await expectAppShell(page)
+    type Results = { accounts: { id: string; type: string }[]; debts: { id: string; name: string; direction: string }[] }
+    const res = await api<Results>(page, "GET", `/api/search?q=${encodeURIComponent(NAMES.loan)}`)
+    expect(res.status).toBe(200)
+    expect(res.json.debts.some((d) => d.id === loanId)).toBe(true)
+    // …and it must NOT leak into the accounts group, which links to /wealth/:id.
+    expect(res.json.accounts.some((a) => a.id === loanId)).toBe(false)
   })
 
   test("a recurring repayment posts itself: principal is a transfer, interest is the only expense, and it stops when the debt does", async ({ page }) => {
