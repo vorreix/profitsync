@@ -1,6 +1,18 @@
 # Multi-currency implementation status
 
-Last updated: 2026-09-09
+Last updated: 2026-09-14
+
+## Merged with dev (2026-09-14): Debts & Loans, account colours
+
+`origin/dev` (v0.14.x — Debts & Loans, recurring↔debt link, dashboard summary cards, account colours, the 470-key i18n backfill) is merged in. What the merge had to decide:
+
+- **Migration order.** dev renumbered cards/budgets to 0059–0065, added debts as 0066–0068 and reserved 0069–0074 for this branch (its colour migration is 0075). Production's watermark is 0068 (`when` 1789303202014) and this branch's 0069–0074 were stamped *below* it (1788980400xxx), so they would have been **skipped silently** on deploy. Their `when` values were raised to 1789303202114…614 — between 0068 and 0075 — which is safe because no production database has run them; the shared dev DB's watermark is above them, so it skips them as already applied. The reservation in `scripts/check-migrations.mjs` is removed.
+- **0071 backfill excludes debt groups.** A debt repayment is one group of two principal transfer legs plus interest/fee legs, owned by the debt engine. The original backfill would have given its principal legs a transfer header in production (where debts exist before 0071 runs), letting a transfer-level trash split a repayment from its interest. Groups with any non-transfer leg or a loan/receivable leg are now skipped; 0076 repairs any database that already tagged one.
+- **0076_debt_account_currency.** `wealth_accounts.currency_code` of a debt account follows `debt_details.currency`, and so do the rows on it; untagged rows and rules written by pre-merge debt code take their account's currency. Applied to the shared dev DB (2 accounts, 4 + 21 rows, 5 rules relabelled; no amounts touched).
+- **Debt writers snapshot currency** (create, disbursement, opening balance, reconcile adjustment, repayment rule, `recordDebtPayment`). A debt is repaid/disbursed only from an account in **its own currency** — principal is one amount on both legs — refused as `currency_mismatch` in the engine, `POST /api/debts`, the repayment editor, `/api/recurring` create/edit and the link predicate (`src/lib/debt-recurring.ts linkRefusal`, mirrored in the pickers). A debt's currency is `currency_locked` once it has non-system rows or a rule.
+- **Recurring rule edits** now re-snapshot `currency_code` from the (possibly new) account.
+- **Wealth summary** splits `liabilities` into `card_liabilities`, `debts_owed`, `debts_receivable`. Loans are no longer "owed on cards"; receivables count in assets and net worth but never in available/liquid.
+- **Dashboard cards from dev**: the Wealth card shows reporting-currency figures and the excluded-currency note; the Spaces card never adds currencies raw (converted when complete, otherwise per currency); the Recurring card shows per-month totals per currency.
 
 ## Completed this pass: money-writing and completed transfers
 
