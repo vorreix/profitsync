@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test"
-import { dismissBanners, E2E_PREFIX, expectAppShell } from "./helpers"
+import { dismissBanners, E2E_PREFIX, expectAppShell, switchWorkspace, type E2eApi } from "./helpers"
 
 /**
  * The core business flows, in dependency order (serial — see playwright.config):
@@ -11,7 +11,37 @@ import { dismissBanners, E2E_PREFIX, expectAppShell } from "./helpers"
 const CLIENT_NAME = `${E2E_PREFIX} client`
 const TX_DESC = `${E2E_PREFIX} payment`
 
+const api: E2eApi = async (page, method, path, body) => {
+  await page.waitForFunction(() => { const c = (window as unknown as { Clerk?: { loaded?: boolean; session?: unknown } }).Clerk; return !!c?.loaded && !!c.session }, null, { timeout: 30_000 })
+  return page.evaluate(async ({ method, path, body }) => {
+    const Clerk = (window as unknown as { Clerk: { session?: { getToken: () => Promise<string | null> } } }).Clerk
+    const token = await Clerk.session?.getToken()
+    const res = await fetch(path, { method, headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) })
+    const text = await res.text()
+    let json: unknown = null
+    try { json = text ? JSON.parse(text) : null } catch { json = text }
+    return { status: res.status, json: json as never }
+  }, { method, path, body })
+}
+
 test.describe.serial("core flows", () => {
+  // Clients and quotations are BUSINESS-only, so this suite needs a business
+  // workspace — and the active one is shared server state that an earlier spec
+  // may have moved. Stating the requirement here beats inheriting whatever the
+  // file before it happened to leave behind: that is how "create a client" came
+  // to click its button, land back on the dashboard, and wait for a dialog that
+  // could never appear.
+  test.beforeAll(async ({ browser }) => {
+    const page = await (await browser.newContext({ storageState: "e2e/.auth/user.json" })).newPage()
+    try {
+      await page.goto("/dashboard")
+      await expectAppShell(page)
+      await switchWorkspace(page, api, "business")
+    } finally {
+      await page.context().close()
+    }
+  })
+
   test("dashboard boots with the app shell and KPI cards", async ({ page }) => {
     await page.goto("/dashboard")
     await expectAppShell(page)
