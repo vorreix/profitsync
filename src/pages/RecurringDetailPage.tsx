@@ -35,11 +35,12 @@ import { AttachmentBadge } from "@/components/AttachmentBadge"
 import { TransactionDetailModal } from "@/components/TransactionDetailModal"
 import { AccountQuickAddSheet } from "@/components/wealth/AccountQuickAddSheet"
 import { RecurringRuleDialog, DeleteRecurringDialog, type RuleForm } from "@/components/recurring/RecurringRuleDialog"
+import { appLocale } from "@/lib/format-date"
 
 type TxPage = { data: Transaction[]; total: number; summary: { incoming: number; outgoing: number } }
 
 const fmtDate = (d: string) =>
-  new Date(`${d}T00:00:00`).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })
+  new Date(`${d}T00:00:00`).toLocaleDateString(appLocale(), { day: "numeric", month: "short", year: "numeric" })
 
 /** Whole days from today (UTC, like every other date in the recurring engine). */
 function daysFromToday(iso: string): number {

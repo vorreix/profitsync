@@ -24,9 +24,10 @@ import {
   validateFile,
 } from "@/lib/attachments-client"
 import type { Client, ClientAttachment } from "@/lib/types"
+import { appLocale } from "@/lib/format-date"
 
 const formatDate = (d: string) =>
-  new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+  new Date(d).toLocaleDateString(appLocale(), { month: "short", day: "numeric", year: "numeric" })
 const formatSize = (b: number) => (b < 1024 ? `${b} B` : b < 1024 * 1024 ? `${(b / 1024).toFixed(0)} KB` : `${(b / (1024 * 1024)).toFixed(1)} MB`)
 
 /**

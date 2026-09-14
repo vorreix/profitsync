@@ -1,0 +1,106 @@
+name: i18n
+
+# Nothing merges with a string that some of our users cannot read.
+#
+# Two gates, both also in the pre-commit hook, repeated here because a commit
+# made with --no-verify (or by someone who never ran `npm install`) reaches the
+# PR anyway:
+#
+#   parity     every key in en.json exists in all 8 locales, keeps its
+#              {{placeholders}}, is not blank, AND is not still the English text
+#   hardcoded  no NEW user-visible English typed straight into JSX
+#
+# The parity gate is the one that was missing. It used to check only that a key
+# EXISTED, so ~470 keys sat in English in every language and /debts rendered half
+# in English for anyone reading Malayalam while CI stayed green.
+
+on:
+  pull_request:
+    branches: [main, dev]
+    paths:
+      - "src/**"
+      - "scripts/check-i18n*.mjs"
+      - ".github/workflows/i18n.yml"
+      - "package.json"
+  push:
+    branches: [main, dev]
+  workflow_dispatch:
+
+concurrency:
+  group: i18n-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  i18n:
+    name: translations are complete
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # The gates are plain Node scripts with no dependencies of their own, so
+      # they can run before (and regardless of) a full install.
+      - name: Parity — every key present, translated, placeholders intact
+        id: parity
+        run: node scripts/check-i18n.mjs
+
+      - name: Hardcoded — no new English typed into JSX
+        id: hardcoded
+        if: ${{ !cancelled() }}
+        run: node scripts/check-i18n-hardcoded.mjs
+
+      # A failure here is nearly always "I added a key to en.json and stopped".
+      # Say so on the PR rather than making someone open the log to find out.
+      - name: Explain the failure on the PR
+        if: ${{ failure() && github.event_name == 'pull_request' }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const parity = '${{ steps.parity.outcome }}'
+            const hardcoded = '${{ steps.hardcoded.outcome }}'
+            const lines = ['### Translations are not complete', '']
+            if (parity === 'failure') {
+              lines.push(
+                '**Parity failed.** A key in `en.json` is missing from another locale, is blank,',
+                'lost a `{{placeholder}}`, or is still the English text.',
+                '',
+                '```bash',
+                'npm run i18n:check   # names every key and locale',
+                '```',
+                '',
+                'Add the real translations to every file in `src/lib/i18n/locales/`.',
+                'If a string genuinely IS identical in that language — a brand, an international',
+                'standard like IBAN, sample data, or a loanword like "Status" in German — add it to',
+                '`src/lib/i18n/identical-ok.json` with the locale and a one-line reason.',
+                '',
+              )
+            }
+            if (hardcoded === 'failure') {
+              lines.push(
+                '**Hardcoded English.** New user-visible text was typed straight into JSX, so it',
+                'will render in English for every user in every language.',
+                '',
+                '```bash',
+                'npm run i18n:hardcoded   # names the file and the line',
+                '```',
+                '',
+                'Move it into `en.json`, translate it into all 8 locales, and render it with `t()`.',
+                '',
+              )
+            }
+            lines.push('The `i18n` skill has the full recipe, including the bulk-merge helper.')
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: lines.join('\n'),
+            })

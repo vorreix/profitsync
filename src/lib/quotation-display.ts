@@ -1,3 +1,4 @@
+import { appLocale } from "@/lib/format-date"
 /** Shared, component-free display helpers for quotations (status pill + date). */
 
 export const STATUS_COLORS: Record<string, string> = {
@@ -8,6 +9,6 @@ export const STATUS_COLORS: Record<string, string> = {
 }
 
 export const formatQuotationDate = (d: string) =>
-  new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+  new Date(d).toLocaleDateString(appLocale(), { month: "short", day: "numeric", year: "numeric" })
 
 export const quotationStatusLabel = (status: string) => status.charAt(0).toUpperCase() + status.slice(1)

@@ -43,6 +43,7 @@ import { TxFormFields } from "@/components/transactions/tx-form"
 import { allocationFor, allocationPayload, formatFileSize, isCardUnusableError, type TxForm } from "@/components/transactions/tx-form-utils"
 import { mergeTags, txTags } from "@/lib/transaction-tags"
 import { AddTransactionDialog } from "@/components/transactions/AddTransactionDialog"
+import { appLocale } from "@/lib/format-date"
 
 type PaginatedResponse<T> = { data: T[]; total: number; summary?: { incoming: number; outgoing: number } }
 
@@ -54,7 +55,7 @@ type TxRow = Transaction
 const PAGE_SIZE = 20
 
 const formatDate = (d: string) =>
-  new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+  new Date(d).toLocaleDateString(appLocale(), { month: "short", day: "numeric", year: "numeric" })
 
 // ─── List row ─────────────────────────────────────────────────────────────────
 // Memoized so page-level state changes that don't touch a row (search

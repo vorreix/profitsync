@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { SummaryCard } from "@/components/dashboard/SummaryCard"
+import { appLocale } from "@/lib/format-date"
 
 /**
  * The dashboard's Recurring card (registry id `recurring`).
@@ -115,7 +116,7 @@ export function RecurringCard({ className = "" }: { className?: string }) {
   // The headline is what the schedule TAKES each month; a workspace whose rules
   // only bring money in gets that figure instead, rather than a proud zero.
   const incomeOnly = summary.outPerMonth === 0 && summary.inPerMonth > 0
-  const fmtDate = (d: string) => new Date(`${d}T00:00:00`).toLocaleDateString(undefined, { day: "numeric", month: "short" })
+  const fmtDate = (d: string) => new Date(`${d}T00:00:00`).toLocaleDateString(appLocale(), { day: "numeric", month: "short" })
 
   return (
     <SummaryCard

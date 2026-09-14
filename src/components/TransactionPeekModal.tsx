@@ -14,9 +14,10 @@ import { accountDisplayName } from "@/lib/wealth"
 import { useCardMap } from "@/lib/use-cards"
 import { CardChip } from "@/components/cards/CardChip"
 import type { Transaction } from "@/lib/types"
+import { appLocale } from "@/lib/format-date"
 
 const formatDate = (d: string) =>
-  new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+  new Date(d).toLocaleDateString(appLocale(), { month: "short", day: "numeric", year: "numeric" })
 
 /**
  * Lightweight read-only transaction details for the dashboard. Opening a latest
