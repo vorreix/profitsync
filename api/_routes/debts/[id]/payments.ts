@@ -2,6 +2,8 @@ import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { serialize } from "../../../../src/lib/db/index.js"
 import { canWrite, requireAuth } from "../../../_lib/auth.js"
 import { drivingRule, loadDebt, loadDebtRules, loadPayments, recordDebtPayment, serializeDebt } from "../../../_lib/debts.js"
+import { periodsPerYearForRule } from "../../../../src/lib/debt-recurring.js"
+import type { FrequencyUnit } from "../../../../src/lib/recurring.js"
 import { advancesScheduleByDefault } from "../../../../src/lib/debt-recurring.js"
 import { amountExceedsLimit } from "../../../../src/lib/money.js"
 import { todayIso } from "../../../../src/lib/recurring.js"
@@ -63,6 +65,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       other: parts.other ?? undefined,
       note: typeof b.note === "string" ? b.note : "",
       advanceSchedule,
+      // The interest basis comes from the RULE's real rhythm, not the debt's
+      // mirrored word. A rhythm the debt vocabulary cannot name mirrors as
+      // "irregular", and "irregular" falls back to twelve periods a year — so a
+      // debt paid every ten days was charged a full month of interest on every
+      // hand-recorded payment, under-applying principal and over-expensing
+      // interest. The recurring path already passes this; this one did not.
+      periodsPerYear: live ? periodsPerYearForRule(live.frequencyUnit as FrequencyUnit, live.frequencyInterval) : undefined,
     })
     if (!result.ok) return res.status(result.status).json(result.quota ?? { error: result.error })
     // `skipped` only happens on the recurring path (an occurrence already

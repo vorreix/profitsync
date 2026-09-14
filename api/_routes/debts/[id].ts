@@ -88,7 +88,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     ])
     const live = drivingRule(rules)
     return res.json({
-      debt: serializeDebt(fresh, today, { repaymentActive: !!live?.active }),
+      debt: serializeDebt(fresh, today, { repaymentActive: !!live?.active, repaymentLinked: rules.length > 0 }),
       payments: payments.map(serialize),
       activity,
       schedule: scheduleFor(fresh, today),
@@ -286,13 +286,18 @@ async function applyRepayment(
 ): Promise<{ rule: DebtRuleRow | null } | { error: string }> {
   const off = raw === null || (typeof raw === "object" && raw !== null && (raw as Record<string, unknown>).enabled === false)
   if (off) {
-    if (current) {
-      await db
-        .update(recurringRules)
-        .set({ active: false, lastError: "", updatedBy: userId, updatedAt: new Date() })
-        .where(eq(recurringRules.id, current.id))
-    }
-    return { rule: null }
+    if (!current) return { rule: null }
+    // Return the STOPPED row, don't swallow it. The caller mirrors whatever
+    // comes back, and debtScheduleMirror writes nextDueDate: null for an
+    // inactive rule — returning null here skipped the mirror entirely, so the
+    // debt kept a due date nothing would ever honour and reported itself
+    // overdue from that date onwards, forever.
+    const [stopped] = await db
+      .update(recurringRules)
+      .set({ active: false, lastError: "", updatedBy: userId, updatedAt: new Date() })
+      .where(eq(recurringRules.id, current.id))
+      .returning()
+    return { rule: (stopped as DebtRuleRow | undefined) ?? null }
   }
   if (typeof raw !== "object" || raw === null) return { error: "repayment must be an object or null" }
   const r = raw as Record<string, unknown>
@@ -340,7 +345,11 @@ async function applyRepayment(
   // Editing the schedule re-anchors FORWARD ONLY — the same contract
   // /api/recurring/:id uses. Nothing already posted moves, and no instalment is
   // back-dated into a balance that already accounts for it.
-  const wantActive = r.active !== false
+  // Silence means "leave it as it is", not "switch it on". The debt's edit
+  // sheet sends the whole repayment block when the user changes the amount or
+  // the rate, and defaulting to true there quietly RESUMED a repayment the user
+  // had paused — money starting to move again from an unrelated edit.
+  const wantActive = typeof r.active === "boolean" ? r.active : current?.active ?? true
   const nextDueAt = repaymentCursor({
     current: current
       ? {

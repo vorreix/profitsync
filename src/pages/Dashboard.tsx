@@ -29,13 +29,17 @@ import {
 import { useCurrency } from "@/lib/currency-context"
 import { useOrg } from "@/lib/org-context"
 import { useDataRefresh } from "@/lib/data-refresh-context"
-import { accountBalanceLabel, accountDisplayName, formatMoney, useBalancePrivacy, useWealthOverviewCollapsed, useWealthSummary } from "@/lib/wealth"
+import { accountBalanceLabel, accountDisplayName, currencySymbol, formatMoney, useBalancePrivacy, useWealthSummary } from "@/lib/wealth"
 import { creditUsage, isLiabilityType } from "@/lib/credit-card"
 import { useCardMap, useCards } from "@/lib/use-cards"
 import { CardChip } from "@/components/cards/CardChip"
 import { WealthAccountIcon } from "@/components/WealthAccountIcon"
 import { BusinessBudgetCard } from "@/components/budget/BusinessBudgetCard"
 import { BudgetsCard } from "@/components/budget/BudgetsCard"
+import { SummaryCard } from "@/components/dashboard/SummaryCard"
+import { DebtsCard } from "@/components/debts/DebtsCard"
+import { RecurringCard } from "@/components/recurring/RecurringCard"
+import { SpacesCard } from "@/components/spaces/SpacesCard"
 import { FeatureHelp } from "@/components/help/FeatureHelp"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { FitText } from "@/components/FitText"
@@ -99,8 +103,11 @@ import {
   CartesianGrid,
 } from "recharts"
 import { AlertsBanner } from "@/components/alerts/AlertsBanner"
+import { appLocale } from "@/lib/format-date"
 
-function formatCurrency(amount: number, currency: string) {
+function formatCurrency(amount: number, currency: string, visible = true) {
+  // Masked the same way formatMoney masks, so the page hides consistently.
+  if (!visible) return `${currencySymbol(currency)} *****`
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency,
@@ -123,27 +130,44 @@ function formatCompactCurrency(amount: number, currency: string) {
 function formatTxDate(value: string) {
   const d = new Date(value)
   if (Number.isNaN(d.getTime())) return value
-  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" })
+  return d.toLocaleDateString(appLocale(), { month: "short", day: "numeric" })
 }
 
 const UPSELL_REAPPEAR_MS = 72 * 60 * 60 * 1000 // banner returns 72h after a dismissal
 
 // ── Custom dashboard cards ───────────────────────────────────────────────────
-// Spans live on the SHELL (one shared lg:grid-cols-5 grid): chart+breakdown
-// pair side-by-side when adjacent, everything else takes the full row.
+// Spans live on the SHELL, over one shared lg:grid-cols-6 grid.
+//
+// SIX, not five, because the four hub-summary cards (wealth, debts, spaces,
+// flow) each take HALF a row and so tile two-up — four of them used to be four
+// full-width rows of mostly whitespace. Half of five is not a whole number, and
+// a 3/2 split only pairs while those two ids are adjacent, which drag-to-
+// reorder makes no promise about; at six every summary card is the same width,
+// so they pair in any order and an odd one out simply leaves trailing space
+// rather than a hole. Spaces is null on a business workspace, which is exactly
+// that case.
+const SUMMARY_SPAN = "lg:col-span-3"
 const CARD_SPANS: Record<DashboardCardId, string> = {
-  kpis: "lg:col-span-5",
-  budget: "lg:col-span-5",
-  wealth: "lg:col-span-5",
-  flow: "lg:col-span-5",
-  chart: "lg:col-span-3",
+  kpis: "lg:col-span-6",
+  budget: "lg:col-span-6",
+  wealth: SUMMARY_SPAN,
+  debts: SUMMARY_SPAN,
+  recurring: SUMMARY_SPAN,
+  spaces: SUMMARY_SPAN,
+  flow: SUMMARY_SPAN,
+  chart: "lg:col-span-4",
   breakdown: "lg:col-span-2",
-  latest: "lg:col-span-5",
+  latest: "lg:col-span-6",
 }
 const CARD_LABEL_KEYS: Record<DashboardCardId, string> = {
   kpis: "dashboard.cardKpis",
   budget: "dashboard.cardBudget",
   wealth: "dashboard.cardWealth",
+  // The nav labels: the same words the sidebar uses for the same places, and
+  // already translated everywhere.
+  debts: "nav.debts",
+  recurring: "nav.recurring",
+  spaces: "nav.spaces",
   flow: "flow.card",
   chart: "dashboard.cardChart",
   breakdown: "dashboard.cardBreakdown",
@@ -531,15 +555,17 @@ function WealthOverview({
   accounts,
   loading,
   currency,
+  orgId,
 }: {
   accounts: WealthAccount[]
   loading: boolean
   currency: string
+  /** Scopes the remembered open/shut state to the workspace. */
+  orgId: string
 }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const { balancesVisible, setBalancesVisible } = useBalancePrivacy()
-  const { collapsed, setCollapsed } = useWealthOverviewCollapsed()
+  const { balancesVisible } = useBalancePrivacy()
   // "Total available" is the money the user HOLDS (cash + bank). Credit-card
   // debt is shown separately as "Owed on cards" — available credit is never
   // counted as money (src/lib/wealth.ts summarizeWealth).
@@ -574,109 +600,54 @@ function WealthOverview({
       nothingOwed: t("wealth.nothingOwed"),
     })
 
-  return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
-        <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-          {t("wealth.title")}
-          <FeatureHelp feature="wealth" className="-ml-1" />
-          {active.length > 0 && (
-            <span className="rounded-full border px-2 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground">
-              {active.length}
-            </span>
-          )}
-        </CardTitle>
-        {active.length > 0 && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="pressable -mr-2 size-8 shrink-0 text-muted-foreground hover:text-foreground"
-            aria-label={t("wealth.accounts")}
-            aria-expanded={!collapsed}
-            aria-controls="wealth-accounts-panel"
-            onClick={() => setCollapsed((v) => !v)}
-          >
-            <ChevronDown
-              className={`size-4 transition-transform duration-300 ease-out motion-reduce:transition-none ${collapsed ? "" : "rotate-180"}`}
-            />
-          </Button>
-        )}
-      </CardHeader>
-      <CardContent className="pt-0">
-        {loading ? (
-          <div className="space-y-3">
-            <Skeleton className="h-24 rounded-2xl" />
-            <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
-              {[1, 2, 3].map((i) => <Skeleton key={i} className="h-[60px] rounded-xl" />)}
-            </div>
+  if (loading) {
+    return (
+      <Card className="h-full min-w-0">
+        <CardContent className="space-y-2.5 p-3 sm:p-4">
+          <Skeleton className="h-6 w-40" />
+          <div className="grid gap-2 sm:grid-cols-2">
+            {[1, 2].map((i) => <Skeleton key={i} className="h-12 rounded-xl" />)}
           </div>
-        ) : active.length === 0 ? (
-          <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed px-6 py-8 text-center">
-            <span className="grid size-11 place-items-center rounded-full bg-muted text-muted-foreground">
-              <Wallet className="size-5" />
-            </span>
-            <p className="text-sm font-medium">{t("wealth.noAccountsYet")}</p>
-            <Button size="sm" className="pressable" onClick={() => navigate("/wealth")}>
-              {t("wealth.addAccount")}
-            </Button>
-          </div>
-        ) : (
-          <div>
-            {/* Total available — the focal figure, with an emerald "wealth" wash */}
-            <div className="relative overflow-hidden rounded-2xl border bg-gradient-to-br from-emerald-500/10 via-emerald-500/[0.04] to-transparent p-4 sm:p-5">
-              <div
-                aria-hidden
-                className="pointer-events-none absolute -right-8 -top-10 size-28 rounded-full bg-emerald-500/15 blur-2xl"
-              />
-              <div className="relative flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                    {t("wealth.totalAvailable")}
-                    {balancesVisible && (
-                      <span
-                        role="img"
-                        aria-label={HEALTH.label}
-                        title={HEALTH.label}
-                        className={`size-2 shrink-0 rounded-full ${HEALTH.dot}`}
-                      />
-                    )}
-                  </p>
-                  <FitText className="mt-1" textClassName="text-2xl sm:text-3xl font-bold tabular-nums">
-                    {formatMoney(total, currency, balancesVisible)}
-                  </FitText>
-                  {/* Card debt is money that has to go back out, so it is
-                      red — the one figure on this card that works AGAINST the
-                      total above it. Red whenever the "owed" wording shows, in
-                      privacy mode too: the colour must not become the tell for
-                      whether anything is owed once the amount is masked. */}
-                  {liabilities > 0 && (
-                    <p className="mt-1 text-xs font-medium tabular-nums text-red-600 dark:text-red-400">
-                      {t("wealth.owedOnCards")}: {formatMoney(liabilities, currency, balancesVisible)}
-                    </p>
-                  )}
-                </div>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="pressable size-9 shrink-0 bg-background/60 backdrop-blur"
-                  aria-label={balancesVisible ? t("wealth.hideBalances") : t("wealth.showBalances")}
-                  onClick={() => setBalancesVisible((v) => !v)}
-                >
-                  {balancesVisible ? <Eye className="size-4" /> : <EyeOff className="size-4" />}
-                </Button>
-              </div>
-              <div className="relative mt-3 flex justify-end">
-                <button
-                  type="button"
-                  onClick={() => navigate("/wealth")}
-                  className="pressable inline-flex items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
-                >
-                  {t("common.viewAll")}
-                  <ArrowRight className="size-3" />
-                </button>
-              </div>
-            </div>
+        </CardContent>
+      </Card>
+    )
+  }
 
+  if (active.length === 0) {
+    return (
+      <Card className="h-full min-w-0">
+        <CardContent className="flex flex-col items-center gap-3 px-6 py-8 text-center">
+          <span className="grid size-11 place-items-center rounded-full bg-muted text-muted-foreground">
+            <Wallet className="size-5" />
+          </span>
+          <p className="text-sm font-medium">{t("wealth.noAccountsYet")}</p>
+          <Button size="sm" className="pressable" onClick={() => navigate("/wealth")}>
+            {t("wealth.addAccount")}
+          </Button>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  return (
+    <SummaryCard
+      icon={<Wallet className="size-4" aria-hidden />}
+      // The name of the PLACE it opens — the sidebar and the page itself both
+      // say "Wealth & Cards", and this card carries the card count too.
+      title={t("nav.wealth")}
+      count={active.length}
+      headline={formatMoney(total, currency, balancesVisible)}
+      // Card debt is money that has to go back out — the one figure here that
+      // works AGAINST the total beside it, so it keeps its red. Red whenever
+      // the wording shows, privacy mode included: the colour must not become
+      // the tell for whether anything is owed once the amount is masked.
+      subline={liabilities > 0
+        ? <span className="font-medium text-red-600 dark:text-red-400">{t("wealth.owedOnCards")}: {formatMoney(liabilities, currency, balancesVisible)}</span>
+        : balancesVisible ? <span className="inline-flex items-center gap-1"><span role="img" aria-label={HEALTH.label} className={`size-1.5 rounded-full ${HEALTH.dot}`} />{HEALTH.label}</span> : undefined}
+      storageKey={`ps_dash_wealth_open_${orgId}`}
+      onOpen={() => navigate("/wealth")}
+    >
+          <div>
             {/* Cards — count + what the credit cards owe; opens the Cards tab. */}
             {cards.length > 0 && (
               <button
@@ -707,21 +678,13 @@ function WealthOverview({
               </button>
             )}
 
-            {/* Collapsible account list. The grid 0fr→1fr trick keeps open/close
-                on the compositor instead of animating height — no reflow, no
-                flicker. The list's top padding sits inside the overflow-hidden,
-                so the card closes flush with no phantom gap. */}
-            <div
-              id="wealth-accounts-panel"
-              className="grid transition-[grid-template-rows] duration-300 ease-out motion-reduce:transition-none"
-              style={{ gridTemplateRows: collapsed ? "0fr" : "1fr" }}
-            >
-              <div className="overflow-hidden">
-                {/* Three across only from xl: the breakpoint is the WINDOW, but
-                    these tiles live in the column left by the 16rem sidebar, so
-                    at lg (1024px) three of them are ~230px each and the account
-                    names truncate to "Ba…". Two is the honest fit there. */}
-                <div ref={gridRef} className="grid grid-cols-1 gap-2.5 pt-3 sm:grid-cols-2 xl:grid-cols-3">
+            {/* The card itself folds now (SummaryCard), so this no longer needs
+                its own collapse. Two across at most: these tiles live in the
+                column left by the sidebar, and since the card is half-width on
+                a wide screen, three would truncate every account name. */}
+            <div>
+              <div>
+                <div ref={gridRef} className="grid grid-cols-1 gap-2 pt-2 sm:grid-cols-2">
                   {active.map((account) => {
                     // A negative (overdrawn) balance is flagged in red with a red dot
                     // — but only when balances are visible, so privacy mode never
@@ -757,9 +720,7 @@ function WealthOverview({
               </div>
             </div>
           </div>
-        )}
-      </CardContent>
-    </Card>
+    </SummaryCard>
   )
 }
 
@@ -767,6 +728,9 @@ const UNCATEGORIZED = "__uncat__"
 
 export function Dashboard() {
   const { t } = useTranslation()
+  // One toggle for the page; every card reads the same value (useBalancePrivacy
+  // broadcasts, so they stay in step).
+  const { balancesVisible, setBalancesVisible } = useBalancePrivacy()
   const navigate = useNavigate()
   const { getToken } = useAuth()
   const { currency } = useCurrency()
@@ -1144,7 +1108,7 @@ export function Dashboard() {
         <StatCard
           loading={loading}
           label={t("dashboard.totalRevenue")}
-          value={formatCurrency(displayIncoming, currency)}
+          value={formatCurrency(displayIncoming, currency, balancesVisible)}
           hint={
             <>
               <ArrowUpRight className="size-3 text-emerald-500 shrink-0" />
@@ -1155,7 +1119,7 @@ export function Dashboard() {
         <StatCard
           loading={loading}
           label={t("dashboard.totalExpenses")}
-          value={formatCurrency(displayOutgoing, currency)}
+          value={formatCurrency(displayOutgoing, currency, balancesVisible)}
           hint={
             <>
               <ArrowDownRight className="size-3 text-destructive shrink-0" />
@@ -1171,7 +1135,7 @@ export function Dashboard() {
               <FeatureHelp feature="netProfit" className="-my-1" />
             </>
           }
-          value={formatCurrency(netProfit, currency)}
+          value={formatCurrency(netProfit, currency, balancesVisible)}
           valueClass={netProfit >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"}
           hint={t("dashboard.margin", { value: profitMargin })}
         />
@@ -1192,46 +1156,57 @@ export function Dashboard() {
         )}
       </div>
     ),
-    // A personal workspace shows its spending budgets; a business workspace
-    // keeps the own-company spend cap card (client caps are a separate concept).
-    budget: isPersonal ? <BudgetsCard /> : ownClient ? <BusinessBudgetCard clientId={ownClient.id} clientName={ownClient.name} /> : null,
-    wealth: <WealthOverview accounts={wealthAccounts} loading={loading} currency={currency} />,
     // Lightweight teaser (no React Flow on the dashboard — keeps it fast): a
     // tiny connected revenue→net→expenses preview that opens the full map.
     flow: (
-      <Card className="min-w-0">
-        <CardHeader className="flex flex-row items-center justify-between gap-2">
-          <CardTitle className="flex items-center gap-1.5 text-sm font-semibold">
-            <Network className="size-4 text-primary" /> {t("flow.card")}
-          </CardTitle>
-          <Button variant="ghost" size="sm" className="text-xs shrink-0" onClick={() => navigate("/flow")}>
-            {t("flow.cardCta")} <ArrowRight className="size-3 ml-1" />
-          </Button>
-        </CardHeader>
-        <CardContent>
-          <button
-            type="button"
-            onClick={() => navigate("/flow")}
-            className="flex w-full items-center justify-between gap-2 rounded-xl border bg-muted/20 p-3 text-left transition-colors hover:border-primary/40"
-          >
-            <span className="rounded-lg border bg-card px-2.5 py-1.5 text-center">
-              <span className="block text-[10px] uppercase tracking-wide text-muted-foreground">{t("flow.revenue")}</span>
-              <span className="block text-sm font-bold tabular-nums text-emerald-600 dark:text-emerald-400">{formatCurrency(displayIncoming, currency)}</span>
-            </span>
-            <ArrowRight className="size-4 shrink-0 text-muted-foreground rtl:rotate-180" />
-            <span className="rounded-lg border-2 border-primary/40 bg-card px-2.5 py-1.5 text-center">
-              <span className="block text-[10px] uppercase tracking-wide text-muted-foreground">{t("flow.net")}</span>
-              <span className={`block text-sm font-bold tabular-nums ${netProfit >= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-destructive"}`}>{formatCurrency(netProfit, currency)}</span>
-            </span>
-            <ArrowRight className="size-4 shrink-0 text-muted-foreground rtl:rotate-180" />
-            <span className="rounded-lg border bg-card px-2.5 py-1.5 text-center">
-              <span className="block text-[10px] uppercase tracking-wide text-muted-foreground">{t("flow.expenses")}</span>
-              <span className="block text-sm font-bold tabular-nums text-red-600 dark:text-red-400">{formatCurrency(displayOutgoing, currency)}</span>
-            </span>
-          </button>
-        </CardContent>
-      </Card>
+      <SummaryCard
+        icon={<Network className="size-4" aria-hidden />}
+        title={t("flow.card")}
+        headline={formatCurrency(netProfit, currency, balancesVisible)}
+        headlineClass={netProfit >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"}
+        subline={t("flow.net")}
+        storageKey={`ps_dash_flow_open_${activeOrg?.id ?? ""}`}
+        onOpen={() => navigate("/flow")}
+      >
+        <button
+          type="button"
+          onClick={() => navigate("/flow")}
+          className="pressable flex min-h-11 w-full items-center justify-between gap-2 rounded-xl border bg-muted/20 p-2.5 text-left transition-colors hover:border-primary/40"
+        >
+          <span className="min-w-0 rounded-lg border bg-card px-2 py-1 text-center">
+            <span className="block text-[10px] uppercase tracking-wide text-muted-foreground">{t("flow.revenue")}</span>
+            <span className="block truncate text-sm font-bold tabular-nums text-emerald-600 dark:text-emerald-400">{formatCurrency(displayIncoming, currency, balancesVisible)}</span>
+          </span>
+          <ArrowRight className="size-4 shrink-0 text-muted-foreground rtl:rotate-180" />
+          <span className="min-w-0 rounded-lg border-2 border-primary/40 bg-card px-2 py-1 text-center">
+            <span className="block text-[10px] uppercase tracking-wide text-muted-foreground">{t("flow.net")}</span>
+            <span className={`block truncate text-sm font-bold tabular-nums ${netProfit >= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-destructive"}`}>{formatCurrency(netProfit, currency, balancesVisible)}</span>
+          </span>
+          <ArrowRight className="size-4 shrink-0 text-muted-foreground rtl:rotate-180" />
+          <span className="min-w-0 rounded-lg border bg-card px-2 py-1 text-center">
+            <span className="block text-[10px] uppercase tracking-wide text-muted-foreground">{t("flow.expenses")}</span>
+            <span className="block truncate text-sm font-bold tabular-nums text-red-600 dark:text-red-400">{formatCurrency(displayOutgoing, currency, balancesVisible)}</span>
+          </span>
+        </button>
+      </SummaryCard>
     ),
+    // A personal workspace shows its spending budgets; a business workspace
+    // keeps the own-company spend cap card (client caps are a separate concept).
+    budget: isPersonal ? <BudgetsCard /> : ownClient ? <BusinessBudgetCard clientId={ownClient.id} clientName={ownClient.name} /> : null,
+    wealth: <WealthOverview accounts={wealthAccounts} loading={loading} currency={currency} orgId={activeOrg?.id ?? ""} />,
+    // Both fetch their own body through the shared cache, so arriving from
+    // /debts or /spaces costs no request and paints with no skeleton — and a
+    // hidden card costs nothing at all, because a hidden card is never
+    // rendered and therefore never mounts its query.
+    debts: <DebtsCard />,
+    // Same contract as the debts card: its own cached read, and null when the
+    // workspace has nothing scheduled and this user could not add one anyway.
+    recurring: <RecurringCard />,
+    // Personal only, and not merely by taste: GET /api/spaces answers 403 for a
+    // non-personal workspace, so a card here would be a guaranteed failed
+    // request on every business dashboard load. null takes it out of the grid
+    // AND out of the customise list.
+    spaces: isPersonal ? <SpacesCard /> : null,
     chart: (
         <Card className="min-w-0 h-full">
           <CardHeader className="flex flex-row items-center justify-between gap-2">
@@ -1283,7 +1258,7 @@ export function Dashboard() {
                                 {chartConfig[String(name)]?.label ?? name}
                               </span>
                               <span className="font-mono font-medium tabular-nums text-foreground">
-                                {formatCurrency(Number(value), currency)}
+                                {formatCurrency(Number(value), currency, balancesVisible)}
                               </span>
                             </div>
                           </>
@@ -1329,11 +1304,11 @@ export function Dashboard() {
                           {own && <Badge variant="outline" className="text-[10px] py-0">{t("dashboard.ownLabel")}</Badge>}
                         </p>
                         <p className="text-xs text-muted-foreground truncate">
-                          {formatCurrency(b.incoming, currency)} · {formatCurrency(b.outgoing, currency)}
+                          {formatCurrency(b.incoming, currency, balancesVisible)} · {formatCurrency(b.outgoing, currency, balancesVisible)}
                         </p>
                       </div>
                       <p className={`text-sm font-semibold tabular-nums shrink-0 ml-2 ${b.profit >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"}`}>
-                        {formatCurrency(b.profit, currency)}
+                        {formatCurrency(b.profit, currency, balancesVisible)}
                       </p>
                     </>
                   )
@@ -1357,6 +1332,8 @@ export function Dashboard() {
     latest: <LatestTransactionsCard transactions={latestTx} loading={loading} currency={currency} showClient={!isPersonal} onSelect={setPeekTx} cardFor={cardMap.forTx} />,
   }
   const visibleCards = layout.order.filter((id) => !layout.hidden.includes(id) && cardNodes[id] !== null)
+  // Same test: a card that renders nothing here is not something to offer back.
+  const hiddenCards = layout.hidden.filter((id) => cardNodes[id] !== null)
 
   return (
     <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
@@ -1390,6 +1367,25 @@ export function Dashboard() {
             {filtersActive ? t("dashboard.filtered") : t("dashboard.overview")}
           </p>
         </div>
+        {/* The page's controls travel together at the right edge. As a third
+            child of a justify-between row the eye was stranded in the middle of
+            the header, nowhere near the filters it belongs beside. */}
+        <div className="flex shrink-0 items-center gap-2">
+        {/* One privacy control for the whole page, immediately left of the
+            filters at every width. It used to live inside the Wealth card,
+            which meant hiding "balances" left the totals, the debt, the savings
+            and the net beside it in plain view. Transactions are deliberately
+            NOT masked: the list is what the page is for, and a row's amount is
+            the thing being read, not a balance being exposed. */}
+        <Button
+          variant="outline"
+          size="icon"
+          className="pressable size-10 shrink-0"
+          aria-label={balancesVisible ? t("wealth.hideBalances") : t("wealth.showBalances")}
+          onClick={() => setBalancesVisible((v) => !v)}
+        >
+          {balancesVisible ? <Eye className="size-4" /> : <EyeOff className="size-4" />}
+        </Button>
         {/* Desktop: filters inline beside the title. Mobile: a single filter
             button on the same line (req #1), opening a sheet with both. */}
         <div className="hidden sm:flex sm:items-center sm:gap-2 shrink-0">
@@ -1452,13 +1448,18 @@ export function Dashboard() {
             </FilterSection>
           </FilterSheet>
         </div>
+        </div>
       </div>
 
-      {/* Hidden cards (edit mode): tap to bring one back */}
-      {editMode && layout.hidden.length > 0 && (
+      {/* Hidden cards (edit mode): tap to bring one back.
+          Only ones that would actually come back — `visibleCards` already drops
+          a card whose node is null, so without the same test here a workspace
+          could offer a chip that adds nothing (hide Spaces on a personal
+          workspace, switch to a business one, and there it was). */}
+      {editMode && hiddenCards.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-dashed p-2.5">
           <span className="text-xs font-medium text-muted-foreground">{t("dashboard.hiddenCards")}</span>
-          {layout.hidden.map((id) => (
+          {hiddenCards.map((id) => (
             <button
               key={id}
               type="button"
@@ -1484,7 +1485,7 @@ export function Dashboard() {
         onDragCancel={() => { setDragCardId(null); setDropEdgeBoth(null) }}
       >
         <div
-          className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-5"
+          className="grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-6"
           onTouchStart={onCardsTouchStart}
           onTouchMove={onCardsTouchMove}
           onTouchEnd={clearPress}

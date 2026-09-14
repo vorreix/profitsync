@@ -16,9 +16,10 @@ import { SpaceLinkBadge } from "@/components/spaces/SpaceLinkBadge"
 import { TxKindBadge } from "@/components/transactions/TxKindBadge"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { appLocale } from "@/lib/format-date"
 
 const formatDate = (d: string) =>
-  new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+  new Date(d).toLocaleDateString(appLocale(), { month: "short", day: "numeric", year: "numeric" })
 
 /**
  * Read-only transaction detail with attachments + audit history. Self-loads its

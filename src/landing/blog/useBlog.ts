@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react"
+import { appLocale } from "@/lib/format-date"
 
 // Client for the public blog endpoints (api/_routes/public/blog*). Unauthenticated
 // raw fetch — same approach as usePricing. Types mirror the JSON the endpoints
@@ -121,5 +122,5 @@ export function formatBlogDate(value: string | null | undefined): string {
   if (!value) return ""
   const d = new Date(value)
   if (Number.isNaN(d.getTime())) return ""
-  return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })
+  return d.toLocaleDateString(appLocale(), { year: "numeric", month: "short", day: "numeric" })
 }

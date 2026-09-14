@@ -48,6 +48,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { appLocale } from "@/lib/format-date"
 
 type FormState = {
   title: string
@@ -91,7 +92,7 @@ function fmtDate(value: string | null | undefined): string {
   if (!value) return "—"
   const d = new Date(value)
   if (Number.isNaN(d.getTime())) return "—"
-  return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })
+  return d.toLocaleDateString(appLocale(), { year: "numeric", month: "short", day: "numeric" })
 }
 
 export function AdminBlogPage() {

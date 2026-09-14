@@ -162,10 +162,120 @@ arrives at the edit dialog looking like a lone grouped row; editing it there
 would delete the group and rebuild it as plain allocations. Both the list and
 `PATCH /api/transactions/:id` refuse, and point at the debt.
 
+### Adopting a repayment you already have
+
+The standing order is almost always older than the debt. "Car loan €300" runs as
+a plain expense for eight months, the loan gets added, and the same money is in
+the app twice. Either screen can join them — the debt adopting a rule, or the
+rule being pointed at a debt — and both go through the ONE operation,
+`linkRuleToDebt`, so there is one set of rules.
+
+**Forward only, and that is the whole design.** The eight occurrences already
+posted were expenses; they stay expenses — including when the cursor lands back
+on a date one of them already claimed. The engine tells its own crashed claim
+from a complete ordinary occurrence by `group_id`: every leg it writes carries
+one, a plain materialized row has none. Deleting the latter as wreckage took the
+money off the ledger without giving it back and then charged the account again. Rebuilding them would move balances,
+rewrite budget periods already reported on, and invent an interest split nobody
+recorded at the time. A debt whose balance does not reflect them is RECONCILED
+instead, which is one visible row. The route materialises BEFORE the change in
+both directions, so an occurrence already due lands in the shape it was owed in
+rather than being stepped over.
+
+A rule is refused when it cannot honestly become a repayment:
+
+| Refusal | Why |
+|---|---|
+| `direction_mismatch` | Never auto-flipped. Silently flipping an incoming €3,000 salary rule dropped on a loan would start taking €3,000 a month OUT of the account. |
+| `rule_pays_with_card` | A card would move the debt, not clear it. |
+| `account_not_cash` / `rule_has_no_account` / `account_archived` | A repayment needs somewhere real to be paid from. |
+| `rule_is_autosave` | A Space auto-save belongs to the Space. |
+| `rule_linked_elsewhere` | Moving it would leave the other debt with a schedule describing a rule that had walked away. |
+| `rule_ended` | Past its end date: it would never pay anything. |
+| `debt_settled` | Paid off, refinanced or written off. The debt-side twin of `rule_ended`: the rule would be deactivated on the spot by the follow-the-debt rule, so what the user gets is a repayment that stops the moment it is made. **Paused is NOT refused** — linking to a paused debt is a real thing people do, the rule simply follows it (stored inactive, no next date mirrored), and the debt screen deliberately offers paused debts. |
+| `rule_has_pending` | Instalments are waiting to post; the link moves the cursor past them and they would be recorded in neither shape. |
+| `repayment_exists` | ONE repayment per debt — see below. |
+| `debt_closed` | |
+
+**One repayment per debt, active or paused**, enforced by a partial unique index
+(mig 0068) as well as in code, because the application check was read-then-write
+and two links arriving together both saw an empty debt. Counting only the ACTIVE
+ones was the subtler bug: a debt quietly took a second rule while the first was
+paused, and resuming paid it twice a month.
+
+Linking and unlinking both re-anchor the cursor with `GREATEST(next_due_at,
+today)`. Unlinking has to as well: the resume re-anchor only fires for a debt
+repayment, so a paused rule handed back with a cursor frozen six months ago
+would fire the whole holiday the moment it was resumed.
+
+**Linking is ONE write.** The rule becoming a repayment and the debt starting to
+mirror it are the same fact, so they commit together (`dbBatch`); the cursor is
+computed in JS rather than left to SQL's `GREATEST` precisely so both statements
+can carry the identical value without reading one back into the other.
+
+**Stopping a repayment mirrors the stop.** `repayment: { enabled: false }`
+returns the deactivated rule so `debtScheduleMirror` writes `next_due_date:
+null`. Swallowing it left the debt holding a due date nothing would ever honour,
+and `derivedStatus` called the debt overdue from that date onwards, forever.
+Silence about `active` means "leave it as it is", never "switch it on" — the
+debt's edit sheet sends the whole repayment block when the amount changes, and
+defaulting to true quietly RESUMED a paused repayment.
+
+A PAUSED rule's cursor is NOT mirrored onto the debt. It has a cursor but no
+next payment, and `derivedStatus` reads that date — an active debt whose rule
+was merely paused started reporting itself overdue. The amount and the rhythm
+still describe the intent.
+
 A recurring repayment must come from a **bank or cash** account. A credit card
 may pay a loan by hand — a real, expensive thing people do — but on a schedule it
 moves debt from one place to another forever with no cash ever leaving, and the
 balance that grows is the one nobody is looking at.
+
+### Making the other half from here
+
+Adoption assumes both halves exist. Usually only one does, and the answer to
+"which debt does this pay?" is "one I have not entered yet" — so both screens
+can make the missing half without leaving, and each is a SINGLE request,
+because half of it landing is the failure worth designing against: a debt
+nobody pays, or a repayment against nothing.
+
+| From | Request | What the one batch writes |
+|---|---|---|
+| Add debt, with a repayment | `POST /api/debts { repayment }` | account + `debt_details` + opening balance + the new rule |
+| Add debt, adopting a rule | `POST /api/debts { link_rule_id }` | the same, and the `recurring_rules` UPDATE that adopts it |
+| Add recurring, existing debt | `POST /api/recurring { debt_account_id }` | the rule and the debt's mirrored schedule |
+| Add recurring, new debt | `POST /api/debts` (as above) | the recurring dialog posts to the DEBT route, because the debt route owns the write |
+
+`link_rule_id` and `repayment` are refused TOGETHER (`link_or_create`): they are
+two answers to one question, and honouring both would make two repayments for a
+debt that may have none.
+
+The rule is validated by `refusalForNew` — `linkRefusal` against a synthetic
+debt that does not exist yet — so adopting into a brand-new debt obeys exactly
+the table above. The dialog runs the same predicate client-side and only offers
+"Create a new one…" while it passes, which is why picking a card or leaving the
+account empty removes the option and says which one it is rather than claiming
+no debt fits.
+
+The direction is DERIVED, never asked twice: money going out makes a debt you
+owe, money coming in makes one owed to you. There is no second control to
+disagree with the first.
+
+**The rhythm travels as the RULE's rhythm, not as a debt word.** The debt
+vocabulary names five (weekly, fortnightly, monthly, quarterly, yearly); a rule
+repeats on any (unit, 1..365) pair. `repayment` therefore carries
+`frequency_unit` + `frequency_interval`, and `debt_details.payment_frequency` is
+DERIVED from the pair — `irregular` when there is no word for it, exactly as
+`debtScheduleMirror` does everywhere else. Collapsing to the nearest name turned
+"every 2 years" into "monthly" and started taking the money twenty-four times as
+often; the named `frequency` is still accepted for the debt form, but nothing is
+defaulted any more, so an omitted rhythm is a 400 rather than an invented one.
+
+**On an EDIT the rule's own changes go first**, then the debt is created. The
+debt route validates the rule AS STORED, so a save that changes the payer or the
+direction AND creates a debt would otherwise be judged on the old values and
+refused — and a rejected edit that has already created a debt leaves the user
+with something they cannot see a way to undo.
 
 ## 3. Engine (`src/lib/debt-math.ts`, `debt-planner.ts`)
 
@@ -191,10 +301,11 @@ last three months' income.
 ## 4. API
 
 - `GET /api/debts` — hub payload: debts, receivables, closed, summary, insights, 3-month upcoming schedule. Materialises due repayments first (hence `ALWAYS_FETCH`).
-- `POST /api/debts` — create the debt AND its optional `repayment` rule in one atomic batch; `disbursement_account_id` records borrowed money as a transfer.
+- `POST /api/debts` — create the debt AND its repayment in one atomic batch: a NEW rule via `repayment`, or one you already have via `link_rule_id` (the two are mutually exclusive — `link_or_create`). `disbursement_account_id` records borrowed money as a transfer.
 - `GET/PATCH/DELETE /api/debts/:id` — detail (`debt`, `activity`, `payments`, `schedule`, `repayment`); edit terms / lifecycle / the repayment / reconcile (`current_balance` → system Balance Adjustment); close (archive) or delete when there is no history.
 - `GET/POST /api/debts/:id/payments`, `DELETE /api/debts/:id/payments/:paymentId`.
-- A debt repayment also appears at `/api/recurring` and `/api/recurring/:id`, which keep the debt's mirror in step on every edit.
+- A debt repayment also appears at `/api/recurring` and `/api/recurring/:id`, which keep the debt's mirror in step on every edit. `PATCH /api/recurring/:id { debt_account_id }` links or unlinks it; that field must arrive ON ITS OWN, because combined with other edits the link could not be atomic.
+- `POST /api/recurring { debt_account_id }` creates a rule already linked — the rule and the debt's mirrored schedule in one batch. Making a rule and then linking it would leave a plain expense behind whenever the second request failed.
 
 ## 5. UI
 
@@ -227,6 +338,38 @@ The direction chooser uses the **same colour language as the add-transaction
 form**: money leaving is red, money arriving is green. A debt you owe is the red
 one, and the colour should say so before the label is read.
 
+The inline **create-a-debt** block asks the two amounts the debt screen asks —
+what it started at and what is left, in that order and in the same words — and
+puts the rate behind a closed **More details** disclosure, labelled "Interest
+rate (% per year)" rather than "Rate (%)", which said neither per what nor of
+what. The original is what `progress_pct` is measured against and the ONLY thing
+it feeds; sending the remaining balance for both, as this form used to, filed
+every debt it made as 0% repaid of a figure that was never its original.
+
+A **category is required** for an ordinary recurring payment and never asked for
+a repayment. A rule stamps its category onto every occurrence it will ever post,
+and a blank one is unreachable by every category-scoped budget — the money lands
+where nobody can plan against it. A repayment's category is the engine's, so the
+picker is not rendered and the requirement does not apply. Enforcement is in the
+dialog, NOT in `validateRuleInput`: the validator is shared with Space auto-save
+and with the debt paths that legitimately send "" or "Transfer", and a server
+rule would also lock users out of editing every rule that predates it.
+
+Dismissing the dialog — Escape, the overlay, the X, the Back gesture — **keeps
+what was typed** (`useModalDraft`, the same keeper four other modals use). An
+explicit Cancel or a successful save clears it. The draft is keyed on the rule,
+the workspace and the preset's CONTENT, so "Create a debt for this" re-seeds
+rather than landing on an older draft with its question unanswered.
+
+The **recurring dialog mirrors all of it.** `/recurring` asks the same
+question — "does this pay a debt?", or "is someone paying you back?" when the
+money comes in — and answers it with the same three options: no, one you have,
+or a new one made right there. It uses the same direction chips, the same
+preview card, and hides category and client when a debt is involved because a
+repayment's are the engine's. Its account label follows the direction too:
+money arriving COMES INTO an account, it is not paid with one. When nothing
+fits, the picker offers to make the debt rather than ending in a sentence.
+
 Record payment sheet (auto or typed split, one-tap "scheduled" / "pay it off"
 amounts, an overpayment warning, and the extra-vs-scheduled choice), status
 badges in words, progress, schedule table, payment history with delete, planner
@@ -236,8 +379,15 @@ debt-free states.
 
 ## 6. Verification
 
+End to end through the real form: `e2e/recurring-debt.spec.ts` — creating the
+debt from the recurring side actually creates it, an unnameable rhythm survives
+the round trip, the answer survives a background revalidation landing mid-form,
+the category requirement, and the draft policy.
+
 Unit (DB-free): `debt-math.test.ts`, `debt-planner.test.ts`, `debt-status.test.ts`,
-`debt-ledger.test.ts`. End to end on the local database: `e2e/debts.spec.ts`
+`debt-ledger.test.ts`, `debt-recurring.test.ts` (the refusal table and the
+cursor), `debt-preview.test.ts` and `recurring-preview.test.ts` (the two live
+previews). End to end on the local database: `e2e/debts.spec.ts`
 (informal debt, borrowing ≠ income, split payment, auto split, delete + restore,
 hub tabs, receivable, net worth, paid off).
 

@@ -44,6 +44,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import { appLocale } from "@/lib/format-date"
 
 type MediaItem = {
   id: string
@@ -79,7 +80,7 @@ function formatSize(bytes: number): string {
 }
 function formatDate(s: string): string {
   const d = new Date(s)
-  return isNaN(d.getTime()) ? "" : d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+  return isNaN(d.getTime()) ? "" : d.toLocaleDateString(appLocale(), { month: "short", day: "numeric", year: "numeric" })
 }
 
 export function ClientFilesPage() {

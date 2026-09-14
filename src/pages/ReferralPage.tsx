@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { appLocale } from "@/lib/format-date"
 
 type Referral = { id: string; status: string; reward_amount: number; reward_currency: string; qualifying_at: string | null; paid_at: string | null; created_at: string; label: string }
 type Payout = { id: string; method: string; amount: string; currency: string; status: string; created_at: string }
@@ -24,7 +25,7 @@ type ReferralData = {
 }
 
 const money = (n: number, currency: string) => new Intl.NumberFormat("en-US", { style: "currency", currency, maximumFractionDigits: 2 }).format(n)
-const fmtDate = (s: string | null) => (s ? new Date(s).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—")
+const fmtDate = (s: string | null) => (s ? new Date(s).toLocaleDateString(appLocale(), { month: "short", day: "numeric", year: "numeric" }) : "—")
 
 export function ReferralPage() {
   const { getToken } = useAuth()

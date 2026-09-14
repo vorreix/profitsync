@@ -7,11 +7,12 @@ import { checkTransactionQuota } from "../_lib/quota.js"
 import { logAudit } from "../_lib/audit.js"
 import { resolveLogoColumns } from "../_lib/bank-brand.js"
 import { buildDebtsOverview, loadDebt, loadDebtRules, serializeDebt } from "../_lib/debts.js"
+import { payerShape, refusalForNew, refusalMessage, refusalStatus } from "../_lib/recurring-debt.js"
 import { materializeDueRecurring } from "../_lib/recurring-materialize.js"
 import { amountExceedsLimit } from "../../src/lib/money.js"
 import { PAYMENT_FREQUENCIES, type PaymentFrequency } from "../../src/lib/debt-math.js"
-import { frequencyToRecurring, MAX_DEBT_KIND_LENGTH, normalizeDebtKind } from "../../src/lib/debt-recurring.js"
-import { todayIso } from "../../src/lib/recurring.js"
+import { frequencyToRecurring, MAX_DEBT_KIND_LENGTH, normalizeDebtKind, recurringToFrequency } from "../../src/lib/debt-recurring.js"
+import { FREQUENCY_UNITS, todayIso, type FrequencyUnit } from "../../src/lib/recurring.js"
 import { isValidCurrency } from "../../src/lib/currencies.js"
 
 const ISO = /^\d{4}-\d{2}-\d{2}$/
@@ -83,6 +84,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const notes = String(b.notes ?? "").slice(0, 2000)
     const isEstimate = b.balance_is_estimate === true
 
+    // ── Adopting a rule that already exists, in the SAME write ──────────────
+    //
+    // "This standing order pays a loan I have not added yet" is one intention,
+    // so it is one operation: the debt, its terms and the rule's adoption all
+    // commit together or not at all. Creating the debt and then linking would
+    // leave a debt nobody pays if the second request never landed.
+    const linkRuleId = typeof b.link_rule_id === "string" && b.link_rule_id.trim() ? b.link_rule_id.trim() : null
+    if (linkRuleId && b.repayment) {
+      return res.status(400).json({ error: "Either adopt an existing payment or set a new one up, not both", code: "link_or_create" })
+    }
+
     // ── The recurring repayment (optional) ──────────────────────────────────
     // When present it becomes the debt's schedule: payment_amount /
     // payment_frequency / next_due_date mirror the rule, so the planner and the
@@ -108,7 +120,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const ruleCursor = repayment ? (repayment.startDate > today ? repayment.startDate : today) : null
     if (repayment) {
       payment = repayment.amount
-      frequency = repayment.frequency
+      // The mirror is derived from the rule's rhythm; a rhythm the debt
+      // vocabulary cannot name mirrors as "irregular" rather than being rounded
+      // to the nearest word it does know.
+      frequency = recurringToFrequency(repayment.unit, repayment.interval) ?? "irregular"
       nextDue = ruleCursor
     }
 
@@ -158,6 +173,42 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // What the ledger has no movement for: the part that was already owed before
     // this workspace ever saw it.
     const openingPart = Math.round((balance - received) * 100) / 100
+
+    // Adopting an existing rule: it has to be eligible, and once it is, IT owns
+    // the schedule — the debt's payment fields mirror the rule rather than
+    // anything typed here.
+    let adopt: (typeof recurringRules.$inferSelect) | null = null
+    let adoptCursor = today
+    if (linkRuleId) {
+      // Post anything already due in its OLD shape first; the adoption starts
+      // from the next occurrence (docs/debts/DEBTS.md).
+      await materializeDueRecurring(orgId)
+      const [r] = await db
+        .select()
+        .from(recurringRules)
+        .where(and(eq(recurringRules.id, linkRuleId), eq(recurringRules.organizationId, orgId)))
+      if (!r) return res.status(404).json({ error: "Not found" })
+      const payer = await payerShape(orgId, r.wealthAccountId)
+      const refusal = refusalForNew(
+        {
+          id: r.id, kind: r.kind, type: r.type, cardId: r.cardId, accountId: r.wealthAccountId,
+          accountType: payer.type, accountArchived: payer.archived, debtAccountId: r.debtAccountId,
+          endDate: r.endDate ? String(r.endDate).slice(0, 10) : null,
+          nextDueAt: String(r.nextDueAt).slice(0, 10), active: r.active,
+        },
+        // The debt does not exist yet: nothing is archived, nothing services it.
+        { id: "new", direction, archived: false, lifecycle: "active", linkedRuleIds: [] },
+        today,
+      )
+      if (refusal) return res.status(refusalStatus(refusal)).json({ error: refusalMessage(refusal), code: refusal })
+      adopt = r
+      // Forward only, never back onto an occurrence that already posted.
+      const cur = String(r.nextDueAt).slice(0, 10)
+      adoptCursor = cur > today ? cur : today
+      payment = Number(r.amount)
+      frequency = recurringToFrequency(r.frequencyUnit as FrequencyUnit, r.frequencyInterval) ?? "irregular"
+      nextDue = r.active ? adoptCursor : null
+    }
 
     const type = direction === "receivable" ? "receivable" : "loan"
     const signed = direction === "receivable" ? balance : -balance
@@ -275,7 +326,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     if (repayment && ruleId && payFrom && ruleCursor) {
-      const freq = frequencyToRecurring(repayment.frequency)!
       batch.push(
         db.insert(recurringRules).values({
           id: ruleId,
@@ -294,14 +344,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           type: direction === "receivable" ? "incoming" : "outgoing",
           amount: repayment.amount.toFixed(2),
           category: "Transfer",
-          frequencyUnit: freq.unit,
-          frequencyInterval: freq.interval,
+          frequencyUnit: repayment.unit,
+          frequencyInterval: repayment.interval,
           startDate: repayment.startDate,
           endDate: repayment.endDate,
           nextDueAt: ruleCursor,
           createdBy: userId,
           updatedBy: userId,
         }),
+      )
+    }
+
+    if (adopt) {
+      batch.push(
+        db
+          .update(recurringRules)
+          .set({
+            kind: "debt",
+            debtAccountId: accountId,
+            clientId: null,
+            toAccountId: null,
+            category: "Transfer",
+            nextDueAt: adoptCursor,
+            lastError: "",
+            updatedBy: userId,
+            updatedAt: now,
+          })
+          .where(eq(recurringRules.id, adopt.id)),
       )
     }
 
@@ -325,7 +394,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 type ParsedRepayment = {
   fromAccountId: string
   amount: number
-  frequency: Exclude<PaymentFrequency, "irregular">
+  /**
+   * The RULE's rhythm, not a debt vocabulary word. The debt vocabulary can only
+   * name five rhythms (weekly, fortnightly, monthly, quarterly, yearly) and a
+   * recurring rule can be any (unit, 1..365) pair — so collapsing to a name here
+   * silently rewrote "every 2 years" into "monthly" and started taking the money
+   * 24 times as often. The debt's payment_frequency is DERIVED from this pair
+   * and is "irregular" when there is no word for it, exactly as debtScheduleMirror
+   * does on every other path.
+   */
+  unit: FrequencyUnit
+  interval: number
   startDate: string
   endDate: string | null
   name: string
@@ -346,16 +425,37 @@ function parseRepayment(raw: unknown): ParsedRepayment | { error: string } | nul
   const amount = Number(r.amount)
   if (!Number.isFinite(amount) || amount <= 0) return { error: "The repayment amount must be more than 0" }
   if (amountExceedsLimit(amount)) return { error: "Amount is too large" }
-  const frequency = typeof r.frequency === "string" ? r.frequency : "monthly"
-  if (!frequencyToRecurring(frequency as PaymentFrequency)) return { error: "Choose how often the repayment is made" }
+  // Either shape is accepted, and neither is defaulted: a repayment nobody
+  // specified a rhythm for must be a 400, never an invented monthly schedule.
+  let unit: FrequencyUnit
+  let interval: number
+  if (r.frequency_unit !== undefined || r.frequency_interval !== undefined) {
+    const u = r.frequency_unit as FrequencyUnit
+    if (!FREQUENCY_UNITS.includes(u)) return { error: "frequency_unit must be day, week, month or year" }
+    const n = Math.floor(Number(r.frequency_interval ?? 1))
+    if (!Number.isFinite(n) || n < 1 || n > 365) return { error: "frequency_interval must be between 1 and 365" }
+    unit = u
+    interval = n
+  } else {
+    const named = typeof r.frequency === "string" ? frequencyToRecurring(r.frequency as PaymentFrequency) : null
+    if (!named) return { error: "Choose how often the repayment is made" }
+    unit = named.unit
+    interval = named.interval
+  }
   const startDate = typeof r.start_date === "string" && ISO.test(r.start_date) ? r.start_date : ""
   if (!startDate) return { error: "start_date must be YYYY-MM-DD" }
   const endDate = typeof r.end_date === "string" && ISO.test(r.end_date) ? r.end_date : null
   if (endDate && endDate < startDate) return { error: "The repayment cannot end before it starts" }
+  // The cursor never starts before today, so an end date already behind us
+  // describes a repayment that can never fire — the create-time twin of the
+  // link's `rule_ended` refusal. Better a 400 than a debt whose schedule is
+  // dead on arrival.
+  if (endDate && endDate < todayIso()) return { error: "That repayment has already ended — it would never pay anything" }
   return {
     fromAccountId,
     amount,
-    frequency: frequency as Exclude<PaymentFrequency, "irregular">,
+    unit,
+    interval,
     startDate,
     endDate,
     name: typeof r.name === "string" ? r.name.trim().slice(0, 120) : "",

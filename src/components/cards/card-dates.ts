@@ -3,12 +3,13 @@
 // plain functions can't hot-swap cleanly).
 import { cardExpiresSoon, expiryEndIso, expiryLabel, isCardExpired } from "@/lib/cards"
 import type { Card } from "@/lib/types"
+import { appLocale } from "@/lib/format-date"
 
 export const todayIso = () => new Date().toISOString().slice(0, 10)
 
 /** "Sep 15" from an ISO date (local, so the day never shifts). */
 export const shortDate = (iso: string) =>
-  new Date(`${iso.slice(0, 10)}T00:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+  new Date(`${iso.slice(0, 10)}T00:00:00`).toLocaleDateString(appLocale(), { month: "short", day: "numeric" })
 
 export type CardStatusKey = "statusClosed" | "statusFrozen" | "statusExpired" | "statusActive"
 

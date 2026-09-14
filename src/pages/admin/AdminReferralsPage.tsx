@@ -11,6 +11,7 @@ import { Switch } from "@/components/ui/switch"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { appLocale } from "@/lib/format-date"
 
 type Settings = {
   reward_type: string; reward_percent: string; reward_amount: string; reward_currency: string
@@ -19,7 +20,7 @@ type Settings = {
 type AdminReferral = { id: string; status: string; reward_amount: number; reward_currency: string; reward_type: string | null; qualifying_at: string | null; paid_at: string | null; created_at: string; referrer_email: string | null; referred_email: string | null }
 type AdminPayout = { id: string; user_id: string; email: string | null; method: string; details: Record<string, string>; amount: number; currency: string; status: string; note: string; created_at: string }
 
-const fmtDate = (s: string | null) => (s ? new Date(s).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—")
+const fmtDate = (s: string | null) => (s ? new Date(s).toLocaleDateString(appLocale(), { month: "short", day: "numeric", year: "numeric" }) : "—")
 
 export function AdminReferralsPage() {
   const { getToken } = useAuth()

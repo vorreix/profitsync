@@ -4,7 +4,7 @@
 //
 // `.js` extensions: this module is reachable from the api/ functions, which run
 // as unbundled ESM on @vercel/node.
-import { interestForPeriod, periodsPerYear, type Cents, type PaymentFrequency } from "./debt-math.js"
+import { finalPaymentTolerance, interestForPeriod, periodsPerYear, type Cents, type PaymentFrequency } from "./debt-math.js"
 import type { Frequency, FrequencyUnit } from "./recurring.js"
 
 /**
@@ -118,7 +118,14 @@ export function payoffCappedAmount(input: {
   if (outstanding <= 0 || scheduled <= 0) return 0
   const ppy = input.periodsPerYear ?? periodsPerYear(input.frequency) ?? 12
   const interest = interestForPeriod(outstanding, input.annualRatePct, ppy)
-  return Math.min(scheduled, outstanding + interest)
+  const due = outstanding + interest
+  // Fold a residue smaller than the tolerance into THIS instalment, exactly as
+  // the amortisation schedule does (debt-math.ts). Capping at `scheduled`
+  // instead left a few cents outstanding and posted one more instalment for
+  // them — an instalment no schedule table, no payoff date and no preview in
+  // the app ever promised.
+  if (due - scheduled <= finalPaymentTolerance(scheduled)) return due
+  return scheduled
 }
 
 /**
@@ -177,3 +184,125 @@ export function repaymentCursor(input: {
   if (scheduleChanged || resuming) return startDate > today ? startDate : today
   return current.nextDueAt
 }
+
+// ── Adopting a recurring rule you already have ───────────────────────────────
+//
+// People set the standing order up long before they start tracking the debt it
+// pays. "Car loan €300" sits in Recurring as a plain expense for eight months,
+// and then the loan gets added and there are suddenly two versions of the same
+// money. Linking the two is the fix, and it is the same operation from either
+// side — the debt adopting a rule, or the rule being pointed at a debt.
+//
+// What it does NOT do is rewrite the past. The eight occurrences already posted
+// were expenses; they stay expenses. Retroactively rebuilding them would move
+// balances, change budget periods that have already been reported on, and guess
+// at an interest split nobody recorded at the time. Linking is FORWARD ONLY,
+// and the screens say so.
+
+/** Why a rule cannot be adopted as a debt's repayment. Each maps to one message. */
+export type LinkRefusal =
+  | "rule_is_autosave"      // a Space auto-save: it belongs to the Space
+  | "rule_pays_with_card"   // cards are instruments, not repayment sources
+  | "rule_has_no_account"   // a repayment needs somewhere to be paid from
+  | "account_archived"
+  | "account_not_cash"      // bank or cash only — see the card rule in DEBTS.md
+  | "direction_mismatch"    // an incoming rule cannot pay a loan
+  | "debt_closed"
+  | "debt_settled"          // paid off / refinanced / written off: it is over
+  | "repayment_exists"      // one repayment per debt keeps the mirror honest
+  | "rule_linked_elsewhere" // already servicing a different debt
+  | "rule_ended"            // its end date has passed: it can never fire again
+  | "rule_has_pending"      // instalments are still waiting to post in their old shape
+
+export type LinkCandidateRule = {
+  id: string
+  kind: "standard" | "transfer" | "debt"
+  type: "incoming" | "outgoing"
+  cardId: string | null
+  accountId: string | null
+  accountType: string | null
+  accountArchived: boolean
+  debtAccountId: string | null
+  /** Its end date has passed, so it can never fire again. */
+  ended?: boolean
+  /**
+   * Instalments are due but have not posted — the catch-up could not run them
+   * (a plan limit, an archived account). Linking would move the cursor past
+   * them and they would be recorded in neither shape.
+   */
+  hasPending?: boolean
+}
+
+export type LinkTargetDebt = {
+  id: string
+  direction: "owed" | "receivable"
+  archived: boolean
+  /**
+   * Lifecycle decides two different things, and conflating them is a bug.
+   *
+   * TERMINAL (paid_off | refinanced | written_off) is a refusal: the debt can
+   * never take money again, so a repayment pointed at it would be a schedule
+   * nothing will ever honour — the mirror image of `rule_ended`.
+   *
+   * PAUSED is NOT a refusal. Linking to a paused debt is a real thing people
+   * do, and the rule simply follows the debt: it is stored inactive and the
+   * mirror carries no next date. Refusing it would break the debt screen's own
+   * "link an existing repayment", which deliberately offers paused debts.
+   *
+   * Optional so callers that genuinely have no lifecycle (the synthetic debt a
+   * brand-new one is validated against) need not invent one.
+   */
+  lifecycle?: "active" | "paused" | "paid_off" | "refinanced" | "written_off"
+  /**
+   * Ids of EVERY rule already linked to this debt, active or not.
+   *
+   * Counting only the active ones let a debt quietly collect a second rule
+   * while the first was paused — and resuming then paid it twice a month.
+   */
+  linkedRuleIds: string[]
+}
+
+/**
+ * Whether this rule may become this debt's repayment.
+ *
+ * The direction check is the one that matters most. A rule and a debt disagreeing
+ * about which way money moves is a mistake, not something to reconcile: silently
+ * flipping an incoming €3,000 salary rule because it was dropped on a loan would
+ * start taking €3,000 a month OUT of the account. So it is refused, loudly.
+ */
+export function linkRefusal(rule: LinkCandidateRule, debt: LinkTargetDebt): LinkRefusal | null {
+  if (rule.kind === "transfer") return "rule_is_autosave"
+  if (debt.archived) return "debt_closed"
+  // A settled debt is over. A rule pointed at one would be deactivated on the
+  // spot by the follow-the-debt rule, so what the user actually gets is a
+  // repayment that stops the moment it is made — better said than done.
+  if (debt.lifecycle && debt.lifecycle !== "active" && debt.lifecycle !== "paused") return "debt_settled"
+  if (rule.cardId) return "rule_pays_with_card"
+  if (!rule.accountId) return "rule_has_no_account"
+  if (rule.accountArchived) return "account_archived"
+  if (rule.accountType !== "bank" && rule.accountType !== "cash") return "account_not_cash"
+  // A loan is paid; a receivable is collected.
+  const wanted = debt.direction === "receivable" ? "incoming" : "outgoing"
+  if (rule.type !== wanted) return "direction_mismatch"
+  // Already doing this job for somebody else. Moving it would leave the OTHER
+  // debt with a mirrored schedule — a payment amount, a next due date, a place
+  // in the planner — describing a rule that had quietly walked away. Unlinking
+  // it there first is one more step and leaves nothing behind.
+  if (rule.debtAccountId && rule.debtAccountId !== debt.id) return "rule_linked_elsewhere"
+  // A rule past its end date can never fire again; linking it would write a
+  // schedule onto the debt that nothing will ever honour.
+  if (rule.ended) return "rule_ended"
+  // Instalments waiting to post must land in the shape they were owed in. The
+  // link moves the cursor forward, so linking over them loses them entirely.
+  if (rule.hasPending) return "rule_has_pending"
+  // ONE repayment per debt, active or not: the debt's payment_amount /
+  // payment_frequency / next_due_date mirror exactly one rule, and the planner,
+  // the payoff estimate and the month's obligations all read that mirror. Two
+  // would make them fiction — and a second one linked while the first was merely
+  // PAUSED is the version of this that hides until both are running.
+  if (debt.linkedRuleIds.some((id) => id !== rule.id)) return "repayment_exists"
+  return null
+}
+
+/** Can this rule be offered in a debt's "link an existing one" picker at all? */
+export const isLinkable = (rule: LinkCandidateRule, debt: LinkTargetDebt): boolean => linkRefusal(rule, debt) === null

@@ -18,6 +18,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { WealthAccountIcon } from "@/components/WealthAccountIcon"
 import { CardChip } from "@/components/cards/CardChip"
 import { RecurringRuleDialog, DeleteRecurringDialog, type RuleForm } from "@/components/recurring/RecurringRuleDialog"
+import { appLocale } from "@/lib/format-date"
 
 export function RecurringPage() {
   const { t } = useTranslation()
@@ -154,7 +155,7 @@ export function RecurringPage() {
     }
   }
 
-  const fmtDate = (d: string) => new Date(`${d}T00:00:00`).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })
+  const fmtDate = (d: string) => new Date(`${d}T00:00:00`).toLocaleDateString(appLocale(), { day: "numeric", month: "short", year: "numeric" })
 
   const freqLabel = (rule: RecurringRule) => {
     const unit = t(`recurring.unit_${rule.frequency_unit}` as const)
