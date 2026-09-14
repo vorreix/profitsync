@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test"
-import { E2E_PREFIX, dismissBanners, ensureBank, expectAppShell } from "./helpers"
+import { E2E_PREFIX, dismissBanners, ensureBank, expectAppShell, rememberWorkspace, restoreWorkspace, switchWorkspace } from "./helpers"
 
 /**
  * Creating a debt from the RECURRING side, through the real UI.
@@ -14,16 +14,30 @@ import { E2E_PREFIX, dismissBanners, ensureBank, expectAppShell } from "./helper
  * Runs in the e2e user's PERSONAL workspace and removes what it makes.
  */
 
-type OrgRow = { id: string; is_personal: boolean }
 type Rule = { id: string; name: string; kind?: string; debt_account_id?: string | null; category: string; frequency_unit: string; frequency_interval: number; amount: string | number }
 type Debt = { id: string; name: string; balance: number; original_amount?: number | null; annual_rate_pct?: number | null; payment_amount?: number | null; payment_frequency?: string | null; repayment_linked?: boolean }
 type Overview = { debts: Debt[]; receivables: Debt[]; closed?: Debt[] }
 type TxRow = { id: string }
 
 let orgIdForApi = ""
+// The workspace the user was in before this file ran. The active workspace is
+// SHARED state on the server, so leaving it switched changes what every later
+// spec sees — it is what turned off /clients and broke smoke's "create a client".
+let restoreOrgId = ""
 
 const RULE_NAME = `${E2E_PREFIX}-from-recurring`
 const DEBT_NAME = `${E2E_PREFIX}-inline-debt`
+
+/**
+ * The modal — NOT `getByRole("dialog")`.
+ *
+ * Radix gives a popover `role="dialog"` too, and it stays mounted through its
+ * exit animation, so the moment this form's account combobox has been opened
+ * once, `getByRole("dialog")` can resolve to two elements and every assertion on
+ * it dies of a strict-mode violation instead of the thing it was checking.
+ * `data-slot` is what actually distinguishes them, and it is not translated.
+ */
+const modal = (page: Page) => page.locator('[data-slot="dialog-content"]')
 
 async function waitForClerk(page: Page) {
   await page.waitForFunction(
@@ -70,12 +84,8 @@ test.beforeAll(async ({ browser }) => {
   const page = await (await browser.newContext({ storageState: "e2e/.auth/user.json" })).newPage()
   await page.goto("/dashboard")
   await expectAppShell(page)
-  const { json: orgs } = await api<OrgRow[]>(page, "GET", "/api/organizations")
-  const personal = orgs.find((o) => o.is_personal)
-  expect(personal, "the e2e user has a personal workspace").toBeTruthy()
-  expect((await api(page, "POST", "/api/organizations/switch", { organization_id: personal!.id })).status).toBe(200)
-  orgIdForApi = personal!.id
-  await page.evaluate(() => { try { localStorage.removeItem("ps_active_org") } catch { /* private mode */ } })
+  restoreOrgId = await rememberWorkspace(page, api)
+  orgIdForApi = await switchWorkspace(page, api, "personal")
   await cleanup(page)
   await page.context().close()
 })
@@ -85,6 +95,9 @@ test.afterAll(async ({ browser }) => {
   await page.goto("/dashboard")
   await expectAppShell(page)
   await cleanup(page)
+  // Put the workspace back before anything else runs. Without this the user is
+  // left in the personal workspace, where /clients and /quotations do not exist.
+  await restoreWorkspace(page, api, restoreOrgId)
   await page.context().close()
 })
 
@@ -94,7 +107,7 @@ async function openAddDialog(page: Page) {
   await expectAppShell(page)
   await dismissBanners(page)
   await page.getByRole("button", { name: /add recurring|^new$/i }).first().click()
-  await expect(page.getByRole("dialog")).toBeVisible()
+  await expect(modal(page)).toBeVisible()
   await expect(page.locator("#rec-name")).toBeVisible()
 }
 
@@ -104,7 +117,7 @@ test("a new recurring payment can create the debt it pays, in one save", async (
   const bank = await ensureBank(page, api)
 
   await openAddDialog(page)
-  const dialog = page.getByRole("dialog")
+  const dialog = modal(page)
 
   await dialog.locator("#rec-name").fill(RULE_NAME)
   await dialog.locator("#rec-amount").fill("250")
@@ -138,7 +151,7 @@ test("a new recurring payment can create the debt it pays, in one save", async (
   await expect(dialog.locator("#rec-debt")).toContainText(/create a new one/i)
 
   await dialog.getByRole("button", { name: /add recurring|save/i }).last().click()
-  await expect(page.getByRole("dialog")).toBeHidden({ timeout: 15_000 })
+  await expect(modal(page)).toBeHidden({ timeout: 15_000 })
 
   // ── The debt exists ──────────────────────────────────────────────────────
   const o = await overview(page)
@@ -171,7 +184,7 @@ test("an unnameable rhythm survives the round trip", async ({ page }) => {
   await cleanup(page)
 
   await openAddDialog(page)
-  const dialog = page.getByRole("dialog")
+  const dialog = modal(page)
 
   await dialog.locator("#rec-name").fill(RULE_NAME)
   await dialog.locator("#rec-amount").fill("5000")
@@ -191,7 +204,7 @@ test("an unnameable rhythm survives the round trip", async ({ page }) => {
   await dialog.locator("#rec-debt-balance").fill("40000")
 
   await dialog.getByRole("button", { name: /add recurring|save/i }).last().click()
-  await expect(page.getByRole("dialog")).toBeHidden({ timeout: 15_000 })
+  await expect(modal(page)).toBeHidden({ timeout: 15_000 })
 
   const rule = (await rules(page)).find((r) => r.name === RULE_NAME)
   expect(rule, "the recurring payment exists").toBeTruthy()
@@ -216,7 +229,7 @@ test("the reported shape: starts today, monthly, straight from a bank", async ({
 
   const today = new Date().toISOString().slice(0, 10)
   await openAddDialog(page)
-  const dialog = page.getByRole("dialog")
+  const dialog = modal(page)
 
   await dialog.locator("#rec-name").fill(RULE_NAME)
   await dialog.locator("#rec-amount").fill("100")
@@ -231,7 +244,7 @@ test("the reported shape: starts today, monthly, straight from a bank", async ({
   await dialog.locator("#rec-debt-balance").fill("5000")
 
   await dialog.getByRole("button", { name: /add recurring|save/i }).last().click()
-  await expect(page.getByRole("dialog")).toBeHidden({ timeout: 15_000 })
+  await expect(modal(page)).toBeHidden({ timeout: 15_000 })
 
   const debt = [...(await overview(page)).debts].find((d) => d.name === DEBT_NAME)
   expect(debt, "the debt exists even when the first instalment posts on the spot").toBeTruthy()
@@ -252,7 +265,7 @@ test("the debt answer survives the page revalidating underneath the open dialog"
   await cleanup(page)
 
   await openAddDialog(page)
-  const dialog = page.getByRole("dialog")
+  const dialog = modal(page)
   await dialog.locator("#rec-name").fill(RULE_NAME)
   await dialog.locator("#rec-amount").fill("100")
   await dialog.locator("#rec-start").fill("2028-05-01")
@@ -271,7 +284,7 @@ test("the debt answer survives the page revalidating underneath the open dialog"
   await expect(dialog.locator("#rec-debt-name")).toHaveValue(DEBT_NAME)
 
   await dialog.getByRole("button", { name: /add recurring|save/i }).last().click()
-  await expect(page.getByRole("dialog")).toBeHidden({ timeout: 15_000 })
+  await expect(modal(page)).toBeHidden({ timeout: 15_000 })
   expect([...(await overview(page)).debts].find((d) => d.name === DEBT_NAME)).toBeTruthy()
 })
 
@@ -284,7 +297,7 @@ test("a category is required for an ordinary payment, and not asked for a repaym
   await cleanup(page)
 
   await openAddDialog(page)
-  const dialog = page.getByRole("dialog")
+  const dialog = modal(page)
   await dialog.locator("#rec-name").fill(RULE_NAME)
   await dialog.locator("#rec-amount").fill("40")
   await dialog.locator("#rec-start").fill("2028-06-01")
@@ -293,7 +306,7 @@ test("a category is required for an ordinary payment, and not asked for a repaym
 
   // No category → refused, and the dialog stays open with everything intact.
   await dialog.getByRole("button", { name: /add recurring|save/i }).last().click()
-  await expect(page.getByRole("dialog")).toBeVisible()
+  await expect(modal(page)).toBeVisible()
   await expect(dialog.getByText(/choose a category/i).first()).toBeVisible()
   expect((await rules(page)).find((r) => r.name === RULE_NAME), "nothing was created").toBeFalsy()
 
@@ -304,7 +317,7 @@ test("a category is required for an ordinary payment, and not asked for a repaym
   await dialog.locator("#rec-debt-name").fill(DEBT_NAME)
   await dialog.locator("#rec-debt-balance").fill("800")
   await dialog.getByRole("button", { name: /add recurring|save/i }).last().click()
-  await expect(page.getByRole("dialog")).toBeHidden({ timeout: 15_000 })
+  await expect(modal(page)).toBeHidden({ timeout: 15_000 })
 
   const rule = (await rules(page)).find((r) => r.name === RULE_NAME)
   expect(rule!.category, "the engine's category, not the form's").toBe("Transfer")
@@ -317,20 +330,20 @@ test("dismissing the dialog keeps what was typed; Cancel and saving do not", asy
   await cleanup(page)
 
   await openAddDialog(page)
-  const dialog = page.getByRole("dialog")
+  const dialog = modal(page)
   await dialog.locator("#rec-name").fill(RULE_NAME)
   await dialog.locator("#rec-amount").fill("123")
 
   // Escape is an accident, not a decision.
   await page.keyboard.press("Escape")
-  await expect(page.getByRole("dialog")).toBeHidden()
+  await expect(modal(page)).toBeHidden()
   await page.getByRole("button", { name: /add recurring|^new$/i }).first().click()
   await expect(dialog.locator("#rec-name")).toHaveValue(RULE_NAME)
   await expect(dialog.locator("#rec-amount")).toHaveValue("123")
 
   // Cancel is a decision.
   await dialog.getByRole("button", { name: /^cancel$/i }).click()
-  await expect(page.getByRole("dialog")).toBeHidden()
+  await expect(modal(page)).toBeHidden()
   await page.getByRole("button", { name: /add recurring|^new$/i }).first().click()
   await expect(dialog.locator("#rec-name")).toHaveValue("")
   await expect(dialog.locator("#rec-amount")).toHaveValue("")
