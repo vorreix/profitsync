@@ -138,7 +138,7 @@ export function daysBetween(from: string, to: string): number {
 export type AlertAccount = {
   id: string
   name: string
-  type: "bank" | "cash" | "space" | "credit_card"
+  type: "bank" | "cash" | "space" | "credit_card" | "loan" | "receivable"
   /** AS OF TODAY — see decision 3 in the header. Not the raw column. */
   balanceToday: number
   creditLimit: number | null
@@ -410,8 +410,15 @@ export function projectShortfalls(input: { accounts: AlertAccount[]; events: Pro
  * an over-limit card reads as "0 available". That is the right answer to show
  * someone and the wrong one to project with: clamped, the number can never go
  * negative and a card overrun could never be detected at all.
+ *
+ * A DEBT account has no floor at all. A loan's balance is negative by
+ * definition and borrowing more only makes it more so; a receivable simply runs
+ * out of claim. Neither is money that can fail to cover a charge, and treating
+ * the raw balance as spendable made every loan look permanently overdrawn the
+ * moment anything was scheduled against it.
  */
 function headroom(account: AlertAccount, balance: number): number | null {
+  if (account.type === "loan" || account.type === "receivable") return null
   if (account.type !== "credit_card") return balance
   const limit = account.creditLimit
   if (limit === null || limit <= 0) return null

@@ -4,6 +4,7 @@ import { db, serialize } from "../../src/lib/db/index.js"
 import { organizations, transactions, wealthAccounts } from "../../src/lib/db/schema.js"
 import { canWrite, isPersonalAccount, requireAuth } from "../_lib/auth.js"
 import { logAudit } from "../_lib/audit.js"
+import { pickAppearance } from "../_lib/account-appearance.js"
 import { checkSpaceQuota } from "../_lib/quota.js"
 import { materializeDueRecurring } from "../_lib/recurring-materialize.js"
 import { parseGoal, parseTargetDate, spaceFields } from "../_lib/spaces.js"
@@ -49,6 +50,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       goal_amount?: number | string | null
       target_date?: string | null
       icon?: string
+      color?: unknown
+      color_style?: unknown
     }
     const name = (body.name ?? "").trim()
     if (!name) return res.status(400).json({ error: "name is required" })
@@ -60,6 +63,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     } catch {
       return res.status(400).json({ error: "Invalid currency code", code: "invalid_currency" })
     }
+    const appearance = pickAppearance(body)
+    if (!appearance.ok) return res.status(400).json({ error: appearance.error })
 
     const goalAmount = parseGoal(body.goal_amount)
     if (goalAmount === "invalid") return res.status(400).json({ error: "goal_amount is invalid" })
@@ -87,6 +92,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         openingBalance: "0", // a Space starts empty; you fund it via transfer
         currentBalance: "0",
         icon: body.icon || "piggy",
+        ...appearance.patch,
         goalAmount,
         targetDate,
         position: (maxPos ?? -1) + 1,

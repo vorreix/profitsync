@@ -45,6 +45,7 @@ import { mergeTags, txTags } from "@/lib/transaction-tags"
 import { AddTransactionDialog } from "@/components/transactions/AddTransactionDialog"
 import { FxExcludedNotice } from "@/components/FxExcludedNotice"
 import { rowCurrency } from "@/lib/reporting-fields"
+import { appLocale } from "@/lib/format-date"
 
 // The summary is converted server-side into the workspace's reporting currency
 // (`summary.currency`), each row at its own date; `excluded_count` is what had
@@ -60,7 +61,7 @@ type TxRow = Transaction
 const PAGE_SIZE = 20
 
 const formatDate = (d: string) =>
-  new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+  new Date(d).toLocaleDateString(appLocale(), { month: "short", day: "numeric", year: "numeric" })
 
 // ─── List row ─────────────────────────────────────────────────────────────────
 // Memoized so page-level state changes that don't touch a row (search
@@ -566,6 +567,14 @@ export function TransactionsPage() {
         const token = await getToken()
         const legs = token ? await apiGet<Transaction[]>(`/api/transactions?groupId=${tx.group_id}`, token) : []
         if (!legs.length) { toast.error(t("failedToUpdateTransaction")); return }
+        // A group that contains TRANSFER legs is not a split — it is one money
+        // movement with more than one meaning, and a debt repayment is the
+        // common case: a principal transfer plus interest and fee expenses.
+        // Only the expenses survive this list's transfer filter, so it arrives
+        // here looking like a lone grouped row. Saving would delete the group
+        // and try to rebuild it as plain allocations, which the server refuses
+        // — leaving the repayment trashed and nothing in its place.
+        if (legs.some((l) => l.kind === "transfer")) { toast.info(t("editOnItsOwnPage")); return }
         setEditForm({
           id: legs[0].id,
           group_id: tx.group_id,

@@ -201,6 +201,20 @@ describe("projectShortfalls", () => {
     expect(projectShortfalls({ accounts: [cardAcct], events: [{ date: "2026-03-12", accountId: "acct_c1", delta: -500, source: src }] })).toEqual([])
   })
 
+  it("says nothing about a debt account — a loan has no floor to hit", () => {
+    // A loan's balance is negative by definition, so measuring it like a bank
+    // balance reported every loan as permanently overdrawn the moment anything
+    // was scheduled against it. Borrowing more (an outgoing leg on the loan) is
+    // the normal case that used to trip it.
+    const loan = account({ id: "acct_loan", type: "loan", balanceToday: -12_000 })
+    expect(projectShortfalls({ accounts: [loan], events: [{ date: "2026-03-12", accountId: "acct_loan", delta: -5000, source: src }] })).toEqual([])
+  })
+
+  it("says nothing about a receivable that is repaid past zero", () => {
+    const owedToMe = account({ id: "acct_rec", type: "receivable", balanceToday: 100 })
+    expect(projectShortfalls({ accounts: [owedToMe], events: [{ date: "2026-03-12", accountId: "acct_rec", delta: -150, source: src }] })).toEqual([])
+  })
+
   it("ignores archived and unknown accounts", () => {
     expect(projectShortfalls({
       accounts: [account({ id: "bank", balanceToday: 0, archived: true })],

@@ -42,6 +42,10 @@ CREATE INDEX IF NOT EXISTS "transactions_transfer_idx" ON "transactions" ("trans
 
 -- Legacy backfill: only unambiguous two-leg, same-date, same-amount,
 -- same-currency groups become headers. Anything else stays as it is, for audit.
+-- A group that also carries non-transfer legs, or touches a loan/receivable, is
+-- NOT a plain transfer: a debt repayment is principal (two transfer legs) plus
+-- interest and fees in one group, owned by the debt engine and trashed as a
+-- whole. A header on its two principal legs would split it (docs/debts/DEBTS.md).
 WITH deterministic AS (
   SELECT t."group_id", c."organization_id",
     (array_agg(t."wealth_account_id" ORDER BY t."id") FILTER (WHERE t."type" = 'outgoing'))[1] AS source_account_id,
@@ -51,6 +55,12 @@ WITH deterministic AS (
     max(t."created_at") AS completed_at
   FROM "transactions" t JOIN "clients" c ON c."id" = t."client_id"
   WHERE t."kind" = 'transfer' AND t."group_id" IS NOT NULL
+    AND NOT EXISTS (
+      SELECT 1 FROM "transactions" o
+      LEFT JOIN "wealth_accounts" ow ON ow."id" = o."wealth_account_id"
+      WHERE o."group_id" = t."group_id"
+        AND (o."kind" <> 'transfer' OR ow."type" IN ('loan', 'receivable'))
+    )
   GROUP BY t."group_id", c."organization_id"
   HAVING count(*) = 2
     AND count(*) FILTER (WHERE t."type" = 'outgoing') = 1

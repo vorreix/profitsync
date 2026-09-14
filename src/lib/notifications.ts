@@ -51,6 +51,10 @@ export const NOTIFICATION_TYPES = {
   budget_exceeded: { category: "budget", i18nKey: "types.budget_exceeded" },
   recurring_posted: { category: "transactions", i18nKey: "types.recurring_posted" },
   space_autosaved: { category: "transactions", i18nKey: "types.space_autosaved" },
+  // Debt & Loans (api/_lib/recurring-debt.ts) — a scheduled repayment posted,
+  // and the moment the last of a debt is cleared.
+  debt_payment_posted: { category: "transactions", i18nKey: "types.debt_payment_posted" },
+  debt_repaid: { category: "transactions", i18nKey: "types.debt_repaid" },
   add_transaction_reminder: { category: "transactions", i18nKey: "types.add_transaction_reminder" },
   // Cards (api/_lib/notify-cards.ts) — statement lifecycle, autopay, expiry.
   // A due date is the one notification people want on their phone, hence the

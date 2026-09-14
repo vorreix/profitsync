@@ -37,7 +37,7 @@ import {
 import { apiDelete, apiErrorMessage, apiGet, apiPatch, apiPost } from "@/lib/api"
 import { WEALTH_CHANGED_EVENT } from "@/lib/data-events"
 import { amountExceedsLimit } from "@/lib/money"
-import type { WealthAccount, WealthSummaryAccount } from "@/lib/types"
+import type { DebtsOverview, WealthAccount, WealthSummaryAccount } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { useCurrency } from "@/lib/currency-context"
 import { useOrg } from "@/lib/org-context"
@@ -64,7 +64,8 @@ import { availableFromSummary, savedFromSummary, useConsolidatedWealth } from "@
 import { BankAccountFormFields } from "@/components/wealth/BankAccountFormFields"
 import { CurrencyCombobox } from "@/components/CurrencyCombobox"
 import { CardsTab } from "@/components/cards/CardsTab"
-import { type BankFormState, bankDetailsPayload, emptyBankForm } from "@/lib/bank-form"
+import { type BankFormState, appearancePayload, bankDetailsPayload, emptyBankForm } from "@/lib/bank-form"
+import { accountAppearance } from "@/lib/account-color"
 import { isLiabilityType } from "@/lib/credit-card"
 import { accountCurrency, accountDisplayName, currencySymbol, formatDateLabel, formatMoney, moveBefore, useBalancePrivacy, useWealthSummary } from "@/lib/wealth"
 import { useTranslation } from "react-i18next"
@@ -162,6 +163,15 @@ export function WealthPage() {
 
   const [accounts, setAccounts] = useState<AccountRow[]>([])
   const [spaces, setSpaces] = useState<WealthAccount[]>([])
+  // Debts (loans I owe / money owed to me) live on /debts but belong in net worth.
+  // The raw PER-CURRENCY buckets are stored and narrowed at render time: the
+  // loader runs once on mount, before the workspace currency has resolved, so
+  // filtering inside it compares against a currency that is not the real one yet
+  // and silently totals nothing.
+  const [debtBuckets, setDebtBuckets] = useState<{
+    owed: { currency: string; amount: number }[]
+    receivable: { currency: string; amount: number }[]
+  }>({ owed: [], receivable: [] })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
@@ -301,11 +311,24 @@ export function WealthPage() {
   // it (a bank→Space transfer nets to zero). /api/spaces 403s for business orgs,
   // so this is naturally personal-only.
   const localSaved = spaces.filter((s) => !s.archived_at).reduce((sum, s) => sum + Number(s.current_balance), 0)
+  // Debts (loans I owe / money owed to me) live on /debts but belong in net worth.
+  // Until the summary lands, only SAME-CURRENCY debts are counted — no exchange
+  // rate is invented in the browser. The raw per-currency buckets are narrowed
+  // here at render time: the loader runs before the workspace currency resolves.
+  const localDebts = useMemo(() => {
+    const sum = (xs: { currency: string; amount: number }[]) =>
+      xs.filter((x) => x.currency === currency).reduce((acc, x) => acc + x.amount, 0)
+    return { owed: sum(debtBuckets.owed), receivable: sum(debtBuckets.receivable) }
+  }, [debtBuckets, currency])
   const savedTotal = summary ? savedFromSummary(summary) : localSaved
-  const liabilities = summary ? summary.liabilities : local.liabilities
-  const assetsTotal = summary ? summary.assets : local.assets + localSaved
+  // What the CARDS owe — loans are their own chip below, never "owed on cards".
+  const liabilities = summary ? summary.card_liabilities : local.liabilities
+  const debtsOwed = summary ? summary.debts_owed : localDebts.owed
+  // A receivable is owed to you: an asset, but not liquid — it stays out of "Available".
+  const assetsTotal = summary ? summary.assets : local.assets + localSaved + localDebts.receivable
   const available = summary ? availableFromSummary(summary) : local.total
-  const netWorth = summary ? summary.net_worth : local.total + localSaved
+  // A loan reduces net worth the way card debt does; a receivable adds to it.
+  const netWorth = summary ? summary.net_worth : local.total + localSaved + localDebts.receivable - localDebts.owed
   // A total that leaves a currency out must say so beside the number.
   const partial = !!summary && !summary.complete
   const banks = useMemo(() => accounts.filter((a) => !isLiabilityType(a.type)), [accounts])
@@ -325,14 +348,19 @@ export function WealthPage() {
     if (!token) return
     if (!silent) setLoading(true)
     try {
-      const [rows, q, spaceRows] = await Promise.all([
+      const [rows, q, spaceRows, debtsRes] = await Promise.all([
         apiGet<AccountRow[]>("/api/wealth/accounts", token),
         apiGet<BankQuota>("/api/wealth/quota", token).catch(() => null),
         // Personal-only; 403s for business orgs → treated as no Spaces.
         apiGet<WealthAccount[]>("/api/spaces", token).catch(() => [] as WealthAccount[]),
+        apiGet<DebtsOverview>("/api/debts", token).catch(() => null),
       ])
       setAccounts(rows)
       setSpaces(spaceRows)
+      setDebtBuckets({
+        owed: debtsRes?.summary.owed_by_currency ?? [],
+        receivable: debtsRes?.summary.receivable_by_currency ?? [],
+      })
       if (q) setQuota(q)
     } catch {
       if (!silent) toast.error(t("failedToLoad"))
@@ -401,6 +429,7 @@ export function WealthPage() {
         icon: form.icon,
         openingBalance: Number(form.opening_balance || 0),
         currency_code: form.currency_code || currency,
+        ...appearancePayload(form),
         ...bankDetailsPayload(form),
       })
       toast.success(t("accountAdded"))
@@ -504,7 +533,7 @@ export function WealthPage() {
                 <p className="mt-0.5 text-[11px] text-muted-foreground">{t("ratesFrom", { date: formatDateLabel(summary.as_of) })}</p>
               )}
             </div>
-            {!loading && (liabilities > 0 || savedTotal > 0) && (
+            {!loading && (liabilities > 0 || savedTotal > 0 || debtsOwed > 0) && (
               <div className="flex w-full flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground sm:w-auto sm:justify-end">
                 {liabilities > 0 && (
                   <p className="inline-flex flex-wrap items-center gap-x-2">
@@ -518,6 +547,18 @@ export function WealthPage() {
                       {t("owedOnCards")}: {formatMoney(liabilities, reporting, balancesVisible)}
                     </button>
                   </p>
+                )}
+                {/* Card debt and borrowed money are different obligations with
+                    different homes, so they get their own chips rather than one
+                    blended "liabilities" figure. */}
+                {debtsOwed > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => navigate("/debts")}
+                    className="ios-tap inline-flex flex-wrap items-center gap-x-2 tabular-nums text-red-600 underline-offset-2 hover:underline dark:text-red-400"
+                  >
+                    {t("liabilities")}: {formatMoney(debtsOwed, reporting, balancesVisible)} →
+                  </button>
                 )}
                 {savedTotal > 0 && (
                   <button
@@ -916,6 +957,18 @@ function AccountCard({
   const isCash = account.type === "cash"
   const kindLabel = isCash ? t("cash") : t("bank")
   const cardCount = account.card_count ?? 0
+  // The account's own colour (src/lib/account-color.ts): a rail + a wash in
+  // "subtle", the whole tile in "bold". On a bold tile every foreground colour
+  // has to come off the palette instead of the theme, or the muted greys and
+  // the secondary badges dissolve into the gradient.
+  const look = accountAppearance(account)
+  const onColor = look.bold
+  const ink = look.text === "light" ? "text-white" : "text-slate-900"
+  const inkSoft = look.text === "light" ? "text-white/75" : "text-slate-900/70"
+  const inkHover = look.text === "light" ? "hover:text-white" : "hover:text-slate-900"
+  const chip = look.text === "light"
+    ? "border-white/25 bg-white/15 text-white"
+    : "border-slate-900/20 bg-slate-900/10 text-slate-900"
 
   return (
     // "Stretched overlay" card: a single full-bleed button is the click target
@@ -923,20 +976,34 @@ function AccountCard({
     // genuinely interactive bits — Adjust, the cards badge + the actions menu —
     // re-enable pointer events. This keeps the Adjust control right next to the
     // balance without nesting interactive elements inside another button.
-    <div className={`group relative rounded-2xl border bg-card transition-colors hover:border-primary/40 ${isCash ? "ring-1 ring-primary/20" : ""}`}>
+    <div
+      style={look.vars as React.CSSProperties}
+      className={cn(
+        "acct-colored group relative rounded-2xl border transition-colors",
+        onColor ? "acct-bold" : "acct-subtle acct-rail bg-card hover:border-primary/40",
+        isCash && !onColor && "ring-1 ring-primary/20",
+      )}
+    >
       <button
         type="button"
         onClick={onOpen}
         aria-label={`${accountDisplayName(account)} — ${t("viewTransactions")}`}
-        className="pressable ios-tap absolute inset-0 z-0 rounded-2xl outline-none hover:bg-muted/30 focus-visible:ring-2 focus-visible:ring-ring"
+        className={cn(
+          "pressable ios-tap absolute inset-0 z-0 rounded-2xl outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          onColor ? "hover:bg-black/10" : "hover:bg-muted/30",
+        )}
       />
 
       <div className="pointer-events-none relative z-10 flex flex-col p-4">
         <div className="flex min-w-0 items-center gap-3 pe-16">
-          <WealthAccountIcon account={account} className="size-10" />
+          <WealthAccountIcon
+            account={account}
+            className="size-10"
+            accent={onColor ? (look.text === "light" ? "glass" : "glass-dark") : "tint"}
+          />
           <div className="min-w-0">
-            <p className="truncate text-sm font-semibold">{accountDisplayName(account)}</p>
-            <p className="truncate text-xs text-muted-foreground">
+            <p className={cn("truncate text-sm font-semibold", onColor && ink)}>{accountDisplayName(account)}</p>
+            <p className={cn("truncate text-xs", onColor ? inkSoft : "text-muted-foreground")}>
               {isCash ? t("cash") : (account.nickname ? account.bank_name : kindLabel)}
             </p>
           </div>
@@ -945,7 +1012,7 @@ function AccountCard({
         <div className="mt-4 flex items-start gap-1.5">
           <div className="min-w-0">
             {/* The balance in the account's OWN currency — the fact. */}
-            <p className="text-2xl font-bold tabular-nums">
+            <p className={cn("text-2xl font-bold tabular-nums", onColor && ink)}>
               {formatMoney(Number(account.current_balance), accountCurrency(account, currency), balancesVisible)}
             </p>
             {/* …and, for a foreign-currency account, what that is worth in the reporting currency. */}
@@ -954,7 +1021,10 @@ function AccountCard({
           <Button
             variant="ghost"
             size="icon"
-            className="pointer-events-auto size-7 shrink-0 -translate-y-1.5 text-muted-foreground hover:text-foreground"
+            className={cn(
+              "pointer-events-auto size-7 shrink-0 -translate-y-1.5",
+              onColor ? cn(inkSoft, inkHover, "hover:bg-white/15") : "text-muted-foreground hover:text-foreground",
+            )}
             aria-label={t("adjust")}
             title={t("adjust")}
             onClick={(e) => { e.stopPropagation(); onAdjust() }}
@@ -965,12 +1035,22 @@ function AccountCard({
 
         <div className="mt-3 flex items-center justify-between">
           <span className="flex items-center gap-1.5">
-            <Badge variant="secondary" className="gap-1">
-              {isCash ? <Wallet className="size-3" /> : null}
-              {kindLabel}
-            </Badge>
+            {onColor ? (
+              <span className={cn("inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-medium", chip)}>
+                {isCash ? <Wallet className="size-3" /> : null}
+                {kindLabel}
+              </span>
+            ) : (
+              <Badge variant="secondary" className="gap-1">
+                {isCash ? <Wallet className="size-3" /> : null}
+                {kindLabel}
+              </Badge>
+            )}
             {account.is_default && (
-              <Badge className="gap-1 border-amber-500/40 bg-amber-500/15 text-amber-700 dark:text-amber-300" variant="outline">
+              <Badge
+                className={cn("gap-1", onColor ? chip : "border-amber-500/40 bg-amber-500/15 text-amber-700 dark:text-amber-300")}
+                variant="outline"
+              >
                 <Star className="size-3 fill-current" /> {t("defaultBadge")}
               </Badge>
             )}
@@ -980,13 +1060,21 @@ function AccountCard({
                 to={`/wealth/${account.id}#cards`}
                 onClick={(e) => e.stopPropagation()}
                 aria-label={`${t("cards.cardsOnBank", { count: cardCount })} — ${t("cards.viewCards")}`}
-                className="pointer-events-auto ios-tap inline-flex min-h-6 items-center gap-1 rounded-md border bg-card px-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+                className={cn(
+                  "pointer-events-auto ios-tap inline-flex min-h-6 items-center gap-1 rounded-md border px-1.5 text-[11px] font-medium transition-colors",
+                  onColor ? chip : "bg-card text-muted-foreground hover:border-primary/40 hover:text-foreground",
+                )}
               >
                 <CreditCard className="size-3" aria-hidden /> {t("cards.cardsOnBank", { count: cardCount })}
               </Link>
             )}
           </span>
-          <span className="inline-flex items-center gap-0.5 text-xs font-medium text-muted-foreground transition-colors group-hover:text-primary">
+          <span
+            className={cn(
+              "inline-flex items-center gap-0.5 text-xs font-medium transition-colors",
+              onColor ? inkSoft : "text-muted-foreground group-hover:text-primary",
+            )}
+          >
             {t("viewTransactions")} <ChevronRight className="size-3.5 rtl:rotate-180" />
           </span>
         </div>
@@ -1002,13 +1090,21 @@ function AccountCard({
           {...handle.attributes}
           aria-label={t("dragHandle")}
           title={t("dragHandle")}
-          className="ios-tap flex size-8 cursor-grab touch-none items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:cursor-grabbing"
+          className={cn(
+            "ios-tap flex size-8 cursor-grab touch-none items-center justify-center rounded-md transition-colors active:cursor-grabbing",
+            onColor ? cn(inkSoft, inkHover, "hover:bg-white/15") : "text-muted-foreground hover:bg-muted hover:text-foreground",
+          )}
         >
           <GripVertical className="size-4" />
         </button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon-sm" className="text-muted-foreground" aria-label={t("account")}>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className={onColor ? cn(inkSoft, inkHover, "hover:bg-white/15") : "text-muted-foreground"}
+              aria-label={t("account")}
+            >
               <MoreVertical className="size-4" />
             </Button>
           </DropdownMenuTrigger>

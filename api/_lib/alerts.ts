@@ -153,7 +153,21 @@ async function recentlyPosted(orgId: string, today: string): Promise<AlertPosted
       and t.recurring_rule_id is not null
       and t.deleted_at is null
       and t.date >= ${since} and t.date <= ${today}
-      and t.kind <> 'transfer'
+      -- A transfer is normally invisible here: moving money into a Space is not
+      -- something to report as spending. A DEBT repayment is the exception —
+      -- most of a €500 instalment IS the principal transfer, and counting only
+      -- the interest announced "€6.00" for €500 that left the bank. Only the
+      -- legs on the account the rule pays from carry the rule's id, so this
+      -- sums exactly what moved there and never both halves of a transfer.
+      --
+      -- Decided from the ROW, never from the rule's CURRENT kind: a rule can be
+      -- unlinked from its debt, and the repayments it posted while it was one
+      -- are history that did not change. Only a debt repayment's group has an
+      -- allocation behind it, which is what makes this a property of the row.
+      and (
+        t.kind <> 'transfer'
+        or exists (select 1 from debt_payments dp where dp.group_id = t.group_id)
+      )
     group by t.recurring_rule_id, r.name, t.type, t.date, wa.currency_code
     order by t.date desc
   `)) as unknown as { rows: { rule_id: string; rule_name: string; type: string; date: string; currency: string | null; amount: string; count: number }[] }

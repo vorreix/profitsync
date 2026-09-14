@@ -40,6 +40,7 @@ import {
   ShieldOff,
   Sparkles,
 } from "lucide-react"
+import { appLocale } from "@/lib/format-date"
 
 // A pending confirmation rendered in the AlertDialog (replaces window.confirm).
 type ConfirmState = {
@@ -122,7 +123,7 @@ function formatMoney(amount: number, currency: string): string {
 function formatDate(value: string | null): string {
   if (!value) return "—"
   const d = new Date(value)
-  return Number.isNaN(d.getTime()) ? value.split("T")[0] : d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })
+  return Number.isNaN(d.getTime()) ? value.split("T")[0] : d.toLocaleDateString(appLocale(), { year: "numeric", month: "short", day: "numeric" })
 }
 
 function discountedAmount(amount: number, discountPct: number): number {

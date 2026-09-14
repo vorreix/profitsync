@@ -11,6 +11,10 @@
           {
             "type": "command",
             "command": "node .claude/hooks/cache-guard.mjs"
+          },
+          {
+            "type": "command",
+            "command": "node .claude/hooks/i18n-guard.mjs"
           }
         ]
       }

@@ -55,20 +55,34 @@ export async function buildWealthSummary(orgId: string): Promise<WealthSummary> 
   const byCurrency: WealthSummaryCurrency[] = []
   let convertedAssets = new Decimal(0)
   let convertedLiabilities = new Decimal(0)
+  // The same totals, split by what they are: card debt, money borrowed (loans)
+  // and money lent (receivables) are different obligations with different
+  // homes, so a screen must never label one as another. `liabilities` above is
+  // card debt + loans; `assets` includes receivables (owed to you, not liquid).
+  let convertedCardDebt = new Decimal(0)
+  let convertedDebtsOwed = new Decimal(0)
+  let convertedDebtsReceivable = new Decimal(0)
   const excluded: string[] = []
   let asOf: string | null = null
   let stale = false
   for (const cur of currencies) {
     let assets = new Decimal(0)
     let liabilities = new Decimal(0)
+    let cardDebtNative = new Decimal(0)
+    let owedNative = new Decimal(0)
+    let receivableNative = new Decimal(0)
     for (const r of rows) {
       if ((r.currencyCode ?? reporting).toUpperCase() !== cur) continue
       const bal = Number(r.currentBalance)
       if (isLiabilityType(r.type)) {
+        // Credit cards and loans: a negative balance is owed, a positive one is credit.
         liabilities = liabilities.plus(cardDebt(bal))
         assets = assets.plus(cardCredit(bal))
+        if (r.type === "loan") owedNative = owedNative.plus(cardDebt(bal))
+        else cardDebtNative = cardDebtNative.plus(cardDebt(bal))
       } else {
         assets = assets.plus(bal)
+        if (r.type === "receivable") receivableNative = receivableNative.plus(Math.max(0, bal))
       }
     }
     const rate = rates.get(cur) ?? null
@@ -89,6 +103,9 @@ export async function buildWealthSummary(orgId: string): Promise<WealthSummary> 
     if (rate) {
       convertedAssets = convertedAssets.plus(convertAmount(assets, rate))
       convertedLiabilities = convertedLiabilities.plus(convertAmount(liabilities, rate))
+      convertedCardDebt = convertedCardDebt.plus(convertAmount(cardDebtNative, rate))
+      convertedDebtsOwed = convertedDebtsOwed.plus(convertAmount(owedNative, rate))
+      convertedDebtsReceivable = convertedDebtsReceivable.plus(convertAmount(receivableNative, rate))
       if (cur !== reporting) {
         if (rate.stale) stale = true
         if (!asOf || rate.rateDate < asOf) asOf = rate.rateDate
@@ -109,6 +126,9 @@ export async function buildWealthSummary(orgId: string): Promise<WealthSummary> 
     net_worth: num2(convertedAssets.minus(convertedLiabilities)),
     assets: num2(convertedAssets),
     liabilities: num2(convertedLiabilities),
+    card_liabilities: num2(convertedCardDebt),
+    debts_owed: num2(convertedDebtsOwed),
+    debts_receivable: num2(convertedDebtsReceivable),
     complete: excluded.length === 0,
     excluded_currencies: excluded,
     as_of: asOf,

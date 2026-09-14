@@ -16,6 +16,7 @@ import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid } from "rec
 import { TrendingUp, ArrowUpRight, ArrowDownRight, Tag } from "lucide-react"
 import { FxExcludedNotice } from "@/components/FxExcludedNotice"
 import { excludedCountOf, reportingCurrencyOf } from "@/lib/reporting-fields"
+import { appLocale } from "@/lib/format-date"
 
 type Granularity = "day" | "week" | "month" | "year"
 // Every figure is in `currency` (the workspace's reporting currency), each row
@@ -50,8 +51,8 @@ function labelFor(period: string, gran: Granularity): string {
   const d = new Date(period)
   if (isNaN(d.getTime())) return period
   if (gran === "year") return String(d.getUTCFullYear())
-  if (gran === "month") return d.toLocaleDateString("en-US", { month: "short", year: "2-digit", timeZone: "UTC" })
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" })
+  if (gran === "month") return d.toLocaleDateString(appLocale(), { month: "short", year: "2-digit", timeZone: "UTC" })
+  return d.toLocaleDateString(appLocale(), { month: "short", day: "numeric", timeZone: "UTC" })
 }
 
 export function AnalyticsPage() {

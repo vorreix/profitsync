@@ -33,6 +33,11 @@ const LEAF_POOL = 600
 // would mis-render as a lone transaction (with a wrong total). We over-fetch by
 // this many rows so the boundary split's trailing legs are on hand to swallow.
 const SPLIT_BUFFER = 16
+// How many timeline periods one request draws, and how many each "load earlier"
+// adds. A day-bucketed year is 365 nodes — most of them empty scrolling — so the
+// chain starts at the NEWEST window and grows backwards on demand.
+const PERIOD_PAGE = 30
+const MAX_PERIODS = 365
 
 // Given rows fetched with a buffer past `keep`, return an end index ≥ keep that
 // extends to include every leg of the split straddling the `keep` boundary, so
@@ -260,11 +265,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       leavesByPeriod.set(l.periodKey, arr)
     }
 
+    // The window is the NEWEST `periodLimit` periods; "load earlier" asks for a
+    // bigger limit. The running balance is still accumulated over EVERY period
+    // in the range first, so the `before` of the first drawn period counts
+    // everything that happened before it — a window must never re-start the
+    // chain's arithmetic at zero.
+    const periodLimit = Math.min(MAX_PERIODS, Math.max(1, Number.parseInt(String(q.periodLimit ?? PERIOD_PAGE), 10) || PERIOD_PAGE))
+    const windowStart = Math.max(0, periodRows.length - periodLimit)
+
     let running = 0
     let totalIn = 0
     let totalOut = 0
     let totalExcluded = 0
-    const periods = periodRows.map((p) => {
+    const allPeriods = periodRows.map((p, i) => {
       const income = Number(p.income)
       const expense = Number(p.expense)
       const net = income - expense
@@ -273,7 +286,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       totalIn += income
       totalOut += expense
       totalExcluded += Number(p.excluded ?? 0)
-      const leaves = (leavesByPeriod.get(p.key) ?? []).map((l) => ({
+      // Only the drawn window needs its transactions attached; the rest exist
+      // here purely to carry the running balance forward.
+      const leaves = (i < windowStart ? [] : leavesByPeriod.get(p.key) ?? []).map((l) => ({
         id: l.id,
         type: l.type,
         amount: Number(l.amount),
@@ -298,9 +313,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         tx_count: Number(p.txCount),
         excluded_count: Number(p.excluded ?? 0),
         leaves,
-        more_count: Math.max(0, Number(p.txCount) - (logicalByPeriod.get(p.key)?.size ?? 0)),
+        more_count: i < windowStart ? 0 : Math.max(0, Number(p.txCount) - (logicalByPeriod.get(p.key)?.size ?? 0)),
       }
     })
+    const periods = allPeriods.slice(windowStart)
 
     // Consolidated balance: only accounts with a rate into the reporting
     // currency today; the rest are counted, never added raw.
@@ -315,6 +331,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       excluded_count: totalExcluded,
       range: { from: fromDate, to: toDate },
       periods,
+      // What the chain is NOT showing, so the canvas can offer the rest.
+      period_total: allPeriods.length,
+      period_limit: periodLimit,
+      has_more_periods: windowStart > 0,
       final: {
         label: ownerOrgT[0]?.name ?? "Workspace",
         total_in: totalIn,

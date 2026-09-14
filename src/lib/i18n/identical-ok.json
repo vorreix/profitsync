@@ -1,0 +1,770 @@
+{
+  "_readme": [
+    "Keys whose value is ALLOWED to stay byte-identical to English, per locale.",
+    "",
+    "scripts/check-i18n.mjs fails on any OTHER key copied from en.json, because a key",
+    "that merely EXISTS is not a key that is translated. The old parity check passed",
+    "for months while /debts rendered half in English for anyone reading Malayalam.",
+    "",
+    "\"locales\": [\"*\"] means every language; a list means only those. A word that is",
+    "a loanword in German but not in Tamil belongs on the German list alone.",
+    "",
+    "Add an entry only when the English really IS the right string there: a brand, an",
+    "international standard (IBAN, PDF), sample data, a string with no words in it, or",
+    "a genuine loanword. \"I could not think of a translation\" is not a reason — ask a",
+    "speaker, or keep the key out of the release.",
+    "",
+    "\"why\" is read by humans in review. Keep it short and true."
+  ],
+  "account.org": {
+    "locales": [
+      "de",
+      "it"
+    ],
+    "why": "the same word in these languages"
+  },
+  "account.title": {
+    "locales": [
+      "it"
+    ],
+    "why": "the same word in these languages"
+  },
+  "aiVoice.field.name": {
+    "locales": [
+      "de"
+    ],
+    "why": "the same word in these languages"
+  },
+  "alerts.income_received.body": {
+    "locales": [
+      "ml",
+      "ta",
+      "te"
+    ],
+    "why": "no words — interpolations and punctuation only"
+  },
+  "alerts.recurring_posted.body": {
+    "locales": [
+      "ml",
+      "ta",
+      "te"
+    ],
+    "why": "no words — interpolations and punctuation only"
+  },
+  "alerts.recurring_upcoming.body": {
+    "locales": [
+      "ml",
+      "ta",
+      "te"
+    ],
+    "why": "no words — interpolations and punctuation only"
+  },
+  "analytics.title": {
+    "locales": [
+      "it"
+    ],
+    "why": "the same word in these languages"
+  },
+  "attachments.count_one": {
+    "locales": [
+      "it"
+    ],
+    "why": "the same word in these languages"
+  },
+  "attachments.displayName": {
+    "locales": [
+      "de"
+    ],
+    "why": "the same word in these languages"
+  },
+  "attachments.fileName": {
+    "locales": [
+      "it"
+    ],
+    "why": "the same word in these languages"
+  },
+  "attachments.tags": {
+    "locales": [
+      "de"
+    ],
+    "why": "the same word in these languages"
+  },
+  "audit.changedField": {
+    "locales": [
+      "*"
+    ],
+    "why": "no words — interpolations and punctuation only"
+  },
+  "audit.empty_value": {
+    "locales": [
+      "*"
+    ],
+    "why": "no words — interpolations and punctuation only"
+  },
+  "audit.fields.email": {
+    "locales": [
+      "it"
+    ],
+    "why": "the same word in these languages"
+  },
+  "audit.fields.name": {
+    "locales": [
+      "de"
+    ],
+    "why": "the same word in these languages"
+  },
+  "audit.fields.status": {
+    "locales": [
+      "de"
+    ],
+    "why": "the same word in these languages"
+  },
+  "budget.title": {
+    "locales": [
+      "de",
+      "it"
+    ],
+    "why": "the same word in these languages"
+  },
+  "budgets.card.title": {
+    "locales": [
+      "de"
+    ],
+    "why": "the same word in these languages"
+  },
+  "budgets.detail.limit": {
+    "locales": [
+      "de"
+    ],
+    "why": "the same word in these languages"
+  },
+  "budgets.dialog.limitLabel": {
+    "locales": [
+      "de"
+    ],
+    "why": "the same word in these languages"
+  },
+  "budgets.dialog.nameLabel": {
+    "locales": [
+      "de"
+    ],
+    "why": "the same word in these languages"
+  },
+  "budgets.history.field.amount": {
+    "locales": [
+      "de"
+    ],
+    "why": "the same word in these languages"
+  },
+  "budgets.history.field.name": {
+    "locales": [
+      "de"
+    ],
+    "why": "the same word in these languages"
+  },
+  "budgets.history.field.status": {
+    "locales": [
+      "de"
+    ],
+    "why": "the same word in these languages"
+  },
+  "budgets.icon.fitness": {
+    "locales": [
+      "it"
+    ],
+    "why": "the same word in these languages"
+  },
+  "budgets.tabAnalytics": {
+    "locales": [
+      "it"
+    ],
+    "why": "the same word in these languages"
+  },
+  "budgets.tabBudgets": {
+    "locales": [
+      "de"
+    ],
+    "why": "the same word in these languages"
+  },
+  "budgets.title": {
+    "locales": [
+      "de"
+    ],
+    "why": "the same word in these languages"
+  },
+  "budgets.window.range": {
+    "locales": [
+      "*"
+    ],
+    "why": "no words — interpolations and punctuation only"
+  },
+  "budgetsPage.title": {
+    "locales": [
+      "de"
+    ],
+    "why": "the same word in these languages"
+  },
+  "categories.name": {
+    "locales": [
+      "de"
+    ],
+    "why": "the same word in these languages"
+  },
+  "categories.sortNameAsc": {
+    "locales": [
+      "de"
+    ],
+    "why": "the same word in these languages"
+  },
+  "categories.sortNameDesc": {
+    "locales": [
+      "de"
+    ],
+    "why": "the same word in these languages"
+  },
+  "categoryTags.tagsTab": {
+    "locales": [
+      "de"
+    ],
+    "why": "the same word in these languages"
+  },
+  "clients.companyPlaceholder": {
+    "locales": [
+      "it"
+    ],
+    "why": "a sample company or product name"
+  },
+  "clients.emailField": {
+    "locales": [
+      "it"
+    ],
+    "why": "the same word in these languages"
+  },
+  "clients.emailPlaceholder": {
+    "locales": [
+      "hi",
+      "ml"
+    ],
+    "why": "sample data in a placeholder field"
+  },
+  "clients.nameAscending": {
+    "locales": [
+      "de"
+    ],
+    "why": "the same word in these languages"
+  },
+  "clients.nameDescending": {
+    "locales": [
+      "de"
+    ],
+    "why": "the same word in these languages"
+  },
+  "clients.nameField": {
+    "locales": [
+      "de"
+    ],
+    "why": "the same word in these languages"
+  },
+  "clients.phonePlaceholder": {
+    "locales": [
+      "ml"
+    ],
+    "why": "no words — interpolations and punctuation only"
+  },
+  "clients.statusField": {
+    "locales": [
+      "de"
+    ],
+    "why": "the same word in these languages"
+  },
+  "clients.table.name": {
+    "locales": [
+      "de"
+    ],
+    "why": "the same word in these languages"
+  },
+  "dashboard.cardBudget": {
+    "locales": [
+      "de",
+      "it"
+    ],
+    "why": "the same word in these languages"
+  },
+  "dashboard.title": {
+    "locales": [
+      "de",
+      "it"
+    ],
+    "why": "the same word in these languages"
+  },
+  "debts.frequencyCustom": {
+    "locales": [
+      "*"
+    ],
+    "why": "no words — interpolations and punctuation only"
+  },
+  "debts.previewPaymentsValue": {
+    "locales": [
+      "*"
+    ],
+    "why": "no words — interpolations and punctuation only"
+  },
+  "drilldown.sortName": {
+    "locales": [
+      "de"
+    ],
+    "why": "the same word in these languages"
+  },
+  "filters.filter": {
+    "locales": [
+      "de"
+    ],
+    "why": "the same word in these languages"
+  },
+  "filters.status": {
+    "locales": [
+      "de"
+    ],
+    "why": "the same word in these languages"
+  },
+  "flow.nodeDetails": {
+    "locales": [
+      "de"
+    ],
+    "why": "the same word in these languages"
+  },
+  "nav.admin": {
+    "locales": [
+      "de",
+      "it"
+    ],
+    "why": "the same word in these languages"
+  },
+  "nav.analytics": {
+    "locales": [
+      "it"
+    ],
+    "why": "the same word in these languages"
+  },
+  "nav.budgets": {
+    "locales": [
+      "de"
+    ],
+    "why": "the same word in these languages"
+  },
+  "nav.dashboard": {
+    "locales": [
+      "de",
+      "it"
+    ],
+    "why": "the same word in these languages"
+  },
+  "nav.home": {
+    "locales": [
+      "it"
+    ],
+    "why": "the same word in these languages"
+  },
+  "notifications.categories.budget": {
+    "locales": [
+      "de"
+    ],
+    "why": "the same word in these languages"
+  },
+  "notifications.categories.system": {
+    "locales": [
+      "de"
+    ],
+    "why": "the same word in these languages"
+  },
+  "notifications.categories.team": {
+    "locales": [
+      "de",
+      "it"
+    ],
+    "why": "the same word in these languages"
+  },
+  "notifications.channels.in_app": {
+    "locales": [
+      "it"
+    ],
+    "why": "the same word in these languages"
+  },
+  "notifications.channels.web_push": {
+    "locales": [
+      "de",
+      "it"
+    ],
+    "why": "the same word in these languages"
+  },
+  "notifications.reminders.name": {
+    "locales": [
+      "de"
+    ],
+    "why": "the same word in these languages"
+  },
+  "notifications.settings.channel_in_app": {
+    "locales": [
+      "it"
+    ],
+    "why": "the same word in these languages"
+  },
+  "notifications.settings.channel_push": {
+    "locales": [
+      "de",
+      "it"
+    ],
+    "why": "the same word in these languages"
+  },
+  "onboarding.budgetsTitle": {
+    "locales": [
+      "de"
+    ],
+    "why": "the same word in these languages"
+  },
+  "onboarding.companyNamePlaceholder": {
+    "locales": [
+      "*"
+    ],
+    "why": "a sample company or product name"
+  },
+  "org.pro": {
+    "locales": [
+      "de",
+      "it"
+    ],
+    "why": "the same word in these languages"
+  },
+  "org.roleAdmin": {
+    "locales": [
+      "it"
+    ],
+    "why": "the same word in these languages"
+  },
+  "org.roleEditor": {
+    "locales": [
+      "it"
+    ],
+    "why": "the same word in these languages"
+  },
+  "organizations.logo": {
+    "locales": [
+      "de",
+      "it"
+    ],
+    "why": "the same word in these languages"
+  },
+  "organizations.name": {
+    "locales": [
+      "de"
+    ],
+    "why": "the same word in these languages"
+  },
+  "organizations.premium": {
+    "locales": [
+      "de",
+      "it"
+    ],
+    "why": "the same word in these languages"
+  },
+  "planGlossary.ProfitSync Business Starter": {
+    "locales": [
+      "de",
+      "it"
+    ],
+    "why": "a brand name"
+  },
+  "planGlossary.ProfitSync Personal Starter": {
+    "locales": [
+      "de",
+      "it"
+    ],
+    "why": "a brand name"
+  },
+  "profile.email": {
+    "locales": [
+      "it"
+    ],
+    "why": "the same word in these languages"
+  },
+  "quotations.amountPlaceholder": {
+    "locales": [
+      "hi",
+      "ml",
+      "ta",
+      "te"
+    ],
+    "why": "no words — interpolations and punctuation only"
+  },
+  "quotations.companyPlaceholder": {
+    "locales": [
+      "it"
+    ],
+    "why": "a sample company or product name"
+  },
+  "quotations.emailLabel": {
+    "locales": [
+      "it"
+    ],
+    "why": "the same word in these languages"
+  },
+  "quotations.emailPlaceholder": {
+    "locales": [
+      "hi",
+      "te"
+    ],
+    "why": "sample data in a placeholder field"
+  },
+  "quotations.maxFileSize": {
+    "locales": [
+      "it"
+    ],
+    "why": "the same word in these languages"
+  },
+  "quotations.pdf.action": {
+    "locales": [
+      "*"
+    ],
+    "why": "an international standard, written the same everywhere"
+  },
+  "quotations.phonePlaceholder": {
+    "locales": [
+      "ar",
+      "te"
+    ],
+    "why": "no words — interpolations and punctuation only"
+  },
+  "quotations.statusLabel": {
+    "locales": [
+      "de"
+    ],
+    "why": "the same word in these languages"
+  },
+  "quotations.table.status": {
+    "locales": [
+      "de"
+    ],
+    "why": "the same word in these languages"
+  },
+  "recurring.name": {
+    "locales": [
+      "de"
+    ],
+    "why": "the same word in these languages"
+  },
+  "resetData.confirmWord": {
+    "locales": [
+      "*"
+    ],
+    "why": "an international standard, written the same everywhere"
+  },
+  "spaces.goalOptional": {
+    "locales": [
+      "de"
+    ],
+    "why": "the same word in these languages"
+  },
+  "spaces.nameLabel": {
+    "locales": [
+      "de"
+    ],
+    "why": "the same word in these languages"
+  },
+  "subscription.dodoPayments": {
+    "locales": [
+      "ar",
+      "de",
+      "hi",
+      "it"
+    ],
+    "why": "a brand name"
+  },
+  "subscription.planLabel": {
+    "locales": [
+      "de"
+    ],
+    "why": "the same word in these languages"
+  },
+  "subscription.proBadge": {
+    "locales": [
+      "de",
+      "it"
+    ],
+    "why": "the same word in these languages"
+  },
+  "subscription.statusLabel": {
+    "locales": [
+      "de"
+    ],
+    "why": "the same word in these languages"
+  },
+  "tags.count_one": {
+    "locales": [
+      "it"
+    ],
+    "why": "the same word in these languages"
+  },
+  "tags.name": {
+    "locales": [
+      "de"
+    ],
+    "why": "the same word in these languages"
+  },
+  "tags.sortNameAsc": {
+    "locales": [
+      "de"
+    ],
+    "why": "the same word in these languages"
+  },
+  "tags.sortNameDesc": {
+    "locales": [
+      "de"
+    ],
+    "why": "the same word in these languages"
+  },
+  "theme.system": {
+    "locales": [
+      "de"
+    ],
+    "why": "the same word in these languages"
+  },
+  "transactions.cardChip.debit": {
+    "locales": [
+      "de"
+    ],
+    "why": "the same word in these languages"
+  },
+  "transactions.cardChip.noNumber": {
+    "locales": [
+      "*"
+    ],
+    "why": "no words — interpolations and punctuation only"
+  },
+  "transactions.cardDebit": {
+    "locales": [
+      "de"
+    ],
+    "why": "the same word in these languages"
+  },
+  "transactions.cardDebitBalance": {
+    "locales": [
+      "de"
+    ],
+    "why": "the same word in these languages"
+  },
+  "transactions.max2MBPerFile": {
+    "locales": [
+      "it"
+    ],
+    "why": "the same word in these languages"
+  },
+  "transactions.tags": {
+    "locales": [
+      "de"
+    ],
+    "why": "the same word in these languages"
+  },
+  "wealth.bank": {
+    "locales": [
+      "de"
+    ],
+    "why": "the same word in these languages"
+  },
+  "wealth.cardNamePlaceholder": {
+    "locales": [
+      "*"
+    ],
+    "why": "a sample company or product name"
+  },
+  "wealth.cardWizard.expiry.placeholder": {
+    "locales": [
+      "ar",
+      "hi",
+      "ml",
+      "te"
+    ],
+    "why": "an international standard, written the same everywhere"
+  },
+  "wealth.cardWizard.kind.debit": {
+    "locales": [
+      "de"
+    ],
+    "why": "the same word in these languages"
+  },
+  "wealth.cardWizard.look.text": {
+    "locales": [
+      "de"
+    ],
+    "why": "the same word in these languages"
+  },
+  "wealth.cardWizard.look.textAuto": {
+    "locales": [
+      "de"
+    ],
+    "why": "the same word in these languages"
+  },
+  "wealth.cardWizard.look.tiers.gold": {
+    "locales": [
+      "de"
+    ],
+    "why": "the same word in these languages"
+  },
+  "wealth.cardWizard.optional": {
+    "locales": [
+      "de"
+    ],
+    "why": "the same word in these languages"
+  },
+  "wealth.cards.kindDebit": {
+    "locales": [
+      "de"
+    ],
+    "why": "the same word in these languages"
+  },
+  "wealth.cards.meterPct": {
+    "locales": [
+      "hi",
+      "it",
+      "ml",
+      "ta",
+      "te"
+    ],
+    "why": "no words — interpolations and punctuation only"
+  },
+  "wealth.fieldBsb": {
+    "locales": [
+      "*"
+    ],
+    "why": "an international standard, written the same everywhere"
+  },
+  "wealth.fieldClabe": {
+    "locales": [
+      "*"
+    ],
+    "why": "an international standard, written the same everywhere"
+  },
+  "wealth.fieldIban": {
+    "locales": [
+      "*"
+    ],
+    "why": "an international standard, written the same everywhere"
+  },
+  "wealth.fieldSwift": {
+    "locales": [
+      "*"
+    ],
+    "why": "an international standard, written the same everywhere"
+  },
+  "wealth.name": {
+    "locales": [
+      "de"
+    ],
+    "why": "the same word in these languages"
+  },
+  "wealth.optional": {
+    "locales": [
+      "de"
+    ],
+    "why": "the same word in these languages"
+  }
+}

@@ -200,7 +200,9 @@ export type Transaction = {
 // `credit_card` is a LIABILITY account: `current_balance` stays the signed
 // asset-equivalent value (normally NEGATIVE = amount owed). Never read the sign
 // in a component — use cardDebt()/availableCredit() from src/lib/credit-card.ts.
-export type WealthAccountType = "bank" | "cash" | "space" | "credit_card"
+// `loan` (I owe) and `receivable` (owed to me) are debt accounts managed on
+// /debts; their terms live in debt_details (see Debt below).
+export type WealthAccountType = "bank" | "cash" | "space" | "credit_card" | "loan" | "receivable"
 
 // ── Consolidated wealth (GET /api/wealth/summary) ────────────────────────────
 // Native balances are facts; `converted_*` are approximations at `rate_date`.
@@ -238,8 +240,16 @@ export type WealthSummaryCurrency = {
 export type WealthSummary = {
   reporting_currency: string
   net_worth: number
+  /** Everything held, receivables (money lent) included. */
   assets: number
+  /** Everything owed: card debt + loans. */
   liabilities: number
+  /** What the credit cards owe — the "owed on cards" figure. */
+  card_liabilities: number
+  /** Outstanding on loans (debts I owe). */
+  debts_owed: number
+  /** Outstanding on receivables (money owed to me) — in `assets`, never liquid. */
+  debts_receivable: number
   complete: boolean
   excluded_currencies: string[]
   as_of: string | null
@@ -299,6 +309,12 @@ export type WealthAccount = {
   opening_balance: number
   current_balance: number
   icon: string
+  // Colour identity (migration 0075) — presentation only. `color` is "" for
+  // AUTO (bank brand → stable per-row swatch) or a "#RRGGBB" override;
+  // `color_style` is how loudly the tile wears it. Resolver:
+  // src/lib/account-color.ts.
+  color?: string
+  color_style?: string
   // Brand + banking details (see migration 0027). `logo_data` (base64) is stored
   // server-side; responses expose it as `logo_src` (a durable data: URL) which
   // the UI prefers over the expiring hotlinked `logo_url`.
@@ -351,6 +367,156 @@ export type CreditCardStatementView = {
   remaining: number
   status: "unpaid" | "partial" | "paid" | "overdue"
   daysToDue: number
+}
+
+// ── Debt & Loans ─────────────────────────────────────────────────────────────
+export type DebtDirection = "owed" | "receivable"
+export type DebtKind = "mortgage" | "personal" | "car" | "student" | "business" | "bnpl" | "overdraft" | "informal" | "other"
+export type DebtLifecycle = "active" | "paused" | "paid_off" | "refinanced" | "written_off"
+export type DebtStatus = DebtLifecycle | "overdue" | "due_soon"
+export type PaymentFrequency = "weekly" | "biweekly" | "monthly" | "quarterly" | "yearly" | "irregular"
+
+export type DebtFreeEstimate =
+  | { kind: "date"; date: string; periods: number; remainingInterest: number; assumedZeroRate: boolean }
+  | { kind: "unknown"; reason: "no_schedule" | "payment_too_small" | "no_balance" }
+
+// One debt as returned by /api/debts (the wealth account + its terms + derived facts).
+export type Debt = {
+  id: string
+  direction: DebtDirection
+  name: string
+  icon: string
+  logo_src?: string | null
+  brand_domain?: string
+  position?: number
+  archived_at: string | null
+  created_at: string
+  kind: DebtKind
+  counterparty: string
+  currency: string
+  /** Outstanding amount, always positive, in the debt's native currency. */
+  balance: number
+  balance_signed: number
+  original_amount: number | null
+  annual_rate_pct: number | null
+  rate_type: "fixed" | "variable" | null
+  payment_amount: number | null
+  payment_frequency: PaymentFrequency | null
+  payment_monthly: number
+  next_due_date: string | null
+  start_date: string | null
+  maturity_date: string | null
+  remaining_installments: number | null
+  balance_is_estimate: boolean
+  lifecycle: DebtLifecycle
+  status: DebtStatus
+  progress_pct: number | null
+  // remainingInterest is in cents (engine units); the UI converts.
+  estimate: DebtFreeEstimate
+  refinanced_into_account_id: string | null
+  closed_at: string | null
+  notes: string
+  /** A recurring repayment is currently servicing this debt. */
+  repayment_active: boolean
+  /** A rule is ATTACHED, active or paused — only one is ever allowed. */
+  repayment_linked?: boolean
+  updated_at: string
+}
+
+export type DebtPayment = {
+  id: string
+  wealth_account_id: string
+  transaction_id: string
+  group_id: string | null
+  date: string
+  total: number | string
+  principal: number | string
+  interest: number | string
+  fees: number | string
+  other: number | string
+  split_source: "entered" | "calculated" | "principal_only"
+  note: string
+  created_at: string
+}
+
+export type DebtsOverview = {
+  today: string
+  currency: string
+  debts: Debt[]
+  receivables: Debt[]
+  closed: Debt[]
+  summary: {
+    open_count: number
+    owed_by_currency: { currency: string; amount: number }[]
+    receivable_by_currency: { currency: string; amount: number }[]
+    required_monthly: number
+    month: { required: number; paid: number; remaining: number; overdue: number }
+    next_payment: { debt_id: string; name: string; date: string; amount: number; currency: string } | null
+    overdue_count: number
+    interest_this_month: number
+    debt_free_date: string | null
+    total_repaid: number
+    average_monthly_income: number
+    insights: { key: string; params: Record<string, string | number> }[]
+  }
+  upcoming: { debt_id: string; date: string; amount: number; paid: boolean; paid_amount: number }[]
+}
+
+export type DebtScheduleRow = { period: number; date: string; payment: number; interest: number; principal: number; balance: number }
+
+/** The recurring repayment that services a debt, as the debt screens read it. */
+export type DebtRepayment = {
+  id: string
+  name: string
+  active: boolean
+  amount: number
+  /** Null when the rule's rhythm has no name in the debt vocabulary (every 10 days). */
+  frequency: PaymentFrequency | null
+  frequency_unit: "day" | "week" | "month" | "year"
+  frequency_interval: number
+  start_date: string
+  end_date: string | null
+  next_due_at: string
+  from_account_id: string | null
+  from_account_name: string | null
+  last_error: string
+}
+
+/**
+ * One money event on a debt — not just repayments. The opening balance, the
+ * money as it was borrowed, each repayment with its interest and fees, and
+ * every reconciliation: a screen that shows only repayments cannot explain the
+ * balance it is displaying.
+ */
+export type DebtActivityKind = "opening" | "adjustment" | "borrow" | "payment" | "other"
+export type DebtActivityRow = {
+  id: string
+  date: string
+  kind: DebtActivityKind
+  description: string
+  /** How much the amount owed moved: POSITIVE reduces the debt, negative grows it. */
+  principal: number
+  interest: number
+  fees: number
+  other: number
+  /** Out of pocket for a payment (principal + the expense legs); the amount received for a borrow. */
+  total: number
+  counter_account_id: string | null
+  counter_account_name: string | null
+  group_id: string | null
+  transaction_id: string
+  payment_id: string | null
+  split_source: DebtPayment["split_source"] | null
+  recurring_rule_id: string | null
+  is_system: boolean
+}
+
+export type DebtDetailResponse = {
+  debt: Debt
+  payments: DebtPayment[]
+  activity: DebtActivityRow[]
+  repayment: DebtRepayment | null
+  schedule: { converges: boolean; total_interest: number; periods: number; assumed_zero_rate: boolean; rows: DebtScheduleRow[] } | null
 }
 
 // GET /api/wealth/accounts/:id/card
@@ -473,11 +639,19 @@ export type RecurringRule = {
   wealth_account_id: string | null
   account_name?: string | null
   account_type?: WealthAccountType | null
+  account_archived?: boolean | null
+  /** The paying account's native currency. */
+  account_currency?: string | null
   account_icon?: string | null
   account_logo_url?: string | null
   // 'standard' = normal income/outgoing rule. 'transfer' = a Space auto-save:
   // money moves from `wealth_account_id` (source) to `to_account_id` (the Space).
-  kind?: "standard" | "transfer"
+  // 'debt' = a repayment: `wealth_account_id` is the account it is PAID FROM and
+  // `debt_account_id` is the debt, because the instalment splits into principal
+  // (a transfer) and interest and fees (expenses).
+  kind?: "standard" | "transfer" | "debt"
+  debt_account_id?: string | null
+  debt_name?: string | null
   to_account_id?: string | null
   to_account_name?: string | null
   // The card that pays each occurrence (copied onto the materialized rows).
@@ -488,7 +662,7 @@ export type RecurringRule = {
   name: string
   type: "incoming" | "outgoing"
   amount: number | string
-  /** Currency captured when this ledger row was posted. */
+  /** The rule's currency, snapshotted onto every occurrence it posts. */
   currency_code?: string | null
   category: string
   frequency_unit: "day" | "week" | "month" | "year"

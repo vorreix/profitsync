@@ -3,6 +3,9 @@ import { useApiQuery } from "@/hooks/use-api-query"
 import { cardCredit, isLiabilityType } from "@/lib/credit-card"
 import type { WealthSummary, WealthSummaryAccount } from "@/lib/types"
 
+/** Loans and receivables live on /debts: part of net worth, never money you hold. */
+const isDebtType = (type: string) => type === "loan" || type === "receivable"
+
 /**
  * The consolidated wealth picture from GET /api/wealth/summary — net worth,
  * assets and liabilities in the reporting currency, one entry per currency,
@@ -37,7 +40,7 @@ export function useConsolidatedWealth(enabled = true) {
 export function availableFromSummary(summary: WealthSummary): number {
   let sum = 0
   for (const a of summary.accounts) {
-    if (a.type === "space" || a.converted_balance == null) continue
+    if (a.type === "space" || isDebtType(a.type) || a.converted_balance == null) continue
     sum += a.converted_balance
   }
   return Math.round(sum * 100) / 100
@@ -51,7 +54,7 @@ export function availableFromSummary(summary: WealthSummary): number {
 export function liquidFromSummary(summary: WealthSummary): number {
   let sum = 0
   for (const a of summary.accounts) {
-    if (a.type === "space" || a.converted_balance == null) continue
+    if (a.type === "space" || isDebtType(a.type) || a.converted_balance == null) continue
     sum += isLiabilityType(a.type) ? cardCredit(a.converted_balance) : a.converted_balance
   }
   return Math.round(sum * 100) / 100

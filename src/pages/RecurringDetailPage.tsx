@@ -6,6 +6,8 @@ import { toast } from "sonner"
 import {
   ArrowDownRight, ArrowLeft, ArrowLeftRight, ArrowUpRight, CalendarClock,
   Pause, Pencil, Play, Repeat, Trash2, TriangleAlert,
+  HandCoins,
+  Link2,
 } from "lucide-react"
 import { apiDelete, apiErrorMessage, apiGet, apiPatch } from "@/lib/api"
 import { useApiQuery } from "@/hooks/use-api-query"
@@ -13,6 +15,10 @@ import { useDataRefresh } from "@/lib/data-refresh-context"
 import { useOrg } from "@/lib/org-context"
 import { useCurrency } from "@/lib/currency-context"
 import { canDeleteRole, canWriteRole } from "@/lib/roles"
+import { LinkDebtDialog } from "@/components/recurring/LinkDebtDialog"
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { accountTypeAllows } from "@/lib/types"
 import type { Client, RecurringRule, RecurringRuleDetail, Transaction, WealthAccount } from "@/lib/types"
 import { formatMoney } from "@/lib/wealth"
@@ -28,12 +34,13 @@ import { TxKindBadge } from "@/components/transactions/TxKindBadge"
 import { AttachmentBadge } from "@/components/AttachmentBadge"
 import { TransactionDetailModal } from "@/components/TransactionDetailModal"
 import { AccountQuickAddSheet } from "@/components/wealth/AccountQuickAddSheet"
-import { RecurringRuleDialog, DeleteRecurringDialog } from "@/components/recurring/RecurringRuleDialog"
+import { RecurringRuleDialog, DeleteRecurringDialog, type RuleForm } from "@/components/recurring/RecurringRuleDialog"
+import { appLocale } from "@/lib/format-date"
 
 type TxPage = { data: Transaction[]; total: number; summary: { incoming: number; outgoing: number } }
 
 const fmtDate = (d: string) =>
-  new Date(`${d}T00:00:00`).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })
+  new Date(`${d}T00:00:00`).toLocaleDateString(appLocale(), { day: "numeric", month: "short", year: "numeric" })
 
 /** Whole days from today (UTC, like every other date in the recurring engine). */
 function daysFromToday(iso: string): number {
@@ -64,8 +71,13 @@ export function RecurringDetailPage() {
   const { data: rule, error, refetch } = useApiQuery<RecurringRuleDetail>(id ? `/api/recurring/${id}` : null)
 
   const [editOpen, setEditOpen] = useState(false)
+  // Set only when the edit dialog is opened FOR something ("create a debt for
+  // this"); a plain Edit clears it so the answer does not linger.
+  const [editPreset, setEditPreset] = useState<Partial<RuleForm> | undefined>(undefined)
   const [deleting, setDeleting] = useState<RecurringRule | null>(null)
   const [pausing, setPausing] = useState(false)
+  const [linkingDebt, setLinkingDebt] = useState(false)
+  const [unlinking, setUnlinking] = useState(false)
   const [accounts, setAccounts] = useState<WealthAccount[]>([])
   const [clients, setClients] = useState<Client[]>([])
   const cardMap = useCardMap()
@@ -95,6 +107,19 @@ export function RecurringDetailPage() {
   }, [rule, navigate])
 
   // ── The rule's transactions (paged) ────────────────────────────────────────
+  async function unlinkDebt() {
+    try {
+      const token = await getToken()
+      if (!token) throw new Error("Not authenticated")
+      await apiPatch(`/api/recurring/${id}`, token, { debt_account_id: null })
+      toast.success(t("recurring.unlinkedFromDebt"))
+      setUnlinking(false)
+      refetch()
+    } catch (err) {
+      toast.error(apiErrorMessage(err, t("recurring.failedToUpdate")))
+    }
+  }
+
   const [txs, setTxs] = useState<Transaction[]>([])
   const [txTotal, setTxTotal] = useState(0)
   const [txPage, setTxPage] = useState(1)
@@ -348,7 +373,7 @@ export function RecurringDetailPage() {
             </Button>
           )}
           {canWrite && (
-            <Button variant="outline" size="icon" onClick={() => setEditOpen(true)} aria-label={t("recurring.edit")} title={t("recurring.edit")}>
+            <Button variant="outline" size="icon" onClick={() => { setEditPreset(undefined); setEditOpen(true) }} aria-label={t("recurring.edit")} title={t("recurring.edit")}>
               <Pencil className="size-4" />
             </Button>
           )}
@@ -417,8 +442,37 @@ export function RecurringDetailPage() {
       <div className="rounded-2xl border bg-card p-3 sm:p-4">
         <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
           <div className="min-w-0">
-            <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{t("recurring.category")}</dt>
-            <dd className="mt-0.5 truncate font-medium">{rule.category || "—"}</dd>
+            {/* A debt repayment's category is always "Transfer", which says
+                nothing. What it services does — and it is the screen the user
+                actually wants from here. */}
+            <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              {rule.kind === "debt" ? t("recurring.repaysDebt") : t("recurring.category")}
+            </dt>
+            <dd className="mt-0.5 flex min-w-0 items-center gap-1.5 truncate font-medium">
+              {rule.kind === "debt" && rule.debt_account_id ? (
+                <Link to={`/debts/${rule.debt_account_id}`} className="flex min-w-0 items-center gap-1.5 underline-offset-2 hover:underline">
+                  <HandCoins className="size-4 shrink-0 text-muted-foreground" />
+                  <span className="truncate">{rule.debt_name || t("nav.debts")}</span>
+                </Link>
+              ) : (
+                rule.category || "—"
+              )}
+            </dd>
+            {/* The standing order is usually older than the debt it pays, so
+                joining them has to be possible from this side too. */}
+            {canWrite && rule.kind !== "transfer" && (
+              <dd className="mt-1">
+                {rule.kind === "debt" ? (
+                  <button type="button" className="text-xs text-muted-foreground underline-offset-2 hover:underline" onClick={() => setUnlinking(true)}>
+                    {t("recurring.unlinkDebt")}
+                  </button>
+                ) : (
+                  <button type="button" className="flex items-center gap-1 text-xs text-primary underline-offset-2 hover:underline" onClick={() => setLinkingDebt(true)}>
+                    <Link2 className="size-3" aria-hidden /> {t("recurring.linkDebt")}
+                  </button>
+                )}
+              </dd>
+            )}
           </div>
           <div className="min-w-0">
             <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{t("recurring.cardPayWith")}</dt>
@@ -555,11 +609,36 @@ export function RecurringDetailPage() {
         open={editOpen}
         onOpenChange={setEditOpen}
         rule={rule}
+        preset={editPreset}
         accounts={accounts}
         clients={clients}
         cards={payableCards}
         onSaved={() => refetch()}
       />
+
+      <LinkDebtDialog
+        open={linkingDebt}
+        onOpenChange={setLinkingDebt}
+        rule={rule}
+        onLinked={() => refetch()}
+        // Nothing fits: hand the edit dialog the answer it was going to ask for.
+        onCreateDebt={() => { setEditPreset({ debt_choice: "new" }); setEditOpen(true) }}
+      />
+
+      {/* Unlinking is a real decision: the same money starts posting as an
+          ordinary expense again, and stops touching the debt at all. */}
+      <AlertDialog open={unlinking} onOpenChange={setUnlinking}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("recurring.unlinkDebtTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>{t("recurring.unlinkDebtDesc", { name: rule.debt_name ?? "" })}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void unlinkDebt()}>{t("recurring.unlinkDebt")}</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <DeleteRecurringDialog
         rule={deleting}

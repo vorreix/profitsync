@@ -6,9 +6,16 @@
 import { sql } from "drizzle-orm"
 import { clients, recurringRules, wealthAccounts } from "../../src/lib/db/schema.js"
 
-/** Live transactions this rule has created (soft-deleted ones don't count). */
+/**
+ * Live OCCURRENCES this rule has created (soft-deleted ones don't count).
+ *
+ * Counting `recurring_due_date` rather than rows is what keeps this a count of
+ * payments: a debt repayment posts its interest as a second leg carrying the
+ * rule id but no due date, so `count(*)` would report one €250 instalment as
+ * two. Every leg that IS an occurrence carries the date.
+ */
 const generatedCountSql = sql<number>`(
-  select count(*)::int from transactions t
+  select count(t.recurring_due_date)::int from transactions t
   where t.recurring_rule_id = ${recurringRules.id} and t.deleted_at is null
 )`
 
@@ -23,16 +30,34 @@ export const ruleFields = {
   // Enough to draw the account exactly as the wealth screens do (glyph + brand
   // logo), so a rule's row and page never fall back to a generic bank icon.
   accountType: wealthAccounts.type,
+  // The link pickers run the SAME eligibility predicate as the server
+  // (src/lib/debt-recurring.ts). Without this they had to assume the payer was
+  // live, and offered rules whose account had been archived — which the server
+  // then refused on click.
+  accountArchived: sql<boolean>`${wealthAccounts.archivedAt} is not null`,
+  // The payer's native currency — a debt can only be repaid from its own
+  // currency, and the pickers test it with the server's predicate too.
+  accountCurrency: wealthAccounts.currencyCode,
   accountIcon: wealthAccounts.icon,
   accountLogoUrl: wealthAccounts.logoUrl,
   cardId: recurringRules.cardId,
-  // 'standard' income/expense, or 'transfer' (a Space auto-save — managed on
-  // /spaces, so the UI routes those elsewhere instead of half-rendering them).
+  // 'standard' income/expense, 'transfer' (a Space auto-save — managed on
+  // /spaces, so the UI routes those elsewhere instead of half-rendering them),
+  // or 'debt' (a repayment: principal is a transfer, interest and fees are
+  // expenses — api/_lib/recurring-debt.ts).
   kind: recurringRules.kind,
+  debtAccountId: recurringRules.debtAccountId,
+  // Named here rather than joined, so the rule list stays one query: the debt
+  // account is a wealth_accounts row like any other and carries its own name.
+  debtName: sql<string | null>`(
+    select coalesce(nullif(w.nickname, ''), w.bank_name) from wealth_accounts w
+    where w.id = ${recurringRules.debtAccountId}
+  )`,
   toAccountId: recurringRules.toAccountId,
   name: recurringRules.name,
   type: recurringRules.type,
   amount: recurringRules.amount,
+  currencyCode: recurringRules.currencyCode,
   category: recurringRules.category,
   frequencyUnit: recurringRules.frequencyUnit,
   frequencyInterval: recurringRules.frequencyInterval,

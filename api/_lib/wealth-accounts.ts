@@ -13,11 +13,13 @@ import { db, dbBatch } from "../../src/lib/db/index.js"
 import { cards, creditCardStatements, organizations, transactions, transfers, wealthAccounts } from "../../src/lib/db/schema.js"
 import { ensureDefaultClient } from "./auth.js"
 import { logAudit } from "./audit.js"
+import { type AppearanceInput, pickAppearance } from "./account-appearance.js"
 import { type BankDetailInput, pickBankDetails, resolveLogoColumns } from "./bank-brand.js"
 import { amountExceedsLimit, normalizeCurrencyCode, reversalTransferAmounts, transferAmounts } from "../../src/lib/money.js"
 import { checkBankAccountQuota, checkCreditCardQuota, getOrgPlan } from "./quota.js"
 import { dueDateFor, isLiabilityType, signedBalanceFromDebt, validateCardOnboarding } from "../../src/lib/credit-card.js"
 import { todayIso } from "../../src/lib/recurring.js"
+import { isDebtAccountType } from "./debts.js"
 
 /**
  * The name of the ONE cash wallet every workspace always has. It is
@@ -80,7 +82,7 @@ export async function createSystemTransaction(input: {
 
 // ── Create account ───────────────────────────────────────────────────────────
 
-export type CreateAccountInput = BankDetailInput & {
+export type CreateAccountInput = BankDetailInput & AppearanceInput & {
   type?: string
   bank_name?: string
   bankName?: string
@@ -156,6 +158,10 @@ export async function createWealthAccount(orgId: string, userId: string, body: C
 
   const opening = money(openingBalance)
   if (amountExceedsLimit(opening)) return fail(400, { error: "Amount is too large" })
+  // Colour identity is presentation only, but an invalid value would fail the
+  // DB CHECK instead of the request, so it is validated here like any input.
+  const appearance = pickAppearance(body)
+  if (!appearance.ok) return fail(400, { error: appearance.error })
   // Bank-detail fields apply to bank + card accounts (Cash in Hand has none);
   // a card reuses the issuer brand/logo lookup.
   const details = type === "bank" || type === "credit_card" ? pickBankDetails(body) : null
@@ -184,6 +190,7 @@ export async function createWealthAccount(orgId: string, userId: string, body: C
           }
         : {}),
       position: (maxPos ?? -1) + 1,
+      ...appearance.patch,
       ...(details ?? {}),
       ...(logo ? { logoUrl: logo.logoUrl, logoData: logo.logoData } : {}),
       createdBy: userId,
@@ -305,6 +312,16 @@ export async function createTransfer(orgId: string, userId: string, input: Trans
   const from = accounts.find((a) => a.id === input.fromAccountId)
   const to = accounts.find((a) => a.id === input.toAccountId)
   if (!from || !to) return fail(400, { error: "Select two active accounts" })
+  // A debt account is NOT a transfer destination. Money reaching a loan has to
+  // go through the debt engine, which splits it into principal (a transfer) and
+  // interest and fees (expenses) and records the allocation. A plain transfer
+  // would credit the whole instalment against the principal, so the interest
+  // would never be spending and the loan would read as paid off years early.
+  // The transactions routes already refuse this; without the same guard here
+  // the API has a door the UI simply never opens.
+  if (isDebtAccountType(from.type) || isDebtAccountType(to.type)) {
+    return fail(400, { error: "Record a payment from the debt's page instead — that keeps principal and interest apart.", code: "debt_account" })
+  }
   if (!from.currencyCode || !to.currencyCode) return fail(409, { error: "Account currency migration is incomplete", code: "currency_missing" })
   try {
     if (input.sourceCurrency && normalizeCurrencyCode(input.sourceCurrency) !== from.currencyCode) {

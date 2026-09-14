@@ -61,7 +61,10 @@ android/app/src/main/assets/public/
 android/app/src/main/assets/capacitor.config.json
 android/app/src/main/assets/capacitor.plugins.json
 android/app/src/main/res/xml/config.xml
-android/capacitor-cordova-android-plugins/
+# NOT android/capacitor-cordova-android-plugins/ — also generated, but TRACKED:
+# capacitor.build.gradle applies its cordova.variables.gradle unconditionally,
+# so without it Gradle cannot evaluate the project on any checkout that has not
+# run `npm install` and `cap sync`. See android/.gitignore for the full reason.
 # Future iOS shell (same reasoning).
 ios/App/build/
 ios/App/Pods/
