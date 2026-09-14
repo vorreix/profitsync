@@ -23,11 +23,14 @@ export function CategoryPicker({
   value,
   onChange,
   disabled,
+  invalid,
 }: {
   type: CategoryType
   value: string
   onChange: (name: string) => void
   disabled?: boolean
+  /** Save was pressed with nothing chosen — say so on the control itself. */
+  invalid?: boolean
 }) {
   const { t } = useTranslation()
   const { getToken } = useAuth()
@@ -104,7 +107,7 @@ export function CategoryPicker({
     <div ref={triggerRef} className="contents">
     <Popover open={open} onOpenChange={(o) => (o ? setOpen(true) : close())}>
       <PopoverTrigger asChild>
-        <Button variant="outline" role="combobox" className="w-full justify-between font-normal" disabled={disabled}>
+        <Button variant="outline" role="combobox" aria-invalid={invalid || undefined} className={cn("w-full justify-between font-normal", invalid && "border-destructive ring-1 ring-destructive/30")} disabled={disabled}>
           {value || <span className="text-muted-foreground">{t("filters.category")}</span>}
           <ChevronsUpDown className="size-4 ml-2 shrink-0 text-muted-foreground" />
         </Button>

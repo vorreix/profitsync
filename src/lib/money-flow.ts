@@ -76,12 +76,17 @@ export type TimelineData = {
   range: { from: string; to: string }
   periods: TimelinePeriod[]
   final: { label: string; total_in: number; total_out: number; total_net: number; balance: number }
+  /** Periods in the whole range — `periods` holds only the newest window of it. */
+  period_total?: number
+  period_limit?: number
+  /** There are older periods the chain is not drawing yet. */
+  has_more_periods?: boolean
 }
 
 // NB: "group" is a RESERVED React Flow built-in node type (it ships default
 // background/border/width styling for `.react-flow__node-group`). We call ours
 // "branch" so RF doesn't paint a ghost box behind our card or clamp its width.
-export type FlowNodeType = "root" | "branch" | "leaf" | "more" | "tlperiod" | "tlfinal"
+export type FlowNodeType = "root" | "branch" | "leaf" | "more" | "tlperiod" | "tlfinal" | "tlolder"
 
 export type FlowNode = {
   id: string
@@ -131,6 +136,46 @@ const GROUP_GAP = 40 // breathing room between group blocks
 const LEAF_V = 80 // vertical pitch of a stacked leaf
 const SPLIT_LEG_H = 22 // extra height an expanded split reserves per leg row
 const ROOT_H = 232
+const TL_COL_W = 320 // horizontal pitch of the timeline chain
+const TL_PERIOD_H = 200 // a period card's vertical footprint
+
+/**
+ * How much canvas each node type actually occupies, for measuring the graph.
+ * These mirror the rendered cards (the same numbers the layout above spaces
+ * things by), so the bounds are known the moment the graph is built — before
+ * React Flow has measured a single DOM node.
+ */
+const NODE_SIZE: Record<FlowNodeType, { w: number; h: number }> = {
+  root: { w: 300, h: ROOT_H },
+  branch: { w: 300, h: GROUP_H },
+  leaf: { w: LEAF_W, h: 64 },
+  more: { w: LEAF_W, h: 56 },
+  tlperiod: { w: 280, h: TL_PERIOD_H },
+  tlfinal: { w: 280, h: ROOT_H },
+  tlolder: { w: 236, h: 96 },
+}
+
+/**
+ * The bounding box of a built graph, in canvas units.
+ *
+ * The page turns this into the LOWEST zoom worth allowing: a timeline bucketed
+ * by day over a long range is tens of thousands of pixels wide, and a fixed
+ * minimum zoom (0.2) simply cannot show both ends of it — you pan forever and
+ * never see the shape. Empty graph → a zero box, which the caller reads as "no
+ * constraint".
+ */
+export function graphBounds(nodes: { type?: string; position: { x: number; y: number } }[]): { width: number; height: number } {
+  if (nodes.length === 0) return { width: 0, height: 0 }
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+  for (const n of nodes) {
+    const size = NODE_SIZE[n.type as FlowNodeType] ?? { w: 280, h: 160 }
+    minX = Math.min(minX, n.position.x)
+    minY = Math.min(minY, n.position.y)
+    maxX = Math.max(maxX, n.position.x + size.w)
+    maxY = Math.max(maxY, n.position.y + size.h)
+  }
+  return { width: Math.max(0, maxX - minX), height: Math.max(0, maxY - minY) }
+}
 
 /** Extra vertical space an expanded split leaf needs for its inline legs. */
 const splitExtra = (leaf: FlowLeaf | undefined, expandedSplit?: string | null): number =>
@@ -287,8 +332,6 @@ export function buildFlowGraph(data: FlowData, state: CollapseState): { nodes: F
 // sits in its own column; expanding a period stacks its leaves directly below
 // it (they don't push the chain — the row stays readable). The final entity is
 // one column past the last period.
-const TL_COL_W = 320
-const TL_PERIOD_H = 200
 
 export function buildTimelineGraph(data: TimelineData, expandedPeriods: Set<string>, expandedSplit?: string | null): { nodes: FlowNode[]; edges: FlowEdge[] } {
   const nodes: FlowNode[] = []
@@ -333,6 +376,21 @@ export function buildTimelineGraph(data: TimelineData, expandedPeriods: Set<stri
       }
     }
   })
+
+  // The chain draws the NEWEST window of the range. When older periods exist,
+  // it opens with a card saying so — at the far left, where the timeline
+  // already reads "earlier", rather than as a control somewhere in the chrome.
+  if (data.has_more_periods && data.periods.length > 0) {
+    const first = data.periods[0]
+    const remaining = Math.max(0, (data.period_total ?? 0) - data.periods.length)
+    nodes.push({ id: "older", type: "tlolder", position: { x: -TL_COL_W, y: (TL_PERIOD_H - 96) / 2 }, data: { remaining, bucket: data.bucket } })
+    edges.push({
+      id: "e:older-first",
+      source: "older",
+      target: `p:${first.key}`,
+      data: { income: 0, expense: 0, inWidth: 0, outWidth: 0, kind: "more", animated: false },
+    })
+  }
 
   // Final entity node at the end of the chain.
   const finalX = data.periods.length * TL_COL_W

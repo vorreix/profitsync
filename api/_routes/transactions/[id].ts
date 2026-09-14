@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { and, eq, isNull, sql } from "drizzle-orm"
+import { and, eq, inArray, isNull, sql } from "drizzle-orm"
 import { db, serialize } from "../../../src/lib/db/index.js"
 import { clients, transactions, wealthAccounts } from "../../../src/lib/db/schema.js"
 import { canDelete, canWrite, requireAuth } from "../../_lib/auth.js"
@@ -103,6 +103,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!before) return res.status(404).json({ error: "Not found" })
     if (before.kind === "transfer" && (kind !== undefined || type !== undefined || wealth_account_id !== undefined || card_id !== undefined)) {
       return res.status(400).json({ error: "A transfer leg can't change kind, direction, account or card — delete and recreate the transfer" })
+    }
+    // A DEBT REPAYMENT is one group that mixes a principal transfer with
+    // interest and fee expenses. Only the expenses are visible in the global
+    // list (transfers are filtered out), so the edit dialog sees a lone grouped
+    // row, reads it as a split, and on save rebuilds the whole group as plain
+    // allocations — which would turn the principal into spending and leave the
+    // debt's balance explaining nothing. It is edited where it means something.
+    if (before.groupId && (await touchesDebtAccount(before.groupId))) {
+      return res.status(400).json({ error: "Edit this payment from the debt's page — it keeps principal and interest apart.", code: "debt_group" })
     }
     // The (card, account) pair moves together (api/_lib/cards.ts attributeCard):
     // a card named → its own account; an account named without a card → that
@@ -237,4 +246,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   return res.status(405).json({ error: "Method not allowed" })
+}
+
+/** True when any leg of this ledger group sits on a loan or receivable account. */
+async function touchesDebtAccount(groupId: string): Promise<boolean> {
+  const [hit] = await db
+    .select({ id: transactions.id })
+    .from(transactions)
+    .innerJoin(wealthAccounts, eq(wealthAccounts.id, transactions.wealthAccountId))
+    .where(and(eq(transactions.groupId, groupId), inArray(wealthAccounts.type, ["loan", "receivable"])))
+    .limit(1)
+  return !!hit
 }

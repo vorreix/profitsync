@@ -1,0 +1,19 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node '/Users/maqbool/Desktop/mtt_projects/vorreix/profitsync/.codex/hooks/cache-guard.mjs'"
+          },
+          {
+            "type": "command",
+            "command": "node '/Users/maqbool/Desktop/mtt_projects/vorreix/profitsync/.codex/hooks/i18n-guard.mjs'"
+          }
+        ]
+      }
+    ]
+  }
+}

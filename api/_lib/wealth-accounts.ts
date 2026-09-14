@@ -18,6 +18,7 @@ import { amountExceedsLimit } from "../../src/lib/money.js"
 import { checkBankAccountQuota, checkCreditCardQuota, getOrgPlan } from "./quota.js"
 import { dueDateFor, isLiabilityType, signedBalanceFromDebt, validateCardOnboarding } from "../../src/lib/credit-card.js"
 import { todayIso } from "../../src/lib/recurring.js"
+import { isDebtAccountType } from "./debts.js"
 
 export type AccountRow = typeof wealthAccounts.$inferSelect
 export type TransactionRow = typeof transactions.$inferSelect
@@ -287,6 +288,16 @@ export async function createTransfer(orgId: string, userId: string, input: Trans
   const from = accounts.find((a) => a.id === input.fromAccountId)
   const to = accounts.find((a) => a.id === input.toAccountId)
   if (!from || !to) return fail(400, { error: "Select two active accounts" })
+  // A debt account is NOT a transfer destination. Money reaching a loan has to
+  // go through the debt engine, which splits it into principal (a transfer) and
+  // interest and fees (expenses) and records the allocation. A plain transfer
+  // would credit the whole instalment against the principal, so the interest
+  // would never be spending and the loan would read as paid off years early.
+  // The transactions routes already refuse this; without the same guard here
+  // the API has a door the UI simply never opens.
+  if (isDebtAccountType(from.type) || isDebtAccountType(to.type)) {
+    return fail(400, { error: "Record a payment from the debt's page instead — that keeps principal and interest apart.", code: "debt_account" })
+  }
 
   const clientId = await ensureDefaultClient(orgId, userId)
 

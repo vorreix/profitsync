@@ -62,11 +62,12 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { appLocale } from "@/lib/format-date"
 
 type Summary = { incoming: number; outgoing: number }
 
 const formatDate = (d: string) =>
-  new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+  new Date(d).toLocaleDateString(appLocale(), { month: "short", day: "numeric", year: "numeric" })
 
 export function WealthAccountDetailPage() {
   const { id } = useParams<{ id: string }>()

@@ -13,6 +13,7 @@ import { AttachmentBadge } from "@/components/AttachmentBadge"
 import { BudgetIndicator } from "@/components/budget/BudgetIndicator"
 import { MoneyBag } from "@/components/icons/MoneyBag"
 import { cn } from "@/lib/utils"
+import { appLocale } from "@/lib/format-date"
 
 /** A client row with its money aggregates resolved to numbers + derived profit. */
 export type ClientWithStats = Client & { profit: number }
@@ -334,7 +335,7 @@ const ClientTableRow = memo(function ClientTableRow({
         {actions.formatAmount(client.profit)}
       </td>
       <td className="p-2 whitespace-nowrap text-muted-foreground">
-        {new Date(client.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+        {new Date(client.created_at).toLocaleDateString(appLocale(), { month: "short", day: "numeric", year: "numeric" })}
       </td>
       {!selectionMode && (
         <td className="p-2 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>

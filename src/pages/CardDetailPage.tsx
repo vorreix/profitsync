@@ -48,12 +48,13 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { FitText } from "@/components/FitText"
+import { appLocale } from "@/lib/format-date"
 
 type TxPage = { data: Transaction[]; total: number; summary: { incoming: number; outgoing: number } }
 type AddPreset = { type: "incoming" | "outgoing"; kind: "standard" | "refund"; category?: string } | null
 
 const formatDate = (d: string) =>
-  new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+  new Date(d).toLocaleDateString(appLocale(), { month: "short", day: "numeric", year: "numeric" })
 
 /**
  * The card row already carries every column of its ledger account; this
@@ -489,7 +490,7 @@ export function CardDetailPage() {
                 <button
                   key={r.id}
                   type="button"
-                  onClick={() => navigate(`/recurring?view=${r.id}`)}
+                  onClick={() => navigate(`/recurring/${r.id}`)}
                   className="pressable ios-tap flex w-full items-center gap-3 px-3 py-3 text-start transition-colors hover:bg-muted/50 sm:px-4"
                 >
                   <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10">

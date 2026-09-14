@@ -69,9 +69,10 @@ describe("credit-card — sign convention & headline figures", () => {
     expect(netWorth).not.toBe(5350 + 1050)
   })
 
-  it("only credit_card is a liability type", () => {
+  it("credit cards and loans are liability types; receivables and everything else are not", () => {
     expect(isLiabilityType("credit_card")).toBe(true)
-    for (const t of ["bank", "cash", "space", "", null, undefined]) expect(isLiabilityType(t)).toBe(false)
+    expect(isLiabilityType("loan")).toBe(true)
+    for (const t of ["bank", "cash", "space", "receivable", "", null, undefined]) expect(isLiabilityType(t)).toBe(false)
   })
 })
 

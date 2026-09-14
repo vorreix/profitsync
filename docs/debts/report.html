@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ProfitSync — Debt & Loans: engineering report</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm; }
+  :root { --ink: #111827; --muted: #6b7280; --line: #e5e7eb; --accent: #059669; --warn: #b45309; }
+  * { box-sizing: border-box; }
+  body { font: 10.5pt/1.5 -apple-system, "Segoe UI", Inter, Roboto, sans-serif; color: var(--ink); margin: 0; }
+  h1 { font-size: 22pt; margin: 0 0 4px; letter-spacing: -0.01em; }
+  h2 { font-size: 14pt; margin: 22px 0 8px; padding-bottom: 4px; border-bottom: 1px solid var(--line); page-break-after: avoid; }
+  h3 { font-size: 11.5pt; margin: 14px 0 6px; page-break-after: avoid; }
+  p, li { margin: 0 0 6px; }
+  .sub { color: var(--muted); margin-bottom: 18px; }
+  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 12px 0 4px; }
+  .kpi { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+  .kpi b { display: block; font-size: 15pt; }
+  .kpi span { color: var(--muted); font-size: 9pt; }
+  table { width: 100%; border-collapse: collapse; font-size: 9.5pt; margin: 6px 0 10px; page-break-inside: avoid; }
+  th, td { border: 1px solid var(--line); padding: 5px 7px; text-align: left; vertical-align: top; }
+  th { background: #f9fafb; font-weight: 600; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  code { font: 9pt ui-monospace, Consolas, monospace; background: #f3f4f6; padding: 1px 4px; border-radius: 3px; }
+  pre { font: 8.8pt ui-monospace, Consolas, monospace; background: #f3f4f6; padding: 8px 10px; border-radius: 6px; white-space: pre-wrap; }
+  .invariant { border-left: 3px solid var(--accent); padding: 6px 10px; margin: 8px 0; background: #f0fdf4; }
+  .risk { border-left: 3px solid var(--warn); padding: 6px 10px; margin: 8px 0; background: #fffbeb; }
+  figure { margin: 10px 0 14px; page-break-inside: avoid; }
+  figure img { width: 100%; border: 1px solid var(--line); border-radius: 8px; }
+  figure.half img { width: 46%; }
+  figure.half { display: flex; gap: 4%; align-items: flex-start; }
+  figure.third img { width: 30%; }
+  figure.third { display: flex; gap: 5%; align-items: flex-start; }
+  figcaption { color: var(--muted); font-size: 9pt; margin-top: 4px; }
+  .page { page-break-before: always; }
+  .ok { color: var(--accent); font-weight: 600; }
+  ul { padding-left: 18px; }
+</style>
+</head>
+<body>
+
+<h1>Debt &amp; Loans</h1>
+<p class="sub">ProfitSync · engineering report · branch <code>feat/debt-loans</code> (stacked on <code>feat/credit-card-accounts</code>, PR #365) · 4 September 2026</p>
+
+<p>Debts and loans are now first-class in the ledger. A debt is a <b>liability account</b>; money someone owes the user is a <b>receivable</b> account. Borrowing is a transfer into a bank or cash account, never income. Repaying principal is a transfer back, never an expense. Only interest, fees and other charges are expenses. Everything the hub shows — status, progress, this month's obligations, next payment, debt-free date, payoff plans — is derived from the ledger plus the terms the user entered. No parallel bookkeeping was added.</p>
+
+<div class="kpis">
+  <div class="kpi"><b>793</b><span>unit tests green (68 files, +58 new)</span></div>
+  <div class="kpi"><b>11 / 11</b><span>end-to-end debt scenarios on a real database</span></div>
+  <div class="kpi"><b>19 / 19</b><span>credit-card + smoke e2e regression still green</span></div>
+  <div class="kpi"><b>1</b><span>migration (0066), additive, legacy rows untouched</span></div>
+</div>
+
+<h2>1. What I found (audit)</h2>
+<ul>
+  <li><code>wealth_accounts.current_balance</code> already holds the <b>signed asset-equivalent</b> value for every account type; credit cards (PR #365) are negative when owed. The ledger (<code>balanceDelta</code>, transfers, trash/restore reversals, system rows) needed no change to host a loan.</li>
+  <li>Loans had no representation. The only way to record one was "income" on borrowing and "expense" on every instalment, which inflated both sides of every report.</li>
+  <li>The plain transaction endpoints accepted any account id, so a loan account would have been spendable like a bank. Net worth only knew liquid accounts and cards.</li>
+  <li>Multi-currency: accounts carry no currency of their own, so a foreign-currency loan needs a native currency on its terms and totals must stay per currency.</li>
+</ul>
+
+<h2>2. Architecture — a debt IS a wealth account</h2>
+<div class="invariant"><b>A debt is a <code>wealth_accounts</code> row with <code>type = 'loan'</code> (I owe, balance negative) or <code>'receivable'</code> (owed to me, balance positive).</b> Its TERMS live in a 1:1 <code>debt_details</code> row. Every movement is an ordinary ledger row, so transfers, trash, restore, purge, cascades, budgets and net worth work unchanged. The sign is read only through <code>isLiabilityType</code> / <code>src/lib/debt-status.ts</code>, never in a component.</div>
+
+<table>
+  <tr><th>Event</th><th>Ledger rows</th><th class="num">Debt</th><th class="num">Bank</th><th class="num">Expense</th><th class="num">Income</th><th class="num">Net worth</th></tr>
+  <tr><td>Borrow €5,000 into cash</td><td>transfer loan → cash (or a system Opening Balance when the money is already spent)</td><td class="num">−5,000</td><td class="num">+5,000</td><td class="num">0</td><td class="num">0</td><td class="num">0</td></tr>
+  <tr><td>Pay €500: 420 principal, 70 interest, 10 fees</td><td>ONE group: transfer bank → loan €420 + two outgoing expenses on the bank</td><td class="num">+420</td><td class="num">−500</td><td class="num">+80</td><td class="num">0</td><td class="num">−80</td></tr>
+  <tr><td>Lend €400 to Luca</td><td>transfer cash → receivable</td><td class="num">+400 (asset)</td><td class="num">−400</td><td class="num">0</td><td class="num">0</td><td class="num">0</td></tr>
+  <tr><td>Luca repays €100 + €5 interest</td><td>transfer receivable → cash €100 + incoming €5 on cash</td><td class="num">−100</td><td class="num">+105</td><td class="num">0</td><td class="num">+5</td><td class="num">+5</td></tr>
+  <tr><td>Reconcile balance to a statement</td><td>system Balance Adjustment on the debt</td><td class="num">Δ</td><td class="num">—</td><td class="num">0</td><td class="num">0</td><td class="num">Δ</td></tr>
+</table>
+
+<h3>Terms vs derived facts</h3>
+<p><code>debt_details</code> stores only what the user knows: kind, counterparty, native currency, original amount, rate and rate type, scheduled payment and frequency, next due date, start/maturity, remaining instalments, an <i>estimate</i> flag, the lifecycle (<code>active | paused | paid_off | refinanced | written_off</code>), the refinanced-into account and notes. Status, progress, this month's required/paid/remaining, overdue, next payment, remaining interest, the debt-free date and the insights are all computed in <code>src/lib/debt-status.ts</code> from the balance and the payment history. Nothing that can be derived is stored.</p>
+
+<h3>Payments and their split</h3>
+<p>A recorded repayment is one ledger <b>group</b>: the principal transfer plus zero or more expense legs for interest, fees and other charges on the paying account. <code>debt_payments</code> records the allocation (<code>principal / interest / fees / other</code>, <code>split_source ∈ calculated | principal_only | typed</code>) anchored on the group's first leg with a cascading FK, so trashing the group hides the allocation and restoring brings it back once. When the user knows only the total, the split is calculated from one period of interest at the entered rate; with no rate the whole amount is principal and marked as such. Recording a payment also advances <code>next_due_date</code> and <code>remaining_installments</code>.</p>
+
+<h3>Engine (integer cents)</h3>
+<p><code>src/lib/debt-math.ts</code>: periodic rate per frequency, one-period interest, annuity payment, amortization with a final-payment tolerance (<code>min(payment, max(€1, 2 %))</code>) so schedules converge without a phantom extra period, and a non-convergence flag when the payment does not cover interest. <code>src/lib/debt-planner.ts</code>: month-by-month simulation of <b>minimum only</b> (no pool, no rollover), <b>avalanche</b> (highest rate first), <b>snowball</b> (smallest balance first), <b>free-up-cash</b> (highest payment-to-balance first) and <b>custom order</b>, with a cleared debt's payment rolling into the next target, what-if extra per month and a one-off lump sum, side-by-side comparison, an affordability check that switches to a stabilisation message when scheduled payments exceed the budget, and a debt-payment-to-income ratio. Debts without a rate are simulated at 0 % and labelled as such.</p>
+
+<h2>3. Data model</h2>
+<p>Migration <b>0066</b> (hand-written like 0059–0065; <code>drizzle-kit generate</code> is out of sync), purely additive:</p>
+<ul>
+  <li><code>wealth_accounts.type</code> accepts <code>loan</code> and <code>receivable</code> (existing rows untouched).</li>
+  <li><code>debt_details</code>: one row per debt account (unique <code>wealth_account_id</code>, cascades), CHECK constraints on kind, rate type, frequency, lifecycle and split source, non-negative amounts.</li>
+  <li><code>debt_payments</code>: <code>transaction_id</code> FK cascade, <code>group_id</code>, <code>date</code>, <code>total</code>, <code>principal</code>, <code>interest</code>, <code>fees</code>, <code>other</code>, <code>split_source</code>, <code>note</code>; read only while the anchor transaction is not trashed.</li>
+</ul>
+<p>Deleting a debt: an account with history is archived (closed) so its ledger stays consistent; an account with no non-system rows is hard-deleted and its rows cascade. Account deletion / factory reset already cascade <code>wealth_accounts</code>, so the new tables follow.</p>
+
+<h2>4. API</h2>
+<table>
+  <tr><th>Route</th><th>Purpose</th></tr>
+  <tr><td><code>GET /api/debts</code></td><td>Hub payload: debts (owed and receivable), summary (per-currency totals, this month required / paid / remaining / overdue, next payment, interest this month, total repaid, debt-free date, average monthly income, insights) and the next three months of scheduled payments.</td></tr>
+  <tr><td><code>POST /api/debts</code></td><td>Create (Quick or Detailed). <code>direction</code> = owed / receivable; opening either as a system Opening Balance or as a transfer with <code>disbursement_account_id</code>.</td></tr>
+  <tr><td><code>GET / PATCH / DELETE /api/debts/:id</code></td><td>Detail + payment history + projected schedule · edit terms, lifecycle, refinanced-into, reconcile the balance (system Balance Adjustment) · archive-or-delete.</td></tr>
+  <tr><td><code>GET / POST /api/debts/:id/payments</code></td><td>List · record a repayment (one ledger group, quota-checked, categories for interest / fees resolved from the org's list).</td></tr>
+  <tr><td><code>DELETE /api/debts/:id/payments/:paymentId</code></td><td>Move the whole payment group to Trash (restore via the existing Trash flow).</td></tr>
+</table>
+<p>Guard-rails: <code>GET /api/wealth/accounts</code> hides <code>space</code>, <code>loan</code> and <code>receivable</code>; the plain transaction endpoints reject debt accounts; every route is org-scoped through <code>requireAuth</code> and role-checked with <code>canWrite</code> / <code>canDelete</code>. Registered in <code>api/index.ts</code> after the card route (static before dynamic).</p>
+
+<h2 class="page">5. The built UI</h2>
+<figure><img src="screenshots/hub-overview.png" alt="Debt & Loans hub, Overview tab"><figcaption>/debts — Overview: total debt, required / paid / still to pay this month, overdue, next payment, plain-language insights, and a card per debt with remaining, scheduled payment, due date, progress and an estimated debt-free month where one can be computed.</figcaption></figure>
+<figure><img src="screenshots/hub-debts.png" alt="Your debts tab with a receivable section"><figcaption>Your debts — liabilities first, then "Owed to you" as a separate group with the reminder that it counts toward net worth but is not money in hand.</figcaption></figure>
+<figure><img src="screenshots/hub-plan.png" alt="Plan tab: payoff planner"><figcaption>Plan — monthly debt budget (input + slider), five strategies as radio cards, the selected plan's debt-free month, remaining interest, first debt cleared, the "assumes 0 %" marker for debts without a rate, a projected-balance chart, what-if inputs and the comparison table.</figcaption></figure>
+<figure><img src="screenshots/hub-upcoming.png" alt="Upcoming tab"><figcaption>Upcoming — scheduled payments grouped by month with required / paid / remaining per month.</figcaption></figure>
+<figure><img src="screenshots/detail-mortgage.png" alt="Individual debt screen"><figcaption>/debts/:id — remaining, progress, payment / next due / rate / estimated debt-free, remaining interest, Record payment and Edit, payment history with the split, and the projected schedule (interest, principal, balance per period).</figcaption></figure>
+<figure class="half">
+  <img src="screenshots/add-debt.png" alt="Add debt sheet">
+  <img src="screenshots/record-payment.png" alt="Record payment sheet">
+</figure>
+<figcaption>Add debt (I owe / Owed to me, Quick / Detailed, estimate toggle, native currency, "leave empty if none or unknown" rate) and Record payment ("Split automatically" preview vs "I know the split").</figcaption>
+<figure class="third">
+  <img src="screenshots/hub-overview-mobile.png" alt="Hub on a 390px viewport">
+  <img src="screenshots/hub-plan-mobile.png" alt="Planner on a 390px viewport">
+  <img src="screenshots/detail-mortgage-mobile.png" alt="Debt screen on a 390px viewport">
+</figure>
+<figcaption>390 px viewport — the same screens (full-page captures; the fixed bottom tab bar appears mid-image as a capture artifact).</figcaption>
+<figure><img src="screenshots/wealth-with-debts.png" alt="Wealth page with the Owed line"><figcaption>/wealth — net worth now subtracts loans as well as cards and adds receivables; the "Owed" line links to the hub. (Demo data from the e2e run: the payment came out of a €0 cash account.)</figcaption></figure>
+
+<h2 class="page">6. Integration impact</h2>
+<ul>
+  <li><b>Net worth</b> (<code>summarizeWealth</code>): liquid + receivables − liabilities (cards and loans); receivables are assets but never liquid. Same-currency only — no FX is invented.</li>
+  <li><b>Credit cards</b> stay a liability in the same position; a loan and a card never double-count (ledger test).</li>
+  <li><b>Transactions / budgets / analytics</b>: interest and fees are ordinary categorised expenses, so budgets and reports see them; principal is a transfer and stays out of income / expense through the shared <code>tx-sql</code> rules.</li>
+  <li><b>Trash / restore</b>: a payment group reverses and re-applies as one, using the group-wide restore fixed in PR #365.</li>
+  <li><b>Navigation</b>: "Debt &amp; Loans" in the sidebar, mobile layout and command palette; <code>debts</code> i18n namespace registered; English base strings with English placeholders in the seven other locales (repo convention, <code>i18n:check</code> green).</li>
+  <li><b>Native shells</b>: <code>cap:sync:android</code> and <code>build:ios</code> + <code>cap copy ios</code> run after the final gate.</li>
+</ul>
+
+<h2>7. Tests</h2>
+<table>
+  <tr><th>Suite</th><th>What it proves</th><th class="num">Result</th></tr>
+  <tr><td><code>debt-math.test.ts</code></td><td>Periodic rates, annuity payment, amortization convergence and final-payment tolerance, split calculation, date stepping across month ends.</td><td class="num ok">pass</td></tr>
+  <tr><td><code>debt-planner.test.ts</code></td><td>Strategy ordering, rollover, minimum-only never rolls over, lump sum and extra effects, stabilisation when under-budgeted, zero-rate assumption flag.</td><td class="num ok">pass</td></tr>
+  <tr><td><code>debt-status.test.ts</code></td><td>Derived statuses (overdue, due soon, paid off, lifecycle overrides), month obligations, upcoming window, debt-free estimate and its "unknown" reasons, per-currency totals, insights.</td><td class="num ok">pass</td></tr>
+  <tr><td><code>debt-ledger.test.ts</code></td><td>Borrowing is not income; split payment moves bank −500 / loan +420 / expense 80; informal principal-only; delete + restore once; card + loan no double count; receivable flows; multi-currency stays separate.</td><td class="num ok">pass</td></tr>
+  <tr><td><code>e2e/debts.spec.ts</code> (local Postgres, Playwright)</td><td>Empty state → quick informal debt · borrowing into cash (cash +5,000, debt 5,000, income 0) · schedule + debt-free date · known split (bank −500, principal −420, interest 70 + fees 10 the only expenses) · auto split by rate · delete a payment reverses everything, Trash restore brings it back once · hub tabs · owed-to-me lend/repay with no income or expense · net worth on /wealth · paid off + close with the cash account exactly where the payments left it.</td><td class="num ok">11 / 11</td></tr>
+  <tr><td><code>e2e/credit-card.spec.ts</code> · <code>e2e/smoke.spec.ts</code></td><td>Regression after the debts changes.</td><td class="num ok">10 / 10 · 9 / 9</td></tr>
+  <tr><td>Full unit suite</td><td>68 files</td><td class="num ok">793 / 793</td></tr>
+</table>
+<p>Gate: secret scan · <code>check-esm-extensions</code> (235 files) · <code>boot-functions</code> (every function boots under Node ESM) · <code>check-route-guards</code> (126 handlers) · <code>i18n:check</code> · <code>lint</code> · <code>typecheck</code> · <code>vitest run</code> · <code>npm run build</code> + chunk-cycle grep (empty) — all green. Migration 0066 applied to the Neon dev branch (there is no local database).</p>
+
+<h3>Fixed along the way</h3>
+<p>The credit-card e2e spec called the API without <code>x-org-id</code> and relied on the server's profile fallback; that fallback is served from a 60-second per-user cache, so right after a workspace switch it could still name the previous workspace and cleanup ran against the wrong org. Both specs now pin the workspace id returned by the switch. The "Owed on cards" assertion was updated to the new "Owed" line.</p>
+
+<h2>8. Known limitations and follow-ups</h2>
+<div class="risk"><b>Deliberately deferred:</b> refinancing comparison UI (the data model supports it via <code>refinanced_into_account_id</code>) · calendar and planned-transaction integration · variable-rate modelling (rates are simulated as fixed) · FX for multi-currency totals (per-currency figures only) · milestones beyond progress % · AI quick add cannot split interest on a loan payment · human translations for the new <code>debts</code> keys.</div>
+<ul>
+  <li>A typed split is trusted user input; the server checks only that the components sum to the total.</li>
+  <li>The org-resolution cache described above affects any client code that omits <code>x-org-id</code> after a switch (pre-existing).</li>
+</ul>
+<p><b>Recommendation: internal-test ready.</b> The accounting core and planner are tested unit-level and end to end on a real database. Before production: real translations, a read-through of the planner copy by a finance-literate reviewer, and a staging run of migration 0066.</p>
+
+</body>
+</html>

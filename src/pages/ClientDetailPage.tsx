@@ -39,6 +39,7 @@ import { useTranslation } from "react-i18next"
 import { ClientNotificationForm } from "@/components/notifications/ClientNotificationForm"
 import { MoneyBag } from "@/components/icons/MoneyBag"
 import { ExpandableSearch } from "@/components/ExpandableSearch"
+import { appLocale } from "@/lib/format-date"
 
 type NewTransaction = { type: "incoming" | "outgoing"; allocations: Allocation[]; description: string; category: string; date: string }
 type NewClient = { name: string; company: string; email: string; phone: string; status: "active" | "inactive" | "archived"; notes: string; category?: string; onboard_date?: string | null }
@@ -51,7 +52,7 @@ const defaultTxForm = (): NewTransaction => ({ type: "incoming", allocations: []
 const defaultAccountId = (accounts: WealthAccount[]) =>
   accounts.find((a) => a.type === "cash")?.id ?? accounts[0]?.id ?? ""
 
-const formatDate = (dateStr: string) => new Date(dateStr).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+const formatDate = (dateStr: string) => new Date(dateStr).toLocaleDateString(appLocale(), { month: "short", day: "numeric", year: "numeric" })
 
 export function ClientDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -609,7 +610,7 @@ export function ClientDetailPage() {
                               variant="secondary"
                               className="text-[10px] py-0 shrink-0 gap-1 cursor-pointer hover:bg-secondary/80"
                               title="Recurring"
-                              onClick={(e) => { e.stopPropagation(); navigate(`/recurring?view=${tx.recurring_rule_id}`) }}
+                              onClick={(e) => { e.stopPropagation(); navigate(`/recurring/${tx.recurring_rule_id}`) }}
                             >
                               <Repeat className="size-3" /> Recurring
                             </Badge>
@@ -862,7 +863,7 @@ export function ClientDetailPage() {
                       variant="secondary"
                       className="gap-1 cursor-pointer hover:bg-secondary/80"
                       title="Recurring"
-                      onClick={() => { const ruleId = viewTx.recurring_rule_id; dropModalBackEntry(); setViewTx(null); navigate(`/recurring?view=${ruleId}`) }}
+                      onClick={() => { const ruleId = viewTx.recurring_rule_id; dropModalBackEntry(); setViewTx(null); navigate(`/recurring/${ruleId}`) }}
                     >
                       <Repeat className="size-3" /> Recurring
                     </Badge>

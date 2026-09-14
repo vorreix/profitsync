@@ -163,6 +163,11 @@ export const CURRENCY_LIST: CurrencyInfo[] = [
   { code: "ZWL", name: "Zimbabwean Dollar", symbol: "$", country: "Zimbabwe" },
 ]
 
+/** Is `code` one of the currencies the app knows (ISO 4217, upper-case)? */
+export function isValidCurrency(code: string): boolean {
+  return CURRENCY_LIST.some((c) => c.code === code)
+}
+
 export function getCurrencySymbol(code: string): string {
   return CURRENCY_LIST.find((c) => c.code === code)?.symbol ?? code
 }

@@ -129,7 +129,7 @@ export function daysBetween(from: string, to: string): number {
 export type AlertAccount = {
   id: string
   name: string
-  type: "bank" | "cash" | "space" | "credit_card"
+  type: "bank" | "cash" | "space" | "credit_card" | "loan" | "receivable"
   /** AS OF TODAY — see decision 3 in the header. Not the raw column. */
   balanceToday: number
   creditLimit: number | null
@@ -387,8 +387,15 @@ export function projectShortfalls(input: { accounts: AlertAccount[]; events: Pro
  * an over-limit card reads as "0 available". That is the right answer to show
  * someone and the wrong one to project with: clamped, the number can never go
  * negative and a card overrun could never be detected at all.
+ *
+ * A DEBT account has no floor at all. A loan's balance is negative by
+ * definition and borrowing more only makes it more so; a receivable simply runs
+ * out of claim. Neither is money that can fail to cover a charge, and treating
+ * the raw balance as spendable made every loan look permanently overdrawn the
+ * moment anything was scheduled against it.
  */
 function headroom(account: AlertAccount, balance: number): number | null {
+  if (account.type === "loan" || account.type === "receivable") return null
   if (account.type !== "credit_card") return balance
   const limit = account.creditLimit
   if (limit === null || limit <= 0) return null
@@ -487,7 +494,9 @@ export function shortfallAlerts(shortfalls: Shortfall[], accounts: AlertAccount[
       params: { name: s.source.name, account: name.get(s.accountId) ?? "", date: s.date, days },
       money: { amount: s.amount, short: s.short },
       tense: "future",
-      link: s.source.kind === "autopay" ? cardLink(s.source.id) : "/recurring",
+      // Symmetrical with autopay → its card: a recurring charge opens the rule
+      // that will make it (`scheduled` has no page of its own).
+      link: s.source.kind === "autopay" ? cardLink(s.source.id) : s.source.kind === "recurring" ? `/recurring/${s.source.id}` : "/recurring",
       at: s.date,
       dismissible: false,
     }
@@ -508,7 +517,7 @@ export function recurringAlerts(rules: AlertRule[], events: ProjectionEvent[], c
   for (const rule of rules) {
     if (!rule.active) continue
     if (rule.lastError) {
-      out.push({ id: `recurring_paused:${rule.id}`, kind: "recurring_paused", severity: "warning", key: "recurring_paused", params: { name: rule.name }, link: "/recurring", dismissible: false })
+      out.push({ id: `recurring_paused:${rule.id}`, kind: "recurring_paused", severity: "warning", key: "recurring_paused", params: { name: rule.name }, link: `/recurring/${rule.id}`, dismissible: false })
     }
   }
 
@@ -532,7 +541,7 @@ export function recurringAlerts(rules: AlertRule[], events: ProjectionEvent[], c
       params: { name: e.source.name, date: e.date, days: daysBetween(today, e.date) },
       money: { amount: -e.delta },
       tense: "future",
-      link: "/recurring",
+      link: `/recurring/${e.source.id}`,
       at: e.date,
       dismissible: true,
     })

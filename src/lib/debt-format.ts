@@ -1,0 +1,38 @@
+// Small presentation helpers for Debt & Loans (client only).
+import { isSuggestedDebtKind } from "@/lib/debt-recurring"
+import type { Debt } from "@/lib/types"
+import { formatMoney } from "@/lib/wealth"
+
+// Dates follow the language the user PICKED, not "en-US" and not the browser's
+// setting — see src/lib/format-date.ts. Re-exported here so the forty-odd
+// callers on the debts screens keep importing from one place.
+import { formatMonthYear } from "@/lib/format-date"
+export { formatLongDate, formatMonthYear, formatShortDate } from "@/lib/format-date"
+
+/** Money in the debt's own currency (never converted). */
+export const debtMoney = (amount: number, debt: Pick<Debt, "currency">, visible = true) => formatMoney(amount, debt.currency, visible)
+
+/** "€24,820 + ₹900,000" — one figure per currency, largest first. */
+export function formatByCurrency(parts: { currency: string; amount: number }[], visible = true): string {
+  if (parts.length === 0) return ""
+  return parts.map((p) => formatMoney(p.amount, p.currency, visible)).join(" + ")
+}
+
+/** Add `months` to today's date and return a month-year label. */
+export function monthsFromNow(months: number, today: string): string {
+  const [y, m] = today.split("-").map(Number)
+  const total = y * 12 + (m - 1) + months
+  const ny = Math.floor(total / 12)
+  const nm = (total % 12) + 1
+  return formatMonthYear(`${ny}-${String(nm).padStart(2, "0")}-01`)
+}
+
+/**
+ * The debt's type as a person should read it. The nine suggestions are stored
+ * as keys and translate; anything the user typed themselves ("Chit fund", a
+ * flatmate's name) is shown exactly as they wrote it — translating it is not
+ * possible and guessing at it would be worse than leaving it alone.
+ */
+export function debtKindLabel(kind: string, t: (key: string) => string): string {
+  return isSuggestedDebtKind(kind) ? t(`kinds.${kind}`) : kind
+}

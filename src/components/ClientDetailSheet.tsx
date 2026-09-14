@@ -12,9 +12,10 @@ import { Badge } from "@/components/ui/badge"
 import { FitText } from "@/components/FitText"
 import { useCurrency } from "@/lib/currency-context"
 import type { Client } from "@/lib/types"
+import { appLocale } from "@/lib/format-date"
 
 const formatDate = (d: string) =>
-  new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+  new Date(d).toLocaleDateString(appLocale(), { month: "short", day: "numeric", year: "numeric" })
 
 /**
  * Quick, read-only full view of a client (mobile "eye" action). Shows every

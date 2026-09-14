@@ -69,6 +69,7 @@ import {
   ShieldCheck,
   CreditCard,
   PiggyBank,
+  HandCoins,
   Tag,
   ChartColumn,
   Gift,
@@ -136,6 +137,7 @@ function buildNavItems(activeOrgId: string | undefined, accountType: AccountType
     accountTypeAllows(accountType, "clients") && { labelKey: "nav.clients", href: "/clients", icon: Users },
     { labelKey: "nav.transactions", href: "/transactions", icon: ArrowLeftRight },
     { labelKey: "nav.wealth", href: "/wealth", icon: Landmark },
+    { labelKey: "nav.debts", href: "/debts", icon: HandCoins },
     accountTypeAllows(accountType, "spaces") && { labelKey: "nav.spaces", href: "/spaces", icon: PiggyBank },
     { labelKey: "nav.recurring", href: "/recurring", icon: Repeat },
     { labelKey: "nav.calendar", href: "/calendar", icon: CalendarDays },
@@ -370,7 +372,14 @@ function AppLayoutInner() {
         </SidebarFooter>
       </Sidebar>
 
-      <SidebarInset>
+      {/* min-w-0: the inset is a flex item beside the 16rem sidebar, and a flex
+          item's automatic minimum size is its CONTENT's minimum — so one wide
+          thing inside a page (the dashboard's alert carousel, whose slides are
+          `basis-full`, and any wide table or chart) stops the column shrinking
+          and pushes the whole app sideways instead. With this, the column is
+          always exactly the space left by the sidebar and anything wider
+          scrolls inside its own container. */}
+      <SidebarInset className="min-w-0">
         <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
           <SidebarTrigger className="-ml-1" />
           <Separator orientation="vertical" className="h-4" />

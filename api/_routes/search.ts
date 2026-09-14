@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { and, asc, desc, eq, ilike, isNull, ne, or, sql } from "drizzle-orm"
+import { and, asc, desc, eq, ilike, inArray, isNull, ne, notInArray, or, sql } from "drizzle-orm"
 import { db, serialize } from "../../src/lib/db/index.js"
-import { cards, categories, clients, quotations, transactions, wealthAccounts } from "../../src/lib/db/schema.js"
+import { cards, categories, clients, debtDetails, quotations, transactions, wealthAccounts } from "../../src/lib/db/schema.js"
 import { requireAuth } from "../_lib/auth.js"
 
 const ENTITY_LIMIT = 6
@@ -24,7 +24,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // query — word_similarity() wants the text, not the pattern.
   const term = `%${q.replace(/[\\%_]/g, "\\$&")}%`
 
-  const [clientRows, txRows, quoteRows, accountRows, categoryRows, cardRows] = await Promise.all([
+  const [clientRows, txRows, quoteRows, accountRows, categoryRows, cardRows, debtRows] = await Promise.all([
     db
       .select({ id: clients.id, name: clients.name, company: clients.company, status: clients.status })
       .from(clients)
@@ -103,8 +103,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         eq(wealthAccounts.organizationId, orgId),
         isNull(wealthAccounts.archivedAt),
         // A credit card's liability account is surfaced as its CARD (below),
-        // never as a bank — one hit, one screen (/wealth/cards/:id).
-        ne(wealthAccounts.type, "credit_card"),
+        // never as a bank — one hit, one screen (/wealth/cards/:id). Debts get
+        // their own group for the same reason: /wealth/:id is the bank-account
+        // page and has no way to explain a loan.
+        notInArray(wealthAccounts.type, ["credit_card", "loan", "receivable"]),
         or(ilike(wealthAccounts.bankName, term), ilike(wealthAccounts.nickname, term)),
       ))
       .orderBy(
@@ -148,6 +150,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ))
       .orderBy(sql`greatest(word_similarity(${q}, ${cards.name}), word_similarity(${q}, ${wealthAccounts.bankName})) desc`, asc(cards.name))
       .limit(AUX_LIMIT),
+    // Debt & Loans. Searched by the name on the account AND by the counterparty
+    // in its terms: people look for "Marco", which may only ever have been typed
+    // into the formal-name field.
+    db
+      .select({
+        id: wealthAccounts.id,
+        name: sql<string>`coalesce(nullif(${wealthAccounts.nickname}, ''), ${wealthAccounts.bankName})`,
+        direction: sql<string>`case when ${wealthAccounts.type} = 'receivable' then 'receivable' else 'owed' end`,
+        counterparty: debtDetails.counterparty,
+        currency: debtDetails.currency,
+        currentBalance: wealthAccounts.currentBalance,
+        icon: wealthAccounts.icon,
+      })
+      .from(debtDetails)
+      .innerJoin(wealthAccounts, eq(wealthAccounts.id, debtDetails.wealthAccountId))
+      .where(and(
+        eq(debtDetails.organizationId, orgId),
+        isNull(wealthAccounts.archivedAt),
+        inArray(wealthAccounts.type, ["loan", "receivable"]),
+        or(ilike(wealthAccounts.bankName, term), ilike(wealthAccounts.nickname, term), ilike(debtDetails.counterparty, term)),
+      ))
+      .orderBy(
+        sql`greatest(word_similarity(${q}, ${wealthAccounts.nickname}), word_similarity(${q}, ${debtDetails.counterparty})) desc`,
+        asc(wealthAccounts.bankName),
+      )
+      .limit(AUX_LIMIT),
   ])
 
   return res.json({
@@ -157,5 +185,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     accounts: accountRows.map(serialize),
     categories: categoryRows.map(serialize),
     cards: cardRows.map(serialize),
+    debts: debtRows.map(serialize),
   })
 }

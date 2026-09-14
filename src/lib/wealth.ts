@@ -1,9 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { WealthAccount } from "@/lib/types"
 import { cardCredit, cardDebt, creditUsage, isLiabilityType } from "@/lib/credit-card"
 
 const PRIVACY_KEY = "ps_wealth_balances_visible"
-const COLLAPSED_KEY = "ps_wealth_overview_collapsed"
 
 /**
  * Disclosure (open/closed) state for a collapsible, persisted to localStorage so
@@ -42,6 +41,14 @@ export function usePersistedOpen(key: string, fallback = true) {
   return [open, setOpen] as const
 }
 
+/**
+ * Fires when ANY component flips the privacy toggle, so every other one on the
+ * page follows. Without it the state was per-component: one dashboard used to
+ * carry five separate copies, and hiding balances on the Wealth card left the
+ * totals beside it in plain view — which is not privacy, it is a decoration.
+ */
+const PRIVACY_EVENT = "ps:balance-privacy"
+
 export function useBalancePrivacy() {
   const [visible, setVisible] = useState(() => {
     try {
@@ -52,36 +59,36 @@ export function useBalancePrivacy() {
   })
 
   useEffect(() => {
-    try {
-      localStorage.setItem(PRIVACY_KEY, visible ? "1" : "0")
-    } catch {
-      // Ignore storage failures.
+    const onChange = (e: Event) => setVisible((e as CustomEvent<boolean>).detail)
+    window.addEventListener(PRIVACY_EVENT, onChange)
+    // Another TAB can change it too; `storage` only fires in the others.
+    const onStorage = (e: StorageEvent) => { if (e.key === PRIVACY_KEY) setVisible(e.newValue !== "0") }
+    window.addEventListener("storage", onStorage)
+    return () => {
+      window.removeEventListener(PRIVACY_EVENT, onChange)
+      window.removeEventListener("storage", onStorage)
     }
-  }, [visible])
+  }, [])
 
-  return { balancesVisible: visible, setBalancesVisible: setVisible }
-}
+  // Read through a ref so the setter can resolve `v => !v` WITHOUT doing its
+  // work inside a state updater: React double-invokes those, and dispatching an
+  // event from one re-enters setState during render.
+  const visibleRef = useRef(visible)
+  visibleRef.current = visible
 
-// Whether the dashboard Wealth Overview's account list is collapsed. Persisted
-// so the user's choice (e.g. "keep it tucked away") survives reloads/sessions.
-export function useWealthOverviewCollapsed() {
-  const [collapsed, setCollapsed] = useState(() => {
+  const setBalancesVisible = useCallback((next: boolean | ((v: boolean) => boolean)) => {
+    const value = typeof next === "function" ? next(visibleRef.current) : next
     try {
-      return localStorage.getItem(COLLAPSED_KEY) === "1"
+      localStorage.setItem(PRIVACY_KEY, value ? "1" : "0")
     } catch {
-      return false
+      // Ignore storage failures (private mode, etc.).
     }
-  })
+    // Only the broadcast sets state — for the caller too, so every instance on
+    // the page goes through the exact same path and none can drift.
+    window.dispatchEvent(new CustomEvent<boolean>(PRIVACY_EVENT, { detail: value }))
+  }, [])
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(COLLAPSED_KEY, collapsed ? "1" : "0")
-    } catch {
-      // Ignore storage failures.
-    }
-  }, [collapsed])
-
-  return { collapsed, setCollapsed }
+  return { balancesVisible: visible, setBalancesVisible }
 }
 
 export function currencySymbol(currency: string) {
@@ -119,12 +126,17 @@ export function accountDisplayName(account: Pick<WealthAccount, "bank_name" | "n
 export function summarizeWealth(accounts: WealthAccount[]) {
   const active = accounts.filter((a) => !a.archived_at)
   let liquid = 0
+  let receivables = 0
   let liabilities = 0
   for (const a of active) {
     const bal = Number(a.current_balance)
     if (isLiabilityType(a.type)) {
+      // Credit cards and loans: what is owed is a liability; a credit is liquid.
       liabilities += cardDebt(bal)
       liquid += cardCredit(bal)
+    } else if (a.type === "receivable") {
+      // Money owed TO the user: an asset, but not money in hand.
+      receivables += Math.max(0, bal)
     } else {
       liquid += bal
     }
@@ -132,11 +144,12 @@ export function summarizeWealth(accounts: WealthAccount[]) {
   const round = (n: number) => Math.round(n * 100) / 100
   return {
     active,
-    total: round(liquid - liabilities),
-    assets: round(liquid),
+    total: round(liquid + receivables - liabilities),
+    assets: round(liquid + receivables),
     liquid: round(liquid),
+    receivables: round(receivables),
     liabilities: round(liabilities),
-    cards: active.filter((a) => isLiabilityType(a.type)),
+    cards: active.filter((a) => a.type === "credit_card"),
   }
 }
 

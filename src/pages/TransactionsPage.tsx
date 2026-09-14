@@ -43,6 +43,7 @@ import { TxFormFields } from "@/components/transactions/tx-form"
 import { allocationFor, allocationPayload, formatFileSize, isCardUnusableError, type TxForm } from "@/components/transactions/tx-form-utils"
 import { mergeTags, txTags } from "@/lib/transaction-tags"
 import { AddTransactionDialog } from "@/components/transactions/AddTransactionDialog"
+import { appLocale } from "@/lib/format-date"
 
 type PaginatedResponse<T> = { data: T[]; total: number; summary?: { incoming: number; outgoing: number } }
 
@@ -54,7 +55,7 @@ type TxRow = Transaction
 const PAGE_SIZE = 20
 
 const formatDate = (d: string) =>
-  new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+  new Date(d).toLocaleDateString(appLocale(), { month: "short", day: "numeric", year: "numeric" })
 
 // ─── List row ─────────────────────────────────────────────────────────────────
 // Memoized so page-level state changes that don't touch a row (search
@@ -145,7 +146,7 @@ const TransactionRow = memo(function TransactionRow({
                 e.stopPropagation()
                 // Remember where we left so Back returns to this exact row.
                 sessionStorage.setItem("tx-return-scroll", tx.id)
-                navigate(`/recurring?view=${tx.recurring_rule_id}`)
+                navigate(`/recurring/${tx.recurring_rule_id}`)
               }}
             >
               <Repeat className="size-3" /> <span className="hidden sm:inline">{t("recurringBadge")}</span>
@@ -553,6 +554,14 @@ export function TransactionsPage() {
         const token = await getToken()
         const legs = token ? await apiGet<Transaction[]>(`/api/transactions?groupId=${tx.group_id}`, token) : []
         if (!legs.length) { toast.error(t("failedToUpdateTransaction")); return }
+        // A group that contains TRANSFER legs is not a split — it is one money
+        // movement with more than one meaning, and a debt repayment is the
+        // common case: a principal transfer plus interest and fee expenses.
+        // Only the expenses survive this list's transfer filter, so it arrives
+        // here looking like a lone grouped row. Saving would delete the group
+        // and try to rebuild it as plain allocations, which the server refuses
+        // — leaving the repayment trashed and nothing in its place.
+        if (legs.some((l) => l.kind === "transfer")) { toast.info(t("editOnItsOwnPage")); return }
         setEditForm({
           id: legs[0].id,
           group_id: tx.group_id,
@@ -1003,7 +1012,7 @@ export function TransactionsPage() {
                         onClick={() => {
                           // Keep the ?view=<txId> entry in history (don't strip it) so
                           // browser/Back returns straight to this open modal, unchanged.
-                          navigate(`/recurring?view=${viewTx.recurring_rule_id}`)
+                          navigate(`/recurring/${viewTx.recurring_rule_id}`)
                         }}
                       >
                         <Repeat className="size-3" /> {t("recurringBadge")}
