@@ -484,6 +484,13 @@
       "when": 1789303202014,
       "tag": "0068_one_repayment_per_debt",
       "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1789383113149,
+      "tag": "0075_wealth_account_appearance",
+      "breakpoints": true
     }
   ]
 }

@@ -64,14 +64,43 @@ for (const f of files) {
   } else byNumber.set(n, f)
 }
 
-// ── 1b. No holes ───────────────────────────────────────────────────────────
+// ── 1b. No holes, except numbers an open branch already owns ───────────────
+//
+// A hole is a READABILITY problem — drizzle only ever resolves `tag` and
+// compares `when`, so a gap runs fine. A DUPLICATE number is the dangerous one:
+// two branches each shipping an 0063 is one of the incidents above. So when a
+// long-lived branch has already taken a range AND applied it to the shared dev
+// database, taking those numbers again is worse than leaving the gap — the
+// range is reserved here instead, in the open, with an owner and an end date.
+//
+// DELETE A RESERVATION THE DAY ITS BRANCH MERGES. It is a promise that those
+// numbers are spoken for, not a licence to skip numbering.
+const RESERVED = [
+  { from: 69, to: 74, owner: "feat/multi-currency (0069_multi_currency_foundation … 0074_fx_reporting_amount)" },
+]
+const reservedBy = (n) => RESERVED.find((r) => n >= r.from && n <= r.to)
+
 const numbers = [...byNumber.keys()].map(Number).sort((a, b) => a - b)
 for (let i = 1; i < numbers.length; i++) {
-  if (numbers[i] !== numbers[i - 1] + 1) {
-    const gap = numbers[i] - numbers[i - 1] - 1
+  if (numbers[i] === numbers[i - 1] + 1) continue
+  // Every number in the gap must be claimed by a reservation, or it is a hole.
+  const missing = []
+  for (let n = numbers[i - 1] + 1; n < numbers[i]; n++) if (!reservedBy(n)) missing.push(n)
+  if (missing.length === 0) continue
+  fail(
+    `The numbering jumps from ${String(numbers[i - 1]).padStart(4, "0")} to ${String(numbers[i]).padStart(4, "0")} (${missing.length} missing).`,
+    "Renumber the migrations after the hole so the folder reads in order. Keep every journal `when` EXACTLY as it is — it is the only field the migrator compares, so changing it re-applies or skips.",
+  )
+}
+
+// A reserved number that is now in use means the branch it was held for has
+// landed (or someone took it anyway) — either way the reservation is stale.
+for (const n of numbers) {
+  const r = reservedBy(n)
+  if (r) {
     fail(
-      `The numbering jumps from ${String(numbers[i - 1]).padStart(4, "0")} to ${String(numbers[i]).padStart(4, "0")} (${gap} missing).`,
-      "Renumber the migrations after the hole so the folder reads in order. Keep every journal `when` EXACTLY as it is — it is the only field the migrator compares, so changing it re-applies or skips.",
+      `${String(n).padStart(4, "0")} is inside the range reserved for ${r.owner}.`,
+      "If that branch has merged, delete the reservation in scripts/check-migrations.mjs. If it has not, number this migration above the range.",
     )
   }
 }

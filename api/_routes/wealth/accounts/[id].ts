@@ -4,6 +4,7 @@ import { db, serialize } from "../../../../src/lib/db/index.js"
 import { transactions, wealthAccounts } from "../../../../src/lib/db/schema.js"
 import { canDelete, canWrite, ensureDefaultClient, requireAuth } from "../../../_lib/auth.js"
 import { diffFields, logAudit } from "../../../_lib/audit.js"
+import { type AppearanceInput, pickAppearance } from "../../../_lib/account-appearance.js"
 import { type BankDetailInput, pickBankDetails, resolveLogoColumns } from "../../../_lib/bank-brand.js"
 import { amountExceedsLimit } from "../../../../src/lib/money.js"
 import { logoDataUrl } from "../../../../src/lib/logo-data.js"
@@ -45,7 +46,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method === "PATCH") {
     if (!canWrite(role)) return res.status(403).json({ error: "Forbidden" })
-    const body = req.body as BankDetailInput & {
+    const body = req.body as BankDetailInput & AppearanceInput & {
       bank_name?: string
       bankName?: string
       nickname?: string
@@ -63,6 +64,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       set_default?: boolean
     }
     const { nickname, icon, archive, restore } = body
+    // Colour identity — only the keys actually present are touched, so a
+    // rename or a balance adjustment never resets a colour.
+    const appearance = pickAppearance(body)
+    if (!appearance.ok) return res.status(400).json({ error: appearance.error })
     const setDefault = typeof body.set_default === "boolean" ? body.set_default : undefined
     const bankName = body.bankName ?? body.bank_name
     const isCard = isLiabilityType(account.type)
@@ -199,6 +204,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ...(bankName !== undefined ? { bankName: bankName.trim() || "Cash in Hand" } : {}),
         ...(nickname !== undefined ? { nickname: nickname.trim() } : {}),
         ...(icon !== undefined ? { icon } : {}),
+        ...appearance.patch,
         ...(currentBalance !== undefined ? { currentBalance: String(newBalance) } : {}),
         ...cardPatch,
         ...(details ?? {}),
@@ -238,7 +244,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const changes = diffFields(
       before as Record<string, unknown>,
       updated as Record<string, unknown>,
-      ["bankName", "nickname", "icon", "currentBalance", "archivedAt", "isDefault", "country", "accountNumber", "routingNumber", "swift", "address", "location", "note", "creditLimit", "statementClosingDay", "paymentDueDay"],
+      ["bankName", "nickname", "icon", "color", "colorStyle", "currentBalance", "archivedAt", "isDefault", "country", "accountNumber", "routingNumber", "swift", "address", "location", "note", "creditLimit", "statementClosingDay", "paymentDueDay"],
     )
     if (Object.keys(changes).length) {
       await logAudit({ orgId, entityType: "wealth_account", entityId: id, action: archive ? "close" : restore ? "reopen" : "update", actorId: userId, changes })

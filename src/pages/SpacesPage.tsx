@@ -9,9 +9,12 @@ import { useOrg } from "@/lib/org-context"
 import { useCurrency } from "@/lib/currency-context"
 import { canWriteRole } from "@/lib/roles"
 import type { WealthAccount } from "@/lib/types"
+import { accountAppearance } from "@/lib/account-color"
+import { cn } from "@/lib/utils"
 import { formatMoney } from "@/lib/wealth"
 import { spaceGoalStatus, spaceProgress } from "@/lib/spaces"
 import { spaceIconFor } from "@/components/wealth/space-icons"
+import "@/components/wealth/account-color.css"
 import { SpaceTransferModal } from "@/components/spaces/SpaceTransferModal"
 import { SpaceFormModal } from "@/components/spaces/SpaceFormModal"
 import { Button } from "@/components/ui/button"
@@ -284,57 +287,114 @@ function SpaceCard({
   const balance = Number(space.current_balance)
   const progress = spaceProgress(balance, space.goal_amount)
   const status = spaceGoalStatus(balance, space.goal_amount, space.target_date, new Date().toISOString().split("T")[0])
+  // The Space wears its own colour (src/lib/account-color.ts) — savings teal
+  // until the user picks another. Everything that was hard-coded emerald (the
+  // icon halo, the progress fill, the hover) follows it.
+  const look = accountAppearance(space)
+  const onColor = look.bold
+  const ink = look.text === "light" ? "text-white" : "text-slate-900"
+  const inkSoft = look.text === "light" ? "text-white/75" : "text-slate-900/70"
+  const inkHover = look.text === "light" ? "hover:text-white" : "hover:text-slate-900"
 
   return (
-    <li className="group flex flex-col rounded-2xl border bg-card p-4 transition-all duration-200 hover:border-emerald-500/30 hover:shadow-md motion-safe:hover:-translate-y-0.5">
+    <li
+      style={look.vars as React.CSSProperties}
+      className={cn(
+        "acct-colored group relative flex flex-col rounded-2xl border p-4 transition-all duration-200 hover:shadow-md motion-safe:hover:-translate-y-0.5",
+        onColor ? "acct-bold" : "acct-subtle acct-rail bg-card",
+      )}
+    >
       <button type="button" onClick={onOpen} className="flex items-start gap-3 text-left" title={t("viewDetails")}>
-        <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-600 transition-colors group-hover:bg-emerald-500/20 dark:text-emerald-400">
+        <span
+          className={cn(
+            "flex size-11 shrink-0 items-center justify-center rounded-full border transition-colors",
+            onColor ? (look.text === "light" ? "acct-icon-bold" : "acct-icon-bold-dark") : "acct-icon",
+          )}
+        >
           <Icon className="size-5" />
         </span>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold">{space.nickname}</p>
-          <p className="mt-0.5 text-2xl font-bold tabular-nums">{formatMoney(balance, currency)}</p>
+          <p className={cn("truncate text-sm font-semibold", onColor && ink)}>{space.nickname}</p>
+          <p className={cn("mt-0.5 text-2xl font-bold tabular-nums", onColor && ink)}>{formatMoney(balance, currency)}</p>
         </div>
         {status.kind === "reached" && (
-          <span className="shrink-0 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-300">{t("goalReached")}</span>
+          <span
+            className={cn(
+              "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium",
+              onColor ? cn("bg-white/20", ink) : "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
+            )}
+          >
+            {t("goalReached")}
+          </span>
         )}
-        <ChevronRight className="size-4 shrink-0 self-center text-muted-foreground/30 transition-all group-hover:translate-x-0.5 group-hover:text-muted-foreground" />
+        <ChevronRight
+          className={cn(
+            "size-4 shrink-0 self-center transition-all group-hover:translate-x-0.5",
+            onColor ? inkSoft : "text-muted-foreground/30 group-hover:text-muted-foreground",
+          )}
+        />
       </button>
 
       {progress && (
         <div className="mt-3">
-          <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-            <div className="h-full rounded-full bg-emerald-500 transition-[width] duration-500" style={{ width: `${progress.pct}%` }} />
+          <div className={cn("h-2 w-full overflow-hidden rounded-full", onColor ? "bg-white/20" : "bg-muted")}>
+            <div
+              className="h-full rounded-full transition-[width] duration-500"
+              style={{ width: `${progress.pct}%`, background: onColor ? "rgba(255,255,255,0.85)" : "var(--acct-rail)" }}
+            />
           </div>
-          <div className="mt-1.5 flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+          <div className={cn("mt-1.5 flex items-center justify-between gap-2 text-[11px]", onColor ? inkSoft : "text-muted-foreground")}>
             <span className="tabular-nums">{progress.pct}% · {formatMoney(balance, currency)} / {formatMoney(Number(space.goal_amount), currency)}</span>
             {status.kind === "on_pace" && status.suggestedMonthly > 0 && (
-              <span className="flex items-center gap-1 tabular-nums text-emerald-600 dark:text-emerald-400">
+              <span className={cn("flex items-center gap-1 tabular-nums", onColor ? ink : "text-emerald-600 dark:text-emerald-400")}>
                 <TrendingUp className="size-3" /> {t("perMonth", { amount: formatMoney(status.suggestedMonthly, currency) })}
               </span>
             )}
-            {status.kind === "overdue" && <span className="text-amber-600 dark:text-amber-400">{t("pastTarget")}</span>}
+            {status.kind === "overdue" && <span className={onColor ? ink : "text-amber-600 dark:text-amber-400"}>{t("pastTarget")}</span>}
           </div>
         </div>
       )}
       {!progress && (
-        <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+        <p className={cn("mt-2 flex items-center gap-1.5 text-xs", onColor ? inkSoft : "text-muted-foreground")}>
           <Target className="size-3.5" /> {t("noGoalHint")}
         </p>
       )}
 
       {canWrite && (
         <div className="mt-3 flex items-center gap-2">
-          <Button size="sm" variant="secondary" className="flex-1" onClick={onFund}>
+          <Button
+            size="sm"
+            variant="secondary"
+            className={cn("flex-1", onColor && cn("border border-white/25 bg-white/20 hover:bg-white/30", ink))}
+            onClick={onFund}
+          >
             <ArrowDownToLine className="size-4" /> {t("addMoney")}
           </Button>
-          <Button size="sm" variant="outline" className="flex-1" onClick={onWithdraw} disabled={balance <= 0}>
+          <Button
+            size="sm"
+            variant="outline"
+            className={cn("flex-1", onColor && cn("border-white/35 bg-transparent hover:bg-white/15", ink))}
+            onClick={onWithdraw}
+            disabled={balance <= 0}
+          >
             <ArrowUpFromLine className="size-4" /> {t("withdraw")}
           </Button>
-          <Button size="icon" variant="ghost" className="size-9 shrink-0 text-muted-foreground" aria-label={t("edit")} onClick={onEdit}>
+          <Button
+            size="icon"
+            variant="ghost"
+            className={cn("size-9 shrink-0", onColor ? cn(inkSoft, inkHover, "hover:bg-white/15") : "text-muted-foreground")}
+            aria-label={t("edit")}
+            onClick={onEdit}
+          >
             <Pencil className="size-4" />
           </Button>
-          <Button size="icon" variant="ghost" className="size-9 shrink-0 text-muted-foreground hover:text-destructive" aria-label={t("delete")} onClick={onDelete}>
+          <Button
+            size="icon"
+            variant="ghost"
+            className={cn("size-9 shrink-0", onColor ? cn(inkSoft, "hover:bg-white/15 hover:text-white") : "text-muted-foreground hover:text-destructive")}
+            aria-label={t("delete")}
+            onClick={onDelete}
+          >
             <Trash2 className="size-4" />
           </Button>
         </div>
