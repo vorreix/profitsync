@@ -9,9 +9,10 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { Skeleton } from "@/components/ui/skeleton"
+import { appLocale } from "@/lib/format-date"
 
 const formatDate = (d: string) =>
-  new Date(`${d}T00:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+  new Date(`${d}T00:00:00`).toLocaleDateString(appLocale(), { month: "short", day: "numeric" })
 
 /**
  * Textual status for a statement — the words carry the meaning, the colour only

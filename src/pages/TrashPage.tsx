@@ -13,6 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { toast } from "sonner"
 import { Trash2, RotateCcw, Building2, Mail, FileText, ArrowUpRight, ArrowDownRight, ArrowLeftRight } from "lucide-react"
+import { appLocale } from "@/lib/format-date"
 
 type TrashItemType = "client" | "quotation" | "transaction"
 
@@ -33,7 +34,7 @@ export function TrashPage() {
   const isPersonal = activeOrg?.account_type === "personal"
 
   const formatDate = (d: string) =>
-    new Date(d).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
+    new Date(d).toLocaleDateString(appLocale(), { month: "short", day: "numeric", year: "numeric" })
   const fmtAmount = (n: number) =>
     new Intl.NumberFormat(undefined, { style: "currency", currency, minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n)
 

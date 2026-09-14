@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { appLocale } from "@/lib/format-date"
 
 export type DrilldownTypeOption = { value: string; label: string }
 
@@ -39,7 +40,7 @@ const sortLabelKey: Record<DrilldownSort, string> = {
 }
 
 const formatDate = (d: string) =>
-  new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+  new Date(d).toLocaleDateString(appLocale(), { month: "short", day: "numeric", year: "numeric" })
 
 /** True if an item belongs to a given category/tag type value. */
 function itemMatchesType(item: DrilldownItem, typeValue: string): boolean {

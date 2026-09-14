@@ -27,6 +27,8 @@
     "e2e": "playwright test",
     "e2e:ui": "playwright test --ui",
     "i18n:check": "node scripts/check-i18n.mjs",
+    "i18n:hardcoded": "node scripts/check-i18n-hardcoded.mjs",
+    "i18n:all": "npm run i18n:check && npm run i18n:hardcoded",
     "lint": "eslint .",
     "make-admin": "node scripts/make-admin.mjs",
     "migrations:check": "node scripts/check-migrations.mjs",

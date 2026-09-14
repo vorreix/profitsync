@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { CategoryPicker } from "@/components/CategoryPicker"
 import { AccountCombobox } from "@/components/wealth/AccountCombobox"
+import { appLocale } from "@/lib/format-date"
 
 export type RuleForm = {
   name: string
@@ -107,7 +108,7 @@ const formFromRule = (rule: RecurringRule): RuleForm => ({
 })
 
 const fmtDate = (d: string) =>
-  new Date(`${d}T00:00:00`).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })
+  new Date(`${d}T00:00:00`).toLocaleDateString(appLocale(), { day: "numeric", month: "short", year: "numeric" })
 
 /**
  * THE create/edit form for a recurring payment — shared by the list (/recurring)

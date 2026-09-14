@@ -3,14 +3,11 @@ import { isSuggestedDebtKind } from "@/lib/debt-recurring"
 import type { Debt } from "@/lib/types"
 import { formatMoney } from "@/lib/wealth"
 
-export const formatMonthYear = (iso: string) =>
-  new Date(`${iso}T00:00:00`).toLocaleDateString("en-US", { month: "long", year: "numeric" })
-
-export const formatShortDate = (iso: string) =>
-  new Date(`${iso}T00:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" })
-
-export const formatLongDate = (iso: string) =>
-  new Date(`${iso}T00:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+// Dates follow the language the user PICKED, not "en-US" and not the browser's
+// setting — see src/lib/format-date.ts. Re-exported here so the forty-odd
+// callers on the debts screens keep importing from one place.
+import { formatMonthYear } from "@/lib/format-date"
+export { formatLongDate, formatMonthYear, formatShortDate } from "@/lib/format-date"
 
 /** Money in the debt's own currency (never converted). */
 export const debtMoney = (amount: number, debt: Pick<Debt, "currency">, visible = true) => formatMoney(amount, debt.currency, visible)

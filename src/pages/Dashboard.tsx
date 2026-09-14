@@ -103,6 +103,7 @@ import {
   CartesianGrid,
 } from "recharts"
 import { AlertsBanner } from "@/components/alerts/AlertsBanner"
+import { appLocale } from "@/lib/format-date"
 
 function formatCurrency(amount: number, currency: string, visible = true) {
   // Masked the same way formatMoney masks, so the page hides consistently.
@@ -129,7 +130,7 @@ function formatCompactCurrency(amount: number, currency: string) {
 function formatTxDate(value: string) {
   const d = new Date(value)
   if (Number.isNaN(d.getTime())) return value
-  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" })
+  return d.toLocaleDateString(appLocale(), { month: "short", day: "numeric" })
 }
 
 const UPSELL_REAPPEAR_MS = 72 * 60 * 60 * 1000 // banner returns 72h after a dismissal

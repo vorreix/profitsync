@@ -21,6 +21,7 @@ import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { appLocale } from "@/lib/format-date"
 
 type AutoSave = {
   id: string
@@ -36,7 +37,7 @@ type AutoSave = {
 }
 
 const todayIso = () => new Date().toISOString().split("T")[0]
-const fmtDate = (d: string) => new Date(`${d}T00:00:00`).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })
+const fmtDate = (d: string) => new Date(`${d}T00:00:00`).toLocaleDateString(appLocale(), { day: "numeric", month: "short", year: "numeric" })
 
 export function SpaceDetailPage() {
   const { id = "" } = useParams()

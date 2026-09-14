@@ -3,10 +3,22 @@
 //
 // English (`en.json`) is the single source of truth for translation keys.
 // This script fails (exit 1) if any other locale is missing a key that exists
-// in English, has an empty/blank value for one, or breaks an interpolation
-// placeholder (e.g. drops `{{count}}`). It is wired into the husky pre-commit
-// hook so that the moment a new key is added to en.json, every language must be
-// updated before the commit can land.
+// in English, has an empty/blank value for one, breaks an interpolation
+// placeholder (e.g. drops `{{count}}`), or leaves the ENGLISH TEXT IN PLACE.
+//
+// That last check is the one that matters most, and the one this gate was
+// missing: a key that merely EXISTS is not a key that is translated. Parity
+// passed for months while ~470 keys sat in English in every other language, so
+// /debts read half in English for anyone using Malayalam. Copying en.json into
+// a locale to "make the check pass" is now exactly what fails it.
+//
+// Strings that really are identical in another language — a brand, an
+// international standard like IBAN, sample data, a loanword like "Status" in
+// German — are listed in src/lib/i18n/identical-ok.json, per locale, with a
+// reason a reviewer can read.
+//
+// It is wired into the husky pre-commit hook so that the moment a new key is
+// added to en.json, every language must be updated before the commit can land.
 //
 // Run manually:  node scripts/check-i18n.mjs
 // npm script:    npm run i18n:check
@@ -16,7 +28,9 @@ import { dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
-const LOCALES_DIR = resolve(__dirname, "..", "src", "lib", "i18n", "locales")
+const I18N_DIR = resolve(__dirname, "..", "src", "lib", "i18n")
+const LOCALES_DIR = join(I18N_DIR, "locales")
+const IDENTICAL_OK = join(I18N_DIR, "identical-ok.json")
 const SOURCE = "en"
 
 const RED = "\x1b[31m"
@@ -61,6 +75,24 @@ function requiredPlaceholders(key, enValue) {
   return want
 }
 
+/**
+ * Keys allowed to stay identical to English, per locale.
+ * Shape: { "<dotted.key>": { locales: ["*"] | ["de","it"], why: "..." } }
+ */
+function loadIdenticalOk() {
+  let raw
+  try {
+    raw = JSON.parse(readFileSync(IDENTICAL_OK, "utf8"))
+  } catch {
+    return () => false
+  }
+  return (key, code) => {
+    const entry = raw[key]
+    if (!entry || !Array.isArray(entry.locales)) return false
+    return entry.locales.includes("*") || entry.locales.includes(code)
+  }
+}
+
 function loadLocale(code) {
   const raw = readFileSync(join(LOCALES_DIR, `${code}.json`), "utf8")
   return flatten(JSON.parse(raw))
@@ -84,6 +116,7 @@ function main() {
   const sourceKeys = Object.keys(source)
   const targets = codes.filter((c) => c !== SOURCE)
 
+  const identicalOk = loadIdenticalOk()
   let hasError = false
   let hasWarning = false
 
@@ -98,6 +131,7 @@ function main() {
     const missing = []
     const empty = []
     const placeholderIssues = []
+    const untranslated = []
 
     for (const key of sourceKeys) {
       if (!targetKeys.has(key)) {
@@ -107,6 +141,12 @@ function main() {
       const value = target[key]
       if (typeof value === "string" && value.trim() === "") {
         empty.push(key)
+        continue
+      }
+      // Still in English. The whole point of the gate: a key that exists but
+      // was copied from en.json is not translated, it only looks translated.
+      if (typeof value === "string" && value === source[key] && !identicalOk(key, code)) {
+        untranslated.push(key)
         continue
       }
       // Every placeholder used in English must survive translation, otherwise
@@ -122,7 +162,7 @@ function main() {
     // Keys present in the locale but absent from English — usually stale/renamed.
     const extra = [...targetKeys].filter((k) => !(k in source))
 
-    const localeHasError = missing.length || empty.length || placeholderIssues.length
+    const localeHasError = missing.length || empty.length || placeholderIssues.length || untranslated.length
     const localeHasWarning = extra.length
 
     if (!localeHasError && !localeHasWarning) {
@@ -146,6 +186,12 @@ function main() {
       console.log(`      ${RED}${empty.length} empty value(s):${RESET}`)
       for (const key of empty) console.log(`        ${DIM}-${RESET} ${key}`)
     }
+    if (untranslated.length) {
+      console.log(`      ${RED}${untranslated.length} still in English:${RESET}`)
+      for (const key of untranslated) {
+        console.log(`        ${DIM}-${RESET} ${key}  ${DIM}${JSON.stringify(source[key])}${RESET}`)
+      }
+    }
     if (placeholderIssues.length) {
       console.log(`      ${RED}${placeholderIssues.length} broken placeholder(s):${RESET}`)
       for (const { key, dropped } of placeholderIssues) {
@@ -166,6 +212,12 @@ function main() {
     )
     console.error(
       `${DIM}  Add the missing translations to the locale files in src/lib/i18n/locales/ and commit again.${RESET}`
+    )
+    console.error(
+      `${DIM}  A string that really IS the same in that language (a brand, IBAN, a loanword)${RESET}`
+    )
+    console.error(
+      `${DIM}  goes in src/lib/i18n/identical-ok.json with the locale and a one-line reason.${RESET}`
     )
     process.exit(1)
   }
