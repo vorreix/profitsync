@@ -3,7 +3,7 @@ import { and, eq } from "drizzle-orm"
 import { readFileSync } from "node:fs"
 import { db } from "../../src/lib/db/index.js"
 import { clients, transactions } from "../../src/lib/db/schema.js"
-import { budgetSpendPredicates, budgetSpendSignedAmount } from "./budget-spend.js"
+import { budgetSpendMissingRate, budgetSpendPredicates, budgetSpendSignedAmount, budgetSpendSignedAmountIn } from "./budget-spend.js"
 
 // Phase 0 regression suite for the live Budget v1 correctness repairs.
 //
@@ -56,6 +56,47 @@ describe("budget spend predicates (defect #1 — is_system must not consume budg
 
   it("leaves a closed client out, exactly as analytics does", () => {
     expect(sql).toMatch(/"clients"\."closed_at" is null/)
+  })
+})
+
+describe("budget spend in the BUDGET's currency (every row converted at its own date)", () => {
+  const { sql, params } = db
+    .select({ signed: budgetSpendSignedAmountIn("EUR"), missing: budgetSpendMissingRate("EUR") })
+    .from(transactions)
+    .toSQL()
+
+  it("converts through reporting_amount(amount, currency_code, date, <target>) — never the raw amount", () => {
+    expect(sql).toMatch(/reporting_amount\(("transactions"\.)?"amount"::numeric, ("transactions"\.)?"currency_code", ("transactions"\.)?"date", \$\d+\)/)
+    expect(params[0]).toBe("EUR")
+  })
+
+  it("a refund still SUBTRACTS — the converted refund, negated", () => {
+    expect(sql).toMatch(/case when ("transactions"\.)?"kind" = 'refund' then -reporting_amount\(/)
+    expect(sql).toMatch(/else reporting_amount\(/)
+  })
+
+  it("flags a row with no rate for its day so the caller can count it as excluded", () => {
+    expect(sql).toMatch(/fx_rate_on\(("transactions"\.)?"currency_code", \$\d+, ("transactions"\.)?"date"\) is null/)
+  })
+
+  it("the spending-budget aggregate uses the converted amount, per budget currency", () => {
+    const src = readFileSync("api/_lib/spending-budgets.ts", "utf8")
+    expect(src).toContain("budgetSpendSignedAmountIn(cur)")
+    expect(src).toContain("budgetSpendMissingRate(cur)")
+    // The unconverted sum is gone from every budget figure.
+    expect(src).not.toMatch(/\bbudgetSpendSignedAmount\b(?!In)/)
+    // Every budget carries what it could not convert.
+    expect(src).toContain("excluded_count: excludedOf(authoredCol)")
+  })
+
+  it("the v1 client caps convert to the reporting currency and report the excluded rows", () => {
+    for (const route of ["api/_routes/budgets.ts", "api/_routes/budgets/overview.ts"]) {
+      const src = readFileSync(route, "utf8")
+      expect(src).toMatch(/outgoingByClient\(orgId, now, reporting\)/)
+      expect(src).toContain("excludedFor(")
+    }
+    const detail = readFileSync("api/_routes/budgets/detail.ts", "utf8")
+    expect(detail).toMatch(/spendForWindows\(orgId, clientId, windows, reporting\)/)
   })
 })
 

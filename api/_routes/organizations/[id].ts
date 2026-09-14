@@ -72,7 +72,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (currency !== undefined) {
       const upper = currency.toUpperCase()
       if (!VALID_CURRENCIES.has(upper)) return res.status(400).json({ error: "Invalid currency code" })
+      // Keep the legacy column in sync while old clients still read it. Neither
+      // update touches account or transaction native currencies.
       updates.currency = upper
+      updates.reportingCurrency = upper
     }
 
     if (Object.keys(updates).length === 1) {

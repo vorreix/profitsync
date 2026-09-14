@@ -78,7 +78,8 @@ export function RecordPaymentSheet({
       const token = await getToken()
       if (!token) return
       const accs = (await apiGet<WealthAccount[]>("/api/wealth/accounts", token).catch(() => [] as WealthAccount[]))
-        .filter((a) => !a.archived_at && a.type !== "space")
+        // Same currency as the debt only — the principal is one amount on both legs.
+        .filter((a) => !a.archived_at && a.type !== "space" && (!a.currency_code || a.currency_code === debt.currency))
       if (cancelled) return
       setAccounts(accs)
       setAccountId(accs.find((a) => a.is_default)?.id ?? accs.find((a) => a.type === "bank")?.id ?? accs[0]?.id ?? "")

@@ -14,6 +14,7 @@ export const spaceFields = {
   type: wealthAccounts.type,
   nickname: wealthAccounts.nickname,
   bankName: wealthAccounts.bankName,
+  currencyCode: wealthAccounts.currencyCode,
   openingBalance: wealthAccounts.openingBalance,
   currentBalance: wealthAccounts.currentBalance,
   icon: wealthAccounts.icon,

@@ -4,6 +4,7 @@ import { db } from "../../../src/lib/db/index.js"
 import { spendingBudgets } from "../../../src/lib/db/schema.js"
 import { canDelete, canWrite, requireAuth } from "../../_lib/auth.js"
 import { diffFields, logAudit } from "../../_lib/audit.js"
+import { reportingCurrencyFor } from "../../_lib/fx-rates.js"
 import { amountAt, budgetWindow, todayUtc, windowsBack } from "../../../src/lib/budget.js"
 import {
   checkRelations,
@@ -45,10 +46,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === "GET") {
     const family = all.filter((r) => r.id === id || r.parent_id === id)
     const window = budgetWindow(current.period, current, today)
+    // Resolved once and handed down: every figure below is in the budget's own
+    // currency (its currency_code, else this), converted at each row's date.
+    const reporting = await reportingCurrencyFor(orgId)
     const [views, series, recent, history] = await Promise.all([
-      withSpend(orgId, family, today, all),
-      current.status === "active" ? seriesFor(orgId, current, windowsBack(current.period, SERIES_BACK[current.period], today)) : Promise.resolve([]),
-      recentFor(orgId, current, window),
+      withSpend(orgId, family, today, all, reporting),
+      current.status === "active" ? seriesFor(orgId, current, windowsBack(current.period, SERIES_BACK[current.period], today), reporting) : Promise.resolve([]),
+      recentFor(orgId, current, window, 10, reporting),
       historyFor(orgId, id),
     ])
     const budget = views.find((v) => v.id === id)!
@@ -57,6 +61,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.json({
       budget,
       children,
+      currency: budget.currency,
+      excluded_count: budget.excluded_count,
       parent: parent ? { id: parent.id, name: parent.name } : null,
       // Each past window is judged against the limit in effect when it closed,
       // so lowering the limit today does not repaint last month.

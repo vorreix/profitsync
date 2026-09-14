@@ -6,6 +6,7 @@ import { canDelete, canWrite, ensureDefaultClient, requireAuth } from "../../_li
 import { diffFields, logAudit } from "../../_lib/audit.js"
 import {
   buildDebtActivity,
+  debtCurrencyOf,
   debtScheduleMirror,
   directionOf,
   drivingRule,
@@ -121,6 +122,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (typeof b.currency === "string") {
       const c = b.currency.trim().toUpperCase()
       if (!isValidCurrency(c)) return res.status(400).json({ error: "Unknown currency" })
+      if (c !== debtCurrencyOf(row)) {
+        // Every row on the debt was recorded in its old currency, and a repayment
+        // rule pays it from an account in that currency. Relabelling either would
+        // turn 10,000 INR owed into 10,000 EUR owed. Only a debt with nothing
+        // behind its balance but its own system rows (opening balance,
+        // adjustments) may change — the same rule an account follows.
+        const [{ moved }] = await db
+          .select({ moved: count() })
+          .from(transactions)
+          .where(and(eq(transactions.wealthAccountId, id), eq(transactions.isSystem, false)))
+        const [{ rules }] = await db
+          .select({ rules: count() })
+          .from(recurringRules)
+          .where(and(eq(recurringRules.organizationId, orgId), eq(recurringRules.debtAccountId, id)))
+        if (Number(moved) > 0 || Number(rules) > 0) {
+          return res.status(409).json({ error: "This debt already has payments — its currency can't change. Add a new debt in the other currency instead.", code: "currency_locked" })
+        }
+        accountPatch.currencyCode = c
+      }
       detailPatch.currency = c
     }
     const original = num(b.original_amount)
@@ -177,8 +197,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const existingRules = await loadDebtRules(orgId, [id])
     const current = drivingRule(existingRules)
     if (b.repayment !== undefined) {
-      const applied = await applyRepayment(orgId, userId, id, directionOf(row.account.type), current, b.repayment, today)
-      if ("error" in applied) return res.status(400).json({ error: applied.error })
+      const applied = await applyRepayment(orgId, userId, id, directionOf(row.account.type), detailPatch.currency ?? debtCurrencyOf(row), current, b.repayment, today)
+      if ("error" in applied) return res.status(400).json({ error: applied.error, ...(applied.code ? { code: applied.code } : {}) })
       // The rule is the schedule. Mirroring it here — rather than trusting the
       // three loose fields the same request may also carry — is what stops the
       // planner describing a schedule nobody is paying.
@@ -205,6 +225,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           .insert(transactions)
           .values({
             clientId, wealthAccountId: id, type: delta > 0 ? "incoming" : "outgoing", amount: Math.abs(delta).toFixed(2),
+            currencyCode: detailPatch.currency ?? debtCurrencyOf(row),
             description: "Balance Adjustment", category: "Adjustment", date: today, isSystem: true, createdBy: userId, updatedBy: userId,
           })
           .returning({ id: transactions.id })
@@ -218,6 +239,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (Object.keys(accountPatch).length) {
       await db.update(wealthAccounts).set({ ...accountPatch, updatedBy: userId, updatedAt: new Date() }).where(eq(wealthAccounts.id, id))
+    }
+    // A permitted currency change carries the debt's own system rows with it
+    // (checked above: there is nothing else on the account).
+    if (accountPatch.currencyCode) {
+      await db.update(transactions).set({ currencyCode: accountPatch.currencyCode }).where(eq(transactions.wealthAccountId, id))
     }
     if (Object.keys(detailPatch).length) {
       await db.update(debtDetails).set({ ...detailPatch, updatedAt: new Date() }).where(eq(debtDetails.id, row.details.id))
@@ -280,10 +306,11 @@ async function applyRepayment(
   userId: string,
   debtAccountId: string,
   direction: "owed" | "receivable",
+  currency: string,
   current: DebtRuleRow | null,
   raw: unknown,
   today: string,
-): Promise<{ rule: DebtRuleRow | null } | { error: string }> {
+): Promise<{ rule: DebtRuleRow | null } | { error: string; code?: string }> {
   const off = raw === null || (typeof raw === "object" && raw !== null && (raw as Record<string, unknown>).enabled === false)
   if (off) {
     if (!current) return { rule: null }
@@ -312,6 +339,10 @@ async function applyRepayment(
   // may pay a loan by hand but must not do it on a schedule.
   if (!acc || acc.archivedAt || (acc.type !== "bank" && acc.type !== "cash")) {
     return { error: "A recurring repayment must come from a bank or cash account" }
+  }
+  // Each instalment's principal is one amount on both legs — same currency only.
+  if (acc.currencyCode && acc.currencyCode.toUpperCase() !== currency) {
+    return { error: `A repayment for a ${currency} debt must come from a ${currency} account`, code: "currency_mismatch" }
   }
 
   const amount = r.amount === undefined && current ? Number(current.amount) : Number(r.amount)
@@ -373,6 +404,7 @@ async function applyRepayment(
         name,
         type: direction === "receivable" ? "incoming" : "outgoing",
         amount: amount.toFixed(2),
+        currencyCode: acc.currencyCode ?? currency,
         wealthAccountId: acc.id,
         frequencyUnit: freq.unit,
         frequencyInterval: freq.interval,
@@ -401,6 +433,7 @@ async function applyRepayment(
       name,
       type: direction === "receivable" ? "incoming" : "outgoing",
       amount: amount.toFixed(2),
+      currencyCode: acc.currencyCode ?? currency,
       category: "Transfer",
       frequencyUnit: freq.unit,
       frequencyInterval: freq.interval,

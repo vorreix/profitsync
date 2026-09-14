@@ -6,7 +6,8 @@ import { canWrite, ensureDefaultClient, requireAuth, requireBusinessFeature } fr
 import { checkClientQuota, checkNoteLength } from "../_lib/quota.js"
 import { logAudit } from "../_lib/audit.js"
 import { cleanTags, normalizeTagName } from "../../src/lib/tags.js"
-import { expenseSumSql, incomeSumSql } from "../_lib/tx-sql.js"
+import { ensureRatesForOrg, reportingCurrencyFor } from "../_lib/fx-rates.js"
+import { expenseSumSqlIn, incomeSumSqlIn, missingRateCountSql } from "../_lib/tx-sql.js"
 
 const VALID_STATUSES = ["active", "inactive", "archived"]
 const PAGE_SIZE = 20
@@ -60,9 +61,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // table's Income/Expense/Profit columns can be ordered server-side (correct
     // with pagination; a client-only sort would only order the loaded page).
     // Shared reporting rules (api/_lib/tx-sql.ts): transfers (incl. card payments)
-    // count nowhere, refunds reduce expense rather than adding income.
-    const incomingSum = incomeSumSql
-    const outgoingSum = expenseSumSql
+    // count nowhere, refunds reduce expense rather than adding income — and every
+    // row is converted into the workspace's reporting currency at its own date
+    // (`totals_currency`); rows with no rate are left out and counted in
+    // `excluded_count` so a client's total never looks complete when it is not.
+    const reporting = await reportingCurrencyFor(orgId)
+    await ensureRatesForOrg(orgId, reporting).catch(() => undefined)
+    const incomingSum = incomeSumSqlIn(reporting)
+    const outgoingSum = expenseSumSqlIn(reporting)
     const profitSum = sql`(${incomingSum} - ${outgoingSum})`
 
     const orderBy = (() => {
@@ -103,6 +109,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       updatedAt: clients.updatedAt,
       totalIncoming: incomingSum,
       totalOutgoing: outgoingSum,
+      totalsCurrency: sql<string>`${reporting}::text`,
+      excludedCount: missingRateCountSql(reporting),
       // Direct attachments on the client (correlated subquery → no row fan-out
       // from the transactions LEFT JOIN above). Drives the list paperclip badge.
       attachmentCount: sql<number>`(select count(*)::int from client_attachments where client_id = ${clients.id})`,
@@ -126,7 +134,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           .offset(offset),
       ])
 
-      return res.json({ data: rows.map(serialize), total })
+      return res.json({ data: rows.map(serialize), total, currency: reporting })
     }
 
     const rows = await db

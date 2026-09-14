@@ -27,7 +27,7 @@ import { db, dbBatch } from "../../src/lib/db/index.js"
 import { debtDetails, recurringRules, wealthAccounts } from "../../src/lib/db/schema.js"
 import { fromCents, toCents } from "../../src/lib/debt-math.js"
 import { linkRefusal, payoffCappedAmount, periodsPerYearForRule, type LinkRefusal, type LinkTargetDebt } from "../../src/lib/debt-recurring.js"
-import { debtScheduleMirror, directionOf, loadDebt, recordDebtPayment, toDebtLike } from "./debts.js"
+import { debtCurrencyOf, debtScheduleMirror, directionOf, loadDebt, recordDebtPayment, toDebtLike } from "./debts.js"
 import type { FrequencyUnit } from "../../src/lib/recurring.js"
 
 type RuleRow = typeof recurringRules.$inferSelect
@@ -142,6 +142,7 @@ const REFUSAL_MESSAGES: Record<LinkRefusal, string> = {
   rule_has_no_account: "Give this rule the account it is paid from first",
   account_archived: "That account is archived — point the rule at an active one first",
   account_not_cash: "A recurring repayment must come from a bank or cash account",
+  currency_mismatch: "That account is in a different currency from the debt — pay it from an account in the debt's currency",
   direction_mismatch: "This rule moves money the wrong way for that debt",
   debt_closed: "That debt is closed — reopen it first",
   debt_settled: "That debt is settled — a repayment would stop the moment it was made",
@@ -217,7 +218,7 @@ export async function linkRuleToDebt(
 
   const [account] = rule.wealthAccountId
     ? await db
-        .select({ type: wealthAccounts.type, archivedAt: wealthAccounts.archivedAt })
+        .select({ type: wealthAccounts.type, archivedAt: wealthAccounts.archivedAt, currencyCode: wealthAccounts.currencyCode })
         .from(wealthAccounts)
         .where(and(eq(wealthAccounts.id, rule.wealthAccountId), eq(wealthAccounts.organizationId, orgId)))
     : [undefined]
@@ -239,6 +240,7 @@ export async function linkRuleToDebt(
       accountId: rule.wealthAccountId,
       accountType: account?.type ?? null,
       accountArchived: !!account?.archivedAt,
+      accountCurrency: account?.currencyCode ?? null,
       debtAccountId: rule.debtAccountId,
       ended: !!rule.endDate && String(rule.endDate).slice(0, 10) < today,
       // The caller runs the catch-up first, so an ACTIVE rule still sitting on
@@ -251,6 +253,7 @@ export async function linkRuleToDebt(
       id: row.account.id,
       direction: directionOf(row.account.type),
       archived: !!row.account.archivedAt,
+      currency: debtCurrencyOf(row),
       lifecycle: row.details.lifecycle as LinkTargetDebt["lifecycle"],
       linkedRuleIds: siblings.map((s) => s.id),
     },
@@ -330,6 +333,7 @@ export function refusalForNew(
     accountId: string | null
     accountType: string | null
     accountArchived: boolean
+    accountCurrency?: string | null
     debtAccountId: string | null
     endDate?: string | null
     nextDueAt?: string | null
@@ -347,6 +351,7 @@ export function refusalForNew(
       accountId: rule.accountId,
       accountType: rule.accountType,
       accountArchived: rule.accountArchived,
+      accountCurrency: rule.accountCurrency,
       debtAccountId: rule.debtAccountId,
       ended: !!rule.endDate && rule.endDate < today,
       hasPending: rule.active === true && !!rule.nextDueAt && rule.nextDueAt <= today,
@@ -366,11 +371,11 @@ export const refusalStatus = (code: LinkRefusal): number =>
  * The account a rule pays from, as the eligibility rules need to see it.
  * Null id means the rule names no account at all, which is its own refusal.
  */
-export async function payerShape(orgId: string, accountId: string | null): Promise<{ type: string | null; archived: boolean }> {
-  if (!accountId) return { type: null, archived: false }
+export async function payerShape(orgId: string, accountId: string | null): Promise<{ type: string | null; archived: boolean; currency: string | null }> {
+  if (!accountId) return { type: null, archived: false, currency: null }
   const [a] = await db
-    .select({ type: wealthAccounts.type, archivedAt: wealthAccounts.archivedAt })
+    .select({ type: wealthAccounts.type, archivedAt: wealthAccounts.archivedAt, currencyCode: wealthAccounts.currencyCode })
     .from(wealthAccounts)
     .where(and(eq(wealthAccounts.id, accountId), eq(wealthAccounts.organizationId, orgId)))
-  return { type: a?.type ?? null, archived: !!a?.archivedAt }
+  return { type: a?.type ?? null, archived: !!a?.archivedAt, currency: a?.currencyCode ?? null }
 }

@@ -24,7 +24,9 @@ import { useCategories } from "@/lib/use-categories"
 import { useCurrency } from "@/lib/currency-context"
 import { useOrg } from "@/lib/org-context"
 import { canDeleteRole, canWriteRole } from "@/lib/roles"
-import { accountDisplayName, formatMoney, useBalancePrivacy } from "@/lib/wealth"
+import { accountCurrency, accountDisplayName, formatDateLabel, formatMoney, useBalancePrivacy } from "@/lib/wealth"
+import { ApproxBalance } from "@/components/wealth/ApproxBalance"
+import { useConsolidatedWealth } from "@/components/wealth/use-consolidated-wealth"
 import { useUrlModal } from "@/hooks/use-url-modal"
 import { WealthAccountIcon } from "@/components/WealthAccountIcon"
 import { WealthAccountDialogs } from "@/components/wealth/WealthAccountDialogs"
@@ -62,12 +64,10 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { appLocale } from "@/lib/format-date"
 
 type Summary = { incoming: number; outgoing: number }
 
-const formatDate = (d: string) =>
-  new Date(d).toLocaleDateString(appLocale(), { month: "short", day: "numeric", year: "numeric" })
+const formatDate = (d: string) => formatDateLabel(d)
 
 export function WealthAccountDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -110,8 +110,12 @@ export function WealthAccountDetailPage() {
   // their chip.
   const cardMap = useCardMap()
 
-  const fmt = (n: number) =>
-    new Intl.NumberFormat("en-US", { style: "currency", currency, minimumFractionDigits: 2 }).format(n)
+  // Every figure on this page is in the ACCOUNT's own currency; the workspace
+  // currency is only the fallback for rows predating the per-account column.
+  const accountCur = accountCurrency(account, currency)
+  const fmt = (n: number) => formatMoney(n, accountCur)
+  // The ≈ line under the balance for a foreign-currency account.
+  const { summary: consolidated, byAccount } = useConsolidatedWealth(!!account)
 
   const load = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
     if (!id) return
@@ -327,7 +331,7 @@ export function WealthAccountDetailPage() {
         <CreditCardPanel
           account={account}
           summary={cardSummary}
-          currency={currency}
+          currency={accountCur}
           balancesVisible={balancesVisible}
           canWrite={canWrite}
           onPay={openPay}
@@ -351,7 +355,7 @@ export function WealthAccountDetailPage() {
       >
         <p className={cn("text-xs font-medium uppercase tracking-wide", look.bold ? (look.text === "light" ? "text-white/75" : "text-slate-900/70") : "text-muted-foreground")}>{t("balance")}</p>
         <div className="mt-1 flex items-center gap-2">
-          <p className={cn("text-3xl font-bold tabular-nums sm:text-4xl", look.bold && (look.text === "light" ? "text-white" : "text-slate-900"))}>{formatMoney(Number(account.current_balance), currency, balancesVisible)}</p>
+          <p className={cn("text-3xl font-bold tabular-nums sm:text-4xl", look.bold && (look.text === "light" ? "text-white" : "text-slate-900"))}>{formatMoney(Number(account.current_balance), accountCur, balancesVisible)}</p>
           {canWrite && (
             <Button
               variant="ghost"
@@ -370,6 +374,7 @@ export function WealthAccountDetailPage() {
             </Button>
           )}
         </div>
+        <ApproxBalance account={byAccount.get(account.id)} reportingCurrency={consolidated?.reporting_currency} visible={balancesVisible} className="mt-1" />
         <div className="mt-4 grid grid-cols-3 gap-2 sm:gap-4">
           {stats.map((s) => (
             <div key={s.key} className="rounded-xl border bg-card/60 p-2.5 sm:p-3">
@@ -442,7 +447,7 @@ export function WealthAccountDetailPage() {
                     </div>
                   </div>
                   <p className={`shrink-0 text-sm font-semibold tabular-nums ${tx.type === "incoming" ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
-                    {tx.type === "incoming" ? "+" : "−"}{balancesVisible ? fmt(Number(tx.amount)) : "•••"}
+                    {tx.type === "incoming" ? "+" : "−"}{balancesVisible ? formatMoney(Number(tx.amount), tx.currency_code ?? accountCur) : "•••"}
                   </p>
                 </button>
                 )
@@ -463,7 +468,7 @@ export function WealthAccountDetailPage() {
         tx={viewTx}
         open={!!view.value && !!viewTx}
         onClose={view.close}
-        currency={currency}
+        currency={accountCur}
         canEdit={canWrite}
         canDelete={canDelete}
         onEdit={(tx) => { view.close(); setEditTx(tx); setAddOpen(true) }}
@@ -475,7 +480,7 @@ export function WealthAccountDetailPage() {
         onEditingChange={setEditing}
         adjusting={adjusting}
         onAdjustingChange={setAdjusting}
-        currency={currency}
+        currency={accountCur}
         onChanged={load}
       />
 
@@ -483,7 +488,7 @@ export function WealthAccountDetailPage() {
         account={account}
         open={addOpen}
         onOpenChange={(o) => { setAddOpen(o); if (!o) setEditTx(null) }}
-        currency={currency}
+        currency={accountCur}
         isPersonal={isPersonal}
         onSaved={() => void load()}
         editTx={editTx}
@@ -499,7 +504,7 @@ export function WealthAccountDetailPage() {
           card={account}
           summary={cardSummary}
           accounts={allAccounts}
-          currency={currency}
+          currency={accountCur}
           initialPreset={payPreset}
           onDone={() => void load()}
         />

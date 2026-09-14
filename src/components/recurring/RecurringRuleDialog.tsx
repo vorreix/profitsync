@@ -235,6 +235,7 @@ export function RecurringRuleDialog({
     accountId: form.wealth_account_id || null,
     accountType: accounts.find((a) => a.id === form.wealth_account_id)?.type ?? null,
     accountArchived: false,
+    accountCurrency: accounts.find((a) => a.id === form.wealth_account_id)?.currency_code ?? null,
     // The debt it ALREADY repays: a rule services one debt, so while it has
     // one, no other debt — and no new one — may be offered here. Unlinking is
     // a deliberate step on its own page.
@@ -251,6 +252,7 @@ export function RecurringRuleDialog({
       id: d.id,
       direction: d.direction,
       archived: !!d.archived_at,
+      currency: d.currency,
       // A PAUSED rule counts too, so a debt that already has one is not offered.
       lifecycle: d.lifecycle,
       linkedRuleIds: (d.repayment_linked ?? d.repayment_active) ? (rule?.debt_account_id === d.id ? [rule.id] : ["other"]) : [],
@@ -422,6 +424,9 @@ export function RecurringRuleDialog({
           // here was born at 0% against a figure that was not its original.
           original_amount: form.debt_original.trim() === "" ? Number(form.debt_balance) : Number(form.debt_original),
           annual_rate_pct: form.debt_rate.trim() === "" ? null : Number(form.debt_rate),
+          // Born in the paying account's currency: a repayment moves one amount
+          // on both sides, so the debt can only be in the currency it is paid in.
+          ...(candidate.accountCurrency ? { currency: candidate.accountCurrency } : {}),
           ...(rule
             ? { link_rule_id: rule.id }
             : {

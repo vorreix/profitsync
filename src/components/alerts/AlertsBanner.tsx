@@ -260,12 +260,14 @@ function AlertSlide({
   const tone = TONE[alert.severity]
   const Icon = ICONS[alert.kind] ?? CircleAlert
 
-  // Amounts are formatted in the org's currency and obey the privacy toggle:
+  // Amounts are formatted in the ACCOUNT's currency the alert carries (an INR
+  // card owes rupees whatever the workspace reports in; the org currency is only
+  // the fallback for a legacy account with no tag) and obey the privacy toggle:
   // the dashboard is exactly where someone hides their balances before handing
   // the phone over, so this must not be the one thing that keeps showing them.
   const params: Record<string, string | number> = { ...alert.params }
   for (const [name, value] of Object.entries(alert.money ?? {})) {
-    params[name] = formatMoney(value, currency, balancesVisible)
+    params[name] = formatMoney(value, alert.currency ?? currency, balancesVisible)
   }
   if (typeof alert.params.days === "number") params.when = whenLabel(t, Number(alert.params.days), alert.tense)
 

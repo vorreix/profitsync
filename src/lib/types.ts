@@ -144,6 +144,10 @@ export type TransactionLeg = {
 }
 
 export type Transaction = {
+  /** Currency the row was posted in — its account's native currency. Absent on rows predating mig 0069. */
+  currency_code?: string | null
+  /** The logical transfer this leg belongs to (transfers.id) — set on every leg written since mig 0071. */
+  transfer_id?: string | null
   id: string
   client_id: string
   client_name?: string
@@ -200,12 +204,108 @@ export type Transaction = {
 // /debts; their terms live in debt_details (see Debt below).
 export type WealthAccountType = "bank" | "cash" | "space" | "credit_card" | "loan" | "receivable"
 
+// ── Consolidated wealth (GET /api/wealth/summary) ────────────────────────────
+// Native balances are facts; `converted_*` are approximations at `rate_date`.
+// `complete=false` means some currency had no rate: its native figures are
+// still listed, but it is EXCLUDED from the converted totals (never counted as
+// 1:1). `stale=true` means at least one rate is not today's observation.
+export type WealthSummaryAccount = {
+  id: string
+  type: string
+  name: string
+  currency: string
+  native_balance: number
+  converted_balance: number | null
+  rate: string | null
+  rate_date: string | null
+  stale: boolean
+}
+
+export type WealthSummaryCurrency = {
+  currency: string
+  assets: number
+  liabilities: number
+  net: number
+  converted_assets: number | null
+  converted_liabilities: number | null
+  converted_net: number | null
+  rate: string | null
+  rate_date: string | null
+  stale: boolean
+  /** Percent of converted assets held in this currency (null when it could not be converted). */
+  share: number | null
+  account_count: number
+}
+
+export type WealthSummary = {
+  reporting_currency: string
+  net_worth: number
+  /** Everything held, receivables (money lent) included. */
+  assets: number
+  /** Everything owed: card debt + loans. */
+  liabilities: number
+  /** What the credit cards owe — the "owed on cards" figure. */
+  card_liabilities: number
+  /** Outstanding on loans (debts I owe). */
+  debts_owed: number
+  /** Outstanding on receivables (money owed to me) — in `assets`, never liquid. */
+  debts_receivable: number
+  complete: boolean
+  excluded_currencies: string[]
+  as_of: string | null
+  stale: boolean
+  /** True when at least one account is not in the reporting currency. */
+  multi_currency: boolean
+  by_currency: WealthSummaryCurrency[]
+  accounts: WealthSummaryAccount[]
+}
+
+// ── Logical transfers (transfers table; GET /api/wealth/transfers) ───────────
+// The header ABOVE the two ledger legs. `planned`/`pending` rows are intent only
+// (no legs, no balance effect); `completed` rows own their legs via
+// transactions.transfer_id; `cancelled` keeps the intent for audit. Amounts are
+// numeric strings in each side's NATIVE currency — never convert them in the UI.
+export type TransferStatus = "planned" | "pending" | "completed" | "cancelled"
+
+export type Transfer = {
+  id: string
+  organization_id: string
+  group_id: string
+  source_account_id: string
+  destination_account_id: string
+  source_amount: string
+  source_currency: string
+  destination_amount: string
+  destination_currency: string
+  /** Destination units per ONE source unit (null for same-currency transfers). */
+  effective_rate: string | null
+  rate_source: string | null
+  source_fee_amount: string
+  status: TransferStatus
+  transfer_date: string
+  note: string
+  /** Set on a reversal: the transfer it undoes. */
+  reverses_transfer_id: string | null
+  completed_at: string | null
+  deleted_at: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+  // Enrichment from the list route (nickname or bank name of each side).
+  source_account_name?: string
+  destination_account_name?: string
+  /** The reversal that undid THIS transfer, if any (null = still reversible). */
+  reversed_by_transfer_id?: string | null
+}
+
 export type WealthAccount = {
   id: string
   organization_id: string
   type: WealthAccountType
   bank_name: string
   nickname: string
+  /** Native currency of this account's balances; absent only during legacy rollout. */
+  currency_code?: string | null
   opening_balance: number
   current_balance: number
   icon: string
@@ -540,6 +640,8 @@ export type RecurringRule = {
   account_name?: string | null
   account_type?: WealthAccountType | null
   account_archived?: boolean | null
+  /** The paying account's native currency. */
+  account_currency?: string | null
   account_icon?: string | null
   account_logo_url?: string | null
   // 'standard' = normal income/outgoing rule. 'transfer' = a Space auto-save:
@@ -560,6 +662,8 @@ export type RecurringRule = {
   name: string
   type: "incoming" | "outgoing"
   amount: number | string
+  /** The rule's currency, snapshotted onto every occurrence it posts. */
+  currency_code?: string | null
   category: string
   frequency_unit: "day" | "week" | "month" | "year"
   frequency_interval: number
@@ -704,6 +808,8 @@ export function accountTypeAllows(
 }
 
 export type Organization = {
+  /** Consolidation/display currency. `currency` stays as the compatibility alias (same value). */
+  reporting_currency?: string
   id: string
   owner_user_id: string
   name: string
@@ -950,6 +1056,10 @@ export type SpendingBudget = {
   other_spent: number | null
   other_spent_by_view: Record<SpendingViewWindow, number> | null
   children_count: number
+  /** The currency every figure on this budget is in (its own, else the workspace's reporting currency). */
+  currency?: string
+  /** Ledger rows in the budget's window that had no exchange rate for their day and are NOT in `spent`. */
+  excluded_count?: number
 }
 
 /** What the individual budgets add up to against the overall budget, in the view window. */
@@ -965,6 +1075,8 @@ export type SpendingAllocation = {
 export type SpendingBudgetsResponse = {
   budgets: SpendingBudget[]
   today: string
+  /** The workspace's reporting currency — what a budget without its own is measured in. */
+  currency?: string
 }
 
 export type SpendingBudgetAnalyticsWindow = {

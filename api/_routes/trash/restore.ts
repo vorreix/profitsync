@@ -1,14 +1,15 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { and, eq, inArray, isNotNull, sql } from "drizzle-orm"
+import { and, count, eq, inArray, isNotNull, sql } from "drizzle-orm"
 import { db, serialize } from "../../../src/lib/db/index.js"
 import { clients, quotations, transactions, wealthAccounts } from "../../../src/lib/db/schema.js"
 import { canDelete, requireAuth } from "../../_lib/auth.js"
 import { applicationsByAccount } from "../../../src/lib/wealth-ledger.js"
+import { setTransferTrashed } from "../../_lib/wealth-accounts.js"
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ctx = await requireAuth(req, res)
   if (!ctx) return
-  const { orgId, role } = ctx
+  const { orgId, userId, role } = ctx
 
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" })
   if (!canDelete(role)) return res.status(403).json({ error: "Forbidden" })
@@ -22,11 +23,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (type === "transaction") {
     // Transactions are org-scoped via their client.
     const [tx] = await db
-      .select({ id: transactions.id, groupId: transactions.groupId })
+      .select({ id: transactions.id, groupId: transactions.groupId, transferId: transactions.transferId, kind: transactions.kind })
       .from(transactions)
       .innerJoin(clients, eq(transactions.clientId, clients.id))
       .where(and(eq(transactions.id, id), eq(clients.organizationId, orgId), isNotNull(transactions.deletedAt)))
     if (!tx) return res.status(404).json({ error: "Not found" })
+    if (tx.kind === "transfer" && tx.transferId) {
+      // A leg of a logical transfer: restore the WHOLE transfer (legs, fee row,
+      // balances) in one database function. Legacy legs without a header use
+      // the group path below, exactly as before.
+      const result = await setTransferTrashed(orgId, userId, tx.transferId, true)
+      if (!result.ok) return res.status(result.status).json(result.body)
+      const [row] = await db.select().from(transactions).where(eq(transactions.id, id))
+      const [{ legs: restoredLegCount }] = await db.select({ legs: count() }).from(transactions).where(eq(transactions.transferId, tx.transferId))
+      return res.json(serialize({ ...row, restoredLegCount }))
+    }
 
     // A split or a TRANSFER is one logical entry: DELETE trashes every leg of the
     // group, so restore must bring every trashed leg back and re-apply each

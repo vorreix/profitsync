@@ -8,7 +8,8 @@ import { materializeDueRecurring } from "../../_lib/recurring-materialize.js"
 import { validateRuleInput, type RecurringRuleInput } from "../../_lib/recurring-validate.js"
 import { ruleFields, ruleStatsFields } from "../../_lib/recurring-query.js"
 import { attributeCard } from "../../_lib/cards.js"
-import { directionOf, loadDebt } from "../../_lib/debts.js"
+import { currencyForFinancialWrite } from "../../_lib/transaction-currency.js"
+import { debtCurrencyOf, directionOf, loadDebt } from "../../_lib/debts.js"
 import { greatestDate, linkRuleToDebt, mirrorDebtSchedule, reloadRule } from "../../_lib/recurring-debt.js"
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -151,11 +152,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
       if (!attributed.accountId) return res.status(400).json({ error: "Choose the account this repayment is paid from" })
       const [payer] = await db
-        .select({ type: wealthAccounts.type, archivedAt: wealthAccounts.archivedAt })
+        .select({ type: wealthAccounts.type, archivedAt: wealthAccounts.archivedAt, currencyCode: wealthAccounts.currencyCode })
         .from(wealthAccounts)
         .where(and(eq(wealthAccounts.id, attributed.accountId), eq(wealthAccounts.organizationId, orgId)))
       if (!payer || payer.archivedAt || (payer.type !== "bank" && payer.type !== "cash")) {
         return res.status(400).json({ error: "A recurring repayment must come from a bank or cash account" })
+      }
+      if (rule.debtAccountId && payer.currencyCode) {
+        const target = await loadDebt(orgId, rule.debtAccountId)
+        if (target && payer.currencyCode.toUpperCase() !== debtCurrencyOf(target)) {
+          return res.status(400).json({ error: `A repayment for a ${debtCurrencyOf(target)} debt must come from a ${debtCurrencyOf(target)} account`, code: "currency_mismatch" })
+        }
       }
     }
 
@@ -173,6 +180,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const nextDueAt = scheduleChanged || resumingDebt
       ? (parsed.value.startDate > today ? parsed.value.startDate : today)
       : rule.nextDueAt
+    // The rule snapshots its account's currency onto every occurrence, so moving
+    // it to another account has to move the currency with it — otherwise a rule
+    // shifted from a EUR account to a USD one keeps posting "EUR" rows there.
+    // (An archived account answers null; an unchanged rule keeps what it had.)
+    const currencyCode = (await currencyForFinancialWrite(orgId, attributed.accountId)) ?? (attributed.accountId === rule.wealthAccountId ? rule.currencyCode : null)
+    if (!currencyCode) return res.status(409).json({ error: "Currency migration is incomplete", code: "currency_missing" })
 
     const [updated] = await db
       .update(recurringRules)
@@ -180,6 +193,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         name: parsed.value.name,
         type: parsed.value.type,
         amount: parsed.value.amount,
+        currencyCode,
         category: parsed.value.category,
         clientId: parsed.value.clientId,
         wealthAccountId: attributed.accountId,

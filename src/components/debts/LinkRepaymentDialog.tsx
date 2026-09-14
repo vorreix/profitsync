@@ -61,8 +61,8 @@ export function LinkRepaymentDialog({
   }, [open, getToken])
 
   const target: LinkTargetDebt = useMemo(
-    () => ({ id: debt.id, direction: debt.direction, archived: !!debt.archived_at, lifecycle: debt.lifecycle, linkedRuleIds }),
-    [debt.id, debt.direction, debt.archived_at, debt.lifecycle, linkedRuleIds],
+    () => ({ id: debt.id, direction: debt.direction, archived: !!debt.archived_at, currency: debt.currency, lifecycle: debt.lifecycle, linkedRuleIds }),
+    [debt.id, debt.direction, debt.archived_at, debt.currency, debt.lifecycle, linkedRuleIds],
   )
 
   // The SAME predicate the server enforces (src/lib/debt-recurring.ts), so the
@@ -82,6 +82,7 @@ export function LinkRepaymentDialog({
       // is how a picker offers a row that is refused the moment it is clicked.
             accountType: r.account_type ?? null,
             accountArchived: !!r.account_archived,
+            accountCurrency: r.account_currency ?? r.currency_code ?? null,
             debtAccountId: r.debt_account_id ?? null,
             ended: !!r.end_date && r.end_date < today,
             hasPending: r.active && String(r.next_due_at).slice(0, 10) <= today,

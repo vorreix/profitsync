@@ -35,6 +35,9 @@ export const ruleFields = {
   // live, and offered rules whose account had been archived — which the server
   // then refused on click.
   accountArchived: sql<boolean>`${wealthAccounts.archivedAt} is not null`,
+  // The payer's native currency — a debt can only be repaid from its own
+  // currency, and the pickers test it with the server's predicate too.
+  accountCurrency: wealthAccounts.currencyCode,
   accountIcon: wealthAccounts.icon,
   accountLogoUrl: wealthAccounts.logoUrl,
   cardId: recurringRules.cardId,
@@ -54,6 +57,7 @@ export const ruleFields = {
   name: recurringRules.name,
   type: recurringRules.type,
   amount: recurringRules.amount,
+  currencyCode: recurringRules.currencyCode,
   category: recurringRules.category,
   frequencyUnit: recurringRules.frequencyUnit,
   frequencyInterval: recurringRules.frequencyInterval,

@@ -73,7 +73,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // interest. The recurring path already passes this; this one did not.
       periodsPerYear: live ? periodsPerYearForRule(live.frequencyUnit as FrequencyUnit, live.frequencyInterval) : undefined,
     })
-    if (!result.ok) return res.status(result.status).json(result.quota ?? { error: result.error })
+    if (!result.ok) return res.status(result.status).json(result.quota ?? { error: result.error, ...(result.code ? { code: result.code } : {}) })
     // `skipped` only happens on the recurring path (an occurrence already
     // posted); a hand-recorded payment always writes.
     if (!result.payment) return res.status(409).json({ error: "This payment was already recorded" })

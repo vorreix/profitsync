@@ -54,6 +54,16 @@ const num = (v: unknown): number => {
 export const isDebtAccountType = (type: string | null | undefined): boolean => type === "loan" || type === "receivable"
 export const directionOf = (type: string): DebtDirection => (type === "receivable" ? "receivable" : "owed")
 
+/**
+ * The debt's native currency. The account's `currency_code` is the ledger's
+ * authority (every row on it is snapshotted with it); `debt_details.currency`
+ * is what the user chose, and the two are kept equal on every write. Older rows
+ * may lack the account column, so the terms fill in.
+ */
+export function debtCurrencyOf(row: DebtRow): string {
+  return (row.account.currencyCode ?? row.details.currency).toUpperCase()
+}
+
 /** Outstanding amount (positive) regardless of direction. */
 export function outstandingOf(account: Pick<AccountRow, "type" | "currentBalance">): number {
   return account.type === "receivable" ? Math.max(0, num(account.currentBalance)) : cardDebt(account.currentBalance)
@@ -352,7 +362,7 @@ export type SkippedReason = "posted" | "inflight"
 export type RecordPaymentResult =
   | { ok: true; payment: PaymentRow; skipped?: undefined }
   | { ok: true; payment: null; skipped: SkippedReason }
-  | { ok: false; status: number; error: string; quota?: unknown }
+  | { ok: false; status: number; error: string; code?: string; quota?: unknown }
 
 /**
  * How long a claimed-but-unfinished occurrence is assumed to be someone else's
@@ -404,6 +414,15 @@ export async function recordDebtPayment(orgId: string, userId: string, row: Debt
     .where(and(eq(wealthAccounts.id, input.counterAccountId), eq(wealthAccounts.organizationId, orgId), isNull(wealthAccounts.archivedAt)))
   if (!counter || counter.type === "space" || isDebtAccountType(counter.type)) {
     return { ok: false, status: 400, error: "Choose an active bank, cash or card account to pay from" }
+  }
+  // The principal is one amount on BOTH legs (a transfer), so the paying account
+  // and the debt must share a currency — a cross-currency payment would need an
+  // exchange rate this engine never records. Legacy accounts with no currency
+  // tag are left alone, exactly as before.
+  const debtCurrency = debtCurrencyOf(row)
+  const counterCurrency = counter.currencyCode?.toUpperCase() ?? null
+  if (counterCurrency && counterCurrency !== debtCurrency) {
+    return { ok: false, status: 400, error: `This debt is in ${debtCurrency} — pay it from an account in ${debtCurrency}`, code: "currency_mismatch" }
   }
 
   // Resolve the split.
@@ -494,6 +513,8 @@ export async function recordDebtPayment(orgId: string, userId: string, row: Debt
     kind: l.kind,
     type: l.type,
     amount: fromCents(l.amount).toFixed(2),
+    // Both accounts share the debt's currency (checked above).
+    currencyCode: debtCurrency,
     description: l.description,
     category: l.category,
     date: input.date,

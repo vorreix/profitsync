@@ -6,7 +6,8 @@ import { canWrite, isPersonalAccount, requireAuth } from "../_lib/auth.js"
 import { amountExceedsLimit } from "../../src/lib/money.js"
 import { isBudgetPeriod, todayUtc, type BudgetPeriod } from "../../src/lib/budget.js"
 import { budgetChangeAction } from "../../src/lib/budget-history.js"
-import { outgoingByClient, spentFor } from "../_lib/budget-spend.js"
+import { excludedFor, outgoingByClient, spentFor } from "../_lib/budget-spend.js"
+import { ensureRatesForOrg, reportingCurrencyFor } from "../_lib/fx-rates.js"
 import { logAudit } from "../_lib/audit.js"
 import { listBudgets, primaryBudget, toV1Period, fromV1Period } from "../_lib/spending-budgets.js"
 
@@ -38,27 +39,35 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               period: toV1Period(primary.period),
               amount: primary.amount,
               spent: primary.spent,
+              currency: primary.currency,
+              excluded_count: primary.excluded_count,
               created_at: primary.created_at,
               updated_at: primary.updated_at,
             }]
           : [],
         account_type: ctx.accountType,
+        currency: primary?.currency ?? (await reportingCurrencyFor(orgId)),
       })
     }
 
+    // Per-client caps are judged in the workspace's reporting currency: each
+    // row converted at its own date, rows with no rate counted in `excluded_count`.
     const now = new Date()
+    const reporting = await reportingCurrencyFor(orgId)
+    await ensureRatesForOrg(orgId, reporting).catch(() => undefined)
     const [rows, byClient] = await Promise.all([
       db.select().from(budgets).where(eq(budgets.organizationId, orgId)),
-      outgoingByClient(orgId, now),
+      outgoingByClient(orgId, now, reporting),
     ])
     const out = rows.map((b) => {
       const period = (isBudgetPeriod(b.period) ? b.period : "monthly") as BudgetPeriod
       // A per-client cap carries that client's spend; the NULL-client row is the
       // default-for-new-clients template and has no single spend figure.
       const spent = b.clientId ? spentFor(byClient.get(b.clientId), period) : null
-      return { ...serialize(b), spent }
+      const excluded_count = b.clientId ? excludedFor(byClient.get(b.clientId), period) : 0
+      return { ...serialize(b), spent, currency: reporting, excluded_count }
     })
-    return res.json({ budgets: out, account_type: ctx.accountType })
+    return res.json({ budgets: out, account_type: ctx.accountType, currency: reporting })
   }
 
   // POST = upsert a budget for (org, client_id). amount <= 0 clears it. This is the

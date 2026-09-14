@@ -242,6 +242,14 @@ describe("linkRefusal", () => {
     expect(linkRefusal(rule({ kind: "transfer" }), debt())).toBe("rule_is_autosave")
   })
 
+  it("refuses a payer in a different currency from the debt", () => {
+    expect(linkRefusal(rule({ accountCurrency: "EUR" }), debt({ currency: "USD" }))).toBe("currency_mismatch")
+    expect(linkRefusal(rule({ accountCurrency: "eur" }), debt({ currency: "EUR" }))).toBeNull()
+    // Unknown on either side is not a refusal: legacy rows predate currency tagging.
+    expect(linkRefusal(rule({ accountCurrency: null }), debt({ currency: "USD" }))).toBeNull()
+    expect(linkRefusal(rule({ accountCurrency: "EUR" }), debt())).toBeNull()
+  })
+
   it("refuses a rule that pays with a card", () => {
     expect(linkRefusal(rule({ cardId: "c1" }), debt())).toBe("rule_pays_with_card")
   })

@@ -37,7 +37,7 @@ import {
 import { apiDelete, apiErrorMessage, apiGet, apiPatch, apiPost } from "@/lib/api"
 import { WEALTH_CHANGED_EVENT } from "@/lib/data-events"
 import { amountExceedsLimit } from "@/lib/money"
-import type { DebtsOverview, WealthAccount } from "@/lib/types"
+import type { DebtsOverview, WealthAccount, WealthSummaryAccount } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { useCurrency } from "@/lib/currency-context"
 import { useOrg } from "@/lib/org-context"
@@ -57,12 +57,17 @@ import {
 import { WealthAccountIcon } from "@/components/WealthAccountIcon"
 import { WealthAccountDialogs } from "@/components/wealth/WealthAccountDialogs"
 import { TransferWizard } from "@/components/wealth/TransferWizard"
+import { ApproxBalance } from "@/components/wealth/ApproxBalance"
+import { CurrencyBreakdown } from "@/components/wealth/CurrencyBreakdown"
+import { ScheduledTransfersPanel } from "@/components/wealth/ScheduledTransfersPanel"
+import { availableFromSummary, savedFromSummary, useConsolidatedWealth } from "@/components/wealth/use-consolidated-wealth"
 import { BankAccountFormFields } from "@/components/wealth/BankAccountFormFields"
+import { CurrencyCombobox } from "@/components/CurrencyCombobox"
 import { CardsTab } from "@/components/cards/CardsTab"
 import { type BankFormState, appearancePayload, bankDetailsPayload, emptyBankForm } from "@/lib/bank-form"
 import { accountAppearance } from "@/lib/account-color"
 import { isLiabilityType } from "@/lib/credit-card"
-import { accountDisplayName, currencySymbol, formatMoney, moveBefore, useBalancePrivacy, useWealthSummary } from "@/lib/wealth"
+import { accountCurrency, accountDisplayName, currencySymbol, formatDateLabel, formatMoney, moveBefore, useBalancePrivacy, useWealthSummary } from "@/lib/wealth"
 import { useTranslation } from "react-i18next"
 
 // The org's bank-account allowance (plan-based, server-enforced via 402). Loaded
@@ -114,8 +119,8 @@ function pointerFromActivator(ev: Event | null): { x: number; y: number } {
   return { x: me?.clientX ?? 0, y: me?.clientY ?? 0 }
 }
 
-type CreateForm = BankFormState & { opening_balance: string }
-const emptyCreate: CreateForm = { ...emptyBankForm, opening_balance: "" }
+type CreateForm = BankFormState & { opening_balance: string; currency_code: string }
+const emptyCreate: CreateForm = { ...emptyBankForm, opening_balance: "", currency_code: "" }
 
 /**
  * /wealth — one page, two sections: Banks (`/wealth`) and Cards
@@ -135,7 +140,6 @@ export function WealthPage() {
   const { activeOrg } = useOrg()
   const canWrite = canWriteRole(activeOrg?.role)
   const canDelete = canDeleteRole(activeOrg?.role)
-  const symbol = currencySymbol(currency)
   const { balancesVisible, setBalancesVisible } = useBalancePrivacy()
   const [searchParams, setSearchParams] = useSearchParams()
   const tab: WealthTab = searchParams.get("tab") === "cards" ? "cards" : "banks"
@@ -292,23 +296,41 @@ export function WealthPage() {
     setTransferOpen(true)
   }
 
+  // The consolidated picture comes from the server (GET /api/wealth/summary):
+  // every account converted into the reporting currency at its latest rate,
+  // assets, liabilities and net worth. Until it answers, the browser sum below
+  // paints the same figures — for a single-currency workspace the two are
+  // identical (rate 1:1, same rounding), so nothing flickers when it lands.
+  const { summary, byAccount } = useConsolidatedWealth()
+  const reporting = summary?.reporting_currency ?? currency
   // `total` is assets − card debt (a card's available credit is never counted).
   // Net worth still counts EVERY account, cards included — only the Banks list
   // below leaves credit cards out (they live under Cards).
-  const { total, assets, liabilities } = useWealthSummary(accounts)
+  const local = useWealthSummary(accounts)
   // Money parked in Spaces is still the user's money, so net worth must include
   // it (a bank→Space transfer nets to zero). /api/spaces 403s for business orgs,
   // so this is naturally personal-only.
-  const savedTotal = spaces.filter((s) => !s.archived_at).reduce((sum, s) => sum + Number(s.current_balance), 0)
-  // Only SAME-CURRENCY debts join net worth — no exchange rate is invented.
-  const debtTotals = useMemo(() => {
+  const localSaved = spaces.filter((s) => !s.archived_at).reduce((sum, s) => sum + Number(s.current_balance), 0)
+  // Debts (loans I owe / money owed to me) live on /debts but belong in net worth.
+  // Until the summary lands, only SAME-CURRENCY debts are counted — no exchange
+  // rate is invented in the browser. The raw per-currency buckets are narrowed
+  // here at render time: the loader runs before the workspace currency resolves.
+  const localDebts = useMemo(() => {
     const sum = (xs: { currency: string; amount: number }[]) =>
       xs.filter((x) => x.currency === currency).reduce((acc, x) => acc + x.amount, 0)
     return { owed: sum(debtBuckets.owed), receivable: sum(debtBuckets.receivable) }
   }, [debtBuckets, currency])
-  // A loan reduces net worth the way card debt does; a receivable adds to it
-  // (owed to you, but not liquid — it stays out of "Available").
-  const netWorth = total + savedTotal + debtTotals.receivable - debtTotals.owed
+  const savedTotal = summary ? savedFromSummary(summary) : localSaved
+  // What the CARDS owe — loans are their own chip below, never "owed on cards".
+  const liabilities = summary ? summary.card_liabilities : local.liabilities
+  const debtsOwed = summary ? summary.debts_owed : localDebts.owed
+  // A receivable is owed to you: an asset, but not liquid — it stays out of "Available".
+  const assetsTotal = summary ? summary.assets : local.assets + localSaved + localDebts.receivable
+  const available = summary ? availableFromSummary(summary) : local.total
+  // A loan reduces net worth the way card debt does; a receivable adds to it.
+  const netWorth = summary ? summary.net_worth : local.total + localSaved + localDebts.receivable - localDebts.owed
+  // A total that leaves a currency out must say so beside the number.
+  const partial = !!summary && !summary.complete
   const banks = useMemo(() => accounts.filter((a) => !isLiabilityType(a.type)), [accounts])
   const active = useMemo(() => banks.filter((a) => !a.archived_at), [banks])
   const archived = useMemo(() => banks.filter((a) => a.archived_at), [banks])
@@ -368,7 +390,7 @@ export function WealthPage() {
       setUpgradeOpen(true)
       return
     }
-    setForm(emptyCreate)
+    setForm({ ...emptyCreate, currency_code: currency })
     setCreateOpen(true)
   }
 
@@ -406,6 +428,7 @@ export function WealthPage() {
         nickname: form.nickname.trim(),
         icon: form.icon,
         openingBalance: Number(form.opening_balance || 0),
+        currency_code: form.currency_code || currency,
         ...appearancePayload(form),
         ...bankDetailsPayload(form),
       })
@@ -497,34 +520,44 @@ export function WealthPage() {
               {loading ? (
                 <Skeleton className="mt-2 h-9 w-40" />
               ) : (
-                <p className="mt-1 text-3xl font-bold tabular-nums sm:text-4xl">{formatMoney(netWorth, currency, balancesVisible)}</p>
+                <div className="mt-1 flex flex-wrap items-center gap-2">
+                  <p className="text-3xl font-bold tabular-nums sm:text-4xl">{formatMoney(netWorth, reporting, balancesVisible)}</p>
+                  {partial && (
+                    <Badge variant="outline" className="border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300" title={t("currencyNotIncluded", { currency: summary.excluded_currencies.join(", ") })}>
+                      {t("excludesCurrencies", { currencies: summary.excluded_currencies.join(", ") })}
+                    </Badge>
+                  )}
+                </div>
+              )}
+              {!loading && summary?.stale && summary.as_of && (
+                <p className="mt-0.5 text-[11px] text-muted-foreground">{t("ratesFrom", { date: formatDateLabel(summary.as_of) })}</p>
               )}
             </div>
-            {!loading && (liabilities > 0 || savedTotal > 0 || debtTotals.owed > 0) && (
+            {!loading && (liabilities > 0 || savedTotal > 0 || debtsOwed > 0) && (
               <div className="flex w-full flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground sm:w-auto sm:justify-end">
                 {liabilities > 0 && (
                   <p className="inline-flex flex-wrap items-center gap-x-2">
-                    <span className="tabular-nums">{t("assets")}: {formatMoney(assets + savedTotal + debtTotals.receivable, currency, balancesVisible)}</span>
+                    <span className="tabular-nums">{t("assets")}: {formatMoney(assetsTotal, reporting, balancesVisible)}</span>
                     <span aria-hidden>·</span>
                     <button
                       type="button"
                       onClick={() => setTab("cards")}
                       className="ios-tap tabular-nums text-red-600 underline-offset-2 hover:underline dark:text-red-400"
                     >
-                      {t("owedOnCards")}: {formatMoney(liabilities, currency, balancesVisible)}
+                      {t("owedOnCards")}: {formatMoney(liabilities, reporting, balancesVisible)}
                     </button>
                   </p>
                 )}
                 {/* Card debt and borrowed money are different obligations with
                     different homes, so they get their own chips rather than one
                     blended "liabilities" figure. */}
-                {debtTotals.owed > 0 && (
+                {debtsOwed > 0 && (
                   <button
                     type="button"
                     onClick={() => navigate("/debts")}
                     className="ios-tap inline-flex flex-wrap items-center gap-x-2 tabular-nums text-red-600 underline-offset-2 hover:underline dark:text-red-400"
                   >
-                    {t("liabilities")}: {formatMoney(debtTotals.owed, currency, balancesVisible)} →
+                    {t("liabilities")}: {formatMoney(debtsOwed, reporting, balancesVisible)} →
                   </button>
                 )}
                 {savedTotal > 0 && (
@@ -533,15 +566,18 @@ export function WealthPage() {
                     onClick={() => navigate("/spaces")}
                     className="inline-flex flex-wrap items-center gap-x-2 hover:text-foreground"
                   >
-                    <span className="tabular-nums">{t("availableLabel")}: {formatMoney(total, currency, balancesVisible)}</span>
+                    <span className="tabular-nums">{t("availableLabel")}: {formatMoney(available, reporting, balancesVisible)}</span>
                     <span aria-hidden>·</span>
-                    <span className="tabular-nums text-emerald-600 dark:text-emerald-400">{t("savedInSpaces")}: {formatMoney(savedTotal, currency, balancesVisible)} →</span>
+                    <span className="tabular-nums text-emerald-600 dark:text-emerald-400">{t("savedInSpaces")}: {formatMoney(savedTotal, reporting, balancesVisible)} →</span>
                   </button>
                 )}
               </div>
             )}
           </div>
         </div>
+
+        {/* Multi-currency only: the native totals per currency behind the figure above. */}
+        {!loading && summary?.multi_currency && <CurrencyBreakdown summary={summary} visible={balancesVisible} />}
 
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-sm font-semibold">
@@ -588,6 +624,8 @@ export function WealthPage() {
                     <AccountCard
                       account={account}
                       currency={currency}
+                      summaryAccount={byAccount.get(account.id)}
+                      reportingCurrency={summary?.reporting_currency}
                       balancesVisible={balancesVisible}
                       handle={handle}
                       onOpen={() => navigate(`/wealth/${account.id}`)}
@@ -637,6 +675,9 @@ export function WealthPage() {
           </p>
         )}
 
+        {/* Planned / pending transfers — intent only until marked done. Renders nothing when there are none. */}
+        {!loading && <ScheduledTransfersPanel canWrite={canWrite} visible={balancesVisible} />}
+
         {archived.length > 0 && (
           <div className="space-y-3">
             <p className="text-sm font-medium text-muted-foreground">{t("archived")}</p>
@@ -650,7 +691,7 @@ export function WealthPage() {
                         <p className="truncate text-sm font-semibold">{accountDisplayName(account)}</p>
                         <Badge variant="outline" className="shrink-0 py-0 text-[10px]">{t("archived")}</Badge>
                       </div>
-                      <p className="truncate text-xs text-muted-foreground tabular-nums">{formatMoney(Number(account.current_balance), currency, balancesVisible)}</p>
+                      <p className="truncate text-xs text-muted-foreground tabular-nums">{formatMoney(Number(account.current_balance), accountCurrency(account, currency), balancesVisible)}</p>
                     </div>
                   </div>
                   <Button size="sm" variant="outline" onClick={() => restore(account)} disabled={saving}>
@@ -722,16 +763,15 @@ export function WealthPage() {
               onChange={(patch) => setForm((f) => ({ ...f, ...patch }))}
               autoFocusName
               beforeBankDetails={
-                <div className="space-y-1.5">
-                  <Label>{t("openingBalanceLabel", { symbol })}</Label>
-                  <Input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={form.opening_balance}
-                    placeholder={`${symbol} 0.00`}
-                    onChange={(e) => setForm((f) => ({ ...f, opening_balance: e.target.value }))}
-                  />
+                <div className="space-y-4">
+                  <div className="space-y-1.5">
+                    <Label>{t("accountCurrency")}</Label>
+                    <CurrencyCombobox value={form.currency_code || currency} onValueChange={(value) => setForm((f) => ({ ...f, currency_code: value }))} disabled={saving} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>{t("openingBalanceLabel", { symbol: currencySymbol(form.currency_code || currency) })}</Label>
+                    <Input type="number" min="0" step="0.01" value={form.opening_balance} placeholder={`${currencySymbol(form.currency_code || currency)} 0.00`} onChange={(e) => setForm((f) => ({ ...f, opening_balance: e.target.value }))} />
+                  </div>
                 </div>
               }
             />
@@ -896,10 +936,14 @@ function DndAccountCard({
 }
 
 function AccountCard({
-  account, currency, balancesVisible, handle, onOpen, onAdjust, onEdit, onArchive, onSetDefault, saving,
+  account, currency, summaryAccount, reportingCurrency, balancesVisible, handle, onOpen, onAdjust, onEdit, onArchive, onSetDefault, saving,
 }: {
   account: AccountRow
+  /** Workspace (reporting) currency — only the fallback for rows without their own. */
   currency: string
+  /** This account's line in GET /api/wealth/summary (the ≈ value), when known. */
+  summaryAccount?: WealthSummaryAccount
+  reportingCurrency?: string
   balancesVisible: boolean
   handle: HandleProps
   onOpen: () => void
@@ -966,9 +1010,14 @@ function AccountCard({
         </div>
 
         <div className="mt-4 flex items-start gap-1.5">
-          <p className={cn("text-2xl font-bold tabular-nums", onColor && ink)}>
-            {formatMoney(Number(account.current_balance), currency, balancesVisible)}
-          </p>
+          <div className="min-w-0">
+            {/* The balance in the account's OWN currency — the fact. */}
+            <p className={cn("text-2xl font-bold tabular-nums", onColor && ink)}>
+              {formatMoney(Number(account.current_balance), accountCurrency(account, currency), balancesVisible)}
+            </p>
+            {/* …and, for a foreign-currency account, what that is worth in the reporting currency. */}
+            <ApproxBalance account={summaryAccount} reportingCurrency={reportingCurrency} visible={balancesVisible} />
+          </div>
           <Button
             variant="ghost"
             size="icon"

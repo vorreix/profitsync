@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { db } from "../../src/lib/db/index.js"
 import { spendingBudgets } from "../../src/lib/db/schema.js"
 import { canWrite, requireAuth } from "../_lib/auth.js"
+import { reportingCurrencyFor } from "../_lib/fx-rates.js"
 import { logAudit } from "../_lib/audit.js"
 import { todayUtc } from "../../src/lib/budget.js"
 import { materializeDueRecurring } from "../_lib/recurring-materialize.js"
@@ -38,7 +39,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // No `?view=` parameter on purpose: every budget carries its spend for all
     // four view windows, so the page's toggle is a re-render, the dashboard and
     // the detail page share this one cache entry, and nothing refetches.
-    return res.json({ budgets: await listBudgets(orgId, today), today })
+    // Each row's figures are in ITS currency (`currency`), each ledger row
+    // converted at its own date; `excluded_count` says how many it left out.
+    const [budgets, currency] = await Promise.all([listBudgets(orgId, today), reportingCurrencyFor(orgId)])
+    // `currency` is the workspace's reporting currency — what a budget without
+    // one of its own is measured in, and the page's label when the list is empty.
+    return res.json({ budgets, today, currency, excluded_count: budgets.reduce((s, b) => s + b.excluded_count, 0) })
   }
 
   if (req.method === "POST") {

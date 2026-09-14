@@ -147,7 +147,9 @@ export function DebtFormSheet({
       const token = await getToken()
       if (!token) return
       const accs = await apiGet<WealthAccount[]>("/api/wealth/accounts", token).catch(() => [] as WealthAccount[])
-      if (!cancelled) setAccounts(accs.filter((a) => !a.archived_at && (a.type === "bank" || a.type === "cash")))
+      // Only accounts in the debt's own currency: money arriving and every
+      // instalment are one amount on both sides, so the server refuses any other.
+      if (!cancelled) setAccounts(accs.filter((a) => !a.archived_at && (a.type === "bank" || a.type === "cash") && (!a.currency_code || a.currency_code === currency)))
     })()
     return () => { cancelled = true }
     // Keyed on IDENTITY, not on the objects: the detail page reloads on every

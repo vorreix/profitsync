@@ -8,6 +8,7 @@ import { useOrg } from "@/lib/org-context"
 import { canWriteRole } from "@/lib/roles"
 import { monthlyEquivalent } from "@/lib/spaces"
 import { formatMoney, useBalancePrivacy } from "@/lib/wealth"
+import { formatByCurrency } from "@/lib/debt-format"
 import type { RecurringRule } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -44,18 +45,24 @@ export function RecurringCard({ className = "" }: { className?: string }) {
   const canWrite = canWriteRole(activeOrg?.role)
   const { balancesVisible } = useBalancePrivacy()
   const { data, loading } = useApiQuery<RecurringRule[]>("/api/recurring")
-  const money = (n: number) => formatMoney(n, currency, balancesVisible)
+  const money = (n: number, c?: string) => formatMoney(n, c ?? currency, balancesVisible)
 
   const summary = useMemo(() => {
     const rules = data ?? []
     const active = rules.filter((r) => r.active)
-    let inPerMonth = 0
-    let outPerMonth = 0
+    // Per currency: rules post in their own account's currency, and a EUR
+    // salary plus an INR rent is not one number without a rate.
+    const inBy = new Map<string, number>()
+    const outBy = new Map<string, number>()
     for (const r of active) {
       const per = monthlyEquivalent(Number(r.amount), r.frequency_unit, r.frequency_interval)
-      if (r.type === "incoming") inPerMonth += per
-      else outPerMonth += per
+      const by = r.type === "incoming" ? inBy : outBy
+      const c = r.currency_code ?? currency
+      by.set(c, (by.get(c) ?? 0) + per)
     }
+    const parts = (m: Map<string, number>) => [...m].map(([c, amount]) => ({ currency: c, amount }))
+    const inPerMonth = parts(inBy)
+    const outPerMonth = parts(outBy)
     // The soonest thing that will actually post. A blocked rule's cursor sits in
     // the past, so it is not "next" — it is broken, and says so separately.
     const next = active
@@ -70,7 +77,7 @@ export function RecurringCard({ className = "" }: { className?: string }) {
       outPerMonth,
       next,
     }
-  }, [data])
+  }, [data, currency])
 
   if (loading) {
     return (
@@ -115,7 +122,10 @@ export function RecurringCard({ className = "" }: { className?: string }) {
 
   // The headline is what the schedule TAKES each month; a workspace whose rules
   // only bring money in gets that figure instead, rather than a proud zero.
-  const incomeOnly = summary.outPerMonth === 0 && summary.inPerMonth > 0
+  const hasIn = summary.inPerMonth.some((x) => x.amount > 0)
+  const hasOut = summary.outPerMonth.some((x) => x.amount > 0)
+  const incomeOnly = !hasOut && hasIn
+  const perMonth = (xs: { currency: string; amount: number }[]) => formatByCurrency(xs, balancesVisible) || money(0)
   const fmtDate = (d: string) => new Date(`${d}T00:00:00`).toLocaleDateString(appLocale(), { day: "numeric", month: "short" })
 
   return (
@@ -124,15 +134,15 @@ export function RecurringCard({ className = "" }: { className?: string }) {
       icon={<Repeat className="size-4" aria-hidden />}
       title={t("nav.recurring")}
       count={summary.active}
-      headline={money(incomeOnly ? summary.inPerMonth : summary.outPerMonth)}
+      headline={perMonth(incomeOnly ? summary.inPerMonth : summary.outPerMonth)}
       headlineClass={incomeOnly ? "text-emerald-600 dark:text-emerald-400" : undefined}
       subline={incomeOnly ? t("recurring.perMonthIn") : t("recurring.perMonthOut")}
       storageKey={`ps_dash_recurring_open_${activeOrg?.id ?? ""}`}
       onOpen={() => navigate("/recurring")}
     >
-      {!incomeOnly && summary.inPerMonth > 0 && (
+      {!incomeOnly && hasIn && (
         <p className="text-xs text-muted-foreground">
-          {t("recurring.perMonthIn")}: <span className="font-medium tabular-nums text-emerald-600 dark:text-emerald-400">{money(summary.inPerMonth)}</span>
+          {t("recurring.perMonthIn")}: <span className="font-medium tabular-nums text-emerald-600 dark:text-emerald-400">{perMonth(summary.inPerMonth)}</span>
         </p>
       )}
 
@@ -148,7 +158,7 @@ export function RecurringCard({ className = "" }: { className?: string }) {
           </span>
           <span className="shrink-0 text-end">
             <span className={`block text-sm font-bold tabular-nums ${summary.next.type === "incoming" ? "text-emerald-600 dark:text-emerald-400" : ""}`}>
-              {summary.next.type === "incoming" ? "+" : "−"}{money(Number(summary.next.amount))}
+              {summary.next.type === "incoming" ? "+" : "−"}{money(Number(summary.next.amount), summary.next.currency_code ?? undefined)}
             </span>
             <span className="block text-[11px] text-muted-foreground">{fmtDate(summary.next.next_due_at)}</span>
           </span>

@@ -48,6 +48,8 @@ import {
   ClientCard, ClientListRow, ClientTable,
   type ClientActions, type ClientColumn, type ClientWithStats,
 } from "@/components/clients/client-views"
+import { FxExcludedNotice } from "@/components/FxExcludedNotice"
+import { clientTotalsCurrency, excludedCountOf } from "@/lib/reporting-fields"
 
 type NewClient = {
   name: string
@@ -83,17 +85,22 @@ export function ClientsPage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const { getToken } = useAuth()
-  const { currency } = useCurrency()
+  const { currency: orgCurrency } = useCurrency()
   const { activeOrg } = useOrg()
   const canDelete = canDeleteRole(activeOrg?.role)
   const canWrite = canWriteRole(activeOrg?.role)
   const sel = useMultiSelect()
   const longPress = useLongPress()
   const [bulkDeleting, setBulkDeleting] = useState(false)
-  const formatCurrency = (n: number) =>
-    new Intl.NumberFormat("en-US", { style: "currency", currency, minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n)
 
   const [clients, setClients] = useState<ClientWithStats[]>([])
+  // Per-client totals are converted server-side into the workspace's reporting
+  // currency (each row at its own date) — format them in THAT, and say how
+  // many rows had no rate and were left out.
+  const currency = clientTotalsCurrency(clients[0], orgCurrency)
+  const excludedTotals = clients.reduce((s, c) => s + excludedCountOf(c as { excluded_count?: number }), 0)
+  const formatCurrency = (n: number) =>
+    new Intl.NumberFormat("en-US", { style: "currency", currency, minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n)
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(true)
@@ -440,6 +447,7 @@ export function ClientsPage() {
         </div>
       ) : (
         <>
+          <FxExcludedNotice count={excludedTotals} />
           {view === "table" ? (
             <ClientTable
               clients={activeClients}

@@ -7,7 +7,8 @@ import { validateRuleInput, type RecurringRuleInput } from "../_lib/recurring-va
 import { materializeDueRecurring } from "../_lib/recurring-materialize.js"
 import { ruleFields } from "../_lib/recurring-query.js"
 import { attributeCard } from "../_lib/cards.js"
-import { debtScheduleMirror, directionOf, loadDebt } from "../_lib/debts.js"
+import { currencyForFinancialWrite } from "../_lib/transaction-currency.js"
+import { debtCurrencyOf, debtScheduleMirror, directionOf, loadDebt } from "../_lib/debts.js"
 import { payerShape, refusalForNew, refusalMessage, refusalStatus } from "../_lib/recurring-debt.js"
 import type { LinkTargetDebt } from "../../src/lib/debt-recurring.js"
 import { todayIso } from "../../src/lib/recurring.js"
@@ -57,6 +58,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!attributed.ok) return res.status(400).json({ error: attributed.error })
     const refError = await assertRefsBelongToOrg(orgId, parsed.value.clientId, attributed.accountId)
     if (refError) return res.status(400).json({ error: refError })
+    const currencyCode = await currencyForFinancialWrite(orgId, attributed.accountId)
+    if (!currencyCode) return res.status(409).json({ error: "Currency migration is incomplete", code: "currency_missing" })
 
     // Born already attached to a debt. "This new standing order pays my car
     // loan" is one intention, so the rule and the debt's mirrored schedule
@@ -80,12 +83,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           // The rule does not exist yet, so nothing is pending and nothing has ended.
           id: "new", kind: "standard", type: parsed.value.type, cardId: attributed.cardId,
           accountId: attributed.accountId, accountType: payer.type, accountArchived: payer.archived,
-          debtAccountId: null, endDate: parsed.value.endDate, active: false,
+          accountCurrency: payer.currency, debtAccountId: null, endDate: parsed.value.endDate, active: false,
         },
         {
           id: debtRow.account.id,
           direction: directionOf(debtRow.account.type),
           archived: !!debtRow.account.archivedAt,
+          currency: debtCurrencyOf(debtRow),
           lifecycle: debtRow.details.lifecycle as LinkTargetDebt["lifecycle"],
           linkedRuleIds: siblings.map((x) => x.id),
         },
@@ -115,6 +119,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       name: parsed.value.name,
       type: parsed.value.type,
       amount: parsed.value.amount,
+      currencyCode,
       category: debtRow ? "Transfer" : parsed.value.category,
       frequencyUnit: parsed.value.frequencyUnit,
       frequencyInterval: parsed.value.frequencyInterval,

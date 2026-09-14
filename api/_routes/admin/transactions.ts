@@ -4,6 +4,7 @@ import { db, serialize } from "../../../src/lib/db/index.js"
 import { clients, transactions } from "../../../src/lib/db/schema.js"
 import { requireAdminCap } from "../../_lib/admin.js"
 import { amountExceedsLimit } from "../../../src/lib/money.js"
+import { currencyForFinancialWrite } from "../../_lib/transaction-currency.js"
 
 const PAGE_SIZE = 30
 
@@ -95,10 +96,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const [client] = await db
-      .select({ id: clients.id })
+      .select({ id: clients.id, organizationId: clients.organizationId })
       .from(clients)
       .where(and(eq(clients.id, client_id), isNull(clients.deletedAt)))
     if (!client) return res.status(404).json({ error: "Client not found" })
+    if (!client.organizationId) return res.status(409).json({ error: "Client organization is missing", code: "organization_missing" })
+    const currencyCode = await currencyForFinancialWrite(client.organizationId)
+    if (!currencyCode) return res.status(409).json({ error: "Organization currency migration is incomplete", code: "currency_missing" })
 
     const today = new Date().toISOString().split("T")[0]
     const [row] = await db
@@ -107,6 +111,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         clientId: client_id,
         type,
         amount: String(amount),
+        currencyCode,
         description: description ?? "",
         category: category ?? "",
         date: date ?? today,

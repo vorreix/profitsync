@@ -206,6 +206,7 @@ export type LinkRefusal =
   | "rule_has_no_account"   // a repayment needs somewhere to be paid from
   | "account_archived"
   | "account_not_cash"      // bank or cash only — see the card rule in DEBTS.md
+  | "currency_mismatch"     // the payer and the debt are in different currencies
   | "direction_mismatch"    // an incoming rule cannot pay a loan
   | "debt_closed"
   | "debt_settled"          // paid off / refinanced / written off: it is over
@@ -222,6 +223,8 @@ export type LinkCandidateRule = {
   accountId: string | null
   accountType: string | null
   accountArchived: boolean
+  /** The paying account's native currency, when known. */
+  accountCurrency?: string | null
   debtAccountId: string | null
   /** Its end date has passed, so it can never fire again. */
   ended?: boolean
@@ -237,6 +240,8 @@ export type LinkTargetDebt = {
   id: string
   direction: "owed" | "receivable"
   archived: boolean
+  /** The debt's native currency, when known. */
+  currency?: string | null
   /**
    * Lifecycle decides two different things, and conflating them is a bug.
    *
@@ -281,6 +286,10 @@ export function linkRefusal(rule: LinkCandidateRule, debt: LinkTargetDebt): Link
   if (!rule.accountId) return "rule_has_no_account"
   if (rule.accountArchived) return "account_archived"
   if (rule.accountType !== "bank" && rule.accountType !== "cash") return "account_not_cash"
+  // A repayment posts the SAME amount on both legs of its principal transfer, so
+  // it can only move money between two accounts in one currency. A cross-currency
+  // repayment needs an exchange rate for every instalment, which nothing records.
+  if (rule.accountCurrency && debt.currency && rule.accountCurrency.toUpperCase() !== debt.currency.toUpperCase()) return "currency_mismatch"
   // A loan is paid; a receivable is collected.
   const wanted = debt.direction === "receivable" ? "incoming" : "outgoing"
   if (rule.type !== wanted) return "direction_mismatch"

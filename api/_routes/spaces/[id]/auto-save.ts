@@ -38,7 +38,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!isPersonalAccount(ctx)) return res.status(403).json({ error: "Spaces are available on personal accounts only" })
 
   const [space] = await db
-    .select({ id: wealthAccounts.id, nickname: wealthAccounts.nickname, bankName: wealthAccounts.bankName })
+    .select({ id: wealthAccounts.id, nickname: wealthAccounts.nickname, bankName: wealthAccounts.bankName, currencyCode: wealthAccounts.currencyCode })
     .from(wealthAccounts)
     .where(and(eq(wealthAccounts.id, id), eq(wealthAccounts.organizationId, orgId), eq(wealthAccounts.type, "space")))
   if (!space) return res.status(404).json({ error: "Space not found" })
@@ -75,11 +75,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // The source must be one of the org's active bank/cash accounts — never a
     // Space (you can't auto-save from a Space into a Space).
     const [source] = await db
-      .select({ id: wealthAccounts.id, type: wealthAccounts.type, archivedAt: wealthAccounts.archivedAt })
+      .select({ id: wealthAccounts.id, type: wealthAccounts.type, archivedAt: wealthAccounts.archivedAt, currencyCode: wealthAccounts.currencyCode })
       .from(wealthAccounts)
       .where(and(eq(wealthAccounts.id, body.source_account_id), eq(wealthAccounts.organizationId, orgId), isNull(wealthAccounts.archivedAt)))
     if (!source || source.type === "space") return res.status(400).json({ error: "Choose an active bank or cash account to save from" })
     if (source.id === id) return res.status(400).json({ error: "Source and destination must differ" })
+    if (!source.currencyCode || !space.currencyCode) return res.status(409).json({ error: "Currency migration is incomplete", code: "currency_missing" })
+    if (source.currencyCode !== space.currencyCode) return res.status(409).json({ error: "Automatic savings currently require accounts in the same currency", code: "cross_currency_recurring_policy_required" })
 
     const spaceName = space.nickname.trim() || space.bankName || "Space"
     // Reuse the recurring validator for the shared fields (amount / frequency /
@@ -106,6 +108,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           wealthAccountId: v.wealthAccountId,
           name: v.name,
           amount: v.amount,
+          currencyCode: source.currencyCode,
           frequencyUnit: v.frequencyUnit,
           frequencyInterval: v.frequencyInterval,
           startDate: v.startDate,
@@ -128,6 +131,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         name: v.name,
         type: "outgoing",
         amount: v.amount,
+        currencyCode: source.currencyCode,
         category: "Transfer",
         frequencyUnit: v.frequencyUnit,
         frequencyInterval: v.frequencyInterval,

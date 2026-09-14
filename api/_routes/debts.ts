@@ -141,6 +141,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!acc || acc.archivedAt || acc.type !== "bank" && acc.type !== "cash") {
         return res.status(400).json({ error: "A recurring repayment must come from a bank or cash account" })
       }
+      // Each instalment's principal is one amount on both legs — same currency only.
+      if (acc.currencyCode && acc.currencyCode.toUpperCase() !== currency) {
+        return res.status(400).json({ error: `A repayment for a ${currency} debt must come from a ${currency} account`, code: "currency_mismatch" })
+      }
       payFrom = acc
     }
 
@@ -162,6 +166,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .where(and(eq(wealthAccounts.id, disbursementAccountId), eq(wealthAccounts.organizationId, orgId)))
       if (!acc || acc.archivedAt || acc.type === "space" || acc.type === "loan" || acc.type === "receivable") {
         return res.status(400).json({ error: "Choose an active bank or cash account to receive the money" })
+      }
+      // The amount received is a transfer with the same amount on both legs, so
+      // it can only land in an account in the debt's own currency.
+      if (acc.currencyCode && acc.currencyCode.toUpperCase() !== currency) {
+        return res.status(400).json({ error: `Money borrowed in ${currency} must arrive in a ${currency} account`, code: "currency_mismatch" })
       }
       const asked = num(b.disbursement_amount)
       if (asked !== null && Number.isNaN(asked)) return res.status(400).json({ error: "disbursement_amount is invalid" })
@@ -192,12 +201,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const refusal = refusalForNew(
         {
           id: r.id, kind: r.kind, type: r.type, cardId: r.cardId, accountId: r.wealthAccountId,
-          accountType: payer.type, accountArchived: payer.archived, debtAccountId: r.debtAccountId,
+          accountType: payer.type, accountArchived: payer.archived, accountCurrency: payer.currency, debtAccountId: r.debtAccountId,
           endDate: r.endDate ? String(r.endDate).slice(0, 10) : null,
           nextDueAt: String(r.nextDueAt).slice(0, 10), active: r.active,
         },
         // The debt does not exist yet: nothing is archived, nothing services it.
-        { id: "new", direction, archived: false, lifecycle: "active", linkedRuleIds: [] },
+        { id: "new", direction, archived: false, currency, lifecycle: "active", linkedRuleIds: [] },
         today,
       )
       if (refusal) return res.status(refusalStatus(refusal)).json({ error: refusalMessage(refusal), code: refusal })
@@ -243,6 +252,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         type,
         bankName: counterparty || name,
         nickname: name,
+        // The ledger's currency authority — kept equal to debt_details.currency.
+        currencyCode: currency,
         // Only the part with no ledger movement behind it is an opening balance;
         // whatever arrives is defined by the transfer legs below.
         openingBalance: (direction === "receivable" ? openingPart : -openingPart).toFixed(2),
@@ -285,7 +296,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         batch.push(
           db.insert(transactions).values({
             id, clientId, wealthAccountId: accountId, type: direction === "owed" ? "outgoing" : "incoming",
-            amount: openingPart.toFixed(2), description: "Opening Balance", category: "Opening Balance", date: today,
+            amount: openingPart.toFixed(2), currencyCode: currency, description: "Opening Balance", category: "Opening Balance", date: today,
             isSystem: true, createdBy: userId, updatedBy: userId,
           }),
         )
@@ -308,7 +319,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           batch.push(
             db.insert(transactions).values({
               id, clientId, wealthAccountId: leg.accountId, groupId, kind: "transfer", type: leg.type,
-              amount: received.toFixed(2), description: leg.description, category: "Transfer", date: startDate ?? today,
+              amount: received.toFixed(2), currencyCode: currency, description: leg.description, category: "Transfer", date: startDate ?? today,
               createdBy: userId, updatedBy: userId,
             }),
           )
@@ -343,6 +354,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           // receivable's instalment arrives.
           type: direction === "receivable" ? "incoming" : "outgoing",
           amount: repayment.amount.toFixed(2),
+          currencyCode: currency,
           category: "Transfer",
           frequencyUnit: repayment.unit,
           frequencyInterval: repayment.interval,

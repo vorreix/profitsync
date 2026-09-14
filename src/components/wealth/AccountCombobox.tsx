@@ -8,7 +8,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { WealthAccountIcon } from "@/components/WealthAccountIcon"
 import { CardSwatch } from "@/components/transactions/CardSwatch"
 import { buildPayOptions, type PayOption } from "@/components/transactions/pay-options"
-import { accountBalanceLabel, accountDisplayName, accountSpendableLabel, formatMoney } from "@/lib/wealth"
+import { accountBalanceLabel, accountCurrency, accountDisplayName, accountSpendableLabel, formatMoney } from "@/lib/wealth"
 import { cardDisplayName, maskedTail } from "@/lib/cards"
 import { CREDIT_CARD_TYPE } from "@/lib/credit-card"
 import { todayIso } from "@/lib/recurring"
@@ -80,9 +80,11 @@ export function AccountCombobox({
   const selected = options.byKey.get(value) ?? (options.creditByAccount.get(value) ? options.byKey.get(options.creditByAccount.get(value)!.id) : undefined)
     ?? accounts.filter((a) => a.id === value).map((a): PayOption => ({ key: a.id, kind: "account", account: a, card: null, expired: false }))[0]
 
-  // A credit card shows what is OWED, never a bare negative balance.
+  // A credit card shows what is OWED, never a bare negative balance. Every
+  // figure is in the ACCOUNT's own currency — `currency` (the workspace's) is
+  // only the fallback for rows predating the per-account column.
   const balanceOf = (a: WealthAccount) =>
-    accountBalanceLabel(a, currency, balancesVisible, {
+    accountBalanceLabel(a, accountCurrency(a, currency), balancesVisible, {
       owed: (amount) => t("owed", { amount }),
       credit: (amount) => t("cardCredit", { amount }),
       nothingOwed: t("nothingOwed"),
@@ -94,15 +96,18 @@ export function AccountCombobox({
     // it owes here made this dropdown disagree with the tile picker on the same
     // screen, and disagree with this wizard's own affordability check, which has
     // always measured the amount against available credit.
+    // The card's own ledger account is the source of truth for its currency;
+    // a credit card's liability account is usually not in the list, so fall back.
+    const cardCurrency = accountCurrency(accounts.find((a) => a.id === o.card.account_id), currency)
     if (o.card.kind === "credit") {
       return accountSpendableLabel(
         { type: CREDIT_CARD_TYPE, current_balance: String(o.card.account_current_balance ?? 0), credit_limit: o.card.account_credit_limit ?? null },
-        currency,
+        cardCurrency,
         balancesVisible,
         { available: (amount) => t("creditAvailableShort", { amount }), owed: (amount) => t("owed", { amount }), nothingOwed: t("nothingOwed") },
       )
     }
-    return formatMoney(Number(o.account?.current_balance ?? o.card.account_current_balance ?? 0), currency, balancesVisible)
+    return formatMoney(Number(o.account?.current_balance ?? o.card.account_current_balance ?? 0), accountCurrency(o.account, cardCurrency), balancesVisible)
   }
   const kindWord = (c: Card) => (c.kind === "credit" ? tTx("cardCredit") : tTx("cardDebit"))
   const viaLabel = (c: Card) => (c.last4 ? tTx("cardVia", { last4: c.last4 }) : tTx("cardViaNoTail"))
