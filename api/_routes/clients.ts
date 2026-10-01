@@ -65,6 +65,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // row is converted into the workspace's reporting currency at its own date
     // (`totals_currency`); rows with no rate are left out and counted in
     // `excluded_count` so a client's total never looks complete when it is not.
+    // System Opening Balance / Balance Adjustment rows define an account's
+    // balance, not P&L, so they never reach a client's totals (same as
+    // analytics, calendar and flow) — joined out, so the excluded count skips
+    // them too.
+    const clientTotalsJoin = and(eq(transactions.clientId, clients.id), isNull(transactions.deletedAt), eq(transactions.isSystem, false))
     const reporting = await reportingCurrencyFor(orgId)
     await ensureRatesForOrg(orgId, reporting).catch(() => undefined)
     const incomingSum = incomeSumSqlIn(reporting)
@@ -126,7 +131,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         db
           .select(selectFields)
           .from(clients)
-          .leftJoin(transactions, and(eq(transactions.clientId, clients.id), isNull(transactions.deletedAt)))
+          .leftJoin(transactions, clientTotalsJoin)
           .where(whereClause)
           .groupBy(clients.id)
           .orderBy(desc(clients.isOwn), orderBy, desc(clients.id))
@@ -140,7 +145,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const rows = await db
       .select(selectFields)
       .from(clients)
-      .leftJoin(transactions, and(eq(transactions.clientId, clients.id), isNull(transactions.deletedAt)))
+      .leftJoin(transactions, clientTotalsJoin)
       .where(whereClause)
       .groupBy(clients.id)
       .orderBy(desc(clients.isOwn), orderBy)

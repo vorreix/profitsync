@@ -44,7 +44,7 @@ export function DebtKindCombobox({ value, onChange, id }: { value: string; onCha
         {/* shouldFilter=false: the filtering is ours, because the "use what I
             typed" row must survive a query that matches no suggestion. */}
         <Command shouldFilter={false}>
-          <CommandInput value={query} onValueChange={setQuery} placeholder={t("kindSearchPlaceholder")} maxLength={MAX_DEBT_KIND_LENGTH} />
+          <CommandInput value={query} onValueChange={setQuery} placeholder={t("kindSearchPlaceholder")} maxLength={MAX_DEBT_KIND_LENGTH} className="text-base sm:text-sm" />
           <CommandList className="max-h-60">
             {canCreate && (
               <CommandGroup>

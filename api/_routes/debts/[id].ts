@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { and, count, eq, isNull, sql } from "drizzle-orm"
-import { db, serialize } from "../../../src/lib/db/index.js"
-import { debtDetails, recurringRules, transactions, wealthAccounts } from "../../../src/lib/db/schema.js"
+import { db, dbBatch, serialize } from "../../../src/lib/db/index.js"
+import { debtDetails, debtPayments, recurringRules, transactions, wealthAccounts } from "../../../src/lib/db/schema.js"
 import { canDelete, canWrite, ensureDefaultClient, requireAuth } from "../../_lib/auth.js"
 import { diffFields, logAudit } from "../../_lib/audit.js"
 import {
@@ -28,6 +28,7 @@ import { todayIso, type FrequencyUnit } from "../../../src/lib/recurring.js"
 import { isValidCurrency } from "../../../src/lib/currencies.js"
 
 const ISO = /^\d{4}-\d{2}-\d{2}$/
+const CURRENCY_LOCKED = { error: "This debt already has payments — its currency can't change. Add a new debt in the other currency instead.", code: "currency_locked" }
 
 /** The repayment rule in the shape the debt screens read it. */
 async function serializeRepayment(orgId: string, rule: DebtRuleRow | null) {
@@ -119,28 +120,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (b.kind.trim().length > MAX_DEBT_KIND_LENGTH) return res.status(400).json({ error: `Type must be ${MAX_DEBT_KIND_LENGTH} characters or fewer` })
       detailPatch.kind = normalizeDebtKind(b.kind)
     }
+    // Set when the request moves the debt to another currency; applied below in
+    // one guarded batch, once the rest of the body has validated.
+    let currencyChange: string | null = null
     if (typeof b.currency === "string") {
       const c = b.currency.trim().toUpperCase()
       if (!isValidCurrency(c)) return res.status(400).json({ error: "Unknown currency" })
-      if (c !== debtCurrencyOf(row)) {
-        // Every row on the debt was recorded in its old currency, and a repayment
-        // rule pays it from an account in that currency. Relabelling either would
-        // turn 10,000 INR owed into 10,000 EUR owed. Only a debt with nothing
-        // behind its balance but its own system rows (opening balance,
-        // adjustments) may change — the same rule an account follows.
-        const [{ moved }] = await db
-          .select({ moved: count() })
-          .from(transactions)
-          .where(and(eq(transactions.wealthAccountId, id), eq(transactions.isSystem, false)))
-        const [{ rules }] = await db
-          .select({ rules: count() })
-          .from(recurringRules)
-          .where(and(eq(recurringRules.organizationId, orgId), eq(recurringRules.debtAccountId, id)))
-        if (Number(moved) > 0 || Number(rules) > 0) {
-          return res.status(409).json({ error: "This debt already has payments — its currency can't change. Add a new debt in the other currency instead.", code: "currency_locked" })
-        }
-        accountPatch.currencyCode = c
-      }
+      if (c !== debtCurrencyOf(row)) currencyChange = c
       detailPatch.currency = c
     }
     const original = num(b.original_amount)
@@ -193,25 +179,82 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
-    // ── The recurring repayment ─────────────────────────────────────────────
+    // ── Everything that can still refuse runs BEFORE the currency batch ─────
+    // The batch commits on its own, so a 400 after it would leave the debt in
+    // the new currency for a request the caller was told failed.
     const existingRules = await loadDebtRules(orgId, [id])
     const current = drivingRule(existingRules)
-    if (b.repayment !== undefined) {
-      const applied = await applyRepayment(orgId, userId, id, directionOf(row.account.type), detailPatch.currency ?? debtCurrencyOf(row), current, b.repayment, today)
-      if ("error" in applied) return res.status(400).json({ error: applied.error, ...(applied.code ? { code: applied.code } : {}) })
+    // A rule pays the debt in its currency, so a debt with one can't change it
+    // (the batch below re-checks atomically). Said first, so a repayment in the
+    // same body isn't blamed for a mismatch the lock causes.
+    if (currencyChange && existingRules.length > 0) return res.status(409).json(CURRENCY_LOCKED)
+    const repayment = b.repayment !== undefined
+      ? await planRepayment(orgId, userId, id, directionOf(row.account.type), detailPatch.currency ?? debtCurrencyOf(row), current, b.repayment, today)
+      : null
+    if (repayment && "error" in repayment) return res.status(400).json(repayment)
+    const reconcile = num(b.current_balance)
+    if (reconcile != null && (Number.isNaN(reconcile) || reconcile < 0 || amountExceedsLimit(reconcile))) {
+      return res.status(400).json({ error: "current_balance must be 0 or more" })
+    }
+
+    if (currencyChange) {
+      // Every row on the debt was recorded in its old currency, a payment's
+      // allocation (debt_payments — an interest-only one leaves no row on the
+      // debt itself) reads in it, and a repayment rule pays it from an account
+      // in it. Relabelling any of them would turn 10,000 INR owed into 10,000
+      // EUR owed. Only a debt with nothing behind its balance but its own system
+      // rows (opening balance, adjustments) may change — the same rule an
+      // account follows. Trashed rows and allocations count: a restore would
+      // bring them back in the old currency.
+      //
+      // ONE batch, so the account, its rows and debt_details can never be left
+      // in different currencies, and the guard is part of the write itself: a
+      // payment committed after any earlier read still blocks it. The account
+      // UPDATE carries the guard (and the old currency, so two racing changes
+      // can't both win); the other two only follow an account that now reads
+      // the new currency inside this same transaction. Runs before the
+      // repayment is written below, which may create this debt's first rule in it.
+      const noHistory = and(
+        eq(wealthAccounts.id, id),
+        row.account.currencyCode ? eq(wealthAccounts.currencyCode, row.account.currencyCode) : isNull(wealthAccounts.currencyCode),
+        sql`not exists (select 1 from ${transactions} where ${transactions.wealthAccountId} = ${id} and ${transactions.isSystem} = false)`,
+        sql`not exists (select 1 from ${debtPayments} where ${debtPayments.wealthAccountId} = ${id})`,
+        sql`not exists (select 1 from ${recurringRules} where ${recurringRules.debtAccountId} = ${id})`,
+      )
+      const moved = sql`exists (select 1 from ${wealthAccounts} where ${wealthAccounts.id} = ${id} and ${wealthAccounts.currencyCode} = ${currencyChange})`
+      // The rows follow only SYSTEM rows: the guard says nothing else exists,
+      // and a payment leg that commits while this batch waits on the lock keeps
+      // the currency it was posted in rather than being relabelled here.
+      //
+      // The row lock comes FIRST, in its own statement. A guard evaluated while
+      // waiting on a payment's lock re-reads only the account row afterwards —
+      // its NOT EXISTS keeps the snapshot from before the wait, so a repayment
+      // that commits meanwhile would not block the change (MC-126). Taken
+      // first, the guarded UPDATE starts a fresh snapshot after the wait and
+      // sees that payment.
+      const [, claimed] = await dbBatch([
+        db.select({ id: wealthAccounts.id }).from(wealthAccounts).where(eq(wealthAccounts.id, id)).for("update"),
+        db.update(wealthAccounts).set({ currencyCode: currencyChange, updatedBy: userId, updatedAt: new Date() }).where(noHistory).returning({ id: wealthAccounts.id }),
+        db.update(transactions).set({ currencyCode: currencyChange }).where(and(eq(transactions.wealthAccountId, id), eq(transactions.isSystem, true), moved)),
+        db.update(debtDetails).set({ currency: currencyChange, updatedAt: new Date() }).where(and(eq(debtDetails.id, row.details.id), moved)),
+      ])
+      if (claimed.length === 0) return res.status(409).json(CURRENCY_LOCKED)
+    }
+
+    // ── The recurring repayment ─────────────────────────────────────────────
+    if (repayment) {
+      const rule = await repayment.write()
       // The rule is the schedule. Mirroring it here — rather than trusting the
       // three loose fields the same request may also carry — is what stops the
       // planner describing a schedule nobody is paying.
-      if (applied.rule) Object.assign(detailPatch, debtScheduleMirror(applied.rule))
+      if (rule) Object.assign(detailPatch, debtScheduleMirror(rule))
     }
 
     // Reconciliation: the balance the lender shows. Recorded as a system
     // Balance Adjustment for the difference — never by editing past payments.
-    const reconcile = num(b.current_balance)
-    if (reconcile !== undefined && reconcile !== null) {
-      if (Number.isNaN(reconcile) || reconcile < 0 || amountExceedsLimit(reconcile)) return res.status(400).json({ error: "current_balance must be 0 or more" })
+    if (reconcile != null) {
       // Read the balance HERE, not from the copy loaded at the top of the
-      // handler: applyRepayment and the lookups above are several round trips,
+      // handler: the repayment write and the lookups above are several round trips,
       // and a repayment materialising in between would be erased by an absolute
       // stamp. The adjustment row and the balance move by the same delta, so
       // the ledger and the stored figure stay in step the way every other money
@@ -240,11 +283,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (Object.keys(accountPatch).length) {
       await db.update(wealthAccounts).set({ ...accountPatch, updatedBy: userId, updatedAt: new Date() }).where(eq(wealthAccounts.id, id))
     }
-    // A permitted currency change carries the debt's own system rows with it
-    // (checked above: there is nothing else on the account).
-    if (accountPatch.currencyCode) {
-      await db.update(transactions).set({ currencyCode: accountPatch.currencyCode }).where(eq(transactions.wealthAccountId, id))
-    }
     if (Object.keys(detailPatch).length) {
       await db.update(debtDetails).set({ ...detailPatch, updatedAt: new Date() }).where(eq(debtDetails.id, row.details.id))
     }
@@ -267,10 +305,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method === "DELETE") {
     if (!canDelete(role)) return res.status(403).json({ error: "Forbidden" })
+    // Trashed rows count too, as on DELETE /api/wealth/accounts/:id. A hard
+    // delete SET NULLs their wealth_account_id, so restoring a trashed
+    // repayment group later would debit the bank while its debt leg posts
+    // nowhere — money leaving with nothing on the other side.
     const [{ total }] = await db
       .select({ total: count() })
       .from(transactions)
-      .where(and(eq(transactions.wealthAccountId, id), isNull(transactions.deletedAt)))
+      .where(eq(transactions.wealthAccountId, id))
     if (total > 0) {
       // Keep the history: close the account (it stays in the "closed" list). Its
       // repayment rule stops with it — a closed debt that kept taking money
@@ -300,8 +342,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
  * the occurrences it already posted are real transactions, and a rule the user
  * can see and restart explains them. Deleting the row would leave a history of
  * payments with nothing that says where they came from.
+ *
+ * Two steps: every refusal is decided here, and nothing is written until the
+ * caller runs `write()` — after the rest of the request has validated too.
  */
-async function applyRepayment(
+async function planRepayment(
   orgId: string,
   userId: string,
   debtAccountId: string,
@@ -310,21 +355,25 @@ async function applyRepayment(
   current: DebtRuleRow | null,
   raw: unknown,
   today: string,
-): Promise<{ rule: DebtRuleRow | null } | { error: string; code?: string }> {
+): Promise<{ write: () => Promise<DebtRuleRow | null> } | { error: string; code?: string; context?: "debt"; currency?: string }> {
   const off = raw === null || (typeof raw === "object" && raw !== null && (raw as Record<string, unknown>).enabled === false)
   if (off) {
-    if (!current) return { rule: null }
-    // Return the STOPPED row, don't swallow it. The caller mirrors whatever
-    // comes back, and debtScheduleMirror writes nextDueDate: null for an
-    // inactive rule — returning null here skipped the mirror entirely, so the
-    // debt kept a due date nothing would ever honour and reported itself
-    // overdue from that date onwards, forever.
-    const [stopped] = await db
-      .update(recurringRules)
-      .set({ active: false, lastError: "", updatedBy: userId, updatedAt: new Date() })
-      .where(eq(recurringRules.id, current.id))
-      .returning()
-    return { rule: (stopped as DebtRuleRow | undefined) ?? null }
+    return {
+      write: async () => {
+        if (!current) return null
+        // Return the STOPPED row, don't swallow it. The caller mirrors whatever
+        // comes back, and debtScheduleMirror writes nextDueDate: null for an
+        // inactive rule — returning null here skipped the mirror entirely, so the
+        // debt kept a due date nothing would ever honour and reported itself
+        // overdue from that date onwards, forever.
+        const [stopped] = await db
+          .update(recurringRules)
+          .set({ active: false, lastError: "", updatedBy: userId, updatedAt: new Date() })
+          .where(eq(recurringRules.id, current.id))
+          .returning()
+        return (stopped as DebtRuleRow | undefined) ?? null
+      },
+    }
   }
   if (typeof raw !== "object" || raw === null) return { error: "repayment must be an object or null" }
   const r = raw as Record<string, unknown>
@@ -342,7 +391,7 @@ async function applyRepayment(
   }
   // Each instalment's principal is one amount on both legs — same currency only.
   if (acc.currencyCode && acc.currencyCode.toUpperCase() !== currency) {
-    return { error: `A repayment for a ${currency} debt must come from a ${currency} account`, code: "currency_mismatch" }
+    return { error: `A repayment for a ${currency} debt must come from a ${currency} account`, code: "currency_mismatch", context: "debt", currency }
   }
 
   const amount = r.amount === undefined && current ? Number(current.amount) : Number(r.amount)
@@ -397,52 +446,56 @@ async function applyRepayment(
     today,
   })
 
-  if (current) {
-    const [updated] = await db
-      .update(recurringRules)
-      .set({
-        name,
-        type: direction === "receivable" ? "incoming" : "outgoing",
-        amount: amount.toFixed(2),
-        currencyCode: acc.currencyCode ?? currency,
-        wealthAccountId: acc.id,
-        frequencyUnit: freq.unit,
-        frequencyInterval: freq.interval,
-        startDate,
-        endDate,
-        nextDueAt,
-        active: wantActive,
-        lastError: "",
-        updatedBy: userId,
-        updatedAt: new Date(),
-      })
-      .where(eq(recurringRules.id, current.id))
-      .returning()
-    return { rule: updated ?? null }
-  }
+  return {
+    write: async () => {
+      if (current) {
+        const [updated] = await db
+          .update(recurringRules)
+          .set({
+            name,
+            type: direction === "receivable" ? "incoming" : "outgoing",
+            amount: amount.toFixed(2),
+            currencyCode: acc.currencyCode ?? currency,
+            wealthAccountId: acc.id,
+            frequencyUnit: freq.unit,
+            frequencyInterval: freq.interval,
+            startDate,
+            endDate,
+            nextDueAt,
+            active: wantActive,
+            lastError: "",
+            updatedBy: userId,
+            updatedAt: new Date(),
+          })
+          .where(eq(recurringRules.id, current.id))
+          .returning()
+        return updated ?? null
+      }
 
-  const [created] = await db
-    .insert(recurringRules)
-    .values({
-      organizationId: orgId,
-      clientId: null,
-      kind: "debt",
-      debtAccountId,
-      wealthAccountId: acc.id,
-      toAccountId: null,
-      name,
-      type: direction === "receivable" ? "incoming" : "outgoing",
-      amount: amount.toFixed(2),
-      currencyCode: acc.currencyCode ?? currency,
-      category: "Transfer",
-      frequencyUnit: freq.unit,
-      frequencyInterval: freq.interval,
-      startDate,
-      endDate,
-      nextDueAt,
-      createdBy: userId,
-      updatedBy: userId,
-    })
-    .returning()
-  return { rule: created ?? null }
+      const [created] = await db
+        .insert(recurringRules)
+        .values({
+          organizationId: orgId,
+          clientId: null,
+          kind: "debt",
+          debtAccountId,
+          wealthAccountId: acc.id,
+          toAccountId: null,
+          name,
+          type: direction === "receivable" ? "incoming" : "outgoing",
+          amount: amount.toFixed(2),
+          currencyCode: acc.currencyCode ?? currency,
+          category: "Transfer",
+          frequencyUnit: freq.unit,
+          frequencyInterval: freq.interval,
+          startDate,
+          endDate,
+          nextDueAt,
+          createdBy: userId,
+          updatedBy: userId,
+        })
+        .returning()
+      return created ?? null
+    },
+  }
 }

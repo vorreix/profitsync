@@ -18,6 +18,7 @@ import {
 } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { apiErrorMessage, apiGet, apiPatch } from "@/lib/api"
+import { isSplitTx } from "@/lib/tx-grouping"
 import { WEALTH_CHANGED_EVENT } from "@/lib/data-events"
 import { NETWORK_LABEL, cardDisplayName, expiryLabel, isCardExpired, isCardNetwork, maskedTail } from "@/lib/cards"
 import { suggestFeeCategory } from "@/lib/credit-card"
@@ -26,7 +27,8 @@ import { useCategories } from "@/lib/use-categories"
 import { useCurrency } from "@/lib/currency-context"
 import { useOrg } from "@/lib/org-context"
 import { canDeleteRole, canWriteRole } from "@/lib/roles"
-import { accountDisplayName, formatMoney, useBalancePrivacy } from "@/lib/wealth"
+import { accountCurrency, accountDisplayName, formatMoney, useBalancePrivacy } from "@/lib/wealth"
+import { ledgerDescription } from "@/lib/wealth-ledger"
 import { useUrlModal } from "@/hooks/use-url-modal"
 import { cn } from "@/lib/utils"
 import { CardVisual } from "@/components/cards/CardVisual"
@@ -106,8 +108,6 @@ export function CardDetailPage() {
 
   const view = useUrlModal("view")
   const [viewTx, setViewTx] = useState<Transaction | null>(null)
-
-  const fmt = (n: number) => formatMoney(n, currency, balancesVisible)
 
   const load = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
     if (!cardId) return
@@ -198,7 +198,15 @@ export function CardDetailPage() {
       const token = await getToken()
       if (!token) return
       try {
-        const tx = await apiGet<Transaction>(`/api/transactions/${v}`, token)
+        let tx = await apiGet<Transaction>(`/api/transactions/${v}`, token)
+        // This page lists LEGS, but the detail GET answers a split with the
+        // GROUP's money (summed, or converted when the legs' currencies differ).
+        // Resolve the leg the link names, as the list would show it — otherwise
+        // the modal shows, and its edit sheet saves, the group figure on one leg.
+        if (isSplitTx(tx) && tx.group_id) {
+          const legs = await apiGet<Transaction[]>(`/api/transactions?groupId=${tx.group_id}`, token)
+          tx = legs.find((l) => l.id === v) ?? tx
+        }
         if (!cancelled) setViewTx(tx)
       } catch {
         view.close()
@@ -237,6 +245,11 @@ export function CardDetailPage() {
   // The ledger account the sheets act on — the real row when it arrived, else
   // one rebuilt from the card's joined columns (same balance, same limit).
   const ledgerAccount = useMemo(() => (card ? account ?? accountFromCard(card) : null), [card, account])
+  // Every figure here is in the card's OWN currency (its ledger account's) —
+  // an INR card in a EUR workspace reads ₹, never € (MC-022). A row or rule
+  // carries its own currency; this is the fallback for the account figures.
+  const cardCurrency = accountCurrency(ledgerAccount, currency)
+  const fmt = (n: number, cur?: string | null) => formatMoney(n, cur || cardCurrency, balancesVisible)
   const creditSummary: CreditCardSummary | null = useMemo(
     () => (summary?.credit && ledgerAccount ? { ...summary.credit, account: ledgerAccount } : null),
     [summary, ledgerAccount],
@@ -448,7 +461,7 @@ export function CardDetailPage() {
           <CreditCardPanel
             account={ledgerAccount}
             summary={creditSummary}
-            currency={currency}
+            currency={cardCurrency}
             balancesVisible={balancesVisible}
             canWrite={canWrite && !closed}
             embedded
@@ -504,7 +517,7 @@ export function CardDetailPage() {
                     </p>
                   </div>
                   <p className={`shrink-0 text-sm font-semibold tabular-nums ${r.type === "incoming" ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
-                    {r.type === "incoming" ? "+" : "−"}{fmt(Number(r.amount))}
+                    {r.type === "incoming" ? "+" : "−"}{fmt(Number(r.amount), r.currency_code)}
                   </p>
                 </button>
               ))}
@@ -554,7 +567,7 @@ export function CardDetailPage() {
                         : <ArrowDownRight className="size-4 text-red-600 dark:text-red-400" />}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium">{tx.description || (tx.type === "incoming" ? t("income") : t("expenses"))}</p>
+                    <p className="truncate text-sm font-medium">{ledgerDescription(tx, t) || (tx.type === "incoming" ? t("income") : t("expenses"))}</p>
                     <div className="mt-0.5 flex items-center gap-2">
                       <span className="text-xs text-muted-foreground">{formatDate(tx.date)}</span>
                       <TxKindBadge tx={{ ...tx, wealth_account_type: ledgerAccount.type }} />
@@ -565,7 +578,7 @@ export function CardDetailPage() {
                     </div>
                   </div>
                   <p className={`shrink-0 text-sm font-semibold tabular-nums ${tx.type === "incoming" ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
-                    {tx.type === "incoming" ? "+" : "−"}{fmt(Number(tx.amount))}
+                    {tx.type === "incoming" ? "+" : "−"}{fmt(Number(tx.amount), tx.currency_code)}
                   </p>
                 </button>
               ))}
@@ -585,7 +598,7 @@ export function CardDetailPage() {
         tx={viewTx}
         open={!!view.value && !!viewTx}
         onClose={view.close}
-        currency={currency}
+        currency={cardCurrency}
         canEdit={canWrite}
         canDelete={canDelete}
         onEdit={(tx) => { view.close(); setEditTx(tx); setAddOpen(true) }}
@@ -597,7 +610,7 @@ export function CardDetailPage() {
         onEditingChange={() => {}}
         adjusting={adjusting}
         onAdjustingChange={setAdjusting}
-        currency={currency}
+        currency={cardCurrency}
         onChanged={() => void load({ silent: true })}
       />
 
@@ -606,7 +619,7 @@ export function CardDetailPage() {
         cardId={card.id}
         open={addOpen}
         onOpenChange={(o) => { setAddOpen(o); if (!o) setEditTx(null) }}
-        currency={currency}
+        currency={cardCurrency}
         isPersonal={isPersonal}
         onSaved={() => void load({ silent: true })}
         editTx={editTx}
@@ -622,6 +635,8 @@ export function CardDetailPage() {
           card={ledgerAccount}
           summary={creditSummary}
           accounts={accounts}
+          // The fallback for legacy payers with no currency (= reporting); the
+          // card's own currency comes from ledgerAccount.currency_code.
           currency={currency}
           initialPreset={payPreset}
           onDone={() => void load({ silent: true })}

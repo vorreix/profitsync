@@ -5,7 +5,7 @@
 // unit-tested; the API and the UI both call these.
 
 // `.js` extension: this module is reachable from the api/ functions (Node ESM).
-import { addPeriods, amortize, fromCents, monthKey, monthlyEquivalent, nextDueAfter, periodsPerYear, toCents, type Cents, type PaymentFrequency } from "./debt-math.js"
+import { addPeriods, amortize, finalPaymentTolerance, fromCents, monthKey, monthlyEquivalent, nextDueAfter, periodsPerYear, toCents, type Cents, type PaymentFrequency } from "./debt-math.js"
 
 /** What the user SETS. Everything else is derived. */
 export type DebtLifecycle = "active" | "paused" | "paid_off" | "refinanced" | "written_off"
@@ -47,8 +47,48 @@ export function derivedStatus(d: Pick<DebtLike, "lifecycle" | "owed" | "nextDueD
   return "active"
 }
 
+/**
+ * The lifecycles that still count toward totals — the hub's AND net worth on
+ * /wealth (api/_lib/wealth-summary.ts filters on this same list in SQL, so a
+ * written-off debt leaves both screens at once).
+ */
+export const OPEN_LIFECYCLES: readonly DebtLifecycle[] = ["active", "paused"]
+
 /** Whether the debt still counts toward totals / the planner. */
-export const isOpenDebt = (d: Pick<DebtLike, "lifecycle" | "owed">): boolean => d.lifecycle === "active" && d.owed > 0 || d.lifecycle === "paused" && d.owed > 0
+export const isOpenDebt = (d: Pick<DebtLike, "lifecycle" | "owed">): boolean => OPEN_LIFECYCLES.includes(d.lifecycle) && d.owed > 0
+
+/** One amount per currency. Debts keep their native currency, so a hub total is a LIST, never one number. */
+export type CurrencyAmount = { currency: string; amount: Cents }
+
+/** Sum native amounts per currency (never converted), largest first. */
+export function sumByCurrency(items: Iterable<{ currency: string; amount: Cents }>): CurrencyAmount[] {
+  const map = new Map<string, Cents>()
+  for (const x of items) map.set(x.currency, (map.get(x.currency) ?? 0) + x.amount)
+  return [...map].map(([currency, amount]) => ({ currency, amount })).sort((a, b) => b.amount - a.amount || a.currency.localeCompare(b.currency))
+}
+
+/**
+ * Units of ONE common currency per unit of each currency (the reporting
+ * currency at the latest rate) — used only to RANK debts, never to display a
+ * figure. ¥50,000 is ~$340, not "more" than $600.
+ */
+export type RankingRates = ReadonlyMap<string, number>
+
+/**
+ * Comparable values for ranking: native cents when every item shares one
+ * currency, converted with `rates` otherwise, or null when any currency has no
+ * rate — a ranking across currencies is then refused, never guessed from raw cents.
+ */
+function rankingValues<T>(items: T[], cents: (x: T) => Cents, currency: (x: T) => string, rates?: RankingRates): number[] | null {
+  const single = items.every((x) => currency(x) === currency(items[0]))
+  const out: number[] = []
+  for (const x of items) {
+    const r = single ? 1 : rates?.get(currency(x))
+    if (r == null || !Number.isFinite(r)) return null
+    out.push(cents(x) * r)
+  }
+  return out
+}
 
 /** Repaid share 0..100 (null without a known original amount or when nothing was ever owed). */
 export function progressPct(original: Cents | null, owed: Cents): number | null {
@@ -59,9 +99,90 @@ export function progressPct(original: Cents | null, owed: Cents): number | null 
 export type ScheduledPayment = { debtId: string; date: string; amount: Cents; paid: boolean; paidAmount: Cents }
 
 /**
+ * `addPeriods(anchor, frequency, -k)`, taken as a FORWARD step from the anchor
+ * moved back whole years: debt-math's month arithmetic wraps a negative month
+ * across a year boundary ("2026-01-15" − 1 month → "2025-00-15"). Day-based
+ * rhythms step back directly.
+ */
+export function periodsBefore(anchor: string, frequency: Exclude<PaymentFrequency, "irregular">, k: number): string {
+  if (frequency === "weekly" || frequency === "biweekly") return addPeriods(anchor, frequency, -k)
+  const perYear = periodsPerYear(frequency)!
+  const years = Math.ceil(k / perYear)
+  return addPeriods(`${String(Number(anchor.slice(0, 4)) - years).padStart(4, "0")}${anchor.slice(4)}`, frequency, years * perYear - k)
+}
+
+/**
+ * What a month's payments on `d` (`paid`) settle of that month's instalments
+ * the schedule has already ROLLED PAST. Recording a payment moves next_due_date
+ * beyond the instalment it paid (a rule-serviced debt mirrors the rule's next
+ * date the same way), so a paid Sep 7 is no longer a row, yet its payment is
+ * still in September's total — it must settle Sep 7, not Sep 14 (MC-094).
+ * Never more than was paid: an instalment skipped WITHOUT a payment (a debt that
+ * started mid-month, a due date moved by hand) is not invented.
+ */
+function settledBeforeNextDue(d: DebtLike, month: string, paid: Cents): Cents {
+  if (!paid || !d.paymentAmount || !d.nextDueDate || !d.frequency || d.frequency === "irregular") return 0
+  let count = 0
+  for (let k = 1; k <= 400; k++) {
+    const key = monthKey(periodsBefore(d.nextDueDate, d.frequency, k))
+    if (key < month) break
+    if (key === month) count++
+  }
+  return Math.min(paid, count * d.paymentAmount)
+}
+
+/**
+ * One debt's instalments from its next due date up to (not including) the month
+ * `endKey`, each with what that month's payments (`paidIn`) already cover — the
+ * month's money first settles the instalments the schedule rolled past, and the
+ * rest is SPREAD over its rows in date order, each row taking at most its own
+ * amount (MC-094).
+ *
+ * The walk stops at PAYOFF (MC-DB04): `owed` is today's balance, so the unpaid
+ * part of the rows can only add up to what `amortize` — the engine behind the
+ * payoff date — says it takes to clear it, and the last row is the payoff figure
+ * with the same small-residue fold as the rule's last instalment
+ * (payoffCappedAmount). Money already paid has already left `owed`, so a row it
+ * covers draws nothing. A payment that never clears the balance (it does not
+ * cover the interest) keeps the uncapped walk.
+ */
+function scheduledRows(d: DebtLike, endKey: string, paidIn: (month: string) => Cents): ScheduledPayment[] {
+  if (!isOpenDebt(d) || !d.nextDueDate || !d.frequency || d.frequency === "irregular" || !d.paymentAmount) return []
+  const payment = d.paymentAmount
+  const plan = amortize({ balance: d.owed, annualRatePct: d.annualRatePct ?? 0, payment, ppy: periodsPerYear(d.frequency)!, maxPeriods: 400, keepRows: false })
+  let toPay = plan.converges ? plan.totalPaid : Infinity
+  // What is still unallocated of each month's payments on this debt.
+  const left = new Map<string, Cents>()
+  const out: ScheduledPayment[] = []
+  // Always step from the debt's own anchor so month-end days never drift.
+  for (let n = 0, date = d.nextDueDate; monthKey(date) < endKey && n < 400; date = addPeriods(d.nextDueDate, d.frequency, ++n)) {
+    const key = monthKey(date)
+    let available = left.get(key)
+    if (available === undefined) {
+      const paid = paidIn(key)
+      available = paid - settledBeforeNextDue(d, key, paid)
+    }
+    const paidAmount = Math.max(0, Math.min(payment, available))
+    left.set(key, available - paidAmount)
+    const need = payment - paidAmount
+    if (need > 0 && toPay - need <= finalPaymentTolerance(payment)) {
+      // The last instalment: whatever is left, residue folded in.
+      const amount = paidAmount + toPay
+      out.push({ debtId: d.id, date, amount, paid: paidAmount >= amount, paidAmount })
+      break
+    }
+    toPay -= need
+    out.push({ debtId: d.id, date, amount: payment, paid: need <= 0, paidAmount })
+  }
+  return out
+}
+
+/**
  * The expected payments from `from` for `months` months, using each debt's next
- * due date and frequency. `paidByMonth` marks a scheduled month as paid when a
- * recorded payment exists in that calendar month (irregular debts have no rows).
+ * due date and frequency (irregular debts have no rows), ending at payoff — see
+ * `scheduledRows`. `paidByMonth` is what was recorded on the debt in each
+ * calendar month. One €100 payment on a weekly €100 debt settles one week, not
+ * all four, and not the next one either (MC-094).
  */
 export function upcomingSchedule(
   debts: DebtLike[],
@@ -71,65 +192,72 @@ export function upcomingSchedule(
 ): ScheduledPayment[] {
   // "The next N months" = this calendar month and the N−1 after it.
   const endKey = monthKey(addPeriods(from, "monthly", months))
-  const out: ScheduledPayment[] = []
-  for (const d of debts) {
-    if (!isOpenDebt(d) || !d.nextDueDate || !d.frequency || d.frequency === "irregular" || !d.paymentAmount) continue
-    let date = d.nextDueDate
-    let n = 0
-    while (monthKey(date) < endKey && n < 400) {
-      const paidAmount = paidByMonth.get(`${d.id}:${monthKey(date)}`) ?? 0
-      out.push({ debtId: d.id, date, amount: d.paymentAmount, paid: paidAmount > 0, paidAmount })
-      // Always step from the debt's own anchor so month-end days never drift.
-      date = addPeriods(d.nextDueDate, d.frequency, ++n)
-    }
-  }
-  return out.sort((a, b) => a.date.localeCompare(b.date) || a.debtId.localeCompare(b.debtId))
+  return debts
+    .flatMap((d) => scheduledRows(d, endKey, (key) => paidByMonth.get(`${d.id}:${key}`) ?? 0))
+    .sort((a, b) => a.date.localeCompare(b.date) || a.debtId.localeCompare(b.debtId))
 }
 
 export type MonthObligations = { required: Cents; paid: Cents; remaining: Cents; overdue: Cents }
 
 /**
- * This month's debt obligations. `required` = every scheduled payment dated in
- * the month (plus an overdue one carried in from before); `paid` = what was
- * actually recorded this month (any amount, on any debt); `remaining` never
- * goes below zero.
+ * This month's debt obligations, ONE ROW PER DEBT CURRENCY (MC-028) — an INR
+ * instalment and a EUR one are two figures, never 5,200 of anything.
+ * `required` = every scheduled payment dated in the month (plus the missed ones
+ * carried in from before — the same overdue rows Upcoming lists — plus what this month's payments settled of the
+ * instalments the schedule already rolled past — a paid Sep 7 still counts, so
+ * required − paid stays honest, MC-094); `paid` = what was actually recorded
+ * this month (any amount, on any debt of that currency); `remaining` never goes
+ * below zero. Payments on a debt not in `debts` cannot be labelled and are left out.
  */
-export function monthObligations(debts: DebtLike[], today: string, paidThisMonth: Map<string, Cents>): MonthObligations {
+export function monthObligations(debts: DebtLike[], today: string, paidThisMonth: Map<string, Cents>): (MonthObligations & { currency: string })[] {
   const month = monthKey(today)
-  let required = 0
-  let overdue = 0
+  const rows = new Map<string, MonthObligations>()
+  const row = (currency: string) => {
+    let r = rows.get(currency)
+    if (!r) rows.set(currency, (r = { required: 0, paid: 0, remaining: 0, overdue: 0 }))
+    return r
+  }
   for (const d of debts) {
     if (!isOpenDebt(d) || !d.paymentAmount || !d.nextDueDate || !d.frequency || d.frequency === "irregular") continue
-    if (d.nextDueDate < today && monthKey(d.nextDueDate) !== month) {
-      overdue += d.paymentAmount
-      required += d.paymentAmount
-    }
-    // Every scheduled date falling in this month.
-    let date = d.nextDueDate
-    let n = 0
-    while (monthKey(date) < month && n < 400) date = addPeriods(d.nextDueDate, d.frequency, ++n)
-    while (monthKey(date) === month && n < 400) {
-      required += d.paymentAmount
-      if (date < today) overdue += d.paymentAmount
-      date = addPeriods(d.nextDueDate, d.frequency, ++n)
+    const r = row(d.currency)
+    const paid = paidThisMonth.get(d.id) ?? 0
+    r.required += settledBeforeNextDue(d, month, paid)
+    // The same payoff-capped rows as the Upcoming list: those from earlier
+    // months are missed instalments carried in (all of them — each one drew on
+    // the payoff budget), the rest are this month's.
+    const due = scheduledRows(d, monthKey(addPeriods(`${month}-01`, "monthly", 1)), (key) => (key === month ? paid : 0))
+    for (const s of due) {
+      r.required += s.amount
+      if (s.date < today) r.overdue += s.amount
     }
   }
-  let paid = 0
-  for (const v of paidThisMonth.values()) paid += v
-  return { required, paid, remaining: Math.max(0, required - paid), overdue }
+  const currencyOf = new Map(debts.map((d) => [d.id, d.currency]))
+  for (const [id, v] of paidThisMonth) {
+    const currency = currencyOf.get(id)
+    if (currency && v) row(currency).paid += v
+  }
+  return [...rows]
+    .map(([currency, r]) => ({ currency, ...r, remaining: Math.max(0, r.required - r.paid) }))
+    .sort((a, b) => b.required - a.required || b.paid - a.paid || a.currency.localeCompare(b.currency))
 }
 
-/** The single next scheduled payment across all debts (null when nothing is scheduled). */
-export function nextPayment(debts: DebtLike[], today: string): { debt: DebtLike; date: string; amount: Cents } | null {
-  let best: { debt: DebtLike; date: string; amount: Cents } | null = null
-  for (const d of debts) {
-    if (!isOpenDebt(d) || !d.nextDueDate || !d.paymentAmount) continue
-    // An overdue date IS the next thing to pay.
-    const date = d.nextDueDate
-    if (!best || date < best.date || (date === best.date && d.paymentAmount > best.amount)) best = { debt: d, date, amount: d.paymentAmount }
-  }
+/**
+ * The single next scheduled payment across all debts (null when nothing is
+ * scheduled). Two debts due the same day: the larger payment wins, compared
+ * through `rates` across currencies (MC-142) — and when they cannot be compared,
+ * the first in list order, never a raw comparison of yen against dollars.
+ */
+export function nextPayment(debts: DebtLike[], today: string, rates?: RankingRates): { debt: DebtLike; date: string; amount: Cents } | null {
+  // An overdue date IS the next thing to pay.
+  const due = debts.filter((d) => isOpenDebt(d) && !!d.nextDueDate && !!d.paymentAmount)
+  if (due.length === 0) return null
+  const date = due.reduce((m, d) => (d.nextDueDate! < m ? d.nextDueDate! : m), due[0].nextDueDate!)
+  const tied = due.filter((d) => d.nextDueDate === date)
+  const values = rankingValues(tied, (d) => d.paymentAmount!, (d) => d.currency, rates)
+  let i = 0
+  if (values) for (let k = 1; k < tied.length; k++) if (values[k] > values[i]) i = k
   void today
-  return best
+  return { debt: tied[i], date, amount: tied[i].paymentAmount! }
 }
 
 export type DebtFreeEstimate =
@@ -160,9 +288,9 @@ export function owedByCurrency(debts: DebtLike[]): { currency: string; owed: Cen
   return [...map].map(([currency, owed]) => ({ currency, owed })).sort((a, b) => b.owed - a.owed)
 }
 
-/** Scheduled payments per month across open debts (monthly equivalents). */
-export function requiredMonthly(debts: DebtLike[]): Cents {
-  return debts.filter(isOpenDebt).reduce((s, d) => s + monthlyEquivalent(d.paymentAmount ?? 0, d.frequency), 0)
+/** Scheduled payments per month across open debts (monthly equivalents), per debt currency (MC-028). */
+export function requiredMonthly(debts: DebtLike[]): CurrencyAmount[] {
+  return sumByCurrency(debts.filter(isOpenDebt).map((d) => ({ currency: d.currency, amount: monthlyEquivalent(d.paymentAmount ?? 0, d.frequency) }))).filter((x) => x.amount > 0)
 }
 
 // ── Plain-language insights ──────────────────────────────────────────────────
@@ -180,23 +308,37 @@ export type DebtInsight =
 export function debtInsights(input: {
   debts: DebtLike[]
   today: string
-  interestPaidThisMonth: Cents
-  currency: string
+  /**
+   * Interest + fees paid this month, per DEBT currency (MC-089) — never
+   * $100 + €25 read as €125. Still ONE insight however many currencies, so it
+   * cannot crowd the others out of the cap: the hub renders every part from
+   * `summary.interest_this_month_by_currency`; `amount`/`currency` carry the
+   * first part (each correctly labelled) for a bundle that predates that list.
+   */
+  interestPaidThisMonth: CurrencyAmount[]
   /** Per-debt payoff estimates (already computed by the caller). */
   estimates: Map<string, DebtFreeEstimate>
+  /** Latest rates for RANKING across currencies (see `RankingRates`). */
+  rates?: RankingRates
 }): DebtInsight[] {
   const open = input.debts.filter(isOpenDebt)
   const out: DebtInsight[] = []
   if (open.length === 0) return out
-  if (input.interestPaidThisMonth > 0) out.push({ key: "interest_this_month", params: { amount: fromCents(input.interestPaidThisMonth), currency: input.currency } })
+  const interest = input.interestPaidThisMonth.find((x) => x.amount > 0)
+  if (interest) out.push({ key: "interest_this_month", params: { amount: fromCents(interest.amount), currency: interest.currency } })
   const rated = open.filter((d) => d.annualRatePct != null && d.annualRatePct > 0).sort((a, b) => b.annualRatePct! - a.annualRatePct!)
   if (rated.length > 1) out.push({ key: "highest_rate", params: { name: rated[0].name, rate: rated[0].annualRatePct! } })
   for (const d of open) {
     const e = input.estimates.get(d.id)
     if (e?.kind === "date" && e.periods <= 3) out.push({ key: "few_payments_left", params: { name: d.name, count: e.periods } })
   }
-  const smallest = [...open].sort((a, b) => a.owed - b.owed)[0]
-  if (open.length > 1 && smallest) out.push({ key: "smallest_clearable", params: { name: smallest.name, amount: fromCents(smallest.owed), currency: smallest.currency } })
+  // "Your smallest debt" is only said when every open debt could be compared
+  // (one currency, or a rate for each) — MC-142.
+  const values = open.length > 1 ? rankingValues(open, (d) => d.owed, (d) => d.currency, input.rates) : null
+  if (values) {
+    const smallest = open[values.indexOf(Math.min(...values))]
+    out.push({ key: "smallest_clearable", params: { name: smallest.name, amount: fromCents(smallest.owed), currency: smallest.currency } })
+  }
   // The debt ending soonest frees its payment.
   const ending = open
     .map((d) => ({ d, e: input.estimates.get(d.id) }))

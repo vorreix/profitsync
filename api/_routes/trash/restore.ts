@@ -1,10 +1,11 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { and, count, eq, inArray, isNotNull, sql } from "drizzle-orm"
+import { and, count, eq, isNotNull, sql } from "drizzle-orm"
 import { db, serialize } from "../../../src/lib/db/index.js"
 import { clients, quotations, transactions, wealthAccounts } from "../../../src/lib/db/schema.js"
 import { canDelete, requireAuth } from "../../_lib/auth.js"
 import { applicationsByAccount } from "../../../src/lib/wealth-ledger.js"
 import { setTransferTrashed } from "../../_lib/wealth-accounts.js"
+import { setRowsTrashed } from "../../_lib/tx-trash.js"
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ctx = await requireAuth(req, res)
@@ -23,15 +24,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (type === "transaction") {
     // Transactions are org-scoped via their client.
     const [tx] = await db
-      .select({ id: transactions.id, groupId: transactions.groupId, transferId: transactions.transferId, kind: transactions.kind })
+      .select({ id: transactions.id, groupId: transactions.groupId, transferId: transactions.transferId })
       .from(transactions)
       .innerJoin(clients, eq(transactions.clientId, clients.id))
       .where(and(eq(transactions.id, id), eq(clients.organizationId, orgId), isNotNull(transactions.deletedAt)))
     if (!tx) return res.status(404).json({ error: "Not found" })
-    if (tx.kind === "transfer" && tx.transferId) {
-      // A leg of a logical transfer: restore the WHOLE transfer (legs, fee row,
-      // balances) in one database function. Legacy legs without a header use
-      // the group path below, exactly as before.
+    if (tx.transferId) {
+      // A row of a logical transfer — either leg OR its fee row: restore the
+      // WHOLE transfer (legs, fee rows, balances) in one database function.
+      // Restoring a fee on its own would charge it again for a transfer that
+      // is still in Trash. Legacy legs without a header use the group path
+      // below, exactly as before.
       const result = await setTransferTrashed(orgId, userId, tx.transferId, true)
       if (!result.ok) return res.status(result.status).json(result.body)
       const [row] = await db.select().from(transactions).where(eq(transactions.id, id))
@@ -44,13 +47,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // leg's balance. Restoring a single leg of a card payment would reduce the
     // card's debt while leaving the bank leg in Trash — money out of nothing.
     const legs = await db
-      .select({
-        id: transactions.id,
-        wealthAccountId: transactions.wealthAccountId,
-        type: transactions.type,
-        amount: transactions.amount,
-        isSystem: transactions.isSystem,
-      })
+      .select({ id: transactions.id })
       .from(transactions)
       .innerJoin(clients, eq(transactions.clientId, clients.id))
       .where(
@@ -60,23 +57,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           isNotNull(transactions.deletedAt),
         ),
       )
-    const legIds = legs.map((l) => l.id)
-    // System balance-defining entries are not re-applied on restore — their
-    // balance effect was never reversed on delete (see reversesOnTrash);
-    // applicationsByAccount skips them and collapses legs per account.
-    for (const [accountId, shift] of applicationsByAccount(legs)) {
-      await db
-        .update(wealthAccounts)
-        .set({ currentBalance: sql`${wealthAccounts.currentBalance}::numeric + ${shift}`, updatedAt: new Date() })
-        .where(eq(wealthAccounts.id, accountId))
-    }
-    const restored = await db
-      .update(transactions)
-      .set({ deletedAt: null, updatedAt: new Date() })
-      .where(inArray(transactions.id, legIds))
-      .returning()
-    const updated = restored.find((r) => r.id === id) ?? restored[0]
-    return res.json(serialize({ ...updated, restoredLegCount: restored.length }))
+    // Claim-first: only the rows this call actually brings back re-apply a
+    // balance, so a double-clicked or replayed restore can't apply a leg twice.
+    // System balance-defining entries flip without moving the balance — their
+    // effect was never reversed on delete (see reversesOnTrash).
+    const restoredIds = await setRowsTrashed(legs.map((l) => l.id), userId, true)
+    if (restoredIds.length === 0) return res.status(404).json({ error: "Not found" })
+    const [updated] = await db.select().from(transactions).where(eq(transactions.id, restoredIds.includes(id) ? id : restoredIds[0]))
+    return res.json(serialize({ ...updated, restoredLegCount: restoredIds.length }))
   }
 
   if (type === "client") {

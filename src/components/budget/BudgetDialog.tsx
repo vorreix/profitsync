@@ -3,7 +3,7 @@ import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { Loader as Loader2, Trash2 } from "lucide-react"
-import { apiPost } from "@/lib/api"
+import { apiErrorMessage, apiPost } from "@/lib/api"
 import { useCurrency } from "@/lib/currency-context"
 import { currencySymbol } from "@/lib/wealth"
 import { BUDGET_PERIODS, type BudgetPeriod } from "@/lib/budget"
@@ -19,6 +19,17 @@ const PERIOD_KEY: Record<BudgetPeriod, string> = {
   monthly: "budget.monthly",
   weekly: "budget.weekly",
   daily: "budget.daily",
+}
+
+/** The currency a 409 `currency_mismatch` says the cap is kept in, else null. */
+function currencyMismatchFrom(err: unknown): string | null {
+  try {
+    const parsed = JSON.parse((err as Error).message) as { code?: string; currency?: string }
+    if (parsed.code === "currency_mismatch") return parsed.currency ?? null
+  } catch {
+    /* not a JSON error */
+  }
+  return null
 }
 
 /**
@@ -41,12 +52,16 @@ export function BudgetDialog({
   clientId: string | null
   label: string
   current?: Budget | null
-  prefill?: { amount?: number; period?: BudgetPeriod } | null
+  prefill?: { amount?: number; period?: BudgetPeriod; currency?: string } | null
   onSaved: (budget: Budget | null) => void
 }) {
   const { t } = useTranslation()
   const { getToken } = useAuth()
-  const { currency } = useCurrency()
+  const { currency: workspaceCurrency } = useCurrency()
+  // A cap keeps the currency it was set in (MC-020): the input is labelled with
+  // it, and the save says which currency the number was typed in so the server
+  // can refuse (409) an amount typed against another one.
+  const currency = current?.currency ?? workspaceCurrency
   const symbol = currencySymbol(currency)
   const [amount, setAmount] = useState("")
   const [period, setPeriod] = useState<BudgetPeriod>("monthly")
@@ -59,11 +74,15 @@ export function BudgetDialog({
       setAmount(String(current.amount))
       setPeriod(current.period)
     } else {
-      setAmount(prefill?.amount ? String(prefill.amount) : "")
+      // A new cap is born in the workspace currency; a default kept in another
+      // one (set before a reporting change) lends its period, not its number —
+      // $1,000 must not be offered, and saved, as €1,000.
+      const sameCurrency = (prefill?.currency ?? currency) === currency
+      setAmount(prefill?.amount && sameCurrency ? String(prefill.amount) : "")
       setPeriod(prefill?.period ?? "monthly")
     }
     setSaving(null)
-  }, [open, current, prefill])
+  }, [open, current, prefill, currency])
 
   const save = async (remove = false) => {
     setSaving(remove ? "remove" : "save")
@@ -75,6 +94,7 @@ export function BudgetDialog({
         client_id: clientId,
         period,
         amount: amt,
+        currency_code: currency,
       })
       if (remove || amt === 0) {
         toast.success(t("budget.removed"))
@@ -85,7 +105,8 @@ export function BudgetDialog({
       }
       onOpenChange(false)
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : t("budget.saveFailed"))
+      const kept = currencyMismatchFrom(err)
+      toast.error(kept ? t("budget.currencyMismatch", { currency: kept }) : apiErrorMessage(err, t("budget.saveFailed")))
       setSaving(null)
     }
   }
@@ -104,7 +125,8 @@ export function BudgetDialog({
           <div className="space-y-1.5">
             <Label htmlFor="budget-amount">{t("budget.amountLabel")}</Label>
             <div className="relative">
-              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">{symbol}</span>
+              {/* Room for a 1–5 character prefix ("$" … "KWD"), at the start in RTL too. */}
+              <span className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">{symbol}</span>
               <Input
                 id="budget-amount"
                 inputMode="decimal"
@@ -112,7 +134,8 @@ export function BudgetDialog({
                 autoFocus
                 onChange={(e) => setAmount(e.target.value)}
                 placeholder="0.00"
-                className="h-11 pl-8"
+                style={{ paddingInlineStart: `calc(${symbol.length}ch + 1.25rem)` }}
+                className="h-11 text-base sm:text-sm"
               />
             </div>
           </div>

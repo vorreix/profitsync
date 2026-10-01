@@ -80,6 +80,12 @@ export type CardWizardForm = {
   funding_card_id: string
   /** Credit only; opt-in, needs a funding bank. */
   autopay: boolean
+  /**
+   * Credit only: the card's own currency. "" = not chosen — creating, the
+   * issuing bank's (else the reporting currency); editing, the saved card's
+   * (cardWizardCurrency). Kept for good once the card has history.
+   */
+  currency_code: string
 }
 
 export const DEFAULT_CUSTOM_DESIGN: CardDesign = { from: "#2F3A56", to: "#151B2E", text: "light", pattern: "none" }
@@ -108,6 +114,7 @@ export function emptyCardWizardForm(init: {
     funding_account_id: init.funding_account_id ?? "",
     funding_card_id: "",
     autopay: false,
+    currency_code: "",
   }
 }
 
@@ -145,7 +152,51 @@ export function cardWizardFormFromCard(card: Card): CardWizardForm {
     funding_account_id: card.funding_account_id ?? "",
     funding_card_id: card.funding_card_id ?? "",
     autopay: card.autopay,
+    currency_code: card.kind === "credit" ? (card.account_currency_code ?? "") : "",
   }
+}
+
+// ── Currency ─────────────────────────────────────────────────────────────────
+
+/**
+ * The currency a credit card is in: the one chosen, else — creating — the
+ * issuing bank's (an INR bank issues INR cards), else the reporting currency.
+ * The same default POST /api/cards applies; editing falls back to the
+ * reporting currency, which is what a legacy card without one reads as.
+ */
+export function cardWizardCurrency(
+  form: Pick<CardWizardForm, "currency_code">,
+  bank: Pick<WealthAccount, "currency_code"> | null | undefined,
+  reporting: string,
+  mode: CardWizardMode = "create",
+): string {
+  return form.currency_code || (mode === "create" ? bank?.currency_code : null) || reporting
+}
+
+/** An account's native currency by id (null = no account; a legacy NULL reads as the reporting currency). */
+export function accountCurrencyIn(accounts: Pick<WealthAccount, "id" | "currency_code">[], id: string, reporting: string): string | null {
+  if (!id) return null
+  return accounts.find((a) => a.id === id)?.currency_code || reporting
+}
+
+/**
+ * Autopay only pays from an account in the card's own currency: it records a
+ * plain transfer, and a cross-currency one needs the amount that actually
+ * arrived, which nobody is there to type. The server refuses it
+ * (autopay_currency_mismatch); the credit step disables the switch.
+ */
+export function autopayCurrencyMismatch(fundingCurrency: string | null | undefined, cardCurrency: string): boolean {
+  return !!fundingCurrency && fundingCurrency !== cardCurrency
+}
+
+/**
+ * The form as it is SENT: the card's currency made explicit (what the user saw
+ * is what gets created), and autopay dropped when the payer holds another
+ * currency — the switch shows it off there, so the save must not turn it on.
+ */
+export function cardWizardSubmitForm(form: CardWizardForm, cardCurrency: string, fundingCurrency: string | null): CardWizardForm {
+  if (form.kind !== "credit") return form
+  return { ...form, currency_code: cardCurrency, autopay: form.autopay && !autopayCurrencyMismatch(fundingCurrency, cardCurrency) }
 }
 
 /** The holder-name default: the signed-in user's name, else the profile's, else blank. */
@@ -181,6 +232,10 @@ export type CardWizardCode =
   | "holder_required"
   | "design_invalid"
   | "funding_required"
+  // Server-only refusals (the step itself never lets them through):
+  | "autopay_currency_mismatch"
+  | "account_currency_locked"
+  | "invalid_currency"
 
 export type CardWizardField =
   | "account_id"
@@ -197,6 +252,7 @@ export type CardWizardField =
   | "statement_balance"
   | "statement_closing_date"
   | "funding_account_id"
+  | "currency_code"
 
 export type CardWizardIssue = { code: CardWizardCode; field: CardWizardField }
 
@@ -211,6 +267,9 @@ export const CARD_WIZARD_FIELD_FOR_CODE: Record<CardWizardCode, CardWizardField>
   holder_required: "holder_name",
   design_invalid: "design",
   funding_required: "funding_account_id",
+  autopay_currency_mismatch: "funding_account_id",
+  account_currency_locked: "currency_code",
+  invalid_currency: "currency_code",
   limit_invalid: "credit_limit",
   debt_invalid: "current_debt",
   closing_day_invalid: "statement_closing_day",
@@ -261,6 +320,7 @@ export const CARD_WIZARD_FIELD_SELECTOR: Record<CardWizardField, string> = {
   statement_balance: "#cc-st-balance",
   statement_closing_date: "#cc-st-close",
   funding_account_id: '[data-bank-picker="funding"] [data-bank-option]',
+  currency_code: "[data-card-currency] button",
 }
 
 /**
@@ -433,8 +493,9 @@ function identityPayload(form: CardWizardForm) {
   }
 }
 
-function creditBlock(c: CardFormState, mode: CardWizardMode) {
+function creditBlock(c: CardFormState, mode: CardWizardMode, currency: string) {
   const base = {
+    ...(currency ? { currency_code: currency } : {}),
     credit_limit: Number(c.credit_limit),
     statement_closing_day: int(c.statement_closing_day),
     payment_due_day: int(c.payment_due_day),
@@ -479,7 +540,7 @@ export function cardCreatePayload(form: CardWizardForm) {
     ...(form.funding_card_id ? { funding_card_id: form.funding_card_id } : {}),
     autopay: !!form.funding_account_id && form.autopay,
     ...identity,
-    credit: creditBlock(form.credit, "create"),
+    credit: creditBlock(form.credit, "create", form.currency_code),
   }
 }
 
@@ -489,7 +550,7 @@ export function cardEditPayload(form: CardWizardForm) {
   if (form.kind === "debit") return identity
   return {
     ...identity,
-    credit: creditBlock(form.credit, "edit"),
+    credit: creditBlock(form.credit, "edit", form.currency_code),
     funding_account_id: form.funding_account_id || null,
     funding_card_id: form.funding_card_id || null,
     autopay: !!form.funding_account_id && form.autopay,

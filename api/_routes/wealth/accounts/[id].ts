@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { and, count, eq, isNull, sql } from "drizzle-orm"
+import { and, count, eq, getTableColumns, isNull, sql } from "drizzle-orm"
 import { db, serialize } from "../../../../src/lib/db/index.js"
 import { transactions, wealthAccounts } from "../../../../src/lib/db/schema.js"
 import { canDelete, canWrite, ensureDefaultClient, requireAuth } from "../../../_lib/auth.js"
@@ -13,6 +13,8 @@ import { checkBankAccountQuota, checkCreditCardQuota } from "../../../_lib/quota
 import { cardDebt, isLiabilityType, isValidDayOfMonth, signedBalanceFromDebt } from "../../../../src/lib/credit-card.js"
 import { cards } from "../../../../src/lib/db/schema.js"
 import { cardsFundedBy, creditCardIdFor, openCardsOnAccount, syncCardStatusWithAccount } from "../../../_lib/cards.js"
+import { currencyLockRefs, withCurrencyLock } from "../../../_lib/account-currency-lock.js"
+import { accountCurrencyLockReason } from "../../../../src/lib/account-currency-lock.js"
 
 function money(value: unknown): number {
   const n = Number(value)
@@ -32,8 +34,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { userId, orgId, role } = ctx
   const { id } = req.query as { id: string }
 
+  // The currency-lock facts ride along on the one read: the GET hands the
+  // picker its flag and the PATCH refuses from the very same columns.
   const [account] = await db
-    .select()
+    .select({ ...getTableColumns(wealthAccounts), ...currencyLockRefs })
     .from(wealthAccounts)
     .where(and(eq(wealthAccounts.id, id), eq(wealthAccounts.organizationId, orgId)))
   if (!account) return res.status(404).json({ error: "Not found" })
@@ -42,7 +46,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // A liability account IS a credit card: hand the client the card id so
     // /wealth/:id can forward to the card screen.
     const cardId = isLiabilityType(account.type) ? await creditCardIdFor(account.id) : null
-    return res.json(serialize({ ...withLogoSrc(account), cardId }))
+    return res.json(serialize({ ...withCurrencyLock(withLogoSrc(account)), cardId }))
   }
 
   if (req.method === "PATCH") {
@@ -73,6 +77,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const setDefault = typeof body.set_default === "boolean" ? body.set_default : undefined
     const bankName = body.bankName ?? body.bank_name
     const isCard = isLiabilityType(account.type)
+    // `reason` + `currency` let the client say WHY in the user's language
+    // instead of echoing this English line.
+    const currencyLocked = (reason: string | null, currency: string | null) => res.status(409).json({
+      error: "This account's currency cannot be changed after financial history exists. Create another account and transfer the money instead.",
+      code: "account_currency_locked",
+      reason: reason ?? "history",
+      currency,
+    })
     let currencyCode = account.currencyCode
     if (body.currency_code !== undefined) {
       try {
@@ -80,16 +92,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       } catch {
         return res.status(400).json({ error: "Invalid currency code", code: "invalid_currency" })
       }
-      if (currencyCode !== account.currencyCode) {
-        const [{ rows }] = await db.select({ rows: count() }).from(transactions).where(eq(transactions.wealthAccountId, id))
-        const currencySensitiveConfig = isCard || Number(account.goalAmount ?? 0) !== 0
-        if (rows > 0 || currencySensitiveConfig) {
-          return res.status(409).json({
-            error: "This account's currency cannot be changed after financial history exists. Create another account and transfer the money instead.",
-            code: "account_currency_locked",
-          })
-        }
-      }
+      // One predicate, shared with the GETs' `currency_locked` flag
+      // (src/lib/account-currency-lock.ts); re-asserted in the write below.
+      const reason = currencyCode !== account.currencyCode ? accountCurrencyLockReason(account) : null
+      if (reason) return currencyLocked(reason, account.currencyCode)
     }
     let currentBalance = body.currentBalance ?? body.current_balance
     if (isCard && body.current_debt !== undefined) {
@@ -130,10 +136,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ? await resolveLogoColumns(details.brandDomain, details.logoUrl)
       : null
 
-    // Cash in Hand is the default account and must always exist — it can be
-    // renamed/re-iconed and have its balance adjusted, but never archived.
-    if (archive && account.type === "cash") {
-      return res.status(400).json({ error: "Cash in Hand can't be archived" })
+    // The DEFAULT cash wallet must always exist — it can be re-iconed and have
+    // its balance adjusted, but never archived. Every OTHER cash wallet is one
+    // the user made (one per currency since mig 0069) and archives like any
+    // account. Keyed on `bank_name`, exactly as the DELETE path below and the
+    // default-cash unique index are.
+    const isDefaultCash = account.type === "cash" && account.bankName === DEFAULT_CASH_NAME
+    if (archive && isDefaultCash) {
+      return res.status(400).json({ error: "Cash in Hand can't be archived", code: "default_cash_permanent" })
     }
     // A credit card that still owes money can't be closed (nothing could pay it).
     // A credit card that still owes money can't be closed (nothing could pay it
@@ -147,17 +157,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if ((account.type === "bank" || isCard) && bankName !== undefined && !bankName.trim()) {
       return res.status(400).json({ error: "bankName is required" })
     }
+    // Active wallets OTHER than this one holding the default name — exactly the
+    // rows wealth_accounts_one_default_cash_idx would collide with, so each
+    // check below refuses with a 400 only when the write would otherwise 500.
+    const otherActiveDefaults = async () => {
+      const [{ total }] = await db
+        .select({ total: count() })
+        .from(wealthAccounts)
+        .where(and(eq(wealthAccounts.organizationId, orgId), eq(wealthAccounts.type, "cash"), eq(wealthAccounts.bankName, DEFAULT_CASH_NAME), isNull(wealthAccounts.archivedAt), sql`${wealthAccounts.id} != ${id}`))
+      return total
+    }
+    // The default wallet's name is reserved while an active default holds it.
+    // With none active (the default was renamed away — the edit dialog allows
+    // it), taking the name back is how a wallet becomes the default again, so
+    // it passes; refusing it would make that rename one-way. Keeping its own
+    // name is not a rename, so the default wallet's edit dialog still saves.
+    if (account.type === "cash" && bankName !== undefined && bankName.trim() === DEFAULT_CASH_NAME && !isDefaultCash && (await otherActiveDefaults()) >= 1) {
+      return res.status(400).json({ error: `"${DEFAULT_CASH_NAME}" is reserved for the default cash wallet`, code: "reserved_cash_name" })
+    }
     if (icon !== undefined && !icon.trim()) {
       return res.status(400).json({ error: "icon is required" })
     }
 
     if (restore && account.archivedAt) {
-      if (account.type === "cash") {
-        const [{ total }] = await db
-          .select({ total: count() })
-          .from(wealthAccounts)
-          .where(and(eq(wealthAccounts.organizationId, orgId), eq(wealthAccounts.type, "cash"), isNull(wealthAccounts.archivedAt)))
-        if (total >= 1) return res.status(400).json({ error: "Cash in Hand already exists" })
+      // Only the default wallet is unique (the index predicate); an extra cash
+      // wallet reopens freely alongside it.
+      if (isDefaultCash && (await otherActiveDefaults()) >= 1) {
+        return res.status(400).json({ error: "Cash in Hand already exists", code: "default_cash_exists" })
       }
       if (account.type === "bank") {
         // Reopening: free plans block if already at the 1-active limit (forcing an
@@ -168,6 +194,36 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (isCard) {
         const quota = await checkCreditCardQuota(orgId, { forRestore: true })
         if (!quota.allowed) return res.status(402).json(quota)
+      }
+    }
+
+    // The currency change, with the lock re-asserted IN the write (as
+    // cards/[id].ts and debts/[id].ts do): a row, rule, card or transfer — or
+    // another currency change — that landed since the read above makes this
+    // match nothing → 409, before the default flip, the Balance Adjustment and
+    // the rest of the patch are written (that adjustment's own row would
+    // otherwise lock it).
+    // ponytail: a writer that read the OLD currency before this commits (the
+    // transaction POST stamps the code it read) can still insert after it;
+    // closing that needs each writer to re-read the code in its own insert.
+    if (currencyCode !== account.currencyCode) {
+      const { hasRows, hasRecurring, hasCards, hasOpenTransfers } = currencyLockRefs
+      const moved = await db
+        .update(wealthAccounts)
+        .set({ currencyCode, updatedBy: userId, updatedAt: new Date() })
+        .where(and(
+          eq(wealthAccounts.id, id),
+          account.currencyCode ? eq(wealthAccounts.currencyCode, account.currencyCode) : isNull(wealthAccounts.currencyCode),
+          sql`${wealthAccounts.currentBalance} = 0 and ${wealthAccounts.openingBalance} = 0`,
+          sql`not (${hasRows} or ${hasRecurring} or ${hasCards} or ${hasOpenTransfers})`,
+        ))
+        .returning({ id: wealthAccounts.id })
+      if (moved.length === 0) {
+        const [now] = await db
+          .select({ ...getTableColumns(wealthAccounts), ...currencyLockRefs })
+          .from(wealthAccounts)
+          .where(eq(wealthAccounts.id, id))
+        return currencyLocked(now ? accountCurrencyLockReason(now) : null, now?.currencyCode ?? account.currencyCode)
       }
     }
 
@@ -207,7 +263,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           wealthAccountId: id,
           type: txType,
           amount: String(Math.abs(delta)),
-          currencyCode: account.currencyCode,
+          // The POST-patch currency: a PATCH may change the currency and the
+          // balance together (the lock passed, so nothing is denominated in the
+          // old one yet), and this row is denominated in what the account
+          // becomes — stamping the old code left a 100 EUR account whose only
+          // row said 100 USD (MC-055).
+          currencyCode,
           description: "Balance Adjustment",
           category: "Adjustment",
           date: new Date().toISOString().split("T")[0],
@@ -222,10 +283,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const [updated] = await db
       .update(wealthAccounts)
       .set({
-        ...(bankName !== undefined ? { bankName: bankName.trim() || "Cash in Hand" } : {}),
+        // A blank name keeps the current one (bank/card blanks are refused above);
+        // falling back to the reserved default name would hand it to any wallet.
+        ...(bankName !== undefined ? { bankName: bankName.trim() || account.bankName } : {}),
         ...(nickname !== undefined ? { nickname: nickname.trim() } : {}),
         ...(icon !== undefined ? { icon } : {}),
-        ...(body.currency_code !== undefined ? { currencyCode } : {}),
         ...appearance.patch,
         ...(currentBalance !== undefined ? { currentBalance: String(newBalance) } : {}),
         ...cardPatch,
@@ -264,7 +326,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (restore && before.archivedAt && isCard) await syncCardStatusWithAccount(id, false, userId)
 
     const changes = diffFields(
-      before as Record<string, unknown>,
+      // The guarded write above already moved the currency: diff it from the first read.
+      { ...before, currencyCode: account.currencyCode } as Record<string, unknown>,
       updated as Record<string, unknown>,
       ["bankName", "nickname", "icon", "color", "colorStyle", "currencyCode", "currentBalance", "archivedAt", "isDefault", "country", "accountNumber", "routingNumber", "swift", "address", "location", "note", "creditLimit", "statementClosingDay", "paymentDueDay"],
     )

@@ -14,6 +14,7 @@ import { notifyIfBudgetExceeded } from "../../_lib/notify-budget.js"
 import { refundShapeValid } from "../../../src/lib/tx-classify.js"
 import { USER_KINDS } from "../../_lib/tx-sql.js"
 import { attributeCard } from "../../_lib/cards.js"
+import { splitCurrencyRefusal } from "../../_lib/currency-guards.js"
 
 type AllocationInput = { wealth_account_id?: string; account_id?: string; card_id?: string | null; amount?: number | string }
 
@@ -94,6 +95,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // own payment route does — a raw transaction here would blur them.
     if (account.type === "loan" || account.type === "receivable") return res.status(400).json({ error: "Record a payment from the debt's page instead — that keeps principal and interest apart." })
   }
+  // One purchase, one currency — the API is the trust boundary, not the
+  // picker. This is also the split-EDIT path (the client trashes the old legs
+  // and re-posts here), so an edit can't mix currencies either.
+  const currencyRefusal = splitCurrencyRefusal(legs.map((leg) => byId.get(leg.accountId)?.currencyCode))
+  if (currencyRefusal) return res.status(currencyRefusal.status).json(currencyRefusal.body)
 
   // Resolve the anchoring client (personal orgs use their hidden default client).
   let clientId: string

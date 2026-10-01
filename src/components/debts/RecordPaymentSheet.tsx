@@ -166,8 +166,9 @@ export function RecordPaymentSheet({
             <div className="space-y-1.5">
               <Label htmlFor="dp-total">{receivable ? t("totalReceived") : t("totalPaid")}</Label>
               <div className="relative">
-                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-lg font-medium text-muted-foreground">{symbol}</span>
-                <Input id="dp-total" type="number" inputMode="decimal" min="0" step="0.01" value={total} placeholder="0.00" className="h-12 pl-9 text-lg font-semibold tabular-nums" onChange={(e) => { setTotal(e.target.value); setError(null) }} autoFocus />
+                {/* Room for a 1–5 character prefix ("$" … "KWD"), at the start in RTL too. */}
+                <span className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-lg font-medium text-muted-foreground">{symbol}</span>
+                <Input id="dp-total" type="number" inputMode="decimal" min="0" step="0.01" value={total} placeholder="0.00" style={{ paddingInlineStart: `calc(${symbol.length}ch + 1.25rem)` }} className="h-12 text-lg md:text-lg font-semibold tabular-nums" onChange={(e) => { setTotal(e.target.value); setError(null) }} autoFocus />
               </div>
             </div>
             <div className="space-y-1.5">

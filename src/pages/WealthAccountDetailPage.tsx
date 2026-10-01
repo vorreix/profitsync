@@ -17,14 +17,18 @@ import {
   SlidersHorizontal,
 } from "lucide-react"
 import { useTranslation } from "react-i18next"
-import { apiDelete, apiGet } from "@/lib/api"
+import { apiDelete, apiErrorMessage, apiGet } from "@/lib/api"
+import { isSplitTx } from "@/lib/tx-grouping"
+import { isDefaultCash } from "@/lib/cash-wallet"
 import type { CreditCardSummary, Transaction, WealthAccount } from "@/lib/types"
 import { isLiabilityType, suggestFeeCategory } from "@/lib/credit-card"
 import { useCategories } from "@/lib/use-categories"
 import { useCurrency } from "@/lib/currency-context"
 import { useOrg } from "@/lib/org-context"
 import { canDeleteRole, canWriteRole } from "@/lib/roles"
-import { accountCurrency, accountDisplayName, formatDateLabel, formatMoney, useBalancePrivacy } from "@/lib/wealth"
+import { accountCurrency, accountDisplayName, formatApprox, formatDateLabel, formatMoney, useBalancePrivacy } from "@/lib/wealth"
+import { ledgerDescription } from "@/lib/wealth-ledger"
+import { FxExcludedNotice } from "@/components/FxExcludedNotice"
 import { ApproxBalance } from "@/components/wealth/ApproxBalance"
 import { useConsolidatedWealth } from "@/components/wealth/use-consolidated-wealth"
 import { useUrlModal } from "@/hooks/use-url-modal"
@@ -65,7 +69,17 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 
-type Summary = { incoming: number; outgoing: number }
+// `currency` is the currency the server summed in — the workspace's reporting
+// currency today (each row converted at its own date); `excluded_count` the
+// rows it could not convert. Older responses carry neither.
+type Summary = {
+  incoming: number
+  outgoing: number
+  currency?: string
+  excluded_count?: number
+  /** The same figures in the account's own currency (`currency` null when its rows span several). */
+  native?: { incoming: number; outgoing: number; currency: string | null }
+}
 
 const formatDate = (d: string) => formatDateLabel(d)
 
@@ -73,6 +87,7 @@ export function WealthAccountDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { t } = useTranslation("wealth")
+  const { t: tRoot } = useTranslation()
   const { getToken } = useAuth()
   const { currency } = useCurrency()
   const { activeOrg } = useOrg()
@@ -113,7 +128,16 @@ export function WealthAccountDetailPage() {
   // Every figure on this page is in the ACCOUNT's own currency; the workspace
   // currency is only the fallback for rows predating the per-account column.
   const accountCur = accountCurrency(account, currency)
-  const fmt = (n: number) => formatMoney(n, accountCur)
+  // Income / Expenses / Net in the ACCOUNT's currency (MC-009): every row on
+  // it posts in that one, so the server sums them natively — exact, nothing
+  // converted or left out (all zeros read the same in any currency). Only when
+  // that is unavailable (an older server, legacy rows in several currencies)
+  // do the converted reporting-currency sums show, marked as an approximation —
+  // never relabelled with the account's symbol ("₹180.60" for €180.60).
+  const native = summary.native && (summary.native.currency === accountCur || (summary.native.incoming === 0 && summary.native.outgoing === 0)) ? summary.native : null
+  const shown: Summary = native ? { incoming: native.incoming, outgoing: native.outgoing, currency: accountCur, excluded_count: 0 } : summary
+  const summaryCur = shown.currency ?? accountCur
+  const fmtSummary = (n: number) => (summaryCur === accountCur ? formatMoney(n, summaryCur) : formatApprox(n, summaryCur))
   // The ≈ line under the balance for a foreign-currency account.
   const { summary: consolidated, byAccount } = useConsolidatedWealth(!!account)
 
@@ -193,7 +217,15 @@ export function WealthAccountDetailPage() {
       const token = await getToken()
       if (!token) return
       try {
-        const tx = await apiGet<Transaction>(`/api/transactions/${v}`, token)
+        let tx = await apiGet<Transaction>(`/api/transactions/${v}`, token)
+        // This page lists LEGS, but the detail GET answers a split with the
+        // GROUP's money (summed, or converted when the legs' currencies differ).
+        // Resolve the leg the link names, as the list would show it — otherwise
+        // the modal shows, and its edit sheet saves, the group figure on one leg.
+        if (isSplitTx(tx) && tx.group_id) {
+          const legs = await apiGet<Transaction[]>(`/api/transactions?groupId=${tx.group_id}`, token)
+          tx = legs.find((l) => l.id === v) ?? tx
+        }
         if (!cancelled) setViewTx(tx)
       } catch {
         view.close()
@@ -211,12 +243,12 @@ export function WealthAccountDetailPage() {
       await apiDelete(`/api/wealth/accounts/${account.id}`, token)
       toast.success(t("accountArchived"))
       navigate("/wealth")
-    } catch {
-      toast.error(t("failedToArchive"))
+    } catch (err) {
+      toast.error(apiErrorMessage(err, t("failedToArchive")))
     }
   }
 
-  const net = summary.incoming - summary.outgoing
+  const net = shown.incoming - shown.outgoing
   const isCash = account?.type === "cash"
   const isCard = !!account && isLiabilityType(account.type)
   // The account's colour (src/lib/account-color.ts) — the same one its tile
@@ -238,10 +270,10 @@ export function WealthAccountDetailPage() {
   }
 
   const stats = useMemo(() => ([
-    { key: "income", label: t("income"), value: summary.incoming, className: "text-emerald-600 dark:text-emerald-400" },
-    { key: "expenses", label: t("expenses"), value: summary.outgoing, className: "text-destructive" },
+    { key: "income", label: t("income"), value: shown.incoming, className: "text-emerald-600 dark:text-emerald-400" },
+    { key: "expenses", label: t("expenses"), value: shown.outgoing, className: "text-destructive" },
     { key: "net", label: t("net"), value: net, className: net >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-destructive" },
-  ]), [summary, net, t])
+  ]), [shown.incoming, shown.outgoing, net, t])
 
   if (loading) {
     return (
@@ -319,7 +351,7 @@ export function WealthAccountDetailPage() {
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuItem onSelect={() => setEditing(account)}><Pencil className="size-4" /> {t("edit")}</DropdownMenuItem>
-                {!isCash && <DropdownMenuItem onSelect={() => setCloseConfirm(true)} className="text-destructive focus:text-destructive"><Archive className="size-4" /> {t("closeAccount")}</DropdownMenuItem>}
+                {!isDefaultCash(account) && <DropdownMenuItem onSelect={() => setCloseConfirm(true)} className="text-destructive focus:text-destructive"><Archive className="size-4" /> {t("closeAccount")}</DropdownMenuItem>}
               </DropdownMenuContent>
             </DropdownMenu>
           )}
@@ -380,11 +412,12 @@ export function WealthAccountDetailPage() {
             <div key={s.key} className="rounded-xl border bg-card/60 p-2.5 sm:p-3">
               <p className="truncate text-[10px] font-medium uppercase tracking-wide text-muted-foreground sm:text-xs">{s.label}</p>
               <FitText className={`mt-1 ${s.className}`} textClassName="text-sm sm:text-lg font-bold tabular-nums">
-                {balancesVisible ? fmt(s.value) : "•••"}
+                {balancesVisible ? fmtSummary(s.value) : "•••"}
               </FitText>
             </div>
           ))}
         </div>
+        <FxExcludedNotice count={shown.excluded_count} className="mt-2" />
       </div>
       )}
 
@@ -435,7 +468,7 @@ export function WealthAccountDetailPage() {
                         : <ArrowDownRight className="size-4 text-red-600 dark:text-red-400" />}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium">{tx.description || (tx.type === "incoming" ? t("income") : t("expenses"))}</p>
+                    <p className="truncate text-sm font-medium">{ledgerDescription(tx, tRoot) || (tx.type === "incoming" ? t("income") : t("expenses"))}</p>
                     <div className="mt-0.5 flex items-center gap-2">
                       <span className="text-xs text-muted-foreground">{formatDate(tx.date)}</span>
                       <TxKindBadge tx={{ ...tx, wealth_account_type: account.type }} />

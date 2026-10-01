@@ -71,13 +71,37 @@ export const ruleFields = {
 }
 
 /**
+ * What the rule has posted, ONE TOTAL PER CURRENCY (MC-074), in the rule's
+ * direction: a row the other way (the rule's type was edited) counts against
+ * it rather than being added to it. A rule moved to an account in another
+ * currency keeps both — €36 then ₹1,000 is never "1,036" of anything. Each row
+ * is in its own `currency_code`; a legacy row without one is in the rule's.
+ */
+const postedByCurrencySql = sql<{ currency: string | null; amount: string }[]>`(
+  select coalesce(json_agg(json_build_object('currency', p.currency, 'amount', p.amount::text) order by p.currency), '[]'::json)
+  from (
+    select coalesce(t.currency_code, ${recurringRules.currencyCode}) as currency,
+           sum(case when t.type = ${recurringRules.type} then t.amount else -t.amount end) as amount
+    from transactions t
+    where t.recurring_rule_id = ${recurringRules.id} and t.deleted_at is null
+    group by 1
+  ) p
+)`
+
+/**
  * Detail-only extras: what the rule has ACTUALLY posted, summed from the ledger
  * (never stored) so a manually deleted occurrence stops counting immediately.
  * `::text` keeps numeric precision across the wire, like every other money field.
  */
 export const ruleStatsFields = {
-  postedTotal: sql<string>`(
-    select coalesce(sum(t.amount), 0)::text from transactions t
+  postedByCurrency: postedByCurrencySql,
+  // The single-currency total older app builds read — NULL once the rule has
+  // posted in more than one currency, so no client is ever handed a sum
+  // across currencies (read `posted_by_currency` instead).
+  postedTotal: sql<string | null>`(
+    select case when count(distinct coalesce(t.currency_code, ${recurringRules.currencyCode})) <= 1
+      then coalesce(sum(case when t.type = ${recurringRules.type} then t.amount else -t.amount end), 0)::text end
+    from transactions t
     where t.recurring_rule_id = ${recurringRules.id} and t.deleted_at is null
   )`,
   firstPostedDate: sql<string | null>`(

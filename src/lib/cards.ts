@@ -6,7 +6,8 @@
 // identity (name, number tail, expiry), presentation (palette) and the small
 // amount of scheduling logic autopay needs.
 
-import type { BrandColor, CardDesign, CardKind, CardNetwork, CardPattern, CardTier } from "./types.js"
+import { creditUsage } from "./credit-card.js"
+import type { BrandColor, Card, CardDesign, CardKind, CardNetwork, CardPattern, CardTier } from "./types.js"
 
 // ── Vocabulary ───────────────────────────────────────────────────────────────
 
@@ -418,6 +419,21 @@ export type AutopayStatementInput = {
   due_date: string
   remaining: number
   autopay_status: string | null
+  /** Why the last attempt did not pay; with a NULL status it was DEFERRED (autopayDeferred). */
+  autopay_error?: string | null
+}
+
+/**
+ * Autopay tried this statement and handed it back (a quota block before any
+ * money moved): the claim is released (status NULL) but the reason is kept.
+ * The engine still retries it on its next run — autopayEligible stays true so
+ * an upgrade lets it pay — but until then nothing is scheduled: the card page
+ * must say it failed and offer "Pay manually", not announce a payment whose
+ * date may already have passed (MC-087). Same rule as autopayOutlook in
+ * src/lib/alerts.ts.
+ */
+export function autopayDeferred(statement: Pick<AutopayStatementInput, "autopay_status" | "autopay_error">): boolean {
+  return !statement.autopay_status && !!statement.autopay_error
 }
 
 export type AutopayCardInput = {
@@ -474,11 +490,60 @@ export function autopayAmount(remaining: number, currentDebt: number): number {
 
 /** What the UI shows as "Next autopay": the newest eligible statement's due date + what would be paid. */
 export function autopayPreview(card: AutopayCardInput, statements: AutopayStatementInput[], currentDebt?: number): { date: string; amount: number; statement_id: string } | null {
-  const eligible = statements.filter((s) => autopayEligible(card, s)).sort((a, b) => a.due_date.localeCompare(b.due_date))
+  const eligible = statements.filter((s) => autopayEligible(card, s) && !autopayDeferred(s)).sort((a, b) => a.due_date.localeCompare(b.due_date))
   // The soonest one is what pays next; if several are already due, the newest
   // due one is what the engine will pay (autopayPlan) — preview that instead.
   const next = eligible[0]
   if (!next) return null
   const amount = currentDebt === undefined ? next.remaining : autopayAmount(next.remaining, currentDebt)
   return { date: next.due_date, amount: Math.round(amount * 100) / 100, statement_id: next.id }
+}
+
+// ── Cards strip totals ───────────────────────────────────────────────────────
+
+export type CurrencyAmount = { currency: string; amount: number }
+
+const round2 = (n: number) => Math.round(n * 100) / 100
+
+type StripCard = Pick<Card, "kind" | "account_id" | "account_credit_limit" | "account_current_balance" | "account_currency_code">
+
+/**
+ * What the credit cards owe and the credit they have left, for the Cards strip
+ * (MC-023). Each card's figures are in ITS account's currency, so the native
+ * totals come back one per currency — never added across them (a EUR card
+ * owing 1,000 and an INR card owing 50,000 are not "51,000" of anything).
+ *
+ * `rateFor` (account id → its latest rate into the reporting currency, from
+ * GET /api/wealth/summary) adds the consolidated figures: every card converted
+ * at its own rate, and a card with no rate left OUT and counted, never taken
+ * 1:1. `available` stays null while no card has a limit.
+ */
+export function cardsStripTotals(
+  cards: StripCard[],
+  fallbackCurrency: string,
+  rateFor?: (accountId: string) => number | null,
+): { owed: CurrencyAmount[]; available: CurrencyAmount[]; converted: { owed: number; available: number | null; excluded: number } | null } {
+  const owed = new Map<string, number>()
+  const available = new Map<string, number>()
+  let cOwed = 0
+  let cAvailable: number | null = null
+  let excluded = 0
+  for (const c of cards) {
+    if (c.kind !== "credit") continue
+    const cur = (c.account_currency_code || fallbackCurrency).toUpperCase()
+    const u = creditUsage(c.account_credit_limit, c.account_current_balance)
+    owed.set(cur, (owed.get(cur) ?? 0) + u.debt)
+    if (u.available !== null) available.set(cur, (available.get(cur) ?? 0) + u.available)
+    if (!rateFor) continue
+    const rate = rateFor(c.account_id)
+    if (rate === null) { excluded++; continue }
+    cOwed += u.debt * rate
+    if (u.available !== null) cAvailable = (cAvailable ?? 0) + u.available * rate
+  }
+  const parts = (m: Map<string, number>) => [...m].map(([currency, amount]) => ({ currency, amount: round2(amount) })).sort((a, b) => a.currency.localeCompare(b.currency))
+  return {
+    owed: parts(owed),
+    available: parts(available),
+    converted: rateFor ? { owed: round2(cOwed), available: cAvailable === null ? null : round2(cAvailable), excluded } : null,
+  }
 }

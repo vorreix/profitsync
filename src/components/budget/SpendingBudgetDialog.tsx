@@ -3,7 +3,8 @@ import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { ChevronDown, Loader as Loader2, Plus, Trash2, X } from "lucide-react"
-import { apiDelete, apiPatch, apiPost } from "@/lib/api"
+import { apiDelete, apiErrorCode, apiErrorMessage, apiPatch, apiPost } from "@/lib/api"
+import { apiErrorBody } from "@/lib/api-error-codes"
 import { useApiQuery } from "@/hooks/use-api-query"
 import { useCurrency } from "@/lib/currency-context"
 import { currencySymbol, formatMoney } from "@/lib/wealth"
@@ -11,7 +12,7 @@ import { SPENDING_PERIODS, categoryKey, isIsoDate, type SpendingPeriod } from "@
 import type { Category, SpendingBudget } from "@/lib/types"
 import { budgetIcon, suggestBudgetIcon } from "@/components/budget/budget-icons"
 import { BudgetIconPicker } from "@/components/budget/BudgetIconPicker"
-import { budgetErrorMessage, budgetName, periodLabel, rateHints } from "@/components/budget/budget-format"
+import { budgetCurrency, budgetName, periodLabel, rateHints } from "@/components/budget/budget-format"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -52,12 +53,17 @@ export function SpendingBudgetDialog({
 }) {
   const { t, i18n } = useTranslation()
   const { getToken } = useAuth()
-  const { currency } = useCurrency()
-  const symbol = currencySymbol(currency)
-  const money = (n: number) => formatMoney(n, currency)
+  const { currency: reporting } = useCurrency()
 
   const editing = mode.kind === "edit" ? mode.budget : null
   const parent = mode.kind === "createSub" ? mode.parent : editing?.parent_id ? all.find((b) => b.id === editing.parent_id) ?? null : null
+  // The limit is typed in the currency the budget is KEPT in: its own when
+  // editing, its parent's for a sub-budget, the reporting one for a new budget
+  // (what the server stores). Its sub-budgets share it, so their total is a
+  // sum of like with like (MC-080).
+  const currency = editing ? budgetCurrency(editing, reporting) : parent ? budgetCurrency(parent, reporting) : reporting
+  const symbol = currencySymbol(currency)
+  const money = (n: number) => formatMoney(n, currency)
   const isSub = !!parent
   // The overall budget has no category scope to choose — that IS its scope.
   const isOverall = mode.kind === "createOverall" || (!!editing && editing.is_overall)
@@ -174,7 +180,9 @@ export function SpendingBudgetDialog({
   }
 
   const amt = Number(amount)
-  const childrenTotal = children.reduce((s, c) => s + c.amount, 0)
+  // Sub-budgets are in their parent's currency (derived on read); the guard
+  // only matters for a body cached before that rule.
+  const childrenTotal = children.filter((c) => budgetCurrency(c, reporting) === currency).reduce((s, c) => s + c.amount, 0)
   // Only the overall budget may be nameless.
   const nameOk = name.trim().length > 0 || isOverall
   const datesOk = period !== "once" || ((!startDate || isIsoDate(startDate)) && (!endDate || isIsoDate(endDate)) && (!startDate || !endDate || endDate >= startDate))
@@ -199,14 +207,16 @@ export function SpendingBudgetDialog({
     }
   }
 
+  // The shared translator reads every budget code (name_taken, category_claimed
+  // …) the same way, and never shows a refusal it has no line for in English.
+  // These two name a budget, which the routes send at the TOP level of the body
+  // (`{ error, ...detail }`) — read it from there so the name is never lost.
   const readError = (err: unknown): string => {
-    const raw = err instanceof Error ? err.message : String(err)
-    try {
-      const j = JSON.parse(raw) as { error?: string } & Record<string, unknown>
-      return budgetErrorMessage(t, j.error ?? "", j)
-    } catch {
-      return budgetErrorMessage(t, raw)
-    }
+    const body = apiErrorBody(err)
+    const code = apiErrorCode(err)
+    if (code === "overall_exists") return t("budgets.errors.overallExists", { name: (typeof body?.by === "string" && body.by) || t("budgets.overall") })
+    if (code === "child_outside_scope" && typeof body?.child === "string" && body.child) return t("budgets.errors.childOutsideScope", { child: body.child })
+    return apiErrorMessage(err, t("budgets.saveFailed"))
   }
 
   const save = async () => {
@@ -393,6 +403,7 @@ export function SpendingBudgetDialog({
           <div className="space-y-1.5">
             <Label htmlFor="sb-amount">{t("budgets.dialog.limitLabel")}</Label>
             <div className="relative">
+              {/* Room for a 1–5 character prefix ("$" … "KWD"), not one glyph. */}
               <span className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">{symbol}</span>
               <Input
                 id="sb-amount"
@@ -400,7 +411,8 @@ export function SpendingBudgetDialog({
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 placeholder="0.00"
-                className="h-11 ps-8 text-base sm:text-sm"
+                style={{ paddingInlineStart: `calc(${symbol.length}ch + 1.25rem)` }}
+                className="h-11 text-base sm:text-sm"
               />
             </div>
             {!isSub && period !== "once" && amt > 0 && (

@@ -116,7 +116,17 @@ export function SpaceTransferModal({
           <div className="space-y-3">
             <div className="space-y-1.5">
               <Label>{isFund ? t("fromAccount") : t("toAccount")}</Label>
-              <AccountCombobox accounts={accounts} value={accountId} onChange={(v) => { setAccountId(v); setError(null) }} currency={currency} />
+              <AccountCombobox
+                accounts={accounts}
+                value={accountId}
+                onChange={(v) => {
+                  // The other side's figure is in the account's currency: one in a
+                  // different currency voids it (an INR figure is not USD — MC-065).
+                  if (accountCurrency(accounts.find((x) => x.id === v), currency) !== sourceCurrency) setOtherAmount("")
+                  setAccountId(v); setError(null)
+                }}
+                currency={currency}
+              />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="tr-amount">{crossCurrency ? `${t("amount")} (${spaceCurrency})` : t("amount")}</Label>

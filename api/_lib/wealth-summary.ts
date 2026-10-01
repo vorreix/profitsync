@@ -4,11 +4,12 @@
 // never changed by a rate; only the converted column moves.
 //
 // Read-only. The one side effect is filling the FX snapshot table.
-import { and, eq, isNull } from "drizzle-orm"
+import { and, eq, inArray, isNull, or } from "drizzle-orm"
 import Decimal from "decimal.js"
 import { db } from "../../src/lib/db/index.js"
-import { wealthAccounts } from "../../src/lib/db/schema.js"
+import { debtDetails, wealthAccounts } from "../../src/lib/db/schema.js"
 import { cardCredit, cardDebt, isLiabilityType } from "../../src/lib/credit-card.js"
+import { OPEN_LIFECYCLES } from "../../src/lib/debt-status.js"
 import type { WealthSummary, WealthSummaryAccount, WealthSummaryCurrency } from "../../src/lib/types.js"
 import { convertAmount, currentRate, ensureRatesForOrg, reportingCurrencyFor, type RateLookup } from "./fx-rates.js"
 
@@ -26,7 +27,18 @@ export async function buildWealthSummary(orgId: string): Promise<WealthSummary> 
       currentBalance: wealthAccounts.currentBalance,
     })
     .from(wealthAccounts)
-    .where(and(eq(wealthAccounts.organizationId, orgId), isNull(wealthAccounts.archivedAt)))
+    // A debt counts only while /debts counts it (MC-092): writing one off,
+    // marking it repaid or refinancing it changes its lifecycle, not its
+    // ledger balance, and net worth must drop it on both screens at once.
+    // Accounts with no debt terms (every non-debt account) are unaffected.
+    .leftJoin(debtDetails, eq(debtDetails.wealthAccountId, wealthAccounts.id))
+    .where(
+      and(
+        eq(wealthAccounts.organizationId, orgId),
+        isNull(wealthAccounts.archivedAt),
+        or(isNull(debtDetails.id), inArray(debtDetails.lifecycle, [...OPEN_LIFECYCLES])),
+      ),
+    )
 
   // Rates: best effort, then one lookup per foreign currency.
   await ensureRatesForOrg(orgId, reporting).catch(() => undefined)

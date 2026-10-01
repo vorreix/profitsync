@@ -8,19 +8,55 @@
 //
 // NOTE: relative imports MUST keep the `.js` extension — these modules run as
 // unbundled ESM on @vercel/node (see scripts/check-esm-extensions.mjs).
-import { and, asc, eq, isNull, ne, sql } from "drizzle-orm"
-import { alias } from "drizzle-orm/pg-core"
+import { and, asc, eq, isNull, ne, sql, type SQL } from "drizzle-orm"
+import { alias, type AnyPgColumn } from "drizzle-orm/pg-core"
 import { db, serialize } from "../../src/lib/db/index.js"
 import { cards, transactions, wealthAccounts } from "../../src/lib/db/schema.js"
 import { logoDataUrl } from "../../src/lib/logo-data.js"
 import type { BrandColor, CardDesign } from "../../src/lib/types.js"
 import { isLiabilityType } from "../../src/lib/credit-card.js"
+import { reportingCurrencyFor } from "./fx-rates.js"
 
 export type CardRow = typeof cards.$inferSelect
 
 const fundingAccounts = alias(wealthAccounts, "funding_accounts")
 const issuerAccounts = alias(wealthAccounts, "issuer_accounts")
 const fundingCards = alias(cards, "funding_cards")
+
+/**
+ * Is a credit card's currency settled for good? Yes once anything has been
+ * recorded or scheduled in it: any ledger row on its liability account (trashed
+ * and system rows included — an Opening Balance IS money in that currency), a
+ * balance (a purge can leave one with no row behind it), a transfer to or from
+ * it (planned ones too), or a recurring rule that posts to it or pays with it.
+ * Relabelling under any of those would silently reinterpret an amount. ONE
+ * expression, used both to tell the client (`currency_locked`) and as the
+ * predicate of the correcting UPDATE itself, so a row that lands between the
+ * check and the write still wins. Columns are fine in a joined select or an
+ * UPDATE (drizzle qualifies them there); a single-table SELECT renders them
+ * unqualified, where "id" would bind to the subqueries' own rows — pass bound
+ * values there.
+ */
+export function cardCurrencyLockedSql(orgId: AnyPgColumn | SQL, accountId: AnyPgColumn | SQL, cardId: AnyPgColumn | SQL): SQL<boolean> {
+  // transfers / recurring_rules have no per-account index: the org predicate
+  // keeps both on their org-leading indexes instead of a table scan per card.
+  return sql<boolean>`(exists (select 1 from transactions t where t.wealth_account_id = ${accountId})
+    or exists (select 1 from wealth_accounts w where w.id = ${accountId} and (w.current_balance <> 0 or w.opening_balance <> 0))
+    or exists (select 1 from transfers x where x.organization_id = ${orgId} and (x.source_account_id = ${accountId} or x.destination_account_id = ${accountId}))
+    or exists (select 1 from recurring_rules r where r.organization_id = ${orgId} and (r.wealth_account_id = ${accountId} or r.to_account_id = ${accountId} or r.card_id = ${cardId})))`
+}
+
+/**
+ * Do two accounts hold the same currency? A legacy NULL reads as the workspace
+ * reporting currency — the fallback every other read applies — which is only
+ * looked up when one side actually is NULL.
+ */
+export async function sameNativeCurrency(orgId: string, a: string | null | undefined, b: string | null | undefined): Promise<boolean> {
+  if ((a ?? null) === (b ?? null)) return true
+  if (a && b) return false
+  const reporting = await reportingCurrencyFor(orgId)
+  return (a || reporting) === (b || reporting)
+}
 
 // The list/detail shape: the card + the columns of its ledger account (balance,
 // limit, cycle days, brand) and its funding bank that the visuals need — one
@@ -51,6 +87,7 @@ const cardColumns = {
   createdAt: cards.createdAt,
   updatedAt: cards.updatedAt,
   accountType: wealthAccounts.type,
+  accountCurrencyCode: wealthAccounts.currencyCode,
   accountBankName: wealthAccounts.bankName,
   accountNickname: wealthAccounts.nickname,
   accountCurrentBalance: wealthAccounts.currentBalance,
@@ -65,6 +102,7 @@ const cardColumns = {
   fundingAccountNickname: fundingAccounts.nickname,
   fundingAccountLogoData: fundingAccounts.logoData,
   fundingAccountArchivedAt: fundingAccounts.archivedAt,
+  fundingAccountCurrencyCode: fundingAccounts.currencyCode,
   issuerAccountBankName: issuerAccounts.bankName,
   issuerAccountNickname: issuerAccounts.nickname,
   issuerAccountLogoData: issuerAccounts.logoData,
@@ -75,6 +113,7 @@ const cardColumns = {
   fundingCardNetwork: fundingCards.network,
   fundingCardStatus: fundingCards.status,
   transactionCount: sql<number>`(select count(*)::int from transactions t where t.card_id = ${cards.id} and t.deleted_at is null)`,
+  currencyLocked: cardCurrencyLockedSql(cards.organizationId, cards.accountId, cards.id),
 }
 
 type JoinedCard = {
@@ -256,7 +295,9 @@ export async function cardsFundedBy(orgId: string, accountId: string): Promise<C
 // ── Funding: who pays a credit card ──────────────────────────────────────────
 
 export type ResolvedFunding =
-  | { ok: true; accountId: string | null; cardId: string | null; isLiability: boolean }
+  // currencyCode: the paying account's native currency (null = no payer), so
+  // the caller can refuse autopay across currencies (autopay_currency_mismatch).
+  | { ok: true; accountId: string | null; cardId: string | null; isLiability: boolean; currencyCode: string | null }
   | { ok: false; error: string; code?: string }
 
 /**
@@ -281,7 +322,7 @@ export async function resolveFunding(
   orgId: string,
   input: { accountId?: string | null; cardId?: string | null; payeeCardId: string; payeeAccountId: string },
 ): Promise<ResolvedFunding> {
-  if (!input.accountId && !input.cardId) return { ok: true, accountId: null, cardId: null, isLiability: false }
+  if (!input.accountId && !input.cardId) return { ok: true, accountId: null, cardId: null, isLiability: false, currencyCode: null }
 
   let accountId = input.accountId ?? null
   let cardId: string | null = null
@@ -296,11 +337,11 @@ export async function resolveFunding(
     cardId = resolved.card.id
   }
 
-  if (!accountId) return { ok: true, accountId: null, cardId: null, isLiability: false }
+  if (!accountId) return { ok: true, accountId: null, cardId: null, isLiability: false, currencyCode: null }
   if (accountId === input.payeeAccountId) return { ok: false, error: "A card can't pay itself", code: "funding_self" }
 
   const [account] = await db
-    .select({ id: wealthAccounts.id, type: wealthAccounts.type })
+    .select({ id: wealthAccounts.id, type: wealthAccounts.type, currencyCode: wealthAccounts.currencyCode })
     .from(wealthAccounts)
     .where(and(eq(wealthAccounts.id, accountId), eq(wealthAccounts.organizationId, orgId), isNull(wealthAccounts.archivedAt)))
   if (!account) return { ok: false, error: "The paying account must be active", code: "funding_account" }
@@ -308,5 +349,5 @@ export async function resolveFunding(
   if (account.type !== "bank" && account.type !== "cash" && !liability) {
     return { ok: false, error: "Pay from a bank, cash, or another card", code: "funding_account" }
   }
-  return { ok: true, accountId: account.id, cardId, isLiability: liability }
+  return { ok: true, accountId: account.id, cardId, isLiability: liability, currencyCode: account.currencyCode ?? (await reportingCurrencyFor(orgId)) }
 }

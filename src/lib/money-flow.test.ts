@@ -142,6 +142,31 @@ describe("collapseLegs (split transactions)", () => {
     expect(out.map((l) => l.id)).toEqual(["a", "g1", "b"])
   })
 
+  it("never adds a split's legs across currencies: reporting total, each leg in its own currency (MC-124)", () => {
+    const eur = { ...leg("l1", "g1", 50, "Wise"), currency_code: "EUR", reporting_amount: 58 }
+    const inr = { ...leg("l2", "g1", 5000, "HDFC"), currency_code: "INR", reporting_amount: 60 }
+    const split = collapseLegs([eur, inr])[0]
+    expect(split.amount).toBe(118)
+    expect(split.currency_code).toBeNull() // labelled with the reporting currency
+    expect(split.amount_parts).toBeUndefined()
+    expect(split.legs?.map((l) => [l.amount, l.currency_code])).toEqual([[50, "EUR"], [5000, "INR"]])
+  })
+
+  it("shows per-currency parts when a leg of a mixed split has no rate", () => {
+    const eur = { ...leg("l1", "g1", 50, "Wise"), currency_code: "EUR", reporting_amount: 58 }
+    const inr = { ...leg("l2", "g1", 5000, "HDFC"), currency_code: "INR", reporting_amount: null }
+    const split = collapseLegs([eur, inr])[0]
+    expect(split.reporting_amount).toBeNull()
+    expect(split.amount_parts).toEqual([{ currency: "EUR", amount: 50 }, { currency: "INR", amount: 5000 }])
+  })
+
+  it("keeps a same-currency split native, with the reporting amount of the WHOLE split", () => {
+    const split = collapseLegs([{ ...leg("l1", "g1", 60, "Cash"), currency_code: "EUR", reporting_amount: 70 }, { ...leg("l2", "g1", 40, "Bank"), currency_code: "EUR", reporting_amount: 46 }])[0]
+    expect([split.amount, split.currency_code, split.reporting_amount]).toEqual([100, "EUR", 116])
+    const noRate = collapseLegs([{ ...leg("l1", "g1", 60, "Cash"), currency_code: "EUR", reporting_amount: 70 }, { ...leg("l2", "g1", 40, "Bank"), currency_code: "EUR", reporting_amount: null }])[0]
+    expect(noRate.reporting_amount).toBeNull()
+  })
+
   it("logicalCount counts a split once", () => {
     expect(logicalCount([leg("l1", "g1", 60, "Cash"), leg("l2", "g1", 40, "Bank"), leaf("x")])).toBe(2)
   })

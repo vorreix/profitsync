@@ -185,6 +185,22 @@ describe("invalidationFor", () => {
     expect(drops("/api/legal/accept", "/api/profile")).toBe(true)
   })
 
+  it("drops the pricing page when the profile country or the org currency changes (MC-109)", () => {
+    // Pricing is resolved from the profile country + org currency, the same pair checkout bills.
+    expect(drops("/api/profile", "/api/billing/pricing")).toBe(true)
+    expect(drops("/api/organizations/1", "/api/billing/pricing")).toBe(true)
+  })
+
+  it("drops every money read when the workspace settings (its reporting currency) change", () => {
+    // Converted figures cached under USD must not be painted with the new € symbol.
+    for (const read of ["/api/transactions", "/api/wealth/accounts", "/api/budgets/overview", "/api/spending-budgets", "/api/analytics", "/api/debts", "/api/quotations", "/api/organizations", "/api/profile"]) {
+      expect(drops("/api/organizations/1", read), read).toBe(true)
+    }
+    // Membership edits stay narrow: no balance moved.
+    expect(drops("/api/organizations/1/members", "/api/transactions")).toBe(false)
+    expect(invalidationFor("/api/organizations/switch").kind).toBe("all")
+  })
+
   it("purges everything when the org, the plan, or the account itself changes", () => {
     for (const write of ["/api/organizations/switch", "/api/onboarding", "/api/billing/create-subscription", "/api/billing/cancel", "/api/account/delete/confirm", "/api/admin/plans", "/api/admin/roles/1", "/api/admin/organizations/bulk-delete"]) {
       expect(invalidationFor(write).kind, write).toBe("all")

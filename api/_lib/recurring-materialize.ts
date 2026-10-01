@@ -65,7 +65,7 @@ export async function materializeDueRecurring(orgId: string): Promise<Materializ
         if (due.length > 0) {
           const outcome = await postDebtOccurrences(orgId, rule, due)
           if (!outcome.ok) {
-            await setRuleError(rule.id, outcome.error)
+            await setRuleError(rule.id, outcome.body)
             result.skipped.push(rule.name)
             continue
           }
@@ -109,21 +109,23 @@ export async function materializeDueRecurring(orgId: string): Promise<Materializ
         let transferCreatedCount = 0
         let regularCreatedCount = 0
         if (isTransfer && (!rule.wealthAccountId || !rule.toAccountId)) {
-          await setRuleError(rule.id, "Auto-save needs both a source account and a Space")
+          await setRuleError(rule.id, { error: "Auto-save needs both a source account and a Space", code: "recurring_autosave_incomplete" })
           result.skipped.push(rule.name)
           continue
         }
         const accountIds = [rule.wealthAccountId, isTransfer ? rule.toAccountId : null].filter((x): x is string => !!x)
         let accountOk = true
+        let sourceCurrency: string | null = null
         for (const acctId of accountIds) {
           const [account] = await db
-            .select({ id: wealthAccounts.id, archivedAt: wealthAccounts.archivedAt })
+            .select({ id: wealthAccounts.id, archivedAt: wealthAccounts.archivedAt, currencyCode: wealthAccounts.currencyCode })
             .from(wealthAccounts)
             .where(and(eq(wealthAccounts.id, acctId), eq(wealthAccounts.organizationId, orgId)))
           if (!account || account.archivedAt) { accountOk = false; break }
+          if (acctId === rule.wealthAccountId) sourceCurrency = account.currencyCode
         }
         if (!accountOk) {
-          await setRuleError(rule.id, "Account is archived or missing — pick another account")
+          await setRuleError(rule.id, { error: "Account is archived or missing — pick another account", code: "account_archived" })
           result.skipped.push(rule.name)
           continue
         }
@@ -137,7 +139,11 @@ export async function materializeDueRecurring(orgId: string): Promise<Materializ
             .from(cards)
             .where(and(eq(cards.id, rule.cardId), eq(cards.organizationId, orgId)))
           if (!card || card.status !== "active" || card.accountId !== rule.wealthAccountId) {
-            await setRuleError(rule.id, !card ? "Card is missing — pick another card" : card.status === "frozen" ? "Card is frozen — unfreeze it or pick another card" : "Card is closed — pick another card")
+            await setRuleError(rule.id, !card
+              ? { error: "Card is missing — pick another card", code: "recurring_card_missing" }
+              : card.status === "frozen"
+                ? { error: "Card is frozen — unfreeze it or pick another card", code: "recurring_card_frozen" }
+                : { error: "Card is closed — pick another card", code: "recurring_card_closed" })
             result.skipped.push(rule.name)
             continue
           }
@@ -145,7 +151,23 @@ export async function materializeDueRecurring(orgId: string): Promise<Materializ
 
         const clientId = rule.clientId ?? (await ensureDefaultClient(orgId, rule.createdBy ?? "system"))
         if (!rule.currencyCode) {
-          await setRuleError(rule.id, "Currency is missing — edit and save this recurring rule")
+          await setRuleError(rule.id, { error: "Currency is missing — edit and save this recurring rule", code: "recurring_currency_missing" })
+          result.skipped.push(rule.name)
+          continue
+        }
+        // Second guard behind the account currency lock (MC-011). The amount is
+        // in the RULE's currency but moves the ACCOUNT's balance, so a mismatch
+        // would book €50 as $50 on a USD account (an auto-save's source leg
+        // too). Paused like the archived-account branch (cursor not advanced)
+        // until the rule is edited onto an account in its currency. A legacy
+        // account with no currency yet keeps the old behaviour.
+        if (sourceCurrency && sourceCurrency !== rule.currencyCode) {
+          await setRuleError(rule.id, {
+            error: `This rule is in ${rule.currencyCode} but its account is in ${sourceCurrency} — edit the rule and pick an account in ${rule.currencyCode}`,
+            code: "recurring_account_currency",
+            currency: rule.currencyCode,
+            account_currency: sourceCurrency,
+          })
           result.skipped.push(rule.name)
           continue
         }
@@ -154,11 +176,20 @@ export async function materializeDueRecurring(orgId: string): Promise<Materializ
         // the reason, so occurrences materialize after an upgrade/cleanup.
         const quota = await checkTransactionQuota(orgId, clientId)
         if (!quota.allowed) {
-          await setRuleError(rule.id, quota.reason)
+          // The plan-limit body as a route sends it, so it reads the same way.
+          await setRuleError(rule.id, { error: quota.reason, ...quota })
           result.skipped.push(rule.name)
           continue
         }
 
+        // An auto-save that cannot post pauses the rule at THAT occurrence
+        // (MC-071): moving on to the next date — and then advancing the cursor
+        // past it and clearing `last_error` below — lost the occurrence
+        // silently. Same contract as the archived-account and quota branches
+        // and the debt branch's `hold`: whatever posted before it stands, the
+        // cursor stays put, and the next run re-tries from there (the
+        // per-date existence check skips what already posted).
+        let blocked = false
         for (const dueDate of due) {
           if (isTransfer && rule.wealthAccountId && rule.toAccountId) {
             const [existingOccurrence] = await db
@@ -175,11 +206,18 @@ export async function materializeDueRecurring(orgId: string): Promise<Materializ
                 descriptions: { out: rule.name, in: rule.name },
                 recurringRuleId: rule.id,
                 recurringDueDate: dueDate,
+                // The amount is in the rule's currency, and an auto-save moves it
+                // unchanged: an account on either side whose currency has since
+                // changed is refused by name instead of booked in the wrong money.
+                sourceCurrency: rule.currencyCode,
+                destinationCurrency: rule.currencyCode,
               })
               if (!transfer.ok) {
-                await setRuleError(rule.id, typeof transfer.body.error === "string" ? transfer.body.error : "Transfer could not be recorded")
+                // The transfer service's own refusal body: its code is translated already.
+                await setRuleError(rule.id, typeof transfer.body.error === "string" ? { ...transfer.body, error: transfer.body.error } : { error: "Transfer could not be recorded" })
                 result.skipped.push(rule.name)
-                continue
+                blocked = true
+                break
               }
               result.created++
               transferCreatedCount++
@@ -226,6 +264,7 @@ export async function materializeDueRecurring(orgId: string): Promise<Materializ
             await logAudit({ orgId, entityType: "transaction", entityId: inserted[0].id, action: "create", actorId: rule.createdBy })
           }
         }
+        if (blocked) continue
 
         // Personal "auto-saved to your Space" notification — best-effort, once per
         // batch, only when at least one auto-save actually posted. Off the response
@@ -310,7 +349,10 @@ export async function materializeDueRecurring(orgId: string): Promise<Materializ
         if (fresh) await mirrorDebtSchedule(rule.debtAccountId, fresh)
       }
     } catch (err) {
-      await setRuleError(rule.id, err instanceof Error ? err.message : "Materialization failed")
+      // A thrown error's message is the driver's or the runtime's, never a
+      // sentence written for the user — so it is coded for every reader,
+      // English included, and kept in `error` only for the logs.
+      await setRuleError(rule.id, { error: err instanceof Error ? err.message : "Materialization failed", code: "recurring_failed" })
       result.skipped.push(rule.name)
     }
   }
@@ -318,11 +360,22 @@ export async function materializeDueRecurring(orgId: string): Promise<Materializ
   return result
 }
 
-async function setRuleError(ruleId: string, message: string): Promise<void> {
+/**
+ * Why a rule is paused, as a refusal body `{ error, code, ...params }` — the
+ * same shape a route sends (MC-077). `last_error` used to hold the English
+ * sentence alone, which /recurring, /recurring/:id and /debts/:id then showed
+ * word for word to every reader; the code lets them say it in the reader's
+ * language (`apiErrors.<code>`), and `error` keeps the English for logs and
+ * builds that predate this. Readers only ever test it for emptiness, and every
+ * place that clears it still writes "".
+ */
+export type RuleError = { error: string; code?: string; [param: string]: unknown }
+
+async function setRuleError(ruleId: string, body: RuleError): Promise<void> {
   try {
     await db
       .update(recurringRules)
-      .set({ lastError: message.slice(0, 500), updatedAt: new Date() })
+      .set({ lastError: JSON.stringify({ ...body, error: body.error.slice(0, 500) }), updatedAt: new Date() })
       .where(eq(recurringRules.id, ruleId))
   } catch {
     /* non-fatal */

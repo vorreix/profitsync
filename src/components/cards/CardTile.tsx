@@ -196,7 +196,9 @@ export function CardTile({
   const name = cardDisplayName(card)
   const bank = (card.account_nickname || card.account_bank_name || "").trim()
   const fundingBank = (card.funding_account_nickname || card.funding_account_bank_name || "").trim()
-  const money = (n: number) => formatMoney(n, currency, balancesVisible)
+  // The card's own currency (its ledger account's), never the workspace's: an
+  // INR card in a EUR workspace reads ₹ (MC-022). Legacy NULL = reporting.
+  const money = (n: number) => formatMoney(n, card.account_currency_code || currency, balancesVisible)
   const isCredit = card.kind === "credit"
   const usage = isCredit ? creditUsage(card.account_credit_limit, card.account_current_balance) : null
   const alert = expiryAlert(card)

@@ -7,6 +7,9 @@ import { ArrowLeft, Building2, ArchiveRestore } from "lucide-react"
 import { apiGet, apiPatch } from "@/lib/api"
 import type { Client } from "@/lib/types"
 import { useCurrency } from "@/lib/currency-context"
+import { formatMoneyWhole } from "@/lib/wealth"
+import { clientTotalsCurrency, excludedCountOf } from "@/lib/reporting-fields"
+import { FxExcludedNotice } from "@/components/FxExcludedNotice"
 import { useOrg } from "@/lib/org-context"
 import { canWriteRole } from "@/lib/roles"
 import { Button } from "@/components/ui/button"
@@ -32,8 +35,10 @@ export function ClosedClientsPage() {
   const { currency } = useCurrency()
   const { activeOrg } = useOrg()
   const canWrite = canWriteRole(activeOrg?.role)
-  const fmt = (n: number) =>
-    new Intl.NumberFormat("en-US", { style: "currency", currency, minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n)
+  // Per-client totals are converted server-side into the reporting currency
+  // (each row at its own date): format each in ITS `totals_currency`, and say
+  // how many rows had no rate and were left out.
+  const fmt = (n: number, client: Client) => formatMoneyWhole(n, clientTotalsCurrency(client, currency))
 
   const [clients, setClients] = useState<Client[]>([])
   const [total, setTotal] = useState(0)
@@ -109,6 +114,7 @@ export function ClosedClientsPage() {
   }
 
   const remaining = total - clients.length
+  const excludedTotals = clients.reduce((s, c) => s + excludedCountOf(c), 0)
 
   // Auto infinite scroll (sentinel) with the "Load More" button as manual fallback.
   const { sentinelRef } = useInfiniteScroll({
@@ -159,6 +165,7 @@ export function ClosedClientsPage() {
         </div>
       ) : (
         <>
+          <FxExcludedNotice count={excludedTotals} />
           {view === "list" ? (
             <div className="space-y-2">
               {clients.map((client) => {
@@ -180,8 +187,8 @@ export function ClosedClientsPage() {
                       )}
                     </div>
                     <div className="hidden sm:flex items-center gap-4 shrink-0">
-                      <span className="text-sm font-semibold text-emerald-600 dark:text-emerald-400 tabular-nums">{fmt(incoming)}</span>
-                      <span className="text-sm font-semibold text-red-600 dark:text-red-400 tabular-nums">{fmt(outgoing)}</span>
+                      <span className="text-sm font-semibold text-emerald-600 dark:text-emerald-400 tabular-nums">{fmt(incoming, client)}</span>
+                      <span className="text-sm font-semibold text-red-600 dark:text-red-400 tabular-nums">{fmt(outgoing, client)}</span>
                     </div>
                     {canWrite && (
                       <Button variant="outline" size="sm" className="shrink-0" onClick={(e) => { e.stopPropagation(); reopen(client.id) }}>
@@ -213,8 +220,8 @@ export function ClosedClientsPage() {
                         <Badge variant="outline" className="shrink-0 border-amber-500/40 text-amber-600 dark:text-amber-300">{t("closed.closedBadge")}</Badge>
                       </div>
                       <div className="grid grid-cols-2 gap-2 pt-2 border-t text-xs">
-                        <span className="text-emerald-600 dark:text-emerald-400 tabular-nums truncate">{fmt(incoming)}</span>
-                        <span className="text-red-600 dark:text-red-400 tabular-nums truncate text-right">{fmt(outgoing)}</span>
+                        <span className="text-emerald-600 dark:text-emerald-400 tabular-nums truncate">{fmt(incoming, client)}</span>
+                        <span className="text-red-600 dark:text-red-400 tabular-nums truncate text-right">{fmt(outgoing, client)}</span>
                       </div>
                       {canWrite && (
                         <Button variant="outline" size="sm" className="w-full" onClick={(e) => { e.stopPropagation(); reopen(client.id) }}>

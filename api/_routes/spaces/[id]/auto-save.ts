@@ -19,6 +19,9 @@ const ruleFields = {
   toAccountId: recurringRules.toAccountId,
   name: recurringRules.name,
   amount: recurringRules.amount,
+  // The rule's own currency (its source account's): the Space screen formats
+  // the amount in it rather than assuming the workspace's.
+  currencyCode: recurringRules.currencyCode,
   frequencyUnit: recurringRules.frequencyUnit,
   frequencyInterval: recurringRules.frequencyInterval,
   startDate: recurringRules.startDate,

@@ -4,6 +4,7 @@ import { useAuth } from "@clerk/clerk-react"
 import { toast } from "sonner"
 import { AlertTriangle, CheckCircle2, CreditCard, Info, Zap } from "lucide-react"
 import { apiErrorMessage, apiPatch } from "@/lib/api"
+import { accountCurrencyIn, autopayCurrencyMismatch } from "@/lib/card-wizard"
 import { isLiabilityType } from "@/lib/credit-card"
 import type { Card, CardSummary, WealthAccount } from "@/lib/types"
 import { formatMoney } from "@/lib/wealth"
@@ -12,6 +13,7 @@ import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { AccountCombobox } from "@/components/wealth/AccountCombobox"
+import { apiErrorCode } from "@/components/wealth/transfer-utils"
 import { shortDate } from "@/components/cards/card-dates"
 
 /**
@@ -42,7 +44,6 @@ export function AutopayPanel({
 }) {
   const { t } = useTranslation("wealth")
   const { getToken } = useAuth()
-  const money = (n: number) => formatMoney(n, currency, balancesVisible)
   // Where an AUTOMATIC payment comes from: money the user holds (banks + cash),
   // never a card or a Space, and never the card's own liability account. A card
   // CAN pay this one (a balance transfer, set in the wizard or the Pay sheet) —
@@ -59,17 +60,36 @@ export function AutopayPanel({
   const [busy, setBusy] = useState(false)
   useEffect(() => { setOn(card.autopay); setFunding(card.funding_account_id ?? "") }, [card.id, card.autopay, card.funding_account_id])
 
-  async function patch(body: Record<string, unknown>, rollback: () => void) {
+  // Autopay only pays from an account in the CARD's currency (MC-025): it
+  // records a plain transfer, and a cross-currency one needs the amount that
+  // actually arrived. The server refuses switching it on and switches it off
+  // when a new payer holds another currency; the switch says so up front.
+  const cardCurrency = card.account_currency_code || currency
+  // Every figure here is a statement of THIS card — in the card's money.
+  const money = (n: number) => formatMoney(n, cardCurrency, balancesVisible)
+  // The saved payer's currency comes with the card (the account list fills in
+  // after first paint); a newly picked one is read from the list.
+  const fundingCurrency = funding && funding === card.funding_account_id
+    ? card.funding_account_currency_code || currency
+    : accountCurrencyIn(accounts, funding, currency)
+  const otherCurrency = autopayCurrencyMismatch(fundingCurrency, cardCurrency)
+  const mismatchText = t("cardWizard.credit.autopayCurrencyMismatch", { currency: cardCurrency })
+
+  // `keepsOn`: the write should leave autopay on. When the card comes back
+  // with it off anyway, the server switched it off (the payer's currency) and
+  // "Autopay updated" would hide that.
+  async function patch(body: Record<string, unknown>, rollback: () => void, keepsOn = false) {
     setBusy(true)
     try {
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
       const updated = await apiPatch<Card>(`/api/cards/${card.id}`, token, body)
-      toast.success(t("cards.autopayUpdated"))
+      if (keepsOn && !updated.autopay) toast.warning(mismatchText)
+      else toast.success(t("cards.autopayUpdated"))
       onChanged(updated)
     } catch (err) {
       rollback()
-      toast.error(apiErrorMessage(err, t("cards.updateFailed")))
+      toast.error(apiErrorCode(err) === "autopay_currency_mismatch" ? t("cardWizard.errors.autopay_currency_mismatch") : apiErrorMessage(err, t("cards.updateFailed")))
     } finally {
       setBusy(false)
     }
@@ -84,7 +104,7 @@ export function AutopayPanel({
   function changeBank(id: string) {
     const prev = funding
     setFunding(id)
-    void patch({ funding_account_id: id || null }, () => setFunding(prev))
+    void patch({ funding_account_id: id || null }, () => setFunding(prev), on && !!id)
   }
 
   const next = summary?.next_autopay ?? null
@@ -120,7 +140,7 @@ export function AutopayPanel({
           <Switch
             checked={on}
             onCheckedChange={toggle}
-            disabled={!canWrite || busy || (!on && !funding)}
+            disabled={!canWrite || busy || (!on && (!funding || otherCurrency))}
             aria-label={t("cards.autopay")}
             className="scale-125"
           />
@@ -145,6 +165,7 @@ export function AutopayPanel({
         />
         {!funding && <p className="text-xs text-muted-foreground">{t("cards.autopayChooseBank")}</p>}
         {funding && !fundingName && <p className="text-xs text-muted-foreground">{t("cards.noPayingBank")}</p>}
+        {funding && otherCurrency && <p className="text-xs text-amber-700 dark:text-amber-300">{mismatchText}</p>}
       </div>
 
       {last && (

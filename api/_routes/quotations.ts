@@ -5,7 +5,8 @@ import { quotations } from "../../src/lib/db/schema.js"
 import { canWrite, requireAuth, requireBusinessFeature } from "../_lib/auth.js"
 import { checkNoteLength, checkQuotationQuota } from "../_lib/quota.js"
 import { logAudit } from "../_lib/audit.js"
-import { amountExceedsLimit } from "../../src/lib/money.js"
+import { amountExceedsLimit, isCurrencyCode, normalizeCurrencyCode } from "../../src/lib/money.js"
+import { reportingCurrencyFor } from "../_lib/fx-rates.js"
 import { cleanTags, normalizeTagName } from "../../src/lib/tags.js"
 
 const VALID_STATUSES = ["draft", "sent", "accepted", "rejected"]
@@ -124,9 +125,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method === "POST") {
     if (!canWrite(role)) return res.status(403).json({ error: "Forbidden" })
-    const { title, prospect_name, company, email, phone, amount, date, status, notes, category, tags } = req.body as {
+    const { title, prospect_name, company, email, phone, amount, date, status, notes, category, tags, currency_code } = req.body as {
       title: string; prospect_name: string; company?: string; email?: string
       phone?: string; amount?: number; date?: string; status?: string; notes?: string; category?: string; tags?: unknown
+      currency_code?: string
     }
     if (!title?.trim()) return res.status(400).json({ error: "title is required" })
     if (!prospect_name?.trim()) return res.status(400).json({ error: "prospect_name is required" })
@@ -135,7 +137,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: "status must be draft, sent, accepted, or rejected" })
     }
     if (amount != null && amountExceedsLimit(amount)) return res.status(400).json({ error: "Amount is too large" })
-    const quota = await checkQuotationQuota(orgId)
+    if (currency_code != null && !isCurrencyCode(currency_code)) return res.status(400).json({ error: "Invalid currency code", code: "invalid_currency" })
+    // A quote KEEPS the currency it was written in (the workspace's reporting
+    // currency unless the caller names one): a later reporting change must not
+    // relabel a sent €12,000 quote as ₹12,000.
+    const [quota, currencyCode] = await Promise.all([
+      checkQuotationQuota(orgId),
+      currency_code != null ? normalizeCurrencyCode(currency_code) : reportingCurrencyFor(orgId),
+    ])
     if (!quota.allowed) return res.status(402).json(quota)
     const noteCheck = await checkNoteLength(orgId, notes)
     if (!noteCheck.allowed) return res.status(402).json(noteCheck)
@@ -150,6 +159,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         email: email ?? "",
         phone: phone ?? "",
         amount: amount != null ? String(amount) : "0",
+        currencyCode,
         date: isIsoDate(date) ? date : new Date().toISOString().split("T")[0],
         status: normalizedStatus,
         notes: notes ?? "",

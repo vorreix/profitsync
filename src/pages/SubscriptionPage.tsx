@@ -41,6 +41,7 @@ import {
   Sparkles,
 } from "lucide-react"
 import { appLocale } from "@/lib/format-date"
+import { formatMoney, formatMoneyWhole } from "@/lib/wealth"
 
 // A pending confirmation rendered in the AlertDialog (replaces window.confirm).
 type ConfirmState = {
@@ -112,12 +113,12 @@ type PricingResponse = {
   detectedCountry: string
 }
 
+// A price in minor units: "$5" for a whole amount, "$4.99" otherwise. The shared
+// formatters never throw — an invoice row with a bad code ('EURO', 'usd ') once
+// took the whole page into the error boundary (MC-163).
 function formatMinor(amount: number, currency: string): string {
-  return new Intl.NumberFormat(undefined, { style: "currency", currency, minimumFractionDigits: 0 }).format(amount / 100)
-}
-
-function formatMoney(amount: number, currency: string): string {
-  return new Intl.NumberFormat(undefined, { style: "currency", currency }).format(amount)
+  const n = amount / 100
+  return Number.isInteger(n) ? formatMoneyWhole(n, currency) : formatMoney(n, currency)
 }
 
 function formatDate(value: string | null): string {

@@ -4,11 +4,14 @@ import { db } from "../../../src/lib/db/index.js"
 import { spendingBudgets } from "../../../src/lib/db/schema.js"
 import { canDelete, canWrite, requireAuth } from "../../_lib/auth.js"
 import { diffFields, logAudit } from "../../_lib/audit.js"
-import { reportingCurrencyFor } from "../../_lib/fx-rates.js"
+import { ensureRatesInto, reportingCurrencyFor } from "../../_lib/fx-rates.js"
 import { amountAt, budgetWindow, todayUtc, windowsBack } from "../../../src/lib/budget.js"
 import {
+  auditedAmount,
+  budgetCurrency,
   checkRelations,
   historyFor,
+  inheritFromParent,
   isSiblingNameClash,
   loadRecords,
   nextPosition,
@@ -49,8 +52,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Resolved once and handed down: every figure below is in the budget's own
     // currency (its currency_code, else this), converted at each row's date.
     const reporting = await reportingCurrencyFor(orgId)
+    // Rates INTO the budget's currency first (its sub-budgets share it): the
+    // series and the recent rows below read them concurrently (MC-081).
+    await ensureRatesInto(orgId, [budgetCurrency(current, reporting)])
     const [views, series, recent, history] = await Promise.all([
-      withSpend(orgId, family, today, all, reporting),
+      withSpend(orgId, family, today, all, reporting, true),
       current.status === "active" ? seriesFor(orgId, current, windowsBack(current.period, SERIES_BACK[current.period], today), reporting) : Promise.resolve([]),
       recentFor(orgId, current, window, 10, reporting),
       historyFor(orgId, id),
@@ -86,6 +92,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (parentId === id) return res.status(400).json({ error: "parent_is_self" })
     const parent = parentId ? all.find((r) => r.id === parentId) : null
     if (parentId && !parent) return res.status(404).json({ error: "parent_not_found" })
+    // A sub-budget lives in its parent's currency (POST gives it the parent's);
+    // re-parenting a budget kept in another one would leave a € child under a
+    // ₹ parent, so it is refused rather than relabelled.
+    if (parent && parent.id !== current.parent_id) {
+      const reporting = await reportingCurrencyFor(orgId)
+      if (budgetCurrency(current, reporting) !== budgetCurrency(parent, reporting)) {
+        return res.status(409).json({ error: "currency_mismatch", code: "currency_mismatch" })
+      }
+    }
 
     // A sub-budget's window is its parent's, resolved on read; its own row
     // carries the period for readability and never any dates. A main budget
@@ -123,7 +138,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           categories: next.categories,
           parentId: next.parent_id,
           status: next.status,
-          ...(movedSibling ? { position: await nextPosition(orgId, next.parent_id) } : {}),
+          // A move pins the currency the budget was read in (a sub-budget's is
+          // its parent's, derived on read), so leaving a parent never re-labels it.
+          ...(movedSibling ? { position: await nextPosition(orgId, next.parent_id), ...(current.currency_code ? { currencyCode: current.currency_code } : {}) } : {}),
           updatedBy: userId,
           updatedAt: new Date(),
         })
@@ -150,11 +167,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       )
       if (Object.keys(changes).length) {
         if (changes.categories) changes.categories = { from: current.categories, to: next.categories }
+        // The amount carries its currency, so the history and the limit-at-the-
+        // time reads never re-label it (MC-149).
+        if (changes.amount) changes.amount = auditedAmount(current.amount, next.amount, current.currency_code ?? (await reportingCurrencyFor(orgId)))
         await logAudit({ orgId, entityType: "budget", entityId: id, action: "update", actorId: userId, changes })
       }
       // The derived window for a sub-budget is its parent's, which is in hand.
       const stored = toRecord(row)
-      const record = parent ? { ...stored, period: parent.period, start_date: parent.start_date, end_date: parent.end_date } : stored
+      const record = parent ? inheritFromParent(stored, parent) : stored
       const fresh = all.map((r) => (r.id === id ? record : r))
       const [view] = await withSpend(orgId, [record], today, fresh)
       return res.json(view)
@@ -169,7 +189,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     await db.delete(spendingBudgets).where(and(eq(spendingBudgets.id, id), eq(spendingBudgets.organizationId, orgId)))
     await logAudit({ orgId, entityType: "budget", entityId: id, action: "delete", actorId: userId, changes: {
       name: { from: current.name, to: null },
-      amount: { from: current.amount, to: null },
+      amount: auditedAmount(current.amount, null, current.currency_code ?? (await reportingCurrencyFor(orgId))),
     } })
     return res.status(204).end()
   }

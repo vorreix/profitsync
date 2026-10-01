@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { useAuth } from "@clerk/clerk-react"
 import { toast } from "sonner"
-import { apiGet, apiPatch } from "@/lib/api"
+import { apiErrorMessage, apiGet, apiPatch } from "@/lib/api"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -12,6 +12,8 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { appLocale } from "@/lib/format-date"
+import { formatMoney } from "@/lib/wealth"
+import { CurrencyCombobox } from "@/components/CurrencyCombobox"
 
 type Settings = {
   reward_type: string; reward_percent: string; reward_amount: string; reward_currency: string
@@ -67,8 +69,8 @@ export function AdminReferralsPage() {
         banner_text: settings.banner_text,
       })
       toast.success("Settings saved")
-    } catch {
-      toast.error("Failed to save settings")
+    } catch (e) {
+      toast.error(apiErrorMessage(e, "Failed to save settings"))
     } finally {
       setSaving(false)
     }
@@ -90,7 +92,10 @@ export function AdminReferralsPage() {
     return <div className="p-4 sm:p-6 space-y-4"><Skeleton className="h-8 w-48" /><Skeleton className="h-48 w-full" /></div>
   }
 
-  const owed = referrals.filter((r) => r.status === "paid").reduce((s, r) => s + r.reward_amount, 0)
+  // Owed per currency — rewards are never added across currencies (MC-111).
+  const owedBy = new Map<string, number>()
+  for (const r of referrals) if (r.status === "paid") owedBy.set(r.reward_currency, (owedBy.get(r.reward_currency) ?? 0) + r.reward_amount)
+  const owed = [...owedBy].map(([c, n]) => formatMoney(n, c)).join(" · ") || formatMoney(0, settings.reward_currency)
   const upd = (patch: Partial<Settings>) => setSettings((s) => (s ? { ...s, ...patch } : s))
 
   return (
@@ -111,7 +116,7 @@ export function AdminReferralsPage() {
             </div>
             <div className="space-y-1.5">
               <Label>Reward currency</Label>
-              <Input value={settings.reward_currency} maxLength={3} onChange={(e) => upd({ reward_currency: e.target.value.toUpperCase() })} />
+              <CurrencyCombobox value={settings.reward_currency} onValueChange={(v) => upd({ reward_currency: v })} />
             </div>
             {settings.reward_type === "percent" ? (
               <div className="space-y-1.5"><Label>Reward percent (%)</Label><Input type="number" min="0" max="100" value={settings.reward_percent} onChange={(e) => upd({ reward_percent: e.target.value })} /></div>
@@ -147,7 +152,7 @@ export function AdminReferralsPage() {
                     <p className="text-xs text-muted-foreground break-all">{Object.values(p.details || {}).filter(Boolean).join(" · ")} · {fmtDate(p.created_at)}</p>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    <span className="text-sm font-semibold tabular-nums">{new Intl.NumberFormat("en-US", { style: "currency", currency: p.currency }).format(p.amount)}</span>
+                    <span className="text-sm font-semibold tabular-nums">{formatMoney(p.amount, p.currency)}</span>
                     <Badge variant="outline" className="capitalize">{p.status}</Badge>
                     {p.status !== "paid" && p.status !== "rejected" && (
                       <>
@@ -168,7 +173,7 @@ export function AdminReferralsPage() {
         <CardHeader>
           <CardTitle className="text-base flex items-center justify-between">
             <span>Referrals</span>
-            <span className="text-sm font-normal text-muted-foreground">Owed (paid, awaiting payout): {new Intl.NumberFormat("en-US", { style: "currency", currency: settings.reward_currency }).format(owed)}</span>
+            <span className="text-sm font-normal text-muted-foreground">Owed (paid, awaiting payout): {owed}</span>
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -183,7 +188,7 @@ export function AdminReferralsPage() {
                     <p className="text-xs text-muted-foreground">{fmtDate(r.created_at)}{r.qualifying_at ? ` · eligible ${fmtDate(r.qualifying_at)}` : ""}</p>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    {r.reward_amount > 0 && <span className="tabular-nums">{new Intl.NumberFormat("en-US", { style: "currency", currency: r.reward_currency }).format(r.reward_amount)}</span>}
+                    {r.reward_amount > 0 && <span className="tabular-nums">{formatMoney(r.reward_amount, r.reward_currency)}</span>}
                     <Badge variant={r.status === "paid" || r.status === "paid_out" ? "default" : "secondary"} className="capitalize">{r.status.replace("_", " ")}</Badge>
                   </div>
                 </li>

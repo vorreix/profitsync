@@ -1,12 +1,9 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { eq, inArray, sql } from "drizzle-orm"
-import { db } from "../../../src/lib/db/index.js"
-import { transactions, wealthAccounts } from "../../../src/lib/db/schema.js"
 import { canDelete, requireAuth } from "../../_lib/auth.js"
 import { logAudit } from "../../_lib/audit.js"
 import { resolveTxLegs } from "../../_lib/tx-legs.js"
-import { reversalsByAccount } from "../../../src/lib/wealth-ledger.js"
 import { setTransferTrashed } from "../../_lib/wealth-accounts.js"
+import { setRowsTrashed } from "../../_lib/tx-trash.js"
 
 const MAX_IDS = 200
 
@@ -31,42 +28,35 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const allLegs = await resolveTxLegs(orgId, cleanIds)
   if (allLegs.length === 0) return res.json({ deleted: 0 })
 
-  // Legs of a LOGICAL transfer are trashed through the transfer service, one
-  // atomic database function per transfer (both legs + fee row + balances).
-  // Every row linked to one of those transfers — including a selected fee
-  // row — is then excluded from the standard path, so nothing is reversed
-  // twice. A fee row selected on its own (its transfer not selected) is an
-  // ordinary expense and goes the standard way. Legacy transfer legs with no
-  // header still go the standard way via their group, exactly as before.
-  const transferIds = [...new Set(allLegs.filter((leg) => leg.kind === "transfer" && leg.transferId).map((leg) => leg.transferId as string))]
+  // Every row a LOGICAL transfer owns is trashed through the transfer service,
+  // one atomic database function per transfer (both legs + fee rows +
+  // balances) — and only when one of its LEGS was selected: a fee row selected
+  // on its own is skipped, never trashed alone (the header still records it,
+  // so a later Reverse would refund it again) and never silently taking its
+  // whole transfer along (same rule as DELETE /api/transactions/:id). A
+  // transfer the service refuses (a reversal pair, already half-trashed) is
+  // skipped too rather than aborting the batch halfway: every call here is
+  // atomic on its own, so the rest still goes. Skipped row ids come back in
+  // `skipped_transactions` (the tag-delete convention). Legacy transfer legs
+  // with no header still go the standard way via their group.
+  const transferRows = allLegs.filter((leg) => leg.transferId)
+  const transferIds = [...new Set(transferRows.filter((leg) => leg.kind === "transfer").map((leg) => leg.transferId as string))]
+  const refused = new Set<string>()
   for (const transferId of transferIds) {
     const result = await setTransferTrashed(orgId, userId, transferId, false)
-    if (!result.ok) return res.status(result.status).json(result.body)
+    if (!result.ok) refused.add(transferId)
   }
-  const viaService = new Set(transferIds)
-  const legs = allLegs.filter((leg) => !(leg.transferId && viaService.has(leg.transferId)))
-  if (legs.length === 0) return res.json({ deleted: allLegs.length })
+  const skipped = transferRows
+    .filter((leg) => !transferIds.includes(leg.transferId as string) || refused.has(leg.transferId as string))
+    .map((leg) => leg.id)
+  const legs = allLegs.filter((leg) => !leg.transferId)
 
-  // Reverse each touched account's balance (one UPDATE per account).
-  for (const [accountId, shift] of reversalsByAccount(legs)) {
-    await db
-      .update(wealthAccounts)
-      .set({
-        currentBalance: sql`${wealthAccounts.currentBalance}::numeric + ${shift}`,
-        updatedBy: userId,
-        updatedAt: new Date(),
-      })
-      .where(eq(wealthAccounts.id, accountId))
-  }
-
-  const legIds = legs.map((l) => l.id)
-  await db
-    .update(transactions)
-    .set({ deletedAt: new Date(), updatedBy: userId, updatedAt: new Date() })
-    .where(inArray(transactions.id, legIds))
+  // Claim-first: only the rows this call actually flipped reverse a balance, so
+  // a replayed or concurrent bulk delete can't reverse a leg twice.
+  const trashed = await setRowsTrashed(legs.map((l) => l.id), userId, false)
   await Promise.all(
-    legIds.map((tid) => logAudit({ orgId, entityType: "transaction", entityId: tid, action: "delete", actorId: userId })),
+    trashed.map((tid) => logAudit({ orgId, entityType: "transaction", entityId: tid, action: "delete", actorId: userId })),
   )
 
-  return res.json({ deleted: allLegs.length })
+  return res.json({ deleted: transferRows.length - skipped.length + trashed.length, skipped_transactions: skipped })
 }

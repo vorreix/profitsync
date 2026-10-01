@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import {
+  AmountError,
   CurrencyMismatchError,
   addMoney,
   compareMoney,
@@ -7,6 +8,7 @@ import {
   decimalFxRate,
   decimalMoney,
   formatDecimalMoney,
+  ledgerAmountProblem,
   multiplyMoney,
   normalizeCurrencyCode,
   reversalTransferAmounts,
@@ -73,6 +75,36 @@ describe("transferAmounts", () => {
   it("rejects excessive precision and negative fees", () => {
     expect(() => transferAmounts({ sourceAmount: "1.001", sourceCurrency: "EUR", destinationCurrency: "EUR" })).toThrow(/2 decimal/)
     expect(() => transferAmounts({ sourceAmount: "1", sourceFeeAmount: "-1", sourceCurrency: "EUR", destinationCurrency: "EUR" })).toThrow(/non-negative/)
+  })
+
+  it("names every refusal with its own code and never leaks Decimal.js internals (MC-152)", () => {
+    const codeOf = (input: Parameters<typeof transferAmounts>[0]) => {
+      try {
+        transferAmounts(input)
+        return null
+      } catch (error) {
+        expect(error).toBeInstanceOf(AmountError)
+        expect((error as Error).message).not.toMatch(/DecimalError/)
+        return [(error as AmountError).code, (error as AmountError).field]
+      }
+    }
+    const same = { sourceCurrency: "EUR", destinationCurrency: "EUR" }
+    expect(codeOf({ ...same, sourceAmount: "" })).toEqual(["amount_invalid", "source"])
+    expect(codeOf({ ...same, sourceAmount: "abc" })).toEqual(["amount_invalid", "source"])
+    expect(codeOf({ ...same, sourceAmount: "0" })).toEqual(["amount_not_positive", "source"])
+    expect(codeOf({ ...same, sourceAmount: "10.555" })).toEqual(["amount_too_many_decimals", "source"])
+    expect(codeOf({ ...same, sourceAmount: "99999999999999" })).toEqual(["amount_too_large", "source"])
+    expect(codeOf({ ...same, sourceAmount: "10", destinationAmount: "9" })).toEqual(["same_currency_amounts_differ", "destination"])
+    expect(codeOf({ ...same, sourceAmount: "10", sourceFeeAmount: "-1" })).toEqual(["fee_invalid", "fee"])
+    expect(codeOf({ sourceAmount: "10", sourceCurrency: "EUR", destinationCurrency: "USD" })).toEqual(["destination_amount_required", "destination"])
+    expect(codeOf({ sourceAmount: "10", destinationAmount: "1.001", sourceCurrency: "EUR", destinationCurrency: "USD" })).toEqual(["amount_too_many_decimals", "destination"])
+  })
+
+  it("lets a form run the server's amount check before it submits", () => {
+    expect(ledgerAmountProblem("10.55")).toBeNull()
+    expect(ledgerAmountProblem("10.555")).toBe("amount_too_many_decimals")
+    expect(ledgerAmountProblem("")).toBe("amount_invalid")
+    expect(ledgerAmountProblem(-1)).toBe("amount_not_positive")
   })
 
   it("reverses original native principals and refunds the original fee", () => {

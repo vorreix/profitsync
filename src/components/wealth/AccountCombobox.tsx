@@ -173,7 +173,7 @@ export function AccountCombobox({
   return (
       <Popover open={open} onOpenChange={(o) => (o ? setOpen(true) : close())}>
         <PopoverTrigger asChild>
-          <Button variant="outline" role="combobox" aria-expanded={open} className="h-11 w-full justify-between font-normal" disabled={disabled}>
+          <Button variant="outline" role="combobox" aria-expanded={open} className="@container/acct h-11 w-full justify-between font-normal" disabled={disabled}>
             {selected ? (
               selected.kind === "card" ? (
                 <span className="flex min-w-0 items-center gap-2">
@@ -186,7 +186,10 @@ export function AccountCombobox({
                 <span className="flex min-w-0 items-center gap-2">
                   <WealthAccountIcon account={selected.account} className="size-5" />
                   <span className="truncate">{accountDisplayName(selected.account)}</span>
-                  <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{balanceOf(selected.account)}</span>
+                  {/* In a narrow trigger (the transfer wizard's two columns at
+                      360 px) the balance left the name 0 px wide — drop it on phones
+                      only; desktop keeps it. */}
+                  <span className="shrink-0 text-xs text-muted-foreground tabular-nums max-sm:@max-[11rem]/acct:hidden">{balanceOf(selected.account)}</span>
                 </span>
               )
             ) : allowNone ? (

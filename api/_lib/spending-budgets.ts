@@ -26,7 +26,7 @@ import {
 import { amountExceedsLimit, normalizeCurrencyCode } from "../../src/lib/money.js"
 import type { SpendingBudget, SpendingBudgetHistoryEntry, SpendingBudgetRecentTx, SpendingBudgetStatus } from "../../src/lib/types.js"
 import { budgetSpendMissingRate, budgetSpendPredicates, budgetSpendSignedAmountIn } from "./budget-spend.js"
-import { ensureRatesForOrg, reportingCurrencyFor } from "./fx-rates.js"
+import { ensureRatesInto, reportingCurrencyFor } from "./fx-rates.js"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Spending budgets — the DB side of src/lib/budget.ts.
@@ -50,6 +50,9 @@ import { ensureRatesForOrg, reportingCurrencyFor } from "./fx-rates.js"
 //     ITS OWN DATE by reporting_amount() (mig 0074). A row whose currency has no
 //     stored rate for that day is left out of the sum and COUNTED in
 //     `excluded_count`, so a partial figure is never presented as complete.
+//     Rates are made sure of INTO each budget currency (ensureRatesInto), since
+//     fx_rate_on resolves only a stored direct or inverse pair. A sub-budget is
+//     always in its parent's currency, derived on read like its window.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const MAX_TOP_LEVEL = 40
@@ -89,7 +92,12 @@ export type SpendingBudgetView = SpendingBudget & {
   currency: string
   /** Rows in the budget's OWN window that could not be converted (no rate for their day). */
   excluded_count: number
+  /** The same, for each of the four view windows (a `once` budget repeats its own). */
+  excluded_by_view: Record<ViewWindow, number>
 }
+
+/** Rows each view window left out of the budgets on screen — every row ONCE, however many budgets it falls under. */
+export type ExcludedByView = Record<ViewWindow, number>
 export type { SpendingBudgetStatus }
 
 type Row = typeof spendingBudgets.$inferSelect
@@ -107,6 +115,13 @@ export function toRecord(row: Row): SpendingBudgetRecord {
     currency_code: row.currencyCode ? normalizeCurrencyCode(row.currencyCode) : null,
   }
 }
+
+/**
+ * An `amount` entry for the budget's audit trail that carries the currency it
+ * was in (MC-149), so the history never re-labels an old limit with today's
+ * currency. Extra keys ride along in the jsonb; amountAt/limitAt read from/to.
+ */
+export const auditedAmount = (from: number | null, to: number | null, currency: string) => ({ from, to, currency })
 
 /** The currency a budget's figures are in. */
 export const budgetCurrency = (r: Pick<SpendingBudgetRecord, "currency_code">, reporting: string): string =>
@@ -159,6 +174,12 @@ export type SpendItem = {
   exclude?: string[]
   /** The currency to measure in — the budget's own. */
   currency: string
+  /**
+   * Count-only item: the rows of `window` that ANY of these (scope, currency)
+   * pairs had to leave out, each row once — the page-level excluded notice,
+   * which must not count one row once per budget it falls under.
+   */
+  anyOf?: { categories: string[]; currency: string }[]
 }
 
 export type SpendFigure = {
@@ -181,7 +202,7 @@ export type SpendFigure = {
 async function aggregate(orgId: string, items: SpendItem[], lowerBound: string | null): Promise<[string, SpendFigure][]> {
   const conds = [...budgetSpendPredicates(orgId)]
   if (lowerBound) conds.push(gte(transactions.date, lowerBound))
-  const currencies = [...new Set(items.map((it) => it.currency))]
+  const currencies = [...new Set(items.flatMap((it) => [it.currency, ...(it.anyOf ?? []).map((p) => p.currency)]))]
   const projection: Record<string, SQL.Aliased<unknown>> = {
     date: sql`${transactions.date}`.as("date"),
     ckey: CATEGORY_KEY_SQL.as("ckey"),
@@ -199,7 +220,14 @@ async function aggregate(orgId: string, items: SpendItem[], lowerBound: string |
   const col = (name: string) => sql`"t".${sql.identifier(name)}`
 
   const columns: Record<string, SQL<string | number>> = {}
+  const missingIn = (cur: string) => col(`m${currencies.indexOf(cur)}`)
   items.forEach((it, i) => {
+    if (it.anyOf?.length) {
+      const any = sql.join(it.anyOf.map((p) => sql`(${scopeOn(col("ckey"), p.categories)} and ${missingIn(p.currency)})`), sql` or `)
+      columns[`b${i}`] = sql<string>`0`
+      columns[`x${i}`] = sql<number>`count(*) filter (where ${windowOn(col("date"), it.window)} and (${any}))::int`
+      return
+    }
     const j = currencies.indexOf(it.currency)
     const excl = it.exclude?.length ? sql` and not (${scopeOn(col("ckey"), it.exclude)})` : sql``
     const match = sql`${windowOn(col("date"), it.window)} and ${scopeOn(col("ckey"), it.categories)}${excl}`
@@ -247,8 +275,21 @@ export async function loadRecords(orgId: string): Promise<SpendingBudgetRecord[]
   const byId = new Map(records.map((r) => [r.id, r]))
   return records.map((r) => {
     const parent = r.parent_id ? byId.get(r.parent_id) : null
-    return parent ? { ...r, period: parent.period, start_date: parent.start_date, end_date: parent.end_date } : r
+    return parent ? inheritFromParent(r, parent) : r
   })
+}
+
+/**
+ * What a sub-budget takes from its parent on every read: the window AND the
+ * currency. One scope, one window, one currency — so a parent's remainder, the
+ * dialog's "sub-budgets add up to" and the detail page's figures are always a
+ * subtraction of like from like, never ₹ minus €.
+ */
+export function inheritFromParent<T extends Pick<SpendingBudgetRecord, "period" | "start_date" | "end_date" | "currency_code">>(
+  child: T,
+  parent: Pick<SpendingBudgetRecord, "period" | "start_date" | "end_date" | "currency_code">,
+): T {
+  return { ...child, period: parent.period, start_date: parent.start_date, end_date: parent.end_date, currency_code: parent.currency_code ?? child.currency_code ?? null }
 }
 
 const VIEWS = ["daily", "weekly", "monthly", "yearly"] as const
@@ -275,11 +316,31 @@ export async function withSpend(
   today: string,
   all: SpendingBudgetRecord[] = records,
   reportingInput?: string,
+  ratesEnsured = false,
 ): Promise<SpendingBudgetView[]> {
+  return (await withSpendTotals(orgId, records, today, all, reportingInput, ratesEnsured)).budgets
+}
+
+/**
+ * `withSpend` plus, per view window, how many DISTINCT rows the active
+ * recurring budgets on screen had to leave out — a row under the overall
+ * budget, its category budget and a sub-budget is still one row. (A custom-date
+ * budget is measured over its own dates, not the view's; its row carries its
+ * own count.) Same single statement: one more count column per view.
+ */
+export async function withSpendTotals(
+  orgId: string,
+  records: SpendingBudgetRecord[],
+  today: string,
+  all: SpendingBudgetRecord[] = records,
+  reportingInput?: string,
+  ratesEnsured = false,
+): Promise<{ budgets: SpendingBudgetView[]; excluded_by_view: ExcludedByView }> {
   // Each budget is measured in ITS currency (its own, else the workspace's
-  // reporting currency); the rates it needs are made sure of first, best effort.
+  // reporting currency); the rates INTO each of those currencies are made sure
+  // of first, best effort (MC-081).
   const reporting = reportingInput ?? (await reportingCurrencyFor(orgId))
-  await ensureRatesForOrg(orgId, reporting).catch(() => undefined)
+  if (!ratesEnsured) await ensureRatesInto(orgId, records.map((r) => budgetCurrency(r, reporting)))
 
   const childrenOf = new Map<string, SpendingBudgetRecord[]>()
   for (const r of all) {
@@ -311,12 +372,23 @@ export async function withSpend(
     return { r, currency, authored, authoredCol, viewCols }
   })
 
+  // The distinct per-view count: one item per view over every (scope,
+  // currency) the active recurring budgets measure. An all-spending scope makes
+  // the others redundant for its currency, which the OR absorbs.
+  const parts = new Map<string, { categories: string[]; currency: string }>()
+  for (const p of plan) {
+    if (p.r.status !== "active" || p.r.period === "once") continue
+    parts.set(`${p.currency}|${p.r.categories.map(categoryKey).sort().join("\u0000")}`, { categories: p.r.categories, currency: p.currency })
+  }
+  const anyOf = [...parts.values()]
+  if (anyOf.length) for (const v of VIEWS) items.push({ key: `any:${v}`, window: viewRange(v, today), categories: [], currency: anyOf[0].currency, anyOf })
+
   const spent = await spendByItem(orgId, items)
   const spentOf = (id: string) => spent.get(id)?.spent ?? 0
   const excludedOf = (id: string) => spent.get(id)?.excluded ?? 0
   const byId = new Map(plan.map((p) => [p.r.id, p]))
 
-  return plan.map(({ r, currency, authored, authoredCol, viewCols }) => {
+  const budgets = plan.map(({ r, currency, authored, authoredCol, viewCols }): SpendingBudgetView => {
     const s = spentOf(authoredCol)
     const phase = windowPhase(authored, today)
     const days = daysLeft(authored, today)
@@ -337,6 +409,7 @@ export async function withSpend(
       spent: s,
       spent_by_view,
       excluded_count: excludedOf(authoredCol),
+      excluded_by_view: Object.fromEntries(VIEWS.map((v) => [v, excludedOf(viewCols[v])])) as Record<(typeof VIEWS)[number], number>,
       remaining: money(remaining),
       ratio: r.amount > 0 && Number.isFinite(ratio) ? Math.round(ratio * 10_000) / 10_000 : null,
       state: counted ? state : "none",
@@ -348,6 +421,7 @@ export async function withSpend(
       children_count: kids.length,
     }
   })
+  return { budgets, excluded_by_view: Object.fromEntries(VIEWS.map((v) => [v, excludedOf(`any:${v}`)])) as ExcludedByView }
 }
 
 /** Every budget measured in its OWN authored window — for alerts and the v1 API shim. */
@@ -483,14 +557,26 @@ export type BudgetAnalyticsWindow = {
    * already inside its parent's, so never sum this map — read the entry you want.
    */
   per_budget: Record<string, number>
+  /** budget id → rows its `per_budget` figure had to leave out (no rate into its currency). */
+  per_budget_excluded: Record<string, number>
+  /**
+   * The figure this window is JUDGED on, in `headline_currency`: the overall
+   * budget's own spend against its own cap, or — without one — the spend of
+   * the category budgets kept in the reporting currency that already existed
+   * in the window against the sum of exactly those caps. Like is only ever
+   * compared with like (MC-085).
+   */
+  headline: { spent: number; limit: number | null; excluded: number }
 }
 
 export type BudgetAnalytics = {
   view: ViewWindow
   back: number
   today: string
-  /** The reporting currency every cross-budget figure (total, unclaimed, budgeted_limit, adherence) is in. */
+  /** The reporting currency every cross-budget figure (total, unclaimed, budgeted_limit) is in. */
   currency: string
+  /** The currency of each window's `headline` and of the adherence figures: the overall budget's, else `currency`. */
+  headline_currency: string
   /** Rows across all windows that could not be converted. */
   excluded_count: number
   windows: BudgetAnalyticsWindow[]
@@ -515,7 +601,6 @@ export type BudgetAnalytics = {
  */
 export async function analyticsFor(orgId: string, today: string, view: ViewWindow, back: number): Promise<BudgetAnalytics> {
   const [all, reporting] = await Promise.all([loadRecords(orgId), reportingCurrencyFor(orgId)])
-  await ensureRatesForOrg(orgId, reporting).catch(() => undefined)
   const windows = windowsBack(view, back, today)
   const first = windows[0].start!
   const last = windows[windows.length - 1].endExclusive!
@@ -523,8 +608,9 @@ export async function analyticsFor(orgId: string, today: string, view: ViewWindo
 
   // Every currency a figure here is read in: the reporting currency for the
   // cross-budget totals, plus each budget's own. One converted column per
-  // currency, all in the same grouped read.
+  // currency, all in the same grouped read — and rates INTO each of them.
   const currencies = [...new Set([reporting, ...all.map((r) => budgetCurrency(r, reporting))])]
+  await ensureRatesInto(orgId, currencies)
   const sums: Record<string, SQL<string | number>> = {}
   currencies.forEach((cur, j) => {
     sums[`s${j}`] = sql<string>`coalesce(sum(${budgetSpendSignedAmountIn(cur)}), 0)`
@@ -597,8 +683,8 @@ export async function analyticsFor(orgId: string, today: string, view: ViewWindo
   }
 
   // Per (window, category key): the spend in every currency read here, plus
-  // how many rows the reporting-currency figure had to leave out.
-  type CatSpend = { ckey: string; label: string; spentIn: (cur: string) => number; excluded: number }
+  // how many rows each of those figures had to leave out.
+  type CatSpend = { ckey: string; label: string; spentIn: (cur: string) => number; excludedIn: (cur: string) => number }
   const byBucket = new Map<string, CatSpend[]>()
   for (const r of rows) {
     const list = byBucket.get(r.bucket) ?? []
@@ -607,39 +693,66 @@ export async function analyticsFor(orgId: string, today: string, view: ViewWindo
       ckey: r.ckey,
       label: r.label ?? "",
       spentIn: (cur) => money(Number(rec[`s${curIndex(cur)}`] ?? 0)),
-      excluded: Number(rec.x0 ?? 0),
+      excludedIn: (cur) => Number(rec[`x${curIndex(cur)}`] ?? 0),
     })
     byBucket.set(r.bucket, list)
   }
   const budgetById = new Map(active.map((r) => [r.id, r]))
   const currencyOf = (id: string) => budgetCurrency(budgetById.get(id) ?? { currency_code: null }, reporting)
+  const headlineCurrency = overall ? currencyOf(overall.id) : reporting
+  // Only the category budgets kept in the reporting currency fold into the
+  // budgeted cap — and so only THEIR spend folds into what it is judged against.
+  const folded = new Set(lines.filter((r) => currencyOf(r.id) === reporting).map((r) => r.id))
 
   let excludedTotal = 0
   const currentStart = windows[windows.length - 1].start!
   const out: BudgetAnalyticsWindow[] = windows.map((w) => {
     const list = byBucket.get(w.start!) ?? []
     const per_budget: Record<string, number> = {}
-    let total = 0
-    let unclaimed = 0
-    let excluded = 0
-    for (const c of list) {
-      const spent = c.spentIn(reporting)
-      total += spent
-      excluded += c.excluded
-      const top = ownerOf.get(c.ckey)
-      if (top) per_budget[top] = money((per_budget[top] ?? 0) + c.spentIn(currencyOf(top)))
-      else unclaimed += spent
-      const sub = subOwnerOf.get(c.ckey)
-      if (sub) per_budget[sub] = money((per_budget[sub] ?? 0) + c.spentIn(currencyOf(sub)))
-    }
-    excludedTotal += excluded
-    if (overall) per_budget[overall.id] = money(list.reduce((acc, c) => acc + c.spentIn(currencyOf(overall.id)), 0))
+    const per_budget_excluded: Record<string, number> = {}
     const per_budget_limit: Record<string, number | null> = {}
     for (const r of lines) per_budget_limit[r.id] = capAt(r, w)
     if (overall) per_budget_limit[overall.id] = capAt(overall, w)
+    // A line folds into this window's headline only when it HAD a cap here —
+    // in the reporting currency and already created — so the spend and the
+    // cap it is judged against always cover exactly the same lines (MC-085).
+    const foldsHere = (id: string) => folded.has(id) && per_budget_limit[id] !== null
+    const add = (id: string, c: CatSpend) => {
+      per_budget[id] = money((per_budget[id] ?? 0) + c.spentIn(currencyOf(id)))
+      per_budget_excluded[id] = (per_budget_excluded[id] ?? 0) + c.excludedIn(currencyOf(id))
+    }
+    let total = 0
+    let unclaimed = 0
+    let excluded = 0
+    let foldSpent = 0
+    let foldExcluded = 0
+    for (const c of list) {
+      const spent = c.spentIn(reporting)
+      total += spent
+      excluded += c.excludedIn(reporting)
+      const top = ownerOf.get(c.ckey)
+      if (top) {
+        add(top, c)
+        if (foldsHere(top)) {
+          foldSpent += spent
+          foldExcluded += c.excludedIn(reporting)
+        }
+      } else unclaimed += spent
+      const sub = subOwnerOf.get(c.ckey)
+      if (sub) add(sub, c)
+    }
+    excludedTotal += excluded
+    if (overall) for (const c of list) add(overall.id, c)
     // Σ caps is a reporting-currency figure: a line budget authored in another
     // currency has no place in it (adding EUR caps to INR caps means nothing).
-    const budgetedCaps = lines.filter((r) => budgetCurrency(r, reporting) === reporting).map((r) => per_budget_limit[r.id]).filter((n): n is number => n !== null)
+    const budgetedLimit = money(lines.filter((r) => foldsHere(r.id)).reduce((s, r) => s + (per_budget_limit[r.id] ?? 0), 0))
+    const overallLimit = overall ? per_budget_limit[overall.id] : null
+    // The overall budget is the headline whenever it existed; before that the
+    // fold stands in — but only when it is in the same currency, or the chart
+    // and the adherence would average rupees with euros.
+    const headline = overall && (overallLimit !== null || headlineCurrency !== reporting)
+      ? { spent: per_budget[overall.id] ?? 0, limit: overallLimit, excluded: per_budget_excluded[overall.id] ?? 0 }
+      : { spent: money(foldSpent), limit: budgetedLimit > 0 ? budgetedLimit : null, excluded: foldExcluded }
     return {
       start: w.start!,
       end_exclusive: w.endExclusive!,
@@ -648,10 +761,12 @@ export async function analyticsFor(orgId: string, today: string, view: ViewWindo
       total: money(total),
       excluded_count: excluded,
       unclaimed: money(Math.max(0, unclaimed)),
-      overall_limit: overall ? capAt(overall, w) : null,
-      budgeted_limit: money(budgetedCaps.reduce((s, n) => s + n, 0)),
+      overall_limit: overallLimit,
+      budgeted_limit: budgetedLimit,
       per_budget_limit,
       per_budget,
+      per_budget_excluded,
+      headline,
     }
   })
 
@@ -664,12 +779,12 @@ export async function analyticsFor(orgId: string, today: string, view: ViewWindo
     .sort((a, b) => b.spent - a.spent)
     .slice(0, 12)
 
-  // Adherence over CLOSED, reliable windows that had a cap at all. With an
-  // overall budget the verdict is that budget's own figure against its own
-  // cap (both in its currency); without one, the reporting-currency fold.
-  const capOf = (w: BudgetAnalyticsWindow) => (w.overall_limit !== null ? w.overall_limit : w.budgeted_limit)
-  const spendOf = (w: BudgetAnalyticsWindow) => (w.overall_limit !== null && overall ? (w.per_budget[overall.id] ?? w.total) : money(w.total - w.unclaimed))
-  const judged = out.filter((w) => !w.partial && w.reliable && capOf(w) > 0)
+  // Adherence over CLOSED, reliable windows that had a cap at all, on each
+  // window's headline. A window whose headline left rows out (no rate) is not
+  // judged either: partial spend under the cap is not "within budget" (MC-082).
+  const capOf = (w: BudgetAnalyticsWindow) => w.headline.limit ?? 0
+  const spendOf = (w: BudgetAnalyticsWindow) => w.headline.spent
+  const judged = out.filter((w) => !w.partial && w.reliable && capOf(w) > 0 && w.headline.excluded === 0)
   let streak = 0
   for (let i = judged.length - 1; i >= 0; i--) {
     if (spendOf(judged[i]) <= capOf(judged[i])) streak++
@@ -681,6 +796,7 @@ export async function analyticsFor(orgId: string, today: string, view: ViewWindo
     back,
     today,
     currency: reporting,
+    headline_currency: headlineCurrency,
     excluded_count: excludedTotal,
     windows: out,
     categories,

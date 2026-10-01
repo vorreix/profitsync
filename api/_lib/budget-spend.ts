@@ -1,8 +1,9 @@
 import { and, eq, gte, inArray, isNull, lt, or, sql } from "drizzle-orm"
 import { db } from "../../src/lib/db/index.js"
-import { clients, transactions } from "../../src/lib/db/schema.js"
+import { budgets, clients, transactions } from "../../src/lib/db/schema.js"
 import { periodStart, type BudgetPeriod } from "../../src/lib/budget.js"
 import type { PeriodWindow } from "../../src/lib/budget-history.js"
+import { isCurrencyCode, normalizeCurrencyCode } from "../../src/lib/money.js"
 import { missingRateSql, reportingAmountSql } from "./tx-sql.js"
 
 export type PeriodCounts = { daily: number; weekly: number; monthly: number; lifetime: number }
@@ -55,6 +56,64 @@ export const budgetSpendSignedAmountIn = (target: string) =>
 /** "this spend row could not be converted into `target`" — for the excluded counts. */
 export const budgetSpendMissingRate = (target: string) => missingRateSql(target)
 
+// ── v1 per-client caps keep their currency ───────────────────────────────────
+// A cap is authored AND judged in `budgets.currency_code` (mig 0077): the
+// reporting currency when it was first set. A later reporting change converts
+// the spend into the cap's currency; it never relabels the cap (a $1,000 cap
+// must not become ₹1,000 or €1,000). A legacy NULL — or a client with no cap —
+// falls back to the workspace's reporting currency.
+
+/** The currency a v1 cap is judged in. */
+export const capCurrency = (cap: { currencyCode: string | null } | null | undefined, reporting: string): string =>
+  cap?.currencyCode && isCurrencyCode(cap.currencyCode) ? normalizeCurrencyCode(cap.currencyCode) : reporting
+
+/**
+ * Per row: the currency of the cap on the row's client (needs the `budgets`
+ * left join `capJoin` adds), else `fallback`. The SQL twin of `capCurrency`.
+ */
+const capTargetSql = (fallback: string) => sql<string>`coalesce(${budgets.currencyCode}, ${fallback})`
+const capConvertedSql = (fallback: string) =>
+  sql<string>`reporting_amount(${transactions.amount}::numeric, ${transactions.currencyCode}, ${transactions.date}, ${capTargetSql(fallback)})`
+
+/** The signed spend of a row converted at its date into ITS CLIENT's cap currency (NULL = no rate). */
+export const capSpendSignedAmount = (fallback: string) =>
+  sql<string>`case when ${transactions.kind} = 'refund' then -${capConvertedSql(fallback)} else ${capConvertedSql(fallback)} end`
+
+/** "this row could not be converted into its client's cap currency" — the excluded count. */
+export const capSpendMissingRate = (fallback: string) =>
+  sql<boolean>`(${transactions.currencyCode} is not null and ${transactions.currencyCode} <> ${capTargetSql(fallback)} and fx_rate_on(${transactions.currencyCode}, ${capTargetSql(fallback)}, ${transactions.date}) is null)`
+
+/** Join each spend row to its client's cap (at most one: budgets_org_client_unique). */
+export const capJoin = (orgId: string) => and(eq(budgets.organizationId, orgId), eq(budgets.clientId, transactions.clientId))
+
+/**
+ * Whether a history snapshot belongs to a cap's timeline in `currency`. A cap
+ * removed and set again after a reporting change starts over in the new
+ * currency; comparing $1,000 with a later €60 would read as a 94 % cut, so
+ * creep/evolution/series only ever see one currency. A legacy NULL snapshot is
+ * the cap's own.
+ */
+export const inCapCurrency = (snapshotCurrency: string | null, currency: string): boolean =>
+  !snapshotCurrency || snapshotCurrency.toUpperCase() === currency
+
+/**
+ * The currency a v1 cap write is saved in — or null when the amount was typed
+ * against another one. An existing cap keeps its own; a new one is born in the
+ * currency the caller showed (`shown`, the reporting currency when it names
+ * none — what every dialog that predates kept caps labels the input with). A
+ * $1,000 cap edited through a dialog that says ₹ must be refused (409
+ * currency_mismatch), never saved as $50,000 because the user typed rupees.
+ */
+export const capWriteCurrency = (
+  existing: { currencyCode: string | null } | null | undefined,
+  reporting: string,
+  shown: string | null,
+): string | null => {
+  const typedIn = shown ?? reporting
+  const saveIn = existing ? capCurrency(existing, reporting) : typedIn
+  return saveIn === typedIn ? saveIn : null
+}
+
 // Per-client OUTGOING (expense) spend for each current budget window, in ONE grouped
 // query, so a budget of any period just reads its column. Spend is derived here — the
 // budgets table only stores the target + cadence.
@@ -66,15 +125,16 @@ export const budgetSpendMissingRate = (target: string) => missingRateSql(target)
 // filter, zeroing a wallet registered as an expense and silently consumed the
 // budget. `api/_lib/quota.ts` already excludes them for the same reason.
 //
-// Every figure is in `reporting` (the workspace's reporting currency), each row
-// converted at its own date; rows with no rate are skipped and counted in
-// `excluded` per window so a cap is never judged against a silently partial total.
+// Each client's figures are in ITS CAP's currency (`capCurrency`; `reporting`
+// when it has no cap or a legacy NULL one), each row converted at its own date;
+// rows with no rate are skipped and counted in `excluded` per window so a cap is
+// never judged against a silently partial total.
 export async function outgoingByClient(orgId: string, now: Date, reporting: string): Promise<Map<string, PeriodSums>> {
   const today = periodStart("daily", now)!
   const weekStart = periodStart("weekly", now)!
   const monthStart = periodStart("monthly", now)!
-  const signed = budgetSpendSignedAmountIn(reporting)
-  const missing = budgetSpendMissingRate(reporting)
+  const signed = capSpendSignedAmount(reporting)
+  const missing = capSpendMissingRate(reporting)
   const rows = await db
     .select({
       clientId: transactions.clientId,
@@ -89,6 +149,7 @@ export async function outgoingByClient(orgId: string, now: Date, reporting: stri
     })
     .from(transactions)
     .innerJoin(clients, eq(transactions.clientId, clients.id))
+    .leftJoin(budgets, capJoin(orgId))
     .where(and(...budgetSpendPredicates(orgId)))
     .groupBy(transactions.clientId)
 
@@ -115,11 +176,11 @@ export const spentFor = (sums: PeriodSums | undefined, period: BudgetPeriod): nu
 export const excludedFor = (sums: PeriodSums | undefined, period: BudgetPeriod): number => sums?.excluded?.[period] ?? 0
 
 /**
- * OUTGOING spend bucketed into the given period windows, for a budget's spend-vs-budget
- * chart. Scoped to one client when `clientId` is set; when null it sums the whole
- * workspace (the personal org's single budget). Returns { windowStart: spent } in
- * the reporting currency plus { windowStart: excludedCount } for the rows no rate
- * could convert.
+ * OUTGOING spend bucketed into the given period windows, for a cap's spend-vs-budget
+ * chart. Scoped to one client when `clientId` is set (the only caller today: the
+ * business detail page); when null it sums the whole workspace. Returns
+ * { windowStart: spent } in the client's CAP currency (`reporting` without one)
+ * plus { windowStart: excludedCount } for the rows no rate could convert.
  */
 export async function spendForWindows(
   orgId: string,
@@ -145,9 +206,10 @@ export async function spendForWindows(
   if (clientId) conds.push(eq(transactions.clientId, clientId))
 
   const rows = await db
-    .select({ date: transactions.date, amount: budgetSpendSignedAmountIn(reporting) })
+    .select({ date: transactions.date, amount: capSpendSignedAmount(reporting) })
     .from(transactions)
     .innerJoin(clients, eq(transactions.clientId, clients.id))
+    .leftJoin(budgets, capJoin(orgId))
     .where(and(...conds))
 
   for (const r of rows) {

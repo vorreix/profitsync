@@ -2,7 +2,8 @@ import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { useAuth } from "@clerk/clerk-react"
 import { toast } from "sonner"
-import { apiPatch } from "@/lib/api"
+import { apiErrorMessage, apiPatch } from "@/lib/api"
+import { ACCOUNT_CURRENCY_LOCK_KEYS } from "@/lib/api-error-codes"
 import { amountExceedsLimit } from "@/lib/money"
 import type { WealthAccount } from "@/lib/types"
 import { accountCurrency, currencySymbol } from "@/lib/wealth"
@@ -58,6 +59,10 @@ export function WealthAccountDialogs({
   const symbol = currencySymbol(accountCurrency(editing, currency))
   const adjustSymbol = currencySymbol(accountCurrency(adjusting, currency))
   const adjustingCard = !!adjusting && isLiabilityType(adjusting.type)
+  // The picker's hint for a locked currency: the same line per reason
+  // (src/lib/account-currency-lock.ts) that apiErrorMessage gives the 409.
+  const currencyLockMessage = (reason: string | null | undefined, code: string | null | undefined) =>
+    t(ACCOUNT_CURRENCY_LOCK_KEYS[reason ?? "history"] ?? ACCOUNT_CURRENCY_LOCK_KEYS.history, { ns: "translation", currency: code ?? currency })
 
   useEffect(() => {
     if (editing) {
@@ -91,7 +96,8 @@ export function WealthAccountDialogs({
       onDone()
       onChanged()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : t("couldNotUpdate"))
+      // account_currency_locked included: apiErrorMessage names its reason.
+      toast.error(apiErrorMessage(err, t("couldNotUpdate")))
     } finally {
       setSaving(false)
     }
@@ -123,7 +129,10 @@ export function WealthAccountDialogs({
       bankName: editForm.bank_name.trim(),
       nickname: editForm.nickname.trim(),
       icon: editForm.icon,
-      currency_code: editCurrency,
+      // Only a real change is sent: echoing the current code is a no-op at best,
+      // and on a legacy account with no stored code it reads as a change the
+      // lock refuses — every rename would fail.
+      ...(editCurrency !== (editing.currency_code ?? currency) ? { currency_code: editCurrency } : {}),
       ...appearancePayload(editForm),
     }
     // Banking details only apply to bank accounts.
@@ -141,9 +150,12 @@ export function WealthAccountDialogs({
               {!isLiabilityType(editing.type) && (
                 <div className="mb-4 space-y-1.5">
                   <Label>{t("accountCurrency")}</Label>
-                  <CurrencyCombobox value={editCurrency} onValueChange={setEditCurrency} disabled={(editing.transaction_count ?? 0) > 0 || saving} />
-                  {(editing.transaction_count ?? 0) > 0 && (
-                    <p className="text-xs text-muted-foreground">{t("accountCurrencyLocked", { currency: editing.currency_code ?? currency })}</p>
+                  {/* The server decides (`currency_locked`) with the same predicate
+                      its PATCH refuses with — counting rows here once enabled a
+                      save that could only fail (trashed rows lock it too). */}
+                  <CurrencyCombobox value={editCurrency} onValueChange={setEditCurrency} disabled={!!editing.currency_locked || saving} />
+                  {editing.currency_locked && (
+                    <p className="text-xs text-muted-foreground">{currencyLockMessage(editing.currency_lock_reason, editing.currency_code)}</p>
                   )}
                 </div>
               )}

@@ -1,12 +1,10 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { and, asc, eq, ilike, sql } from "drizzle-orm"
-import { CURRENCY_LIST } from "../../src/lib/currencies.js"
 import { db, serialize } from "../../src/lib/db/index.js"
 import { organizations, organizationMembers, userProfiles } from "../../src/lib/db/schema.js"
 import { createOrgForUser, getUserId } from "../_lib/auth.js"
 import { imageSrc } from "../_lib/image-upload.js"
-
-const VALID_CURRENCIES = new Set(CURRENCY_LIST.map((c) => c.code))
+import { parseOrgCurrency } from "../_lib/org-currency.js"
 
 function slugify(name: string): string {
   return name
@@ -71,11 +69,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === "POST") {
     const { name, currency } = req.body as { name?: string; currency?: string }
     if (!name?.trim()) return res.status(400).json({ error: "name is required" })
-    if (currency !== undefined && !VALID_CURRENCIES.has(currency.toUpperCase())) {
-      return res.status(400).json({ error: "Invalid currency code" })
+    let resolvedCurrency = currency === undefined ? undefined : parseOrgCurrency(currency)
+    if (resolvedCurrency === null) {
+      return res.status(400).json({ error: "Invalid currency code", code: "invalid_currency" })
     }
-
-    let resolvedCurrency = currency?.toUpperCase()
     if (!resolvedCurrency) {
       const [profile] = await db.select().from(userProfiles).where(eq(userProfiles.id, userId))
       resolvedCurrency = profile?.currency ?? "USD"

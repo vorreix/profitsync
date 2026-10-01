@@ -4,7 +4,7 @@ import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { ArrowLeftRight, Bell, Building2, Check, ImagePlus, Loader as Loader2, MoreHorizontal, Network, Pencil, Plus, Trash2, Users, X } from "lucide-react"
-import { apiDelete, apiPatch } from "@/lib/api"
+import { apiDelete, apiErrorMessage, apiPatch } from "@/lib/api"
 import { useOrg } from "@/lib/org-context"
 import { fileToResizedDataUrl } from "@/lib/image-upload"
 import { isPaidPlanKey, type Organization } from "@/lib/types"
@@ -86,7 +86,7 @@ export function OrganizationsPage() {
       setEditTarget(null)
       await refresh()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : t("organizations.failedToSave"))
+      toast.error(apiErrorMessage(err, t("organizations.failedToSave")))
     } finally {
       setSaving(false)
     }
@@ -371,11 +371,11 @@ export function OrganizationsPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setEditTarget(null)} disabled={saving}>
+            <Button variant="ghost" className="h-11 sm:h-9" onClick={() => setEditTarget(null)} disabled={saving}>
               {t("organizations.cancel")}
             </Button>
-            <Button onClick={handleSaveEdit} disabled={saving}>
-              {saving ? <Loader2 className="size-4 mr-2 animate-spin" /> : null}
+            <Button className="h-11 sm:h-9" onClick={handleSaveEdit} disabled={saving}>
+              {saving ? <Loader2 className="size-4 me-2 animate-spin" /> : null}
               {t("organizations.saveChanges")}
             </Button>
           </DialogFooter>

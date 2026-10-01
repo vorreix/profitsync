@@ -2,7 +2,7 @@ import { useTranslation } from "react-i18next"
 import { Coins, Info } from "lucide-react"
 import type { WealthSummary } from "@/lib/types"
 import { cn } from "@/lib/utils"
-import { formatApprox, formatDateLabel, formatMoney, formatRate } from "@/lib/wealth"
+import { formatApprox, formatDateLabel, formatList, formatMoney, formatPercent, formatRate } from "@/lib/wealth"
 
 /**
  * One row per currency the workspace holds money in: the native totals (the
@@ -34,7 +34,8 @@ export function CurrencyBreakdown({ summary, visible, className }: { summary: We
       {!summary.complete && summary.excluded_currencies.length > 0 && (
         <p className="mx-4 mt-3 flex items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-200" role="status">
           <Info className="mt-px size-3.5 shrink-0" aria-hidden />
-          <span>{t("currencyNotIncluded", { currency: summary.excluded_currencies.join(", ") })}</span>
+          {/* `count` picks "X is" vs "X and Y are"; without the plural keys it falls back to the plain one. */}
+          <span>{t("currencyNotIncluded", { currency: formatList(summary.excluded_currencies), count: summary.excluded_currencies.length })}</span>
         </p>
       )}
 
@@ -42,13 +43,15 @@ export function CurrencyBreakdown({ summary, visible, className }: { summary: We
         {summary.by_currency.map((row) => {
           const isReporting = row.currency === reporting
           const excluded = row.converted_net == null
+          // A share of the total is as revealing as the total, so privacy mode hides it too.
+          const share = visible && row.share != null ? t("shareOfAssetsLabel", { share: formatPercent(row.share) }) : null
           return (
             <li key={row.currency} className="flex min-h-14 flex-wrap items-start justify-between gap-x-4 gap-y-1 px-4 py-3">
               <div className="min-w-0">
                 <p className="flex items-center gap-2 text-sm font-semibold">
                   <span className="tabular-nums">{row.currency}</span>
                   <span className="text-xs font-normal text-muted-foreground">
-                    {row.account_count === 1 ? t("accountCountOne") : t("accountCountOther", { count: row.account_count })}
+                    {t("accountCount", { count: row.account_count })}
                   </span>
                 </p>
                 <p className="text-xs text-muted-foreground tabular-nums">
@@ -73,12 +76,10 @@ export function CurrencyBreakdown({ summary, visible, className }: { summary: We
                 {!isReporting && row.converted_net != null && (
                   <p className="text-xs text-muted-foreground tabular-nums">
                     {formatApprox(row.converted_net, reporting, visible)}
-                    {row.share != null && <span className="ms-1.5">· {t("shareOfAssets", { share: row.share })}</span>}
+                    {share && <span className="ms-1.5">· {share}</span>}
                   </p>
                 )}
-                {isReporting && row.share != null && (
-                  <p className="text-xs text-muted-foreground tabular-nums">{t("shareOfAssets", { share: row.share })}</p>
-                )}
+                {isReporting && share && <p className="text-xs text-muted-foreground tabular-nums">{share}</p>}
               </div>
             </li>
           )

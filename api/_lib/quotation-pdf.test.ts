@@ -67,6 +67,19 @@ describe("snapshotHash", () => {
     expect(a).not.toBe(b)
   })
 
+  it("follows the QUOTE's currency, not the workspace's — a reporting change neither stales nor relabels it", () => {
+    const eurQuote = { ...row, currencyCode: "EUR" }
+    const before = buildQuotationSnapshot(eurQuote, { name: "My Studio", currency: "eur" })
+    const after = buildQuotationSnapshot(eurQuote, { name: "My Studio", currency: "inr" })
+    expect(after.currency).toBe("EUR")
+    expect(after.amount_label).toContain("EUR")
+    expect(snapshotHash(after)).toBe(snapshotHash(before))
+  })
+
+  it("a legacy row without a currency still falls back to the org's", () => {
+    expect(buildQuotationSnapshot({ ...row, currencyCode: null }, { name: "X", currency: "inr" }).currency).toBe("INR")
+  })
+
   it("returns a 64-char hex digest", () => {
     expect(snapshotHash(buildQuotationSnapshot(row, org))).toMatch(/^[0-9a-f]{64}$/)
   })

@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { useTranslation } from "react-i18next"
 import { Check, ChevronsUpDown } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -13,6 +14,7 @@ type Props = {
 }
 
 export function CurrencyCombobox({ value, onValueChange, disabled }: Props) {
+  const { t } = useTranslation()
   const [open, setOpen] = useState(false)
 
   const selected = CURRENCY_LIST.find((c) => c.code === value)
@@ -24,13 +26,13 @@ export function CurrencyCombobox({ value, onValueChange, disabled }: Props) {
           variant="outline"
           role="combobox"
           aria-expanded={open}
-          className="w-full justify-between font-normal"
+          className="h-11 w-full justify-between font-normal sm:h-9"
           disabled={disabled}
         >
           <span className="truncate">
-            {selected ? `${selected.code} — ${selected.name} (${selected.country})` : "Select currency..."}
+            {selected ? `${selected.code} — ${selected.name} (${selected.country})` : t("common.selectCurrency")}
           </span>
-          <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
+          <ChevronsUpDown className="ms-2 size-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
       <PopoverContent
@@ -48,9 +50,9 @@ export function CurrencyCombobox({ value, onValueChange, disabled }: Props) {
           ) return 1
           return 0
         }}>
-          <CommandInput placeholder="Search by currency, code, or country..." />
+          <CommandInput placeholder={t("common.searchCurrency")} className="text-base sm:text-sm" />
           <CommandList className="max-h-64">
-            <CommandEmpty>No currency found.</CommandEmpty>
+            <CommandEmpty>{t("common.noCurrencyFound")}</CommandEmpty>
             <CommandGroup>
               {CURRENCY_LIST.map((c) => (
                 <CommandItem
@@ -61,10 +63,11 @@ export function CurrencyCombobox({ value, onValueChange, disabled }: Props) {
                     setOpen(false)
                   }}
                 >
-                  <Check className={cn("mr-2 size-4 shrink-0", value === c.code ? "opacity-100" : "opacity-0")} />
+                  <Check className={cn("me-2 size-4 shrink-0", value === c.code ? "opacity-100" : "opacity-0")} />
                   <span className="font-mono text-xs text-muted-foreground w-10 shrink-0">{c.code}</span>
-                  <span className="flex-1 truncate">{c.name}</span>
-                  <span className="text-xs text-muted-foreground ml-2 shrink-0">{c.country}</span>
+                  <span className="min-w-0 flex-auto truncate">{c.name}</span>
+                  {/* The country gives way first, so the currency name stays whole. */}
+                  <span className="ms-2 min-w-0 shrink-[1000] truncate text-xs text-muted-foreground">{c.country}</span>
                 </CommandItem>
               ))}
             </CommandGroup>

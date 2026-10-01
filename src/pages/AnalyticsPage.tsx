@@ -14,9 +14,12 @@ import { FilterSheet, FilterSection } from "@/components/filters/FilterSheet"
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart"
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid } from "recharts"
 import { TrendingUp, ArrowUpRight, ArrowDownRight, Tag } from "lucide-react"
-import { FxExcludedNotice } from "@/components/FxExcludedNotice"
+import { FxExcludedMarker, FxExcludedNotice } from "@/components/FxExcludedNotice"
 import { excludedCountOf, reportingCurrencyOf } from "@/lib/reporting-fields"
 import { appLocale } from "@/lib/format-date"
+// Whole units on tiles and lists, compact on axes, full precision in tooltips —
+// the shared formatters, safe on iOS 15.0–15.3 for three-decimal currencies (MC-138).
+import { formatMoney, formatMoneyCompact, formatMoneyWhole } from "@/lib/wealth"
 
 type Granularity = "day" | "week" | "month" | "year"
 // Every figure is in `currency` (the workspace's reporting currency), each row
@@ -29,10 +32,6 @@ type Analytics = {
   series: { period: string; income: number; expense: number; profit: number; excluded_count?: number }[]
   by_category: { category: string; income: number; expense: number; excluded_count?: number }[]
   by_client: { id: string; name: string; income: number; expense: number; profit: number; excluded_count?: number }[]
-}
-
-function formatCurrency(n: number, currency: string) {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency, maximumFractionDigits: 0 }).format(n)
 }
 
 // Default lookback window per granularity (kept small so charts stay readable).
@@ -107,6 +106,30 @@ export function AnalyticsPage() {
     [data, granularity],
   )
 
+  // A period whose bars leave rows out (no rate) says so in its own tooltip,
+  // and a category or client row carries a marker — the page-level notice
+  // alone can't say WHICH figure is partial (MC-137).
+  // Each bar's value carries its currency — a bare "11.59" said nothing (MC-135).
+  const periodTooltip = (
+    <ChartTooltipContent
+      labelFormatter={(label, payload) => (
+        <>
+          {label}
+          <FxExcludedNotice count={payload?.[0]?.payload?.excluded_count} className="font-normal" />
+        </>
+      )}
+      formatter={(value, name) => (
+        <>
+          <div className="size-2.5 shrink-0 rounded-[2px]" style={{ backgroundColor: `var(--color-${name})` }} />
+          <div className="flex flex-1 items-center justify-between gap-2 leading-none">
+            <span className="text-muted-foreground">{chartConfig[String(name)]?.label ?? name}</span>
+            <span className="font-mono font-medium tabular-nums text-foreground">{formatMoney(Number(value), currency)}</span>
+          </div>
+        </>
+      )}
+    />
+  )
+
   const appliedCount = custom ? 1 : 0
   const maxCat = Math.max(1, ...(data?.by_category ?? []).map((c) => c.income + c.expense))
 
@@ -143,9 +166,9 @@ export function AnalyticsPage() {
 
       {/* KPIs */}
       <div className="grid gap-2.5 sm:gap-4 grid-cols-2 lg:grid-cols-4">
-        <KpiCard loading={loading} label={t("analytics.totalIncome")} value={formatCurrency(data?.summary.income ?? 0, currency)} className="text-emerald-600 dark:text-emerald-400" icon={<ArrowUpRight className="size-3.5 text-emerald-500" />} />
-        <KpiCard loading={loading} label={t("analytics.totalExpense")} value={formatCurrency(data?.summary.expense ?? 0, currency)} className="text-red-600 dark:text-red-400" icon={<ArrowDownRight className="size-3.5 text-red-500" />} />
-        <KpiCard loading={loading} label={t("analytics.netProfit")} value={formatCurrency(data?.summary.profit ?? 0, currency)} className={(data?.summary.profit ?? 0) >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"} icon={<TrendingUp className="size-3.5 text-muted-foreground" />} />
+        <KpiCard loading={loading} label={t("analytics.totalIncome")} value={formatMoneyWhole(data?.summary.income ?? 0, currency)} className="text-emerald-600 dark:text-emerald-400" icon={<ArrowUpRight className="size-3.5 text-emerald-500" />} />
+        <KpiCard loading={loading} label={t("analytics.totalExpense")} value={formatMoneyWhole(data?.summary.expense ?? 0, currency)} className="text-red-600 dark:text-red-400" icon={<ArrowDownRight className="size-3.5 text-red-500" />} />
+        <KpiCard loading={loading} label={t("analytics.netProfit")} value={formatMoneyWhole(data?.summary.profit ?? 0, currency)} className={(data?.summary.profit ?? 0) >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"} icon={<TrendingUp className="size-3.5 text-muted-foreground" />} />
         <KpiCard loading={loading} label={t("analytics.transactions")} value={String(data?.summary.tx_count ?? 0)} icon={<Tag className="size-3.5 text-muted-foreground" />} />
       </div>
       {!loading && <FxExcludedNotice count={excludedCountOf(data)} />}
@@ -163,8 +186,8 @@ export function AnalyticsPage() {
               <BarChart data={chartData} margin={{ left: 4, right: 4 }}>
                 <CartesianGrid vertical={false} strokeDasharray="3 3" />
                 <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={8} fontSize={11} interval="preserveStartEnd" />
-                <YAxis tickLine={false} axisLine={false} width={44} fontSize={11} tickFormatter={(v) => formatCurrency(Number(v), currency)} />
-                <ChartTooltip content={<ChartTooltipContent />} />
+                <YAxis tickLine={false} axisLine={false} width={44} fontSize={11} tickFormatter={(v) => formatMoneyCompact(Number(v), currency)} />
+                <ChartTooltip content={periodTooltip} />
                 <Bar dataKey="income" fill="var(--color-income)" radius={[3, 3, 0, 0]} />
                 <Bar dataKey="expense" fill="var(--color-expense)" radius={[3, 3, 0, 0]} />
               </BarChart>
@@ -186,8 +209,8 @@ export function AnalyticsPage() {
               <LineChart data={chartData} margin={{ left: 4, right: 4 }}>
                 <CartesianGrid vertical={false} strokeDasharray="3 3" />
                 <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={8} fontSize={11} interval="preserveStartEnd" />
-                <YAxis tickLine={false} axisLine={false} width={44} fontSize={11} tickFormatter={(v) => formatCurrency(Number(v), currency)} />
-                <ChartTooltip content={<ChartTooltipContent />} />
+                <YAxis tickLine={false} axisLine={false} width={44} fontSize={11} tickFormatter={(v) => formatMoneyCompact(Number(v), currency)} />
+                <ChartTooltip content={periodTooltip} />
                 <Line dataKey="profit" stroke="var(--color-profit)" strokeWidth={2} dot={false} />
               </LineChart>
             </ChartContainer>
@@ -209,7 +232,10 @@ export function AnalyticsPage() {
                 <div key={c.category} className="space-y-1">
                   <div className="flex items-center justify-between gap-2 text-sm">
                     <span className="truncate">{c.category}</span>
-                    <span className="shrink-0 tabular-nums text-muted-foreground">{formatCurrency(c.income + c.expense, currency)}</span>
+                    <span className="inline-flex shrink-0 items-center gap-1 tabular-nums text-muted-foreground">
+                      <FxExcludedMarker count={c.excluded_count} />
+                      {formatMoneyWhole(c.income + c.expense, currency)}
+                    </span>
                   </div>
                   <div className="h-1.5 rounded-full bg-muted overflow-hidden">
                     <div className="h-full bg-primary" style={{ width: `${Math.round(((c.income + c.expense) / maxCat) * 100)}%` }} />
@@ -232,7 +258,10 @@ export function AnalyticsPage() {
                 data!.by_client.map((c) => (
                   <div key={c.id} className="flex items-center justify-between gap-2 text-sm border-b last:border-0 pb-2 last:pb-0">
                     <span className="truncate">{c.name}</span>
-                    <span className={`shrink-0 tabular-nums font-medium ${c.profit >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"}`}>{formatCurrency(c.profit, currency)}</span>
+                    <span className={`inline-flex shrink-0 items-center gap-1 tabular-nums font-medium ${c.profit >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"}`}>
+                      <FxExcludedMarker count={c.excluded_count} />
+                      {formatMoneyWhole(c.profit, currency)}
+                    </span>
                   </div>
                 ))
               )}

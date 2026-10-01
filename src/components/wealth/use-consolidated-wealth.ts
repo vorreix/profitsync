@@ -15,9 +15,12 @@ const isDebtType = (type: string) => type === "loan" || type === "receivable"
  * reporting currency, and at which rate date". Native balances stay the fact
  * on the tile; this only ever adds the muted ≈ line beneath them.
  *
- * Read-only on the server (it never materialises money), so it sits in the
- * ordinary "money" freshness class: painted from cache, refreshed behind the
- * paint, refetched on every mutation like the account list itself.
+ * Like the account list, the server posts due recurring rows and runs autopay
+ * before answering (ALWAYS_FETCH), so a screen that shows only the summary is
+ * never a step behind. A screen that ALSO loads the accounts should pass
+ * `enabled` once they have landed: the two requests' posting can race, and the
+ * loser may read balances just before the winner's update lands. Painted from
+ * cache, refreshed behind the paint, refetched on every mutation.
  */
 export function useConsolidatedWealth(enabled = true) {
   const query = useApiQuery<WealthSummary>(enabled ? "/api/wealth/summary" : null)
@@ -69,3 +72,6 @@ export function savedFromSummary(summary: WealthSummary): number {
   }
   return Math.round(sum * 100) / 100
 }
+
+/** Per-currency figures for the hero tiles (pure; lives with the other money helpers). */
+export { formatParts } from "@/lib/reporting-fields"

@@ -6,7 +6,7 @@ import { Check, Crown, HandCoins, Loader as Loader2, Plus } from "lucide-react"
 import { apiErrorMessage, apiErrorUpgradeHint, apiPost } from "@/lib/api"
 import { amountExceedsLimit } from "@/lib/money"
 import type { WealthAccount } from "@/lib/types"
-import { accountDisplayName, currencySymbol, formatMoney } from "@/lib/wealth"
+import { accountCurrency, accountDisplayName, currencySymbol, formatMoney } from "@/lib/wealth"
 import { cn } from "@/lib/utils"
 import { WealthAccountIcon } from "@/components/WealthAccountIcon"
 import { BankNameCombobox } from "@/components/wealth/BankNameCombobox"
@@ -229,7 +229,7 @@ export function BankPicker({
                   <span className="block truncate font-medium">{accountDisplayName(b)}</span>
                   {b.nickname.trim() && <span className="block truncate text-xs text-muted-foreground">{b.bank_name}</span>}
                 </span>
-                <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{formatMoney(Number(b.current_balance), currency, balancesVisible)}</span>
+                <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{formatMoney(Number(b.current_balance), accountCurrency(b, currency), balancesVisible)}</span>
                 {selected && <Check className="size-4 shrink-0 text-primary" aria-hidden />}
               </button>
             )

@@ -219,7 +219,7 @@ function AlertsRail({ className }: { className?: string }) {
       {/* Real controls, not decoration: the carousel root is not focusable, so
           its arrow-key handler never fires for someone who has not already
           tabbed into a slide. */}
-      <div role="tablist" aria-label={t("region")} className="mt-1.5 flex items-center justify-center gap-0.5">
+      <div role="tablist" aria-label={t("region")} className="mt-1.5 flex flex-wrap items-center justify-center sm:gap-0.5">
         {items.map((a, i) => (
           <button
             key={a.id}
@@ -228,7 +228,7 @@ function AlertsRail({ className }: { className?: string }) {
             aria-selected={i === selected}
             aria-label={t("goTo", { index: i + 1, total: items.length })}
             onClick={() => api?.scrollTo(i)}
-            className="pressable flex size-8 items-center justify-center rounded-full"
+            className="pressable flex size-11 items-center justify-center rounded-full sm:size-8"
           >
             <span
               className={cn(

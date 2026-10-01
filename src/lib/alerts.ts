@@ -168,6 +168,11 @@ export type AlertCard = {
   statement: AlertStatement | null
   /** The ledger account's native currency — what every figure on this card is in. */
   currency: string | null
+  /**
+   * Credit + autopay: the paying account holds another currency, which autopay
+   * never pays from (MC-026). Absent = same currency.
+   */
+  fundingCurrencyMismatch?: boolean
 }
 
 export type AlertStatement = {
@@ -213,6 +218,10 @@ export function autopayOutlook(card: AlertCard, statement: AlertStatement, nowMs
   if (st === "processing") {
     return statement.autopayAt !== null && nowMs - statement.autopayAt > STALE_CLAIM_MS ? "failed" : "pending"
   }
+  // A payer in another currency is never going to be charged: until the engine
+  // records its failure, this is the user's own payment to make — not "covered",
+  // and not a debit of a figure in the card's currency off the payer's balance.
+  if (card.fundingCurrencyMismatch) return "none"
   // Everything else is the engine's own eligibility rule, reused verbatim so
   // the banner can never disagree with what autopay will actually do — it is
   // what knows that a statement due before autopay was switched on is never
@@ -263,7 +272,8 @@ export type AlertPosted = {
 // ── The forward projection ───────────────────────────────────────────────────
 
 export type ProjectionSource = {
-  kind: "recurring" | "autopay" | "scheduled"
+  /** `transfer` = a planned/pending transfer: intent with no ledger rows yet (MC-148). */
+  kind: "recurring" | "autopay" | "scheduled" | "transfer"
   id: string
   name: string
   /** The currency the source's amount is in (its account's). */
@@ -524,8 +534,9 @@ export function shortfallAlerts(shortfalls: Shortfall[], accounts: AlertAccount[
       currency: account?.currency ?? null,
       tense: "future",
       // Symmetrical with autopay → its card: a recurring charge opens the rule
-      // that will make it (`scheduled` has no page of its own).
-      link: s.source.kind === "autopay" ? cardLink(s.source.id) : s.source.kind === "recurring" ? `/recurring/${s.source.id}` : "/recurring",
+      // that will make it, a planned transfer the list it is managed in
+      // (`scheduled` has no page of its own).
+      link: s.source.kind === "autopay" ? cardLink(s.source.id) : s.source.kind === "recurring" ? `/recurring/${s.source.id}` : s.source.kind === "transfer" ? "/wealth" : "/recurring",
       at: s.date,
       dismissible: false,
     }
@@ -622,7 +633,10 @@ export function buildAlerts(input: {
   cards: AlertCard[]
   rules: AlertRule[]
   posted: AlertPosted[]
-  /** Transactions dated after today, already removed from `balanceToday`. */
+  /**
+   * Dated movements to replay: transactions dated after today (already removed
+   * from `balanceToday`) and planned/pending transfers (never in it).
+   */
   scheduled?: ProjectionEvent[]
   /** `${ruleId}:${date}` for occurrences that have already materialized. */
   alreadyPosted?: ReadonlySet<string>

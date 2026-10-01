@@ -1,8 +1,9 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { asc, eq } from "drizzle-orm"
 import { db, serialize } from "../../../src/lib/db/index.js"
-import { organizations, plans, subscriptions } from "../../../src/lib/db/schema.js"
+import { organizations, plans, subscriptions, userProfiles } from "../../../src/lib/db/schema.js"
 import { requireAuth } from "../../_lib/auth.js"
+import { billingCountry } from "../../_lib/billing-country.js"
 import { resolveBillingCurrency } from "../../../src/lib/billing-currency.js"
 
 type GeoPricingEntry = {
@@ -18,17 +19,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!ctx) return
   if (req.method !== "GET") return res.status(405).json({ error: "Method not allowed" })
 
-  const country = (req.headers["x-vercel-ip-country"] as string | undefined)?.toUpperCase() ||
-                  (req.query.country as string | undefined)?.toUpperCase() ||
-                  "US"
-
-  // Plans list, the org's current subscription, and the org's currency are
-  // independent — fetch together.
-  const [allRows, subRows, [org]] = await Promise.all([
+  // Plans list, the org's current subscription, the org's currency and the
+  // viewer's profile country are independent — fetch together.
+  const [allRows, subRows, [org], [profile]] = await Promise.all([
     db.select().from(plans).orderBy(asc(plans.key)),
     db.select().from(subscriptions).where(eq(subscriptions.organizationId, ctx.orgId)),
     db.select({ currency: organizations.currency }).from(organizations).where(eq(organizations.id, ctx.orgId)),
+    db.select({ country: userProfiles.country }).from(userProfiles).where(eq(userProfiles.id, ctx.userId)),
   ])
+  // The SAME country checkout bills (create-subscription), or the price shown
+  // and the currency charged can differ (MC-109).
+  const country = billingCountry(profile?.country, req.headers["x-vercel-ip-country"])
 
   // Display the same currency the checkout will charge in (org preference with
   // the country/India safety net) so the pricing page and Dodo's hosted page

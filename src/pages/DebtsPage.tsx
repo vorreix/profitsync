@@ -11,7 +11,7 @@ import { useCurrency } from "@/lib/currency-context"
 import { canWriteRole } from "@/lib/roles"
 import type { Debt, DebtDirection, DebtsOverview } from "@/lib/types"
 import { formatMoney, useBalancePrivacy } from "@/lib/wealth"
-import { formatByCurrency, formatLongDate, formatMonthYear } from "@/lib/debt-format"
+import { formatByCurrency, formatColumn, formatLongDate, formatMonthYear } from "@/lib/debt-format"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -76,7 +76,12 @@ export function DebtsPage() {
 
   const open = useMemo(() => (data?.debts ?? []).filter((d) => d.balance > 0 && (d.lifecycle === "active" || d.lifecycle === "paused")), [data])
   const s = data?.summary
-  const money = (n: number, cur = currency) => formatMoney(n, cur, balancesVisible)
+  // The overview says which currency it answers in; a zero or a converted
+  // figure is labelled with THAT, not with whatever the context resolved to.
+  const hubCurrency = data?.currency ?? currency
+  const money = (n: number, cur = hubCurrency) => formatMoney(n, cur, balancesVisible)
+  // Debts keep their own currency, so each hub figure is one amount per currency.
+  const col = (key: "required" | "paid" | "remaining" | "overdue") => formatColumn(s?.month_by_currency ?? [], key, hubCurrency, balancesVisible)
   const openDebt = (id: string) => navigate(`/debts/${id}`)
 
   const header = (
@@ -175,7 +180,7 @@ export function DebtsPage() {
                 <p className="mt-1 text-3xl font-bold sm:text-4xl">{t("debtFreeTitle")} <Sparkles className="inline size-6 text-emerald-500" aria-hidden /></p>
                 <p className="mt-1 text-sm text-muted-foreground">{t("debtFreeBody")}</p>
                 <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
-                  <Stat label={t("totalRepaidLifetime")} value={money(s.total_repaid)} />
+                  <Stat label={t("totalRepaidLifetime")} value={formatByCurrency(s.total_repaid_by_currency, balancesVisible) || money(0)} />
                   <Stat label={t("requiredThisMonth")} value={money(0)} />
                 </div>
               </>
@@ -189,10 +194,10 @@ export function DebtsPage() {
                   <p className="mt-1.5 text-sm text-muted-foreground">{t("debtFreeUnknown")}. {t("debtFreeUnknownHint")}</p>
                 )}
                 <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-                  <Stat label={t("requiredThisMonth")} value={money(s.month.required)} />
-                  <Stat label={t("alreadyPaid")} value={money(s.month.paid)} tone="good" />
-                  <Stat label={t("stillToPay")} value={money(s.month.remaining)} />
-                  <Stat label={t("overdue")} value={s.overdue_count > 0 ? money(s.month.overdue) : t("noOverdue")} tone={s.overdue_count > 0 ? "warn" : undefined} />
+                  <Stat label={t("requiredThisMonth")} value={col("required")} />
+                  <Stat label={t("alreadyPaid")} value={col("paid")} tone="good" />
+                  <Stat label={t("stillToPay")} value={col("remaining")} />
+                  <Stat label={t("overdue")} value={s.overdue_count > 0 ? col("overdue") : t("noOverdue")} tone={s.overdue_count > 0 ? "warn" : undefined} />
                 </div>
                 {s.next_payment && (
                   <button type="button" onClick={() => openDebt(s.next_payment!.debt_id)} className="pressable mt-4 flex w-full items-center justify-between gap-3 rounded-xl border bg-card/70 px-4 py-3 text-left hover:bg-card">
@@ -220,7 +225,10 @@ export function DebtsPage() {
                     <span aria-hidden className="mt-2 size-1.5 shrink-0 rounded-full bg-primary" />
                     <span>{t(`insight.${i.key}`, {
                       ...i.params,
-                      amount: typeof i.params.amount === "number" ? money(i.params.amount, String(i.params.currency ?? currency)) : i.params.amount,
+                      // Interest is ONE line however many currencies it was paid in: every part, joined.
+                      amount: i.key === "interest_this_month" && s.interest_this_month_by_currency.length
+                        ? formatByCurrency(s.interest_this_month_by_currency, balancesVisible)
+                        : typeof i.params.amount === "number" ? money(i.params.amount, String(i.params.currency ?? hubCurrency)) : i.params.amount,
                       date: typeof i.params.date === "string" ? formatMonthYear(i.params.date) : i.params.date,
                     })}</span>
                   </li>
@@ -287,7 +295,7 @@ export function DebtsPage() {
       )}
 
       {tab === "plan" && (
-        <DebtPlanner debts={data.debts} currency={currency} today={data.today} averageMonthlyIncome={s.average_monthly_income} balancesVisible={balancesVisible} />
+        <DebtPlanner debts={data.debts} currency={data.currency} today={data.today} averageMonthlyIncome={s.average_monthly_income} incomeExcludedCount={s.average_monthly_income_excluded} balancesVisible={balancesVisible} />
       )}
 
       {tab === "upcoming" && (
@@ -303,7 +311,8 @@ function Stat({ label, value, tone }: { label: string; value: string; tone?: "go
   return (
     <div className="rounded-xl border bg-card/60 p-2.5 sm:p-3">
       <p className="truncate text-[10px] font-medium uppercase tracking-wide text-muted-foreground sm:text-xs">{label}</p>
-      <p className={cn("mt-1 truncate text-sm font-bold tabular-nums sm:text-lg", tone === "good" && "text-emerald-600 dark:text-emerald-400", tone === "warn" && "text-amber-700 dark:text-amber-300")}>{value}</p>
+      {/* `title`: a figure in two currencies can outgrow the tile; the full text stays reachable. */}
+      <p title={value} className={cn("mt-1 truncate text-sm font-bold tabular-nums sm:text-lg", tone === "good" && "text-emerald-600 dark:text-emerald-400", tone === "warn" && "text-amber-700 dark:text-amber-300")}>{value}</p>
     </div>
   )
 }

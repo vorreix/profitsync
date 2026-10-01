@@ -52,20 +52,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!canDelete(role)) return res.status(403).json({ error: "Forbidden" })
     // Delete-with-choice: `mode=tag_only` (default) just strips the tag from every
     // entity (records survive); `mode=with_records` soft-deletes the tagged records
-    // to Trash (reversible) with wealth-balance reversal. The registry row is
-    // removed either way.
+    // to Trash with wealth-balance reversal (transfers through the transfer
+    // service; any it would refuse are kept and listed in `skipped_transactions`;
+    // any other failure throws before the tag is touched, so a retry is whole).
+    // The registry row is removed either way.
     const mode = (req.query as { mode?: string }).mode === "with_records" ? "with_records" : "tag_only"
     let counts = { transactions: 0, clients: 0, quotations: 0 }
+    let skipped: string[] = []
     if (mode === "with_records") {
-      counts = await softDeleteByTag(orgId, tag.name, userId)
-      // Also strip the now-orphaned tag string from any records that carried it
-      // but weren't deleted (e.g. a tagged transaction whose client stayed).
-      await removeTagEverywhere(orgId, tag.name)
+      const { skipped_transactions, ...deleted } = await softDeleteByTag(orgId, tag.name, userId)
+      counts = deleted
+      skipped = skipped_transactions
+      // Strip the now-orphaned tag from the records that stayed live (e.g. a
+      // kept transfer). Rows just moved to Trash keep it, so a restore is whole.
+      await removeTagEverywhere(orgId, tag.name, true)
     } else {
       await removeTagEverywhere(orgId, tag.name)
     }
     await db.delete(tags).where(and(eq(tags.id, id), eq(tags.organizationId, orgId)))
-    return res.json({ ok: true, mode, deleted: counts })
+    return res.json({ ok: true, mode, deleted: counts, skipped_transactions: skipped })
   }
 
   return res.status(405).json({ error: "Method not allowed" })

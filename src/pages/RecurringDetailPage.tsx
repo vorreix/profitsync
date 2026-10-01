@@ -10,6 +10,7 @@ import {
   Link2,
 } from "lucide-react"
 import { apiDelete, apiErrorMessage, apiGet, apiPatch } from "@/lib/api"
+import { isSplitTx } from "@/lib/tx-grouping"
 import { useApiQuery } from "@/hooks/use-api-query"
 import { useDataRefresh } from "@/lib/data-refresh-context"
 import { useOrg } from "@/lib/org-context"
@@ -22,6 +23,7 @@ import {
 import { accountTypeAllows } from "@/lib/types"
 import type { Client, RecurringRule, RecurringRuleDetail, Transaction, WealthAccount } from "@/lib/types"
 import { formatMoney } from "@/lib/wealth"
+import { formatByCurrency } from "@/lib/debt-format"
 import { usableCards, useCardMap } from "@/lib/use-cards"
 import { firstIndexAtOrAfter, occurrenceAt, ruleExhausted, todayIso, type Frequency } from "@/lib/recurring"
 import { useUrlModal } from "@/hooks/use-url-modal"
@@ -35,6 +37,8 @@ import { AttachmentBadge } from "@/components/AttachmentBadge"
 import { TransactionDetailModal } from "@/components/TransactionDetailModal"
 import { AccountQuickAddSheet } from "@/components/wealth/AccountQuickAddSheet"
 import { RecurringRuleDialog, DeleteRecurringDialog, type RuleForm } from "@/components/recurring/RecurringRuleDialog"
+import { ruleErrorText } from "@/components/recurring/rule-error"
+import { ledgerDescription } from "@/lib/wealth-ledger"
 import { appLocale } from "@/lib/format-date"
 
 type TxPage = { data: Transaction[]; total: number; summary: { incoming: number; outgoing: number } }
@@ -219,7 +223,15 @@ export function RecurringDetailPage() {
       const token = await getToken()
       if (!token) return
       try {
-        const tx = await apiGet<Transaction>(`/api/transactions/${v}`, token)
+        let tx = await apiGet<Transaction>(`/api/transactions/${v}`, token)
+        // This page lists LEGS, but the detail GET answers a split with the
+        // GROUP's money (summed, or converted when the legs' currencies differ).
+        // Resolve the leg the link names, as the list would show it — otherwise
+        // the modal shows, and its edit sheet saves, the group figure on one leg.
+        if (isSplitTx(tx) && tx.group_id) {
+          const legs = await apiGet<Transaction[]>(`/api/transactions?groupId=${tx.group_id}`, token)
+          tx = legs.find((l) => l.id === v) ?? tx
+        }
         if (!cancelled) setViewTx(tx)
       } catch {
         view.close()
@@ -268,9 +280,9 @@ export function RecurringDetailPage() {
       await apiDelete(`/api/recurring/${rule.id}`, token)
       toast.success(t("recurring.deleted"))
       navigate("/recurring", { replace: true })
-    } catch {
+    } catch (err) {
       leaving.current = false
-      toast.error(t("recurring.deleteFailed"))
+      toast.error(apiErrorMessage(err, t("recurring.deleteFailed")))
     }
   }
 
@@ -303,8 +315,12 @@ export function RecurringDetailPage() {
   }
 
   const incoming = rule.type === "incoming"
-  const money = (n: number) => formatMoney(n, currency)
-  const signed = (n: number) => `${incoming ? "+" : "−"}${money(Math.abs(n))}`
+  // The rule's amount is in the rule's own currency (its account's), never the
+  // workspace's by default — the same chain as the /recurring list.
+  const ruleCurrency = rule.currency_code || rule.account_currency || currency
+  const money = (n: number, cur = ruleCurrency) => formatMoney(n, cur)
+  // `n` is in the rule's direction; a net the other way (its type was edited) flips the sign.
+  const signed = (n: number, cur = ruleCurrency) => `${(n >= 0) === incoming ? "+" : "−"}${money(Math.abs(n), cur)}`
   const amountClass = incoming ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"
   const ended = !rule.active && ruleExhausted(rule.next_due_at, rule.end_date)
   const freqLabel = rule.frequency_interval > 1
@@ -320,8 +336,13 @@ export function RecurringDetailPage() {
         ? t("recurring.dueTomorrow")
         : t("recurring.dueInDays", { count: nextDelta })
 
-  const postedTotal = Number(rule.posted_total ?? 0)
+  // One total per currency, in the rule's direction (MC-074): a rule moved to an
+  // account in another currency shows "€36.00 + ₹1,000.00", never one sum.
+  const posted = (rule.posted_by_currency ?? [{ currency: ruleCurrency, amount: rule.posted_total ?? 0 }])
+    .map((p) => ({ currency: p.currency || ruleCurrency, amount: Number(p.amount) }))
+    .filter((p) => p.amount !== 0)
   const hasMore = txs.length < txTotal
+  const blocked = ruleErrorText(rule.last_error, t("apiErrors.recurring_failed"))
 
   const statusPill = ended
     ? <Badge variant="outline" className="shrink-0">{t("recurring.ended")}</Badge>
@@ -394,12 +415,12 @@ export function RecurringDetailPage() {
 
       {/* Why it stopped posting — the rule keeps its cursor, so fixing the cause
           catches the missed occurrences up on the next read. */}
-      {rule.last_error && (
+      {blocked && (
         <div className="flex items-start gap-2.5 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-900 dark:bg-amber-950/40">
           <TriangleAlert className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />
           <div className="min-w-0">
             <p className="font-medium text-amber-900 dark:text-amber-200">{t("recurring.blockedTitle")}</p>
-            <p className="mt-0.5 break-words text-amber-800 dark:text-amber-300">{rule.last_error}</p>
+            <p className="mt-0.5 break-words text-amber-800 dark:text-amber-300">{blocked}</p>
           </div>
         </div>
       )}
@@ -430,7 +451,10 @@ export function RecurringDetailPage() {
         </div>
         <div className="col-span-2 rounded-2xl border bg-card p-3 sm:col-span-1 sm:p-4">
           <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{t("recurring.postedSoFar")}</p>
-          <p className={`mt-1 text-lg font-bold tabular-nums sm:text-xl ${postedTotal ? amountClass : ""}`}>{signed(postedTotal)}</p>
+          {/* Wraps, never truncates: several currencies must all stay visible at phone width. */}
+          <p className={`mt-1 break-words text-lg font-bold tabular-nums sm:text-xl ${posted.length ? amountClass : ""}`}>
+            {posted.length > 1 ? formatByCurrency(posted) : signed(posted[0]?.amount ?? 0, posted[0]?.currency)}
+          </p>
           <p className="mt-0.5 truncate text-xs text-muted-foreground">
             {t("recurring.paymentsCount", { count: rule.generated_count ?? 0 })}
             {rule.last_posted_date ? <> · {t("recurring.lastOn", { date: fmtDate(rule.last_posted_date) })}</> : null}
@@ -555,7 +579,7 @@ export function RecurringDetailPage() {
                         : <ArrowDownRight className="size-4 text-red-600 dark:text-red-400" />}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium">{tx.description || rule.name}</p>
+                    <p className="truncate text-sm font-medium">{ledgerDescription(tx, t) || rule.name}</p>
                     <div className="mt-0.5 flex items-center gap-2">
                       <span className="text-xs text-muted-foreground">{fmtDate(tx.date)}</span>
                       <TxKindBadge tx={tx} />
@@ -566,7 +590,7 @@ export function RecurringDetailPage() {
                     </div>
                   </div>
                   <p className={`shrink-0 text-sm font-semibold tabular-nums ${tx.type === "incoming" ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
-                    {tx.type === "incoming" ? "+" : "−"}{money(Number(tx.amount))}
+                    {tx.type === "incoming" ? "+" : "−"}{money(Number(tx.amount), tx.currency_code || ruleCurrency)}
                   </p>
                 </button>
               ))}

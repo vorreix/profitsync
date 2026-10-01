@@ -303,6 +303,18 @@ export async function ensureRatesForOrg(orgId: string, reportingInput: string): 
   return { currencies: rows.map((r) => r.cur.toUpperCase()), uncovered }
 }
 
+/**
+ * `ensureRatesForOrg` into EVERY currency a figure here is measured in — a
+ * budget kept in INR after the workspace moved to EUR needs USD→INR, not only
+ * USD→EUR (fx_rate_on resolves a stored direct or inverse pair and never goes
+ * through a third currency). Concurrent and best effort: what stays missing is
+ * counted as excluded by the SQL, never guessed.
+ */
+export async function ensureRatesInto(orgId: string, targets: Iterable<string>): Promise<void> {
+  const unique = [...new Set([...targets].map((c) => c.toUpperCase()))]
+  await Promise.all(unique.map((c) => ensureRatesForOrg(orgId, c).catch(() => undefined)))
+}
+
 /** The organization's reporting currency (falls back to the legacy column). */
 export async function reportingCurrencyFor(orgId: string): Promise<string> {
   const [org] = await db

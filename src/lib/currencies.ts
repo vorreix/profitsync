@@ -1,6 +1,11 @@
 export type CurrencyInfo = {
   code: string
   name: string
+  /**
+   * The local sign. NOT for display on its own: many are shared ("$" by twenty
+   * currencies, "C$" by CAD and NIO, "kr", "Fr", "Rs") — call `getCurrencySymbol`,
+   * which only uses this when no other currency shares it.
+   */
   symbol: string
   country: string
 }
@@ -168,8 +173,39 @@ export function isValidCurrency(code: string): boolean {
   return CURRENCY_LIST.some((c) => c.code === code)
 }
 
+/**
+ * Intl's en-US symbol — the one `formatMoney` prints in English: "$", "CA$",
+ * "MX$", "€", or the ISO code where en-US has no sign of its own ("KWD",
+ * "NGN"). Never throws — a malformed code comes back as itself.
+ */
+export function intlCurrencySymbol(code: string): string {
+  try {
+    // Both fraction bounds explicit: older WebViews (iOS < 15.4) throw a
+    // RangeError when only one is given and it crosses the currency's default.
+    const part = new Intl.NumberFormat("en-US", { style: "currency", currency: code, minimumFractionDigits: 0, maximumFractionDigits: 0 })
+      .formatToParts(0)
+      .find((p) => p.type === "currency")
+    return part?.value ?? code
+  } catch {
+    return code ?? ""
+  }
+}
+
+const SYMBOL_USES = new Map<string, number>()
+for (const c of CURRENCY_LIST) SYMBOL_USES.set(c.symbol, (SYMBOL_USES.get(c.symbol) ?? 0) + 1)
+
+/**
+ * The symbol to put in front of an amount INPUT: the currency's own sign when
+ * no other currency uses it ("€", "₹", "₦", "A$", "R"), and Intl's
+ * unambiguous one when it is shared — "CA$" not "C$" (NIO's too), "MX$" not
+ * "$", "SEK" not "kr". A CAD amount typed beside a bare "$" reads as US
+ * dollars (MC-140). Shared-symbol currencies whose prefix grew ("CA$", "CHF",
+ * "F CFA") need an input whose padding follows the prefix width. USD, GBP,
+ * JPY, KRW keep "$", "£", "¥", "₩". Never throws.
+ */
 export function getCurrencySymbol(code: string): string {
-  return CURRENCY_LIST.find((c) => c.code === code)?.symbol ?? code
+  const own = CURRENCY_LIST.find((c) => c.code === code)?.symbol
+  return own && SYMBOL_USES.get(own) === 1 ? own : intlCurrencySymbol(code)
 }
 
 /**

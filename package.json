@@ -4,6 +4,7 @@
   "version": "0.0.1",
   "type": "module",
   "scripts": {
+    "audit:balances": "node scripts/audit-balances.mjs",
     "build": "tsc -b && vite build",
     "build:android": "tsc -b && vite build --mode android",
     "build:android:local": "tsc -b && vite build --mode android-local",

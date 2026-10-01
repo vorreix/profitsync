@@ -11,6 +11,7 @@ import {
   type DrilldownEntityType,
   type DrilldownSort,
 } from "../../_lib/entity-drilldown.js"
+import { previewTagDelete } from "../../_lib/tag-ops.js"
 
 const ALL_TYPES: DrilldownEntityType[] = ["transaction", "client", "quotation"]
 const SORTS = new Set(["date_desc", "date_asc", "amount_desc", "amount_asc", "name_asc"])
@@ -22,11 +23,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method !== "GET") return res.status(405).json({ error: "Method not allowed" })
 
-  const { tag, types, dateFrom, dateTo, sort } = req.query as {
-    tag?: string; types?: string; dateFrom?: string; dateTo?: string; sort?: string
+  const { tag, types, dateFrom, dateTo, sort, preview } = req.query as {
+    tag?: string; types?: string; dateFrom?: string; dateTo?: string; sort?: string; preview?: string
   }
   const normalizedTag = normalizeTagName(String(tag ?? ""))
   if (!normalizedTag) return res.status(400).json({ error: "tag is required" })
+
+  // Dry run of DELETE /api/tags/:id?mode=with_records — what it would move to
+  // Trash, cascade and whole transfers included, so the dialog can say so.
+  if (preview === "with_records") {
+    return res.json({ tag: normalizedTag, preview: await previewTagDelete(orgId, normalizedTag) })
+  }
 
   const requested = types
     ? new Set(types.split(",").map((t) => t.trim()).filter((t): t is DrilldownEntityType => (ALL_TYPES as string[]).includes(t)))

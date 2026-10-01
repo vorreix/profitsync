@@ -5,11 +5,11 @@ import { z } from "zod"
 import { toast } from "sonner"
 import { useFieldErrors } from "@/lib/use-field-errors"
 import { ArrowDownRight, ArrowUpRight, Paperclip, RotateCcw, X } from "lucide-react"
-import { apiGet, apiPatch, apiPost } from "@/lib/api"
+import { apiErrorMessage, apiGet, apiPatch, apiPost } from "@/lib/api"
 import { ACCEPT_ATTR, attachmentsListPath, uploadAttachment, validateFile } from "@/lib/attachments-client"
 import type { Client, Transaction, WealthAccount } from "@/lib/types"
 import { MAX_MONEY } from "@/lib/money"
-import { accountDisplayName, currencySymbol } from "@/lib/wealth"
+import { accountCurrency, accountDisplayName, currencySymbol } from "@/lib/wealth"
 import { useCardMap } from "@/lib/use-cards"
 import { WealthAccountIcon } from "@/components/WealthAccountIcon"
 import { CardChip } from "@/components/cards/CardChip"
@@ -72,7 +72,11 @@ export function AccountQuickAddSheet({
 }) {
   const { t } = useTranslation("transactions")
   const { getToken } = useAuth()
-  const symbol = currencySymbol(currency)
+  // The amount is saved in the ACCOUNT's currency (the server stamps it), so
+  // the prefix comes from the account — never the calling page's currency: a
+  // card page in a € workspace posting to a ₹ bank must show ₹ (MC-016).
+  // `currency` is only the fallback for a legacy account with none.
+  const symbol = currencySymbol(accountCurrency(account, currency))
   const isEdit = !!editTx
   // Which card this entry is on — for the header chip: the edited row's card,
   // the preselected one, or (credit-card account) the card that IS the account.
@@ -119,7 +123,8 @@ export function AccountQuickAddSheet({
     if (editTx) {
       setType(editTx.type)
       setKind(editTx.kind === "refund" ? "refund" : "standard")
-      setAmount(String(editTx.amount))
+      // null only on a mixed-currency split with no rate: re-ask, never "null".
+      setAmount(editTx.amount == null ? "" : String(editTx.amount))
       setDescription(editTx.description ?? "")
       setCategory(editTx.category ?? "")
       setDate(editTx.date)
@@ -221,7 +226,9 @@ export function AccountQuickAddSheet({
       onSaved?.(firstId)
     } catch (err) {
       if (isCardUnusableError(err)) toast.error(t("cardFrozenError"))
-      else toast.error(isEdit ? t("failedToUpdateTransaction") : t("failedToAddTransaction"))
+      // A refusal (a transfer or debt row edited row by row, a currency the
+      // account no longer takes…) reads in the user's language.
+      else toast.error(apiErrorMessage(err, isEdit ? t("failedToUpdateTransaction") : t("failedToAddTransaction")))
     } finally {
       setSaving(false)
     }
@@ -271,7 +278,8 @@ export function AccountQuickAddSheet({
           <div className="space-y-1.5">
             <Label htmlFor="qa-amount">{t("amount")}</Label>
             <div className="relative">
-              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-lg font-medium text-muted-foreground">{symbol}</span>
+              {/* A prefix runs from "$" to "F CFA": the padding follows its length. */}
+              <span className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-lg font-medium text-muted-foreground">{symbol}</span>
               <Input
                 id="qa-amount"
                 inputMode="decimal"
@@ -282,7 +290,8 @@ export function AccountQuickAddSheet({
                 onChange={(e) => { setAmount(e.target.value); clearField("amount") }}
                 placeholder="0.00"
                 aria-invalid={!!errors.amount}
-                className="h-12 pl-9 text-lg font-semibold tabular-nums"
+                className="h-12 text-lg md:text-lg font-semibold tabular-nums"
+                style={{ paddingInlineStart: `calc(${symbol.length}ch + 1.25rem)` }}
                 autoFocus
               />
             </div>

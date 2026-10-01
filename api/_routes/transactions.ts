@@ -11,8 +11,9 @@ import { materializeDueRecurring } from "../_lib/recurring-materialize.js"
 import { notifyIfBudgetExceeded } from "../_lib/notify-budget.js"
 import { cleanTransactionTags } from "../../src/lib/transaction-tags.js"
 import { refundShapeValid } from "../../src/lib/tx-classify.js"
-import { expenseSumSqlIn, incomeSumSqlIn, missingRateCountSql, pnlKindFilter, reportingAmountSql, USER_KINDS } from "../_lib/tx-sql.js"
+import { expenseSumSqlIn, incomeSumSqlIn, missingRateCountSql, nativeSummarySql, pnlKindFilter, reportingAmountSql, USER_KINDS } from "../_lib/tx-sql.js"
 import { ensureRatesForOrg, reportingCurrencyFor } from "../_lib/fx-rates.js"
+import { groupMoneySql } from "../_lib/tx-group-sql.js"
 import { attributeCard, cardTransactionFilter } from "../_lib/cards.js"
 import { syncCards } from "../_lib/card-autopay.js"
 
@@ -20,14 +21,18 @@ const PAGE_SIZE = 20
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-function pickOrder(sort: string | undefined) {
+// An amount sort compares rows in the REPORTING currency (each converted at its
+// own date) — native amounts of different currencies are not comparable (₹5,000
+// is not more than €100). A row with no rate has no comparable amount and sorts
+// last in both directions.
+function pickOrder(sort: string | undefined, reporting: string) {
   switch (sort) {
     case "date_asc":
       return [asc(transactions.date), asc(transactions.createdAt)]
     case "amount_desc":
-      return [desc(sql`${transactions.amount}::numeric`), desc(transactions.createdAt)]
+      return [sql`${reportingAmountSql(reporting)} desc nulls last`, desc(transactions.createdAt)]
     case "amount_asc":
-      return [asc(sql`${transactions.amount}::numeric`), desc(transactions.createdAt)]
+      return [sql`${reportingAmountSql(reporting)} asc nulls last`, desc(transactions.createdAt)]
     case "date_desc":
     default:
       return [desc(transactions.date), desc(transactions.createdAt)]
@@ -78,9 +83,6 @@ const txFieldsFor = (reporting: string) => ({
 // each form their own one-row "group" and pass through unchanged.
 const groupKey = sql`coalesce(${transactions.groupId}, ${transactions.id})`
 
-// How many currencies a collapsed group's legs were posted in (NULL = legacy, one bucket).
-const groupCurrencyCount = sql<number>`count(distinct coalesce(${transactions.currencyCode}, ''))`
-
 const groupedFieldsFor = (reporting: string) => ({
   // Representative leg id (earliest-created) — used to open the detail view.
   id: sql<string>`(array_agg(${transactions.id} order by ${transactions.createdAt} asc, ${transactions.id} asc))[1]`,
@@ -105,12 +107,9 @@ const groupedFieldsFor = (reporting: string) => ({
   // A split's legs add up ONLY when they share a currency. Legs posted to
   // accounts in different currencies are summed in the reporting currency
   // instead (each at its own date) and the row says so via currency_code —
-  // never a raw sum of EUR and INR. NULL when a leg has no rate.
-  amount: sql<string>`case when ${groupCurrencyCount} <= 1 then sum(${transactions.amount}::numeric) else sum(${reportingAmountSql(reporting)}) end`,
-  currencyCode: sql<string | null>`case when ${groupCurrencyCount} <= 1 then max(${transactions.currencyCode}) else ${reporting} end`,
-  currencyCount: sql<number>`${groupCurrencyCount}::int`,
-  // The whole group in the reporting currency; NULL as soon as one leg has no rate.
-  reportingAmount: sql<string | null>`case when bool_or(${reportingAmountSql(reporting)} is null) then null else sum(${reportingAmountSql(reporting)}) end`,
+  // never a raw sum of EUR and INR. `amount` is NULL when a leg has no rate
+  // (api/_lib/tx-group-sql.ts — shared with GET /api/transactions/:id).
+  ...groupMoneySql(reporting),
   description: sql<string>`max(${transactions.description})`,
   category: sql<string>`max(${transactions.category})`,
   // Group-level metadata: every leg carries the same tags, take the first leg's.
@@ -125,14 +124,16 @@ const groupedFieldsFor = (reporting: string) => ({
   attachmentCount: sql<number>`coalesce(sum((select count(*) from transaction_attachments where transaction_id = ${transactions.id})), 0)::int`,
 })
 
-function groupedOrder(sort: string | undefined) {
+// Same rule as pickOrder: a group sorts by its total in the reporting currency,
+// and a group with a leg that has no rate sorts last.
+function groupedOrder(sort: string | undefined, reporting: string) {
   switch (sort) {
     case "date_asc":
       return [asc(sql`max(${transactions.date})`), asc(sql`max(${transactions.createdAt})`)]
     case "amount_desc":
-      return [desc(sql`sum(${transactions.amount}::numeric)`), desc(sql`max(${transactions.createdAt})`)]
+      return [sql`${groupMoneySql(reporting).reportingAmount} desc nulls last`, desc(sql`max(${transactions.createdAt})`)]
     case "amount_asc":
-      return [asc(sql`sum(${transactions.amount}::numeric)`), desc(sql`max(${transactions.createdAt})`)]
+      return [sql`${groupMoneySql(reporting).reportingAmount} asc nulls last`, desc(sql`max(${transactions.createdAt})`)]
     case "date_desc":
     default:
       return [desc(sql`max(${transactions.date})`), desc(sql`max(${transactions.createdAt})`)]
@@ -149,7 +150,7 @@ async function groupedRows(where: SqlWhere, sort: string | undefined, reporting:
     .leftJoin(wealthAccounts, eq(transactions.wealthAccountId, wealthAccounts.id))
     .where(where)
     .groupBy(groupKey)
-    .orderBy(...groupedOrder(sort))
+    .orderBy(...groupedOrder(sort, reporting))
   if (limit !== undefined && offset !== undefined) return await q.limit(limit).offset(offset)
   if (limit !== undefined) return await q.limit(limit)
   return await q
@@ -250,7 +251,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // `?includeClosed=1` brings them back (dashboard "show closed" toggle).
     const closedClientFilter = includeClosed === "1" || recurringRuleId ? undefined : isNull(clients.closedAt)
 
-    const orderBy = pickOrder(sort)
+    const orderBy = pickOrder(sort, reporting)
 
     if (clientId) {
       const [client] = await db
@@ -323,9 +324,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         closedClientFilter,
         accountFilter,
         recurringFilter,
-        // The income/expense summary never counts internal transfers (net zero);
-        // refunds are in scope and net against outgoing (api/_lib/tx-sql.ts).
+        // The income/expense summary never counts internal transfers (net zero)
+        // nor system Opening Balance / Balance Adjustment rows (they define a
+        // balance, not P&L — same as analytics, calendar and flow); refunds are
+        // in scope and net against outgoing (api/_lib/tx-sql.ts).
         pnlKindFilter,
+        eq(transactions.isSystem, false),
         searchFilter,
         categoryFilter,
         tagFilter,
@@ -361,6 +365,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             incoming: incomeSumSqlIn(reporting),
             outgoing: expenseSumSqlIn(reporting),
             excluded: missingRateCountSql(reporting),
+            nativeIncoming: nativeSummarySql.incoming,
+            nativeOutgoing: nativeSummarySql.outgoing,
+            nativeCurrency: nativeSummarySql.currency,
           })
           .from(transactions)
           .innerJoin(clients, eq(transactions.clientId, clients.id))
@@ -376,6 +383,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           outgoing: Number(summaryRow.outgoing),
           currency: reporting,
           excluded_count: Number(summaryRow.excluded ?? 0),
+          // An account's (or a card's) page reads its figures in the ACCOUNT's
+          // currency — every row on it posts in that one, so nothing is
+          // converted or left out (MC-009). Additive: older builds ignore it.
+          ...(wealthAccountId
+            ? { native: { incoming: Number(summaryRow.nativeIncoming), outgoing: Number(summaryRow.nativeOutgoing), currency: summaryRow.nativeCurrency ?? null } }
+            : {}),
         },
       })
     }
@@ -443,6 +456,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // A debt's balance only moves through repayments (principal = transfer,
     // interest/fees = expenses on the paying account) — see /api/debts/:id/payments.
     if (account.type === "loan" || account.type === "receivable") return res.status(400).json({ error: "Record a payment from the debt's page instead — that keeps principal and interest apart." })
+    // A row with no currency would read as "already in the reporting currency"
+    // forever, and change meaning with the next reporting change. Same refusal
+    // as PATCH.
+    if (!account.currencyCode) return res.status(409).json({ error: "Account currency migration is incomplete", code: "currency_missing" })
 
     // Personal accounts have a single hidden default client that every
     // transaction anchors to; the client picker isn't shown, so resolve it here.

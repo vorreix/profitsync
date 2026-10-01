@@ -85,8 +85,10 @@
     "saved": "Budget saved",
     "removed": "Budget removed",
     "saveFailed": "Couldn’t save the budget",
+    "currencyMismatch": "This budget is kept in {{currency}}. Enter the amount in {{currency}}.",
     "save": "Save budget",
     "remainingAfter": "{{amount}} left after this expense",
+    "remainingAfterAtMost": "At most {{amount}} left after this expense",
     "overAfter": "{{amount}} over budget after this expense",
     "yearly": "Yearly",
     "once": "Custom dates"
@@ -268,6 +270,7 @@
     },
     "hint": {
       "after": "{{name}}: {{amount}} left after this",
+      "afterAtMost": "{{name}}: at most {{amount}} left after this",
       "overAfter": "{{name}}: {{amount}} over after this"
     },
     "icon": {
@@ -351,7 +354,8 @@
       "judgedOver_one": "Over {{count}} finished period.",
       "judgedOver_other": "Over {{count}} finished periods.",
       "byBudget": "Where it went",
-      "byBudgetNote": "This period, worst first."
+      "byBudgetNote": "This period, worst first.",
+      "amountsIn": "Amounts in {{currency}}"
     }
   },
   "account": {
@@ -418,7 +422,10 @@
     "cancel": "Cancel",
     "save": "Save Changes",
     "saving": "Saving...",
-    "amountTooLarge": "Amount is too large"
+    "amountTooLarge": "Amount is too large",
+    "selectCurrency": "Select currency…",
+    "searchCurrency": "Search by currency, code or country…",
+    "noCurrencyFound": "No currency found."
   },
   "view": {
     "label": "View",
@@ -530,6 +537,7 @@
     "deletedWithRecords_one": "Tag and {{count}} record deleted",
     "deletedWithRecords_other": "Tag and {{count}} records deleted",
     "deleteFailed": "Failed to delete tag",
+    "deleteSkippedTransfers": "Some transfers couldn't be moved to Trash and were kept.",
     "nameExists": "A tag with that name already exists",
     "viewEntities": "View items tagged {{name}}",
     "transactions": "Transactions",
@@ -545,8 +553,7 @@
     "deleteTagOnly": "Remove tag only",
     "deleteTagOnlyHint": "Records keep their data — only the tag is removed.",
     "deleteWithRecords": "Delete tag & records",
-    "deleteWithRecordsHint_one": "Also move {{count}} tagged record to Trash (reversible).",
-    "deleteWithRecordsHint_other": "Also move {{count}} tagged records to Trash (reversible)."
+    "deleteWithRecordsHint": "Moves these to Trash, including every transaction of a tagged client and the whole of any tagged transfer, and reverses their effect on account balances."
   },
   "categories": {
     "title": "Categories",
@@ -1096,10 +1103,17 @@
     "transferReversed": "Transfer reversed",
     "transferAlreadyReversed": "This transfer has already been reversed.",
     "reverseTransferFailed": "Couldn't reverse the transfer",
+    "transferTrashed": "This transfer, or part of it, is in the Trash or was deleted, so it can't be reversed.",
+    "transferIsReversal": "This is already a reversal, so it can't be reversed. To undo it, record a new transfer.",
     "transferReversedBadge": "Reversed",
     "reversing": "Reversing...",
     "splitSameCurrency": "Same currency as {{currency}} only",
-    "editOnItsOwnPage": "This is part of one payment — open it where it was recorded to change it."
+    "editOnItsOwnPage": "This is part of one payment — open it where it was recorded to change it.",
+    "amountReenterCurrency": "Now in {{currency}} — enter the amount again in {{currency}}.",
+    "systemBadge": "Balance entry",
+    "systemBadgeHint": "Sets an account's balance — not counted as income or expense",
+    "amountNoRate": "No rate yet",
+    "convertedSplitHint": "Split in {{n}} currencies — total converted at each part's date"
   },
   "wealth": {
     "title": "Wealth",
@@ -1606,7 +1620,11 @@
         "autopayNeedsBank": "Choose the bank that pays this card to turn autopay on",
         "editHint": "What you owe and past statements live on the card page — only the limit and the cycle days change here",
         "payManually": "I'll pay it myself",
-        "autopayManualOnly": "Autopay needs a bank or cash. A card paying a card would add debt every month, so it stays manual."
+        "autopayManualOnly": "Autopay needs a bank or cash. A card paying a card would add debt every month, so it stays manual.",
+        "currency": "Card currency",
+        "currencyHelp": "The currency your statement is billed in — the limit and the amounts below are in it.",
+        "currencyLocked": "This card already has history, so its currency can't change.",
+        "autopayCurrencyMismatch": "Autopay needs an account in {{currency}}, the card's currency. Choose one, or pay it yourself."
       },
       "errors": {
         "bank_required": "Choose the bank account this card belongs to",
@@ -1627,7 +1645,10 @@
         "statement_balance_invalid": "Enter the statement balance",
         "statement_date_invalid": "Enter the statement closing date",
         "statement_in_future": "The statement closing date can't be in the future",
-        "amountTooLarge": "That amount is too large"
+        "amountTooLarge": "That amount is too large",
+        "autopay_currency_mismatch": "Autopay needs a paying account in the card's currency",
+        "account_currency_locked": "This card already has history, so its currency can't change",
+        "invalid_currency": "Choose a valid currency"
       }
     },
     "balanceTransferWarning": "This moves the debt to {{card}}. You'll owe the same overall — it isn't paid off.",
@@ -1673,7 +1694,22 @@
     "payAmountLeaving": "Amount leaving {{account}} ({{currency}})",
     "rateSuggested": "Suggested at today's rate — change it if your bank gave you a different one.",
     "rateSuggestedStale": "Suggested at the rate from {{date}} — change it to what you actually received.",
-    "rateUnavailable": "No exchange rate for this pair yet — enter what arrived."
+    "rateUnavailable": "No exchange rate for this pair yet — enter what arrived.",
+    "accountCurrencyLockedBalance": "This account holds a balance in {{currency}}, so its currency can't be changed. Create another account in the currency you need and transfer the money.",
+    "accountCurrencyLockedRecurring": "A recurring payment, auto-save or debt repayment uses this account, so its currency can't be changed. Move it to another account or delete it first.",
+    "accountCurrencyLockedCards": "A card spends from this account or is paid from it, so its currency can't be changed. Create another account in the currency you need instead.",
+    "accountCurrencyLockedTransfer": "A planned or pending transfer involves this account, so its currency can't be changed. Complete or cancel the transfer first.",
+    "accountCurrencyLockedConfigured": "Cards, debts and savings goals keep the currency they were created in ({{currency}}), so it can't be changed. Create a new one in the currency you need instead.",
+    "ledgerText": {
+      "transferFee": "Transfer fee",
+      "transferFeeRefund": "Transfer fee refund",
+      "transferReversal": "Transfer reversal"
+    },
+    "accountCount_one": "{{count}} account",
+    "accountCount_other": "{{count}} accounts",
+    "shareOfAssetsLabel": "{{share}} of assets",
+    "currencyNotIncluded_one": "{{currency}} is not included in the total — no exchange rate is available yet",
+    "currencyNotIncluded_other": "{{currency}} are not included in the total — no exchange rates are available yet"
   },
   "clients": {
     "pageTitle": "Clients",
@@ -2211,7 +2247,8 @@
     "perMonthOut": "Out each month",
     "perMonthIn": "In each month",
     "notRunning_one": "{{count}} payment isn't being created",
-    "notRunning_other": "{{count}} payments aren't being created"
+    "notRunning_other": "{{count}} payments aren't being created",
+    "amountReenterCurrency": "Now in {{currency}} — enter the amount again in {{currency}}."
   },
   "calendar": {
     "title": "Calendar",
@@ -2403,7 +2440,10 @@
     "viewDetails": "View details",
     "spaceBadge": "Space",
     "amountLeaving": "Leaves {{account}} ({{currency}})",
-    "amountReceived": "Arrives in {{account}} ({{currency}})"
+    "amountReceived": "Arrives in {{account}} ({{currency}})",
+    "currencyLabel": "Currency",
+    "currencyHint": "This Space keeps its money in this currency. It can't be changed later.",
+    "autoSaveNoAccount": "Auto-save needs a bank or cash account in {{currency}}, this Space's currency."
   },
   "notifications": {
     "title": "Notifications",
@@ -2520,11 +2560,15 @@
       },
       "budget_warning": {
         "title": "Budget almost used up",
-        "body": "{{name}} has used {{percent}}% of its {{period}} budget."
+        "body": "{{name}} has used {{percent}}% of its {{period}} budget.",
+        "bodyIncomplete": "{{name}} has used {{percent}}% of its {{period}} budget ({{spent}} of {{amount}}). Some entries in another currency are not counted yet because they have no exchange rate.",
+        "bodyAmounts": "{{name}} has used {{percent}}% of its {{period}} budget ({{spent}} of {{amount}})."
       },
       "budget_exceeded": {
         "title": "Budget exceeded",
-        "body": "{{name}} has gone over its {{period}} budget."
+        "body": "{{name}} has gone over its {{period}} budget.",
+        "bodyIncomplete": "{{name}} has gone over its {{period}} budget ({{spent}} of {{amount}}). Some entries in another currency are not counted yet because they have no exchange rate.",
+        "bodyAmounts": "{{name}} has gone over its {{period}} budget ({{spent}} of {{amount}})."
       },
       "recurring_posted": {
         "title": "Recurring transaction posted",
@@ -2564,7 +2608,16 @@
       },
       "card_autopay_failed": {
         "title": "Autopay could not pay your card",
-        "body": "{{card}}: {{amount}} was not paid — {{reason}}. Pay it manually."
+        "body": "{{card}}: {{amount}} was not paid — {{reason}}. Pay it manually.",
+        "reasons": {
+          "autopay_funding_missing": "{{card}}: {{amount}} was not paid — the account that pays this card is missing or closed. Choose one to pay from, or pay it manually.",
+          "autopay_liability": "{{card}}: {{amount}} was not paid — a credit card can't pay another card automatically. Pay it manually.",
+          "autopay_currency_mismatch": "{{card}}: {{amount}} was not paid — the paying account is in a different currency from the card. Pay it manually, or choose an account in the card's currency.",
+          "autopay_funding_card": "{{card}}: {{amount}} was not paid — the card that pays it can't be used right now. Pay it manually.",
+          "autopay_quota": "{{card}}: {{amount}} was not paid — your plan's transaction limit was reached. Upgrade, or pay it manually.",
+          "autopay_not_recorded": "{{card}}: {{amount}} was not paid — the payment could not be recorded. Pay it manually.",
+          "autopay_interrupted": "{{card}}: {{amount}} was not paid — the payment was interrupted before it was recorded. Check the card and pay it manually if needed."
+        }
       },
       "card_utilization_high": {
         "title": "Card close to its limit",
@@ -2772,7 +2825,9 @@
     "whichAccount": "Which account?",
     "fromStatement": "Amount taken from the card's latest statement — please check it",
     "savedTransfer": "Transfer of {{amount}} saved",
-    "savedCardPayment": "Card payment of {{amount}} saved"
+    "savedCardPayment": "Card payment of {{amount}} saved",
+    "currencyHeard": "You said {{amount}}, but {{account}} is in {{currency}} — enter the amount in {{currency}}.",
+    "currencyHeardTransfer": "You said {{amount}} — enter the amount in each account's currency."
   },
   "debts": {
     "title": "Debt & Loans",
@@ -3135,6 +3190,114 @@
       "week": "Every week",
       "month": "Every month",
       "year": "Every year"
-    }
+    },
+    "currencyLabel": "Currency",
+    "currencyHint": "The currency this debt is kept in. It's locked after the first payment.",
+    "planCurrency": "Plan currency",
+    "planPerCurrency": "Each currency has its own plan — debts in different currencies aren't added together."
+  },
+  "fx": {
+    "excludedNotice_one": "{{count}} entry in another currency isn't included (no exchange rate)",
+    "excludedNotice_other": "{{count}} entries in another currency aren't included (no exchange rate)",
+    "accountsExcludedNotice_one": "{{count}} account in another currency isn't included in the balance (no exchange rate)",
+    "accountsExcludedNotice_other": "{{count}} accounts in another currency aren't included in the balance (no exchange rate)"
+  },
+  "apiErrors": {
+    "transfer_accounts_required": "Choose the account the money leaves and the one it goes to.",
+    "transfer_same_account": "Choose two different accounts.",
+    "transfer_account_unavailable": "One of this transfer's accounts is archived or no longer exists. Restore it first.",
+    "transfer_account_currency_changed": "An account's currency changed after this transfer was planned. Cancel it and plan it again.",
+    "source_currency_mismatch": "An account's currency changed since this form was opened. Close it and open it again.",
+    "destination_currency_mismatch": "An account's currency changed since this form was opened. Close it and open it again.",
+    "invalid_transfer_transition": "This transfer can't move to that status any more. Reload and try again.",
+    "invalid_transfer_status": "Choose a valid transfer status.",
+    "invalid_transfer_trash_state": "This transfer is already in that state. Reload and try again.",
+    "transfer_not_found_or_incomplete": "Only a completed transfer can be moved to or from the Trash.",
+    "reversal_linked_transfer_is_immutable": "A reversed transfer and its reversal are permanent — they can't be deleted or restored.",
+    "transfer_not_found": "This transfer no longer exists. Reload and try again.",
+    "transfer_trashed": "This transfer, or part of it, is in the Trash, so it can't be reversed.",
+    "transfer_is_reversal": "A reversal can't be reversed — record a new transfer instead.",
+    "transfer_already_reversed": "This transfer has already been reversed.",
+    "transfer_reversal_conflict": "This transfer changed while it was being reversed. Reload and try again.",
+    "transfer_not_trashed": "This transfer isn't in the Trash. Delete the whole transfer first, then remove it for good.",
+    "transfer_mutation_requires_transfer_service": "This is part of a transfer, so it can't be changed or deleted on its own. Reverse or delete the whole transfer instead.",
+    "invalid_fee_refund": "The fee refund must be zero or more, with at most 2 decimal places.",
+    "invalid_transfer_amounts": "Check the transfer amounts and try again.",
+    "amount_invalid": "Enter a valid amount.",
+    "amount_not_positive": "Enter an amount greater than zero.",
+    "amount_too_many_decimals": "Use at most 2 decimal places.",
+    "amount_too_large": "That amount is too large.",
+    "destination_amount_required": "Enter the amount that arrives in the other account's currency.",
+    "same_currency_amounts_differ": "Both accounts use the same currency, so the amount sent and the amount received must match.",
+    "fee_invalid": "The fee must be zero or more, with at most 2 decimal places.",
+    "invalid_date": "Enter a valid date.",
+    "system_row": "This entry sets the account's balance — change it from the account's page.",
+    "space_requires_transfer": "You can't record a transaction on a Space — move money in or out with a transfer.",
+    "debt_group": "Change this payment from the debt's page — it keeps principal and interest apart.",
+    "debt_account": "Record this from the debt's page — it keeps principal and interest apart.",
+    "transaction_changed": "This entry changed or was deleted while you were editing it. Reload and try again.",
+    "admin_ledger_row_locked": "This changes account balances, a transfer or a debt, so it can't be done from the admin console. Use the workspace's Trash instead.",
+    "organization_missing": "This item's workspace no longer exists.",
+    "reserved_cash_name": "This name is reserved for your default cash wallet. Choose another name.",
+    "default_cash_exists": "You already have a default cash wallet.",
+    "default_cash_permanent": "Your default cash wallet can't be archived or removed.",
+    "card_has_debt": "Pay off the card before closing it.",
+    "card_has_history": "This card already has history on its bank. Close it and add a new card on the other bank.",
+    "currency_missing": "This account's currency isn't set up yet. Reload and try again; if it keeps happening, contact support.",
+    "currency_mismatch": "These are in different currencies. Use an account or an amount in the same currency.",
+    "currency_mismatch_in": "This is kept in {{currency}} — enter the amount in {{currency}}.",
+    "currency_mismatch_debt": "This debt is in {{currency}} — use an account in {{currency}}.",
+    "debt_currency_changed": "This debt's currency just changed. Reload it and record the payment again.",
+    "currency_locked": "This debt already has payments, so its currency can't change. Add a new debt in the other currency instead.",
+    "account_currency_locked": "This account's currency can't be changed any more. Create another account in the currency you need and transfer the money.",
+    "amount_required_for_currency_change": "This moves the entry to another currency — enter its amount again in the new currency.",
+    "split_currency_mismatch": "Every account in a split must use the same currency.",
+    "invalid_currency": "Choose a valid currency.",
+    "cross_currency_recurring_policy_required": "Automatic savings need both accounts in the same currency.",
+    "no_rate": "There's no exchange rate for these currencies yet.",
+    "autopay_liability": "A credit card can't pay another card automatically — pay it yourself each month.",
+    "funding_self": "A card can't pay itself.",
+    "funding_card": "Choose a card that can pay this one.",
+    "funding_account": "Pay from an active bank, cash or another card.",
+    "link_or_create": "Either link an existing payment or set up a new one, not both.",
+    "link_alone": "Link this payment to a debt on its own first, then edit it.",
+    "rule_is_autosave": "A Space auto-save is managed on its Space, not here.",
+    "rule_pays_with_card": "A repayment can't be paid with a card — a card would move the debt, not clear it.",
+    "rule_has_no_account": "Choose the account this payment is paid from first.",
+    "account_archived": "That account is archived — choose an active one first.",
+    "account_not_cash": "A recurring repayment must come from a bank or cash account.",
+    "direction_mismatch": "This payment moves money the wrong way for that debt.",
+    "debt_closed": "That debt is closed — reopen it first.",
+    "debt_settled": "That debt is settled — a repayment would stop the moment it was made.",
+    "repayment_exists": "That debt already has a recurring repayment. Stop the current one first.",
+    "rule_linked_elsewhere": "That payment is already repaying another debt. Unlink it there first.",
+    "rule_ended": "That payment has already ended — it would never pay anything.",
+    "rule_has_pending": "That payment still has instalments waiting to post. Open it and clear those first.",
+    "not_found": "This item no longer exists. Reload and try again.",
+    "parent_not_found": "The main budget no longer exists. Reload and try again.",
+    "parent_is_self": "A budget can't be its own sub-budget.",
+    "parent_is_sub_budget": "A sub-budget can't have sub-budgets of its own.",
+    "insufficient_balance": "That's more than your available balance.",
+    "below_min_payout": "That's below the minimum payout.",
+    "personal_account_restricted": "This isn't available on a personal account.",
+    "no_code": "Request a code first.",
+    "cooldown": "Please wait a moment before requesting another code.",
+    "no_email": "There's no email address on your account.",
+    "unparseable": "Couldn't understand that. Try saying it another way.",
+    "plan_limit": "You've reached your plan's limit.",
+    "plan_limit_upgrade": "You've reached your plan's limit. Upgrade to Premium for more.",
+    "space_not_empty": "Move the money out of this Space before closing or deleting it.",
+    "recurring_autosave_incomplete": "This auto-save needs an account to take the money from and a Space to put it in. Edit it to choose both.",
+    "recurring_card_missing": "The card this payment uses no longer exists. Edit it and pick another card.",
+    "recurring_card_frozen": "The card this payment uses is frozen. Unfreeze it or pick another card.",
+    "recurring_card_closed": "The card this payment uses is closed. Edit it and pick another card.",
+    "recurring_failed": "This payment couldn't be posted. It will try again — if it keeps failing, contact support.",
+    "recurring_account_currency": "This payment is in {{currency}} but its account is in {{account_currency}}. Edit it and pick an account in {{currency}}.",
+    "recurring_currency_missing": "This payment has no currency. Edit it and save it again.",
+    "recurring_debt_unlinked": "This repayment isn't linked to a debt any more.",
+    "recurring_debt_missing": "The debt this repays no longer exists.",
+    "recurring_debt_inactive": "The debt this repays isn't active, so no payment was made.",
+    "autopay_not_recorded": "The card payment couldn't be recorded. Pay it manually.",
+    "autopay_interrupted": "The card payment was interrupted before it was recorded. Check the card and pay it manually if needed."
   }
 }

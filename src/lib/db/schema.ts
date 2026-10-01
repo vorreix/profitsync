@@ -668,6 +668,10 @@ export const quotations = pgTable("quotations", {
   email: text("email").default(""),
   phone: text("phone").default(""),
   amount: numeric("amount", { precision: 20, scale: 2 }).default("0"),
+  // The currency the quote was written in (mig 0077) — the workspace's
+  // reporting currency at creation, never relabelled by a later change. NULL
+  // only on legacy rows; readers fall back to the organization's currency.
+  currencyCode: text("currency_code"),
   // User-provided quotation date (e.g. when it was issued). Defaults to today.
   date: date("date").notNull().defaultNow(),
   status: text("status").default("draft"), // draft | sent | accepted | rejected
@@ -1179,6 +1183,10 @@ export const budgets = pgTable("budgets", {
   clientId: uuid("client_id").references(() => clients.id, { onDelete: "cascade" }),
   period: text("period").notNull().default("monthly"), // lifetime | monthly | weekly | daily
   amount: numeric("amount", { precision: 20, scale: 2 }).notNull().default("0"),
+  // The currency the cap is authored AND judged in (mig 0077) — the reporting
+  // currency when it was first set; a later reporting change never relabels it.
+  // NULL only on legacy rows (read as the reporting currency).
+  currencyCode: text("currency_code"),
   createdBy: text("created_by"),
   updatedBy: text("updated_by"),
   createdAt: timestamp("created_at").defaultNow(),
@@ -1207,6 +1215,7 @@ export const budgetHistory = pgTable("budget_history", {
   amount: numeric("amount", { precision: 20, scale: 2 }).notNull().default("0"), // snapshot after the change (0 for "remove")
   period: text("period").notNull(), // lifetime | monthly | weekly | daily (after the change)
   action: text("action").notNull(), // set | raise | lower | period_change | remove
+  currencyCode: text("currency_code"), // the cap's currency when this snapshot was taken (mig 0077)
   changedBy: text("changed_by"),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => ({

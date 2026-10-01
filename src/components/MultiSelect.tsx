@@ -73,7 +73,7 @@ export function MultiSelect({
           align="start"
         >
           <Command>
-            <CommandInput placeholder={searchPlaceholder} />
+            <CommandInput placeholder={searchPlaceholder} className="text-base sm:text-sm" />
             <CommandList>
               <CommandEmpty>{emptyText}</CommandEmpty>
               <CommandGroup>

@@ -98,43 +98,101 @@ export type TransferAmounts = Readonly<{
   inverseRate: DecimalString | null
 }>
 
-function positiveLedgerAmount(value: Decimal.Value, label: string): Decimal {
-  const amount = new Decimal(value)
-  if (!amount.isFinite() || amount.lte(0)) throw new RangeError(`${label} must be greater than zero`)
-  if (amount.decimalPlaces() > 2) throw new RangeError(`${label} supports at most 2 decimal places`)
-  if (amount.abs().gt(MAX_MONEY)) throw new RangeError(`${label} is too large`)
+/**
+ * Why a ledger amount was refused. ONE code per reason, so the API can answer
+ * with it and every client can say it in the reader's language — the English
+ * message on the error is only for logs and pinned old builds (MC-152).
+ */
+export type AmountProblem =
+  | "amount_invalid"
+  | "amount_not_positive"
+  | "amount_too_many_decimals"
+  | "amount_too_large"
+  | "destination_amount_required"
+  | "same_currency_amounts_differ"
+  | "fee_invalid"
+
+export type AmountField = "source" | "destination" | "fee"
+
+/** A refused transfer amount: `code` says why, `field` which input. Still a RangeError for older catch sites. */
+export class AmountError extends RangeError {
+  readonly code: AmountProblem
+  readonly field: AmountField
+  constructor(code: AmountProblem, field: AmountField, message: string) {
+    super(message)
+    this.name = "AmountError"
+    this.code = code
+    this.field = field
+  }
+}
+
+const FIELD_LABEL: Record<AmountField, string> = { source: "Source amount", destination: "Destination amount", fee: "Source fee" }
+
+// `new Decimal("")` throws "[DecimalError] Invalid argument: " — a library
+// internal that once reached the user as the whole error message. Parse here,
+// so a blank or non-numeric field is an ordinary `amount_invalid`.
+function parseAmount(value: unknown, field: AmountField): Decimal {
+  try {
+    if (value == null || String(value).trim() === "") throw new Error()
+    const amount = new Decimal(value as Decimal.Value)
+    if (!amount.isFinite()) throw new Error()
+    return amount
+  } catch {
+    throw new AmountError("amount_invalid", field, `${FIELD_LABEL[field]} is not a number`)
+  }
+}
+
+function positiveLedgerAmount(value: unknown, field: AmountField): Decimal {
+  const label = FIELD_LABEL[field]
+  const amount = parseAmount(value, field)
+  if (amount.lte(0)) throw new AmountError("amount_not_positive", field, `${label} must be greater than zero`)
+  if (amount.decimalPlaces() > 2) throw new AmountError("amount_too_many_decimals", field, `${label} supports at most 2 decimal places`)
+  if (amount.abs().gt(MAX_MONEY)) throw new AmountError("amount_too_large", field, `${label} is too large`)
   return amount
+}
+
+/**
+ * The same check the server runs on a transfer amount, for a form to run
+ * before it submits: null when `value` is a valid ledger amount, else why not.
+ */
+export function ledgerAmountProblem(value: unknown): AmountProblem | null {
+  try {
+    positiveLedgerAmount(value, "source")
+    return null
+  } catch (error) {
+    return error instanceof AmountError ? error.code : "amount_invalid"
+  }
 }
 
 /** Builds immutable historical principal facts without using binary floating point. */
 export function transferAmounts(input: {
-  sourceAmount: Decimal.Value
-  destinationAmount?: Decimal.Value | null
-  sourceFeeAmount?: Decimal.Value | null
+  sourceAmount: unknown
+  destinationAmount?: unknown
+  sourceFeeAmount?: unknown
   sourceCurrency: string
   destinationCurrency: string
 }): TransferAmounts {
   const sourceCurrency = normalizeCurrencyCode(input.sourceCurrency)
   const destinationCurrency = normalizeCurrencyCode(input.destinationCurrency)
-  const source = positiveLedgerAmount(input.sourceAmount, "Source amount")
+  const source = positiveLedgerAmount(input.sourceAmount, "source")
   const fee = input.sourceFeeAmount == null || String(input.sourceFeeAmount).trim() === ""
     ? new Decimal(0)
-    : new Decimal(input.sourceFeeAmount)
-  if (!fee.isFinite() || fee.lt(0) || fee.decimalPlaces() > 2 || fee.gt(MAX_MONEY)) {
-    throw new RangeError("Source fee must be a non-negative amount with at most 2 decimal places")
+    : parseAmount(input.sourceFeeAmount, "fee")
+  if (fee.lt(0) || fee.decimalPlaces() > 2 || fee.gt(MAX_MONEY)) {
+    throw new AmountError("fee_invalid", "fee", "Source fee must be a non-negative amount with at most 2 decimal places")
   }
 
   let destination: Decimal
   if (sourceCurrency === destinationCurrency) {
     destination = input.destinationAmount == null || String(input.destinationAmount).trim() === ""
       ? source
-      : positiveLedgerAmount(input.destinationAmount, "Destination amount")
-    if (!destination.eq(source)) throw new RangeError("Same-currency transfer principal amounts must match")
+      : positiveLedgerAmount(input.destinationAmount, "destination")
+    if (!destination.eq(source)) throw new AmountError("same_currency_amounts_differ", "destination", "Same-currency transfer principal amounts must match")
   } else {
     if (input.destinationAmount == null || String(input.destinationAmount).trim() === "") {
-      throw new RangeError("Destination amount is required for a cross-currency transfer")
+      throw new AmountError("destination_amount_required", "destination", "Destination amount is required for a cross-currency transfer")
     }
-    destination = positiveLedgerAmount(input.destinationAmount, "Destination amount")
+    destination = positiveLedgerAmount(input.destinationAmount, "destination")
   }
 
   const effectiveRate = sourceCurrency === destinationCurrency ? null : destination.div(source)

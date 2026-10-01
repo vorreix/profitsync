@@ -10,6 +10,7 @@ import type { AccountType } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ACCENTS } from "@/components/onboarding/accents"
+import { formatMoney, formatMoneyWhole } from "@/lib/wealth"
 
 type PlanLocalPricing = {
   currency: string
@@ -31,11 +32,8 @@ type PricingResponse = { plans: Plan[]; detectedCountry: string }
 type Cycle = "monthly" | "yearly"
 
 function formatMinor(amount: number, currency: string): string {
-  return new Intl.NumberFormat(undefined, {
-    style: "currency",
-    currency,
-    minimumFractionDigits: amount % 100 === 0 ? 0 : 2,
-  }).format(amount / 100)
+  const n = amount / 100
+  return Number.isInteger(n) ? formatMoneyWhole(n, currency) : formatMoney(n, currency)
 }
 // Round the discounted cents the way Dodo does, so the shown price matches checkout.
 const discounted = (amount: number, pct: number) => Math.round(amount * (1 - pct / 100))

@@ -1,10 +1,11 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { and, eq, max, sql } from "drizzle-orm"
 import { db, dbBatch } from "../../src/lib/db/index.js"
-import { debtDetails, organizations, recurringRules, transactions, wealthAccounts } from "../../src/lib/db/schema.js"
+import { debtDetails, recurringRules, transactions, wealthAccounts } from "../../src/lib/db/schema.js"
 import { canWrite, ensureDefaultClient, requireAuth } from "../_lib/auth.js"
 import { checkTransactionQuota } from "../_lib/quota.js"
 import { logAudit } from "../_lib/audit.js"
+import { reportingCurrencyFor } from "../_lib/fx-rates.js"
 import { resolveLogoColumns } from "../_lib/bank-brand.js"
 import { buildDebtsOverview, loadDebt, loadDebtRules, serializeDebt } from "../_lib/debts.js"
 import { payerShape, refusalForNew, refusalMessage, refusalStatus } from "../_lib/recurring-debt.js"
@@ -41,8 +42,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!ctx) return
   const { userId, orgId, role } = ctx
 
-  const [org] = await db.select({ currency: organizations.currency }).from(organizations).where(eq(organizations.id, orgId))
-  const orgCurrency = org?.currency ?? "USD"
+  // The REPORTING currency: the hub's totals are converted into it and a new
+  // debt defaults to it. The legacy `currency` column could disagree (MC-033).
+  const orgCurrency = await reportingCurrencyFor(orgId)
 
   if (req.method === "GET") {
     // A debt's balance is only true once everything due has posted. Without this
@@ -143,7 +145,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
       // Each instalment's principal is one amount on both legs — same currency only.
       if (acc.currencyCode && acc.currencyCode.toUpperCase() !== currency) {
-        return res.status(400).json({ error: `A repayment for a ${currency} debt must come from a ${currency} account`, code: "currency_mismatch" })
+        return res.status(400).json({ error: `A repayment for a ${currency} debt must come from a ${currency} account`, code: "currency_mismatch", context: "debt", currency })
       }
       payFrom = acc
     }
@@ -170,7 +172,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // The amount received is a transfer with the same amount on both legs, so
       // it can only land in an account in the debt's own currency.
       if (acc.currencyCode && acc.currencyCode.toUpperCase() !== currency) {
-        return res.status(400).json({ error: `Money borrowed in ${currency} must arrive in a ${currency} account`, code: "currency_mismatch" })
+        return res.status(400).json({ error: `Money borrowed in ${currency} must arrive in a ${currency} account`, code: "currency_mismatch", context: "debt", currency })
       }
       const asked = num(b.disbursement_amount)
       if (asked !== null && Number.isNaN(asked)) return res.status(400).json({ error: "disbursement_amount is invalid" })

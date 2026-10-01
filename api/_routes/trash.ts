@@ -10,6 +10,11 @@ const txFields = {
   clientName: clients.name,
   type: transactions.type,
   amount: transactions.amount,
+  // Each row in its OWN currency (MC-048): a trashed €5 fee in a USD workspace
+  // is "−€5.00", never "−$5". `kind` lets a system-written description
+  // (transfer reversal) be translated on display.
+  currencyCode: transactions.currencyCode,
+  kind: transactions.kind,
   description: transactions.description,
   category: transactions.category,
   date: transactions.date,

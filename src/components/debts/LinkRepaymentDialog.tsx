@@ -147,7 +147,7 @@ export function LinkRepaymentDialog({
                   </span>
                 </span>
                 <span className="shrink-0 text-end">
-                  <span className="block text-sm font-semibold tabular-nums">{formatMoney(Number(r.amount), debt.currency, true)}</span>
+                  <span className="block text-sm font-semibold tabular-nums">{formatMoney(Number(r.amount), r.currency_code || debt.currency, true)}</span>
                   <span className="block text-[11px] text-muted-foreground">{everyLabel(r, t)}</span>
                 </span>
               </button>

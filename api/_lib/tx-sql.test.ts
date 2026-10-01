@@ -11,6 +11,7 @@ import {
   incomeSumSqlIn,
   missingAccountRateCountSql,
   missingRateCountSql,
+  nativeSummarySql,
   pnlKindFilter,
   reportingAmountSql,
 } from "./tx-sql.js"
@@ -95,6 +96,22 @@ describe("tx-sql — reporting-currency twins convert each row at its own date",
     const eur = params.filter((p) => p === "EUR")
     // income (1) + expense (2: outgoing + refund) + excluded (2: <> and fx_rate_on) + row (1)
     expect(eur.length).toBe(6)
+  })
+})
+
+describe("tx-sql — an account's own figures stay native (MC-009)", () => {
+  const { sql } = db
+    .select({ income: nativeSummarySql.incoming, expense: nativeSummarySql.outgoing, currency: nativeSummarySql.currency })
+    .from(transactions)
+    .toSQL()
+
+  it("sums the stored amounts — nothing converted, so nothing can be left out", () => {
+    expect(sql).not.toMatch(/reporting_amount\(/)
+    expect(sql).toMatch(/"kind" = 'refund' then -("transactions"\.)?"amount"::numeric/)
+  })
+
+  it("names a currency only when every row carries the same one", () => {
+    expect(sql).toMatch(/count\(distinct ("transactions"\.)?"currency_code"\) = 1 and count\(("transactions"\.)?"currency_code"\) = count\(\*\) then max\(("transactions"\.)?"currency_code"\) end/)
   })
 })
 

@@ -89,50 +89,63 @@ export function ScheduledTransfersPanel({ canWrite, visible, className }: { canW
               <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-full bg-primary/10 text-primary">
                 <Clock className="size-4" aria-hidden />
               </span>
-              <div className="min-w-0 flex-1">
-                <p className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-sm font-medium">
-                  <span className="truncate">{tr.source_account_name}</span>
-                  <ArrowRight className="size-3.5 shrink-0 text-muted-foreground rtl:rotate-180" aria-hidden />
-                  <span className="truncate">{tr.destination_account_name}</span>
-                </p>
-                <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground tabular-nums">
-                  <span>{formatDateLabel(tr.transfer_date)}</span>
-                  <Badge variant="outline" className={cn("py-0 text-[10px]", tr.status === "pending" && "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300")}>
-                    {tr.status === "pending" ? t("statusPending") : t("statusPlanned")}
-                  </Badge>
-                  {tr.note && <span className="truncate">· {tr.note}</span>}
-                </p>
-                {isCrossCurrency(tr) && tr.effective_rate && (
-                  <p className="mt-0.5 text-[11px] text-muted-foreground tabular-nums">{formatRate(tr.source_currency, tr.destination_currency, tr.effective_rate)}</p>
-                )}
-              </div>
-              <div className="flex shrink-0 flex-col items-end gap-1">
-                <p className="text-sm font-semibold tabular-nums">
-                  {isCrossCurrency(tr)
-                    ? <>{formatMoney(Number(tr.source_amount), tr.source_currency, visible)} <span className="text-muted-foreground">→</span> {formatMoney(Number(tr.destination_amount), tr.destination_currency, visible)}</>
-                    : formatMoney(Number(tr.source_amount), tr.source_currency, visible)}
-                </p>
-                {fee > 0 && <p className="text-[11px] text-muted-foreground tabular-nums">{t("feeShort", { amount: formatMoney(fee, tr.source_currency, visible) })}</p>}
-                {canWrite && (
-                  <div className="mt-1 flex items-center gap-1">
-                    <Button size="sm" variant="outline" className="min-h-9" disabled={isBusy} onClick={() => transition(tr, "completed")}>
-                      <Check className="size-3.5" /> {t("markDone")}
-                    </Button>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button size="icon" variant="ghost" className="size-9 text-muted-foreground" aria-label={t("transfer")} disabled={isBusy}>
-                          <MoreVertical className="size-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        {tr.status === "planned" && (
-                          <DropdownMenuItem onSelect={() => transition(tr, "pending")}><Clock className="size-4" /> {t("markPending")}</DropdownMenuItem>
-                        )}
-                        <DropdownMenuItem onSelect={() => setCancelling(tr)} className="text-destructive focus:text-destructive"><X className="size-4" /> {t("cancelTransfer")}</DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                )}
+              {/* Phone: names, then the amounts, then a full-width action row.
+                  From `sm:` the amounts and actions sit in a right-hand column.
+                  Side by side at 375 px, a long amount pair plus the buttons left
+                  the names 0 px wide and clipped the menu (MC-066). */}
+              <div className="min-w-0 flex-1 sm:flex sm:items-start sm:gap-3">
+                <div className="min-w-0 flex-1">
+                  <p className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-sm font-medium">
+                    <span className="truncate">{tr.source_account_name}</span>
+                    <ArrowRight className="size-3.5 shrink-0 text-muted-foreground rtl:rotate-180" aria-hidden />
+                    <span className="truncate">{tr.destination_account_name}</span>
+                  </p>
+                  <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground tabular-nums">
+                    <span>{formatDateLabel(tr.transfer_date)}</span>
+                    <Badge variant="outline" className={cn("py-0 text-[10px]", tr.status === "pending" && "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300")}>
+                      {tr.status === "pending" ? t("statusPending") : t("statusPlanned")}
+                    </Badge>
+                    {tr.note && <span className="truncate">· {tr.note}</span>}
+                  </p>
+                  {isCrossCurrency(tr) && tr.effective_rate && (
+                    <p className="mt-0.5 text-[11px] text-muted-foreground tabular-nums">{formatRate(tr.source_currency, tr.destination_currency, tr.effective_rate)}</p>
+                  )}
+                </div>
+                <div className="mt-1.5 flex flex-col gap-1 sm:mt-0 sm:max-w-[55%] sm:shrink-0 sm:items-end">
+                  {/* Each amount stays whole; the pair wraps between them. */}
+                  <p className="flex flex-wrap items-baseline gap-x-1 text-sm font-semibold tabular-nums sm:justify-end">
+                    <span className="whitespace-nowrap">{formatMoney(Number(tr.source_amount), tr.source_currency, visible)}</span>
+                    {isCrossCurrency(tr) && (
+                      <>
+                        <span className="text-muted-foreground" aria-hidden>→</span>
+                        <span className="whitespace-nowrap">{formatMoney(Number(tr.destination_amount), tr.destination_currency, visible)}</span>
+                      </>
+                    )}
+                  </p>
+                  {fee > 0 && <p className="text-[11px] text-muted-foreground tabular-nums">{t("feeShort", { amount: formatMoney(fee, tr.source_currency, visible) })}</p>}
+                  {canWrite && (
+                    <div className="mt-1 flex items-center gap-1">
+                      {/* min-w-0 + wrapping: a long label (ml) must not push the
+                          menu out of the clipped card (MC-T09). */}
+                      <Button size="sm" variant="outline" className="h-auto min-h-11 min-w-0 flex-1 whitespace-normal py-1.5 leading-tight sm:flex-none" disabled={isBusy} onClick={() => transition(tr, "completed")}>
+                        <Check className="size-3.5" /> <span className="min-w-0 break-words">{t("markDone")}</span>
+                      </Button>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button size="icon" variant="ghost" className="size-11 shrink-0 text-muted-foreground" aria-label={t("transfer")} disabled={isBusy}>
+                            <MoreVertical className="size-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          {tr.status === "planned" && (
+                            <DropdownMenuItem className="min-h-11" onSelect={() => transition(tr, "pending")}><Clock className="size-4" /> {t("markPending")}</DropdownMenuItem>
+                          )}
+                          <DropdownMenuItem onSelect={() => setCancelling(tr)} className="min-h-11 text-destructive focus:text-destructive"><X className="size-4" /> {t("cancelTransfer")}</DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  )}
+                </div>
               </div>
             </li>
           )

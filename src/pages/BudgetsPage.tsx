@@ -11,14 +11,15 @@ import { useCurrency } from "@/lib/currency-context"
 import { useOrg } from "@/lib/org-context"
 import { canDeleteRole, canWriteRole } from "@/lib/roles"
 import { formatMoney } from "@/lib/wealth"
+import { formatByCurrency } from "@/lib/debt-format"
 import { FxExcludedNotice } from "@/components/FxExcludedNotice"
-import { allocation, todayUtc, VIEW_WINDOWS } from "@/lib/budget"
+import { allocationIn, todayUtc, VIEW_WINDOWS } from "@/lib/budget"
 import { useBudgetView } from "@/lib/budget-view"
 import type { Category, SpendingBudget, SpendingBudgetsResponse } from "@/lib/types"
 import { BudgetList } from "@/components/budget/BudgetList"
 import { SpendingBudgetDialog, type SpendingBudgetDialogMode } from "@/components/budget/SpendingBudgetDialog"
 import { ClientBudgetsSection } from "@/components/budget/ClientBudgetsSection"
-import { BAR_COLOR, DELTA_COLOR, barPct, budgetName, inView, budgetsExcluded } from "@/components/budget/budget-format"
+import { BAR_COLOR, DELTA_COLOR, barPct, budgetCurrency, budgetName, inView } from "@/components/budget/budget-format"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -58,11 +59,10 @@ export function BudgetsPage() {
   const canWrite = canWriteRole(activeOrg?.role)
   const canDelete = canDeleteRole(activeOrg?.role)
   const { data, loading, refetch } = useApiQuery<SpendingBudgetsResponse>("/api/spending-budgets")
-  // Spend is measured in the currency the server reported (the workspace's
-  // reporting currency; the org's is only the fallback before the first payload
-  // lands), with every ledger row converted at its own date.
+  // Every budget is measured in ITS currency (`currency` on the row — the one
+  // it was created in), with every ledger row converted at its own date. The
+  // server's reporting currency is only the fallback for a row without one.
   const budgetsCurrency = data?.currency || currency
-  const money = (n: number) => formatMoney(n, budgetsCurrency)
   const cats = useApiQuery<Category[]>("/api/categories?type=outgoing")
   const budgets = useMemo(() => data?.budgets ?? [], [data])
   const today = data?.today ?? todayUtc()
@@ -106,10 +106,17 @@ export function BudgetsPage() {
   const overall = budgets.find((b) => b.is_overall && b.status === "active") ?? null
   const lines = budgets.filter((b) => !b.parent_id && !b.is_overall && b.status === "active" && b.period !== "once")
   const overallView = overall ? inView(overall, view, today) : null
-  const alloc = allocation(
+  // The header is in the OVERALL budget's currency. A line kept in another one
+  // is never added to it as if it were the same money: it gets a total of its
+  // own and the unallocated remainder is not claimed (MC-080).
+  const base = overall ? budgetCurrency(overall, budgetsCurrency) : budgetsCurrency
+  const money = (n: number) => formatMoney(n, base)
+  const alloc = allocationIn(
+    base,
     overallView ? overallView.limit : null,
-    lines.map((b) => inView(b, view, today).limit),
+    lines.map((b) => ({ currency: budgetCurrency(b, budgetsCurrency), limit: inView(b, view, today).limit })),
   )
+  const allocated = formatByCurrency(alloc.parts)
 
   const actions = {
     onEdit: (b: SpendingBudget) => setDialog({ kind: "edit", budget: b }),
@@ -271,10 +278,12 @@ export function BudgetsPage() {
                     {overallView.days_left !== null && t("budgets.daysLeft", { count: overallView.days_left })}
                     {overallView.per_day_left !== null && <> · {t("budgets.perDay", { amount: money(overallView.per_day_left) })}</>}
                   </p>
+                  {/* Partial spend is never shown as the whole figure (MC-082). */}
+                  <FxExcludedNotice count={overallView.excluded} className="mt-1" />
                   {lines.length > 0 && (
                     <div className="mt-3 border-t pt-3">
                       <p className="text-xs text-muted-foreground">
-                        {t("budgets.allocated", { allocated: money(alloc.allocated), total: money(overallView.limit) })}
+                        {t("budgets.allocated", { allocated, total: money(overallView.limit) })}
                         {alloc.unallocated !== null && (
                           <span className={alloc.over ? "text-amber-600 dark:text-amber-400" : ""}>
                             {" · "}
@@ -285,7 +294,7 @@ export function BudgetsPage() {
                         )}
                       </p>
                       <div className="mt-2 flex h-1.5 w-full gap-0.5 overflow-hidden rounded-full bg-muted" aria-hidden>
-                        {lines.map((b) => {
+                        {lines.filter((b) => budgetCurrency(b, budgetsCurrency) === base).map((b) => {
                           const pct = overallView.limit > 0 ? Math.min(100, (inView(b, view, today).limit / overallView.limit) * 100) : 0
                           return <span key={b.id} className="h-full rounded-full bg-primary/70" style={{ width: `${pct}%` }} title={budgetName(t, b)} />
                         })}
@@ -297,7 +306,7 @@ export function BudgetsPage() {
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="min-w-0">
                     <p className="text-sm font-medium">{t("budgets.noOverall")}</p>
-                    <p className="mt-0.5 text-xs text-muted-foreground">{t("budgets.noOverallHint", { amount: money(alloc.allocated) })}</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">{t("budgets.noOverallHint", { amount: allocated })}</p>
                   </div>
                   {canWrite && (
                     <Button variant="outline" size="sm" className="h-11 sm:h-9" onClick={() => setDialog({ kind: "createOverall" })} data-testid="set-overall">
@@ -327,8 +336,10 @@ export function BudgetsPage() {
                 )}
               </div>
               {/* Rows in another currency with no rate for their day are not in
-                  any figure below — say so instead of quietly under-reporting. */}
-              {!loading && <FxExcludedNotice count={budgetsExcluded(budgets)} className="mb-2" />}
+                  any figure below — say so instead of quietly under-reporting.
+                  Counted ONCE per row for the window on screen, however many
+                  budgets it falls under (MC-084); each row flags its own. */}
+              {!loading && <FxExcludedNotice count={data?.excluded_by_view?.[view]} className="mb-2" />}
               <BudgetList
                 budgets={budgets}
                 view={view}

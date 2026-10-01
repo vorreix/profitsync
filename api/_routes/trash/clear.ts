@@ -4,6 +4,7 @@ import { db } from "../../../src/lib/db/index.js"
 import { clients, quotations, transactions, wealthAccounts } from "../../../src/lib/db/schema.js"
 import { canDelete, requireAuth } from "../../_lib/auth.js"
 import { reversalsByAccount } from "../../../src/lib/wealth-ledger.js"
+import { purgeTrashedTransfers } from "../../_lib/tx-trash.js"
 
 // Empty the org's whole trash in one shot. Same invariants as single-item purge
 // (api/_routes/trash/purge.ts): a soft-deleted transaction's balance was already
@@ -40,15 +41,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   // 2. Remaining trashed transactions (their client is live — client-trashed ones
   //    died with the cascade above). Purging ALL soft-deleted rows inherently
-  //    takes every soft-deleted split-group leg, so no orphaned legs.
+  //    takes every soft-deleted split-group leg, so no orphaned legs. Rows a
+  //    logical transfer owns (legs AND fee rows) go only with their whole
+  //    transfer, in the statement single purge uses — never row by row, which
+  //    raced a restore into balances moved for rows that no longer exist.
   const trashedTx = await db
     .select({ id: transactions.id })
     .from(transactions)
     .innerJoin(clients, eq(transactions.clientId, clients.id))
-    .where(and(eq(clients.organizationId, orgId), isNull(clients.deletedAt), isNotNull(transactions.deletedAt)))
+    .where(and(
+      eq(clients.organizationId, orgId),
+      isNull(clients.deletedAt),
+      isNotNull(transactions.deletedAt),
+      isNull(transactions.transferId),
+    ))
   if (trashedTx.length) {
-    await db.delete(transactions).where(inArray(transactions.id, trashedTx.map((t) => t.id)))
+    // deleted_at re-checked: a row restored since the read above stays.
+    await db.delete(transactions).where(and(inArray(transactions.id, trashedTx.map((t) => t.id)), isNotNull(transactions.deletedAt)))
   }
+  const transferRows = await purgeTrashedTransfers(orgId)
 
   // 3. Trashed quotations (attachments + pdfs cascade via FK).
   const purgedQuotations = await db
@@ -57,6 +68,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     .returning({ id: quotations.id })
 
   return res.json({
-    purged: { clients: clientIds.length, transactions: trashedTx.length, quotations: purgedQuotations.length },
+    purged: { clients: clientIds.length, transactions: trashedTx.length + transferRows, quotations: purgedQuotations.length },
   })
 }

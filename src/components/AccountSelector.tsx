@@ -19,7 +19,10 @@ import { Skeleton } from "@/components/ui/skeleton"
 // One leg of a transaction: the account the money lands on and, when a card
 // paid, which card (attribution only — the server forces account_id to the
 // card's own account). `card_id` null/absent = paid straight from the account.
-export type Allocation = { account_id: string; card_id?: string | null; amount: string }
+// `currency_code` = the currency `amount` is in when the caller seeded it from a
+// SAVED row (that row's own currency_code). Absent on anything typed here, whose
+// amount is in its account's currency.
+export type Allocation = { account_id: string; card_id?: string | null; amount: string; currency_code?: string | null }
 
 /**
  * Smoothly expands/collapses to auto height via the grid `0fr → 1fr` trick — the
@@ -139,14 +142,18 @@ export function AccountSelector({
     return opt ? optionCurrency(opt, currency) : currency
   }
   const activeCurrency = allocations.length > 0 ? currencyOfKey(keyOf(allocations[0])) : null
-  const entryCurrency = activeCurrency ?? currency
+  // The currency an allocation's AMOUNT is in: the saved row's own when it was
+  // seeded from one, else its account's. null = unknown — a row on an account
+  // this picker does not offer (an archived one) with no stored currency.
+  const amountCurrencyOf = (a: Allocation): string | null =>
+    a.currency_code || (options.byKey.has(keyOf(a)) ? currencyOfKey(keyOf(a)) : null)
+  const sole = allocations[0]
+  const entryCurrency = (sole && amountCurrencyOf(sole)) || activeCurrency || currency
   const entrySymbol = currencySymbol(entryCurrency)
 
   const total = allocations.reduce((sum, a) => sum + (Number(a.amount) || 0), 0)
   const selectedCount = allocations.length
   const incomplete = allocations.some((a) => !(Number(a.amount) > 0))
-
-  const sole = allocations[0]
 
   // Preselect order: the user's chosen default account → Cash → first.
   const fallback = () =>
@@ -165,16 +172,45 @@ export function AccountSelector({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [secondaryKey, rotating.length])
 
-  const selectSingle = (o: PayOption) => onChange([{ ...optionAllocation(o), amount: sole?.amount ?? "" }])
-  const setSingleAmount = (amount: string) =>
+  // Set when switching account cleared the amount because the new one is in
+  // another currency — says why the field is empty until something is typed.
+  const [reaskCurrency, setReaskCurrency] = useState<string | null>(null)
+  // A saved row seeded onto an account in ANOTHER currency (a row with no
+  // account opens on the default one) would re-save its number in that
+  // currency on any edit, even a category fix. Same rule as a tap: once the
+  // account is known, clear the amount and ask for it again.
+  useEffect(() => {
+    if (allocations.length !== 1 || !sole?.currency_code || !sole.amount || !options.byKey.has(keyOf(sole))) return
+    const own = currencyOfKey(keyOf(sole))
+    if (own.toUpperCase() === sole.currency_code.toUpperCase()) return
+    setReaskCurrency(own)
+    onChange([{ account_id: sole.account_id, card_id: sole.card_id ?? null, amount: "" }])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [options, sole?.currency_code, sole?.amount])
+  // Another currency changes what the typed number MEANS — €50 is not ₹50 — so
+  // the amount is cleared and asked for again in the new currency rather than
+  // carried over (the server refuses a currency change that does not restate
+  // it, but every edit dialog resends the amount, so this is the real guard).
+  // Compared with the AMOUNT's currency, not the selected account's: they
+  // differ for a row seeded onto the default account, and an unknown one
+  // counts as a change.
+  const selectSingle = (o: PayOption) => {
+    const next = optionCurrency(o, currency)
+    const changed = !!sole && amountCurrencyOf(sole)?.toUpperCase() !== next.toUpperCase()
+    if (changed && (!!sole.amount || !!reaskCurrency)) setReaskCurrency(next)
+    onChange([{ ...optionAllocation(o), amount: changed ? "" : sole?.amount ?? "" }])
+  }
+  const setSingleAmount = (amount: string) => {
+    setReaskCurrency(null)
     onChange([{ ...(sole ? { account_id: sole.account_id, card_id: sole.card_id ?? null } : fallbackAlloc()), amount }])
+  }
 
   const toggleSplit = (o: PayOption) =>
     isSelected(o.key)
       ? onChange(allocations.filter((a) => keyOf(a) !== o.key))
       : onChange([...allocations, { ...optionAllocation(o), amount: "" }])
   const setAmount = (key: string, amount: string) =>
-    onChange(allocations.map((a) => (keyOf(a) === key ? { ...a, amount } : a)))
+    onChange(allocations.map((a) => (keyOf(a) === key ? { account_id: a.account_id, card_id: a.card_id ?? null, amount } : a)))
 
   const enterSplit = () => setSplit(true)
   const exitSplit = () => {
@@ -281,6 +317,9 @@ export function AccountSelector({
       <Collapse open={!split}>
         <div className="space-y-2">
           <MoneyInput symbol={entrySymbol} value={sole?.amount ?? ""} onChange={setSingleAmount} size="lg" />
+          {reaskCurrency && (
+            <p role="status" className="text-xs text-amber-700 dark:text-amber-300">{t("amountReenterCurrency", { currency: reaskCurrency })}</p>
+          )}
           <div className={cn("grid gap-2", primary.length === 1 ? "grid-cols-1" : "grid-cols-2")}>
             {primary.map((o) => renderTile(o, "single"))}
           </div>
@@ -530,7 +569,7 @@ function MoneyInput({
   const lg = size === "lg"
   return (
     <div className={cn("relative", className)}>
-      <span className={cn("pointer-events-none absolute top-1/2 -translate-y-1/2 text-muted-foreground", lg ? "left-3 text-base" : "left-2.5 text-sm")}>
+      <span className={cn("pointer-events-none absolute top-1/2 -translate-y-1/2 text-muted-foreground", lg ? "start-3 text-base" : "start-2.5 text-sm")}>
         {symbol}
       </span>
       <Input
@@ -543,7 +582,11 @@ function MoneyInput({
         aria-invalid={invalid ? true : undefined}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className={lg ? "h-11 pl-8 text-right text-lg font-semibold tabular-nums" : "h-9 pl-7 text-right tabular-nums"}
+        // The prefix runs from "$" to "F CFA": the padding follows its length (MC-140).
+        // `ch` is measured in the INPUT's font, so md:text-lg keeps the base
+        // md:text-sm from shrinking it below the prefix's own size on desktop.
+        style={{ paddingInlineStart: `calc(${symbol.length}ch + ${lg ? "1.25rem" : "1rem"})` }}
+        className={lg ? "h-11 text-right text-lg md:text-lg font-semibold tabular-nums" : "h-9 text-right tabular-nums"}
       />
     </div>
   )

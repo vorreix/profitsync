@@ -1,12 +1,10 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { and, eq } from "drizzle-orm"
-import { CURRENCY_LIST } from "../../../src/lib/currencies.js"
 import { db, serialize } from "../../../src/lib/db/index.js"
 import { organizations, organizationMembers, userProfiles } from "../../../src/lib/db/schema.js"
 import { getUserId } from "../../_lib/auth.js"
 import { imageSrc, validateImageUpload } from "../../_lib/image-upload.js"
-
-const VALID_CURRENCIES = new Set(CURRENCY_LIST.map((c) => c.code))
+import { parseOrgCurrency, setOrgCurrency } from "../../_lib/org-currency.js"
 
 // Replace the raw logo columns with the `logo_src` data URL the UI renders.
 function withLogoSrc<T extends { logoData?: unknown; logoMime?: unknown }>(row: T) {
@@ -45,7 +43,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
     const { name, currency, logo_data } = req.body as { name?: string; currency?: string; logo_data?: string | null }
 
-    const updates: Record<string, unknown> = { updatedAt: new Date() }
+    const updates: Partial<typeof organizations.$inferInsert> = { updatedAt: new Date() }
 
     // Logo: a base64/data-URL string sets it (validated + mime sniffed
     // server-side); null or "" clears it.
@@ -69,24 +67,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       updates.name = name.trim()
     }
 
-    if (currency !== undefined) {
-      const upper = currency.toUpperCase()
-      if (!VALID_CURRENCIES.has(upper)) return res.status(400).json({ error: "Invalid currency code" })
-      // Keep the legacy column in sync while old clients still read it. Neither
-      // update touches account or transaction native currencies.
-      updates.currency = upper
-      updates.reportingCurrency = upper
-    }
+    // The reporting currency (and its legacy twin) only through setOrgCurrency:
+    // both columns together, audited. No account, row or budget is relabelled.
+    const nextCurrency = currency === undefined ? undefined : parseOrgCurrency(currency)
+    if (nextCurrency === null) return res.status(400).json({ error: "Invalid currency code", code: "invalid_currency" })
 
-    if (Object.keys(updates).length === 1) {
+    if (Object.keys(updates).length === 1 && !nextCurrency) {
       return res.status(400).json({ error: "Nothing to update" })
     }
 
-    const [updated] = await db
-      .update(organizations)
-      .set(updates)
-      .where(eq(organizations.id, id))
-      .returning()
+    const updated = nextCurrency
+      ? await setOrgCurrency(id, nextCurrency, { actorId: userId, also: updates })
+      : (await db.update(organizations).set(updates).where(eq(organizations.id, id)).returning())[0]
     return res.json(serialize(withLogoSrc({ ...updated, role: member.role })))
   }
 

@@ -1,11 +1,11 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { and, eq, isNull, sql } from "drizzle-orm"
+import { and, eq, isNull } from "drizzle-orm"
 import { db, serialize } from "../../../src/lib/db/index.js"
-import { clients, transactions, wealthAccounts } from "../../../src/lib/db/schema.js"
+import { clients, transactions } from "../../../src/lib/db/schema.js"
 import { canDelete, canWrite, requireAuth, requireBusinessFeature } from "../../_lib/auth.js"
 import { checkNoteLength } from "../../_lib/quota.js"
 import { diffFields, logAudit } from "../../_lib/audit.js"
-import { reversalsByAccount } from "../../../src/lib/wealth-ledger.js"
+import { trashClients } from "../../_lib/client-trash.js"
 import { cleanTags } from "../../../src/lib/tags.js"
 import { ensureRatesForOrg, reportingCurrencyFor } from "../../_lib/fx-rates.js"
 import { expenseSumSqlIn, incomeSumSqlIn, missingRateCountSql } from "../../_lib/tx-sql.js"
@@ -38,8 +38,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       })
       .from(transactions)
       // Same scope as the list's per-client totals (api/_routes/clients.ts), so
-      // the two figures agree: live rows, transfers dropped by the sums themselves.
-      .where(and(eq(transactions.clientId, id), isNull(transactions.deletedAt)))
+      // the two figures agree: live, non-system rows (an Opening Balance is not
+      // income), transfers dropped by the sums themselves.
+      .where(and(eq(transactions.clientId, id), isNull(transactions.deletedAt), eq(transactions.isSystem, false)))
     return res.json({
       ...serialize(row),
       total_incoming: Number(totals?.totalIncoming ?? 0),
@@ -115,38 +116,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (target?.isOwn) {
       return res.status(403).json({ error: "Your own company client can't be deleted." })
     }
-    // Soft-delete the client AND its live transactions together, reversing each
-    // transaction's wealth-balance effect so balances stay correct while the
-    // client sits in Trash. They share one `deletedAt` so a later restore can
-    // re-apply exactly these (and leave any individually-trashed-earlier tx alone).
-    const now = new Date()
-    const liveTx = await db
-      .select({
-        wealthAccountId: transactions.wealthAccountId,
-        type: transactions.type,
-        amount: transactions.amount,
-        isSystem: transactions.isSystem,
-      })
-      .from(transactions)
-      .where(and(eq(transactions.clientId, id), isNull(transactions.deletedAt)))
-    for (const [accountId, shift] of reversalsByAccount(liveTx)) {
-      await db
-        .update(wealthAccounts)
-        .set({ currentBalance: sql`${wealthAccounts.currentBalance}::numeric + ${shift}`, updatedBy: userId, updatedAt: now })
-        .where(eq(wealthAccounts.id, accountId))
-    }
-    if (liveTx.length) {
-      await db
-        .update(transactions)
-        .set({ deletedAt: now, updatedBy: userId, updatedAt: now })
-        .where(and(eq(transactions.clientId, id), isNull(transactions.deletedAt)))
-    }
-    const [updated] = await db
-      .update(clients)
-      .set({ deletedAt: now, updatedBy: userId, updatedAt: now })
-      .where(and(eq(clients.id, id), eq(clients.organizationId, orgId), isNull(clients.deletedAt)))
-      .returning()
-    if (!updated) return res.status(404).json({ error: "Not found" })
+    // Soft-delete the client AND its live transactions together, each balance
+    // reversed exactly once and a transfer only ever whole (api/_lib/client-trash.ts).
+    // They share one `deletedAt` so a later restore can re-apply exactly these
+    // (and leave any individually-trashed-earlier tx alone).
+    const result = await trashClients(orgId, userId, [id])
+    if (!result.ok) return res.status(result.status).json(result.body)
+    if (!result.ids.length) return res.status(404).json({ error: "Not found" })
     await logAudit({ orgId, entityType: "client", entityId: id, action: "delete", actorId: userId })
     return res.status(204).end()
   }

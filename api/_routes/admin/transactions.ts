@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { and, count, desc, eq, ilike, isNull, or } from "drizzle-orm"
+import { and, count, desc, eq, ilike, isNull, not, or, sql } from "drizzle-orm"
 import { db, serialize } from "../../../src/lib/db/index.js"
 import { clients, transactions } from "../../../src/lib/db/schema.js"
 import { requireAdminCap } from "../../_lib/admin.js"
@@ -8,6 +8,40 @@ import { currencyForFinancialWrite } from "../../_lib/transaction-currency.js"
 
 const PAGE_SIZE = 30
 
+/**
+ * A row this console must not write directly: it moves (or explains) an
+ * account balance, belongs to a logical transfer (legs AND fee rows), or
+ * anchors a debt repayment. Those are owned by the ledger services — the
+ * balance delta, the transfer header and the debt allocation all have to move
+ * with the row, and a plain UPDATE/DELETE here moved none of them. Only the
+ * account-less rows this console itself creates stay editable. ONE predicate:
+ * the list flags rows with it and PATCH/DELETE refuse with it.
+ *
+ * Qualified by hand: drizzle renders column refs BARE in a join-less select,
+ * and a bare `id` / `group_id` inside the debt_payments subquery would bind to
+ * debt_payments' own columns (every row would then read as locked).
+ */
+const ledgerLocked = sql<boolean>`(
+  transactions.wealth_account_id is not null
+  or transactions.transfer_id is not null
+  or transactions.is_system
+  or exists (
+    select 1 from debt_payments dp
+    where dp.transaction_id = transactions.id
+      or (transactions.group_id is not null and dp.group_id = transactions.group_id)
+  )
+)`
+
+/** 404 when the row is gone, else 409: it exists but the ledger owns it. */
+async function refuseLocked(res: VercelResponse, transactionId: string) {
+  const [row] = await db.select({ id: transactions.id }).from(transactions).where(eq(transactions.id, transactionId)).limit(1)
+  if (!row) return res.status(404).json({ error: "Not found" })
+  return res.status(409).json({
+    error: "This row moves an account balance, a transfer or a debt — change it from the workspace so everything stays in step.",
+    code: "admin_ledger_row_locked",
+  })
+}
+
 const txFields = {
   id: transactions.id,
   clientId: transactions.clientId,
@@ -15,6 +49,9 @@ const txFields = {
   organizationId: clients.organizationId,
   type: transactions.type,
   amount: transactions.amount,
+  // The row's own currency (its account's), never the org's.
+  currencyCode: transactions.currencyCode,
+  ledgerLocked,
   description: transactions.description,
   category: transactions.category,
   date: transactions.date,
@@ -147,12 +184,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (typeof category === "string") patch.category = category
     if (typeof date === "string" && date.trim()) patch.date = date
 
+    // The lock is part of the WHERE, so a row that gains an account between a
+    // check and the write can never be written here.
     const [updated] = await db
       .update(transactions)
       .set(patch)
-      .where(eq(transactions.id, transaction_id))
+      .where(and(eq(transactions.id, transaction_id), not(ledgerLocked)))
       .returning()
-    if (!updated) return res.status(404).json({ error: "Not found" })
+    if (!updated) return refuseLocked(res, transaction_id)
     return res.json(serialize(updated))
   }
 
@@ -161,9 +200,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!transaction_id) return res.status(400).json({ error: "transaction_id is required" })
     const result = await db
       .delete(transactions)
-      .where(eq(transactions.id, transaction_id))
+      .where(and(eq(transactions.id, transaction_id), not(ledgerLocked)))
       .returning({ id: transactions.id })
-    if (!result.length) return res.status(404).json({ error: "Not found" })
+    if (!result.length) return refuseLocked(res, transaction_id)
     return res.status(204).end()
   }
 

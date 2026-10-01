@@ -29,9 +29,13 @@ import {
 import { useCurrency } from "@/lib/currency-context"
 import { useOrg } from "@/lib/org-context"
 import { useDataRefresh } from "@/lib/data-refresh-context"
-import { accountBalanceLabel, accountCurrency, accountDisplayName, currencySymbol, formatMoney, useBalancePrivacy, useWealthSummary } from "@/lib/wealth"
+// Whole units on the tiles and lists (as they always were), full precision in
+// tooltips, compact on the axis — all from the shared formatters, so locale,
+// ISO minor units and old iOS WebViews are handled in one place (MC-129/138).
+import { accountBalanceLabel, accountCurrency, accountDisplayName, formatList, formatMoney, formatMoneyCompact, formatMoneyWhole, useBalancePrivacy, useWealthSummary } from "@/lib/wealth"
+import { ledgerDescription } from "@/lib/wealth-ledger"
 import { ApproxBalance } from "@/components/wealth/ApproxBalance"
-import { liquidFromSummary, useConsolidatedWealth } from "@/components/wealth/use-consolidated-wealth"
+import { formatParts, liquidFromSummary, useConsolidatedWealth } from "@/components/wealth/use-consolidated-wealth"
 import { creditUsage, isLiabilityType } from "@/lib/credit-card"
 import { useCardMap, useCards } from "@/lib/use-cards"
 import { CardChip } from "@/components/cards/CardChip"
@@ -39,7 +43,7 @@ import { WealthAccountIcon } from "@/components/WealthAccountIcon"
 import { BusinessBudgetCard } from "@/components/budget/BusinessBudgetCard"
 import { BudgetsCard } from "@/components/budget/BudgetsCard"
 import { FxExcludedNotice } from "@/components/FxExcludedNotice"
-import { reportingAmountOf, rowCurrency, sumInReporting } from "@/lib/reporting-fields"
+import { pnlInReporting, pnlOf, rowCurrency, sumByCurrency, summarizeWealthByCurrency } from "@/lib/reporting-fields"
 import { SummaryCard } from "@/components/dashboard/SummaryCard"
 import { DebtsCard } from "@/components/debts/DebtsCard"
 import { RecurringCard } from "@/components/recurring/RecurringCard"
@@ -108,28 +112,6 @@ import {
 } from "recharts"
 import { AlertsBanner } from "@/components/alerts/AlertsBanner"
 import { appLocale } from "@/lib/format-date"
-
-function formatCurrency(amount: number, currency: string, visible = true) {
-  // Masked the same way formatMoney masks, so the page hides consistently.
-  if (!visible) return `${currencySymbol(currency)} *****`
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency,
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(amount)
-}
-
-// Compact currency for chart axis ticks (e.g. "$5K", "€1.2M"). Currency-aware so
-// the axis tracks the active org currency instead of a hardcoded symbol.
-function formatCompactCurrency(amount: number, currency: string) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency,
-    notation: "compact",
-    maximumFractionDigits: 1,
-  }).format(amount)
-}
 
 function formatTxDate(value: string) {
   const d = new Date(value)
@@ -530,7 +512,7 @@ function LatestTransactionsCard({
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium">
-                      {tx.description?.trim() || sub || t(`chart.${tx.type}`)}
+                      {ledgerDescription(tx, t).trim() || sub || t(`chart.${tx.type}`)}
                     </p>
                     <div className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
                       <span className="truncate">{sub ? `${sub} · ` : ""}{formatTxDate(tx.date)}</span>
@@ -543,7 +525,13 @@ function LatestTransactionsCard({
                       incoming ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"
                     }`}
                   >
-                    {incoming ? "+" : "−"}{formatCurrency(Number(tx.amount), rowCurrency(tx, currency))}
+                    {/* One row, at the precision its peek and /transactions
+                        show (a €5.50 fee is not "€6"). A mixed-currency split
+                        is converted (≈), and has no honest total while a leg
+                        has no rate (amount null). */}
+                    {tx.amount == null
+                      ? <span className="text-xs font-medium text-muted-foreground">{t("transactions.amountNoRate")}</span>
+                      : <>{incoming ? "+" : "−"}{(tx.currency_count ?? 1) > 1 ? "≈" : ""}{formatMoney(Number(tx.amount), rowCurrency(tx, currency))}</>}
                   </p>
                 </button>
               )
@@ -573,20 +561,23 @@ function WealthOverview({
   // "Total available" is the money the user HOLDS (cash + bank). Credit-card
   // debt is shown separately as "Owed on cards" — available credit is never
   // counted as money (src/lib/wealth.ts summarizeWealth).
-  const { active, liquid: localLiquid, liabilities: localLiabilities } = useWealthSummary(accounts)
+  const { active } = useWealthSummary(accounts)
   // The server's consolidated figures (every account converted into the
-  // reporting currency) once they land; the browser sum until then. For a
-  // single-currency workspace both are the same numbers, so nothing jumps.
+  // reporting currency) once they land. Until then — or if they never do — the
+  // browser adds balances only WITHIN a currency: a single-currency workspace
+  // sees its usual total (identical to the converted one, so nothing jumps), a
+  // mixed one sees "€1,000 + ₹75,000", never the raw 76,000.
   const { summary, byAccount } = useConsolidatedWealth(!loading)
   const reporting = summary?.reporting_currency ?? currency
-  const total = summary ? liquidFromSummary(summary) : localLiquid
+  const local = useMemo(() => summarizeWealthByCurrency(active, currency), [active, currency])
+  const inReporting = (amount: number) => sumByCurrency([{ currency: reporting, amount }])
+  const totalParts = summary ? inReporting(liquidFromSummary(summary)) : sumByCurrency(local.map((g) => ({ currency: g.currency, amount: g.liquid })))
   // Card debt only: loans have their own card on the dashboard (DebtsCard).
-  const liabilities = summary ? summary.card_liabilities : localLiabilities
+  const owedParts = summary ? inReporting(summary.card_liabilities) : sumByCurrency(local.map((g) => ({ currency: g.currency, amount: g.liabilities })))
+  const anyOwed = owedParts.some((p) => p.amount > 0)
   const partial = !!summary && !summary.complete
   // Cards (open ones): a count + what the credit cards owe, linking to the Cards tab.
   const { cards } = useCards()
-  const localCardsOwed = cards.reduce((sum, c) => (c.kind === "credit" ? sum + creditUsage(c.account_credit_limit, c.account_current_balance).debt : sum), 0)
-  const cardsOwed = summary ? summary.card_liabilities : localCardsOwed
   const hasCreditCard = cards.some((c) => c.kind === "credit")
   // Glides account tiles into place when one is added, removed, or reordered.
   const [gridRef] = useAutoAnimate<HTMLDivElement>()
@@ -598,8 +589,10 @@ function WealthOverview({
   // privacy toggle so a coloured dot never leaks the sign of a masked balance.
   const anyAccountNegative = active.some((a) => !isLiabilityType(a.type) && Number(a.current_balance) < 0)
   const anyCardOverLimit = active.some((a) => isLiabilityType(a.type) && creditUsage(a.credit_limit, a.current_balance).overLimit)
+  // Across currencies the total is only known to be negative when every part is.
+  const totalNegative = totalParts.length > 0 && totalParts.every((p) => Math.sign(p.amount) === -1)
   const health: "good" | "warn" | "cardOver" | "negative" =
-    total < 0 ? "negative" : anyAccountNegative ? "warn" : anyCardOverLimit ? "cardOver" : "good"
+    totalNegative ? "negative" : anyAccountNegative ? "warn" : anyCardOverLimit ? "cardOver" : "good"
   const HEALTH = {
     good: { dot: "bg-emerald-500", label: t("wealth.healthGood") },
     warn: { dot: "bg-amber-500", label: t("wealth.healthWarn") },
@@ -649,7 +642,7 @@ function WealthOverview({
       // say "Wealth & Cards", and this card carries the card count too.
       title={t("nav.wealth")}
       count={active.length}
-      headline={formatMoney(total, reporting, balancesVisible)}
+      headline={formatParts(totalParts, reporting, balancesVisible)}
       // Card debt is money that has to go back out — the one figure here that
       // works AGAINST the total beside it, so it keeps its red. Red whenever
       // the wording shows, privacy mode included: the colour must not become
@@ -657,9 +650,9 @@ function WealthOverview({
       // A total that leaves a currency out must say so beside the number — that
       // outranks the health dot (the owed figure still shows on the Cards row).
       subline={partial
-        ? <span className="font-medium text-amber-700 dark:text-amber-300">{t("wealth.excludesCurrencies", { currencies: summary.excluded_currencies.join(", ") })}</span>
-        : liabilities > 0
-          ? <span className="font-medium text-red-600 dark:text-red-400">{t("wealth.owedOnCards")}: {formatMoney(liabilities, reporting, balancesVisible)}</span>
+        ? <span className="font-medium text-amber-700 dark:text-amber-300">{t("wealth.excludesCurrencies", { currencies: formatList(summary.excluded_currencies) })}</span>
+        : anyOwed
+          ? <span className="font-medium text-red-600 dark:text-red-400">{t("wealth.owedOnCards")}: {formatParts(owedParts, reporting, balancesVisible)}</span>
           : balancesVisible ? <span className="inline-flex items-center gap-1"><span role="img" aria-label={HEALTH.label} className={`size-1.5 rounded-full ${HEALTH.dot}`} />{HEALTH.label}</span> : undefined}
       storageKey={`ps_dash_wealth_open_${orgId}`}
       onOpen={() => navigate("/wealth")}
@@ -683,11 +676,11 @@ function WealthOverview({
                 {hasCreditCard && (
                   <span
                     className={`shrink-0 text-sm font-semibold tabular-nums ${
-                      cardsOwed > 0 || !balancesVisible ? "text-red-600 dark:text-red-400" : ""
+                      anyOwed || !balancesVisible ? "text-red-600 dark:text-red-400" : ""
                     }`}
                   >
-                    {cardsOwed > 0 || !balancesVisible
-                      ? t("dashboard.cardsOwed", { amount: formatMoney(cardsOwed, reporting, balancesVisible) })
+                    {anyOwed || !balancesVisible
+                      ? t("dashboard.cardsOwed", { amount: formatParts(owedParts, reporting, balancesVisible) })
                       : t("dashboard.cardsNothingOwed")}
                   </span>
                 )}
@@ -1068,12 +1061,14 @@ export function Dashboard() {
   // Rows are NATIVE (their account's currency); the KPIs add each row's
   // `reporting_amount` — converted server-side at the row's date into the
   // workspace currency — and COUNT the rows that had no rate rather than add
-  // them raw. `currency` (the org's) is the reporting currency.
-  const incomingSum = sumInReporting(filteredTx, currency, (t) => t.type === "incoming")
-  const outgoingSum = sumInReporting(filteredTx, currency, (t) => t.type === "outgoing")
-  const displayIncoming = incomingSum.total
-  const displayOutgoing = outgoingSum.total
-  const fxExcluded = incomingSum.excluded + outgoingSum.excluded
+  // them raw. `currency` (the org's) is the reporting currency. The shared
+  // classification decides what counts: an Opening Balance or Balance
+  // Adjustment is neither income nor expense, and a refund nets against
+  // expense — the same figures /analytics shows for the same rows.
+  const pnl = pnlInReporting(filteredTx, currency)
+  const displayIncoming = pnl.income
+  const displayOutgoing = pnl.expense
+  const fxExcluded = pnl.excluded
   const netProfit = displayIncoming - displayOutgoing
   const profitMargin = displayIncoming > 0 ? ((netProfit / displayIncoming) * 100).toFixed(1) : "0"
   const filtersActive = selectedClientIds.size > 0 || selectedCategories.size > 0
@@ -1103,16 +1098,17 @@ export function Dashboard() {
   const buckets = useMemo(() => {
     const m = new Map<string, Bucket>()
     for (const tx of filteredTx) {
+      // In the reporting currency and under the same classification as the
+      // KPIs: a system row counts nowhere (so it opens no empty bucket), a
+      // refund lowers outgoing, and a row with no rate is left out (it is
+      // already counted in fxExcluded).
+      const p = pnlOf(tx, currency)
+      if (p === null || (p.income === 0 && p.expense === 0)) continue
       const key = isPersonal ? catKey(tx) : tx.client_id
       const name = isPersonal ? catLabel(catKey(tx)) : clientsById.get(tx.client_id)?.name ?? "—"
       const b = m.get(key) ?? { key, name, incoming: 0, outgoing: 0 }
-      // In the reporting currency, like the KPIs; a row with no rate is left out
-      // (it is already counted in fxExcluded).
-      const v = reportingAmountOf(tx, currency)
-      if (v !== null) {
-        if (tx.type === "incoming") b.incoming += v
-        else b.outgoing += v
-      }
+      b.incoming += p.income
+      b.outgoing += p.expense
       m.set(key, b)
     }
     return [...m.values()]
@@ -1136,12 +1132,11 @@ export function Dashboard() {
   // ── Card registry: every dashboard section by stable id (custom layout) ────
   const cardNodes: Record<DashboardCardId, ReactNode | null> = {
     kpis: (
-      <div className="space-y-2">
       <div className="grid gap-2.5 sm:gap-4 grid-cols-2 lg:grid-cols-4">
         <StatCard
           loading={loading}
           label={t("dashboard.totalRevenue")}
-          value={formatCurrency(displayIncoming, currency, balancesVisible)}
+          value={formatMoneyWhole(displayIncoming, currency, balancesVisible)}
           hint={
             <>
               <ArrowUpRight className="size-3 text-emerald-500 shrink-0" />
@@ -1152,7 +1147,7 @@ export function Dashboard() {
         <StatCard
           loading={loading}
           label={t("dashboard.totalExpenses")}
-          value={formatCurrency(displayOutgoing, currency, balancesVisible)}
+          value={formatMoneyWhole(displayOutgoing, currency, balancesVisible)}
           hint={
             <>
               <ArrowDownRight className="size-3 text-destructive shrink-0" />
@@ -1168,7 +1163,7 @@ export function Dashboard() {
               <FeatureHelp feature="netProfit" className="-my-1" />
             </>
           }
-          value={formatCurrency(netProfit, currency, balancesVisible)}
+          value={formatMoneyWhole(netProfit, currency, balancesVisible)}
           valueClass={netProfit >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"}
           hint={t("dashboard.margin", { value: profitMargin })}
         />
@@ -1188,8 +1183,6 @@ export function Dashboard() {
           />
         )}
       </div>
-      {!loading && <FxExcludedNotice count={fxExcluded} />}
-      </div>
     ),
     // Lightweight teaser (no React Flow on the dashboard — keeps it fast): a
     // tiny connected revenue→net→expenses preview that opens the full map.
@@ -1197,7 +1190,7 @@ export function Dashboard() {
       <SummaryCard
         icon={<Network className="size-4" aria-hidden />}
         title={t("flow.card")}
-        headline={formatCurrency(netProfit, currency, balancesVisible)}
+        headline={formatMoneyWhole(netProfit, currency, balancesVisible)}
         headlineClass={netProfit >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"}
         subline={t("flow.net")}
         storageKey={`ps_dash_flow_open_${activeOrg?.id ?? ""}`}
@@ -1210,17 +1203,17 @@ export function Dashboard() {
         >
           <span className="min-w-0 rounded-lg border bg-card px-2 py-1 text-center">
             <span className="block text-[10px] uppercase tracking-wide text-muted-foreground">{t("flow.revenue")}</span>
-            <span className="block truncate text-sm font-bold tabular-nums text-emerald-600 dark:text-emerald-400">{formatCurrency(displayIncoming, currency, balancesVisible)}</span>
+            <span className="block truncate text-sm font-bold tabular-nums text-emerald-600 dark:text-emerald-400">{formatMoneyWhole(displayIncoming, currency, balancesVisible)}</span>
           </span>
           <ArrowRight className="size-4 shrink-0 text-muted-foreground rtl:rotate-180" />
           <span className="min-w-0 rounded-lg border-2 border-primary/40 bg-card px-2 py-1 text-center">
             <span className="block text-[10px] uppercase tracking-wide text-muted-foreground">{t("flow.net")}</span>
-            <span className={`block truncate text-sm font-bold tabular-nums ${netProfit >= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-destructive"}`}>{formatCurrency(netProfit, currency, balancesVisible)}</span>
+            <span className={`block truncate text-sm font-bold tabular-nums ${netProfit >= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-destructive"}`}>{formatMoneyWhole(netProfit, currency, balancesVisible)}</span>
           </span>
           <ArrowRight className="size-4 shrink-0 text-muted-foreground rtl:rotate-180" />
           <span className="min-w-0 rounded-lg border bg-card px-2 py-1 text-center">
             <span className="block text-[10px] uppercase tracking-wide text-muted-foreground">{t("flow.expenses")}</span>
-            <span className="block truncate text-sm font-bold tabular-nums text-red-600 dark:text-red-400">{formatCurrency(displayOutgoing, currency, balancesVisible)}</span>
+            <span className="block truncate text-sm font-bold tabular-nums text-red-600 dark:text-red-400">{formatMoneyWhole(displayOutgoing, currency, balancesVisible)}</span>
           </span>
         </button>
       </SummaryCard>
@@ -1278,7 +1271,7 @@ export function Dashboard() {
                 <BarChart data={chartData} accessibilityLayer>
                   <CartesianGrid vertical={false} className="stroke-border" />
                   <XAxis dataKey="name" tickLine={false} axisLine={false} tick={{ fontSize: 12 }} />
-                  <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 12 }} tickFormatter={(v) => formatCompactCurrency(Number(v), currency)} />
+                  <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 12 }} tickFormatter={(v) => formatMoneyCompact(Number(v), currency)} />
                   <ChartTooltip
                     content={
                       <ChartTooltipContent
@@ -1293,7 +1286,7 @@ export function Dashboard() {
                                 {chartConfig[String(name)]?.label ?? name}
                               </span>
                               <span className="font-mono font-medium tabular-nums text-foreground">
-                                {formatCurrency(Number(value), currency, balancesVisible)}
+                                {formatMoney(Number(value), currency, balancesVisible)}
                               </span>
                             </div>
                           </>
@@ -1339,11 +1332,11 @@ export function Dashboard() {
                           {own && <Badge variant="outline" className="text-[10px] py-0">{t("dashboard.ownLabel")}</Badge>}
                         </p>
                         <p className="text-xs text-muted-foreground truncate">
-                          {formatCurrency(b.incoming, currency, balancesVisible)} · {formatCurrency(b.outgoing, currency, balancesVisible)}
+                          {formatMoneyWhole(b.incoming, currency, balancesVisible)} · {formatMoneyWhole(b.outgoing, currency, balancesVisible)}
                         </p>
                       </div>
                       <p className={`text-sm font-semibold tabular-nums shrink-0 ml-2 ${b.profit >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"}`}>
-                        {formatCurrency(b.profit, currency, balancesVisible)}
+                        {formatMoneyWhole(b.profit, currency, balancesVisible)}
                       </p>
                     </>
                   )
@@ -1367,6 +1360,10 @@ export function Dashboard() {
     latest: <LatestTransactionsCard transactions={latestTx} loading={loading} currency={currency} showClient={!isPersonal} onSelect={setPeekTx} cardFor={cardMap.forTx} />,
   }
   const visibleCards = layout.order.filter((id) => !layout.hidden.includes(id) && cardNodes[id] !== null)
+  // The KPIs, the flow teaser, the chart and the breakdown all leave rows with
+  // no rate out — so the notice belongs to the page, not to one card that the
+  // user may have hidden.
+  const showFxNotice = !loading && visibleCards.some((id) => id === "kpis" || id === "flow" || id === "chart" || id === "breakdown")
   // Same test: a card that renders nothing here is not something to offer back.
   const hiddenCards = layout.hidden.filter((id) => cardNodes[id] !== null)
 
@@ -1506,6 +1503,8 @@ export function Dashboard() {
           ))}
         </div>
       )}
+
+      {showFxNotice && <FxExcludedNotice count={fxExcluded} />}
 
       {/* Customizable card grid. chart(3/5) + breakdown(2/5) pair side-by-side
           on lg when adjacent; everywhere else cards span the full row. Edit

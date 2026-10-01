@@ -4,6 +4,7 @@ import { db } from "../../../src/lib/db/index.js"
 import { clients, quotations, transactions, wealthAccounts } from "../../../src/lib/db/schema.js"
 import { canDelete, requireAuth } from "../../_lib/auth.js"
 import { reversalsByAccount } from "../../../src/lib/wealth-ledger.js"
+import { purgeTrashedTransfers } from "../../_lib/tx-trash.js"
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ctx = await requireAuth(req, res)
@@ -25,20 +26,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // again (that would double-reverse). Expand a split group so purging one
     // soft-deleted leg removes all its (soft-deleted) siblings — no orphans.
     const [tx] = await db
-      .select({ id: transactions.id, groupId: transactions.groupId })
+      .select({ id: transactions.id, groupId: transactions.groupId, transferId: transactions.transferId })
       .from(transactions)
       .innerJoin(clients, eq(transactions.clientId, clients.id))
       .where(and(eq(transactions.id, id), eq(clients.organizationId, orgId), isNotNull(transactions.deletedAt)))
     if (!tx) return res.status(404).json({ error: "Not found" })
+    if (tx.transferId) {
+      // A row of a logical transfer is purged with the WHOLE transfer — both
+      // legs, the fee rows and the header — in ONE statement
+      // (purgeTrashedTransfers). Following group_id alone left the fee in
+      // Trash, where restoring it charged the fee again for a transfer that no
+      // longer existed. Refused while any of its rows is still live (a leg
+      // trashed on its own): deleting it would leave a transfer with one side.
+      if ((await purgeTrashedTransfers(orgId, tx.transferId)) === 0) {
+        return res.status(409).json({ error: "This transfer is not in Trash — delete the whole transfer first, then purge it.", code: "transfer_not_trashed" })
+      }
+      return res.status(204).end()
+    }
     if (tx.groupId) {
       const legs = await db
         .select({ id: transactions.id })
         .from(transactions)
         .innerJoin(clients, eq(transactions.clientId, clients.id))
         .where(and(eq(transactions.groupId, tx.groupId), eq(clients.organizationId, orgId), isNotNull(transactions.deletedAt)))
-      await db.delete(transactions).where(inArray(transactions.id, legs.map((l) => l.id)))
+      await db.delete(transactions).where(and(inArray(transactions.id, legs.map((l) => l.id)), isNotNull(transactions.deletedAt)))
     } else {
-      await db.delete(transactions).where(eq(transactions.id, id))
+      await db.delete(transactions).where(and(eq(transactions.id, id), isNotNull(transactions.deletedAt)))
     }
     return res.status(204).end()
   }

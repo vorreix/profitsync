@@ -15,19 +15,16 @@ import { ensureDefaultClient } from "./auth.js"
 import { logAudit } from "./audit.js"
 import { type AppearanceInput, pickAppearance } from "./account-appearance.js"
 import { type BankDetailInput, pickBankDetails, resolveLogoColumns } from "./bank-brand.js"
-import { amountExceedsLimit, normalizeCurrencyCode, reversalTransferAmounts, transferAmounts } from "../../src/lib/money.js"
+import { AmountError, amountExceedsLimit, normalizeCurrencyCode, reversalTransferAmounts, transferAmounts } from "../../src/lib/money.js"
+import { TRANSFER_FEE_CATEGORY, TRANSFER_FEE_DESCRIPTION, TRANSFER_FEE_REFUND_DESCRIPTION, TRANSFER_REVERSAL_DESCRIPTION } from "../../src/lib/wealth-ledger.js"
 import { checkBankAccountQuota, checkCreditCardQuota, getOrgPlan } from "./quota.js"
 import { dueDateFor, isLiabilityType, signedBalanceFromDebt, validateCardOnboarding } from "../../src/lib/credit-card.js"
 import { todayIso } from "../../src/lib/recurring.js"
 import { isDebtAccountType } from "./debts.js"
+import { notifyIfBudgetExceeded } from "./notify-budget.js"
 
-/**
- * The name of the ONE cash wallet every workspace always has. It is
- * auto-provisioned on first read and cannot be removed (it would just come
- * back); every other cash wallet is the user's and behaves like any account.
- * The same string is the predicate of the default-cash unique index (mig 0069).
- */
-export const DEFAULT_CASH_NAME = "Cash in Hand"
+// The default wallet's reserved name — shared with the UI (src/lib/cash-wallet.ts).
+export { DEFAULT_CASH_NAME } from "../../src/lib/cash-wallet.js"
 
 export type AccountRow = typeof wealthAccounts.$inferSelect
 export type TransactionRow = typeof transactions.$inferSelect
@@ -42,6 +39,62 @@ function money(value: unknown): number {
 }
 
 const displayName = (a: { nickname: string; bankName: string }) => a.nickname.trim() || a.bankName
+
+/**
+ * A refused transfer amount as a route answer: its own code per reason
+ * (amount_too_many_decimals, destination_amount_required, …) and the input it
+ * is about, so the client can say it in the reader's language. Anything else
+ * is a generic code — never the thrown message, which once carried Decimal.js
+ * internals ("[DecimalError] Invalid argument: ") to the user (MC-152).
+ */
+export const amountFailure = (error: unknown, input?: TransferInput): Failure =>
+  error instanceof AmountError
+    ? fail(400, { error: outdatedClient(error, input) ? OUTDATED_CROSS_CURRENCY : error.message, code: error.code, field: error.field })
+    : fail(400, { error: "Invalid transfer amounts", code: "invalid_transfer_amounts" })
+
+// A build from before cross-currency transfers posts a bare `amount` (no
+// currencies, no destination amount) and has no field for what arrives, so
+// the fix is on the user's side. The code stays the same — newer builds
+// translate it — and this sentence is what the old build shows (MC-105).
+const OUTDATED_CROSS_CURRENCY = "These accounts use different currencies. Update the app to transfer between them."
+const outdatedClient = (error: AmountError, input?: TransferInput) =>
+  error.code === "destination_amount_required" && !!input &&
+  input.sourceAmount == null && input.destinationAmount == null && !input.sourceCurrency && !input.destinationCurrency
+
+/**
+ * The token a ledger function RAISEd (`RAISE EXCEPTION 'token' USING ERRCODE =
+ * 'P0001'`, mig 0073), however Drizzle wrapped the driver's error. Null for
+ * everything else — a missing function, a timeout, an outage — which callers
+ * re-throw so it is a logged 500, never a polite 409 that hides it (MC-154).
+ */
+export function raisedToken(err: unknown): string | null {
+  let e: unknown = err
+  for (let i = 0; i < 4 && e && typeof e === "object"; i++) {
+    const o = e as { code?: unknown; message?: unknown; cause?: unknown }
+    if (o.code === "P0001" && typeof o.message === "string") return o.message.trim()
+    e = o.cause
+  }
+  return null
+}
+
+/** What each known ledger-function refusal means to a client: status + message. The token IS the code. */
+const RAISED: Record<string, { status: number; error: string }> = {
+  invalid_transfer_transition: { status: 409, error: "This transfer can't move to that status any more" },
+  transfer_not_found: { status: 404, error: "Transfer not found" },
+  transfer_account_unavailable: { status: 409, error: "A transfer account is archived or missing" },
+  transfer_account_currency_changed: { status: 409, error: "An account's currency changed after this transfer was planned. Cancel it and plan it again." },
+  transfer_not_found_or_incomplete: { status: 409, error: "Only a completed transfer can be moved to or from the Trash" },
+  reversal_linked_transfer_is_immutable: { status: 409, error: "A reversed transfer and its reversal are permanent — they can't be deleted or restored" },
+  invalid_transfer_trash_state: { status: 409, error: "This transfer is already in that state" },
+}
+
+/** A known ledger-function refusal as a route failure; re-throws anything else. */
+export function raisedFailure(err: unknown): Failure {
+  const token = raisedToken(err)
+  const known = token ? RAISED[token] : undefined
+  if (!known) throw err
+  return fail(known.status, { error: known.error, code: token })
+}
 
 // ── System rows ──────────────────────────────────────────────────────────────
 
@@ -140,8 +193,8 @@ export async function createWealthAccount(orgId: string, userId: string, body: C
     }
     const problem = validateCardOnboarding(card, todayIso())
     if (problem) return fail(400, { error: `Invalid credit card: ${problem}`, code: problem })
-    if (amountExceedsLimit(card.creditLimit) || amountExceedsLimit(card.currentDebt)) return fail(400, { error: "Amount is too large" })
-    if (st && amountExceedsLimit(st.balance)) return fail(400, { error: "Amount is too large" })
+    if (amountExceedsLimit(card.creditLimit) || amountExceedsLimit(card.currentDebt)) return fail(400, { error: "Amount is too large", code: "amount_too_large" })
+    if (st && amountExceedsLimit(st.balance)) return fail(400, { error: "Amount is too large", code: "amount_too_large" })
     if (st?.dueDate && !/^\d{4}-\d{2}-\d{2}$/.test(st.dueDate)) return fail(400, { error: "statement.due_date must be YYYY-MM-DD" })
     const quota = await checkCreditCardQuota(orgId)
     if (!quota.allowed) return fail(402, quota as unknown as Record<string, unknown>)
@@ -157,7 +210,7 @@ export async function createWealthAccount(orgId: string, userId: string, body: C
   }
 
   const opening = money(openingBalance)
-  if (amountExceedsLimit(opening)) return fail(400, { error: "Amount is too large" })
+  if (amountExceedsLimit(opening)) return fail(400, { error: "Amount is too large", code: "amount_too_large" })
   // Colour identity is presentation only, but an invalid value would fail the
   // DB CHECK instead of the request, so it is validated here like any input.
   const appearance = pickAppearance(body)
@@ -273,6 +326,17 @@ export type TransferResult = { ok: true; transferId: string; groupId: string; ou
 export type UnsettledTransferStatus = "planned" | "pending"
 export type TransferIntentResult = { ok: true; row: typeof transfers.$inferSelect }
 
+// A debt account is NOT a transfer endpoint. Money reaching a loan has to go
+// through the debt engine, which splits it into principal (a transfer) and
+// interest and fees (expenses) and records the allocation. A plain transfer
+// would credit the whole instalment against the principal, so the interest
+// would never be spending and the loan would read as paid off years early.
+// The transactions routes already refuse this; every transfer entry point
+// (immediate, planned/pending intent, and completing that intent later through
+// complete_transfer) refuses it with this same answer.
+const refuseDebtAccount = (): Failure =>
+  fail(400, { error: "Record a payment from the debt's page instead — that keeps principal and interest apart.", code: "debt_account" })
+
 /** The credit card that IS this liability account (1:1), or null. */
 export async function creditCardIdForAccount(accountId: string): Promise<string | null> {
   const [row] = await db
@@ -301,9 +365,9 @@ export async function creditCardIdForAccount(accountId: string): Promise<string 
  * does — docs/cards/CARDS.md), so the payment shows on the card's own page.
  */
 export async function createTransfer(orgId: string, userId: string, input: TransferInput): Promise<TransferResult | Failure> {
-  if (!input.fromAccountId || !input.toAccountId) return fail(400, { error: "from_account_id and to_account_id are required" })
-  if (input.fromAccountId === input.toAccountId) return fail(400, { error: "Choose two different accounts" })
-  if (input.date !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(input.date)) return fail(400, { error: "date must be YYYY-MM-DD" })
+  if (!input.fromAccountId || !input.toAccountId) return fail(400, { error: "from_account_id and to_account_id are required", code: "transfer_accounts_required" })
+  if (input.fromAccountId === input.toAccountId) return fail(400, { error: "Choose two different accounts", code: "transfer_same_account" })
+  if (input.date !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(input.date)) return fail(400, { error: "date must be YYYY-MM-DD", code: "invalid_date" })
 
   const accounts = await db
     .select()
@@ -311,17 +375,10 @@ export async function createTransfer(orgId: string, userId: string, input: Trans
     .where(and(eq(wealthAccounts.organizationId, orgId), isNull(wealthAccounts.archivedAt)))
   const from = accounts.find((a) => a.id === input.fromAccountId)
   const to = accounts.find((a) => a.id === input.toAccountId)
-  if (!from || !to) return fail(400, { error: "Select two active accounts" })
-  // A debt account is NOT a transfer destination. Money reaching a loan has to
-  // go through the debt engine, which splits it into principal (a transfer) and
-  // interest and fees (expenses) and records the allocation. A plain transfer
-  // would credit the whole instalment against the principal, so the interest
-  // would never be spending and the loan would read as paid off years early.
-  // The transactions routes already refuse this; without the same guard here
-  // the API has a door the UI simply never opens.
-  if (isDebtAccountType(from.type) || isDebtAccountType(to.type)) {
-    return fail(400, { error: "Record a payment from the debt's page instead — that keeps principal and interest apart.", code: "debt_account" })
-  }
+  // Archived (or gone) on either side — a Reverse offered on a transfer whose
+  // other account was archived since lands here too (MC-133).
+  if (!from || !to) return fail(400, { error: "Select two active accounts", code: "transfer_account_unavailable" })
+  if (isDebtAccountType(from.type) || isDebtAccountType(to.type)) return refuseDebtAccount()
   if (!from.currencyCode || !to.currencyCode) return fail(409, { error: "Account currency migration is incomplete", code: "currency_missing" })
   try {
     if (input.sourceCurrency && normalizeCurrencyCode(input.sourceCurrency) !== from.currencyCode) {
@@ -343,7 +400,7 @@ export async function createTransfer(orgId: string, userId: string, input: Trans
       destinationCurrency: to.currencyCode,
     })
   } catch (error) {
-    return fail(400, { error: error instanceof Error ? error.message : "Invalid transfer amounts", code: "invalid_transfer_amounts" })
+    return amountFailure(error, input)
   }
   let destinationFeeRefund = new Decimal(0)
   try {
@@ -467,8 +524,8 @@ export async function createTransfer(orgId: string, userId: string, input: Trans
             type: "outgoing",
             amount: amounts.sourceFeeAmount,
             currencyCode: from.currencyCode,
-            description: `Transfer fee${suffix}`,
-            category: "Transfer Fee",
+            description: `${TRANSFER_FEE_DESCRIPTION}${suffix}`,
+            category: TRANSFER_FEE_CATEGORY,
             date: when,
             createdBy: userId,
             updatedBy: userId,
@@ -484,8 +541,8 @@ export async function createTransfer(orgId: string, userId: string, input: Trans
           type: "incoming",
           amount: destinationFeeRefund.toFixed(2),
           currencyCode: to.currencyCode,
-          description: `Transfer fee refund${suffix}`,
-          category: "Transfer Fee",
+          description: `${TRANSFER_FEE_REFUND_DESCRIPTION}${suffix}`,
+          category: TRANSFER_FEE_CATEGORY,
           date: when,
           createdBy: userId,
           updatedBy: userId,
@@ -513,6 +570,9 @@ export async function createTransfer(orgId: string, userId: string, input: Trans
   await logAudit({ orgId, entityType: "transaction", entityId: inLeg.id, action: "create", actorId: userId })
   if (feeLeg) await logAudit({ orgId, entityType: "transaction", entityId: feeLeg.id, action: "create", actorId: userId })
   if (feeRefundLeg) await logAudit({ orgId, entityType: "transaction", entityId: feeRefundLeg.id, action: "create", actorId: userId })
+  // The fee is an ordinary expense, so it can push a budget over a tier like
+  // any other — fire-and-forget, as every other spend writer does (MC-150).
+  if (feeLeg) void notifyIfBudgetExceeded(orgId, clientId, userId, { category: feeLeg.category, date: feeLeg.date }).catch(() => {})
 
   return { ok: true, transferId, groupId, outLeg, inLeg, feeLeg, feeRefundLeg }
 }
@@ -524,13 +584,13 @@ export async function transitionTransfer(
   targetStatus: "pending" | "completed" | "cancelled",
 ): Promise<{ ok: true; row: typeof transfers.$inferSelect; legIds: string[] } | Failure> {
   const [before] = await db.select().from(transfers).where(and(eq(transfers.id, transferId), eq(transfers.organizationId, orgId))).limit(1)
-  if (!before) return fail(404, { error: "Transfer not found" })
+  if (!before) return fail(404, { error: "Transfer not found", code: "transfer_not_found" })
 
   if (targetStatus !== "completed") {
     try {
       await db.execute(sql`select * from transition_unsettled_transfer(${transferId}::uuid, ${orgId}::uuid, ${targetStatus}, ${userId})`)
-    } catch {
-      return fail(409, { error: `Transfer cannot move from ${before.status} to ${targetStatus}`, code: "invalid_transfer_transition" })
+    } catch (err) {
+      return raisedFailure(err)
     }
     const [row] = await db.select().from(transfers).where(eq(transfers.id, transferId)).limit(1)
     return { ok: true, row, legIds: [] }
@@ -543,6 +603,10 @@ export async function transitionTransfer(
   const from = accounts.find((account) => account.id === before.sourceAccountId)
   const to = accounts.find((account) => account.id === before.destinationAccountId)
   if (!from || !to) return fail(409, { error: "A transfer account is archived or missing", code: "transfer_account_unavailable" })
+  // Completing is where the money moves (complete_transfer posts plain legs), so
+  // an intent recorded against a debt account before the intent path refused
+  // it stops here. Cancelling it stays possible — that moves nothing.
+  if (isDebtAccountType(from.type) || isDebtAccountType(to.type)) return refuseDebtAccount()
   const clientId = await ensureDefaultClient(orgId, userId)
   const involvesSpace = from.type === "space" || to.type === "space"
   const { planKey, limits } = await getOrgPlan(orgId)
@@ -567,9 +631,14 @@ export async function transitionTransfer(
     )`)
     const ids = (result.rows as Array<{ out_leg_id: string; in_leg_id: string; fee_leg_id: string | null }>)[0]
     const [row] = await db.select().from(transfers).where(eq(transfers.id, transferId)).limit(1)
+    // Completing posts the fee as an expense too (MC-150).
+    if (ids.fee_leg_id) void notifyIfBudgetExceeded(orgId, clientId, userId, { category: TRANSFER_FEE_CATEGORY }).catch(() => {})
     return { ok: true, row, legIds: [ids.out_leg_id, ids.in_leg_id, ids.fee_leg_id].filter((id): id is string => !!id) }
-  } catch {
-    return fail(409, { error: "Transfer could not be completed atomically", code: "invalid_transfer_transition" })
+  } catch (err) {
+    // complete_transfer re-checks under its row lock: an account archived, or
+    // its currency changed, since the read above each get their own code —
+    // one generic 409 once hid both behind "could not be completed" (MC-067).
+    return raisedFailure(err)
   }
 }
 
@@ -582,12 +651,33 @@ export async function reverseTransfer(
   note?: string,
 ): Promise<TransferResult | Failure> {
   const [original] = await db.select().from(transfers).where(and(eq(transfers.id, transferId), eq(transfers.organizationId, orgId))).limit(1)
-  if (!original) return fail(404, { error: "Transfer not found" })
+  if (!original) return fail(404, { error: "Transfer not found", code: "transfer_not_found" })
   if (original.status !== "completed") return fail(409, { error: "Only a completed transfer can be reversed", code: "invalid_transfer_transition" })
+  // Policy: a reversal is final. Reversing it would re-apply the original
+  // movement as a third transfer; to undo a reversal the user records a new
+  // transfer, which says what actually happened.
+  if (original.reversesTransferId) return fail(409, { error: "A reversal can't be reversed — record a new transfer instead", code: "transfer_is_reversal" })
   const [existing] = await db.select({ id: transfers.id }).from(transfers).where(eq(transfers.reversesTransferId, transferId)).limit(1)
   if (existing) return fail(409, { error: "This transfer has already been reversed", code: "transfer_already_reversed", reversal_transfer_id: existing.id })
+  // A reversal moves both balances back, so every row it undoes must still be
+  // moving them. A trashed transfer — or one whose leg or fee was trashed on
+  // its own, or whose leg no longer exists at all — has already given (some
+  // of) that money back; reversing it would give it back twice, and would then
+  // pin the original forever (a reversal-linked transfer can't be restored).
+  const rows = await db
+    .select({ kind: transactions.kind, type: transactions.type, amount: transactions.amount, deletedAt: transactions.deletedAt })
+    .from(transactions)
+    .where(eq(transactions.transferId, original.id))
+  if (original.deletedAt || rows.some((r) => r.deletedAt) || rows.filter((r) => r.kind === "transfer").length !== 2) {
+    return fail(409, { error: "This transfer, or part of it, is in the Trash or was deleted, so it can't be reversed", code: "transfer_trashed" })
+  }
+  // Refund the fee that was actually taken — the live fee row(s) — rather than
+  // the header's figure, which a fee row changed on its own would contradict.
+  const liveFee = rows
+    .filter((r) => r.kind !== "transfer" && r.type === "outgoing")
+    .reduce((sum, r) => sum.plus(r.amount), new Decimal(0))
   try {
-    const reversal = reversalTransferAmounts(original)
+    const reversal = reversalTransferAmounts({ ...original, sourceFeeAmount: liveFee.toFixed(2) })
     return await createTransfer(orgId, userId, {
       fromAccountId: original.destinationAccountId,
       toAccountId: original.sourceAccountId,
@@ -598,8 +688,25 @@ export async function reverseTransfer(
       destinationFeeRefundAmount: reversal.destinationFeeRefundAmount,
       reversesTransferId: original.id,
       date,
-      note: note?.trim() || `Reversal of transfer ${original.id}`,
-      descriptions: { out: "Transfer reversal", in: "Transfer reversal" },
+      // No default note: `reverses_transfer_id` already records what this
+      // undoes, and an English "Reversal of transfer <uuid>" was the suffix of
+      // every reversal's fee-refund row in every language (MC-155).
+      note: note?.trim() ?? "",
+      descriptions: { out: TRANSFER_REVERSAL_DESCRIPTION, in: TRANSFER_REVERSAL_DESCRIPTION },
+      // The same check again INSIDE the atomic batch, so a trash that lands
+      // between the read above and this write aborts the reversal instead of
+      // racing it. FOR UPDATE queues behind set_transfer_trashed's own row lock
+      // and re-reads the header once it commits; an empty result divides by
+      // zero, which rolls the whole batch back (neon-http has no interactive
+      // transaction to ROLLBACK from). The catch below answers 409.
+      extra: [db.execute(sql`
+        with live as (
+          select id from transfers
+          where id = ${original.id} and deleted_at is null
+            and not exists (select 1 from transactions where transfer_id = ${original.id} and deleted_at is not null)
+          for update
+        )
+        select 1 / (select count(*) from live)::int`)],
     })
   } catch {
     return fail(409, { error: "This transfer could not be reversed", code: "transfer_reversal_conflict" })
@@ -615,10 +722,13 @@ export async function setTransferTrashed(
   try {
     await db.execute(sql`select * from set_transfer_trashed(${transferId}::uuid, ${orgId}::uuid, ${restore}, ${userId})`)
     const [row] = await db.select().from(transfers).where(and(eq(transfers.id, transferId), eq(transfers.organizationId, orgId))).limit(1)
-    if (!row) return fail(404, { error: "Transfer not found" })
+    if (!row) return fail(404, { error: "Transfer not found", code: "transfer_not_found" })
     return { ok: true, row }
-  } catch {
-    return fail(409, { error: restore ? "Transfer cannot be restored" : "Transfer cannot be trashed", code: "invalid_transfer_trash_state" })
+  } catch (err) {
+    // The function's own refusals each keep their code — "a reversed transfer
+    // is permanent" is not "cannot be restored". Anything else (a missing
+    // function, a timeout) is re-thrown as a 500 (MC-154).
+    return raisedFailure(err)
   }
 }
 
@@ -629,13 +739,16 @@ export async function createTransferIntent(
   input: TransferInput,
   status: UnsettledTransferStatus,
 ): Promise<TransferIntentResult | Failure> {
-  if (!input.fromAccountId || !input.toAccountId) return fail(400, { error: "from_account_id and to_account_id are required" })
-  if (input.fromAccountId === input.toAccountId) return fail(400, { error: "Choose two different accounts" })
-  if (input.date !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(input.date)) return fail(400, { error: "date must be YYYY-MM-DD" })
+  if (!input.fromAccountId || !input.toAccountId) return fail(400, { error: "from_account_id and to_account_id are required", code: "transfer_accounts_required" })
+  if (input.fromAccountId === input.toAccountId) return fail(400, { error: "Choose two different accounts", code: "transfer_same_account" })
+  if (input.date !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(input.date)) return fail(400, { error: "date must be YYYY-MM-DD", code: "invalid_date" })
   const accounts = await db.select().from(wealthAccounts).where(and(eq(wealthAccounts.organizationId, orgId), isNull(wealthAccounts.archivedAt)))
   const from = accounts.find((account) => account.id === input.fromAccountId)
   const to = accounts.find((account) => account.id === input.toAccountId)
-  if (!from || !to) return fail(400, { error: "Select two active accounts" })
+  // Archived (or gone) on either side — a Reverse offered on a transfer whose
+  // other account was archived since lands here too (MC-133).
+  if (!from || !to) return fail(400, { error: "Select two active accounts", code: "transfer_account_unavailable" })
+  if (isDebtAccountType(from.type) || isDebtAccountType(to.type)) return refuseDebtAccount()
   if (!from.currencyCode || !to.currencyCode) return fail(409, { error: "Account currency migration is incomplete", code: "currency_missing" })
   try {
     if (input.sourceCurrency && normalizeCurrencyCode(input.sourceCurrency) !== from.currencyCode) return fail(400, { error: "Source currency does not match the source account", code: "source_currency_mismatch" })
@@ -647,7 +760,7 @@ export async function createTransferIntent(
   try {
     amounts = transferAmounts({ sourceAmount: input.sourceAmount ?? input.amount ?? "", destinationAmount: input.destinationAmount, sourceFeeAmount: input.sourceFeeAmount, sourceCurrency: from.currencyCode, destinationCurrency: to.currencyCode })
   } catch (error) {
-    return fail(400, { error: error instanceof Error ? error.message : "Invalid transfer amounts", code: "invalid_transfer_amounts" })
+    return amountFailure(error, input)
   }
   const [row] = await db.insert(transfers).values({
     organizationId: orgId,

@@ -2,10 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
-import { apiGet, apiPost, apiPatch, apiDelete } from "@/lib/api"
+import { apiGet, apiPost, apiPatch, apiDelete, apiErrorMessage } from "@/lib/api"
 import { amountExceedsLimit } from "@/lib/money"
 import type { Client, Quotation, QuotationAttachment } from "@/lib/types"
 import { useCurrency } from "@/lib/currency-context"
+import { formatMoney } from "@/lib/wealth"
 import { useOrg } from "@/lib/org-context"
 import { canDeleteRole } from "@/lib/roles"
 import { useMultiSelect } from "@/lib/use-multi-select"
@@ -84,14 +85,18 @@ function QuotationFormFields({
   onChange,
   errors = {},
   clearField,
+  currencyCode,
 }: {
   f: QuotationForm
   onChange: (p: Partial<QuotationForm>) => void
   errors?: Record<string, string>
   clearField?: (field: string) => void
+  /** The quote's own currency when editing; a new quote takes the workspace's. */
+  currencyCode?: string | null
 }) {
   const { t } = useTranslation("quotations")
-  const { currency } = useCurrency()
+  const { currency: workspaceCurrency } = useCurrency()
+  const currency = currencyCode || workspaceCurrency
   return (
     <div className="space-y-4 py-2">
       <div className="space-y-1.5">
@@ -175,8 +180,9 @@ export function QuotationsPage() {
     prospect_name: z.string().trim().min(1, t("prospectNameRequired")),
   })
   const { errors, validate, clearField, clearAll } = useFieldErrors(quotationSchema)
-  const fmt = (n: number) =>
-    new Intl.NumberFormat("en-US", { style: "currency", currency, minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n)
+  // A quote is shown in the currency it was written in (the workspace's for
+  // legacy rows without one) and to the cent, exactly as its PDF prints it.
+  const fmt = (n: number, code?: string | null) => formatMoney(n, code || currency)
 
   const [quotations, setQuotations] = useState<Quotation[]>([])
   const [clients, setClients] = useState<Client[]>([])
@@ -399,13 +405,13 @@ export function QuotationsPage() {
           }),
         })
         if (!res.ok) {
-          const err = await res.json().catch(() => ({}))
-          throw new Error((err as { error?: string }).error ?? "Upload failed")
+          // The body as the message, as apiPost throws it, so the refusal is translated below.
+          throw new Error(await res.text().catch(() => ""))
         }
         toast.success(t("attachmentUploaded"))
         loadAttachments(viewTarget.id)
       } catch (err: unknown) {
-        toast.error(err instanceof Error ? err.message : "Failed to upload attachment")
+        toast.error(apiErrorMessage(err, t("transactions:uploadFailed")))
       } finally {
         setUploading(false)
         if (fileInputRef.current) fileInputRef.current.value = ""
@@ -471,8 +477,8 @@ export function QuotationsPage() {
       // Insert the new quotation in place — no full-list reload.
       setQuotations((prev) => [created, ...prev])
       setTotal((n) => n + 1)
-    } catch {
-      toast.error(t("failedCreateQuotation"))
+    } catch (err) {
+      toast.error(apiErrorMessage(err, t("failedCreateQuotation")))
     } finally {
       setSaving(false)
     }
@@ -495,8 +501,8 @@ export function QuotationsPage() {
       clearAll()
       // Replace the edited quotation in place — no full-list reload.
       setQuotations((prev) => prev.map((q) => (q.id === updated.id ? updated : q)))
-    } catch {
-      toast.error(t("failedUpdateQuotation"))
+    } catch (err) {
+      toast.error(apiErrorMessage(err, t("failedUpdateQuotation")))
     } finally {
       setSaving(false)
     }
@@ -587,7 +593,7 @@ export function QuotationsPage() {
     onToggleSelect: (id) => latestActionsRef.current.onToggleSelect(id),
     onEnterSelection: (id) => latestActionsRef.current.onEnterSelection(id),
     onOpenClient: (id) => latestActionsRef.current.onOpenClient(id),
-    formatAmount: (n) => latestActionsRef.current.formatAmount(n),
+    formatAmount: (n, code) => latestActionsRef.current.formatAmount(n, code),
     bindLongPress: (cb) => latestActionsRef.current.bindLongPress(cb),
     didLongPress: () => latestActionsRef.current.didLongPress(),
   }), [])
@@ -873,7 +879,7 @@ export function QuotationsPage() {
                   </div>
                   <div>
                     <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">{t("amountLabel")}</p>
-                    <p className="mt-0.5 font-bold">{fmt(Number(viewTarget.amount))}</p>
+                    <p className="mt-0.5 font-bold">{fmt(Number(viewTarget.amount), viewTarget.currency_code)}</p>
                   </div>
                   <div>
                     <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">{t("createdLabel")}</p>
@@ -1011,7 +1017,7 @@ export function QuotationsPage() {
       <Dialog open={editTarget !== null} onOpenChange={(open) => { if (!open) setEditTarget(null) }}>
         <DialogContent className="w-[92vw] max-w-md sm:max-w-md">
           <DialogHeader><DialogTitle>{t("editQuotationTitle")}</DialogTitle></DialogHeader>
-          <QuotationFormFields f={form} onChange={(p) => setForm((f) => ({ ...f, ...p }))} errors={errors} clearField={clearField} />
+          <QuotationFormFields f={form} onChange={(p) => setForm((f) => ({ ...f, ...p }))} errors={errors} clearField={clearField} currencyCode={editTarget?.currency_code} />
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditTarget(null)}>{t("cancelBtn")}</Button>
             <Button onClick={handleEdit} disabled={saving}>{saving ? t("saving") : t("saveBtn")}</Button>

@@ -7,8 +7,8 @@ import { useOrg } from "@/lib/org-context"
 import { canWriteRole } from "@/lib/roles"
 import { spaceProgress } from "@/lib/spaces"
 import { accountCurrency, formatMoney, useBalancePrivacy } from "@/lib/wealth"
-import { formatByCurrency } from "@/lib/debt-format"
-import { savedFromSummary, useConsolidatedWealth } from "@/components/wealth/use-consolidated-wealth"
+import { useConsolidatedWealth } from "@/components/wealth/use-consolidated-wealth"
+import { spacesSavedHeadline } from "@/components/spaces/spaces-total"
 import type { WealthAccount } from "@/lib/types"
 import { spaceIconFor } from "@/components/wealth/space-icons"
 import { Button } from "@/components/ui/button"
@@ -59,18 +59,9 @@ export function SpacesCard({ className = "" }: { className?: string }) {
   }
 
   const active = (data ?? []).filter((s) => !s.archived_at)
-  // Spaces can hold different currencies, so the headline is never a raw sum:
-  // converted into the reporting currency when every rate is known, otherwise
-  // the native totals side by side (the way the debts card shows them).
-  const nativeTotals = [...active.reduce((m, s) => {
-    const c = accountCurrency(s, currency)
-    return m.set(c, (m.get(c) ?? 0) + Number(s.current_balance))
-  }, new Map<string, number>())].map(([c, amount]) => ({ currency: c, amount }))
-  const headline = nativeTotals.length <= 1
-    ? money(nativeTotals[0]?.amount ?? 0, nativeTotals[0]?.currency)
-    : summary?.complete
-      ? money(savedFromSummary(summary), summary.reporting_currency)
-      : formatByCurrency(nativeTotals, balancesVisible)
+  // Spaces can hold different currencies, so the headline is never a raw sum
+  // (the same helper as the /spaces hero).
+  const headline = spacesSavedHeadline(active, currency, summary, balancesVisible)
 
   if (active.length === 0) {
     if (!canWrite) return null

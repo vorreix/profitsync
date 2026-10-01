@@ -12,7 +12,14 @@
 export type FlowLeaf = {
   id: string
   type: "incoming" | "outgoing"
+  /** NATIVE, in `currency_code` — except a split across currencies (see collapseLegs). */
   amount: number
+  /** The leg's own currency; null on a split whose legs differ (its amount is then in the reporting currency). */
+  currency_code?: string | null
+  /** `amount` converted at the row's date into the reporting currency; null = no rate. */
+  reporting_amount?: number | null
+  /** A split across currencies with a leg that has no rate: its native total per currency, never added across. */
+  amount_parts?: { currency: string; amount: number }[]
   description: string
   category: string
   date: string
@@ -24,7 +31,7 @@ export type FlowLeaf = {
   /** >1 ⇒ this leaf is a SPLIT (a single transaction across N accounts). */
   leg_count?: number
   /** The per-account legs of a split (set only when leg_count > 1). */
-  legs?: { account_name: string | null; amount: number }[]
+  legs?: { account_name: string | null; amount: number; currency_code?: string | null }[]
 }
 
 export type FlowGroup = {
@@ -65,6 +72,8 @@ export type TimelinePeriod = {
   before: number // running cumulative net BEFORE this period
   after: number // running cumulative net AFTER this period
   tx_count: number
+  /** Rows in this period left out of its figures (no rate for their day). */
+  excluded_count?: number
   leaves: FlowLeaf[]
   more_count: number
 }
@@ -216,6 +225,12 @@ export function logicalCount(leaves: FlowLeaf[]): number {
  * the summed amount + the per-account breakdown (`legs`, `leg_count`). Plain
  * transactions and lone legs (e.g. the one leg that lands in a given account)
  * pass through unchanged. First-appearance order is preserved (date-desc).
+ *
+ * Legs in ONE currency add natively. Legs in several (only the API or an old
+ * client can post such a split) never do: the total is the sum of their
+ * reporting amounts with `currency_code: null` (so it is labelled with the
+ * reporting currency), or — when a leg has no rate — `amount_parts`, one
+ * native total per currency. Each leg keeps its own currency either way.
  */
 export function collapseLegs(leaves: FlowLeaf[]): FlowLeaf[] {
   const groups = new Map<string, FlowLeaf[]>()
@@ -229,13 +244,30 @@ export function collapseLegs(leaves: FlowLeaf[]): FlowLeaf[] {
     if (typeof item !== "string") return item
     const legs = groups.get(item)!
     if (legs.length === 1) return { ...legs[0] } // lone leg → a normal single tx
-    return {
+    const split = {
       ...legs[0],
       id: item,
-      amount: legs.reduce((s, l) => s + l.amount, 0),
       account_name: null,
       leg_count: legs.length,
-      legs: legs.map((l) => ({ account_name: l.account_name ?? null, amount: l.amount })),
+      legs: legs.map((l) => ({ account_name: l.account_name ?? null, amount: l.amount, currency_code: l.currency_code })),
+    }
+    const mixed = new Set(legs.map((l) => l.currency_code ?? null)).size > 1
+    if (!mixed) {
+      // `split` spreads legs[0], so its reporting_amount is one leg's — re-sum it (null if any leg has no rate).
+      const rep = legs.every((l) => l.reporting_amount != null) ? legs.reduce((s, l) => s + (l.reporting_amount as number), 0) : null
+      return { ...split, amount: legs.reduce((s, l) => s + l.amount, 0), reporting_amount: rep }
+    }
+    const converted = legs.every((l) => l.reporting_amount != null)
+    // ponytail: a rate-less mixed split draws its edge from the legs that DO convert; only the label matters.
+    const amount = legs.reduce((s, l) => s + (l.reporting_amount ?? 0), 0)
+    const parts = new Map<string, number>()
+    for (const l of legs) parts.set(l.currency_code ?? "", (parts.get(l.currency_code ?? "") ?? 0) + l.amount)
+    return {
+      ...split,
+      amount,
+      currency_code: null,
+      reporting_amount: converted ? amount : null,
+      amount_parts: converted ? undefined : [...parts].map(([currency, amount]) => ({ currency, amount })),
     }
   })
 }

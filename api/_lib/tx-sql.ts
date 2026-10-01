@@ -25,6 +25,19 @@ export const expenseSumSql = sql<string>`coalesce(sum(case when ${transactions.t
 /** Rows that take part in P&L at all (drop transfers). Pair with `eq(transactions.isSystem, false)`. */
 export const pnlKindFilter = inArray(transactions.kind, ["standard", "refund"])
 
+/**
+ * Income / expense in the rows' OWN currency, for a scope that holds one — an
+ * account's rows all post in its currency, so its own page shows them natively
+ * instead of as an approximation in the reporting currency (MC-009).
+ * `currency` is NULL when the rows span several currencies (or a legacy row
+ * carries none); the sums mean nothing then and must not be shown.
+ */
+export const nativeSummarySql = {
+  incoming: incomeSumSql,
+  outgoing: expenseSumSql,
+  currency: sql<string | null>`case when count(distinct ${transactions.currencyCode}) = 1 and count(${transactions.currencyCode}) = count(*) then max(${transactions.currencyCode}) end`,
+}
+
 /** The kinds a client may submit when creating/editing a transaction (transfers only come from the transfer endpoint). */
 export const USER_KINDS = ["standard", "refund"] as const
 

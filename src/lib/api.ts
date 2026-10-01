@@ -1,4 +1,5 @@
 import { canPersist, invalidationFor, policyFor } from "@/lib/api-cache"
+import { apiErrorCode, translateApiError } from "@/lib/api-error-codes"
 import { emitDataChanged } from "@/lib/data-events"
 
 const ORG_STORAGE_KEY = "ps_active_org"
@@ -476,7 +477,7 @@ function get<T>(path: string, token: string): Promise<T> {
   if (hit) {
     const age = Date.now() - hit.ts
     if (age <= pol.fresh + pol.maxStale) {
-      // `alwaysFetch` is the load-bearing half of this branch. Nine GET routes
+      // `alwaysFetch` is the load-bearing half of this branch. Ten GET routes
       // materialise due recurring transactions, file statements and run autopay
       // while serving the read, so a cached body may paint but the request has
       // to keep going out — skip it indefinitely and someone's rent silently
@@ -492,9 +493,28 @@ function get<T>(path: string, token: string): Promise<T> {
   return fetchShared<T>(key, path, token)
 }
 
-async function mutate<T>(method: string, path: string, token: string, body?: unknown): Promise<T> {
-  noteIdentity(token)
-  const result = await request<T>(method, path, token, body)
+/**
+ * Refusals that PROVE the screen acted on a stale copy: an account's currency
+ * changed in another tab, a transfer was reversed, trashed or completed
+ * elsewhere, a row changed mid-edit. Each message says "reload / reopen" — so
+ * the refusal drops exactly what the write would have, and the retry it asks
+ * for runs on fresh data instead of failing the same way again (MC-153).
+ */
+const STALE_REFUSALS = new Set([
+  "source_currency_mismatch",
+  "destination_currency_mismatch",
+  "transfer_account_currency_changed",
+  "transfer_account_unavailable",
+  "transfer_already_reversed",
+  "transfer_reversal_conflict",
+  "transfer_trashed",
+  "invalid_transfer_transition",
+  "invalid_transfer_trash_state",
+  "transaction_changed",
+  "debt_currency_changed",
+])
+
+function afterWrite(path: string) {
   // What this write invalidates is NOT the call site's decision. It used to be
   // an optional argument, and all 28 sites that passed one were narrower than
   // the truth — a transfer between spaces dropped /api/spaces and left the
@@ -505,30 +525,32 @@ async function mutate<T>(method: string, path: string, token: string, body?: unk
   else invalidateKeys(inv.prefixes)
   // Notify after invalidation so listeners that refetch get fresh data.
   emitDataChanged(path)
+}
+
+async function mutate<T>(method: string, path: string, token: string, body?: unknown): Promise<T> {
+  noteIdentity(token)
+  let result: T
+  try {
+    result = await request<T>(method, path, token, body)
+  } catch (err) {
+    if (STALE_REFUSALS.has(apiErrorCode(err) ?? "")) afterWrite(path)
+    throw err
+  }
+  afterWrite(path)
   return result
 }
 
 /**
- * Turn a thrown API error into a human message. `request` throws the raw
- * response body, which for our handlers is JSON like `{"reason":…}` (quota) or
- * `{"error":…}` (validation). Extract the readable bit; fall back otherwise.
+ * Turn a thrown API error into a message in the reader's language: the
+ * translation of its `code` (src/lib/api-error-codes.ts), else `fallback` —
+ * never raw JSON or the server's English (an English reader still gets the
+ * server's specific sentence for a code nobody has translated yet).
  */
 export function apiErrorMessage(err: unknown, fallback: string): string {
-  if (err instanceof Error && err.message) {
-    const m = err.message.trim()
-    if (m === "auth") return fallback
-    if (m.startsWith("{")) {
-      try {
-        const j = JSON.parse(m) as { reason?: string; error?: string }
-        return j.reason || j.error || fallback
-      } catch {
-        /* not JSON — fall through */
-      }
-    }
-    return m
-  }
-  return fallback
+  return translateApiError(err, fallback)
 }
+
+export { apiErrorCode } from "@/lib/api-error-codes"
 
 /**
  * True when a thrown API error is a quota rejection that hints an upgrade

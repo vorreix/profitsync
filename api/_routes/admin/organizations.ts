@@ -7,6 +7,7 @@ import { requireAdminCap } from "../../_lib/admin.js"
 import { cancelledNowFields, FREE_RESET_FIELDS, stopDodoBilling } from "../../_lib/admin-billing.js"
 import { teardownOrganization } from "../../_lib/admin-org-delete.js"
 import { notifySubscriptionChanged } from "../../_lib/notify-billing.js"
+import { parseOrgCurrency, setOrgCurrency } from "../../_lib/org-currency.js"
 
 const PAGE_SIZE = 30
 
@@ -80,7 +81,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         slug: organizations.slug,
         isPersonal: organizations.isPersonal,
         accountType: organizations.accountType,
-        currency: organizations.currency,
+        // Same reading as /api/organizations: the reporting currency wins, the
+        // legacy column only fills in for rows that predate it.
+        currency: sql<string>`coalesce(${organizations.reportingCurrency}, ${organizations.currency})`,
+        reportingCurrency: sql<string>`coalesce(${organizations.reportingCurrency}, ${organizations.currency})`,
         createdAt: organizations.createdAt,
         updatedAt: organizations.updatedAt,
         ownerEmail: userProfiles.email,
@@ -110,6 +114,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!owner_user_id?.trim() || !name?.trim()) {
       return res.status(400).json({ error: "owner_user_id and name are required" })
     }
+    const requestedCurrency = currency === undefined || currency === "" ? undefined : parseOrgCurrency(currency)
+    if (requestedCurrency === null) return res.status(400).json({ error: "Invalid currency code", code: "invalid_currency" })
 
     const [owner] = await db
       .select({ id: userProfiles.id, currency: userProfiles.currency })
@@ -123,7 +129,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       name: name.trim(),
       slug,
       isPersonal: false,
-      currency: currency ?? owner.currency ?? "USD",
+      currency: requestedCurrency ?? owner.currency ?? "USD",
     })
 
     const [row] = await db.select().from(organizations).where(eq(organizations.id, created.id))
@@ -142,13 +148,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const patch: Partial<typeof organizations.$inferInsert> = { updatedAt: new Date() }
     if (typeof name === "string" && name.trim()) patch.name = name.trim()
-    if (typeof currency === "string" && currency.trim()) patch.currency = currency.trim().toUpperCase()
+    // The workspace currency moves BOTH columns (setOrgCurrency) — writing only
+    // the legacy one left the owner on the old currency while debts and the AI
+    // prompt switched (MC-033). Validated: "EURO" used to be stored as-is.
+    const nextCurrency = typeof currency === "string" && currency.trim() ? parseOrgCurrency(currency) : undefined
+    if (nextCurrency === null) return res.status(400).json({ error: "Invalid currency code", code: "invalid_currency" })
 
     let orgRow:
-      | { id: string; name: string; slug: string; isPersonal: boolean; ownerUserId: string; currency: string; createdAt: Date | null; updatedAt: Date | null }
+      | { id: string; name: string; slug: string; isPersonal: boolean; ownerUserId: string; currency: string; reportingCurrency: string | null; createdAt: Date | null; updatedAt: Date | null }
       | undefined
 
-    if (patch.name || patch.currency) {
+    if (nextCurrency) {
+      const updated = await setOrgCurrency(organization_id, nextCurrency, { actorId: ctx.userId, also: patch })
+      if (!updated) return res.status(404).json({ error: "Not found" })
+      orgRow = updated
+    } else if (patch.name) {
       const [updated] = await db
         .update(organizations)
         .set(patch)

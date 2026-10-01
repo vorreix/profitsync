@@ -55,10 +55,12 @@ import { useDataRefresh } from "@/lib/data-refresh-context"
 import { useOrg } from "@/lib/org-context"
 import { useCurrency } from "@/lib/currency-context"
 import { useTheme } from "@/components/theme-provider"
-import { FxExcludedNotice } from "@/components/FxExcludedNotice"
+import { FxExcludedMarker, FxExcludedNotice } from "@/components/FxExcludedNotice"
+import { formatByCurrency } from "@/lib/debt-format"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { useBackClose } from "@/hooks/use-back-close"
 import { formatMoney } from "@/lib/wealth"
+import { ledgerDescription } from "@/lib/wealth-ledger"
 import { cn } from "@/lib/utils"
 import { accountTypeAllows } from "@/lib/types"
 import {
@@ -263,6 +265,8 @@ function GroupNode({ id, data }: NodeProps<Node<GroupData>>) {
           fallback={<Icon className="size-[18px]" />}
         />
         <p className="min-w-0 flex-1 truncate text-sm font-semibold tracking-tight" title={data.label}>{data.label}</p>
+        {/* This node's figures leave rows out (no rate for their day). */}
+        <FxExcludedMarker count={data.excluded_count} />
         <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground">{data.tx_count}</span>
         <DetailButton onClick={data.onDetail} />
       </div>
@@ -307,7 +311,10 @@ function LeafNode({ id, data }: NodeProps<Node<LeafData>>) {
   const focus = useFocus(id)
   const inc = data.type === "incoming"
   const isSplit = (data.leg_count ?? 1) > 1
-  // A transaction leaf shows its NATIVE amount in its own currency.
+  // A transaction leaf shows its NATIVE amount in its own currency. A split
+  // across currencies has no native total (collapseLegs): its amount is in the
+  // reporting currency (`currency_code` null → data.currency), or per-currency
+  // parts when a leg has no rate. Each leg always shows its own currency.
   const nativeCurrency = data.currency_code || data.currency
   return (
     // The leaf is DRAGGABLE (no `nodrag`) yet still opens its transaction. To
@@ -332,7 +339,7 @@ function LeafNode({ id, data }: NodeProps<Node<LeafData>>) {
         </span>
         <span className="min-w-0 flex-1">
           <span className="flex items-center gap-1 truncate font-medium">
-            {data.description || (inc ? t("flow.income") : t("flow.expense"))}
+            {ledgerDescription(data, t) || (inc ? t("flow.income") : t("flow.expense"))}
             {data.recurring && <Repeat className="size-3 shrink-0 text-violet-500" />}
           </span>
           <span className="block truncate text-[10px] text-muted-foreground">{data.formatDate(data.date)}{data.category ? ` · ${data.category}` : ""}</span>
@@ -353,7 +360,14 @@ function LeafNode({ id, data }: NodeProps<Node<LeafData>>) {
             </span>
           ) : null}
         </span>
-        <Money value={data.amount} sign={inc ? "+" : "−"} currency={nativeCurrency} className={cn("shrink-0 self-start font-semibold", inc ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400")} />
+        {data.amount_parts ? (
+          <span className={cn("shrink-0 self-start font-semibold tabular-nums", inc ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400")}>
+            {/* One sign for the whole split, so the list is bracketed: −(€50 + ₹5,000), never −€50 + ₹5,000. */}
+            {inc ? "+" : "−"}({formatByCurrency(data.amount_parts.map((p) => ({ currency: p.currency || data.currency, amount: Math.abs(p.amount) })))})
+          </span>
+        ) : (
+          <Money value={data.amount} sign={inc ? "+" : "−"} currency={nativeCurrency} className={cn("shrink-0 self-start font-semibold", inc ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400")} />
+        )}
       </span>
       {/* full-width legs breakdown (each account's share of the split) */}
       {isSplit && data.splitExpanded && data.legs && (
@@ -364,7 +378,7 @@ function LeafNode({ id, data }: NodeProps<Node<LeafData>>) {
                 <Landmark className="size-2.5 shrink-0" />
                 <span className="truncate">{leg.account_name || t("flow.unassignedAccount")}</span>
               </span>
-              <Money value={leg.amount} sign={inc ? "+" : "−"} currency={nativeCurrency} className={cn("shrink-0 font-medium tabular-nums", inc ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400")} />
+              <Money value={leg.amount} sign={inc ? "+" : "−"} currency={leg.currency_code || nativeCurrency} className={cn("shrink-0 font-medium tabular-nums", inc ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400")} />
             </span>
           ))}
         </span>
@@ -433,6 +447,7 @@ function TimelinePeriodNode({ id, data }: NodeProps<Node<TimelinePeriodNodeData>
       <div className="flex items-center gap-2.5">
         <span className="grid size-9 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-primary/15 to-primary/5 text-primary ring-1 ring-inset ring-primary/20"><CalendarClock className="size-[18px]" /></span>
         <p className="min-w-0 flex-1 truncate text-sm font-semibold tracking-tight">{data.formatPeriod(data.key, data.bucket)}</p>
+        <FxExcludedMarker count={data.excluded_count} />
         <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground">{data.tx_count}</span>
         <DetailButton onClick={data.onDetail} />
       </div>
@@ -688,7 +703,7 @@ function TxPopup({ leaf, currency, formatDate, onViewDetails, onClose }: { leaf:
       role="dialog"
       aria-modal="false"
       aria-live="polite"
-      aria-label={leaf.description || (inc ? t("flow.income") : t("flow.expense"))}
+      aria-label={ledgerDescription(leaf, t) || (inc ? t("flow.income") : t("flow.expense"))}
       className="absolute inset-x-3 bottom-3 z-20 sm:inset-x-0 sm:bottom-4 sm:mx-auto sm:w-72"
     >
       <div className="overflow-hidden rounded-2xl border bg-card/95 shadow-xl shadow-black/25 backdrop-blur-md motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-2 motion-safe:duration-200">
@@ -698,7 +713,7 @@ function TxPopup({ leaf, currency, formatDate, onViewDetails, onClose }: { leaf:
           </span>
           <div className="min-w-0 flex-1 space-y-0.5">
             <p className="flex items-center gap-1 truncate text-[13px] font-semibold leading-tight">
-              {leaf.description || (inc ? t("flow.income") : t("flow.expense"))}
+              {ledgerDescription(leaf, t) || (inc ? t("flow.income") : t("flow.expense"))}
               {leaf.recurring && <Repeat className="size-3 shrink-0 text-violet-500" />}
             </p>
             <p className="truncate text-[11px] text-muted-foreground">{formatDate(leaf.date)}{leaf.category ? ` · ${leaf.category}` : ""}</p>
@@ -909,11 +924,13 @@ export function MoneyFlowPage() {
   // into (the reporting currency); the org's is only the fallback before the
   // first payload lands.
   const currency = (data as (FlowData | TimelineData) & FxMeta | null)?.currency || orgCurrency
+  // Two different gaps, never added into one count: ENTRIES left out of the
+  // income/expense figures, and ACCOUNTS left out of the consolidated balance.
   const fxExcluded = useMemo(() => {
-    if (!data) return 0
+    if (!data) return { rows: 0, accounts: 0 }
     const meta = data as (FlowData | TimelineData) & FxMeta
     const root = (data.mode === "timeline" ? data.final : data.root) as FxRoot
-    return (meta.excluded_count ?? root.excluded_count ?? 0) + (root.balance_excluded_count ?? 0)
+    return { rows: meta.excluded_count ?? root.excluded_count ?? 0, accounts: root.balance_excluded_count ?? 0 }
   }, [data])
   const [loading, setLoading] = useState(true)
   const [viewMode, setViewMode] = useState<"grouped" | "timeline">(saved.viewMode ?? "grouped")
@@ -1544,7 +1561,8 @@ export function MoneyFlowPage() {
           {/* Rows the server could not convert into the reporting currency are
               left OUT of every figure on the canvas — say so rather than let a
               partial total read as complete. */}
-          {!loading && <FxExcludedNotice count={fxExcluded} className="mt-1" />}
+          {!loading && <FxExcludedNotice count={fxExcluded.rows} className="mt-1" />}
+          {!loading && <FxExcludedNotice count={fxExcluded.accounts} accounts className="mt-1" />}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {/* View-mode toggle: grouped mind-map vs running-balance timeline */}

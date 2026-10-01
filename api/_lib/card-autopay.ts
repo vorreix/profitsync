@@ -36,10 +36,12 @@ import { cards, creditCardStatements, wealthAccounts } from "../../src/lib/db/sc
 import { autopayAmount, autopayEligible, autopayPlan, cardExpiresSoon, expiryLabel } from "../../src/lib/cards.js"
 import { addDays, cardDebt, creditUsage, isLiabilityType, statementView } from "../../src/lib/credit-card.js"
 import { todayIso } from "../../src/lib/recurring.js"
-import { resolveCardForLeg } from "./cards.js"
+import { resolveCardForLeg, sameNativeCurrency } from "./cards.js"
 import { ensureStatements, isConfiguredCard, paymentsAfter } from "./credit-card.js"
 import { createTransfer } from "./wealth-accounts.js"
+import { reportingCurrencyFor } from "./fx-rates.js"
 import {
+  type AutopayFailureCode,
   notifyAutopayFailed,
   notifyAutopayPaid,
   notifyCardExpiring,
@@ -55,6 +57,8 @@ type StatementRow = typeof creditCardStatements.$inferSelect
 
 export const UTILIZATION_ALERT_RATIO = 0.9
 export const DUE_SOON_DAYS = 3
+/** The stable `autopay_error` (and outcome reason) of a statement autopay refused across currencies — the same code the card routes return. */
+export const AUTOPAY_CURRENCY_MISMATCH = "autopay_currency_mismatch"
 /** A 'processing' claim older than this with no transfer is a crash between claim and batch. */
 export const STALE_CLAIM_MS = 10 * 60 * 1000
 
@@ -82,32 +86,54 @@ async function autopayStatement(input: {
   funding: AccountRow | null
   statement: StatementRow
   today: string
+  /** The card's identity for notifications, with its own currency. */
+  identity: CardRow & { account_bank_name: string; currency: string }
 }): Promise<AutopayOutcome | null> {
-  const { orgId, card, account, funding, statement, today } = input
-  const identity = { ...card, account_bank_name: account.bankName }
+  const { orgId, card, account, funding, statement, today, identity } = input
   // Money is attributed to the card's owner, never to whoever happened to
   // trigger the read (a viewer's GET must not author transactions).
   const actor = card.createdBy ?? card.updatedBy ?? "system"
 
   // ── Pre-claim skips: ordinary conditions, retried on the next run ──────────
-  const deferred = async (reason: string, notifyKey: string): Promise<AutopayOutcome> => {
-    void notifyAutopayFailed({ orgId, card: identity, statementId: statement.id, amount: num(statement.statementBalance), reason, dedupeSuffix: notifyKey }).catch(() => {})
-    return { statementId: statement.id, cardId: card.id, status: "deferred", amount: 0, reason }
+  // `code` is what the notification translates; `reason` the engine's own
+  // words for the outcome/log only; `detail` the rare clause that may reach the
+  // user in place of the code's (the plan's quota sentence) — never an engine
+  // or validation error, which would surface untranslated in push and mail.
+  const deferred = async (code: AutopayFailureCode, notifyKey: string, reason?: string, detail?: string): Promise<AutopayOutcome> => {
+    void notifyAutopayFailed({ orgId, card: identity, statementId: statement.id, amount: num(statement.statementBalance), code, detail, dedupeSuffix: notifyKey }).catch(() => {})
+    return { statementId: statement.id, cardId: card.id, status: "deferred", amount: 0, reason: reason ?? code }
   }
-  if (!funding || funding.archivedAt) return deferred("the paying bank is missing or closed — choose a bank to pay from", "funding")
+  if (!funding || funding.archivedAt) return deferred("autopay_funding_missing", "funding")
   // Autopay only ever moves money OUT OF AN ACCOUNT THAT HOLDS SOME. Paying one
   // card with another is a balance transfer: legitimate to record by hand, but
   // never on a schedule — it would compound debt unattended, and refusing it
   // here is what makes a funding cycle impossible without walking the graph (a
   // loop needs two unattended payers). Both write paths already refuse the
   // combination; this is the backstop for a row that predates them.
-  if (isLiabilityType(funding.type)) return deferred("a credit card can't pay this automatically — pay it yourself", "funding")
+  if (isLiabilityType(funding.type)) return deferred("autopay_liability", "funding")
+  // ...and only from an account in the CARD'S currency: a cross-currency
+  // transfer needs the amount that actually arrived, which nobody is here to
+  // type. Both write paths refuse the pairing (autopay_currency_mismatch); this
+  // is the backstop for a row that predates them. Not a deferral — retrying
+  // could never succeed and would release and re-claim on every read — so the
+  // statement is marked FAILED with a stable reason before anything is
+  // claimed (conditional, so it never overwrites a claim another run holds).
+  if (!(await sameNativeCurrency(orgId, funding.currencyCode, account.currencyCode))) {
+    const marked = await db
+      .update(creditCardStatements)
+      .set({ autopayStatus: "failed", autopayAt: new Date(), autopayError: AUTOPAY_CURRENCY_MISMATCH })
+      .where(and(eq(creditCardStatements.id, statement.id), isNull(creditCardStatements.autopayStatus)))
+      .returning({ id: creditCardStatements.id })
+    if (marked.length === 0) return null
+    void notifyAutopayFailed({ orgId, card: identity, statementId: statement.id, amount: num(statement.statementBalance), code: AUTOPAY_CURRENCY_MISMATCH }).catch(() => {})
+    return { statementId: statement.id, cardId: card.id, status: "failed", amount: 0, reason: AUTOPAY_CURRENCY_MISMATCH }
+  }
   // The paying INSTRUMENT, when one was chosen: a frozen or closed debit card,
   // or one whose bank moved, defers (retryable) rather than paying unattributed.
   let fromCardId: string | null = null
   if (card.fundingCardId) {
     const resolved = await resolveCardForLeg(orgId, card.fundingCardId, funding.id, { allowFrozen: true })
-    if (!resolved.ok) return deferred(`the card that pays this one can't be used — ${resolved.error.toLowerCase()}`, "funding")
+    if (!resolved.ok) return deferred("autopay_funding_card", "funding", `the card that pays this one can't be used — ${resolved.error.toLowerCase()}`)
     fromCardId = resolved.card.id
   }
   // (The free plan's per-client transaction quota is checked inside
@@ -155,7 +181,9 @@ async function autopayStatement(input: {
       // so the next run (after an upgrade / fix) tries again, and say why once.
       const reason = typeof result.body.reason === "string" ? result.body.reason : typeof result.body.error === "string" ? result.body.error : "the payment could not be recorded"
       await markStatement(statement.id, { autopayStatus: null, autopayAt: null, autopayError: reason })
-      return deferred(reason, "quota")
+      return result.status === 402
+        ? deferred("autopay_quota", "quota", reason, reason)
+        : deferred("autopay_not_recorded", "quota", reason)
     }
     await markStatement(statement.id, { autopayGroupId: result.groupId })
     void notifyAutopayPaid({ orgId, card: identity, statementId: statement.id, amount, fromName: label(funding) }).catch(() => {})
@@ -167,7 +195,8 @@ async function autopayStatement(input: {
     console.error("[cards] autopay batch failed", statement.id, err)
     const reason = err instanceof Error ? err.message.slice(0, 300) : "the payment could not be recorded"
     await markStatement(statement.id, { autopayStatus: "failed", autopayError: reason }).catch(() => {})
-    void notifyAutopayFailed({ orgId, card: identity, statementId: statement.id, amount, reason }).catch(() => {})
+    // The raw error stays in the row and the log; the user gets the plain clause.
+    void notifyAutopayFailed({ orgId, card: identity, statementId: statement.id, amount, code: "autopay_not_recorded" }).catch(() => {})
     return { statementId: statement.id, cardId: card.id, status: "failed", amount, reason }
   }
 }
@@ -175,7 +204,7 @@ async function autopayStatement(input: {
 export type SyncResult = { filed: number; autopay: AutopayOutcome[] }
 
 /** Anything still 'processing' long after its claim never finished — the batch never ran. */
-async function reconcileStaleClaims(orgId: string, cardsById: Map<string, { card: CardRow; account: AccountRow }>): Promise<void> {
+async function reconcileStaleClaims(orgId: string, cardsById: Map<string, { card: CardRow; account: AccountRow }>, currencyOf: (a: AccountRow) => Promise<string>): Promise<void> {
   const stale = await db
     .select()
     .from(creditCardStatements)
@@ -189,7 +218,8 @@ async function reconcileStaleClaims(orgId: string, cardsById: Map<string, { card
     await markStatement(s.id, { autopayStatus: "failed", autopayError: "the payment was interrupted before it was recorded" })
     const owner = [...cardsById.values()].find((c) => c.account.id === s.wealthAccountId)
     if (owner) {
-      void notifyAutopayFailed({ orgId, card: { ...owner.card, account_bank_name: owner.account.bankName }, statementId: s.id, amount: num(s.statementBalance), reason: "the payment was interrupted before it was recorded" }).catch(() => {})
+      const card = { ...owner.card, account_bank_name: owner.account.bankName, currency: await currencyOf(owner.account) }
+      void notifyAutopayFailed({ orgId, card, statementId: s.id, amount: num(s.statementBalance), code: "autopay_interrupted" }).catch(() => {})
     }
   }
 }
@@ -212,8 +242,14 @@ export async function syncCards(orgId: string, today = todayIso()): Promise<Sync
     .orderBy(asc(cards.createdAt))
 
   if (rows.length > 0) {
+    // A card's notifications speak its own currency; a legacy NULL account is
+    // the reporting currency, looked up at most once per sync. Fail-soft (to
+    // the lookup's own default): only the wording depends on it, and a cached
+    // rejection must never stop statements or autopay for the rest of the run.
+    let reporting: Promise<string> | null = null
+    const currencyOf = async (a: AccountRow) => a.currencyCode ?? (await (reporting ??= reportingCurrencyFor(orgId).catch(() => "USD")))
     const cardsById = new Map(rows.map((r) => [r.card.id, r]))
-    await reconcileStaleClaims(orgId, cardsById).catch(() => {})
+    await reconcileStaleClaims(orgId, cardsById, currencyOf).catch(() => {})
 
     const fundingIds = [...new Set(rows.map((r) => r.card.fundingAccountId).filter((x): x is string => !!x))]
     const fundingRows = fundingIds.length
@@ -223,7 +259,7 @@ export async function syncCards(orgId: string, today = todayIso()): Promise<Sync
 
     for (const { card, account } of rows) {
       try {
-        const identity = { ...card, account_bank_name: account.bankName }
+        const identity = { ...card, account_bank_name: account.bankName, currency: await currencyOf(account) }
 
         // 1. Statements — file, and announce only the NEWEST one this run filed
         //    (a long catch-up must not deliver a burst).
@@ -271,6 +307,7 @@ export async function syncCards(orgId: string, today = todayIso()): Promise<Sync
             funding: card.fundingAccountId ? (fundingById.get(card.fundingAccountId) ?? null) : null,
             statement: row,
             today,
+            identity,
           })
           if (outcome) result.autopay.push(outcome)
           if (outcome?.status === "paid") paidNow = row.id

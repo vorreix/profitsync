@@ -10,11 +10,13 @@ import {
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { txTags } from "@/lib/transaction-tags"
-import { accountDisplayName } from "@/lib/wealth"
+import { accountDisplayName, formatMoney } from "@/lib/wealth"
+import { ledgerDescription } from "@/lib/wealth-ledger"
 import { useCardMap } from "@/lib/use-cards"
 import { CardChip } from "@/components/cards/CardChip"
 import type { Transaction } from "@/lib/types"
 import { appLocale } from "@/lib/format-date"
+import { rowCurrency } from "@/lib/reporting-fields"
 
 const formatDate = (d: string) =>
   new Date(d).toLocaleDateString(appLocale(), { month: "short", day: "numeric", year: "numeric" })
@@ -43,7 +45,11 @@ export function TransactionPeekModal({
   if (!tx) return null
 
   const incoming = tx.type === "incoming"
-  const amount = new Intl.NumberFormat("en-US", { style: "currency", currency, minimumFractionDigits: 2 }).format(Number(tx.amount))
+  // In the row's OWN currency. A mixed-currency split is converted (≈), and
+  // has no honest total while a leg has no rate (amount null).
+  const amount = tx.amount == null
+    ? null
+    : `${(tx.currency_count ?? 1) > 1 ? "≈" : ""}${formatMoney(Number(tx.amount), rowCurrency(tx, currency))}`
   const card = cardMap.forTx(tx)
   const accountLabel = tx.wealth_account_name?.trim() || tx.wealth_account_bank_name?.trim()
 
@@ -61,7 +67,9 @@ export function TransactionPeekModal({
 
         <div className="space-y-3">
           <p className={`text-2xl font-bold tabular-nums ${incoming ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
-            {incoming ? "+" : "−"}{amount}
+            {amount == null
+              ? <span className="text-base font-medium text-muted-foreground">{t("transactions.amountNoRate")}</span>
+              : <>{incoming ? "+" : "−"}{amount}</>}
           </p>
           <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
             <div>
@@ -114,7 +122,7 @@ export function TransactionPeekModal({
           {tx.description && (
             <div>
               <p className="text-xs text-muted-foreground">{t("dashboard.description")}</p>
-              <p className="text-sm">{tx.description}</p>
+              <p className="text-sm">{ledgerDescription(tx, t)}</p>
             </div>
           )}
 

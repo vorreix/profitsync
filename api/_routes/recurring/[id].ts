@@ -9,6 +9,7 @@ import { validateRuleInput, type RecurringRuleInput } from "../../_lib/recurring
 import { ruleFields, ruleStatsFields } from "../../_lib/recurring-query.js"
 import { attributeCard } from "../../_lib/cards.js"
 import { currencyForFinancialWrite } from "../../_lib/transaction-currency.js"
+import { currencyChangeRefusal } from "../../_lib/currency-guards.js"
 import { debtCurrencyOf, directionOf, loadDebt } from "../../_lib/debts.js"
 import { greatestDate, linkRuleToDebt, mirrorDebtSchedule, reloadRule } from "../../_lib/recurring-debt.js"
 
@@ -161,7 +162,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (rule.debtAccountId && payer.currencyCode) {
         const target = await loadDebt(orgId, rule.debtAccountId)
         if (target && payer.currencyCode.toUpperCase() !== debtCurrencyOf(target)) {
-          return res.status(400).json({ error: `A repayment for a ${debtCurrencyOf(target)} debt must come from a ${debtCurrencyOf(target)} account`, code: "currency_mismatch" })
+          return res.status(400).json({ error: `A repayment for a ${debtCurrencyOf(target)} debt must come from a ${debtCurrencyOf(target)} account`, code: "currency_mismatch", context: "debt", currency: debtCurrencyOf(target) })
         }
       }
     }
@@ -184,8 +185,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // it to another account has to move the currency with it — otherwise a rule
     // shifted from a EUR account to a USD one keeps posting "EUR" rows there.
     // (An archived account answers null; an unchanged rule keeps what it had.)
-    const currencyCode = (await currencyForFinancialWrite(orgId, attributed.accountId)) ?? (attributed.accountId === rule.wealthAccountId ? rule.currencyCode : null)
+    // A rule with NO account keeps the currency it was created in: a later
+    // workspace currency change must not turn ₹50,000 into $50,000 on a rename.
+    // Only a legacy rule with none falls back to the workspace's.
+    const currencyCode = attributed.accountId
+      ? (await currencyForFinancialWrite(orgId, attributed.accountId)) ?? (attributed.accountId === rule.wealthAccountId ? rule.currencyCode : null)
+      : rule.currencyCode ?? (await currencyForFinancialWrite(orgId))
     if (!currencyCode) return res.status(409).json({ error: "Currency migration is incomplete", code: "currency_missing" })
+    // A currency change keeps the number and changes what it means (€15 → ₹15
+    // on every future occurrence), so the same request must restate the amount.
+    // `!= null`, not `!== undefined`: validateRuleInput reads `amount ?? rule.amount`,
+    // so a null amount keeps the old number and is no restatement.
+    const currencyRefusal = currencyChangeRefusal(rule.currencyCode, currencyCode, body.amount != null)
+    if (currencyRefusal) return res.status(409).json(currencyRefusal)
 
     const [updated] = await db
       .update(recurringRules)

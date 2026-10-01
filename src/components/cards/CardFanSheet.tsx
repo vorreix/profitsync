@@ -62,7 +62,6 @@ export function CardFanSheet({
   onReorder: (ids: string[]) => void
 }) {
   const { t } = useTranslation("wealth")
-  const money = (n: number) => formatMoney(n, currency, balancesVisible)
 
   // NO local copy of the order. The parent owns it: a reorder is reported on
   // release, the parent applies it at once and hands it straight back down, and
@@ -87,6 +86,8 @@ export function CardFanSheet({
 
   const selected = snapOffset(offset, count)
   const inHand = deck[selected]
+  // The card in hand's own currency, never the workspace's (MC-022).
+  const money = (n: number) => formatMoney(n, inHand?.account_currency_code || currency, balancesVisible)
   const setGestureBoth = (g: Gesture) => { gestureRef.current = g; setGesture(g) }
 
   // Reset to the first card each time the sheet opens.

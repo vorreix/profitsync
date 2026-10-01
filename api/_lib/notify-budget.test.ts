@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { readFileSync } from "node:fs"
-import { budgetAlertTier, orgTotals } from "./notify-budget.js"
+import { budgetAlertTier, currencySuffix, orgTotals, windowKeyFor } from "./notify-budget.js"
 import type { PeriodSums } from "./budget-spend.js"
 
 // Pure tier boundaries only — the send path needs a DB and is covered by the
@@ -67,6 +67,8 @@ describe("budget alert wiring (defect #6 — every spend-changing path evaluates
     ["api/_routes/transactions/[id].ts", "edit"],
     ["api/_routes/transactions/group.ts", "split create"],
     ["api/_lib/recurring-materialize.ts", "recurring materialization"],
+    // A transfer fee is a standard outgoing that budgets count (MC-150).
+    ["api/_lib/wealth-accounts.ts", "transfer fee"],
   ] as const
 
   for (const [file, what] of callers) {
@@ -97,5 +99,33 @@ describe("budget alert wiring (defect #6 — every spend-changing path evaluates
     const src = readFileSync("api/_lib/notify-budget.ts", "utf8")
     expect(src).toContain("rows.find((b) => b.clientId === clientId)")
     expect(src).not.toContain("b.clientId === null")
+  })
+})
+
+describe("multi-currency alerts (MC-082, MC-149)", () => {
+  it("the dedupe window carries a foreign limit's currency, so ₹1,000 → €1,000 re-arms the alert", () => {
+    const w = { window: { start: "2026-09-01" }, amount: 1000 }
+    expect(windowKeyFor({ ...w, currency: "INR" }, "EUR")).toBe("2026-09-01:1000:INR")
+    expect(windowKeyFor({ ...w, currency: "INR" }, "EUR")).not.toBe(windowKeyFor({ ...w, currency: "EUR" }, "EUR"))
+    expect(windowKeyFor({ window: { start: null }, amount: 5, currency: "USD" }, "EUR")).toBe("all:5:USD")
+  })
+
+  it("a limit in the reporting currency keeps the key it always had — no alert is sent twice after deploy", () => {
+    expect(windowKeyFor({ window: { start: "2026-09-01" }, amount: 1000, currency: "EUR" }, "EUR")).toBe("2026-09-01:1000")
+    expect(windowKeyFor({ window: { start: null }, amount: 5, currency: "USD" }, "USD")).toBe("all:5")
+    expect(currencySuffix("INR", "INR")).toBe("")
+  })
+
+  it("a cap's dedupe window carries its currency the same way", () => {
+    const src = readFileSync("api/_lib/notify-budget.ts", "utf8")
+    expect(src).toContain('windowKey: `${periodStart(period, now) ?? "lifetime"}${currencySuffix(capCurrency(clientBudget, reporting), reporting)}`')
+  })
+
+  it("partial spend is passed to every alert and marks it incomplete", () => {
+    const src = readFileSync("api/_lib/notify-budget.ts", "utf8")
+    expect(src).toContain("excluded: b.excluded_count")
+    expect(src).toContain("excluded: excludedFor(byClient.get(clientId), period)")
+    expect(src).toContain('"types.budget_exceeded.bodyIncomplete"')
+    expect(src).toContain('"types.budget_warning.bodyIncomplete"')
   })
 })

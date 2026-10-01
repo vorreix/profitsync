@@ -99,6 +99,10 @@ export function PayCardSheet({
   // Paying from an account in ANOTHER currency: the amount above is what the
   // card receives (its currency); this is what leaves the source (its own).
   const [sourceAmount, setSourceAmount] = useState("")
+  // …and what the source's bank charged for the conversion, in its currency:
+  // recorded as the transfer's fee (an expense), so the rate stays the real
+  // one instead of absorbing the charge (MC-146).
+  const [feeAmount, setFeeAmount] = useState("")
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -110,6 +114,7 @@ export function PayCardSheet({
     setDate(today())
     setNote("")
     setSourceAmount("")
+    setFeeAmount("")
     setSaving(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
@@ -149,12 +154,18 @@ export function PayCardSheet({
   const crossCurrency = !!from && fromCurrency !== cardCurrency
   const sourceAmt = parseFloat(sourceAmount)
   const sourceValid = !crossCurrency || (!!sourceAmt && !isNaN(sourceAmt) && sourceAmt > 0)
+  const fee = crossCurrency ? feeAmount.trim() : ""
+  // Both figures are typed in the SOURCE's currency: picking a source in another
+  // currency voids them (8,500 INR is not 8,500 USD), exactly as the wizard does
+  // on a new pair (MC-065). A source in the same currency keeps them.
+  useEffect(() => { setSourceAmount(""); setFeeAmount("") }, [fromCurrency])
 
   async function submit() {
     if (!fromId) { toast.error(t("selectAccount")); return }
     if (!amountValid) { toast.error(t("payAmount")); return }
     if (!sourceValid) { toast.error(t("payAmountLeaving", { account: from ? accountDisplayName(from) : "", currency: fromCurrency })); return }
-    if (amountExceedsLimit(amt) || (crossCurrency && amountExceedsLimit(sourceAmt))) { toast.error(t("common.amountTooLarge")); return }
+    if (amountExceedsLimit(amt) || (crossCurrency && amountExceedsLimit(sourceAmt)) || amountExceedsLimit(fee)) { toast.error(t("common.amountTooLarge")); return }
+    if (fee && !(Number(fee) >= 0)) { toast.error(t("apiErrors.fee_invalid", { ns: "translation" })); return }
     setSaving(true)
     try {
       const token = await getToken()
@@ -166,7 +177,7 @@ export function PayCardSheet({
         from_card_id: fromCardId || null,
         to_account_id: card.id,
         ...(crossCurrency
-          ? { source_amount: sourceAmt, destination_amount: amt, source_currency: fromCurrency, destination_currency: cardCurrency }
+          ? { source_amount: sourceAmt, destination_amount: amt, source_fee_amount: fee || undefined, source_currency: fromCurrency, destination_currency: cardCurrency }
           : { amount: amt }),
         date,
         note,
@@ -237,7 +248,7 @@ export function PayCardSheet({
               })}
             </div>
             <div className="relative">
-              <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-2xl font-semibold text-muted-foreground">{symbol}</span>
+              <span className="pointer-events-none absolute start-4 top-1/2 -translate-y-1/2 text-2xl font-semibold text-muted-foreground">{symbol}</span>
               <Label htmlFor="pay-amount" className="sr-only">{t("payAmount")}</Label>
               <Input
                 id="pay-amount"
@@ -248,7 +259,9 @@ export function PayCardSheet({
                 value={amount}
                 onChange={(e) => { setAmount(e.target.value); setPreset("other") }}
                 placeholder="0.00"
-                className="h-16 pl-11 text-center text-3xl font-bold tabular-nums"
+                className="h-16 text-center text-3xl md:text-3xl font-bold tabular-nums"
+                // The prefix is 1–5 characters ("$" … "F CFA"): pad for its real width.
+                style={{ paddingInlineStart: `calc(${symbol.length}ch + 1.25rem)` }}
               />
             </div>
             {debt <= 0 && <p className="text-center text-xs text-muted-foreground">{t("nothingToPay")}</p>}
@@ -262,6 +275,12 @@ export function PayCardSheet({
               {sourceValid && amountValid && (
                 <p className="text-xs text-muted-foreground tabular-nums">{formatRate(fromCurrency, cardCurrency, amt / sourceAmt)}</p>
               )}
+            </div>
+          )}
+          {crossCurrency && from && (
+            <div className="space-y-1.5">
+              <Label htmlFor="pay-fee-amount">{t("transferFeeAmount", { currency: fromCurrency })}</Label>
+              <Input id="pay-fee-amount" inputMode="decimal" type="number" min="0" step="0.01" value={feeAmount} onChange={(e) => setFeeAmount(e.target.value)} placeholder="0.00" />
             </div>
           )}
 

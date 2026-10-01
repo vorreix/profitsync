@@ -144,6 +144,12 @@ describe("autopayEvents", () => {
     expect(autopayEvents([{ ...withStatement, autopaySince: "2026-03-20" }], TODAY, "2026-03-24")).toEqual([])
   })
 
+  it("never debits a payer in another currency — autopay refuses it (MC-026)", () => {
+    // A JPY card owing ¥150,000 paid from a USD bank: subtracting 150,000 from
+    // the dollar balance would invent a $148,000 shortfall.
+    expect(autopayEvents([{ ...withStatement, currency: "JPY", fundingCurrencyMismatch: true }], TODAY, "2026-03-24")).toEqual([])
+  })
+
   it("drops a closed card, autopay off, no funding account, and a settled statement", () => {
     expect(autopayEvents([{ ...withStatement, status: "closed" }], TODAY, "2026-03-24")).toEqual([])
     expect(autopayEvents([{ ...withStatement, autopay: false }], TODAY, "2026-03-24")).toEqual([])
@@ -289,6 +295,16 @@ describe("cardAlerts", () => {
   it("calls it overdue when there is no autopay to blame", () =>{
     const [a] = cardAlerts([card({ id: "c1", statement: stmt({ dueDate: "2026-03-01" }) })], TODAY)
     expect(a.kind).toBe("card_payment_overdue")
+  })
+
+  it("never calls a card covered when its autopay payer holds another currency (MC-026)", () => {
+    // The engine fails such a statement instead of paying it, so until it has
+    // its turn this is the user's own payment to make.
+    const [a] = cardAlerts([card({ id: "c1", autopay: true, currency: "EUR", fundingCurrencyMismatch: true, statement: stmt({ dueDate: "2026-03-12" }) })], TODAY)
+    expect(a.kind).toBe("card_payment_due_soon")
+    // Once the engine has recorded the failure, that is what the rail says.
+    const [failed] = cardAlerts([card({ id: "c1", autopay: true, fundingCurrencyMismatch: true, statement: stmt({ dueDate: "2026-03-01", autopayStatus: "failed", autopayError: "autopay_currency_mismatch" }) })], TODAY)
+    expect(failed.kind).toBe("card_autopay_failed")
   })
 
   it("does not nag a card whose autopay will handle it", () => {
@@ -509,6 +525,29 @@ describe("buildAlerts", () => {
       rules: [rule({ id: "rent", cursor: "2026-06-15" })],
       posted: [],
     })).toEqual([])
+  })
+
+  it("counts a planned transfer out of the bank before the rent it leaves short (MC-148)", () => {
+    // A planned €800 transfer has no ledger rows, so the server replays it as
+    // two native movements; the €300 rent two days later is what can't go through.
+    const t = { kind: "transfer" as const, id: "tr1", name: "Savings" }
+    const alerts = buildAlerts({
+      today: TODAY,
+      accounts: [account({ id: "bank", balanceToday: 1000 }), account({ id: "space", type: "space", balanceToday: 0 })],
+      cards: [],
+      rules: [rule({ id: "rent", amount: 300, anchor: "2026-01-15", cursor: "2026-03-15" })],
+      posted: [],
+      scheduled: [
+        { date: "2026-03-13", accountId: "bank", delta: -800, source: t },
+        { date: "2026-03-13", accountId: "space", delta: 800, source: t },
+      ],
+    })
+    const short = alerts.find((a) => a.kind === "charge_shortfall")
+    expect(short?.params.name).toBe("rent")
+    expect(short?.money).toEqual({ amount: 300, short: 100 })
+    // A shortfall tripped by the transfer itself opens the list it is managed in.
+    const own = shortfallAlerts([{ accountId: "bank", date: "2026-03-13", short: 50, amount: 800, source: t }], [account({ id: "bank" })], TODAY)
+    expect(own[0].link).toBe("/wealth")
   })
 
   it("does not warn about a charge beyond the horizon, but still discounts it from today", () => {

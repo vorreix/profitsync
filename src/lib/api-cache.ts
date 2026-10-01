@@ -8,7 +8,7 @@
 //
 // The three ideas, in the order they matter:
 //
-//  1. SIDE-EFFECTING GETS. Nine routes MATERIALISE money while serving a read:
+//  1. SIDE-EFFECTING GETS. Ten routes MATERIALISE money while serving a read:
 //     they post due recurring transactions, file credit-card statements and run
 //     autopay. Serving one of those from cache and skipping the request means
 //     someone's rent never posts. They may paint from cache, but the request
@@ -66,6 +66,10 @@ export const ALWAYS_FETCH = [
   // screen would keep showing last month's balance until some other page
   // happened to run the materializer.
   "/api/debts",
+  // Posts due recurring rows and runs autopay before converting, because the
+  // wealth page asks for it beside /api/wealth/accounts: read before today's
+  // rent posts, net worth disagreed with the tiles next to it (MC-161).
+  "/api/wealth/summary",
 ] as const
 
 /**
@@ -287,7 +291,15 @@ const FANOUT: { match: RegExp; drop: string[] }[] = [
 
   // Identity: deliberately narrow. The boot-time POST /api/legal/accept used to
   // wipe the whole cache mid-boot, which is why every screen refetched.
-  { match: /^\/api\/(profile|legal)\b/, drop: ["/api/profile", "/api/organizations"] },
+  // The pricing page resolves its currency from the profile's country (the one
+  // checkout bills, MC-109), so a country change makes the cached prices wrong.
+  { match: /^\/api\/(profile|legal)\b/, drop: ["/api/profile", "/api/organizations", "/api/billing/pricing"] },
+  // PATCH /api/organizations/:id can change the REPORTING currency, and every
+  // money read carries figures converted into it. Keeping them would paint last
+  // currency's numbers under the new symbol (MC-038) — so it is a money write.
+  // Before the generic rule below; /members and /switch never reach it. The
+  // pricing page is priced in the org currency too.
+  { match: /^\/api\/organizations\/[^/]+$/, drop: [...MONEY_PREFIXES, "/api/organizations", "/api/profile", "/api/admin/me", "/api/referrals", "/api/quotations", "/api/billing/pricing"] },
   { match: /^\/api\/(organizations|invitations|referrals)\b/, drop: ["/api/organizations", "/api/profile", "/api/admin/me", "/api/referrals", "/api/search", "/api/audit"] },
 ]
 

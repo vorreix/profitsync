@@ -8,7 +8,9 @@ import { fetchBrandPalette } from "../_lib/bank-brand.js"
 import { loadCard, loadCards, resolveFunding, serializeCard } from "../_lib/cards.js"
 import { syncCards } from "../_lib/card-autopay.js"
 import { materializeDueRecurring } from "../_lib/recurring-materialize.js"
+import { reportingCurrencyFor } from "../_lib/fx-rates.js"
 import { createWealthAccount, type CreateAccountInput } from "../_lib/wealth-accounts.js"
+import { normalizeCurrencyCode } from "../../src/lib/money.js"
 import { CARD_TAIL_MAX, CARD_TAIL_MIN, guessNetworkFromName, isCardKind, isCardNetwork, isCardTier, isValidLast4, sanitizeCardDesign } from "../../src/lib/cards.js"
 import { todayIso } from "../../src/lib/recurring.js"
 
@@ -76,6 +78,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       issuer?: { bank_name?: string; brand_domain?: string; logo_url?: string } | null
       autopay?: unknown
       credit?: {
+        currency_code?: string | null
         credit_limit?: number | string
         current_debt?: number | string
         statement_closing_day?: number
@@ -121,6 +124,64 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let fundingIsLiability = false
     if (kind === "credit") {
       const credit = body.credit ?? {}
+      // The card's currency: what the user chose, else the issuing bank's (an
+      // INR bank issues INR cards), else the reporting currency. Kept for good
+      // once the card has history (PATCH may correct it until then).
+      let currencyCode: string
+      try {
+        currencyCode = normalizeCurrencyCode(
+          credit.currency_code != null && credit.currency_code !== ""
+            ? credit.currency_code
+            : bank?.currencyCode || (await reportingCurrencyFor(orgId)),
+        )
+      } catch {
+        return res.status(400).json({ error: "Invalid currency code", code: "invalid_currency", step: "credit" })
+      }
+      // Who pays it: an explicit choice — a bank, cash, or another CARD — else
+      // the bank picked in step 1. resolveFunding is the single place the
+      // (account, card) pair is validated and made consistent. Resolved BEFORE
+      // the liability account exists, so a refusal leaves nothing half-made
+      // (the account being created can't be its own payer yet).
+      let fundingCurrency: string | null = null
+      let defaulted = false
+      if (body.funding_account_id || body.funding_card_id) {
+        const funding = await resolveFunding(orgId, {
+          accountId: body.funding_account_id,
+          cardId: body.funding_card_id,
+          payeeCardId: "",
+          payeeAccountId: "",
+        })
+        if (!funding.ok) return res.status(400).json({ error: funding.error, code: funding.code, step: "credit" })
+        fundingAccountId = funding.accountId
+        fundingCardId = funding.cardId
+        fundingIsLiability = funding.isLiability
+        fundingCurrency = funding.currencyCode
+      } else if (bank) {
+        fundingAccountId = bank.id
+        fundingCurrency = bank.currencyCode || (await reportingCurrencyFor(orgId))
+        defaulted = true
+      }
+
+      // Autopay is OPT-IN: ProfitSync only mirrors money movement the user says
+      // their bank actually makes ("Manual tracking only"). It needs a paying
+      // account that HOLDS money — a card paying a card would compound debt on a
+      // schedule, and refusing it here is also what makes a funding cycle
+      // impossible (a loop needs two unattended payers).
+      if (body.autopay === true && fundingIsLiability) {
+        return res.status(400).json({ error: "A credit card can't pay another card automatically — pay it yourself each month", code: "autopay_liability", step: "credit" })
+      }
+      // ...and one in the CARD'S currency: autopay records a plain transfer, and
+      // a cross-currency one needs the amount that actually arrived, which
+      // nobody is there to type — it would fail on every due date.
+      const currencyMismatch = !!fundingAccountId && fundingCurrency !== currencyCode
+      if (body.autopay === true && currencyMismatch) {
+        return res.status(400).json({ error: "Autopay needs a paying account in the card's currency", code: "autopay_currency_mismatch", step: "credit" })
+      }
+      // The issuing bank is only the DEFAULT payer when it holds the card's
+      // currency; an explicit choice in another currency stays (paying by hand
+      // across currencies is fine — the pay sheet asks what arrived).
+      if (defaulted && currencyMismatch) fundingAccountId = null
+
       const created = await createWealthAccount(orgId, userId, {
         type: "credit_card",
         bank_name: issuerName,
@@ -128,6 +189,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         icon: "card",
         brand_domain: brandDomain,
         logo_url: logoUrl,
+        currency_code: currencyCode,
         credit_limit: credit.credit_limit,
         current_debt: credit.current_debt,
         statement_closing_day: credit.statement_closing_day,
@@ -136,23 +198,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       })
       if (!created.ok) return res.status(created.status).json({ ...created.body, step: "credit" })
       ledgerAccountId = created.row.id
-      // Who pays it: an explicit choice — a bank, cash, or another CARD — else
-      // the bank picked in step 1. resolveFunding is the single place the
-      // (account, card) pair is validated and made consistent.
-      if (body.funding_account_id || body.funding_card_id) {
-        const funding = await resolveFunding(orgId, {
-          accountId: body.funding_account_id,
-          cardId: body.funding_card_id,
-          payeeCardId: "",
-          payeeAccountId: ledgerAccountId,
-        })
-        if (!funding.ok) return res.status(400).json({ error: funding.error, code: funding.code, step: "credit" })
-        fundingAccountId = funding.accountId
-        fundingCardId = funding.cardId
-        fundingIsLiability = funding.isLiability
-      } else {
-        fundingAccountId = bank?.id ?? null
-      }
     } else {
       ledgerAccountId = bank!.id
     }
@@ -160,14 +205,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // ── Brand palette (fail-soft, cached) ────────────────────────────────────
     const palette = brandDomain ? await fetchBrandPalette(brandDomain).catch(() => null) : null
 
-    // Autopay is OPT-IN: ProfitSync only mirrors money movement the user says
-    // their bank actually makes ("Manual tracking only"). It needs a paying
-    // account that HOLDS money — a card paying a card would compound debt on a
-    // schedule, and refusing it here is also what makes a funding cycle
-    // impossible (a loop needs two unattended payers).
-    if (kind === "credit" && body.autopay === true && fundingIsLiability) {
-      return res.status(400).json({ error: "A credit card can't pay another card automatically — pay it yourself each month", code: "autopay_liability", step: "credit" })
-    }
     const autopay = kind === "credit" && !!fundingAccountId && !fundingIsLiability && body.autopay === true
     const [{ maxPos }] = await db.select({ maxPos: max(cards.position) }).from(cards).where(eq(cards.organizationId, orgId))
     const [row] = await db

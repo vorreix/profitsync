@@ -5,6 +5,8 @@ import {
   currencyForCountry,
   detectCountryCode,
   detectDefaultCurrency,
+  getCurrencySymbol,
+  intlCurrencySymbol,
 } from "./currencies"
 
 describe("currencyForCountry", () => {
@@ -68,5 +70,46 @@ describe("detectDefaultCurrency", () => {
       resolvedOptions: () => ({ timeZone: "Europe/Rome" }),
     } as unknown as Intl.DateTimeFormat)
     expect(detectDefaultCurrency()).toBe("EUR")
+  })
+})
+
+describe("getCurrencySymbol", () => {
+  it("never gives another dollar the bare US \"$\" (MC-140)", () => {
+    expect(getCurrencySymbol("USD")).toBe("$")
+    expect(getCurrencySymbol("CAD")).toBe("CA$")
+    expect(getCurrencySymbol("AUD")).toBe("A$")
+    expect(getCurrencySymbol("MXN")).toBe("MX$")
+    // The curated table gave NIO the same "C$" as CAD.
+    expect(getCurrencySymbol("NIO")).not.toBe(getCurrencySymbol("CAD"))
+  })
+
+  it("keeps a currency's own sign when no other currency shares it", () => {
+    // Unchanged input prefixes for single-currency workspaces.
+    for (const [code, sign] of [["EUR", "€"], ["INR", "₹"], ["NGN", "₦"], ["ZAR", "R"], ["THB", "฿"], ["GBP", "£"], ["JPY", "¥"]]) {
+      expect(getCurrencySymbol(code)).toBe(sign)
+    }
+  })
+
+  it("replaces a shared sign with Intl's unambiguous one", () => {
+    expect(getCurrencySymbol("SEK")).toBe("SEK") // "kr" is also DKK, NOK, ISK
+    expect(getCurrencySymbol("CNY")).toBe("CN¥") // "¥" is also JPY
+  })
+
+  it("gives every known currency a different symbol", () => {
+    const symbols = CURRENCY_LIST.map((c) => getCurrencySymbol(c.code))
+    expect(new Set(symbols).size).toBe(symbols.length)
+  })
+
+  it("never throws on a malformed code", () => {
+    expect(getCurrencySymbol("")).toBe("")
+    expect(getCurrencySymbol("not-a-code")).toBe("not-a-code")
+  })
+})
+
+describe("intlCurrencySymbol", () => {
+  it("is the en-US sign formatMoney prints, or the ISO code", () => {
+    expect(intlCurrencySymbol("CAD")).toBe("CA$")
+    expect(intlCurrencySymbol("KWD")).toBe("KWD")
+    expect(intlCurrencySymbol("not-a-code")).toBe("not-a-code")
   })
 })

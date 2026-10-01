@@ -3,7 +3,9 @@ import { and, count, desc, eq, ilike, isNull, or, sql } from "drizzle-orm"
 import { db, serialize } from "../../../src/lib/db/index.js"
 import { clients, organizations, transactions } from "../../../src/lib/db/schema.js"
 import { requireAdminCap } from "../../_lib/admin.js"
-import { expenseSumSql, incomeSumSql } from "../../_lib/tx-sql.js"
+import { trashClients } from "../../_lib/client-trash.js"
+import { ensureRatesForOrg, reportingCurrencyFor } from "../../_lib/fx-rates.js"
+import { expenseSumSqlIn, incomeSumSqlIn, missingRateCountSql } from "../../_lib/tx-sql.js"
 
 const PAGE_SIZE = 30
 const VALID_STATUSES = ["active", "inactive", "archived"]
@@ -47,6 +49,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .from(clients)
       .where(whereClause)
 
+    // Totals exactly as the workspace's own client list computes them
+    // (api/_routes/clients.ts, MC-112): live non-system rows only — a trashed
+    // row or an Opening Balance is no client's income — each converted at its
+    // own date into the reporting currency (`totals_currency`), and a row
+    // with no rate left out and counted in `excluded_count`.
+    const reporting = await reportingCurrencyFor(organization_id)
+    await ensureRatesForOrg(organization_id, reporting).catch(() => undefined)
+
     const rows = await db
       .select({
         id: clients.id,
@@ -61,19 +71,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         onboardDate: clients.onboardDate,
         createdAt: clients.createdAt,
         updatedAt: clients.updatedAt,
-        totalIncoming: incomeSumSql,
-        totalOutgoing: expenseSumSql,
+        totalIncoming: incomeSumSqlIn(reporting),
+        totalOutgoing: expenseSumSqlIn(reporting),
+        totalsCurrency: sql<string>`${reporting}::text`,
+        excludedCount: missingRateCountSql(reporting),
         transactionCount: sql<number>`count(${transactions.id})::int`,
       })
       .from(clients)
-      .leftJoin(transactions, eq(transactions.clientId, clients.id))
+      .leftJoin(transactions, and(eq(transactions.clientId, clients.id), isNull(transactions.deletedAt), eq(transactions.isSystem, false)))
       .where(whereClause)
       .groupBy(clients.id)
       .orderBy(desc(clients.createdAt))
       .limit(PAGE_SIZE)
       .offset(offset)
 
-    return res.json({ data: rows.map(serialize), total, pageSize: PAGE_SIZE })
+    return res.json({ data: rows.map(serialize), total, pageSize: PAGE_SIZE, currency: reporting })
   }
 
   if (req.method === "POST") {
@@ -161,17 +173,45 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!client_id) return res.status(400).json({ error: "client_id is required" })
 
     if (hard) {
-      const result = await db.delete(clients).where(eq(clients.id, client_id)).returning({ id: clients.id })
-      if (!result.length) return res.status(404).json({ error: "Not found" })
-      return res.status(204).end()
+      // The FK cascade deletes the client's rows with no balance reversal, no
+      // transfer header and no debt allocation following them, so a client
+      // carrying any row the ledger owns is refused — the same predicate and
+      // code as api/_routes/admin/transactions.ts, live or trashed (a trashed
+      // transfer leg still has a header). Soft delete it, then purge from the
+      // workspace's Trash. In the WHERE, so the check and the delete are one.
+      const result = await db
+        .delete(clients)
+        .where(and(eq(clients.id, client_id), sql`not exists (
+          select 1 from transactions t
+          where t.client_id = ${client_id}
+            and (t.wealth_account_id is not null or t.transfer_id is not null or t.is_system
+              or exists (select 1 from debt_payments dp
+                where dp.transaction_id = t.id or (t.group_id is not null and dp.group_id = t.group_id)))
+        )`))
+        .returning({ id: clients.id })
+      if (result.length) return res.status(204).end()
+      const [row] = await db.select({ id: clients.id }).from(clients).where(eq(clients.id, client_id)).limit(1)
+      if (!row) return res.status(404).json({ error: "Not found" })
+      return res.status(409).json({
+        error: "This client has rows that move an account balance, a transfer or a debt — move it to Trash and purge it from the workspace instead.",
+        code: "admin_ledger_row_locked",
+      })
     }
 
-    const [updated] = await db
-      .update(clients)
-      .set({ deletedAt: new Date(), updatedAt: new Date() })
-      .where(eq(clients.id, client_id))
-      .returning()
-    if (!updated) return res.status(404).json({ error: "Not found" })
+    // Soft delete takes the client's rows to Trash with it, balances reversed,
+    // exactly as the workspace DELETE does — flagging the client alone left its
+    // rows live in the balances but gone from every report.
+    const [target] = await db
+      .select({ organizationId: clients.organizationId, isOwn: clients.isOwn })
+      .from(clients)
+      .where(and(eq(clients.id, client_id), isNull(clients.deletedAt)))
+    if (!target) return res.status(404).json({ error: "Not found" })
+    if (target.isOwn) return res.status(403).json({ error: "Your own company client can't be deleted." })
+    if (!target.organizationId) return res.status(409).json({ error: "Client organization is missing", code: "organization_missing" })
+    const result = await trashClients(target.organizationId, ctx.userId, [client_id])
+    if (!result.ok) return res.status(result.status).json(result.body)
+    if (!result.ids.length) return res.status(404).json({ error: "Not found" })
+    const [updated] = await db.select().from(clients).where(eq(clients.id, client_id))
     return res.json(serialize(updated))
   }
 

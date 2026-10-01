@@ -15,6 +15,8 @@ import {
   owedByCurrency,
   progressPct,
   requiredMonthly,
+  sumByCurrency,
+  periodsBefore,
   upcomingSchedule,
   type DebtLifecycle,
   type DebtLike,
@@ -27,6 +29,8 @@ import { logAudit } from "./audit.js"
 import { ensureDefaultClient } from "./auth.js"
 import { getOrgPlan } from "./quota.js"
 import { notifyIfBudgetExceeded } from "./notify-budget.js"
+import { currentRate, ensureRatesForOrg } from "./fx-rates.js"
+import { incomeSumSqlIn, missingRateCountSql } from "./tx-sql.js"
 
 // Debt & Loans engine: SQL + orchestration only. Every formula lives in
 // src/lib/debt-math.ts / debt-status.ts (pure, unit-tested); the routes stay thin.
@@ -106,7 +110,9 @@ export function toDebtLike(row: DebtRow): DebtLike {
     paymentAmount: d.paymentAmount == null ? null : toCents(d.paymentAmount),
     frequency: (d.paymentFrequency as PaymentFrequency | null) ?? null,
     nextDueDate: d.nextDueDate,
-    currency: d.currency,
+    // The ledger's authority, so the hub groups by the same currency the
+    // payments and totals are snapshotted in.
+    currency: debtCurrencyOf(row),
   }
 }
 
@@ -186,12 +192,19 @@ export async function loadPayments(orgId: string, accountIds: string[], opts: { 
   return rows.map((r) => r.p)
 }
 
-/** Net monthly income over the last 3 whole months (standard incoming, non-system) — for the debt-payment ratio. */
-async function averageMonthlyIncome(orgId: string, today: string): Promise<number> {
-  const from = addPeriods(`${monthKey(today)}-01`, "monthly", -3)
+/**
+ * Net monthly income over the last 3 whole months (standard incoming,
+ * non-system) — for the debt-payment ratio. Every row is converted AT ITS OWN
+ * DATE into `reporting` (MC-091): a ₹300,000 salary is not 300,000 euros. Rows
+ * with no rate are left out and COUNTED, so the screen can say so. The caller
+ * has already run ensureRatesForOrg.
+ */
+async function averageMonthlyIncome(orgId: string, today: string, reporting: string): Promise<{ amount: number; excludedCount: number }> {
+  // periodsBefore, not addPeriods(…, -3): that wraps January back to "2025--2-01".
+  const from = periodsBefore(`${monthKey(today)}-01`, "monthly", 3)
   const to = `${monthKey(today)}-01`
   const [row] = await db
-    .select({ total: sql<string>`coalesce(sum(${transactions.amount}::numeric), 0)` })
+    .select({ total: incomeSumSqlIn(reporting), excluded: missingRateCountSql(reporting) })
     .from(transactions)
     .innerJoin(clients, eq(transactions.clientId, clients.id))
     .where(
@@ -206,7 +219,24 @@ async function averageMonthlyIncome(orgId: string, today: string): Promise<numbe
         lt(transactions.date, to),
       ),
     )
-  return Math.round((num(row?.total) / 3) * 100) / 100
+  return { amount: Math.round((num(row?.total) / 3) * 100) / 100, excludedCount: num(row?.excluded) }
+}
+
+/**
+ * Latest rate into `reporting` for each debt currency — to RANK debts against
+ * each other (smallest debt, which of two same-day payments is larger), never
+ * to display a figure. A currency with no rate is simply absent, and the
+ * ranking that needs it is skipped.
+ */
+async function rankingRates(currencies: string[], reporting: string): Promise<Map<string, number>> {
+  const out = new Map<string, number>([[reporting, 1]])
+  await Promise.all(
+    [...new Set(currencies)].filter((c) => c !== reporting).map(async (c) => {
+      const r = await currentRate(c, reporting).catch(() => null)
+      if (r && Number(r.rate) > 0) out.set(c, Number(r.rate))
+    }),
+  )
+  return out
 }
 
 /** Everything the Debt Hub renders, in one response. */
@@ -229,19 +259,26 @@ export async function buildDebtsOverview(orgId: string, orgCurrency: string, tod
   const monthStart = `${monthKey(today)}-01`
   const nextMonthStart = addPeriods(monthStart, "monthly", 1)
   const threeMonthsOut = addPeriods(monthStart, "monthly", 3)
-  const [monthPayments, windowPayments, incomeAvg] = await Promise.all([
+  // Rates first (best effort): the income average converts every row at its
+  // own date, and the rankings read today's rate.
+  const ratesReady = ensureRatesForOrg(orgId, orgCurrency).catch(() => undefined)
+  const [monthPayments, windowPayments, income, rates] = await Promise.all([
     loadPayments(orgId, ids, { from: monthStart, to: nextMonthStart }),
     loadPayments(orgId, ids, { from: monthStart, to: threeMonthsOut }),
-    averageMonthlyIncome(orgId, today),
+    ratesReady.then(() => averageMonthlyIncome(orgId, today, orgCurrency)),
+    ratesReady.then(() => rankingRates(owedLike.map((d) => d.currency), orgCurrency)),
   ])
   const owedIds = new Set(owedRows.map((r) => r.account.id))
+  const owedCurrency = new Map(owedLike.map((d) => [d.id, d.currency]))
   const paidThisMonth = new Map<string, number>()
-  let interestThisMonth = 0
+  // Interest is in the currency of the debt it was paid on (MC-089).
+  const interestThisMonth: { currency: string; amount: number }[] = []
   for (const p of monthPayments) {
     if (!owedIds.has(p.wealthAccountId)) continue
     paidThisMonth.set(p.wealthAccountId, (paidThisMonth.get(p.wealthAccountId) ?? 0) + toCents(p.total))
-    interestThisMonth += toCents(p.interest) + toCents(p.fees) + toCents(p.other)
+    interestThisMonth.push({ currency: owedCurrency.get(p.wealthAccountId)!, amount: toCents(p.interest) + toCents(p.fees) + toCents(p.other) })
   }
+  const interestByCurrency = sumByCurrency(interestThisMonth).filter((x) => x.amount > 0)
   const paidByMonth = new Map<string, number>()
   for (const p of windowPayments) {
     const k = `${p.wealthAccountId}:${monthKey(p.date)}`
@@ -251,13 +288,29 @@ export async function buildDebtsOverview(orgId: string, orgCurrency: string, tod
   const estimates = new Map(owedLike.map((d) => [d.id, debtFreeEstimate(d, today)]))
   const open = owedLike.filter(isOpenDebt)
   const obligations = monthObligations(owedLike, today, paidThisMonth)
-  const next = nextPayment(owedLike, today)
+  const next = nextPayment(owedLike, today, rates)
   const required = requiredMonthly(owedLike)
-  const totalRepaid = (await db
-    .select({ total: sql<string>`coalesce(sum(${debtPayments.principal}::numeric), 0)` })
-    .from(debtPayments)
-    .innerJoin(transactions, eq(transactions.id, debtPayments.transactionId))
-    .where(and(eq(debtPayments.organizationId, orgId), isNull(transactions.deletedAt), inArray(debtPayments.wealthAccountId, owedRows.length ? owedRows.map((r) => r.account.id) : ["00000000-0000-0000-0000-000000000000"]))))[0]
+  // Principal repaid over the loans' whole life — CLOSED (archived) loans
+  // included, since paying one off and closing it is exactly when this figure
+  // matters — summed per account, then per the loan's own currency (MC-090).
+  const allLoans = rows.filter((r) => r.account.type === "loan")
+  const repaidByAccount = allLoans.length
+    ? await db
+      .select({ accountId: debtPayments.wealthAccountId, total: sql<string>`coalesce(sum(${debtPayments.principal}::numeric), 0)` })
+      .from(debtPayments)
+      .innerJoin(transactions, eq(transactions.id, debtPayments.transactionId))
+      .where(and(eq(debtPayments.organizationId, orgId), isNull(transactions.deletedAt), inArray(debtPayments.wealthAccountId, allLoans.map((r) => r.account.id))))
+      .groupBy(debtPayments.wealthAccountId)
+    : []
+  const loanCurrency = new Map(allLoans.map((r) => [r.account.id, debtCurrencyOf(r)]))
+  const totalRepaid = sumByCurrency(repaidByAccount.map((x) => ({ currency: loanCurrency.get(x.accountId)!, amount: toCents(num(x.total)) }))).filter((x) => x.amount > 0)
+  const asAmounts = (xs: { currency: string; amount: number }[]) => xs.map((x) => ({ currency: x.currency, amount: fromCents(x.amount) }))
+  // DEPRECATED single-figure fields, kept for store-pinned / stale bundles that
+  // read them unguarded (dashboard DebtsCard + /debts of ≤ v0.14.x) and label
+  // them with the workspace currency: each is the `orgCurrency` PART — never a
+  // sum of parts — or 0 when nothing is in that currency.
+  const inOrgCurrency = (xs: { currency: string; amount: number }[]) => fromCents(xs.find((x) => x.currency === orgCurrency)?.amount ?? 0)
+  const orgMonth = obligations.find((o) => o.currency === orgCurrency)
 
   return {
     today,
@@ -265,29 +318,45 @@ export async function buildDebtsOverview(orgId: string, orgCurrency: string, tod
     debts: owedRows.map((r) => serializeDebt(r, today, withRule(r))),
     receivables: receivableRows.map((r) => serializeDebt(r, today, withRule(r))),
     closed: rows.filter((r) => !!r.account.archivedAt).map((r) => serializeDebt(r, today)),
+    // MONEY IS NEVER SUMMED ACROSS CURRENCIES here (docs/debts/DEBTS.md §2):
+    // every total is a per-currency list in each debt's own currency. The one
+    // converted figure is the income average, which is in `currency` (the
+    // reporting currency) with what it could not convert counted beside it.
     summary: serialize({
       openCount: open.length,
       owedByCurrency: owedByCurrency(owedLike).map((x) => ({ currency: x.currency, amount: fromCents(x.owed) })),
       receivableByCurrency: owedByCurrency(receivableLike).map((x) => ({ currency: x.currency, amount: fromCents(x.owed) })),
-      requiredMonthly: fromCents(required),
+      requiredMonthlyByCurrency: asAmounts(required),
+      requiredMonthly: inOrgCurrency(required), // deprecated aliases: see inOrgCurrency above
       month: {
-        required: fromCents(obligations.required),
-        paid: fromCents(obligations.paid),
-        remaining: fromCents(obligations.remaining),
-        overdue: fromCents(obligations.overdue),
+        required: fromCents(orgMonth?.required ?? 0),
+        paid: fromCents(orgMonth?.paid ?? 0),
+        remaining: fromCents(orgMonth?.remaining ?? 0),
+        overdue: fromCents(orgMonth?.overdue ?? 0),
       },
-      nextPayment: next ? { debtId: next.debt.id, name: next.debt.name, date: next.date, amount: fromCents(next.amount), currency: next.debt.currency } : null,
+      monthByCurrency: obligations.map((o) => ({
+        currency: o.currency,
+        required: fromCents(o.required),
+        paid: fromCents(o.paid),
+        remaining: fromCents(o.remaining),
+        overdue: fromCents(o.overdue),
+      })),
+      nextPayment: next ? { debt_id: next.debt.id, name: next.debt.name, date: next.date, amount: fromCents(next.amount), currency: next.debt.currency } : null,
       overdueCount: owedLike.filter((d) => derivedStatus(d, today) === "overdue").length,
-      interestThisMonth: fromCents(interestThisMonth),
+      interestThisMonthByCurrency: asAmounts(interestByCurrency),
+      interestThisMonth: inOrgCurrency(interestByCurrency),
       debtFreeDate: overallDebtFreeDate(estimates, open),
-      totalRepaid: num(totalRepaid?.total),
-      averageMonthlyIncome: incomeAvg,
-      insights: debtInsights({ debts: owedLike, today, interestPaidThisMonth: interestThisMonth, currency: orgCurrency, estimates }),
+      totalRepaidByCurrency: asAmounts(totalRepaid),
+      totalRepaid: inOrgCurrency(totalRepaid),
+      averageMonthlyIncome: income.amount,
+      averageMonthlyIncomeExcluded: income.excludedCount,
+      insights: debtInsights({ debts: owedLike, today, interestPaidThisMonth: interestByCurrency, estimates, rates }),
     }),
     upcoming: upcomingSchedule(owedLike, today, 3, paidByMonth).map((s) => ({
       debt_id: s.debtId,
       date: s.date,
       amount: fromCents(s.amount),
+      currency: owedCurrency.get(s.debtId)!,
       paid: s.paid,
       paid_amount: fromCents(s.paidAmount),
     })),
@@ -362,7 +431,7 @@ export type SkippedReason = "posted" | "inflight"
 export type RecordPaymentResult =
   | { ok: true; payment: PaymentRow; skipped?: undefined }
   | { ok: true; payment: null; skipped: SkippedReason }
-  | { ok: false; status: number; error: string; code?: string; quota?: unknown }
+  | { ok: false; status: number; error: string; code?: string; quota?: unknown; context?: "debt"; currency?: string }
 
 /**
  * How long a claimed-but-unfinished occurrence is assumed to be someone else's
@@ -422,7 +491,7 @@ export async function recordDebtPayment(orgId: string, userId: string, row: Debt
   const debtCurrency = debtCurrencyOf(row)
   const counterCurrency = counter.currencyCode?.toUpperCase() ?? null
   if (counterCurrency && counterCurrency !== debtCurrency) {
-    return { ok: false, status: 400, error: `This debt is in ${debtCurrency} — pay it from an account in ${debtCurrency}`, code: "currency_mismatch" }
+    return { ok: false, status: 400, error: `This debt is in ${debtCurrency} — pay it from an account in ${debtCurrency}`, code: "currency_mismatch", context: "debt", currency: debtCurrency }
   }
 
   // Resolve the split.
@@ -504,6 +573,10 @@ export async function recordDebtPayment(orgId: string, userId: string, row: Debt
 
   const shifts = new Map<string, number>()
   for (const l of legs) shifts.set(l.accountId, (shifts.get(l.accountId) ?? 0) + balanceDelta(l.type, fromCents(l.amount)))
+  // The debt row is ALWAYS updated, even by an interest-only payment (a zero
+  // shift): that UPDATE is what takes its row lock, and the currency guard on
+  // the allocation insert below is only sound once the lock is held (MC-126).
+  if (!shifts.has(row.account.id)) shifts.set(row.account.id, 0)
 
   const legValues = (l: Leg) => ({
     id: l.id,
@@ -603,7 +676,17 @@ export async function recordDebtPayment(orgId: string, userId: string, row: Debt
       .values({
         id: paymentId,
         organizationId: orgId,
-        wealthAccountId: row.account.id,
+        // CURRENCY GUARD (MC-126). Every leg above is labelled with the currency
+        // read at the start, but the debt's currency can change before this
+        // commits (PATCH /api/debts/:id). This subquery yields NULL when the
+        // debt no longer reads that currency, and NULL violates NOT NULL — which
+        // fails the WHOLE batch (neon-http runs it as one transaction), so no leg
+        // in the old currency lands on a re-denominated debt. It runs after the
+        // debt's balance UPDATE above holds the row lock, so the currency cannot
+        // move between this check and the commit.
+        wealthAccountId: sql`(select ${wealthAccounts.id} from ${wealthAccounts} where ${wealthAccounts.id} = ${row.account.id} and ${
+          row.account.currencyCode ? sql`${wealthAccounts.currencyCode} = ${row.account.currencyCode}` : sql`${wealthAccounts.currencyCode} is null`
+        })`,
         transactionId: legs[0].id,
         groupId,
         date: input.date,
@@ -648,6 +731,12 @@ export async function recordDebtPayment(orgId: string, userId: string, row: Debt
     // orphan leg would sit on the paying account as an outgoing transfer that
     // never moved any money.
     if (input.recurring) await db.delete(transactions).where(eq(transactions.id, legs[0].id)).catch(() => {})
+    // The currency guard on the allocation insert tripped: the debt was moved
+    // to another currency after it was read. Nothing was written; say so.
+    const [live] = await db.select({ currencyCode: wealthAccounts.currencyCode }).from(wealthAccounts).where(eq(wealthAccounts.id, row.account.id))
+    if (live && (live.currencyCode ?? null) !== (row.account.currencyCode ?? null)) {
+      return { ok: false, status: 409, error: "This debt's currency just changed. Reload it and record the payment again.", code: "debt_currency_changed" }
+    }
     throw err
   }
   const payment = (results[rest.length + shifts.size] as PaymentRow[])[0]

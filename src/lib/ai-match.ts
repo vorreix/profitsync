@@ -107,3 +107,69 @@ export function resolveCategory(raw: string | null | undefined, categories: stri
   const q = normalizeName(raw)
   return categories.find((c) => normalizeName(c) === q) ?? null
 }
+
+// ── Accounts and the currency the user stated ────────────────────────────────
+// An amount is saved in its ACCOUNT's currency. "Spent 20 dollars" in a EUR
+// workspace used to land as €20 in the default wallet: the stated currency was
+// never read. These two settle which account the amount belongs to and say when
+// the stated currency contradicts it, so nothing saves 20 into the wrong
+// currency (MC-029).
+
+export type AiAccount = MatchCandidate & { type: string; currency: string }
+
+/** Resolve an account name; the stated currency settles a same-name tie ("Revolut" EUR vs USD). */
+export function resolveAccountName(raw: string | null | undefined, accounts: AiAccount[], currency: string | null): string | null {
+  const m = resolveClientName(raw, accounts)
+  if (m.kind === "match") return m.id
+  if (m.kind === "ambiguous" && currency) {
+    const inCurrency = m.candidates.filter((c) => accounts.find((a) => a.id === c.id)?.currency === currency)
+    if (inCurrency.length === 1) return inCurrency[0].id
+  }
+  return null
+}
+
+/**
+ * With a stated currency:
+ * - an expense/income with NO named account goes to an account in that
+ *   currency (cash first; never silently a credit card);
+ * - `pin` = keep `accountId` past the form's fill line: it holds the stated
+ *   currency, so swapping in a default wallet of another currency would save
+ *   the figure in the wrong one;
+ * - `doubt` when the amount would be saved in an account of another currency,
+ *   no account holds that currency at all, or an account was `named` but did
+ *   not resolve (a tie the currency could not settle) — never substitute one
+ *   the user did not name.
+ * A workspace whose accounts all share the stated currency is left alone, so a
+ * single-currency workspace parses exactly as before.
+ */
+export function settleStatedCurrency(input: {
+  currency: string | null
+  kind: "standard" | "refund" | "transfer"
+  accountId: string | null
+  toAccountId: string | null
+  accounts: AiAccount[]
+  /** An account name was given, whether or not it resolved. */
+  named?: boolean
+}): { accountId: string | null; pin: boolean; doubt: boolean } {
+  const { currency, kind, accountId, toAccountId, accounts, named = false } = input
+  const keep = { accountId, pin: false, doubt: false }
+  if (!currency) return keep
+  const currencyOf = (id: string | null) => (id ? accounts.find((a) => a.id === id)?.currency ?? null : null)
+  const held = accounts.some((a) => a.currency === currency)
+  const allHeld = accounts.every((a) => a.currency === currency)
+
+  if (kind === "transfer") {
+    // Either side may carry the stated amount (what leaves, or what arrives).
+    const known = [currencyOf(accountId), currencyOf(toAccountId)].filter((c): c is string => c != null)
+    return { ...keep, doubt: !held || (known.length === 2 && !known.includes(currency)) }
+  }
+  if (accountId) {
+    const same = currencyOf(accountId) === currency
+    return { ...keep, pin: same && !allHeld, doubt: !same }
+  }
+  if (allHeld) return keep
+  if (named) return { ...keep, doubt: true }
+  const inCurrency = accounts.filter((a) => a.currency === currency && a.type !== "credit_card")
+  const pick = inCurrency.find((a) => a.type === "cash") ?? inCurrency[0]
+  return pick ? { accountId: pick.id, pin: true, doubt: false } : { ...keep, doubt: true }
+}

@@ -3,8 +3,8 @@ import { and, asc, eq, isNull } from "drizzle-orm"
 import { db } from "../../../src/lib/db/index.js"
 import { budgets, budgetHistory, clients } from "../../../src/lib/db/schema.js"
 import { requireAuth, isPersonalAccount } from "../../_lib/auth.js"
-import { spendForWindows } from "../../_lib/budget-spend.js"
-import { ensureRatesForOrg, reportingCurrencyFor } from "../../_lib/fx-rates.js"
+import { capCurrency, inCapCurrency, spendForWindows } from "../../_lib/budget-spend.js"
+import { ensureRatesInto, reportingCurrencyFor } from "../../_lib/fx-rates.js"
 import { amountAt, isBudgetPeriod, todayUtc, windowsBack, type BudgetPeriod } from "../../../src/lib/budget.js"
 import { historyFor, listBudgets, primaryBudget, seriesFor, SERIES_BACK, toV1Period } from "../../_lib/spending-budgets.js"
 import {
@@ -68,11 +68,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       is_default: true,
       current: { amount: primary.amount, period },
       currency: primary.currency,
-      excluded_count: primary.excluded_count,
+      // Across every window shown, as on the business path: the page reads it
+      // as the chart's total (and those windows are left out of adherence).
+      excluded_count: series.reduce((s, p) => s + p.excluded_count, 0),
       timeline: history.map((h) => ({ amount: h.amount, period: h.period, action: h.action, created_at: h.createdAt })),
       has_series: windows.length > 0,
       series,
-      adherence: adherence(series),
+      // A window whose spend left rows out (no rate) is not judged (MC-082).
+      adherence: adherence(series.filter((p) => !p.excluded_count)),
       evolution: evolution(history),
       creep: detectCreep(history),
     })
@@ -91,18 +94,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // is not viewable here — its history/spend shouldn't surface.
   if (clientId && !clientRow) return res.status(404).json({ error: "Client not found" })
 
-  const historyRows = await db
-    .select()
-    .from(budgetHistory)
-    .where(and(eq(budgetHistory.organizationId, orgId), clientId ? eq(budgetHistory.clientId, clientId) : isNull(budgetHistory.clientId)))
-    .orderBy(asc(budgetHistory.createdAt))
-
-  const history: HistoryRow[] = historyRows.map((h) => ({
+  const [historyRows, reporting] = await Promise.all([
+    db
+      .select()
+      .from(budgetHistory)
+      .where(and(eq(budgetHistory.organizationId, orgId), clientId ? eq(budgetHistory.clientId, clientId) : isNull(budgetHistory.clientId)))
+      .orderBy(asc(budgetHistory.createdAt)),
+    reportingCurrencyFor(orgId),
+  ])
+  // The cap, its series and the history the insights read are all in the
+  // cap's OWN currency (the reporting one when it was set, or now when there is
+  // no cap yet). A snapshot from an earlier life of the cap in another currency
+  // stays on the timeline with its own label but never feeds creep/evolution.
+  const currency = capCurrency(budgetRow, reporting)
+  const timeline = historyRows.map((h) => ({
     amount: Number(h.amount),
     period: (isBudgetPeriod(h.period) ? h.period : "monthly") as BudgetPeriod,
     action: h.action as BudgetAction,
     createdAt: (h.createdAt ?? new Date(0)).toISOString(),
+    currency: inCapCurrency(h.currencyCode, currency) ? currency : h.currencyCode!.toUpperCase(),
   }))
+  const history: HistoryRow[] = timeline.filter((h) => h.currency === currency)
 
   // No budget yet for a valid client (or the default) is fine — the detail page is
   // also where you *set* one, so return an empty-but-valid payload (current: null)
@@ -113,13 +125,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // budget, or the personal org's whole-workspace budget. The business default
   // (null client) is a template with no single spend → timeline only.
   const tracksSpend = period !== "lifetime" && (clientId !== null || personal)
-  // The cap and its series are in the workspace's reporting currency, each row
-  // converted at its own date; rows with no rate are counted per window.
-  const reporting = await reportingCurrencyFor(orgId)
+  // The series is in the cap's currency (spendForWindows joins the client's
+  // cap), each row converted at its own date; rows with no rate are counted per window.
   let series: (ReturnType<typeof buildSeries>[number] & { excluded_count?: number })[] = []
   let excludedTotal = 0
   if (tracksSpend) {
-    await ensureRatesForOrg(orgId, reporting).catch(() => undefined)
+    await ensureRatesInto(orgId, [currency])
     const windows = periodBoundaries(period, LOOKBACK[period], new Date())
     const { spent: spentByStart, excluded } = await spendForWindows(orgId, clientId, windows, reporting)
     series = buildSeries(windows, spentByStart, history).map((p) => ({ ...p, excluded_count: excluded[p.start] ?? 0 }))
@@ -133,12 +144,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     is_own: clientRow?.isOwn ?? false,
     is_default: !clientId,
     current: budgetRow ? { amount: Number(budgetRow.amount), period } : null,
-    currency: reporting,
+    currency,
     excluded_count: excludedTotal,
-    timeline: history.map((h) => ({ amount: h.amount, period: h.period, action: h.action, created_at: h.createdAt })),
+    timeline: timeline.map((h) => ({ amount: h.amount, period: h.period, action: h.action, created_at: h.createdAt, currency: h.currency })),
     has_series: tracksSpend,
     series,
-    adherence: adherence(series),
+    // A window whose spend left rows out (no rate) is not judged (MC-082).
+    adherence: adherence(series.filter((p) => !p.excluded_count)),
     evolution: evolution(history),
     creep: detectCreep(history),
   })

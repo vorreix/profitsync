@@ -5,7 +5,7 @@ import { useAuth } from "@clerk/clerk-react"
 import { toast } from "sonner"
 import { ArrowRight, CalendarClock, Paperclip, X, Zap } from "lucide-react"
 import { apiErrorMessage, apiErrorUpgradeHint, apiGet, apiPost } from "@/lib/api"
-import { amountExceedsLimit, transferAmounts } from "@/lib/money"
+import { AmountError, amountExceedsLimit, transferAmounts, type AmountField } from "@/lib/money"
 import { availableCredit, isLiabilityType } from "@/lib/credit-card"
 import { ACCEPT_ATTR, attachmentsListPath, uploadAttachment, validateFile } from "@/lib/attachments-client"
 import type { WealthAccount } from "@/lib/types"
@@ -113,7 +113,9 @@ export function TransferWizard({
   // becomes the user's the moment they touch it — a bank rarely gives the
   // market rate, and what gets stored is what they actually got.
   const [rateEdited, setRateEdited] = useState(false)
-  const [marketRate, setMarketRate] = useState<{ rate: string; rate_date: string; stale: boolean } | null>(null)
+  // Tagged with the pair it was quoted for: a rate outliving its pair would be
+  // applied to the next one in the same effect flush as the reset below.
+  const [marketRate, setMarketRate] = useState<{ pair: string; rate: string; rate_date: string; stale: boolean } | null>(null)
   const [rateMissing, setRateMissing] = useState(false)
   const [feeAmount, setFeeAmount] = useState("")
   const [date, setDate] = useState(today())
@@ -151,6 +153,21 @@ export function TransferWizard({
   const toForRate = active.find((a) => a.id === toId)
   const pairFrom = fromForRate?.currency_code ?? currency
   const pairTo = toForRate?.currency_code ?? currency
+  const pairKey = `${pairFrom}>${pairTo}`
+  // Only the CURRENT pair's quote counts (see marketRate).
+  const pairRate = marketRate?.pair === pairKey ? marketRate : null
+
+  // A new currency pair voids what was typed as "received" — 51,350 INR is not
+  // 51,350 USD — and the old pair's rate, so the suggestion starts over (MC-065).
+  // An edit used to survive the switch and be recorded at a nonsense rate.
+  useEffect(() => {
+    setRateEdited(false)
+    setDestinationAmount("")
+    setMarketRate(null)
+  }, [pairFrom, pairTo])
+  // The fee is typed in the SOURCE's currency: a new source voids it (a 5 EUR
+  // fee is not 5 INR). A new destination alone leaves it alone.
+  useEffect(() => { setFeeAmount("") }, [pairFrom])
 
   // Today's rate for this pair, so the form can propose what will arrive.
   useEffect(() => {
@@ -161,7 +178,7 @@ export function TransferWizard({
         const token = await getToken()
         if (!token) return
         const r = await apiGet<{ rate: string; rate_date: string; stale: boolean }>(`/api/fx/rate?from=${pairFrom}&to=${pairTo}`, token)
-        if (!cancelled) { setMarketRate(r); setRateMissing(false) }
+        if (!cancelled) { setMarketRate({ ...r, pair: `${pairFrom}>${pairTo}` }); setRateMissing(false) }
       } catch {
         // No rate for this pair: the form simply asks for both amounts.
         if (!cancelled) { setMarketRate(null); setRateMissing(true) }
@@ -172,11 +189,11 @@ export function TransferWizard({
 
   // Keep the suggestion in step with the amount until the user overrides it.
   useEffect(() => {
-    if (rateEdited || !marketRate || pairFrom === pairTo) return
+    if (rateEdited || !pairRate || pairFrom === pairTo) return
     const sent = Number(amount)
     if (!Number.isFinite(sent) || sent <= 0) { setDestinationAmount(""); return }
-    setDestinationAmount((sent * Number(marketRate.rate)).toFixed(2))
-  }, [amount, marketRate, rateEdited, pairFrom, pairTo])
+    setDestinationAmount((sent * Number(pairRate.rate)).toFixed(2))
+  }, [amount, pairRate, rateEdited, pairFrom, pairTo])
 
   const from = active.find((a) => a.id === fromId)
   const to = active.find((a) => a.id === toId)
@@ -184,10 +201,23 @@ export function TransferWizard({
   const toCurrency = to?.currency_code ?? currency
   const crossCurrency = !!from && !!to && fromCurrency !== toCurrency
   let transferPreview: ReturnType<typeof transferAmounts> | null = null
+  let amountProblem: AmountError | null = null
   try {
     if (amount) transferPreview = transferAmounts({ sourceAmount: amount, destinationAmount: crossCurrency ? destinationAmount : undefined, sourceFeeAmount: feeAmount, sourceCurrency: fromCurrency, destinationCurrency: toCurrency })
-  } catch { /* incomplete form */ }
-  const amt = parseFloat(amount)
+  } catch (e) {
+    // Say WHY Next is disabled (MC-I01: "10.555" blocked it in silence), under
+    // the field at fault — but a blank field is just an unfinished form.
+    const typed: Record<AmountField, string> = { source: amount, destination: destinationAmount, fee: feeAmount }
+    if (e instanceof AmountError && typed[e.field].trim()) amountProblem = e
+  }
+  const problemFor = (field: AmountField) => (amountProblem?.field === field ? t(`apiErrors.${amountProblem.code}`, { ns: "translation" }) : null)
+  const fieldError = (field: AmountField, id: string) => {
+    const message = problemFor(field)
+    return message ? <p id={`${id}-error`} className="text-xs text-destructive">{message}</p> : null
+  }
+  const invalidProps = (field: AmountField, id: string) =>
+    problemFor(field) ? { "aria-invalid": true, "aria-describedby": `${id}-error` } : {}
+  const fromSymbol = currencySymbol(fromCurrency)
   const amountValid = transferPreview !== null
   const feeNumber = Number(transferPreview?.sourceFeeAmount ?? 0)
   // Everything that leaves the source: principal + fee, in the source's currency.
@@ -196,11 +226,13 @@ export function TransferWizard({
   // A credit card's balance is NEGATIVE by design (it is what you owe), so the
   // plain comparison would flag every amount as "insufficient funds" the moment
   // a card can be the source. What is short on a liability is CREDIT, not cash.
+  // Measured against everything that leaves — the fee too (MC-134: €98 + €5
+  // fee from €100 raised no warning and left the wallet at −€3).
   const overBalance =
     from && amountValid
       ? isLiabilityType(from.type)
-        ? amt > (availableCredit(from.credit_limit, from.current_balance) ?? Infinity)
-        : amt > Number(from.current_balance)
+        ? sourceTotal > (availableCredit(from.credit_limit, from.current_balance) ?? Infinity)
+        : sourceTotal > Number(from.current_balance)
       : false
 
   function onPickFiles(e: React.ChangeEvent<HTMLInputElement>) {
@@ -287,7 +319,7 @@ export function TransferWizard({
             <div className="space-y-3">
               <Label htmlFor="tr-amount" className="sr-only">{t("transferAmount")}</Label>
               <div className="relative">
-                <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-2xl font-semibold text-muted-foreground">{currencySymbol(fromCurrency)}</span>
+                <span className="pointer-events-none absolute start-4 top-1/2 -translate-y-1/2 text-2xl font-semibold text-muted-foreground">{fromSymbol}</span>
                 <Input
                   id="tr-amount"
                   inputMode="decimal"
@@ -297,18 +329,24 @@ export function TransferWizard({
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
                   placeholder="0.00"
-                  className="h-16 pl-11 text-center text-3xl font-bold tabular-nums"
+                  className="h-16 text-center text-3xl md:text-3xl font-bold tabular-nums"
+                  // The prefix is 1–5 characters ("$" … "F CFA"): pad for its
+                  // real width so a long one never sits on top of the figure.
+                  style={{ paddingInlineStart: `calc(${fromSymbol.length}ch + 1.25rem)` }}
                   autoFocus
+                  {...invalidProps("source", "tr-amount")}
                 />
               </div>
+              {fieldError("source", "tr-amount")}
               {crossCurrency && (
                 <>
                   <div className="space-y-1.5">
                     <Label htmlFor="tr-destination-amount">{t("transferReceivedAmount", { currency: toCurrency })}</Label>
-                    <Input id="tr-destination-amount" inputMode="decimal" type="number" min="0" step="0.01" value={destinationAmount} onChange={(e) => { setRateEdited(true); setDestinationAmount(e.target.value) }} placeholder="0.00" />
-                    {marketRate && !rateEdited && (
+                    <Input id="tr-destination-amount" inputMode="decimal" type="number" min="0" step="0.01" value={destinationAmount} onChange={(e) => { setRateEdited(true); setDestinationAmount(e.target.value) }} placeholder="0.00" {...invalidProps("destination", "tr-destination-amount")} />
+                    {fieldError("destination", "tr-destination-amount")}
+                    {pairRate && !rateEdited && (
                       <p className="text-xs text-muted-foreground">
-                        {marketRate.stale ? t("rateSuggestedStale", { date: formatDateLabel(marketRate.rate_date) }) : t("rateSuggested")}
+                        {pairRate.stale ? t("rateSuggestedStale", { date: formatDateLabel(pairRate.rate_date) }) : t("rateSuggested")}
                       </p>
                     )}
                     {rateMissing && <p className="text-xs text-muted-foreground">{t("rateUnavailable")}</p>}
@@ -320,7 +358,8 @@ export function TransferWizard({
               )}
               <div className="space-y-1.5">
                 <Label htmlFor="tr-fee-amount">{t("transferFeeAmount", { currency: fromCurrency })}</Label>
-                <Input id="tr-fee-amount" inputMode="decimal" type="number" min="0" step="0.01" value={feeAmount} onChange={(e) => setFeeAmount(e.target.value)} placeholder="0.00" />
+                <Input id="tr-fee-amount" inputMode="decimal" type="number" min="0" step="0.01" value={feeAmount} onChange={(e) => setFeeAmount(e.target.value)} placeholder="0.00" {...invalidProps("fee", "tr-fee-amount")} />
+                {fieldError("fee", "tr-fee-amount")}
               </div>
               {overBalance && <p className="text-center text-xs text-amber-600 dark:text-amber-500">{t("insufficientFunds")}</p>}
               <div className="flex items-center justify-center gap-2 pt-1">
@@ -401,7 +440,7 @@ export function TransferWizard({
                 <div className="flex items-center justify-between gap-2">
                   <Label className="flex items-center gap-1.5"><Paperclip className="size-3.5" /> {t("attachments")}</Label>
                   <input ref={fileRef} type="file" multiple accept={ACCEPT_ATTR} className="hidden" onChange={onPickFiles} />
-                  <Button size="sm" variant="outline" type="button" disabled={when === "schedule"} onClick={() => fileRef.current?.click()}>{t("addFiles")}</Button>
+                  <Button size="sm" variant="outline" type="button" className="h-11 sm:h-8" disabled={when === "schedule"} onClick={() => fileRef.current?.click()}>{t("addFiles")}</Button>
                 </div>
                 {/* A plan has no ledger rows yet, so there is nothing to attach a file to. */}
                 {when === "schedule" && <p className="text-xs text-muted-foreground">{t("attachmentsAfterCompletion")}</p>}
@@ -414,7 +453,7 @@ export function TransferWizard({
                           <p className="truncate text-xs font-medium">{file.name}</p>
                           <p className="text-xs text-muted-foreground">{formatFileSize(file.size)}</p>
                         </div>
-                        <Button variant="ghost" size="icon" className="size-7 shrink-0 text-muted-foreground hover:text-destructive" onClick={() => setPendingFiles((p) => p.filter((_, j) => j !== i))}>
+                        <Button variant="ghost" size="icon" className="size-11 shrink-0 text-muted-foreground hover:text-destructive sm:size-7" onClick={() => setPendingFiles((p) => p.filter((_, j) => j !== i))}>
                           <X className="size-3.5" />
                         </Button>
                       </div>
@@ -429,13 +468,13 @@ export function TransferWizard({
         <DialogFooter className="shrink-0 border-t px-6 pb-6 pt-3">
           {step === 1 ? (
             <>
-              <Button variant="outline" onClick={() => onOpenChange(false)}>{t("cancel")}</Button>
-              <Button onClick={() => setStep(2)} disabled={!accountsValid || !amountValid}>{t("next")}</Button>
+              <Button variant="outline" className="h-11 sm:h-9" onClick={() => onOpenChange(false)}>{t("cancel")}</Button>
+              <Button className="h-11 sm:h-9" onClick={() => setStep(2)} disabled={!accountsValid || !amountValid}>{t("next")}</Button>
             </>
           ) : (
             <>
-              <Button variant="outline" onClick={() => setStep(1)} disabled={saving}>{t("back")}</Button>
-              <Button onClick={submit} disabled={saving}>{saving ? t("transferring") : when === "schedule" ? t("scheduleTransfer") : t("transferNow")}</Button>
+              <Button variant="outline" className="h-11 sm:h-9" onClick={() => setStep(1)} disabled={saving}>{t("back")}</Button>
+              <Button className="h-11 sm:h-9" onClick={submit} disabled={saving}>{saving ? t("transferring") : when === "schedule" ? t("scheduleTransfer") : t("transferNow")}</Button>
             </>
           )}
         </DialogFooter>

@@ -99,7 +99,9 @@ export function SummaryCard({
         >
           {headline != null && (
             <span className="min-w-0 ps-2">
-              <span className={cn("block truncate text-base font-bold tabular-nums sm:text-lg", headlineClass)}>{headline}</span>
+              {/* Wraps rather than truncates: a per-currency total ("₹900,000.00 + €24,820.00 + $10,000.00")
+                  cut off at a phone's width hid whole currencies (MC-144). */}
+              <span className={cn("block break-words text-base font-bold tabular-nums sm:text-lg", headlineClass)}>{headline}</span>
               {subline != null && <span className="block truncate text-[11px] text-muted-foreground">{subline}</span>}
             </span>
           )}

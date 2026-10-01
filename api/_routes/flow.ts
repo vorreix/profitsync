@@ -6,7 +6,7 @@ import { isPersonalAccount, requireAuth } from "../_lib/auth.js"
 import { materializeDueRecurring } from "../_lib/recurring-materialize.js"
 import { logoDataUrl } from "../../src/lib/logo-data.js"
 import { ensureRatesForOrg, reportingCurrencyFor } from "../_lib/fx-rates.js"
-import { accountBalanceInSql, expenseSumSqlIn, incomeSumSqlIn, missingRateCountSql, pnlKindFilter } from "../_lib/tx-sql.js"
+import { accountBalanceInSql, expenseSumSqlIn, incomeSumSqlIn, missingRateCountSql, pnlKindFilter, reportingAmountSql } from "../_lib/tx-sql.js"
 
 // SQL for "the account's display name" — reused to label leaves with the
 // account the money moved through (to/from).
@@ -163,6 +163,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         type: transactions.type,
         amount: transactions.amount,
         currencyCode: transactions.currencyCode,
+        reportingAmount: reportingAmountSql(reporting),
         description: transactions.description,
         category: transactions.category,
         date: sql<string>`${transactions.date}::text`,
@@ -187,6 +188,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       type: l.type,
       amount: Number(l.amount),
       currency_code: l.currencyCode,
+      // Converted at the row's date (null = no rate): what lets the canvas add the
+      // legs of a split that spans currencies without adding them raw.
+      reporting_amount: l.reportingAmount == null ? null : Number(l.reportingAmount),
       description: l.description,
       category: l.category,
       date: l.date,
@@ -230,6 +234,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           type: transactions.type,
           amount: transactions.amount,
           currencyCode: transactions.currencyCode,
+          reportingAmount: reportingAmountSql(reporting),
           description: transactions.description,
           category: transactions.category,
           date: sql<string>`${transactions.date}::text`,
@@ -293,6 +298,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         type: l.type,
         amount: Number(l.amount),
         currency_code: l.currencyCode,
+        reporting_amount: l.reportingAmount == null ? null : Number(l.reportingAmount),
         description: l.description,
         category: l.category,
         date: l.date,
@@ -394,6 +400,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         type: transactions.type,
         amount: transactions.amount,
         currencyCode: transactions.currencyCode,
+        reportingAmount: reportingAmountSql(reporting),
         description: transactions.description,
         category: transactions.category,
         date: sql<string>`${transactions.date}::text`,
@@ -455,6 +462,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       type: l.type,
       amount: Number(l.amount),
       currency_code: l.currencyCode,
+      reporting_amount: l.reportingAmount == null ? null : Number(l.reportingAmount),
       description: l.description,
       category: l.category,
       date: l.date,
