@@ -6,6 +6,7 @@ import { canDelete, canWrite, requireAuth } from "../../_lib/auth.js"
 import { diffFields, logAudit } from "../../_lib/audit.js"
 import { ensureRatesInto, reportingCurrencyFor } from "../../_lib/fx-rates.js"
 import { amountAt, budgetWindow, todayUtc, windowsBack } from "../../../src/lib/budget.js"
+import { moneyRefusal } from "../../../src/lib/money.js"
 import {
   auditedAmount,
   budgetCurrency,
@@ -87,6 +88,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const parsed = parseBudgetInput(req.body, true)
     if (!parsed.ok) return res.status(400).json({ error: parsed.error })
     const v = parsed.value
+
+    // A restated limit, as typed, to the budget currency's decimals (MC-031);
+    // the dialog resends an unchanged one, which stays as it is.
+    const typedAmount = (req.body as { amount?: unknown } | undefined)?.amount
+    if (v.amount !== undefined && Number(typedAmount) !== Number(current.amount)) {
+      const badAmount = moneyRefusal(current.currency_code ?? (await reportingCurrencyFor(orgId)), typedAmount)
+      if (badAmount) return res.status(400).json(badAmount)
+    }
 
     const parentId = v.parent_id !== undefined ? v.parent_id : current.parent_id
     if (parentId === id) return res.status(400).json({ error: "parent_is_self" })

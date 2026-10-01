@@ -7,7 +7,7 @@ import { DEFAULT_CASH_NAME } from "../../../_lib/wealth-accounts.js"
 import { diffFields, logAudit } from "../../../_lib/audit.js"
 import { type AppearanceInput, pickAppearance } from "../../../_lib/account-appearance.js"
 import { type BankDetailInput, pickBankDetails, resolveLogoColumns } from "../../../_lib/bank-brand.js"
-import { amountExceedsLimit, normalizeCurrencyCode } from "../../../../src/lib/money.js"
+import { amountExceedsLimit, moneyRefusal, normalizeCurrencyCode, selectableCurrencyCode } from "../../../../src/lib/money.js"
 import { logoDataUrl } from "../../../../src/lib/logo-data.js"
 import { checkBankAccountQuota, checkCreditCardQuota } from "../../../_lib/quota.js"
 import { cardDebt, isLiabilityType, isValidDayOfMonth, signedBalanceFromDebt } from "../../../../src/lib/credit-card.js"
@@ -15,6 +15,7 @@ import { cards } from "../../../../src/lib/db/schema.js"
 import { cardsFundedBy, creditCardIdFor, openCardsOnAccount, syncCardStatusWithAccount } from "../../../_lib/cards.js"
 import { currencyLockRefs, withCurrencyLock } from "../../../_lib/account-currency-lock.js"
 import { accountCurrencyLockReason } from "../../../../src/lib/account-currency-lock.js"
+import { reportingCurrencyFor } from "../../../_lib/fx-rates.js"
 
 function money(value: unknown): number {
   const n = Number(value)
@@ -96,6 +97,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // (src/lib/account-currency-lock.ts); re-asserted in the write below.
       const reason = currencyCode !== account.currencyCode ? accountCurrencyLockReason(account) : null
       if (reason) return currencyLocked(reason, account.currencyCode)
+      // A currency it moves TO is one new money may be created in (not KWD,
+      // whose third decimal the columns can't keep); its own always passes, and
+      // so does the workspace's, which POST accepts for a new account.
+      if (!(selectableCurrencyCode(currencyCode, account.currencyCode) ?? selectableCurrencyCode(currencyCode, await reportingCurrencyFor(orgId)))) {
+        return res.status(400).json({ error: "Invalid currency code", code: "invalid_currency" })
+      }
     }
     let currentBalance = body.currentBalance ?? body.current_balance
     if (isCard && body.current_debt !== undefined) {
@@ -104,6 +111,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       currentBalance = signedBalanceFromDebt(debt)
     }
     if (currentBalance !== undefined && amountExceedsLimit(currentBalance)) return res.status(400).json({ error: "Amount is too large" })
+    // To the (new) currency's decimals, so the Balance Adjustment row and the
+    // balance store the same figure (MC-047) — but only what this request
+    // changes: the edit dialog resends both, and a legacy ¥1,500.50 balance
+    // must still take a rename (MC-031).
+    const restated = (value: unknown, stored: unknown) =>
+      value !== undefined && (currencyCode !== account.currencyCode || Number(value) !== Number(stored)) ? value : undefined
+    // A card's debt is checked AS TYPED: signedBalanceFromDebt rounds to cents,
+    // so checking its result let a $10.555 debt be stored as $10.56 with a 200.
+    const balanceAsTyped = isCard && body.current_debt !== undefined
+      ? restated(body.current_debt, cardDebt(account.currentBalance))
+      : restated(currentBalance, account.currentBalance)
+    const badAmount = moneyRefusal(currencyCode, balanceAsTyped, isCard ? restated(body.credit_limit, account.creditLimit) : undefined)
+    if (badAmount) return res.status(400).json(badAmount)
     // Card configuration (cards only). Changing the closing day only affects
     // FUTURE filings; statements already on record are immutable history.
     const cardPatch: { creditLimit?: string; statementClosingDay?: number; paymentDueDay?: number } = {}

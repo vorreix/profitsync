@@ -15,6 +15,7 @@
 // short-circuit when nothing is due), so lists and balances are correct before
 // they render — no cron required.
 
+import Decimal from "decimal.js"
 import { and, eq, lte, sql } from "drizzle-orm"
 import { db } from "../../src/lib/db/index.js"
 import { cards, recurringRules, transactions, wealthAccounts } from "../../src/lib/db/schema.js"
@@ -27,6 +28,8 @@ import { logAudit } from "./audit.js"
 import { createNotification } from "./notifications.js"
 import { notifyIfBudgetExceeded } from "./notify-budget.js"
 import { createTransfer } from "./wealth-accounts.js"
+import { ensureHistoricalRates } from "./fx-rates.js"
+import { moneyDecimals } from "../../src/lib/money.js"
 
 export type MaterializeResult = { created: number; skipped: string[] }
 
@@ -116,6 +119,7 @@ export async function materializeDueRecurring(orgId: string): Promise<Materializ
         const accountIds = [rule.wealthAccountId, isTransfer ? rule.toAccountId : null].filter((x): x is string => !!x)
         let accountOk = true
         let sourceCurrency: string | null = null
+        let destinationCurrency: string | null = null
         for (const acctId of accountIds) {
           const [account] = await db
             .select({ id: wealthAccounts.id, archivedAt: wealthAccounts.archivedAt, currencyCode: wealthAccounts.currencyCode })
@@ -123,6 +127,7 @@ export async function materializeDueRecurring(orgId: string): Promise<Materializ
             .where(and(eq(wealthAccounts.id, acctId), eq(wealthAccounts.organizationId, orgId)))
           if (!account || account.archivedAt) { accountOk = false; break }
           if (acctId === rule.wealthAccountId) sourceCurrency = account.currencyCode
+          else destinationCurrency = account.currencyCode
         }
         if (!accountOk) {
           await setRuleError(rule.id, { error: "Account is archived or missing — pick another account", code: "account_archived" })
@@ -198,19 +203,44 @@ export async function materializeDueRecurring(orgId: string): Promise<Materializ
               .where(and(eq(transactions.recurringRuleId, rule.id), eq(transactions.recurringDueDate, dueDate)))
               .limit(1)
             if (!existingOccurrence) {
+              // Across currencies (MC-159) the rule holds what LEAVES, in its
+              // own (the source's) currency; what arrives is that amount at the
+              // occurrence date's rate — never a figure frozen when the rule was
+              // made — and the transfer records it as a provider rate. No rate
+              // for that date: the rule pauses at this occurrence like any other
+              // refusal and re-tries on the next run.
+              let destinationAmount: string | undefined
+              const toCurrency: string = destinationCurrency ?? rule.currencyCode
+              if (toCurrency !== rule.currencyCode) {
+                const rate = await rateOnDate(rule.currencyCode, toCurrency, dueDate)
+                if (!rate) {
+                  await setRuleError(rule.id, {
+                    error: `No ${rule.currencyCode} to ${toCurrency} exchange rate for ${dueDate} yet — this auto-save runs once there is one`,
+                    code: "autosave_rate_unavailable",
+                    from: rule.currencyCode,
+                    to: toCurrency,
+                  })
+                  result.skipped.push(rule.name)
+                  blocked = true
+                  break
+                }
+                destinationAmount = autoSaveReceivedAmount(rule.amount, rate, toCurrency)
+              }
               const transfer = await createTransfer(orgId, rule.createdBy ?? "system", {
                 fromAccountId: rule.wealthAccountId,
                 toAccountId: rule.toAccountId,
                 amount: rule.amount,
+                destinationAmount,
+                rateSource: destinationAmount ? "provider" : undefined,
                 date: dueDate,
                 descriptions: { out: rule.name, in: rule.name },
                 recurringRuleId: rule.id,
                 recurringDueDate: dueDate,
-                // The amount is in the rule's currency, and an auto-save moves it
-                // unchanged: an account on either side whose currency has since
-                // changed is refused by name instead of booked in the wrong money.
+                // Each side in the currency it was read in: an account whose
+                // currency has since changed is refused by name instead of
+                // booked in the wrong money.
                 sourceCurrency: rule.currencyCode,
-                destinationCurrency: rule.currencyCode,
+                destinationCurrency: toCurrency,
               })
               if (!transfer.ok) {
                 // The transfer service's own refusal body: its code is translated already.
@@ -358,6 +388,31 @@ export async function materializeDueRecurring(orgId: string): Promise<Materializ
   }
 
   return result
+}
+
+/**
+ * What a cross-currency auto-save delivers (MC-159): the rule's source amount
+ * at the rate, rounded half-up to the destination's writable decimals
+ * (moneyDecimals: its minor unit, at most the ledger's 2 — whole yen). Pure; createTransfer then
+ * validates it like any typed amount, so one that rounds to nothing is refused
+ * with its own code instead of booking zero.
+ */
+export function autoSaveReceivedAmount(sourceAmount: Decimal.Value, rate: Decimal.Value, destinationCurrency: string): string {
+  // The same scale createTransfer validates it against, by construction.
+  const digits = moneyDecimals(destinationCurrency)
+  return new Decimal(sourceAmount).times(rate).toDecimalPlaces(digits, Decimal.ROUND_HALF_UP).toFixed(digits)
+}
+
+/**
+ * The rate an auto-save occurrence converts at: the stored rate for that day by
+ * fx_rate_on — the one per-day definition every report converts a row with,
+ * including how far a rate may be carried over a weekend — after making sure
+ * that day has been fetched. Null when there is none: never 1, never a guess.
+ */
+async function rateOnDate(from: string, to: string, date: string): Promise<string | null> {
+  await ensureHistoricalRates(from, to, date).catch(() => undefined)
+  const { rows } = await db.execute(sql`select fx_rate_on(${from}, ${to}, ${date}::date)::text as rate`)
+  return (rows as Array<{ rate: string | null }>)[0]?.rate ?? null
 }
 
 /**

@@ -15,8 +15,17 @@ import { convertAmount, currentRate, ensureRatesForOrg, reportingCurrencyFor, ty
 
 const num2 = (d: Decimal) => d.toDecimalPlaces(2).toNumber()
 
-export async function buildWealthSummary(orgId: string): Promise<WealthSummary> {
-  const reporting = await reportingCurrencyFor(orgId)
+/**
+ * THE current valuation (MC-100): /wealth, net worth and the money-flow root
+ * balance all read it, so the same balance can never be worth two amounts on
+ * two screens. Today's rates come only from currentRate() — never from a SQL
+ * fx_rate_on(current_date), which may pick a different snapshot of the day.
+ *
+ * `known.reporting`: the caller (GET /api/flow) already resolved the reporting
+ * currency AND ran ensureRatesForOrg into it, so neither is repeated here.
+ */
+export async function buildWealthSummary(orgId: string, known?: { reporting: string }): Promise<WealthSummary> {
+  const reporting = known?.reporting ?? (await reportingCurrencyFor(orgId))
   const rows = await db
     .select({
       id: wealthAccounts.id,
@@ -41,7 +50,7 @@ export async function buildWealthSummary(orgId: string): Promise<WealthSummary> 
     )
 
   // Rates: best effort, then one lookup per foreign currency.
-  await ensureRatesForOrg(orgId, reporting).catch(() => undefined)
+  if (!known) await ensureRatesForOrg(orgId, reporting).catch(() => undefined)
   const currencies = [...new Set(rows.map((r) => (r.currencyCode ?? reporting).toUpperCase()))]
   const rates = new Map<string, RateLookup | null>()
   for (const cur of currencies) rates.set(cur, cur === reporting ? { base: cur, quote: reporting, rate: "1", rateDate: new Date().toISOString().slice(0, 10), provider: "identity", stale: false } : await currentRate(cur, reporting).catch(() => null))

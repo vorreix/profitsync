@@ -3,7 +3,7 @@ import { and, eq, isNull } from "drizzle-orm"
 import { db, serialize } from "../../src/lib/db/index.js"
 import { budgetHistory, budgets, clients, spendingBudgets } from "../../src/lib/db/schema.js"
 import { canWrite, isPersonalAccount, requireAuth } from "../_lib/auth.js"
-import { amountExceedsLimit, isCurrencyCode, normalizeCurrencyCode } from "../../src/lib/money.js"
+import { amountExceedsLimit, isCurrencyCode, moneyRefusal, normalizeCurrencyCode, selectableCurrencyCode } from "../../src/lib/money.js"
 import { isBudgetPeriod, todayUtc, type BudgetPeriod } from "../../src/lib/budget.js"
 import { budgetChangeAction } from "../../src/lib/budget-history.js"
 import { capCurrency, capWriteCurrency, excludedFor, outgoingByClient, spentFor } from "../_lib/budget-spend.js"
@@ -104,6 +104,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (amt > 0 && primary && primary.currency !== typedIn) {
         return res.status(409).json({ error: `This budget is kept in ${primary.currency}; enter the amount in ${primary.currency}`, code: "currency_mismatch", currency: primary.currency })
       }
+      // To the currency's decimals — none for ¥ (MC-031). A remove (0) always passes.
+      const badAmount = moneyRefusal(typedIn, amount)
+      if (badAmount) return res.status(400).json(badAmount)
+      // A NEW budget is new money: not in a currency whose third decimal the
+      // columns can't keep, unless it is the workspace's own.
+      if (amt > 0 && !primary && !selectableCurrencyCode(typedIn, reporting)) return res.status(400).json({ error: "Invalid currency code", code: "invalid_currency" })
       if (amt === 0) {
         if (primary) {
           await db.delete(spendingBudgets).where(and(eq(spendingBudgets.id, primary.id), eq(spendingBudgets.organizationId, orgId)))
@@ -156,6 +162,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (amt > 0 && !writeCurrency) {
       return res.status(409).json({ error: `This budget is kept in ${currencyCode}; enter the amount in ${currencyCode}`, code: "currency_mismatch", currency: currencyCode })
     }
+    // To the cap currency's decimals (MC-031). A remove (0) always passes.
+    const badAmount = moneyRefusal(currencyCode, amount)
+    if (badAmount) return res.status(400).json(badAmount)
+    // A NEW cap is new money: a selectable currency, or the workspace's own.
+    if (amt > 0 && !existing && !selectableCurrencyCode(currencyCode, reporting)) return res.status(400).json({ error: "Invalid currency code", code: "invalid_currency" })
 
     // Append-only history snapshot (best-effort — like logAudit, a failure here must
     // never block the budget save). Keyed by (org, client) so it survives a remove.

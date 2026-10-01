@@ -4,7 +4,7 @@ import { useAuth } from "@clerk/clerk-react"
 import { toast } from "sonner"
 import { AlertTriangle, ArrowRight, CreditCard } from "lucide-react"
 import { apiErrorMessage, apiPost } from "@/lib/api"
-import { amountExceedsLimit } from "@/lib/money"
+import { amountExceedsLimit, amountInputProps } from "@/lib/money"
 import { isLiabilityType } from "@/lib/credit-card"
 import { usableCards, useCards } from "@/lib/use-cards"
 import type { CreditCardSummary, WealthAccount } from "@/lib/types"
@@ -252,13 +252,11 @@ export function PayCardSheet({
               <Label htmlFor="pay-amount" className="sr-only">{t("payAmount")}</Label>
               <Input
                 id="pay-amount"
-                inputMode="decimal"
                 type="number"
                 min="0"
-                step="0.01"
+                {...amountInputProps(cardCurrency)}
                 value={amount}
                 onChange={(e) => { setAmount(e.target.value); setPreset("other") }}
-                placeholder="0.00"
                 className="h-16 text-center text-3xl md:text-3xl font-bold tabular-nums"
                 // The prefix is 1–5 characters ("$" … "F CFA"): pad for its real width.
                 style={{ paddingInlineStart: `calc(${symbol.length}ch + 1.25rem)` }}
@@ -271,7 +269,7 @@ export function PayCardSheet({
           {crossCurrency && from && (
             <div className="space-y-1.5">
               <Label htmlFor="pay-source-amount">{t("payAmountLeaving", { account: accountDisplayName(from), currency: fromCurrency })}</Label>
-              <Input id="pay-source-amount" inputMode="decimal" type="number" min="0" step="0.01" value={sourceAmount} onChange={(e) => setSourceAmount(e.target.value)} placeholder="0.00" />
+              <Input id="pay-source-amount" type="number" min="0" {...amountInputProps(fromCurrency)} value={sourceAmount} onChange={(e) => setSourceAmount(e.target.value)} />
               {sourceValid && amountValid && (
                 <p className="text-xs text-muted-foreground tabular-nums">{formatRate(fromCurrency, cardCurrency, amt / sourceAmt)}</p>
               )}
@@ -280,7 +278,7 @@ export function PayCardSheet({
           {crossCurrency && from && (
             <div className="space-y-1.5">
               <Label htmlFor="pay-fee-amount">{t("transferFeeAmount", { currency: fromCurrency })}</Label>
-              <Input id="pay-fee-amount" inputMode="decimal" type="number" min="0" step="0.01" value={feeAmount} onChange={(e) => setFeeAmount(e.target.value)} placeholder="0.00" />
+              <Input id="pay-fee-amount" type="number" min="0" {...amountInputProps(fromCurrency)} value={feeAmount} onChange={(e) => setFeeAmount(e.target.value)} />
             </div>
           )}
 

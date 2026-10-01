@@ -6,7 +6,7 @@ import { canWrite, ensureDefaultClient, isPersonalAccount, requireAuth } from ".
 import { checkTransactionQuota, checkTransactionTagQuota } from "../_lib/quota.js"
 import { logAudit } from "../_lib/audit.js"
 import { balanceDelta } from "../../src/lib/wealth-ledger.js"
-import { amountExceedsLimit } from "../../src/lib/money.js"
+import { amountExceedsLimit, moneyRefusal } from "../../src/lib/money.js"
 import { materializeDueRecurring } from "../_lib/recurring-materialize.js"
 import { notifyIfBudgetExceeded } from "../_lib/notify-budget.js"
 import { cleanTransactionTags } from "../../src/lib/transaction-tags.js"
@@ -460,6 +460,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // forever, and change meaning with the next reporting change. Same refusal
     // as PATCH.
     if (!account.currencyCode) return res.status(409).json({ error: "Account currency migration is incomplete", code: "currency_missing" })
+    // To the account currency's decimals (none for ¥): the row's numeric(20,2)
+    // would round 1.235 while the balance below adds it unrounded (MC-047).
+    const badAmount = moneyRefusal(account.currencyCode, amount)
+    if (badAmount) return res.status(400).json(badAmount)
 
     // Personal accounts have a single hidden default client that every
     // transaction anchors to; the client picker isn't shown, so resolve it here.

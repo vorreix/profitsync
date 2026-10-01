@@ -2,14 +2,13 @@ import { describe, expect, it } from "vitest"
 import { and, eq } from "drizzle-orm"
 import { readFileSync } from "node:fs"
 import { db } from "../../src/lib/db/index.js"
-import { transactions, wealthAccounts } from "../../src/lib/db/schema.js"
+import { transactions } from "../../src/lib/db/schema.js"
+import * as txSql from "./tx-sql.js"
 import {
-  accountBalanceInSql,
   expenseSumSql,
   expenseSumSqlIn,
   incomeSumSql,
   incomeSumSqlIn,
-  missingAccountRateCountSql,
   missingRateCountSql,
   nativeSummarySql,
   pnlKindFilter,
@@ -115,16 +114,13 @@ describe("tx-sql — an account's own figures stay native (MC-009)", () => {
   })
 })
 
-describe("tx-sql — a wealth account's balance converts at TODAY's rate", () => {
-  const { sql, params } = db
-    .select({ balance: accountBalanceInSql("INR"), missing: missingAccountRateCountSql("INR") })
-    .from(wealthAccounts)
-    .toSQL()
-
-  it("uses current_date, not a row date — today's market rate is filed under today", () => {
-    expect(sql).toMatch(/reporting_amount\(("wealth_accounts"\.)?"current_balance"::numeric, ("wealth_accounts"\.)?"currency_code", current_date, \$\d+\)/)
-    expect(sql).toMatch(/fx_rate_on\(("wealth_accounts"\.)?"currency_code", \$\d+, current_date\) is null/)
-    expect(params).toEqual(["INR", "INR", "INR"])
+describe("tx-sql — no second 'today' valuation path (MC-100)", () => {
+  // Today's balances are valued ONLY by buildWealthSummary (currentRate). A SQL
+  // fx_rate_on(current_date) can pick a different snapshot of the same day, and
+  // money flow once showed a balance $1.54 away from /wealth's net worth (MC-FL01).
+  it("exports no current_date conversion", () => {
+    expect(Object.keys(txSql)).not.toContain("accountBalanceInSql")
+    expect(readFileSync("api/_lib/tx-sql.ts", "utf8")).not.toMatch(/current_date/)
   })
 })
 
@@ -162,10 +158,53 @@ describe("every P&L aggregate route uses the shared expressions", () => {
     })
   }
 
-  it("the money-flow root balance converts every account at today's rate", () => {
+  it("the money-flow root balance IS /wealth's net worth — one valuation path, both modes", () => {
+    // Intentional (MC-FL01/MC-092): it therefore also leaves out settled debts
+    // (paid off / refinanced / written off) exactly as net worth does — a
+    // written-off loan's leftover balance is not "fixed" back into the flow.
     const src = readFileSync("api/_routes/flow.ts", "utf8")
-    expect(src).toMatch(/accountBalanceInSql\(reporting\)/)
-    // No raw sum of current_balance across accounts survives.
-    expect(src).not.toMatch(/reduce\(\(s(um)?, a\) => s(um)? \+ Number\(a\.current\)/)
+    expect(src.match(/buildWealthSummary\(orgId, \{ reporting \}\)/g)).toHaveLength(2)
+    expect(src).toMatch(/const balanceT = wealthT\.net_worth/)
+    expect(src).toMatch(/const balance = wealth\.net_worth/)
+    // No SQL conversion of a balance at today's date, and no raw sum of current_balance.
+    expect(src).not.toMatch(/current_date/)
+    expect(src).not.toMatch(/reduce\(\(s(um)?, a\) => s(um)? \+ Number\(a\.current/)
+  })
+})
+
+describe("fx_rate_on (mig 0078) — the lookup every converted figure goes through", () => {
+  // Executed against the dev DB in a rolled-back transaction when written; this
+  // pins the rules so a later CREATE OR REPLACE cannot quietly drop one.
+  const src = readFileSync("drizzle/0078_fx_rate_lookup.sql", "utf8")
+  const fxRateOn = src.slice(src.indexOf("CREATE OR REPLACE FUNCTION fx_rate_on"), src.indexOf("--> statement-breakpoint"))
+
+  it("looks at BOTH directions in one candidate set, the inverse inverted (MC-098)", () => {
+    expect(fxRateOn).toMatch(/s\.base_currency = p_from AND s\.quote_currency = p_to/)
+    expect(fxRateOn).toMatch(/SELECT 1 \/ s\.rate,[\s\S]*s\.base_currency = p_to AND s\.quote_currency = p_from/)
+    expect(fxRateOn).toMatch(/UNION ALL/)
+    expect(fxRateOn).not.toMatch(/COALESCE/)
+  })
+
+  it("never carries a rate more than 10 days (MC-099) — both directions", () => {
+    // Floor from the earlier of the row's date and today: a future-dated row
+    // still gets today's rate, a past one never one older than 10 days.
+    expect(fxRateOn.match(/s\.rate_date BETWEEN least\(p_on, current_date\) - 10 AND p_on/g)).toHaveLength(2)
+    // A carried-forward fill is dated on the day it FILLS — carried again by the
+    // window it would pass a rate up to 20 days old, so it counts on its own day only.
+    expect(fxRateOn.match(/AND \(NOT s\.is_fallback OR s\.rate_date = p_on\)/g)).toHaveLength(2)
+    expect(fxRateOn).not.toMatch(/rate_date <= p_on/)
+  })
+
+  it("newest date first, then manual, then real over fill, then the strong side, then direct, then newest fetch", () => {
+    // The strong side (stored >= 1) keeps the provider's digits; an old weak-side
+    // row (IDR->USD 0.000056) has two significant ones.
+    expect(fxRateOn).toMatch(/SELECT s\.rate, s\.rate AS stored,/)
+    expect(fxRateOn).toMatch(/SELECT 1 \/ s\.rate, s\.rate,/)
+    expect(fxRateOn).toMatch(/ORDER BY c\.rate_date DESC, \(c\.source_type = 'manual'\) DESC, c\.is_fallback ASC, \(c\.stored >= 1\) DESC, c\.direct DESC, c\.fetched_at DESC\s+LIMIT 1/)
+  })
+
+  it("both functions stay STABLE SQL and PARALLEL SAFE; NULL currency keeps its meaning (MC-123)", () => {
+    expect(src.match(/LANGUAGE sql STABLE PARALLEL SAFE/g)).toHaveLength(2)
+    expect(src).toMatch(/WHEN p_from IS NULL OR p_to IS NULL OR p_from = p_to THEN p_amount/)
   })
 })

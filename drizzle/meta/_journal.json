@@ -547,6 +547,20 @@
       "when": 1790815334618,
       "tag": "0077_entity_currencies",
       "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1790851641542,
+      "tag": "0078_fx_rate_lookup",
+      "breakpoints": true
+    },
+    {
+      "idx": 79,
+      "version": "7",
+      "when": 1790852584046,
+      "tag": "0079_transfer_from_card",
+      "breakpoints": true
     }
   ]
 }

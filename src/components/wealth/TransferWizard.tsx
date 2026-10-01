@@ -5,7 +5,7 @@ import { useAuth } from "@clerk/clerk-react"
 import { toast } from "sonner"
 import { ArrowRight, CalendarClock, Paperclip, X, Zap } from "lucide-react"
 import { apiErrorMessage, apiErrorUpgradeHint, apiGet, apiPost } from "@/lib/api"
-import { AmountError, amountExceedsLimit, transferAmounts, type AmountField } from "@/lib/money"
+import { AmountError, amountExceedsLimit, amountInputProps, moneyDecimals, transferAmounts, type AmountField } from "@/lib/money"
 import { availableCredit, isLiabilityType } from "@/lib/credit-card"
 import { ACCEPT_ATTR, attachmentsListPath, uploadAttachment, validateFile } from "@/lib/attachments-client"
 import type { WealthAccount } from "@/lib/types"
@@ -192,7 +192,8 @@ export function TransferWizard({
     if (rateEdited || !pairRate || pairFrom === pairTo) return
     const sent = Number(amount)
     if (!Number.isFinite(sent) || sent <= 0) { setDestinationAmount(""); return }
-    setDestinationAmount((sent * Number(pairRate.rate)).toFixed(2))
+    // To the received currency's decimals: a ¥ suggestion with cents would be refused.
+    setDestinationAmount((sent * Number(pairRate.rate)).toFixed(moneyDecimals(pairTo)))
   }, [amount, pairRate, rateEdited, pairFrom, pairTo])
 
   const from = active.find((a) => a.id === fromId)
@@ -322,13 +323,11 @@ export function TransferWizard({
                 <span className="pointer-events-none absolute start-4 top-1/2 -translate-y-1/2 text-2xl font-semibold text-muted-foreground">{fromSymbol}</span>
                 <Input
                   id="tr-amount"
-                  inputMode="decimal"
                   type="number"
                   min="0"
-                  step="0.01"
+                  {...amountInputProps(fromCurrency)}
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
-                  placeholder="0.00"
                   className="h-16 text-center text-3xl md:text-3xl font-bold tabular-nums"
                   // The prefix is 1–5 characters ("$" … "F CFA"): pad for its
                   // real width so a long one never sits on top of the figure.
@@ -342,7 +341,7 @@ export function TransferWizard({
                 <>
                   <div className="space-y-1.5">
                     <Label htmlFor="tr-destination-amount">{t("transferReceivedAmount", { currency: toCurrency })}</Label>
-                    <Input id="tr-destination-amount" inputMode="decimal" type="number" min="0" step="0.01" value={destinationAmount} onChange={(e) => { setRateEdited(true); setDestinationAmount(e.target.value) }} placeholder="0.00" {...invalidProps("destination", "tr-destination-amount")} />
+                    <Input id="tr-destination-amount" type="number" min="0" {...amountInputProps(toCurrency)} value={destinationAmount} onChange={(e) => { setRateEdited(true); setDestinationAmount(e.target.value) }} {...invalidProps("destination", "tr-destination-amount")} />
                     {fieldError("destination", "tr-destination-amount")}
                     {pairRate && !rateEdited && (
                       <p className="text-xs text-muted-foreground">
@@ -358,7 +357,7 @@ export function TransferWizard({
               )}
               <div className="space-y-1.5">
                 <Label htmlFor="tr-fee-amount">{t("transferFeeAmount", { currency: fromCurrency })}</Label>
-                <Input id="tr-fee-amount" inputMode="decimal" type="number" min="0" step="0.01" value={feeAmount} onChange={(e) => setFeeAmount(e.target.value)} placeholder="0.00" {...invalidProps("fee", "tr-fee-amount")} />
+                <Input id="tr-fee-amount" type="number" min="0" {...amountInputProps(fromCurrency)} value={feeAmount} onChange={(e) => setFeeAmount(e.target.value)} {...invalidProps("fee", "tr-fee-amount")} />
                 {fieldError("fee", "tr-fee-amount")}
               </div>
               {overBalance && <p className="text-center text-xs text-amber-600 dark:text-amber-500">{t("insufficientFunds")}</p>}

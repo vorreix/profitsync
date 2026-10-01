@@ -1660,7 +1660,9 @@
     "accountCount_other": "{{count}} Konten",
     "shareOfAssetsLabel": "{{share}} des Vermögens",
     "currencyNotIncluded_one": "{{currency}} ist nicht in der Summe enthalten — es liegt noch kein Wechselkurs vor",
-    "currencyNotIncluded_other": "{{currency}} sind nicht in der Summe enthalten — es liegen noch keine Wechselkurse vor"
+    "currencyNotIncluded_other": "{{currency}} sind nicht in der Summe enthalten — es liegen noch keine Wechselkurse vor",
+    "completeTransferTitle": "Überweisung als erledigt markieren",
+    "completeTransferDesc": "Banken rechnen oft zu ihrem eigenen Kurs um. Trage ein, was tatsächlich angekommen ist und welche Gebühr berechnet wurde."
   },
   "errorBoundary": {
     "title": "Etwas ist schiefgelaufen",
@@ -2064,7 +2066,12 @@
     "amountReceived": "Kommt an bei {{account}} ({{currency}})",
     "currencyLabel": "Währung",
     "currencyHint": "Dieser Sparraum führt sein Geld in dieser Währung. Sie lässt sich später nicht ändern.",
-    "autoSaveNoAccount": "Automatisches Sparen braucht ein Bank- oder Bargeldkonto in {{currency}}, der Währung dieses Sparraums."
+    "autoSaveNoAccount": "Automatisches Sparen braucht ein Bank- oder Bargeldkonto in {{currency}}, der Währung dieses Sparraums.",
+    "autoSaveEstimate": "≈ {{amount}} in diesen Sparraum zum heutigen Kurs. Jede automatische Sparrate wird zum Kurs ihres eigenen Datums umgerechnet.",
+    "autoSaveEstimateStale": "≈ {{amount}} in diesen Sparraum zum Kurs vom {{date}}. Jede automatische Sparrate wird zum Kurs ihres eigenen Datums umgerechnet.",
+    "autoSaveNoRate": "Für {{from}} zu {{to}} gibt es noch keinen Wechselkurs. Jede automatische Sparrate wartet, bis einer vorliegt.",
+    "autoSaveNoSourceAccount": "Automatisches Sparen braucht ein Bank- oder Bargeldkonto, von dem gespart wird.",
+    "autoSavePaused": "Pausiert: {{reason}}"
   },
   "notifications": {
     "title": "Benachrichtigungen",
@@ -3298,6 +3305,9 @@
     "recurring_debt_missing": "Die Schuld, die hiermit getilgt wird, existiert nicht mehr.",
     "recurring_debt_inactive": "Die Schuld, die hiermit getilgt wird, ist nicht aktiv, daher wurde nichts bezahlt.",
     "autopay_not_recorded": "Die Kartenzahlung konnte nicht erfasst werden. Bitte manuell zahlen.",
-    "autopay_interrupted": "Die Kartenzahlung wurde unterbrochen, bevor sie erfasst wurde. Prüfe die Karte und zahle bei Bedarf manuell."
+    "autopay_interrupted": "Die Kartenzahlung wurde unterbrochen, bevor sie erfasst wurde. Prüfe die Karte und zahle bei Bedarf manuell.",
+    "rate_limited": "Zu viele Wechselkursabfragen. Versuche es in einer Minute erneut.",
+    "amount_whole_units": "Diese Währung hat keine Nachkommastellen – gib einen ganzen Betrag ein.",
+    "autosave_rate_unavailable": "Für das Datum dieser automatischen Sparrate gibt es noch keinen Wechselkurs von {{from}} zu {{to}}. Sie wird ausgeführt, sobald einer vorliegt."
   }
 }

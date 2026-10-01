@@ -10,6 +10,7 @@ import { syncCards } from "../_lib/card-autopay.js"
 import { materializeDueRecurring } from "../_lib/recurring-materialize.js"
 import { reportingCurrencyFor } from "../_lib/fx-rates.js"
 import { createWealthAccount, type CreateAccountInput } from "../_lib/wealth-accounts.js"
+import { newAccountRefusal } from "../_lib/new-account-money.js"
 import { normalizeCurrencyCode } from "../../src/lib/money.js"
 import { CARD_TAIL_MAX, CARD_TAIL_MIN, guessNetworkFromName, isCardKind, isCardNetwork, isCardTier, isValidLast4, sanitizeCardDesign } from "../../src/lib/cards.js"
 import { todayIso } from "../../src/lib/recurring.js"
@@ -91,11 +92,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const kind = body.kind
 
     // ── The linked bank: an existing active bank, or one created inline ──────
+    const reporting = await reportingCurrencyFor(orgId)
+    const newBank = body.new_bank && typeof body.new_bank === "object" ? body.new_bank : null
     let bank: typeof wealthAccounts.$inferSelect | null = null
-    if (body.new_bank && typeof body.new_bank === "object") {
-      const created = await createWealthAccount(orgId, userId, { ...body.new_bank, type: "bank" })
-      if (!created.ok) return res.status(created.status).json({ ...created.body, step: "bank" })
-      bank = created.row
+    if (newBank) {
+      // Its currency and opening balance, to that currency's decimals (MC-031).
+      const refused = newAccountRefusal(newBank, reporting)
+      if (refused) return res.status(400).json({ ...refused, step: "bank" })
     } else if (body.account_id) {
       const [row] = await db
         .select()
@@ -104,6 +107,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!row) return res.status(400).json({ error: "Select an active bank account" })
       if (row.type !== "bank") return res.status(400).json({ error: "A card links to a bank account" })
       bank = row
+    }
+
+    // ── A credit card's currency and money — refused BEFORE the inline bank
+    // below is created: a 400 after it left a stray bank behind, and the
+    // wizard's retry (which resends new_bank) made a second one or hit the
+    // free plan's bank quota. The card's currency: what the user chose, else
+    // the issuing bank's (an INR bank issues INR cards), else the reporting
+    // currency. Kept for good once the card has history (PATCH may correct it
+    // until then).
+    const credit = body.credit ?? {}
+    let currencyCode = reporting
+    if (kind === "credit") {
+      try {
+        currencyCode = normalizeCurrencyCode(credit.currency_code || (newBank ? newBank.currency_code : bank?.currencyCode) || reporting)
+      } catch {
+        return res.status(400).json({ error: "Invalid currency code", code: "invalid_currency", step: "credit" })
+      }
+      // A new card is new money: a currency whose decimals the columns keep,
+      // and its limit, debt and statement to those decimals (MC-031).
+      const refused = newAccountRefusal({ currency_code: currencyCode, credit_limit: credit.credit_limit, current_debt: credit.current_debt, statement: credit.statement }, reporting)
+      if (refused) return res.status(400).json({ ...refused, step: "credit" })
+    }
+
+    if (newBank) {
+      const created = await createWealthAccount(orgId, userId, { ...newBank, type: "bank" })
+      if (!created.ok) return res.status(created.status).json({ ...created.body, step: "bank" })
+      bank = created.row
     }
     if (kind === "debit" && !bank) return res.status(400).json({ error: "A debit card needs a bank account" })
 
@@ -123,20 +153,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // worth recording, but never something to do unattended.
     let fundingIsLiability = false
     if (kind === "credit") {
-      const credit = body.credit ?? {}
-      // The card's currency: what the user chose, else the issuing bank's (an
-      // INR bank issues INR cards), else the reporting currency. Kept for good
-      // once the card has history (PATCH may correct it until then).
-      let currencyCode: string
-      try {
-        currencyCode = normalizeCurrencyCode(
-          credit.currency_code != null && credit.currency_code !== ""
-            ? credit.currency_code
-            : bank?.currencyCode || (await reportingCurrencyFor(orgId)),
-        )
-      } catch {
-        return res.status(400).json({ error: "Invalid currency code", code: "invalid_currency", step: "credit" })
-      }
       // Who pays it: an explicit choice — a bank, cash, or another CARD — else
       // the bank picked in step 1. resolveFunding is the single place the
       // (account, card) pair is validated and made consistent. Resolved BEFORE
@@ -158,7 +174,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         fundingCurrency = funding.currencyCode
       } else if (bank) {
         fundingAccountId = bank.id
-        fundingCurrency = bank.currencyCode || (await reportingCurrencyFor(orgId))
+        fundingCurrency = bank.currencyCode || reporting
         defaulted = true
       }
 

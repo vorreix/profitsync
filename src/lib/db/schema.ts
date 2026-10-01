@@ -258,6 +258,9 @@ export const transfers = pgTable("transfers", {
   transferDate: date("transfer_date").notNull(),
   note: text("note").notNull().default(""),
   reversesTransferId: uuid("reverses_transfer_id"),
+  // The card a planned/pending transfer was planned with: completing it posts
+  // the outgoing leg then, and needs it (mig 0079, MC-147).
+  fromCardId: uuid("from_card_id").references(() => cards.id, { onDelete: "set null" }),
   completedAt: timestamp("completed_at"),
   deletedAt: timestamp("deleted_at"),
   createdBy: text("created_by"),

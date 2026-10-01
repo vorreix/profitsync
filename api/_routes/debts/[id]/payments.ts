@@ -1,11 +1,11 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { serialize } from "../../../../src/lib/db/index.js"
 import { canWrite, requireAuth } from "../../../_lib/auth.js"
-import { drivingRule, loadDebt, loadDebtRules, loadPayments, recordDebtPayment, serializeDebt } from "../../../_lib/debts.js"
+import { debtCurrencyOf, drivingRule, loadDebt, loadDebtRules, loadPayments, recordDebtPayment, serializeDebt } from "../../../_lib/debts.js"
 import { periodsPerYearForRule } from "../../../../src/lib/debt-recurring.js"
 import type { FrequencyUnit } from "../../../../src/lib/recurring.js"
 import { advancesScheduleByDefault } from "../../../../src/lib/debt-recurring.js"
-import { amountExceedsLimit } from "../../../../src/lib/money.js"
+import { amountExceedsLimit, moneyRefusal } from "../../../../src/lib/money.js"
 import { todayIso } from "../../../../src/lib/recurring.js"
 
 /**
@@ -45,6 +45,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
     const parts = { principal: opt("principal"), interest: opt("interest"), fees: opt("fees"), other: opt("other") }
     for (const v of Object.values(parts)) if (typeof v === "number" && (Number.isNaN(v) || v < 0)) return res.status(400).json({ error: "Split amounts must be 0 or more" })
+    // The total and every part as typed, to the debt currency's decimals (none
+    // for ¥): the legs are stored to cents (MC-031).
+    const badAmount = moneyRefusal(debtCurrencyOf(row), b.amount ?? b.total, b.principal, b.interest, b.fees, b.other)
+    if (badAmount) return res.status(400).json(badAmount)
 
     // Does moving the due date make sense? While a recurring repayment is live
     // the RULE owns the schedule, so a payment recorded by hand is an EXTRA one

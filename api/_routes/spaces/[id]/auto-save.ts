@@ -6,6 +6,7 @@ import { canWrite, isPersonalAccount, requireAuth } from "../../../_lib/auth.js"
 import { validateRuleInput, type RecurringRuleInput } from "../../../_lib/recurring-validate.js"
 import { materializeDueRecurring } from "../../../_lib/recurring-materialize.js"
 import { monthlyEquivalent, type SpaceFrequencyUnit } from "../../../../src/lib/spaces.js"
+import { moneyRefusal } from "../../../../src/lib/money.js"
 
 // /api/spaces/:id/auto-save — the ONE recurring auto-save (a kind='transfer'
 // recurring rule) that funds this Space from a chosen bank/cash account on a
@@ -84,7 +85,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!source || source.type === "space") return res.status(400).json({ error: "Choose an active bank or cash account to save from" })
     if (source.id === id) return res.status(400).json({ error: "Source and destination must differ" })
     if (!source.currencyCode || !space.currencyCode) return res.status(409).json({ error: "Currency migration is incomplete", code: "currency_missing" })
-    if (source.currencyCode !== space.currencyCode) return res.status(409).json({ error: "Automatic savings currently require accounts in the same currency", code: "cross_currency_recurring_policy_required" })
+    // Any source currency (MC-159): the rule's amount is what LEAVES, in the
+    // source's currency (snapshotted below), and each occurrence converts it
+    // into the Space's at its own date's rate — see recurring-materialize.ts.
 
     const spaceName = space.nickname.trim() || space.bankName || "Space"
     // Reuse the recurring validator for the shared fields (amount / frequency /
@@ -101,6 +104,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       end_date: body.end_date ?? null,
     } as RecurringRuleInput)
     if ("error" in parsed) return res.status(400).json({ error: parsed.error })
+    // The validator rounds to cents; a yen or won source has none. Refuse
+    // ¥1,500.50 here, as every recurring writer does — saved, it would be
+    // refused by createTransfer at every occurrence and pause at once.
+    const bad = moneyRefusal(source.currencyCode, body.amount)
+    if (bad) return res.status(400).json(bad)
     const v = parsed.value
 
     const existing = await findRule()

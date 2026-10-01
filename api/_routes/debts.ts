@@ -10,7 +10,7 @@ import { resolveLogoColumns } from "../_lib/bank-brand.js"
 import { buildDebtsOverview, loadDebt, loadDebtRules, serializeDebt } from "../_lib/debts.js"
 import { payerShape, refusalForNew, refusalMessage, refusalStatus } from "../_lib/recurring-debt.js"
 import { materializeDueRecurring } from "../_lib/recurring-materialize.js"
-import { amountExceedsLimit } from "../../src/lib/money.js"
+import { amountExceedsLimit, moneyRefusal, selectableCurrencyCode } from "../../src/lib/money.js"
 import { PAYMENT_FREQUENCIES, type PaymentFrequency } from "../../src/lib/debt-math.js"
 import { frequencyToRecurring, MAX_DEBT_KIND_LENGTH, normalizeDebtKind, recurringToFrequency } from "../../src/lib/debt-recurring.js"
 import { FREQUENCY_UNITS, todayIso, type FrequencyUnit } from "../../src/lib/recurring.js"
@@ -70,6 +70,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const kind = b.kind === undefined ? (direction === "receivable" ? "informal" : "other") : normalizeDebtKind(b.kind)
     const currency = typeof b.currency === "string" && b.currency.trim() ? b.currency.trim().toUpperCase() : orgCurrency
     if (!isValidCurrency(currency)) return res.status(400).json({ error: "Unknown currency" })
+    // A new debt is new money: a currency whose decimals the columns keep, or
+    // the workspace's own (MC-031).
+    if (!selectableCurrencyCode(currency, orgCurrency)) return res.status(400).json({ error: "Invalid currency code", code: "invalid_currency" })
 
     const balance = num(b.current_balance)
     if (balance === null || Number.isNaN(balance) || balance < 0) return res.status(400).json({ error: "current_balance must be 0 or more" })
@@ -106,6 +109,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     let payment = num(b.payment_amount)
     if (payment !== null && (Number.isNaN(payment) || payment < 0 || amountExceedsLimit(payment))) return res.status(400).json({ error: "payment_amount is invalid" })
+    // Every amount as typed, to the debt currency's decimals (none for ¥) —
+    // the writes below round to cents, so the opening split and the transfer
+    // legs would otherwise store figures nobody typed (MC-031).
+    const badAmount = moneyRefusal(
+      currency, b.current_balance, b.original_amount, b.payment_amount,
+      typeof b.disbursement_account_id === "string" ? b.disbursement_amount : undefined,
+      repayment ? (b.repayment as Record<string, unknown>).amount : undefined,
+    )
+    if (badAmount) return res.status(400).json(badAmount)
     let frequency: PaymentFrequency | null =
       typeof b.payment_frequency === "string" && (PAYMENT_FREQUENCIES as readonly string[]).includes(b.payment_frequency)
         ? (b.payment_frequency as PaymentFrequency)

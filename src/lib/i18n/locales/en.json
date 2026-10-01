@@ -1709,7 +1709,9 @@
     "accountCount_other": "{{count}} accounts",
     "shareOfAssetsLabel": "{{share}} of assets",
     "currencyNotIncluded_one": "{{currency}} is not included in the total — no exchange rate is available yet",
-    "currencyNotIncluded_other": "{{currency}} are not included in the total — no exchange rates are available yet"
+    "currencyNotIncluded_other": "{{currency}} are not included in the total — no exchange rates are available yet",
+    "completeTransferTitle": "Mark transfer done",
+    "completeTransferDesc": "Banks often convert at their own rate. Enter what actually arrived and any fee that was charged."
   },
   "clients": {
     "pageTitle": "Clients",
@@ -2443,7 +2445,12 @@
     "amountReceived": "Arrives in {{account}} ({{currency}})",
     "currencyLabel": "Currency",
     "currencyHint": "This Space keeps its money in this currency. It can't be changed later.",
-    "autoSaveNoAccount": "Auto-save needs a bank or cash account in {{currency}}, this Space's currency."
+    "autoSaveNoAccount": "Auto-save needs a bank or cash account in {{currency}}, this Space's currency.",
+    "autoSaveEstimate": "≈ {{amount}} into this Space at today's rate. Each auto-save converts at the rate on its own date.",
+    "autoSaveEstimateStale": "≈ {{amount}} into this Space at the rate from {{date}}. Each auto-save converts at the rate on its own date.",
+    "autoSaveNoRate": "There's no {{from}} to {{to}} exchange rate yet. Each auto-save waits until there is one.",
+    "autoSaveNoSourceAccount": "Auto-save needs a bank or cash account to save from.",
+    "autoSavePaused": "Paused: {{reason}}"
   },
   "notifications": {
     "title": "Notifications",
@@ -3298,6 +3305,9 @@
     "recurring_debt_missing": "The debt this repays no longer exists.",
     "recurring_debt_inactive": "The debt this repays isn't active, so no payment was made.",
     "autopay_not_recorded": "The card payment couldn't be recorded. Pay it manually.",
-    "autopay_interrupted": "The card payment was interrupted before it was recorded. Check the card and pay it manually if needed."
+    "autopay_interrupted": "The card payment was interrupted before it was recorded. Check the card and pay it manually if needed.",
+    "rate_limited": "Too many exchange-rate requests. Try again in a minute.",
+    "amount_whole_units": "This currency has no decimal places — enter a whole amount.",
+    "autosave_rate_unavailable": "There's no {{from}} to {{to}} exchange rate for this auto-save's date yet. It will go through as soon as there is one."
   }
 }

@@ -19,7 +19,8 @@ import {
   type DebtRuleRow,
 } from "../../_lib/debts.js"
 import { materializeDueRecurring } from "../../_lib/recurring-materialize.js"
-import { amountExceedsLimit } from "../../../src/lib/money.js"
+import { reportingCurrencyFor } from "../../_lib/fx-rates.js"
+import { amountExceedsLimit, moneyRefusal, selectableCurrencyCode } from "../../../src/lib/money.js"
 import { PAYMENT_FREQUENCIES, type PaymentFrequency } from "../../../src/lib/debt-math.js"
 import { frequencyToRecurring, MAX_DEBT_KIND_LENGTH, normalizeDebtKind, recurringToFrequency, repaymentCursor } from "../../../src/lib/debt-recurring.js"
 import type { Frequency } from "../../../src/lib/recurring.js"
@@ -126,6 +127,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (typeof b.currency === "string") {
       const c = b.currency.trim().toUpperCase()
       if (!isValidCurrency(c)) return res.status(400).json({ error: "Unknown currency" })
+      // Moving TO a currency is choosing it anew: not one whose third decimal
+      // the columns can't keep (MC-031); the debt's own always passes, and so
+      // does the workspace's, which POST accepts for a new debt.
+      if (!(selectableCurrencyCode(c, debtCurrencyOf(row)) ?? selectableCurrencyCode(c, await reportingCurrencyFor(orgId)))) {
+        return res.status(400).json({ error: "Invalid currency code", code: "invalid_currency" })
+      }
       if (c !== debtCurrencyOf(row)) currencyChange = c
       detailPatch.currency = c
     }
@@ -196,6 +203,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (reconcile != null && (Number.isNaN(reconcile) || reconcile < 0 || amountExceedsLimit(reconcile))) {
       return res.status(400).json({ error: "current_balance must be 0 or more" })
     }
+    // To the debt currency's decimals — only what this request changes: the
+    // form resends every term, and a legacy ¥1,000.50 must still take a
+    // rename (MC-031).
+    const restated = (value: unknown, stored: unknown) =>
+      value != null && (currencyChange || Number(value) !== Number(stored)) ? value : undefined
+    const badAmount = moneyRefusal(
+      detailPatch.currency ?? debtCurrencyOf(row),
+      restated(b.original_amount, row.details.originalAmount),
+      restated(b.payment_amount, row.details.paymentAmount),
+      restated(b.current_balance, Math.abs(Number(row.account.currentBalance))),
+    )
+    if (badAmount) return res.status(400).json(badAmount)
 
     if (currencyChange) {
       // Every row on the debt was recorded in its old currency, a payment's
@@ -397,6 +416,11 @@ async function planRepayment(
   const amount = r.amount === undefined && current ? Number(current.amount) : Number(r.amount)
   if (!Number.isFinite(amount) || amount <= 0) return { error: "The repayment amount must be more than 0" }
   if (amountExceedsLimit(amount)) return { error: "Amount is too large" }
+  // A restated amount, to the debt currency's decimals; the rule's own stays.
+  if (r.amount !== undefined && Number(r.amount) !== Number(current?.amount)) {
+    const badAmount = moneyRefusal(currency, r.amount)
+    if (badAmount) return badAmount
+  }
 
   // The rhythm the caller asked for, or the one the rule already has — taken
   // from its (unit, interval) DIRECTLY, never round-tripped through the debt's

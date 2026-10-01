@@ -6,7 +6,8 @@ import { isPersonalAccount, requireAuth } from "../_lib/auth.js"
 import { materializeDueRecurring } from "../_lib/recurring-materialize.js"
 import { logoDataUrl } from "../../src/lib/logo-data.js"
 import { ensureRatesForOrg, reportingCurrencyFor } from "../_lib/fx-rates.js"
-import { accountBalanceInSql, expenseSumSqlIn, incomeSumSqlIn, missingRateCountSql, pnlKindFilter, reportingAmountSql } from "../_lib/tx-sql.js"
+import { expenseSumSqlIn, incomeSumSqlIn, missingRateCountSql, pnlKindFilter, reportingAmountSql } from "../_lib/tx-sql.js"
+import { buildWealthSummary } from "../_lib/wealth-summary.js"
 
 // SQL for "the account's display name" — reused to label leaves with the
 // account the money moved through (to/from).
@@ -75,8 +76,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Recurring occurrences due in range must exist before we aggregate.
   await materializeDueRecurring(orgId)
   // Every figure below is in the workspace's reporting currency: each row is
-  // converted at its own date, each account balance at today's rate. Rows and
-  // accounts with no stored rate are left out and COUNTED (`excluded_count`,
+  // converted at its own date, and the consolidated balance IS /wealth's net
+  // worth (buildWealthSummary — one valuation path, MC-100), so it also leaves
+  // out settled debts (paid off / refinanced / written off) exactly as net
+  // worth does — intentional, not a lost balance (MC-FL01). Rows and accounts
+  // with no rate are left out and COUNTED (`excluded_count`,
   // `balance_excluded_count`), never silently summed raw.
   const reporting = await reportingCurrencyFor(orgId)
   await ensureRatesForOrg(orgId, reporting).catch(() => undefined)
@@ -213,7 +217,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // expression as different, triggering "column date must appear in GROUP BY".
     const periodExpr = sql<string>`to_char(date_trunc(${sql.raw(`'${bucket}'`)}, ${transactions.date}::timestamp), 'YYYY-MM-DD')`
 
-    const [periodRows, accountMetaT, ownerOrgT, leafPoolT] = await Promise.all([
+    const [periodRows, wealthT, ownerOrgT, leafPoolT] = await Promise.all([
       db
         .select({ key: periodExpr, income: incomeSum, expense: expenseSum, txCount: countExpr, excluded: excludedExpr })
         .from(transactions)
@@ -221,12 +225,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .where(where)
         .groupBy(periodExpr)
         .orderBy(sql`1 asc`),
-      // Each account's balance in the reporting currency at today's rate; NULL
-      // (no rate) is skipped by the sum and counted instead.
-      db
-        .select({ currentIn: accountBalanceInSql(reporting) })
-        .from(wealthAccounts)
-        .where(and(eq(wealthAccounts.organizationId, orgId), isNull(wealthAccounts.archivedAt))),
+      buildWealthSummary(orgId, { reporting }),
       db.select({ name: organizations.name }).from(organizations).where(eq(organizations.id, orgId)),
       db
         .select({
@@ -324,10 +323,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     })
     const periods = allPeriods.slice(windowStart)
 
-    // Consolidated balance: only accounts with a rate into the reporting
-    // currency today; the rest are counted, never added raw.
-    const balanceT = accountMetaT.reduce((s, a) => (a.currentIn === null ? s : s + Number(a.currentIn)), 0)
-    const balanceExcludedT = accountMetaT.filter((a) => a.currentIn === null).length
+    // Consolidated balance = net worth; accounts with no rate today are counted, never added raw.
+    const balanceT = wealthT.net_worth
+    const balanceExcludedT = wealthT.accounts.filter((a) => a.converted_balance === null).length
 
     return res.json({
       mode: "timeline",
@@ -362,7 +360,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ? sql<string | null>`${transactions.clientId}::text`
         : sql<string | null>`coalesce(nullif(${transactions.category}, ''), 'Uncategorized')`
 
-  const [summaryRows, groupRows, accountMeta, ownerOrg, leafPoolRaw] = await Promise.all([
+  const [summaryRows, groupRows, accountMeta, ownerOrg, leafPoolRaw, wealth] = await Promise.all([
     db
       .select({ income: incomeSum, expense: expenseSum, txCount: countExpr, excluded: excludedExpr })
       .from(transactions)
@@ -375,9 +373,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .where(where)
       .groupBy(groupKeyExpr)
       .orderBy(sql`(${incomeSum} + ${expenseSum}) desc`),
-    // Account labels + balances for the accounts dimension (and the root
-    // balance). `opening`/`current` stay NATIVE (labelled by `currencyCode`);
-    // `currentIn` is today's conversion for the consolidated root figure.
+    // Account labels + balances for the accounts dimension. `opening`/`current`
+    // stay NATIVE (labelled by `currencyCode`); the root balance is `wealth`.
     db
       .select({
         id: wealthAccounts.id,
@@ -387,7 +384,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         opening: wealthAccounts.openingBalance,
         current: wealthAccounts.currentBalance,
         currencyCode: wealthAccounts.currencyCode,
-        currentIn: accountBalanceInSql(reporting),
         logoUrl: wealthAccounts.logoUrl,
         logoData: wealthAccounts.logoData,
       })
@@ -415,6 +411,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .where(where)
       .orderBy(desc(transactions.date), desc(transactions.createdAt))
       .limit(LEAF_POOL + SPLIT_BUFFER),
+    buildWealthSummary(orgId, { reporting }),
   ])
 
   // Trim the over-fetched pool back to LEAF_POOL without cutting the split that
@@ -499,10 +496,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const s = summaryRows[0] ?? { income: "0", expense: "0", txCount: 0, excluded: 0 }
   const income = Number(s.income)
   const expense = Number(s.expense)
-  // Consolidated balance: each account converted at today's rate; an account
-  // with no rate is counted, never added raw.
-  const balance = accountMeta.reduce((sum, a) => (a.currentIn === null ? sum : sum + Number(a.currentIn)), 0)
-  const balanceExcluded = accountMeta.filter((a) => a.currentIn === null).length
+  // Consolidated balance = net worth; accounts with no rate today are counted, never added raw.
+  const balance = wealth.net_worth
+  const balanceExcluded = wealth.accounts.filter((a) => a.converted_balance === null).length
 
   return res.json({
     mode: "grouped",

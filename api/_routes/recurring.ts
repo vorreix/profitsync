@@ -12,6 +12,7 @@ import { debtCurrencyOf, debtScheduleMirror, directionOf, loadDebt } from "../_l
 import { payerShape, refusalForNew, refusalMessage, refusalStatus } from "../_lib/recurring-debt.js"
 import type { LinkTargetDebt } from "../../src/lib/debt-recurring.js"
 import { todayIso } from "../../src/lib/recurring.js"
+import { moneyRefusal } from "../../src/lib/money.js"
 
 async function assertRefsBelongToOrg(orgId: string, clientId: string | null, accountId: string | null): Promise<string | null> {
   if (clientId) {
@@ -60,6 +61,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (refError) return res.status(400).json({ error: refError })
     const currencyCode = await currencyForFinancialWrite(orgId, attributed.accountId)
     if (!currencyCode) return res.status(409).json({ error: "Currency migration is incomplete", code: "currency_missing" })
+    // As TYPED, to the currency's decimals: validateRuleInput rounds to cents,
+    // so ¥1,500.50 would post as such on every occurrence (MC-031).
+    const badAmount = moneyRefusal(currencyCode, (req.body as RecurringRuleInput).amount)
+    if (badAmount) return res.status(400).json(badAmount)
 
     // Born already attached to a debt. "This new standing order pays my car
     // loan" is one intention, so the rule and the debt's mirrored schedule

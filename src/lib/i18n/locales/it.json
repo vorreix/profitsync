@@ -1660,7 +1660,9 @@
     "accountCount_other": "{{count}} conti",
     "shareOfAssetsLabel": "{{share}} del patrimonio",
     "currencyNotIncluded_one": "{{currency}} non è inclusa nel totale — nessun tasso di cambio è ancora disponibile",
-    "currencyNotIncluded_other": "{{currency}} non sono incluse nel totale — nessun tasso di cambio è ancora disponibile"
+    "currencyNotIncluded_other": "{{currency}} non sono incluse nel totale — nessun tasso di cambio è ancora disponibile",
+    "completeTransferTitle": "Segna il trasferimento come completato",
+    "completeTransferDesc": "Le banche spesso applicano un proprio cambio. Inserisci l'importo effettivamente arrivato e l'eventuale commissione addebitata."
   },
   "errorBoundary": {
     "title": "Qualcosa è andato storto",
@@ -2064,7 +2066,12 @@
     "amountReceived": "Arriva su {{account}} ({{currency}})",
     "currencyLabel": "Valuta",
     "currencyHint": "Questo Spazio conserva il denaro in questa valuta. Non si potrà cambiare in seguito.",
-    "autoSaveNoAccount": "Il risparmio automatico richiede un conto bancario o contanti in {{currency}}, la valuta di questo Spazio."
+    "autoSaveNoAccount": "Il risparmio automatico richiede un conto bancario o contanti in {{currency}}, la valuta di questo Spazio.",
+    "autoSaveEstimate": "≈ {{amount}} in questo Spazio al cambio di oggi. Ogni risparmio automatico viene convertito al cambio della propria data.",
+    "autoSaveEstimateStale": "≈ {{amount}} in questo Spazio al cambio del {{date}}. Ogni risparmio automatico viene convertito al cambio della propria data.",
+    "autoSaveNoRate": "Non c'è ancora un cambio da {{from}} a {{to}}. Ogni risparmio automatico attende finché non sarà disponibile.",
+    "autoSaveNoSourceAccount": "Il risparmio automatico richiede un conto bancario o contanti da cui risparmiare.",
+    "autoSavePaused": "In pausa: {{reason}}"
   },
   "notifications": {
     "title": "Notifiche",
@@ -3298,6 +3305,9 @@
     "recurring_debt_missing": "Il debito che questo pagamento rimborsa non esiste più.",
     "recurring_debt_inactive": "Il debito che questo pagamento rimborsa non è attivo, quindi non è stato pagato nulla.",
     "autopay_not_recorded": "Non è stato possibile registrare il pagamento della carta. Pagalo manualmente.",
-    "autopay_interrupted": "Il pagamento della carta è stato interrotto prima di essere registrato. Controlla la carta e, se serve, paga manualmente."
+    "autopay_interrupted": "Il pagamento della carta è stato interrotto prima di essere registrato. Controlla la carta e, se serve, paga manualmente.",
+    "rate_limited": "Troppe richieste di tassi di cambio. Riprova tra un minuto.",
+    "amount_whole_units": "Questa valuta non ha decimali: inserisci un importo intero.",
+    "autosave_rate_unavailable": "Non c'è ancora un cambio da {{from}} a {{to}} per la data di questo risparmio automatico. Verrà eseguito appena sarà disponibile."
   }
 }

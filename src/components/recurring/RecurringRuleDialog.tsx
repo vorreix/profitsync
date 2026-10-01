@@ -17,6 +17,7 @@ import { previewDebt } from "@/lib/debt-preview"
 import { toCents } from "@/lib/debt-math"
 import { formatMoney } from "@/lib/wealth"
 import { getCurrencySymbol } from "@/lib/currencies"
+import { amountInputProps } from "@/lib/money"
 import { cn } from "@/lib/utils"
 import { Collapse } from "@/components/Collapse"
 import { DebtPreviewCard } from "@/components/debts/DebtPreviewCard"
@@ -574,7 +575,7 @@ export function RecurringRuleDialog({
             <Label htmlFor="rec-amount">{t("recurring.amount")}</Label>
             <div className="relative">
               <span className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-lg font-medium text-muted-foreground">{symbol}</span>
-              <Input id="rec-amount" type="number" inputMode="decimal" min="0" step="0.01" placeholder="0.00" value={form.amount} style={prefixPad} className="h-12 text-lg md:text-lg font-semibold tabular-nums" onChange={(e) => { setAmountReask(null); setForm((f) => ({ ...f, amount: e.target.value })) }} />
+              <Input id="rec-amount" type="number" min="0" {...amountInputProps(amountCurrency)} value={form.amount} style={prefixPad} className="h-12 text-lg md:text-lg font-semibold tabular-nums" onChange={(e) => { setAmountReask(null); setForm((f) => ({ ...f, amount: e.target.value })) }} />
             </div>
             {amountReask && <p role="status" className="text-xs text-amber-700 dark:text-amber-300">{t("recurring.amountReenterCurrency", { currency: amountReask })}</p>}
           </div>
@@ -692,14 +693,14 @@ export function RecurringRuleDialog({
                     <Label htmlFor="rec-debt-original">{t("debts.originalAmount")}</Label>
                     <div className="relative">
                       <span className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-sm font-medium text-muted-foreground">{symbol}</span>
-                      <Input id="rec-debt-original" type="number" inputMode="decimal" min="0" step="0.01" placeholder="0.00" value={form.debt_original} style={prefixPad} className="tabular-nums" onChange={(e) => setForm((f) => ({ ...f, debt_original: e.target.value }))} />
+                      <Input id="rec-debt-original" type="number" min="0" {...amountInputProps(amountCurrency)} value={form.debt_original} style={prefixPad} className="tabular-nums" onChange={(e) => setForm((f) => ({ ...f, debt_original: e.target.value }))} />
                     </div>
                   </div>
                   <div className="space-y-1.5">
                     <Label htmlFor="rec-debt-balance">{incoming ? t("debts.howMuchOwed") : t("debts.howMuchLeft")}</Label>
                     <div className="relative">
                       <span className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-sm font-medium text-muted-foreground">{symbol}</span>
-                      <Input id="rec-debt-balance" type="number" inputMode="decimal" min="0" step="0.01" placeholder="0.00" value={form.debt_balance} style={prefixPad} className="tabular-nums" onChange={(e) => setForm((f) => ({ ...f, debt_balance: e.target.value }))} />
+                      <Input id="rec-debt-balance" type="number" min="0" {...amountInputProps(amountCurrency)} value={form.debt_balance} style={prefixPad} className="tabular-nums" onChange={(e) => setForm((f) => ({ ...f, debt_balance: e.target.value }))} />
                     </div>
                   </div>
                 </div>

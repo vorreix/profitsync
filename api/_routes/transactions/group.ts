@@ -9,7 +9,7 @@ import { logAudit } from "../../_lib/audit.js"
 import { balanceDelta } from "../../../src/lib/wealth-ledger.js"
 import { cleanTransactionTags } from "../../../src/lib/transaction-tags.js"
 import { PREMIUM_TAGS_PER_TX } from "../../../src/lib/tags.js"
-import { amountExceedsLimit } from "../../../src/lib/money.js"
+import { amountExceedsLimit, moneyRefusal } from "../../../src/lib/money.js"
 import { notifyIfBudgetExceeded } from "../../_lib/notify-budget.js"
 import { refundShapeValid } from "../../../src/lib/tx-classify.js"
 import { USER_KINDS } from "../../_lib/tx-sql.js"
@@ -100,6 +100,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // and re-posts here), so an edit can't mix currencies either.
   const currencyRefusal = splitCurrencyRefusal(legs.map((leg) => byId.get(leg.accountId)?.currencyCode))
   if (currencyRefusal) return res.status(currencyRefusal.status).json(currencyRefusal.body)
+  // Every leg to that one currency's decimals: the row would round 1.235 while
+  // the balance shift below adds it unrounded (MC-047), and ¥ has none.
+  const badAmount = moneyRefusal(byId.get(legs[0].accountId)?.currencyCode, ...legs.map((leg) => leg.amount))
+  if (badAmount) return res.status(400).json(badAmount)
 
   // Resolve the anchoring client (personal orgs use their hidden default client).
   let clientId: string

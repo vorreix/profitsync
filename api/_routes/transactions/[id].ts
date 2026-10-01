@@ -6,7 +6,7 @@ import { canDelete, canWrite, requireAuth } from "../../_lib/auth.js"
 import { diffFields, logAudit } from "../../_lib/audit.js"
 import { checkTransactionTagQuota } from "../../_lib/quota.js"
 import { balanceDelta } from "../../../src/lib/wealth-ledger.js"
-import { amountExceedsLimit } from "../../../src/lib/money.js"
+import { amountExceedsLimit, moneyRefusal } from "../../../src/lib/money.js"
 import { cleanTransactionTags } from "../../../src/lib/transaction-tags.js"
 import { notifyIfBudgetExceeded } from "../../_lib/notify-budget.js"
 import { refundShapeValid } from "../../../src/lib/tx-classify.js"
@@ -234,6 +234,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // what it means (€50 → ₹50), so the same request must restate the amount.
     const currencyRefusal = currencyChangeRefusal(before.currencyCode, nextCurrencyCode, amount !== undefined)
     if (currencyRefusal) return res.status(409).json(currencyRefusal)
+    // To the decimals of the currency the row ends up in — only when the amount
+    // is restated: the dialogs resend it unchanged, and a legacy ¥1,000.50 row
+    // must still take a category fix (MC-031).
+    if (amount !== undefined && (Number(amount) !== Number(before.amount) || nextCurrencyCode !== before.currencyCode)) {
+      const badAmount = moneyRefusal(nextCurrencyCode, amount)
+      if (badAmount) return res.status(400).json(badAmount)
+    }
     // Claim-first, pinned to the snapshot the balance math below reads: the
     // UPDATE only lands on a row that is still live AND still has the account,
     // direction and amount `before` saw. A DELETE racing this edit can't leave

@@ -7,6 +7,7 @@ import { apiDelete, apiErrorCode, apiErrorMessage, apiPatch, apiPost } from "@/l
 import { apiErrorBody } from "@/lib/api-error-codes"
 import { useApiQuery } from "@/hooks/use-api-query"
 import { useCurrency } from "@/lib/currency-context"
+import { amountInputProps } from "@/lib/money"
 import { currencySymbol, formatMoney } from "@/lib/wealth"
 import { SPENDING_PERIODS, categoryKey, isIsoDate, type SpendingPeriod } from "@/lib/budget"
 import type { Category, SpendingBudget } from "@/lib/types"
@@ -407,10 +408,9 @@ export function SpendingBudgetDialog({
               <span className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">{symbol}</span>
               <Input
                 id="sb-amount"
-                inputMode="decimal"
+                {...amountInputProps(currency)}
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
-                placeholder="0.00"
                 style={{ paddingInlineStart: `calc(${symbol.length}ch + 1.25rem)` }}
                 className="h-11 text-base sm:text-sm"
               />

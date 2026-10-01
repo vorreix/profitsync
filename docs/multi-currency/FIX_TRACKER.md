@@ -113,4 +113,29 @@ Run together: two foundation clusters first, then five UI clusters on top of the
 
 ## Wave 6 — FX engine & operations, concurrency, rollout, tests
 
-Not started. Release-gate rollout conditions (MC-115…120, MC-034, MC-035) are tracked at deploy time.
+Split into sub-waves, each committed when verified.
+
+### 6a — FX engine ✅
+
+| Id | What | Status |
+|---|---|---|
+| MC-021/166 | No historical rates outside the ECB set; nothing older than ~6 years | ✅ provider chain: Frankfurter/ECB (to 1999) → fawazahmed0 currency-api daily archive (since 2024-03-02) → open-er-api (latest); USD pegs derived only when nothing answers; `scripts/fx-backfill.ts` reaches 1999 |
+| MC-097/101/W07c | Pre-publication rate frozen forever; placeholder reported as today's fresh rate | ✅ real observations replace placeholders; rates stored and reported under their real observation date; `currentRate` is the single "today" |
+| MC-102/W07b | Weak-currency precision lost | ✅ EUR-anchored tables, cross rates in Decimal (14 places) |
+| MC-169 | Any user could write any pair into the shared rate table | ✅ no client-supplied rates; provider fetches only for the org's currencies; rate-limited (`rate_limited`) |
+| MC-098/099/123 | `fx_rate_on` preferred old direct over newer inverse; unlimited carry-forward; NULL semantics | ✅ migration **0078**: newest observation first in either direction, manual > market, real > fill, strong side preferred, nothing older than 10 days → NULL (excluded, counted); NULL-currency semantics documented |
+| MC-100/FL01 | Two definitions of today's rate (flow vs wealth) | ✅ flow values balances through the wealth summary's rates |
+| MC-031/047/W07a | Money ignored ISO minor units | ✅ every writer validates per currency (`amount_whole_units`, `amount_too_many_decimals`); inputs step by minor units; 3-decimal currencies (KWD, BHD, OMR, JOD, TND, IQD, LYD) no longer selectable for new entities — limitation + upgrade path documented in ARCHITECTURE.md |
+| MC-147 | Marking a planned transfer done couldn't record the real rate/fee | ✅ completion accepts the real received amount + fee, atomically; migration **0079** keeps the planned card (`transfers.from_card_id`) |
+| MC-159 | Cross-currency Space auto-save had no rate policy | ✅ received amount converted at the occurrence date's rate and recorded; no rate → occurrence pauses with a translated reason (`autosave_rate_unavailable`) |
+| MC-167 | Aggregates call `fx_rate_on` per foreign row | 🟡 lookup is index-friendly but Postgres cannot inline it; a per-(currency, date) rate join in each report route is the real fix — performance only, scheduled with 6c |
+
+**Verification (2026-10-01):** migrations 0078 + 0079 applied to the shared dev DB and verified (functions + column); gate green (1476 unit tests); 10/10 Wave 6a live scenarios (JPY whole units, KWD not selectable, USD 3-decimal refused, planned EUR→INR completed with the real ₹9,500 + €2 fee atomically, rate endpoint read-only with the honest observation date, flow root balance = summary valuation); all 61 earlier scenarios re-run green.
+
+### Remaining
+
+- **6b FX operations:** MC-104 scheduled refresh, MC-039 backfill off the request path, MC-168 cheap completeness check, MC-127 FX monitoring; ledger repair (`audit:balances --apply`, MC-054 system-row purge, MC-116 legacy transfer headers).
+- **6c Concurrency & atomicity:** MC-056, 057, 058, 059, 060, 046, 160 (+ MC-167 performance).
+- **6d Rollout & migrations:** MC-115 deploy order, 116, 117, 118 NULL-currency re-backfill, 119, 034 minimum client version, 035 roll-forward-only, 156, 120 store release.
+- **6e Tests:** MC-121 static unsafe-sum guard everywhere, 122, 128 deterministic FX in e2e, 174–177; warm the dev server in `e2e/auth.setup.ts` (the first spec after a cold start hits Vite's dependency-optimisation reload — `Failed to fetch`); MC-170 currency-aware export/import (deferred feature).
+- **Decision needed:** translated screen-reader label for the vendored dialog close button (`src/components/ui/dialog.tsx`).

@@ -29,6 +29,10 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { appLocale } from "@/lib/format-date"
+import { useApiQuery } from "@/hooks/use-api-query"
+import { ruleErrorText } from "@/components/recurring/rule-error"
+import { amountInputProps } from "@/lib/money"
+import { apiErrorCode } from "@/lib/api-error-codes"
 
 type AutoSave = {
   id: string
@@ -41,7 +45,10 @@ type AutoSave = {
   end_date: string | null
   next_due_at: string
   active: boolean
+  /** In the rule's (source's) currency. */
   monthly_equivalent: number
+  /** Why the latest occurrence couldn't post (a refusal body), or "". */
+  last_error?: string | null
 }
 
 const todayIso = () => new Date().toISOString().split("T")[0]
@@ -50,6 +57,9 @@ const fmtDate = (d: string) => new Date(`${d}T00:00:00`).toLocaleDateString(appL
 export function SpaceDetailPage() {
   const { id = "" } = useParams()
   const { t } = useTranslation("spaces")
+  // The generic "recurring payment failed" text, for a paused auto-save whose
+  // stored error has no code of its own (it lives in the root namespace).
+  const ruleFailedText = t("apiErrors.recurring_failed", { ns: "translation" })
   const { getToken } = useAuth()
   const { activeOrg } = useOrg()
   const { currency } = useCurrency()
@@ -96,7 +106,11 @@ export function SpaceDetailPage() {
   const progress = space ? spaceProgress(balance, space.goal_amount) : null
   const status = space ? spaceGoalStatus(balance, space.goal_amount, space.target_date, todayIso()) : null
   const suggested = space ? suggestedMonthly(balance, space.goal_amount, space.target_date, todayIso()) : null
-  const pace = useMemo(() => (autoSave ? autoSavePace(autoSave.monthly_equivalent, suggested) : null), [autoSave, suggested])
+  // The pace compares the rule's monthly figure with a suggestion in the
+  // Space's currency, so it is only said when the two are the same money: a
+  // rule converted at each date's rate (MC-159) has no exact monthly figure.
+  const sameCurrencyRule = !autoSave?.currency_code || !space || autoSave.currency_code === accountCurrency(space, currency)
+  const pace = useMemo(() => (autoSave && sameCurrencyRule ? autoSavePace(autoSave.monthly_equivalent, suggested) : null), [autoSave, sameCurrencyRule, suggested])
 
   async function stopAutoSave() {
     try {
@@ -224,6 +238,11 @@ export function SpaceDetailPage() {
                 <CalendarClock className="size-3.5" /> {t("nextOn", { date: fmtDate(autoSave.next_due_at) })}
                 {pace && <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${pace === "behind" ? "bg-amber-500/15 text-amber-700 dark:text-amber-300" : "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"}`}>{t(`pace_${pace}`)}</span>}
               </p>
+              {/* A paused occurrence (no exchange rate for its date, an archived
+                  account, …) says why, in the reader's language. */}
+              {autoSave.last_error && (
+                <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">{t("autoSavePaused", { reason: ruleErrorText(autoSave.last_error, ruleFailedText) })}</p>
+              )}
             </div>
             {canWrite && (
               <div className="flex shrink-0 gap-1">
@@ -303,19 +322,21 @@ function AutoSaveModal({
   const [start, setStart] = useState(todayIso())
   const [end, setEnd] = useState("")
   const [busy, setBusy] = useState(false)
-  // An auto-save moves the same figure out of the source and into the Space, so
-  // the server only takes a source in the Space's currency — offering (and
-  // pre-selecting) any other led straight to a 409 (MC-070).
   // Money the user HOLDS only: a credit card would set up a monthly cash
-  // advance into savings (auto-save funds from a bank or cash account).
-  const accounts = useMemo(() => allAccounts.filter((a) => !isLiabilityType(a.type) && accountCurrency(a, currency) === spaceCurrency), [allAccounts, currency, spaceCurrency])
+  // advance into savings (auto-save funds from a bank or cash account). Any
+  // currency (MC-159): the amount is what leaves the source, in ITS currency,
+  // and each occurrence converts it at its own date's rate.
+  const accounts = useMemo(() => allAccounts.filter((a) => !isLiabilityType(a.type)), [allAccounts])
+  const source = accounts.find((a) => a.id === accountId)
+  const sourceCurrency = source ? accountCurrency(source, currency) : spaceCurrency
+  const cross = sourceCurrency !== spaceCurrency
+  const { data: rate, error: rateError } = useApiQuery<{ rate: string; rate_date: string; stale: boolean }>(open && cross ? `/api/fx/rate?from=${sourceCurrency}&to=${spaceCurrency}` : null)
+  const estimate = cross && Number(rate?.rate) > 0 && Number(amount) > 0 ? Number(amount) * Number(rate?.rate) : null
 
   useEffect(() => {
     if (!open) return
     setBusy(false)
     if (existing) {
-      // A rule saved before the currency guard may draw on another currency:
-      // offer a valid source instead of a selection the save would refuse.
       setAccountId(accounts.some((a) => a.id === existing.wealth_account_id) ? existing.wealth_account_id : accounts[0]?.id ?? "")
       setAmount(String(existing.amount))
       setUnit(existing.frequency_unit)
@@ -323,11 +344,13 @@ function AutoSaveModal({
       setStart(existing.start_date)
       setEnd(existing.end_date ?? "")
     } else {
-      setAccountId(accounts[0]?.id ?? "")
+      // The Space's own currency first: the suggestion is in it, and a same-
+      // currency save moves exactly the figure typed.
+      setAccountId((accounts.find((a) => accountCurrency(a, currency) === spaceCurrency) ?? accounts[0])?.id ?? "")
       setAmount(suggested && suggested > 0 ? String(suggested) : "")
       setUnit("month"); setInterval("1"); setStart(todayIso()); setEnd("")
     }
-  }, [open, existing, accounts, suggested])
+  }, [open, existing, accounts, suggested, currency, spaceCurrency])
 
   async function submit() {
     if (!accountId) { toast.error(t("pickAccount")); return }
@@ -362,16 +385,16 @@ function AutoSaveModal({
           <div className="space-y-1.5">
             <Label>{t("sourceAccount")}</Label>
             <AccountCombobox accounts={accounts} value={accountId} onChange={setAccountId} currency={currency} />
-            {accounts.length === 0 && <p className="text-xs text-muted-foreground">{t("autoSaveNoAccount", { currency: spaceCurrency })}</p>}
+            {accounts.length === 0 && <p className="text-xs text-muted-foreground">{t("autoSaveNoSourceAccount")}</p>}
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="as-amount">{t("amount")}</Label>
               <InputGroup>
                 <InputGroupAddon>
-                  <InputGroupText>{getCurrencySymbol(spaceCurrency)}</InputGroupText>
+                  <InputGroupText>{getCurrencySymbol(sourceCurrency)}</InputGroupText>
                 </InputGroupAddon>
-                <InputGroupInput id="as-amount" type="number" inputMode="decimal" min="0" step="0.01" placeholder="0.00" value={amount} onChange={(e) => setAmount(e.target.value)} />
+                <InputGroupInput id="as-amount" type="number" min="0" {...amountInputProps(sourceCurrency)} value={amount} onChange={(e) => setAmount(e.target.value)} />
               </InputGroup>
             </div>
             <div className="space-y-1.5">
@@ -387,6 +410,18 @@ function AutoSaveModal({
               </Select>
             </div>
           </div>
+          {cross && (
+            <p className="text-xs text-muted-foreground tabular-nums">
+              {/* A carried-forward rate is dated, never passed off as today's;
+                  "no rate" only when the server says so — a 429 or a 500
+                  says nothing about the pair. */}
+              {estimate !== null
+                ? rate?.stale
+                  ? t("autoSaveEstimateStale", { amount: formatMoney(estimate, spaceCurrency), date: fmtDate(rate.rate_date) })
+                  : t("autoSaveEstimate", { amount: formatMoney(estimate, spaceCurrency) })
+                : apiErrorCode(rateError) === "no_rate" ? t("autoSaveNoRate", { from: sourceCurrency, to: spaceCurrency }) : null}
+            </p>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="as-interval">{t("every")}</Label>

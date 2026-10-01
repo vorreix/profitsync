@@ -4,7 +4,7 @@ import { db, serialize } from "../../src/lib/db/index.js"
 import { organizations, organizationMembers, userProfiles } from "../../src/lib/db/schema.js"
 import { createOrgForUser, getUserId } from "../_lib/auth.js"
 import { imageSrc } from "../_lib/image-upload.js"
-import { parseOrgCurrency } from "../_lib/org-currency.js"
+import { selectableCurrencyCode } from "../../src/lib/money.js"
 
 function slugify(name: string): string {
   return name
@@ -69,13 +69,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === "POST") {
     const { name, currency } = req.body as { name?: string; currency?: string }
     if (!name?.trim()) return res.status(400).json({ error: "name is required" })
-    let resolvedCurrency = currency === undefined ? undefined : parseOrgCurrency(currency)
+    // A new workspace is new money: a currency whose decimals the money
+    // columns keep — not KWD, BHD, … (MC-031, src/lib/currencies.ts).
+    let resolvedCurrency: string | null | undefined = currency === undefined ? undefined : selectableCurrencyCode(currency)
     if (resolvedCurrency === null) {
       return res.status(400).json({ error: "Invalid currency code", code: "invalid_currency" })
     }
     if (!resolvedCurrency) {
       const [profile] = await db.select().from(userProfiles).where(eq(userProfiles.id, userId))
-      resolvedCurrency = profile?.currency ?? "USD"
+      resolvedCurrency = selectableCurrencyCode(profile?.currency) ?? "USD"
     }
 
     const slug = await uniqueSlug(userId, slugify(name))

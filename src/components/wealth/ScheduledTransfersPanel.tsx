@@ -1,15 +1,19 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { useAuth } from "@clerk/clerk-react"
 import { toast } from "sonner"
 import { ArrowRight, CalendarClock, Check, Clock, MoreVertical, X } from "lucide-react"
 import { apiErrorMessage, apiPatch } from "@/lib/api"
+import { AmountError, type AmountField, amountInputProps, transferAmounts } from "@/lib/money"
 import type { Transfer, TransferStatus } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { formatDateLabel, formatMoney, formatRate } from "@/lib/wealth"
 import { useApiQuery } from "@/hooks/use-api-query"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -48,6 +52,7 @@ export function ScheduledTransfersPanel({ canWrite, visible, className }: { canW
   const [overrides, setOverrides] = useState<Record<string, TransferStatus>>({})
   const [busy, setBusy] = useState<string | null>(null)
   const [cancelling, setCancelling] = useState<Transfer | null>(null)
+  const [completing, setCompleting] = useState<Transfer | null>(null)
 
   const rows = (data?.transfers ?? [])
     .map((tr) => ({ ...tr, status: overrides[tr.id] ?? tr.status }))
@@ -55,14 +60,14 @@ export function ScheduledTransfersPanel({ canWrite, visible, className }: { canW
 
   if (loading || rows.length === 0) return null
 
-  async function transition(tr: Transfer, status: "pending" | "completed" | "cancelled") {
+  async function transition(tr: Transfer, status: "pending" | "completed" | "cancelled", facts?: { destination_amount: string; source_fee_amount: string }) {
     const previous = tr.status
     setOverrides((o) => ({ ...o, [tr.id]: status }))
     setBusy(tr.id)
     try {
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
-      await apiPatch(`/api/wealth/transfers/${tr.id}`, token, { status })
+      await apiPatch(`/api/wealth/transfers/${tr.id}`, token, { status, ...facts })
       toast.success(status === "completed" ? t("transferMarkedDone") : status === "pending" ? t("transferMarkedPending") : t("transferCancelled"))
     } catch (err) {
       setOverrides((o) => ({ ...o, [tr.id]: previous }))
@@ -127,7 +132,7 @@ export function ScheduledTransfersPanel({ canWrite, visible, className }: { canW
                     <div className="mt-1 flex items-center gap-1">
                       {/* min-w-0 + wrapping: a long label (ml) must not push the
                           menu out of the clipped card (MC-T09). */}
-                      <Button size="sm" variant="outline" className="h-auto min-h-11 min-w-0 flex-1 whitespace-normal py-1.5 leading-tight sm:flex-none" disabled={isBusy} onClick={() => transition(tr, "completed")}>
+                      <Button size="sm" variant="outline" className="h-auto min-h-11 min-w-0 flex-1 whitespace-normal py-1.5 leading-tight sm:flex-none" disabled={isBusy} onClick={() => (isCrossCurrency(tr) ? setCompleting(tr) : transition(tr, "completed"))}>
                         <Check className="size-3.5" /> <span className="min-w-0 break-words">{t("markDone")}</span>
                       </Button>
                       <DropdownMenu>
@@ -152,6 +157,12 @@ export function ScheduledTransfersPanel({ canWrite, visible, className }: { canW
         })}
       </ul>
 
+      <CompleteTransferDialog
+        transfer={completing}
+        onClose={() => setCompleting(null)}
+        onConfirm={(tr, facts) => { setCompleting(null); void transition(tr, "completed", facts) }}
+      />
+
       <AlertDialog open={cancelling !== null} onOpenChange={(o) => { if (!o) setCancelling(null) }}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -170,5 +181,78 @@ export function ScheduledTransfersPanel({ canWrite, visible, className }: { canW
         </AlertDialogContent>
       </AlertDialog>
     </section>
+  )
+}
+
+/**
+ * Mark done for a cross-currency plan: what arrived is the bank's figure, not
+ * the plan's, so it is asked for — prefilled from the plan, together with any
+ * fee the bank took (MC-147). Validated with the server's own rules as typed.
+ */
+function CompleteTransferDialog({ transfer, onClose, onConfirm }: {
+  transfer: Transfer | null
+  onClose: () => void
+  onConfirm: (tr: Transfer, facts: { destination_amount: string; source_fee_amount: string }) => void
+}) {
+  const { t } = useTranslation("wealth")
+  const [received, setReceived] = useState("")
+  const [fee, setFee] = useState("")
+  // Prefill once per opening, from the plan.
+  useEffect(() => {
+    if (!transfer) return
+    setReceived(String(Number(transfer.destination_amount)))
+    setFee(Number(transfer.source_fee_amount || 0) > 0 ? String(Number(transfer.source_fee_amount)) : "")
+  }, [transfer])
+
+  let preview: ReturnType<typeof transferAmounts> | null = null
+  let problem: AmountError | null = null
+  if (transfer) {
+    try {
+      preview = transferAmounts({ sourceAmount: transfer.source_amount, destinationAmount: received, sourceFeeAmount: fee, sourceCurrency: transfer.source_currency, destinationCurrency: transfer.destination_currency })
+    } catch (e) {
+      if (e instanceof AmountError) problem = e
+    }
+  }
+  const errorFor = (field: AmountField) => (problem?.field === field ? t(`apiErrors.${problem.code}`, { ns: "translation" }) : null)
+
+  return (
+    <Dialog open={transfer !== null} onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent className="w-[92vw] max-w-sm">
+        <DialogHeader>
+          <DialogTitle>{t("completeTransferTitle")}</DialogTitle>
+          <DialogDescription>{t("completeTransferDesc")}</DialogDescription>
+        </DialogHeader>
+        {transfer && (
+          <div className="space-y-3">
+            <p className="text-sm font-medium tabular-nums">{formatMoney(Number(transfer.source_amount), transfer.source_currency)}</p>
+            {/* The plan's own figure can't be edited here: a plan saved with
+                ¥0.50 before whole units were enforced can only be cancelled
+                and planned again — say why instead of a dead Mark done. */}
+            {errorFor("source") && <p className="text-xs text-destructive">{errorFor("source")}</p>}
+            <div className="space-y-1.5">
+              <Label htmlFor="complete-received">{t("transferReceivedAmount", { currency: transfer.destination_currency })}</Label>
+              <Input id="complete-received" type="number" min="0" {...amountInputProps(transfer.destination_currency)} value={received} onChange={(e) => setReceived(e.target.value)} aria-invalid={!!errorFor("destination")} />
+              {errorFor("destination") && <p className="text-xs text-destructive">{errorFor("destination")}</p>}
+              {preview?.effectiveRate && <p className="text-xs text-muted-foreground tabular-nums">{formatRate(transfer.source_currency, transfer.destination_currency, preview.effectiveRate)}</p>}
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="complete-fee">{t("transferFeeAmount", { currency: transfer.source_currency })}</Label>
+              <Input id="complete-fee" type="number" min="0" {...amountInputProps(transfer.source_currency)} value={fee} onChange={(e) => setFee(e.target.value)} aria-invalid={!!errorFor("fee")} />
+              {errorFor("fee") && <p className="text-xs text-destructive">{errorFor("fee")}</p>}
+            </div>
+          </div>
+        )}
+        <DialogFooter>
+          <Button variant="outline" className="min-h-11 sm:min-h-9" onClick={onClose}>{t("back")}</Button>
+          <Button
+            className="min-h-11 sm:min-h-9"
+            disabled={!preview}
+            onClick={() => { if (transfer && preview) onConfirm(transfer, { destination_amount: preview.destinationAmount, source_fee_amount: preview.sourceFeeAmount }) }}
+          >
+            <Check className="size-4" /> {t("markDone")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }

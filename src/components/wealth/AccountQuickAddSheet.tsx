@@ -8,7 +8,7 @@ import { ArrowDownRight, ArrowUpRight, Paperclip, RotateCcw, X } from "lucide-re
 import { apiErrorMessage, apiGet, apiPatch, apiPost } from "@/lib/api"
 import { ACCEPT_ATTR, attachmentsListPath, uploadAttachment, validateFile } from "@/lib/attachments-client"
 import type { Client, Transaction, WealthAccount } from "@/lib/types"
-import { MAX_MONEY } from "@/lib/money"
+import { MAX_MONEY, amountInputProps } from "@/lib/money"
 import { accountCurrency, accountDisplayName, currencySymbol } from "@/lib/wealth"
 import { useCardMap } from "@/lib/use-cards"
 import { WealthAccountIcon } from "@/components/WealthAccountIcon"
@@ -76,7 +76,8 @@ export function AccountQuickAddSheet({
   // the prefix comes from the account — never the calling page's currency: a
   // card page in a € workspace posting to a ₹ bank must show ₹ (MC-016).
   // `currency` is only the fallback for a legacy account with none.
-  const symbol = currencySymbol(accountCurrency(account, currency))
+  const amountCurrency = accountCurrency(account, currency)
+  const symbol = currencySymbol(amountCurrency)
   const isEdit = !!editTx
   // Which card this entry is on — for the header chip: the edited row's card,
   // the preselected one, or (credit-card account) the card that IS the account.
@@ -282,13 +283,11 @@ export function AccountQuickAddSheet({
               <span className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-lg font-medium text-muted-foreground">{symbol}</span>
               <Input
                 id="qa-amount"
-                inputMode="decimal"
                 type="number"
                 min="0"
-                step="0.01"
+                {...amountInputProps(amountCurrency)}
                 value={amount}
                 onChange={(e) => { setAmount(e.target.value); clearField("amount") }}
-                placeholder="0.00"
                 aria-invalid={!!errors.amount}
                 className="h-12 text-lg md:text-lg font-semibold tabular-nums"
                 style={{ paddingInlineStart: `calc(${symbol.length}ch + 1.25rem)` }}

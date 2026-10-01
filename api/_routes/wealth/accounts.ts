@@ -10,6 +10,8 @@ import { materializeDueRecurring } from "../../_lib/recurring-materialize.js"
 import { createWealthAccount, type CreateAccountInput } from "../../_lib/wealth-accounts.js"
 import { syncCards } from "../../_lib/card-autopay.js"
 import { currencyLockRefs, withCurrencyLock } from "../../_lib/account-currency-lock.js"
+import { newAccountRefusal } from "../../_lib/new-account-money.js"
+import { reportingCurrencyFor } from "../../_lib/fx-rates.js"
 
 // "Cash in Hand" is the default account every workspace always has. We lazily
 // provision it on first read so existing orgs (created before wealth tracking)
@@ -165,6 +167,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (input?.type === "cash" && ((input.bankName ?? input.bank_name ?? "").trim() || input.nickname?.trim()) === DEFAULT_CASH_NAME) {
       return res.status(400).json({ error: `"${DEFAULT_CASH_NAME}" is reserved for the default cash wallet`, code: "reserved_cash_name" })
     }
+    const refused = newAccountRefusal(input ?? {}, await reportingCurrencyFor(orgId))
+    if (refused) return res.status(400).json(refused)
     const result = await createWealthAccount(orgId, userId, input)
     if (!result.ok) return res.status(result.status).json(result.body)
     const { logoData, ...safe } = result.row

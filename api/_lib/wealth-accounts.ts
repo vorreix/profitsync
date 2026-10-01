@@ -8,11 +8,11 @@
 // unbundled ESM on @vercel/node (see scripts/check-esm-extensions.mjs).
 import { randomUUID } from "node:crypto"
 import Decimal from "decimal.js"
-import { and, count, eq, isNull, max, sql } from "drizzle-orm"
+import { and, count, eq, inArray, isNull, max, sql } from "drizzle-orm"
 import { db, dbBatch } from "../../src/lib/db/index.js"
 import { cards, creditCardStatements, organizations, transactions, transfers, wealthAccounts } from "../../src/lib/db/schema.js"
 import { ensureDefaultClient } from "./auth.js"
-import { logAudit } from "./audit.js"
+import { type AuditChanges, logAudit } from "./audit.js"
 import { type AppearanceInput, pickAppearance } from "./account-appearance.js"
 import { type BankDetailInput, pickBankDetails, resolveLogoColumns } from "./bank-brand.js"
 import { AmountError, amountExceedsLimit, normalizeCurrencyCode, reversalTransferAmounts, transferAmounts } from "../../src/lib/money.js"
@@ -312,6 +312,12 @@ export type TransferInput = {
   note?: string
   /** The DEBIT card used on the source side (attribution on the outgoing leg). */
   fromCardId?: string | null
+  /**
+   * Where a cross-currency destination amount came from. Default: the caller
+   * stated it ('effective_transfer'). A Space auto-save converts at the
+   * provider's rate for its date ('provider'), and says so (MC-159).
+   */
+  rateSource?: "provider"
   /** Override the leg descriptions (autopay labels its payment). */
   descriptions?: { out: string; in: string }
   /**
@@ -464,7 +470,7 @@ export async function createTransfer(orgId: string, userId: string, input: Trans
       destinationAmount: amounts.destinationAmount,
       destinationCurrency: to.currencyCode,
       effectiveRate: amounts.effectiveRate,
-      rateSource: amounts.effectiveRate ? "effective_transfer" : null,
+      rateSource: amounts.effectiveRate ? (input.rateSource ?? "effective_transfer") : null,
       sourceFeeAmount: amounts.sourceFeeAmount,
       reversesTransferId: input.reversesTransferId,
       status: "completed",
@@ -577,11 +583,18 @@ export async function createTransfer(orgId: string, userId: string, input: Trans
   return { ok: true, transferId, groupId, outLeg, inLeg, feeLeg, feeRefundLeg }
 }
 
+/**
+ * What actually happened when a planned/pending transfer is marked done. Both
+ * optional; an omitted one keeps the plan's figure (an old build sends neither).
+ */
+export type TransferCompletionFacts = { destinationAmount?: number | string; sourceFeeAmount?: number | string }
+
 export async function transitionTransfer(
   orgId: string,
   userId: string,
   transferId: string,
   targetStatus: "pending" | "completed" | "cancelled",
+  facts: TransferCompletionFacts = {},
 ): Promise<{ ok: true; row: typeof transfers.$inferSelect; legIds: string[] } | Failure> {
   const [before] = await db.select().from(transfers).where(and(eq(transfers.id, transferId), eq(transfers.organizationId, orgId))).limit(1)
   if (!before) return fail(404, { error: "Transfer not found", code: "transfer_not_found" })
@@ -607,29 +620,63 @@ export async function transitionTransfer(
   // an intent recorded against a debt account before the intent path refused
   // it stops here. Cancelling it stays possible — that moves nothing.
   if (isDebtAccountType(from.type) || isDebtAccountType(to.type)) return refuseDebtAccount()
+  // A plan fixes what arrives in advance, at the rate of the day it was made.
+  // The bank decides the real figure — and may take a fee nobody knew about —
+  // so Mark done takes both, validated exactly like a new transfer, against the
+  // header's own currencies (an account whose currency changed since is
+  // refused by complete_transfer under its lock). Cancel-and-replan was the
+  // only way to book ₹9,870 for a plan that said ₹10,000 (MC-147).
+  let amounts: ReturnType<typeof transferAmounts>
+  try {
+    amounts = transferAmounts({
+      sourceAmount: before.sourceAmount,
+      destinationAmount: facts.destinationAmount ?? before.destinationAmount,
+      sourceFeeAmount: facts.sourceFeeAmount ?? before.sourceFeeAmount,
+      sourceCurrency: before.sourceCurrency,
+      destinationCurrency: before.destinationCurrency,
+    })
+  } catch (error) {
+    return amountFailure(error)
+  }
   const clientId = await ensureDefaultClient(orgId, userId)
   const involvesSpace = from.type === "space" || to.type === "space"
   const { planKey, limits } = await getOrgPlan(orgId)
   if (planKey === "free" && !involvesSpace) {
     const [{ current }] = await db.select({ current: count() }).from(transactions)
       .where(and(eq(transactions.clientId, clientId), isNull(transactions.deletedAt), eq(transactions.isSystem, false)))
-    const requiredRows = new Decimal(before.sourceFeeAmount).gt(0) ? 3 : 2
+    const requiredRows = new Decimal(amounts.sourceFeeAmount).gt(0) ? 3 : 2
     if (current + requiredRows > limits.transactionsPerClient) {
       return fail(402, { allowed: false, reason: `Free plan is limited to ${limits.transactionsPerClient} transactions per client. Upgrade to Premium.`, limit: limits.transactionsPerClient, current, upgradeHint: true })
     }
   }
   const inCardId = isLiabilityType(to.type) ? await creditCardIdForAccount(to.id) : null
-  const outCardId = isLiabilityType(from.type) ? await creditCardIdForAccount(from.id) : null
+  // The card it was planned with (a debit card, or a credit card's balance
+  // transfer), as createTransfer would have recorded it on the spot.
+  const outCardId = before.fromCardId ?? (isLiabilityType(from.type) ? await creditCardIdForAccount(from.id) : null)
   const suffix = before.note ? ` — ${before.note}` : ""
   const cardPayment = isLiabilityType(to.type)
   const outDescription = cardPayment ? `Card payment to ${displayName(to)}${suffix}` : `Transfer to ${displayName(to)}${suffix}`
   const inDescription = cardPayment ? `Card payment from ${displayName(from)}${suffix}` : `Transfer from ${displayName(from)}${suffix}`
   try {
-    const result = await db.execute(sql`select * from complete_transfer(
-      ${transferId}::uuid, ${orgId}::uuid, ${clientId}::uuid, ${userId},
-      ${outDescription}, ${inDescription}, ${outCardId}::uuid, ${inCardId}::uuid
-    )`)
-    const ids = (result.rows as Array<{ out_leg_id: string; in_leg_id: string; fee_leg_id: string | null }>)[0]
+    // complete_transfer posts the legs from the HEADER, so the real figures go
+    // onto the header first — in the same atomic batch, so a refusal inside the
+    // function (status moved on, account archived) rolls them back too. The
+    // status guard means a concurrent completion's header is never rewritten:
+    // this UPDATE then matches nothing and the function refuses the transition.
+    const [, result] = await dbBatch([
+      db.update(transfers)
+        .set({ destinationAmount: amounts.destinationAmount, sourceFeeAmount: amounts.sourceFeeAmount, effectiveRate: amounts.effectiveRate, updatedAt: new Date() })
+        .where(and(eq(transfers.id, transferId), eq(transfers.organizationId, orgId), inArray(transfers.status, ["planned", "pending"]))),
+      db.execute(sql`select * from complete_transfer(
+        ${transferId}::uuid, ${orgId}::uuid, ${clientId}::uuid, ${userId},
+        ${outDescription}, ${inDescription}, ${outCardId}::uuid, ${inCardId}::uuid
+      )`),
+    ])
+    const ids = ((result as { rows: unknown[] }).rows as Array<{ out_leg_id: string; in_leg_id: string; fee_leg_id: string | null }>)[0]
+    const changes: AuditChanges = {}
+    if (!new Decimal(before.destinationAmount).eq(amounts.destinationAmount)) changes.destination_amount = { from: before.destinationAmount, to: amounts.destinationAmount }
+    if (!new Decimal(before.sourceFeeAmount).eq(amounts.sourceFeeAmount)) changes.source_fee_amount = { from: before.sourceFeeAmount, to: amounts.sourceFeeAmount }
+    if (Object.keys(changes).length > 0) await logAudit({ orgId, entityType: "transfer", entityId: transferId, action: "update", actorId: userId, changes })
     const [row] = await db.select().from(transfers).where(eq(transfers.id, transferId)).limit(1)
     // Completing posts the fee as an expense too (MC-150).
     if (ids.fee_leg_id) void notifyIfBudgetExceeded(orgId, clientId, userId, { category: TRANSFER_FEE_CATEGORY }).catch(() => {})
@@ -774,6 +821,9 @@ export async function createTransferIntent(
     effectiveRate: amounts.effectiveRate,
     rateSource: amounts.effectiveRate ? "effective_transfer" : null,
     sourceFeeAmount: amounts.sourceFeeAmount,
+    // No leg exists until it is marked done, so the card waits on the header
+    // (the route resolved it to this source account) — MC-147.
+    fromCardId: input.fromCardId ?? null,
     status,
     transferDate: input.date ?? todayIso(),
     note: (input.note ?? "").trim(),

@@ -5,6 +5,7 @@ import { toast } from "sonner"
 import { Loader as Loader2, Trash2 } from "lucide-react"
 import { apiErrorMessage, apiPost } from "@/lib/api"
 import { useCurrency } from "@/lib/currency-context"
+import { amountInputProps } from "@/lib/money"
 import { currencySymbol } from "@/lib/wealth"
 import { BUDGET_PERIODS, type BudgetPeriod } from "@/lib/budget"
 import type { Budget } from "@/lib/types"
@@ -129,11 +130,10 @@ export function BudgetDialog({
               <span className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">{symbol}</span>
               <Input
                 id="budget-amount"
-                inputMode="decimal"
+                {...amountInputProps(currency)}
                 value={amount}
                 autoFocus
                 onChange={(e) => setAmount(e.target.value)}
-                placeholder="0.00"
                 style={{ paddingInlineStart: `calc(${symbol.length}ch + 1.25rem)` }}
                 className="h-11 text-base sm:text-sm"
               />

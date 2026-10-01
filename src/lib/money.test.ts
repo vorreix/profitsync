@@ -8,10 +8,15 @@ import {
   decimalFxRate,
   decimalMoney,
   formatDecimalMoney,
+  amountInputProps,
   ledgerAmountProblem,
+  moneyDecimals,
+  moneyRefusal,
   multiplyMoney,
   normalizeCurrencyCode,
   reversalTransferAmounts,
+  storedTransferAmounts,
+  selectableCurrencyCode,
   subtractMoney,
   transferAmounts,
 } from "./money"
@@ -111,5 +116,74 @@ describe("transferAmounts", () => {
     const reversal = reversalTransferAmounts({ sourceAmount: "500", destinationAmount: "51350", sourceFeeAmount: "5", sourceCurrency: "EUR", destinationCurrency: "INR" })
     expect(reversal).toMatchObject({ sourceAmount: "51350.00", destinationAmount: "500.00", destinationFeeRefundAmount: "5.00" })
     expect(reversal.effectiveRate).toBe("0.00973709834469")
+  })
+})
+
+describe("minor units (MC-031, MC-047)", () => {
+  it("writes each currency to its ISO minor units, capped at the 2 the columns keep", () => {
+    expect(moneyDecimals("JPY")).toBe(0)
+    expect(moneyDecimals("krw")).toBe(0)
+    expect(moneyDecimals("USD")).toBe(2)
+    expect(moneyDecimals("KWD")).toBe(2)
+    expect(moneyDecimals(null)).toBe(2)
+  })
+
+  it("refuses what the column would silently round, with the Wave 5 codes", () => {
+    expect(moneyRefusal("JPY", "1500.50")).toMatchObject({ code: "amount_whole_units" })
+    expect(moneyRefusal("USD", 10.555)).toMatchObject({ code: "amount_too_many_decimals", error: "Amount supports at most 2 decimal places" })
+    expect(moneyRefusal("KWD", "1.234")).toMatchObject({ code: "amount_too_many_decimals" })
+    expect(moneyRefusal("INR", "abc")).toMatchObject({ code: "amount_invalid" })
+    expect(moneyRefusal("INR", "99999999999999")).toMatchObject({ code: "amount_too_large" })
+  })
+
+  it("accepts every amount the column keeps exactly, any sign, and skips blanks", () => {
+    expect(moneyRefusal("INR", "10.50")).toBeNull()
+    expect(moneyRefusal("JPY", "1500", 1500.0, "1500.00")).toBeNull()
+    expect(moneyRefusal("USD", -12.34, 0)).toBeNull()
+    expect(moneyRefusal("USD", null, undefined, "")).toBeNull()
+    // The first refusal wins.
+    expect(moneyRefusal("JPY", "1", "2.5", "x")).toMatchObject({ code: "amount_whole_units" })
+  })
+
+  it("holds each transfer leg and the fee to its own currency", () => {
+    const codeOf = (input: Parameters<typeof transferAmounts>[0]) => {
+      try {
+        transferAmounts(input)
+        return null
+      } catch (error) {
+        return [(error as AmountError).code, (error as AmountError).field]
+      }
+    }
+    expect(codeOf({ sourceAmount: "1500.5", sourceCurrency: "JPY", destinationCurrency: "JPY" })).toEqual(["amount_whole_units", "source"])
+    expect(codeOf({ sourceAmount: "10", destinationAmount: "1500.5", sourceCurrency: "USD", destinationCurrency: "JPY" })).toEqual(["amount_whole_units", "destination"])
+    expect(codeOf({ sourceAmount: "1500", sourceFeeAmount: "0.5", sourceCurrency: "JPY", destinationCurrency: "JPY" })).toEqual(["amount_whole_units", "fee"])
+    expect(codeOf({ sourceAmount: "10", sourceFeeAmount: "0.001", sourceCurrency: "EUR", destinationCurrency: "EUR" })).toEqual(["fee_invalid", "fee"])
+    expect(transferAmounts({ sourceAmount: "1500", destinationAmount: "10.25", sourceCurrency: "JPY", destinationCurrency: "USD" }).sourceAmount).toBe("1500.00")
+    expect(ledgerAmountProblem("1500.5", "JPY")).toBe("amount_whole_units")
+    expect(ledgerAmountProblem("1500.5")).toBeNull()
+  })
+
+  it("still reverses a legacy fractional-yen transfer", () => {
+    const reversal = reversalTransferAmounts({ sourceAmount: "10.00", destinationAmount: "1497.83", sourceCurrency: "USD", destinationCurrency: "JPY" })
+    expect(reversal).toMatchObject({ sourceAmount: "1497.83", destinationAmount: "10.00" })
+    // createTransfer re-validates the reversal it is handed: the per-currency
+    // rule refuses the ¥ leg, the stored-precision one it uses for a reversal
+    // takes it unchanged.
+    const leg = { sourceAmount: reversal.sourceAmount, destinationAmount: reversal.destinationAmount, sourceCurrency: "JPY", destinationCurrency: "USD" }
+    expect(() => transferAmounts(leg)).toThrow(/whole/)
+    expect(storedTransferAmounts(leg)).toMatchObject({ sourceAmount: "1497.83", destinationAmount: "10.00" })
+    expect(() => storedTransferAmounts({ ...leg, sourceAmount: "1497.835" })).toThrow(/2 decimal/)
+  })
+
+  it("offers only storable currencies for new money, but keeps the current one", () => {
+    expect(selectableCurrencyCode("eur")).toBe("EUR")
+    expect(selectableCurrencyCode("KWD")).toBeNull()
+    expect(selectableCurrencyCode("KWD", "kwd")).toBe("KWD")
+    expect(selectableCurrencyCode("BTC")).toBeNull()
+  })
+
+  it("gives a yen input no decimal key", () => {
+    expect(amountInputProps("JPY")).toEqual({ inputMode: "numeric", step: "1", placeholder: "0" })
+    expect(amountInputProps("EUR")).toEqual({ inputMode: "decimal", step: "0.01", placeholder: "0.00" })
   })
 })

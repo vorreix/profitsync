@@ -5,7 +5,7 @@ import { toast } from "sonner"
 import { ArrowDownRight, ArrowUpRight, ChevronDown } from "lucide-react"
 import { apiErrorCode, apiErrorMessage, apiGet, apiPatch, apiPost } from "@/lib/api"
 import { apiErrorBody } from "@/lib/api-error-codes"
-import { amountExceedsLimit } from "@/lib/money"
+import { amountExceedsLimit, amountInputProps } from "@/lib/money"
 import { toCents } from "@/lib/debt-math"
 import { previewDebt } from "@/lib/debt-preview"
 import { frequencyToRecurring, repaymentCursor } from "@/lib/debt-recurring"
@@ -330,7 +330,7 @@ export function DebtFormSheet({
       <Label htmlFor={id}>{label}</Label>
       <div className="relative">
         <span className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-sm font-medium text-muted-foreground">{symbol}</span>
-        <Input id={id} type="number" inputMode="decimal" min="0" step="0.01" value={value} placeholder="0.00" style={prefixPad} className="tabular-nums" onChange={(e) => onChange(e.target.value)} />
+        <Input id={id} type="number" min="0" {...amountInputProps(currency)} value={value} style={prefixPad} className="tabular-nums" onChange={(e) => onChange(e.target.value)} />
       </div>
     </div>
   )

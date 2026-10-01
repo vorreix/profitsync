@@ -4,7 +4,8 @@ import { db, serialize } from "../../../src/lib/db/index.js"
 import { organizations, organizationMembers, userProfiles } from "../../../src/lib/db/schema.js"
 import { getUserId } from "../../_lib/auth.js"
 import { imageSrc, validateImageUpload } from "../../_lib/image-upload.js"
-import { parseOrgCurrency, setOrgCurrency } from "../../_lib/org-currency.js"
+import { setOrgCurrency } from "../../_lib/org-currency.js"
+import { selectableCurrencyCode } from "../../../src/lib/money.js"
 
 // Replace the raw logo columns with the `logo_src` data URL the UI renders.
 function withLogoSrc<T extends { logoData?: unknown; logoMime?: unknown }>(row: T) {
@@ -69,7 +70,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // The reporting currency (and its legacy twin) only through setOrgCurrency:
     // both columns together, audited. No account, row or budget is relabelled.
-    const nextCurrency = currency === undefined ? undefined : parseOrgCurrency(currency)
+    // Moving TO a currency is choosing it anew (not KWD, BHD, … — MC-031); the
+    // one it already reports in passes, so re-saving the settings still works.
+    const nextCurrency = currency === undefined ? undefined : selectableCurrencyCode(currency, org.reportingCurrency ?? org.currency)
     if (nextCurrency === null) return res.status(400).json({ error: "Invalid currency code", code: "invalid_currency" })
 
     if (Object.keys(updates).length === 1 && !nextCurrency) {

@@ -8,7 +8,7 @@ import { pickAppearance } from "../_lib/account-appearance.js"
 import { checkSpaceQuota } from "../_lib/quota.js"
 import { materializeDueRecurring } from "../_lib/recurring-materialize.js"
 import { parseGoal, parseTargetDate, spaceFields } from "../_lib/spaces.js"
-import { normalizeCurrencyCode } from "../../src/lib/money.js"
+import { moneyRefusal, normalizeCurrencyCode, selectableCurrencyCode } from "../../src/lib/money.js"
 
 // Spaces = personal savings buckets (wealth_accounts rows with type='space').
 // Money only ever TRANSFERS in/out (kind='transfer'); you can never spend FROM a
@@ -63,11 +63,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     } catch {
       return res.status(400).json({ error: "Invalid currency code", code: "invalid_currency" })
     }
+    // A new Space is new money: a currency whose decimals the columns keep, or
+    // the workspace's own (MC-031).
+    if (!selectableCurrencyCode(currencyCode, org.reportingCurrency ?? org.currency)) return res.status(400).json({ error: "Invalid currency code", code: "invalid_currency" })
     const appearance = pickAppearance(body)
     if (!appearance.ok) return res.status(400).json({ error: appearance.error })
 
     const goalAmount = parseGoal(body.goal_amount)
     if (goalAmount === "invalid") return res.status(400).json({ error: "goal_amount is invalid" })
+    // The goal as typed, to the Space currency's decimals (none for ¥).
+    const badGoal = moneyRefusal(currencyCode, body.goal_amount)
+    if (badGoal) return res.status(400).json(badGoal)
     const targetDate = parseTargetDate(body.target_date)
     if (targetDate === "invalid") return res.status(400).json({ error: "target_date must be YYYY-MM-DD" })
 

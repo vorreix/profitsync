@@ -7,6 +7,9 @@ import {
   detectDefaultCurrency,
   getCurrencySymbol,
   intlCurrencySymbol,
+  isSelectableCurrency,
+  minorUnits,
+  SELECTABLE_CURRENCY_LIST,
 } from "./currencies"
 
 describe("currencyForCountry", () => {
@@ -71,6 +74,14 @@ describe("detectDefaultCurrency", () => {
     } as unknown as Intl.DateTimeFormat)
     expect(detectDefaultCurrency()).toBe("EUR")
   })
+
+  it("never preselects a currency a new workspace can't use (MC-031)", () => {
+    vi.spyOn(Intl, "DateTimeFormat").mockReturnValue({
+      resolvedOptions: () => ({ timeZone: "Asia/Kuwait" }),
+    } as unknown as Intl.DateTimeFormat)
+    expect(detectDefaultCurrency()).toBe("USD")
+    expect(detectDefaultCurrency("INR")).toBe("INR")
+  })
 })
 
 describe("getCurrencySymbol", () => {
@@ -111,5 +122,23 @@ describe("intlCurrencySymbol", () => {
     expect(intlCurrencySymbol("CAD")).toBe("CA$")
     expect(intlCurrencySymbol("KWD")).toBe("KWD")
     expect(intlCurrencySymbol("not-a-code")).toBe("not-a-code")
+  })
+})
+
+describe("minorUnits / SELECTABLE_CURRENCY_LIST (MC-031)", () => {
+  it("reads ISO 4217, not Intl's display digits", () => {
+    expect(minorUnits("JPY")).toBe(0)
+    expect(minorUnits("KWD")).toBe(3)
+    expect(minorUnits("IDR")).toBe(2) // Intl shows 0 — ISO says 2
+    expect(minorUnits("usd")).toBe(2)
+  })
+
+  it("offers no currency whose third decimal the money columns can't keep", () => {
+    for (const code of ["KWD", "BHD", "OMR", "JOD", "TND", "IQD", "LYD"]) {
+      expect(isSelectableCurrency(code)).toBe(false)
+      expect(SELECTABLE_CURRENCY_LIST.some((c) => c.code === code)).toBe(false)
+    }
+    expect(isSelectableCurrency("jpy")).toBe(true)
+    expect(SELECTABLE_CURRENCY_LIST.length).toBe(CURRENCY_LIST.length - 7)
   })
 })

@@ -5,6 +5,7 @@ import { canWrite, requireAuth } from "../_lib/auth.js"
 import { reportingCurrencyFor } from "../_lib/fx-rates.js"
 import { logAudit } from "../_lib/audit.js"
 import { todayUtc } from "../../src/lib/budget.js"
+import { moneyRefusal } from "../../src/lib/money.js"
 import { materializeDueRecurring } from "../_lib/recurring-materialize.js"
 import {
   budgetCurrency,
@@ -73,6 +74,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // converts it for display, never relabels it. A sub-budget is its parent's
     // (one scope, one window, one currency); a main budget is the reporting one.
     const currencyCode = parent ? budgetCurrency(parent, reporting) : reporting
+    // The limit as typed, to that currency's decimals (parseBudgetInput rounds
+    // to cents; ¥ has none — MC-031).
+    const badAmount = moneyRefusal(currencyCode, (req.body as { amount?: unknown } | undefined)?.amount)
+    if (badAmount) return res.status(400).json(badAmount)
 
     const draft: SpendingBudgetRecord = {
       id: "new",

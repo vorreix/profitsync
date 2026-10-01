@@ -1,5 +1,5 @@
 import { inArray, sql, type SQL } from "drizzle-orm"
-import { transactions, wealthAccounts } from "../../src/lib/db/schema.js"
+import { transactions } from "../../src/lib/db/schema.js"
 
 // The SQL twins of src/lib/tx-classify.ts — the ONE definition of how a
 // transaction row counts as income or expense in every aggregate (analytics,
@@ -43,20 +43,29 @@ export const USER_KINDS = ["standard", "refund"] as const
 
 // ── Reporting-currency twins ─────────────────────────────────────────────────
 // The same definitions with every row converted AT ITS OWN DATE into the
-// workspace's reporting currency by reporting_amount() (mig 0074): identity
-// for rows already in that currency (or rows that predate currency tagging),
-// NULL when no rate is stored for that day. A NULL is EXCLUDED from the sum
-// (SQL sum skips it) — so every caller must also select
+// workspace's reporting currency by reporting_amount() (mig 0074, lookup
+// rewritten in 0078): identity for rows already in that currency, NULL when no
+// rate observed within 10 days before that day is stored. A NULL is EXCLUDED
+// from the sum (SQL sum skips it) — so every caller must also select
 // `missingRateCountSql(reporting)` and surface the count as "excluded", never
 // present a partial total as complete.
+//
+// A row with a NULL currency_code (written before currency tagging) is taken
+// as ALREADY in the target currency and is never counted as excluded (MC-123,
+// a deliberate decision, not an accident): every writer stamps a currency now
+// and the only untagged rows left on the dev DB belong to deleted orgs, so
+// guessing a currency for them would change more than it fixes. If untagged
+// rows ever matter, backfill them (the org currency at the time of writing)
+// and make the column NOT NULL — do not reinterpret them here.
 //
 // The `*In(target)` helpers take the TARGET currency: the workspace's reporting
 // currency for every report, a budget's own currency for its spend.
 
 /**
  * `amount` converted at `on` into `target`, or NULL when the rate is unknown.
- * The general form — the transactions-row shorthand is `reportingAmountSql`,
- * and `accountBalanceInSql` converts an account balance at today's rate.
+ * The general form — the transactions-row shorthand is `reportingAmountSql`.
+ * NOT for today's account balances: those are valued by buildWealthSummary
+ * (currentRate), the one current-valuation path (MC-100).
  */
 export const convertedSql = (amount: SQL | typeof transactions.amount, currency: SQL | typeof transactions.currencyCode, on: SQL | typeof transactions.date, target: string) =>
   sql<string>`reporting_amount(${amount}::numeric, ${currency}, ${on}, ${target})`
@@ -87,15 +96,3 @@ export const expenseSumSqlIn = (target: string) =>
  */
 export const missingRateCountSql = (target: string) =>
   sql<number>`count(*) filter (where ${transactions.kind} in ('standard', 'refund') and ${missingRateSql(target)})::int`
-
-/**
- * A wealth account's stored balance in the target currency AT TODAY'S rate
- * (ensureRatesForOrg files today's market rate under today's date), or NULL
- * when none is stored. Sum these for a consolidated balance and count the NULLs.
- */
-export const accountBalanceInSql = (target: string) =>
-  sql<string>`reporting_amount(${wealthAccounts.currentBalance}::numeric, ${wealthAccounts.currencyCode}, current_date, ${target})`
-
-/** How many accounts in the aggregate have no rate into the target currency today. */
-export const missingAccountRateCountSql = (target: string) =>
-  sql<number>`count(*) filter (where ${wealthAccounts.currencyCode} is not null and ${wealthAccounts.currencyCode} <> ${target} and fx_rate_on(${wealthAccounts.currencyCode}, ${target}, current_date) is null)::int`

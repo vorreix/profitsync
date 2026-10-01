@@ -7,7 +7,8 @@ import { diffFields, logAudit } from "../../_lib/audit.js"
 import { fetchBrandPalette } from "../../_lib/bank-brand.js"
 import { cardCurrencyLockedSql, loadCard, resolveFunding, sameNativeCurrency, serializeCard } from "../../_lib/cards.js"
 import { checkCreditCardQuota } from "../../_lib/quota.js"
-import { amountExceedsLimit, normalizeCurrencyCode } from "../../../src/lib/money.js"
+import { reportingCurrencyFor } from "../../_lib/fx-rates.js"
+import { amountExceedsLimit, moneyRefusal, normalizeCurrencyCode, selectableCurrencyCode } from "../../../src/lib/money.js"
 import { cardDebt, isLiabilityType, isValidDayOfMonth } from "../../../src/lib/credit-card.js"
 import { todayIso } from "../../../src/lib/recurring.js"
 import { recurringRules } from "../../../src/lib/db/schema.js"
@@ -81,6 +82,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           .from(wealthAccounts)
           .where(eq(wealthAccounts.id, account.id))
         if (locked) return res.status(409).json({ error: "This card's currency can't change once it has history. Add a new card in the right currency instead.", code: "account_currency_locked" })
+        // Corrected TO a currency whose decimals the columns keep (MC-031) —
+        // or the workspace's own, which a new card may use too.
+        if (!selectableCurrencyCode(next, await reportingCurrencyFor(orgId))) return res.status(400).json({ error: "Invalid currency code", code: "invalid_currency" })
         currencyChange = next
         cardCurrency = next
       }
@@ -211,6 +215,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (c.credit_limit !== undefined) {
         const limit = Number(c.credit_limit)
         if (!Number.isFinite(limit) || limit <= 0 || amountExceedsLimit(limit)) return res.status(400).json({ error: "credit_limit must be greater than 0" })
+        // To the card currency's decimals — only when restated (MC-031).
+        if (currencyChange || limit !== Number(account.creditLimit)) {
+          const badAmount = moneyRefusal(cardCurrency, c.credit_limit)
+          if (badAmount) return res.status(400).json(badAmount)
+        }
         acctPatch.creditLimit = String(limit)
       }
       if (c.statement_closing_day !== undefined) {

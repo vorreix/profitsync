@@ -4,6 +4,7 @@ import { db, serialize } from "../../../src/lib/db/index.js"
 import { clients, recurringRules, wealthAccounts } from "../../../src/lib/db/schema.js"
 import { canDelete, canWrite, requireAuth } from "../../_lib/auth.js"
 import { todayIso } from "../../../src/lib/recurring.js"
+import { moneyRefusal } from "../../../src/lib/money.js"
 import { materializeDueRecurring } from "../../_lib/recurring-materialize.js"
 import { validateRuleInput, type RecurringRuleInput } from "../../_lib/recurring-validate.js"
 import { ruleFields, ruleStatsFields } from "../../_lib/recurring-query.js"
@@ -198,6 +199,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // so a null amount keeps the old number and is no restatement.
     const currencyRefusal = currencyChangeRefusal(rule.currencyCode, currencyCode, body.amount != null)
     if (currencyRefusal) return res.status(409).json(currencyRefusal)
+    // As typed, to the currency's decimals — only when restated: the dialog
+    // resends it, and a legacy ¥1,500.50 rule must still take a rename (MC-031).
+    if (body.amount != null && (Number(body.amount) !== Number(rule.amount) || currencyCode !== rule.currencyCode)) {
+      const badAmount = moneyRefusal(currencyCode, body.amount)
+      if (badAmount) return res.status(400).json(badAmount)
+    }
 
     const [updated] = await db
       .update(recurringRules)

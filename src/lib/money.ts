@@ -1,5 +1,5 @@
 import Decimal from "decimal.js"
-import { CURRENCY_LIST } from "./currencies.js"
+import { CURRENCY_LIST, isSelectableCurrency, minorUnits } from "./currencies.js"
 
 export type CurrencyCode = string & { readonly __currencyCode: unique symbol }
 export type DecimalString = string & { readonly __decimalString: unique symbol }
@@ -23,6 +23,32 @@ export function normalizeCurrencyCode(value: string): CurrencyCode {
 
 export function isCurrencyCode(value: unknown): value is CurrencyCode {
   return typeof value === "string" && CURRENCY_CODES.has(value.trim().toUpperCase())
+}
+
+/**
+ * A currency NEW money may be created in (src/lib/currencies.ts
+ * SELECTABLE_CURRENCY_LIST) — or null. `current` is the one the entity or its
+ * workspace already uses, and always passes: re-saving an existing KWD
+ * account, or adding a wallet to a KWD workspace, must keep working.
+ */
+export function selectableCurrencyCode(value: unknown, current?: string | null): CurrencyCode | null {
+  if (!isCurrencyCode(value)) return null
+  const code = normalizeCurrencyCode(value)
+  return isSelectableCurrency(code) || code === current?.trim().toUpperCase() ? code : null
+}
+
+// The money columns are numeric(20, 2): a third decimal is not storable.
+const STORED_DECIMALS = 2
+
+/**
+ * How many decimals an amount in `currency` may be WRITTEN with: its ISO 4217
+ * minor units (JPY 0, USD 2), capped at the 2 the money columns keep. Finer
+ * input was rounded by Postgres in the row while the balance statement applied
+ * it unrounded, so row and balance drifted apart (MC-047), and ¥1,000.50 was
+ * stored for a currency with no fractions (MC-031). Legacy null → 2.
+ */
+export function moneyDecimals(currency: string | null | undefined): number {
+  return Math.min(minorUnits(currency ?? ""), STORED_DECIMALS)
 }
 
 function decimalString(value: Decimal.Value): DecimalString {
@@ -107,6 +133,7 @@ export type AmountProblem =
   | "amount_invalid"
   | "amount_not_positive"
   | "amount_too_many_decimals"
+  | "amount_whole_units"
   | "amount_too_large"
   | "destination_amount_required"
   | "same_currency_amounts_differ"
@@ -131,68 +158,145 @@ const FIELD_LABEL: Record<AmountField, string> = { source: "Source amount", dest
 // `new Decimal("")` throws "[DecimalError] Invalid argument: " — a library
 // internal that once reached the user as the whole error message. Parse here,
 // so a blank or non-numeric field is an ordinary `amount_invalid`.
-function parseAmount(value: unknown, field: AmountField): Decimal {
+function parseAmount(value: unknown, field: AmountField, label = FIELD_LABEL[field]): Decimal {
   try {
     if (value == null || String(value).trim() === "") throw new Error()
     const amount = new Decimal(value as Decimal.Value)
     if (!amount.isFinite()) throw new Error()
     return amount
   } catch {
-    throw new AmountError("amount_invalid", field, `${FIELD_LABEL[field]} is not a number`)
+    throw new AmountError("amount_invalid", field, `${label} is not a number`)
   }
 }
 
-function positiveLedgerAmount(value: unknown, field: AmountField): Decimal {
-  const label = FIELD_LABEL[field]
-  const amount = parseAmount(value, field)
-  if (amount.lte(0)) throw new AmountError("amount_not_positive", field, `${label} must be greater than zero`)
-  if (amount.decimalPlaces() > 2) throw new AmountError("amount_too_many_decimals", field, `${label} supports at most 2 decimal places`)
+// A currency with no minor unit gets its own code: "at most 2 decimal places"
+// is the wrong thing to tell someone typing ¥1,000.50.
+function tooManyDecimals(places: number, field: AmountField, label: string): AmountError {
+  return places === 0
+    ? new AmountError("amount_whole_units", field, `${label} must be a whole number in this currency`)
+    : new AmountError("amount_too_many_decimals", field, `${label} supports at most ${places} decimal places`)
+}
+
+function ledgerAmount(value: unknown, field: AmountField, places: number, positive: boolean, label = FIELD_LABEL[field]): Decimal {
+  const amount = parseAmount(value, field, label)
+  if (positive && amount.lte(0)) throw new AmountError("amount_not_positive", field, `${label} must be greater than zero`)
+  if (amount.decimalPlaces() > places) throw tooManyDecimals(places, field, label)
   if (amount.abs().gt(MAX_MONEY)) throw new AmountError("amount_too_large", field, `${label} is too large`)
   return amount
 }
 
+const positiveLedgerAmount = (value: unknown, field: AmountField, places: number) => ledgerAmount(value, field, places, true)
+
 /**
  * The same check the server runs on a transfer amount, for a form to run
- * before it submits: null when `value` is a valid ledger amount, else why not.
+ * before it submits: null when `value` is a valid ledger amount in `currency`
+ * (its decimal places — none for JPY), else why not.
  */
-export function ledgerAmountProblem(value: unknown): AmountProblem | null {
+export function ledgerAmountProblem(value: unknown, currency?: string | null): AmountProblem | null {
   try {
-    positiveLedgerAmount(value, "source")
+    positiveLedgerAmount(value, "source", moneyDecimals(currency))
     return null
   } catch (error) {
     return error instanceof AmountError ? error.code : "amount_invalid"
   }
 }
 
-/** Builds immutable historical principal facts without using binary floating point. */
-export function transferAmounts(input: {
+/** A refused amount as a route's 400 body: `{ error, code }`. */
+export type AmountRefusal = { error: string; code: AmountProblem }
+
+/**
+ * The ONE check every money writer runs before it stores amounts in
+ * `currency`: each is a number, has no more decimals than the currency's
+ * (moneyDecimals) and is within MAX_MONEY. Any sign — a balance may be
+ * negative; positivity stays the caller's rule. Blank values (null, "") are
+ * skipped: whether a field is required is the caller's rule too. Returns the
+ * first refusal, or null when every amount can be stored exactly.
+ *
+ *   const bad = moneyRefusal(account.currencyCode, amount)
+ *   if (bad) return res.status(400).json(bad)
+ */
+export function moneyRefusal(currency: string | null | undefined, ...values: unknown[]): AmountRefusal | null {
+  const places = moneyDecimals(currency)
+  for (const value of values) {
+    if (value == null || String(value).trim() === "") continue
+    try {
+      ledgerAmount(value, "source", places, false, "Amount")
+    } catch (error) {
+      if (error instanceof AmountError) return { error: error.message, code: error.code }
+      throw error
+    }
+  }
+  return null
+}
+
+/**
+ * Props for an amount <Input> in `currency`: no decimal key and a whole-number
+ * step where it has no minor unit (¥, ₩), two places elsewhere. A hint only —
+ * the server (moneyRefusal) is the rule.
+ */
+export function amountInputProps(currency: string | null | undefined) {
+  const places = moneyDecimals(currency)
+  return {
+    inputMode: places === 0 ? ("numeric" as const) : ("decimal" as const),
+    step: places === 0 ? "1" : "0.01",
+    placeholder: (0).toFixed(places),
+  }
+}
+
+type TransferInput = {
   sourceAmount: unknown
   destinationAmount?: unknown
   sourceFeeAmount?: unknown
   sourceCurrency: string
   destinationCurrency: string
-}): TransferAmounts {
+}
+
+/**
+ * Builds immutable historical principal facts without using binary floating
+ * point. Each amount is held to its own currency's decimal places (a JPY leg
+ * takes none), so createTransfer and every planned/completed transfer get the
+ * same rule as a plain transaction.
+ */
+export function transferAmounts(input: TransferInput): TransferAmounts {
+  return buildTransferAmounts(input, moneyDecimals)
+}
+
+/**
+ * transferAmounts held only to what the columns keep (2 decimals), for
+ * re-validating facts that are ALREADY stored: a reversal swaps a legacy
+ * transfer's legs, and one recorded before minor units were enforced
+ * (USD 10.00 → ¥1,497.83, which the old wizard filled as rate × sent) must
+ * still be reversible — reversing is the only way to undo a transfer. So
+ * createTransfer validates with this, not transferAmounts, when it is
+ * writing a reversal (`reversesTransferId`).
+ */
+export function storedTransferAmounts(input: TransferInput): TransferAmounts {
+  return buildTransferAmounts(input, () => STORED_DECIMALS)
+}
+
+function buildTransferAmounts(input: TransferInput, placesOf: (currency: string) => number): TransferAmounts {
   const sourceCurrency = normalizeCurrencyCode(input.sourceCurrency)
   const destinationCurrency = normalizeCurrencyCode(input.destinationCurrency)
-  const source = positiveLedgerAmount(input.sourceAmount, "source")
+  const sourcePlaces = placesOf(sourceCurrency)
+  const source = positiveLedgerAmount(input.sourceAmount, "source", sourcePlaces)
   const fee = input.sourceFeeAmount == null || String(input.sourceFeeAmount).trim() === ""
     ? new Decimal(0)
     : parseAmount(input.sourceFeeAmount, "fee")
-  if (fee.lt(0) || fee.decimalPlaces() > 2 || fee.gt(MAX_MONEY)) {
-    throw new AmountError("fee_invalid", "fee", "Source fee must be a non-negative amount with at most 2 decimal places")
-  }
+  const feeInvalid = () => new AmountError("fee_invalid", "fee", "Source fee must be a non-negative amount with at most 2 decimal places")
+  if (fee.lt(0) || fee.gt(MAX_MONEY)) throw feeInvalid()
+  if (fee.decimalPlaces() > sourcePlaces) throw sourcePlaces === 0 ? tooManyDecimals(0, "fee", FIELD_LABEL.fee) : feeInvalid()
 
   let destination: Decimal
   if (sourceCurrency === destinationCurrency) {
     destination = input.destinationAmount == null || String(input.destinationAmount).trim() === ""
       ? source
-      : positiveLedgerAmount(input.destinationAmount, "destination")
+      : positiveLedgerAmount(input.destinationAmount, "destination", sourcePlaces)
     if (!destination.eq(source)) throw new AmountError("same_currency_amounts_differ", "destination", "Same-currency transfer principal amounts must match")
   } else {
     if (input.destinationAmount == null || String(input.destinationAmount).trim() === "") {
       throw new AmountError("destination_amount_required", "destination", "Destination amount is required for a cross-currency transfer")
     }
-    destination = positiveLedgerAmount(input.destinationAmount, "destination")
+    destination = positiveLedgerAmount(input.destinationAmount, "destination", placesOf(destinationCurrency))
   }
 
   const effectiveRate = sourceCurrency === destinationCurrency ? null : destination.div(source)
@@ -213,7 +317,9 @@ export function reversalTransferAmounts(input: {
   sourceCurrency: string
   destinationCurrency: string
 }) {
-  const reversed = transferAmounts({
+  // The original's STORED facts (storedTransferAmounts): a legacy ¥1,000.50
+  // transfer must still be reversible.
+  const reversed = storedTransferAmounts({
     sourceAmount: input.destinationAmount,
     destinationAmount: input.sourceAmount,
     sourceCurrency: input.destinationCurrency,

@@ -7,6 +7,7 @@ import { accountBalanceLabel, accountDisplayName, accountSpendableLabel, currenc
 import { cardDisplayName, maskedTail, resolveCardPalette } from "@/lib/cards"
 import { CREDIT_CARD_TYPE, isLiabilityType } from "@/lib/credit-card"
 import { todayIso } from "@/lib/recurring"
+import { amountInputProps } from "@/lib/money"
 import { useCards } from "@/lib/use-cards"
 import { WealthAccountIcon } from "@/components/WealthAccountIcon"
 import { NetworkMark } from "@/components/cards/NetworkMark"
@@ -316,7 +317,7 @@ export function AccountSelector({
       {/* ── SINGLE-PAY VIEW ─────────────────────────────────────────────── */}
       <Collapse open={!split}>
         <div className="space-y-2">
-          <MoneyInput symbol={entrySymbol} value={sole?.amount ?? ""} onChange={setSingleAmount} size="lg" />
+          <MoneyInput symbol={entrySymbol} currency={entryCurrency} value={sole?.amount ?? ""} onChange={setSingleAmount} size="lg" />
           {reaskCurrency && (
             <p role="status" className="text-xs text-amber-700 dark:text-amber-300">{t("amountReenterCurrency", { currency: reaskCurrency })}</p>
           )}
@@ -529,6 +530,7 @@ function PayTile({
       {split && selected && (
         <MoneyInput
           symbol={symbol}
+          currency={currency}
           value={amount}
           onChange={onAmount}
           autoFocus={amount === ""}
@@ -556,9 +558,11 @@ function CardMini({ card }: { card: Card }) {
 }
 
 function MoneyInput({
-  symbol, value, onChange, autoFocus, invalid, className = "", size = "md",
+  symbol, currency, value, onChange, autoFocus, invalid, className = "", size = "md",
 }: {
   symbol: string
+  /** The currency the amount is in — a yen field gets no decimal key (MC-031). */
+  currency: string
   value: string
   onChange: (v: string) => void
   autoFocus?: boolean
@@ -574,10 +578,8 @@ function MoneyInput({
       </span>
       <Input
         type="number"
-        inputMode="decimal"
+        {...amountInputProps(currency)}
         min="0"
-        step="0.01"
-        placeholder="0.00"
         autoFocus={autoFocus}
         aria-invalid={invalid ? true : undefined}
         value={value}
