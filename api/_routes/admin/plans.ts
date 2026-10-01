@@ -3,7 +3,7 @@ import { asc, eq } from "drizzle-orm"
 import { db, serialize } from "../../../src/lib/db/index.js"
 import { plans } from "../../../src/lib/db/schema.js"
 import { requireAdminCap } from "../../_lib/admin.js"
-import { getProduct, isDodoConfigured, priceFromProduct, type DodoEnv } from "../../_lib/dodo.js"
+import { fromDodoMinor, getProduct, isDodoConfigured, priceFromProduct, type DodoEnv } from "../../_lib/dodo.js"
 
 const VALID_ACCOUNT_TYPES = new Set(["personal", "business"])
 
@@ -84,7 +84,7 @@ async function previewFromDodo(
       // Sync the plan name + description from Dodo (first product that has them).
       if (!out.name && d.name) out.name = cleanProductName(d.name)
       if (!out.description && d.description) out.description = d.description
-      const priceUsd = (d.minor / 100).toFixed(2)
+      const priceUsd = fromDodoMinor(d.minor, d.currency).toFixed(2)
       const info: CycleInfo = {
         product_id: id,
         name: d.name,

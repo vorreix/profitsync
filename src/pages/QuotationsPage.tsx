@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
 import { apiGet, apiPost, apiPatch, apiDelete, apiErrorMessage } from "@/lib/api"
-import { amountExceedsLimit } from "@/lib/money"
+import { amountExceedsLimit, amountInputProps } from "@/lib/money"
 import type { Client, Quotation, QuotationAttachment } from "@/lib/types"
 import { useCurrency } from "@/lib/currency-context"
 import { formatMoney } from "@/lib/wealth"
@@ -120,7 +120,7 @@ function QuotationFormFields({
             <InputGroupAddon>
               <InputGroupText>{getCurrencySymbol(currency)}</InputGroupText>
             </InputGroupAddon>
-            <InputGroupInput type="number" min="0" step="0.01" placeholder={t("amountPlaceholder")} value={f.amount} onChange={(e) => onChange({ amount: e.target.value })} />
+            <InputGroupInput type="number" min="0" {...amountInputProps(currency)} value={f.amount} onChange={(e) => onChange({ amount: e.target.value })} />
           </InputGroup>
         </div>
       </div>

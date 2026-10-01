@@ -194,6 +194,31 @@ Split into sub-waves, each committed when verified.
 
 **Verification (2026-10-01):** multi-currency spec 8/8 on the shared dev server and 9/9 (with alerts first) on a cold `FX_DISABLED=1` server; 0 throwaway orgs and 0 new orphan rows after the runs; gate green. No `src/` change, so no native re-sync was needed.
 
+## Wave 7 — post-wave sweep (2026-10-02) ✅
+
+A read-only sweep of the open analysis IDs, the 12 areas the analysis never adversarially verified, and the waves' own new code; every finding
+went to a refute-by-default verifier. 11 confirmed (0 refuted), all fixed. Five predate this branch (they are on dev too).
+
+| # | What | Fix |
+|---|---|---|
+| 1 | Dodo amounts always divided by 100: JPY invoices 100× too small, KWD/BHD/OMR 10× too large, percent referral rewards with them | `fromDodoMinor` (api/_lib/dodo.ts) divides by 10^minorUnits at every inbound site (reconcile, webhook paid/failed/referral/notification, admin plan import); plan prices format with the same rule; RELEASE.md §2 read-only count + §4 correction (re-sync invoices from Dodo, recompute `paid` percent rewards, `paid_out` by hand) |
+| 2 | Money Flow by client named clients outside the 600-row leaf pool "Client"; archived accounts "Account" (dev) | names come from the group aggregate (`max(clients.name)`) and the account lookup keeps archived accounts; "load more" of the no-category bucket now matches NULL and '' alike |
+| 3 | 1.4.0 store builds showed a raw JSON blob as a rule's pause reason (MC-077 regression) | `ruleErrorFor` / `withRuleError` (api/_lib/client-capabilities.ts): a build without the capability header gets the body's English sentence; every response carrying a rule goes through it |
+| 4 | Deleting a paid workspace while Dodo fails deleted it anyway; billing continued, nothing logged | `teardownOrganization(id, { abortOnBillingFailure })` stops before any local write and logs; owner delete, admin single delete and self-serve account deletion answer 502 `billing_cancel_failed` (the account-deletion code survives for a retry); admin bulk delete still force-deletes and reports per row |
+| 5 | Pricing could show ₹ to a EUR/GBP/AED workspace while checkout charged EUR (dev) | `localPricingFor` (src/lib/billing-currency.ts) picks a price only in the currency checkout charges, else the USD base with "Charged in {{currency}} at checkout"; app + landing pricing |
+| 6 | Billing + workspace-delete failures showed raw JSON in toasts | every billing / plan-step / workspace-delete catch goes through `apiErrorMessage`; new codes `billing_owner_only`, `billing_provider_failed`, `billing_cancel_failed` |
+| 7 | Quotations skipped the per-currency amount and selectable-currency rules | POST/PATCH validate like transactions (MC-031/047 codes); the form's amount input steps by the quote's currency |
+| 8 | Quotation amount sort compared raw amounts across currencies | sorted in the reporting currency at each quote's date (as MC-130), no-rate quotes last |
+| 9 | Onboarding accepted 3-decimal currencies (dev) | refused (`invalid_currency`) before anything is written unless the workspace already reports in it |
+| 10 | Onboarding money wizard saved amounts typed in the picked currency into a workspace that kept another (dev) | the onboarding response carries the workspace's real `reporting_currency`; the wizard labels and saves in it, with a note when the pick was not adopted |
+| 11 | "Uncategorized" / "Unassigned" / "Workspace" reached Analytics and Money Flow in English (dev) | translated on the client by bucket key; the English label stays in the response only for old builds |
+
+**Verification (2026-10-02):** gate green (125 files, 1596 unit tests; tests shown to fail on the pre-fix code); live scenarios 10/10 in a
+throwaway workspace (KWD/JPY/3-decimal quotation refusals, cross-currency amount sort, onboarding KWD refusal with the workspace untouched,
+the real reporting currency in the onboarding answer, EUR pricing never in INR, flow + analytics in every grouping, free-workspace delete);
+the old-build pause reason is covered by unit tests plus a trace of every serializer (a live pause needs an occurrence falling due after the
+pause condition, i.e. a day passing); RELEASE.md correction SQL checked against the live column names.
+
 ### Remaining
 
 - **Deferred feature:** MC-170 currency-aware export/import.

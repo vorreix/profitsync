@@ -28,12 +28,13 @@ import type { Frequency } from "../../../src/lib/recurring.js"
 import { DEBT_LIFECYCLES } from "../../../src/lib/debt-status.js"
 import { todayIso, type FrequencyUnit } from "../../../src/lib/recurring.js"
 import { isValidCurrency } from "../../../src/lib/currencies.js"
+import { ruleErrorFor } from "../../_lib/client-capabilities.js"
 
 const ISO = /^\d{4}-\d{2}-\d{2}$/
 const CURRENCY_LOCKED = { error: "This debt already has payments — its currency can't change. Add a new debt in the other currency instead.", code: "currency_locked" }
 
 /** The repayment rule in the shape the debt screens read it. */
-async function serializeRepayment(orgId: string, rule: DebtRuleRow | null) {
+async function serializeRepayment(req: VercelRequest, orgId: string, rule: DebtRuleRow | null) {
   if (!rule) return null
   const [account] = rule.wealthAccountId
     ? await db
@@ -54,7 +55,7 @@ async function serializeRepayment(orgId: string, rule: DebtRuleRow | null) {
     next_due_at: String(rule.nextDueAt).slice(0, 10),
     from_account_id: rule.wealthAccountId,
     from_account_name: account?.name ?? null,
-    last_error: rule.lastError ?? "",
+    last_error: ruleErrorFor(req, rule.lastError),
   }
 }
 
@@ -96,7 +97,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       payments: payments.map(serialize),
       activity,
       schedule: scheduleFor(fresh, today),
-      repayment: await serializeRepayment(orgId, live),
+      repayment: await serializeRepayment(req, orgId, live),
     })
   }
 
@@ -320,7 +321,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     )
     if (Object.keys(changes).length) await logAudit({ orgId, entityType: "wealth_account", entityId: id, action: "update", actorId: userId, changes })
     const rules = await loadDebtRules(orgId, [id])
-    return res.json({ ...serializeDebt(after, today), repayment: await serializeRepayment(orgId, drivingRule(rules)) })
+    return res.json({ ...serializeDebt(after, today), repayment: await serializeRepayment(req, orgId, drivingRule(rules)) })
   }
 
   if (req.method === "DELETE") {

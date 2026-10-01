@@ -80,11 +80,15 @@ const SUBS = 3
 export function MoneyWizard({
   accountType,
   currency,
+  requestedCurrency,
   onBack,
   onDone,
 }: {
   accountType: AccountType
+  /** The currency the workspace reports in — every amount here is typed and saved in it. */
   currency: string
+  /** What the user picked; differs when the workspace already had history and kept its own. */
+  requestedCurrency?: string
   onBack: () => void
   onDone: () => void
 }) {
@@ -143,7 +147,7 @@ export function MoneyWizard({
         // where a second cash POST would be rejected). POST /api/onboarding has
         // already relabelled an untouched Cash in Hand to the chosen currency; one
         // with history keeps its own, and the amount typed here is never poured
-        // into another currency — a wallet in the chosen one is created instead.
+        // into another currency — a wallet in the workspace's one is created instead.
         tasks.push(
           (async () => {
             try {
@@ -172,7 +176,9 @@ export function MoneyWizard({
       }
       const addBudget = (clientId: string | null, amt: string, period: BudgetPeriod) => {
         const n = num(amt)
-        if (n) tasks.push(apiPost("/api/budgets", token, { client_id: clientId, amount: n, period }).catch(() => {}))
+        // The currency the amount was typed in: a cap kept in another one is
+        // refused (409), never relabelled.
+        if (n) tasks.push(apiPost("/api/budgets", token, { client_id: clientId, amount: n, period, currency_code: currency }).catch(() => {}))
       }
       // A personal workspace's budget is a SPENDING budget (all spending, no
       // name → shown as "Personal budget"); a v1 "lifetime" is a custom-dates
@@ -219,6 +225,12 @@ export function MoneyWizard({
           <span key={i} className={`h-1.5 rounded-full transition-all duration-300 ${i === sub ? "w-6 bg-primary" : i < sub ? "w-3 bg-primary/60" : "w-3 bg-border"}`} />
         ))}
       </div>
+
+      {requestedCurrency && requestedCurrency !== currency && (
+        <p className="mx-auto mt-3 max-w-xs text-center text-xs text-muted-foreground">
+          {t("onboarding.keptCurrencyNote", { currency })}
+        </p>
+      )}
 
       {/* keyed → re-animates on each sub-step change */}
       <div key={sub} className={`flex flex-1 flex-col justify-center ${slide}`}>

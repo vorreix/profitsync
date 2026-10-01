@@ -3,7 +3,7 @@ import { useSearchParams } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
-import { apiGet, apiPost } from "@/lib/api"
+import { apiErrorMessage, apiGet, apiPost } from "@/lib/api"
 import { useOrg } from "@/lib/org-context"
 import { usePlanText } from "@/lib/i18n/plan-text"
 import { isPaidPlanKey } from "@/lib/types"
@@ -42,6 +42,7 @@ import {
 } from "lucide-react"
 import { appLocale } from "@/lib/format-date"
 import { formatMoney, formatMoneyWhole } from "@/lib/wealth"
+import { minorUnits } from "@/lib/currencies"
 
 // A pending confirmation rendered in the AlertDialog (replaces window.confirm).
 type ConfirmState = {
@@ -111,13 +112,16 @@ type PricingResponse = {
   plans: Plan[]
   currentSubscription: Subscription | null
   detectedCountry: string
+  /** The currency checkout charges in; named beside a price shown in another (the USD base). */
+  billing_currency?: string
 }
 
-// A price in minor units: "$5" for a whole amount, "$4.99" otherwise. The shared
+// A price in the currency's minor units (¥ has none, KWD three): "$5" for a
+// whole amount, "$4.99" otherwise. The shared
 // formatters never throw — an invoice row with a bad code ('EURO', 'usd ') once
 // took the whole page into the error boundary (MC-163).
 function formatMinor(amount: number, currency: string): string {
-  const n = amount / 100
+  const n = amount / 10 ** minorUnits(currency)
   return Number.isInteger(n) ? formatMoneyWhole(n, currency) : formatMoney(n, currency)
 }
 
@@ -270,11 +274,11 @@ export function SubscriptionPage() {
         window.location.href = result.checkout_url
         return
       }
-      toast.success(result.message || t("subscriptionUpdated"))
+      toast.success(t("subscriptionUpdated"))
       await refreshOrg()
       await load()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : t("failed"))
+      toast.error(apiErrorMessage(err, t(planKey === "free" ? "failed" : "checkoutFailed")))
     } finally {
       setBusy(null)
     }
@@ -292,7 +296,7 @@ export function SubscriptionPage() {
       await refreshOrg()
       await load()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : t("failed"))
+      toast.error(apiErrorMessage(err, t("failed")))
     } finally {
       setBusy(null)
     }
@@ -304,12 +308,12 @@ export function SubscriptionPage() {
     try {
       const token = await getToken()
       if (!token) return
-      const result = await apiPost<{ message?: string }>("/api/billing/resume", token, {})
-      toast.success(result.message || t("resumeSuccess"))
+      await apiPost("/api/billing/resume", token, {})
+      toast.success(t("resumeSuccess"))
       await refreshOrg()
       await load()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : t("failed"))
+      toast.error(apiErrorMessage(err, t("failed")))
     } finally {
       setBusy(null)
     }
@@ -321,12 +325,12 @@ export function SubscriptionPage() {
     try {
       const token = await getToken()
       if (!token) return
-      const result = await apiPost<{ message?: string }>("/api/billing/change-plan", token, { cycle: "yearly" })
-      toast.success(result.message || t("switchSuccess"))
+      await apiPost("/api/billing/change-plan", token, { cycle: "yearly" })
+      toast.success(t("switchSuccess"))
       await refreshOrg()
       await load()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : t("failed"))
+      toast.error(apiErrorMessage(err, t("failed")))
     } finally {
       setBusy(null)
     }
@@ -343,7 +347,7 @@ export function SubscriptionPage() {
       const contentType = res.headers.get("content-type") ?? ""
       if (!res.ok) {
         const body = contentType.includes("json") ? await res.json().catch(() => ({})) : {}
-        toast.error((body as { error?: string }).error || t("noInvoiceDoc"))
+        toast.error(apiErrorMessage(new Error(JSON.stringify(body)), t(res.status === 404 ? "noInvoiceDoc" : "downloadFailed")))
         return
       }
       if (contentType.includes("application/json")) {
@@ -687,6 +691,9 @@ export function SubscriptionPage() {
                         )}
                         {promo && (
                           <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1">{promo}</p>
+                        )}
+                        {data.billing_currency && data.billing_currency !== local.currency && (
+                          <p className="text-xs text-muted-foreground mt-1">{t("chargedInAtCheckout", { currency: data.billing_currency })}</p>
                         )}
                       </div>
                     )}

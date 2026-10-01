@@ -25,11 +25,17 @@ export type OrgDeleteResult = {
  * 4. **Delete the org row** — its FKs cascade subscriptions, members, categories,
  *    wealth accounts (+ their attachments), audit logs, invoices, and invitations.
  *
- * Never throws on a Dodo error — the local org is still removed and the Dodo outcome
- * is returned for the caller to report (an admin force-delete shouldn't be blocked by
- * a payment-processor hiccup; the failed cancel is surfaced, not swallowed silently).
+ * Never throws on a Dodo error, and always logs it. By default the local org is
+ * still removed and the Dodo outcome is returned for the caller to report (an admin
+ * force-delete shouldn't be blocked by a payment-processor hiccup). With
+ * `abortOnBillingFailure` a failed cancel stops BEFORE anything local is touched
+ * (`deleted: false`): deleting a workspace whose subscription Dodo is still billing
+ * also deletes the only mirror its owner could cancel it from — the owner delete.
  */
-export async function teardownOrganization(orgId: string): Promise<OrgDeleteResult> {
+export async function teardownOrganization(
+  orgId: string,
+  opts: { abortOnBillingFailure?: boolean } = {},
+): Promise<OrgDeleteResult> {
   const [sub] = await db
     .select()
     .from(subscriptions)
@@ -37,6 +43,16 @@ export async function teardownOrganization(orgId: string): Promise<OrgDeleteResu
     .orderBy(desc(subscriptions.updatedAt))
     .limit(1)
   const dodo: StopBillingResult = sub ? await stopDodoBilling(sub) : { provider: "none" }
+  if (dodo.provider === "dodo" && !dodo.ok) {
+    // Dodo's status + response body — never the API key.
+    console.error("[org-teardown] Dodo cancel failed", {
+      orgId,
+      providerSubscriptionId: sub?.providerSubscriptionId,
+      aborted: !!opts.abortOnBillingFailure,
+      error: dodo.error,
+    })
+    if (opts.abortOnBillingFailure) return { id: orgId, deleted: false, dodo }
+  }
 
   const affected = await db
     .select({ id: userProfiles.id })

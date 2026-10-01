@@ -4,15 +4,7 @@ import { db, serialize } from "../../../src/lib/db/index.js"
 import { organizations, plans, subscriptions, userProfiles } from "../../../src/lib/db/schema.js"
 import { requireAuth } from "../../_lib/auth.js"
 import { billingCountry } from "../../_lib/billing-country.js"
-import { resolveBillingCurrency } from "../../../src/lib/billing-currency.js"
-
-type GeoPricingEntry = {
-  currency: string
-  monthly: number
-  yearly: number
-  monthlyDiscountPct?: number
-  yearlyDiscountPct?: number
-}
+import { localPricingFor, resolveBillingCurrency, type GeoPrice } from "../../../src/lib/billing-currency.js"
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ctx = await requireAuth(req, res)
@@ -43,38 +35,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     (p) => p.isActive && (p.key === "free" || !p.accountType || p.accountType === ctx.accountType),
   )
 
-  const enriched = rows.map((p) => {
-    const geo = (p.geoPricing as Record<string, GeoPricingEntry>) ?? {}
-    // Pick the geo entry matching the currency the checkout will actually use:
-    // the country's own entry when it matches, else any entry priced in the
-    // resolved currency, else the legacy country/IN fallback. Dodo (Merchant of
-    // Record) computes the final localized price + tax at checkout regardless.
-    const byCountry = geo[country]
-    const local =
-      byCountry && byCountry.currency === resolved.currency
-        ? byCountry
-        : Object.values(geo).find((g) => g?.currency === resolved.currency) ??
-          (resolved.currency === "USD" ? undefined : byCountry ?? geo["IN"])
-    return {
-      ...serialize(p),
-      country,
-      local_pricing: local
-        ? {
-            currency: local.currency,
-            monthly: local.monthly,
-            yearly: local.yearly,
-            monthly_discount_pct: local.monthlyDiscountPct ?? 0,
-            yearly_discount_pct: local.yearlyDiscountPct ?? 0,
-          }
-        : {
-            currency: "USD",
-            monthly: Math.round(Number(p.monthlyPriceUsd) * 100),
-            yearly: Math.round(Number(p.yearlyPriceUsd) * 100),
-            monthly_discount_pct: p.monthlyDiscountPct ?? 0,
-            yearly_discount_pct: p.yearlyDiscountPct ?? 0,
-          },
-    }
-  })
+  // Only a price in the currency checkout charges — never another country's.
+  const enriched = rows.map((p) => ({
+    ...serialize(p),
+    country,
+    local_pricing: localPricingFor(p.geoPricing as Record<string, GeoPrice> | null, country, resolved.currency, {
+      monthlyUsd: Number(p.monthlyPriceUsd),
+      yearlyUsd: Number(p.yearlyPriceUsd),
+      monthlyDiscountPct: p.monthlyDiscountPct ?? 0,
+      yearlyDiscountPct: p.yearlyDiscountPct ?? 0,
+    }),
+  }))
 
   const [currentSub] = subRows
 
@@ -83,6 +54,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     currentSubscription: currentSub ? serialize(currentSub) : null,
     detectedCountry: country,
     // The currency the checkout will charge in (org preference, country-safe).
+    // A plan priced in another currency (the USD base) shows it beside the price.
     billing_currency: resolved.currency,
     billing_currency_source: resolved.source,
   })

@@ -17,7 +17,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!ctx) return
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" })
   if (ctx.role !== "owner") {
-    return res.status(403).json({ error: "Only the owner can cancel the subscription" })
+    return res.status(403).json({ error: "Only the owner can cancel the subscription", code: "billing_owner_only" })
   }
 
   const [sub] = await db
@@ -44,7 +44,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       status = mapDodoStatus(remote.status) // stays "active" — cancels at period end
       if (remote.next_billing_date) cancelAt = new Date(remote.next_billing_date)
     } catch (err) {
-      return res.status(502).json({ error: err instanceof Error ? err.message : "Dodo Payments error" })
+      return res.status(502).json({ error: err instanceof Error ? err.message : "Dodo Payments error", code: "billing_provider_failed" })
     }
   }
 

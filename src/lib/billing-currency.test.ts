@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { billingCurrencyAttempts, DODO_SUPPORTED_CURRENCIES, resolveBillingCurrency } from "./billing-currency"
+import { billingCurrencyAttempts, DODO_SUPPORTED_CURRENCIES, resolveBillingCurrency, localPricingFor, type GeoPrice } from "./billing-currency"
 
 describe("resolveBillingCurrency", () => {
   it("uses the org currency when it matches the billing country's currency", () => {
@@ -53,5 +53,30 @@ describe("DODO_SUPPORTED_CURRENCIES", () => {
     for (const c of ["USD", "EUR", "GBP", "INR", "AUD", "JPY", "BRL", "AED"]) {
       expect(DODO_SUPPORTED_CURRENCIES.has(c)).toBe(true)
     }
+  })
+})
+
+describe("localPricingFor — the price shown is in the currency checkout charges", () => {
+  const base = { monthlyUsd: 4.99, yearlyUsd: 49.99, monthlyDiscountPct: 50, yearlyDiscountPct: 20 }
+  const inr = { currency: "INR", monthly: 499900, yearly: 4999900, monthlyDiscountPct: 50 }
+  const show = (orgCurrency: string, country: string, geo: Record<string, GeoPrice>) =>
+    localPricingFor(geo, country, resolveBillingCurrency(orgCurrency, country).currency, base)
+
+  it("never shows another country's entry: a EUR workspace gets the USD base, not ₹", () => {
+    expect(show("EUR", "DE", { IN: inr })).toEqual({ currency: "USD", monthly: 499, yearly: 4999, monthly_discount_pct: 50, yearly_discount_pct: 20 })
+    // A GBP entry for its own country is still not what a EUR workspace pays.
+    expect(show("EUR", "GB", { GB: { currency: "GBP", monthly: 399, yearly: 3999 } }).currency).toBe("USD")
+  })
+
+  it("shows the country's own entry when it is in the charged currency (India bills INR)", () => {
+    expect(show("USD", "IN", { IN: inr })).toEqual({ currency: "INR", monthly: 499900, yearly: 4999900, monthly_discount_pct: 50, yearly_discount_pct: 0 })
+  })
+
+  it("shows any entry priced in the charged currency", () => {
+    expect(show("EUR", "FR", { DE: { currency: "EUR", monthly: 459, yearly: 4590 } })).toMatchObject({ currency: "EUR", monthly: 459 })
+  })
+
+  it("falls back to the USD base with no geo pricing", () => {
+    expect(localPricingFor(null, "US", "USD", base).currency).toBe("USD")
   })
 })

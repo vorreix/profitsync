@@ -71,6 +71,10 @@ function OnboardingInner() {
   const [companyName, setCompanyName] = useState("")
   const [submitting, setSubmitting] = useState(false)
   const [currency, setCurrency] = useState(() => detectDefaultCurrency())
+  // What the workspace ACTUALLY reports in after onboarding — a workspace with
+  // history keeps its own currency whatever was picked, and the money wizard
+  // labels and saves every amount in this one.
+  const [workspaceCurrency, setWorkspaceCurrency] = useState<string | null>(null)
 
   const firstName = user?.firstName?.trim()
 
@@ -82,12 +86,13 @@ function OnboardingInner() {
     try {
       const token = await getToken()
       if (!token) return
-      const result = await apiPost<{ organization_id: string; account_type: AccountType }>("/api/onboarding", token, {
+      const result = await apiPost<{ organization_id: string; account_type: AccountType; reporting_currency?: string }>("/api/onboarding", token, {
         account_type: accountType,
         company_name: accountType === "business" ? companyName : undefined,
         currency,
       })
       setActiveOrgId(result.organization_id)
+      setWorkspaceCurrency(result.reporting_currency ?? currency)
       setPhase("money")
       await refresh()
     } catch (err) {
@@ -168,7 +173,7 @@ function OnboardingInner() {
       )}
 
       {phase === "money" && accountType && (
-        <MoneyWizard accountType={accountType} currency={currency} onBack={() => setPhase("details")} onDone={() => setPhase("plan")} />
+        <MoneyWizard accountType={accountType} currency={workspaceCurrency ?? currency} requestedCurrency={currency} onBack={() => setPhase("details")} onDone={() => setPhase("plan")} />
       )}
 
       {phase === "plan" && accountType && (

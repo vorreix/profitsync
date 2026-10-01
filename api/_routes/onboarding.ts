@@ -5,6 +5,8 @@ import { clients, organizations, transactions, userProfiles, wealthAccounts } fr
 import { createOrgForUser, ensurePersonalOrg, getUserId } from "../_lib/auth.js"
 import { parseOrgCurrency, setOrgCurrency } from "../_lib/org-currency.js"
 import { DEFAULT_CASH_NAME } from "../_lib/wealth-accounts.js"
+import { reportingCurrencyFor } from "../_lib/fx-rates.js"
+import { selectableCurrencyCode } from "../../src/lib/money.js"
 
 /**
  * Onboarding asks "what currency?" and then which cash you hold — but Cash in
@@ -87,9 +89,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: "account_type must be 'personal' or 'business'" })
   }
   const resolvedCurrency = currency === undefined ? undefined : parseOrgCurrency(currency)
-  if (resolvedCurrency === null) {
-    return res.status(400).json({ error: "Invalid currency code", code: "invalid_currency" })
-  }
+  if (resolvedCurrency === null) return refuseCurrency(res)
+  // A workspace may only be GIVEN a currency new money can be created in — not
+  // KWD, BHD, … whose third decimal the money columns can't keep (MC-031) —
+  // unless it already reports in it. Refused like POST /api/organizations: an
+  // old build whose picker guessed KWD is told so before anything is written.
+  const unusable = (current?: string | null) => !!resolvedCurrency && !selectableCurrencyCode(resolvedCurrency, current)
 
   let orgId: string
   let adopted = false // the workspace now reports in resolvedCurrency
@@ -97,23 +102,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (account_type === "personal") {
     // Ensures account_type=personal + a default client.
     orgId = await ensurePersonalOrg(userId)
+    if (unusable(await reportingCurrencyFor(orgId))) return refuseCurrency(res)
     adopted = await adoptCurrencyIfEmpty(orgId, resolvedCurrency, userId)
   } else {
     // Reuse the user's existing business workspace if they have one.
     const [existingBiz] = await db
-      .select({ id: organizations.id, accountType: organizations.accountType })
+      .select({ id: organizations.id, accountType: organizations.accountType, currency: organizations.currency, reportingCurrency: organizations.reportingCurrency })
       .from(organizations)
       .where(and(eq(organizations.ownerUserId, userId), eq(organizations.isPersonal, false)))
       .orderBy(asc(organizations.createdAt))
       .limit(1)
 
     if (existingBiz) {
+      if (unusable(existingBiz.reportingCurrency ?? existingBiz.currency)) return refuseCurrency(res)
       orgId = existingBiz.id
       if (existingBiz.accountType !== "business") {
         await db.update(organizations).set({ accountType: "business", updatedAt: new Date() }).where(eq(organizations.id, orgId))
       }
       adopted = await adoptCurrencyIfEmpty(orgId, resolvedCurrency, userId)
     } else {
+      if (unusable()) return refuseCurrency(res)
       const name = company_name?.trim() || "My Company"
       const created = await createOrgForUser({
         userId,
@@ -141,5 +149,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     })
     .where(eq(userProfiles.id, userId))
 
-  return res.json({ organization_id: orgId, account_type })
+  // The currency the workspace ACTUALLY reports in: one with history keeps its
+  // own whatever was picked (adoptCurrencyIfEmpty), and the money wizard must
+  // label and save every amount in it — a ₹-typed cap stored as € is wrong money.
+  return res.json({ organization_id: orgId, account_type, reporting_currency: await reportingCurrencyFor(orgId) })
+}
+
+function refuseCurrency(res: VercelResponse) {
+  return res.status(400).json({ error: "Invalid currency code", code: "invalid_currency" })
 }

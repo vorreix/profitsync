@@ -12,6 +12,11 @@ import { buildWealthSummary } from "../_lib/wealth-summary.js"
 // SQL for "the account's display name" — reused to label leaves with the
 // account the money moved through (to/from).
 const accountLabelSql = sql<string | null>`coalesce(nullif(${wealthAccounts.nickname}, ''), nullif(${wealthAccounts.bankName}, ''))`
+// The category a row is grouped under. No category ('' or NULL — the column is
+// nullable) is a NULL key: the client names that bucket by its key, in the
+// reader's language (money-flow.ts groupLabel), and a real category called
+// "Uncategorized" stays its own.
+const categoryKeySql = sql<string | null>`nullif(${transactions.category}, '')`
 
 const isDate = (v: string | undefined): v is string => !!v && /^\d{4}-\d{2}-\d{2}$/.test(v)
 const fmt = (d: Date) => d.toISOString().slice(0, 10)
@@ -116,9 +121,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     gte(transactions.date, fromDate),
     lte(transactions.date, toDate),
   ]
-  if (categories.length) {
-    conds.push(sql`coalesce(nullif(${transactions.category}, ''), 'Uncategorized') in (${sql.join(categories.map((c) => sql`${c}`), sql`, `)})`)
-  }
+  if (categories.length) conds.push(inArray(transactions.category, categories))
   if (clientIds.length) conds.push(inArray(transactions.clientId, clientIds))
   if (accountIds.length) conds.push(inArray(transactions.wealthAccountId, accountIds))
   const where = and(...conds)
@@ -161,7 +164,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     } else if (groupBy === "client") {
       extra = eq(transactions.clientId, key)
     } else {
-      extra = sql`coalesce(nullif(${transactions.category}, ''), 'Uncategorized') = ${key}`
+      extra = key && key !== "__none__" ? eq(transactions.category, key) : sql`${categoryKeySql} is null`
     }
     // Fetch limit+1 so we know whether another page exists without a count
     // query; the extra SPLIT_BUFFER rows let us finish a split straddling the
@@ -349,7 +352,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       period_limit: periodLimit,
       has_more_periods: windowStart > 0,
       final: {
-        label: ownerOrgT[0]?.name ?? "Workspace",
+        label: ownerOrgT[0]?.name || null, // null → named on the client
         total_in: totalIn,
         total_out: totalOut,
         total_net: totalIn - totalOut,
@@ -367,7 +370,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ? sql<string | null>`${transactions.wealthAccountId}::text`
       : groupBy === "client"
         ? sql<string | null>`${transactions.clientId}::text`
-        : sql<string | null>`coalesce(nullif(${transactions.category}, ''), 'Uncategorized')`
+        : categoryKeySql
+  // A client group is named IN the aggregate, so every group carries its own
+  // name — not only the ones the newest-LEAF_POOL sample happens to reach.
+  const groupNameExpr = groupBy === "client" ? sql<string | null>`max(${clients.name})` : sql<string | null>`null`
 
   const [summaryRows, groupRows, accountMeta, ownerOrg, leafPoolRaw, wealth] = await Promise.all([
     withFx(
@@ -380,7 +386,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     ).where(where),
     withFx(
       db
-        .select({ key: groupKeyExpr, income: incomeSum, expense: expenseSum, txCount: countExpr, excluded: excludedExpr })
+        .select({ key: groupKeyExpr, name: groupNameExpr, income: incomeSum, expense: expenseSum, txCount: countExpr, excluded: excludedExpr })
         .from(transactions)
         .innerJoin(clients, eq(transactions.clientId, clients.id))
         .$dynamic(),
@@ -391,10 +397,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .orderBy(sql`(${incomeSum} + ${expenseSum}) desc`),
     // Account labels + balances for the accounts dimension. `opening`/`current`
     // stay NATIVE (labelled by `currencyCode`); the root balance is `wealth`.
+    // ARCHIVED accounts too: their rows are still in the aggregates above, so
+    // their group and leaves need the account's own name.
     db
       .select({
         id: wealthAccounts.id,
-        label: sql<string>`coalesce(nullif(${wealthAccounts.nickname}, ''), ${wealthAccounts.bankName})`,
+        label: accountLabelSql,
         type: wealthAccounts.type,
         icon: wealthAccounts.icon,
         opening: wealthAccounts.openingBalance,
@@ -404,7 +412,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         logoData: wealthAccounts.logoData,
       })
       .from(wealthAccounts)
-      .where(and(eq(wealthAccounts.organizationId, orgId), isNull(wealthAccounts.archivedAt))),
+      .where(eq(wealthAccounts.organizationId, orgId)),
     db.select({ name: organizations.name }).from(organizations).where(eq(organizations.id, orgId)),
     db
       .select({
@@ -434,7 +442,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // straddles the boundary (its tail legs would otherwise drop below the cap).
   const leafPool = leafPoolRaw.slice(0, completeBoundarySplit(leafPoolRaw, LEAF_POOL))
   const accById = new Map(accountMeta.map((a) => [a.id, a]))
-  const clientNameByLeaf = new Map(leafPool.map((l) => [l.clientId, l.clientName]))
 
   // Bucket the recent-leaf pool by the active group key. We cap at
   // LEAVES_PER_GROUP *logical* transactions (a split counts once) and always
@@ -444,7 +451,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ? l.accountId
       : groupBy === "client"
         ? l.clientId
-        : (l.category?.trim() || "Uncategorized")
+        : l.category || null // exactly categoryKeySql, so a leaf lands in the group that counted it
   const leavesByKey = new Map<string, typeof leafPool>()
   const logicalByKey = new Map<string, Set<string>>()
   for (const l of leafPool) {
@@ -459,11 +466,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     leavesByKey.set(k, arr)
   }
 
-  const labelForGroup = (key: string | null): string => {
-    if (groupBy === "account") return key ? (accById.get(key)?.label ?? "Account") : "Unassigned"
-    if (groupBy === "client") return key ? (clientNameByLeaf.get(key) ?? "Client") : "—"
-    return key ?? "Uncategorized"
-  }
+  // Every name comes from the data itself (null = a nameless account). The empty
+  // bucket (null key: no account / no category) keeps its legacy English label
+  // ONLY for store-pinned native builds, which render `label` raw; current
+  // clients name it by its key in the reader's language (money-flow.ts groupLabel).
+  const labelForGroup = (g: (typeof groupRows)[number]): string | null =>
+    groupBy === "account"
+      ? (g.key ? (accById.get(g.key)?.label ?? null) : "Unassigned")
+      : groupBy === "client"
+        ? g.name
+        : (g.key ?? "Uncategorized")
 
   const groups = groupRows.map((g) => {
     const income = Number(g.income)
@@ -488,7 +500,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return {
       key: g.key ?? null,
       kind: groupBy,
-      label: labelForGroup(g.key),
+      label: labelForGroup(g),
       icon: acc?.icon ?? null,
       logo_src: acc ? logoDataUrl(acc.logoData) || acc.logoUrl || null : null,
       account_type: acc?.type ?? null,
@@ -524,7 +536,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     excluded_count: Number(s.excluded ?? 0),
     range: { from: fromDate, to: toDate },
     root: {
-      label: ownerOrg[0]?.name ?? "Workspace",
+      label: ownerOrg[0]?.name || null, // null → named on the client
       income,
       expense,
       net: income - expense,

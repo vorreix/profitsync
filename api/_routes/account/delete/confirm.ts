@@ -42,7 +42,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     })
   }
 
-  const result = await deleteUserAccount(userId)
+  const result = await deleteUserAccount(userId, { abortOnBillingFailure: true })
+  if (result.billingFailed) {
+    // A paid workspace couldn't be cancelled on Dodo: it, the profile and the
+    // login all survive (and so does this code), so the user can retry.
+    return res.status(502).json({
+      error: "Couldn't cancel a workspace's subscription, so your account was not deleted. Try again in a moment.",
+      code: "billing_cancel_failed",
+    })
+  }
   if (!result.clerkDeleted) {
     // All app data is gone; only the Clerk login survived. Retrying is safe.
     return res.status(500).json({ error: "Deletion incomplete — please retry.", code: "clerk_delete_failed" })

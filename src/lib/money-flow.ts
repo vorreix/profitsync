@@ -37,7 +37,8 @@ export type FlowLeaf = {
 export type FlowGroup = {
   key: string | null
   kind: "account" | "client" | "category"
-  label: string
+  /** The group's own name; null = the empty bucket (no category / no account) or a nameless account — see groupLabel. */
+  label: string | null
   icon?: string | null
   /** Bank/account logo as a data: URL or remote URL (account dimension only). */
   logo_src?: string | null
@@ -57,7 +58,8 @@ export type FlowData = {
   group_by: "account" | "client" | "category"
   personal: boolean
   range: { from: string; to: string }
-  root: { label: string; income: number; expense: number; net: number; tx_count: number; balance: number }
+  /** label: the workspace's name; null when it has none (the page names it). */
+  root: { label: string | null; income: number; expense: number; net: number; tx_count: number; balance: number }
   groups: FlowGroup[]
 }
 
@@ -84,7 +86,7 @@ export type TimelineData = {
   personal: boolean
   range: { from: string; to: string }
   periods: TimelinePeriod[]
-  final: { label: string; total_in: number; total_out: number; total_net: number; balance: number }
+  final: { label: string | null; total_in: number; total_out: number; total_net: number; balance: number }
   /** Periods in the whole range — `periods` holds only the newest window of it. */
   period_total?: number
   period_limit?: number
@@ -207,9 +209,23 @@ function gridCols(n: number): number {
   return 4
 }
 
-/** Stable id for a group whose API key may be null (e.g. "Unassigned"). */
-export function groupKeyId(g: Pick<FlowGroup, "key" | "label">): string {
-  return g.key ?? `__none__:${g.label}`
+/** Stable id for a group whose API key may be null (the no-account / no-category bucket — one per payload). */
+export function groupKeyId(g: Pick<FlowGroup, "key">): string {
+  return g.key ?? "__none__"
+}
+
+/**
+ * A group's display name. The server names every group from its own data (the
+ * client, the account — archived ones too — or the category). The empty bucket
+ * (null key: no category / no account) is named by its KEY, in the reader's
+ * language — the same words the Dashboard and the split legs use; its `label`
+ * is legacy English kept only for store-pinned builds. A nameless account
+ * (null label) gets the kind's word.
+ */
+export function groupLabel(g: Pick<FlowGroup, "kind" | "key" | "label">, t: (key: string) => string): string {
+  if (!g.key && g.kind === "category") return t("dashboard.uncategorized")
+  if (!g.key && g.kind === "account") return t("flow.unassignedAccount")
+  return g.label || t(g.kind === "account" ? "flow.kindAccount" : "flow.kindClient")
 }
 
 /** Distinct LOGICAL transactions in a leaf list (a split's legs count once). */

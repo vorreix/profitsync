@@ -925,7 +925,8 @@
     "cashQuestionBusiness": "How much cash does the business have on hand?",
     "cashHintBusiness": "Your company's cash on hand.",
     "newOrgTitle": "Create a new company",
-    "newOrgSubtitle": "Name it and pick a currency — you can change these later."
+    "newOrgSubtitle": "Name it and pick a currency — you can change these later.",
+    "keptCurrencyNote": "This workspace already has history, so it keeps reporting in {{currency}}. Enter the amounts below in {{currency}}."
   },
   "transactions": {
     "add": "Add",
@@ -2059,7 +2060,9 @@
       "exhausted": "Limit reached",
       "premiumHint": "Premium refills {{count}} credits every month, with 60-second voice fills and a 2-minute voice assistant",
       "usedOneTime": "{{used}} of {{limit}} one-time free credits used"
-    }
+    },
+    "chargedInAtCheckout": "Charged in {{currency}} at checkout, converted from this price.",
+    "checkoutFailed": "Couldn't start checkout. Please try again."
   },
   "trash": {
     "title": "Trash",
@@ -3312,7 +3315,10 @@
     "rate_limited": "Too many exchange-rate requests. Try again in a minute.",
     "amount_whole_units": "This currency has no decimal places — enter a whole amount.",
     "autosave_rate_unavailable": "There's no {{from}} to {{to}} exchange rate for this auto-save's date yet. It will go through as soon as there is one.",
-    "client_update_required": "Update the app to use accounts in another currency."
+    "client_update_required": "Update the app to use accounts in another currency.",
+    "billing_cancel_failed": "We couldn't cancel this organization's subscription, so nothing was deleted. Please try again in a moment.",
+    "billing_owner_only": "Only the organization's owner can change its subscription.",
+    "billing_provider_failed": "The payment provider couldn't complete the request. Please try again in a moment."
   },
   "adminFx": {
     "title": "Exchange rates",

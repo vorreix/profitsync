@@ -69,6 +69,7 @@ import {
   buildTimelineGraph,
   graphBounds,
   groupKeyId,
+  groupLabel,
   type FlowData,
   type FlowEdgeData,
   type FlowGroup,
@@ -183,7 +184,7 @@ const HANDLE_CLS = "!size-2 !rounded-full !border-2 !border-background !bg-muted
 const HANDLE_PRIMARY = "!size-2.5 !rounded-full !border-2 !border-background !bg-primary"
 
 type RootData = {
-  label: string; income: number; expense: number; net: number; tx_count: number; balance: number
+  label: string | null; income: number; expense: number; net: number; tx_count: number; balance: number
   collapsed: boolean; currency: string; logo_src?: string | null; onToggle: () => void; onDetail?: () => void
 }
 function RootNode({ id, data }: NodeProps<Node<RootData>>) {
@@ -201,7 +202,7 @@ function RootNode({ id, data }: NodeProps<Node<RootData>>) {
       <div className="relative flex items-center gap-2.5">
         <NodeLogo src={data.logo_src} className="size-10" chipClass="bg-gradient-to-br from-primary to-primary/70 text-primary-foreground shadow-sm" fallback={<Sparkles className="size-5" />} />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold tracking-tight">{data.label}</p>
+          <p className="truncate text-sm font-semibold tracking-tight">{data.label || t("flow.kindWorkspace")}</p>
           <p className="text-[11px] text-muted-foreground">{t("flow.workspaceTotals")}</p>
         </div>
         <DetailButton onClick={data.onDetail} />
@@ -249,6 +250,7 @@ function GroupNode({ id, data }: NodeProps<Node<GroupData>>) {
   // An account's own balances are native money — its currency, not the reporting one.
   const balanceCurrency = data.account_currency || data.currency
   const pos = data.net >= 0
+  const label = groupLabel(data, t)
   return (
     <div
       className={cn(
@@ -264,7 +266,7 @@ function GroupNode({ id, data }: NodeProps<Node<GroupData>>) {
           chipClass={cn("bg-gradient-to-br ring-1 ring-inset", pos ? "from-emerald-500/15 to-emerald-500/5 text-emerald-600 ring-emerald-500/20 dark:text-emerald-400" : "from-rose-500/15 to-rose-500/5 text-rose-600 ring-rose-500/20 dark:text-rose-400")}
           fallback={<Icon className="size-[18px]" />}
         />
-        <p className="min-w-0 flex-1 truncate text-sm font-semibold tracking-tight" title={data.label}>{data.label}</p>
+        <p className="min-w-0 flex-1 truncate text-sm font-semibold tracking-tight" title={label}>{label}</p>
         {/* This node's figures leave rows out (no rate for their day). */}
         <FxExcludedMarker count={data.excluded_count} />
         <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground">{data.tx_count}</span>
@@ -495,7 +497,7 @@ function TimelineFinalNode({ id, data }: NodeProps<Node<TimelineFinalNodeData>>)
       <div className="relative flex items-center gap-2.5">
         <NodeLogo src={data.logo_src} className="size-10" chipClass="bg-gradient-to-br from-primary to-primary/70 text-primary-foreground shadow-sm" fallback={<Sparkles className="size-5" />} />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold tracking-tight">{data.label}</p>
+          <p className="truncate text-sm font-semibold tracking-tight">{data.label || t("flow.kindWorkspace")}</p>
           <p className="text-[11px] text-muted-foreground">{t("flow.finalEntity")}</p>
         </div>
         <DetailButton onClick={data.onDetail} />
@@ -995,7 +997,7 @@ export function MoneyFlowPage() {
         if (cancelled) return
         const catList = Array.isArray(cats) ? cats : []
         setCatOptions([...new Set(catList.map((c) => c.name).filter(Boolean))].map((n) => ({ id: n, label: n })))
-        setAccountOptions(accounts.filter((a) => !a.archived_at).map((a) => ({ id: a.id, label: a.nickname || a.bank_name || "Account" })))
+        setAccountOptions(accounts.filter((a) => !a.archived_at).map((a) => ({ id: a.id, label: a.nickname || a.bank_name || t("flow.kindAccount") })))
         const cl = Array.isArray(clientsResp) ? clientsResp : (clientsResp.data ?? [])
         setClientOptions(cl.filter((c) => !c.is_own).map((c) => ({ id: c.id, label: c.name })))
       } catch {
@@ -1004,7 +1006,7 @@ export function MoneyFlowPage() {
     }
     loadOptions()
     return () => { cancelled = true }
-  }, [getToken, hasClients])
+  }, [getToken, hasClients, t])
 
   const load = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
     if (!silent) setLoading(true)
@@ -1156,9 +1158,9 @@ export function MoneyFlowPage() {
   const openMoreForGroup = useCallback((g: FlowGroup) => {
     if (g.kind === "client" && g.key) { navigate(`/clients/${g.key}`); return }
     if (g.kind === "account" && g.key) { navigate(`/wealth/${g.key}`); return }
-    // Category groups carry their filter through to the list (Uncategorized has
-    // no concrete category value, so it just opens the date-filtered list).
-    if (g.kind === "category" && g.key && g.key !== "Uncategorized") { openTransactions(g.key); return }
+    // Category groups carry their filter through to the list (the no-category
+    // bucket's key is null — no value to filter by — so it opens the date-filtered list).
+    if (g.kind === "category" && g.key) { openTransactions(g.key); return }
     openTransactions()
   }, [navigate, openTransactions])
   // Clicking a transaction pops its details up ON the canvas (no navigation) so
@@ -1199,7 +1201,7 @@ export function MoneyFlowPage() {
         // Balances are the account's own money; income/expense are reporting-currency.
         const native = (v: number) => formatMoney(v, g.account_currency || currency)
         return {
-          title: g.label,
+          title: groupLabel(g, t),
           kindLabel: g.kind === "account" ? t("flow.kindAccount") : g.kind === "client" ? t("flow.kindClient") : t("flow.kindCategory"),
           logo_src: g.logo_src,
           variant: g.kind,
@@ -1234,9 +1236,9 @@ export function MoneyFlowPage() {
         }
       }
       case "root": {
-        const r = n.data as { label: string; income: number; expense: number; net: number; tx_count: number; balance: number }
+        const r = n.data as { label: string | null; income: number; expense: number; net: number; tx_count: number; balance: number }
         return {
-          title: r.label, kindLabel: t("flow.kindWorkspace"), variant: "workspace", logo_src: activeOrg?.logo_src ?? null,
+          title: r.label || t("flow.kindWorkspace"), kindLabel: t("flow.kindWorkspace"), variant: "workspace", logo_src: activeOrg?.logo_src ?? null,
           rows: [
             { label: t("flow.revenue"), value: `+${money(r.income)}`, tone: "income" },
             { label: t("flow.expenses"), value: `−${money(r.expense)}`, tone: "expense" },
@@ -1250,7 +1252,7 @@ export function MoneyFlowPage() {
       case "tlfinal": {
         const f = n.data as TimelineData["final"]
         return {
-          title: f.label, kindLabel: t("flow.kindWorkspace"), variant: "workspace", logo_src: activeOrg?.logo_src ?? null,
+          title: f.label || t("flow.kindWorkspace"), kindLabel: t("flow.kindWorkspace"), variant: "workspace", logo_src: activeOrg?.logo_src ?? null,
           rows: [
             { label: t("flow.revenue"), value: `+${money(f.total_in)}`, tone: "income" },
             { label: t("flow.expenses"), value: `−${money(f.total_out)}`, tone: "expense" },

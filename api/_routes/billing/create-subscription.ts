@@ -21,7 +21,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!ctx) return
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" })
   if (ctx.role !== "owner") {
-    return res.status(403).json({ error: "Only the owner can change the subscription" })
+    return res.status(403).json({ error: "Only the owner can change the subscription", code: "billing_owner_only" })
   }
 
   const { plan_key, cycle } = req.body as { plan_key?: string; cycle?: string }
@@ -184,7 +184,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!sub) {
     const message = lastError instanceof Error ? lastError.message : "Dodo Payments failure"
     await markAttempt(attemptId, { status: "failed", providerErrorMessage: message })
-    return res.status(502).json({ error: message })
+    return res.status(502).json({ error: message, code: "billing_provider_failed" })
   }
 
   await markAttempt(attemptId, {

@@ -296,7 +296,8 @@
     "cashQuestionBusiness": "Wie viel Bargeld hat das Unternehmen zur Hand?",
     "cashHintBusiness": "Das Bargeld deines Unternehmens.",
     "newOrgTitle": "Neues Unternehmen erstellen",
-    "newOrgSubtitle": "Benenne es und wähle eine Währung — später änderbar."
+    "newOrgSubtitle": "Benenne es und wähle eine Währung — später änderbar.",
+    "keptCurrencyNote": "Dieser Arbeitsbereich enthält bereits Buchungen und bleibt daher bei {{currency}}. Gib die Beträge unten in {{currency}} ein."
   },
   "transactions": {
     "add": "Hinzufügen",
@@ -832,7 +833,9 @@
       "exhausted": "Limit erreicht",
       "premiumHint": "Premium lädt jeden Monat {{count}} Credits auf — mit 60-Sekunden-Sprachdiktaten und einem 2-Minuten-Sprachassistenten",
       "usedOneTime": "{{used}} von {{limit}} einmaligen Gratis-Credits verbraucht"
-    }
+    },
+    "chargedInAtCheckout": "Wird an der Kasse in {{currency}} berechnet, umgerechnet aus diesem Preis.",
+    "checkoutFailed": "Die Kasse konnte nicht geöffnet werden. Bitte versuche es erneut."
   },
   "trash": {
     "title": "Papierkorb",
@@ -3312,7 +3315,10 @@
     "rate_limited": "Zu viele Wechselkursabfragen. Versuche es in einer Minute erneut.",
     "amount_whole_units": "Diese Währung hat keine Nachkommastellen – gib einen ganzen Betrag ein.",
     "autosave_rate_unavailable": "Für das Datum dieser automatischen Sparrate gibt es noch keinen Wechselkurs von {{from}} zu {{to}}. Sie wird ausgeführt, sobald einer vorliegt.",
-    "client_update_required": "Aktualisiere die App, um Konten in einer anderen Währung zu nutzen."
+    "client_update_required": "Aktualisiere die App, um Konten in einer anderen Währung zu nutzen.",
+    "billing_cancel_failed": "Das Abonnement dieser Organisation konnte nicht gekündigt werden, daher wurde nichts gelöscht. Bitte versuche es gleich noch einmal.",
+    "billing_owner_only": "Nur der Inhaber der Organisation kann ihr Abonnement ändern.",
+    "billing_provider_failed": "Der Zahlungsanbieter konnte die Anfrage nicht abschließen. Bitte versuche es gleich noch einmal."
   },
   "adminFx": {
     "title": "Wechselkurse",

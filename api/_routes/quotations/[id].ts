@@ -6,7 +6,8 @@ import { canDelete, canWrite, requireAuth, requireBusinessFeature } from "../../
 import { checkNoteLength } from "../../_lib/quota.js"
 import { diffFields, logAudit } from "../../_lib/audit.js"
 import { notifyQuotationAccepted } from "../../_lib/notify-quotation.js"
-import { amountExceedsLimit } from "../../../src/lib/money.js"
+import { moneyRefusal } from "../../../src/lib/money.js"
+import { reportingCurrencyFor } from "../../_lib/fx-rates.js"
 import { cleanTags } from "../../../src/lib/tags.js"
 
 const VALID_STATUSES = ["draft", "sent", "accepted", "rejected"]
@@ -38,7 +39,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (status !== undefined && !VALID_STATUSES.includes(status)) {
       return res.status(400).json({ error: "status must be draft, sent, accepted, or rejected" })
     }
-    if (amount !== undefined && amountExceedsLimit(amount)) return res.status(400).json({ error: "Amount is too large" })
     if (notes !== undefined) {
       const noteCheck = await checkNoteLength(orgId, notes)
       if (!noteCheck.allowed) return res.status(402).json(noteCheck)
@@ -47,6 +47,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .select()
       .from(quotations)
       .where(and(eq(quotations.id, id), eq(quotations.organizationId, orgId), isNull(quotations.deletedAt)))
+    if (!before) return res.status(404).json({ error: "Not found" })
+    // A changed amount to the quote's own currency decimals (none for ¥) and
+    // within MAX_MONEY — the rule POST runs. The edit form re-sends the stored
+    // amount with every save, so an unchanged legacy ¥1,500.50 never blocks a
+    // title edit. A legacy quote with no currency reads as the reporting one.
+    if (amount !== undefined && Number(amount) !== Number(before.amount)) {
+      const badAmount = moneyRefusal(before.currencyCode ?? (await reportingCurrencyFor(orgId)), amount)
+      if (badAmount) return res.status(400).json(badAmount)
+    }
     const [updated] = await db
       .update(quotations)
       .set({

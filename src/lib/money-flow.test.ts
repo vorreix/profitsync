@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { applyExtraLeaves, buildFlowGraph, buildTimelineGraph, collapseLegs, graphBounds, groupKeyId, logicalCount, type FlowData, type FlowLeaf, type TimelineData } from "./money-flow"
+import { applyExtraLeaves, buildFlowGraph, buildTimelineGraph, collapseLegs, graphBounds, groupKeyId, groupLabel, logicalCount, type FlowData, type FlowLeaf, type TimelineData } from "./money-flow"
 
 function leaf(id: string, amount = 100): FlowData["groups"][number]["leaves"][number] {
   return { id, type: "incoming", amount, description: "x", category: "Sales", date: "2026-06-01" }
@@ -13,7 +13,7 @@ const DATA: FlowData = {
   root: { label: "VorreiX", income: 900, expense: 300, net: 600, tx_count: 6, balance: 1200 },
   groups: [
     { key: "c1", kind: "client", label: "Acme", income: 500, expense: 100, net: 400, tx_count: 4, opening_balance: null, current_balance: null, leaves: [leaf("t1"), leaf("t2")], more_count: 2 },
-    { key: null, kind: "client", label: "Unassigned", income: 400, expense: 200, net: 200, tx_count: 2, opening_balance: null, current_balance: null, leaves: [leaf("t3")], more_count: 0 },
+    { key: null, kind: "client", label: null, income: 400, expense: 200, net: 200, tx_count: 2, opening_balance: null, current_balance: null, leaves: [leaf("t3")], more_count: 0 },
   ],
 }
 
@@ -42,7 +42,7 @@ describe("buildFlowGraph", () => {
   })
 
   it("a group with no more_count expands without a 'more' node", () => {
-    const key = groupKeyId({ key: null, label: "Unassigned" })
+    const key = groupKeyId({ key: null })
     const { nodes } = buildFlowGraph(DATA, { rootCollapsed: false, expanded: new Set([key]) })
     expect(nodes.filter((n) => n.type === "leaf")).toHaveLength(1) // t3
     expect(nodes.filter((n) => n.type === "more")).toHaveLength(0)
@@ -75,9 +75,22 @@ describe("buildFlowGraph", () => {
     expect(leafXs.size).toBe(2)
   })
 
-  it("groupKeyId disambiguates null keys by label", () => {
-    expect(groupKeyId({ key: "c1", label: "Acme" })).toBe("c1")
-    expect(groupKeyId({ key: null, label: "Unassigned" })).toBe("__none__:Unassigned")
+  it("groupKeyId gives the one null-key group a stable id", () => {
+    expect(groupKeyId({ key: "c1" })).toBe("c1")
+    expect(groupKeyId({ key: null })).toBe("__none__")
+  })
+
+  it("groupLabel shows the server's name and translates only the nameless buckets", () => {
+    const t = (k: string) => `t:${k}`
+    // A real name — a client outside the leaf sample, an archived account, a
+    // category literally called "Uncategorized" — is shown as sent.
+    expect(groupLabel({ kind: "client", key: "c9", label: "Acme" }, t)).toBe("Acme")
+    expect(groupLabel({ kind: "category", key: "Uncategorized", label: "Uncategorized" }, t)).toBe("Uncategorized")
+    // The empty buckets are named by KEY: their label is the legacy English
+    // store-pinned builds render, never what a current client shows.
+    expect(groupLabel({ kind: "category", key: null, label: "Uncategorized" }, t)).toBe("t:dashboard.uncategorized")
+    expect(groupLabel({ kind: "account", key: null, label: "Unassigned" }, t)).toBe("t:flow.unassignedAccount")
+    expect(groupLabel({ kind: "account", key: "a1", label: null }, t)).toBe("t:flow.kindAccount")
   })
 
   it("branch edges carry per-direction income/expense + stroke widths", () => {
@@ -218,7 +231,7 @@ describe("applyExtraLeaves", () => {
     // tx_count 4 − 4 shown = 0 → more-node disappears
     expect(acme.more_count).toBe(0)
     // other groups untouched
-    expect(out.groups.find((g) => g.label === "Unassigned")!.leaves).toHaveLength(1)
+    expect(out.groups.find((g) => g.key === null)!.leaves).toHaveLength(1)
   })
 
   it("dedupes extras that overlap with already-shown leaves", () => {

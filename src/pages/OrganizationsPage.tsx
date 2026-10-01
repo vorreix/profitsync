@@ -112,7 +112,7 @@ export function OrganizationsPage() {
       setDeleteTarget(null)
       await refresh()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : t("organizations.failedToDelete"))
+      toast.error(apiErrorMessage(err, t("organizations.failedToDelete")))
     } finally {
       setDeleting(false)
     }

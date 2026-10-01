@@ -7,6 +7,7 @@ import { validateRuleInput, type RecurringRuleInput } from "../../../_lib/recurr
 import { materializeDueRecurring } from "../../../_lib/recurring-materialize.js"
 import { monthlyEquivalent, type SpaceFrequencyUnit } from "../../../../src/lib/spaces.js"
 import { moneyRefusal } from "../../../../src/lib/money.js"
+import { withRuleError } from "../../../_lib/client-capabilities.js"
 
 // /api/spaces/:id/auto-save — the ONE recurring auto-save (a kind='transfer'
 // recurring rule) that funds this Space from a chosen bank/cash account on a
@@ -57,7 +58,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const withDerived = (rule: Awaited<ReturnType<typeof findRule>>) =>
     rule
-      ? { ...serialize(rule), monthly_equivalent: monthlyEquivalent(Number(rule.amount), rule.frequencyUnit as SpaceFrequencyUnit, rule.frequencyInterval) }
+      ? { ...serialize(withRuleError(req, rule)), monthly_equivalent: monthlyEquivalent(Number(rule.amount), rule.frequencyUnit as SpaceFrequencyUnit, rule.frequencyInterval) }
       : null
 
   if (req.method === "GET") {

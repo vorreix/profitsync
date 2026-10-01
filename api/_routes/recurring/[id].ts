@@ -13,6 +13,7 @@ import { currencyForFinancialWrite } from "../../_lib/transaction-currency.js"
 import { currencyChangeRefusal } from "../../_lib/currency-guards.js"
 import { debtCurrencyOf, directionOf, loadDebt } from "../../_lib/debts.js"
 import { greatestDate, linkRuleToDebt, mirrorDebtSchedule, reloadRule } from "../../_lib/recurring-debt.js"
+import { withRuleError } from "../../_lib/client-capabilities.js"
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -48,7 +49,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     await materializeDueRecurring(orgId)
     const row = await readRule(orgId, id)
     if (!row) return res.status(404).json({ error: "Not found" })
-    return res.json(serialize(row))
+    return res.json(serialize(withRuleError(req, row)))
   }
 
   const [rule] = await db
@@ -85,7 +86,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // Post anything that became due the moment it changed hands.
       if (linked.rule.active) await materializeDueRecurring(orgId)
       const fresh = await readRule(orgId, id)
-      return res.json(serialize(fresh ?? linked.rule))
+      return res.json(serialize(withRuleError(req, fresh ?? linked.rule)))
     }
 
     // Pause / resume is a lightweight toggle that skips full validation.
@@ -113,7 +114,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (body.active) await materializeDueRecurring(orgId)
       await syncDebt(rule.kind, rule.debtAccountId, id)
       const fresh = await readRule(orgId, id)
-      return res.json(serialize(fresh ?? updated))
+      return res.json(serialize(withRuleError(req, fresh ?? updated)))
     }
 
     const parsed = validateRuleInput({
@@ -233,7 +234,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     await materializeDueRecurring(orgId)
     await syncDebt(rule.kind, rule.debtAccountId, id)
     const fresh = await readRule(orgId, id)
-    return res.json(serialize(fresh ?? updated))
+    return res.json(serialize(withRuleError(req, fresh ?? updated)))
   }
 
   if (req.method === "DELETE") {

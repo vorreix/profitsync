@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { desc, eq } from "drizzle-orm"
 import { db } from "../../src/lib/db/index.js"
 import { invoices, subscriptions } from "../../src/lib/db/schema.js"
-import { verifyWebhookSignature, type DodoEnv, type DodoScheduledChange } from "../_lib/dodo.js"
+import { fromDodoMinor, verifyWebhookSignature, type DodoEnv, type DodoScheduledChange } from "../_lib/dodo.js"
 import { resolveScheduledChange } from "../_lib/billing-sync.js"
 import { invoiceStatusForPayment } from "../_lib/invoice-map.js"
 import { creditReferralOnPaid } from "../_lib/referral.js"
@@ -167,6 +167,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const paymentId = data.payment_id as string | undefined
         const minorAmount = (data.total_amount ?? data.settlement_amount ?? data.amount) as number | undefined
         const currency = (data.currency ?? data.settlement_currency ?? "USD") as string
+        const amount = fromDodoMinor(minorAmount, currency)
         // Use the payment's own timestamp so the invoice's issued/paid date matches
         // Dodo (and the reconcile path's invoiceValuesFromPayment) instead of the
         // webhook-handler clock — otherwise a later reconcile rewrites the row.
@@ -174,7 +175,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const baseValues = {
           organizationId: sub.organizationId,
           subscriptionId: sub.id,
-          amount: String((minorAmount ?? 0) / 100),
+          amount: String(amount),
           currency,
           status: "paid",
           provider: "dodo",
@@ -194,11 +195,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
         // Credit a pending referral for this org's owner (idempotent: only a
         // signed_up referral becomes paid, so renewals / retries don't re-credit).
-        await creditReferralOnPaid(sub.organizationId, (minorAmount ?? 0) / 100, currency)
+        await creditReferralOnPaid(sub.organizationId, amount, currency)
         // Receipt notification for owners/admins (idempotent per payment id).
         void notifyPaymentSucceeded(sub.organizationId, {
           paymentId,
-          amount: (minorAmount ?? 0) / 100,
+          amount,
           currency,
           paidAt,
         }).catch(() => {})
@@ -230,7 +231,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const baseValues = {
           organizationId: sub.organizationId,
           subscriptionId: sub.id,
-          amount: String((minorAmount ?? 0) / 100),
+          amount: String(fromDodoMinor(minorAmount, currency)),
           currency,
           status: invoiceStatusForPayment("failed"), // → "uncollectible"
           provider: "dodo",

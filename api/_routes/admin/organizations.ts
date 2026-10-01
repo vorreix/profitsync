@@ -234,14 +234,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!organization_id) return res.status(400).json({ error: "organization_id is required" })
 
     // Full teardown: cancel Dodo billing + clean clients/quotations (no org FK) +
-    // cascade the rest. Shared with the bulk-delete route so both behave identically.
-    const result = await teardownOrganization(organization_id)
+    // cascade the rest. A single action fails loud with the DB untouched when Dodo
+    // won't cancel (deleting would strand a live charge with no mirror to cancel it
+    // from); the bulk-delete route stays per-row and force-deletes.
+    const result = await teardownOrganization(organization_id, { abortOnBillingFailure: true })
+    if (result.dodo.provider === "dodo" && !result.dodo.ok) {
+      return res.status(502).json({
+        error: `Couldn't cancel the subscription on Dodo, so nothing was deleted: ${result.dodo.error}`,
+        code: "billing_cancel_failed",
+      })
+    }
     if (!result.deleted) return res.status(404).json({ error: "Not found" })
-    return res.json({
-      ok: true,
-      dodo_cancelled: result.dodo.provider === "dodo" && result.dodo.ok,
-      dodo_error: result.dodo.provider === "dodo" && !result.dodo.ok ? result.dodo.error : null,
-    })
+    return res.json({ ok: true, dodo_cancelled: result.dodo.provider === "dodo" })
   }
 
   return res.status(405).json({ error: "Method not allowed" })

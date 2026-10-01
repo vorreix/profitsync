@@ -68,6 +68,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const incomeSum = incomeSumSqlIn(fx)
   const expenseSum = expenseSumSqlIn(fx)
   const excluded = missingRateCountSql(fx)
+  const categoryKey = sql<string | null>`nullif(${transactions.category}, '')` // '' and NULL are both "no category"
 
   const [summaryRows, seriesRows, categoryRows, clientRows] = await Promise.all([
     withFx(
@@ -97,7 +98,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     withFx(
       db
         .select({
-          category: sql<string>`coalesce(nullif(${transactions.category}, ''), 'Uncategorized')`,
+          // Grouped by `categoryKey`, so a real "Uncategorized" stays its own row.
+          // `category` keeps the legacy English name ONLY for store-pinned builds,
+          // which render it raw; current clients name the no-category bucket from
+          // `uncategorized`, in the reader's language.
+          category: sql<string>`coalesce(${categoryKey}, 'Uncategorized')`,
+          uncategorized: sql<boolean>`${categoryKey} is null`,
           income: incomeSum,
           expense: expenseSum,
           excluded,
@@ -108,7 +114,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       fx,
     )
       .where(where)
-      .groupBy(sql`1`)
+      .groupBy(categoryKey)
       .orderBy(sql`(${incomeSum} + ${expenseSum}) desc`)
       .limit(8),
     isPersonalAccount(ctx)
@@ -151,6 +157,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     })),
     by_category: categoryRows.map((r) => ({
       category: r.category,
+      uncategorized: r.uncategorized,
       income: Number(r.income),
       expense: Number(r.expense),
       excluded_count: Number(r.excluded ?? 0),

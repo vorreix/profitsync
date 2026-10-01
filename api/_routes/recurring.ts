@@ -13,6 +13,7 @@ import { payerShape, refusalForNew, refusalMessage, refusalStatus } from "../_li
 import type { LinkTargetDebt } from "../../src/lib/debt-recurring.js"
 import { todayIso } from "../../src/lib/recurring.js"
 import { moneyRefusal } from "../../src/lib/money.js"
+import { withRuleError } from "../_lib/client-capabilities.js"
 
 async function assertRefsBelongToOrg(orgId: string, clientId: string | null, accountId: string | null): Promise<string | null> {
   if (clientId) {
@@ -47,7 +48,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // not in the income/expense Recurring list.
       .where(and(eq(recurringRules.organizationId, orgId), ne(recurringRules.kind, "transfer")))
       .orderBy(desc(recurringRules.active), asc(recurringRules.nextDueAt), asc(recurringRules.createdAt))
-    return res.json(rows.map(serialize))
+    return res.json(rows.map((r) => serialize(withRuleError(req, r))))
   }
 
   if (req.method === "POST") {
@@ -155,7 +156,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // away (and today's occurrence fires on a rule starting today).
     const { created } = await materializeDueRecurring(orgId)
     const [fresh] = await db.select().from(recurringRules).where(eq(recurringRules.id, ruleId))
-    return res.status(201).json({ ...serialize(fresh ?? row), created_now: created })
+    return res.status(201).json({ ...serialize(withRuleError(req, fresh ?? row)), created_now: created })
   }
 
   return res.status(405).json({ error: "Method not allowed" })

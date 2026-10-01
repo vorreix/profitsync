@@ -96,8 +96,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // The same teardown as an admin delete: deleting only the org row orphaned
     // its clients, quotations and every account-only transaction, and left a
-    // paid subscription billing on Dodo.
-    await teardownOrganization(id)
+    // paid subscription billing on Dodo. When Dodo won't cancel, nothing is
+    // deleted — the workspace's subscription page is the owner's only way to
+    // stop the charges, so it must survive until they can retry.
+    const result = await teardownOrganization(id, { abortOnBillingFailure: true })
+    if (result.dodo.provider === "dodo" && !result.dodo.ok) {
+      return res.status(502).json({
+        error: "Couldn't cancel this workspace's subscription, so nothing was deleted. Try again in a moment.",
+        code: "billing_cancel_failed",
+      })
+    }
     return res.status(204).end()
   }
 

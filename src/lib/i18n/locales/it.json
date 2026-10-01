@@ -296,7 +296,8 @@
     "cashQuestionBusiness": "Quanto contante ha l'azienda a disposizione?",
     "cashHintBusiness": "Il contante della tua azienda.",
     "newOrgTitle": "Crea una nuova azienda",
-    "newOrgSubtitle": "Dai un nome e scegli una valuta — puoi cambiarli in seguito."
+    "newOrgSubtitle": "Dai un nome e scegli una valuta — puoi cambiarli in seguito.",
+    "keptCurrencyNote": "Questo spazio di lavoro ha già uno storico, quindi continua a usare {{currency}}. Inserisci gli importi qui sotto in {{currency}}."
   },
   "transactions": {
     "add": "Aggiungi",
@@ -832,7 +833,9 @@
       "exhausted": "Limite raggiunto",
       "premiumHint": "Premium ricarica {{count}} crediti ogni mese, con dettatura vocale di 60 secondi e un assistente vocale di 2 minuti",
       "usedOneTime": "{{used}} di {{limit}} crediti gratuiti una tantum usati"
-    }
+    },
+    "chargedInAtCheckout": "Addebitato in {{currency}} al pagamento, convertito da questo prezzo.",
+    "checkoutFailed": "Impossibile avviare il pagamento. Riprova."
   },
   "trash": {
     "title": "Cestino",
@@ -3312,7 +3315,10 @@
     "rate_limited": "Troppe richieste di tassi di cambio. Riprova tra un minuto.",
     "amount_whole_units": "Questa valuta non ha decimali: inserisci un importo intero.",
     "autosave_rate_unavailable": "Non c'è ancora un cambio da {{from}} a {{to}} per la data di questo risparmio automatico. Verrà eseguito appena sarà disponibile.",
-    "client_update_required": "Aggiorna l'app per usare conti in un'altra valuta."
+    "client_update_required": "Aggiorna l'app per usare conti in un'altra valuta.",
+    "billing_cancel_failed": "Non è stato possibile annullare l'abbonamento di questa organizzazione, quindi non è stato eliminato nulla. Riprova tra qualche istante.",
+    "billing_owner_only": "Solo il proprietario dell'organizzazione può modificarne l'abbonamento.",
+    "billing_provider_failed": "Il fornitore dei pagamenti non è riuscito a completare la richiesta. Riprova tra qualche istante."
   },
   "adminFx": {
     "title": "Tassi di cambio",

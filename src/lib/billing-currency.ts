@@ -62,3 +62,56 @@ export function billingCurrencyAttempts(
   attempts.push(undefined)
   return attempts
 }
+
+/** An admin-configured local price for one country (`plans.geo_pricing[country]`), in minor units. */
+export type GeoPrice = {
+  currency: string
+  monthly: number
+  yearly: number
+  monthlyDiscountPct?: number
+  yearlyDiscountPct?: number
+}
+
+/** The price a plan card shows, in minor units of `currency`. */
+export type LocalPricing = {
+  currency: string
+  monthly: number
+  yearly: number
+  monthly_discount_pct: number
+  yearly_discount_pct: number
+}
+
+/**
+ * The price to SHOW for a plan, given the currency checkout will CHARGE
+ * (`resolveBillingCurrency`): the billing country's own geo entry when it is
+ * priced in that currency, else any entry priced in it, else the product's base
+ * USD price — and the page names the charge currency next to it. Never another
+ * country's entry: a EUR workspace was shown ₹2,499.50 (the IN entry) while
+ * Dodo charged it about €5.
+ */
+export function localPricingFor(
+  geo: Record<string, GeoPrice | undefined> | null | undefined,
+  country: string,
+  billingCurrency: string,
+  base: { monthlyUsd: number; yearlyUsd: number; monthlyDiscountPct: number; yearlyDiscountPct: number },
+): LocalPricing {
+  const entries = geo ?? {}
+  const own = entries[country]
+  const local = own?.currency === billingCurrency ? own : Object.values(entries).find((g) => g?.currency === billingCurrency)
+  if (local) {
+    return {
+      currency: local.currency,
+      monthly: local.monthly,
+      yearly: local.yearly,
+      monthly_discount_pct: local.monthlyDiscountPct ?? 0,
+      yearly_discount_pct: local.yearlyDiscountPct ?? 0,
+    }
+  }
+  return {
+    currency: "USD",
+    monthly: Math.round(base.monthlyUsd * 100),
+    yearly: Math.round(base.yearlyUsd * 100),
+    monthly_discount_pct: base.monthlyDiscountPct,
+    yearly_discount_pct: base.yearlyDiscountPct,
+  }
+}

@@ -43,6 +43,30 @@ script prints.
 
       Decide each finding before you deploy: leave it, pause the rule (tell the
       user), or relabel it with the user's agreement. Write the decision down.
+- [ ] **Dodo minor units, read-only.** Dodo sends amounts in the currency's
+      smallest unit (yen for JPY, fils for KWD); the old build divided every one
+      by 100, so a ¥1,500 charge is stored as ¥15 and 3.010 KWD as 30.10, and a
+      percent referral reward computed from it is off by the same factor. Count
+      what this build would have to correct (non-2-decimal currencies, the
+      `minorUnits` table in `src/lib/currencies.ts`):
+      ```sql
+      select upper(currency) as currency, count(*) as invoices
+      from invoices
+      where provider = 'dodo'
+        and upper(currency) in ('BIF','CLP','DJF','GNF','ISK','JPY','KMF','KRW','PYG','RWF','UGX','VUV','VND','XAF','XOF','XPF',
+                                  'BHD','IQD','JOD','KWD','LYD','OMR','TND')
+      group by 1;
+
+      select upper(reward_currency) as currency, status, count(*) as rewards
+      from referrals
+      where reward_type = 'percent' and status in ('paid', 'paid_out')
+        and upper(reward_currency) in ('BIF','CLP','DJF','GNF','ISK','JPY','KMF','KRW','PYG','RWF','UGX','VUV','VND','XAF','XOF','XPF',
+                                  'BHD','IQD','JOD','KWD','LYD','OMR','TND')
+      group by 1, 2;
+      ```
+      Both empty (dev read 0 on 2026-10-02) → nothing to do. Otherwise write the
+      rows down and run the correction in §4 **after** promotion — never before:
+      the old build re-divides by 100 on every reconcile until it stops serving.
 - [ ] **Rehearse on a Neon branch of prod.** Run
       `DATABASE_URL=<branch-url> npm run db:migrate` and check that the printed
       `[db-migrate] target:` is the branch host, not dev. The sentinel must print
@@ -77,6 +101,39 @@ script prints.
       It must return 200.
 - [ ] /admin → Worker → FX health shows no failing provider and no pair without
       a rate.
+- [ ] **Dodo minor units correction — only if §2's count was non-zero.**
+      1. Invoices: **Sync from Dodo** each affected org (/admin → Subscriptions,
+         per row or bulk). Do NOT fix them with arithmetic: the new build's
+         reconcile (every `/subscription` visit) already rewrites an invoice
+         from Dodo's payment, so a `* 100` after that corrupts a fixed row.
+         A 3-decimal amount keeps two decimals (`invoices.amount` is
+         numeric(20,2)): 3.015 KWD reads 3.02.
+      2. Then the percent referral rewards, a snapshot nothing rewrites. Recompute
+         each from its org's first paid (now re-synced) invoice, exactly as `creditReferralOnPaid`
+         does — re-running it changes nothing:
+         ```sql
+         begin;
+         with first_paid as (
+           select distinct on (organization_id) organization_id, amount, upper(currency) as currency
+           from invoices
+           where status = 'paid'
+           order by organization_id, paid_at asc nulls last, issued_at asc
+         )
+         update referrals r
+         set reward_amount = round(r.reward_percent / 100 * f.amount, 2), updated_at = now()
+         from first_paid f
+         where r.organization_id = f.organization_id
+           and r.reward_type = 'percent'
+           and r.status = 'paid'
+           and upper(r.reward_currency) = f.currency
+           and f.currency in ('BIF','CLP','DJF','GNF','ISK','JPY','KMF','KRW','PYG','RWF','UGX','VUV','VND','XAF','XOF','XPF',
+                         'BHD','IQD','JOD','KWD','LYD','OMR','TND')
+         returning r.id, r.reward_currency, r.reward_amount;
+         ```
+         Then, by hand: `commit;` only if the returned rows are exactly the ones
+         §2 listed, otherwise `rollback;`.
+      3. `paid_out` rewards are not touched: that money already left. Decide each
+         one by hand (a JPY referrer was underpaid 100x; a KWD one overpaid 10x).
 
 ## 5. Rollback policy (MC-035): roll forward only
 

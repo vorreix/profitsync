@@ -30,7 +30,8 @@ type Analytics = {
   excluded_count?: number
   summary: { income: number; expense: number; profit: number; tx_count: number; excluded_count?: number }
   series: { period: string; income: number; expense: number; profit: number; excluded_count?: number }[]
-  by_category: { category: string; income: number; expense: number; excluded_count?: number }[]
+  /** uncategorized: the no-category bucket — named here, in the reader's language (`category` is legacy English for store-pinned builds). */
+  by_category: { category: string; uncategorized?: boolean; income: number; expense: number; excluded_count?: number }[]
   by_client: { id: string; name: string; income: number; expense: number; profit: number; excluded_count?: number }[]
 }
 
@@ -229,9 +230,9 @@ export function AnalyticsPage() {
               <p className="py-6 text-center text-sm text-muted-foreground">{t("analytics.noData")}</p>
             ) : (
               data!.by_category.map((c) => (
-                <div key={c.category} className="space-y-1">
+                <div key={c.uncategorized ? "" : c.category} className="space-y-1">
                   <div className="flex items-center justify-between gap-2 text-sm">
-                    <span className="truncate">{c.category}</span>
+                    <span className="truncate">{c.uncategorized ? t("dashboard.uncategorized") : c.category}</span>
                     <span className="inline-flex shrink-0 items-center gap-1 tabular-nums text-muted-foreground">
                       <FxExcludedMarker count={c.excluded_count} />
                       {formatMoneyWhole(c.income + c.expense, currency)}
