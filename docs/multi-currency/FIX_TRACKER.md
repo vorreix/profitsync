@@ -179,7 +179,23 @@ Split into sub-waves, each committed when verified.
 
 **Dev-DB note:** 69 account-less legacy rows keep a NULL currency because their 11 clients belong to organisations that were deleted (orphaned before multi-currency; unreachable by any workspace). Pre-existing data hygiene, not touched.
 
+### 6e — tests ✅
+
+| Id | What | Status |
+|---|---|---|
+| MC-121 | The unsafe-sum check covered 5 routes | ✅ `tx-sql.test.ts` scans EVERY `api/` file: each SQL `sum(` is counted per file with the reason it cannot mix currencies (converted, grouped by currency or account, one account, or not money); exact counts, so a new sum fails until converted or justified (mutation-checked) |
+| MC-122/176 | mc fixtures piled up in the permanent personal workspace; the spec left it selected | ✅ `multi-currency.spec.ts` runs in a THROWAWAY business workspace (EUR) made in `beforeAll` and deleted in `afterAll`, remembering and restoring the user's workspace; `auth.setup.ts` sweeps leftovers of a killed run. A fresh ledger means the reversal now runs for real every time (+505 / −51,350) instead of only asserting the 409 |
+| — | **Found doing it:** deleting a workspace orphaned its data | ✅ the owner's `DELETE /api/organizations/:id` only deleted the org row: its clients + quotations have no org FK and survived with their transactions, every account-only row (a personal ledger) outlived it with `wealth_account_id` SET NULL, and a paid subscription kept billing. It now runs the shared `teardownOrganization` (Dodo stop, profile reassignment, clients, quotations), which also deletes the rows on the org's accounts. Root cause of the 69 NULL-currency orphans noted in 6d; live-checked: org + accounts + transfer + 4 rows → 0 left |
+| MC-128 | e2e depended on live FX providers | ✅ e2e.yml sets `FX_DISABLED=1` + `E2E_FX_SEED=1`: the spec seeds fixed EUR→INR rates (provider `e2e-fixed`) into the DEDICATED e2e database only — rates are global, so never locally; conversions are asserted against the rate the server reports (exact in CI). Verified on a cold `FX_DISABLED=1` server; the seed insert planned with `EXPLAIN` |
+| MC-175 | Fee assertion depended on the reporting currency's scale | ✅ the workspace reports in EUR, so the €5 fee moves outgoing by exactly 5.00 |
+| MC-174 | Debts net-worth test assumed one currency | ✅ (6b) asserted against `/api/wealth/summary` |
+| MC-177 | e2e never ran for PRs into dev | ✅ PRs into dev run the multi-currency spec; PRs into main and manual runs keep the full suite |
+| — | Cold-start "Failed to fetch" in the first spec | ✅ `auth.setup.ts` visits the app's screens once after onboarding, so a dev-server reload lands there; the first spec passed on a cold server |
+
+**Verification (2026-10-01):** multi-currency spec 8/8 on the shared dev server and 9/9 (with alerts first) on a cold `FX_DISABLED=1` server; 0 throwaway orgs and 0 new orphan rows after the runs; gate green. No `src/` change, so no native re-sync was needed.
+
 ### Remaining
 
-- **6e Tests:** MC-121 static unsafe-sum guard everywhere, 122 (now visible: since 6b keeps balance-defining system rows, the credit-card spec's cleanup archives its card instead of deleting it, so archived e2e cards and their rows pile up in the personal workspace — recurring-debt.spec's picker clicks were scoped to the open popover to stay robust; closed e2e debts pile up the same way, one system Opening Balance row each), 128 deterministic FX in e2e, 174–177; warm the dev server in `e2e/auth.setup.ts` (the first spec after a cold start hits Vite's dependency-optimisation reload — `Failed to fetch`); MC-170 currency-aware export/import (deferred feature).
+- **Deferred feature:** MC-170 currency-aware export/import.
+- **Dev-DB fixtures (yours to delete, the permission check blocked it):** 26 closed `e2e-ux4-*` debts (one system Opening Balance row each) and the old spec's personal-workspace `e2e-ux4-mc-*` wallets. Neither slows or breaks the suite any more.
 - **Decision needed:** translated screen-reader label for the vendored dialog close button (`src/components/ui/dialog.tsx`).

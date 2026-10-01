@@ -1,9 +1,10 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { and, eq } from "drizzle-orm"
 import { db, serialize } from "../../../src/lib/db/index.js"
-import { organizations, organizationMembers, userProfiles } from "../../../src/lib/db/schema.js"
+import { organizations, organizationMembers } from "../../../src/lib/db/schema.js"
 import { getUserId } from "../../_lib/auth.js"
 import { imageSrc, validateImageUpload } from "../../_lib/image-upload.js"
+import { teardownOrganization } from "../../_lib/admin-org-delete.js"
 import { setOrgCurrency } from "../../_lib/org-currency.js"
 import { selectableCurrencyCode } from "../../../src/lib/money.js"
 
@@ -93,19 +94,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(403).json({ error: "Forbidden" })
     }
 
-    const [profile] = await db.select().from(userProfiles).where(eq(userProfiles.id, userId))
-    if (profile?.currentOrganizationId === id) {
-      const [personal] = await db
-        .select()
-        .from(organizations)
-        .where(and(eq(organizations.ownerUserId, userId), eq(organizations.isPersonal, true)))
-      await db
-        .update(userProfiles)
-        .set({ currentOrganizationId: personal?.id ?? null, updatedAt: new Date() })
-        .where(eq(userProfiles.id, userId))
-    }
-
-    await db.delete(organizations).where(eq(organizations.id, id))
+    // The same teardown as an admin delete: deleting only the org row orphaned
+    // its clients, quotations and every account-only transaction, and left a
+    // paid subscription billing on Dodo.
+    await teardownOrganization(id)
     return res.status(204).end()
   }
 

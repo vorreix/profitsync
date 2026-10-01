@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { and, eq } from "drizzle-orm"
-import { readFileSync } from "node:fs"
+import { readdirSync, readFileSync } from "node:fs"
 import { db } from "../../src/lib/db/index.js"
 import { clients, transactions } from "../../src/lib/db/schema.js"
 import * as txSql from "./tx-sql.js"
@@ -322,6 +322,52 @@ describe("every P&L aggregate route uses the shared expressions", () => {
     // No SQL conversion of a balance at today's date, and no raw sum of current_balance.
     expect(src).not.toMatch(/current_date/)
     expect(src).not.toMatch(/reduce\(\(s(um)?, a\) => s(um)? \+ Number\(a\.current/)
+  })
+})
+
+describe("no SQL sum anywhere in api/ adds two currencies (MC-121)", () => {
+  // The route checks above cover the P&L routes; unconverted sums elsewhere
+  // (a transaction's group total, a rule's posted total, a debt's repayments,
+  // admin aggregates) passed them and shipped. This scans EVERY api file: each
+  // `sum(` must be counted here with the reason it can never mix currencies.
+  // The counts are exact — a new sum fails until it is converted (use the
+  // tx-sql helpers, which keep it out of the route file entirely) or justified.
+  const SUMS: Record<string, { n: number; why: string }> = {
+    "api/_lib/tx-sql.ts": { n: 4, why: "the definitions: the native twins (single-currency callers only — pinned above) and the reporting_amount ones" },
+    "api/_lib/tx-group-sql.ts": { n: 2, why: "native only when the group has ONE currency, else the sum of reporting amounts" },
+    "api/_lib/spending-budgets.ts": { n: 3, why: "over budgetSpendSignedAmountIn(fx) — converted per row" },
+    "api/_lib/budget-spend.ts": { n: 4, why: "over capSpendSignedAmount(rates) — converted into the cap's currency per row" },
+    "api/_lib/recurring-query.ts": { n: 2, why: "grouped by currency; the legacy single total is NULL once a rule has posted in two" },
+    "api/_lib/alerts.ts": { n: 2, why: "one card's paid legs; posted rows grouped by the account's currency" },
+    "api/_lib/credit-card.ts": { n: 2, why: "one card account — native" },
+    "api/_routes/cards/[id]/summary.ts": { n: 2, why: "one card account — native" },
+    "api/_lib/tx-legs.ts": { n: 1, why: "balance deltas grouped by wealth_account_id — native per account" },
+    "api/_lib/tx-group-write.ts": { n: 1, why: "applied amounts grouped by wealth_account_id — native per account" },
+    "api/_lib/debts.ts": { n: 1, why: "repaid principal grouped by debt account — native per account" },
+    "api/_routes/transactions.ts": { n: 1, why: "attachment count — not money" },
+    "api/_lib/quota.ts": { n: 4, why: "attachment bytes — not money" },
+    "api/_lib/referral.ts": { n: 4, why: "referral rewards and payouts — not ledger money" },
+  }
+
+  const files = (readdirSync("api", { recursive: true }) as string[])
+    .filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts"))
+    .map((f) => `api/${f.split("\\").join("/")}`)
+  const counts: Record<string, number> = {}
+  for (const file of files) {
+    const n = readFileSync(file, "utf8")
+      .split("\n")
+      .filter((line) => !/^\s*(\/\/|\*|\/\*)/.test(line))
+      .reduce((t, line) => t + (line.match(/\bsum\(/gi)?.length ?? 0), 0)
+    if (n) counts[file] = n
+  }
+
+  it("scans the whole api tree", () => {
+    expect(files.length).toBeGreaterThan(100)
+    expect(files).toContain("api/_routes/transactions/[id].ts")
+  })
+
+  it("every sum is accounted for, and nothing more", () => {
+    expect(counts).toEqual(Object.fromEntries(Object.entries(SUMS).map(([f, v]) => [f, v.n])))
   })
 })
 

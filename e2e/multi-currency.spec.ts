@@ -1,5 +1,6 @@
+import { neon } from "@neondatabase/serverless"
 import { expect, test, type Page } from "@playwright/test"
-import { E2E_PREFIX, expectAppShell } from "./helpers"
+import { E2E_PREFIX, MC_ORG_PREFIX, expectAppShell, rememberWorkspace, restoreWorkspace, switchWorkspace } from "./helpers"
 
 /**
  * Multi-currency, end to end on the real app: a EUR account and an INR account
@@ -12,13 +13,15 @@ import { E2E_PREFIX, expectAppShell } from "./helpers"
  *   • the fee is the ONLY expense, and the only economic loss;
  *   • income and expense do not count a transfer;
  *   • consolidated net worth = converted assets − converted liabilities, and
- *     says which currencies it had to leave out rather than pretending 1:1;
- *   • a single-currency workspace still reports exactly what it did before.
+ *     says which currencies it had to leave out rather than pretending 1:1.
  *
- * Everything it creates is namespaced and torn down in afterAll.
+ * It runs in a THROWAWAY business workspace made for this run, reporting in
+ * EUR, and deleted in afterAll — the org teardown takes its accounts, transfers
+ * and every row with it (MC-122; leftovers from an interrupted run are swept by
+ * auth.setup.ts). A fresh ledger means the reversal really runs every time, and
+ * a fixed reporting currency makes the fee exact (MC-175).
  */
 
-type OrgRow = { id: string; is_personal: boolean; currency: string }
 type Account = { id: string; type: string; bank_name: string; nickname: string; currency_code?: string | null; current_balance: string; archived_at: string | null }
 type Summary = {
   reporting_currency: string
@@ -40,7 +43,6 @@ type Transfer = { id: string; status: string; source_amount: string; destination
 // side (mig 0069 lifted the one-cash-wallet rule for exactly this reason).
 const EUR_BANK = `${E2E_PREFIX}-mc-eur`
 const INR_BANK = `${E2E_PREFIX}-mc-inr`
-const WALLET_TYPE = "cash"
 
 let activeOrgId = ""
 
@@ -86,82 +88,37 @@ const accounts = async (page: Page) => (await api<Account[]>(page, "GET", "/api/
 const summary = async (page: Page) => (await api<Summary>(page, "GET", "/api/wealth/summary")).json
 const balanceOf = async (page: Page, id: string) => Number((await accounts(page)).find((a) => a.id === id)!.current_balance)
 
-async function usePersonal(page: Page): Promise<string> {
-  const { json: orgs } = await api<OrgRow[]>(page, "GET", "/api/organizations")
-  const personal = orgs.find((o) => o.is_personal)
-  expect(personal, "a personal workspace").toBeTruthy()
-  await api(page, "POST", "/api/organizations/switch", { organization_id: personal!.id })
-  activeOrgId = personal!.id
-  await page.evaluate((id) => { try { localStorage.setItem("ps_active_org", id) } catch { /* private mode */ } }, personal!.id)
-  await page.goto("/wealth")
+/**
+ * CI only — `E2E_FX_SEED=1`, set by e2e.yml next to `FX_DISABLED=1` against
+ * the DEDICATED e2e database: fixed EUR→INR rates for the last few days, so no
+ * conversion here depends on a live provider (MC-128). Rates are GLOBAL, so it
+ * must never run against a shared database; locally the spec uses whatever
+ * the providers gave and asserts against the rate the server reports.
+ */
+const SEEDED_EUR_INR = "100"
+const seeded = process.env.E2E_FX_SEED === "1"
+async function seedFxRates() {
+  if (!seeded) return
+  const sql = neon(process.env.DATABASE_URL!)
+  for (let d = 0; d < 4; d++) {
+    const day = new Date(Date.now() - d * 86_400_000).toISOString().slice(0, 10)
+    await sql`insert into fx_rate_snapshots (base_currency, quote_currency, rate, rate_date, provider, source_type, is_fallback, observed_at)
+      values ('EUR', 'INR', ${SEEDED_EUR_INR}, ${day}, 'e2e-fixed', 'manual', false, now())
+      on conflict (base_currency, quote_currency, rate_date, provider, source_type) do update set rate = excluded.rate, fetched_at = now()`
+  }
+}
+
+/** Into this run's workspace — the API calls carry its id, the browser mirrors it. */
+async function useMcOrg(page: Page, orgId: string) {
+  await page.goto("/dashboard")
   await expectAppShell(page)
-  return personal!.id
+  activeOrgId = orgId
+  await switchWorkspace(page, api, orgId)
 }
 
-/**
- * Remove everything this spec made, from a REAL workspace — so it has to be
- * thorough, not best-effort.
- *
- * An account is only hard-deleted when it has NO transaction rows at all
- * (api/_routes/wealth/accounts/[id].ts counts them without a deleted_at
- * filter), so trashing is not enough: the rows must be PURGED. Order per
- * account: trash every row (a transfer leg takes its whole transfer with it),
- * purge the trash, then delete. Archived leftovers from an interrupted earlier
- * run are picked up too, hence `?includeArchived=1`.
- */
-/** Trash + purge every row on this spec's wallets that the rules allow to go. */
-async function purgeWalletRows(page: Page) {
-  const mine = (a: Account) => a.bank_name.startsWith(E2E_PREFIX) || a.nickname.startsWith(E2E_PREFIX)
-  for (const a of (await accounts(page)).filter(mine)) {
-    for (let pass = 0; pass < 6; pass++) {
-      const { json } = await api<{ data?: Tx[] } | Tx[]>(page, "GET", `/api/transactions?wealthAccountId=${a.id}&page=1`)
-      const rows = Array.isArray(json) ? json : (json?.data ?? [])
-      // A reversal-linked leg refuses to be trashed — stop rather than spin.
-      const before = rows.length
-      if (before === 0) break
-      let removed = 0
-      for (const t of rows) {
-        const res = await api(page, "DELETE", `/api/transactions/${t.id}`).catch(() => ({ status: 0 }))
-        if (res.status === 204) removed++
-      }
-      if (removed === 0) break
-    }
-  }
-  await api(page, "POST", "/api/trash/clear").catch(() => undefined)
-}
-
-async function cleanup(page: Page) {
-  const mine = (a: Account) => a.bank_name.startsWith(E2E_PREFIX) || a.nickname.startsWith(E2E_PREFIX)
-  const all = await api<Account[]>(page, "GET", "/api/wealth/accounts?includeArchived=1")
-  for (const a of (all.json ?? []).filter(mine)) {
-    // `?page=1` is the shape that carries `data` (a bare `?limit=` returns a
-    // plain array — reading `.data` off that silently found nothing, which is
-    // how earlier runs left their wallets behind). Loop: deleting a transfer
-    // leg takes its siblings with it, so one pass rarely clears the account.
-    for (let pass = 0; pass < 6; pass++) {
-      const { json } = await api<{ data?: Tx[] } | Tx[]>(page, "GET", `/api/transactions?wealthAccountId=${a.id}&page=1`)
-      const rows = Array.isArray(json) ? json : (json?.data ?? [])
-      if (rows.length === 0) break
-      for (const t of rows) await api(page, "DELETE", `/api/transactions/${t.id}`).catch(() => undefined)
-    }
-    await api(page, "POST", "/api/trash/clear").catch(() => undefined)
-    await api(page, "DELETE", `/api/wealth/accounts/${a.id}`).catch(() => undefined)
-  }
-}
-
-/**
- * Find this spec's wallet or make it — never a fresh one per run.
- *
- * A wallet that took part in a REVERSED transfer can only be archived, never
- * deleted (mig 0073 keeps a reversal chain immutable, which is the right call
- * for an audit trail), so a create-every-run spec silently piles wallets up in
- * a real workspace. Reusing the live one keeps the suite repeatable.
- */
-async function ensureWallet(page: Page, name: string, currency: string, opening: string): Promise<string> {
-  const existing = (await accounts(page)).find((a) => a.bank_name === name && !a.archived_at)
-  if (existing) return existing.id
+async function makeWallet(page: Page, name: string, currency: string, opening: string): Promise<string> {
   const made = await api<Account>(page, "POST", "/api/wealth/accounts", {
-    type: WALLET_TYPE, bank_name: name, nickname: name, currency_code: currency, opening_balance: opening,
+    type: "cash", bank_name: name, nickname: name, currency_code: currency, opening_balance: opening,
   })
   expect(made.status, JSON.stringify(made.json)).toBe(201)
   return made.json.id
@@ -170,67 +127,68 @@ async function ensureWallet(page: Page, name: string, currency: string, opening:
 test.describe.configure({ mode: "serial" })
 
 test.describe("multi-currency", () => {
+  let mcOrgId = ""
+  let restoreOrgId = ""
   let eurId = ""
   let inrId = ""
-  let reporting = ""
 
-
-  // Purge what CAN be purged before each run. The free plan caps transactions
-  // per client, and a reversed transfer plus its reversal can never be trashed
-  // (mig 0073 keeps a reversal chain immutable), so without this the ledger
-  // this spec writes would eventually hit the cap and block itself.
   test.beforeAll(async ({ browser }) => {
     const page = await browser.newPage({ storageState: "e2e/.auth/user.json" } as never)
     try {
       await page.goto("/dashboard")
-      await usePersonal(page)
-      await purgeWalletRows(page)
+      await expectAppShell(page)
+      restoreOrgId = await rememberWorkspace(page, api)
+      await seedFxRates()
+      activeOrgId = ""
+      const made = await api<{ id: string }>(page, "POST", "/api/organizations", { name: `${MC_ORG_PREFIX}-${Date.now()}`, currency: "EUR" })
+      expect(made.status, JSON.stringify(made.json)).toBe(201)
+      mcOrgId = made.json.id
     } finally {
       await page.close()
     }
   })
 
-  // No teardown on purpose. These two wallets are DURABLE FIXTURES, for the
-  // same reason e2e/helpers.ts keeps one bank around: a wallet that has taken
-  // part in a reversed transfer can only be archived, never deleted (mig 0073
-  // keeps a reversal chain immutable), so tearing down and rebuilding every run
-  // would pile up archived wallets in a real workspace. `ensureWallet` reuses
-  // them; `cleanup` is kept for a human who wants them gone.
+  test.afterAll(async ({ browser }) => {
+    const page = await browser.newPage({ storageState: "e2e/.auth/user.json" } as never)
+    try {
+      await page.goto("/dashboard")
+      await restoreWorkspace(page, api, restoreOrgId)
+      activeOrgId = ""
+      if (mcOrgId) expect((await api(page, "DELETE", `/api/organizations/${mcOrgId}`)).status).toBe(204)
+    } finally {
+      await page.close()
+    }
+  })
 
   test("an account keeps its own currency, and the workspace reports in one", async ({ page }) => {
-    await page.goto("/dashboard")
-    await usePersonal(page)
-    reporting = (await summary(page)).reporting_currency
-    expect(reporting).toMatch(/^[A-Z]{3}$/)
+    await useMcOrg(page, mcOrgId)
+    expect((await summary(page)).reporting_currency).toBe("EUR")
 
-    eurId = await ensureWallet(page, EUR_BANK, "EUR", "1000.00")
-    inrId = await ensureWallet(page, INR_BANK, "INR", "75000.00")
+    eurId = await makeWallet(page, EUR_BANK, "EUR", "1000.00")
+    inrId = await makeWallet(page, INR_BANK, "INR", "75000.00")
 
     const rows = await accounts(page)
     expect(rows.find((a) => a.id === eurId)!.currency_code).toBe("EUR")
     expect(rows.find((a) => a.id === inrId)!.currency_code).toBe("INR")
-    // Whatever each wallet holds, it holds it in ITS OWN currency — no opening
-    // amount was silently reinterpreted into the workspace's.
-    expect(await balanceOf(page, eurId)).toBeGreaterThan(0)
-    expect(await balanceOf(page, inrId)).toBeGreaterThan(0)
+    // Each wallet holds its opening amount in ITS OWN currency — nothing was
+    // reinterpreted into the workspace's.
+    expect(await balanceOf(page, eurId)).toBeCloseTo(1000, 2)
+    expect(await balanceOf(page, inrId)).toBeCloseTo(75000, 2)
   })
 
   test("an old app build cannot create money in another currency", async ({ page }) => {
-    await page.goto("/dashboard")
-    await usePersonal(page)
+    await useMcOrg(page, mcOrgId)
     // A store-pinned build adds currencies up unconverted, so it must not be
     // able to create a foreign account (MC-034). Nothing is created here.
-    const foreign = reporting === "EUR" ? "INR" : "EUR"
     const old = await api<{ code?: string }>(page, "POST", "/api/wealth/accounts", {
-      type: "cash", bank_name: `${E2E_PREFIX}-mc-oldbuild`, nickname: `${E2E_PREFIX}-mc-oldbuild`, icon: "wallet", openingBalance: 0, currency_code: foreign,
+      type: "cash", bank_name: `${E2E_PREFIX}-mc-oldbuild`, nickname: `${E2E_PREFIX}-mc-oldbuild`, icon: "wallet", openingBalance: 0, currency_code: "INR",
     }, true)
     expect(old.status).toBe(409)
     expect(old.json.code).toBe("client_update_required")
   })
 
   test("consolidated wealth converts without touching native balances", async ({ page }) => {
-    await page.goto("/dashboard")
-    await usePersonal(page)
+    await useMcOrg(page, mcOrgId)
     const raw = await api<Summary>(page, "GET", "/api/wealth/summary")
     expect(raw.status, JSON.stringify(raw.json).slice(0, 300)).toBe(200)
     const s = raw.json
@@ -244,10 +202,13 @@ test.describe("multi-currency", () => {
     expect(eurRow.currency).toBe("EUR")
     expect(inrRow.native_balance).toBeCloseTo(await balanceOf(page, inrId), 2)
 
-    // A rate exists for both (the service fetches and stores what it needs).
+    // A rate exists for both (the service fetches and stores what it needs; CI
+    // seeds a fixed one), and the converted value is the native one at THAT rate.
     expect(s.complete, `excluded: ${s.excluded_currencies.join(",")}`).toBe(true)
-    expect(inrRow.converted_balance).not.toBeNull()
     expect(inrRow.rate).not.toBeNull()
+    if (seeded) expect(Number(inrRow.rate)).toBeCloseTo(1 / Number(SEEDED_EUR_INR), 10)
+    expect(inrRow.converted_balance!).toBeCloseTo(inrRow.native_balance * Number(inrRow.rate), 1)
+    expect(eurRow.converted_balance!).toBeCloseTo(eurRow.native_balance, 2)
 
     // Net worth is the sum of the CONVERTED balances, never of raw numbers:
     // 75000 + 1000 = 76000 would be the wrong answer.
@@ -261,14 +222,12 @@ test.describe("multi-currency", () => {
     const codes = s.by_currency.map((c) => c.currency)
     expect(codes).toContain("EUR")
     expect(codes).toContain("INR")
-    // `by_currency` is the whole workspace's INR, which includes this wallet —
-    // assert it contains it rather than equals it.
-    expect(s.by_currency.find((c) => c.currency === "INR")!.assets).toBeGreaterThanOrEqual(inrRow.native_balance)
+    // A fresh workspace: its INR is exactly this wallet.
+    expect(s.by_currency.find((c) => c.currency === "INR")!.assets).toBeCloseTo(inrRow.native_balance, 2)
   })
 
   test("a cross-currency transfer keeps both amounts, its own rate, and charges only the fee", async ({ page }) => {
-    await page.goto("/dashboard")
-    await usePersonal(page)
+    await useMcOrg(page, mcOrgId)
 
     // The paged list carries the workspace's income/expense summary, already in
     // the reporting currency with every row converted at its own date.
@@ -311,33 +270,21 @@ test.describe("multi-currency", () => {
     // P&L: the transfer is not income and not expense; the FEE is the expense.
     const after = await api<TxSummary>(page, "GET", "/api/transactions?page=1")
     expect(after.json.summary.incoming).toBeCloseTo(before.json.summary.incoming, 2)
-    const feeInReporting = after.json.summary.outgoing - before.json.summary.outgoing
-    expect(feeInReporting, "only the fee became an expense").toBeGreaterThan(0)
-    expect(feeInReporting, "the €500 principal is never spending").toBeLessThan(10)
+    // The workspace reports in EUR and the fee is in EUR: exactly €5.00, not
+    // the €500 principal and not a converted approximation.
+    expect(after.json.summary.outgoing - before.json.summary.outgoing, "only the fee became an expense").toBeCloseTo(5, 2)
     // And the summary says what unit it is in, rather than leaving it implied.
-    expect(after.json.summary.currency).toMatch(/^[A-Z]{3}$/)
+    expect(after.json.summary.currency).toBe("EUR")
   })
 
   test("reversing a transfer puts both native amounts back", async ({ page }) => {
-    await page.goto("/dashboard")
-    await usePersonal(page)
+    await useMcOrg(page, mcOrgId)
     const eurBefore = await balanceOf(page, eurId)
     const inrBefore = await balanceOf(page, inrId)
 
-    const list = await api<{ transfers: (Transfer & { reversed_by_transfer_id?: string | null })[] }>(page, "GET", "/api/wealth/transfers?status=completed&limit=20")
-
-    // A reversal chain is immutable (mig 0073), so its rows can never be
-    // trashed and every run would permanently consume free-plan quota. If this
-    // workspace already carries one, assert the invariant ON IT — that a
-    // transfer cannot be reversed twice — instead of minting another pair.
-    const already = list.json.transfers.find((t) => t.reversed_by_transfer_id)
-    if (already) {
-      const second = await api<{ code?: string }>(page, "POST", `/api/wealth/transfers/${already.id}/reverse`, {})
-      expect(second.status, "a transfer reverses exactly once").toBe(409)
-      expect(second.json.code).toBe("transfer_already_reversed")
-      return
-    }
-
+    // A fresh workspace holds exactly one completed transfer: the one above.
+    const list = await api<{ transfers: Transfer[] }>(page, "GET", "/api/wealth/transfers?status=completed&limit=20")
+    expect(list.json.transfers).toHaveLength(1)
     const original = list.json.transfers[0]
     const rev = await api<{ transfer_id: string }>(page, "POST", `/api/wealth/transfers/${original.id}/reverse`, {})
     expect(rev.status, JSON.stringify(rev.json)).toBe(201)
@@ -353,8 +300,7 @@ test.describe("multi-currency", () => {
   })
 
   test("a scheduled transfer moves no money until it is marked done", async ({ page }) => {
-    await page.goto("/dashboard")
-    await usePersonal(page)
+    await useMcOrg(page, mcOrgId)
     const eurBefore = await balanceOf(page, eurId)
     const inrBefore = await balanceOf(page, inrId)
 
@@ -393,6 +339,7 @@ test.describe("multi-currency", () => {
   })
 
   test("the wealth screen shows native balances, an approximate value and the currency split", async ({ page }) => {
+    await useMcOrg(page, mcOrgId)
     await page.goto("/wealth")
     await expectAppShell(page)
 
