@@ -40,8 +40,8 @@ fails the build when the tables stop matching the code.
   same `DATA_CHANGED_EVENT` a mutation does — which is why ~235 existing `apiGet` call
   sites inherited all of this without being edited: they already refetch on that event, and
   the refetch lands on the now-fresh cache, costing a render and no request.
-- **Nine GET routes write money while they serve.** `/api/transactions`,
-  `/api/wealth/accounts`, `/api/spaces`, `/api/cards`, `/api/recurring`, `/api/calendar`,
+- **Ten GET routes write money while they serve.** `/api/transactions`,
+  `/api/wealth/accounts`, `/api/wealth/summary`, `/api/spaces`, `/api/cards`, `/api/recurring`, `/api/calendar`,
   `/api/flow` (and the nested `cards/:id/summary`, `spaces/:id/auto-save`) materialise due
   recurring transactions, file credit-card statements and run autopay. They may **paint**
   from cache; the request must still go out. That is `ALWAYS_FETCH`, and it is enforced by

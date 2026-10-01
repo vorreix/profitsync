@@ -361,7 +361,7 @@ Unverified (low): "'Reverse' is offered on reversal legs, and the server accepts
 
 **API contracts**
 - `api/_routes/fx/rate.ts` — `GET /api/fx/rate` — ⚠️ partial — Validates codes (400 `invalid_currency`), returns 404 `no_rate`, and otherwise `{rate, rate_date, provider, stale}` (21-38). It inherits `currentRate`'s stale/rate_date inconsistency. There is no throttling: any signed-in user can make the server fetch arbitrary pairs and save them in the global table.
-- `api/_routes/wealth/summary.ts` — `GET /api/wealth/summary` — ✅ correct — Read-only, apart from filling in snapshots.
+- `api/_routes/wealth/summary.ts` — `GET /api/wealth/summary` — ✅ correct — Read-only, apart from filling in snapshots. *Superseded by MC-161: it now runs `materializeDueRecurring` + `syncCards` before answering, like `/api/wealth/accounts`, and is `ALWAYS_FETCH`.*
 
 **Other**
 - `src/lib/api-cache.ts` — `/api/fx/rate` policy — ✅ correct — `config` class, fresh for 5 min, not persisted (157-159).
@@ -1884,7 +1884,7 @@ The only place excluded rows are disclosed (`FxExcludedNotice`) shows the raw ke
 - `src/components/wealth/TransferWizard.tsx` — received/fee fields, rate suggestion, `overBalance` (lines 157-205, 303-320) — ⚠️ partial — sends source/destination/fee amounts and currencies. An edited received amount goes stale but stays when the destination changes, and the insufficient-funds check ignores the fee.
 
 **Aggregates**
-- `src/lib/api-cache.ts` — `policyFor('/api/wealth/summary')`, money class — ✅ correct — not `alwaysFetch`, which is right because the route never materialises money. It can still be computed before a parallel `/api/wealth/accounts` GET finishes posting a due recurring row.
+- `src/lib/api-cache.ts` — `policyFor('/api/wealth/summary')`, money class — ✅ correct — not `alwaysFetch`, which is right because the route never materialises money. It can still be computed before a parallel `/api/wealth/accounts` GET finishes posting a due recurring row. *Superseded by MC-161: the route now materialises money itself and is in `ALWAYS_FETCH`; screens that load both still wait for the accounts, since two parallel posts can race.*
 - `api/_lib/wealth-summary.ts` — `buildWealthSummary` — ✅ correct — converts at the latest rate. It returns `card_liabilities`, `debts_owed`, `debts_receivable`, `complete` and `excluded_currencies`, all as additive fields.
 - `src/pages/Dashboard.tsx` — Wealth card total fallback (lines 576-582, 652) — ⚠️ partial — the summary is fetched only after the accounts arrive. Until then `total = localLiquid`, a raw cross-currency sum formatted in the reporting currency.
 - `src/pages/WealthPage.tsx` — `netWorth`/`available` fallback (lines 304-331, 524) — ⚠️ partial — `local.total` (a raw sum across currencies) shows whenever the summary is missing: on load, and for good if the summary request fails.

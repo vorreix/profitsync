@@ -21,7 +21,7 @@ Last updated: 2026-09-14
 - The transfer header, both principal legs, optional fee leg, both balance updates, and existing caller-supplied statements are one `dbBatch` operation.
 - Recurring Space auto-save no longer writes transfer legs and balances sequentially. It delegates completed occurrences to `createTransfer`; cross-currency schedules are rejected until the rule stores an explicit rate policy or destination fact.
 - Normal recurring occurrences and super-admin-created transactions now snapshot currency. The shared `currencyForFinancialWrite` helper makes an account authoritative and uses reporting currency only for detached rows.
-- Transaction edits re-derive currency from the selected account. Transfer legs cannot be independently edited, trashed, bulk-trashed, or restored through transaction endpoints.
+- Transaction edits re-derive currency from the selected account. Every row a transfer owns (both legs AND fee / fee-refund rows, keyed on `transfer_id`) is relabel-only through the transaction endpoints; trash, restore, purge, bulk delete and tag delete-with-records move the WHOLE transfer through the transfer service (fixed in Wave 1 — before it, fee rows and tag cascades escaped these guards).
 - Account creation exposes searchable native-currency selection, defaulted to reporting currency. Empty bank/cash accounts can change currency; the selector is locked when transaction history exists and explains the create-and-transfer alternative.
 - The existing transfer wizard supports recorded sent amount, received amount, optional source fee, and displays the effective rate for different-currency accounts. Same-currency input remains a single principal amount.
 
@@ -31,7 +31,10 @@ Last updated: 2026-09-14
 |---|---|---|
 | Normal transaction create/edit | Selected account; reporting currency when detached | Currency derived server-side; edit balance updates retain legacy sequential behavior |
 | Split/refund create | Each selected account | Account currency snapshot present; existing multi-account group arithmetic retained |
-| Trash/restore/bulk trash | Original transaction account | Transfer-linked rows blocked; non-transfer updates retain existing per-account sequential operations |
+| Trash/restore/bulk trash/purge/clear | Original transaction account | Claim-first (`api/_lib/tx-trash.ts`): only rows whose `deleted_at` actually flips move a balance; transfer-owned rows go through the transfer service; purge removes a transfer's legs, fee rows and header together |
+| Tag delete with records | Each tagged row's account | Expands through `resolveTxLegs`; transfers via the transfer service (refusals reported in `skipped_transactions`); tags kept on trashed rows; audited |
+| Client delete / bulk delete | Client's rows | Not yet audited for transfer rows — Wave 2+ |
+| Admin transaction edit/delete | — | Refused (`admin_ledger_row_locked`) for any row that moves money (account, transfer, debt anchor, system row) |
 | Opening balance/balance adjustment | Wealth account | Account currency snapshot present |
 | Manual transfer/card payment/autopay | Source and destination accounts | Authoritative atomic completed-transfer service |
 | Space manual transfer | Space and selected account | Authoritative service; cross-currency manual transfer supported |
@@ -51,7 +54,13 @@ Last updated: 2026-09-14
 - Logical trash/restore: operates on every transaction linked by `transfer_id` and all affected balances in one database function. Transfer legs remain protected from transaction-level mutation. Reversal-linked transfers are immutable.
 - Forecast presentation for planned/pending transfers remains deferred because ProfitSync has no general cleared-versus-forecast transaction model yet.
 
+## Wave 1 hardening (2026-10-01)
+
+Fixed and verified against a live server (31 scenario checks, exact native balances): MC-002 (double trash), MC-003 (fee rows), MC-004/MC-132 (reversal guards), MC-012 (purge), MC-013/MC-114/MC-165 (tag cascade), MC-010/MC-043 (transaction PATCH), MC-036 (admin writes), MC-068 (planned transfers to debts), MC-096 (debt delete), MC-125/MC-158 (cash wallets). `npm run audit:balances` (MC-061) reports drift and transfer-integrity findings per account in native currency — read-only; repairs are a later wave. See `FIX_TRACKER.md`.
+
 ## Remaining unsafe writers
+
+- `api/_routes/clients/[id].ts` and `api/_routes/clients/bulk-delete.ts`: client cascades are not yet checked against transfer-owned rows.
 
 - `api/_routes/transactions/[id].ts`: ordinary transaction edit still updates the row and old/new account balances as separate statements.
 - `api/_routes/transactions/bulk-delete.ts` and `api/_routes/trash/restore.ts`: ordinary grouped transaction balance changes remain sequential.

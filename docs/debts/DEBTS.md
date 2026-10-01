@@ -53,7 +53,10 @@ status (`overdue` / `due_soon` / `paid_off`-by-balance), progress, this month's
 required / paid / remaining / overdue, the next payment, the upcoming schedule,
 the estimated debt-free date (`unknown` with a reason when it cannot be
 estimated — never invented), plain-language insights, and per-currency totals
-(no FX is ever applied; mixed currencies are shown side by side).
+(no FX is ever applied to a total; mixed currencies are shown side by side).
+Only two things use a rate: the income average behind the pressure ratio is
+converted per row at its own date (rows with no rate left out and counted),
+and cross-currency rankings use the latest rate — to order, never to display.
 
 `debt_payments` is the allocation of one recorded repayment (total / principal /
 interest / fees / other + `split_source ∈ entered | calculated | principal_only`),
