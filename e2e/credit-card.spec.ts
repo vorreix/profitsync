@@ -149,7 +149,11 @@ function knownStatementDates(): { closing: string; due: string } {
   const m = now.getUTCMonth() + 1
   const iso = (yy: number, mm: number, d: number) => `${yy}-${String(mm).padStart(2, "0")}-${String(d).padStart(2, "0")}`
   const closingMonth = now.getUTCDate() > 1 ? { y, m } : m === 1 ? { y: y - 1, m: 12 } : { y, m: m - 1 }
-  return { closing: iso(closingMonth.y, closingMonth.m, 1), due: iso(closingMonth.y, closingMonth.m, 15) }
+  // Due on the 15th that has NOT passed yet. On the 1st the statement above is
+  // last month's, and its own 15th is already behind us — every "not paid yet"
+  // assertion in this spec would then read "overdue" one day a month.
+  const dueMonth = closingMonth.m === m ? closingMonth : { y, m }
+  return { closing: iso(closingMonth.y, closingMonth.m, 1), due: iso(dueMonth.y, dueMonth.m, 15) }
 }
 
 test.describe.serial("Credit cards", () => {
