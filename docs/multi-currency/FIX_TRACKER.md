@@ -147,9 +147,23 @@ Split into sub-waves, each committed when verified.
 
 **Verification (2026-10-01):** migration 0080 applied + checked; cron route 401 without / 200 with the service token (3 pairs refreshed, 0 failures); audit dry run refuses the 3 historically damaged dev accounts with reasons; gate green (1499 unit tests); all 71 live scenarios re-run green; e2e 64/64 after scoping recurring-debt.spec's picker clicks to the open popover.
 
+### 6c — concurrency & atomicity ✅
+
+| Id | What | Status |
+|---|---|---|
+| MC-060 | DB retries could replay a money statement that had already committed | ✅ `src/lib/db/retry.ts` retries only failures that provably happened before the statement reached Postgres. Remaining gap (statement sent, connection dropped): only a client-generated idempotency key closes it — noted, not built |
+| MC-057 | Nothing in the database stopped a row in the wrong currency | ✅ migration **0081**: UNIQUE (id, currency_code) on accounts + DEFERRABLE composite FK transactions(wealth_account_id, currency_code) → wealth_accounts (validated); triggers make a NULL-currency account impossible (old-build window). A write losing the race is answered centrally as 409 `source_currency_mismatch` (translated; the client refreshes) instead of a 500 (`api/_lib/db-errors.ts`) |
+| MC-056 | Adjust balance wrote an absolute balance from an earlier read | ✅ relative update from a fresh row lock in one statement (debt reconcile too) |
+| MC-058/059 | Trash/restore/insert paths moved balances outside the row claim or in separate statements | ✅ one shared claim-first helper (`api/_lib/tx-legs.ts`): rows and their per-account balance shift in one statement/batch on every path (materializer, POST, PATCH/DELETE, bulk, restore, purge, Empty trash, client + tag cascades, debt payments) |
+| MC-160 | Parallel auto-save runs left a raw duplicate-key error | ✅ a duplicate on the occurrence index means "already posted" |
+| MC-046 | Editing a split trashed and recreated it (restoring the old version duplicated money) | ✅ `PUT /api/transactions/group/:groupId` replaces the legs in one batch; nothing goes to Trash |
+| MC-167 | `fx_rate_on` per foreign row in aggregates | 🟡 performance only — next pass |
+
+**Verification (2026-10-01):** migration 0081 applied, FK validated + deferrable, 0 NULL-currency accounts; gate green (1542 unit tests); **6/6 live race tests** fired in parallel against the dev server (5× the same DELETE → one wins, balance once; parallel Adjust balance → balance == ledger; restore ∥ purge → never both; currency change ∥ expense ×4 → rows always in the final currency, losers get 409; 6 parallel recurring reads → one occurrence, no error; split edit ×2 in parallel → consistent, nothing trashed); all 71 earlier live scenarios re-run green; e2e 63/63; cap:sync android + ios.
+
 ### Remaining
 
-- **6c Concurrency & atomicity:** MC-056, 057, 058, 059, 060, 046, 160 (+ MC-167 performance).
+- **MC-167 performance:** per-(currency, date) rate join in the aggregate routes.
 - **6d Rollout & migrations:** MC-115 deploy order, 116, 117, 118 NULL-currency re-backfill, 119, 034 minimum client version, 035 roll-forward-only, 156, 120 store release.
 - **6e Tests:** MC-121 static unsafe-sum guard everywhere, 122 (now visible: since 6b keeps balance-defining system rows, the credit-card spec's cleanup archives its card instead of deleting it, so archived e2e cards and their rows pile up in the personal workspace — recurring-debt.spec's picker clicks were scoped to the open popover to stay robust), 128 deterministic FX in e2e, 174–177; warm the dev server in `e2e/auth.setup.ts` (the first spec after a cold start hits Vite's dependency-optimisation reload — `Failed to fetch`); MC-170 currency-aware export/import (deferred feature).
 - **Decision needed:** translated screen-reader label for the vendored dialog close button (`src/components/ui/dialog.tsx`).

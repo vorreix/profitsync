@@ -6,7 +6,7 @@ const h = vi.hoisted(() => ({
   selects: [] as unknown[][],
   updates: [] as Record<string, unknown>[],
   rate: null as string | null,
-  createTransfer: vi.fn(async (..._args: unknown[]) => ({ ok: true })),
+  createTransfer: vi.fn(async (..._args: unknown[]): Promise<unknown> => ({ ok: true })),
 }))
 
 const chain = (value: unknown) => {
@@ -33,7 +33,7 @@ vi.mock("./notify-budget.js", () => ({ notifyIfBudgetExceeded: async () => undef
 vi.mock("./audit.js", () => ({ logAudit: async () => undefined }))
 vi.mock("./recurring-debt.js", () => ({ mirrorDebtSchedule: vi.fn(), postDebtOccurrences: vi.fn(), reloadRule: vi.fn() }))
 
-const { autoSaveReceivedAmount, materializeDueRecurring } = await import("./recurring-materialize.js")
+const { autoSaveReceivedAmount, isRecurringOnceClash, materializeDueRecurring } = await import("./recurring-materialize.js")
 const { todayIso } = await import("../../src/lib/recurring.js")
 
 const today = todayIso()
@@ -104,5 +104,35 @@ describe("a cross-currency Space auto-save (MC-159)", () => {
     h.selects.push([rule], [{ id: "bank-inr", archivedAt: null, currencyCode: "INR" }], [{ id: "space-eur", archivedAt: null, currencyCode: "INR" }], [])
     await materializeDueRecurring("org-1")
     expect(h.createTransfer.mock.calls[0][2]).toMatchObject({ destinationAmount: undefined, rateSource: undefined, sourceCurrency: "INR", destinationCurrency: "INR" })
+  })
+})
+
+describe("a parallel run that already posted the occurrence (MC-160)", () => {
+  const clash = { code: "23505", constraint: "transactions_recurring_once_idx", message: 'duplicate key value violates unique constraint "transactions_recurring_once_idx"' }
+
+  it("recognises the once-per-date clash however it is wrapped, and nothing else", () => {
+    expect(isRecurringOnceClash(clash)).toBe(true)
+    expect(isRecurringOnceClash(Object.assign(new Error("Failed query: insert …"), { cause: clash }))).toBe(true)
+    expect(isRecurringOnceClash({ code: "23505", constraint: "transfers_group_unique" })).toBe(false)
+    expect(isRecurringOnceClash({ code: "23503", constraint: "transactions_recurring_once_idx" })).toBe(false)
+    expect(isRecurringOnceClash(new Error("fetch failed"))).toBe(false)
+  })
+
+  it("skips the occurrence and leaves no error on the rule", async () => {
+    h.createTransfer.mockRejectedValueOnce(clash)
+    h.selects.push([rule], [{ id: "bank-inr", archivedAt: null, currencyCode: "INR" }], [{ id: "space-eur", archivedAt: null, currencyCode: "INR" }], [])
+    const result = await materializeDueRecurring("org-1")
+    expect(result).toEqual({ created: 0, skipped: [] })
+    // The only write is the cursor advance, which clears last_error.
+    expect(h.updates).toHaveLength(1)
+    expect(h.updates[0]).toMatchObject({ lastError: "" })
+  })
+
+  it("still records any other failure on the rule", async () => {
+    h.createTransfer.mockRejectedValueOnce(new Error("boom"))
+    h.selects.push([rule], [{ id: "bank-inr", archivedAt: null, currencyCode: "INR" }], [{ id: "space-eur", archivedAt: null, currencyCode: "INR" }], [])
+    const result = await materializeDueRecurring("org-1")
+    expect(result.skipped).toEqual(["Auto-save to Trip"])
+    expect(JSON.parse(String(h.updates.at(-1)?.lastError))).toMatchObject({ code: "recurring_failed" })
   })
 })

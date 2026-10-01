@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm"
 
 import { db } from "../../src/lib/db/index.js"
+import { balanceShiftSql, ledgerMovesSql } from "./tx-legs.js"
 
 /**
  * Move plain ledger rows into (restore=false) or out of (restore=true) Trash,
@@ -21,9 +22,9 @@ import { db } from "../../src/lib/db/index.js"
  * one could only be purged into a balance no row explains. They are changed
  * from the account's page instead (tag delete, api/_lib/tag-ops.ts, keeps them
  * live too). One already in Trash (legacy) still RESTORES, without moving the
- * balance — the same rule as reversalsByAccount, written in SQL because it has
- * to run inside the claiming statement — and purge / Empty trash keep it while
- * its account exists.
+ * balance (ledgerMovesSql, the SQL twin of reversalsByAccount, because it has
+ * to run inside the claiming statement — api/_lib/tx-legs.ts) — and purge /
+ * Empty trash keep it while its account exists.
  *
  * Callers pass ids they have already scoped to the org.
  */
@@ -38,18 +39,7 @@ export async function setRowsTrashed(ids: string[], userId: string, restore: boo
         and ${restore ? sql`deleted_at is not null` : sql`deleted_at is null and not is_system`}
         and transfer_id is null
       returning id, wealth_account_id, type, amount, is_system
-    ), shifts as (
-      -- What the rows applied while live (incoming +, outgoing -), per account.
-      select wealth_account_id, sum(case when type = 'incoming' then amount else -amount end) as applied
-      from flipped
-      where wealth_account_id is not null and not is_system
-      group by wealth_account_id
-    ), moved as (
-      update wealth_accounts wa
-      set current_balance = wa.current_balance ${restore ? sql`+` : sql`-`} shifts.applied, updated_by = ${userId}, updated_at = now()
-      from shifts
-      where wa.id = shifts.wealth_account_id
-    )
+    ), moved as (${balanceShiftSql(ledgerMovesSql("flipped", restore ? "restore" : "trash"), userId)})
     select id from flipped`)
   return (result.rows as Array<{ id: string }>).map((row) => row.id)
 }

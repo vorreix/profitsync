@@ -19,6 +19,7 @@ import {
   type DebtRuleRow,
 } from "../../_lib/debts.js"
 import { materializeDueRecurring } from "../../_lib/recurring-materialize.js"
+import { balanceShiftSql, ledgerMovesSql } from "../../_lib/tx-legs.js"
 import { reportingCurrencyFor } from "../../_lib/fx-rates.js"
 import { amountExceedsLimit, moneyRefusal, selectableCurrencyCode } from "../../../src/lib/money.js"
 import { PAYMENT_FREQUENCIES, type PaymentFrequency } from "../../../src/lib/debt-math.js"
@@ -272,31 +273,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Reconciliation: the balance the lender shows. Recorded as a system
     // Balance Adjustment for the difference — never by editing past payments.
     if (reconcile != null) {
-      // Read the balance HERE, not from the copy loaded at the top of the
-      // handler: the repayment write and the lookups above are several round trips,
-      // and a repayment materialising in between would be erased by an absolute
-      // stamp. The adjustment row and the balance move by the same delta, so
-      // the ledger and the stored figure stay in step the way every other money
-      // path in the repo keeps them (balance = balance + delta).
-      const [live] = await db.select({ currentBalance: wealthAccounts.currentBalance }).from(wealthAccounts).where(eq(wealthAccounts.id, id))
+      // ONE statement, as Adjust balance (api/_routes/wealth/accounts/[id].ts):
+      // the gap is measured against the balance as it is NOW, under its row
+      // lock, and the adjustment row and the balance move by that same delta
+      // (api/_lib/tx-legs.ts) — never an absolute stamp. A plain read, an
+      // INSERT and a separate UPDATE let a double-clicked reconcile write the
+      // gap twice (a loan at -1000 reconciled to 900 ended at -800), and a
+      // crash between them left a row with no balance behind it (MC-059). A
+      // repeat finds a zero gap and writes nothing.
       const signedNew = directionOf(row.account.type) === "receivable" ? reconcile : -reconcile
-      const delta = Math.round((signedNew - Number(live?.currentBalance ?? row.account.currentBalance)) * 100) / 100
-      if (delta !== 0) {
-        const clientId = await ensureDefaultClient(orgId, userId)
-        const [tx] = await db
-          .insert(transactions)
-          .values({
-            clientId, wealthAccountId: id, type: delta > 0 ? "incoming" : "outgoing", amount: Math.abs(delta).toFixed(2),
-            currencyCode: detailPatch.currency ?? debtCurrencyOf(row),
-            description: "Balance Adjustment", category: "Adjustment", date: today, isSystem: true, createdBy: userId, updatedBy: userId,
-          })
-          .returning({ id: transactions.id })
-        await db
-          .update(wealthAccounts)
-          .set({ currentBalance: sql`${wealthAccounts.currentBalance}::numeric + ${delta.toFixed(2)}::numeric`, updatedBy: userId, updatedAt: new Date() })
-          .where(eq(wealthAccounts.id, id))
-        await logAudit({ orgId, entityType: "transaction", entityId: tx.id, action: "create", actorId: userId })
-      }
+      const clientId = await ensureDefaultClient(orgId, userId)
+      const { rows } = await db.execute(sql`
+        with fresh as (
+          select id, round(${String(signedNew)}::numeric - current_balance, 2) as delta
+          from wealth_accounts where id = ${id}::uuid
+          for update
+        ), adjustment as (
+          insert into transactions (client_id, wealth_account_id, type, amount, currency_code, description, category, date, is_system, created_by, updated_by)
+          select ${clientId}::uuid, id, case when delta > 0 then 'incoming' else 'outgoing' end, abs(delta),
+            ${detailPatch.currency ?? debtCurrencyOf(row)}, 'Balance Adjustment', 'Adjustment', ${today}::date, true, ${userId}, ${userId}
+          from fresh where delta <> 0
+          returning id, wealth_account_id, type, amount, is_system
+        ), moved as (${balanceShiftSql(ledgerMovesSql("adjustment", "create"), userId)})
+        select id from adjustment`)
+      const [tx] = rows as Array<{ id: string }>
+      if (tx) await logAudit({ orgId, entityType: "transaction", entityId: tx.id, action: "create", actorId: userId })
     }
 
     if (Object.keys(accountPatch).length) {

@@ -3,7 +3,7 @@ import { useAutoAnimate } from "@formkit/auto-animate/react"
 import { useNavigate, useNavigationType, useSearchParams } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
-import { apiGet, apiPost, apiPatch, apiDelete, apiErrorMessage, apiErrorUpgradeHint } from "@/lib/api"
+import { apiGet, apiPost, apiPatch, apiPut, apiDelete, apiErrorMessage, apiErrorUpgradeHint } from "@/lib/api"
 import { amountExceedsLimit } from "@/lib/money"
 import { isPaidPlanKey, type Card, type Client, type Transaction, type TransactionAttachment, type WealthAccount } from "@/lib/types"
 import { tagLimitForPlan } from "@/lib/tags"
@@ -619,11 +619,11 @@ export function TransactionsPage() {
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
       // A split (existing group, or a single edited into multiple accounts) is
-      // replaced wholesale: delete the old group (reverses balances) then recreate.
-      // A single→single edit stays a balance-preserving in-place PATCH.
+      // replaced wholesale in ONE atomic request: the old legs are swapped for
+      // the new ones server-side, nothing goes to Trash, and a refused save
+      // changes nothing (MC-046). A single→single edit stays an in-place PATCH.
       if (editForm.group_id || allocs.length > 1) {
-        await apiDelete(`/api/transactions/${editForm.id}`, token)
-        await apiPost("/api/transactions/group", token, {
+        await apiPut(`/api/transactions/group/${editForm.group_id ?? editForm.id}`, token, {
           client_id: editForm.client_id,
           type: editForm.type,
           kind: editForm.kind,

@@ -1,15 +1,15 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { and, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm"
+import { and, eq, inArray, isNotNull } from "drizzle-orm"
 import { db } from "../../../src/lib/db/index.js"
-import { clients, quotations, transactions, wealthAccounts } from "../../../src/lib/db/schema.js"
+import { clients, quotations, transactions } from "../../../src/lib/db/schema.js"
 import { canDelete, requireAuth } from "../../_lib/auth.js"
-import { reversalsByAccount } from "../../../src/lib/wealth-ledger.js"
 import { purgeTrashedTransfers } from "../../_lib/tx-trash.js"
+import { purgeTrashedClients } from "../../_lib/client-trash.js"
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ctx = await requireAuth(req, res)
   if (!ctx) return
-  const { orgId, role } = ctx
+  const { orgId, userId, role } = ctx
 
   if (req.method !== "DELETE") return res.status(405).json({ error: "Method not allowed" })
   if (!canDelete(role)) return res.status(403).json({ error: "Forbidden" })
@@ -67,27 +67,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   if (type === "client") {
-    const [client] = await db
-      .select({ id: clients.id })
-      .from(clients)
-      .where(and(eq(clients.id, id), eq(clients.organizationId, orgId), isNotNull(clients.deletedAt)))
-    if (!client) return res.status(404).json({ error: "Not found" })
-    // Any of the client's transactions still LIVE (deletedAt NULL) never had their
-    // balance reversed (e.g. clients soft-deleted before cascade-reversal existed).
-    // Reverse those before the cascade hard-delete. Already-soft-deleted ones were
-    // reversed at soft-delete time — leave their balances alone (no double-reverse).
-    const liveTx = await db
-      .select({ wealthAccountId: transactions.wealthAccountId, type: transactions.type, amount: transactions.amount, isSystem: transactions.isSystem })
-      .from(transactions)
-      .where(and(eq(transactions.clientId, id), isNull(transactions.deletedAt)))
-    for (const [accountId, shift] of reversalsByAccount(liveTx)) {
-      await db
-        .update(wealthAccounts)
-        .set({ currentBalance: sql`${wealthAccounts.currentBalance}::numeric + ${shift}`, updatedAt: new Date() })
-        .where(eq(wealthAccounts.id, accountId))
-    }
-    // Hard-delete the client; transactions cascade (FK onDelete: cascade).
-    await db.delete(clients).where(and(eq(clients.id, id), eq(clients.organizationId, orgId)))
+    // One claim-first statement (purgeTrashedClients): the client goes only
+    // while it is in Trash, and only its rows still LIVE are reversed (never
+    // reversed when it was trashed — legacy); trashed ones were. A loser of a
+    // race with another purge or a restore deletes nothing and answers 404.
+    if (!(await purgeTrashedClients(orgId, userId, id))) return res.status(404).json({ error: "Not found" })
     return res.status(204).end()
   }
 

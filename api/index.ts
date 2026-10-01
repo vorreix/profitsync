@@ -12,6 +12,7 @@ import { matchRoute, type RoutePattern } from "../src/lib/api-router.js"
 // unchanged: /api/clients/123 still hits the clients/[id] handler, etc.
 // ---------------------------------------------------------------------------
 
+import { isRowCurrencyFkViolation } from "./_lib/db-errors.js"
 import profile from "./_routes/profile.js"
 import accountDeleteSummary from "./_routes/account/delete/summary.js"
 import accountDeleteRequestCode from "./_routes/account/delete/request-code.js"
@@ -37,6 +38,7 @@ import clientAttachments from "./_routes/clients/[id]/attachments.js"
 import clientMedia from "./_routes/clients/[id]/media.js"
 import transactions from "./_routes/transactions.js"
 import transactionsGroup from "./_routes/transactions/group.js"
+import transactionsGroupById from "./_routes/transactions/group/[groupId].js"
 import transactionsBulkDelete from "./_routes/transactions/bulk-delete.js"
 import transactionById from "./_routes/transactions/[id].js"
 import transactionAttachments from "./_routes/transactions/[id]/attachments.js"
@@ -257,6 +259,7 @@ const routes: RoutePattern<ApiHandler>[] = [
 
   { segments: ["transactions"], handler: transactions },
   { segments: ["transactions", "group"], handler: transactionsGroup },
+  { segments: ["transactions", "group", ":groupId"], handler: transactionsGroupById },
   { segments: ["transactions", "bulk-delete"], handler: transactionsBulkDelete },
   { segments: ["transactions", ":id"], handler: transactionById },
   { segments: ["transactions", ":id", "attachments"], handler: transactionAttachments },
@@ -395,5 +398,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     req.query[key] = value
   }
 
-  return matched.handler(req, res)
+  try {
+    return await matched.handler(req, res)
+  } catch (err) {
+    // A money write that lost a race with an account currency change is
+    // rejected by the database (migration 0081) and fully rolled back — a
+    // refusal the user can act on, not a server error.
+    if (isRowCurrencyFkViolation(err) && !res.headersSent) {
+      return res.status(409).json({ error: "An account's currency changed since this form was opened. Close it and open it again.", code: "source_currency_mismatch" })
+    }
+    throw err
+  }
 }

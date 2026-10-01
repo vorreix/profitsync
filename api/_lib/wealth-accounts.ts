@@ -96,43 +96,6 @@ export function raisedFailure(err: unknown): Failure {
   return fail(known.status, { error: known.error, code: token })
 }
 
-// ── System rows ──────────────────────────────────────────────────────────────
-
-/**
- * Insert an Opening Balance / Balance Adjustment row. System rows EXPLAIN a
- * balance in the ledger (never income/expense, never reversed through Trash).
- */
-export async function createSystemTransaction(input: {
-  orgId: string
-  userId: string
-  accountId: string
-  amount: number
-  type: "incoming" | "outgoing"
-  description: string
-  category: string
-  currencyCode: string
-}): Promise<void> {
-  if (input.amount <= 0) return
-  const clientId = await ensureDefaultClient(input.orgId, input.userId)
-  const [row] = await db
-    .insert(transactions)
-    .values({
-      clientId,
-      wealthAccountId: input.accountId,
-      type: input.type,
-      amount: String(input.amount),
-      currencyCode: input.currencyCode,
-      description: input.description,
-      category: input.category,
-      date: todayIso(),
-      isSystem: true,
-      createdBy: input.userId,
-      updatedBy: input.userId,
-    })
-    .returning()
-  await logAudit({ orgId: input.orgId, entityType: "transaction", entityId: row.id, action: "create", actorId: input.userId })
-}
-
 // ── Create account ───────────────────────────────────────────────────────────
 
 export type CreateAccountInput = BankDetailInput & AppearanceInput & {
@@ -224,9 +187,11 @@ export async function createWealthAccount(orgId: string, userId: string, body: C
     .select({ maxPos: max(wealthAccounts.position) })
     .from(wealthAccounts)
     .where(eq(wealthAccounts.organizationId, orgId))
-  const [row] = await db
+  const accountId = randomUUID()
+  const insertAccount = db
     .insert(wealthAccounts)
     .values({
+      id: accountId,
       organizationId: orgId,
       type,
       bankName: type === "cash" ? (bankName.trim() || nickname?.trim() || "Cash Wallet") : bankName.trim(),
@@ -251,20 +216,37 @@ export async function createWealthAccount(orgId: string, userId: string, body: C
     })
     .returning()
 
+  let row: AccountRow
   if (opening !== 0) {
     // The Opening Balance row EXPLAINS the starting balance in the ledger: an
     // incoming for money held, an outgoing for money owed (a card's opening
-    // debt, an overdrawn bank). System rows are not income/expense.
-    await createSystemTransaction({
-      orgId,
-      userId,
-      accountId: row.id,
-      amount: Math.abs(opening),
-      type: opening > 0 ? "incoming" : "outgoing",
-      description: "Opening Balance",
-      category: "Opening Balance",
-      currencyCode,
-    })
+    // debt, an overdrawn bank). System rows are not income/expense, and never
+    // reverse through Trash. Written in ONE batch with the account (MC-059):
+    // apart, a failure between them left a balance no ledger row explains.
+    const clientId = await ensureDefaultClient(orgId, userId)
+    const [[created], [openingRow]] = await dbBatch([
+      insertAccount,
+      db
+        .insert(transactions)
+        .values({
+          clientId,
+          wealthAccountId: accountId,
+          type: opening > 0 ? "incoming" : "outgoing",
+          amount: String(Math.abs(opening)),
+          currencyCode,
+          description: "Opening Balance",
+          category: "Opening Balance",
+          date: todayIso(),
+          isSystem: true,
+          createdBy: userId,
+          updatedBy: userId,
+        })
+        .returning({ id: transactions.id }),
+    ])
+    row = created
+    await logAudit({ orgId, entityType: "transaction", entityId: openingRow.id, action: "create", actorId: userId })
+  } else {
+    ;[row] = await insertAccount
   }
 
   // A known latest statement seeds statement tracking (source='manual'); its

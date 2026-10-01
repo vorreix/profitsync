@@ -1,7 +1,59 @@
-import { and, eq, inArray, isNull } from "drizzle-orm"
+import { and, eq, inArray, isNull, sql, type SQL } from "drizzle-orm"
 
 import { db } from "../../src/lib/db/index.js"
 import { clients, transactions } from "../../src/lib/db/schema.js"
+
+// ── Rows + their balance shifts, in ONE statement ────────────────────────────
+//
+// `current_balance` is stored, so every ledger write is two writes: the rows
+// and the accounts they move. Run as separate statements they drift — a crash
+// between them leaves a row without its balance (or the other way round), and
+// a balance computed from a list read BEFORE the write moves again on a double
+// submit, a second tab or a replayed retry. So every writer claims its rows
+// first (INSERT … ON CONFLICT DO NOTHING / UPDATE … WHERE <still in the old
+// state> / DELETE … RETURNING) and moves the balances in the SAME statement
+// from the rows that statement returned — a loser, a replay or a stale tab
+// claims nothing and moves nothing. The sign rules are src/lib/wealth-ledger.ts,
+// written in SQL because they have to run inside the claiming statement.
+
+/** SQL twin of balanceDelta: what a row applies to its account while live (incoming +, outgoing −). */
+export function appliedSql(type: SQL | string, amount: SQL | string): SQL {
+  return sql`(case when ${type} = 'incoming' then ${amount}::numeric else -(${amount}::numeric) end)`
+}
+
+/**
+ * The per-row balance moves of the rows CTE `cte` returned — it must return
+ * wealth_account_id, type, amount and is_system. `create` applies every row (a
+ * system Opening Balance / Balance Adjustment IS the balance it writes);
+ * `restore` re-applies and `trash` takes back (a trash, or a purge of a row
+ * still live) everything except system rows, whose effect stays in the balance
+ * through Trash (wealth-ledger reversesOnTrash).
+ */
+export function ledgerMovesSql(cte: string, mode: "create" | "restore" | "trash"): SQL {
+  const applied = appliedSql(sql.raw("type"), sql.raw("amount"))
+  return sql`select wealth_account_id, ${mode === "trash" ? sql`-` : sql``}${applied} as delta
+    from ${sql.identifier(cte)}${mode === "create" ? sql`` : sql` where not coalesce(is_system, false)`}`
+}
+
+/**
+ * The balance half of a claim-first ledger write, as the body of a
+ * data-modifying CTE (`moved as (${balanceShiftSql(…)})`): adds each account's
+ * summed `delta` from `moves` (rows of wealth_account_id, delta) — one UPDATE
+ * per account however many rows moved it. `userId` null leaves updated_by alone
+ * (the recurring materializer has no acting user).
+ */
+export function balanceShiftSql(moves: SQL, userId: string | null): SQL {
+  return sql`update wealth_accounts wa
+    set current_balance = wa.current_balance + s.delta, ${userId ? sql`updated_by = ${userId}, ` : sql``}updated_at = now()
+    from (select wealth_account_id, sum(delta) as delta from (${moves}) m
+          where wealth_account_id is not null group by wealth_account_id) s
+    where wa.id = s.wealth_account_id and s.delta <> 0`
+}
+
+/** balanceShiftSql as a drizzle CTE, for statements built with `db.with(claim, …)`. */
+export function balanceShiftCte(moves: SQL, userId: string | null) {
+  return db.$with("moved", {}).as(balanceShiftSql(moves, userId))
+}
 
 export type TxLeg = {
   id: string

@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from "react"
 import { useParams, useNavigate, useSearchParams } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
-import { apiGet, apiPost, apiPatch, apiDelete, apiErrorMessage } from "@/lib/api"
+import { apiGet, apiPost, apiPatch, apiPut, apiDelete, apiErrorMessage } from "@/lib/api"
 import { amountExceedsLimit } from "@/lib/money"
 import type { Budget, Client, Transaction, TransactionAttachment, WealthAccount } from "@/lib/types"
 import { AccountSelector, type Allocation } from "@/components/AccountSelector"
@@ -351,11 +351,12 @@ export function ClientDetailPage() {
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
       // A split (existing group, or a single edited into multiple accounts) is
-      // replaced wholesale: delete the old group (reverses balances) then recreate.
-      // A single→single edit stays a balance-preserving in-place PATCH.
+      // replaced wholesale in ONE atomic request: the old legs are swapped for
+      // the new ones server-side, nothing goes to Trash, and a refused save
+      // changes nothing (MC-046). Kind and tags, which this dialog doesn't
+      // show, are kept by the server. A single→single edit stays a PATCH.
       if (editTxForm.group_id || allocs.length > 1) {
-        await apiDelete(`/api/transactions/${editTxForm.id}`, token)
-        await apiPost("/api/transactions/group", token, {
+        await apiPut(`/api/transactions/group/${editTxForm.group_id ?? editTxForm.id}`, token, {
           client_id: id,
           type: editTxForm.type,
           description: editTxForm.description,

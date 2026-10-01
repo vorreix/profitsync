@@ -16,6 +16,7 @@ import { cardsFundedBy, creditCardIdFor, openCardsOnAccount, syncCardStatusWithA
 import { currencyLockRefs, withCurrencyLock } from "../../../_lib/account-currency-lock.js"
 import { accountCurrencyLockReason } from "../../../../src/lib/account-currency-lock.js"
 import { reportingCurrencyFor } from "../../../_lib/fx-rates.js"
+import { balanceShiftSql, ledgerMovesSql } from "../../../_lib/tx-legs.js"
 
 function money(value: unknown): number {
   const n = Number(value)
@@ -269,35 +270,41 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const [before] = await db.select().from(wealthAccounts).where(eq(wealthAccounts.id, id))
-    const oldBalance = money(before.currentBalance)
-    const newBalance = currentBalance !== undefined ? money(currentBalance) : oldBalance
-    const delta = newBalance - oldBalance
+    const newBalance = currentBalance !== undefined ? money(currentBalance) : money(before.currentBalance)
 
-    if (delta !== 0) {
+    // Adjust balance (MC-056). Only the Adjust dialog and onboarding send a
+    // balance — the figure the user confirms (renames and card edits send
+    // none); one equal to the balance read here asks for nothing. The
+    // change itself is measured against the balance AS IT IS NOW — read under
+    // its row lock inside the one statement that also writes the Balance
+    // Adjustment row and moves the balance by that row (api/_lib/tx-legs.ts),
+    // never as an absolute value. Writing the absolute figure computed from the
+    // read above dropped whatever posted in between (a due salary materialised
+    // by a parallel GET): the stored balance said 1,500 while the rows said
+    // 3,500. Now the adjustment explains exactly the gap to the figure typed,
+    // and a crash leaves neither the row nor the balance.
+    // The row carries the POST-patch currency: a PATCH may change the currency
+    // and the balance together (the lock passed, so nothing is denominated in
+    // the old one yet), and this row is denominated in what the account
+    // becomes — stamping the old code left a 100 EUR account whose only row
+    // said 100 USD (MC-055).
+    if (newBalance !== money(before.currentBalance)) {
       const clientId = await ensureDefaultClient(orgId, userId)
-      const txType = delta > 0 ? "incoming" : "outgoing"
-      const [tx] = await db
-        .insert(transactions)
-        .values({
-          clientId,
-          wealthAccountId: id,
-          type: txType,
-          amount: String(Math.abs(delta)),
-          // The POST-patch currency: a PATCH may change the currency and the
-          // balance together (the lock passed, so nothing is denominated in the
-          // old one yet), and this row is denominated in what the account
-          // becomes — stamping the old code left a 100 EUR account whose only
-          // row said 100 USD (MC-055).
-          currencyCode,
-          description: "Balance Adjustment",
-          category: "Adjustment",
-          date: new Date().toISOString().split("T")[0],
-          isSystem: true,
-          createdBy: userId,
-          updatedBy: userId,
-        })
-        .returning()
-      await logAudit({ orgId, entityType: "transaction", entityId: tx.id, action: "create", actorId: userId })
+      const { rows } = await db.execute(sql`
+        with fresh as (
+          select id, ${String(newBalance)}::numeric - current_balance as delta
+          from wealth_accounts where id = ${id}::uuid
+          for update
+        ), adjustment as (
+          insert into transactions (client_id, wealth_account_id, type, amount, currency_code, description, category, date, is_system, created_by, updated_by)
+          select ${clientId}::uuid, id, case when delta > 0 then 'incoming' else 'outgoing' end, abs(delta),
+            ${currencyCode}, 'Balance Adjustment', 'Adjustment', ${new Date().toISOString().split("T")[0]}::date, true, ${userId}, ${userId}
+          from fresh where delta <> 0
+          returning id, wealth_account_id, type, amount, is_system
+        ), moved as (${balanceShiftSql(ledgerMovesSql("adjustment", "create"), userId)})
+        select id from adjustment`)
+      const [tx] = rows as Array<{ id: string }>
+      if (tx) await logAudit({ orgId, entityType: "transaction", entityId: tx.id, action: "create", actorId: userId })
     }
 
     const [updated] = await db
@@ -309,7 +316,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ...(nickname !== undefined ? { nickname: nickname.trim() } : {}),
         ...(icon !== undefined ? { icon } : {}),
         ...appearance.patch,
-        ...(currentBalance !== undefined ? { currentBalance: String(newBalance) } : {}),
         ...cardPatch,
         ...(details ?? {}),
         ...(logo ? { logoUrl: logo.logoUrl, logoData: logo.logoData } : {}),

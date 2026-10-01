@@ -1,9 +1,9 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { and, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm"
 import { db } from "../../../src/lib/db/index.js"
-import { clients, quotations, transactions, wealthAccounts } from "../../../src/lib/db/schema.js"
+import { clients, quotations, transactions } from "../../../src/lib/db/schema.js"
 import { canDelete, requireAuth } from "../../_lib/auth.js"
-import { reversalsByAccount } from "../../../src/lib/wealth-ledger.js"
+import { purgeTrashedClients } from "../../_lib/client-trash.js"
 import { purgeTrashedTransfers } from "../../_lib/tx-trash.js"
 
 // Empty the org's whole trash in one shot. Same invariants as single-item purge
@@ -13,31 +13,16 @@ import { purgeTrashedTransfers } from "../../_lib/tx-trash.js"
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ctx = await requireAuth(req, res)
   if (!ctx) return
-  const { orgId, role } = ctx
+  const { orgId, userId, role } = ctx
 
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" })
   if (!canDelete(role)) return res.status(403).json({ error: "Forbidden" })
 
-  // 1. Trashed clients — reverse balances for their LIVE transactions, then
-  //    hard-delete (transactions + attachments cascade via FK).
-  const trashedClients = await db
-    .select({ id: clients.id })
-    .from(clients)
-    .where(and(eq(clients.organizationId, orgId), isNotNull(clients.deletedAt)))
-  const clientIds = trashedClients.map((c) => c.id)
-  if (clientIds.length) {
-    const liveTx = await db
-      .select({ wealthAccountId: transactions.wealthAccountId, type: transactions.type, amount: transactions.amount, isSystem: transactions.isSystem })
-      .from(transactions)
-      .where(and(inArray(transactions.clientId, clientIds), isNull(transactions.deletedAt)))
-    for (const [accountId, shift] of reversalsByAccount(liveTx)) {
-      await db
-        .update(wealthAccounts)
-        .set({ currentBalance: sql`${wealthAccounts.currentBalance}::numeric + ${shift}`, updatedAt: new Date() })
-        .where(eq(wealthAccounts.id, accountId))
-    }
-    await db.delete(clients).where(inArray(clients.id, clientIds))
-  }
+  // 1. Trashed clients, with their rows — the single-purge statement for the
+  //    whole workspace (purgeTrashedClients): claim-first, so a client a
+  //    restore brings back meanwhile stays (with its rows), and a live row
+  //    under a trashed client is reversed once even against a parallel purge.
+  const purgedClients = await purgeTrashedClients(orgId, userId)
 
   // 2. Remaining trashed transactions (their client is live — client-trashed ones
   //    died with the cascade above). Purging ALL soft-deleted rows inherently
@@ -86,7 +71,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     ))
 
   return res.json({
-    purged: { clients: clientIds.length, transactions: trashedTx.length + transferRows, quotations: purgedQuotations.length },
+    purged: { clients: purgedClients, transactions: trashedTx.length + transferRows, quotations: purgedQuotations.length },
     kept: { transactions: kept },
   })
 }

@@ -1,10 +1,10 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { and, eq, isNull, sql } from "drizzle-orm"
+import { and, eq, isNull } from "drizzle-orm"
 import { db } from "../../../../../src/lib/db/index.js"
-import { debtPayments, transactions, wealthAccounts } from "../../../../../src/lib/db/schema.js"
+import { debtPayments, transactions } from "../../../../../src/lib/db/schema.js"
 import { canDelete, requireAuth } from "../../../../_lib/auth.js"
 import { logAudit } from "../../../../_lib/audit.js"
-import { reversalsByAccount } from "../../../../../src/lib/wealth-ledger.js"
+import { setRowsTrashed } from "../../../../_lib/tx-trash.js"
 
 /**
  * DELETE /api/debts/:id/payments/:paymentId — move the WHOLE payment (every leg
@@ -29,21 +29,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!payment) return res.status(404).json({ error: "Not found" })
 
   const legs = await db
-    .select({ id: transactions.id, wealthAccountId: transactions.wealthAccountId, type: transactions.type, amount: transactions.amount, isSystem: transactions.isSystem })
+    .select({ id: transactions.id })
     .from(transactions)
     .where(and(payment.groupId ? eq(transactions.groupId, payment.groupId) : eq(transactions.id, payment.transactionId), isNull(transactions.deletedAt)))
-  if (legs.length === 0) return res.status(404).json({ error: "Already deleted" })
-
-  for (const [accountId, shift] of reversalsByAccount(legs)) {
-    await db
-      .update(wealthAccounts)
-      .set({ currentBalance: sql`${wealthAccounts.currentBalance}::numeric + ${shift.toFixed(2)}::numeric`, updatedBy: userId, updatedAt: new Date() })
-      .where(eq(wealthAccounts.id, accountId))
-  }
-  await db
-    .update(transactions)
-    .set({ deletedAt: new Date(), updatedBy: userId, updatedAt: new Date() })
-    .where(payment.groupId ? eq(transactions.groupId, payment.groupId) : eq(transactions.id, payment.transactionId))
-  for (const leg of legs) await logAudit({ orgId, entityType: "transaction", entityId: leg.id, action: "delete", actorId: userId })
+  // Claim-first, in one statement (api/_lib/tx-trash.ts setRowsTrashed): only
+  // the legs this call actually flips reverse a balance. Reversing the legs
+  // read above and then flipping them reversed every leg once per request, so
+  // a double-clicked delete took the payment back twice (MC-058). A repayment's
+  // legs carry no transfer_id and are never system rows, so all of them move.
+  const trashed = await setRowsTrashed(legs.map((leg) => leg.id), userId, false)
+  if (trashed.length === 0) return res.status(404).json({ error: "Already deleted" })
+  for (const legId of trashed) await logAudit({ orgId, entityType: "transaction", entityId: legId, action: "delete", actorId: userId })
   return res.status(204).end()
 }

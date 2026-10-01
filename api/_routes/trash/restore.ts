@@ -1,11 +1,11 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { and, count, eq, isNotNull, sql } from "drizzle-orm"
 import { db, serialize } from "../../../src/lib/db/index.js"
-import { clients, quotations, transactions, wealthAccounts } from "../../../src/lib/db/schema.js"
+import { clients, quotations, transactions } from "../../../src/lib/db/schema.js"
 import { canDelete, requireAuth } from "../../_lib/auth.js"
-import { applicationsByAccount } from "../../../src/lib/wealth-ledger.js"
 import { setTransferTrashed } from "../../_lib/wealth-accounts.js"
 import { setRowsTrashed } from "../../_lib/tx-trash.js"
+import { balanceShiftCte, ledgerMovesSql } from "../../_lib/tx-legs.js"
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ctx = await requireAuth(req, res)
@@ -68,38 +68,44 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   if (type === "client") {
-    const [client] = await db
-      .select({ deletedAt: clients.deletedAt })
-      .from(clients)
-      .where(and(eq(clients.id, id), eq(clients.organizationId, orgId), isNotNull(clients.deletedAt)))
-    if (!client?.deletedAt) return res.status(404).json({ error: "Not found" })
-    const deletedAt = client.deletedAt
-
-    const [updated] = await db
-      .update(clients)
-      .set({ deletedAt: null, updatedAt: new Date() })
-      .where(eq(clients.id, id))
-      .returning()
-
     // Re-apply + restore exactly the transactions that were trashed TOGETHER with
-    // this client (same deletedAt). Transactions the user trashed individually
-    // earlier carry a different deletedAt and stay in Trash.
-    const cascadeTx = await db
-      .select({ wealthAccountId: transactions.wealthAccountId, type: transactions.type, amount: transactions.amount, isSystem: transactions.isSystem })
-      .from(transactions)
-      .where(and(eq(transactions.clientId, id), eq(transactions.deletedAt, deletedAt)))
-    for (const [accountId, shift] of applicationsByAccount(cascadeTx)) {
-      await db
-        .update(wealthAccounts)
-        .set({ currentBalance: sql`${wealthAccounts.currentBalance}::numeric + ${shift}`, updatedAt: new Date() })
-        .where(eq(wealthAccounts.id, accountId))
-    }
-    if (cascadeTx.length) {
-      await db
+    // this client (same deleted_at). Transactions the user trashed individually
+    // earlier carry a different deleted_at and stay in Trash.
+    //
+    // ONE statement, claim-first (api/_lib/tx-legs.ts): `old` locks the client
+    // while it is still in Trash and hands over the deleted_at its cascade was
+    // stamped with; the client is restored through that lock, its rows only
+    // while they still carry that value, and the balances move by exactly the
+    // rows it brought back. Three writes (client, then balances, then rows)
+    // could stop halfway — a live client over trashed rows whose retry answered
+    // 404 — and two concurrent restores both re-applied the rows they had read
+    // (MC-058 / MC-059). The value is read inside the statement, not by an
+    // earlier one: a restore and a re-delete in between would otherwise let a
+    // stale request claim the client and restore none of its rows. The loser
+    // of a race claims nothing and answers 404.
+    const old = db.$with("old", {}).as(sql`
+      select id, deleted_at from clients
+      where id = ${id}::uuid and organization_id = ${orgId}::uuid and deleted_at is not null
+      for update`)
+    const restoredClient = db.$with("restored_client").as(
+      db
+        .update(clients)
+        .set({ deletedAt: null, updatedAt: new Date() })
+        .where(sql`${clients.id} in (select id from old)`)
+        .returning(),
+    )
+    const restoredRows = db.$with("restored_rows").as(
+      db
         .update(transactions)
         .set({ deletedAt: null, updatedAt: new Date() })
-        .where(and(eq(transactions.clientId, id), eq(transactions.deletedAt, deletedAt)))
-    }
+        .where(sql`(${transactions.clientId}, ${transactions.deletedAt}) in (select o.id, o.deleted_at from old o join restored_client r on r.id = o.id)`)
+        .returning({ wealthAccountId: transactions.wealthAccountId, type: transactions.type, amount: transactions.amount, isSystem: transactions.isSystem }),
+    )
+    const [updated] = await db
+      .with(old, restoredClient, restoredRows, balanceShiftCte(ledgerMovesSql("restored_rows", "restore"), userId))
+      .select()
+      .from(restoredClient)
+    if (!updated) return res.status(404).json({ error: "Not found" })
     return res.json(serialize(updated))
   }
 

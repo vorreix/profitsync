@@ -39,8 +39,10 @@
 //     Groups owned by the debt engine — any non-transfer leg or a loan/
 //     receivable account — are headerless BY DESIGN and excluded, exactly as
 //     the 0071 backfill excludes them.
-// Currency: rows whose currency_code differs from their account's, and NULL
-// currency_code on rows / accounts (must be zero before enforcing NOT NULL).
+// Currency: rows whose currency_code differs from their account's (exactly the
+// rows migration 0081's FK transactions_account_currency_fk rejects — it stays
+// NOT VALID while any exist, and the report says so), and NULL currency_code on
+// rows / accounts (must be zero before enforcing NOT NULL).
 //
 // DRY RUN BY DEFAULT. Every audit query runs in ONE read-only, repeatable-read
 // transaction: Postgres refuses any write, and all sections see the same
@@ -143,7 +145,7 @@ const journal = JSON.parse(readFileSync(new URL("../drizzle/meta/_journal.json",
 const cutoffSeconds = (journal.entries.find((e) => e.tag.startsWith("0080_"))?.when ?? 0) / 1000
 
 // `$1::text is null or … like` — one query shape for "whole database" and "one org".
-const [accounts, broken, trashMismatch, headerless, mismatched, nullRows, nullAccounts] = await sql.transaction(
+const [accounts, broken, trashMismatch, headerless, mismatched, nullRows, nullAccounts, [rowCurrencyFk]] = await sql.transaction(
   [
     sql(
       `
@@ -221,7 +223,7 @@ const [accounts, broken, trashMismatch, headerless, mismatched, nullRows, nullAc
       from transactions t
       join wealth_accounts wa on wa.id = t.wealth_account_id
       join organizations o on o.id = wa.organization_id
-      where t.currency_code <> wa.currency_code
+      where t.currency_code is not null and t.currency_code is distinct from wa.currency_code
         and (${org}::text is null or wa.organization_id::text like ${org} || '%')
       order by t.date`,
     sql`
@@ -237,6 +239,7 @@ const [accounts, broken, trashMismatch, headerless, mismatched, nullRows, nullAc
       select wa.id, o.id as org, coalesce(nullif(wa.nickname, ''), wa.bank_name) as name, wa.type
       from wealth_accounts wa join organizations o on o.id = wa.organization_id
       where wa.currency_code is null and (${org}::text is null or wa.organization_id::text like ${org} || '%')`,
+    sql`select (select convalidated from pg_constraint where conname = 'transactions_account_currency_fk') as valid`,
   ],
   { readOnly: true, isolationLevel: "RepeatableRead" },
 )
@@ -279,6 +282,15 @@ console.log(
   `\n[audit-balances] ${accounts.length} accounts, ${drifted.length} drifting · ` +
     `${broken.length + trashMismatch.length + headerless.length} transfer findings · ` +
     `${mismatched.length} currency-mismatched rows · ${nullRows.reduce((n, r) => n + r.rows, 0)} NULL-currency rows`,
+)
+console.log(
+  `[audit-balances] row-currency FK (0081): ${
+    rowCurrencyFk.valid == null
+      ? "missing — migration 0081 not applied"
+      : rowCurrencyFk.valid
+        ? "valid"
+        : "NOT VALID (new writes are checked; history is not) — once the mismatched rows are repaired: ALTER TABLE transactions VALIDATE CONSTRAINT transactions_account_currency_fk"
+  }`,
 )
 
 // ── Repair plan (+ --apply) ──────────────────────────────────────────────────

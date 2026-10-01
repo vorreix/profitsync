@@ -7,12 +7,13 @@ const rawSql = neon(process.env.DATABASE_URL!)
 
 // Drizzle's neon-http session runs every query by calling the client as
 // `client(sql, params, opts)` (it uses `client.query ?? client`) and runs
-// batches via `client.transaction(...)`. We wrap both so transient,
-// Neon-flagged-retryable connectivity failures (control-plane resume,
-// connection-permit exhaustion) are retried with backoff instead of bubbling
-// up as 500s. Genuine SQL errors (which carry a Postgres SQLSTATE) are not
-// retried — see ./retry.ts. The casts adapt our plain async wrapper to Neon's
-// overloaded callable type; runtime behaviour is unchanged for callers.
+// batches via `client.transaction(...)`. We wrap both so failures that provably
+// happened BEFORE the statement reached Postgres (control-plane resume,
+// connection-permit exhaustion, DNS/TCP connect) are retried with backoff
+// instead of bubbling up as 500s. Nothing that may have run is ever replayed —
+// not a SQL error, not a reset after connecting (MC-060, ./retry.ts). The casts
+// adapt our plain async wrapper to Neon's overloaded callable type; runtime
+// behaviour is unchanged for callers.
 type AnyAsyncFn = (...args: unknown[]) => Promise<unknown>
 const sql = ((...args: unknown[]) =>
   withDbRetry(() => (rawSql as unknown as AnyAsyncFn)(...args))) as unknown as NeonQueryFunction<false, false>
@@ -43,8 +44,13 @@ export const db = drizzle(sql, { schema })
 //
 // So batches run on a second drizzle instance bound to the RAW callable, with
 // the retry applied around the whole batch instead of around each element
-// (which is the right granularity anyway: a batch is one HTTP round trip, so it
-// either all arrives or none of it does).
+// (the right granularity: a batch is one HTTP round trip and one transaction).
+// The same pre-send-only rule applies, so a batch is replayed only when its
+// first attempt never reached Postgres — a replay can never meet the rows of
+// its own first attempt, and a 23505 on a pre-generated id (createTransfer's
+// transfer + group ids, a debt payment's ids, debt and recurring-rule creation)
+// is always a real conflict, never "my own earlier attempt committed" — no
+// caller treats it as success, and none needs to.
 //
 // Query BUILDERS are interchangeable between the two instances: drizzle's
 // `batch()` only calls `_prepare().getQuery()` on each one to get SQL text and

@@ -7,7 +7,10 @@
 //     + `onConflictDoNothing().returning()` — concurrent/repeated catch-ups
 //     can't double-insert an occurrence.
 //   • Balances move ONLY for rows actually inserted (`returning()` is empty on
-//     conflict), via a single relative UPDATE (`balance = balance + delta`).
+//     conflict), by a relative UPDATE (`balance = balance + delta`) in the SAME
+//     statement as the insert (api/_lib/tx-legs.ts) — never one without the other.
+//   • A parallel run that loses the race on that index posted nothing and
+//     reports nothing: the occurrence is the winner's (isRecurringOnceClash).
 //   • The cursor advances with a GREATEST guard so a stale concurrent run can
 //     never move it backwards.
 //
@@ -19,7 +22,7 @@ import Decimal from "decimal.js"
 import { and, eq, lte, sql } from "drizzle-orm"
 import { db } from "../../src/lib/db/index.js"
 import { cards, recurringRules, transactions, wealthAccounts } from "../../src/lib/db/schema.js"
-import { balanceDelta } from "../../src/lib/wealth-ledger.js"
+import { balanceShiftCte, ledgerMovesSql } from "./tx-legs.js"
 import { occurrencesDue, ruleExhausted, todayIso, type Frequency, type FrequencyUnit } from "../../src/lib/recurring.js"
 import { mirrorDebtSchedule, postDebtOccurrences, reloadRule } from "./recurring-debt.js"
 import { ensureDefaultClient } from "./auth.js"
@@ -226,6 +229,12 @@ export async function materializeDueRecurring(orgId: string): Promise<Materializ
                 }
                 destinationAmount = autoSaveReceivedAmount(rule.amount, rate, toCurrency)
               }
+              // A parallel run (a page load fires several materialising GETs)
+              // may post this occurrence between the check above and this
+              // insert; the loser's batch then fails on the once-per-date index.
+              // That occurrence IS posted — by the other run — so it is skipped
+              // like one found above, never recorded on the rule as an error
+              // (MC-160).
               const transfer = await createTransfer(orgId, rule.createdBy ?? "system", {
                 fromAccountId: rule.wealthAccountId,
                 toAccountId: rule.toAccountId,
@@ -241,7 +250,11 @@ export async function materializeDueRecurring(orgId: string): Promise<Materializ
                 // booked in the wrong money.
                 sourceCurrency: rule.currencyCode,
                 destinationCurrency: toCurrency,
+              }).catch((err: unknown) => {
+                if (isRecurringOnceClash(err)) return null
+                throw err
               })
+              if (!transfer) continue
               if (!transfer.ok) {
                 // The transfer service's own refusal body: its code is translated already.
                 await setRuleError(rule.id, typeof transfer.body.error === "string" ? { ...transfer.body, error: transfer.body.error } : { error: "Transfer could not be recorded" })
@@ -255,42 +268,42 @@ export async function materializeDueRecurring(orgId: string): Promise<Materializ
             continue
           }
 
+          // The occurrence and its balance in ONE statement (api/_lib/tx-legs.ts):
+          // the balance moves only for a row actually inserted (none on a
+          // conflict — a concurrent or repeated catch-up), and never without
+          // it. As two statements a failed balance UPDATE was recorded as the
+          // rule's error, and the next run's insert conflicted, so that
+          // occurrence's balance was never applied (MC-059).
+          const occurrence = db.$with("occurrence").as(
+            db
+              .insert(transactions)
+              .values({
+                clientId,
+                wealthAccountId: rule.wealthAccountId,
+                // Attribution follows the rule: the card that pays each occurrence.
+                cardId: rule.cardId,
+                type: rule.type,
+                amount: rule.amount,
+                currencyCode: rule.currencyCode,
+                description: rule.name,
+                category: rule.category,
+                date: dueDate,
+                recurringRuleId: rule.id,
+                recurringDueDate: dueDate,
+                createdBy: rule.createdBy,
+                updatedBy: rule.createdBy,
+              })
+              .onConflictDoNothing({ target: [transactions.recurringRuleId, transactions.recurringDueDate] })
+              .returning({ id: transactions.id, wealthAccountId: transactions.wealthAccountId, type: transactions.type, amount: transactions.amount, isSystem: transactions.isSystem }),
+          )
           const inserted = await db
-            .insert(transactions)
-            .values({
-              clientId,
-              wealthAccountId: rule.wealthAccountId,
-              // Attribution follows the rule: the card that pays each occurrence.
-              cardId: rule.cardId,
-              type: rule.type,
-              amount: rule.amount,
-              currencyCode: rule.currencyCode,
-              description: rule.name,
-              category: rule.category,
-              date: dueDate,
-              recurringRuleId: rule.id,
-              recurringDueDate: dueDate,
-              createdBy: rule.createdBy,
-              updatedBy: rule.createdBy,
-            })
-            .onConflictDoNothing({ target: [transactions.recurringRuleId, transactions.recurringDueDate] })
-            .returning({ id: transactions.id })
+            .with(occurrence, balanceShiftCte(ledgerMovesSql("occurrence", "create"), null))
+            .select({ id: occurrence.id })
+            .from(occurrence)
 
           if (inserted.length > 0) {
             result.created++
             regularCreatedCount++
-            if (rule.wealthAccountId) {
-              const delta = balanceDelta(rule.type, rule.amount)
-              await db
-                .update(wealthAccounts)
-                .set({
-                  // toFixed(2) — the delta derives from a 2-decimal amount; never let float
-                  // noise (e.g. "0.30000000000000004") reach the numeric cast.
-                  currentBalance: sql`${wealthAccounts.currentBalance} + ${delta.toFixed(2)}::numeric`,
-                  updatedAt: new Date(),
-                })
-                .where(eq(wealthAccounts.id, rule.wealthAccountId))
-            }
             await logAudit({ orgId, entityType: "transaction", entityId: inserted[0].id, action: "create", actorId: rule.createdBy })
           }
         }
@@ -379,6 +392,9 @@ export async function materializeDueRecurring(orgId: string): Promise<Materializ
         if (fresh) await mirrorDebtSchedule(rule.debtAccountId, fresh)
       }
     } catch (err) {
+      // Another run posted the same occurrence first (MC-160): nothing failed,
+      // and that run advances the cursor.
+      if (isRecurringOnceClash(err)) continue
       // A thrown error's message is the driver's or the runtime's, never a
       // sentence written for the user — so it is coded for every reader,
       // English included, and kept in `error` only for the logs.
@@ -388,6 +404,21 @@ export async function materializeDueRecurring(orgId: string): Promise<Materializ
   }
 
   return result
+}
+
+/**
+ * A unique violation on transactions_recurring_once_idx — the once-per-date
+ * guard a concurrent run tripped by posting the same occurrence first —
+ * however the driver or Drizzle wrapped it (the original is on `cause`).
+ */
+export function isRecurringOnceClash(err: unknown): boolean {
+  let e: unknown = err
+  for (let i = 0; i < 4 && e && typeof e === "object"; i++) {
+    const o = e as { code?: string; constraint?: string; message?: string; cause?: unknown }
+    if (o.code === "23505" && (o.constraint === "transactions_recurring_once_idx" || !!o.message?.includes("transactions_recurring_once_idx"))) return true
+    e = o.cause
+  }
+  return false
 }
 
 /**

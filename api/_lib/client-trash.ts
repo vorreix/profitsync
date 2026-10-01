@@ -2,6 +2,7 @@ import { sql, type SQL } from "drizzle-orm"
 
 import { db } from "../../src/lib/db/index.js"
 import { setTransferTrashed, type Failure } from "./wealth-accounts.js"
+import { balanceShiftSql, ledgerMovesSql } from "./tx-legs.js"
 
 /**
  * The ledger rows a client delete takes down: the clients' rows plus every
@@ -37,18 +38,18 @@ function cascadeOf(owners: SQL) {
  * Transfers already trashed by then stay whole and restorable.
  *
  * Everything else moves in ONE statement that claims the clients, flips their
- * rows and shifts the balances from the rows it flipped (the shape of
- * tx-trash.ts setRowsTrashed): two concurrent deletes, a replay or a crash
+ * rows and shifts the balances from the rows it flipped (the shared
+ * claim-first shape, api/_lib/tx-legs.ts balanceShiftSql): two concurrent deletes, a replay or a crash
  * can't reverse a row twice or leave a client in Trash over live rows. The
  * claim conditions sit on the UPDATE's own row, not in a subquery, so the
  * losing statement re-checks them after the winner commits and claims nothing.
  * System balance-defining rows flip without moving the balance
  * (wealth-ledger reversesOnTrash).
  *
- * Clients and rows share one JS-made `deleted_at` so the client restore
- * (api/_routes/trash/restore.ts) re-applies exactly this cascade: it compares
- * the rows to the client's value after a JS round trip, which keeps only
- * milliseconds — the database's now() would never compare equal.
+ * Clients and rows share one `deleted_at` so the client restore
+ * (api/_routes/trash/restore.ts) re-applies exactly this cascade: it restores
+ * the rows still carrying the client's value, and rows the user trashed on
+ * their own earlier carry another.
  */
 export async function trashClients(
   orgId: string,
@@ -82,18 +83,37 @@ export async function trashClients(
         and t.deleted_at is null and t.transfer_id is null
         and ${cascadeOf(sql`select id from claimed`)}
       returning t.wealth_account_id, t.type, t.amount, t.is_system
-    ), shifts as (
-      -- What the rows applied while live (incoming +, outgoing -), per account.
-      select wealth_account_id, sum(case when type = 'incoming' then amount else -amount end) as applied
-      from flipped
-      where wealth_account_id is not null and not is_system
-      group by wealth_account_id
-    ), moved as (
-      update wealth_accounts wa
-      set current_balance = wa.current_balance - shifts.applied, updated_by = ${userId}, updated_at = now()
-      from shifts
-      where wa.id = shifts.wealth_account_id
-    )
+    ), moved as (${balanceShiftSql(ledgerMovesSql("flipped", "trash"), userId)})
     select id from claimed`)
   return { ok: true, ids: (result.rows as Array<{ id: string }>).map((row) => row.id) }
+}
+
+/**
+ * Hard-delete clients that are in Trash, with their rows: one client (single
+ * purge) or every one in the workspace (Empty trash). Returns how many went.
+ *
+ * ONE statement, claim-first (api/_lib/tx-legs.ts): a client goes only while it
+ * is still in Trash, its rows are deleted here (the FK cascade would, at the
+ * end of the statement; doing it here is what RETURNs them), and only the rows
+ * that were still LIVE are reversed — a trashed row's balance was reversed when
+ * it was trashed; a live one under a trashed client never was (clients trashed
+ * before the cascade reversal existed). Read-then-reverse let two purges, or a
+ * purge and Empty trash, reverse the same live rows twice, and a restore that
+ * committed in between lost its client and rows while the balance kept the
+ * money it had re-applied (MC-058 / MC-059). A loser deletes nothing.
+ */
+export async function purgeTrashedClients(orgId: string, userId: string, clientId?: string): Promise<number> {
+  const { rows } = await db.execute(sql`
+    with gone as (
+      delete from clients
+      where organization_id = ${orgId}::uuid and deleted_at is not null${clientId ? sql` and id = ${clientId}::uuid` : sql``}
+      returning id
+    ), purged as (
+      delete from transactions where client_id in (select id from gone)
+      returning wealth_account_id, type, amount, is_system, deleted_at
+    ), live as (
+      select * from purged where deleted_at is null
+    ), moved as (${balanceShiftSql(ledgerMovesSql("live", "trash"), userId)})
+    select count(*)::int as purged from gone`)
+  return (rows as Array<{ purged: number }>)[0]?.purged ?? 0
 }

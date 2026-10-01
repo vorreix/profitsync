@@ -14,12 +14,10 @@ describe("claim-first trash (api/_lib/tx-trash.ts)", () => {
     expect(src).toContain("and transfer_id is null")
   })
 
-  it("moves balances from the rows the UPDATE returned, skipping system rows", () => {
-    expect(src).toContain("from flipped")
-    expect(src).toContain("not is_system")
-    // Trash subtracts what the row applied (incoming +, outgoing -); restore adds it back.
-    expect(src).toContain("case when type = 'incoming' then amount else -amount end")
-    expect(src).toContain("${restore ? sql`+` : sql`-`} shifts.applied")
+  it("moves balances from the rows the UPDATE returned, by the shared trash/restore rules", () => {
+    // tx-legs.ts ledgerMovesSql: trash takes back what the row applied, restore
+    // re-applies it, both skipping system rows (tested in tx-legs.test.ts).
+    expect(src).toContain('balanceShiftSql(ledgerMovesSql("flipped", restore ? "restore" : "trash"), userId)')
   })
 })
 

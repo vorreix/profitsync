@@ -51,7 +51,8 @@ export const allocationFor = (
 }]
 
 // The wire shape of one allocation for POST /api/transactions/group and the
-// split re-create: the server forces wealth_account_id to the card's account.
+// split replace (PUT /api/transactions/group/:groupId): the server forces
+// wealth_account_id to the card's account.
 export const allocationPayload = (a: Allocation) => ({
   wealth_account_id: a.account_id,
   card_id: a.card_id ?? null,

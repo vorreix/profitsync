@@ -24,8 +24,12 @@ describe("tag delete with records (MC-013 / MC-165)", () => {
   })
 
   it("flips standard rows and moves their balances in ONE statement", () => {
-    expect(ops).toContain("db.with(flipped, shifts, moved)")
-    expect(ops).toContain("eq(flipped.isSystem, false)")
+    expect(ops).toContain('db.with(flipped, balanceShiftCte(ledgerMovesSql("flipped", "trash"), userId))')
+    expect(ops).toContain("eq(transactions.isSystem, false)")
+  })
+
+  it("trashes the rows, the clients and the quotations in ONE batch (MC-059)", () => {
+    expect(ops).toContain("const [trashedTx, trashedClients, trashedQuotations] = await dbBatch([")
   })
 
   it("keeps the tag on the rows it moved to Trash", () => {

@@ -1,7 +1,7 @@
-import { and, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm"
-import { db } from "../../src/lib/db/index.js"
-import { auditLogs, clients, quotations, transactions, transfers, wealthAccounts } from "../../src/lib/db/schema.js"
-import { resolveTxLegs } from "./tx-legs.js"
+import { and, eq, inArray, isNull, sql } from "drizzle-orm"
+import { db, dbBatch } from "../../src/lib/db/index.js"
+import { auditLogs, clients, quotations, transactions, transfers } from "../../src/lib/db/schema.js"
+import { balanceShiftCte, ledgerMovesSql, resolveTxLegs } from "./tx-legs.js"
 import { setTransferTrashed } from "./wealth-accounts.js"
 
 // Cross-entity tag mutations. A tag lives as a string inside each row's `tags`
@@ -215,58 +215,38 @@ export async function softDeleteByTag(
   const skipped = [...(await liveTransferRows(orgId, refused)).map((r) => r.id), ...systemIds]
   const movedTransferRows = trashableRows.filter((r) => !refused.includes(r.transferId)).length
 
-  // Flip + balance shift in ONE statement, the shape of tx-trash.ts
-  // setRowsTrashed: the shift is summed from the rows the UPDATE actually
-  // flipped, so a crash can't leave rows in Trash with their balance still
-  // applied, and a replay moves nothing. Written here rather than calling
-  // setRowsTrashed because these rows must carry the JS `now` the tagged clients
-  // get (a client restore re-applies exactly the rows with its deletedAt), and
-  // setRowsTrashed stamps the database's now(). System balance-defining rows
-  // never flip (MC-054; reported in `skipped_transactions` above).
+  // Flip + balance shift in ONE statement (the shared claim-first shape,
+  // api/_lib/tx-legs.ts): the shift is summed from the rows the UPDATE
+  // actually flipped, so a replay moves nothing. Written here rather than
+  // calling setRowsTrashed because these rows must carry the JS `now` the
+  // tagged clients get (a client restore re-applies exactly the rows with its
+  // deletedAt), and setRowsTrashed stamps the database's now(). System
+  // balance-defining rows never flip (MC-054; reported in
+  // `skipped_transactions` above). The rows, the clients and the quotations go
+  // in ONE batch (one transaction): a crash between them left trashed rows
+  // under a live client, which a retry then trashed with a different
+  // deletedAt, so restoring the client never brought those rows back (MC-059).
   const standardIds = plan.legs.filter((l) => !l.transferId).map((l) => l.id)
-  let trashedTx: { id: string }[] = []
-  if (standardIds.length) {
-    const flipped = db.$with("flipped").as(
-      db
-        .update(transactions)
-        .set({ deletedAt: now, updatedBy: userId, updatedAt: now })
-        .where(and(inArray(transactions.id, standardIds), isNull(transactions.deletedAt), isNull(transactions.transferId), eq(transactions.isSystem, false)))
-        .returning({ id: transactions.id, wealthAccountId: transactions.wealthAccountId, type: transactions.type, amount: transactions.amount, isSystem: transactions.isSystem }),
-    )
-    const shifts = db.$with("shifts").as(
-      db
-        .select({
-          accountId: flipped.wealthAccountId,
-          // What the rows applied while live (incoming +, outgoing -).
-          applied: sql<string>`sum(case when ${flipped.type} = 'incoming' then ${flipped.amount} else -${flipped.amount} end)`.as("applied"),
-        })
-        .from(flipped)
-        .where(and(isNotNull(flipped.wealthAccountId), eq(flipped.isSystem, false)))
-        .groupBy(flipped.wealthAccountId),
-    )
-    const moved = db.$with("moved").as(
-      db
-        .update(wealthAccounts)
-        .set({ currentBalance: sql`${wealthAccounts.currentBalance} - ${shifts.applied}`, updatedBy: userId, updatedAt: now })
-        .from(shifts)
-        .where(eq(wealthAccounts.id, shifts.accountId)),
-    )
-    trashedTx = await db.with(flipped, shifts, moved).select({ id: flipped.id }).from(flipped)
-  }
-  const trashedClients = plan.clientIds.length
-    ? await db
-        .update(clients)
-        .set({ deletedAt: now, updatedBy: userId, updatedAt: now })
-        .where(and(inArray(clients.id, plan.clientIds), isNull(clients.deletedAt)))
-        .returning({ id: clients.id })
-    : []
-  const trashedQuotations = plan.quotationIds.length
-    ? await db
-        .update(quotations)
-        .set({ deletedAt: now, updatedBy: userId, updatedAt: now })
-        .where(and(inArray(quotations.id, plan.quotationIds), isNull(quotations.deletedAt)))
-        .returning({ id: quotations.id })
-    : []
+  const flipped = db.$with("flipped").as(
+    db
+      .update(transactions)
+      .set({ deletedAt: now, updatedBy: userId, updatedAt: now })
+      .where(and(inArray(transactions.id, standardIds), isNull(transactions.deletedAt), isNull(transactions.transferId), eq(transactions.isSystem, false)))
+      .returning({ id: transactions.id, wealthAccountId: transactions.wealthAccountId, type: transactions.type, amount: transactions.amount, isSystem: transactions.isSystem }),
+  )
+  const [trashedTx, trashedClients, trashedQuotations] = await dbBatch([
+    db.with(flipped, balanceShiftCte(ledgerMovesSql("flipped", "trash"), userId)).select({ id: flipped.id }).from(flipped),
+    db
+      .update(clients)
+      .set({ deletedAt: now, updatedBy: userId, updatedAt: now })
+      .where(and(inArray(clients.id, plan.clientIds), isNull(clients.deletedAt)))
+      .returning({ id: clients.id }),
+    db
+      .update(quotations)
+      .set({ deletedAt: now, updatedBy: userId, updatedAt: now })
+      .where(and(inArray(quotations.id, plan.quotationIds), isNull(quotations.deletedAt)))
+      .returning({ id: quotations.id }),
+  ])
 
   // Audit what the tag delete took down, as every other delete does (the
   // transfer service audits each transfer itself). A tagged client can cascade

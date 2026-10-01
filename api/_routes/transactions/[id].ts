@@ -5,7 +5,7 @@ import { clients, transactions, wealthAccounts } from "../../../src/lib/db/schem
 import { canDelete, canWrite, requireAuth } from "../../_lib/auth.js"
 import { diffFields, logAudit } from "../../_lib/audit.js"
 import { checkTransactionTagQuota } from "../../_lib/quota.js"
-import { balanceDelta } from "../../../src/lib/wealth-ledger.js"
+import { appliedSql, balanceShiftCte } from "../../_lib/tx-legs.js"
 import { amountExceedsLimit, moneyRefusal } from "../../../src/lib/money.js"
 import { cleanTransactionTags } from "../../../src/lib/transaction-tags.js"
 import { notifyIfBudgetExceeded } from "../../_lib/notify-budget.js"
@@ -247,54 +247,45 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // it moving a trashed row's balance, and a double-submitted or retried save
     // (both reading 10, both writing 15) can't reverse 10 twice — the second
     // finds 15 and is refused instead of drifting the account.
-    const [updated] = await db
-      .update(transactions)
-      .set({
-        ...(wealth_account_id !== undefined ? { wealthAccountId: wealth_account_id } : {}),
-        currencyCode: nextCurrencyCode,
-        ...(nextCardId !== undefined ? { cardId: nextCardId } : {}),
-        ...(kind !== undefined ? { kind } : {}),
-        ...(type !== undefined ? { type } : {}),
-        ...(amount !== undefined ? { amount: String(amount) } : {}),
-        ...(description !== undefined ? { description } : {}),
-        ...(category !== undefined ? { category } : {}),
-        ...(cleanedTags !== undefined ? { tags: cleanedTags } : {}),
-        ...(date !== undefined ? { date } : {}),
-        updatedBy: userId,
-        updatedAt: new Date(),
-      })
-      .where(and(
-        eq(transactions.id, id), isNull(transactions.deletedAt),
-        eq(transactions.type, before.type),
-        eq(transactions.amount, before.amount),
-        before.wealthAccountId ? eq(transactions.wealthAccountId, before.wealthAccountId) : isNull(transactions.wealthAccountId),
-      ))
-      .returning()
+    const claimed = db.$with("claimed").as(
+      db
+        .update(transactions)
+        .set({
+          ...(wealth_account_id !== undefined ? { wealthAccountId: wealth_account_id } : {}),
+          currencyCode: nextCurrencyCode,
+          ...(nextCardId !== undefined ? { cardId: nextCardId } : {}),
+          ...(kind !== undefined ? { kind } : {}),
+          ...(type !== undefined ? { type } : {}),
+          ...(amount !== undefined ? { amount: String(amount) } : {}),
+          ...(description !== undefined ? { description } : {}),
+          ...(category !== undefined ? { category } : {}),
+          ...(cleanedTags !== undefined ? { tags: cleanedTags } : {}),
+          ...(date !== undefined ? { date } : {}),
+          updatedBy: userId,
+          updatedAt: new Date(),
+        })
+        .where(and(
+          eq(transactions.id, id), isNull(transactions.deletedAt),
+          eq(transactions.type, before.type),
+          eq(transactions.amount, before.amount),
+          before.wealthAccountId ? eq(transactions.wealthAccountId, before.wealthAccountId) : isNull(transactions.wealthAccountId),
+        ))
+        .returning(),
+    )
+    // …and the balances move in the SAME statement, from the row it claimed
+    // (api/_lib/tx-legs.ts): take back what `before` applied — the WHERE pins
+    // the claimed row to exactly that account, direction and amount — and
+    // apply what the row says now. Separate UPDATEs left the old account
+    // reversed and the new one never credited when the second failed (MC-059).
+    // A relabel (and every edit of a money-locked row) moves no money.
+    const beforeAccount = sql`${before.wealthAccountId}::uuid`
+    const moneyMoved = sql`(wealth_account_id is distinct from ${beforeAccount} or type <> ${before.type} or amount <> ${before.amount}::numeric)`
+    const moves = sql`select ${beforeAccount} as wealth_account_id, -${appliedSql(before.type, before.amount)} as delta from claimed where ${moneyMoved}
+      union all
+      select wealth_account_id, ${appliedSql(sql.raw("type"), sql.raw("amount"))} from claimed where ${moneyMoved}`
+    const [updated] = await db.with(claimed, balanceShiftCte(moves, userId)).select().from(claimed)
     if (!updated) {
       return res.status(409).json({ error: "This transaction was changed or deleted while you were editing it. Reload and try again.", code: "transaction_changed" })
-    }
-    // A relabel (and every edit of a money-locked row) moves no money.
-    const moneyMoved =
-      updated.wealthAccountId !== before.wealthAccountId || updated.type !== before.type || Number(updated.amount) !== Number(before.amount)
-    if (moneyMoved && before.wealthAccountId) {
-      await db
-        .update(wealthAccounts)
-        .set({
-          currentBalance: sql`${wealthAccounts.currentBalance}::numeric - ${balanceDelta(before.type, before.amount)}`,
-          updatedBy: userId,
-          updatedAt: new Date(),
-        })
-        .where(eq(wealthAccounts.id, before.wealthAccountId))
-    }
-    if (moneyMoved && updated.wealthAccountId) {
-      await db
-        .update(wealthAccounts)
-        .set({
-          currentBalance: sql`${wealthAccounts.currentBalance}::numeric + ${balanceDelta(updated.type, updated.amount)}`,
-          updatedBy: userId,
-          updatedAt: new Date(),
-        })
-        .where(eq(wealthAccounts.id, updated.wealthAccountId))
     }
     const changes = diffFields(
       before as Record<string, unknown>,

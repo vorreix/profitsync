@@ -16,9 +16,7 @@ describe("trashClients", () => {
 
   it("flips only live, non-transfer rows and moves balances from the flipped rows", () => {
     expect(src).toContain("t.deleted_at is null and t.transfer_id is null")
-    expect(src).toContain("from flipped")
-    expect(src).toContain("not is_system")
-    expect(src).toContain("case when type = 'incoming' then amount else -amount end")
+    expect(src).toContain('balanceShiftSql(ledgerMovesSql("flipped", "trash"), userId)')
   })
 
   it("hands transfer-owned rows to the transfer service and stops on a refusal", () => {
@@ -26,7 +24,7 @@ describe("trashClients", () => {
     expect(src).toContain("if (!result.ok) return result")
   })
 
-  it("stamps clients and rows with one JS timestamp (restore compares them after a ms round trip)", () => {
+  it("stamps clients and rows with one timestamp (restore takes back the rows carrying the client's)", () => {
     expect(src).toContain("new Date().toISOString()}::timestamp")
     expect(src).not.toContain("deleted_at = now()")
   })

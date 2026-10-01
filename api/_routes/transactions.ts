@@ -5,7 +5,7 @@ import { clients, recurringRules, transactions, wealthAccounts } from "../../src
 import { canWrite, ensureDefaultClient, isPersonalAccount, requireAuth } from "../_lib/auth.js"
 import { checkTransactionQuota, checkTransactionTagQuota } from "../_lib/quota.js"
 import { logAudit } from "../_lib/audit.js"
-import { balanceDelta } from "../../src/lib/wealth-ledger.js"
+import { balanceShiftCte, ledgerMovesSql } from "../_lib/tx-legs.js"
 import { amountExceedsLimit, moneyRefusal } from "../../src/lib/money.js"
 import { materializeDueRecurring } from "../_lib/recurring-materialize.js"
 import { notifyIfBudgetExceeded } from "../_lib/notify-budget.js"
@@ -489,37 +489,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!tagQuota.allowed) return res.status(402).json(tagQuota)
 
     const today = new Date().toISOString().split("T")[0]
-    const [row] = await db
-      .insert(transactions)
-      .values({
-        clientId,
-        wealthAccountId: wealth_account_id,
-        cardId: attributed.cardId,
-        kind,
-        type,
-        amount: String(amount),
-        currencyCode: account.currencyCode,
-        description: description ?? "",
-        category: category ?? "",
-        tags: cleanedTags,
-        date: date ?? today,
-        // isSystem is server-only: user-created transactions are never system rows.
-        createdBy: userId,
-        updatedBy: userId,
-      })
-      .returning()
-    // Relative SQL delta — NEVER read-compute-write the balance in JS: two
-    // concurrent posts to the same account raced and lost an update. (Same
-    // pattern as every other money path; a crash between the two statements is
-    // repairable by recomputing from the ledger.)
-    await db
-      .update(wealthAccounts)
-      .set({
-        currentBalance: sql`${wealthAccounts.currentBalance}::numeric + ${balanceDelta(type, amount)}`,
-        updatedBy: userId,
-        updatedAt: new Date(),
-      })
-      .where(eq(wealthAccounts.id, wealth_account_id))
+    // The row and its balance in ONE statement (api/_lib/tx-legs.ts): two
+    // statements left a row without its balance when the second failed
+    // (MC-059). Relative delta — NEVER read-compute-write the balance in JS
+    // (two concurrent posts to one account lost an update). Not idempotent
+    // across requests: a client retry is a new POST (MC-060).
+    const created = db.$with("created").as(
+      db
+        .insert(transactions)
+        .values({
+          clientId,
+          wealthAccountId: wealth_account_id,
+          cardId: attributed.cardId,
+          kind,
+          type,
+          amount: String(amount),
+          currencyCode: account.currencyCode,
+          description: description ?? "",
+          category: category ?? "",
+          tags: cleanedTags,
+          date: date ?? today,
+          // isSystem is server-only: user-created transactions are never system rows.
+          createdBy: userId,
+          updatedBy: userId,
+        })
+        .returning(),
+    )
+    const [row] = await db.with(created, balanceShiftCte(ledgerMovesSql("created", "create"), userId)).select().from(created)
     await logAudit({ orgId, entityType: "transaction", entityId: row.id, action: "create", actorId: userId })
     // Budget-exceeded alert (fire-and-forget): never blocks or fails the write.
     if (type === "outgoing") void notifyIfBudgetExceeded(orgId, clientId, userId, { category: row.category, date: row.date }).catch(() => {})
