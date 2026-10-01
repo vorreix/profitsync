@@ -71,7 +71,10 @@ const NAMES = { loan: `${E2E_PREFIX}-loan`, marco: `${E2E_PREFIX}-marco`, luca: 
 
 async function cleanup(page: Page) {
   const o = await overview(page)
-  const all = [...o.debts, ...o.receivables, ...((o as unknown as { closed: Debt[] }).closed ?? [])]
+  // Open debts only: a closed one keeps its system Opening Balance row, which
+  // no API can remove, so DELETE just re-closes it — walking every closed
+  // fixture each run grew the hooks past their timeout.
+  const all = [...o.debts, ...o.receivables]
   for (const d of all.filter((x) => Object.values(NAMES).includes(x.name))) {
     const rows = (await api<{ data: TxRow[] }>(page, "GET", `/api/transactions?wealthAccountId=${d.id}&page=1`)).json.data
     if (rows.length) await api(page, "POST", "/api/transactions/bulk-delete", { ids: rows.map((r) => r.id) })

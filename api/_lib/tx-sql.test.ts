@@ -2,17 +2,20 @@ import { describe, expect, it } from "vitest"
 import { and, eq } from "drizzle-orm"
 import { readFileSync } from "node:fs"
 import { db } from "../../src/lib/db/index.js"
-import { transactions } from "../../src/lib/db/schema.js"
+import { clients, transactions } from "../../src/lib/db/schema.js"
 import * as txSql from "./tx-sql.js"
 import {
   expenseSumSql,
   expenseSumSqlIn,
+  fxFor,
+  fxRatesFor,
   incomeSumSql,
   incomeSumSqlIn,
   missingRateCountSql,
   nativeSummarySql,
   pnlKindFilter,
   reportingAmountSql,
+  withFx,
 } from "./tx-sql.js"
 
 // DB-FREE: drizzle renders the aggregate expressions to SQL without executing
@@ -98,6 +101,134 @@ describe("tx-sql — reporting-currency twins convert each row at its own date",
   })
 })
 
+// ── Joined rates (MC-167) ────────────────────────────────────────────────────
+// An aggregate resolves each distinct (currency, date) pair ONCE in a subquery
+// and reads the joined rate, instead of one fx_rate_on call per row and column.
+// Proven equal to the per-row form on the dev DB (old vs new SQL side by side,
+// several orgs, targets and ranges, plus a 30k-row synthetic ledger); these
+// pins keep the two definitions the same expression.
+
+function renderJoined(reporting: string) {
+  const where = and(pnlKindFilter, eq(clients.organizationId, "11111111-1111-1111-1111-111111111111"), eq(transactions.isSystem, false))
+  const fx = fxRatesFor(reporting, where)
+  return db
+    .select({
+      income: incomeSumSqlIn(fx),
+      expense: expenseSumSqlIn(fx),
+      excluded: missingRateCountSql(fx),
+      row: reportingAmountSql(fx),
+    })
+    .from(transactions)
+    .innerJoin(clients, eq(transactions.clientId, clients.id))
+    .leftJoin(fx.table, fx.on)
+    .where(where)
+    .toSQL()
+}
+
+describe("tx-sql — joined rates: one fx_rate_on per distinct (currency, date), same meaning (MC-167)", () => {
+  const { sql, params } = renderJoined("EUR")
+  const rateCalls = sql.match(/fx_rate_on\(/g) ?? []
+
+  it("calls fx_rate_on exactly once in the statement — in the rate subquery, over DISTINCT pairs", () => {
+    expect(rateCalls).toHaveLength(1)
+    expect(sql).not.toMatch(/reporting_amount\(/)
+    expect(sql).toMatch(/left join \(with r as materialized \(select p\.cur, p\.day, p\.tgt, fx_rate_on\(p\.cur, p\.tgt, p\.day\) as rate from \(select distinct ("transactions"\.)?"currency_code" as cur, ("transactions"\.)?"date" as day, \$\d+::text as tgt from "transactions" inner join "clients"/)
+  })
+
+  it("the rates are a MATERIALIZED CTE — computed once even when the planner nests the join (a plain subquery re-ran fx_rate_on per outer row)", () => {
+    expect(sql).toMatch(/\) p\) select \* from r\) "fx" on "fx"\.cur = ("transactions"\.)?"currency_code" and "fx"\.day = ("transactions"\.)?"date" and "fx"\.tgt = \$\d+::text/)
+  })
+
+  it("the subquery scans the aggregate's own rows (same WHERE) and only foreign ones", () => {
+    const sub = sql.slice(sql.indexOf("select distinct"), sql.indexOf(") p) select * from r"))
+    expect(sub).toMatch(/where ("transactions"\.)?"currency_code" <> \$\d+::text and \(/)
+    expect(sub).toMatch(/"kind" in \(\$\d+, \$\d+\)/)
+    expect(sub).toMatch(/"clients"\."organization_id" = \$\d+/)
+    expect(sub).toMatch(/"is_system" = \$\d+/)
+  })
+
+  it("converts like reporting_amount(): identity for NULL / same currency, round(amount × rate, 2) otherwise", () => {
+    const conv = /\(case when ("transactions"\.)?"currency_code" is null or ("transactions"\.)?"currency_code" = \$\d+::text then ("transactions"\.)?"amount"::numeric else round\(("transactions"\.)?"amount"::numeric \* "fx"\.rate, 2\) end\)/
+    expect(sql).toMatch(conv)
+    // …which is 0078's function body, written inline.
+    const fn = readFileSync("drizzle/0078_fx_rate_lookup.sql", "utf8")
+    expect(fn).toMatch(/WHEN p_from IS NULL OR p_to IS NULL OR p_from = p_to THEN p_amount\s+ELSE round\(p_amount \* fx_rate_on\(p_from, p_to, p_on\), 2\)/)
+  })
+
+  it("income / expense keep their rules on the joined amount (a refund still subtracts)", () => {
+    expect(sql).toMatch(/"type" = 'incoming' and ("transactions"\.)?"kind" = 'standard' then \(case when/)
+    expect(sql).toMatch(/"kind" = 'refund' then -\(case when/)
+  })
+
+  it("a row is excluded when it is foreign and the joined rate is NULL — counted for P&L kinds only", () => {
+    expect(sql).toMatch(/count\(\*\) filter \(where ("transactions"\.)?"kind" in \('standard', 'refund'\) and \(("transactions"\.)?"currency_code" is not null and ("transactions"\.)?"currency_code" <> \$\d+::text and "fx"\.rate is null\)\)::int/)
+  })
+
+  it("the target currency is bound, never inlined", () => {
+    expect(params).toContain("EUR")
+    expect(sql).not.toMatch(/'EUR'/)
+  })
+
+  it("two joins in one statement take distinct aliases", () => {
+    const a = fxRatesFor("EUR", undefined, { alias: "fx0" })
+    const b = fxRatesFor("INR", undefined, { alias: "fx1" })
+    const q = db.select({ a: reportingAmountSql(a), b: reportingAmountSql(b) }).from(transactions).leftJoin(a.table, a.on).leftJoin(b.table, b.on).toSQL().sql
+    expect(q).toMatch(/\) "fx0" on "fx0"\.cur/)
+    expect(q).toMatch(/\) "fx1" on "fx1"\.cur/)
+    expect(q).toMatch(/"fx0"\.rate/)
+    expect(q).toMatch(/"fx1"\.rate/)
+  })
+
+  it("a string target still converts row by row (lists, one detail row)", () => {
+    expect(renderIn("EUR").sql).toMatch(/reporting_amount\(/)
+  })
+})
+
+// ── The gate: join only when the workspace holds a foreign currency ─────────
+// With none, the join is pure cost — its subquery re-scans the scope to find
+// nothing (+7..23 ms a statement at 30k rows) — so the routes keep the per-row
+// form, byte for byte what they ran before MC-167.
+
+describe("tx-sql — fxFor / withFx: joined rates only where a foreign currency exists (MC-167)", () => {
+  const where = and(pnlKindFilter, eq(clients.organizationId, "11111111-1111-1111-1111-111111111111"), eq(transactions.isSystem, false))
+  const render = (fx: ReturnType<typeof fxFor>) =>
+    withFx(
+      db
+        .select({ income: incomeSumSqlIn(fx), expense: expenseSumSqlIn(fx), excluded: missingRateCountSql(fx) })
+        .from(transactions)
+        .innerJoin(clients, eq(transactions.clientId, clients.id))
+        .$dynamic(),
+      fx,
+    )
+      .where(where)
+      .toSQL()
+  const perRow = db
+    .select({ income: incomeSumSqlIn("USD"), expense: expenseSumSqlIn("USD"), excluded: missingRateCountSql("USD") })
+    .from(transactions)
+    .innerJoin(clients, eq(transactions.clientId, clients.id))
+    .where(where)
+    .toSQL()
+
+  it("no other currency in the workspace → the per-row target, and the statement is exactly the per-row one (no join)", () => {
+    const fx = fxFor("USD", where, { currencies: [] })
+    expect(fx).toBe("USD")
+    expect(render(fx)).toEqual(perRow)
+  })
+
+  it("a foreign currency → joined rates, and withFx adds the join", () => {
+    const fx = fxFor("USD", where, { currencies: ["EUR"] })
+    expect(typeof fx).not.toBe("string")
+    const { sql } = render(fx)
+    expect(sql.match(/fx_rate_on\(/g) ?? []).toHaveLength(1)
+    expect(sql).toMatch(/left join \(with r as materialized/)
+    expect(sql).not.toMatch(/reporting_amount\(/)
+  })
+
+  it("the rate check failed (undefined) → joined rates: never the cheaper guess", () => {
+    expect(typeof fxFor("USD", where, undefined)).not.toBe("string")
+  })
+})
+
 describe("tx-sql — an account's own figures stay native (MC-009)", () => {
   const { sql } = db
     .select({ income: nativeSummarySql.incoming, expense: nativeSummarySql.outgoing, currency: nativeSummarySql.currency })
@@ -156,7 +287,29 @@ describe("every P&L aggregate route uses the shared expressions", () => {
       expect(src).toMatch(/ensureRatesForOrg\(/)
       expect(src).toMatch(/reportingCurrencyFor\(/)
     })
+
+    it(`${route} converts its aggregates through gated joined rates, not one fx_rate_on per row (MC-167)`, () => {
+      const src = readFileSync(route, "utf8")
+      // The gate reads the rate check's own answer…
+      expect(src).toMatch(/const orgRates = await ensureRatesForOrg\(/)
+      expect(src).toMatch(/const fx = fxFor\(reporting, .*orgRates\)/)
+      expect(src).not.toMatch(/fxRatesFor\(/)
+      // …every converted sum reads `fx`…
+      expect(src).not.toMatch(/(incomeSumSqlIn|expenseSumSqlIn|missingRateCountSql)\(reporting\)/)
+      // …and every statement that reads it goes through withFx (a bare join would not typecheck on a string).
+      expect(src.match(/withFx\(/g)?.length ?? 0).toBeGreaterThan(0)
+      expect(src).not.toMatch(/\.leftJoin\(fx\.table, fx\.on\)/)
+    })
   }
+
+  it("the client detail totals and the debt income average join their rates too (gated)", () => {
+    for (const file of ["api/_routes/clients/[id].ts", "api/_lib/debts.ts"]) {
+      const src = readFileSync(file, "utf8")
+      expect(src).toMatch(/const fx = fxFor\(reporting, \w+, orgRates\)/)
+      expect(src).toMatch(/withFx\(/)
+      expect(src).not.toMatch(/(incomeSumSqlIn|expenseSumSqlIn|missingRateCountSql)\(reporting\)/)
+    }
+  })
 
   it("the money-flow root balance IS /wealth's net worth — one valuation path, both modes", () => {
     // Intentional (MC-FL01/MC-092): it therefore also leaves out settled debts

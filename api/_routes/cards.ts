@@ -11,6 +11,7 @@ import { materializeDueRecurring } from "../_lib/recurring-materialize.js"
 import { reportingCurrencyFor } from "../_lib/fx-rates.js"
 import { createWealthAccount, type CreateAccountInput } from "../_lib/wealth-accounts.js"
 import { newAccountRefusal } from "../_lib/new-account-money.js"
+import { clientUpdateRefusal } from "../_lib/client-capabilities.js"
 import { normalizeCurrencyCode } from "../../src/lib/money.js"
 import { CARD_TAIL_MAX, CARD_TAIL_MIN, guessNetworkFromName, isCardKind, isCardNetwork, isCardTier, isValidLast4, sanitizeCardDesign } from "../../src/lib/cards.js"
 import { todayIso } from "../../src/lib/recurring.js"
@@ -129,6 +130,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const refused = newAccountRefusal({ currency_code: currencyCode, credit_limit: credit.credit_limit, current_debt: credit.current_debt, statement: credit.statement }, reporting)
       if (refused) return res.status(400).json({ ...refused, step: "credit" })
     }
+    // A pre-multi-currency build would show a foreign bank or card wrong
+    // (MC-034) — refused before the inline bank is created.
+    const outdated = clientUpdateRefusal(req, newBank?.currency_code, reporting) ?? (kind === "credit" ? clientUpdateRefusal(req, currencyCode, reporting) : null)
+    if (outdated) return res.status(409).json(outdated)
 
     if (newBank) {
       const created = await createWealthAccount(orgId, userId, { ...newBank, type: "bank" })

@@ -55,15 +55,22 @@ async function waitForClerk(page: Page) {
   )
 }
 
-async function api<T>(page: Page, method: string, path: string, body?: unknown): Promise<{ status: number; json: T }> {
+// `asOldBuild` leaves out the capability header every current client sends
+// (src/lib/client-capabilities.ts), to act like a store-pinned build.
+async function api<T>(page: Page, method: string, path: string, body?: unknown, asOldBuild = false): Promise<{ status: number; json: T }> {
   await waitForClerk(page)
   return page.evaluate(
-    async ({ method, path, body, orgId }) => {
+    async ({ method, path, body, orgId, asOldBuild }) => {
       const Clerk = (window as unknown as { Clerk: { session?: { getToken: () => Promise<string | null> } } }).Clerk
       const token = await Clerk.session?.getToken()
       const res = await fetch(path, {
         method,
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", ...(orgId ? { "x-org-id": orgId } : {}) },
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+          ...(asOldBuild ? {} : { "x-client-capabilities": "multi-currency" }),
+          ...(orgId ? { "x-org-id": orgId } : {}),
+        },
         body: body === undefined ? undefined : JSON.stringify(body),
       })
       const text = await res.text()
@@ -71,7 +78,7 @@ async function api<T>(page: Page, method: string, path: string, body?: unknown):
       try { json = text ? JSON.parse(text) : null } catch { json = text }
       return { status: res.status, json: json as never }
     },
-    { method, path, body, orgId: activeOrgId },
+    { method, path, body, orgId: activeOrgId, asOldBuild },
   )
 }
 
@@ -206,6 +213,19 @@ test.describe("multi-currency", () => {
     // amount was silently reinterpreted into the workspace's.
     expect(await balanceOf(page, eurId)).toBeGreaterThan(0)
     expect(await balanceOf(page, inrId)).toBeGreaterThan(0)
+  })
+
+  test("an old app build cannot create money in another currency", async ({ page }) => {
+    await page.goto("/dashboard")
+    await usePersonal(page)
+    // A store-pinned build adds currencies up unconverted, so it must not be
+    // able to create a foreign account (MC-034). Nothing is created here.
+    const foreign = reporting === "EUR" ? "INR" : "EUR"
+    const old = await api<{ code?: string }>(page, "POST", "/api/wealth/accounts", {
+      type: "cash", bank_name: `${E2E_PREFIX}-mc-oldbuild`, nickname: `${E2E_PREFIX}-mc-oldbuild`, icon: "wallet", openingBalance: 0, currency_code: foreign,
+    }, true)
+    expect(old.status).toBe(409)
+    expect(old.json.code).toBe("client_update_required")
   })
 
   test("consolidated wealth converts without touching native balances", async ({ page }) => {

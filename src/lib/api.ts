@@ -1,6 +1,7 @@
 import { canPersist, invalidationFor, policyFor } from "@/lib/api-cache"
 import { apiErrorCode, translateApiError } from "@/lib/api-error-codes"
 import { emitDataChanged } from "@/lib/data-events"
+import { CLIENT_CAPABILITIES, CLIENT_CAPABILITIES_HEADER } from "@/lib/client-capabilities"
 
 const ORG_STORAGE_KEY = "ps_active_org"
 
@@ -398,6 +399,8 @@ async function request<T>(method: string, path: string, token: string, body?: un
       ...(body ? { "Content-Type": "application/json" } : {}),
       Authorization: `Bearer ${token}`,
       ...(activeOrgId ? { "x-org-id": activeOrgId } : {}),
+      // Lets the server refuse what a pre-multi-currency build would show wrong (MC-034).
+      [CLIENT_CAPABILITIES_HEADER]: CLIENT_CAPABILITIES,
     },
     ...(body ? { body: JSON.stringify(body) } : {}),
   })

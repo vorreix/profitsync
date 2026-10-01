@@ -78,7 +78,8 @@ async function cleanup(page: Page) {
     await api(page, "DELETE", `/api/recurring/${r.id}`)
   }
   const o = await overview(page)
-  for (const d of [...o.debts, ...o.receivables, ...(o.closed ?? [])].filter((x) => x.name.startsWith(E2E_PREFIX))) {
+  // Open debts only — see the note in debts.spec.ts cleanup().
+  for (const d of [...o.debts, ...o.receivables].filter((x) => x.name.startsWith(E2E_PREFIX))) {
     const { json } = await api<{ data: TxRow[] }>(page, "GET", `/api/transactions?wealthAccountId=${d.id}&page=1`)
     if (json?.data?.length) await api(page, "POST", "/api/transactions/bulk-delete", { ids: json.data.map((t) => t.id) })
     await api(page, "POST", "/api/trash/clear")

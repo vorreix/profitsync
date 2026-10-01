@@ -6,6 +6,7 @@ import { canWrite, isPersonalAccount, requireAuth } from "../_lib/auth.js"
 import { logAudit } from "../_lib/audit.js"
 import { pickAppearance } from "../_lib/account-appearance.js"
 import { checkSpaceQuota } from "../_lib/quota.js"
+import { clientUpdateRefusal } from "../_lib/client-capabilities.js"
 import { materializeDueRecurring } from "../_lib/recurring-materialize.js"
 import { parseGoal, parseTargetDate, spaceFields } from "../_lib/spaces.js"
 import { moneyRefusal, normalizeCurrencyCode, selectableCurrencyCode } from "../../src/lib/money.js"
@@ -66,6 +67,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // A new Space is new money: a currency whose decimals the columns keep, or
     // the workspace's own (MC-031).
     if (!selectableCurrencyCode(currencyCode, org.reportingCurrency ?? org.currency)) return res.status(400).json({ error: "Invalid currency code", code: "invalid_currency" })
+    // A pre-multi-currency build would show a foreign Space wrong (MC-034).
+    const outdated = clientUpdateRefusal(req, currencyCode, org.reportingCurrency ?? org.currency)
+    if (outdated) return res.status(409).json(outdated)
     const appearance = pickAppearance(body)
     if (!appearance.ok) return res.status(400).json({ error: appearance.error })
 

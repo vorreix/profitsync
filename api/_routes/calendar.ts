@@ -5,7 +5,7 @@ import { clients, transactions } from "../../src/lib/db/schema.js"
 import { requireAuth } from "../_lib/auth.js"
 import { ensureRatesForOrg, reportingCurrencyFor } from "../_lib/fx-rates.js"
 import { materializeDueRecurring } from "../_lib/recurring-materialize.js"
-import { expenseSumSqlIn, incomeSumSqlIn, missingRateCountSql, pnlKindFilter } from "../_lib/tx-sql.js"
+import { expenseSumSqlIn, fxFor, incomeSumSqlIn, missingRateCountSql, pnlKindFilter, withFx } from "../_lib/tx-sql.js"
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
 const MAX_RANGE_DAYS = 400 // a year view + slack; keeps the scan bounded
@@ -37,33 +37,39 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Recurring occurrences due in this window must exist before we aggregate.
   await materializeDueRecurring(ctx.orgId)
   const reporting = await reportingCurrencyFor(ctx.orgId)
-  await ensureRatesForOrg(ctx.orgId, reporting).catch(() => undefined)
+  const orgRates = await ensureRatesForOrg(ctx.orgId, reporting).catch(() => undefined)
 
-  const rows = await db
-    .select({
-      date: sql<string>`${transactions.date}::text`,
-      // Shared reporting rules (api/_lib/tx-sql.ts): refunds reduce outgoing, never count as incoming.
-      incoming: incomeSumSqlIn(reporting),
-      outgoing: expenseSumSqlIn(reporting),
-      count: sql<number>`count(*)::int`,
-      excluded: missingRateCountSql(reporting),
-    })
-    .from(transactions)
-    .innerJoin(clients, eq(clients.id, transactions.clientId))
-    .where(
-      and(
-        eq(clients.organizationId, ctx.orgId),
-        isNull(clients.deletedAt),
-        isNull(clients.closedAt),
-        isNull(transactions.deletedAt),
-        pnlKindFilter,
-        // See api/_routes/analytics.ts — system balance-defining rows are not
-        // income/expense, and budgets exclude them too.
-        eq(transactions.isSystem, false),
-        gte(transactions.date, from),
-        lte(transactions.date, to),
-      ),
-    )
+  const where = and(
+    eq(clients.organizationId, ctx.orgId),
+    isNull(clients.deletedAt),
+    isNull(clients.closedAt),
+    isNull(transactions.deletedAt),
+    pnlKindFilter,
+    // See api/_routes/analytics.ts — system balance-defining rows are not
+    // income/expense, and budgets exclude them too.
+    eq(transactions.isSystem, false),
+    gte(transactions.date, from),
+    lte(transactions.date, to),
+  )
+  // Rates looked up once per (currency, day) of the window, not per row, when
+  // the workspace holds a foreign currency (MC-167; tx-sql.ts `fxFor`).
+  const fx = fxFor(reporting, where, orgRates)
+  const rows = await withFx(
+    db
+      .select({
+        date: sql<string>`${transactions.date}::text`,
+        // Shared reporting rules (api/_lib/tx-sql.ts): refunds reduce outgoing, never count as incoming.
+        incoming: incomeSumSqlIn(fx),
+        outgoing: expenseSumSqlIn(fx),
+        count: sql<number>`count(*)::int`,
+        excluded: missingRateCountSql(fx),
+      })
+      .from(transactions)
+      .innerJoin(clients, eq(clients.id, transactions.clientId))
+      .$dynamic(),
+    fx,
+  )
+    .where(where)
     .groupBy(transactions.date)
     .orderBy(transactions.date)
 

@@ -30,7 +30,7 @@ import { ensureDefaultClient } from "./auth.js"
 import { getOrgPlan } from "./quota.js"
 import { notifyIfBudgetExceeded } from "./notify-budget.js"
 import { currentRate, ensureRatesForOrg } from "./fx-rates.js"
-import { incomeSumSqlIn, missingRateCountSql } from "./tx-sql.js"
+import { fxFor, incomeSumSqlIn, missingRateCountSql, withFx } from "./tx-sql.js"
 
 // Debt & Loans engine: SQL + orchestration only. Every formula lives in
 // src/lib/debt-math.ts / debt-status.ts (pure, unit-tested); the routes stay thin.
@@ -197,28 +197,33 @@ export async function loadPayments(orgId: string, accountIds: string[], opts: { 
  * non-system) — for the debt-payment ratio. Every row is converted AT ITS OWN
  * DATE into `reporting` (MC-091): a ₹300,000 salary is not 300,000 euros. Rows
  * with no rate are left out and COUNTED, so the screen can say so. The caller
- * has already run ensureRatesForOrg.
+ * has already run ensureRatesForOrg and passes its answer (`orgRates`).
  */
-async function averageMonthlyIncome(orgId: string, today: string, reporting: string): Promise<{ amount: number; excludedCount: number }> {
+async function averageMonthlyIncome(orgId: string, today: string, reporting: string, orgRates: { currencies: readonly string[] } | undefined): Promise<{ amount: number; excludedCount: number }> {
   // periodsBefore, not addPeriods(…, -3): that wraps January back to "2025--2-01".
   const from = periodsBefore(`${monthKey(today)}-01`, "monthly", 3)
   const to = `${monthKey(today)}-01`
-  const [row] = await db
-    .select({ total: incomeSumSqlIn(reporting), excluded: missingRateCountSql(reporting) })
-    .from(transactions)
-    .innerJoin(clients, eq(transactions.clientId, clients.id))
-    .where(
-      and(
-        eq(clients.organizationId, orgId),
-        isNull(clients.deletedAt),
-        isNull(transactions.deletedAt),
-        eq(transactions.type, "incoming"),
-        eq(transactions.kind, "standard"),
-        eq(transactions.isSystem, false),
-        gte(transactions.date, from),
-        lt(transactions.date, to),
-      ),
-    )
+  const where = and(
+    eq(clients.organizationId, orgId),
+    isNull(clients.deletedAt),
+    isNull(transactions.deletedAt),
+    eq(transactions.type, "incoming"),
+    eq(transactions.kind, "standard"),
+    eq(transactions.isSystem, false),
+    gte(transactions.date, from),
+    lt(transactions.date, to),
+  )
+  // Rates once per (currency, day) of the three months, not per row, when the
+  // workspace holds a foreign currency (MC-167; tx-sql.ts `fxFor`).
+  const fx = fxFor(reporting, where, orgRates)
+  const [row] = await withFx(
+    db
+      .select({ total: incomeSumSqlIn(fx), excluded: missingRateCountSql(fx) })
+      .from(transactions)
+      .innerJoin(clients, eq(transactions.clientId, clients.id))
+      .$dynamic(),
+    fx,
+  ).where(where)
   return { amount: Math.round((num(row?.total) / 3) * 100) / 100, excludedCount: num(row?.excluded) }
 }
 
@@ -265,7 +270,7 @@ export async function buildDebtsOverview(orgId: string, orgCurrency: string, tod
   const [monthPayments, windowPayments, income, rates] = await Promise.all([
     loadPayments(orgId, ids, { from: monthStart, to: nextMonthStart }),
     loadPayments(orgId, ids, { from: monthStart, to: threeMonthsOut }),
-    ratesReady.then(() => averageMonthlyIncome(orgId, today, orgCurrency)),
+    ratesReady.then((orgRates) => averageMonthlyIncome(orgId, today, orgCurrency, orgRates)),
     ratesReady.then(() => rankingRates(owedLike.map((d) => d.currency), orgCurrency)),
   ])
   const owedIds = new Set(owedRows.map((r) => r.account.id))

@@ -575,6 +575,13 @@
       "when": 1790859797947,
       "tag": "0081_row_account_currency_fk",
       "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1790863229298,
+      "tag": "0082_row_currency_fill",
+      "breakpoints": true
     }
   ]
 }

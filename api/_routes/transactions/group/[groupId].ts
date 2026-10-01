@@ -92,7 +92,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(409).json({ error: "This entry sets the account's balance — change it from the account's page.", code: "system_row" })
   }
   if (old.some((leg) => leg.transferId || leg.kind === "transfer")) {
-    return res.status(409).json({ error: "A transfer's amount, date, direction or account can't be edited row by row. Reverse the transfer and record it again.", code: "transfer_mutation_requires_transfer_service" })
+    // PATCH's wording (transactions/[id].ts): an old client shows `error` as is.
+    return res.status(409).json({
+      error: old.some((leg) => leg.kind === "transfer")
+        ? "This is part of a transfer. Delete it and record it again."
+        : "This is part of a transfer. Delete the transfer and record it again.",
+      code: "transfer_mutation_requires_transfer_service",
+    })
   }
 
   const first = old[0]

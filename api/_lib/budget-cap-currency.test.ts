@@ -3,7 +3,7 @@ import { and, eq } from "drizzle-orm"
 import { readFileSync } from "node:fs"
 import { db } from "../../src/lib/db/index.js"
 import { budgets, clients, transactions } from "../../src/lib/db/schema.js"
-import { budgetSpendPredicates, capCurrency, capJoin, capSpendMissingRate, capSpendSignedAmount, capWriteCurrency, inCapCurrency } from "./budget-spend.js"
+import { budgetSpendPredicates, capCurrency, capJoin, capRatesFor, capSpendMissingRate, capSpendSignedAmount, capWriteCurrency, inCapCurrency } from "./budget-spend.js"
 
 // A v1 per-client cap KEEPS the currency it was set in (mig 0077): a reporting
 // change converts the spend into the cap's currency, it never relabels the cap.
@@ -49,25 +49,35 @@ describe("inCapCurrency", () => {
 })
 
 describe("cap spend SQL converts into each client's cap currency", () => {
+  const org = "11111111-1111-1111-1111-111111111111"
+  const where = and(...budgetSpendPredicates(org))
+  const rates = capRatesFor(org, "INR", where)
   const { sql, params } = db
-    .select({ signed: capSpendSignedAmount("INR"), missing: capSpendMissingRate("INR") })
+    .select({ signed: capSpendSignedAmount(rates), missing: capSpendMissingRate(rates) })
     .from(transactions)
     .innerJoin(clients, eq(transactions.clientId, clients.id))
-    .leftJoin(budgets, capJoin("11111111-1111-1111-1111-111111111111"))
-    .where(and(...budgetSpendPredicates("11111111-1111-1111-1111-111111111111")))
+    .leftJoin(budgets, capJoin(org))
+    .leftJoin(rates.table, rates.on)
+    .where(where)
     .toSQL()
 
   it("targets coalesce(cap currency, reporting) — never the reporting currency alone", () => {
-    expect(sql).toMatch(/reporting_amount\(("transactions"\.)?"amount"::numeric, ("transactions"\.)?"currency_code", ("transactions"\.)?"date", coalesce\("budgets"\."currency_code", \$\d+\)\)/)
+    // The rate is looked up per (currency, date, CAP currency), once each (MC-167)…
+    expect(sql).toMatch(/fx_rate_on\(p\.cur, p\.tgt, p\.day\)/)
+    expect(sql).toMatch(/"date" as day, coalesce\("budgets"\."currency_code", \$\d+\) as tgt from "transactions" inner join "clients" on "clients"\."id" = "transactions"\."client_id" left join "budgets" on/)
+    // …and joined back on the row's own cap currency.
+    expect(sql).toMatch(/"fx"\.tgt = coalesce\("budgets"\."currency_code", \$\d+\)/)
+    expect(sql).toMatch(/"currency_code" = coalesce\("budgets"\."currency_code", \$\d+\) then ("transactions"\.)?"amount"::numeric else round\(("transactions"\.)?"amount"::numeric \* "fx"\.rate, 2\)/)
     expect(params).toContain("INR")
+    expect(sql).not.toMatch(/reporting_amount\(/)
   })
 
   it("a refund still subtracts", () => {
-    expect(sql).toMatch(/case when ("transactions"\.)?"kind" = 'refund' then -reporting_amount\(/)
+    expect(sql).toMatch(/case when ("transactions"\.)?"kind" = 'refund' then -\(case when/)
   })
 
   it("flags a row with no rate into the cap's currency", () => {
-    expect(sql).toMatch(/fx_rate_on\(("transactions"\.)?"currency_code", coalesce\("budgets"\."currency_code", \$\d+\), ("transactions"\.)?"date"\) is null/)
+    expect(sql).toMatch(/"currency_code" <> coalesce\("budgets"\."currency_code", \$\d+\) and "fx"\.rate is null/)
   })
 
   it("joins the client's cap inside the org", () => {
@@ -76,8 +86,9 @@ describe("cap spend SQL converts into each client's cap currency", () => {
 
   it("both cap spend readers use it", () => {
     const src = readFileSync("api/_lib/budget-spend.ts", "utf8")
-    expect(src.match(/\.leftJoin\(budgets, capJoin\(orgId\)\)/g)).toHaveLength(2)
-    expect(src).toContain("const signed = capSpendSignedAmount(reporting)")
-    expect(src).toContain("amount: capSpendSignedAmount(reporting)")
+    expect(src.match(/\.leftJoin\(budgets, capJoin\(orgId\)\)\n\s+\.leftJoin\(rates\.table, rates\.on\)/g)).toHaveLength(2)
+    expect(src).toContain("const rates = capRatesFor(orgId, reporting, where)")
+    expect(src).toContain("const signed = capSpendSignedAmount(rates)")
+    expect(src).toContain("amount: capSpendSignedAmount(rates)")
   })
 })

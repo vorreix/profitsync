@@ -147,4 +147,18 @@ Also: the five new UI strings are translated in all eight locales (`wealth.accou
 
 ## Release gate
 
-Do not enable mixed-currency account creation in production until every aggregate either groups by currency or converts explicitly, and every financial writer snapshots currency. Same-currency behavior remains the production-safe mode during this staged rollout.
+Every aggregate now groups by currency or converts it explicitly, and every financial writer records the currency (Waves 1–6c). The steps for shipping the release, in order, are in **`RELEASE.md`**:
+
+- merge order;
+- the watermark check on each database;
+- the pre- and post-deploy `audit:balances`, including the debt audits;
+- the worker FX schedule;
+- the roll-forward-only policy;
+- the native store release.
+
+Rollout safeguards that ship in this release:
+
+- **Old builds can't create foreign money (MC-034/119).** New web and native builds send `x-client-capabilities: multi-currency`. A request without that header gets 409 `client_update_required` ("Update the app to use accounts in another currency.") when it tries to create an account, Space, card (new bank or credit) or debt in a currency other than the reporting one. Same-currency creation is never blocked.
+- **The deploy can't skip a migration silently (MC-115).** `scripts/db-migrate.mjs` fails the build when the multi-currency schema sentinel is missing after migrating.
+- **No NULL currencies from old builds (MC-118).** The 0081 and 0082 BEFORE INSERT triggers fill a NULL currency on accounts, transactions and recurring rules. They cover the build window and any rollback.
+- **The transfer-edit refusal reads correctly on old builds (MC-156).** Old builds see "This is part of a transfer. Delete it and record it again." On a fee row they see "Delete the transfer and record it again.", since a fee can't be deleted on its own.

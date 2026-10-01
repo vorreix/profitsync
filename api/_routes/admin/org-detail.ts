@@ -11,7 +11,7 @@ import {
 } from "../../../src/lib/db/schema.js"
 import { requireAdminCap } from "../../_lib/admin.js"
 import { ensureRatesForOrg, reportingCurrencyFor } from "../../_lib/fx-rates.js"
-import { expenseSumSqlIn, incomeSumSqlIn, missingRateCountSql, pnlKindFilter } from "../../_lib/tx-sql.js"
+import { expenseSumSqlIn, fxFor, incomeSumSqlIn, missingRateCountSql, pnlKindFilter, withFx } from "../../_lib/tx-sql.js"
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ctx = await requireAdminCap(req, res, "read")
@@ -69,19 +69,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // into the workspace's reporting currency. A row with no rate is left out
   // and counted — the totals are labelled with the currency they are in and
   // never pretend to be complete. Net is computed here, in numeric, not by a
-  // float subtraction in the browser.
+  // float subtraction in the browser. Rates once per (currency, day), when the
+  // workspace holds a foreign currency (MC-167; tx-sql.ts `fxFor`).
   const reporting = await reportingCurrencyFor(organization_id)
-  await ensureRatesForOrg(organization_id, reporting).catch(() => undefined)
-  const [pnl] = await db
-    .select({
-      income: incomeSumSqlIn(reporting),
-      expense: expenseSumSqlIn(reporting),
-      net: sql<string>`round((${incomeSumSqlIn(reporting)}) - (${expenseSumSqlIn(reporting)}), 2)::text`,
-      excluded: missingRateCountSql(reporting),
-    })
-    .from(transactions)
-    .innerJoin(clients, eq(clients.id, transactions.clientId))
-    .where(and(eq(clients.organizationId, organization_id), isNull(clients.deletedAt), isNull(transactions.deletedAt), eq(transactions.isSystem, false), pnlKindFilter))
+  const orgRates = await ensureRatesForOrg(organization_id, reporting).catch(() => undefined)
+  const scope = and(eq(clients.organizationId, organization_id), isNull(clients.deletedAt), isNull(transactions.deletedAt), eq(transactions.isSystem, false), pnlKindFilter)
+  const fx = fxFor(reporting, scope, orgRates)
+  const [pnl] = await withFx(
+    db
+      .select({
+        income: incomeSumSqlIn(fx),
+        expense: expenseSumSqlIn(fx),
+        net: sql<string>`round((${incomeSumSqlIn(fx)}) - (${expenseSumSqlIn(fx)}), 2)::text`,
+        excluded: missingRateCountSql(fx),
+      })
+      .from(transactions)
+      .innerJoin(clients, eq(clients.id, transactions.clientId))
+      .$dynamic(),
+    fx,
+  ).where(scope)
 
   return res.json({
     organization: serialize(org),

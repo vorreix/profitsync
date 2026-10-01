@@ -1,10 +1,10 @@
-import { and, eq, gte, inArray, isNull, lt, or, sql } from "drizzle-orm"
+import { and, eq, gte, inArray, isNull, lt, or, sql, type SQL } from "drizzle-orm"
 import { db } from "../../src/lib/db/index.js"
 import { budgets, clients, transactions } from "../../src/lib/db/schema.js"
 import { periodStart, type BudgetPeriod } from "../../src/lib/budget.js"
 import type { PeriodWindow } from "../../src/lib/budget-history.js"
 import { isCurrencyCode, normalizeCurrencyCode } from "../../src/lib/money.js"
-import { missingRateSql, reportingAmountSql } from "./tx-sql.js"
+import { fxRatesFor, missingRateSql, reportingAmountSql, type FxRates, type FxTarget } from "./tx-sql.js"
 
 export type PeriodCounts = { daily: number; weekly: number; monthly: number; lifetime: number }
 export type PeriodSums = PeriodCounts & {
@@ -48,13 +48,15 @@ export const budgetSpendSignedAmount = sql<string>`case when ${transactions.kind
  * The same signed amount converted AT THE ROW'S DATE into `target` (a budget's
  * own currency, or the workspace's reporting currency for the v1 client caps).
  * NULL when no rate is stored for that day — a sum skips it, so every caller
- * also counts `budgetSpendMissingRate(target)` rows and reports them.
+ * also counts `budgetSpendMissingRate(target)` rows and reports them. An
+ * aggregate passes joined rates (`fxRatesFor`, MC-167); a per-row read passes
+ * the currency code.
  */
-export const budgetSpendSignedAmountIn = (target: string) =>
+export const budgetSpendSignedAmountIn = (target: FxTarget) =>
   sql<string>`case when ${transactions.kind} = 'refund' then -${reportingAmountSql(target)} else ${reportingAmountSql(target)} end`
 
 /** "this spend row could not be converted into `target`" — for the excluded counts. */
-export const budgetSpendMissingRate = (target: string) => missingRateSql(target)
+export const budgetSpendMissingRate = (target: FxTarget) => missingRateSql(target)
 
 // ── v1 per-client caps keep their currency ───────────────────────────────────
 // A cap is authored AND judged in `budgets.currency_code` (mig 0077): the
@@ -72,16 +74,22 @@ export const capCurrency = (cap: { currencyCode: string | null } | null | undefi
  * left join `capJoin` adds), else `fallback`. The SQL twin of `capCurrency`.
  */
 const capTargetSql = (fallback: string) => sql<string>`coalesce(${budgets.currencyCode}, ${fallback})`
-const capConvertedSql = (fallback: string) =>
-  sql<string>`reporting_amount(${transactions.amount}::numeric, ${transactions.currencyCode}, ${transactions.date}, ${capTargetSql(fallback)})`
+
+/**
+ * Rates into each row's CAP currency for the rows `scope` selects — one lookup
+ * per distinct (currency, date, cap currency), not per row (MC-167). The
+ * aggregate must also `.leftJoin(budgets, capJoin(orgId))`, which the per-row
+ * target reads.
+ */
+export const capRatesFor = (orgId: string, fallback: string, scope: SQL | undefined): FxRates =>
+  fxRatesFor(capTargetSql(fallback), scope, { join: sql`left join ${budgets} on ${capJoin(orgId)}` })
 
 /** The signed spend of a row converted at its date into ITS CLIENT's cap currency (NULL = no rate). */
-export const capSpendSignedAmount = (fallback: string) =>
-  sql<string>`case when ${transactions.kind} = 'refund' then -${capConvertedSql(fallback)} else ${capConvertedSql(fallback)} end`
+export const capSpendSignedAmount = (rates: FxRates) =>
+  sql<string>`case when ${transactions.kind} = 'refund' then -${reportingAmountSql(rates)} else ${reportingAmountSql(rates)} end`
 
 /** "this row could not be converted into its client's cap currency" — the excluded count. */
-export const capSpendMissingRate = (fallback: string) =>
-  sql<boolean>`(${transactions.currencyCode} is not null and ${transactions.currencyCode} <> ${capTargetSql(fallback)} and fx_rate_on(${transactions.currencyCode}, ${capTargetSql(fallback)}, ${transactions.date}) is null)`
+export const capSpendMissingRate = (rates: FxRates) => missingRateSql(rates)
 
 /** Join each spend row to its client's cap (at most one: budgets_org_client_unique). */
 export const capJoin = (orgId: string) => and(eq(budgets.organizationId, orgId), eq(budgets.clientId, transactions.clientId))
@@ -133,8 +141,10 @@ export async function outgoingByClient(orgId: string, now: Date, reporting: stri
   const today = periodStart("daily", now)!
   const weekStart = periodStart("weekly", now)!
   const monthStart = periodStart("monthly", now)!
-  const signed = capSpendSignedAmount(reporting)
-  const missing = capSpendMissingRate(reporting)
+  const where = and(...budgetSpendPredicates(orgId))
+  const rates = capRatesFor(orgId, reporting, where)
+  const signed = capSpendSignedAmount(rates)
+  const missing = capSpendMissingRate(rates)
   const rows = await db
     .select({
       clientId: transactions.clientId,
@@ -150,7 +160,8 @@ export async function outgoingByClient(orgId: string, now: Date, reporting: stri
     .from(transactions)
     .innerJoin(clients, eq(transactions.clientId, clients.id))
     .leftJoin(budgets, capJoin(orgId))
-    .where(and(...budgetSpendPredicates(orgId)))
+    .leftJoin(rates.table, rates.on)
+    .where(where)
     .groupBy(transactions.clientId)
 
   const map = new Map<string, PeriodSums>()
@@ -204,13 +215,16 @@ export async function spendForWindows(
     lt(transactions.date, lastEnd),
   ]
   if (clientId) conds.push(eq(transactions.clientId, clientId))
+  const where = and(...conds)
+  const rates = capRatesFor(orgId, reporting, where)
 
   const rows = await db
-    .select({ date: transactions.date, amount: capSpendSignedAmount(reporting) })
+    .select({ date: transactions.date, amount: capSpendSignedAmount(rates) })
     .from(transactions)
     .innerJoin(clients, eq(transactions.clientId, clients.id))
     .leftJoin(budgets, capJoin(orgId))
-    .where(and(...conds))
+    .leftJoin(rates.table, rates.on)
+    .where(where)
 
   for (const r of rows) {
     for (const w of windows) {

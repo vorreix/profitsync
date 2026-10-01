@@ -5,7 +5,7 @@ import { clients, organizations, transactions } from "../../../src/lib/db/schema
 import { requireAdminCap } from "../../_lib/admin.js"
 import { trashClients } from "../../_lib/client-trash.js"
 import { ensureRatesForOrg, reportingCurrencyFor } from "../../_lib/fx-rates.js"
-import { expenseSumSqlIn, incomeSumSqlIn, missingRateCountSql } from "../../_lib/tx-sql.js"
+import { expenseSumSqlIn, fxFor, incomeSumSqlIn, missingRateCountSql, withFx } from "../../_lib/tx-sql.js"
 
 const PAGE_SIZE = 30
 const VALID_STATUSES = ["active", "inactive", "archived"]
@@ -53,32 +53,40 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // (api/_routes/clients.ts, MC-112): live non-system rows only — a trashed
     // row or an Opening Balance is no client's income — each converted at its
     // own date into the reporting currency (`totals_currency`), and a row
-    // with no rate left out and counted in `excluded_count`.
+    // with no rate left out and counted in `excluded_count`. Rates once per
+    // (currency, day) of the joined rows, when the workspace holds a foreign
+    // currency (MC-167; tx-sql.ts `fxFor`).
     const reporting = await reportingCurrencyFor(organization_id)
-    await ensureRatesForOrg(organization_id, reporting).catch(() => undefined)
+    const orgRates = await ensureRatesForOrg(organization_id, reporting).catch(() => undefined)
+    const totalsJoin = and(eq(transactions.clientId, clients.id), isNull(transactions.deletedAt), eq(transactions.isSystem, false))
+    const fx = fxFor(reporting, and(whereClause, totalsJoin), orgRates)
 
-    const rows = await db
-      .select({
-        id: clients.id,
-        userId: clients.userId,
-        organizationId: clients.organizationId,
-        name: clients.name,
-        company: clients.company,
-        email: clients.email,
-        phone: clients.phone,
-        status: clients.status,
-        notes: clients.notes,
-        onboardDate: clients.onboardDate,
-        createdAt: clients.createdAt,
-        updatedAt: clients.updatedAt,
-        totalIncoming: incomeSumSqlIn(reporting),
-        totalOutgoing: expenseSumSqlIn(reporting),
-        totalsCurrency: sql<string>`${reporting}::text`,
-        excludedCount: missingRateCountSql(reporting),
-        transactionCount: sql<number>`count(${transactions.id})::int`,
-      })
-      .from(clients)
-      .leftJoin(transactions, and(eq(transactions.clientId, clients.id), isNull(transactions.deletedAt), eq(transactions.isSystem, false)))
+    const rows = await withFx(
+      db
+        .select({
+          id: clients.id,
+          userId: clients.userId,
+          organizationId: clients.organizationId,
+          name: clients.name,
+          company: clients.company,
+          email: clients.email,
+          phone: clients.phone,
+          status: clients.status,
+          notes: clients.notes,
+          onboardDate: clients.onboardDate,
+          createdAt: clients.createdAt,
+          updatedAt: clients.updatedAt,
+          totalIncoming: incomeSumSqlIn(fx),
+          totalOutgoing: expenseSumSqlIn(fx),
+          totalsCurrency: sql<string>`${reporting}::text`,
+          excludedCount: missingRateCountSql(fx),
+          transactionCount: sql<number>`count(${transactions.id})::int`,
+        })
+        .from(clients)
+        .leftJoin(transactions, totalsJoin)
+        .$dynamic(),
+      fx,
+    )
       .where(whereClause)
       .groupBy(clients.id)
       .orderBy(desc(clients.createdAt))

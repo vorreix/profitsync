@@ -43,6 +43,11 @@
 // rows migration 0081's FK transactions_account_currency_fk rejects — it stays
 // NOT VALID while any exist, and the report says so), and NULL currency_code on
 // rows / accounts (must be zero before enforcing NOT NULL).
+// Debts (MC-117, report-only): debts in another currency than their workspace,
+// debt repayment rules whose paying account is in another currency than the
+// debt (their next posting is refused), and debt groups whose legs span more
+// than one currency. Also runs BEFORE the deploy: against a database without
+// the multi-currency schema it runs only these, predicting 0069 + 0076's labels.
 //
 // DRY RUN BY DEFAULT. Every audit query runs in ONE read-only, repeatable-read
 // transaction: Postgres refuses any write, and all sections see the same
@@ -144,8 +149,105 @@ if (applyAccount) {
 const journal = JSON.parse(readFileSync(new URL("../drizzle/meta/_journal.json", import.meta.url), "utf8"))
 const cutoffSeconds = (journal.entries.find((e) => e.tag.startsWith("0080_"))?.when ?? 0) / 1000
 
+// ── Output ───────────────────────────────────────────────────────────────────
+
+const short = (v) => (typeof v === "string" && UUID.test(v) ? v.slice(0, 8) : v)
+const cell = (v) => (v === true ? "yes" : v === false ? "no" : v == null ? "" : String(short(v)))
+const NUMERIC = new Set(["stored", "expected", "drift", "fee", "fee_rows", "amount", "live_rows", "trashed_rows", "rows", "legs", "live_legs", "disagreeing_rows"])
+
+function table(title, rows, cols) {
+  console.log(`\n${title} — ${rows.length}`)
+  if (!rows.length) return
+  const shown = all ? rows : rows.slice(0, SAMPLE)
+  const width = cols.map((c) => Math.min(32, Math.max(c.length, ...shown.map((r) => cell(r[c]).length))))
+  const line = (vals) =>
+    "  " + vals.map((v, i) => (NUMERIC.has(cols[i]) ? v.padStart(width[i]) : v.slice(0, width[i]).padEnd(width[i]))).join("  ")
+  console.log(line(cols))
+  console.log(line(width.map((w) => "-".repeat(w))))
+  for (const r of shown) console.log(line(cols.map((c) => cell(r[c]))))
+  if (shown.length < rows.length) console.log(`  … ${rows.length - shown.length} more (--all to list every row)`)
+}
+
+// ── Debt audits (MC-117, report-only) ────────────────────────────────────────
+// Before multi-currency a USD loan could live in an INR workspace and be repaid
+// from an INR bank with the same number on both legs. 0076 relabels the debt's
+// account and its rows to the debt's currency, so such a repayment then spans
+// two currencies and the rule's next posting is refused (currency_mismatch).
+// Run BEFORE the deploy against production, which has no currency columns yet:
+// an account's currency is then predicted the way 0069 + 0076 will label it
+// (a debt account: the debt's; any other: the workspace's). After the deploy
+// the stored labels are read.
+const [{ mc }] = await sql`
+  select count(*) = 2 as mc from information_schema.columns
+  where table_schema = 'public' and column_name = 'currency_code' and table_name in ('transactions', 'wealth_accounts')`
+const ORG_CCY = mc ? "coalesce(o.reporting_currency, upper(o.currency))" : "upper(o.currency)"
+const accCcy = (w) =>
+  mc ? `${w}.currency_code` : `coalesce((select upper(d.currency) from debt_details d where d.wealth_account_id = ${w}.id), upper(o.currency))`
+const rowCcy = mc ? "t.currency_code" : accCcy("w")
+const debtAudits = () => [
+  sql(
+    `
+    select wa.id, o.id as org, o.name as workspace, coalesce(nullif(wa.nickname, ''), wa.bank_name) as name, wa.type,
+      upper(dd.currency) as debt_ccy, ${ORG_CCY} as org_ccy, dd.lifecycle, wa.archived_at is not null as archived
+    from debt_details dd
+    join wealth_accounts wa on wa.id = dd.wealth_account_id
+    join organizations o on o.id = wa.organization_id
+    where upper(dd.currency) is distinct from ${ORG_CCY} and ($1::text is null or wa.organization_id::text like $1 || '%')
+    order by o.name, 4`,
+    [org],
+  ),
+  sql(
+    `
+    select r.id, o.id as org, r.name, r.active, coalesce(nullif(p.nickname, ''), p.bank_name) as payer,
+      upper(dd.currency) as debt_ccy, ${accCcy("p")} as payer_ccy, r.next_due_at::text as next_due
+    from recurring_rules r
+    join debt_details dd on dd.wealth_account_id = r.debt_account_id
+    join wealth_accounts p on p.id = r.wealth_account_id
+    join organizations o on o.id = r.organization_id
+    where ${accCcy("p")} is distinct from upper(dd.currency) and ($1::text is null or r.organization_id::text like $1 || '%')
+    order by r.active desc, r.next_due_at`,
+    [org],
+  ),
+  sql(
+    `
+    select t.group_id as id, min(o.id::text) as org, count(*)::int as legs, count(*) filter (where t.deleted_at is null)::int as live_legs,
+      string_agg(distinct ${rowCcy}, ',') as ccy, min(t.date)::text as date
+    from transactions t
+    join wealth_accounts w on w.id = t.wealth_account_id
+    join organizations o on o.id = w.organization_id
+    where t.group_id is not null
+      and exists (
+        select 1 from transactions x join wealth_accounts xw on xw.id = x.wealth_account_id
+        where x.group_id = t.group_id and xw.type in ('loan', 'receivable')
+      )
+      and ($1::text is null or w.organization_id::text like $1 || '%')
+    group by t.group_id
+    having count(distinct ${rowCcy}) > 1
+    order by min(t.date)`,
+    [org],
+  ),
+]
+function debtTables([foreignDebts, debtRules, debtGroups]) {
+  table("Debts in another currency than their workspace (MC-117)", foreignDebts, ["id", "org", "workspace", "name", "type", "debt_ccy", "org_ccy", "lifecycle", "archived"])
+  table("Debt repayment rules paid from an account in another currency (posting will be refused)", debtRules, ["id", "org", "name", "active", "payer", "debt_ccy", "payer_ccy", "next_due"])
+  table("Debt groups whose legs span more than one currency", debtGroups, ["id", "org", "legs", "live_legs", "ccy", "date"])
+  return foreignDebts.length + debtRules.length + debtGroups.length
+}
+
+if (!mc) {
+  // Pre-deploy: everything below reads columns and tables this schema lacks.
+  if (applyAccount || applyAll) {
+    console.error("This database has no multi-currency schema yet — --apply runs only after the deploy.")
+    process.exit(2)
+  }
+  const found = debtTables(await sql.transaction(debtAudits(), { readOnly: true, isolationLevel: "RepeatableRead" }))
+  console.log(`\n[audit-balances] target: ${host} · PRE-DEPLOY (no multi-currency schema): only the debt audits ran, currencies as 0069 + 0076 will label them`)
+  console.log(`[audit-balances] ${found} debt finding(s). Decide per debt before deploying (docs/multi-currency/RELEASE.md).`)
+  process.exit(0)
+}
+
 // `$1::text is null or … like` — one query shape for "whole database" and "one org".
-const [accounts, broken, trashMismatch, headerless, mismatched, nullRows, nullAccounts, [rowCurrencyFk]] = await sql.transaction(
+const [accounts, broken, trashMismatch, headerless, mismatched, nullRows, nullAccounts, [rowCurrencyFk], ...debtRows] = await sql.transaction(
   [
     sql(
       `
@@ -240,28 +342,11 @@ const [accounts, broken, trashMismatch, headerless, mismatched, nullRows, nullAc
       from wealth_accounts wa join organizations o on o.id = wa.organization_id
       where wa.currency_code is null and (${org}::text is null or wa.organization_id::text like ${org} || '%')`,
     sql`select (select convalidated from pg_constraint where conname = 'transactions_account_currency_fk') as valid`,
+    ...debtAudits(),
   ],
   { readOnly: true, isolationLevel: "RepeatableRead" },
 )
 
-// ── Output ───────────────────────────────────────────────────────────────────
-
-const short = (v) => (typeof v === "string" && UUID.test(v) ? v.slice(0, 8) : v)
-const cell = (v) => (v === true ? "yes" : v === false ? "no" : v == null ? "" : String(short(v)))
-const NUMERIC = new Set(["stored", "expected", "drift", "fee", "fee_rows", "amount", "live_rows", "trashed_rows", "rows", "legs", "live_legs", "disagreeing_rows"])
-
-function table(title, rows, cols) {
-  console.log(`\n${title} — ${rows.length}`)
-  if (!rows.length) return
-  const shown = all ? rows : rows.slice(0, SAMPLE)
-  const width = cols.map((c) => Math.min(32, Math.max(c.length, ...shown.map((r) => cell(r[c]).length))))
-  const line = (vals) =>
-    "  " + vals.map((v, i) => (NUMERIC.has(cols[i]) ? v.padStart(width[i]) : v.slice(0, width[i]).padEnd(width[i]))).join("  ")
-  console.log(line(cols))
-  console.log(line(width.map((w) => "-".repeat(w))))
-  for (const r of shown) console.log(line(cols.map((c) => cell(r[c]))))
-  if (shown.length < rows.length) console.log(`  … ${rows.length - shown.length} more (--all to list every row)`)
-}
 
 const drifted = accounts.filter((a) => a.drifted)
 console.log(`[audit-balances] target: ${host}${org ? ` · org ${org}` : ""} · ${applyAccount || applyAll ? "APPLY (audit from a read-only snapshot)" : "dry run, read-only snapshot"}`)
@@ -277,11 +362,13 @@ table("Transfer groups without a header (debt-engine groups excluded)", headerle
 table("Rows whose currency differs from their account's", mismatched, ["id", "org", "account_name", "row_ccy", "account_ccy", "amount", "trashed", "date"])
 table("Rows with NULL currency_code (per org)", nullRows, ["org", "has_account", "rows", "live_rows"])
 table("Accounts with NULL currency_code", nullAccounts, ["id", "org", "name", "type"])
+const debtFindings = debtTables(debtRows)
 
 console.log(
   `\n[audit-balances] ${accounts.length} accounts, ${drifted.length} drifting · ` +
     `${broken.length + trashMismatch.length + headerless.length} transfer findings · ` +
-    `${mismatched.length} currency-mismatched rows · ${nullRows.reduce((n, r) => n + r.rows, 0)} NULL-currency rows`,
+    `${mismatched.length} currency-mismatched rows · ${nullRows.reduce((n, r) => n + r.rows, 0)} NULL-currency rows · ` +
+    `${debtFindings} debt currency findings (report-only)`,
 )
 console.log(
   `[audit-balances] row-currency FK (0081): ${

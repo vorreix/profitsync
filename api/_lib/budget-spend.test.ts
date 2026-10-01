@@ -81,8 +81,11 @@ describe("budget spend in the BUDGET's currency (every row converted at its own 
 
   it("the spending-budget aggregate uses the converted amount, per budget currency", () => {
     const src = readFileSync("api/_lib/spending-budgets.ts", "utf8")
-    expect(src).toContain("budgetSpendSignedAmountIn(cur)")
-    expect(src).toContain("budgetSpendMissingRate(cur)")
+    // …through rates joined once per (currency, day) in each currency (MC-167).
+    expect(src).toContain("fxRatesFor(cur, where, { alias: `fx${j}` })")
+    expect(src).toContain("budgetSpendSignedAmountIn(fx)")
+    expect(src).toContain("budgetSpendMissingRate(fx)")
+    expect(src).not.toMatch(/budgetSpend(SignedAmountIn|MissingRate)\(cur\)/)
     // The unconverted sum is gone from every budget figure.
     expect(src).not.toMatch(/\bbudgetSpendSignedAmount\b(?!In)/)
     // Every budget carries what it could not convert.

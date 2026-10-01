@@ -7,7 +7,7 @@ import { checkClientQuota, checkNoteLength } from "../_lib/quota.js"
 import { logAudit } from "../_lib/audit.js"
 import { cleanTags, normalizeTagName } from "../../src/lib/tags.js"
 import { ensureRatesForOrg, reportingCurrencyFor } from "../_lib/fx-rates.js"
-import { expenseSumSqlIn, incomeSumSqlIn, missingRateCountSql } from "../_lib/tx-sql.js"
+import { expenseSumSqlIn, fxFor, incomeSumSqlIn, missingRateCountSql, withFx } from "../_lib/tx-sql.js"
 
 const VALID_STATUSES = ["active", "inactive", "archived"]
 const PAGE_SIZE = 20
@@ -71,9 +71,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // them too.
     const clientTotalsJoin = and(eq(transactions.clientId, clients.id), isNull(transactions.deletedAt), eq(transactions.isSystem, false))
     const reporting = await reportingCurrencyFor(orgId)
-    await ensureRatesForOrg(orgId, reporting).catch(() => undefined)
-    const incomingSum = incomeSumSqlIn(reporting)
-    const outgoingSum = expenseSumSqlIn(reporting)
+    const orgRates = await ensureRatesForOrg(orgId, reporting).catch(() => undefined)
+    // Rates for exactly the rows the totals join, once per (currency, day), when
+    // the workspace holds a foreign currency (MC-167; tx-sql.ts `fxFor`).
+    const fx = fxFor(reporting, and(whereClause, clientTotalsJoin), orgRates)
+    const incomingSum = incomeSumSqlIn(fx)
+    const outgoingSum = expenseSumSqlIn(fx)
     const profitSum = sql`(${incomingSum} - ${outgoingSum})`
 
     const orderBy = (() => {
@@ -115,7 +118,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       totalIncoming: incomingSum,
       totalOutgoing: outgoingSum,
       totalsCurrency: sql<string>`${reporting}::text`,
-      excludedCount: missingRateCountSql(reporting),
+      excludedCount: missingRateCountSql(fx),
       // Direct attachments on the client (correlated subquery → no row fan-out
       // from the transactions LEFT JOIN above). Drives the list paperclip badge.
       attachmentCount: sql<number>`(select count(*)::int from client_attachments where client_id = ${clients.id})`,
@@ -128,10 +131,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // Count and page rows are independent — run them as one parallel batch.
       const [[{ total }], rows] = await Promise.all([
         db.select({ total: count() }).from(clients).where(whereClause),
-        db
-          .select(selectFields)
-          .from(clients)
-          .leftJoin(transactions, clientTotalsJoin)
+        withFx(db.select(selectFields).from(clients).leftJoin(transactions, clientTotalsJoin).$dynamic(), fx)
           .where(whereClause)
           .groupBy(clients.id)
           .orderBy(desc(clients.isOwn), orderBy, desc(clients.id))
@@ -142,10 +142,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.json({ data: rows.map(serialize), total, currency: reporting })
     }
 
-    const rows = await db
-      .select(selectFields)
-      .from(clients)
-      .leftJoin(transactions, clientTotalsJoin)
+    const rows = await withFx(db.select(selectFields).from(clients).leftJoin(transactions, clientTotalsJoin).$dynamic(), fx)
       .where(whereClause)
       .groupBy(clients.id)
       .orderBy(desc(clients.isOwn), orderBy)

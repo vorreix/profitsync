@@ -8,7 +8,7 @@ import { diffFields, logAudit } from "../../_lib/audit.js"
 import { trashClients } from "../../_lib/client-trash.js"
 import { cleanTags } from "../../../src/lib/tags.js"
 import { ensureRatesForOrg, reportingCurrencyFor } from "../../_lib/fx-rates.js"
-import { expenseSumSqlIn, incomeSumSqlIn, missingRateCountSql } from "../../_lib/tx-sql.js"
+import { expenseSumSqlIn, fxFor, incomeSumSqlIn, missingRateCountSql, withFx } from "../../_lib/tx-sql.js"
 
 const VALID_STATUSES = ["active", "inactive", "archived"]
 
@@ -29,18 +29,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // not add native amounts of different currencies. Rows with no rate are
     // left out and counted in `excluded_count`.
     const reporting = await reportingCurrencyFor(orgId)
-    await ensureRatesForOrg(orgId, reporting).catch(() => undefined)
-    const [totals] = await db
-      .select({
-        totalIncoming: incomeSumSqlIn(reporting),
-        totalOutgoing: expenseSumSqlIn(reporting),
-        excludedCount: missingRateCountSql(reporting),
-      })
-      .from(transactions)
-      // Same scope as the list's per-client totals (api/_routes/clients.ts), so
-      // the two figures agree: live, non-system rows (an Opening Balance is not
-      // income), transfers dropped by the sums themselves.
-      .where(and(eq(transactions.clientId, id), isNull(transactions.deletedAt), eq(transactions.isSystem, false)))
+    const orgRates = await ensureRatesForOrg(orgId, reporting).catch(() => undefined)
+    // Same scope as the list's per-client totals (api/_routes/clients.ts), so
+    // the two figures agree: live, non-system rows (an Opening Balance is not
+    // income), transfers dropped by the sums themselves. Rates once per
+    // (currency, day), not per row, when the workspace holds a foreign currency
+    // (MC-167; tx-sql.ts `fxFor`).
+    const scope = and(eq(transactions.clientId, id), isNull(transactions.deletedAt), eq(transactions.isSystem, false))
+    const fx = fxFor(reporting, scope, orgRates)
+    const [totals] = await withFx(
+      db
+        .select({
+          totalIncoming: incomeSumSqlIn(fx),
+          totalOutgoing: expenseSumSqlIn(fx),
+          excludedCount: missingRateCountSql(fx),
+        })
+        .from(transactions)
+        .$dynamic(),
+      fx,
+    ).where(scope)
     return res.json({
       ...serialize(row),
       total_incoming: Number(totals?.totalIncoming ?? 0),

@@ -3311,7 +3311,8 @@
     "autopay_interrupted": "Il pagamento della carta è stato interrotto prima di essere registrato. Controlla la carta e, se serve, paga manualmente.",
     "rate_limited": "Troppe richieste di tassi di cambio. Riprova tra un minuto.",
     "amount_whole_units": "Questa valuta non ha decimali: inserisci un importo intero.",
-    "autosave_rate_unavailable": "Non c'è ancora un cambio da {{from}} a {{to}} per la data di questo risparmio automatico. Verrà eseguito appena sarà disponibile."
+    "autosave_rate_unavailable": "Non c'è ancora un cambio da {{from}} a {{to}} per la data di questo risparmio automatico. Verrà eseguito appena sarà disponibile.",
+    "client_update_required": "Aggiorna l'app per usare conti in un'altra valuta."
   },
   "adminFx": {
     "title": "Tassi di cambio",

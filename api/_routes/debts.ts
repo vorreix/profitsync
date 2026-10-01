@@ -6,6 +6,7 @@ import { canWrite, ensureDefaultClient, requireAuth } from "../_lib/auth.js"
 import { checkTransactionQuota } from "../_lib/quota.js"
 import { logAudit } from "../_lib/audit.js"
 import { reportingCurrencyFor } from "../_lib/fx-rates.js"
+import { clientUpdateRefusal } from "../_lib/client-capabilities.js"
 import { resolveLogoColumns } from "../_lib/bank-brand.js"
 import { buildDebtsOverview, loadDebt, loadDebtRules, serializeDebt } from "../_lib/debts.js"
 import { payerShape, refusalForNew, refusalMessage, refusalStatus } from "../_lib/recurring-debt.js"
@@ -73,6 +74,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // A new debt is new money: a currency whose decimals the columns keep, or
     // the workspace's own (MC-031).
     if (!selectableCurrencyCode(currency, orgCurrency)) return res.status(400).json({ error: "Invalid currency code", code: "invalid_currency" })
+    // A pre-multi-currency build would show a foreign debt wrong (MC-034).
+    const outdated = clientUpdateRefusal(req, currency, orgCurrency)
+    if (outdated) return res.status(409).json(outdated)
 
     const balance = num(b.current_balance)
     if (balance === null || Number.isNaN(balance) || balance < 0) return res.status(400).json({ error: "current_balance must be 0 or more" })

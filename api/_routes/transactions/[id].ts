@@ -153,7 +153,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       : before.isSystem
         ? { error: "This entry sets the account's balance — change it from the account's page.", code: "system_row" }
         : before.transferId || before.kind === "transfer"
-          ? { error: "A transfer's amount, date, direction or account can't be edited row by row. Reverse the transfer and record it again.", code: "transfer_mutation_requires_transfer_service" }
+          ? {
+              // A fee row can't be deleted on its own (see DELETE), so it names the transfer.
+              error: before.kind === "transfer"
+                ? "This is part of a transfer. Delete it and record it again."
+                : "This is part of a transfer. Delete the transfer and record it again.",
+              code: "transfer_mutation_requires_transfer_service",
+            }
           : null
     if (lock) {
       const moneyChanged =

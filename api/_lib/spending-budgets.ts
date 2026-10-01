@@ -26,6 +26,7 @@ import {
 import { amountExceedsLimit, normalizeCurrencyCode } from "../../src/lib/money.js"
 import type { SpendingBudget, SpendingBudgetHistoryEntry, SpendingBudgetRecentTx, SpendingBudgetStatus } from "../../src/lib/types.js"
 import { budgetSpendMissingRate, budgetSpendPredicates, budgetSpendSignedAmountIn } from "./budget-spend.js"
+import { fxRatesFor } from "./tx-sql.js"
 import { ensureRatesInto, reportingCurrencyFor } from "./fx-rates.js"
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -202,20 +203,25 @@ export type SpendFigure = {
 async function aggregate(orgId: string, items: SpendItem[], lowerBound: string | null): Promise<[string, SpendFigure][]> {
   const conds = [...budgetSpendPredicates(orgId)]
   if (lowerBound) conds.push(gte(transactions.date, lowerBound))
+  const where = and(...conds)
   const currencies = [...new Set(items.flatMap((it) => [it.currency, ...(it.anyOf ?? []).map((p) => p.currency)]))]
+  // One joined rate set per currency: each (currency, day) of the scanned rows
+  // looked up once, not once per row and column (MC-167).
+  const rates = currencies.map((cur, j) => fxRatesFor(cur, where, { alias: `fx${j}` }))
   const projection: Record<string, SQL.Aliased<unknown>> = {
     date: sql`${transactions.date}`.as("date"),
     ckey: CATEGORY_KEY_SQL.as("ckey"),
   }
-  currencies.forEach((cur, j) => {
-    projection[`s${j}`] = budgetSpendSignedAmountIn(cur).as(`s${j}`)
-    projection[`m${j}`] = budgetSpendMissingRate(cur).as(`m${j}`)
+  rates.forEach((fx, j) => {
+    projection[`s${j}`] = budgetSpendSignedAmountIn(fx).as(`s${j}`)
+    projection[`m${j}`] = budgetSpendMissingRate(fx).as(`m${j}`)
   })
-  const base = db
-    .select(projection)
-    .from(transactions)
-    .innerJoin(clients, eq(transactions.clientId, clients.id))
-    .where(and(...conds))
+  const base = rates
+    .reduce(
+      (q, fx) => q.leftJoin(fx.table, fx.on),
+      db.select(projection).from(transactions).innerJoin(clients, eq(transactions.clientId, clients.id)).$dynamic(),
+    )
+    .where(where)
     .as("t")
   const col = (name: string) => sql`"t".${sql.identifier(name)}`
 
@@ -514,15 +520,18 @@ export async function seriesFor(
   const last = windows[windows.length - 1].endExclusive!
   // date_trunc('week') is ISO — Monday-based — which is the app's week too.
   const bucket = truncBucket(unit)
+  const where = and(...budgetSpendPredicates(orgId), sql`${transactions.date} >= ${first}`, sql`${transactions.date} < ${last}`, scopeSql(budget.categories))
+  const fx = fxRatesFor(currency, where)
   const rows = await db
     .select({
       start: bucket,
-      spent: sql<string>`coalesce(sum(${budgetSpendSignedAmountIn(currency)}), 0)`,
-      excluded: sql<number>`count(*) filter (where ${budgetSpendMissingRate(currency)})::int`,
+      spent: sql<string>`coalesce(sum(${budgetSpendSignedAmountIn(fx)}), 0)`,
+      excluded: sql<number>`count(*) filter (where ${budgetSpendMissingRate(fx)})::int`,
     })
     .from(transactions)
     .innerJoin(clients, eq(transactions.clientId, clients.id))
-    .where(and(...budgetSpendPredicates(orgId), sql`${transactions.date} >= ${first}`, sql`${transactions.date} < ${last}`, scopeSql(budget.categories)))
+    .leftJoin(fx.table, fx.on)
+    .where(where)
     .groupBy(bucket)
   const byStart = new Map(rows.map((r) => [r.start, { spent: money(Number(r.spent)), excluded: Number(r.excluded ?? 0) }]))
   return windows.map((w) => ({ start: w.start!, spent: byStart.get(w.start!)?.spent ?? 0, excluded_count: byStart.get(w.start!)?.excluded ?? 0 }))
@@ -611,28 +620,36 @@ export async function analyticsFor(orgId: string, today: string, view: ViewWindo
   // currency, all in the same grouped read — and rates INTO each of them.
   const currencies = [...new Set([reporting, ...all.map((r) => budgetCurrency(r, reporting))])]
   await ensureRatesInto(orgId, currencies)
+  const where = and(...budgetSpendPredicates(orgId), gte(transactions.date, first), sql`${transactions.date} < ${last}`)
+  // Each (currency, day) of the range looked up once per currency (MC-167).
+  const rates = currencies.map((cur, j) => fxRatesFor(cur, where, { alias: `fx${j}` }))
   const sums: Record<string, SQL<string | number>> = {}
-  currencies.forEach((cur, j) => {
-    sums[`s${j}`] = sql<string>`coalesce(sum(${budgetSpendSignedAmountIn(cur)}), 0)`
-    sums[`x${j}`] = sql<number>`count(*) filter (where ${budgetSpendMissingRate(cur)})::int`
+  rates.forEach((fx, j) => {
+    sums[`s${j}`] = sql<string>`coalesce(sum(${budgetSpendSignedAmountIn(fx)}), 0)`
+    sums[`x${j}`] = sql<number>`count(*) filter (where ${budgetSpendMissingRate(fx)})::int`
   })
   const curIndex = (cur: string) => Math.max(0, currencies.indexOf(cur))
 
   // date_trunc('week') is ISO (Monday-based) — the same week the app cuts.
   const bucket = truncBucket(unit)
   const [rows, audit] = await Promise.all([
-    db
-      .select({
-        bucket,
-        ckey: sql<string>`lower(btrim(coalesce(${transactions.category}, '')))`,
-        // The category as the user actually spells it — the key is lowercased,
-        // and printing that back would rename their categories on screen.
-        label: sql<string>`max(btrim(coalesce(${transactions.category}, '')))`,
-        ...sums,
-      })
-      .from(transactions)
-      .innerJoin(clients, eq(transactions.clientId, clients.id))
-      .where(and(...budgetSpendPredicates(orgId), gte(transactions.date, first), sql`${transactions.date} < ${last}`))
+    rates
+      .reduce(
+        (q, fx) => q.leftJoin(fx.table, fx.on),
+        db
+          .select({
+            bucket,
+            ckey: sql<string>`lower(btrim(coalesce(${transactions.category}, '')))`,
+            // The category as the user actually spells it — the key is lowercased,
+            // and printing that back would rename their categories on screen.
+            label: sql<string>`max(btrim(coalesce(${transactions.category}, '')))`,
+            ...sums,
+          })
+          .from(transactions)
+          .innerJoin(clients, eq(transactions.clientId, clients.id))
+          .$dynamic(),
+      )
+      .where(where)
       .groupBy(bucket, CATEGORY_KEY_SQL),
     db
       .select({ entityId: auditLogs.entityId, action: auditLogs.action, changes: auditLogs.changes, createdAt: auditLogs.createdAt })

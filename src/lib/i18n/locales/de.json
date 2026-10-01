@@ -3311,7 +3311,8 @@
     "autopay_interrupted": "Die Kartenzahlung wurde unterbrochen, bevor sie erfasst wurde. Prüfe die Karte und zahle bei Bedarf manuell.",
     "rate_limited": "Zu viele Wechselkursabfragen. Versuche es in einer Minute erneut.",
     "amount_whole_units": "Diese Währung hat keine Nachkommastellen – gib einen ganzen Betrag ein.",
-    "autosave_rate_unavailable": "Für das Datum dieser automatischen Sparrate gibt es noch keinen Wechselkurs von {{from}} zu {{to}}. Sie wird ausgeführt, sobald einer vorliegt."
+    "autosave_rate_unavailable": "Für das Datum dieser automatischen Sparrate gibt es noch keinen Wechselkurs von {{from}} zu {{to}}. Sie wird ausgeführt, sobald einer vorliegt.",
+    "client_update_required": "Aktualisiere die App, um Konten in einer anderen Währung zu nutzen."
   },
   "adminFx": {
     "title": "Wechselkurse",

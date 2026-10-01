@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm"
 import { transactions } from "../../src/lib/db/schema.js"
-import { reportingAmountSql } from "./tx-sql.js"
+import { reportingAmountSql, type FxTarget } from "./tx-sql.js"
 
 // The money of a collapsed split group (the legs sharing a `group_id`), as
 // aggregate expressions over those legs. ONE definition for the list
@@ -15,8 +15,14 @@ import { reportingAmountSql } from "./tx-sql.js"
 //
 // `reporting_amount` is the whole group converted (same NULL rule) — what an
 // amount sort orders by, so ₹5,000 never outranks €100 in a USD workspace.
-export function groupMoneySql(reporting: string) {
-  const rep = reportingAmountSql(reporting)
+//
+// `fx`: the list passes its gated rates (tx-sql.ts `fxFor`, MC-167) so it reads
+// each (currency, day) rate once instead of calling fx_rate_on per foreign leg
+// of EVERY group in scope; the statement must then go through `withFx(…, fx)`.
+// Omitted (a single group's detail, or a workspace with no foreign row) → the
+// per-row form, byte for byte the SQL it rendered before.
+export function groupMoneySql(reporting: string, fx: FxTarget = reporting) {
+  const rep = reportingAmountSql(fx)
   // How many currencies the legs were posted in (NULL = legacy, one bucket).
   const currencyCount = sql<number>`count(distinct coalesce(${transactions.currencyCode}, ''))`
   const reportingAmount = sql<string | null>`case when bool_or(${rep} is null) then null else sum(${rep}) end`

@@ -11,7 +11,7 @@ import { materializeDueRecurring } from "../_lib/recurring-materialize.js"
 import { notifyIfBudgetExceeded } from "../_lib/notify-budget.js"
 import { cleanTransactionTags } from "../../src/lib/transaction-tags.js"
 import { refundShapeValid } from "../../src/lib/tx-classify.js"
-import { expenseSumSqlIn, incomeSumSqlIn, missingRateCountSql, nativeSummarySql, pnlKindFilter, reportingAmountSql, USER_KINDS } from "../_lib/tx-sql.js"
+import { expenseSumSqlIn, fxFor, incomeSumSqlIn, missingRateCountSql, nativeSummarySql, pnlKindFilter, reportingAmountSql, USER_KINDS, withFx, type FxTarget } from "../_lib/tx-sql.js"
 import { ensureRatesForOrg, reportingCurrencyFor } from "../_lib/fx-rates.js"
 import { groupMoneySql } from "../_lib/tx-group-sql.js"
 import { attributeCard, cardTransactionFilter } from "../_lib/cards.js"
@@ -83,7 +83,7 @@ const txFieldsFor = (reporting: string) => ({
 // each form their own one-row "group" and pass through unchanged.
 const groupKey = sql`coalesce(${transactions.groupId}, ${transactions.id})`
 
-const groupedFieldsFor = (reporting: string) => ({
+const groupedFieldsFor = (reporting: string, fx: FxTarget) => ({
   // Representative leg id (earliest-created) — used to open the detail view.
   id: sql<string>`(array_agg(${transactions.id} order by ${transactions.createdAt} asc, ${transactions.id} asc))[1]`,
   clientId: sql<string>`max(${transactions.clientId}::text)`,
@@ -109,7 +109,7 @@ const groupedFieldsFor = (reporting: string) => ({
   // instead (each at its own date) and the row says so via currency_code —
   // never a raw sum of EUR and INR. `amount` is NULL when a leg has no rate
   // (api/_lib/tx-group-sql.ts — shared with GET /api/transactions/:id).
-  ...groupMoneySql(reporting),
+  ...groupMoneySql(reporting, fx),
   description: sql<string>`max(${transactions.description})`,
   category: sql<string>`max(${transactions.category})`,
   // Group-level metadata: every leg carries the same tags, take the first leg's.
@@ -126,14 +126,14 @@ const groupedFieldsFor = (reporting: string) => ({
 
 // Same rule as pickOrder: a group sorts by its total in the reporting currency,
 // and a group with a leg that has no rate sorts last.
-function groupedOrder(sort: string | undefined, reporting: string) {
+function groupedOrder(sort: string | undefined, reporting: string, fx: FxTarget) {
   switch (sort) {
     case "date_asc":
       return [asc(sql`max(${transactions.date})`), asc(sql`max(${transactions.createdAt})`)]
     case "amount_desc":
-      return [sql`${groupMoneySql(reporting).reportingAmount} desc nulls last`, desc(sql`max(${transactions.createdAt})`)]
+      return [sql`${groupMoneySql(reporting, fx).reportingAmount} desc nulls last`, desc(sql`max(${transactions.createdAt})`)]
     case "amount_asc":
-      return [sql`${groupMoneySql(reporting).reportingAmount} asc nulls last`, desc(sql`max(${transactions.createdAt})`)]
+      return [sql`${groupMoneySql(reporting, fx).reportingAmount} asc nulls last`, desc(sql`max(${transactions.createdAt})`)]
     case "date_desc":
     default:
       return [desc(sql`max(${transactions.date})`), desc(sql`max(${transactions.createdAt})`)]
@@ -142,15 +142,23 @@ function groupedOrder(sort: string | undefined, reporting: string) {
 
 type SqlWhere = ReturnType<typeof and>
 
-async function groupedRows(where: SqlWhere, sort: string | undefined, reporting: string, limit?: number, offset?: number) {
-  const q = db
-    .select(groupedFieldsFor(reporting))
-    .from(transactions)
-    .innerJoin(clients, eq(transactions.clientId, clients.id))
-    .leftJoin(wealthAccounts, eq(transactions.wealthAccountId, wealthAccounts.id))
+// The group money of EVERY group in scope is computed before the sort and the
+// page limit, so its rates are joined once per (currency, day) when the
+// workspace holds a foreign currency (MC-167; tx-sql.ts `fxFor`).
+async function groupedRows(where: SqlWhere, sort: string | undefined, reporting: string, orgRates: { currencies: readonly string[] } | undefined, limit?: number, offset?: number) {
+  const fx = fxFor(reporting, where, orgRates)
+  const q = withFx(
+    db
+      .select(groupedFieldsFor(reporting, fx))
+      .from(transactions)
+      .innerJoin(clients, eq(transactions.clientId, clients.id))
+      .leftJoin(wealthAccounts, eq(transactions.wealthAccountId, wealthAccounts.id))
+      .$dynamic(),
+    fx,
+  )
     .where(where)
     .groupBy(groupKey)
-    .orderBy(...groupedOrder(sort, reporting))
+    .orderBy(...groupedOrder(sort, reporting, fx))
   if (limit !== undefined && offset !== undefined) return await q.limit(limit).offset(offset)
   if (limit !== undefined) return await q.limit(limit)
   return await q
@@ -181,7 +189,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Rows stay native; the summary and each row's `reporting_amount` are in the
     // workspace's reporting currency, converted at the row's own date.
     const reporting = await reportingCurrencyFor(orgId)
-    await ensureRatesForOrg(orgId, reporting).catch(() => undefined)
+    const orgRates = await ensureRatesForOrg(orgId, reporting).catch(() => undefined)
     const txFields = txFieldsFor(reporting)
 
     const { clientId, wealthAccountId: accountParam, cardId, recurringRuleId, groupId, search, type, page, sort, limit, category, tag, from, to, includeClosed } = req.query as {
@@ -262,7 +270,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       const clientWhere = and(eq(transactions.clientId, clientId), isNull(transactions.deletedAt), accountFilter, listExcludesTransfers)
       const rows = grouped
-        ? await groupedRows(clientWhere, sort, reporting)
+        ? await groupedRows(clientWhere, sort, reporting, orgRates)
         : await db
             .select(txFields)
             .from(transactions)
@@ -336,6 +344,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         dateFromFilter,
         dateToFilter,
       )
+      // The summary's rates, looked up once per (currency, day) it covers, when
+      // the workspace holds a foreign currency (MC-167; tx-sql.ts `fxFor`).
+      const fx = fxFor(reporting, summaryWhere, orgRates)
 
       // Count (of groups, when grouping), page rows and summary are independent —
       // run as one parallel batch. The summary sums RAW legs: a split's legs add
@@ -350,7 +361,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               .where(whereClause)
               .then((r) => Number(r[0]?.total ?? 0)),
         grouped
-          ? groupedRows(whereClause, sort, reporting, PAGE_SIZE, offset)
+          ? groupedRows(whereClause, sort, reporting, orgRates, PAGE_SIZE, offset)
           : db
               .select(txFields)
               .from(transactions)
@@ -360,18 +371,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               .orderBy(...orderBy)
               .limit(PAGE_SIZE)
               .offset(offset),
-        db
-          .select({
-            incoming: incomeSumSqlIn(reporting),
-            outgoing: expenseSumSqlIn(reporting),
-            excluded: missingRateCountSql(reporting),
-            nativeIncoming: nativeSummarySql.incoming,
-            nativeOutgoing: nativeSummarySql.outgoing,
-            nativeCurrency: nativeSummarySql.currency,
-          })
-          .from(transactions)
-          .innerJoin(clients, eq(transactions.clientId, clients.id))
-          .where(summaryWhere),
+        withFx(
+          db
+            .select({
+              incoming: incomeSumSqlIn(fx),
+              outgoing: expenseSumSqlIn(fx),
+              excluded: missingRateCountSql(fx),
+              nativeIncoming: nativeSummarySql.incoming,
+              nativeOutgoing: nativeSummarySql.outgoing,
+              nativeCurrency: nativeSummarySql.currency,
+            })
+            .from(transactions)
+            .innerJoin(clients, eq(transactions.clientId, clients.id))
+            .$dynamic(),
+          fx,
+        ).where(summaryWhere),
       ])
 
       return res.json({
@@ -398,7 +412,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (limit !== undefined) {
       const limitNum = Math.max(1, Math.min(100, parseInt(limit, 10) || 20))
       const rows = grouped
-        ? await groupedRows(whereClause, sort, reporting, limitNum)
+        ? await groupedRows(whereClause, sort, reporting, orgRates, limitNum)
         : await db
             .select(txFields)
             .from(transactions)
@@ -411,7 +425,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const rows = grouped
-      ? await groupedRows(whereClause, sort, reporting)
+      ? await groupedRows(whereClause, sort, reporting, orgRates)
       : await db
           .select(txFields)
           .from(transactions)

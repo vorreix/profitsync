@@ -3311,7 +3311,8 @@
     "autopay_interrupted": "The card payment was interrupted before it was recorded. Check the card and pay it manually if needed.",
     "rate_limited": "Too many exchange-rate requests. Try again in a minute.",
     "amount_whole_units": "This currency has no decimal places — enter a whole amount.",
-    "autosave_rate_unavailable": "There's no {{from}} to {{to}} exchange rate for this auto-save's date yet. It will go through as soon as there is one."
+    "autosave_rate_unavailable": "There's no {{from}} to {{to}} exchange rate for this auto-save's date yet. It will go through as soon as there is one.",
+    "client_update_required": "Update the app to use accounts in another currency."
   },
   "adminFx": {
     "title": "Exchange rates",

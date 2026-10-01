@@ -6,7 +6,7 @@ import { isPersonalAccount, requireAuth } from "../_lib/auth.js"
 import { materializeDueRecurring } from "../_lib/recurring-materialize.js"
 import { logoDataUrl } from "../../src/lib/logo-data.js"
 import { ensureRatesForOrg, reportingCurrencyFor } from "../_lib/fx-rates.js"
-import { expenseSumSqlIn, incomeSumSqlIn, missingRateCountSql, pnlKindFilter, reportingAmountSql } from "../_lib/tx-sql.js"
+import { expenseSumSqlIn, fxFor, incomeSumSqlIn, missingRateCountSql, pnlKindFilter, reportingAmountSql, withFx } from "../_lib/tx-sql.js"
 import { buildWealthSummary } from "../_lib/wealth-summary.js"
 
 // SQL for "the account's display name" — reused to label leaves with the
@@ -83,7 +83,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // with no rate are left out and COUNTED (`excluded_count`,
   // `balance_excluded_count`), never silently summed raw.
   const reporting = await reportingCurrencyFor(orgId)
-  await ensureRatesForOrg(orgId, reporting).catch(() => undefined)
+  const orgRates = await ensureRatesForOrg(orgId, reporting).catch(() => undefined)
 
   const q = req.query as Record<string, string | string[] | undefined>
   const personal = isPersonalAccount(ctx)
@@ -124,10 +124,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const where = and(...conds)
 
   // Shared reporting rules (api/_lib/tx-sql.ts): refunds reduce expense, never
-  // income — converted into the reporting currency at each row's date.
-  const incomeSum = incomeSumSqlIn(reporting)
-  const expenseSum = expenseSumSqlIn(reporting)
-  const excludedExpr = missingRateCountSql(reporting)
+  // income — converted into the reporting currency at each row's date, through
+  // rates looked up once per (currency, day) of the range when the workspace
+  // holds a foreign currency (MC-167; tx-sql.ts `fxFor`). Every aggregate below
+  // must go through `withFx(…, fx)`; the leaf lists convert their few rows
+  // directly (reportingAmountSql(reporting)).
+  const fx = fxFor(reporting, where, orgRates)
+  const incomeSum = incomeSumSqlIn(fx)
+  const expenseSum = expenseSumSqlIn(fx)
+  const excludedExpr = missingRateCountSql(fx)
   // Count LOGICAL transactions: a split (shared group_id) counts once, matching
   // how the canvas collapses its legs into a single node.
   const countExpr = sql<number>`count(distinct coalesce(${transactions.groupId}::text, ${transactions.id}::text))::int`
@@ -218,10 +223,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const periodExpr = sql<string>`to_char(date_trunc(${sql.raw(`'${bucket}'`)}, ${transactions.date}::timestamp), 'YYYY-MM-DD')`
 
     const [periodRows, wealthT, ownerOrgT, leafPoolT] = await Promise.all([
-      db
-        .select({ key: periodExpr, income: incomeSum, expense: expenseSum, txCount: countExpr, excluded: excludedExpr })
-        .from(transactions)
-        .innerJoin(clients, eq(transactions.clientId, clients.id))
+      withFx(
+        db
+          .select({ key: periodExpr, income: incomeSum, expense: expenseSum, txCount: countExpr, excluded: excludedExpr })
+          .from(transactions)
+          .innerJoin(clients, eq(transactions.clientId, clients.id))
+          .$dynamic(),
+        fx,
+      )
         .where(where)
         .groupBy(periodExpr)
         .orderBy(sql`1 asc`),
@@ -361,15 +370,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         : sql<string | null>`coalesce(nullif(${transactions.category}, ''), 'Uncategorized')`
 
   const [summaryRows, groupRows, accountMeta, ownerOrg, leafPoolRaw, wealth] = await Promise.all([
-    db
-      .select({ income: incomeSum, expense: expenseSum, txCount: countExpr, excluded: excludedExpr })
-      .from(transactions)
-      .innerJoin(clients, eq(transactions.clientId, clients.id))
-      .where(where),
-    db
-      .select({ key: groupKeyExpr, income: incomeSum, expense: expenseSum, txCount: countExpr, excluded: excludedExpr })
-      .from(transactions)
-      .innerJoin(clients, eq(transactions.clientId, clients.id))
+    withFx(
+      db
+        .select({ income: incomeSum, expense: expenseSum, txCount: countExpr, excluded: excludedExpr })
+        .from(transactions)
+        .innerJoin(clients, eq(transactions.clientId, clients.id))
+        .$dynamic(),
+      fx,
+    ).where(where),
+    withFx(
+      db
+        .select({ key: groupKeyExpr, income: incomeSum, expense: expenseSum, txCount: countExpr, excluded: excludedExpr })
+        .from(transactions)
+        .innerJoin(clients, eq(transactions.clientId, clients.id))
+        .$dynamic(),
+      fx,
+    )
       .where(where)
       .groupBy(groupKeyExpr)
       .orderBy(sql`(${incomeSum} + ${expenseSum}) desc`),

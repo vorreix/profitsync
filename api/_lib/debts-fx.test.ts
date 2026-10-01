@@ -10,8 +10,12 @@ describe("debt hub — the income behind the pressure ratio is converted (MC-091
 
   it("sums income in the reporting currency through tx-sql and counts what it could not convert", () => {
     expect(src).toMatch(/from "\.\/tx-sql\.js"/)
-    expect(src).toMatch(/incomeSumSqlIn\(reporting\)/)
-    expect(src).toMatch(/missingRateCountSql\(reporting\)/)
+    // Through rates joined once per (currency, day) of the three months, when
+    // the workspace holds a foreign currency (MC-167).
+    expect(src).toMatch(/const fx = fxFor\(reporting, where, orgRates\)/)
+    expect(src).toMatch(/averageMonthlyIncome\(orgId, today, orgCurrency, orgRates\)/)
+    expect(src).toMatch(/incomeSumSqlIn\(fx\)/)
+    expect(src).toMatch(/missingRateCountSql\(fx\)/)
     expect(src).toMatch(/ensureRatesForOrg\(/)
   })
 
