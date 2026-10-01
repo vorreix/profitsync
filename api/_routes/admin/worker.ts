@@ -3,6 +3,7 @@ import { desc, eq } from "drizzle-orm"
 import { db, serialize } from "../../../src/lib/db/index.js"
 import { notificationSchedulerState, pushEvents } from "../../../src/lib/db/schema.js"
 import { requireAdminCap } from "../../_lib/admin.js"
+import { WORKER_SCHEDULES } from "../../_lib/worker-schedules.js"
 
 // Admin-only proxy to the background worker's observability API. The worker's
 // bearer token (WORKER_API_TOKEN) is held server-side and NEVER sent to the
@@ -11,17 +12,6 @@ import { requireAdminCap } from "../../_lib/admin.js"
 //   POST /api/admin/worker {action,id} → retry | cancel a job | register-notifications
 const BASE = process.env.WORKER_BASE_URL
 const TOKEN = process.env.WORKER_API_TOKEN
-
-// The cron schedule that drives timed notifications (reminders + scheduled /
-// recurring broadcasts). Mirrors scripts/register-worker-schedules.ts so the
-// admin "Repair" button registers exactly the same schedule.
-const NOTIFICATIONS_SCHEDULE = {
-  name: "notifications-dispatch",
-  type: "app.trigger",
-  cron: process.env.NOTIFICATIONS_CRON ?? "0 * * * *",
-  timezone: "UTC",
-  payload: { path: "/api/cron/notifications" },
-}
 
 function configured(): boolean {
   return !!(BASE && TOKEN)
@@ -135,14 +125,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!configured()) return res.status(400).json({ error: "Worker not configured" })
     const { action, id } = (req.body ?? {}) as { action?: string; id?: string }
 
-    // Register / repair the notification-dispatch schedule (the cron that makes
-    // reminders + scheduled broadcasts fire). Idempotent upsert by name — safe to
-    // click repeatedly. No id needed.
+    // Register / repair EVERY app schedule (api/_lib/worker-schedules.ts: the
+    // notification sweep and the daily FX refresh). The action keeps its old
+    // name so an older admin bundle's Repair button heals the FX one too.
+    // Idempotent upsert by name — safe to click repeatedly. No id needed.
     if (action === "register-notifications") {
       try {
-        const r = await workerFetch("POST", "/v1/schedules", NOTIFICATIONS_SCHEDULE)
-        if (!r.ok) return res.status(r.status).json(r.json)
-        return res.json({ ok: true, schedule: NOTIFICATIONS_SCHEDULE.name })
+        // Try EVERY schedule: the self-heal runs once per panel load, so
+        // stopping at the first refusal (e.g. a bad NOTIFICATIONS_CRON) would
+        // leave the ones after it off until someone clicks Repair.
+        const failed: { name: string; status: number; body: Record<string, unknown> }[] = []
+        for (const schedule of WORKER_SCHEDULES) {
+          const r = await workerFetch("POST", "/v1/schedules", schedule)
+          if (!r.ok) failed.push({ name: schedule.name, status: r.status, body: r.json })
+        }
+        if (failed.length) {
+          return res.status(failed[0].status).json({ ...failed[0].body, failed })
+        }
+        return res.json({ ok: true, schedules: WORKER_SCHEDULES.map((s) => s.name) })
       } catch {
         return res.status(502).json({ error: "Worker unreachable" })
       }

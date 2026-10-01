@@ -105,8 +105,11 @@ export function TrashPage() {
     try {
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
-      await apiPost("/api/trash/clear", token, {})
-      toast.success(t("trashCleared"))
+      const res = await apiPost<{ kept?: { transactions?: number } }>("/api/trash/clear", token, {})
+      // An Opening Balance / Balance Adjustment on a live account stays in Trash
+      // (MC-054) — say so, or the "cleared" Trash reloads with rows still in it.
+      const kept = res?.kept?.transactions ?? 0
+      toast.success(kept > 0 ? t("trashClearedKept", { count: kept }) : t("trashCleared"))
       setClearOpen(false)
       loadData()
     } catch (err) {
@@ -116,22 +119,24 @@ export function TrashPage() {
     }
   }
 
-  const ItemActions = ({ type, id, name }: PurgeTarget) => (
+  const ItemActions = ({ type, id, name, purgeable = true }: PurgeTarget & { purgeable?: boolean }) => (
     <div className="flex gap-2 shrink-0">
       <Button size="sm" variant="outline" className="max-sm:h-11" disabled={working} onClick={() => handleRestore(type, id)}>
         <RotateCcw className="size-3.5" />
         {t("restore")}
       </Button>
-      <Button
-        size="sm"
-        variant="ghost"
-        className="text-muted-foreground hover:text-destructive max-sm:size-11"
-        aria-label={t("deleteForever")}
-        disabled={working}
-        onClick={() => setPurgeTarget({ type, id, name })}
-      >
-        <Trash2 className="size-3.5" />
-      </Button>
+      {purgeable && (
+        <Button
+          size="sm"
+          variant="ghost"
+          className="text-muted-foreground hover:text-destructive max-sm:size-11"
+          aria-label={t("deleteForever")}
+          disabled={working}
+          onClick={() => setPurgeTarget({ type, id, name })}
+        >
+          <Trash2 className="size-3.5" />
+        </Button>
+      )}
     </div>
   )
 
@@ -192,7 +197,8 @@ export function TrashPage() {
         <p className={`text-sm font-semibold tabular-nums shrink-0 ${incoming ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
           {incoming ? "+" : "−"}{formatMoney(Number(tx.amount), rowCurrency(tx, currency))}
         </p>
-        <ItemActions type="transaction" id={tx.id} name={title} />
+        {/* A system row on a live account explains its balance: restore only (purge refuses it, system_row). */}
+        <ItemActions type="transaction" id={tx.id} name={title} purgeable={!(tx.is_system && tx.wealth_account_id)} />
       </div>
     )
   }
@@ -211,6 +217,11 @@ export function TrashPage() {
   const totalCount = isPersonal
     ? transactions.length
     : clients.length + quotations.length + transactions.length
+  // What "Empty trash" actually deletes: clear.ts keeps system rows on a live
+  // account (same rule as the row's purgeable flag), so the button and its
+  // "will be permanently deleted" count must not promise them.
+  const keptTx = transactions.filter((tx) => tx.is_system && tx.wealth_account_id).length
+  const clearableCount = totalCount - keptTx
 
   return (
     <div className="p-3 sm:p-6 space-y-6">
@@ -221,7 +232,7 @@ export function TrashPage() {
             <p className="text-sm text-muted-foreground mt-1">{t("itemsInTrash", { count: totalCount })}</p>
           )}
         </div>
-        {!loading && totalCount > 0 && (
+        {!loading && clearableCount > 0 && (
           <Button
             variant="outline"
             className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
@@ -301,7 +312,7 @@ export function TrashPage() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{t("clearTrashTitle")}</AlertDialogTitle>
-            <AlertDialogDescription>{t("clearTrashDesc", { count: totalCount })}</AlertDialogDescription>
+            <AlertDialogDescription>{t("clearTrashDesc", { count: clearableCount })}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>

@@ -45,7 +45,7 @@ const CURRENT_MAX_AGE_MS = 60 * 60 * 1000
 export const CARRY_MAX_DAYS = 10
 /** An observation older than this is flagged stale: a weekend plus a holiday is a normal publication lag, more is not. */
 const STALE_AFTER_DAYS = 4
-/** Request-path backfill floor. Tooling reaches further back (ECB data starts 1999-01-04) through `ensureHistoricalRates(…, { floor })`. */
+/** Default backfill floor for a direct `ensureHistoricalRates` call. The daily refresh and tooling reach further back (ECB data starts 1999-01-04) through `{ floor }`. */
 const MAX_HISTORY_DAYS = 366 * 6
 /** First day of the daily currency-api archive. */
 const DAILY_FIRST_DAY = "2024-03-02"
@@ -82,13 +82,61 @@ export class FxUnavailable extends Error {
  */
 const saidNo = (e: unknown) => e instanceof FxUnavailable && !(e.status != null && e.status >= 500)
 
-async function getJson(url: string): Promise<unknown> {
+// ── Provider health (MC-127) ─────────────────────────────────────────────────
+// Every provider call goes through getJson, so this is the one place a failure
+// is seen — the fallbacks above it swallow errors by design (the next provider
+// answers). Counted per provider for /admin → Worker → Exchange rates. In
+// memory, so per server instance since it started.
+// ponytail: per-instance counters; persist them if cross-instance totals are ever needed.
+
+type ProviderHealth = { ok: number; refused: number; failed: number; lastOkAt: string | null; lastError: string | null; lastErrorAt: string | null }
+const health = new Map<string, ProviderHealth>()
+const healthSince = new Date().toISOString()
+const WARN_EVERY_MS = 60 * 1000
+
+function record(provider: string, url: string, e?: unknown): void {
+  let h = health.get(provider)
+  if (!h) health.set(provider, (h = { ok: 0, refused: 0, failed: 0, lastOkAt: null, lastError: null, lastErrorAt: null }))
+  const now = new Date().toISOString()
+  if (e === undefined) {
+    h.ok++
+    h.lastOkAt = now
+  } else if (e instanceof FxUnavailable && (e.status == null || e.status === 404 || e.status === 422)) {
+    // An answer ("no such pair", "no file for that day") is not an outage.
+    // Narrower than saidNo on purpose: a 401/403/429 is the provider refusing
+    // US (a revoked key, throttling) — exactly what this panel must surface.
+    h.refused++
+  } else {
+    h.failed++
+    const message = e instanceof Error ? `${e.name}: ${e.message}` : String(e)
+    // One line a minute per provider: an outage during a backfill would
+    // otherwise log every day file. The URL carries a pair and a date, never an amount.
+    if (!h.lastErrorAt || Date.now() - Date.parse(h.lastErrorAt) > WARN_EVERY_MS) {
+      const u = new URL(url)
+      console.warn("[fx] provider failed", { provider, path: `${u.pathname}${u.search}`, message })
+    }
+    h.lastError = message
+    h.lastErrorAt = now
+  }
+}
+
+/** Provider call outcomes on THIS server instance since it started. */
+export function fxProviderHealth(): { since: string; providers: Record<string, ProviderHealth> } {
+  return { since: healthSince, providers: Object.fromEntries([...health].map(([k, v]) => [k, { ...v }])) }
+}
+
+async function getJson(url: string, provider: string): Promise<unknown> {
   const ctl = new AbortController()
   const timer = setTimeout(() => ctl.abort(), FETCH_TIMEOUT_MS)
   try {
     const res = await fetch(url, { signal: ctl.signal, headers: { accept: "application/json" } })
     if (!res.ok) throw new FxUnavailable(`${res.status} from ${new URL(url).host}`, res.status)
-    return await res.json()
+    const body = await res.json()
+    record(provider, url)
+    return body
+  } catch (e) {
+    record(provider, url, e)
+    throw e
   } finally {
     clearTimeout(timer)
   }
@@ -115,7 +163,7 @@ export class FrankfurterProvider implements FxRateProvider {
   }
 
   private async day(path: string, base: string, quote: string, sourceType: FxSourceType, pegs: boolean): Promise<FxQuote> {
-    const data = (await getJson(this.url(path, base, quote, pegs))) as FrankfurterDay
+    const data = (await getJson(this.url(path, base, quote, pegs), this.name)) as FrankfurterDay
     const x = data.date && data.rates ? crossRate({ anchor: "EUR", date: data.date, rates: data.rates }, base, quote, pegs) : null
     if (!x || !data.date) throw new FxUnavailable(`frankfurter has no ${base}/${quote}`)
     return quoteOf(base, quote, x.rate, data.date, x.derived ? `${this.name}+peg` : this.name, sourceType)
@@ -131,7 +179,7 @@ export class FrankfurterProvider implements FxRateProvider {
 
   /** Business-day series, date -> rate. Empty when the pair is unsupported. */
   async getSeries(base: string, quote: string, from: string, to: string, pegs = false): Promise<Map<string, string>> {
-    const data = (await getJson(this.url(`${from}..${to}`, base, quote, pegs))) as { rates?: Record<string, Record<string, number>> }
+    const data = (await getJson(this.url(`${from}..${to}`, base, quote, pegs), this.name)) as { rates?: Record<string, Record<string, number>> }
     const out = new Map<string, string>()
     for (const [day, rates] of Object.entries(data.rates ?? {})) {
       const x = crossRate({ anchor: "EUR", date: day, rates }, base, quote, pegs)
@@ -169,7 +217,7 @@ export class CurrencyApiProvider implements FxRateProvider {
     let notFound = false
     for (const url of [`${this.host}@${day}/v1/currencies/eur.json`, `https://${day}.currency-api.pages.dev/v1/currencies/eur.json`]) {
       try {
-        const data = (await getJson(url)) as { date?: string; eur?: Record<string, number> }
+        const data = (await getJson(url, this.name)) as { date?: string; eur?: Record<string, number> }
         if (!data.date || !data.eur) continue
         const rates: Record<string, number> = {}
         // The archive also lists crypto tokens; only ISO-shaped codes matter here.
@@ -237,7 +285,7 @@ export class OpenErApiProvider implements FxRateProvider {
   private readonly host = process.env.FX_OPEN_ER_API_HOST ?? "https://open.er-api.com/v6"
 
   async getCurrentRate(base: string, quote: string, pegs = false): Promise<FxQuote> {
-    const data = (await getJson(`${this.host}/latest/EUR`)) as { result?: string; rates?: Record<string, number>; time_last_update_utc?: string }
+    const data = (await getJson(`${this.host}/latest/EUR`, this.name)) as { result?: string; rates?: Record<string, number>; time_last_update_utc?: string }
     const observed = data.time_last_update_utc ? new Date(data.time_last_update_utc) : new Date()
     const x = data.result === "success" && data.rates ? crossRate({ anchor: "EUR", date: isoDay(observed), rates: data.rates }, base, quote, pegs) : null
     if (!x) throw new FxUnavailable(`open.er-api has no ${base}/${quote}`)
@@ -469,22 +517,25 @@ const attemptedAt = new Map<string, number>()
  * Make sure base->quote has ONE stored rate for EVERY calendar day in [from,
  * today], so fx_rate_on() is exact per day. Concurrent callers for the same
  * pair share one fill. `floor` lets tooling backfill beyond the request path's
- * six years (MC-166) — the ECB series reaches 1999-01-04.
+ * six years (MC-166) — the ECB series reaches 1999-01-04. `deadline` (epoch
+ * ms) bounds the wait on the daily archive for a caller with a time budget
+ * (the daily refresh); without it, a request waits ARCHIVE_BUDGET_MS and
+ * tooling (`floor`) waits for the whole batch.
  */
 // async: an invalid code must reject (callers .catch), not throw synchronously.
-export async function ensureHistoricalRates(baseInput: string, quoteInput: string, fromInput: string, opts: { floor?: string } = {}): Promise<{ covered: boolean; written?: number }> {
+export async function ensureHistoricalRates(baseInput: string, quoteInput: string, fromInput: string, opts: { floor?: string; deadline?: number } = {}): Promise<{ covered: boolean; written?: number }> {
   const base = normalizeCurrencyCode(baseInput)
   const quote = normalizeCurrencyCode(quoteInput)
   if (base === quote) return { covered: true }
   const key = `${base}/${quote}/${fromInput}/${opts.floor ?? ""}`
   const pending = inFlightFills.get(key)
   if (pending) return pending
-  const run = fillHistory(base, quote, fromInput, opts.floor).finally(() => inFlightFills.delete(key))
+  const run = fillHistory(base, quote, fromInput, opts.floor, opts.deadline).finally(() => inFlightFills.delete(key))
   inFlightFills.set(key, run)
   return run
 }
 
-async function fillHistory(base: string, quote: string, fromInput: string, floorInput?: string): Promise<{ covered: boolean; written?: number }> {
+async function fillHistory(base: string, quote: string, fromInput: string, floorInput?: string, deadlineInput?: number): Promise<{ covered: boolean; written?: number }> {
   const today = todayIso()
   const floor = floorInput ?? addDays(today, -MAX_HISTORY_DAYS)
   const from = fromInput < floor ? floor : fromInput
@@ -543,7 +594,7 @@ async function fillHistory(base: string, quote: string, fromInput: string, floor
   //    call and, on a request, a bounded wait.
   const asked = archiveDays(missing, obs)
   if (asked.length > 0) {
-    const deadline = floorInput ? Number.POSITIVE_INFINITY : Date.now() + ARCHIVE_BUDGET_MS
+    const deadline = deadlineInput ?? (floorInput ? Number.POSITIVE_INFINITY : Date.now() + ARCHIVE_BUDGET_MS)
     for (const [d, rate] of await currencyApi.getDays(base, quote, asked, deadline)) {
       answered.add(d)
       if (rate) obs.set(d, { rate, provider: currencyApi.name })
@@ -569,7 +620,11 @@ async function fillHistory(base: string, quote: string, fromInput: string, floor
   }
 
   if (answered.size === 0) {
-    unsupportedUntil.set(`series:${pairKey}`, Date.now() + UNSUPPORTED_TTL_MS)
+    // Nothing answered: remember the pair as unserved for a while — unless the
+    // CALLER's deadline (the daily refresh's budget) cut the archive off before
+    // it could answer. A provider that never got the chance has not said no,
+    // and marking it would also skip every request-path top-up of the pair.
+    if (!(asked.length > 0 && deadlineInput != null && Date.now() >= deadlineInput)) unsupportedUntil.set(`series:${pairKey}`, Date.now() + UNSUPPORTED_TTL_MS)
     return { covered: unfilled.length === 0 }
   }
   const observedAt = new Date().toISOString()
@@ -585,33 +640,93 @@ async function fillHistory(base: string, quote: string, fromInput: string, floor
 }
 
 /**
- * Every foreign currency this workspace holds or has ever transacted in gets a
- * full daily series up to today, plus a fresh market rate. Best effort and
- * idempotent; callers that render numbers await it, then read the count of
- * rows reporting_amount() could not convert from the SQL side.
+ * How far back a report request fills history itself (MC-039). Older days are
+ * the daily refresh's job (POST /api/cron/fx → runFxRefresh); until it lands,
+ * a row on such a day is excluded and counted, never converted at a guess.
  */
-export async function ensureRatesForOrg(orgId: string, reportingInput: string): Promise<{ currencies: string[]; uncovered: string[] }> {
+export const REQUEST_FILL_DAYS = 31
+
+type OrgRates = { currencies: string[]; uncovered: string[] }
+/** The check in flight per (workspace, reporting currency) — shared, never remembered once settled. */
+const orgChecks = new Map<string, Promise<OrgRates>>()
+
+/**
+ * Every foreign currency this workspace holds or has transacted in has a rate
+ * for each day of the last REQUEST_FILL_DAYS (or since it first appears) and
+ * a market rate fetched within the hour. Best effort and idempotent; callers
+ * that render numbers await it, then read the count of rows
+ * reporting_amount() could not convert from the SQL side.
+ *
+ * Cheap when nothing is missing (MC-168): ONE query (~44 ms) answers
+ * "complete?" for every currency at once, and the parallel routes of a page
+ * load share it while it runs. Only an incomplete currency goes to the bounded
+ * top-up (MC-039); bulk history is the daily refresh's.
+ *
+ * The answer is NOT reused once settled: transaction and account writes do not
+ * fill rates, so the refetch right after a save (a workspace's first AED row, a
+ * back-dated one) must re-check, or it would report the new row as excluded.
+ * ponytail: a check already in flight when a write commits is still shared; a
+ * per-org invalidation from the write routes would close that window.
+ */
+export async function ensureRatesForOrg(orgId: string, reportingInput: string): Promise<OrgRates> {
   const reporting = normalizeCurrencyCode(reportingInput)
+  const key = `${orgId}|${reporting}`
+  const pending = orgChecks.get(key)
+  if (pending) return pending
+  const run = checkOrgRates(orgId, reporting, todayIso())
+  orgChecks.set(key, run)
+  run.then(
+    () => orgChecks.delete(key),
+    // Every caller swallows the rejection (best effort), so it is logged here.
+    (e: unknown) => {
+      orgChecks.delete(key)
+      console.warn("[fx] rate check failed", { orgId, reporting, message: e instanceof Error ? e.message : String(e) })
+    },
+  )
+  return run
+}
+
+async function checkOrgRates(orgId: string, reporting: string, today: string): Promise<OrgRates> {
+  const windowStart = addDays(today, -REQUEST_FILL_DAYS)
+  // Per currency: is every window day stored (the gaps fillHistory looks for),
+  // and was a real rate fetched within the hour (what currentRate checks)?
+  // A future-only currency needs no window days (count >= a negative span).
   const result = await db.execute(sql`
-    select cur, min(first_date)::text as first_date from (
-      select t.currency_code as cur, min(t.date) as first_date
-        from transactions t join clients c on c.id = t.client_id
-        where c.organization_id = ${orgId} and t.currency_code is not null and t.currency_code <> ${reporting}
-        group by t.currency_code
-      union all
-      select wa.currency_code as cur, current_date as first_date
-        from wealth_accounts wa
-        where wa.organization_id = ${orgId} and wa.currency_code is not null and wa.currency_code <> ${reporting}
-        group by wa.currency_code
-    ) x group by cur
+    select u.cur, u.first_date::text as first_date,
+           (select count(distinct s.rate_date) from fx_rate_snapshots s
+             where s.base_currency = u.cur and s.quote_currency = ${reporting}
+               and s.rate_date between greatest(u.first_date, ${windowStart}::date) and ${today}::date)
+             >= ${today}::date - greatest(u.first_date, ${windowStart}::date) + 1 as window_full,
+           exists (select 1 from fx_rate_snapshots s
+             where ((s.base_currency = u.cur and s.quote_currency = ${reporting}) or (s.base_currency = ${reporting} and s.quote_currency = u.cur))
+               and not s.is_fallback and s.rate_date between ${addDays(today, -CARRY_MAX_DAYS)}::date and ${today}::date
+               and s.fetched_at > now() - make_interval(secs => ${CURRENT_MAX_AGE_MS / 1000})) as fresh
+      from (
+        select cur, min(first_date) as first_date from (
+          select t.currency_code as cur, min(t.date) as first_date
+            from transactions t join clients c on c.id = t.client_id
+            where c.organization_id = ${orgId} and t.currency_code is not null and t.currency_code <> ${reporting}
+            group by t.currency_code
+          union all
+          select wa.currency_code as cur, current_date as first_date
+            from wealth_accounts wa
+            where wa.organization_id = ${orgId} and wa.currency_code is not null and wa.currency_code <> ${reporting}
+            group by wa.currency_code
+        ) x group by cur
+      ) u
   `)
-  const rows = result.rows as Array<{ cur: string; first_date: string }>
+  const rows = result.rows as Array<{ cur: string; first_date: string; window_full: boolean; fresh: boolean }>
   // Currencies in parallel: each is independent, and a slow one must not hold the rest up.
   const checked = await Promise.all(
     rows.map(async (row) => {
       const cur = row.cur.toUpperCase()
+      if (row.window_full && row.fresh) return null
+      const first = String(row.first_date).slice(0, 10)
       const [hist, current] = await Promise.all([
-        ensureHistoricalRates(cur, reporting, String(row.first_date).slice(0, 10)).catch(() => ({ covered: false })),
+        ensureHistoricalRates(cur, reporting, first < windowStart ? windowStart : first).catch((e: unknown) => {
+          console.warn("[fx] history top-up failed", { pair: `${cur}/${reporting}`, message: e instanceof Error ? e.message : String(e) })
+          return { covered: false }
+        }),
         currentRate(cur, reporting).catch(() => null),
       ])
       return !hist.covered || !current ? cur : null
@@ -619,6 +734,31 @@ export async function ensureRatesForOrg(orgId: string, reportingInput: string): 
   )
   return { currencies: rows.map((r) => r.cur.toUpperCase()), uncovered: checked.filter((c): c is string => c != null) }
 }
+
+/**
+ * Every (base, quote) pair some workspace converts, with the first day it is
+ * needed from: each currency a workspace holds or has transacted in (trashed
+ * rows too — a restore needs them), into its reporting currency and into every
+ * budget and client-cap currency (ensureRatesInto's targets). A held account
+ * needs today only. Read by the daily refresh and the admin FX view.
+ */
+export const fxPairsInUseSql = () => sql`
+  select u.cur as base, tg.cur as quote, min(u.first_date)::date as first_date
+    from (
+      select c.organization_id as org, upper(t.currency_code) as cur, min(t.date) as first_date
+        from transactions t join clients c on c.id = t.client_id
+       where t.currency_code is not null
+       group by 1, 2
+      union all
+      select organization_id, upper(currency_code), current_date from wealth_accounts where currency_code is not null group by 1, 2
+    ) u
+    join (
+      select id as org, upper(coalesce(reporting_currency, currency)) as cur from organizations
+      union select organization_id, upper(currency_code) from spending_budgets where currency_code is not null
+      union select organization_id, upper(currency_code) from budgets where currency_code is not null
+    ) tg on tg.org = u.org
+   where u.cur <> tg.cur
+   group by 1, 2`
 
 /**
  * `ensureRatesForOrg` into EVERY currency a figure here is measured in — a

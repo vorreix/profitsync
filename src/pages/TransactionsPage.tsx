@@ -831,8 +831,10 @@ export function TransactionsPage() {
       if (!token) throw new Error("Not authenticated")
       const { deleted, skipped_transactions } = await apiPost<{ deleted: number; skipped_transactions?: string[] }>("/api/transactions/bulk-delete", token, { ids })
       toast.success(t("multiSelect.deleted", { count: deleted }))
-      // Skipped rows (a transfer fee selected on its own, a refused transfer)
-      // were removed and subtracted optimistically — bring them back.
+      // Skipped rows (a transfer fee selected on its own, a refused transfer, an
+      // Opening Balance / Balance Adjustment) were removed and subtracted
+      // optimistically — bring them back, and say why they are still there.
+      if (skipped_transactions?.length) toast.warning(t("multiSelect.keptRows", { count: skipped_transactions.length }))
       if (!nextSummary || skipped_transactions?.length) fetchPage1({ silent: true })
     } catch (err) {
       toast.error(apiErrorMessage(err, t("multiSelect.deleteFailed")))

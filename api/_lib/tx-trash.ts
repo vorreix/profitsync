@@ -16,9 +16,14 @@ import { db } from "../../src/lib/db/index.js"
  * Rows owned by a logical transfer (`transfer_id` set: both legs AND the fee
  * rows) are never touched here — only set_transfer_trashed may move them, as
  * one unit with their header. System balance-defining rows (Opening Balance,
- * Balance Adjustment) flip but do not move the balance: the same rule as
- * src/lib/wealth-ledger.ts reversesOnTrash / reversalsByAccount, written in
- * SQL because it has to run inside the claiming statement.
+ * Balance Adjustment) are never trashed here (MC-054): their effect stays in
+ * current_balance through Trash (wealth-ledger reversesOnTrash), so a trashed
+ * one could only be purged into a balance no row explains. They are changed
+ * from the account's page instead (tag delete, api/_lib/tag-ops.ts, keeps them
+ * live too). One already in Trash (legacy) still RESTORES, without moving the
+ * balance — the same rule as reversalsByAccount, written in SQL because it has
+ * to run inside the claiming statement — and purge / Empty trash keep it while
+ * its account exists.
  *
  * Callers pass ids they have already scoped to the org.
  */
@@ -30,7 +35,7 @@ export async function setRowsTrashed(ids: string[], userId: string, restore: boo
       update transactions
       set deleted_at = ${restore ? sql`null` : sql`now()`}, updated_by = ${userId}, updated_at = now()
       where id in (${idList})
-        and ${restore ? sql`deleted_at is not null` : sql`deleted_at is null`}
+        and ${restore ? sql`deleted_at is not null` : sql`deleted_at is null and not is_system`}
         and transfer_id is null
       returning id, wealth_account_id, type, amount, is_system
     ), shifts as (

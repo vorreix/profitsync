@@ -866,7 +866,9 @@
     "clearTrashDesc_other": "Alle {{count}} Elemente werden endgültig gelöscht. Dies kann nicht rückgängig gemacht werden.",
     "clearing": "Wird geleert…",
     "trashCleared": "Papierkorb geleert",
-    "clearFailed": "Papierkorb konnte nicht geleert werden"
+    "clearFailed": "Papierkorb konnte nicht geleert werden",
+    "trashClearedKept_one": "Papierkorb geleert. {{count}} Eintrag, der einen Kontostand festlegt, wurde behalten.",
+    "trashClearedKept_other": "Papierkorb geleert. {{count}} Einträge, die einen Kontostand festlegen, wurden behalten."
   },
   "theme": {
     "toggle": "Design wechseln",
@@ -1044,7 +1046,9 @@
     "deleted_one": "{{count}} Element gelöscht",
     "deleted_other": "{{count}} Elemente gelöscht",
     "deleteFailed": "Fehler beim Löschen der ausgewählten Elemente",
-    "selectHint": "Drücken Sie und halten Sie gedrückt, um auszuwählen"
+    "selectHint": "Drücken Sie und halten Sie gedrückt, um auszuwählen",
+    "keptRows_one": "{{count}} Eintrag wurde behalten. Anfangssalden und Saldoanpassungen änderst du auf der Seite des Kontos, und manche Überweisungseinträge lassen sich nicht einzeln löschen.",
+    "keptRows_other": "{{count}} Einträge wurden behalten. Anfangssalden und Saldoanpassungen änderst du auf der Seite des Kontos, und manche Überweisungseinträge lassen sich nicht einzeln löschen."
   },
   "filters": {
     "filters": "Filter",
@@ -2446,7 +2450,6 @@
     "deletedWithRecords_one": "Tag und {{count}} Datensatz gelöscht",
     "deletedWithRecords_other": "Tag und {{count}} Datensätze gelöscht",
     "deleteFailed": "Tag konnte nicht gelöscht werden",
-    "deleteSkippedTransfers": "Einige Überweisungen konnten nicht in den Papierkorb verschoben werden und wurden behalten.",
     "nameExists": "Ein Tag mit diesem Namen existiert bereits",
     "viewEntities": "Einträge mit Tag {{name}} anzeigen",
     "transactions": "Transaktionen",
@@ -3309,5 +3312,30 @@
     "rate_limited": "Zu viele Wechselkursabfragen. Versuche es in einer Minute erneut.",
     "amount_whole_units": "Diese Währung hat keine Nachkommastellen – gib einen ganzen Betrag ein.",
     "autosave_rate_unavailable": "Für das Datum dieser automatischen Sparrate gibt es noch keinen Wechselkurs von {{from}} zu {{to}}. Sie wird ausgeführt, sobald einer vorliegt."
+  },
+  "adminFx": {
+    "title": "Wechselkurse",
+    "runNow": "Aktualisierung jetzt ausführen",
+    "ran": "Aktualisierung über {{pairs}} Paare gelaufen; {{remaining}} werden noch befüllt.",
+    "runFailed": "Die Wechselkurs-Aktualisierung konnte nicht ausgeführt werden.",
+    "loadFailed": "Der Wechselkurs-Status konnte nicht geladen werden.",
+    "never": "nie",
+    "neverRefreshed": "Die tägliche Wechselkurs-Aktualisierung ist für diese Datenbank noch nie gelaufen. Prüfe den fx-refresh-Zeitplan des Workers oder führe sie jetzt aus.",
+    "refreshStale": "Die tägliche Wechselkurs-Aktualisierung lief zuletzt {{when}} und scheint ausgefallen. Ältere Kurse werden nur bei einem Lauf ergänzt.",
+    "lastRefresh": "Tägliche Aktualisierung zuletzt {{when}}: {{pairs}} Paare, {{incomplete}} noch unvollständig.",
+    "colProvider": "Anbieter",
+    "colLastFetch": "Letzter Abruf",
+    "colLatestRate": "Neuester Kurs",
+    "colCalls": "Aufrufe OK / abgelehnt / fehlgeschlagen",
+    "colLastError": "Letzter Fehler",
+    "callsNote": "Die Aufrufzahlen gelten für diese Serverinstanz seit {{since}}; die Abrufdaten stammen aus den gespeicherten Kursen.",
+    "pairsOk": "Alle {{n}} verwendeten Währungspaare haben für jeden der letzten 10 Tage einen Kurs.",
+    "colPair": "Paar",
+    "colMissing": "Tage ohne Kurs (letzte 10)",
+    "noExcluded": "Kein Arbeitsbereich hat Buchungen, die mangels Kurs aus seinen Berichten herausfallen.",
+    "excluded": "Arbeitsbereiche mit ausgelassenen Buchungen ({{n}})",
+    "colRows": "Ausgelassene Buchungen",
+    "registerSchedule": "Wechselkurs-Zeitplan registrieren",
+    "scheduleMissing": "Der Zeitplan {{name}} ist nicht registriert — Wechselkurse, die älter als einen Monat sind, werden nicht ergänzt. Registriere ihn mit der Schaltfläche oben."
   }
 }

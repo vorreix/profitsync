@@ -26,11 +26,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // again (that would double-reverse). Expand a split group so purging one
     // soft-deleted leg removes all its (soft-deleted) siblings — no orphans.
     const [tx] = await db
-      .select({ id: transactions.id, groupId: transactions.groupId, transferId: transactions.transferId })
+      .select({ id: transactions.id, groupId: transactions.groupId, transferId: transactions.transferId, isSystem: transactions.isSystem, wealthAccountId: transactions.wealthAccountId })
       .from(transactions)
       .innerJoin(clients, eq(transactions.clientId, clients.id))
       .where(and(eq(transactions.id, id), eq(clients.organizationId, orgId), isNotNull(transactions.deletedAt)))
     if (!tx) return res.status(404).json({ error: "Not found" })
+    // A trashed Opening Balance / Balance Adjustment still carries its effect in
+    // current_balance (system rows never reverse through Trash), so it is the
+    // only row explaining that part of the balance. Purging it left a balance
+    // with no row behind it (MC-054: such a wallet was then relabelled into
+    // another currency with nothing to show for it). It can be restored; the
+    // balance itself is changed from the account's page. Once its account is
+    // gone it explains nothing and goes like any row.
+    if (tx.isSystem && tx.wealthAccountId) {
+      return res.status(409).json({ error: "This entry sets the account's balance — change it from the account's page.", code: "system_row" })
+    }
     if (tx.transferId) {
       // A row of a logical transfer is purged with the WHOLE transfer — both
       // legs, the fee rows and the header — in ONE statement

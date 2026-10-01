@@ -159,7 +159,7 @@ export async function previewTagDelete(orgId: string, name: string): Promise<Tag
   const plan = await planTagDelete(orgId, name)
   const transferRows = await liveTransferRows(orgId, plan.transferIds, true)
   return {
-    transactions: plan.legs.filter((l) => !l.transferId).length + transferRows.length,
+    transactions: plan.legs.filter((l) => !l.transferId && !l.isSystem).length + transferRows.length,
     clients: plan.clientIds.length,
     quotations: plan.quotationIds.length,
   }
@@ -207,7 +207,12 @@ export async function softDeleteByTag(
     if ((await liveTransferRows(orgId, [transferId], true)).length) throw new Error(`tag delete: transfer ${transferId} could not be trashed`)
     refused.push(transferId)
   }
-  const skipped = (await liveTransferRows(orgId, refused)).map((r) => r.id)
+  // An Opening Balance / Balance Adjustment stays live (MC-054, the rule of
+  // tx-trash.ts setRowsTrashed): in Trash its effect would stay in the balance
+  // and a purge would leave that balance with no row behind it. Reported with
+  // the refused transfers' rows.
+  const systemIds = plan.legs.filter((l) => !l.transferId && l.isSystem).map((l) => l.id)
+  const skipped = [...(await liveTransferRows(orgId, refused)).map((r) => r.id), ...systemIds]
   const movedTransferRows = trashableRows.filter((r) => !refused.includes(r.transferId)).length
 
   // Flip + balance shift in ONE statement, the shape of tx-trash.ts
@@ -217,7 +222,7 @@ export async function softDeleteByTag(
   // setRowsTrashed because these rows must carry the JS `now` the tagged clients
   // get (a client restore re-applies exactly the rows with its deletedAt), and
   // setRowsTrashed stamps the database's now(). System balance-defining rows
-  // flip without moving the balance (wealth-ledger reversesOnTrash).
+  // never flip (MC-054; reported in `skipped_transactions` above).
   const standardIds = plan.legs.filter((l) => !l.transferId).map((l) => l.id)
   let trashedTx: { id: string }[] = []
   if (standardIds.length) {
@@ -225,7 +230,7 @@ export async function softDeleteByTag(
       db
         .update(transactions)
         .set({ deletedAt: now, updatedBy: userId, updatedAt: now })
-        .where(and(inArray(transactions.id, standardIds), isNull(transactions.deletedAt), isNull(transactions.transferId)))
+        .where(and(inArray(transactions.id, standardIds), isNull(transactions.deletedAt), isNull(transactions.transferId), eq(transactions.isSystem, false)))
         .returning({ id: transactions.id, wealthAccountId: transactions.wealthAccountId, type: transactions.type, amount: transactions.amount, isSystem: transactions.isSystem }),
     )
     const shifts = db.$with("shifts").as(

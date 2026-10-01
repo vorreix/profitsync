@@ -318,6 +318,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // its balance a second time.
     const [before] = await db.select().from(transactions).where(and(eq(transactions.id, id), isNull(transactions.deletedAt)))
     if (!before) return res.status(404).json({ error: "Not found" })
+    // An Opening Balance / Balance Adjustment DEFINES the balance: trashing it
+    // never moved the balance, and purging it later left a balance no row
+    // explains (MC-054). Refused like PATCH — setRowsTrashed skips it anyway;
+    // this says why instead of a 404.
+    if (before.isSystem) {
+      return res.status(409).json({ error: "This entry sets the account's balance — change it from the account's page.", code: "system_row" })
+    }
     if (before.transferId) {
       // A transfer's FEE row is never trashed on its own — the header still
       // records the fee, so a later Reverse would refund it twice — and it

@@ -49,7 +49,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const skipped = transferRows
     .filter((leg) => !transferIds.includes(leg.transferId as string) || refused.has(leg.transferId as string))
     .map((leg) => leg.id)
-  const legs = allLegs.filter((leg) => !leg.transferId)
+  // An Opening Balance / Balance Adjustment is never trashed here (MC-054 —
+  // setRowsTrashed skips it anyway; DELETE /api/transactions/:id refuses it
+  // with system_row): it is reported as skipped rather than silently dropped,
+  // so the page puts it back and says why.
+  const systemIds = allLegs.filter((leg) => !leg.transferId && leg.isSystem).map((leg) => leg.id)
+  const legs = allLegs.filter((leg) => !leg.transferId && !leg.isSystem)
 
   // Claim-first: only the rows this call actually flipped reverse a balance, so
   // a replayed or concurrent bulk delete can't reverse a leg twice.
@@ -58,5 +63,5 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     trashed.map((tid) => logAudit({ orgId, entityType: "transaction", entityId: tid, action: "delete", actorId: userId })),
   )
 
-  return res.json({ deleted: transferRows.length - skipped.length + trashed.length, skipped_transactions: skipped })
+  return res.json({ deleted: transferRows.length - skipped.length + trashed.length, skipped_transactions: [...skipped, ...systemIds] })
 }

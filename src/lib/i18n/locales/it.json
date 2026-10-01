@@ -866,7 +866,9 @@
     "clearTrashDesc_other": "Tutti i {{count}} elementi verranno eliminati definitivamente. Questa azione non può essere annullata.",
     "clearing": "Svuotamento…",
     "trashCleared": "Cestino svuotato",
-    "clearFailed": "Impossibile svuotare il cestino"
+    "clearFailed": "Impossibile svuotare il cestino",
+    "trashClearedKept_one": "Cestino svuotato. È stata mantenuta {{count}} voce che stabilisce il saldo di un conto.",
+    "trashClearedKept_other": "Cestino svuotato. Sono state mantenute {{count}} voci che stabiliscono il saldo di un conto."
   },
   "theme": {
     "toggle": "Attiva/disattiva tema",
@@ -1044,7 +1046,9 @@
     "deleted_one": "{{count}} elemento eliminato",
     "deleted_other": "{{count}} elementi eliminati",
     "deleteFailed": "Impossibile eliminare gli elementi selezionati",
-    "selectHint": "Premi e tieni premuto per selezionare"
+    "selectHint": "Premi e tieni premuto per selezionare",
+    "keptRows_one": "{{count}} voce è stata mantenuta. I saldi iniziali e le rettifiche di saldo si modificano dalla pagina del conto, e alcune voci di trasferimento non si possono eliminare da sole.",
+    "keptRows_other": "{{count}} voci sono state mantenute. I saldi iniziali e le rettifiche di saldo si modificano dalla pagina del conto, e alcune voci di trasferimento non si possono eliminare da sole."
   },
   "filters": {
     "filters": "Filtri",
@@ -2446,7 +2450,6 @@
     "deletedWithRecords_one": "Tag e {{count}} record eliminati",
     "deletedWithRecords_other": "Tag e {{count}} record eliminati",
     "deleteFailed": "Eliminazione del tag non riuscita",
-    "deleteSkippedTransfers": "Alcuni trasferimenti non sono stati spostati nel Cestino e sono stati mantenuti.",
     "nameExists": "Esiste già un tag con questo nome",
     "viewEntities": "Vedi gli elementi con tag {{name}}",
     "transactions": "Transazioni",
@@ -3309,5 +3312,30 @@
     "rate_limited": "Troppe richieste di tassi di cambio. Riprova tra un minuto.",
     "amount_whole_units": "Questa valuta non ha decimali: inserisci un importo intero.",
     "autosave_rate_unavailable": "Non c'è ancora un cambio da {{from}} a {{to}} per la data di questo risparmio automatico. Verrà eseguito appena sarà disponibile."
+  },
+  "adminFx": {
+    "title": "Tassi di cambio",
+    "runNow": "Esegui l'aggiornamento ora",
+    "ran": "Aggiornamento eseguito su {{pairs}} coppie; {{remaining}} ancora in corso.",
+    "runFailed": "Impossibile eseguire l'aggiornamento dei tassi di cambio.",
+    "loadFailed": "Impossibile caricare lo stato dei tassi di cambio.",
+    "never": "mai",
+    "neverRefreshed": "L'aggiornamento giornaliero dei tassi di cambio non è mai stato eseguito su questo database. Controlla la pianificazione fx-refresh del worker oppure eseguilo ora.",
+    "refreshStale": "L'aggiornamento giornaliero dei tassi di cambio è stato eseguito l'ultima volta {{when}} e sembra fermo. Lo storico meno recente si completa solo quando viene eseguito.",
+    "lastRefresh": "Ultimo aggiornamento giornaliero {{when}}: {{pairs}} coppie, {{incomplete}} non ancora complete.",
+    "colProvider": "Fornitore",
+    "colLastFetch": "Ultimo recupero",
+    "colLatestRate": "Tasso più recente",
+    "colCalls": "Chiamate OK / rifiutate / non riuscite",
+    "colLastError": "Ultimo errore",
+    "callsNote": "I conteggi delle chiamate riguardano questa istanza del server dal {{since}}; le date di recupero provengono dai tassi salvati.",
+    "pairsOk": "Tutte le {{n}} coppie di valute in uso hanno un tasso per ciascuno degli ultimi 10 giorni.",
+    "colPair": "Coppia",
+    "colMissing": "Giorni senza tasso (ultimi 10)",
+    "noExcluded": "Nessuno spazio di lavoro ha righe escluse dai report per mancanza di un tasso.",
+    "excluded": "Spazi di lavoro con righe escluse ({{n}})",
+    "colRows": "Righe escluse",
+    "registerSchedule": "Registra la pianificazione dei tassi di cambio",
+    "scheduleMissing": "La pianificazione {{name}} non è registrata: lo storico dei tassi di cambio più vecchio di un mese non verrà completato. Registrala con il pulsante qui sopra."
   }
 }

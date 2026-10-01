@@ -29,6 +29,7 @@ import notificationsReminders from "./_routes/notifications/reminders.js"
 import notificationReminderById from "./_routes/notifications/reminders/[id].js"
 import notificationById from "./_routes/notifications/[id].js"
 import cronNotifications from "./_routes/cron/notifications.js"
+import cronFx from "./_routes/cron/fx.js"
 import clients from "./_routes/clients.js"
 import clientsBulkDelete from "./_routes/clients/bulk-delete.js"
 import clientById from "./_routes/clients/[id].js"
@@ -135,6 +136,7 @@ import adminRolesRoute from "./_routes/admin/roles.js"
 import adminRoleById from "./_routes/admin/roles/[id].js"
 import adminStats from "./_routes/admin/stats.js"
 import adminWorker from "./_routes/admin/worker.js"
+import adminFx from "./_routes/admin/fx.js"
 import adminUserGroups from "./_routes/admin/user-groups.js"
 import adminUserGroupById from "./_routes/admin/user-groups/[id].js"
 import adminUserGroupMembers from "./_routes/admin/user-groups/[id]/members.js"
@@ -192,6 +194,7 @@ const routes: RoutePattern<ApiHandler>[] = [
   { segments: ["notifications", "reminders", ":id"], handler: notificationReminderById },
   { segments: ["notifications", ":id"], handler: notificationById },
   { segments: ["cron", "notifications"], handler: cronNotifications },
+  { segments: ["cron", "fx"], handler: cronFx },
   { segments: ["internal", "quotations", "pdf-ready"], handler: quotationPdfReady },
 
   { segments: ["clients"], handler: clients },
@@ -322,6 +325,7 @@ const routes: RoutePattern<ApiHandler>[] = [
   { segments: ["admin", "roles", ":id"], handler: adminRoleById },
   { segments: ["admin", "stats"], handler: adminStats },
   { segments: ["admin", "worker"], handler: adminWorker },
+  { segments: ["admin", "fx"], handler: adminFx },
   { segments: ["admin", "user-groups"], handler: adminUserGroups },
   { segments: ["admin", "user-groups", ":id"], handler: adminUserGroupById },
   { segments: ["admin", "user-groups", ":id", "members"], handler: adminUserGroupMembers },

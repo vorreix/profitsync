@@ -15,6 +15,10 @@ const txFields = {
   // (transfer reversal) be translated on display.
   currencyCode: transactions.currencyCode,
   kind: transactions.kind,
+  // A system row on a live account can be restored but not purged (MC-054,
+  // trash/purge.ts system_row) — the page hides "Delete forever" for it.
+  isSystem: transactions.isSystem,
+  wealthAccountId: transactions.wealthAccountId,
   description: transactions.description,
   category: transactions.category,
   date: transactions.date,

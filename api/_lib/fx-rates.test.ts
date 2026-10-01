@@ -1,28 +1,40 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { CARRY_MAX_DAYS, ChainedProvider, CurrencyApiProvider, FrankfurterProvider, FxUnavailable, OpenErApiProvider, archiveDays, convertAmount, ensureHistoricalRates, fillDays, type DayRate } from "./fx-rates"
+import { CARRY_MAX_DAYS, ChainedProvider, CurrencyApiProvider, FrankfurterProvider, FxUnavailable, OpenErApiProvider, archiveDays, convertAmount, ensureHistoricalRates, ensureRatesForOrg, fillDays, fxProviderHealth, type DayRate } from "./fx-rates"
 import type { FxQuote } from "./fx-provider"
 
 // DB-free (the unit gate): the db module is replaced by an in-memory stand-in
 // that answers fillHistory's three statements — the gaps query, the stored
-// observations around them, and the upsert — so the fill runs end to end.
+// observations around them, and the upsert — so the fill runs end to end, and
+// ensureRatesForOrg's one completeness check (`orgCheck`). Every raw statement
+// is recorded as rendered SQL + params.
 const fakeDb = vi.hoisted(() => ({
   gaps: [] as Array<{ day: string; has_row: boolean }>,
   known: [] as Array<{ day: string; rate: string; provider: string }>,
   written: [] as Array<{ rateDate: string; rate: string; provider: string; isFallback: boolean }>,
+  orgCheck: [] as Array<{ cur: string; first_date: string; window_full: boolean; fresh: boolean }>,
+  executed: [] as Array<{ sql: string; params: unknown[] }>,
 }))
-vi.mock("../../src/lib/db/index.js", () => ({
-  db: {
-    execute: async () => ({ rows: fakeDb.gaps }),
-    select: () => ({ from: () => ({ where: async () => fakeDb.known }) }),
-    insert: () => ({
-      values: (rows: typeof fakeDb.written) => ({
-        onConflictDoUpdate: async () => {
-          fakeDb.written.push(...rows)
-        },
+vi.mock("../../src/lib/db/index.js", async () => {
+  const { PgDialect } = await import("drizzle-orm/pg-core")
+  const dialect = new PgDialect()
+  return {
+    db: {
+      execute: async (q: Parameters<typeof dialect.sqlToQuery>[0]) => {
+        const { sql, params } = dialect.sqlToQuery(q)
+        fakeDb.executed.push({ sql, params })
+        return { rows: sql.includes("window_full") ? fakeDb.orgCheck : fakeDb.gaps }
+      },
+      select: () => ({ from: () => ({ where: async () => fakeDb.known }) }),
+      insert: () => ({
+        values: (rows: typeof fakeDb.written) => ({
+          onConflictDoUpdate: async () => {
+            fakeDb.written.push(...rows)
+          },
+        }),
       }),
-    }),
-  },
-}))
+    },
+  }
+})
 
 function mockFetch(body: unknown, status = 200) {
   const fn = vi.fn(async () => ({ ok: status >= 200 && status < 300, status, json: async () => body }))
@@ -300,6 +312,24 @@ describe("ensureHistoricalRates (in-memory db)", () => {
     ])
   })
 
+  it("a caller's deadline that cut the archive off does not mark the pair unserved — the next request still fills it", async () => {
+    vi.useFakeTimers({ now: new Date("2026-10-01T09:00:00Z"), toFake: ["Date"] })
+    fakeDb.gaps = span("2026-09-28", "2026-10-01").map((day) => ({ day, has_row: false }))
+    fakeDb.known = []
+    fakeDb.written = []
+    routeFetch([
+      [/frankfurter/, 404, { message: "not found" }],
+      [/@2026-10-01\/|2026-10-01\.currency-api/, 404],
+      ...span("2026-09-28", "2026-09-30").map((d): [RegExp, number, unknown] => [new RegExp(`@${d}/`), 200, eurTable(d)]),
+    ])
+
+    // The refresh reached this pair with its budget already spent.
+    expect(await ensureHistoricalRates("PKR", "INR", "2026-09-28", { floor: "2026-09-28", deadline: Date.now() })).toEqual({ covered: false })
+    expect(fakeDb.written).toEqual([])
+
+    expect(await ensureHistoricalRates("PKR", "INR", "2026-09-28")).toEqual({ covered: true, written: 4 })
+  })
+
   it("goes back to the providers for the same gaps at most hourly, not on every request", async () => {
     vi.useFakeTimers({ now: new Date("2026-10-01T09:00:00Z"), toFake: ["Date"] })
     // LKR has no source before the archive: those days can never fill, but
@@ -314,6 +344,67 @@ describe("ensureHistoricalRates (in-memory db)", () => {
     expect(first).toBeGreaterThan(0)
     expect(await ensureHistoricalRates("LKR", "INR", "2024-02-28")).toEqual({ covered: false })
     expect(fetchMock.mock.calls.length).toBe(first)
+  })
+})
+
+describe("ensureRatesForOrg (in-memory db)", () => {
+  const checks = () => fakeDb.executed.filter((q) => q.sql.includes("window_full")).length
+
+  it("a complete workspace costs ONE query, shared by parallel routes, and the next request checks again (MC-168)", async () => {
+    vi.useFakeTimers({ now: new Date("2026-10-01T09:00:00Z"), toFake: ["Date"] })
+    fakeDb.orgCheck = [{ cur: "EUR", first_date: "2020-01-01", window_full: true, fresh: true }]
+    fakeDb.executed = []
+    const fetchMock = routeFetch([])
+
+    const results = await Promise.all([ensureRatesForOrg("org-complete", "USD"), ensureRatesForOrg("org-complete", "usd"), ensureRatesForOrg("org-complete", "USD")])
+    expect(results.every((r) => r.uncovered.length === 0 && r.currencies.join() === "EUR")).toBe(true)
+    expect(fakeDb.executed).toHaveLength(1)
+    expect(fetchMock).not.toHaveBeenCalled()
+
+    // Not remembered once settled: the refetch after a save (a first AED row,
+    // a back-dated one) must see the currency or the window it just added.
+    await ensureRatesForOrg("org-complete", "USD")
+    expect(checks()).toBe(2)
+  })
+
+  it("tops an incomplete currency up from REQUEST_FILL_DAYS back at most — older history is the daily refresh's (MC-039)", async () => {
+    vi.useFakeTimers({ now: new Date("2026-10-01T09:00:00Z"), toFake: ["Date"] })
+    vi.stubEnv("FX_DISABLED", "1") // read-only: what matters is the range asked for
+    fakeDb.orgCheck = [
+      { cur: "GBP", first_date: "2020-01-01", window_full: false, fresh: true },
+      { cur: "JPY", first_date: "2026-09-20", window_full: false, fresh: true },
+    ]
+    fakeDb.gaps = []
+    fakeDb.executed = []
+
+    await ensureRatesForOrg("org-gaps", "USD")
+
+    const fills = fakeDb.executed.filter((q) => q.sql.includes("generate_series"))
+    const from = (cur: string) => fills.find((q) => q.params[0] === cur)?.params[2]
+    expect(from("GBP")).toBe("2026-08-31")
+    expect(from("JPY")).toBe("2026-09-20")
+    vi.unstubAllEnvs()
+  })
+})
+
+describe("provider health (MC-127)", () => {
+  it("counts an answer, a refusal and a failure per provider, and keeps the last error", async () => {
+    const before = fxProviderHealth().providers["open-er-api"] ?? { ok: 0, refused: 0, failed: 0 }
+    mockFetch({ result: "success", time_last_update_utc: "Tue, 09 Sep 2026 00:02:31 +0000", rates: { EUR: 1, AED: 4.26 } })
+    await new OpenErApiProvider().getCurrentRate("EUR", "AED")
+    mockFetch({}, 404)
+    await new OpenErApiProvider().getCurrentRate("EUR", "AED").catch(() => null)
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    mockFetch({}, 503)
+    await new OpenErApiProvider().getCurrentRate("EUR", "AED").catch(() => null)
+    // Throttled is not "no such pair": it is the outage this panel exists for.
+    mockFetch({}, 429)
+    await new OpenErApiProvider().getCurrentRate("EUR", "AED").catch(() => null)
+    const after = fxProviderHealth().providers["open-er-api"]
+    expect([after.ok - before.ok, after.refused - before.refused, after.failed - before.failed]).toEqual([1, 1, 2])
+    expect(after.lastError).toMatch(/429/)
+    expect(JSON.stringify(warn.mock.calls)).not.toMatch(/amount|balance/i)
+    warn.mockRestore()
   })
 })
 

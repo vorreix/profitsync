@@ -537,7 +537,6 @@
     "deletedWithRecords_one": "Tag and {{count}} record deleted",
     "deletedWithRecords_other": "Tag and {{count}} records deleted",
     "deleteFailed": "Failed to delete tag",
-    "deleteSkippedTransfers": "Some transfers couldn't be moved to Trash and were kept.",
     "nameExists": "A tag with that name already exists",
     "viewEntities": "View items tagged {{name}}",
     "transactions": "Transactions",
@@ -652,6 +651,8 @@
     "deleted_one": "{{count}} item deleted",
     "deleted_other": "{{count}} items deleted",
     "deleteFailed": "Failed to delete the selected items",
+    "keptRows_one": "{{count}} entry was kept. Opening balances and balance adjustments are changed from the account’s page, and some transfer entries can’t be deleted on their own.",
+    "keptRows_other": "{{count}} entries were kept. Opening balances and balance adjustments are changed from the account’s page, and some transfer entries can’t be deleted on their own.",
     "selectHint": "Press and hold to select"
   },
   "filters": {
@@ -2092,6 +2093,8 @@
     "clearTrashDesc_other": "All {{count}} items will be permanently deleted. This cannot be undone.",
     "clearing": "Clearing…",
     "trashCleared": "Trash cleared",
+    "trashClearedKept_one": "Trash emptied. {{count}} entry that sets an account balance was kept.",
+    "trashClearedKept_other": "Trash emptied. {{count}} entries that set an account balance were kept.",
     "clearFailed": "Failed to clear trash"
   },
   "theme": {
@@ -3309,5 +3312,30 @@
     "rate_limited": "Too many exchange-rate requests. Try again in a minute.",
     "amount_whole_units": "This currency has no decimal places — enter a whole amount.",
     "autosave_rate_unavailable": "There's no {{from}} to {{to}} exchange rate for this auto-save's date yet. It will go through as soon as there is one."
+  },
+  "adminFx": {
+    "title": "Exchange rates",
+    "runNow": "Run refresh now",
+    "ran": "Refresh ran over {{pairs}} pairs; {{remaining}} still filling.",
+    "runFailed": "Couldn't run the exchange-rate refresh.",
+    "loadFailed": "Couldn't load exchange-rate health.",
+    "never": "never",
+    "neverRefreshed": "The daily exchange-rate refresh has never run against this database. Check the worker's fx-refresh schedule, or run it now.",
+    "refreshStale": "The daily exchange-rate refresh last ran {{when}} and looks down. Older history fills only when it runs.",
+    "lastRefresh": "Daily refresh last ran {{when}}: {{pairs}} pairs, {{incomplete}} not yet complete.",
+    "colProvider": "Provider",
+    "colLastFetch": "Last fetch",
+    "colLatestRate": "Latest rate",
+    "colCalls": "Calls OK / refused / failed",
+    "colLastError": "Last error",
+    "callsNote": "Call counts are for this server instance since {{since}}; fetch dates come from the stored rates.",
+    "pairsOk": "All {{n}} currency pairs in use have a rate for each of the last 10 days.",
+    "colPair": "Pair",
+    "colMissing": "Days without a rate (last 10)",
+    "noExcluded": "No workspace has rows left out of its reports for want of a rate.",
+    "excluded": "Workspaces with rows left out ({{n}})",
+    "colRows": "Rows left out",
+    "registerSchedule": "Register exchange-rate schedule",
+    "scheduleMissing": "The {{name}} schedule isn't registered — exchange-rate history older than a month will not fill. Register it with the button above."
   }
 }

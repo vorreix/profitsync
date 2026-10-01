@@ -10,7 +10,7 @@ describe("claim-first trash (api/_lib/tx-trash.ts)", () => {
   const src = read("api/_lib/tx-trash.ts")
 
   it("flips only rows still in the other state, and never a transfer-owned row", () => {
-    expect(src).toContain("${restore ? sql`deleted_at is not null` : sql`deleted_at is null`}")
+    expect(src).toContain("${restore ? sql`deleted_at is not null` : sql`deleted_at is null and not is_system`}")
     expect(src).toContain("and transfer_id is null")
   })
 
@@ -75,5 +75,44 @@ describe("purge takes the whole transfer with its header (api/_lib/tx-trash.ts p
     const clear = read("api/_routes/trash/clear.ts")
     expect(clear).toContain("purgeTrashedTransfers(orgId)")
     expect(clear).toContain("isNull(transactions.transferId)")
+  })
+})
+
+describe("system rows keep explaining the balance (MC-054)", () => {
+  it("are never trashed: DELETE says why, the shared flip skips them", () => {
+    const route = read("api/_routes/transactions/[id].ts")
+    expect(route).toContain("if (before.isSystem) {")
+    expect(route).toContain('code: "system_row"')
+    expect(read("api/_lib/tx-trash.ts")).toContain("deleted_at is null and not is_system")
+  })
+
+  it("one already in Trash is never purged while its account exists — single purge refuses, empty-trash keeps it", () => {
+    const purge = read("api/_routes/trash/purge.ts")
+    expect(purge).toContain("if (tx.isSystem && tx.wealthAccountId) {")
+    expect(purge).toContain('code: "system_row"')
+    const clear = read("api/_routes/trash/clear.ts")
+    expect(clear).toContain("or(eq(transactions.isSystem, false), isNull(transactions.wealthAccountId))")
+    // …and says how many stayed, instead of implying the Trash is empty.
+    expect(clear).toContain("kept: { transactions: kept }")
+  })
+})
+
+describe("migration 0080: legacy transfers already in Trash get a trashed header (MC-116)", () => {
+  const sql = read("drizzle/0080_legacy_transfer_trash_repair.sql")
+
+  it("stamps only live completed headers whose every row is trashed, with the latest row's deleted_at", () => {
+    expect(sql).toContain('HAVING bool_and(t."deleted_at" IS NOT NULL)')
+    // only a WHOLE transfer: restoring one missing a leg would re-apply one side
+    expect(sql).toContain(`AND count(*) FILTER (WHERE t."kind" = 'transfer') = 2`)
+    expect(sql).toContain('AND r."fee_rows" = h."source_fee_amount"')
+    expect(sql).toContain('max(t."deleted_at")')
+    expect(sql).toContain(`AND h."status" = 'completed'`)
+    // the re-run guard: a repaired header no longer matches
+    expect(sql).toContain('AND h."deleted_at" IS NULL')
+    expect(sql).not.toMatch(/wealth_accounts|current_balance/)
+  })
+
+  it("is in the journal (the migrator never lists the folder)", () => {
+    expect(read("drizzle/meta/_journal.json")).toContain('"tag": "0080_legacy_transfer_trash_repair"')
   })
 })

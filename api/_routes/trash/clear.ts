@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { and, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm"
+import { and, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm"
 import { db } from "../../../src/lib/db/index.js"
 import { clients, quotations, transactions, wealthAccounts } from "../../../src/lib/db/schema.js"
 import { canDelete, requireAuth } from "../../_lib/auth.js"
@@ -45,6 +45,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   //    logical transfer owns (legs AND fee rows) go only with their whole
   //    transfer, in the statement single purge uses — never row by row, which
   //    raced a restore into balances moved for rows that no longer exist.
+  //    A trashed system row on an existing account STAYS (restorable): it is
+  //    what explains that part of the balance, as in single purge (MC-054).
   const trashedTx = await db
     .select({ id: transactions.id })
     .from(transactions)
@@ -54,6 +56,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       isNull(clients.deletedAt),
       isNotNull(transactions.deletedAt),
       isNull(transactions.transferId),
+      or(eq(transactions.isSystem, false), isNull(transactions.wealthAccountId)),
     ))
   if (trashedTx.length) {
     // deleted_at re-checked: a row restored since the read above stays.
@@ -67,7 +70,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     .where(and(eq(quotations.organizationId, orgId), isNotNull(quotations.deletedAt)))
     .returning({ id: quotations.id })
 
+  // The system rows step 2 kept, so the page can say why they are still in
+  // Trash rather than claim it is empty (they reappear on reload). A one-sided
+  // transfer leg also stays, but that is a repair for scripts/audit-balances.mjs,
+  // not something the user can act on, so it is not counted here.
+  const [{ kept }] = await db
+    .select({ kept: sql<number>`count(*)::int` })
+    .from(transactions)
+    .innerJoin(clients, eq(transactions.clientId, clients.id))
+    .where(and(
+      eq(clients.organizationId, orgId),
+      isNotNull(transactions.deletedAt),
+      eq(transactions.isSystem, true),
+      isNotNull(transactions.wealthAccountId),
+    ))
+
   return res.json({
     purged: { clients: clientIds.length, transactions: trashedTx.length + transferRows, quotations: purgedQuotations.length },
+    kept: { transactions: kept },
   })
 }

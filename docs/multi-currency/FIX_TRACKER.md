@@ -132,10 +132,24 @@ Split into sub-waves, each committed when verified.
 
 **Verification (2026-10-01):** migrations 0078 + 0079 applied to the shared dev DB and verified (functions + column); gate green (1476 unit tests); 10/10 Wave 6a live scenarios (JPY whole units, KWD not selectable, USD 3-decimal refused, planned EUR→INR completed with the real ₹9,500 + €2 fee atomically, rate endpoint read-only with the honest observation date, flow root balance = summary valuation); all 61 earlier scenarios re-run green.
 
+### 6b — FX operations & ledger repair ✅
+
+| Id | What | Status |
+|---|---|---|
+| MC-104/039 | Rates existed only for days someone opened a report; history backfilled inside user GETs | ✅ `POST /api/cron/fx` (service token) refreshes every pair in use daily in two passes (today + recent window for all pairs, then bounded deep backfill); request paths only top up the last 31 days |
+| MC-168 | Rate completeness re-scanned on every report request | ✅ one query per call; a complete workspace returns with no provider calls (~44 ms); parallel routes share one in-flight check |
+| MC-127 | No FX monitoring | ✅ per-provider ok/refused/failed counters + last error; `GET /api/admin/fx` and an FX health card on /admin → Worker (pairs without a rate, excluded rows per org, last refresh) |
+| MC-061 (--apply) | No ledger repair | ✅ `npm run audit:balances -- --apply <id>` / `--apply-all --org <id>`: dry-run by default; posts ONE explanatory reconciliation row per drifting account, never rewrites balances; refuses (and explains) accounts it can't reconcile safely |
+| MC-054 (rest) | Purging a system Opening Balance left an unexplained balance | ✅ balance-defining system rows on live accounts are kept by purge / Empty trash / bulk delete / tag delete, and the UI says so (translated) |
+| MC-116 | Legacy transfers trashed before 0071 had a live header | ✅ migration **0080** gives them a trashed header so Trash restore works (0 rows on dev) |
+
+**Ops after deploy:** worker `make register` (or /admin → Worker auto-repairs) adds the `fx-refresh` schedule (16:30 UTC → `/api/cron/fx`); GitHub fallback `.github/workflows/fx-refresh.yml` needs the existing `PROFITSYNC_CRON_TOKEN` secret; optional `FX_REFRESH_BUDGET_MS` (default 15000). Run `audit:balances` against production before and after the deploy.
+
+**Verification (2026-10-01):** migration 0080 applied + checked; cron route 401 without / 200 with the service token (3 pairs refreshed, 0 failures); audit dry run refuses the 3 historically damaged dev accounts with reasons; gate green (1499 unit tests); all 71 live scenarios re-run green; e2e 64/64 after scoping recurring-debt.spec's picker clicks to the open popover.
+
 ### Remaining
 
-- **6b FX operations:** MC-104 scheduled refresh, MC-039 backfill off the request path, MC-168 cheap completeness check, MC-127 FX monitoring; ledger repair (`audit:balances --apply`, MC-054 system-row purge, MC-116 legacy transfer headers).
 - **6c Concurrency & atomicity:** MC-056, 057, 058, 059, 060, 046, 160 (+ MC-167 performance).
 - **6d Rollout & migrations:** MC-115 deploy order, 116, 117, 118 NULL-currency re-backfill, 119, 034 minimum client version, 035 roll-forward-only, 156, 120 store release.
-- **6e Tests:** MC-121 static unsafe-sum guard everywhere, 122, 128 deterministic FX in e2e, 174–177; warm the dev server in `e2e/auth.setup.ts` (the first spec after a cold start hits Vite's dependency-optimisation reload — `Failed to fetch`); MC-170 currency-aware export/import (deferred feature).
+- **6e Tests:** MC-121 static unsafe-sum guard everywhere, 122 (now visible: since 6b keeps balance-defining system rows, the credit-card spec's cleanup archives its card instead of deleting it, so archived e2e cards and their rows pile up in the personal workspace — recurring-debt.spec's picker clicks were scoped to the open popover to stay robust), 128 deterministic FX in e2e, 174–177; warm the dev server in `e2e/auth.setup.ts` (the first spec after a cold start hits Vite's dependency-optimisation reload — `Failed to fetch`); MC-170 currency-aware export/import (deferred feature).
 - **Decision needed:** translated screen-reader label for the vendored dialog close button (`src/components/ui/dialog.tsx`).

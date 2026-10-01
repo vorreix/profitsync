@@ -149,8 +149,10 @@ export function TagsPanel() {
         const d = result?.deleted
         const n = (d?.transactions ?? 0) + (d?.clients ?? 0) + (d?.quotations ?? 0)
         toast.success(t("tags.deletedWithRecords", { count: n }))
-        // Transfers the transfer service would refuse (reversed, incomplete) stay live.
-        if (result?.skipped_transactions?.length) toast.warning(t("tags.deleteSkippedTransfers"))
+        // Transfers the transfer service would refuse (reversed, incomplete) and
+        // Opening Balance / Balance Adjustment rows stay live.
+        const kept = result?.skipped_transactions?.length ?? 0
+        if (kept) toast.warning(t("multiSelect.keptRows", { count: kept }))
       } else {
         toast.success(t("tags.deleted"))
       }

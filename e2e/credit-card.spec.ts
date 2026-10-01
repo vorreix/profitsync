@@ -129,15 +129,21 @@ const cardTx = async (page: Page, id: string) =>
 async function cleanup(page: Page) {
   const accs = await accounts(page)
   console.log(`[cleanup] accounts: ${accs.map((a) => a.nickname || a.bank_name).join(", ")}`)
-  for (const a of accs.filter((x) => x.nickname === CARD_NAME)) {
+  // An archived one is a previous run's card, already cleaned (see below).
+  for (const a of accs.filter((x) => x.nickname === CARD_NAME && !x.archived_at)) {
     const { data } = await cardTx(page, a.id)
     if (data.length) {
       const bd = await api(page, "POST", "/api/transactions/bulk-delete", { ids: data.map((t) => t.id) })
       console.log(`[cleanup] bulk-delete ${data.length} -> ${bd.status}`)
     }
     const clear = await api(page, "POST", "/api/trash/clear")
+    // The card's system debt row (Opening Balance) survives bulk delete and
+    // Empty trash (MC-054), so its debt does too and the DELETE would 409
+    // card_has_debt. Zeroing the debt posts a Balance Adjustment; the DELETE
+    // then archives the card (it has history) instead.
+    const zero = await api(page, "PATCH", `/api/wealth/accounts/${a.id}`, { current_debt: 0 })
     const del = await api(page, "DELETE", `/api/wealth/accounts/${a.id}`)
-    console.log(`[cleanup] trash/clear -> ${clear.status}, delete card -> ${del.status}`)
+    console.log(`[cleanup] trash/clear -> ${clear.status}, zero debt -> ${zero.status}, delete card -> ${del.status}`)
   }
 }
 
