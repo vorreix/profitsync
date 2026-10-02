@@ -54,14 +54,27 @@ const accounts = async (page: Page) => (await api<Account[]>(page, "GET", "/api/
 const cashOf = async (page: Page) => Number((await accounts(page)).find((a) => a.type === "cash")!.current_balance)
 const expenseOf = (rows: TxRow[]) => rows.reduce((s, t) => (!t.is_system && t.kind === "standard" && t.type === "outgoing" ? s + Number(t.amount) : s), 0)
 const incomeOf = (rows: TxRow[]) => rows.reduce((s, t) => (!t.is_system && t.kind === "standard" && t.type === "incoming" ? s + Number(t.amount) : s), 0)
-const cashRows = async (page: Page) => (await api<{ data: TxRow[] }>(page, "GET", `/api/transactions?wealthAccountId=${(await accounts(page)).find((a) => a.type === "cash")!.id}&page=1`)).json.data
-const rowsOf = async (page: Page, accountId: string) => (await api<{ data: TxRow[] }>(page, "GET", `/api/transactions?wealthAccountId=${accountId}&page=1`)).json.data
+// EVERY page: the list pages at 20, so summing page 1 alone drifts the moment a
+// new row pushes an old one off it (the shared cash wallet holds 20+ rows).
+const rowsOf = async (page: Page, accountId: string) => {
+  const all: TxRow[] = []
+  for (let n = 1; n < 50; n++) {
+    const { data } = (await api<{ data: TxRow[] }>(page, "GET", `/api/transactions?wealthAccountId=${accountId}&page=${n}`)).json
+    all.push(...data)
+    if (data.length < 20) break
+  }
+  return all
+}
+const cashRows = async (page: Page) => rowsOf(page, (await accounts(page)).find((a) => a.type === "cash")!.id)
 
 const NAMES = { loan: `${E2E_PREFIX}-loan`, marco: `${E2E_PREFIX}-marco`, luca: `${E2E_PREFIX}-luca`, auto: `${E2E_PREFIX}-auto`, partial: `${E2E_PREFIX}-partial` }
 
 async function cleanup(page: Page) {
   const o = await overview(page)
-  const all = [...o.debts, ...o.receivables, ...((o as unknown as { closed: Debt[] }).closed ?? [])]
+  // Open debts only: a closed one keeps its system Opening Balance row, which
+  // no API can remove, so DELETE just re-closes it — walking every closed
+  // fixture each run grew the hooks past their timeout.
+  const all = [...o.debts, ...o.receivables]
   for (const d of all.filter((x) => Object.values(NAMES).includes(x.name))) {
     const rows = (await api<{ data: TxRow[] }>(page, "GET", `/api/transactions?wealthAccountId=${d.id}&page=1`)).json.data
     if (rows.length) await api(page, "POST", "/api/transactions/bulk-delete", { ids: rows.map((r) => r.id) })
@@ -381,20 +394,27 @@ test.describe.serial("Debt & Loans", () => {
     // plus these debts" only ever held on an empty database. What is actually
     // being asserted is the CLAIM — a loan comes off net worth, a receivable
     // goes on — and that holds whatever else the workspace contains.
-    const spendable = (await accounts(page)).filter((a) => !a.archived_at)
-      .reduce((sum, a) => sum + Number(a.current_balance), 0)
-    const spaces = (await api<Account[]>(page, "GET", "/api/spaces")).json ?? []
-    const saved = spaces.filter((s) => !s.archived_at).reduce((sum, s) => sum + Number(s.current_balance), 0)
+    //
+    // The workspace can hold accounts in several currencies (the multi-currency
+    // spec leaves EUR and INR wallets in it), so net worth is the SERVER's
+    // converted figure (GET /api/wealth/summary), never a raw sum of native
+    // balances. What this test owns is the debts' part of it: the summary's
+    // debt figures must be exactly the hub's same-currency totals (these
+    // fixtures are in the workspace currency, so no rate is involved).
     const o = await overview(page)
-    // The workspace currency, from the API — NOT a hardcoded one. Only debts in
-    // it join net worth (no exchange rate is invented), and this workspace is
-    // not necessarily in euros.
     const sameCurrency = (xs: { currency: string; amount: number }[] | undefined) =>
       (xs ?? []).filter((x) => x.currency === o.currency).reduce((sum, x) => sum + x.amount, 0)
-    const expected = spendable + saved + sameCurrency(o.summary.receivable_by_currency) - sameCurrency(o.summary.owed_by_currency)
+    const summary = (await api<{ net_worth: number; debts_owed: number; debts_receivable: number; reporting_currency: string }>(page, "GET", "/api/wealth/summary")).json
+    expect(summary.reporting_currency).toBe(o.currency)
+    expect(summary.debts_owed).toBeCloseTo(sameCurrency(o.summary.owed_by_currency), 2)
+    expect(summary.debts_receivable).toBeCloseTo(sameCurrency(o.summary.receivable_by_currency), 2)
+    const expected = summary.net_worth
 
-    const text = await page.locator("p.text-3xl.font-bold").first().textContent()
-    expect(Number(text!.replace(/[^\d.-]/g, ""))).toBeCloseTo(expected, 2)
+    // Until the converted summary lands the hero shows per-currency parts
+    // ("€… + ₹…"), and the summary now waits for the accounts and posts due
+    // rows first — so wait for the figure rather than reading it once.
+    const hero = page.locator("p.text-3xl.font-bold").first()
+    await expect.poll(async () => Number((await hero.textContent())?.replace(/[^\d.-]/g, "")), { timeout: 15_000 }).toBeCloseTo(expected, 2)
     // And the debts really are in there: drop them and the figure would differ.
     expect(sameCurrency(o.summary.owed_by_currency)).toBeGreaterThan(0)
   })

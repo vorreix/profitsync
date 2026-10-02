@@ -2,18 +2,23 @@ import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { db } from "../../src/lib/db/index.js"
 import { spendingBudgets } from "../../src/lib/db/schema.js"
 import { canWrite, requireAuth } from "../_lib/auth.js"
+import { reportingCurrencyFor } from "../_lib/fx-rates.js"
 import { logAudit } from "../_lib/audit.js"
 import { todayUtc } from "../../src/lib/budget.js"
+import { moneyRefusal } from "../../src/lib/money.js"
 import { materializeDueRecurring } from "../_lib/recurring-materialize.js"
 import {
+  budgetCurrency,
+  auditedAmount,
   checkRelations,
+  inheritFromParent,
   isSiblingNameClash,
-  listBudgets,
   loadRecords,
   nextPosition,
   parseBudgetInput,
   toRecord,
   withSpend,
+  withSpendTotals,
   type SpendingBudgetRecord,
 } from "../_lib/spending-budgets.js"
 
@@ -38,7 +43,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // No `?view=` parameter on purpose: every budget carries its spend for all
     // four view windows, so the page's toggle is a re-render, the dashboard and
     // the detail page share this one cache entry, and nothing refetches.
-    return res.json({ budgets: await listBudgets(orgId, today), today })
+    // Each row's figures are in ITS currency (`currency`), each ledger row
+    // converted at its own date; `excluded_count` / `excluded_by_view` say how
+    // many it left out. The top-level `excluded_by_view` counts each such row
+    // ONCE per view, however many budgets it falls under (MC-084).
+    const [all, currency] = await Promise.all([loadRecords(orgId), reportingCurrencyFor(orgId)])
+    const { budgets, excluded_by_view } = await withSpendTotals(orgId, all, today, all, currency)
+    // `currency` is the workspace's reporting currency — what a budget without
+    // one of its own is measured in, and the page's label when the list is empty.
+    return res.json({ budgets, today, currency, excluded_by_view })
   }
 
   if (req.method === "POST") {
@@ -47,7 +60,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!parsed.ok) return res.status(400).json({ error: parsed.error })
     const v = parsed.value
 
-    const all = await loadRecords(orgId)
+    const [all, reporting] = await Promise.all([loadRecords(orgId), reportingCurrencyFor(orgId)])
     const parent = v.parent_id ? all.find((r) => r.id === v.parent_id) : null
     if (v.parent_id && !parent) return res.status(404).json({ error: "parent_not_found" })
 
@@ -57,6 +70,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const period = parent ? parent.period : (v.period ?? "monthly")
     const startDate = !parent && period === "once" ? (v.start_date ?? null) : null
     const endDate = !parent && period === "once" ? (v.end_date ?? null) : null
+    // A budget KEEPS the currency it was created in — a later reporting change
+    // converts it for display, never relabels it. A sub-budget is its parent's
+    // (one scope, one window, one currency); a main budget is the reporting one.
+    const currencyCode = parent ? budgetCurrency(parent, reporting) : reporting
+    // The limit as typed, to that currency's decimals (parseBudgetInput rounds
+    // to cents; ¥ has none — MC-031).
+    const badAmount = moneyRefusal(currencyCode, (req.body as { amount?: unknown } | undefined)?.amount)
+    if (badAmount) return res.status(400).json(badAmount)
 
     const draft: SpendingBudgetRecord = {
       id: "new",
@@ -68,6 +89,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       start_date: startDate,
       end_date: endDate,
       amount: v.amount!,
+      currency_code: currencyCode,
       categories: v.categories ?? [],
       status: "active",
       position: 0,
@@ -91,6 +113,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           startDate: draft.start_date,
           endDate: draft.end_date,
           amount: String(draft.amount),
+          currencyCode,
           categories: draft.categories,
           status: "active",
           position: await nextPosition(orgId, draft.parent_id),
@@ -98,17 +121,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           updatedBy: userId,
         })
         .returning()
+      // Every amount in the trail carries the currency it was in (MC-149), so
+      // the history never re-labels an old limit with today's currency.
       await logAudit({ orgId, entityType: "budget", entityId: row.id, action: "create", actorId: userId, changes: {
         name: { from: null, to: row.name },
-        amount: { from: null, to: Number(row.amount) },
+        amount: auditedAmount(null, Number(row.amount), currencyCode),
         period: { from: null, to: row.period },
         categories: { from: null, to: draft.categories },
       } })
       // A sub-budget's window is its parent's (resolved on read); build the
       // 201 body the same way so it never reports an all-time figure.
       const stored = toRecord(row)
-      const record = parent ? { ...stored, period: parent.period, start_date: parent.start_date, end_date: parent.end_date } : stored
-      const [created] = await withSpend(orgId, [record], today, [...all, record])
+      const record = parent ? inheritFromParent(stored, parent) : stored
+      const [created] = await withSpend(orgId, [record], today, [...all, record], reporting)
       return res.status(201).json(created)
     } catch (err) {
       if (isSiblingNameClash(err)) return res.status(409).json({ error: "name_taken" })

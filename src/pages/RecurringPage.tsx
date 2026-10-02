@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next"
 import { useAuth } from "@clerk/clerk-react"
 import { toast } from "sonner"
 import { ArrowDownRight, ArrowUpRight, ChevronRight, Pause, Pencil, Play, Plus, Repeat, Trash2, TriangleAlert, X } from "lucide-react"
-import { apiDelete, apiGet, apiPatch } from "@/lib/api"
+import { apiDelete, apiErrorMessage, apiGet, apiPatch } from "@/lib/api"
 import { useOrg } from "@/lib/org-context"
 import { useCurrency } from "@/lib/currency-context"
 import { canDeleteRole, canWriteRole } from "@/lib/roles"
@@ -18,6 +18,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { WealthAccountIcon } from "@/components/WealthAccountIcon"
 import { CardChip } from "@/components/cards/CardChip"
 import { RecurringRuleDialog, DeleteRecurringDialog, type RuleForm } from "@/components/recurring/RecurringRuleDialog"
+import { ruleErrorText } from "@/components/recurring/rule-error"
 import { appLocale } from "@/lib/format-date"
 
 export function RecurringPage() {
@@ -133,8 +134,8 @@ export function RecurringPage() {
       if (!token) throw new Error("Not authenticated")
       await apiPatch(`/api/recurring/${rule.id}`, token, { active: next })
       if (next) await load({ silent: true }) // resuming may have materialized
-    } catch {
-      toast.error(t("recurring.saveFailed"))
+    } catch (err) {
+      toast.error(apiErrorMessage(err, t("recurring.saveFailed")))
       await load({ silent: true })
     }
   }
@@ -149,8 +150,8 @@ export function RecurringPage() {
       if (!token) throw new Error("Not authenticated")
       await apiDelete(`/api/recurring/${rule.id}`, token)
       toast.success(t("recurring.deleted"))
-    } catch {
-      toast.error(t("recurring.deleteFailed"))
+    } catch (err) {
+      toast.error(apiErrorMessage(err, t("recurring.deleteFailed")))
       await load({ silent: true })
     }
   }
@@ -166,6 +167,7 @@ export function RecurringPage() {
 
   const renderRule = (rule: RecurringRule) => {
     const ruleCard = cardMap.forTx({ card_id: rule.card_id, wealth_account_id: rule.wealth_account_id })
+    const blocked = ruleErrorText(rule.last_error, t("apiErrors.recurring_failed"))
     return (
     <li
       key={rule.id}
@@ -189,10 +191,10 @@ export function RecurringPage() {
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-center gap-1.5">
           <p className="truncate text-sm font-semibold">{rule.name}</p>
-          {rule.last_error && (
-            <span title={rule.last_error}>
+          {blocked && (
+            <span title={blocked}>
               <TriangleAlert className="size-3.5 shrink-0 text-amber-500" />
-              <span className="sr-only">{rule.last_error}</span>
+              <span className="sr-only">{blocked}</span>
             </span>
           )}
         </div>
@@ -220,7 +222,8 @@ export function RecurringPage() {
       </div>
       <div className="relative flex shrink-0 flex-col items-end gap-1">
         <p className={`text-sm font-bold tabular-nums ${rule.type === "incoming" ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
-          {rule.type === "incoming" ? "+" : "−"}{formatMoney(Number(rule.amount), currency)}
+          {/* In the rule's own currency (its account's), never the workspace's by habit (MC-073). */}
+          {rule.type === "incoming" ? "+" : "−"}{formatMoney(Number(rule.amount), rule.currency_code || rule.account_currency || currency)}
         </p>
         <div className="flex items-center">
           {canWrite && (

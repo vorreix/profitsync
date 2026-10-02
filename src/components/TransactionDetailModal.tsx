@@ -2,11 +2,24 @@ import { useEffect, useState } from "react"
 import { useLocation, useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { useAuth } from "@clerk/clerk-react"
-import { ArrowDownRight, ArrowUpRight, Paperclip, Pencil, Repeat } from "lucide-react"
-import type { Transaction, TransactionAttachment } from "@/lib/types"
-import { apiGet } from "@/lib/api"
-import { accountDisplayName } from "@/lib/wealth"
+import { toast } from "sonner"
+import { ArrowDownRight, ArrowUpRight, Paperclip, Pencil, Repeat, Undo2 } from "lucide-react"
+import type { Transaction, TransactionAttachment, Transfer, WealthAccount } from "@/lib/types"
+import { apiErrorCode, apiErrorMessage, apiGet, apiPost } from "@/lib/api"
+import { accountDisplayName, formatDateLabel, formatMoney } from "@/lib/wealth"
+import { ledgerDescription } from "@/lib/wealth-ledger"
 import { useCardMap } from "@/lib/use-cards"
+import { useApiQuery } from "@/hooks/use-api-query"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { WealthAccountIcon } from "@/components/WealthAccountIcon"
 import { CardChip } from "@/components/cards/CardChip"
 import { AuditHistory } from "@/components/AuditHistory"
@@ -16,10 +29,8 @@ import { SpaceLinkBadge } from "@/components/spaces/SpaceLinkBadge"
 import { TxKindBadge } from "@/components/transactions/TxKindBadge"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { appLocale } from "@/lib/format-date"
 
-const formatDate = (d: string) =>
-  new Date(d).toLocaleDateString(appLocale(), { month: "short", day: "numeric", year: "numeric" })
+const formatDate = (d: string) => formatDateLabel(d)
 
 /**
  * Read-only transaction detail with attachments + audit history. Self-loads its
@@ -56,8 +67,62 @@ export function TransactionDetailModal({
   // The card that paid (by id, or the credit card that IS the row's account).
   const cardMap = useCardMap({ enabled: open })
   const card = tx ? cardMap.forTx(tx) : undefined
-  const fmt = (n: number) =>
-    new Intl.NumberFormat("en-US", { style: "currency", currency, minimumFractionDigits: 2 }).format(n)
+  // The row's OWN currency (its account's), falling back to the caller's.
+  const fmt = (n: number) => formatMoney(n, tx?.currency_code ?? currency)
+
+  // ── Reverse transfer ─────────────────────────────────────────────────────
+  // Reverse is offered only once the leg's logical transfer has been resolved
+  // (through its group_id — every logical transfer owns exactly one group),
+  // even when the row already carries `transfer_id`: the header is what says
+  // whether reversing is still honest. The list leaves trashed transfers out,
+  // so a transfer in the Trash never offers it; the server refuses the rest
+  // (a leg trashed on its own) with `transfer_trashed`.
+  const isTransferLeg = !!tx && tx.kind === "transfer"
+  const lookupPath = open && isTransferLeg && tx.group_id
+    ? `/api/wealth/transfers?status=completed&group_id=${tx.group_id}`
+    : null
+  const lookup = useApiQuery<{ transfers: Transfer[] }>(lookupPath)
+  const knownTransfer = lookup.data?.transfers[0]
+  const transferId = isTransferLeg ? (knownTransfer?.id ?? null) : null
+  // A reversal is itself a completed transfer, but undoing an undo is a new
+  // transfer, not a correction — offer it on originals only (the server
+  // refuses it too: `transfer_is_reversal`).
+  const isReversal = !!knownTransfer?.reverses_transfer_id
+  const alreadyReversed = !!knownTransfer?.reversed_by_transfer_id
+  // A reversal moves money back into BOTH accounts, so an archived one on
+  // either side makes it impossible (the server answers
+  // `transfer_account_unavailable`, MC-133) — don't offer it. Each side is read
+  // by id: that GET is one plain SELECT that also answers for a Space (the list
+  // route hides Spaces, and it materialises money on every call). Reverse waits
+  // for BOTH answers, so it never flashes on and off while they load.
+  const sidePath = (id: string | undefined) => (lookupPath && id ? `/api/wealth/accounts/${id}` : null)
+  const source = useApiQuery<WealthAccount>(sidePath(knownTransfer?.source_account_id))
+  const destination = useApiQuery<WealthAccount>(sidePath(knownTransfer?.destination_account_id))
+  const sidesLive = !!source.data && !!destination.data && !source.data.archived_at && !destination.data.archived_at
+  const canReverse = canDelete && !!transferId && !isReversal && !alreadyReversed && sidesLive && !tx?.is_system
+  const [reverseOpen, setReverseOpen] = useState(false)
+  const [reversing, setReversing] = useState(false)
+
+  async function reverse() {
+    if (!transferId) return
+    setReversing(true)
+    try {
+      const token = await getToken()
+      if (!token) throw new Error("Not authenticated")
+      await apiPost(`/api/wealth/transfers/${transferId}/reverse`, token, {})
+      toast.success(t("transferReversed"))
+      setReverseOpen(false)
+      onClose()
+    } catch (err) {
+      const code = apiErrorCode(err)
+      if (code === "transfer_already_reversed") toast.error(t("transferAlreadyReversed"))
+      else if (code === "transfer_trashed") toast.error(t("transferTrashed"))
+      else if (code === "transfer_is_reversal") toast.error(t("transferIsReversal"))
+      else toast.error(apiErrorMessage(err, t("reverseTransferFailed")))
+    } finally {
+      setReversing(false)
+    }
+  }
 
   const loadAttachments = async (txId: string) => {
     setAttachments([])
@@ -94,7 +159,11 @@ export function TransactionDetailModal({
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
                   <p className={`text-2xl font-bold tabular-nums ${tx.type === "incoming" ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
-                    {tx.type === "incoming" ? "+" : "−"}{fmt(Number(tx.amount))}
+                    {/* A mixed-currency split is converted (≈), and has no
+                        honest total while a leg has no rate (amount null). */}
+                    {tx.amount == null
+                      ? <span className="text-base font-medium text-muted-foreground">{t("amountNoRate")}</span>
+                      : <>{tx.type === "incoming" ? "+" : "−"}{(tx.currency_count ?? 1) > 1 ? "≈" : ""}{fmt(Number(tx.amount))}</>}
                   </p>
                   {tx.recurring_rule_id && (
                     <Badge
@@ -114,6 +183,7 @@ export function TransactionDetailModal({
                   )}
                   <TxKindBadge tx={tx} />
                   <SpaceLinkBadge tx={tx} onNavigate={onClose} />
+                  {alreadyReversed && <Badge variant="outline" className="gap-1"><Undo2 className="size-3" /> {t("transferReversedBadge")}</Badge>}
                 </div>
                 <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
                   <div>
@@ -158,7 +228,7 @@ export function TransactionDetailModal({
                 {tx.description && (
                   <div>
                     <p className="text-xs text-muted-foreground">{t("description")}</p>
-                    <p className="whitespace-pre-wrap break-words text-sm">{tx.description}</p>
+                    <p className="whitespace-pre-wrap break-words text-sm">{ledgerDescription(tx, t)}</p>
                   </div>
                 )}
                 <div className="space-y-1.5 border-t pt-3">
@@ -172,7 +242,7 @@ export function TransactionDetailModal({
                       className="flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-left"
                       onClick={() => setViewAttachment({
                         id: att.id, source: "transaction", source_id: tx.id,
-                        source_label: tx.description?.trim() || (tx.type === "incoming" ? t("income") : t("expense")),
+                        source_label: ledgerDescription(tx, t).trim() || (tx.type === "incoming" ? t("income") : t("expense")),
                         file_name: att.file_name, file_type: att.file_type, file_size: att.file_size,
                         created_at: att.created_at, display_name: att.display_name, tags: att.tags, category: att.category,
                       })}
@@ -188,7 +258,15 @@ export function TransactionDetailModal({
                 </div>
               </div>
               <DialogFooter>
-                {canEdit && onEdit && !tx.is_system && (
+                {canReverse && (
+                  <Button variant="outline" onClick={() => setReverseOpen(true)}>
+                    <Undo2 className="size-3.5" /> {t("reverseTransfer")}
+                  </Button>
+                )}
+                {/* A transfer leg is corrected by reversing the transfer, never
+                    row by row: the edit sheet re-sends kind/amount/date, which
+                    the server refuses for a leg (MC-064). */}
+                {canEdit && onEdit && !tx.is_system && tx.kind !== "transfer" && (
                   <Button variant="outline" onClick={() => onEdit(tx)}>
                     <Pencil className="size-3.5" /> {t("edit")}
                   </Button>
@@ -199,6 +277,21 @@ export function TransactionDetailModal({
           )}
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={reverseOpen} onOpenChange={(o) => { if (!reversing) setReverseOpen(o) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("reverseTransferTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>{t("reverseTransferDesc")}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={reversing}>{t("cancel")}</AlertDialogCancel>
+            <AlertDialogAction onClick={(e) => { e.preventDefault(); void reverse() }} disabled={reversing}>
+              {reversing ? t("reversing") : t("reverseTransfer")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AttachmentDetailModal
         item={viewAttachment}

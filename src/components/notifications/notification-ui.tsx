@@ -4,6 +4,7 @@ import type { TFunction } from "i18next"
 import i18n from "@/lib/i18n"
 import type { AppNotification } from "@/lib/types"
 import { notificationRenderKeys, type NotificationCategory, type NotificationKeyKind } from "@/lib/notifications"
+import { formatMoney } from "@/lib/wealth"
 import { MoneyBag } from "@/components/icons/MoneyBag"
 
 // Category → icon + tone, used by the bell dropdown and the history page so a
@@ -93,6 +94,17 @@ export function notificationBody(n: AppNotification, t: TFunction): string {
     // the reader's language rather than splicing English into every locale.
     if (typeof params.period === "string" && ["daily", "weekly", "monthly", "yearly", "once", "lifetime"].includes(params.period)) {
       params.period = t(`budget.${params.period}`, { ns: "translation", defaultValue: params.period })
+    }
+    // Budget and card alerts store their figures pre-formatted in English for
+    // push and mail, with the raw numbers beside them; the bell re-formats each
+    // in the BUDGET's / CARD's own currency with the shared formatter, so the
+    // figures read like every other amount (MC-151, MC-086).
+    const d = (n.data ?? {}) as Record<string, unknown>
+    if (typeof d.currency === "string") {
+      for (const key of ["spent", "amount", "available"]) {
+        const raw = d[key]
+        if (key in params && typeof raw === "number") params[key] = formatMoney(raw, d.currency)
+      }
     }
     const translated = t(bodyKey, { ns: "notifications", defaultValue: n.body, ...params })
     if (typeof translated === "string" && translated) return translated

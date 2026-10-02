@@ -25,6 +25,12 @@ let orgIdForApi = ""
 // spec sees — it is what turned off /clients and broke smoke's "create a client".
 let restoreOrgId = ""
 
+// The bank's name also appears behind the dialog (recent rows of a card issued
+// by it, for one), so a page-wide text match can land on a row the open picker
+// covers and the click never arrives. Search the open picker only.
+const inPicker = (page: Page, name: string) =>
+  page.locator("[data-radix-popper-content-wrapper]").getByText(name, { exact: false }).first()
+
 const RULE_NAME = `${E2E_PREFIX}-from-recurring`
 const DEBT_NAME = `${E2E_PREFIX}-inline-debt`
 
@@ -72,7 +78,8 @@ async function cleanup(page: Page) {
     await api(page, "DELETE", `/api/recurring/${r.id}`)
   }
   const o = await overview(page)
-  for (const d of [...o.debts, ...o.receivables, ...(o.closed ?? [])].filter((x) => x.name.startsWith(E2E_PREFIX))) {
+  // Open debts only — see the note in debts.spec.ts cleanup().
+  for (const d of [...o.debts, ...o.receivables].filter((x) => x.name.startsWith(E2E_PREFIX))) {
     const { json } = await api<{ data: TxRow[] }>(page, "GET", `/api/transactions?wealthAccountId=${d.id}&page=1`)
     if (json?.data?.length) await api(page, "POST", "/api/transactions/bulk-delete", { ids: json.data.map((t) => t.id) })
     await api(page, "POST", "/api/trash/clear")
@@ -128,7 +135,7 @@ test("a new recurring payment can create the debt it pays, in one save", async (
   // payer can actually service a debt, so this has to come first.
   await dialog.getByRole("combobox").filter({ hasText: /no account|bank|cash/i }).first().click()
   await page.getByRole("option", { name: new RegExp(bank.nickname || bank.bank_name, "i") }).first()
-    .or(page.getByText(bank.nickname || bank.bank_name, { exact: false }).first())
+    .or(inPicker(page, bank.nickname || bank.bank_name))
     .click()
   await expect(dialog.getByText(new RegExp(bank.nickname || bank.bank_name, "i")).first()).toBeVisible()
 
@@ -196,7 +203,7 @@ test("an unnameable rhythm survives the round trip", async ({ page }) => {
   await page.getByRole("option", { name: /^years?$/i }).click()
 
   await dialog.getByRole("combobox").filter({ hasText: /no account|bank|cash/i }).first().click()
-  await page.getByText(bank.nickname || bank.bank_name, { exact: false }).first().click()
+  await inPicker(page, bank.nickname || bank.bank_name).click()
 
   await dialog.locator("#rec-debt").click()
   await page.getByRole("option", { name: /create a new one/i }).click()
@@ -236,7 +243,7 @@ test("the reported shape: starts today, monthly, straight from a bank", async ({
   await dialog.locator("#rec-start").fill(today)
 
   await dialog.getByRole("combobox").filter({ hasText: /no account|bank|cash/i }).first().click()
-  await page.getByText(bank.nickname || bank.bank_name, { exact: false }).first().click()
+  await inPicker(page, bank.nickname || bank.bank_name).click()
 
   await dialog.locator("#rec-debt").click()
   await page.getByRole("option", { name: /create a new one/i }).click()
@@ -270,7 +277,7 @@ test("the debt answer survives the page revalidating underneath the open dialog"
   await dialog.locator("#rec-amount").fill("100")
   await dialog.locator("#rec-start").fill("2028-05-01")
   await dialog.getByRole("combobox").filter({ hasText: /no account|bank|cash/i }).first().click()
-  await page.getByText(bank.nickname || bank.bank_name, { exact: false }).first().click()
+  await inPicker(page, bank.nickname || bank.bank_name).click()
   await dialog.locator("#rec-debt").click()
   await page.getByRole("option", { name: /create a new one/i }).click()
   await dialog.locator("#rec-debt-name").fill(DEBT_NAME)
@@ -302,7 +309,7 @@ test("a category is required for an ordinary payment, and not asked for a repaym
   await dialog.locator("#rec-amount").fill("40")
   await dialog.locator("#rec-start").fill("2028-06-01")
   await dialog.getByRole("combobox").filter({ hasText: /no account|bank|cash/i }).first().click()
-  await page.getByText(bank.nickname || bank.bank_name, { exact: false }).first().click()
+  await inPicker(page, bank.nickname || bank.bank_name).click()
 
   // No category → refused, and the dialog stays open with everything intact.
   await dialog.getByRole("button", { name: /add recurring|save/i }).last().click()

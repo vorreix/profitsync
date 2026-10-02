@@ -44,6 +44,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         id: transactions.id,
         description: transactions.description,
         amount: transactions.amount,
+        // The row's own currency: a ₹ opening balance in a € workspace is
+        // ₹20,000, never "€20,000" (MC-050).
+        currencyCode: transactions.currencyCode,
         type: transactions.type,
         date: transactions.date,
         category: transactions.category,

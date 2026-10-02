@@ -41,6 +41,8 @@ interface QuotationRowLike {
   email?: string | null
   phone?: string | null
   amount?: string | null
+  /** The quote's own currency (mig 0077); NULL only on legacy rows. */
+  currencyCode?: string | null
   date?: string | null
   status?: string | null
   notes?: string | null
@@ -76,9 +78,14 @@ export function quotationReference(id: string): string {
   return "Q-" + id.replace(/-/g, "").slice(0, 8).toUpperCase()
 }
 
-/** Build the render snapshot from a quotation row + its org. */
+/**
+ * Build the render snapshot from a quotation row + its org. The amount is in
+ * the QUOTE's currency — the org's only for a legacy row without one — so a
+ * later workspace currency change neither marks a sent PDF stale nor reprints
+ * it under another currency.
+ */
 export function buildQuotationSnapshot(q: QuotationRowLike, org: OrgLike | undefined): QuotationPdfSnapshot {
-  const currency = (org?.currency || "USD").toUpperCase()
+  const currency = (q.currencyCode || org?.currency || "USD").toUpperCase()
   const amount = String(q.amount ?? "0")
   const updated = q.updatedAt ? new Date(q.updatedAt) : null
   return {

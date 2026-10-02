@@ -4,26 +4,25 @@ import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { ArrowDownToLine, ArrowUpFromLine, ChevronRight, Crown, Pencil, Plus, Target, Trash2, TrendingUp } from "lucide-react"
-import { apiDelete, apiErrorMessage, apiGet, apiPatch } from "@/lib/api"
+import { apiErrorMessage, apiGet, apiPatch } from "@/lib/api"
 import { useOrg } from "@/lib/org-context"
 import { useCurrency } from "@/lib/currency-context"
-import { canWriteRole } from "@/lib/roles"
+import { canDeleteRole, canWriteRole } from "@/lib/roles"
 import type { WealthAccount } from "@/lib/types"
 import { accountAppearance } from "@/lib/account-color"
 import { cn } from "@/lib/utils"
-import { formatMoney } from "@/lib/wealth"
+import { accountCurrency, formatMoney } from "@/lib/wealth"
 import { spaceGoalStatus, spaceProgress } from "@/lib/spaces"
 import { spaceIconFor } from "@/components/wealth/space-icons"
 import "@/components/wealth/account-color.css"
 import { SpaceTransferModal } from "@/components/spaces/SpaceTransferModal"
 import { SpaceFormModal } from "@/components/spaces/SpaceFormModal"
+import { DeleteSpaceDialog } from "@/components/spaces/DeleteSpaceDialog"
+import { spacesByCurrency, spacesSavedHeadline } from "@/components/spaces/spaces-total"
+import { useConsolidatedWealth } from "@/components/wealth/use-consolidated-wealth"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
 
 type SpacesQuota = { plan_key: string; spaces: { current: number; limit: number } }
 
@@ -35,6 +34,7 @@ export function SpacesPage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const canWrite = canWriteRole(activeOrg?.role)
+  const canDelete = canDeleteRole(activeOrg?.role)
 
   const [spaces, setSpaces] = useState<WealthAccount[]>([])
   const [accounts, setAccounts] = useState<WealthAccount[]>([]) // spendable (bank/cash) — fund/withdraw endpoints
@@ -81,7 +81,10 @@ export function SpacesPage() {
 
   const active = useMemo(() => spaces.filter((s) => !s.archived_at), [spaces])
   const archived = useMemo(() => spaces.filter((s) => s.archived_at), [spaces])
-  const totalSaved = useMemo(() => active.reduce((sum, s) => sum + Number(s.current_balance), 0), [active])
+  // Spaces in several currencies are totalled through the consolidated summary
+  // (fetched only then — a one-currency workspace makes no extra request).
+  const multiCurrency = useMemo(() => spacesByCurrency(active, currency).length > 1, [active, currency])
+  const { summary } = useConsolidatedWealth(multiCurrency)
   const atLimit = quota != null && quota.spaces.current >= quota.spaces.limit
 
   async function handleRestore(space: WealthAccount) {
@@ -118,21 +121,13 @@ export function SpacesPage() {
     }
   }
 
-  async function handleDelete() {
-    if (!deleting) return
-    const space = deleting
+  // The dialog moved any money out and deleted the Space (a Space holding money
+  // used to go straight to DELETE here, which the server refuses).
+  function onDeleted(space: WealthAccount) {
     setDeleting(null)
-    try {
-      const token = await getToken()
-      if (!token) throw new Error("auth")
-      await apiDelete(`/api/spaces/${space.id}`, token)
-      setSpaces((prev) => prev.filter((s) => s.id !== space.id))
-      setQuota((q) => (q ? { ...q, spaces: { ...q.spaces, current: Math.max(0, q.spaces.current - 1) } } : q))
-      toast.success(t("deleted"))
-    } catch (err) {
-      toast.error(apiErrorMessage(err, t("deleteFailed")))
-      void load({ silent: true })
-    }
+    setSpaces((prev) => prev.filter((s) => s.id !== space.id))
+    setQuota((q) => (q ? { ...q, spaces: { ...q.spaces, current: Math.max(0, q.spaces.current - 1) } } : q))
+    void load({ silent: true })
   }
 
   if (loading) {
@@ -167,7 +162,7 @@ export function SpacesPage() {
       {active.length > 0 && (
         <div className="rounded-2xl border bg-gradient-to-br from-emerald-500/10 to-transparent p-4 sm:p-5">
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("totalSaved")}</p>
-          <p className="mt-1 text-3xl font-bold tabular-nums sm:text-4xl">{formatMoney(totalSaved, currency)}</p>
+          <p className="mt-1 text-3xl font-bold tabular-nums sm:text-4xl">{spacesSavedHeadline(active, currency, summary)}</p>
           <p className="mt-1 text-xs text-muted-foreground">{t("savedAcross", { count: active.length })}</p>
         </div>
       )}
@@ -190,13 +185,13 @@ export function SpacesPage() {
             <SpaceCard
               key={space.id}
               space={space}
-              currency={currency}
+              currency={accountCurrency(space, currency)}
               canWrite={canWrite}
               onOpen={() => navigate(`/spaces/${space.id}`)}
               onFund={() => setTransfer({ space, mode: "fund" })}
               onWithdraw={() => setTransfer({ space, mode: "withdraw" })}
               onEdit={() => openEdit(space)}
-              onDelete={() => setDeleting(space)}
+              onDelete={canDelete ? () => setDeleting(space) : undefined}
             />
           ))}
         </ul>
@@ -237,19 +232,8 @@ export function SpacesPage() {
         onDone={() => { setTransfer(null); void load({ silent: true }) }}
       />
 
-      {/* Delete confirm */}
-      <AlertDialog open={deleting !== null} onOpenChange={(o) => { if (!o) setDeleting(null) }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t("deleteTitle")}</AlertDialogTitle>
-            <AlertDialogDescription>{t("deleteBody", { name: deleting?.nickname ?? "" })}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
-            <AlertDialogAction variant="destructive" onClick={handleDelete}>{t("delete")}</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {/* Delete (moves any money out first) */}
+      <DeleteSpaceDialog space={deleting} accounts={accounts} currency={currency} onClose={() => setDeleting(null)} onDeleted={onDeleted} />
 
       {/* Upgrade dialog (free plan at the Space limit) */}
       <Dialog open={upgradeOpen} onOpenChange={setUpgradeOpen}>
@@ -274,13 +258,15 @@ function SpaceCard({
   space, currency, canWrite, onOpen, onFund, onWithdraw, onEdit, onDelete,
 }: {
   space: WealthAccount
+  /** The Space's OWN currency — every figure on the card is in it. */
   currency: string
   canWrite: boolean
   onOpen: () => void
   onFund: () => void
   onWithdraw: () => void
   onEdit: () => void
-  onDelete: () => void
+  /** Absent when the viewer may not delete (the server would answer 403). */
+  onDelete?: () => void
 }) {
   const { t } = useTranslation("spaces")
   const Icon = spaceIconFor(space.icon)
@@ -388,15 +374,17 @@ function SpaceCard({
           >
             <Pencil className="size-4" />
           </Button>
-          <Button
-            size="icon"
-            variant="ghost"
-            className={cn("size-9 shrink-0", onColor ? cn(inkSoft, "hover:bg-white/15 hover:text-white") : "text-muted-foreground hover:text-destructive")}
-            aria-label={t("delete")}
-            onClick={onDelete}
-          >
-            <Trash2 className="size-4" />
-          </Button>
+          {onDelete && (
+            <Button
+              size="icon"
+              variant="ghost"
+              className={cn("size-9 shrink-0", onColor ? cn(inkSoft, "hover:bg-white/15 hover:text-white") : "text-muted-foreground hover:text-destructive")}
+              aria-label={t("delete")}
+              onClick={onDelete}
+            >
+              <Trash2 className="size-4" />
+            </Button>
+          )}
         </div>
       )}
     </li>

@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { BudgetIndicator } from "@/components/budget/BudgetIndicator"
 import { BudgetDialog } from "@/components/budget/BudgetDialog"
+import { FxExcludedNotice } from "@/components/FxExcludedNotice"
 
 /**
  * The OWN company's expense budget, shown on the business dashboard — the
@@ -95,7 +96,11 @@ export function BusinessBudgetCard({
               <Skeleton className="h-1.5 w-full" />
             </div>
           ) : budget ? (
-            <BudgetIndicator amount={budget.amount} spent={budget.spent ?? 0} period={budget.period} currency={currency} />
+            <>
+              <BudgetIndicator amount={budget.amount} spent={budget.spent ?? 0} period={budget.period} currency={budget.currency ?? currency} />
+              {/* Partial spend is never shown as the whole figure (MC-083). */}
+              <FxExcludedNotice count={budget.excluded_count} className="mt-1.5" />
+            </>
           ) : (
             <p className="text-xs text-muted-foreground">{t("budget.noBudget")}</p>
           )}
@@ -107,7 +112,7 @@ export function BusinessBudgetCard({
         clientId={clientId}
         label={clientName}
         current={budget}
-        prefill={defaultBudget ? { amount: defaultBudget.amount, period: defaultBudget.period } : null}
+        prefill={defaultBudget ? { amount: defaultBudget.amount, period: defaultBudget.period, currency: defaultBudget.currency } : null}
         onSaved={() => { void load() }}
       />
     </Card>

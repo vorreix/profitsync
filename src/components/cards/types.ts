@@ -88,6 +88,9 @@ export function accountFromCard(card: Card): WealthAccount {
     type: card.account_type ?? (card.kind === "credit" ? "credit_card" : "bank"),
     bank_name: card.account_bank_name ?? "",
     nickname: card.account_nickname ?? "",
+    // The card's native currency, so a sheet opened from this rebuilt row
+    // (PayCardSheet when the account GET failed) never assumes the workspace's.
+    currency_code: card.account_currency_code ?? null,
     opening_balance: 0,
     current_balance: Number(card.account_current_balance ?? 0),
     icon: card.kind === "credit" ? "card" : "bank",

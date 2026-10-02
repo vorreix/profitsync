@@ -7,7 +7,8 @@ import { useCurrency } from "@/lib/currency-context"
 import { formatMoney } from "@/lib/wealth"
 import { budgetState } from "@/lib/budget"
 import type { SpendingBudget, SpendingBudgetAnalytics, SpendingViewWindow } from "@/lib/types"
-import { budgetName, fmtDay } from "@/components/budget/budget-format"
+import { budgetCurrency, budgetName, fmtDay, moneyTooltip } from "@/components/budget/budget-format"
+import { FxExcludedMarker, FxExcludedNotice } from "@/components/FxExcludedNotice"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
@@ -38,23 +39,46 @@ export function BudgetAnalyticsPanel({
   onBudgetCategory?: (category: string) => void
 }) {
   const { t, i18n } = useTranslation()
-  const { currency } = useCurrency()
-  const money = (n: number) => formatMoney(n, currency)
+  const { currency: fallback } = useCurrency()
   const [back, setBack] = useState(6)
   const [focus, setFocus] = useState<string>("overall")
 
   const { data, loading } = useApiQuery<SpendingBudgetAnalytics>(`/api/spending-budgets/analytics?view=${view}&back=${back}`)
+  // Each figure is labelled with the currency it is IN (MC-085): the totals in
+  // the reporting currency, the headline + adherence in the overall budget's,
+  // and a budget's own line in its own.
+  const reporting = data?.currency || fallback
+  const headlineCurrency = data?.headline_currency || reporting
+  const money = (n: number, cur: string = reporting) => formatMoney(n, cur)
   const reduced = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
 
   const overall = budgets.find((b) => b.is_overall && b.status === "active") ?? null
   const lines = budgets.filter((b) => !b.parent_id && !b.is_overall && b.status === "active" && b.period !== "once")
-  const focusable = [...(overall ? [{ id: "overall", name: t("budgets.overall") }] : []), ...lines.map((b) => ({ id: b.id, name: budgetName(t, b) }))]
+  // Every budget in the reporting currency: the 'overall' bars are ALL spending,
+  // exactly as before, and the fold only decides the verdict. Once a budget is
+  // kept in another currency the bars are the headline instead, so a cap is
+  // never coloured against spend it does not cover (MC-085).
+  const singleCurrency = headlineCurrency === reporting && lines.every((b) => budgetCurrency(b, reporting) === reporting)
+  // Without an overall budget the 'overall' series is all spending — offered
+  // under that name, and only while it is one currency's worth of it.
+  const overallName = overall ? t("budgets.overall") : singleCurrency ? t("budgets.allSpending") : null
+  const focusable = [...(overallName ? [{ id: "overall", name: overallName }] : []), ...lines.map((b) => ({ id: b.id, name: budgetName(t, b) }))]
+  // The select can only ever show what is plotted.
+  const active = focusable.some((f) => f.id === focus) ? focus : (focusable[0]?.id ?? "overall")
 
   const series = useMemo(() => {
     if (!data) return []
     return data.windows.map((w) => {
-      const spent = focus === "overall" ? w.total : (w.per_budget[focus] ?? 0)
-      const limit = focus === "overall" ? (w.overall_limit ?? (w.budgeted_limit > 0 ? w.budgeted_limit : null)) : (w.per_budget_limit[focus] ?? null)
+      // The overall series: in a one-currency workspace all spending against
+      // the headline cap, as it always was; otherwise the window's HEADLINE —
+      // the overall budget's own spend against its own cap, or the
+      // same-currency category budgets against their caps — never a reporting
+      // total against a cap in another currency. (A body cached before
+      // `headline` existed falls back.)
+      const head = w.headline ?? { spent: w.total, limit: w.overall_limit ?? (w.budgeted_limit > 0 ? w.budgeted_limit : null), excluded: 0 }
+      const spent = active === "overall" ? (singleCurrency ? w.total : head.spent) : (w.per_budget[active] ?? 0)
+      const limit = active === "overall" ? head.limit : (w.per_budget_limit[active] ?? null)
+      const excluded = active === "overall" ? (singleCurrency ? (w.excluded_count ?? 0) : head.excluded) : (w.per_budget_excluded?.[active] ?? 0)
       return {
         start: w.start,
         label: fmtDay(w.start, i18n.language, view === "yearly" ? { year: "numeric" } : view === "monthly" ? { month: "short" } : { day: "numeric", month: "short" }),
@@ -62,10 +86,11 @@ export function BudgetAnalyticsPanel({
         limit,
         partial: w.partial,
         reliable: w.reliable,
+        excluded,
         state: (limit && limit > 0 ? budgetState(spent, limit).state : "none") as keyof typeof BAR,
       }
     })
-  }, [data, focus, i18n.language, view])
+  }, [data, active, singleCurrency, i18n.language, view])
 
   const chartConfig: ChartConfig = {
     spent: { label: t("budgetsPage.spent") },
@@ -82,6 +107,7 @@ export function BudgetAnalyticsPanel({
   }
 
   const current = data.windows[data.windows.length - 1]
+  const focusCurrency = active === "overall" ? headlineCurrency : budgetCurrency(lines.find((b) => b.id === active) ?? { amount: 0 }, reporting)
   const unclaimed = data.categories.filter((c) => c.budget_id === null && c.spent > 0)
   const a = data.adherence
 
@@ -94,7 +120,7 @@ export function BudgetAnalyticsPanel({
             <h2 className="text-sm font-semibold">{t("budgets.analytics.trend")}</h2>
             <div className="flex flex-wrap items-center gap-2">
               {focusable.length > 1 && (
-                <NativeSelect value={focus} onChange={(e) => setFocus(e.target.value)} className="h-11 w-auto text-xs sm:h-9" aria-label={t("budgets.analytics.focus")}>
+                <NativeSelect value={active} onChange={(e) => setFocus(e.target.value)} className="h-11 w-auto text-xs sm:h-9" aria-label={t("budgets.analytics.focus")}>
                   {focusable.map((f) => (
                     <NativeSelectOption key={f.id} value={f.id}>
                       {f.name}
@@ -118,7 +144,7 @@ export function BudgetAnalyticsPanel({
                   <CartesianGrid vertical={false} strokeDasharray="3 3" />
                   <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={6} fontSize={11} />
                   <YAxis hide />
-                  <ChartTooltip content={<ChartTooltipContent />} />
+                  <ChartTooltip content={<ChartTooltipContent formatter={moneyTooltip(chartConfig, (n) => money(n, focusCurrency))} />} />
                   <Bar dataKey="spent" radius={4} isAnimationActive={!reduced}>
                     {series.map((p) => (
                       <Cell key={p.start} fill={BAR[p.state]} fillOpacity={p.partial ? 0.45 : p.reliable ? 1 : 0.6} />
@@ -131,6 +157,9 @@ export function BudgetAnalyticsPanel({
                 <Info className="mt-0.5 size-3 shrink-0" aria-hidden />
                 {t("budgets.analytics.trendNote")}
               </p>
+              {/* A window that left rows out is drawn but never judged (MC-082/083). */}
+              <FxExcludedNotice count={series.reduce((n, p) => n + p.excluded, 0)} />
+              {focusCurrency !== reporting && <p className="text-[11px] text-muted-foreground">{t("budgets.analytics.amountsIn", { currency: focusCurrency })}</p>}
             </>
           ) : (
             <p className="py-8 text-center text-xs text-muted-foreground">{t("budgets.analytics.notEnough")}</p>
@@ -145,6 +174,7 @@ export function BudgetAnalyticsPanel({
           <p className="mt-0.5 text-xs text-muted-foreground">
             {t("budgets.analytics.unclaimedTotal", { amount: money(current?.unclaimed ?? 0) })}
           </p>
+          <FxExcludedNotice count={current?.excluded_count} className="mt-1" />
           {unclaimed.length === 0 ? (
             <p className="mt-3 text-xs text-muted-foreground">{t("budgets.analytics.allClaimed")}</p>
           ) : (
@@ -192,7 +222,7 @@ export function BudgetAnalyticsPanel({
                 <Tile label={t("budgets.analytics.streak")} value={String(a.streak)} />
                 <Tile
                   label={t("budgets.analytics.avgDelta")}
-                  value={`${a.avg_delta > 0 ? "+" : ""}${money(a.avg_delta)}`}
+                  value={`${a.avg_delta > 0 ? "+" : ""}${money(a.avg_delta, headlineCurrency)}`}
                   tone={a.avg_delta > 0 ? "bad" : "good"}
                   icon={a.avg_delta > 0 ? <TrendingUp className="size-3.5" /> : <TrendingDown className="size-3.5" />}
                 />
@@ -213,18 +243,22 @@ export function BudgetAnalyticsPanel({
                 .map((b) => {
                   const spent = current.per_budget[b.id] ?? 0
                   const limit = current.per_budget_limit[b.id] ?? 0
-                  return { b, spent, limit, ratio: limit > 0 ? spent / limit : 0 }
+                  return { b, spent, limit, ratio: limit > 0 ? spent / limit : 0, excluded: current.per_budget_excluded?.[b.id] ?? 0 }
                 })
                 .sort((x, y) => y.ratio - x.ratio)
-                .map(({ b, spent, limit }) => {
+                .map(({ b, spent, limit, excluded }) => {
+                  const cur = budgetCurrency(b, reporting)
                   const st = limit > 0 ? budgetState(spent, limit).state : "none"
                   const pct = limit > 0 ? Math.min(100, (spent / limit) * 100) : 0
                   return (
                     <li key={b.id}>
                       <div className="flex items-center justify-between gap-2 text-xs">
-                        <span className="truncate font-medium">{budgetName(t, b)}</span>
+                        <span className="flex min-w-0 items-center gap-1">
+                          <span className="truncate font-medium">{budgetName(t, b)}</span>
+                          <FxExcludedMarker count={excluded} />
+                        </span>
                         <span className="shrink-0 tabular-nums text-muted-foreground">
-                          {t("budgets.spentOf", { spent: money(spent), amount: money(limit) })}
+                          {t("budgets.spentOf", { spent: money(spent, cur), amount: money(limit, cur) })}
                         </span>
                       </div>
                       <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-muted">

@@ -5,7 +5,7 @@ import { useApiQuery } from "@/hooks/use-api-query"
 import { useCurrency } from "@/lib/currency-context"
 import { useOrg } from "@/lib/org-context"
 import { canWriteRole } from "@/lib/roles"
-import { formatByCurrency, formatLongDate, formatMonthYear } from "@/lib/debt-format"
+import { formatByCurrency, formatColumn, formatLongDate, formatMonthYear } from "@/lib/debt-format"
 import { formatMoney, useBalancePrivacy } from "@/lib/wealth"
 import type { DebtsOverview } from "@/lib/types"
 import { cn } from "@/lib/utils"
@@ -22,9 +22,10 @@ import { Skeleton } from "@/components/ui/skeleton"
  * Nothing is re-derived on the client, which is what keeps the card and the hub
  * from ever disagreeing.
  *
- * MONEY IS NEVER SUMMED ACROSS CURRENCIES. `owed_by_currency` is a list, and
- * the next payment carries its own currency; `formatByCurrency` joins them
- * rather than adding euros to rupees.
+ * MONEY IS NEVER SUMMED ACROSS CURRENCIES. `owed_by_currency`, this month's
+ * `month_by_currency` and `total_repaid_by_currency` are lists, and the next
+ * payment carries its own currency; `formatByCurrency` joins them rather than
+ * adding euros to rupees.
  *
  * THREE STATES, not two. Nothing tracked at all is a one-line invitation for
  * someone who can add a debt, and nothing at all for someone who cannot —
@@ -41,7 +42,9 @@ export function DebtsCard({ className = "" }: { className?: string }) {
   const canWrite = canWriteRole(activeOrg?.role)
   const { balancesVisible } = useBalancePrivacy()
   const { data, loading } = useApiQuery<DebtsOverview>("/api/debts")
-  const money = (n: number, c?: string) => formatMoney(n, c ?? currency, balancesVisible)
+  // A zero is labelled in the overview's own currency, not the context's.
+  const hubCurrency = data?.currency ?? currency
+  const money = (n: number, c?: string) => formatMoney(n, c ?? hubCurrency, balancesVisible)
 
   if (loading) {
     return (
@@ -100,7 +103,7 @@ export function DebtsCard({ className = "" }: { className?: string }) {
       title={t("debts.title")}
       count={open.length}
       // Cleared, but with history: what was repaid is the number that matters.
-      headline={clear ? money(s.total_repaid) : owed}
+      headline={clear ? formatByCurrency(s.total_repaid_by_currency, balancesVisible) || money(0) : owed}
       headlineClass={clear ? "text-emerald-600 dark:text-emerald-400" : undefined}
       subline={clear ? t("debts.totalRepaidLifetime") : s.debt_free_date ? formatMonthYear(s.debt_free_date) : undefined}
       storageKey={`ps_dash_debts_open_${activeOrg?.id ?? ""}`}
@@ -108,11 +111,11 @@ export function DebtsCard({ className = "" }: { className?: string }) {
     >
       {!clear && (
         <div className="grid grid-cols-2 gap-2">
-          <Tile label={t("debts.stillToPay")} value={money(s.month.remaining)} />
+          <Tile label={t("debts.stillToPay")} value={formatColumn(s.month_by_currency, "remaining", hubCurrency, balancesVisible)} />
           {s.overdue_count > 0 ? (
-            <Tile label={t("debts.overdue")} value={money(s.month.overdue)} tone="warn" />
+            <Tile label={t("debts.overdue")} value={formatColumn(s.month_by_currency, "overdue", hubCurrency, balancesVisible)} tone="warn" />
           ) : (
-            <Tile label={t("debts.alreadyPaid")} value={money(s.month.paid)} tone="good" />
+            <Tile label={t("debts.alreadyPaid")} value={formatColumn(s.month_by_currency, "paid", hubCurrency, balancesVisible)} tone="good" />
           )}
         </div>
       )}
@@ -147,8 +150,9 @@ function Tile({ label, value, tone }: { label: string; value: string; tone?: "go
   return (
     <div className="min-w-0 rounded-xl border p-2.5">
       <p className="truncate text-[11px] text-muted-foreground">{label}</p>
+      {/* Wraps: a per-currency figure must show every currency (MC-144). */}
       <p className={cn(
-        "mt-0.5 truncate text-sm font-semibold tabular-nums",
+        "mt-0.5 break-words text-sm font-semibold tabular-nums",
         tone === "good" && "text-emerald-600 dark:text-emerald-400",
         tone === "warn" && "text-amber-600 dark:text-amber-400",
       )}>{value}</p>

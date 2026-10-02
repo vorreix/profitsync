@@ -7,7 +7,10 @@ import { ArrowDownRight, ArrowUpRight, ChevronLeft, ChevronRight, ExternalLink, 
 import { apiGet } from "@/lib/api"
 import { useDataRefresh } from "@/lib/data-refresh-context"
 import { useCurrency } from "@/lib/currency-context"
-import { formatMoney } from "@/lib/wealth"
+import { formatMoney, formatMoneyCompact } from "@/lib/wealth"
+import { ledgerDescription } from "@/lib/wealth-ledger"
+import { reportingCurrencyOf, rowCurrency } from "@/lib/reporting-fields"
+import { FxExcludedMarker, FxExcludedNotice } from "@/components/FxExcludedNotice"
 import { cn } from "@/lib/utils"
 import { useCardMap } from "@/lib/use-cards"
 import { CardChip } from "@/components/cards/CardChip"
@@ -17,27 +20,19 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 
-type DayAgg = { date: string; incoming: number; outgoing: number; count: number }
-type CalendarResponse = { days: DayAgg[]; summary: { incoming: number; outgoing: number; count: number } }
+// Figures are in `currency` (the workspace's reporting currency), each row
+// converted at its own date; `excluded_count` is what had no rate that day.
+type DayAgg = { date: string; incoming: number; outgoing: number; count: number; excluded_count?: number }
+type CalendarResponse = {
+  days: DayAgg[]
+  summary: { incoming: number; outgoing: number; count: number; excluded_count?: number }
+  currency?: string
+  excluded_count?: number
+}
 type Granularity = "month" | "week" | "day"
 
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
 const parseIso = (s: string) => new Date(`${s}T00:00:00`)
-
-// Compact money for the tiny day-cell figures ("€1.2K", "€87"). Full values
-// live in the cell tooltip and the drill-down modal.
-function compactMoney(amount: number, currency: string): string {
-  try {
-    return new Intl.NumberFormat(undefined, {
-      style: "currency",
-      currency,
-      notation: "compact",
-      maximumFractionDigits: 1,
-    }).format(amount)
-  } catch {
-    return String(Math.round(amount))
-  }
-}
 
 /** The Monday of the week containing `d` (ISO weeks). */
 function startOfWeek(d: Date): Date {
@@ -56,7 +51,7 @@ export function CalendarPage() {
   const { t, i18n } = useTranslation()
   const navigate = useNavigate()
   const { getToken } = useAuth()
-  const { currency } = useCurrency()
+  const { currency: orgCurrency } = useCurrency()
   // Card chips on the day's transaction rows.
   const cardMap = useCardMap()
   const { revision } = useDataRefresh()
@@ -65,6 +60,9 @@ export function CalendarPage() {
   // The anchor date the current view is centered on.
   const [anchor, setAnchor] = useState(() => new Date())
   const [data, setData] = useState<CalendarResponse | null>(null)
+  // Aggregates are in the currency the server converted them into; a listed
+  // transaction row stays in its own (rowCurrency).
+  const currency = reportingCurrencyOf(data, orgCurrency)
   const [loading, setLoading] = useState(true)
   // Drill-down modal: the [from, to] range being inspected.
   const [inspect, setInspect] = useState<{ from: string; to: string; label: string } | null>(null)
@@ -77,13 +75,15 @@ export function CalendarPage() {
     let incoming = 0
     let outgoing = 0
     let count = 0
+    let excluded = 0
     for (const d of data.days) {
       if (d.date < inspect.from || d.date > inspect.to) continue
       incoming += d.incoming
       outgoing += d.outgoing
       count += d.count
+      excluded += d.excluded_count ?? 0
     }
-    return { incoming, outgoing, count }
+    return { incoming, outgoing, count, excluded }
   }, [inspect, data])
 
   const todayIso = iso(new Date())
@@ -127,19 +127,21 @@ export function CalendarPage() {
 
   const byDate = useMemo(() => new Map((data?.days ?? []).map((d) => [d.date, d])), [data])
 
-  // Sum the visible period (month view excludes adjacent-month edge cells).
+  // Sum the visible period (month view excludes adjacent-month edge cells) —
+  // the excluded count too: a rate-less row on Aug 31 sits on the September
+  // grid but is not part of September's totals, so it is not September's gap.
   const periodSummary = useMemo(() => {
     const inMonth = (date: string) => {
       if (granularity !== "month") return date >= range.from && date <= range.to
       const d = parseIso(date)
       return d.getMonth() === anchor.getMonth() && d.getFullYear() === anchor.getFullYear()
     }
-    let incoming = 0, outgoing = 0, count = 0
+    let incoming = 0, outgoing = 0, count = 0, excluded = 0
     for (const d of data?.days ?? []) {
       if (!inMonth(d.date)) continue
-      incoming += d.incoming; outgoing += d.outgoing; count += d.count
+      incoming += d.incoming; outgoing += d.outgoing; count += d.count; excluded += d.excluded_count ?? 0
     }
-    return { incoming, outgoing, count }
+    return { incoming, outgoing, count, excluded }
   }, [data, granularity, anchor, range])
 
   function step(direction: 1 | -1) {
@@ -199,6 +201,7 @@ export function CalendarPage() {
 
   const periodProfit = periodSummary.incoming - periodSummary.outgoing
   const summaryBar = (
+    <div className="space-y-2">
     <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
       {[
         { label: t("calendar.incoming"), value: periodSummary.incoming, cls: "text-emerald-600 dark:text-emerald-400" },
@@ -227,6 +230,8 @@ export function CalendarPage() {
         </button>
       ))}
     </div>
+    {!loading && <FxExcludedNotice count={periodSummary.excluded} />}
+    </div>
   )
 
   // Full-figure tooltip for a day cell (the cell itself shows compact values).
@@ -236,6 +241,7 @@ export function CalendarPage() {
       `${t("calendar.outgoing")}: −${formatMoney(d.outgoing, currency)}`,
       `${t("calendar.profit")}: ${formatMoney(d.incoming - d.outgoing, currency)}`,
       `${t("calendar.transactions")}: ${d.count}`,
+      ...((d.excluded_count ?? 0) > 0 ? [t("fx.excludedNotice", { count: d.excluded_count })] : []),
     ].join("\n")
 
   return (
@@ -313,7 +319,11 @@ export function CalendarPage() {
                     <span className="flex items-baseline justify-between">
                       <span className="text-xs font-medium">{parseIso(date).getDate()}</span>
                       {active && d && (
-                        <span className="text-[9px] tabular-nums text-muted-foreground">{d.count}</span>
+                        <span className="flex items-center gap-0.5 text-[9px] tabular-nums text-muted-foreground">
+                          {/* This day's figure leaves rows out (no rate) — say so on the cell. */}
+                          <FxExcludedMarker count={d.excluded_count} />
+                          {d.count}
+                        </span>
                       )}
                     </span>
                     {active && d && (
@@ -322,12 +332,12 @@ export function CalendarPage() {
                             (7 columns at 390px can't fit three figures). */}
                         {d.incoming > 0 && (
                           <span className="hidden truncate text-[10px] text-emerald-600 dark:text-emerald-400 sm:block">
-                            +{compactMoney(d.incoming, currency)}
+                            +{formatMoneyCompact(d.incoming, currency)}
                           </span>
                         )}
                         {d.outgoing > 0 && (
                           <span className="hidden truncate text-[10px] text-red-600 dark:text-red-400 sm:block">
-                            −{compactMoney(d.outgoing, currency)}
+                            −{formatMoneyCompact(d.outgoing, currency)}
                           </span>
                         )}
                         <span
@@ -336,7 +346,7 @@ export function CalendarPage() {
                             net >= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-red-700 dark:text-red-300",
                           )}
                         >
-                          {net >= 0 ? "+" : "−"}{compactMoney(Math.abs(net), currency)}
+                          {net >= 0 ? "+" : "−"}{formatMoneyCompact(Math.abs(net), currency)}
                         </span>
                       </span>
                     )}
@@ -375,6 +385,7 @@ export function CalendarPage() {
                           = {formatMoney(d.incoming - d.outgoing, currency)}
                         </span>
                       )}
+                      <FxExcludedMarker count={d.excluded_count} />
                       <Badge variant="secondary" className="tabular-nums">{d.count}</Badge>
                     </span>
                   ) : (
@@ -425,6 +436,7 @@ export function CalendarPage() {
                   <p className={cn("truncate text-sm font-bold tabular-nums", s.cls)} title={s.value}>{s.value}</p>
                 </div>
               ))}
+              <FxExcludedNotice count={inspectSummary.excluded} className="col-span-2 sm:col-span-4" />
             </div>
           )}
           <div className="min-h-0 flex-1 overflow-y-auto scrollbar-thin p-3">
@@ -449,7 +461,7 @@ export function CalendarPage() {
                     <span className="min-w-0 flex-1">
                       <span className="flex items-center gap-1.5">
                         <span className="truncate text-sm font-medium">
-                          {tx.description || (tx.type === "incoming" ? t("transactions.income") : t("transactions.expense"))}
+                          {ledgerDescription(tx, t) || (tx.type === "incoming" ? t("transactions.income") : t("transactions.expense"))}
                         </span>
                         {tx.recurring_rule_id && <Repeat className="size-3 shrink-0 text-violet-500" />}
                       </span>
@@ -461,7 +473,11 @@ export function CalendarPage() {
                       )}
                     </span>
                     <span className={cn("shrink-0 text-sm font-semibold tabular-nums", tx.type === "incoming" ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400")}>
-                      {tx.type === "incoming" ? "+" : "−"}{formatMoney(Number(tx.amount), currency)}
+                      {/* A mixed-currency split is converted (≈), and has no
+                          honest total while a leg has no rate (amount null). */}
+                      {tx.amount == null
+                        ? <span className="text-xs font-medium text-muted-foreground">{t("transactions.amountNoRate")}</span>
+                        : <>{tx.type === "incoming" ? "+" : "−"}{(tx.currency_count ?? 1) > 1 ? "≈" : ""}{formatMoney(Number(tx.amount), rowCurrency(tx, currency))}</>}
                     </span>
                   </li>
                   )

@@ -13,7 +13,9 @@ import { useModalDraft } from "@/hooks/use-modal-draft"
 import type { Card, CardKind, WealthAccount } from "@/lib/types"
 import { cardDisplayName, maskedTail, resolveCardPalette } from "@/lib/cards"
 import {
+  CARD_WIZARD_FIELD_FOR_CODE,
   CARD_WIZARD_FIELD_SELECTOR,
+  accountCurrencyIn,
   cardCreatePayload,
   cardEditPayload,
   cardPreviewProps,
@@ -22,6 +24,8 @@ import {
   cardWizardFormFromCard,
   cardWizardStepForField,
   cardWizardSteps,
+  cardWizardCurrency,
+  cardWizardSubmitForm,
   defaultHolderName,
   duplicateLast4,
   emptyCardWizardForm,
@@ -83,7 +87,6 @@ export function AddCardWizard({ open, onOpenChange, mode = "create", card = null
   const { user } = useUser()
   const { activeOrg, profile } = useOrg()
   const { currency } = useCurrency()
-  const symbol = currencySymbol(currency)
   const { balancesVisible } = useBalancePrivacy()
 
   const editing = mode === "edit" && !!card
@@ -222,6 +225,9 @@ export function AddCardWizard({ open, onOpenChange, mode = "create", card = null
   // credit card's is the bank that ISSUED it (step 1 picks a real account for
   // both). The funding bank is a separate, later question.
   const selectedBank = useMemo(() => banks.find((b) => b.id === form.account_id) ?? null, [banks, form.account_id])
+  // A credit card's own currency: the limit/debt/statement inputs show its
+  // symbol, and autopay needs a payer in it.
+  const cardCurrency = cardWizardCurrency(form, selectedBank, currency, mode)
   const previewBank = selectedBank
   const preview = useMemo(() => cardPreviewProps(form, previewBank, editing ? card : null), [form, previewBank, editing, card])
   const duplicate = useMemo(() => duplicateLast4(cards, form, card?.id), [cards, form, card?.id])
@@ -285,9 +291,10 @@ export function AddCardWizard({ open, onOpenChange, mode = "create", card = null
     try {
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
+      const sent = cardWizardSubmitForm(form, cardCurrency, accountCurrencyIn(allAccounts, form.funding_account_id, currency))
       const saved = editing
-        ? await apiPatch<Card>(`/api/cards/${card.id}`, token, cardEditPayload(form))
-        : await apiPost<Card>("/api/cards", token, cardCreatePayload(form))
+        ? await apiPatch<Card>(`/api/cards/${card.id}`, token, cardEditPayload(sent))
+        : await apiPost<Card>("/api/cards", token, cardCreatePayload(sent))
       draft.clearDraft()
       toast.success(editing ? t("cardWizard.updated") : t("cardWizard.created"))
       onOpenChange(false)
@@ -298,7 +305,8 @@ export function AddCardWizard({ open, onOpenChange, mode = "create", card = null
         setUpgrade(body.step === "bank" ? "bank" : "credit_card")
         return
       }
-      const message = apiErrorMessage(err, t("cardWizard.saveFailed"))
+      // A code the wizard knows has a translated sentence; anything else keeps the server's.
+      const message = body?.code && body.code in CARD_WIZARD_FIELD_FOR_CODE ? t(`cardWizard.errors.${body.code}`) : apiErrorMessage(err, t("cardWizard.saveFailed"))
       const field = cardWizardFieldForServerError(body)
       if (field) {
         goToField(field, message)
@@ -415,12 +423,14 @@ export function AddCardWizard({ open, onOpenChange, mode = "create", card = null
                       form={form}
                       onChange={patch}
                       mode={mode}
-                      symbol={symbol}
+                      symbol={currencySymbol(cardCurrency)}
                       accounts={allAccounts}
                       cards={cards}
                       ownAccountId={editing ? card?.account_id : null}
                       ownCardId={editing ? card?.id : null}
                       currency={currency}
+                      cardCurrency={cardCurrency}
+                      currencyLocked={editing && !!card?.currency_locked}
                       balancesVisible={balancesVisible}
                       errors={errors}
                     />

@@ -153,6 +153,9 @@ export default defineConfig({
       DATABASE_URL: process.env.DATABASE_URL || "postgresql://placeholder:placeholder@127.0.0.1:5432/placeholder", // secret-scan:ignore
     },
     exclude: ["**/node_modules/**", "**/dist/**", "e2e/**"],
+    // Pins the UI language so money formatting is deterministic wherever the
+    // suite runs — see src/test-setup.ts.
+    setupFiles: ["./src/test-setup.ts"],
   },
   resolve: {
     alias: {

@@ -15,6 +15,9 @@ import { FitText } from "@/components/FitText"
 import { AttachmentDetailModal, type AttachmentModalItem } from "@/components/AttachmentDetailModal"
 import { AuditHistory } from "@/components/AuditHistory"
 import { useCurrency } from "@/lib/currency-context"
+import { formatMoneyWhole } from "@/lib/wealth"
+import { FxExcludedNotice } from "@/components/FxExcludedNotice"
+import { clientTotalsCurrency, excludedCountOf } from "@/lib/reporting-fields"
 import { apiGet } from "@/lib/api"
 import { dropModalBackEntry } from "@/hooks/use-back-close"
 import {
@@ -54,17 +57,19 @@ export function ClientOverviewModal({
   canModify: boolean
   canRemove: boolean
   onFiles?: () => void
-  // Totals computed by the page from the loaded transactions — the client detail
-  // GET does not aggregate these (only the list endpoint does), so passing them in
-  // keeps the summary accurate instead of always showing zero.
+  // The page's totals (GET /api/clients/:id) — converted into the reporting
+  // currency, in `client.totals_currency`, with `client.excluded_count` rows
+  // left out for want of a rate.
   totalIncoming?: number
   totalOutgoing?: number
 }) {
   const { t } = useTranslation()
   const { getToken } = useAuth()
-  const { currency } = useCurrency()
-  const fmt = (n: number) =>
-    new Intl.NumberFormat("en-US", { style: "currency", currency, minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n)
+  const { currency: orgCurrency } = useCurrency()
+  // The totals are in the currency the server converted them into — not
+  // whatever the workspace currency is now (a cached body may predate a change).
+  const currency = clientTotalsCurrency(client, orgCurrency)
+  const fmt = (n: number) => formatMoneyWhole(n, currency)
 
   const [docs, setDocs] = useState<ClientAttachment[]>([])
   const [docsLoading, setDocsLoading] = useState(false)
@@ -151,6 +156,7 @@ export function ClientOverviewModal({
                 <FitText className={`mt-0.5 ${profit >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"}`} textClassName="text-sm font-semibold tabular-nums">{fmt(profit)}</FitText>
               </div>
             </div>
+            <FxExcludedNotice count={excludedCountOf(client)} />
 
             <div className="space-y-2">
               {rows.map((r, i) => (

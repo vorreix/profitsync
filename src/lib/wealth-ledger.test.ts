@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { applicationsByAccount, balanceDelta, reversalsByAccount, reverseDelta, reversesOnTrash } from "./wealth-ledger"
+import { applicationsByAccount, balanceDelta, ledgerDescription, reversalsByAccount, reverseDelta, reversesOnTrash, systemDescription } from "./wealth-ledger"
 
 describe("wealth-ledger", () => {
   it("incoming adds, outgoing subtracts on create", () => {
@@ -106,5 +106,30 @@ describe("wealth-ledger", () => {
       ])
       expect(applied.get("A")).toBe(40) // only the normal income is re-applied
     })
+  })
+})
+
+describe("ledgerDescription (MC-155)", () => {
+  const t = (key: string) => `[${key}]`
+
+  it("translates the markers the transfer engine writes, keeping the transfer's note", () => {
+    expect(ledgerDescription({ description: "Transfer fee", category: "Transfer Fee", kind: "standard" }, t)).toBe("[wealth.ledgerText.transferFee]")
+    expect(ledgerDescription({ description: "Transfer fee — rent", category: "Transfer Fee", kind: "standard" }, t)).toBe("[wealth.ledgerText.transferFee] — rent")
+    expect(ledgerDescription({ description: "Transfer fee refund", category: "Transfer Fee", kind: "refund" }, t)).toBe("[wealth.ledgerText.transferFeeRefund]")
+    expect(ledgerDescription({ description: "Transfer reversal", category: "Transfer", kind: "transfer" }, t)).toBe("[wealth.ledgerText.transferReversal]")
+  })
+
+  it("drops the legacy English 'Reversal of transfer <uuid>' note", () => {
+    const row = { description: "Transfer fee refund — Reversal of transfer 0b9f6c1e-2c35-4a8e-9a55-1f2e3d4c5b6a", category: "Transfer Fee", kind: "refund" }
+    expect(ledgerDescription(row, t)).toBe("[wealth.ledgerText.transferFeeRefund]")
+  })
+
+  it("leaves the user's own text alone", () => {
+    // A manual expense that happens to say the same words is not a marker.
+    expect(systemDescription({ description: "Transfer fee", category: "Bank", kind: "standard" })).toBeNull()
+    expect(systemDescription({ description: "Transfer reversal", category: "Other", kind: "standard" })).toBeNull()
+    // A re-described fee row keeps what the user wrote.
+    expect(ledgerDescription({ description: "Wire charge", category: "Transfer Fee", kind: "standard" }, t)).toBe("Wire charge")
+    expect(ledgerDescription({ description: null, category: null, kind: "standard" }, t)).toBe("")
   })
 })

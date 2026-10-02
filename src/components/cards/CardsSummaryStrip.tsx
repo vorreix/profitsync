@@ -1,12 +1,15 @@
 import { useMemo, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import { Plus, WalletCards } from "lucide-react"
-import { creditUsage } from "@/lib/credit-card"
+import { cardsStripTotals } from "@/lib/cards"
+import { formatByCurrency } from "@/lib/debt-format"
 import type { Card, CardSummary } from "@/lib/types"
 import { formatMoney } from "@/lib/wealth"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
+import { FxExcludedNotice } from "@/components/FxExcludedNotice"
+import { useConsolidatedWealth } from "@/components/wealth/use-consolidated-wealth"
 import { shortDate, todayIso } from "@/components/cards/card-dates"
 
 const DAY_MS = 86_400_000
@@ -40,6 +43,12 @@ function Figure({ label, short, tone, children }: { label: string; short: string
  * rows (no summary needed); only the next due date needs the credit summaries,
  * so that figure shows a skeleton until they arrive. Privacy mode hides every
  * amount.
+ *
+ * Every figure is in its card's OWN currency (MC-023). Cards in one currency
+ * show one figure in it; cards in several are converted through the wealth
+ * summary (each at its account's latest rate, a rate-less card left out and
+ * counted) and, until it lands or if it fails, shown one figure per currency —
+ * never a sum across currencies.
  */
 export function CardsSummaryStrip({
   cards,
@@ -63,30 +72,44 @@ export function CardsSummaryStrip({
   onOpenFan?: () => void
 }) {
   const { t } = useTranslation("wealth")
-  const money = (n: number) => formatMoney(n, currency, balancesVisible)
+
+  // Several card currencies → the consolidated figures need the summary's rates
+  // (the same cached request WealthPage already makes).
+  const multi = cardsStripTotals(cards, currency).owed.length > 1
+  const { summary, byAccount } = useConsolidatedWealth(multi)
 
   const stats = useMemo(() => {
     const debit = cards.filter((c) => c.kind === "debit")
     const credit = cards.filter((c) => c.kind === "credit")
-    let owed = 0
-    let available = 0
-    let hasLimit = false
-    for (const c of credit) {
-      const u = creditUsage(c.account_credit_limit, c.account_current_balance)
-      owed += u.debt
-      if (u.available !== null) { available += u.available; hasLimit = true }
+    const rate = (id: string) => {
+      const r = byAccount.get(id)?.rate
+      return r == null ? null : Number(r)
     }
+    const totals = cardsStripTotals(cards, currency, multi && summary ? rate : undefined)
     // The soonest unpaid statement across every credit card.
-    let next: { date: string; amount: number; card: string } | null = null
+    let next: { date: string; amount: number; currency: string } | null = null
     for (const c of credit) {
       const s = summaries[c.id]?.credit?.statement
       if (!s || s.remaining <= 0) continue
-      if (!next || s.due_date < next.date) next = { date: s.due_date, amount: s.remaining, card: c.id }
+      if (!next || s.due_date < next.date) next = { date: s.due_date, amount: s.remaining, currency: c.account_currency_code || currency }
     }
     const today = todayIso()
     const days = next ? Math.round((Date.parse(`${next.date}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / DAY_MS) : null
-    return { debit: debit.length, credit: credit.length, owed, available, hasLimit, next, days }
-  }, [cards, summaries])
+    return { debit: debit.length, credit: credit.length, totals, next, days }
+  }, [cards, summaries, currency, multi, summary, byAccount])
+
+  // One currency: its own figure. Several: converted once the summary is in,
+  // else one figure per currency.
+  const { owed, available, converted } = stats.totals
+  const total = (parts: { currency: string; amount: number }[], conv: number | null | undefined) =>
+    conv != null && summary
+      ? formatMoney(conv, summary.reporting_currency, balancesVisible)
+      : parts.length === 0
+        ? "—"
+        : parts.length === 1
+          ? formatMoney(parts[0].amount, parts[0].currency, balancesVisible)
+          : formatByCurrency(parts, balancesVisible)
+  const owedAny = owed.some((p) => p.amount > 0)
 
   const nextLoading = summariesLoading && !stats.next
   const dueTone = stats.days === null ? "" : stats.days < 0 ? "text-red-600 dark:text-red-400" : stats.days <= 3 ? "text-amber-600 dark:text-amber-400" : ""
@@ -107,11 +130,11 @@ export function CardsSummaryStrip({
 
       {stats.credit > 0 && (
         <div className="order-3 flex w-full min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1.5 border-t pt-2 sm:order-none sm:w-auto sm:flex-1 sm:gap-x-4 sm:border-s sm:border-t-0 sm:ps-4 sm:pt-0">
-          <Figure label={t("cards.owedTotal")} short={t("cards.owedShort")} tone={stats.owed > 0 ? "text-red-600 dark:text-red-400" : undefined}>
-            {money(stats.owed)}
+          <Figure label={t("cards.owedTotal")} short={t("cards.owedShort")} tone={owedAny ? "text-red-600 dark:text-red-400" : undefined}>
+            {total(owed, converted?.owed)}
           </Figure>
           <Figure label={t("cards.availableCredit")} short={t("cards.availableShort")} tone="text-emerald-600 dark:text-emerald-400">
-            {stats.hasLimit ? money(stats.available) : "—"}
+            {total(available, converted?.available)}
           </Figure>
           {nextLoading ? (
             <span className="inline-flex items-baseline gap-1.5">
@@ -124,7 +147,7 @@ export function CardsSummaryStrip({
           ) : stats.next ? (
             <Figure label={t("cards.nextDue")} short={t("cards.dueShort")} tone={dueTone}>
               {shortDate(stats.next.date)}
-              <span className="font-normal text-muted-foreground"> · {money(stats.next.amount)}</span>
+              <span className="font-normal text-muted-foreground"> · {formatMoney(stats.next.amount, stats.next.currency, balancesVisible)}</span>
               {stats.days !== null && (
                 <span className={cn("font-normal", dueTone || "text-muted-foreground")}>
                   {" "}
@@ -137,6 +160,8 @@ export function CardsSummaryStrip({
             // in front of it is a wasted line on a phone.
             <span className="text-sm font-medium text-muted-foreground">{t("cards.nothingDue")}</span>
           )}
+          {/* Cards (accounts) with no rate today, not entries — the accounts wording. */}
+          {converted && <FxExcludedNotice count={converted.excluded} accounts className="w-full" />}
         </div>
       )}
 

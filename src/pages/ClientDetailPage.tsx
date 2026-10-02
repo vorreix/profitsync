@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from "react"
 import { useParams, useNavigate, useSearchParams } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
-import { apiGet, apiPost, apiPatch, apiDelete } from "@/lib/api"
+import { apiGet, apiPost, apiPatch, apiPut, apiDelete, apiErrorMessage } from "@/lib/api"
 import { amountExceedsLimit } from "@/lib/money"
 import type { Budget, Client, Transaction, TransactionAttachment, WealthAccount } from "@/lib/types"
 import { AccountSelector, type Allocation } from "@/components/AccountSelector"
@@ -9,10 +9,15 @@ import { CardChip } from "@/components/cards/CardChip"
 import { useCardMap } from "@/lib/use-cards"
 import { loadLastTx, saveLastTx } from "@/lib/last-tx"
 import { useCurrency } from "@/lib/currency-context"
+import { formatMoney } from "@/lib/wealth"
+import { ledgerDescription } from "@/lib/wealth-ledger"
 import { useOrg } from "@/lib/org-context"
 import { canWriteRole, canDeleteRole } from "@/lib/roles"
 import { CategoryPicker } from "@/components/CategoryPicker"
 import { ClientOverviewModal } from "@/components/ClientOverviewModal"
+import { FxExcludedNotice } from "@/components/FxExcludedNotice"
+import { clientTotalsCurrency, excludedCountOf, rowCurrency } from "@/lib/reporting-fields"
+import { compareByReportingAmount } from "@/lib/tx-reporting"
 import { BudgetDialog } from "@/components/budget/BudgetDialog"
 import { BudgetIndicator } from "@/components/budget/BudgetIndicator"
 import { AttachmentBadge } from "@/components/AttachmentBadge"
@@ -62,7 +67,9 @@ export function ClientDetailPage() {
   const { currency } = useCurrency()
   // Card chips on the transaction rows (by card id, or the credit card that IS the account).
   const cardMap = useCardMap()
-  const formatCurrency = (amount: number) => new Intl.NumberFormat("en-US", { style: "currency", currency, minimumFractionDigits: 2 }).format(amount)
+  // A transaction row is formatted in ITS currency (the account it posted to);
+  // the client's totals below come converted from the server, in `totalsCurrency`.
+  const formatCurrency = (amount: number, code: string = currency) => formatMoney(amount, code)
   const [client, setClient] = useState<Client | null>(null)
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [accounts, setAccounts] = useState<WealthAccount[]>([])
@@ -213,8 +220,13 @@ export function ClientDetailPage() {
     }
   }, [searchParams, setSearchParams, client])
 
-  const totalIncoming = transactions.filter((t) => t.type === "incoming").reduce((s, t) => s + Number(t.amount), 0)
-  const totalOutgoing = transactions.filter((t) => t.type === "outgoing").reduce((s, t) => s + Number(t.amount), 0)
+  // Totals come from GET /api/clients/:id, converted into the reporting currency
+  // at each row's date — never a raw sum of this list, whose rows may be in
+  // different currencies. `excluded_count` is what had no rate and was left out.
+  const totalIncoming = Number(client?.total_incoming ?? 0)
+  const totalOutgoing = Number(client?.total_outgoing ?? 0)
+  const totalsCurrency = clientTotalsCurrency(client, currency)
+  const totalsExcluded = excludedCountOf(client)
   const netProfit = totalIncoming - totalOutgoing
 
   const filteredTx = transactions
@@ -226,8 +238,10 @@ export function ClientDetailPage() {
       return matchesTab && matchesSearch && matchesFrom && matchesTo
     })
     .sort((a, b) => {
-      if (txSort === "amount_desc") return Number(b.amount) - Number(a.amount)
-      if (txSort === "amount_asc") return Number(a.amount) - Number(b.amount)
+      // Amounts compare in the reporting currency — rows are native, and ₹75,000
+      // is not more than $1,000. A row with no rate sorts last.
+      if (txSort === "amount_desc") return compareByReportingAmount(a, b, totalsCurrency, "desc")
+      if (txSort === "amount_asc") return compareByReportingAmount(a, b, totalsCurrency, "asc")
       if (txSort === "date_asc") return a.date.localeCompare(b.date) || a.created_at.localeCompare(b.created_at)
       return b.date.localeCompare(a.date) || b.created_at.localeCompare(a.created_at)
     })
@@ -271,8 +285,8 @@ export function ClientDetailPage() {
       setTxForm(defaultTxForm())
       setPendingFiles([])
       loadData()
-    } catch {
-      toast.error("Failed to add transaction")
+    } catch (err) {
+      toast.error(apiErrorMessage(err, t("transactions.failedToAddTransaction")))
     } finally {
       setSaving(false)
     }
@@ -304,7 +318,7 @@ export function ClientDetailPage() {
           id: legs[0].id,
           group_id: tx.group_id,
           type: tx.type,
-          allocations: legs.map((l) => ({ account_id: l.wealth_account_id ?? "", card_id: l.card_id ?? null, amount: String(l.amount) })),
+          allocations: legs.map((l) => ({ account_id: l.wealth_account_id ?? "", card_id: l.card_id ?? null, amount: String(l.amount), currency_code: l.currency_code ?? null })),
           description: tx.description,
           category: tx.category,
           date: tx.date,
@@ -319,7 +333,7 @@ export function ClientDetailPage() {
       id: tx.id,
       group_id: null,
       type: tx.type,
-      allocations: [{ account_id: tx.wealth_account_id ?? defaultAccountId(accounts), card_id: tx.wealth_account_id ? (tx.card_id ?? null) : null, amount: String(tx.amount) }],
+      allocations: [{ account_id: tx.wealth_account_id ?? defaultAccountId(accounts), card_id: tx.wealth_account_id ? (tx.card_id ?? null) : null, amount: String(tx.amount), currency_code: tx.currency_code ?? null }],
       description: tx.description,
       category: tx.category,
       date: tx.date,
@@ -337,11 +351,12 @@ export function ClientDetailPage() {
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
       // A split (existing group, or a single edited into multiple accounts) is
-      // replaced wholesale: delete the old group (reverses balances) then recreate.
-      // A single→single edit stays a balance-preserving in-place PATCH.
+      // replaced wholesale in ONE atomic request: the old legs are swapped for
+      // the new ones server-side, nothing goes to Trash, and a refused save
+      // changes nothing (MC-046). Kind and tags, which this dialog doesn't
+      // show, are kept by the server. A single→single edit stays a PATCH.
       if (editTxForm.group_id || allocs.length > 1) {
-        await apiDelete(`/api/transactions/${editTxForm.id}`, token)
-        await apiPost("/api/transactions/group", token, {
+        await apiPut(`/api/transactions/group/${editTxForm.group_id ?? editTxForm.id}`, token, {
           client_id: id,
           type: editTxForm.type,
           description: editTxForm.description,
@@ -357,8 +372,8 @@ export function ClientDetailPage() {
       setEditTxDialogOpen(false)
       setEditTxForm(null)
       loadData({ silent: true })
-    } catch {
-      toast.error("Failed to update transaction")
+    } catch (err) {
+      toast.error(apiErrorMessage(err, t("transactions.failedToUpdateTransaction")))
     } finally {
       setSaving(false)
     }
@@ -409,8 +424,8 @@ export function ClientDetailPage() {
         navigate("/clients")
         return
       }
-    } catch {
-      toast.error("Failed to delete")
+    } catch (err) {
+      toast.error(apiErrorMessage(err, deleteType === "transaction" ? t("transactions.failedToDeleteTransaction") : t("closed.actionFailed")))
     }
     setDeleteId(null)
     setDeleteType(null)
@@ -490,20 +505,21 @@ export function ClientDetailPage() {
       <div className="grid grid-cols-3 gap-2 sm:gap-4">
         <div className="rounded-xl border p-3 sm:p-4">
           <p className="text-[10px] sm:text-xs text-muted-foreground font-medium uppercase tracking-wide truncate">Income</p>
-          <FitText className="text-emerald-600 dark:text-emerald-400 mt-1" textClassName="text-base sm:text-xl font-bold tabular-nums">{formatCurrency(totalIncoming)}</FitText>
+          <FitText className="text-emerald-600 dark:text-emerald-400 mt-1" textClassName="text-base sm:text-xl font-bold tabular-nums">{formatCurrency(totalIncoming, totalsCurrency)}</FitText>
           <p className="hidden sm:flex text-xs text-muted-foreground mt-1 items-center gap-1"><ArrowUpRight className="size-3" />{transactions.filter((t) => t.type === "incoming").length} transaction{transactions.filter((t) => t.type === "incoming").length !== 1 ? "s" : ""}</p>
         </div>
         <div className="rounded-xl border p-3 sm:p-4">
           <p className="text-[10px] sm:text-xs text-muted-foreground font-medium uppercase tracking-wide truncate">Expenses</p>
-          <FitText className="text-destructive mt-1" textClassName="text-base sm:text-xl font-bold tabular-nums">{formatCurrency(totalOutgoing)}</FitText>
+          <FitText className="text-destructive mt-1" textClassName="text-base sm:text-xl font-bold tabular-nums">{formatCurrency(totalOutgoing, totalsCurrency)}</FitText>
           <p className="hidden sm:flex text-xs text-muted-foreground mt-1 items-center gap-1"><ArrowDownRight className="size-3" />{transactions.filter((t) => t.type === "outgoing").length} transaction{transactions.filter((t) => t.type === "outgoing").length !== 1 ? "s" : ""}</p>
         </div>
         <div className="rounded-xl border p-3 sm:p-4">
           <p className="text-[10px] sm:text-xs text-muted-foreground font-medium uppercase tracking-wide truncate">Net</p>
-          <FitText className={`mt-1 ${netProfit >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"}`} textClassName="text-base sm:text-xl font-bold tabular-nums">{formatCurrency(netProfit)}</FitText>
+          <FitText className={`mt-1 ${netProfit >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"}`} textClassName="text-base sm:text-xl font-bold tabular-nums">{formatCurrency(netProfit, totalsCurrency)}</FitText>
           <p className="hidden sm:block text-xs text-muted-foreground mt-1">{totalIncoming > 0 ? ((netProfit / totalIncoming) * 100).toFixed(1) : 0}% margin</p>
         </div>
       </div>
+      <FxExcludedNotice count={totalsExcluded} />
 
       {/* Budget — tap to open this client's full budget history & insights; quick-edit inline. */}
       <div
@@ -526,7 +542,7 @@ export function ClientDetailPage() {
         </div>
         <div className="mt-3">
           {clientBudget ? (
-            <BudgetIndicator amount={clientBudget.amount} spent={clientBudget.spent ?? 0} period={clientBudget.period} currency={currency} />
+            <BudgetIndicator amount={clientBudget.amount} spent={clientBudget.spent ?? 0} period={clientBudget.period} currency={clientBudget.currency ?? currency} />
           ) : (
             <p className="text-xs text-muted-foreground">No budget set for this client.</p>
           )}
@@ -592,7 +608,7 @@ export function ClientDetailPage() {
                         {tx.type === "incoming" ? <ArrowUpRight className="size-4 text-emerald-600 dark:text-emerald-400" /> : <ArrowDownRight className="size-4 text-red-600 dark:text-red-400" />}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{tx.description || (tx.type === "incoming" ? "Income" : "Expense")}</p>
+                        <p className="text-sm font-medium truncate">{ledgerDescription(tx, t) || (tx.type === "incoming" ? "Income" : "Expense")}</p>
                         <div className="flex items-center gap-2 mt-0.5">
                           <span className="text-xs text-muted-foreground">{formatDate(tx.date)}</span>
                           {(() => {
@@ -620,7 +636,7 @@ export function ClientDetailPage() {
                       </div>
                       <div className="text-right shrink-0">
                         <p className={`text-sm font-semibold ${tx.type === "incoming" ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
-                          {tx.type === "incoming" ? "+" : "−"}{formatCurrency(Number(tx.amount))}
+                          {tx.type === "incoming" ? "+" : "−"}{formatCurrency(Number(tx.amount), rowCurrency(tx, currency))}
                         </p>
                       </div>
                       <div className="flex gap-0.5 sm:gap-1 shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
@@ -856,7 +872,7 @@ export function ClientDetailPage() {
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
                   <p className={`text-2xl font-bold tabular-nums ${viewTx.type === "incoming" ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
-                    {viewTx.type === "incoming" ? "+" : "−"}{formatCurrency(Number(viewTx.amount))}
+                    {viewTx.type === "incoming" ? "+" : "−"}{formatCurrency(Number(viewTx.amount), rowCurrency(viewTx, currency))}
                   </p>
                   {viewTx.recurring_rule_id && (
                     <Badge
@@ -873,7 +889,7 @@ export function ClientDetailPage() {
                   <div><p className="text-xs text-muted-foreground">Date</p><p className="font-medium">{formatDate(viewTx.date)}</p></div>
                   {viewTx.category && <div><p className="text-xs text-muted-foreground">Category</p><Badge variant="outline">{viewTx.category}</Badge></div>}
                 </div>
-                {viewTx.description && <div><p className="text-xs text-muted-foreground">Description</p><p className="text-sm whitespace-pre-wrap break-words">{viewTx.description}</p></div>}
+                {viewTx.description && <div><p className="text-xs text-muted-foreground">Description</p><p className="text-sm whitespace-pre-wrap break-words">{ledgerDescription(viewTx, t)}</p></div>}
                 <div className="border-t pt-3 space-y-1.5">
                   <p className="text-sm font-medium flex items-center gap-1.5"><Paperclip className="size-3.5" /> Attachments</p>
                   {viewTxAtt.length === 0 ? (
@@ -884,7 +900,7 @@ export function ClientDetailPage() {
                         type="button"
                         className="flex flex-1 items-center gap-2 min-w-0 text-left"
                         onClick={() => setViewAttachment({
-                          id: att.id, source: "transaction", source_id: viewTx.id, source_label: viewTx.description?.trim() || (viewTx.type === "incoming" ? "Income" : "Expense"),
+                          id: att.id, source: "transaction", source_id: viewTx.id, source_label: ledgerDescription(viewTx, t).trim() || (viewTx.type === "incoming" ? "Income" : "Expense"),
                           file_name: att.file_name, file_type: att.file_type, file_size: att.file_size,
                           created_at: att.created_at, display_name: att.display_name, tags: att.tags, category: att.category,
                         })}
@@ -939,7 +955,7 @@ export function ClientDetailPage() {
         clientId={client.id}
         label={client.name}
         current={clientBudget}
-        prefill={defaultBudget ? { amount: defaultBudget.amount, period: defaultBudget.period } : null}
+        prefill={defaultBudget ? { amount: defaultBudget.amount, period: defaultBudget.period, currency: defaultBudget.currency } : null}
         onSaved={() => { void refreshBudget() }}
       />
     </div>

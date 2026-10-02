@@ -80,7 +80,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Archive / restore.
     if (body.archived === true && !space.archivedAt) {
       if (!isEmpty(space.currentBalance)) {
-        return res.status(400).json({ error: "Withdraw the remaining balance before closing this Space." })
+        return res.status(400).json({ error: "Withdraw the remaining balance before closing this Space.", code: "space_not_empty" })
       }
       set.archivedAt = new Date()
     } else if (body.archived === false && space.archivedAt) {
@@ -102,7 +102,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === "DELETE") {
     if (!canDelete(role)) return res.status(403).json({ error: "Forbidden" })
     if (!isEmpty(space.currentBalance)) {
-      return res.status(400).json({ error: "Withdraw the remaining balance before deleting this Space." })
+      return res.status(400).json({ error: "Withdraw the remaining balance before deleting this Space.", code: "space_not_empty" })
     }
     // Drop the Space's auto-save rule (kind='transfer' → toAccountId) so it can't
     // keep firing at a deleted/archived destination.

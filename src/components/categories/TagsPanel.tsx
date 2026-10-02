@@ -7,6 +7,7 @@ import { apiPost, apiPatch, apiDelete } from "@/lib/api"
 import { useTags } from "@/lib/use-tags"
 import { useOrg } from "@/lib/org-context"
 import { useUrlModal } from "@/hooks/use-url-modal"
+import { useApiQuery } from "@/hooks/use-api-query"
 import { canWriteRole, canDeleteRole } from "@/lib/roles"
 import { normalizeTagName } from "@/lib/tags"
 import type { Tag, TagUsage } from "@/lib/types"
@@ -26,6 +27,7 @@ const PRESET_COLORS = ["", "#ef4444", "#f97316", "#eab308", "#22c55e", "#06b6d4"
 type SortKey = "total_desc" | "total_asc" | "name_asc" | "name_desc"
 type FormValues = { name: string; color: string }
 type EditTarget = { id: string | null; name: string; color: string }
+type DeletePreview = { transactions: number; clients: number; quotations: number }
 
 /** Tags management inside the Category & Tags shell — a merged registry+usage
  *  list (inline tags have no id until materialized), a shared add/edit dialog,
@@ -139,7 +141,7 @@ export function TagsPanel() {
         const created = await apiPost<Tag>("/api/tags", token, { name: tag.name, color: tag.color })
         id = created.id
       }
-      const result = await apiDelete<{ deleted?: { transactions: number; clients: number; quotations: number } }>(
+      const result = await apiDelete<{ deleted?: DeletePreview; skipped_transactions?: string[] }>(
         `/api/tags/${id}?mode=${mode}`,
         token,
       )
@@ -147,6 +149,10 @@ export function TagsPanel() {
         const d = result?.deleted
         const n = (d?.transactions ?? 0) + (d?.clients ?? 0) + (d?.quotations ?? 0)
         toast.success(t("tags.deletedWithRecords", { count: n }))
+        // Transfers the transfer service would refuse (reversed, incomplete) and
+        // Opening Balance / Balance Adjustment rows stay live.
+        const kept = result?.skipped_transactions?.length ?? 0
+        if (kept) toast.warning(t("multiSelect.keptRows", { count: kept }))
       } else {
         toast.success(t("tags.deleted"))
       }
@@ -370,6 +376,17 @@ function DeleteTagDialog({
   useEffect(() => { if (tag) setShown(tag) }, [tag])
   const target = shown
 
+  // Dry run of the with_records delete — the list's usage count misses a tagged
+  // client's untagged transactions and the other side of a tagged transfer.
+  // Fetched only while open; the last answer stays through the close animation.
+  const { data, error } = useApiQuery<{ preview: DeletePreview }>(
+    tag ? `/api/tags/entities?tag=${encodeURIComponent(tag.name)}&preview=with_records` : null,
+  )
+  const [lastPreview, setLastPreview] = useState<DeletePreview>()
+  useEffect(() => { if (data) setLastPreview(data.preview) }, [data])
+  const preview = tag ? data?.preview : lastPreview
+  const previewTotal = preview ? preview.transactions + preview.clients + preview.quotations : (target?.total ?? 0)
+
   return (
     <Dialog open={tag !== null} onOpenChange={(o) => { if (!o) onClose() }}>
       <DialogContent className="w-[92vw] max-w-md">
@@ -386,16 +403,27 @@ function DeleteTagDialog({
             <p className="text-sm font-medium">{t("tags.deleteTagOnly")}</p>
             <p className="mt-0.5 text-xs text-muted-foreground">{t("tags.deleteTagOnlyHint")}</p>
           </button>
-          {(target?.total ?? 0) > 0 && (
+          {previewTotal > 0 && (
             <button
               type="button"
               onClick={() => onChoose("with_records")}
-              className="w-full rounded-lg border border-destructive/40 p-3 text-left transition-colors hover:bg-destructive/10"
+              disabled={!preview && !error}
+              className="w-full rounded-lg border border-destructive/40 p-3 text-left transition-colors hover:bg-destructive/10 disabled:opacity-60"
             >
               <p className="flex items-center gap-1.5 text-sm font-medium text-destructive">
                 <AlertTriangle className="size-4" />{t("tags.deleteWithRecords")}
               </p>
-              <p className="mt-0.5 text-xs text-muted-foreground">{t("tags.deleteWithRecordsHint", { count: target?.total ?? 0 })}</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">{t("tags.deleteWithRecordsHint")}</p>
+              <div className="mt-1.5 flex flex-wrap items-center gap-1">
+                {preview
+                  ? ([["transactions", Receipt], ["clients", User], ["quotations", FileText]] as const).map(([key, Icon]) =>
+                      preview[key] > 0 && (
+                        <Badge key={key} variant="outline" className="gap-1 px-1.5 text-[10px] font-normal">
+                          <Icon className="size-3" />{preview[key]} {t(`tags.${key}`)}
+                        </Badge>
+                      ))
+                  : !error && <Skeleton className="h-4 w-32" />}
+              </div>
             </button>
           )}
         </div>

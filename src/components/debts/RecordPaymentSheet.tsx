@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next"
 import { useAuth } from "@clerk/clerk-react"
 import { toast } from "sonner"
 import { apiErrorMessage, apiGet, apiPost } from "@/lib/api"
-import { amountExceedsLimit } from "@/lib/money"
+import { amountExceedsLimit, amountInputProps } from "@/lib/money"
 import { fromCents, splitPayment, toCents } from "@/lib/debt-math"
 import { advancesScheduleByDefault, payoffCappedAmount, periodsPerYearForRule } from "@/lib/debt-recurring"
 import type { Debt, DebtPayment, DebtRepayment, WealthAccount } from "@/lib/types"
@@ -78,7 +78,8 @@ export function RecordPaymentSheet({
       const token = await getToken()
       if (!token) return
       const accs = (await apiGet<WealthAccount[]>("/api/wealth/accounts", token).catch(() => [] as WealthAccount[]))
-        .filter((a) => !a.archived_at && a.type !== "space")
+        // Same currency as the debt only — the principal is one amount on both legs.
+        .filter((a) => !a.archived_at && a.type !== "space" && (!a.currency_code || a.currency_code === debt.currency))
       if (cancelled) return
       setAccounts(accs)
       setAccountId(accs.find((a) => a.is_default)?.id ?? accs.find((a) => a.type === "bank")?.id ?? accs[0]?.id ?? "")
@@ -146,7 +147,7 @@ export function RecordPaymentSheet({
   const part = (id: string, label: string, value: string, set: (v: string) => void) => (
     <div className="space-y-1">
       <Label htmlFor={id} className="text-xs">{label}</Label>
-      <Input id={id} type="number" inputMode="decimal" min="0" step="0.01" value={value} placeholder="0.00" onChange={(e) => { set(e.target.value); setError(null) }} />
+      <Input id={id} type="number" min="0" {...amountInputProps(debt.currency)} value={value} onChange={(e) => { set(e.target.value); setError(null) }} />
     </div>
   )
 
@@ -165,8 +166,9 @@ export function RecordPaymentSheet({
             <div className="space-y-1.5">
               <Label htmlFor="dp-total">{receivable ? t("totalReceived") : t("totalPaid")}</Label>
               <div className="relative">
-                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-lg font-medium text-muted-foreground">{symbol}</span>
-                <Input id="dp-total" type="number" inputMode="decimal" min="0" step="0.01" value={total} placeholder="0.00" className="h-12 pl-9 text-lg font-semibold tabular-nums" onChange={(e) => { setTotal(e.target.value); setError(null) }} autoFocus />
+                {/* Room for a 1–5 character prefix ("$" … "KWD"), at the start in RTL too. */}
+                <span className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-lg font-medium text-muted-foreground">{symbol}</span>
+                <Input id="dp-total" type="number" min="0" {...amountInputProps(debt.currency)} value={total} style={{ paddingInlineStart: `calc(${symbol.length}ch + 1.25rem)` }} className="h-12 text-lg md:text-lg font-semibold tabular-nums" onChange={(e) => { setTotal(e.target.value); setError(null) }} autoFocus />
               </div>
             </div>
             <div className="space-y-1.5">

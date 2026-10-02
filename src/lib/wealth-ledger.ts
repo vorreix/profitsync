@@ -78,3 +78,67 @@ export function applicationsByAccount(legs: LedgerLeg[]): Map<string, number> {
   }
   return shifts
 }
+
+// ── System-written descriptions ──────────────────────────────────────────────
+//
+// The transfer engine writes a few rows whose text nobody typed: the fee a
+// transfer cost, the fee a reversal refunds, and the two legs of a reversal.
+// The stored text is English and stays that way — it is what search, exports,
+// push and pinned old builds read. These constants are the stable MARKERS the
+// server writes (api/_lib/wealth-accounts.ts, and 'Transfer fee' inside
+// complete_transfer, mig 0073); a screen translates a row carrying one at
+// display time with `ledgerDescription` (MC-155). A row the user re-described
+// no longer carries a marker and is shown exactly as they wrote it.
+export const TRANSFER_FEE_CATEGORY = "Transfer Fee"
+export const TRANSFER_FEE_DESCRIPTION = "Transfer fee"
+export const TRANSFER_FEE_REFUND_DESCRIPTION = "Transfer fee refund"
+export const TRANSFER_REVERSAL_DESCRIPTION = "Transfer reversal"
+
+/** The separator the server puts between a marker and the transfer's note. */
+const NOTE_SEPARATOR = " — "
+// Reversals once stored this as their note (and so as the fee refund's suffix):
+// an English sentence around a uuid, which says nothing `reverses_transfer_id`
+// does not. Rows written before that stopped drop it on display.
+const LEGACY_REVERSAL_NOTE = /^Reversal of transfer [0-9a-f-]{36}$/i
+
+export type LedgerTextRow = {
+  description?: string | null
+  category?: string | null
+  kind?: string | null
+}
+
+const SYSTEM_TEXTS: { text: string; key: string; applies: (row: LedgerTextRow) => boolean }[] = [
+  // Longest first: "Transfer fee refund" also starts with "Transfer fee".
+  { text: TRANSFER_FEE_REFUND_DESCRIPTION, key: "wealth.ledgerText.transferFeeRefund", applies: (r) => r.category === TRANSFER_FEE_CATEGORY },
+  { text: TRANSFER_FEE_DESCRIPTION, key: "wealth.ledgerText.transferFee", applies: (r) => r.category === TRANSFER_FEE_CATEGORY },
+  { text: TRANSFER_REVERSAL_DESCRIPTION, key: "wealth.ledgerText.transferReversal", applies: (r) => r.kind === "transfer" },
+]
+
+/**
+ * The i18n key + note of a system-written description, or null when the row
+ * carries the user's own text. Pure, so the matching is unit-tested.
+ */
+export function systemDescription(row: LedgerTextRow): { key: string; note: string } | null {
+  const description = row.description ?? ""
+  for (const s of SYSTEM_TEXTS) {
+    if (!s.applies(row)) continue
+    if (description === s.text) return { key: s.key, note: "" }
+    if (description.startsWith(s.text + NOTE_SEPARATOR)) {
+      const note = description.slice(s.text.length + NOTE_SEPARATOR.length).trim()
+      return { key: s.key, note: LEGACY_REVERSAL_NOTE.test(note) ? "" : note }
+    }
+  }
+  return null
+}
+
+/**
+ * A ledger row's description in the reader's language: the translated marker
+ * (+ the transfer's note) for a system-written row, the stored text otherwise.
+ * `t` is any i18next `t` that resolves full keys (the default namespace).
+ */
+export function ledgerDescription(row: LedgerTextRow, t: (key: string) => string): string {
+  const system = systemDescription(row)
+  if (!system) return row.description ?? ""
+  const label = t(system.key)
+  return system.note ? `${label}${NOTE_SEPARATOR}${system.note}` : label
+}

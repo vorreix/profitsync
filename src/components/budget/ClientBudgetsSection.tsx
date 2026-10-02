@@ -15,6 +15,7 @@ import { BudgetDialog } from "@/components/budget/BudgetDialog"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
+import { FxExcludedMarker, FxExcludedNotice } from "@/components/FxExcludedNotice"
 
 type OverviewBudget = {
   key: string
@@ -25,6 +26,10 @@ type OverviewBudget = {
   period: BudgetPeriod
   amount: number
   spent: number | null
+  /** The cap's own currency (MC-020) — its amount and spend are in it. */
+  currency?: string
+  /** Rows its spend left out (no exchange rate for their day). */
+  excluded_count?: number
   state: "ok" | "warn" | "over" | "none"
   ratio: number | null
   creep_flagged: boolean
@@ -32,7 +37,11 @@ type OverviewBudget = {
 type Overview = {
   budgets: OverviewBudget[]
   account_type: string
-  aggregate: { total_budget: number; total_spent: number; on_track: number; total: number }
+  /** The reporting currency the aggregate is converted into. */
+  currency?: string
+  excluded_count?: number
+  /** `excluded_currencies`: caps in these currencies have no rate today and are not in the totals. */
+  aggregate: { total_budget: number; total_spent: number; on_track: number; total: number; excluded_currencies?: string[] }
 }
 
 const HEALTH_DOT = { ok: "bg-emerald-500", warn: "bg-amber-500", over: "bg-red-500", none: "bg-muted-foreground/40" }
@@ -115,8 +124,8 @@ export function ClientBudgetsSection() {
                   </span>
                 </div>
                 <p className="mt-2 text-lg font-bold tabular-nums">
-                  {formatMoney(agg.total_spent, currency)}
-                  <span className="text-sm font-normal text-muted-foreground"> / {formatMoney(agg.total_budget, currency)}</span>
+                  {formatMoney(agg.total_spent, data.currency || currency)}
+                  <span className="text-sm font-normal text-muted-foreground"> / {formatMoney(agg.total_budget, data.currency || currency)}</span>
                 </p>
                 <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-muted">
                   <div
@@ -124,6 +133,14 @@ export function ClientBudgetsSection() {
                     style={{ width: `${Math.min(100, agg.total_budget > 0 ? (agg.total_spent / agg.total_budget) * 100 : 0)}%` }}
                   />
                 </div>
+                {/* Partial spend is never shown as the whole figure (MC-083) —
+                    nor is a total missing whole caps (no rate for their currency). */}
+                <FxExcludedNotice count={data.excluded_count} className="mt-2" />
+                {(agg.excluded_currencies ?? []).map((c) => (
+                  <p key={c} role="status" className="mt-1 text-xs text-muted-foreground">
+                    {t("wealth.currencyNotIncluded", { currency: c })}
+                  </p>
+                ))}
               </CardContent>
             </Card>
           )}
@@ -139,7 +156,10 @@ export function ClientBudgetsSection() {
               >
                 <div className="flex items-center gap-2 min-w-0">
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold">{label(b)}</p>
+                    <p className="flex items-center gap-1 text-sm font-semibold">
+                      <span className="truncate">{label(b)}</span>
+                      <FxExcludedMarker count={b.excluded_count} />
+                    </p>
                     <p className="text-xs text-muted-foreground">
                       {b.is_default ? t("budgetsPage.defaultTemplate") : t(`budget.${b.period}`)}
                     </p>
@@ -152,10 +172,10 @@ export function ClientBudgetsSection() {
                   <ChevronRight className="size-4 text-muted-foreground shrink-0 transition-transform group-hover:translate-x-0.5" />
                 </div>
                 {b.spent !== null ? (
-                  <BudgetIndicator amount={b.amount} spent={b.spent} period={b.period} currency={currency} />
+                  <BudgetIndicator amount={b.amount} spent={b.spent} period={b.period} currency={b.currency ?? currency} />
                 ) : (
                   <p className="text-xs text-muted-foreground">
-                    {formatMoney(b.amount, currency)} · {t(`budget.${b.period}`)}
+                    {formatMoney(b.amount, b.currency ?? currency)} · {t(`budget.${b.period}`)}
                   </p>
                 )}
               </button>

@@ -3,9 +3,9 @@ import { useTranslation } from "react-i18next"
 import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, GripVertical, MoreHorizontal, Pencil, Play, Plus, Square, Trash2 } from "lucide-react"
 import type { SpendingBudget, SpendingViewWindow } from "@/lib/types"
 import { useCurrency } from "@/lib/currency-context"
-import { formatMoney } from "@/lib/wealth"
 import { budgetIcon } from "@/components/budget/budget-icons"
-import { BAR_COLOR, DELTA_COLOR, authoredRate, barPct, budgetName, customWindowLabel, fmtDay, inView } from "@/components/budget/budget-format"
+import { BAR_COLOR, DELTA_COLOR, authoredRate, barPct, budgetMoney, budgetName, customWindowLabel, fmtDay, inView } from "@/components/budget/budget-format"
+import { FxExcludedMarker } from "@/components/FxExcludedNotice"
 import { Badge } from "@/components/ui/badge"
 import {
   DropdownMenu,
@@ -77,7 +77,8 @@ export function BudgetRow({
   const { t, i18n } = useTranslation()
   const navigate = useNavigate()
   const { currency } = useCurrency()
-  const money = (n: number) => formatMoney(n, currency)
+  // Every figure on the row is in the BUDGET's currency (it keeps the one it was created in).
+  const money = budgetMoney(budget, currency)
 
   const v = inView(budget, view, today)
   const Icon = budgetIcon(budget.icon)
@@ -148,8 +149,10 @@ export function BudgetRow({
             )}
           </div>
           <div className="mt-0.5 flex items-baseline justify-between gap-2 text-xs">
-            <span className="truncate text-muted-foreground tabular-nums">
-              {closed ? t("budgets.closedHint") : t("budgets.spentOf", { spent: money(v.spent), amount: money(v.limit) })}
+            <span className="flex min-w-0 items-center gap-1 text-muted-foreground tabular-nums">
+              <span className="truncate">{closed ? t("budgets.closedHint") : t("budgets.spentOf", { spent: money(v.spent), amount: money(v.limit) })}</span>
+              {/* Spend that left rows out (no exchange rate) is partial — a green bar must not read as "within budget". */}
+              {!closed && <FxExcludedMarker count={v.excluded} />}
             </span>
             {!closed && <span className={`shrink-0 font-medium tabular-nums ${DELTA_COLOR[v.state]}`}>{delta}</span>}
           </div>

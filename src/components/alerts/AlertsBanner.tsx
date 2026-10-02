@@ -219,7 +219,7 @@ function AlertsRail({ className }: { className?: string }) {
       {/* Real controls, not decoration: the carousel root is not focusable, so
           its arrow-key handler never fires for someone who has not already
           tabbed into a slide. */}
-      <div role="tablist" aria-label={t("region")} className="mt-1.5 flex items-center justify-center gap-0.5">
+      <div role="tablist" aria-label={t("region")} className="mt-1.5 flex flex-wrap items-center justify-center sm:gap-0.5">
         {items.map((a, i) => (
           <button
             key={a.id}
@@ -228,7 +228,7 @@ function AlertsRail({ className }: { className?: string }) {
             aria-selected={i === selected}
             aria-label={t("goTo", { index: i + 1, total: items.length })}
             onClick={() => api?.scrollTo(i)}
-            className="pressable flex size-8 items-center justify-center rounded-full"
+            className="pressable flex size-11 items-center justify-center rounded-full sm:size-8"
           >
             <span
               className={cn(
@@ -260,12 +260,14 @@ function AlertSlide({
   const tone = TONE[alert.severity]
   const Icon = ICONS[alert.kind] ?? CircleAlert
 
-  // Amounts are formatted in the org's currency and obey the privacy toggle:
+  // Amounts are formatted in the ACCOUNT's currency the alert carries (an INR
+  // card owes rupees whatever the workspace reports in; the org currency is only
+  // the fallback for a legacy account with no tag) and obey the privacy toggle:
   // the dashboard is exactly where someone hides their balances before handing
   // the phone over, so this must not be the one thing that keeps showing them.
   const params: Record<string, string | number> = { ...alert.params }
   for (const [name, value] of Object.entries(alert.money ?? {})) {
-    params[name] = formatMoney(value, currency, balancesVisible)
+    params[name] = formatMoney(value, alert.currency ?? currency, balancesVisible)
   }
   if (typeof alert.params.days === "number") params.when = whenLabel(t, Number(alert.params.days), alert.tense)
 

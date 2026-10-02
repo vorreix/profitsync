@@ -4,12 +4,14 @@ import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { ArrowLeft, Check, CreditCard, Loader as Loader2, ShieldCheck, Sparkles } from "lucide-react"
-import { apiGet, apiPost } from "@/lib/api"
+import { apiErrorMessage, apiGet, apiPost } from "@/lib/api"
 import { usePlanText } from "@/lib/i18n/plan-text"
 import type { AccountType } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ACCENTS } from "@/components/onboarding/accents"
+import { formatMoney, formatMoneyWhole } from "@/lib/wealth"
+import { minorUnits } from "@/lib/currencies"
 
 type PlanLocalPricing = {
   currency: string
@@ -27,20 +29,18 @@ type Plan = {
   feature_labels?: Record<string, string>
   local_pricing: PlanLocalPricing
 }
-type PricingResponse = { plans: Plan[]; detectedCountry: string }
+// `billing_currency`: what checkout charges in — named beside a price shown in another (the USD base).
+type PricingResponse = { plans: Plan[]; detectedCountry: string; billing_currency?: string }
 type Cycle = "monthly" | "yearly"
 
 function formatMinor(amount: number, currency: string): string {
-  return new Intl.NumberFormat(undefined, {
-    style: "currency",
-    currency,
-    minimumFractionDigits: amount % 100 === 0 ? 0 : 2,
-  }).format(amount / 100)
+  const n = amount / 10 ** minorUnits(currency)
+  return Number.isInteger(n) ? formatMoneyWhole(n, currency) : formatMoney(n, currency)
 }
 // Round the discounted cents the way Dodo does, so the shown price matches checkout.
 const discounted = (amount: number, pct: number) => Math.round(amount * (1 - pct / 100))
 
-function PlanSummary({ plan, cycle, accountType }: { plan: Plan; cycle: Cycle; accountType: AccountType }) {
+function PlanSummary({ plan, cycle, accountType, billingCurrency }: { plan: Plan; cycle: Cycle; accountType: AccountType; billingCurrency?: string }) {
   const { t } = useTranslation()
   const planText = usePlanText()
   const accent = ACCENTS[accountType]
@@ -78,6 +78,9 @@ function PlanSummary({ plan, cycle, accountType }: { plan: Plan; cycle: Cycle; a
         <span className="text-4xl font-semibold tracking-tight">{formatMinor(final, local.currency)}</span>
         <span className="mb-1 text-sm text-muted-foreground">{suffix}</span>
       </div>
+      {billingCurrency && billingCurrency !== local.currency && (
+        <p className="relative mt-1 text-xs text-muted-foreground">{t("subscription.chargedInAtCheckout", { currency: billingCurrency })}</p>
+      )}
       <ul className="relative mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
         {perks.map((p) => (
           <li key={p} className="flex items-center gap-2 text-sm">
@@ -140,7 +143,7 @@ export function PlanStep({
     try {
       const token = await getToken()
       if (!token) return
-      const result = await apiPost<{ checkout_url?: string | null; message?: string }>(
+      const result = await apiPost<{ checkout_url?: string | null }>(
         "/api/billing/create-subscription",
         token,
         { plan_key: accountType, cycle },
@@ -149,10 +152,10 @@ export function PlanStep({
         window.location.href = result.checkout_url
         return
       }
-      toast.success(result.message || "You're all set!")
+      toast.success(t("subscription.subscriptionUpdated"))
       navigate(redirectTo, { replace: true })
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Checkout failed")
+      toast.error(apiErrorMessage(err, t("subscription.checkoutFailed")))
       setSubmitting(false)
     }
   }
@@ -179,7 +182,7 @@ export function PlanStep({
             <Loader2 className="size-5 animate-spin text-muted-foreground" />
           </div>
         ) : selectedPlan ? (
-          <PlanSummary plan={selectedPlan} cycle={cycle} accountType={accountType} />
+          <PlanSummary plan={selectedPlan} cycle={cycle} accountType={accountType} billingCurrency={pricing?.billing_currency} />
         ) : (
           <div className="rounded-2xl border bg-card p-6 text-center text-sm text-muted-foreground">{t("onboarding.freeIncluded")}</div>
         )}

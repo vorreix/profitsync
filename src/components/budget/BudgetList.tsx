@@ -4,11 +4,10 @@ import { DndContext, MouseSensor, TouchSensor, useDraggable, useSensor, useSenso
 import { Eye, EyeOff, Plus } from "lucide-react"
 import type { SpendingBudget, SpendingViewWindow } from "@/lib/types"
 import { useCurrency } from "@/lib/currency-context"
-import { formatMoney } from "@/lib/wealth"
 import { categoryKey } from "@/lib/budget"
 import { BudgetRow, type BudgetRowActions } from "@/components/budget/BudgetRow"
 import { asHandle, type HandleProps } from "@/components/budget/drag-handle"
-import { budgetName, inView, nestBudgets } from "@/components/budget/budget-format"
+import { budgetMoney, budgetName, inView, nestBudgets } from "@/components/budget/budget-format"
 import { Button } from "@/components/ui/button"
 
 /** A row is dragged from its grip; 6px of movement starts it, so a scroll still scrolls. */
@@ -148,7 +147,6 @@ export function BudgetList({
 }) {
   const { t } = useTranslation()
   const { currency } = useCurrency()
-  const money = (n: number) => formatMoney(n, currency)
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const [showClosed, setShowClosed] = useState(false)
 
@@ -241,7 +239,7 @@ export function BudgetList({
                   )}
                 </DragScope>
                 {kids.length > 0 && rest !== null && rest > 0.004 && (
-                  <p className="ms-14 mt-1 text-[11px] text-muted-foreground sm:ms-12">{t("budgets.notInSubBudgets", { amount: money(rest) })}</p>
+                  <p className="ms-14 mt-1 text-[11px] text-muted-foreground sm:ms-12">{t("budgets.notInSubBudgets", { amount: budgetMoney(b, currency)(rest) })}</p>
                 )}
                 {canWrite && !reordering && !b.is_overall && (
                   <div className="ms-4 mt-1 sm:ms-6">

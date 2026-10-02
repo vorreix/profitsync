@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react"
 import { useAuth } from "@clerk/clerk-react"
 import { toast } from "sonner"
 import { Gift, Copy, Check, Share2, Users, BadgeCheck, Wallet, TrendingUp, Link2, Send } from "lucide-react"
-import { apiGet, apiPost } from "@/lib/api"
+import { apiErrorMessage, apiGet, apiPost } from "@/lib/api"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -12,19 +12,21 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { appLocale } from "@/lib/format-date"
+import { formatMoney as money } from "@/lib/wealth"
 
 type Referral = { id: string; status: string; reward_amount: number; reward_currency: string; qualifying_at: string | null; paid_at: string | null; created_at: string; label: string }
 type Payout = { id: string; method: string; amount: string; currency: string; status: string; created_at: string }
+/** One currency's referral money — rewards are never added across currencies. */
+type Balance = { currency: string; lifetimeEarned: number; eligibleEarned: number; outstanding: number; pending: number; available: number }
 type ReferralData = {
   code: string
   referred_by?: { code: string; inviter: string } | null
-  stats: { signups: number; paid: number; lifetimeEarned: number; eligibleEarned: number; outstanding: number; available: number; currency: string }
+  stats: { signups: number; paid: number; balances: Balance[] }
   settings: { reward_type: string; reward_percent: number; reward_amount: number; reward_currency: string; holding_days: number; min_payout: number }
   referrals: Referral[]
   payouts: Payout[]
 }
 
-const money = (n: number, currency: string) => new Intl.NumberFormat("en-US", { style: "currency", currency, maximumFractionDigits: 2 }).format(n)
 const fmtDate = (s: string | null) => (s ? new Date(s).toLocaleDateString(appLocale(), { month: "short", day: "numeric", year: "numeric" }) : "—")
 
 export function ReferralPage() {
@@ -39,6 +41,7 @@ export function ReferralPage() {
   const [payoutOpen, setPayoutOpen] = useState(false)
   const [method, setMethod] = useState<"upi" | "paypal" | "bank">("upi")
   const [payoutAmount, setPayoutAmount] = useState("")
+  const [payoutCurrency, setPayoutCurrency] = useState("")
   const [payoutDetails, setPayoutDetails] = useState<Record<string, string>>({})
   const [requesting, setRequesting] = useState(false)
 
@@ -100,7 +103,7 @@ export function ReferralPage() {
       setCodeInput("")
       load()
     } catch (e) {
-      toast.error(e instanceof Error && e.message ? e.message : "Couldn't apply code")
+      toast.error(apiErrorMessage(e, "Couldn't apply code"))
     } finally {
       setApplying(false)
     }
@@ -113,14 +116,14 @@ export function ReferralPage() {
     try {
       const token = await getToken()
       if (!token) throw new Error()
-      await apiPost("/api/referrals/payouts", token, { method, amount: amt, details: payoutDetails })
+      await apiPost("/api/referrals/payouts", token, { method, amount: amt, currency: payoutCurrency, details: payoutDetails })
       toast.success("Payout requested")
       setPayoutOpen(false)
       setPayoutAmount("")
       setPayoutDetails({})
       load()
     } catch (e) {
-      toast.error(e instanceof Error && e.message ? e.message : "Couldn't request payout")
+      toast.error(apiErrorMessage(e, "Couldn't request payout"))
     } finally {
       setRequesting(false)
     }
@@ -131,15 +134,22 @@ export function ReferralPage() {
   }
   if (!data) return null
 
-  const c = data.stats.currency
-  const canPayout = data.stats.available > 0 && data.stats.available >= data.settings.min_payout
+  // One balance per currency, never a sum across them (MC-005); nothing earned
+  // yet → an empty one in the programme currency.
+  const programme = data.settings.reward_currency
+  const balances: Balance[] = data.stats.balances?.length
+    ? data.stats.balances
+    : [{ currency: programme, lifetimeEarned: 0, eligibleEarned: 0, outstanding: 0, pending: 0, available: 0 }]
+  const each = (pick: (b: Balance) => number) =>
+    balances.map((b) => <span key={b.currency} className="block truncate">{money(pick(b), b.currency)}</span>)
+  const payoutBalance = balances.find((b) => b.currency === payoutCurrency) ?? balances[0]
 
   return (
     <div className="p-3 sm:p-6 space-y-5 sm:space-y-6 max-w-3xl">
       <div>
         <h1 className="text-xl sm:text-2xl font-semibold tracking-tight flex items-center gap-2"><Gift className="size-5 text-primary" /> Refer &amp; earn</h1>
         <p className="text-sm text-muted-foreground mt-0.5">
-          Invite friends and earn {data.settings.reward_type === "percent" ? `${data.settings.reward_percent}% commission` : money(data.settings.reward_amount, c)} when they upgrade.
+          Invite friends and earn {data.settings.reward_type === "percent" ? `${data.settings.reward_percent}% commission` : money(data.settings.reward_amount, programme)} when they upgrade.
         </p>
       </div>
 
@@ -172,22 +182,30 @@ export function ReferralPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
         <StatCard icon={<Users className="size-3.5" />} label="Signups" value={String(data.stats.signups)} />
         <StatCard icon={<BadgeCheck className="size-3.5 text-emerald-500" />} label="Paid referrals" value={String(data.stats.paid)} />
-        <StatCard icon={<TrendingUp className="size-3.5" />} label="Total earned" value={money(data.stats.lifetimeEarned, c)} />
-        <StatCard icon={<Wallet className="size-3.5 text-primary" />} label="Available" value={money(data.stats.available, c)} />
+        <StatCard icon={<TrendingUp className="size-3.5" />} label="Total earned" value={each((b) => b.lifetimeEarned)} />
+        <StatCard icon={<Wallet className="size-3.5 text-primary" />} label="Available" value={each((b) => b.available)} />
       </div>
 
-      {/* Payout */}
+      {/* Payout — one row per currency; a payout is paid out of ONE balance. The
+          minimum is set in the programme currency, so it binds only that one. */}
       <Card>
-        <CardContent className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4">
-          <div>
-            <p className="text-sm font-medium">Available balance: {money(data.stats.available, c)}</p>
-            <p className="text-xs text-muted-foreground">
-              {data.settings.min_payout > 0 ? `Minimum payout ${money(data.settings.min_payout, c)}.` : "Request a payout anytime."}{data.stats.outstanding > 0 ? ` ${money(data.stats.outstanding, c)} pending.` : ""}
-            </p>
-          </div>
-          <Button disabled={!canPayout} onClick={() => { setMethod("upi"); setPayoutDetails({}); setPayoutAmount(String(data.stats.available)); setPayoutOpen(true) }} className="shrink-0">
-            <Send className="size-4" /> Request payout
-          </Button>
+        <CardContent className="divide-y p-0">
+          {balances.map((b) => {
+            const min = b.currency === programme ? data.settings.min_payout : 0
+            return (
+              <div key={b.currency} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4">
+                <div>
+                  <p className="text-sm font-medium">Available balance: {money(b.available, b.currency)}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {min > 0 ? `Minimum payout ${money(min, b.currency)}.` : "Request a payout anytime."}{b.pending > 0 ? ` ${money(b.pending, b.currency)} pending.` : ""}
+                  </p>
+                </div>
+                <Button disabled={!(b.available > 0 && b.available >= min)} onClick={() => { setMethod("upi"); setPayoutDetails({}); setPayoutCurrency(b.currency); setPayoutAmount(String(b.available)); setPayoutOpen(true) }} className="shrink-0">
+                  <Send className="size-4" /> Request payout
+                </Button>
+              </div>
+            )
+          })}
         </CardContent>
       </Card>
 
@@ -277,9 +295,9 @@ export function ReferralPage() {
               </div>
             )}
             <div className="space-y-1.5">
-              <Label>Amount ({c})</Label>
-              <Input type="number" min="0" step="0.01" max={data.stats.available} value={payoutAmount} onChange={(e) => setPayoutAmount(e.target.value)} />
-              <p className="text-xs text-muted-foreground">Available: {money(data.stats.available, c)}</p>
+              <Label>Amount ({payoutBalance.currency})</Label>
+              <Input type="number" min="0" step="0.01" max={payoutBalance.available} value={payoutAmount} onChange={(e) => setPayoutAmount(e.target.value)} />
+              <p className="text-xs text-muted-foreground">Available: {money(payoutBalance.available, payoutBalance.currency)}</p>
             </div>
           </div>
           <DialogFooter>
@@ -292,7 +310,7 @@ export function ReferralPage() {
   )
 }
 
-function StatCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+function StatCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: React.ReactNode }) {
   return (
     <Card className="py-0"><CardContent className="p-3 sm:p-4">
       <p className="text-[10px] sm:text-xs text-muted-foreground font-medium uppercase tracking-wide flex items-center gap-1">{icon}{label}</p>

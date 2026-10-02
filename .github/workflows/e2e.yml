@@ -1,8 +1,14 @@
 # End-to-end gate for main.
 #
 # Runs the Playwright smoke suite on every PR TARGETING MAIN (the merge gate)
-# and on demand (workflow_dispatch — usable from dev or any branch). It does
-# NOT run on every dev push: e2e is minutes-long and hits a real database.
+# and on demand (workflow_dispatch — usable from dev or any branch). PRs into
+# DEV run only the multi-currency spec (MC-177): most branches merge through
+# dev, and money conversion is the part a unit test cannot see end to end.
+# It does NOT run on every dev push: e2e is minutes-long and hits a real database.
+#
+# Exchange rates are deterministic here (MC-128): FX_DISABLED=1 keeps the
+# server off the live providers and E2E_FX_SEED=1 lets multi-currency.spec.ts
+# write fixed rates — into the DEDICATED e2e database only (rates are global).
 #
 # Required repository secrets:
 #   E2E_VITE_CLERK_PUBLISHABLE_KEY  Clerk DEV instance publishable key (pk_test_…)
@@ -18,7 +24,7 @@ name: E2E
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, dev]
   workflow_dispatch:
 
 concurrency:
@@ -36,6 +42,8 @@ jobs:
       VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.E2E_VITE_CLERK_PUBLISHABLE_KEY }}
       CLERK_SECRET_KEY: ${{ secrets.E2E_CLERK_SECRET_KEY }}
       DATABASE_URL: ${{ secrets.E2E_DATABASE_URL }}
+      FX_DISABLED: "1"
+      E2E_FX_SEED: "1"
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -63,7 +71,12 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Run e2e suite
+        if: github.base_ref != 'dev'
         run: npx playwright test
+
+      - name: Run multi-currency e2e (PR into dev)
+        if: github.base_ref == 'dev'
+        run: npx playwright test e2e/multi-currency.spec.ts --project=chromium
 
       - name: Upload report on failure
         if: failure()

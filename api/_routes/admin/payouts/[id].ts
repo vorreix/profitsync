@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { and, eq } from "drizzle-orm"
+import { and, eq, lte } from "drizzle-orm"
 import { db, serialize } from "../../../../src/lib/db/index.js"
 import { payoutRequests, referrals } from "../../../../src/lib/db/schema.js"
 import { requireAdminCap } from "../../../_lib/admin.js"
@@ -30,14 +30,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const [row] = await db.update(payoutRequests).set(updates).where(eq(payoutRequests.id, id)).returning()
   if (!row) return res.status(404).json({ error: "Not found" })
 
-  // When a payout is marked paid, mark that referrer's eligible referrals as
-  // paid_out so the referrer's UI reflects completion. Status-guarded so a
-  // replayed/duplicate admin update can't double-transition.
+  // When a payout is marked paid, mark that referrer's eligible referrals IN THE
+  // PAYOUT'S CURRENCY as paid_out so the referrer's UI reflects completion. A
+  // label only — the balance counts paid_out as earned (computeStats) — but a
+  // USD payout must not stamp INR earnings, or rewards still in holding, as
+  // paid. Status-guarded so a replayed/duplicate admin update can't
+  // double-transition.
   if (updates.status === "paid") {
     await db
       .update(referrals)
       .set({ status: "paid_out", updatedAt: new Date() })
-      .where(and(eq(referrals.referrerUserId, row.userId), eq(referrals.status, "paid")))
+      .where(
+        and(
+          eq(referrals.referrerUserId, row.userId),
+          eq(referrals.status, "paid"),
+          eq(referrals.rewardCurrency, row.currency),
+          lte(referrals.qualifyingAt, new Date()),
+        ),
+      )
   }
 
   // Tell the requester how their payout moved (best-effort; account-level).

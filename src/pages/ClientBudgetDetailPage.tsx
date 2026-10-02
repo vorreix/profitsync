@@ -13,20 +13,28 @@ import type { BudgetPeriod } from "@/lib/budget"
 import type { Budget } from "@/lib/types"
 import { BudgetIndicator } from "@/components/budget/BudgetIndicator"
 import { BudgetDialog } from "@/components/budget/BudgetDialog"
+import { moneyTooltip } from "@/components/budget/budget-format"
+import { FxExcludedNotice } from "@/components/FxExcludedNotice"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart"
 
 type Action = "set" | "raise" | "lower" | "period_change" | "remove"
-type TimelineRow = { amount: number; period: BudgetPeriod; action: Action; created_at: string }
-type SeriesPoint = { start: string; spent: number; budget: number; state: "ok" | "warn" | "over" | "none" }
+// `currency` = the cap's currency when that snapshot was taken (absent on older servers).
+type TimelineRow = { amount: number; period: BudgetPeriod; action: Action; created_at: string; currency?: string }
+// `excluded_count` = rows in this window left out of `spent` (no exchange rate).
+type SeriesPoint = { start: string; spent: number; budget: number; state: "ok" | "warn" | "over" | "none"; excluded_count?: number }
 type Detail = {
   key: string
   client_id: string | null
   client_name: string | null
   is_default: boolean
   current: { amount: number; period: BudgetPeriod } | null
+  /** The cap's OWN currency — every figure but a timeline row from another currency is in it. */
+  currency?: string
+  /** Rows left out of the series' spend across every window (no exchange rate). */
+  excluded_count?: number
   timeline: TimelineRow[]
   has_series: boolean
   series: SeriesPoint[]
@@ -48,12 +56,14 @@ export function ClientBudgetDetailPage() {
   const { t, i18n } = useTranslation()
   const navigate = useNavigate()
   const { getToken } = useAuth()
-  const { currency } = useCurrency()
+  const { currency: workspaceCurrency } = useCurrency()
   const { activeOrg } = useOrg()
   const isPersonal = activeOrg?.account_type === "personal"
   const canWrite = canWriteRole(activeOrg?.role)
 
   const [d, setD] = useState<Detail | null>(null)
+  // A cap keeps the currency it was set in; the workspace's is only the fallback.
+  const currency = d?.currency ?? workspaceCurrency
   const [loading, setLoading] = useState(true)
   const [editOpen, setEditOpen] = useState(false)
   // Respect reduced-motion: recharts doesn't honour it, so gate its animations.
@@ -111,7 +121,11 @@ export function ClientBudgetDetailPage() {
           {/* Current budget */}
           <div className="rounded-xl border p-4">
             {d.current ? (
-              <BudgetIndicator amount={d.current.amount} spent={d.series.length ? d.series[d.series.length - 1].spent : 0} period={d.current.period} currency={currency} />
+              <>
+                <BudgetIndicator amount={d.current.amount} spent={d.series.length ? d.series[d.series.length - 1].spent : 0} period={d.current.period} currency={currency} />
+                {/* The current window's spend is partial when rows had no rate. */}
+                <FxExcludedNotice count={d.series[d.series.length - 1]?.excluded_count} className="mt-2" />
+              </>
             ) : (
               <p className="text-sm text-muted-foreground">{t("budget.noBudget")}</p>
             )}
@@ -136,13 +150,27 @@ export function ClientBudgetDetailPage() {
                   <CartesianGrid vertical={false} strokeDasharray="3 3" />
                   <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={6} fontSize={11} />
                   <YAxis hide />
-                  <ChartTooltip content={<ChartTooltipContent />} />
+                  <ChartTooltip
+                    content={
+                      <ChartTooltipContent
+                        formatter={moneyTooltip(chartConfig, (n) => formatMoney(n, currency))}
+                        labelFormatter={(label, payload) => (
+                          <>
+                            {label}
+                            <FxExcludedNotice count={payload?.[0]?.payload?.excluded_count} className="font-normal" />
+                          </>
+                        )}
+                      />
+                    }
+                  />
                   <Bar dataKey="spent" radius={4} isAnimationActive={animate}>
                     {chartData.map((p) => <Cell key={p.start} fill={BAR[p.state]} />)}
                   </Bar>
                   <Line dataKey="budget" stroke={BUDGET_LINE} strokeWidth={2} strokeDasharray="4 4" dot={false} isAnimationActive={animate} />
                 </ComposedChart>
               </ChartContainer>
+              {/* Windows with rows left out are also left out of the adherence below. */}
+              <FxExcludedNotice count={d.excluded_count} />
 
               {d.adherence.periods > 0 && (
                 <div className="grid grid-cols-2 gap-2">
@@ -176,6 +204,7 @@ export function ClientBudgetDetailPage() {
               <ol className="space-y-2.5">
                 {[...d.timeline].reverse().map((row, i, arr) => {
                   const prev = arr[i + 1] // older row (the list is newest-first here)
+                  const rowCurrency = row.currency ?? currency
                   return (
                     <li key={row.created_at + i} className="flex items-start gap-2.5 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1" style={{ animationDelay: `${Math.min(i, 6) * 30}ms` }}>
                       <span className={`mt-1.5 size-1.5 shrink-0 rounded-full ${row.action === "remove" ? "bg-red-500" : row.action === "raise" ? "bg-amber-500" : "bg-emerald-500"}`} />
@@ -184,12 +213,12 @@ export function ClientBudgetDetailPage() {
                           <span className="font-medium">{t(ACTION_KEY[row.action])}</span>{" "}
                           {row.action !== "remove" && (
                             <span className="tabular-nums">
-                              {formatMoney(row.amount, currency)} · {t(`budget.${row.period}`)}
+                              {formatMoney(row.amount, rowCurrency)} · {t(`budget.${row.period}`)}
                             </span>
                           )}
-                          {prev && row.action !== "remove" && prev.action !== "remove" && row.amount !== prev.amount && (
+                          {prev && row.action !== "remove" && prev.action !== "remove" && row.amount !== prev.amount && (prev.currency ?? currency) === rowCurrency && (
                             <Badge variant="outline" className="ml-1.5 text-[10px] py-0">
-                              {row.amount > prev.amount ? "+" : "−"}{formatMoney(Math.abs(row.amount - prev.amount), currency)}
+                              {row.amount > prev.amount ? "+" : "−"}{formatMoney(Math.abs(row.amount - prev.amount), rowCurrency)}
                             </Badge>
                           )}
                         </p>
@@ -209,7 +238,7 @@ export function ClientBudgetDetailPage() {
         onOpenChange={setEditOpen}
         clientId={d?.client_id ?? null}
         label={title}
-        current={d?.current ? ({ amount: d.current.amount, period: d.current.period } as Budget) : null}
+        current={d?.current ? ({ amount: d.current.amount, period: d.current.period, currency: d.currency } as Budget) : null}
         onSaved={() => { void load() }}
       />
     </div>

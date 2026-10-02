@@ -106,6 +106,7 @@ export async function createOrgForUser(input: {
       isPersonal: input.isPersonal,
       accountType,
       currency,
+      reportingCurrency: currency,
     })
     .returning()
   await db.insert(organizationMembers).values({

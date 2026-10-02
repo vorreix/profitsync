@@ -4,7 +4,8 @@ import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { Loader as Loader2, Paperclip, Sparkles, X } from "lucide-react"
-import { apiDelete, apiErrorUpgradeHint, apiGet, apiPatch, apiPost } from "@/lib/api"
+import { apiDelete, apiErrorMessage, apiErrorUpgradeHint, apiGet, apiPatch, apiPost } from "@/lib/api"
+import { accountCurrency } from "@/lib/wealth"
 import { amountExceedsLimit } from "@/lib/money"
 import { isPaidPlanKey, type Budget, type Card, type Client, type SpendingBudget, type SpendingBudgetsResponse, type WealthAccount } from "@/lib/types"
 import { tagLimitForPlan } from "@/lib/tags"
@@ -32,7 +33,10 @@ import {
   type TxForm,
 } from "@/components/transactions/tx-form-utils"
 
-export type CreatedTxInfo = { id: string | null; type: "incoming" | "outgoing"; amount: number }
+// `currency` is what `amount` was saved in — the account's, which every leg of
+// a split shares (the server refuses a cross-currency split) — so the success
+// toast never re-labels ₹500 as "€500" (MC-107).
+export type CreatedTxInfo = { id: string | null; type: "incoming" | "outgoing"; amount: number; currency: string }
 
 /**
  * THE single Add-Transaction modal, reused everywhere (the + FAB on any page and
@@ -380,13 +384,14 @@ export function AddTransactionDialog({
       setAiMeta({})
       aiSnapshot.current = null
       onOpenChange(false)
-      onCreated?.({ id: firstId, type: form.type, amount: total })
+      onCreated?.({ id: firstId, type: form.type, amount: total, currency: accountCurrency(accounts.find((a) => a.id === allocs[0].account_id), currency) })
     } catch (err) {
       // A tag/quota 402 → route to upgrade instead of a generic failure toast.
       if (apiErrorUpgradeHint(err)) { toast.info(t("tagsLimitReached")); goUpgrade(); return }
       // The chosen card was frozen/closed meanwhile: say so where the choice is made.
       if (isCardUnusableError(err)) { setSourceError(t("cardFrozenError")); toast.error(t("cardFrozenError")); return }
-      toast.error(t("failedToAddTransaction"))
+      // A coded refusal (split_currency_mismatch, currency_missing…) in the user's language.
+      toast.error(apiErrorMessage(err, t("failedToAddTransaction")))
     } finally {
       // Always reset — the component stays mounted after a successful close, so a
       // missing reset here is what froze the button on the next open.

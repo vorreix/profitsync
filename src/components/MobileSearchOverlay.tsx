@@ -22,12 +22,15 @@ import { useOrg } from "@/lib/org-context"
 import { loadRecents, recentSearchScope, recordRecent } from "@/lib/recent-searches"
 import { filterLocal, quickActions, searchablePages } from "@/lib/search-index"
 import { accountDisplayName, formatMoney } from "@/lib/wealth"
+import { ledgerDescription } from "@/lib/wealth-ledger"
+import { rowCurrency } from "@/lib/reporting-fields"
 import { cardDisplayName, maskedTail } from "@/lib/cards"
 import { CardSwatch } from "@/components/transactions/CardSwatch"
 import { useBackClose } from "@/hooks/use-back-close"
 import {
   SEARCH_MIN_CHARS,
   searchHrefs,
+  type SearchTransaction,
   useGlobalSearch,
 } from "@/hooks/use-global-search"
 import type { SearchHandleSide } from "@/lib/search-handle"
@@ -100,6 +103,10 @@ export function MobileSearchOverlay({
   const { activeOrg } = useOrg()
   const { isAdmin } = useAdmin()
   const { currency } = useCurrency()
+  // A hit in its OWN currency (search.ts sends `currency_code`), not the
+  // workspace's: a ₹20,000 opening balance never reads "€20,000" (MC-050).
+  const txMoney = (tx: SearchTransaction & { currency_code?: string | null }) =>
+    formatMoney(Number(tx.amount), rowCurrency(tx, currency))
   const recentsScope = activeOrg ? recentSearchScope(userId, activeOrg.id) : null
   const [query, setQuery] = useState("")
   const [chip, setChip] = useState<Chip>("all")
@@ -309,8 +316,8 @@ export function MobileSearchOverlay({
               <ResultRow
                 key={tx.id}
                 icon={ArrowLeftRight}
-                label={tx.description || tx.category || tx.client_name}
-                secondary={formatMoney(Number(tx.amount), currency)}
+                label={ledgerDescription(tx, t) || tx.category || tx.client_name}
+                secondary={txMoney(tx)}
                 onClick={() => go(searchHrefs.transaction(tx))}
               />
             ))}

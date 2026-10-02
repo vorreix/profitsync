@@ -3,10 +3,10 @@ import { and, eq, gte, isNull, sql } from "drizzle-orm"
 import { db } from "../../../../src/lib/db/index.js"
 import { cards, transactions, wealthAccounts } from "../../../../src/lib/db/schema.js"
 import { requireAuth } from "../../../_lib/auth.js"
-import { loadCard, serializeCard } from "../../../_lib/cards.js"
-import { syncCards } from "../../../_lib/card-autopay.js"
+import { loadCard, sameNativeCurrency, serializeCard } from "../../../_lib/cards.js"
+import { AUTOPAY_CURRENCY_MISMATCH, syncCards } from "../../../_lib/card-autopay.js"
 import { loadCardSummary } from "../../../_lib/credit-card.js"
-import { autopayPreview } from "../../../../src/lib/cards.js"
+import { autopayDeferred, autopayPreview } from "../../../../src/lib/cards.js"
 import { todayIso } from "../../../../src/lib/recurring.js"
 
 const num = (v: unknown): number => {
@@ -39,19 +39,48 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (card.kind === "credit") {
     const summary = await loadCardSummary(account, today)
     const statements = [summary.statement, ...summary.history].filter((s): s is NonNullable<typeof s> => !!s)
-    const nextAutopay = autopayPreview(
+    // A payer in another currency is one autopay will refuse (card-autopay.ts):
+    // never promise a payment that is not going to happen.
+    const payable = !card.fundingAccountId || (await sameNativeCurrency(orgId, full.fundingAccountCurrencyCode, full.accountCurrencyCode))
+    const nextAutopay = payable && autopayPreview(
       { autopay: card.autopay, autopay_since: card.autopaySince, funding_account_id: card.fundingAccountId, status: card.status },
-      statements.map((s) => ({ id: s.id, due_date: s.due_date, remaining: s.remaining, autopay_status: s.autopay_status ?? null })),
+      statements.map((s) => ({ id: s.id, due_date: s.due_date, remaining: s.remaining, autopay_status: s.autopay_status ?? null, autopay_error: s.autopay_error })),
     )
+    // The last attempt — a DEFERRED one included (MC-087): the sync above just
+    // retried it and it handed the statement back again, so it reads as failed
+    // (with "Pay manually") rather than vanishing behind an older success. A
+    // deferral releases its claim time, so its due date (when autopay tried)
+    // orders it. Once the user has paid it themselves it is nothing to act on.
     const last = statements
-      .filter((s) => s.autopay_status)
-      .sort((a, b) => (b.autopay_at ?? "").localeCompare(a.autopay_at ?? ""))[0]
+      .filter((s) => s.autopay_status || (autopayDeferred(s) && s.remaining > 0))
+      .sort((a, b) => (b.autopay_at ?? b.due_date).localeCompare(a.autopay_at ?? a.due_date))[0]
+    const deferred = !!last && autopayDeferred(last)
+    // A REVERSED autopay keeps autopay_status='paid' on purpose — the engine
+    // must not move the money again by itself — but the statement is owed
+    // again (PAID_LEG_SQL nets the reversal), so the panel must not show a
+    // green "paid" tick beside it: report it failed, with "Pay manually".
+    const reversed = !!last && last.autopay_status === "paid" && !!last.autopay_group_id && last.remaining > 0 &&
+      ((await db.execute(sql`
+        select 1 from transfers x
+        join transfers r on r.reverses_transfer_id = x.id and r.deleted_at is null
+        where x.group_id = ${last.autopay_group_id} and x.organization_id = ${orgId}
+        limit 1
+      `)) as unknown as { rows: unknown[] }).rows.length > 0
     return res.json({
       card: serializeCard(full),
       credit: summary,
       debit: null,
       next_autopay: nextAutopay ? { date: nextAutopay.date, amount: nextAutopay.amount } : null,
-      last_autopay: last ? { status: last.autopay_status, at: last.autopay_at ?? null, group_id: last.autopay_group_id ?? null, statement_id: last.id } : null,
+      last_autopay: last
+        ? {
+            status: deferred || reversed ? "failed" : last.autopay_status,
+            at: last.autopay_at ?? (deferred ? last.due_date : null),
+            group_id: last.autopay_group_id ?? null,
+            statement_id: last.id,
+            // A stable code, never the stored English text.
+            reason: deferred ? "autopay_deferred" : reversed ? "autopay_reversed" : last.autopay_error === AUTOPAY_CURRENCY_MISMATCH ? AUTOPAY_CURRENCY_MISMATCH : null,
+          }
+        : null,
     })
   }
 

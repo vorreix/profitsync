@@ -53,6 +53,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     res.setHeader("Content-Disposition", `inline; filename="invoice-${invoice.id}.pdf"`)
     return res.status(200).send(pdf)
   } catch (err) {
-    return res.status(502).json({ error: err instanceof Error ? err.message : "Failed to fetch invoice" })
+    return res.status(502).json({ error: err instanceof Error ? err.message : "Failed to fetch invoice", code: "billing_provider_failed" })
   }
 }

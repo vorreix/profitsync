@@ -1,4 +1,5 @@
 import { createHmac, timingSafeEqual } from "crypto"
+import { minorUnits } from "../../src/lib/currencies.js"
 
 /**
  * Dodo Payments client (Merchant of Record).
@@ -128,7 +129,16 @@ export type DodoSubscription = {
   metadata: Record<string, string>
 }
 
-/** A Dodo payment (one charge). `total_amount` is in minor units (e.g. cents). */
+/**
+ * A Dodo amount in major units. Dodo sends every amount in the currency's
+ * SMALLEST unit — "cents for USD, yen for JPY, fils for KWD" — so the divisor
+ * is 10^minorUnits, not 100: ¥1,500 arrives as 1500, 3.010 KWD as 3010.
+ */
+export function fromDodoMinor(amount: number | null | undefined, currency: string): number {
+  return (amount ?? 0) / 10 ** minorUnits(currency)
+}
+
+/** A Dodo payment (one charge). `total_amount` is in the currency's smallest unit — see `fromDodoMinor`. */
 export type DodoPayment = {
   payment_id: string
   status: string // succeeded | processing | failed | cancelled | requires_*

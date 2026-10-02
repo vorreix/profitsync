@@ -3,12 +3,12 @@ import { useTranslation } from "react-i18next"
 import { useAuth } from "@clerk/clerk-react"
 import { toast } from "sonner"
 import { AlertTriangle, ArrowRight, CreditCard } from "lucide-react"
-import { apiPost } from "@/lib/api"
-import { amountExceedsLimit } from "@/lib/money"
+import { apiErrorMessage, apiPost } from "@/lib/api"
+import { amountExceedsLimit, amountInputProps } from "@/lib/money"
 import { isLiabilityType } from "@/lib/credit-card"
 import { usableCards, useCards } from "@/lib/use-cards"
 import type { CreditCardSummary, WealthAccount } from "@/lib/types"
-import { accountDisplayName, currencySymbol, formatMoney } from "@/lib/wealth"
+import { accountCurrency, accountDisplayName, currencySymbol, formatMoney, formatRate } from "@/lib/wealth"
 import { cn } from "@/lib/utils"
 import { WealthAccountIcon } from "@/components/WealthAccountIcon"
 import { AccountCombobox } from "@/components/wealth/AccountCombobox"
@@ -71,7 +71,10 @@ export function PayCardSheet({
   const { t } = useTranslation("wealth")
   const { t: tTx } = useTranslation("transactions")
   const { getToken } = useAuth()
-  const symbol = currencySymbol(currency)
+  // The card's own currency: what it owes is denominated there, whatever the
+  // workspace reports in. `currency` is only the legacy fallback.
+  const cardCurrency = accountCurrency(card, currency)
+  const symbol = currencySymbol(cardCurrency)
 
   // Sources: every active non-Space account except this card's own — a card can
   // never pay itself. Other credit cards stay in: buildPayOptions shows each as
@@ -93,6 +96,13 @@ export function PayCardSheet({
   const [amount, setAmount] = useState("")
   const [date, setDate] = useState(today())
   const [note, setNote] = useState("")
+  // Paying from an account in ANOTHER currency: the amount above is what the
+  // card receives (its currency); this is what leaves the source (its own).
+  const [sourceAmount, setSourceAmount] = useState("")
+  // …and what the source's bank charged for the conversion, in its currency:
+  // recorded as the transfer's fee (an expense), so the rate stays the real
+  // one instead of absorbing the charge (MC-146).
+  const [feeAmount, setFeeAmount] = useState("")
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -103,6 +113,8 @@ export function PayCardSheet({
     setAmount(startPreset === "statement" ? String(statementRemaining) : startPreset === "full" ? String(debt) : "")
     setDate(today())
     setNote("")
+    setSourceAmount("")
+    setFeeAmount("")
     setSaving(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
@@ -138,20 +150,35 @@ export function PayCardSheet({
   const amountValid = !!amt && !isNaN(amt) && amt > 0
   const from = sources.find((a) => a.id === fromId)
   const fromCard = fromCardId ? payWith.find((c) => c.id === fromCardId) : undefined
+  const fromCurrency = accountCurrency(from, currency)
+  const crossCurrency = !!from && fromCurrency !== cardCurrency
+  const sourceAmt = parseFloat(sourceAmount)
+  const sourceValid = !crossCurrency || (!!sourceAmt && !isNaN(sourceAmt) && sourceAmt > 0)
+  const fee = crossCurrency ? feeAmount.trim() : ""
+  // Both figures are typed in the SOURCE's currency: picking a source in another
+  // currency voids them (8,500 INR is not 8,500 USD), exactly as the wizard does
+  // on a new pair (MC-065). A source in the same currency keeps them.
+  useEffect(() => { setSourceAmount(""); setFeeAmount("") }, [fromCurrency])
 
   async function submit() {
     if (!fromId) { toast.error(t("selectAccount")); return }
     if (!amountValid) { toast.error(t("payAmount")); return }
-    if (amountExceedsLimit(amt)) { toast.error(t("common.amountTooLarge")); return }
+    if (!sourceValid) { toast.error(t("payAmountLeaving", { account: from ? accountDisplayName(from) : "", currency: fromCurrency })); return }
+    if (amountExceedsLimit(amt) || (crossCurrency && amountExceedsLimit(sourceAmt)) || amountExceedsLimit(fee)) { toast.error(t("common.amountTooLarge")); return }
+    if (fee && !(Number(fee) >= 0)) { toast.error(t("apiErrors.fee_invalid", { ns: "translation" })); return }
     setSaving(true)
     try {
       const token = await getToken()
       if (!token) throw new Error("Not authenticated")
+      // Same currency keeps the historical body (`amount`); a cross-currency
+      // payment names both native sides so the server records the real rate.
       await apiPost("/api/wealth/transfer", token, {
         from_account_id: fromId,
         from_card_id: fromCardId || null,
         to_account_id: card.id,
-        amount: amt,
+        ...(crossCurrency
+          ? { source_amount: sourceAmt, destination_amount: amt, source_fee_amount: fee || undefined, source_currency: fromCurrency, destination_currency: cardCurrency }
+          : { amount: amt }),
         date,
         note,
       })
@@ -159,7 +186,7 @@ export function PayCardSheet({
       onOpenChange(false)
       onDone?.()
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : t("payFailed"))
+      toast.error(apiErrorMessage(e, t("payFailed")))
     } finally {
       setSaving(false)
     }
@@ -215,28 +242,45 @@ export function PayCardSheet({
                     )}
                   >
                     <span className="font-medium">{o.label}</span>
-                    {o.value !== null && <span className="tabular-nums text-muted-foreground">{formatMoney(o.value, currency, balancesVisible)}</span>}
+                    {o.value !== null && <span className="tabular-nums text-muted-foreground">{formatMoney(o.value, cardCurrency, balancesVisible)}</span>}
                   </button>
                 )
               })}
             </div>
             <div className="relative">
-              <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-2xl font-semibold text-muted-foreground">{symbol}</span>
+              <span className="pointer-events-none absolute start-4 top-1/2 -translate-y-1/2 text-2xl font-semibold text-muted-foreground">{symbol}</span>
               <Label htmlFor="pay-amount" className="sr-only">{t("payAmount")}</Label>
               <Input
                 id="pay-amount"
-                inputMode="decimal"
                 type="number"
                 min="0"
-                step="0.01"
+                {...amountInputProps(cardCurrency)}
                 value={amount}
                 onChange={(e) => { setAmount(e.target.value); setPreset("other") }}
-                placeholder="0.00"
-                className="h-16 pl-11 text-center text-3xl font-bold tabular-nums"
+                className="h-16 text-center text-3xl md:text-3xl font-bold tabular-nums"
+                // The prefix is 1–5 characters ("$" … "F CFA"): pad for its real width.
+                style={{ paddingInlineStart: `calc(${symbol.length}ch + 1.25rem)` }}
               />
             </div>
             {debt <= 0 && <p className="text-center text-xs text-muted-foreground">{t("nothingToPay")}</p>}
           </div>
+
+          {/* The source holds a different currency: ask what actually leaves it. */}
+          {crossCurrency && from && (
+            <div className="space-y-1.5">
+              <Label htmlFor="pay-source-amount">{t("payAmountLeaving", { account: accountDisplayName(from), currency: fromCurrency })}</Label>
+              <Input id="pay-source-amount" type="number" min="0" {...amountInputProps(fromCurrency)} value={sourceAmount} onChange={(e) => setSourceAmount(e.target.value)} />
+              {sourceValid && amountValid && (
+                <p className="text-xs text-muted-foreground tabular-nums">{formatRate(fromCurrency, cardCurrency, amt / sourceAmt)}</p>
+              )}
+            </div>
+          )}
+          {crossCurrency && from && (
+            <div className="space-y-1.5">
+              <Label htmlFor="pay-fee-amount">{t("transferFeeAmount", { currency: fromCurrency })}</Label>
+              <Input id="pay-fee-amount" type="number" min="0" {...amountInputProps(fromCurrency)} value={feeAmount} onChange={(e) => setFeeAmount(e.target.value)} />
+            </div>
+          )}
 
           <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
             <span className="truncate">
@@ -273,7 +317,7 @@ export function PayCardSheet({
 
         <DialogFooter className="shrink-0 border-t px-6 pb-6 pt-3">
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>{t("cancel")}</Button>
-          <Button onClick={submit} disabled={saving || !amountValid || !fromId}>
+          <Button onClick={submit} disabled={saving || !amountValid || !sourceValid || !fromId}>
             <CreditCard className="size-4" /> {saving ? t("saving") : t("recordPayment")}
           </Button>
         </DialogFooter>

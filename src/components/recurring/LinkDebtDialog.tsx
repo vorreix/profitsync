@@ -67,6 +67,7 @@ export function LinkDebtDialog({
       // is how a picker offers a row that is refused the moment it is clicked.
       accountType: rule.account_type ?? null,
       accountArchived: !!rule.account_archived,
+      accountCurrency: rule.account_currency ?? rule.currency_code ?? null,
       debtAccountId: rule.debt_account_id ?? null,
       ended: !!rule.end_date && rule.end_date < today,
       hasPending: rule.active && String(rule.next_due_at).slice(0, 10) <= today,
@@ -83,6 +84,7 @@ export function LinkDebtDialog({
         id: d.id,
         direction: d.direction,
         archived: !!d.archived_at,
+        currency: d.currency,
         // Only a boolean is exposed, which is all the one-repayment rule needs:
         // is something OTHER than this rule already attached? PAUSED counts —
         // a debt with a paused rule must not quietly take a second one.

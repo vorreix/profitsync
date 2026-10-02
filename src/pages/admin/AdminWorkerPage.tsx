@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useAuth } from "@clerk/clerk-react"
+import { useTranslation } from "react-i18next"
 import { apiGet, apiPost } from "@/lib/api"
 import { useAdmin } from "@/lib/admin-context"
 import { Card } from "@/components/ui/card"
@@ -8,6 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { toast } from "sonner"
 import { RefreshCw, RotateCcw, X, ServerCog, AlertTriangle, CalendarClock, Wrench, CheckCircle2 } from "lucide-react"
+import { AdminFxHealth } from "./AdminFxHealth"
 
 type JobView = {
   id: string
@@ -76,6 +78,11 @@ const TICK_STALE_MINUTES = 150
 // delivery for scheduled broadcasts; this sweep catches anything a lost enqueue
 // missed. If it's missing AND enqueues fail, timed broadcasts never fire.
 const DISPATCH_SCHEDULE = "notifications-dispatch"
+// The daily exchange-rate refresh (api/_routes/cron/fx.ts). A redeploy wipes it
+// with the rest of the table; without it, rate history older than the month
+// report requests top up themselves never fills. Both names are the ones
+// api/_lib/worker-schedules.ts registers.
+const FX_SCHEDULE = "fx-refresh"
 
 const STATUS_ORDER = ["queued", "running", "done", "failed", "dead", "cancelled"]
 const STATUS_STYLE: Record<string, string> = {
@@ -88,6 +95,7 @@ const STATUS_STYLE: Record<string, string> = {
 }
 
 export function AdminWorkerPage() {
+  const { t } = useTranslation()
   const { getToken } = useAuth()
   const { can } = useAdmin()
   const canManage = can("settings")
@@ -137,8 +145,10 @@ export function AdminWorkerPage() {
     try {
       const token = await getToken()
       if (!token) return
+      // Upserts EVERY schedule by name (notifications + FX refresh), so one
+      // repair brings back whatever a worker redeploy wiped.
       await apiPost("/api/admin/worker", token, { action: "register-notifications" })
-      toast.success("Notification schedule registered — reminders & scheduled broadcasts will now fire.")
+      toast.success("Schedules registered — notifications and the daily exchange-rate refresh will now fire.")
       await load()
     } catch {
       toast.error("Couldn't register the schedule — is the worker reachable?")
@@ -147,20 +157,21 @@ export function AdminWorkerPage() {
     }
   }, [getToken, load])
 
-  const dispatchMissing =
-    !!data?.schedulesSupported && !data.schedules.some((s) => s.name === DISPATCH_SCHEDULE && s.enabled)
+  const scheduleMissing = (name: string) => !!data?.schedulesSupported && !data.schedules.some((s) => s.name === name && s.enabled)
+  const dispatchMissing = scheduleMissing(DISPATCH_SCHEDULE)
+  const fxMissing = scheduleMissing(FX_SCHEDULE)
 
   // Self-heal: a worker redeploy can wipe its schedule table (the June'26
-  // outage). If the worker is reachable but the dispatch schedule is missing,
-  // re-register it automatically on panel load — once, not in a loop.
+  // outage). If the worker is reachable but a schedule is missing, re-register
+  // them automatically on panel load — once, not in a loop.
   const autoRepaired = useRef(false)
   useEffect(() => {
     if (!canManage || autoRepaired.current) return
-    if (data?.reachable && data.schedulesSupported && dispatchMissing) {
+    if (data?.reachable && data.schedulesSupported && (dispatchMissing || fxMissing)) {
       autoRepaired.current = true
       void repairSchedule()
     }
-  }, [data, dispatchMissing, canManage, repairSchedule])
+  }, [data, dispatchMissing, fxMissing, canManage, repairSchedule])
 
   const tickAgeMinutes = data?.heartbeat
     ? Math.max(0, Math.floor((Date.now() - new Date(data.heartbeat.last_tick_at).getTime()) / 60_000))
@@ -246,6 +257,9 @@ export function AdminWorkerPage() {
         </Card>
       )}
 
+      {/* FX refresh + provider health (MC-127) — also from OUR db. */}
+      <AdminFxHealth />
+
       {loading && !data ? (
         <Skeleton className="h-40 w-full" />
       ) : !data?.configured ? (
@@ -281,9 +295,9 @@ export function AdminWorkerPage() {
                 <CalendarClock className="size-4 text-muted-foreground" /> Scheduler
               </p>
               {canManage && (
-                <Button size="sm" variant={dispatchMissing ? "default" : "outline"} disabled={busy === "register"} onClick={repairSchedule}>
+                <Button size="sm" variant={dispatchMissing || fxMissing ? "default" : "outline"} disabled={busy === "register"} onClick={repairSchedule}>
                   <Wrench className={`size-3.5 ${busy === "register" ? "animate-pulse" : ""}`} />
-                  {dispatchMissing ? "Register notification schedule" : "Re-register"}
+                  {dispatchMissing ? "Register notification schedule" : fxMissing ? t("adminFx.registerSchedule") : "Re-register"}
                 </Button>
               )}
             </div>
@@ -302,6 +316,12 @@ export function AdminWorkerPage() {
             ) : (
               <p className="flex items-center gap-2 text-sm text-emerald-600 dark:text-emerald-400">
                 <CheckCircle2 className="size-4" /> Notification dispatch is active.
+              </p>
+            )}
+            {fxMissing && (
+              <p className="flex items-start gap-2 rounded-md bg-amber-500/10 p-2.5 text-sm text-amber-700 dark:text-amber-300">
+                <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+                {t("adminFx.scheduleMissing", { name: FX_SCHEDULE })}
               </p>
             )}
 

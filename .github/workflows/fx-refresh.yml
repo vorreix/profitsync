@@ -1,0 +1,65 @@
+# Fallback driver for the daily FX refresh (POST /api/cron/fx, MC-104).
+#
+# The Go worker's `fx-refresh` schedule (worker/Makefile `register`) runs it
+# daily at 16:30 UTC, after the ECB publishes. This runs 75 minutes later, so
+# today's rates and the missing history still land when the worker host is
+# down. Running both is safe: every write is an upsert.
+#
+# One call works for a bounded time and reports `remaining` (pairs still
+# filling); this job calls again while some remain, so a large backfill (a
+# workspace switching its reporting currency, a back-dated import) finishes
+# here instead of over several days.
+#
+# Setup: the same repo secret as notification-tick.yml — PROFITSYNC_CRON_TOKEN
+# (= the app's CRON_FALLBACK_TOKEN Vercel env). Until it is set, this no-ops.
+name: fx-refresh-fallback
+
+on:
+  schedule:
+    - cron: "45 17 * * *"
+  workflow_dispatch: {}
+
+permissions: {}
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: POST /api/cron/fx until nothing remains
+        env:
+          TOKEN: ${{ secrets.PROFITSYNC_CRON_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::warning::PROFITSYNC_CRON_TOKEN secret not set — the FX fallback is INACTIVE; the worker is the only driver."
+            exit 0
+          fi
+          for i in 1 2 3 4 5 6 7 8; do
+            code=$(curl -sS -X POST \
+              -H "Authorization: Bearer $TOKEN" \
+              -o /tmp/body -w "%{http_code}" \
+              --max-time 60 \
+              https://profitsync.net/api/cron/fx)
+            echo "HTTP $code"
+            cat /tmp/body; echo
+            [ "$code" = "200" ] || exit 1
+            # The first answer carries the refresh before ours: the worker's, if it ran.
+            [ "$i" = "1" ] && cp /tmp/body /tmp/first
+            remaining=$(jq -r '.processed.remaining // 0' /tmp/body)
+            [ "$remaining" -gt 0 ] || break
+          done
+
+      # The worker runs at 16:30; if the refresh before ours is older than 4 h,
+      # only this fallback has been refreshing rates — the worker is down or
+      # lost its schedule. Fail so GitHub emails about it.
+      - name: Alert when the worker's refresh looks dead
+        env:
+          TOKEN: ${{ secrets.PROFITSYNC_CRON_TOKEN }}
+        run: |
+          [ -z "$TOKEN" ] && exit 0
+          age=$(jq -r '.previous_refresh_age_seconds // empty' /tmp/first 2>/dev/null || true)
+          if [ -z "$age" ] || [ "$age" -gt 14400 ]; then
+            echo "::error::The FX refresh before this one was ${age:-never}s ago — the worker's fx-refresh schedule is not running. Re-register it on the worker host: make register (docs: worker/README.md)."
+            exit 1
+          fi
+          echo "Worker FX refresh healthy (previous refresh ${age}s ago)."

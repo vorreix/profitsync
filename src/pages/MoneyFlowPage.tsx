@@ -55,9 +55,12 @@ import { useDataRefresh } from "@/lib/data-refresh-context"
 import { useOrg } from "@/lib/org-context"
 import { useCurrency } from "@/lib/currency-context"
 import { useTheme } from "@/components/theme-provider"
+import { FxExcludedMarker, FxExcludedNotice } from "@/components/FxExcludedNotice"
+import { formatByCurrency } from "@/lib/debt-format"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { useBackClose } from "@/hooks/use-back-close"
 import { formatMoney } from "@/lib/wealth"
+import { ledgerDescription } from "@/lib/wealth-ledger"
 import { cn } from "@/lib/utils"
 import { accountTypeAllows } from "@/lib/types"
 import {
@@ -66,6 +69,7 @@ import {
   buildTimelineGraph,
   graphBounds,
   groupKeyId,
+  groupLabel,
   type FlowData,
   type FlowEdgeData,
   type FlowGroup,
@@ -82,6 +86,17 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 
 type GroupBy = "account" | "client" | "category"
 type Option = { id: string; label: string }
+
+// The multi-currency facts the flow payload now carries (see api/_routes/flow.ts):
+// every income/expense/net/balance figure is in `currency` (the workspace's
+// reporting currency, each row converted at its own date); `excluded_count` is
+// what had no rate; an ACCOUNT group's own balances stay native in
+// `account_currency`; a leaf's amount stays native in `currency_code`.
+type FxMeta = { currency?: string; excluded_count?: number }
+type FxRoot = { excluded_count?: number; balance_excluded_count?: number }
+type FxGroup = { excluded_count?: number; account_currency?: string | null }
+type FxLeaf = { currency_code?: string | null }
+const leafCurrency = (leaf: FlowLeaf, fallback: string) => (leaf as FlowLeaf & FxLeaf).currency_code || fallback
 
 // ── Hover focus ──────────────────────────────────────────────────────────────
 // When a node is hovered we light up that node + the edges/nodes it touches and
@@ -169,7 +184,7 @@ const HANDLE_CLS = "!size-2 !rounded-full !border-2 !border-background !bg-muted
 const HANDLE_PRIMARY = "!size-2.5 !rounded-full !border-2 !border-background !bg-primary"
 
 type RootData = {
-  label: string; income: number; expense: number; net: number; tx_count: number; balance: number
+  label: string | null; income: number; expense: number; net: number; tx_count: number; balance: number
   collapsed: boolean; currency: string; logo_src?: string | null; onToggle: () => void; onDetail?: () => void
 }
 function RootNode({ id, data }: NodeProps<Node<RootData>>) {
@@ -187,7 +202,7 @@ function RootNode({ id, data }: NodeProps<Node<RootData>>) {
       <div className="relative flex items-center gap-2.5">
         <NodeLogo src={data.logo_src} className="size-10" chipClass="bg-gradient-to-br from-primary to-primary/70 text-primary-foreground shadow-sm" fallback={<Sparkles className="size-5" />} />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold tracking-tight">{data.label}</p>
+          <p className="truncate text-sm font-semibold tracking-tight">{data.label || t("flow.kindWorkspace")}</p>
           <p className="text-[11px] text-muted-foreground">{t("flow.workspaceTotals")}</p>
         </div>
         <DetailButton onClick={data.onDetail} />
@@ -226,13 +241,16 @@ function RootNode({ id, data }: NodeProps<Node<RootData>>) {
 
 const GROUP_ICON = { account: Landmark, client: Users, category: Tag } as const
 
-type GroupData = FlowGroup & { expanded: boolean; currency: string; onToggle: () => void; onDetail?: () => void }
+type GroupData = FlowGroup & FxGroup & { expanded: boolean; currency: string; onToggle: () => void; onDetail?: () => void }
 function GroupNode({ id, data }: NodeProps<Node<GroupData>>) {
   const { t } = useTranslation()
   const focus = useFocus(id)
   const Icon = data.kind === "account" ? (data.account_type === "cash" ? Wallet : Landmark) : GROUP_ICON[data.kind]
   const showBalances = data.kind === "account" && data.current_balance != null
+  // An account's own balances are native money — its currency, not the reporting one.
+  const balanceCurrency = data.account_currency || data.currency
   const pos = data.net >= 0
+  const label = groupLabel(data, t)
   return (
     <div
       className={cn(
@@ -248,7 +266,9 @@ function GroupNode({ id, data }: NodeProps<Node<GroupData>>) {
           chipClass={cn("bg-gradient-to-br ring-1 ring-inset", pos ? "from-emerald-500/15 to-emerald-500/5 text-emerald-600 ring-emerald-500/20 dark:text-emerald-400" : "from-rose-500/15 to-rose-500/5 text-rose-600 ring-rose-500/20 dark:text-rose-400")}
           fallback={<Icon className="size-[18px]" />}
         />
-        <p className="min-w-0 flex-1 truncate text-sm font-semibold tracking-tight" title={data.label}>{data.label}</p>
+        <p className="min-w-0 flex-1 truncate text-sm font-semibold tracking-tight" title={label}>{label}</p>
+        {/* This node's figures leave rows out (no rate for their day). */}
+        <FxExcludedMarker count={data.excluded_count} />
         <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground">{data.tx_count}</span>
         <DetailButton onClick={data.onDetail} />
       </div>
@@ -261,8 +281,8 @@ function GroupNode({ id, data }: NodeProps<Node<GroupData>>) {
 
       {showBalances ? (
         <div className="mt-2.5 grid grid-cols-2 gap-2 rounded-xl bg-muted/40 px-2.5 py-1.5 text-[11px]">
-          <div><dt className="text-[9px] uppercase text-muted-foreground">{t("flow.opening")}</dt><dd><Money value={data.opening_balance ?? 0} currency={data.currency} /></dd></div>
-          <div className="text-right"><dt className="text-[9px] uppercase text-muted-foreground">{t("flow.current")}</dt><dd><Money value={data.current_balance ?? 0} currency={data.currency} className="font-semibold" /></dd></div>
+          <div><dt className="text-[9px] uppercase text-muted-foreground">{t("flow.opening")}</dt><dd><Money value={data.opening_balance ?? 0} currency={balanceCurrency} /></dd></div>
+          <div className="text-right"><dt className="text-[9px] uppercase text-muted-foreground">{t("flow.current")}</dt><dd><Money value={data.current_balance ?? 0} currency={balanceCurrency} className="font-semibold" /></dd></div>
         </div>
       ) : (
         <div className="mt-2.5 flex items-center justify-between rounded-xl bg-muted/40 px-2.5 py-1.5 text-[11px]">
@@ -287,12 +307,17 @@ function GroupNode({ id, data }: NodeProps<Node<GroupData>>) {
   )
 }
 
-type LeafData = FlowLeaf & { currency: string; formatDate: (d: string) => string; onOpen: () => void; enterIndex?: number; splitExpanded?: boolean }
+type LeafData = FlowLeaf & FxLeaf & { currency: string; formatDate: (d: string) => string; onOpen: () => void; enterIndex?: number; splitExpanded?: boolean }
 function LeafNode({ id, data }: NodeProps<Node<LeafData>>) {
   const { t } = useTranslation()
   const focus = useFocus(id)
   const inc = data.type === "incoming"
   const isSplit = (data.leg_count ?? 1) > 1
+  // A transaction leaf shows its NATIVE amount in its own currency. A split
+  // across currencies has no native total (collapseLegs): its amount is in the
+  // reporting currency (`currency_code` null → data.currency), or per-currency
+  // parts when a leg has no rate. Each leg always shows its own currency.
+  const nativeCurrency = data.currency_code || data.currency
   return (
     // The leaf is DRAGGABLE (no `nodrag`) yet still opens its transaction. To
     // avoid a drag accidentally opening it, mouse-open goes through React Flow's
@@ -316,7 +341,7 @@ function LeafNode({ id, data }: NodeProps<Node<LeafData>>) {
         </span>
         <span className="min-w-0 flex-1">
           <span className="flex items-center gap-1 truncate font-medium">
-            {data.description || (inc ? t("flow.income") : t("flow.expense"))}
+            {ledgerDescription(data, t) || (inc ? t("flow.income") : t("flow.expense"))}
             {data.recurring && <Repeat className="size-3 shrink-0 text-violet-500" />}
           </span>
           <span className="block truncate text-[10px] text-muted-foreground">{data.formatDate(data.date)}{data.category ? ` · ${data.category}` : ""}</span>
@@ -337,7 +362,14 @@ function LeafNode({ id, data }: NodeProps<Node<LeafData>>) {
             </span>
           ) : null}
         </span>
-        <Money value={data.amount} sign={inc ? "+" : "−"} currency={data.currency} className={cn("shrink-0 self-start font-semibold", inc ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400")} />
+        {data.amount_parts ? (
+          <span className={cn("shrink-0 self-start font-semibold tabular-nums", inc ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400")}>
+            {/* One sign for the whole split, so the list is bracketed: −(€50 + ₹5,000), never −€50 + ₹5,000. */}
+            {inc ? "+" : "−"}({formatByCurrency(data.amount_parts.map((p) => ({ currency: p.currency || data.currency, amount: Math.abs(p.amount) })))})
+          </span>
+        ) : (
+          <Money value={data.amount} sign={inc ? "+" : "−"} currency={nativeCurrency} className={cn("shrink-0 self-start font-semibold", inc ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400")} />
+        )}
       </span>
       {/* full-width legs breakdown (each account's share of the split) */}
       {isSplit && data.splitExpanded && data.legs && (
@@ -348,7 +380,7 @@ function LeafNode({ id, data }: NodeProps<Node<LeafData>>) {
                 <Landmark className="size-2.5 shrink-0" />
                 <span className="truncate">{leg.account_name || t("flow.unassignedAccount")}</span>
               </span>
-              <Money value={leg.amount} sign={inc ? "+" : "−"} currency={data.currency} className={cn("shrink-0 font-medium tabular-nums", inc ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400")} />
+              <Money value={leg.amount} sign={inc ? "+" : "−"} currency={leg.currency_code || nativeCurrency} className={cn("shrink-0 font-medium tabular-nums", inc ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400")} />
             </span>
           ))}
         </span>
@@ -417,6 +449,7 @@ function TimelinePeriodNode({ id, data }: NodeProps<Node<TimelinePeriodNodeData>
       <div className="flex items-center gap-2.5">
         <span className="grid size-9 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-primary/15 to-primary/5 text-primary ring-1 ring-inset ring-primary/20"><CalendarClock className="size-[18px]" /></span>
         <p className="min-w-0 flex-1 truncate text-sm font-semibold tracking-tight">{data.formatPeriod(data.key, data.bucket)}</p>
+        <FxExcludedMarker count={data.excluded_count} />
         <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground">{data.tx_count}</span>
         <DetailButton onClick={data.onDetail} />
       </div>
@@ -464,7 +497,7 @@ function TimelineFinalNode({ id, data }: NodeProps<Node<TimelineFinalNodeData>>)
       <div className="relative flex items-center gap-2.5">
         <NodeLogo src={data.logo_src} className="size-10" chipClass="bg-gradient-to-br from-primary to-primary/70 text-primary-foreground shadow-sm" fallback={<Sparkles className="size-5" />} />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold tracking-tight">{data.label}</p>
+          <p className="truncate text-sm font-semibold tracking-tight">{data.label || t("flow.kindWorkspace")}</p>
           <p className="text-[11px] text-muted-foreground">{t("flow.finalEntity")}</p>
         </div>
         <DetailButton onClick={data.onDetail} />
@@ -672,7 +705,7 @@ function TxPopup({ leaf, currency, formatDate, onViewDetails, onClose }: { leaf:
       role="dialog"
       aria-modal="false"
       aria-live="polite"
-      aria-label={leaf.description || (inc ? t("flow.income") : t("flow.expense"))}
+      aria-label={ledgerDescription(leaf, t) || (inc ? t("flow.income") : t("flow.expense"))}
       className="absolute inset-x-3 bottom-3 z-20 sm:inset-x-0 sm:bottom-4 sm:mx-auto sm:w-72"
     >
       <div className="overflow-hidden rounded-2xl border bg-card/95 shadow-xl shadow-black/25 backdrop-blur-md motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-2 motion-safe:duration-200">
@@ -682,7 +715,7 @@ function TxPopup({ leaf, currency, formatDate, onViewDetails, onClose }: { leaf:
           </span>
           <div className="min-w-0 flex-1 space-y-0.5">
             <p className="flex items-center gap-1 truncate text-[13px] font-semibold leading-tight">
-              {leaf.description || (inc ? t("flow.income") : t("flow.expense"))}
+              {ledgerDescription(leaf, t) || (inc ? t("flow.income") : t("flow.expense"))}
               {leaf.recurring && <Repeat className="size-3 shrink-0 text-violet-500" />}
             </p>
             <p className="truncate text-[11px] text-muted-foreground">{formatDate(leaf.date)}{leaf.category ? ` · ${leaf.category}` : ""}</p>
@@ -698,7 +731,7 @@ function TxPopup({ leaf, currency, formatDate, onViewDetails, onClose }: { leaf:
         </div>
         <div className="flex items-center justify-between gap-2 border-t px-3 py-2">
           <span className={cn("truncate text-base font-bold tabular-nums", inc ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400")}>
-            {inc ? "+" : "−"}{formatMoney(Math.abs(leaf.amount), currency)}
+            {inc ? "+" : "−"}{formatMoney(Math.abs(leaf.amount), leafCurrency(leaf, currency))}
           </span>
           <Button size="sm" variant="outline" className="h-7 shrink-0 px-2.5 text-xs" onClick={() => onViewDetails(leaf.id)}>
             {t("flow.viewDetails")} <ArrowUpRight className="size-3.5" />
@@ -869,7 +902,7 @@ export function MoneyFlowPage() {
   const navigate = useNavigate()
   const { getToken } = useAuth()
   const { activeOrg } = useOrg()
-  const { currency } = useCurrency()
+  const { currency: orgCurrency } = useCurrency()
   const { revision } = useDataRefresh()
   const { theme } = useTheme()
   const isMobile = useIsMobile()
@@ -889,6 +922,18 @@ export function MoneyFlowPage() {
   const saved = useMemo<SavedFlowState>(() => readSavedFlow(storageKey), [storageKey])
 
   const [data, setData] = useState<FlowData | TimelineData | null>(null)
+  // Every aggregate on the canvas is in the currency the server converted it
+  // into (the reporting currency); the org's is only the fallback before the
+  // first payload lands.
+  const currency = (data as (FlowData | TimelineData) & FxMeta | null)?.currency || orgCurrency
+  // Two different gaps, never added into one count: ENTRIES left out of the
+  // income/expense figures, and ACCOUNTS left out of the consolidated balance.
+  const fxExcluded = useMemo(() => {
+    if (!data) return { rows: 0, accounts: 0 }
+    const meta = data as (FlowData | TimelineData) & FxMeta
+    const root = (data.mode === "timeline" ? data.final : data.root) as FxRoot
+    return { rows: meta.excluded_count ?? root.excluded_count ?? 0, accounts: root.balance_excluded_count ?? 0 }
+  }, [data])
   const [loading, setLoading] = useState(true)
   const [viewMode, setViewMode] = useState<"grouped" | "timeline">(saved.viewMode ?? "grouped")
   const [bucket, setBucket] = useState<"day" | "week" | "month" | "year">(saved.bucket ?? "month")
@@ -952,7 +997,7 @@ export function MoneyFlowPage() {
         if (cancelled) return
         const catList = Array.isArray(cats) ? cats : []
         setCatOptions([...new Set(catList.map((c) => c.name).filter(Boolean))].map((n) => ({ id: n, label: n })))
-        setAccountOptions(accounts.filter((a) => !a.archived_at).map((a) => ({ id: a.id, label: a.nickname || a.bank_name || "Account" })))
+        setAccountOptions(accounts.filter((a) => !a.archived_at).map((a) => ({ id: a.id, label: a.nickname || a.bank_name || t("flow.kindAccount") })))
         const cl = Array.isArray(clientsResp) ? clientsResp : (clientsResp.data ?? [])
         setClientOptions(cl.filter((c) => !c.is_own).map((c) => ({ id: c.id, label: c.name })))
       } catch {
@@ -961,7 +1006,7 @@ export function MoneyFlowPage() {
     }
     loadOptions()
     return () => { cancelled = true }
-  }, [getToken, hasClients])
+  }, [getToken, hasClients, t])
 
   const load = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
     if (!silent) setLoading(true)
@@ -1113,9 +1158,9 @@ export function MoneyFlowPage() {
   const openMoreForGroup = useCallback((g: FlowGroup) => {
     if (g.kind === "client" && g.key) { navigate(`/clients/${g.key}`); return }
     if (g.kind === "account" && g.key) { navigate(`/wealth/${g.key}`); return }
-    // Category groups carry their filter through to the list (Uncategorized has
-    // no concrete category value, so it just opens the date-filtered list).
-    if (g.kind === "category" && g.key && g.key !== "Uncategorized") { openTransactions(g.key); return }
+    // Category groups carry their filter through to the list (the no-category
+    // bucket's key is null — no value to filter by — so it opens the date-filtered list).
+    if (g.kind === "category" && g.key) { openTransactions(g.key); return }
     openTransactions()
   }, [navigate, openTransactions])
   // Clicking a transaction pops its details up ON the canvas (no navigation) so
@@ -1151,10 +1196,12 @@ export function MoneyFlowPage() {
     const tone = (v: number): "income" | "expense" => (v >= 0 ? "income" : "expense")
     switch (n.type) {
       case "branch": {
-        const g = n.data as unknown as FlowGroup
+        const g = n.data as unknown as FlowGroup & FxGroup
         const acc = g.kind === "account" && g.current_balance != null
+        // Balances are the account's own money; income/expense are reporting-currency.
+        const native = (v: number) => formatMoney(v, g.account_currency || currency)
         return {
-          title: g.label,
+          title: groupLabel(g, t),
           kindLabel: g.kind === "account" ? t("flow.kindAccount") : g.kind === "client" ? t("flow.kindClient") : t("flow.kindCategory"),
           logo_src: g.logo_src,
           variant: g.kind,
@@ -1164,7 +1211,7 @@ export function MoneyFlowPage() {
             { label: t("flow.expenses"), value: `−${money(g.expense)}`, tone: "expense" },
             { label: t("flow.net"), value: signed(g.net), tone: tone(g.net) },
             { label: t("flow.txCount"), value: String(g.tx_count) },
-            ...(acc ? [{ label: t("flow.opening"), value: money(g.opening_balance ?? 0) }, { label: t("flow.current"), value: money(g.current_balance ?? 0) }] : []),
+            ...(acc ? [{ label: t("flow.opening"), value: native(g.opening_balance ?? 0) }, { label: t("flow.current"), value: native(g.current_balance ?? 0) }] : []),
           ],
           goLabel: g.kind === "category" ? t("flow.viewTransactions") : t("flow.openPage"),
           onGo: () => openMoreForGroup(g),
@@ -1189,9 +1236,9 @@ export function MoneyFlowPage() {
         }
       }
       case "root": {
-        const r = n.data as { label: string; income: number; expense: number; net: number; tx_count: number; balance: number }
+        const r = n.data as { label: string | null; income: number; expense: number; net: number; tx_count: number; balance: number }
         return {
-          title: r.label, kindLabel: t("flow.kindWorkspace"), variant: "workspace", logo_src: activeOrg?.logo_src ?? null,
+          title: r.label || t("flow.kindWorkspace"), kindLabel: t("flow.kindWorkspace"), variant: "workspace", logo_src: activeOrg?.logo_src ?? null,
           rows: [
             { label: t("flow.revenue"), value: `+${money(r.income)}`, tone: "income" },
             { label: t("flow.expenses"), value: `−${money(r.expense)}`, tone: "expense" },
@@ -1205,7 +1252,7 @@ export function MoneyFlowPage() {
       case "tlfinal": {
         const f = n.data as TimelineData["final"]
         return {
-          title: f.label, kindLabel: t("flow.kindWorkspace"), variant: "workspace", logo_src: activeOrg?.logo_src ?? null,
+          title: f.label || t("flow.kindWorkspace"), kindLabel: t("flow.kindWorkspace"), variant: "workspace", logo_src: activeOrg?.logo_src ?? null,
           rows: [
             { label: t("flow.revenue"), value: `+${money(f.total_in)}`, tone: "income" },
             { label: t("flow.expenses"), value: `−${money(f.total_out)}`, tone: "expense" },
@@ -1513,6 +1560,11 @@ export function MoneyFlowPage() {
             {t("flow.title")}
           </h1>
           <p className="mt-0.5 text-sm text-muted-foreground">{viewMode === "timeline" ? t("flow.timelineSubtitle") : t("flow.subtitle")}</p>
+          {/* Rows the server could not convert into the reporting currency are
+              left OUT of every figure on the canvas — say so rather than let a
+              partial total read as complete. */}
+          {!loading && <FxExcludedNotice count={fxExcluded.rows} className="mt-1" />}
+          {!loading && <FxExcludedNotice count={fxExcluded.accounts} accounts className="mt-1" />}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {/* View-mode toggle: grouped mind-map vs running-balance timeline */}

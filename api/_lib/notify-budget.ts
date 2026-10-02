@@ -5,7 +5,8 @@ import { eq } from "drizzle-orm"
 import { db } from "../../src/lib/db/index.js"
 import { budgets, clients } from "../../src/lib/db/schema.js"
 import { inWindow, periodStart, scopeMatches, todayUtc, type BudgetPeriod, type SpendingPeriod } from "../../src/lib/budget.js"
-import { outgoingByClient, spentFor, type PeriodSums } from "./budget-spend.js"
+import { capCurrency, excludedFor, outgoingByClient, spentFor, type PeriodSums } from "./budget-spend.js"
+import { ensureRatesInto, reportingCurrencyFor } from "./fx-rates.js"
 import { notifyOrgMembers } from "./notifications.js"
 import { listBudgets } from "./spending-budgets.js"
 
@@ -22,6 +23,31 @@ export function budgetAlertTier(spent: number, amount: number): "budget_exceeded
   if (spent >= amount * BUDGET_WARNING_RATIO) return "budget_warning"
   return null
 }
+
+/**
+ * "₹1,200.00" — an amount in the budget's currency, for notification copy.
+ * Locale-neutral (en) on purpose: the row is rendered for every member, and the
+ * client re-formats from `data.spent`/`data.amount`/`data.currency` when it can.
+ */
+export function formatBudgetMoney(amount: number, currency: string): string {
+  try {
+    return new Intl.NumberFormat("en", { style: "currency", currency }).format(amount)
+  } catch {
+    return `${currency} ${amount.toFixed(2)}`
+  }
+}
+
+/**
+ * The suffix a dedupe window carries for the limit's currency: none in the
+ * reporting currency — so every key written before currencies existed still
+ * matches, and nothing already sent this window goes out twice — and
+ * `:<currency>` for a limit kept in another one (MC-149).
+ */
+export const currencySuffix = (currency: string, reporting: string): string => (currency === reporting ? "" : `:${currency}`)
+
+/** The dedupe window of a spending budget's alert: its window, its limit and (when foreign) the limit's currency. */
+export const windowKeyFor = (b: { window: { start: string | null }; amount: number; currency: string }, reporting: string): string =>
+  `${b.window.start ?? "all"}:${b.amount}${currencySuffix(b.currency, reporting)}`
 
 /** Sum every client's per-window spend into one whole-workspace total. Exported for the DB-free suite. */
 export function orgTotals(byClient: Map<string, PeriodSums>): PeriodSums {
@@ -46,12 +72,21 @@ async function emitBudgetAlert(input: {
   period: BudgetPeriod | SpendingPeriod
   spent: number
   amount: number
+  /** The currency `spent` and `amount` are in — the budget's own. */
+  currency: string
+  /**
+   * Rows in the window `spent` had to leave out (no exchange rate for their
+   * day). The alert still fires when the counted spend ALONE crosses a tier —
+   * it can only be higher — and says it is incomplete; below a tier it waits,
+   * and the next write re-evaluates (MC-082).
+   */
+  excluded: number
   /** The dedupe scope + window: `sb:<budget id>` and its window start for a spending budget. */
   scope: string
   windowKey: string
   link: string
 }): Promise<void> {
-  const { orgId, actorUserId, clientId, name, period, spent, amount, scope, windowKey, link } = input
+  const { orgId, actorUserId, clientId, name, period, spent, amount, currency, excluded, scope, windowKey, link } = input
   const tier = budgetAlertTier(spent, amount)
   if (!tier) return
   const exceeded = tier === "budget_exceeded"
@@ -62,6 +97,18 @@ async function emitBudgetAlert(input: {
   // namespace a bare uuid can never collide with.
   const dedupeKey = `${tier}:${scope}:${period}:${windowKey}`
   const percent = Math.round((spent / amount) * 100)
+  // The figures travel with their currency so every renderer (bell, push, mail)
+  // formats them in the BUDGET's currency, never in whatever the viewer's is.
+  const spentLabel = formatBudgetMoney(spent, currency)
+  const amountLabel = formatBudgetMoney(amount, currency)
+  // The translated bell says the figures too (MC-151). `bodyAmounts` carries
+  // {{spent}}/{{amount}}, in its own field: `i18nBodyKey` stays the plain
+  // `.body`, because a store build pinned before the new keys reads only that
+  // one — pointing it at a key it doesn't ship turns the alert into English.
+  // Partial spend is never presented as the whole figure.
+  const incomplete = excluded > 0
+  const note = incomplete ? ` Not yet counted: ${excluded} ${excluded === 1 ? "entry" : "entries"} in another currency with no exchange rate.` : ""
+  const fx = incomplete ? { excluded_count: excluded } : {}
 
   await notifyOrgMembers(
     orgId,
@@ -69,11 +116,16 @@ async function emitBudgetAlert(input: {
       ? {
           type: "budget_exceeded",
           title: "Budget exceeded",
-          body: `${name || "A budget"} has gone over its ${period} budget.`,
+          body: `${name || "A budget"} has gone over its ${period} budget (${spentLabel} of ${amountLabel}).${note}`,
           data: {
             i18nKey: "types.budget_exceeded.title",
             i18nBodyKey: "types.budget_exceeded.body",
-            i18nParams: { name, period },
+            i18nBodyKeyAmounts: incomplete ? "types.budget_exceeded.bodyIncomplete" : "types.budget_exceeded.bodyAmounts",
+            i18nParams: { name, period, spent: spentLabel, amount: amountLabel, currency },
+            currency,
+            ...fx,
+            spent,
+            amount,
           },
           link,
           ...(clientId ? { clientId } : {}),
@@ -83,11 +135,16 @@ async function emitBudgetAlert(input: {
       : {
           type: "budget_warning",
           title: "Budget almost used up",
-          body: `${name || "A budget"} has used ${percent}% of its ${period} budget.`,
+          body: `${name || "A budget"} has used ${percent}% of its ${period} budget (${spentLabel} of ${amountLabel}).${note}`,
           data: {
             i18nKey: "types.budget_warning.title",
             i18nBodyKey: "types.budget_warning.body",
-            i18nParams: { name, period, percent },
+            i18nBodyKeyAmounts: incomplete ? "types.budget_warning.bodyIncomplete" : "types.budget_warning.bodyAmounts",
+            i18nParams: { name, period, percent, spent: spentLabel, amount: amountLabel, currency },
+            currency,
+            ...fx,
+            spent,
+            amount,
           },
           link,
           ...(clientId ? { clientId } : {}),
@@ -121,13 +178,20 @@ export async function notifyIfBudgetExceeded(
   const now = new Date()
   const today = todayUtc(now)
 
-  const [rows, byClient, spending] = await Promise.all([
+  // A per-client cap is judged in ITS OWN currency (`capCurrency`, MC-020 —
+  // the reporting currency when it was set; outgoingByClient sums each client's
+  // spend into it); a spending budget in its own (listBudgets resolves that per row).
+  const [reporting, rows] = await Promise.all([
+    reportingCurrencyFor(orgId),
     db.select().from(budgets).where(eq(budgets.organizationId, orgId)),
-    outgoingByClient(orgId, now),
+  ])
+  const clientBudget = rows.find((b) => b.clientId === clientId)
+  await ensureRatesInto(orgId, [reporting, capCurrency(clientBudget, reporting)])
+  const [byClient, spending] = await Promise.all([
+    outgoingByClient(orgId, now, reporting),
     listBudgets(orgId, today),
   ])
 
-  const clientBudget = rows.find((b) => b.clientId === clientId)
   if (clientBudget && Number(clientBudget.amount) > 0) {
     const period = (clientBudget.period ?? "monthly") as BudgetPeriod
     const [client] = await db.select({ name: clients.name }).from(clients).where(eq(clients.id, clientId))
@@ -139,8 +203,13 @@ export async function notifyIfBudgetExceeded(
       period,
       spent: spentFor(byClient.get(clientId), period),
       amount: Number(clientBudget.amount),
+      currency: capCurrency(clientBudget, reporting),
+      excluded: excludedFor(byClient.get(clientId), period),
       scope: clientId,
-      windowKey: periodStart(period, now) ?? "lifetime",
+      // A cap kept in another currency carries it in the key: removed and set
+      // again in another currency within one window, it is a different cap
+      // (MC-149). In the reporting currency the key is unchanged.
+      windowKey: `${periodStart(period, now) ?? "lifetime"}${currencySuffix(capCurrency(clientBudget, reporting), reporting)}`,
       link: `/budgets/clients/${clientId}`,
     })
   }
@@ -164,10 +233,13 @@ export async function notifyIfBudgetExceeded(
         period: b.period,
         spent: b.spent,
         amount: b.amount,
+        currency: b.currency,
+        excluded: b.excluded_count,
         scope: `sb:${b.id}`,
-        // The amount is part of the key so a raised (or lowered) limit re-arms
-        // the alert once in the same window.
-        windowKey: `${b.window.start ?? "all"}:${b.amount}`,
+        // The amount (and a foreign currency) are part of the key, so a raised
+        // (or lowered) limit — or the same figure in another currency — re-arms
+        // the alert once in the same window (MC-149).
+        windowKey: windowKeyFor(b, reporting),
         link: `/budgets/${b.id}`,
       }),
     ),

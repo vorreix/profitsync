@@ -3,8 +3,10 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { useAuth } from "@clerk/clerk-react"
 import { useAdmin } from "@/lib/admin-context"
 import { toast } from "sonner"
-import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api"
+import { apiDelete, apiErrorMessage, apiGet, apiPatch, apiPost } from "@/lib/api"
 import { isPaidPlanKey } from "@/lib/types"
+import { formatMoney } from "@/lib/wealth"
+import { rowCurrency } from "@/lib/reporting-fields"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -12,6 +14,7 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { FxExcludedNotice } from "@/components/FxExcludedNotice"
 import {
   Dialog,
   DialogContent,
@@ -47,6 +50,8 @@ type OrgDetail = {
     is_personal: boolean
     account_type: string | null
     currency: string
+    /** The workspace's reporting currency; NULL only on rows that predate it (then `currency`). */
+    reporting_currency: string | null
     created_at: string
     updated_at: string
   }
@@ -71,8 +76,13 @@ type OrgDetail = {
     client_count: number
     transaction_count: number
     quotation_count: number
+    /** Income / expense (net of refunds) / net, live non-system rows, in `totals_currency`. */
     incoming_total: string
     outgoing_total: string
+    net_total?: string
+    totals_currency?: string
+    /** Rows left out of the totals: another currency with no rate for their day. */
+    excluded_count?: number
   } | null
 }
 
@@ -85,8 +95,11 @@ type AdminClient = {
   status: string
   notes: string
   onboard_date: string | null
+  /** In `totals_currency` (the reporting currency); rows with no rate are counted in `excluded_count`. */
   total_incoming: string
   total_outgoing: string
+  totals_currency?: string
+  excluded_count?: number
   transaction_count: number
   created_at: string
 }
@@ -97,6 +110,13 @@ type AdminTx = {
   client_name: string
   type: "incoming" | "outgoing"
   amount: string
+  /** The row's own currency (its account's); null on rows predating mig 0069. */
+  currency_code: string | null
+  /**
+   * The ledger services own this row (it moves a balance, belongs to a
+   * transfer or anchors a debt payment) — the API refuses admin edit/delete.
+   */
+  ledger_locked: boolean
   description: string
   category: string
   date: string
@@ -204,6 +224,8 @@ export function AdminOrgDetailPage() {
   }
 
   const org = detail.organization
+  // The reporting currency is the workspace's; the legacy column can lag behind it.
+  const orgCurrency = org.reporting_currency ?? org.currency
   const plan = detail.subscription?.plan_key ?? "free"
   const planStatus = detail.subscription?.status ?? "active"
 
@@ -224,7 +246,7 @@ export function AdminOrgDetailPage() {
                 <span>{org.slug}</span>
                 {org.is_personal && <Badge variant="outline" className="text-[10px]">Personal</Badge>}
                 <span>·</span>
-                <span>{org.currency}</span>
+                <span>{orgCurrency}</span>
               </div>
             </div>
           </div>
@@ -279,12 +301,12 @@ export function AdminOrgDetailPage() {
         </TabsContent>
 
         <TabsContent value="clients">
-          <ClientsTab orgId={orgId!} currency={org.currency} />
+          <ClientsTab orgId={orgId!} currency={orgCurrency} />
         </TabsContent>
 
         {canSeeTransactions && (
           <TabsContent value="transactions">
-            <TransactionsTab orgId={orgId!} currency={org.currency} />
+            <TransactionsTab orgId={orgId!} currency={orgCurrency} />
           </TabsContent>
         )}
 
@@ -311,6 +333,8 @@ function StatTile({ label, value, accent }: { label: string; value: string | num
 
 function OverviewTab({ detail }: { detail: OrgDetail }) {
   const counts = detail.counts
+  // Converted on the server into the reporting currency (MC-112) — labelled with it, never summed here.
+  const totalsCurrency = counts?.totals_currency ?? detail.organization.reporting_currency ?? detail.organization.currency
   return (
     <div className="space-y-4 pt-3">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -319,9 +343,10 @@ function OverviewTab({ detail }: { detail: OrgDetail }) {
         <StatTile label="Quotations" value={counts?.quotation_count ?? 0} />
         <StatTile
           label="Net flow"
-          value={`${Number(counts?.incoming_total ?? 0) - Number(counts?.outgoing_total ?? 0)}`}
+          value={formatMoney(Number(counts?.net_total ?? 0), totalsCurrency)}
         />
       </div>
+      <FxExcludedNotice count={counts?.excluded_count} />
       <Card className="p-4">
         <p className="text-xs uppercase tracking-widest text-muted-foreground mb-2">Owner</p>
         {detail.owner ? (
@@ -525,8 +550,8 @@ function ClientsTab({ orgId, currency }: { orgId: string; currency: string }) {
                     </Badge>
                   </td>
                   <td className="py-3 pr-4 tabular-nums">{c.transaction_count}</td>
-                  <td className="py-3 pr-4 tabular-nums text-emerald-600 dark:text-emerald-400">{c.total_incoming}</td>
-                  <td className="py-3 pr-4 tabular-nums text-red-600 dark:text-red-400">{c.total_outgoing}</td>
+                  <td className="py-3 pr-4 tabular-nums text-emerald-600 dark:text-emerald-400">{formatMoney(Number(c.total_incoming), c.totals_currency ?? currency)}</td>
+                  <td className="py-3 pr-4 tabular-nums text-red-600 dark:text-red-400">{formatMoney(Number(c.total_outgoing), c.totals_currency ?? currency)}</td>
                   <td className="py-3 text-right whitespace-nowrap">
                     <Button size="icon" variant="ghost" onClick={() => openEdit(c)} aria-label="Edit">
                       <Pencil className="size-3.5" />
@@ -540,6 +565,7 @@ function ClientsTab({ orgId, currency }: { orgId: string; currency: string }) {
             </tbody>
           </table>
         </div>
+        <FxExcludedNotice count={data.reduce((n, c) => n + (c.excluded_count ?? 0), 0)} />
 
         <div className="flex items-center justify-between text-xs text-muted-foreground">
           <span>Page {page} of {totalPages}</span>
@@ -750,7 +776,7 @@ function TransactionsTab({ orgId, currency }: { orgId: string; currency: string 
       setCreateOpen(false)
       await load()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed")
+      toast.error(apiErrorMessage(err, "Failed"))
     } finally {
       setSaving(false)
     }
@@ -767,7 +793,7 @@ function TransactionsTab({ orgId, currency }: { orgId: string; currency: string 
       setDeleteTarget(null)
       await load()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed")
+      toast.error(apiErrorMessage(err, "Failed"))
     } finally {
       setDeleting(false)
     }
@@ -778,7 +804,7 @@ function TransactionsTab({ orgId, currency }: { orgId: string; currency: string 
   return (
     <div className="space-y-4 pt-3">
       <div className="flex items-start justify-between gap-3 flex-wrap">
-        <p className="text-sm text-muted-foreground">All transactions across every client. Amounts are in {currency}.</p>
+        <p className="text-sm text-muted-foreground">All transactions across every client. {currency} is the org currency.</p>
         <Button size="sm" onClick={openCreate}>
           <Plus className="size-3.5 mr-1.5" /> Add transaction
         </Button>
@@ -839,16 +865,21 @@ function TransactionsTab({ orgId, currency }: { orgId: string; currency: string 
                     </Badge>
                   </td>
                   <td className={`py-3 pr-4 tabular-nums ${tx.type === "incoming" ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
-                    {tx.amount}
+                    {formatMoney(Number(tx.amount), rowCurrency(tx, currency))}
                   </td>
                   <td className="py-3 pr-4 text-xs">{tx.description || "—"} {tx.category ? <span className="text-muted-foreground">· {tx.category}</span> : null}</td>
                   <td className="py-3 text-right whitespace-nowrap">
-                    <Button size="icon" variant="ghost" onClick={() => openEdit(tx)} aria-label="Edit">
-                      <Pencil className="size-3.5" />
-                    </Button>
-                    <Button size="icon" variant="ghost" className="hover:text-destructive" onClick={() => setDeleteTarget(tx)} aria-label="Delete">
-                      <Trash2 className="size-3.5" />
-                    </Button>
+                    {/* Balance/transfer/debt rows change only from the workspace (the API refuses them here). */}
+                    {!tx.ledger_locked && (
+                      <>
+                        <Button size="icon" variant="ghost" onClick={() => openEdit(tx)} aria-label="Edit">
+                          <Pencil className="size-3.5" />
+                        </Button>
+                        <Button size="icon" variant="ghost" className="hover:text-destructive" onClick={() => setDeleteTarget(tx)} aria-label="Delete">
+                          <Trash2 className="size-3.5" />
+                        </Button>
+                      </>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -933,7 +964,7 @@ function TransactionsTab({ orgId, currency }: { orgId: string; currency: string 
             <DialogTitle>Delete transaction?</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            This will permanently remove the {deleteTarget?.type} transaction of <span className="text-foreground font-medium">{deleteTarget?.amount}</span> for <span className="text-foreground font-medium">{deleteTarget?.client_name}</span>.
+            This will permanently remove the {deleteTarget?.type} transaction of <span className="text-foreground font-medium">{deleteTarget ? formatMoney(Number(deleteTarget.amount), rowCurrency(deleteTarget, currency)) : null}</span> for <span className="text-foreground font-medium">{deleteTarget?.client_name}</span>.
           </p>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setDeleteTarget(null)} disabled={deleting}>Cancel</Button>

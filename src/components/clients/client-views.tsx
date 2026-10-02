@@ -67,7 +67,7 @@ function BudgetBlock({
           onClick={(e) => { e.stopPropagation(); actions.onOpenBudget(client.id) }}
           aria-label={t("nav.budgets")}
         >
-          <BudgetIndicator amount={budget.amount} spent={budget.spent ?? 0} period={budget.period} currency={currency} showPeriodIcon />
+          <BudgetIndicator amount={budget.amount} spent={budget.spent ?? 0} period={budget.period} currency={budget.currency ?? currency} showPeriodIcon />
         </button>
         {canWrite && (
           <button

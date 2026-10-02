@@ -1,4 +1,5 @@
 import { toast } from "sonner"
+import { apiErrorMessage } from "@/lib/api"
 
 /**
  * The "instant save" illusion with safe rollback. Apply the change to local state
@@ -31,7 +32,8 @@ export async function runOptimistic<T>(opts: {
     return result
   } catch (error) {
     opts.rollback()
-    toast.error(opts.errorMessage)
+    // A refusal says why in the reader's language; `errorMessage` is the fallback.
+    toast.error(apiErrorMessage(error, opts.errorMessage))
     opts.onError?.(error)
     return undefined
   }

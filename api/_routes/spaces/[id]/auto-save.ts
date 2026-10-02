@@ -6,6 +6,8 @@ import { canWrite, isPersonalAccount, requireAuth } from "../../../_lib/auth.js"
 import { validateRuleInput, type RecurringRuleInput } from "../../../_lib/recurring-validate.js"
 import { materializeDueRecurring } from "../../../_lib/recurring-materialize.js"
 import { monthlyEquivalent, type SpaceFrequencyUnit } from "../../../../src/lib/spaces.js"
+import { moneyRefusal } from "../../../../src/lib/money.js"
+import { withRuleError } from "../../../_lib/client-capabilities.js"
 
 // /api/spaces/:id/auto-save — the ONE recurring auto-save (a kind='transfer'
 // recurring rule) that funds this Space from a chosen bank/cash account on a
@@ -19,6 +21,9 @@ const ruleFields = {
   toAccountId: recurringRules.toAccountId,
   name: recurringRules.name,
   amount: recurringRules.amount,
+  // The rule's own currency (its source account's): the Space screen formats
+  // the amount in it rather than assuming the workspace's.
+  currencyCode: recurringRules.currencyCode,
   frequencyUnit: recurringRules.frequencyUnit,
   frequencyInterval: recurringRules.frequencyInterval,
   startDate: recurringRules.startDate,
@@ -38,7 +43,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!isPersonalAccount(ctx)) return res.status(403).json({ error: "Spaces are available on personal accounts only" })
 
   const [space] = await db
-    .select({ id: wealthAccounts.id, nickname: wealthAccounts.nickname, bankName: wealthAccounts.bankName })
+    .select({ id: wealthAccounts.id, nickname: wealthAccounts.nickname, bankName: wealthAccounts.bankName, currencyCode: wealthAccounts.currencyCode })
     .from(wealthAccounts)
     .where(and(eq(wealthAccounts.id, id), eq(wealthAccounts.organizationId, orgId), eq(wealthAccounts.type, "space")))
   if (!space) return res.status(404).json({ error: "Space not found" })
@@ -53,7 +58,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const withDerived = (rule: Awaited<ReturnType<typeof findRule>>) =>
     rule
-      ? { ...serialize(rule), monthly_equivalent: monthlyEquivalent(Number(rule.amount), rule.frequencyUnit as SpaceFrequencyUnit, rule.frequencyInterval) }
+      ? { ...serialize(withRuleError(req, rule)), monthly_equivalent: monthlyEquivalent(Number(rule.amount), rule.frequencyUnit as SpaceFrequencyUnit, rule.frequencyInterval) }
       : null
 
   if (req.method === "GET") {
@@ -75,11 +80,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // The source must be one of the org's active bank/cash accounts — never a
     // Space (you can't auto-save from a Space into a Space).
     const [source] = await db
-      .select({ id: wealthAccounts.id, type: wealthAccounts.type, archivedAt: wealthAccounts.archivedAt })
+      .select({ id: wealthAccounts.id, type: wealthAccounts.type, archivedAt: wealthAccounts.archivedAt, currencyCode: wealthAccounts.currencyCode })
       .from(wealthAccounts)
       .where(and(eq(wealthAccounts.id, body.source_account_id), eq(wealthAccounts.organizationId, orgId), isNull(wealthAccounts.archivedAt)))
     if (!source || source.type === "space") return res.status(400).json({ error: "Choose an active bank or cash account to save from" })
     if (source.id === id) return res.status(400).json({ error: "Source and destination must differ" })
+    if (!source.currencyCode || !space.currencyCode) return res.status(409).json({ error: "Currency migration is incomplete", code: "currency_missing" })
+    // Any source currency (MC-159): the rule's amount is what LEAVES, in the
+    // source's currency (snapshotted below), and each occurrence converts it
+    // into the Space's at its own date's rate — see recurring-materialize.ts.
 
     const spaceName = space.nickname.trim() || space.bankName || "Space"
     // Reuse the recurring validator for the shared fields (amount / frequency /
@@ -96,6 +105,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       end_date: body.end_date ?? null,
     } as RecurringRuleInput)
     if ("error" in parsed) return res.status(400).json({ error: parsed.error })
+    // The validator rounds to cents; a yen or won source has none. Refuse
+    // ¥1,500.50 here, as every recurring writer does — saved, it would be
+    // refused by createTransfer at every occurrence and pause at once.
+    const bad = moneyRefusal(source.currencyCode, body.amount)
+    if (bad) return res.status(400).json(bad)
     const v = parsed.value
 
     const existing = await findRule()
@@ -106,6 +120,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           wealthAccountId: v.wealthAccountId,
           name: v.name,
           amount: v.amount,
+          currencyCode: source.currencyCode,
           frequencyUnit: v.frequencyUnit,
           frequencyInterval: v.frequencyInterval,
           startDate: v.startDate,
@@ -128,6 +143,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         name: v.name,
         type: "outgoing",
         amount: v.amount,
+        currencyCode: source.currencyCode,
         category: "Transfer",
         frequencyUnit: v.frequencyUnit,
         frequencyInterval: v.frequencyInterval,

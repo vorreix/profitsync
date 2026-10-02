@@ -175,7 +175,12 @@ export function notificationRenderKeys(
   kindOf: (key: string) => NotificationKeyKind,
 ): { titleKey: string | null; bodyKey: string | null } {
   const raw = typeof data?.i18nKey === "string" && data.i18nKey ? data.i18nKey : null
-  const rawBody = typeof data?.i18nBodyKey === "string" && data.i18nBodyKey ? data.i18nBodyKey : null
+  // `i18nBodyKeyAmounts` is a richer body (a budget alert with its figures)
+  // written BESIDE the plain `i18nBodyKey`: a store build pinned before that key
+  // existed still translates the plain one instead of falling back to English.
+  // It wins only when this bundle knows it.
+  const amounts = typeof data?.i18nBodyKeyAmounts === "string" && kindOf(data.i18nBodyKeyAmounts) === "string" ? data.i18nBodyKeyAmounts : null
+  const rawBody = amounts ?? (typeof data?.i18nBodyKey === "string" && data.i18nBodyKey ? data.i18nBodyKey : null)
 
   if (!raw) return { titleKey: null, bodyKey: rawBody }
 

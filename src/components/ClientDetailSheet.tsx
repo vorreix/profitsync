@@ -11,6 +11,9 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { FitText } from "@/components/FitText"
 import { useCurrency } from "@/lib/currency-context"
+import { formatMoneyWhole } from "@/lib/wealth"
+import { FxExcludedNotice } from "@/components/FxExcludedNotice"
+import { clientTotalsCurrency, excludedCountOf } from "@/lib/reporting-fields"
 import type { Client } from "@/lib/types"
 import { appLocale } from "@/lib/format-date"
 
@@ -33,9 +36,11 @@ export function ClientDetailSheet({
 }) {
   const { t } = useTranslation("clients")
   const navigate = useNavigate()
-  const { currency } = useCurrency()
-  const fmt = (n: number) =>
-    new Intl.NumberFormat("en-US", { style: "currency", currency, minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n)
+  const { currency: orgCurrency } = useCurrency()
+  // The list's totals are converted server-side — format them in THAT currency
+  // (`totals_currency`), not whatever the workspace currency is now.
+  const currency = clientTotalsCurrency(client, orgCurrency)
+  const fmt = (n: number) => formatMoneyWhole(n, currency)
   if (!client) return null
 
   const incoming = Number(client.total_incoming ?? 0)
@@ -77,6 +82,7 @@ export function ClientDetailSheet({
               <FitText className={`mt-0.5 ${profit >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"}`} textClassName="text-sm font-semibold tabular-nums">{fmt(profit)}</FitText>
             </div>
           </div>
+          <FxExcludedNotice count={excludedCountOf(client)} />
 
           {/* Details */}
           <div className="space-y-2.5">

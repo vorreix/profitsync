@@ -3,7 +3,8 @@ import { and, eq, isNull } from "drizzle-orm"
 import { db } from "../../../src/lib/db/index.js"
 import { budgets, budgetHistory, clients } from "../../../src/lib/db/schema.js"
 import { requireAuth, isPersonalAccount } from "../../_lib/auth.js"
-import { outgoingByClient, spentFor } from "../../_lib/budget-spend.js"
+import { capCurrency, excludedFor, inCapCurrency, outgoingByClient, spentFor } from "../../_lib/budget-spend.js"
+import { convertAmount, currentRate, ensureRatesInto, reportingCurrencyFor } from "../../_lib/fx-rates.js"
 import { isBudgetPeriod, todayUtc, type BudgetPeriod } from "../../../src/lib/budget.js"
 import { listBudgets, primaryBudget, toV1Period } from "../../_lib/spending-budgets.js"
 import { detectCreep, seriesState, type BudgetAction, type HistoryRow } from "../../../src/lib/budget-history.js"
@@ -35,6 +36,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           period: toV1Period(primary.period),
           amount: primary.amount,
           spent: primary.spent,
+          currency: primary.currency,
+          excluded_count: primary.excluded_count,
           state: seriesState(primary.spent, primary.amount),
           ratio: primary.amount > 0 ? primary.spent / primary.amount : null,
           creep_flagged: false,
@@ -44,10 +47,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.json({
       budgets: items,
       account_type: ctx.accountType,
+      currency: primary?.currency ?? (await reportingCurrencyFor(orgId)),
+      excluded_count: primary?.excluded_count ?? 0,
       aggregate: {
         total_budget: primary?.amount ?? 0,
         total_spent: primary?.spent ?? 0,
-        on_track: primary && primary.spent <= primary.amount ? 1 : 0,
+        // Partial spend (rows with no rate) under the cap is not "on track" (MC-082).
+        on_track: primary && primary.spent <= primary.amount && !primary.excluded_count ? 1 : 0,
         total: primary ? 1 : 0,
         worst: lite,
         best: lite,
@@ -55,28 +61,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     })
   }
 
-  const [rows, clientRows, historyRows, byClient] = await Promise.all([
+  // Every cap is judged in ITS OWN currency (`capCurrency` — the reporting
+  // currency when it was set; rows converted at their own date); what could not
+  // be converted is counted, never summed raw.
+  const reporting = await reportingCurrencyFor(orgId)
+  const [rows, clientRows, historyRows] = await Promise.all([
     db.select().from(budgets).where(eq(budgets.organizationId, orgId)),
     db.select({ id: clients.id, name: clients.name, isOwn: clients.isOwn }).from(clients).where(and(eq(clients.organizationId, orgId), isNull(clients.deletedAt))),
     db.select().from(budgetHistory).where(eq(budgetHistory.organizationId, orgId)),
-    outgoingByClient(orgId, now),
+    ensureRatesInto(orgId, [reporting]),
   ])
+  const currencyByKey = new Map(rows.map((b) => [KEY(b.clientId), capCurrency(b, reporting)]))
+  // Only a cap kept from before a reporting change needs more rates (rare).
+  await ensureRatesInto(orgId, [...currencyByKey.values()].filter((c) => c !== reporting))
+  const byClient = await outgoingByClient(orgId, now, reporting)
 
   const nameById = new Map(clientRows.map((c) => [c.id, c.name]))
   const ownById = new Map(clientRows.map((c) => [c.id, c.isOwn]))
 
-  // Whole-workspace per-period spend (the personal org's single budget tracks this).
-  const orgTotals = { daily: 0, weekly: 0, monthly: 0, lifetime: 0 }
-  for (const s of byClient.values()) {
-    orgTotals.daily += s.daily; orgTotals.weekly += s.weekly
-    orgTotals.monthly += s.monthly; orgTotals.lifetime += s.lifetime
-  }
-
   // History grouped per budget (key by client id, "default" for the null budget),
-  // ascending by created_at, mapped to the pure-lib shape for detectCreep.
+  // ascending by created_at, mapped to the pure-lib shape for detectCreep — only
+  // the snapshots in the cap's current currency, so creep never compares $ with €.
   const histByKey = new Map<string, HistoryRow[]>()
   for (const h of historyRows) {
     const k = KEY(h.clientId)
+    if (!inCapCurrency(h.currencyCode, currencyByKey.get(k) ?? reporting)) continue
     const list = histByKey.get(k) ?? []
     list.push({
       amount: Number(h.amount),
@@ -91,9 +100,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const out = rows.map((b) => {
     const period = (isBudgetPeriod(b.period) ? b.period : "monthly") as BudgetPeriod
     const amount = Number(b.amount)
-    // Spend: per-client → that client; personal org-level (null) → whole workspace;
-    // business default template (null) → null (no single spend number).
-    const spent = b.clientId ? spentFor(byClient.get(b.clientId), period) : personal ? orgTotals[period] : null
+    // Spend: per-client → that client, in the cap's currency; the business
+    // default template (null client) → null (no single spend number). A personal
+    // workspace returned above.
+    const spent = b.clientId ? spentFor(byClient.get(b.clientId), period) : null
+    const excluded_count = b.clientId ? excludedFor(byClient.get(b.clientId), period) : 0
     const ratio = spent !== null && amount > 0 ? spent / amount : null
     const creep = detectCreep(histByKey.get(KEY(b.clientId)) ?? [])
     return {
@@ -105,6 +116,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       period,
       amount,
       spent,
+      currency: currencyByKey.get(KEY(b.clientId)) ?? reporting,
+      excluded_count,
       state: spent !== null ? seriesState(spent, amount) : "none",
       ratio,
       creep_flagged: creep.flagged,
@@ -113,16 +126,37 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }).filter((b) => !b.client_id || nameById.has(b.client_id))
 
   // Cross-budget aggregate — over budgets that have a real spend number + amount.
+  // The totals are a reporting-currency figure: a cap kept in another currency
+  // is CONVERTED into it at today's rate for this header (never relabelled —
+  // adding a $ cap to ₹ caps as if it were rupees means nothing). A cap with no
+  // rate at all is left out of the sum — and its currency is NAMED in
+  // `excluded_currencies`, never dropped quietly; its ratio still ranks and
+  // counts, a ratio has no currency.
   const tracked = out.filter((b) => b.spent !== null && b.amount > 0)
-  const totalBudget = tracked.reduce((s, b) => s + b.amount, 0)
-  const totalSpent = tracked.reduce((s, b) => s + (b.spent ?? 0), 0)
-  const onTrack = tracked.filter((b) => (b.spent ?? 0) <= b.amount).length
+  const foreign = [...new Set(tracked.map((b) => b.currency))].filter((c) => c !== reporting)
+  const rates = new Map(await Promise.all(foreign.map(async (c) => [c, await currentRate(c, reporting).catch(() => null)] as const)))
+  const toReporting = (v: number, c: string) => {
+    if (c === reporting) return v
+    const rate = rates.get(c)
+    return rate ? Number(convertAmount(v, rate)) : null
+  }
+  const summable = tracked.flatMap((b) => {
+    const amount = toReporting(b.amount, b.currency)
+    const spent = toReporting(b.spent ?? 0, b.currency)
+    return amount === null || spent === null ? [] : [{ amount, spent }]
+  })
+  const totalBudget = summable.reduce((s, b) => s + b.amount, 0)
+  const totalSpent = summable.reduce((s, b) => s + b.spent, 0)
+  // A cap whose spend left rows out (no rate) is not known to be on track (MC-082).
+  const onTrack = tracked.filter((b) => (b.spent ?? 0) <= b.amount && !b.excluded_count).length
   const ranked = [...tracked].filter((b) => b.ratio !== null).sort((a, b) => (b.ratio ?? 0) - (a.ratio ?? 0))
   const lite = (b: (typeof out)[number]) => ({ key: b.key, client_name: b.client_name, is_default: b.is_default, ratio: b.ratio })
 
   return res.json({
     budgets: out,
     account_type: ctx.accountType,
+    currency: reporting,
+    excluded_count: out.reduce((s, b) => s + b.excluded_count, 0),
     aggregate: {
       total_budget: totalBudget,
       total_spent: totalSpent,
@@ -130,6 +164,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       total: tracked.length,
       worst: ranked.length ? lite(ranked[0]) : null,
       best: ranked.length ? lite(ranked[ranked.length - 1]) : null,
+      excluded_currencies: foreign.filter((c) => !rates.get(c)),
     },
   })
 }

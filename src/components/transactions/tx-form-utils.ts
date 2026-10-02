@@ -36,17 +36,23 @@ export const defaultAccountId = (accounts: WealthAccount[]) =>
 
 // Seed the edit form from a row: its account and, when a card paid, that card
 // (so the picker highlights the card tile and a save keeps the attribution).
+// The row's own currency travels with the amount, so the picker shows the right
+// symbol and re-asks the amount when the account it lands on is in another one.
 export const allocationFor = (
-  tx: { wealth_account_id?: string | null; card_id?: string | null; amount: number },
+  tx: { wealth_account_id?: string | null; card_id?: string | null; amount: number | null; currency_code?: string | null },
   accounts: WealthAccount[],
 ): Allocation[] => [{
   account_id: tx.wealth_account_id ?? defaultAccountId(accounts),
   card_id: tx.wealth_account_id ? (tx.card_id ?? null) : null,
-  amount: String(tx.amount),
+  // null only on a mixed-currency split with no rate — never a single leg;
+  // an empty amount re-asks rather than seeding a made-up number.
+  amount: tx.amount == null ? "" : String(tx.amount),
+  currency_code: tx.currency_code ?? null,
 }]
 
 // The wire shape of one allocation for POST /api/transactions/group and the
-// split re-create: the server forces wealth_account_id to the card's account.
+// split replace (PUT /api/transactions/group/:groupId): the server forces
+// wealth_account_id to the card's account.
 export const allocationPayload = (a: Allocation) => ({
   wealth_account_id: a.account_id,
   card_id: a.card_id ?? null,

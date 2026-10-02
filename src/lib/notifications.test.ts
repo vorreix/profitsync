@@ -189,6 +189,15 @@ describe("notificationRenderKeys", () => {
     })
   })
 
+  it("prefers i18nBodyKeyAmounts only when this bundle knows it", () => {
+    const withAmounts = { ...tree, "types.budget_exceeded.body": "string", "types.budget_exceeded.bodyAmounts": "string" } as Record<string, NotificationKeyKind>
+    const data = { i18nKey: "types.budget_exceeded.title", i18nBodyKey: "types.budget_exceeded.body", i18nBodyKeyAmounts: "types.budget_exceeded.bodyAmounts" }
+    expect(notificationRenderKeys(data, (k) => withAmounts[k] ?? "missing").bodyKey).toBe("types.budget_exceeded.bodyAmounts")
+    // A pinned build without the new key keeps translating the plain body.
+    const old = { ...withAmounts, "types.budget_exceeded.bodyAmounts": "missing" } as Record<string, NotificationKeyKind>
+    expect(notificationRenderKeys(data, (k) => old[k] ?? "missing").bodyKey).toBe("types.budget_exceeded.body")
+  })
+
   it("handles empty/missing data", () => {
     expect(notificationRenderKeys(null, kindOf)).toEqual({ titleKey: null, bodyKey: null })
     expect(notificationRenderKeys({}, kindOf)).toEqual({ titleKey: null, bodyKey: null })

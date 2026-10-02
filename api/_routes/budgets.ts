@@ -3,12 +3,13 @@ import { and, eq, isNull } from "drizzle-orm"
 import { db, serialize } from "../../src/lib/db/index.js"
 import { budgetHistory, budgets, clients, spendingBudgets } from "../../src/lib/db/schema.js"
 import { canWrite, isPersonalAccount, requireAuth } from "../_lib/auth.js"
-import { amountExceedsLimit } from "../../src/lib/money.js"
+import { amountExceedsLimit, isCurrencyCode, moneyRefusal, normalizeCurrencyCode, selectableCurrencyCode } from "../../src/lib/money.js"
 import { isBudgetPeriod, todayUtc, type BudgetPeriod } from "../../src/lib/budget.js"
 import { budgetChangeAction } from "../../src/lib/budget-history.js"
-import { outgoingByClient, spentFor } from "../_lib/budget-spend.js"
+import { capCurrency, capWriteCurrency, excludedFor, outgoingByClient, spentFor } from "../_lib/budget-spend.js"
+import { ensureRatesInto, reportingCurrencyFor } from "../_lib/fx-rates.js"
 import { logAudit } from "../_lib/audit.js"
-import { listBudgets, primaryBudget, toV1Period, fromV1Period } from "../_lib/spending-budgets.js"
+import { auditedAmount, listBudgets, primaryBudget, toV1Period, fromV1Period } from "../_lib/spending-budgets.js"
 
 /**
  * The v1 budgets API — per-client spend CAPS for business workspaces, with the
@@ -38,27 +39,38 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               period: toV1Period(primary.period),
               amount: primary.amount,
               spent: primary.spent,
+              currency: primary.currency,
+              excluded_count: primary.excluded_count,
               created_at: primary.created_at,
               updated_at: primary.updated_at,
             }]
           : [],
         account_type: ctx.accountType,
+        currency: primary?.currency ?? (await reportingCurrencyFor(orgId)),
       })
     }
 
+    // Each per-client cap is judged in ITS OWN currency (the reporting currency
+    // when it was set — `capCurrency`): each row converted at its own date, rows
+    // with no rate counted in `excluded_count`.
     const now = new Date()
-    const [rows, byClient] = await Promise.all([
+    const reporting = await reportingCurrencyFor(orgId)
+    const [rows] = await Promise.all([
       db.select().from(budgets).where(eq(budgets.organizationId, orgId)),
-      outgoingByClient(orgId, now),
+      ensureRatesInto(orgId, [reporting]),
     ])
+    // Only a cap kept from before a reporting change needs more rates (rare).
+    await ensureRatesInto(orgId, rows.map((b) => capCurrency(b, reporting)).filter((c) => c !== reporting))
+    const byClient = await outgoingByClient(orgId, now, reporting)
     const out = rows.map((b) => {
       const period = (isBudgetPeriod(b.period) ? b.period : "monthly") as BudgetPeriod
       // A per-client cap carries that client's spend; the NULL-client row is the
       // default-for-new-clients template and has no single spend figure.
       const spent = b.clientId ? spentFor(byClient.get(b.clientId), period) : null
-      return { ...serialize(b), spent }
+      const excluded_count = b.clientId ? excludedFor(byClient.get(b.clientId), period) : 0
+      return { ...serialize(b), spent, currency: capCurrency(b, reporting), excluded_count }
     })
-    return res.json({ budgets: out, account_type: ctx.accountType })
+    return res.json({ budgets: out, account_type: ctx.accountType, currency: reporting })
   }
 
   // POST = upsert a budget for (org, client_id). amount <= 0 clears it. This is the
@@ -66,7 +78,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // client never has to track the budget row id.
   if (req.method === "POST") {
     if (!canWrite(role)) return res.status(403).json({ error: "Forbidden" })
-    const { client_id, period, amount } = req.body as { client_id?: string | null; period?: string; amount?: number }
+    const { client_id, period, amount, currency_code } = req.body as { client_id?: string | null; period?: string; amount?: number; currency_code?: string }
 
     // Personal orgs have no visible clients — their budget is always org-level.
     const clientId = personal ? null : (client_id ?? null)
@@ -77,14 +89,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const amt = Number(amount)
     if (!Number.isFinite(amt) || amt < 0) return res.status(400).json({ error: "amount must be a non-negative number" })
     if (amountExceedsLimit(amt)) return res.status(400).json({ error: "Amount is too large" })
+    // The currency the dialog labelled the amount with (absent from every
+    // client that predates kept caps — those show the reporting currency).
+    if (currency_code != null && !isCurrencyCode(currency_code)) return res.status(400).json({ error: "Invalid currency code", code: "invalid_currency" })
+    const shown = currency_code != null ? normalizeCurrencyCode(currency_code) : null
 
     // A personal workspace's "budget" IS its primary spending budget.
     if (personal) {
-      const primary = primaryBudget(await listBudgets(orgId, todayUtc()))
+      const [list, reporting] = await Promise.all([listBudgets(orgId, todayUtc()), reportingCurrencyFor(orgId)])
+      const primary = primaryBudget(list)
+      // Born in the currency the dialog showed and kept in it (like POST
+      // /api/spending-budgets); an amount typed against another is refused.
+      const typedIn = shown ?? reporting
+      if (amt > 0 && primary && primary.currency !== typedIn) {
+        return res.status(409).json({ error: `This budget is kept in ${primary.currency}; enter the amount in ${primary.currency}`, code: "currency_mismatch", currency: primary.currency })
+      }
+      // To the currency's decimals — none for ¥ (MC-031). A remove (0) always passes.
+      const badAmount = moneyRefusal(typedIn, amount)
+      if (badAmount) return res.status(400).json(badAmount)
+      // A NEW budget is new money: not in a currency whose third decimal the
+      // columns can't keep, unless it is the workspace's own.
+      if (amt > 0 && !primary && !selectableCurrencyCode(typedIn, reporting)) return res.status(400).json({ error: "Invalid currency code", code: "invalid_currency" })
       if (amt === 0) {
         if (primary) {
           await db.delete(spendingBudgets).where(and(eq(spendingBudgets.id, primary.id), eq(spendingBudgets.organizationId, orgId)))
-          await logAudit({ orgId, entityType: "budget", entityId: primary.id, action: "delete", actorId: userId, changes: { amount: { from: primary.amount, to: null } } })
+          await logAudit({ orgId, entityType: "budget", entityId: primary.id, action: "delete", actorId: userId, changes: { amount: auditedAmount(primary.amount, null, primary.currency) } })
         }
         return res.json({ ok: true, removed: true })
       }
@@ -96,16 +125,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           .where(and(eq(spendingBudgets.id, primary.id), eq(spendingBudgets.organizationId, orgId)))
           .returning()
         await logAudit({ orgId, entityType: "budget", entityId: primary.id, action: "update", actorId: userId, changes: {
-          ...(primary.amount !== amt ? { amount: { from: primary.amount, to: amt } } : {}),
+          ...(primary.amount !== amt ? { amount: auditedAmount(primary.amount, amt, primary.currency) } : {}),
           ...(primary.period !== v3 ? { period: { from: primary.period, to: v3 } } : {}),
         } })
         return res.json({ ...serialize(row), client_id: null, period: resolvedPeriod, amount: amt, spent: primary.spent })
       }
       const [row] = await db
         .insert(spendingBudgets)
-        .values({ organizationId: orgId, name: "", period: v3, amount: String(amt), categories: [], createdBy: userId, updatedBy: userId })
+        .values({ organizationId: orgId, name: "", period: v3, amount: String(amt), currencyCode: typedIn, categories: [], createdBy: userId, updatedBy: userId })
         .returning()
-      await logAudit({ orgId, entityType: "budget", entityId: row.id, action: "create", actorId: userId, changes: { amount: { from: null, to: amt }, period: { from: null, to: v3 } } })
+      await logAudit({ orgId, entityType: "budget", entityId: row.id, action: "create", actorId: userId, changes: { amount: auditedAmount(null, amt, typedIn), period: { from: null, to: v3 } } })
       return res.status(201).json({ ...serialize(row), client_id: null, period: resolvedPeriod, amount: amt, spent: 0 })
     }
 
@@ -122,13 +151,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       eq(budgets.organizationId, orgId),
       clientId ? eq(budgets.clientId, clientId) : isNull(budgets.clientId),
     )
-    const [existing] = await db.select().from(budgets).where(where)
+    const [[existing], reporting] = await Promise.all([db.select().from(budgets).where(where), reportingCurrencyFor(orgId)])
+    // A cap KEEPS the currency it was first set in: a later reporting change
+    // converts the spend into it, it never relabels the amount. A legacy row
+    // with none is pinned to the reporting currency it has been read in. An
+    // amount typed against another currency is refused, never reinterpreted
+    // (a remove carries no amount, so it always goes through).
+    const writeCurrency = capWriteCurrency(existing, reporting, shown)
+    const currencyCode = writeCurrency ?? capCurrency(existing, reporting)
+    if (amt > 0 && !writeCurrency) {
+      return res.status(409).json({ error: `This budget is kept in ${currencyCode}; enter the amount in ${currencyCode}`, code: "currency_mismatch", currency: currencyCode })
+    }
+    // To the cap currency's decimals (MC-031). A remove (0) always passes.
+    const badAmount = moneyRefusal(currencyCode, amount)
+    if (badAmount) return res.status(400).json(badAmount)
+    // A NEW cap is new money: a selectable currency, or the workspace's own.
+    if (amt > 0 && !existing && !selectableCurrencyCode(currencyCode, reporting)) return res.status(400).json({ error: "Invalid currency code", code: "invalid_currency" })
 
     // Append-only history snapshot (best-effort — like logAudit, a failure here must
     // never block the budget save). Keyed by (org, client) so it survives a remove.
+    // Each snapshot carries the cap's currency so the timeline never mixes them.
     const recordHistory = (amount: string, period: string, action: string) =>
       db.insert(budgetHistory)
-        .values({ organizationId: orgId, clientId, amount, period, action, changedBy: userId })
+        .values({ organizationId: orgId, clientId, amount, period, action, currencyCode, changedBy: userId })
         .catch((err) => { console.error("budget history insert failed", err) })
 
     // amount 0 → remove the budget (a clean "no budget" state).
@@ -145,7 +190,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       : null
     const action = budgetChangeAction(prevSnap, { amount: amt, period: resolvedPeriod })
 
-    const values = { period: resolvedPeriod, amount: String(amt), updatedBy: userId, updatedAt: new Date() }
+    const values = { period: resolvedPeriod, amount: String(amt), currencyCode, updatedBy: userId, updatedAt: new Date() }
     const [row] = existing
       ? await db.update(budgets).set(values).where(eq(budgets.id, existing.id)).returning()
       : await db
@@ -153,7 +198,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           .values({ organizationId: orgId, clientId, createdBy: userId, ...values })
           .returning()
     if (action) await recordHistory(String(amt), resolvedPeriod, action)
-    return res.status(existing ? 200 : 201).json(serialize(row))
+    return res.status(existing ? 200 : 201).json({ ...serialize(row), currency: currencyCode })
   }
 
   return res.status(405).json({ error: "Method not allowed" })

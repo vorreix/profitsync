@@ -3,7 +3,7 @@ import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { ArrowLeft, Landmark, Loader as Loader2, Plus, Target, Wallet } from "lucide-react"
-import { apiGet, apiPatch, apiPost } from "@/lib/api"
+import { apiErrorMessage, apiGet, apiPatch, apiPost } from "@/lib/api"
 import { BUDGET_PERIODS, type BudgetPeriod } from "@/lib/budget"
 import { getCurrencySymbol } from "@/lib/currencies"
 import type { AccountType, Client, WealthAccount } from "@/lib/types"
@@ -26,7 +26,7 @@ function AmountField({
 }) {
   return (
     <div className="relative">
-      <span className={`pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground ${big ? "text-2xl" : "text-sm"}`}>
+      <span className={`pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-muted-foreground ${big ? "text-2xl" : "text-sm"}`}>
         {symbol}
       </span>
       <Input
@@ -36,7 +36,11 @@ function AmountField({
         autoFocus={autoFocus}
         onChange={(e) => onChange(e.target.value)}
         placeholder="0"
-        className={big ? "h-16 pl-9 text-3xl font-semibold tracking-tight" : "h-11 pl-8"}
+        // The prefix runs from "$" to "F CFA": the padding follows its length (MC-140).
+        // `ch` is measured in the INPUT's font, so md:text-3xl overrides the base
+        // md:text-sm — otherwise a desktop "CHF" overlaps the first digit.
+        style={{ paddingInlineStart: `calc(${symbol.length}ch + 1.25rem)` }}
+        className={big ? "h-16 text-3xl md:text-3xl font-semibold tracking-tight" : "h-11"}
       />
     </div>
   )
@@ -76,11 +80,15 @@ const SUBS = 3
 export function MoneyWizard({
   accountType,
   currency,
+  requestedCurrency,
   onBack,
   onDone,
 }: {
   accountType: AccountType
+  /** The currency the workspace reports in — every amount here is typed and saved in it. */
   currency: string
+  /** What the user picked; differs when the workspace already had history and kept its own. */
+  requestedCurrency?: string
   onBack: () => void
   onDone: () => void
 }) {
@@ -136,14 +144,17 @@ export function MoneyWizard({
       if (cashN) {
         // GET auto-provisions the single Cash account if missing; set its balance via
         // PATCH (handles both a fresh workspace and one that already has a 0 cash row,
-        // where a second cash POST would be rejected).
+        // where a second cash POST would be rejected). POST /api/onboarding has
+        // already relabelled an untouched Cash in Hand to the chosen currency; one
+        // with history keeps its own, and the amount typed here is never poured
+        // into another currency — a wallet in the workspace's one is created instead.
         tasks.push(
           (async () => {
             try {
               const accs = await apiGet<WealthAccount[]>("/api/wealth/accounts", token)
-              const cashAcc = accs.find((a) => a.type === "cash" && !a.archived_at)
+              const cashAcc = accs.find((a) => a.type === "cash" && !a.archived_at && (a.currency_code ?? currency) === currency)
               if (cashAcc) await apiPatch(`/api/wealth/accounts/${cashAcc.id}`, token, { current_balance: cashN })
-              else await apiPost("/api/wealth/accounts", token, { type: "cash", opening_balance: cashN })
+              else await apiPost("/api/wealth/accounts", token, { type: "cash", opening_balance: cashN, currency_code: currency })
             } catch {
               /* best-effort */
             }
@@ -155,6 +166,9 @@ export function MoneyWizard({
           type: "bank",
           bank_name: bankName.trim(),
           opening_balance: num(bankBalance) ?? 0,
+          // Explicit: the balance was typed next to this currency's symbol, so
+          // it must not depend on what the server reads as the default.
+          currency_code: currency,
           // From the bank-name autocomplete pick — the server stores the logo.
           ...(bankDomain ? { brand_domain: bankDomain } : {}),
           ...(bankLogo ? { logo_url: bankLogo } : {}),
@@ -162,7 +176,9 @@ export function MoneyWizard({
       }
       const addBudget = (clientId: string | null, amt: string, period: BudgetPeriod) => {
         const n = num(amt)
-        if (n) tasks.push(apiPost("/api/budgets", token, { client_id: clientId, amount: n, period }).catch(() => {}))
+        // The currency the amount was typed in: a cap kept in another one is
+        // refused (409), never relabelled.
+        if (n) tasks.push(apiPost("/api/budgets", token, { client_id: clientId, amount: n, period, currency_code: currency }).catch(() => {}))
       }
       // A personal workspace's budget is a SPENDING budget (all spending, no
       // name → shown as "Personal budget"); a v1 "lifetime" is a custom-dates
@@ -187,8 +203,8 @@ export function MoneyWizard({
       }
       await Promise.all(tasks)
       onDone()
-    } catch {
-      toast.error(t("budget.saveFailed"))
+    } catch (err) {
+      toast.error(apiErrorMessage(err, t("budget.saveFailed")))
       setSubmitting(false)
     }
   }
@@ -209,6 +225,12 @@ export function MoneyWizard({
           <span key={i} className={`h-1.5 rounded-full transition-all duration-300 ${i === sub ? "w-6 bg-primary" : i < sub ? "w-3 bg-primary/60" : "w-3 bg-border"}`} />
         ))}
       </div>
+
+      {requestedCurrency && requestedCurrency !== currency && (
+        <p className="mx-auto mt-3 max-w-xs text-center text-xs text-muted-foreground">
+          {t("onboarding.keptCurrencyNote", { currency })}
+        </p>
+      )}
 
       {/* keyed → re-animates on each sub-step change */}
       <div key={sub} className={`flex flex-1 flex-col justify-center ${slide}`}>

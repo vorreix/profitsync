@@ -199,7 +199,10 @@ export async function checkClientQuota(orgId: string): Promise<QuotaCheck> {
 }
 
 /**
- * Bank-account allowance. Cash in Hand never counts.
+ * Bank-account allowance. Cash wallets never count — Cash in Hand nor any extra
+ * one. That is deliberate policy (MC-072), not an oversight: a wallet holds no
+ * bank feature, and an extra wallet is how a free user keeps money in a second
+ * currency without a second bank slot.
  *  • FREE: 1 ACTIVE bank at a time. Closing one frees the slot (so you can add
  *    another), but reopening a closed bank while already at the active limit is
  *    blocked → must upgrade.

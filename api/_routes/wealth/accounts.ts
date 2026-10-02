@@ -1,31 +1,39 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { and, asc, count, eq, isNull, notInArray, sql } from "drizzle-orm"
 import { db, serialize } from "../../../src/lib/db/index.js"
-import { transactions, wealthAccounts } from "../../../src/lib/db/schema.js"
+import { organizations, transactions, wealthAccounts } from "../../../src/lib/db/schema.js"
 import { canWrite, requireAuth } from "../../_lib/auth.js"
+import { DEFAULT_CASH_NAME } from "../../_lib/wealth-accounts.js"
 import { fetchLogoData } from "../../_lib/bank-brand.js"
 import { logoDataUrl } from "../../../src/lib/logo-data.js"
 import { materializeDueRecurring } from "../../_lib/recurring-materialize.js"
 import { createWealthAccount, type CreateAccountInput } from "../../_lib/wealth-accounts.js"
 import { syncCards } from "../../_lib/card-autopay.js"
+import { currencyLockRefs, withCurrencyLock } from "../../_lib/account-currency-lock.js"
+import { newAccountRefusal } from "../../_lib/new-account-money.js"
+import { reportingCurrencyFor } from "../../_lib/fx-rates.js"
+import { clientUpdateRefusal } from "../../_lib/client-capabilities.js"
 
 // "Cash in Hand" is the default account every workspace always has. We lazily
 // provision it on first read so existing orgs (created before wealth tracking)
-// get one too. The partial unique index `wealth_accounts_one_active_cash_idx`
-// guarantees at most one active cash account per org, so a concurrent insert
-// from a parallel request simply errors and is ignored.
+// get one too. The partial unique index `wealth_accounts_one_default_cash_idx`
+// (mig 0069) guarantees at most one active DEFAULT_CASH_NAME wallet per org, so
+// a concurrent insert from a parallel request simply errors and is ignored.
 async function ensureCashAccount(orgId: string, userId: string) {
   const [existing] = await db
     .select({ id: wealthAccounts.id })
     .from(wealthAccounts)
     .where(and(eq(wealthAccounts.organizationId, orgId), eq(wealthAccounts.type, "cash"), isNull(wealthAccounts.archivedAt)))
   if (existing) return
+  const [org] = await db.select({ currency: organizations.currency, reportingCurrency: organizations.reportingCurrency }).from(organizations).where(eq(organizations.id, orgId)).limit(1)
+  if (!org) return
   try {
     await db.insert(wealthAccounts).values({
       organizationId: orgId,
       type: "cash",
-      bankName: "Cash in Hand",
+      bankName: DEFAULT_CASH_NAME,
       nickname: "",
+      currencyCode: org.reportingCurrency ?? org.currency,
       openingBalance: "0",
       currentBalance: "0",
       icon: "wallet",
@@ -56,6 +64,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         type: wealthAccounts.type,
         bankName: wealthAccounts.bankName,
         nickname: wealthAccounts.nickname,
+        currencyCode: wealthAccounts.currencyCode,
         openingBalance: wealthAccounts.openingBalance,
         currentBalance: wealthAccounts.currentBalance,
         icon: wealthAccounts.icon,
@@ -83,7 +92,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         archivedAt: wealthAccounts.archivedAt,
         createdAt: wealthAccounts.createdAt,
         updatedAt: wealthAccounts.updatedAt,
+        // Live rows only — the count the tiles show. The currency picker reads
+        // `currency_locked` instead (trashed rows lock it too).
         transactionCount: count(transactions.id),
+        ...currencyLockRefs,
         attachmentCount: sql<number>`(select count(*)::int from wealth_account_attachments where wealth_account_id = ${wealthAccounts.id})`,
         // How many non-closed cards live on this account (debit cards on a bank,
         // the one credit card on a liability account) — the Banks tab badge.
@@ -139,7 +151,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       )
     }
 
-    return res.json(rows.map(({ logoData, ...rest }) => serialize({ ...rest, logoSrc: logoDataUrl(logoData) })))
+    return res.json(rows.map(({ logoData, ...rest }) => serialize({ ...withCurrencyLock(rest), logoSrc: logoDataUrl(logoData) })))
   }
 
   if (req.method === "POST") {
@@ -147,7 +159,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Validation, quota, brand logo, the Opening Balance system row and a card's
     // seed statement all live in api/_lib/wealth-accounts.ts — shared with the
     // Cards API so an inline "add bank" behaves exactly like this route.
-    const result = await createWealthAccount(orgId, userId, req.body as CreateAccountInput)
+    const input = req.body as CreateAccountInput
+    // The default wallet's name is reserved for ensureCashAccount: a second
+    // cash wallet taking it trips the default-cash unique index (a 500), or —
+    // with no active default — becomes the permanent, undeletable one. Mirrors
+    // createWealthAccount's cash naming (bank name, else nickname, else
+    // "Cash Wallet").
+    if (input?.type === "cash" && ((input.bankName ?? input.bank_name ?? "").trim() || input.nickname?.trim()) === DEFAULT_CASH_NAME) {
+      return res.status(400).json({ error: `"${DEFAULT_CASH_NAME}" is reserved for the default cash wallet`, code: "reserved_cash_name" })
+    }
+    const reporting = await reportingCurrencyFor(orgId)
+    const refused = newAccountRefusal(input ?? {}, reporting)
+    if (refused) return res.status(400).json(refused)
+    // A pre-multi-currency build would show a foreign account wrong (MC-034).
+    const outdated = clientUpdateRefusal(req, input?.currency_code, reporting)
+    if (outdated) return res.status(409).json(outdated)
+    const result = await createWealthAccount(orgId, userId, input)
     if (!result.ok) return res.status(result.status).json(result.body)
     const { logoData, ...safe } = result.row
     return res.status(201).json(serialize({ ...safe, logoSrc: logoDataUrl(logoData) }))

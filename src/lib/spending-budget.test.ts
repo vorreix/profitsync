@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 import {
   addDays,
   allocation,
+  allocationIn,
   amountAt,
   budgetWindow,
   categoriesWithin,
@@ -307,6 +308,35 @@ describe("allocation — what the overall budget has handed out", () => {
   })
   it("rounds the sum once", () => {
     expect(allocation(1, [0.1, 0.2]).allocated).toBe(0.3)
+  })
+})
+
+describe("allocationIn — budgets kept in different currencies (MC-080)", () => {
+  it("one currency behaves exactly like allocation()", () => {
+    expect(allocationIn("EUR", 500, [{ currency: "EUR", limit: 200 }, { currency: "EUR", limit: 100 }])).toEqual({
+      allocated: 300,
+      unallocated: 200,
+      over: false,
+      parts: [{ currency: "EUR", amount: 300 }],
+    })
+  })
+  it("never adds another currency to the overall's — it gets its own total and the remainder is unknown", () => {
+    // ₹50,000 overall, ₹10,000 groceries, €20,000 travel: NOT "₹30,000 of ₹50,000".
+    const a = allocationIn("INR", 50_000, [{ currency: "INR", limit: 10_000 }, { currency: "EUR", limit: 20_000 }])
+    expect(a.allocated).toBe(10_000)
+    expect(a.unallocated).toBeNull()
+    expect(a.parts).toEqual([{ currency: "INR", amount: 10_000 }, { currency: "EUR", amount: 20_000 }])
+  })
+  it("keeps an over-allocation the base lines alone already prove", () => {
+    // ₹60,000 of rupee lines under a ₹50,000 overall is over whatever €200 is worth.
+    const a = allocationIn("INR", 50_000, [{ currency: "INR", limit: 60_000 }, { currency: "EUR", limit: 200 }])
+    expect(a.over).toBe(true)
+    expect(a.unallocated).toBe(-10_000)
+  })
+  it("groups the other currencies and leaves out an empty base part", () => {
+    const a = allocationIn("INR", null, [{ currency: "USD", limit: 10 }, { currency: "EUR", limit: 5 }, { currency: "USD", limit: 2.5 }])
+    expect(a.parts).toEqual([{ currency: "EUR", amount: 5 }, { currency: "USD", amount: 12.5 }])
+    expect(a.unallocated).toBeNull()
   })
 })
 

@@ -4,8 +4,10 @@ import {
   autopayDue,
   autopayEligible,
   autopayPlan,
+  autopayDeferred,
   autopayPreview,
   cardDisplayName,
+  cardsStripTotals,
   cardExpiresSoon,
   curatedBankColor,
   darken,
@@ -223,5 +225,44 @@ describe("autopay", () => {
     expect(autopayPreview(card, [later, stmt], 300)).toEqual({ date: "2026-09-15", amount: 300, statement_id: "s1" })
     expect(autopayPreview(card, [{ ...stmt, autopay_status: "paid" }, later])).toEqual({ date: "2026-10-15", amount: 120.46, statement_id: "s2" })
     expect(autopayPreview({ ...card, autopay: false }, [stmt])).toBeNull()
+  })
+
+  it("does not announce a deferred statement as the next autopay (MC-087)", () => {
+    const later = { id: "s2", due_date: "2026-10-15", remaining: 80, autopay_status: null }
+    const deferred = { ...stmt, autopay_error: "Free plan is limited to 30 transactions per client." }
+    expect(autopayDeferred(deferred)).toBe(true)
+    expect(autopayDeferred({ ...deferred, autopay_status: "failed" })).toBe(false) // failed, not deferred
+    expect(autopayDeferred(stmt)).toBe(false)
+    expect(autopayPreview(card, [deferred, later])).toEqual({ date: "2026-10-15", amount: 80, statement_id: "s2" })
+    expect(autopayPreview(card, [deferred])).toBeNull()
+    // The engine still retries it — an upgrade lets it pay.
+    expect(autopayEligible(card, deferred)).toBe(true)
+  })
+})
+
+describe("cardsStripTotals (MC-023)", () => {
+  const credit = (id: string, currency: string | null, limit: number | null, balance: number) => ({
+    kind: "credit" as const, account_id: id, account_credit_limit: limit, account_current_balance: balance, account_currency_code: currency,
+  })
+  const cards = [credit("eur", "EUR", 2300, -1000), credit("inr", "INR", 100000, -50000), { ...credit("deb", "USD", null, 900), kind: "debit" as const }]
+
+  it("never adds owed or available credit across currencies", () => {
+    const t = cardsStripTotals(cards, "EUR")
+    expect(t.owed).toEqual([{ currency: "EUR", amount: 1000 }, { currency: "INR", amount: 50000 }])
+    expect(t.available).toEqual([{ currency: "EUR", amount: 1300 }, { currency: "INR", amount: 50000 }])
+    expect(t.converted).toBeNull()
+  })
+
+  it("labels a lone foreign card with its own currency, and a legacy row with the fallback", () => {
+    expect(cardsStripTotals([credit("inr", "INR", 10000, -5000)], "EUR").owed).toEqual([{ currency: "INR", amount: 5000 }])
+    expect(cardsStripTotals([credit("old", null, null, -40)], "EUR")).toMatchObject({ owed: [{ currency: "EUR", amount: 40 }], available: [] })
+  })
+
+  it("converts each card at its own rate and counts a rate-less card instead of taking it 1:1", () => {
+    const rates: Record<string, number> = { eur: 1, inr: 0.00919 }
+    const t = cardsStripTotals(cards, "EUR", (id) => rates[id] ?? null)
+    expect(t.converted).toEqual({ owed: 1459.5, available: 1759.5, excluded: 0 })
+    const partial = cardsStripTotals(cards, "EUR", (id) => (id === "eur" ? 1 : null))
+    expect(partial.converted).toEqual({ owed: 1000, available: 1300, excluded: 1 })
   })
 })

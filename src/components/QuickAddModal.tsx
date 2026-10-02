@@ -4,11 +4,14 @@ import { useAuth } from "@clerk/clerk-react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { ChevronDown, Loader as Loader2 } from "lucide-react"
-import { apiPost } from "@/lib/api"
+import { apiErrorMessage, apiPost } from "@/lib/api"
+import { useCurrency } from "@/lib/currency-context"
+import { getCurrencySymbol } from "@/lib/currencies"
 import type { Client, Quotation } from "@/lib/types"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { InputGroup, InputGroupAddon, InputGroupInput, InputGroupText } from "@/components/ui/input-group"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -19,7 +22,8 @@ export type QuickAddEntity = "client" | "quotation"
 // Voice-assistant handoff: fields to seed the form with when the modal opens.
 export type QuickAddPrefill = {
   client?: { name: string; company: string | null; email: string | null; phone: string | null; notes: string | null }
-  quotation?: { title: string; prospect_name: string | null; amount: number | null; date: string | null }
+  // `currency`: the one the user asked in — the quote is saved in it.
+  quotation?: { title: string; prospect_name: string | null; amount: number | null; currency?: string | null; date: string | null }
 }
 
 const todayStr = () => new Date().toISOString().split("T")[0]
@@ -41,6 +45,7 @@ export function QuickAddModal({ entity, prefill, onClose }: { entity: QuickAddEn
   const { t } = useTranslation()
   const navigate = useNavigate()
   const { getToken } = useAuth()
+  const { currency: workspaceCurrency } = useCurrency()
 
   const [submitting, setSubmitting] = useState(false)
   const [advancedOpen, setAdvancedOpen] = useState(false)
@@ -66,6 +71,8 @@ export function QuickAddModal({ entity, prefill, onClose }: { entity: QuickAddEn
   const [qStatus, setQStatus] = useState<"draft" | "sent" | "accepted" | "rejected">("draft")
   const [qCategory, setQCategory] = useState("")
   const [qNotes, setQNotes] = useState("")
+  // The currency the quote is saved in: the one the assistant heard, else the workspace's.
+  const [qCurrency, setQCurrency] = useState<string | null>(null)
 
   // A draft worth keeping: anything the user typed into the active entity's form.
   const dirty =
@@ -86,7 +93,7 @@ export function QuickAddModal({ entity, prefill, onClose }: { entity: QuickAddEn
     setClientName(""); setClientCompany(""); setClientEmail("")
     setClientPhone(""); setClientStatus("active"); setClientOnboard(todayStr()); setClientCategory(""); setClientNotes("")
     setQTitle(""); setQProspect(""); setQAmount(""); setQDate(todayStr())
-    setQCompany(""); setQEmail(""); setQPhone(""); setQStatus("draft"); setQCategory(""); setQNotes("")
+    setQCompany(""); setQEmail(""); setQPhone(""); setQStatus("draft"); setQCategory(""); setQNotes(""); setQCurrency(null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entity])
 
@@ -108,6 +115,7 @@ export function QuickAddModal({ entity, prefill, onClose }: { entity: QuickAddEn
       setQTitle(q.title)
       if (q.prospect_name) setQProspect(q.prospect_name)
       if (q.amount != null) setQAmount(String(q.amount))
+      if (q.currency) setQCurrency(q.currency)
       if (q.date) setQDate(q.date)
     }
   }, [entity, prefill])
@@ -156,6 +164,8 @@ export function QuickAddModal({ entity, prefill, onClose }: { entity: QuickAddEn
           title: qTitle.trim(),
           prospect_name: qProspect.trim(),
           amount: qAmount ? Number(qAmount) : undefined,
+          // Omitted = the workspace's reporting currency (server default).
+          currency_code: qCurrency ?? undefined,
           date: qDate || todayStr(),
           company: qCompany.trim() || undefined,
           email: qEmail.trim() || undefined,
@@ -170,7 +180,7 @@ export function QuickAddModal({ entity, prefill, onClose }: { entity: QuickAddEn
       onClose()
     } catch (err) {
       // Keep the modal open with the typed data so the user can fix + retry.
-      toast.error(err instanceof Error ? err.message : "Failed to create")
+      toast.error(apiErrorMessage(err, t(entity === "client" ? "clients.createClientFailed" : "quotations.failedCreateQuotation")))
       setSubmitting(false)
     }
   }
@@ -278,8 +288,13 @@ export function QuickAddModal({ entity, prefill, onClose }: { entity: QuickAddEn
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label htmlFor="qa-q-amount">{t("quotations.amountLabel")}</Label>
-                <Input id="qa-q-amount" inputMode="decimal" value={qAmount}
-                  onChange={(e) => setQAmount(e.target.value)} placeholder="0.00" className="h-11" />
+                <InputGroup className="h-11">
+                  <InputGroupAddon>
+                    <InputGroupText>{getCurrencySymbol(qCurrency ?? workspaceCurrency)}</InputGroupText>
+                  </InputGroupAddon>
+                  <InputGroupInput id="qa-q-amount" inputMode="decimal" value={qAmount} className="h-full"
+                    onChange={(e) => setQAmount(e.target.value)} placeholder="0.00" />
+                </InputGroup>
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="qa-q-date">{t("quotations.dateLabel")}</Label>

@@ -912,3 +912,16 @@
 body[data-scroll-locked] [data-app-fab] {
   display: none;
 }
+
+/* The vendored dialog's close X (src/components/ui/dialog.tsx, not edited) is a
+   bare 16 px icon. On a touch screen give it a 44 px hit area without moving
+   the icon: an invisible ::after centred on the absolutely-positioned button. */
+@media (pointer: coarse), (max-width: 639px) {
+  /* Only the built-in X (a direct, absolute child) — a DialogClose asChild
+     footer button also carries this slot and is not positioned. */
+  [data-slot="dialog-content"] > [data-slot="dialog-close"].absolute::after {
+    content: "";
+    position: absolute;
+    inset: -14px;
+  }
+}

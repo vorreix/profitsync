@@ -1,6 +1,8 @@
 import type { TFunction } from "i18next"
 import { budgetState, daysLeft, limitForView, limitForWindow, perDayLeft, viewRange, type BudgetWindow } from "@/lib/budget"
 import type { SpendingBudget, SpendingBudgetState, SpendingPeriod, SpendingViewWindow } from "@/lib/types"
+import { formatMoney } from "@/lib/wealth"
+import type { ChartConfig } from "@/components/ui/chart"
 
 /**
  * Small shared formatters for the budgets UI. Every date here is a UTC
@@ -45,6 +47,8 @@ export type BudgetInView = {
   other_spent: number | null
   /** The view is not the rhythm this budget was authored in. */
   converted: boolean
+  /** Rows this window's `spent` left out (no exchange rate) — the figure is partial while > 0. */
+  excluded: number
 }
 
 export function inView(b: SpendingBudget, view: SpendingViewWindow, today: string): BudgetInView {
@@ -69,6 +73,7 @@ export function inView(b: SpendingBudget, view: SpendingViewWindow, today: strin
     per_day_left: counted ? perDayLeft(remaining, days) : null,
     other_spent: custom ? b.other_spent : (b.other_spent_by_view?.[view] ?? null),
     converted: !custom && b.period !== view,
+    excluded: budgetExcluded(custom ? b : { excluded_count: b.excluded_by_view?.[view] }),
   }
 }
 
@@ -113,6 +118,49 @@ export function budgetName(t: TFunction, b: Pick<SpendingBudget, "name">): strin
   return b.name || t("budgets.personal")
 }
 
+// ── Currency facts on a budget row ─────────────────────────────────────────
+// The API measures each budget in ITS currency (`currency`: its own
+// currency_code, else the workspace's reporting currency), every ledger row
+// converted at its own date; `excluded_count` is the rows in the budget's own
+// window that had no rate and were left out. Both are read through these so a
+// cached body from before they shipped still renders (org currency, zero).
+
+type BudgetFx = { currency?: string | null; currency_code?: string | null; excluded_count?: number | null }
+
+/** The currency every figure on this budget is in. */
+export function budgetCurrency(b: Pick<SpendingBudget, "amount"> & BudgetFx, fallback: string): string {
+  return b.currency || b.currency_code || fallback
+}
+
+/** Rows the budget's spend could not include (no exchange rate for their day). */
+export function budgetExcluded(b: BudgetFx | null | undefined): number {
+  return Math.max(0, Number(b?.excluded_count ?? 0) || 0)
+}
+
+/** Money in the budget's own currency — never the workspace's by default. */
+export function budgetMoney(b: Pick<SpendingBudget, "amount"> & BudgetFx, fallback: string): (n: number) => string {
+  const currency = budgetCurrency(b, fallback)
+  return (n: number) => formatMoney(n, currency)
+}
+
+/**
+ * A chart tooltip row with its figure formatted as money (MC-135). The default
+ * row prints a bare number ("11.59") beside an axis that says "$12", and with
+ * budgets kept in several currencies the currency is the part that matters.
+ *   <ChartTooltipContent formatter={moneyTooltip(chartConfig, money)} />
+ */
+export function moneyTooltip(config: ChartConfig, money: (n: number) => string) {
+  return (value: unknown, name: unknown, item: { color?: string }) => (
+    <>
+      <div className="size-2.5 shrink-0 rounded-[2px]" style={{ backgroundColor: item.color }} />
+      <div className="flex flex-1 items-center justify-between gap-2 leading-none">
+        <span className="text-muted-foreground">{config[String(name)]?.label ?? String(name)}</span>
+        <span className="font-mono font-medium tabular-nums text-foreground">{money(Number(value))}</span>
+      </div>
+    </>
+  )
+}
+
 export const BAR_COLOR: Record<SpendingBudget["state"], string> = {
   ok: "bg-emerald-500",
   warn: "bg-amber-500",
@@ -138,33 +186,4 @@ export function nestBudgets(list: SpendingBudget[]): { budget: SpendingBudget; c
     children.set(b.parent_id, [...(children.get(b.parent_id) ?? []), b])
   }
   return list.filter((b) => !b.parent_id).map((b) => ({ budget: b, children: children.get(b.id) ?? [] }))
-}
-
-/** The API's error code → the sentence to show. Unknown codes fall back to the generic one. */
-export function budgetErrorMessage(t: TFunction, raw: string, detail?: Record<string, unknown>): string {
-  const code = raw.trim()
-  const list = Array.isArray(detail?.categories) ? (detail!.categories as string[]).join(", ") : ""
-  switch (code) {
-    case "name_taken":
-      return t("budgets.errors.nameTaken")
-    case "name_required":
-      return t("budgets.errors.nameRequired")
-    case "category_claimed":
-      return detail?.a ? t("budgets.errors.renameClash", { categories: list, a: detail.a, b: detail.b }) : t("budgets.errors.categoryClaimed", { categories: list, name: detail?.by ?? "" })
-    case "categories_outside_parent":
-      return t("budgets.errors.categoriesOutsideParent")
-    case "sub_budget_needs_categories":
-      return t("budgets.errors.subNeedsCategories")
-    case "child_outside_scope":
-      return t("budgets.errors.childOutsideScope", { child: detail?.child ?? "" })
-    case "overall_exists":
-      return t("budgets.errors.overallExists", { name: detail?.by || t("budgets.overall") })
-    case "too_many_budgets":
-    case "too_many_sub_budgets":
-      return t("budgets.errors.tooMany")
-    case "has_sub_budgets":
-      return t("budgets.errors.hasSubBudgets")
-    default:
-      return code || t("budgets.saveFailed")
-  }
 }

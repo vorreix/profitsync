@@ -1,4 +1,4 @@
-import type { DodoPayment } from "./dodo.js"
+import { fromDodoMinor, type DodoPayment } from "./dodo.js"
 
 /**
  * Pure mapping from Dodo payments to our invoice rows. Kept free of any database
@@ -41,11 +41,12 @@ export function invoiceValuesFromPayment(
 ): InvoiceRowValues {
   const status = invoiceStatusForPayment(payment.status)
   const issuedAt = payment.created_at ? new Date(payment.created_at) : new Date()
+  const currency = payment.currency || "USD"
   return {
     organizationId: ctx.organizationId,
     subscriptionId: ctx.subscriptionId,
-    amount: String((payment.total_amount ?? 0) / 100),
-    currency: payment.currency || "USD",
+    amount: String(fromDodoMinor(payment.total_amount, currency)),
+    currency,
     status,
     provider: "dodo",
     providerInvoiceId: payment.payment_id,

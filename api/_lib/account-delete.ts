@@ -21,7 +21,12 @@ import { teardownOrganization, type OrgDeleteResult } from "./admin-org-delete.j
 
 const clerk = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY! })
 
-export type AccountDeleteResult = { organizations: OrgDeleteResult[]; clerkDeleted: boolean }
+export type AccountDeleteResult = {
+  organizations: OrgDeleteResult[]
+  clerkDeleted: boolean
+  /** An owned workspace's Dodo cancel failed, so the account was left in place (`abortOnBillingFailure`). */
+  billingFailed?: boolean
+}
 
 /**
  * Fully delete a user account. Shared by the self-serve OTP flow and the admin
@@ -30,14 +35,29 @@ export type AccountDeleteResult = { organizations: OrgDeleteResult[]; clerkDelet
  * upserts a profile on first call, so a surviving Clerk login would silently
  * resurrect an empty account. Every step is idempotent: a partial failure is
  * safe to retry end-to-end.
+ *
+ * With `abortOnBillingFailure` (the self-serve flow) a workspace whose Dodo
+ * cancel fails is NOT deleted and the run stops there — before the profile and
+ * the Clerk login, which are the only way back to that workspace's billing page.
+ * Workspaces already torn down had their billing stopped, so a retry resumes
+ * cleanly. The admin console keeps the default force-delete and reports per org.
  */
-export async function deleteUserAccount(userId: string): Promise<AccountDeleteResult> {
+export async function deleteUserAccount(
+  userId: string,
+  opts: { abortOnBillingFailure?: boolean } = {},
+): Promise<AccountDeleteResult> {
   const owned = await db
     .select({ id: organizations.id })
     .from(organizations)
     .where(eq(organizations.ownerUserId, userId))
   const orgResults: OrgDeleteResult[] = []
-  for (const o of owned) orgResults.push(await teardownOrganization(o.id))
+  for (const o of owned) {
+    const r = await teardownOrganization(o.id, opts)
+    orgResults.push(r)
+    if (opts.abortOnBillingFailure && r.dodo.provider === "dodo" && !r.dodo.ok) {
+      return { organizations: orgResults, clerkDeleted: false, billingFailed: true }
+    }
+  }
 
   // Memberships in orgs the user does NOT own (owned-org rows died with the org).
   await db.delete(organizationMembers).where(eq(organizationMembers.userId, userId))

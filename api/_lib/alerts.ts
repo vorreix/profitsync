@@ -20,13 +20,15 @@
 //
 // NOTE: relative imports MUST keep the `.js` extension — these modules run as
 // unbundled ESM on @vercel/node (see scripts/check-esm-extensions.mjs).
-import { and, eq, gt, gte, isNotNull, isNull, lte, sql } from "drizzle-orm"
+import { and, eq, gt, gte, inArray, isNotNull, isNull, lte, sql } from "drizzle-orm"
 import { db } from "../../src/lib/db/index.js"
-import { recurringRules, transactions, wealthAccounts } from "../../src/lib/db/schema.js"
+import { recurringRules, transactions, transfers, wealthAccounts } from "../../src/lib/db/schema.js"
 import { balanceDelta } from "../../src/lib/wealth-ledger.js"
+import { statementRemaining } from "../../src/lib/credit-card.js"
 import { HORIZON_DAYS, POSTED_WINDOW_DAYS, isoAddDays, type AlertAccount, type AlertCard, type AlertPosted, type AlertRule, type ProjectionEvent } from "../../src/lib/alerts.js"
 import type { FrequencyUnit } from "../../src/lib/recurring.js"
-import { loadCards } from "./cards.js"
+import { loadCards, sameNativeCurrency } from "./cards.js"
+import { PAID_LEG_SQL } from "./credit-card.js"
 import { cardLabel } from "./notify-cards.js"
 
 const num = (v: unknown): number => (v === null || v === undefined ? 0 : Number(v) || 0)
@@ -61,7 +63,8 @@ type StatementInfo = NonNullable<AlertCard["statement"]>
  * payment lands on the account rather than on a statement, so an older
  * statement's debt is already inside the newer one's balance. The LATERAL is
  * `paymentsAfter` for the whole org at once: incoming transfer legs dated after
- * the close are what "paid" means for a credit card.
+ * the close, net of reversals (PAID_LEG_SQL — the same expression), are what
+ * "paid" means for a credit card.
  */
 async function newestStatements(orgId: string): Promise<Map<string, StatementInfo>> {
   const { rows } = (await db.execute(sql`
@@ -75,17 +78,18 @@ async function newestStatements(orgId: string): Promise<Map<string, StatementInf
       order by wealth_account_id, closing_date desc
     ) s
     left join lateral (
-      select sum(t.amount::numeric) as paid
+      select sum(${PAID_LEG_SQL}) as paid
       from transactions t
       where t.wealth_account_id = s.wealth_account_id
-        and t.kind = 'transfer' and t.type = 'incoming'
+        and t.kind = 'transfer'
         and t.deleted_at is null and t.date > s.closing_date
     ) p on true
   `)) as unknown as { rows: StatementRow[] }
 
   const out = new Map<string, StatementInfo>()
   for (const r of rows) {
-    const remaining = Math.round((num(r.statement_balance) - num(r.paid)) * 100) / 100
+    // The card screen's own remaining-figure rule, so the two cannot drift.
+    const remaining = statementRemaining(r.statement_balance, r.paid)
     out.set(r.account_id, {
       id: r.id,
       dueDate: String(r.due_date).slice(0, 10),
@@ -139,8 +143,12 @@ async function materializedOccurrences(orgId: string, today: string, until: stri
  */
 async function recentlyPosted(orgId: string, today: string): Promise<AlertPosted[]> {
   const since = isoAddDays(today, -POSTED_WINDOW_DAYS)
+  // Grouped by the posting account's currency as well: a rule posts to ONE
+  // account, so this never splits a rule's day — it only labels the sum with
+  // the money it is in, so two currencies can never be added together here.
   const { rows } = (await db.execute(sql`
     select t.recurring_rule_id as rule_id, r.name as rule_name, t.type, t.date,
+           wa.currency_code as currency,
            sum(t.amount::numeric) as amount, count(*)::int as count
     from transactions t
     join wealth_accounts wa on wa.id = t.wealth_account_id
@@ -164,9 +172,9 @@ async function recentlyPosted(orgId: string, today: string): Promise<AlertPosted
         t.kind <> 'transfer'
         or exists (select 1 from debt_payments dp where dp.group_id = t.group_id)
       )
-    group by t.recurring_rule_id, r.name, t.type, t.date
+    group by t.recurring_rule_id, r.name, t.type, t.date, wa.currency_code
     order by t.date desc
-  `)) as unknown as { rows: { rule_id: string; rule_name: string; type: string; date: string; amount: string; count: number }[] }
+  `)) as unknown as { rows: { rule_id: string; rule_name: string; type: string; date: string; currency: string | null; amount: string; count: number }[] }
 
   return rows.map((r) => ({
     ruleId: r.rule_id,
@@ -175,6 +183,7 @@ async function recentlyPosted(orgId: string, today: string): Promise<AlertPosted
     amount: num(r.amount),
     date: String(r.date).slice(0, 10),
     count: r.count,
+    currency: r.currency ?? null,
   }))
 }
 
@@ -224,10 +233,54 @@ async function scheduledLegs(orgId: string, today: string): Promise<ProjectionEv
     }))
 }
 
-/** Everything the alert rules need, in five concurrent set-based queries. */
+/**
+ * Planned and pending transfers inside the window, as account movements
+ * (MC-148). They have no ledger rows yet — intent only, nothing is inside
+ * `current_balance` — so `scheduledLegs` cannot see them, and a €800 transfer
+ * planned out of a €1,000 bank was invisible to the €300 rent behind it. Each
+ * is replayed in its own native amounts: the source loses the principal plus
+ * its fee (in the source's money), the destination gains what it receives (in
+ * its own). One whose date has already passed is still going to happen, so it
+ * lands today rather than being dropped.
+ */
+async function unsettledTransfers(orgId: string, today: string, until: string): Promise<ProjectionEvent[]> {
+  const rows = await db
+    .select({
+      id: transfers.id,
+      date: transfers.transferDate,
+      from: transfers.sourceAccountId,
+      to: transfers.destinationAccountId,
+      sent: transfers.sourceAmount,
+      fee: transfers.sourceFeeAmount,
+      received: transfers.destinationAmount,
+      sourceCurrency: transfers.sourceCurrency,
+      destinationCurrency: transfers.destinationCurrency,
+      note: transfers.note,
+      toName: sql<string>`(select coalesce(nullif(w.nickname, ''), w.bank_name) from wealth_accounts w where w.id = ${transfers.destinationAccountId})`,
+    })
+    .from(transfers)
+    .where(
+      and(
+        eq(transfers.organizationId, orgId),
+        inArray(transfers.status, ["planned", "pending"]),
+        isNull(transfers.deletedAt),
+        lte(transfers.transferDate, until),
+      ),
+    )
+  return rows.flatMap((r) => {
+    const date = String(r.date).slice(0, 10) < today ? today : String(r.date).slice(0, 10)
+    const source = { kind: "transfer" as const, id: r.id, name: r.note.trim() || r.toName || "" }
+    return [
+      { date, accountId: r.from, delta: -Math.round((num(r.sent) + num(r.fee)) * 100) / 100, source: { ...source, currency: r.sourceCurrency } },
+      { date, accountId: r.to, delta: num(r.received), source: { ...source, currency: r.destinationCurrency } },
+    ]
+  })
+}
+
+/** Everything the alert rules need, in concurrent set-based queries. */
 export async function loadAlertData(orgId: string, today: string): Promise<AlertData> {
   const until = isoAddDays(today, HORIZON_DAYS)
-  const [accountRows, cardRows, ruleRows, statements, posted, scheduled, alreadyPosted] = await Promise.all([
+  const [accountRows, cardRows, ruleRows, statements, posted, scheduled, alreadyPosted, planned] = await Promise.all([
     db
       .select({
         id: wealthAccounts.id,
@@ -237,6 +290,7 @@ export async function loadAlertData(orgId: string, today: string): Promise<Alert
         currentBalance: wealthAccounts.currentBalance,
         creditLimit: wealthAccounts.creditLimit,
         archivedAt: wealthAccounts.archivedAt,
+        currencyCode: wealthAccounts.currencyCode,
       })
       .from(wealthAccounts)
       .where(eq(wealthAccounts.organizationId, orgId)),
@@ -251,12 +305,19 @@ export async function loadAlertData(orgId: string, today: string): Promise<Alert
     recentlyPosted(orgId, today),
     scheduledLegs(orgId, today),
     materializedOccurrences(orgId, today, until),
+    unsettledTransfers(orgId, today, until),
   ])
 
   // The as-of-today baseline: take the future-dated rows back out of the stored
   // balance so the projection can replay them on their own dates.
   const future = new Map<string, number>()
   for (const e of scheduled) future.set(e.accountId, (future.get(e.accountId) ?? 0) + e.delta)
+
+  // Every figure an alert carries is labelled with ITS account's currency and
+  // never converted — an alert is about one account, so its money is that
+  // account's money. Cards and rules look theirs up through the account they
+  // post to.
+  const currencyByAccount = new Map(accountRows.map((a) => [a.id, a.currencyCode ?? null]))
 
   const accounts: AlertAccount[] = accountRows.map((a) => ({
     id: a.id,
@@ -265,9 +326,19 @@ export async function loadAlertData(orgId: string, today: string): Promise<Alert
     balanceToday: Math.round((num(a.currentBalance) - (future.get(a.id) ?? 0)) * 100) / 100,
     creditLimit: a.creditLimit === null ? null : num(a.creditLimit),
     archived: !!a.archivedAt,
+    currency: a.currencyCode ?? null,
   }))
 
-  const cards: AlertCard[] = cardRows.map((c) => ({
+  // Autopay never pays from an account in another currency (the engine fails
+  // the statement — api/_lib/card-autopay.ts), so the rail must not call such a
+  // card covered (MC-026). Same predicate as the engine, legacy NULLs included.
+  const mismatch = await Promise.all(cardRows.map((c) =>
+    c.kind === "credit" && c.autopay && c.fundingAccountId
+      ? sameNativeCurrency(orgId, currencyByAccount.get(c.fundingAccountId) ?? null, currencyByAccount.get(c.accountId) ?? null).then((same) => !same)
+      : false,
+  ))
+
+  const cards: AlertCard[] = cardRows.map((c, i) => ({
     id: c.id,
     label: cardLabel({ id: c.id, name: c.name, network: c.network, kind: c.kind, last4: c.last4, account_bank_name: c.accountBankName }),
     kind: c.kind === "credit" ? "credit" : "debit",
@@ -281,6 +352,8 @@ export async function loadAlertData(orgId: string, today: string): Promise<Alert
     fundingAccountId: c.fundingAccountId,
     autopaySince: c.autopaySince ? String(c.autopaySince).slice(0, 10) : null,
     statement: statements.get(c.accountId) ?? null,
+    currency: currencyByAccount.get(c.accountId) ?? null,
+    fundingCurrencyMismatch: mismatch[i],
   }))
 
   const rules: AlertRule[] = ruleRows.map((r) => ({
@@ -298,7 +371,10 @@ export async function loadAlertData(orgId: string, today: string): Promise<Alert
     end: r.endDate ? String(r.endDate).slice(0, 10) : null,
     active: r.active,
     lastError: r.lastError ?? "",
+    currency: r.wealthAccountId ? (currencyByAccount.get(r.wealthAccountId) ?? null) : null,
   }))
 
-  return { accounts, cards, rules, posted, scheduled, alreadyPosted }
+  // Planned/pending transfers join the dated events AFTER the baseline above:
+  // they are not inside `current_balance`, so nothing is taken back out.
+  return { accounts, cards, rules, posted, scheduled: [...scheduled, ...planned], alreadyPosted }
 }

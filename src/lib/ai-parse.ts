@@ -23,6 +23,9 @@ export type AiParsedFields = {
   // the user's own accounts, incl. paying a credit card — never an expense.
   kind: "standard" | "refund" | "transfer"
   amount: number | null
+  // ISO 4217 — only when the user STATED one ("20 dollars"), or the card's for a
+  // statement-filled amount; null = the amount is in its account's currency.
+  currency: string | null
   // "statement" = the server filled the amount from the card's latest statement
   // ("paid my Visa statement") — show it as something to CHECK, not as said.
   amount_source: "stated" | "statement" | null
@@ -53,7 +56,7 @@ export type AiAssistantResponse = {
   transcript: string | null
   transaction: Omit<AiParseResponse, "remaining"> | null
   client: { name: string; company: string | null; email: string | null; phone: string | null; notes: string | null } | null
-  quotation: { title: string; prospect_name: string | null; amount: number | null; date: string | null } | null
+  quotation: { title: string; prospect_name: string | null; amount: number | null; currency: string | null; date: string | null } | null
   search: { from: string | null; to: string | null; category: string | null; client_id: string | null; client_name: string | null } | null
   remaining: number
 }

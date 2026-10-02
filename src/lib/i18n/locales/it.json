@@ -111,7 +111,10 @@
     "saving": "Salvataggio...",
     "amountTooLarge": "Importo troppo elevato",
     "expand": "Espandi",
-    "collapse": "Comprimi"
+    "collapse": "Comprimi",
+    "selectCurrency": "Seleziona valuta…",
+    "searchCurrency": "Cerca per valuta, codice o paese…",
+    "noCurrencyFound": "Nessuna valuta trovata."
   },
   "dashboard": {
     "title": "Dashboard",
@@ -293,7 +296,8 @@
     "cashQuestionBusiness": "Quanto contante ha l'azienda a disposizione?",
     "cashHintBusiness": "Il contante della tua azienda.",
     "newOrgTitle": "Crea una nuova azienda",
-    "newOrgSubtitle": "Dai un nome e scegli una valuta — puoi cambiarli in seguito."
+    "newOrgSubtitle": "Dai un nome e scegli una valuta — puoi cambiarli in seguito.",
+    "keptCurrencyNote": "Questo spazio di lavoro ha già uno storico, quindi continua a usare {{currency}}. Inserisci gli importi qui sotto in {{currency}}."
   },
   "transactions": {
     "add": "Aggiungi",
@@ -466,7 +470,23 @@
     "cardAutopayBadge": "Automatico",
     "nCards_one": "{{count}} carta",
     "nCards_other": "{{count}} carte",
-    "editOnItsOwnPage": "Fa parte di un unico pagamento: aprilo dove è stato registrato per modificarlo."
+    "reverseTransfer": "Storna trasferimento",
+    "reverseTransferTitle": "Stornare questo trasferimento?",
+    "reverseTransferDesc": "Crea un trasferimento opposto per gli stessi importi e rimborsa la commissione. L'originale resta nella cronologia.",
+    "transferReversed": "Trasferimento stornato",
+    "transferAlreadyReversed": "Questo trasferimento è già stato stornato.",
+    "reverseTransferFailed": "Impossibile stornare il trasferimento",
+    "transferTrashed": "Questo trasferimento, o una sua parte, è nel Cestino o è stato eliminato, quindi non può essere stornato.",
+    "transferIsReversal": "Questo è già uno storno e non può essere stornato. Per annullarlo, registra un nuovo trasferimento.",
+    "transferReversedBadge": "Stornato",
+    "reversing": "Storno in corso...",
+    "splitSameCurrency": "Solo nella stessa valuta di {{currency}}",
+    "editOnItsOwnPage": "Fa parte di un unico pagamento: aprilo dove è stato registrato per modificarlo.",
+    "amountReenterCurrency": "Ora in {{currency}}: inserisci di nuovo l'importo in {{currency}}.",
+    "systemBadge": "Voce di saldo",
+    "systemBadgeHint": "Imposta il saldo di un conto — non conta come entrata né come spesa",
+    "amountNoRate": "Nessun cambio ancora",
+    "convertedSplitHint": "Suddivisa in {{n}} valute — totale convertito alla data di ogni parte"
   },
   "clients": {
     "pageTitle": "Clienti",
@@ -691,7 +711,9 @@
     "removeLogo": "Rimuovi",
     "logoHint": "Mostrato nella barra laterale e negli elenchi delle organizzazioni. Un'immagine quadrata funziona meglio.",
     "logoInvalid": "Impossibile leggere l'immagine — prova con un altro file",
-    "actions": "Azioni"
+    "actions": "Azioni",
+    "reportingCurrency": "Valuta di riferimento",
+    "reportingCurrencyHint": "Usata per i totali tra valute diverse. Ogni conto mantiene la propria valuta."
   },
   "members": {
     "failedToLoadMembers": "Impossibile caricare i membri",
@@ -811,7 +833,9 @@
       "exhausted": "Limite raggiunto",
       "premiumHint": "Premium ricarica {{count}} crediti ogni mese, con dettatura vocale di 60 secondi e un assistente vocale di 2 minuti",
       "usedOneTime": "{{used}} di {{limit}} crediti gratuiti una tantum usati"
-    }
+    },
+    "chargedInAtCheckout": "Addebitato in {{currency}} al pagamento, convertito da questo prezzo.",
+    "checkoutFailed": "Impossibile avviare il pagamento. Riprova."
   },
   "trash": {
     "title": "Cestino",
@@ -845,7 +869,9 @@
     "clearTrashDesc_other": "Tutti i {{count}} elementi verranno eliminati definitivamente. Questa azione non può essere annullata.",
     "clearing": "Svuotamento…",
     "trashCleared": "Cestino svuotato",
-    "clearFailed": "Impossibile svuotare il cestino"
+    "clearFailed": "Impossibile svuotare il cestino",
+    "trashClearedKept_one": "Cestino svuotato. È stata mantenuta {{count}} voce che stabilisce il saldo di un conto.",
+    "trashClearedKept_other": "Cestino svuotato. Sono state mantenute {{count}} voci che stabiliscono il saldo di un conto."
   },
   "theme": {
     "toggle": "Attiva/disattiva tema",
@@ -1023,7 +1049,9 @@
     "deleted_one": "{{count}} elemento eliminato",
     "deleted_other": "{{count}} elementi eliminati",
     "deleteFailed": "Impossibile eliminare gli elementi selezionati",
-    "selectHint": "Premi e tieni premuto per selezionare"
+    "selectHint": "Premi e tieni premuto per selezionare",
+    "keptRows_one": "{{count}} voce è stata mantenuta. I saldi iniziali e le rettifiche di saldo si modificano dalla pagina del conto, e alcune voci di trasferimento non si possono eliminare da sole.",
+    "keptRows_other": "{{count}} voci sono state mantenute. I saldi iniziali e le rettifiche di saldo si modificano dalla pagina del conto, e alcune voci di trasferimento non si possono eliminare da sole."
   },
   "filters": {
     "filters": "Filtri",
@@ -1530,7 +1558,11 @@
         "title": "Come funziona questa carta?",
         "help": "Il limite, i giorni del ciclo e chi paga l'estratto conto.",
         "payManually": "La pago io",
-        "autopayManualOnly": "L'addebito automatico richiede una banca o contanti. Una carta che ne paga un'altra aggiungerebbe debito ogni mese, quindi resta manuale."
+        "autopayManualOnly": "L'addebito automatico richiede una banca o contanti. Una carta che ne paga un'altra aggiungerebbe debito ogni mese, quindi resta manuale.",
+        "currency": "Valuta della carta",
+        "currencyHelp": "La valuta in cui ti viene addebitato l'estratto conto: il limite e gli importi qui sotto sono in questa valuta.",
+        "currencyLocked": "Questa carta ha già dei movimenti, quindi la sua valuta non può più cambiare.",
+        "autopayCurrencyMismatch": "L'addebito automatico richiede un conto in {{currency}}, la valuta della carta. Scegline uno o paga tu."
       },
       "errors": {
         "bank_required": "Scegli il conto bancario a cui appartiene questa carta",
@@ -1551,7 +1583,10 @@
         "last4_required": "Inserisci le ultime cifre stampate sulla carta",
         "last4_range": "Inserisci le ultime 4–6 cifre",
         "expiry_required": "Inserisci la scadenza stampata sulla carta",
-        "holder_required": "Inserisci il nome stampato sulla carta"
+        "holder_required": "Inserisci il nome stampato sulla carta",
+        "autopay_currency_mismatch": "L'addebito automatico richiede un conto di pagamento nella valuta della carta",
+        "account_currency_locked": "Questa carta ha già dei movimenti, quindi la sua valuta non può cambiare",
+        "invalid_currency": "Scegli una valuta valida"
       },
       "optional": "(facoltativo)",
       "type": {
@@ -1564,6 +1599,48 @@
     },
     "balanceTransferWarning": "Questo sposta il debito su {{card}}. Nel complesso dovrai la stessa cifra: non è stato saldato.",
     "movedToOtherCards": "{{amount}} spostati su altre carte",
+    "accountCurrency": "Valuta del conto",
+    "accountCurrencyLocked": "Questo conto ha già movimenti registrati in {{currency}}, quindi la valuta non può essere cambiata. Crea un altro conto nella valuta che ti serve e trasferisci il denaro.",
+    "transferReceivedAmount": "Importo ricevuto ({{currency}})",
+    "transferFeeAmount": "Commissione di trasferimento ({{currency}})",
+    "transferFeeSummary": "Commissione: {{amount}}",
+    "approxAsOf": "al {{date}}",
+    "rateStale": "non aggiornato",
+    "ratesFrom": "Cambi del {{date}}",
+    "byCurrency": "Per valuta",
+    "byCurrencyHint": "I saldi nella valuta originale sono dati certi. I valori convertiti sono approssimazioni al cambio indicato e variano con esso.",
+    "currencyNotIncluded": "{{currency}} non è inclusa nel totale — nessun tasso di cambio è ancora disponibile",
+    "noRateYet": "Nessun tasso di cambio",
+    "excludesCurrencies": "Esclude {{currencies}}",
+    "shareOfAssets": "{{share}}% del patrimonio",
+    "accountCountOne": "1 conto",
+    "accountCountOther": "{{count}} conti",
+    "transferWhen": "Quando",
+    "transferNowOption": "Adesso",
+    "transferScheduleOption": "Pianifica",
+    "transferScheduleHint": "I trasferimenti pianificati non spostano denaro finché non li segni come completati.",
+    "transferTotalDeducted": "Esce da {{account}}",
+    "transferReceived": "Arriva su {{account}}",
+    "transferScheduled": "Trasferimento pianificato",
+    "scheduleTransfer": "Pianifica trasferimento",
+    "attachmentsAfterCompletion": "I file si possono allegare dopo aver segnato il trasferimento come completato.",
+    "scheduledTransfers": "Trasferimenti pianificati",
+    "statusPlanned": "Pianificato",
+    "statusPending": "In attesa",
+    "markDone": "Segna completato",
+    "markPending": "Segna in attesa",
+    "cancelTransfer": "Annulla trasferimento",
+    "cancelTransferTitle": "Annullare questo trasferimento?",
+    "cancelTransferDesc": "Non ha spostato denaro. Resta nella cronologia come annullato.",
+    "transferMarkedDone": "Trasferimento completato",
+    "transferMarkedPending": "Trasferimento segnato in attesa",
+    "transferCancelled": "Trasferimento annullato",
+    "transferUpdateFailed": "Impossibile aggiornare il trasferimento",
+    "feeShort": "+ {{amount}} commissione",
+    "payAmountLeaving": "Importo in uscita da {{account}} ({{currency}})",
+    "rateSuggested": "Proposto al cambio di oggi: modificalo se la tua banca ne ha applicato un altro.",
+    "rateSuggestedStale": "Proposto al cambio del {{date}}: inserisci quanto hai ricevuto davvero.",
+    "rateUnavailable": "Nessun cambio disponibile per questa coppia: inserisci l'importo arrivato.",
     "appearance": {
       "title": "Aspetto",
       "color": "Colore",
@@ -1575,7 +1652,24 @@
       "subtle": "Discreto",
       "bold": "Deciso",
       "preview": "Anteprima"
-    }
+    },
+    "accountCurrencyLockedBalance": "Questo conto ha un saldo in {{currency}}, quindi la valuta non può essere cambiata. Crea un altro conto nella valuta che ti serve e trasferisci il denaro.",
+    "accountCurrencyLockedRecurring": "Un pagamento ricorrente, un risparmio automatico o un rimborso di un debito usa questo conto, quindi la valuta non può essere cambiata. Spostalo prima su un altro conto o eliminalo.",
+    "accountCurrencyLockedCards": "Una carta addebita su questo conto o viene pagata da esso, quindi la valuta non può essere cambiata. Crea invece un altro conto nella valuta che ti serve.",
+    "accountCurrencyLockedTransfer": "Un trasferimento pianificato o in sospeso riguarda questo conto, quindi la valuta non può essere cambiata. Completa o annulla prima il trasferimento.",
+    "accountCurrencyLockedConfigured": "Carte, debiti e obiettivi di risparmio mantengono la valuta in cui sono stati creati ({{currency}}), quindi non può essere cambiata. Creane invece uno nuovo nella valuta che ti serve.",
+    "ledgerText": {
+      "transferFee": "Commissione di trasferimento",
+      "transferFeeRefund": "Rimborso della commissione di trasferimento",
+      "transferReversal": "Storno del trasferimento"
+    },
+    "accountCount_one": "{{count}} conto",
+    "accountCount_other": "{{count}} conti",
+    "shareOfAssetsLabel": "{{share}} del patrimonio",
+    "currencyNotIncluded_one": "{{currency}} non è inclusa nel totale — nessun tasso di cambio è ancora disponibile",
+    "currencyNotIncluded_other": "{{currency}} non sono incluse nel totale — nessun tasso di cambio è ancora disponibile",
+    "completeTransferTitle": "Segna il trasferimento come completato",
+    "completeTransferDesc": "Le banche spesso applicano un proprio cambio. Inserisci l'importo effettivamente arrivato e l'eventuale commissione addebitata."
   },
   "errorBoundary": {
     "title": "Qualcosa è andato storto",
@@ -1614,7 +1708,9 @@
     "remainingAfter": "{{amount}} rimanenti dopo questa spesa",
     "overAfter": "{{amount}} oltre il budget dopo questa spesa",
     "yearly": "Annuale",
-    "once": "Date personalizzate"
+    "once": "Date personalizzate",
+    "currencyMismatch": "Questo budget è in {{currency}}. Inserisci l'importo in {{currency}}.",
+    "remainingAfterAtMost": "Al massimo {{amount}} rimanenti dopo questa spesa"
   },
   "budgetsPage": {
     "title": "Budget",
@@ -1781,7 +1877,8 @@
     "perMonthOut": "In uscita ogni mese",
     "perMonthIn": "In entrata ogni mese",
     "notRunning_one": "{{count}} pagamento non viene creato",
-    "notRunning_other": "{{count}} pagamenti non vengono creati"
+    "notRunning_other": "{{count}} pagamenti non vengono creati",
+    "amountReenterCurrency": "Ora in {{currency}}: inserisci di nuovo l'importo in {{currency}}."
   },
   "calendar": {
     "title": "Calendario",
@@ -1971,7 +2068,17 @@
     "moveAndClose": "Sposta e chiudi",
     "afterFund": "A {{account}} resteranno {{amount}}",
     "viewDetails": "Vedi dettagli",
-    "spaceBadge": "Spazio"
+    "spaceBadge": "Spazio",
+    "amountLeaving": "Esce da {{account}} ({{currency}})",
+    "amountReceived": "Arriva su {{account}} ({{currency}})",
+    "currencyLabel": "Valuta",
+    "currencyHint": "Questo Spazio conserva il denaro in questa valuta. Non si potrà cambiare in seguito.",
+    "autoSaveNoAccount": "Il risparmio automatico richiede un conto bancario o contanti in {{currency}}, la valuta di questo Spazio.",
+    "autoSaveEstimate": "≈ {{amount}} in questo Spazio al cambio di oggi. Ogni risparmio automatico viene convertito al cambio della propria data.",
+    "autoSaveEstimateStale": "≈ {{amount}} in questo Spazio al cambio del {{date}}. Ogni risparmio automatico viene convertito al cambio della propria data.",
+    "autoSaveNoRate": "Non c'è ancora un cambio da {{from}} a {{to}}. Ogni risparmio automatico attende finché non sarà disponibile.",
+    "autoSaveNoSourceAccount": "Il risparmio automatico richiede un conto bancario o contanti da cui risparmiare.",
+    "autoSavePaused": "In pausa: {{reason}}"
   },
   "notifications": {
     "title": "Notifiche",
@@ -2087,11 +2194,15 @@
       },
       "budget_warning": {
         "title": "Budget quasi esaurito",
-        "body": "{{name}} ha usato il {{percent}}% del suo budget {{period}}."
+        "body": "{{name}} ha usato il {{percent}}% del suo budget {{period}}.",
+        "bodyIncomplete": "{{name}} ha usato il {{percent}}% del suo budget {{period}} ({{spent}} di {{amount}}). Alcune voci in un'altra valuta non sono ancora conteggiate perché manca il tasso di cambio.",
+        "bodyAmounts": "{{name}} ha usato il {{percent}}% del suo budget {{period}} ({{spent}} di {{amount}})."
       },
       "budget_exceeded": {
         "title": "Budget superato",
-        "body": "{{name}} ha superato il suo budget {{period}}."
+        "body": "{{name}} ha superato il suo budget {{period}}.",
+        "bodyIncomplete": "{{name}} ha superato il suo budget {{period}} ({{spent}} di {{amount}}). Alcune voci in un'altra valuta non sono ancora conteggiate perché manca il tasso di cambio.",
+        "bodyAmounts": "{{name}} ha superato il suo budget {{period}} ({{spent}} di {{amount}})."
       },
       "recurring_posted": {
         "title": "Transazione ricorrente registrata",
@@ -2131,7 +2242,16 @@
       },
       "card_autopay_failed": {
         "title": "Addebito automatico non riuscito",
-        "body": "{{card}}: {{amount}} non sono stati pagati — {{reason}}. Pagali manualmente."
+        "body": "{{card}}: {{amount}} non sono stati pagati — {{reason}}. Pagali manualmente.",
+        "reasons": {
+          "autopay_funding_missing": "{{card}}: {{amount}} non sono stati pagati — il conto che paga questa carta manca o è chiuso. Scegline uno da cui pagare oppure paga manualmente.",
+          "autopay_liability": "{{card}}: {{amount}} non sono stati pagati — una carta di credito non può pagare un'altra carta in automatico. Pagali manualmente.",
+          "autopay_currency_mismatch": "{{card}}: {{amount}} non sono stati pagati — il conto di pagamento è in una valuta diversa da quella della carta. Paga manualmente oppure scegli un conto nella valuta della carta.",
+          "autopay_funding_card": "{{card}}: {{amount}} non sono stati pagati — la carta che la paga non è utilizzabile al momento. Pagali manualmente.",
+          "autopay_quota": "{{card}}: {{amount}} non sono stati pagati — è stato raggiunto il limite di transazioni del tuo piano. Passa a un piano superiore oppure paga manualmente.",
+          "autopay_not_recorded": "{{card}}: {{amount}} non sono stati pagati — non è stato possibile registrare il pagamento. Pagali manualmente.",
+          "autopay_interrupted": "{{card}}: {{amount}} non sono stati pagati — il pagamento è stato interrotto prima di essere registrato. Controlla la carta e, se serve, paga manualmente."
+        }
       },
       "card_utilization_high": {
         "title": "Carta vicina al limite",
@@ -2348,8 +2468,7 @@
     "deleteTagOnly": "Rimuovi solo il tag",
     "deleteTagOnlyHint": "I record mantengono i loro dati — viene rimosso solo il tag.",
     "deleteWithRecords": "Elimina tag e record",
-    "deleteWithRecordsHint_one": "Sposta anche {{count}} record con tag nel Cestino (reversibile).",
-    "deleteWithRecordsHint_other": "Sposta anche {{count}} record con tag nel Cestino (reversibile)."
+    "deleteWithRecordsHint": "Sposta questi elementi nel Cestino, incluse tutte le transazioni di un cliente con tag e ogni trasferimento con tag per intero, e ne annulla l'effetto sui saldi dei conti."
   },
   "drilldown": {
     "loading": "Caricamento…",
@@ -2469,7 +2588,9 @@
     "whichAccount": "Quale conto?",
     "fromStatement": "Importo preso dall'ultimo estratto conto della carta — controllalo",
     "savedTransfer": "Trasferimento di {{amount}} salvato",
-    "savedCardPayment": "Pagamento carta di {{amount}} salvato"
+    "savedCardPayment": "Pagamento carta di {{amount}} salvato",
+    "currencyHeard": "Hai detto {{amount}}, ma {{account}} è in {{currency}}: inserisci l'importo in {{currency}}.",
+    "currencyHeardTransfer": "Hai detto {{amount}}: inserisci l'importo nella valuta di ciascun conto."
   },
   "resetData": {
     "title": "Azzera tutti i dati",
@@ -2659,7 +2780,8 @@
     },
     "hint": {
       "after": "{{name}}: {{amount}} rimanenti dopo questa spesa",
-      "overAfter": "{{name}}: {{amount}} in eccesso dopo questa spesa"
+      "overAfter": "{{name}}: {{amount}} in eccesso dopo questa spesa",
+      "afterAtMost": "{{name}}: al massimo {{amount}} rimanenti dopo questa spesa"
     },
     "closed": "Chiuso",
     "closedHint": "Non viene conteggiato finché non lo riapri.",
@@ -2716,7 +2838,8 @@
       "judgedOver_one": "In eccesso in {{count}} periodo concluso.",
       "judgedOver_other": "In eccesso in {{count}} periodi conclusi.",
       "byBudget": "Dove sono andati i soldi",
-      "byBudgetNote": "Questo periodo, dai peggiori."
+      "byBudgetNote": "Questo periodo, dai peggiori.",
+      "amountsIn": "Importi in {{currency}}"
     }
   },
   "debts": {
@@ -3080,6 +3203,146 @@
       "week": "Ogni settimana",
       "month": "Ogni mese",
       "year": "Ogni anno"
-    }
+    },
+    "currencyLabel": "Valuta",
+    "currencyHint": "La valuta in cui è tenuto questo debito. Dopo il primo pagamento non si può più cambiare.",
+    "planCurrency": "Valuta del piano",
+    "planPerCurrency": "Ogni valuta ha il suo piano: i debiti in valute diverse non vengono sommati."
+  },
+  "fx": {
+    "excludedNotice_one": "{{count}} voce in un'altra valuta non è inclusa (nessun tasso di cambio)",
+    "excludedNotice_other": "{{count}} voci in un'altra valuta non sono incluse (nessun tasso di cambio)",
+    "accountsExcludedNotice_one": "{{count}} conto in un'altra valuta non è incluso nel saldo (nessun tasso di cambio)",
+    "accountsExcludedNotice_other": "{{count}} conti in un'altra valuta non sono inclusi nel saldo (nessun tasso di cambio)"
+  },
+  "apiErrors": {
+    "transfer_accounts_required": "Scegli il conto da cui escono i soldi e quello in cui arrivano.",
+    "transfer_same_account": "Scegli due conti diversi.",
+    "transfer_account_unavailable": "Uno dei conti di questo trasferimento è archiviato o non esiste più. Ripristinalo prima.",
+    "transfer_account_currency_changed": "La valuta di un conto è cambiata dopo che questo trasferimento è stato pianificato. Annullalo e pianificalo di nuovo.",
+    "source_currency_mismatch": "La valuta di un conto è cambiata da quando hai aperto questo modulo. Chiudilo e riaprilo.",
+    "destination_currency_mismatch": "La valuta di un conto è cambiata da quando hai aperto questo modulo. Chiudilo e riaprilo.",
+    "invalid_transfer_transition": "Questo trasferimento non può più passare a quello stato. Ricarica e riprova.",
+    "invalid_transfer_status": "Scegli uno stato del trasferimento valido.",
+    "invalid_transfer_trash_state": "Questo trasferimento è già in quello stato. Ricarica e riprova.",
+    "transfer_not_found_or_incomplete": "Solo un trasferimento completato può essere spostato nel Cestino o ripristinato.",
+    "reversal_linked_transfer_is_immutable": "Un trasferimento stornato e il suo storno sono permanenti: non possono essere eliminati né ripristinati.",
+    "transfer_not_found": "Questo trasferimento non esiste più. Ricarica e riprova.",
+    "transfer_trashed": "Questo trasferimento, o una sua parte, è nel Cestino, quindi non può essere stornato.",
+    "transfer_is_reversal": "Uno storno non può essere stornato: registra invece un nuovo trasferimento.",
+    "transfer_already_reversed": "Questo trasferimento è già stato stornato.",
+    "transfer_reversal_conflict": "Questo trasferimento è cambiato mentre veniva stornato. Ricarica e riprova.",
+    "transfer_not_trashed": "Questo trasferimento non è nel Cestino. Elimina prima l'intero trasferimento, poi rimuovilo definitivamente.",
+    "transfer_mutation_requires_transfer_service": "Fa parte di un trasferimento, quindi non può essere modificato o eliminato da solo. Storna o elimina invece l'intero trasferimento.",
+    "invalid_fee_refund": "Il rimborso della commissione deve essere zero o più, con al massimo 2 decimali.",
+    "invalid_transfer_amounts": "Controlla gli importi del trasferimento e riprova.",
+    "amount_invalid": "Inserisci un importo valido.",
+    "amount_not_positive": "Inserisci un importo maggiore di zero.",
+    "amount_too_many_decimals": "Usa al massimo 2 decimali.",
+    "amount_too_large": "Questo importo è troppo alto.",
+    "destination_amount_required": "Inserisci l'importo che arriva nella valuta dell'altro conto.",
+    "same_currency_amounts_differ": "Entrambi i conti usano la stessa valuta, quindi l'importo inviato e quello ricevuto devono coincidere.",
+    "fee_invalid": "La commissione deve essere zero o più, con al massimo 2 decimali.",
+    "invalid_date": "Inserisci una data valida.",
+    "system_row": "Questa voce stabilisce il saldo del conto: modificala dalla pagina del conto.",
+    "space_requires_transfer": "Non puoi registrare una transazione su uno Space: sposta i soldi dentro o fuori con un trasferimento.",
+    "debt_group": "Modifica questo pagamento dalla pagina del debito: lì capitale e interessi restano separati.",
+    "debt_account": "Registralo dalla pagina del debito: lì capitale e interessi restano separati.",
+    "transaction_changed": "Questa voce è stata modificata o eliminata mentre la stavi modificando. Ricarica e riprova.",
+    "admin_ledger_row_locked": "Questo riguarda i saldi dei conti, un trasferimento o un debito, quindi non si può fare dalla console di amministrazione. Usa invece il Cestino dello spazio di lavoro.",
+    "organization_missing": "Lo spazio di lavoro di questo elemento non esiste più.",
+    "reserved_cash_name": "Questo nome è riservato al tuo portafoglio contanti predefinito. Scegli un altro nome.",
+    "default_cash_exists": "Hai già un portafoglio contanti predefinito.",
+    "default_cash_permanent": "Il tuo portafoglio contanti predefinito non può essere archiviato né rimosso.",
+    "card_has_debt": "Salda la carta prima di chiuderla.",
+    "card_has_history": "Questa carta ha già uno storico sulla sua banca. Chiudila e aggiungi una nuova carta sull'altra banca.",
+    "currency_missing": "La valuta di questo conto non è ancora configurata. Ricarica e riprova; se continua a succedere, contatta l'assistenza.",
+    "currency_mismatch": "Sono in valute diverse. Usa un conto o un importo nella stessa valuta.",
+    "currency_mismatch_in": "Questo è tenuto in {{currency}}: inserisci l'importo in {{currency}}.",
+    "currency_mismatch_debt": "Questo debito è in {{currency}}: usa un conto in {{currency}}.",
+    "debt_currency_changed": "La valuta di questo debito è appena cambiata. Ricaricalo e registra di nuovo il pagamento.",
+    "currency_locked": "Questo debito ha già dei pagamenti, quindi la sua valuta non può cambiare. Aggiungi invece un nuovo debito nell'altra valuta.",
+    "account_currency_locked": "La valuta di questo conto non può più essere modificata. Crea un altro conto nella valuta che ti serve e trasferisci il denaro.",
+    "amount_required_for_currency_change": "Così la voce passa a un'altra valuta: inserisci di nuovo il suo importo nella nuova valuta.",
+    "split_currency_mismatch": "Tutti i conti di una suddivisione devono usare la stessa valuta.",
+    "invalid_currency": "Scegli una valuta valida.",
+    "cross_currency_recurring_policy_required": "Il risparmio automatico richiede che entrambi i conti siano nella stessa valuta.",
+    "no_rate": "Non c'è ancora un tasso di cambio per queste valute.",
+    "autopay_liability": "Una carta di credito non può pagare automaticamente un'altra carta: pagala tu ogni mese.",
+    "funding_self": "Una carta non può pagare se stessa.",
+    "funding_card": "Scegli una carta che possa pagare questa.",
+    "funding_account": "Paga da una banca attiva, in contanti o con un'altra carta.",
+    "link_or_create": "Collega un pagamento esistente oppure creane uno nuovo, non entrambi.",
+    "link_alone": "Collega prima solo questo pagamento a un debito, poi modificalo.",
+    "rule_is_autosave": "Un risparmio automatico si gestisce nel suo Space, non qui.",
+    "rule_pays_with_card": "Un rimborso non può essere pagato con una carta: una carta sposterebbe il debito, non lo estinguerebbe.",
+    "rule_has_no_account": "Scegli prima il conto da cui viene effettuato questo pagamento.",
+    "account_archived": "Quel conto è archiviato: scegline prima uno attivo.",
+    "account_not_cash": "Un rimborso ricorrente deve provenire da un conto bancario o in contanti.",
+    "direction_mismatch": "Questo pagamento sposta i soldi nella direzione sbagliata per quel debito.",
+    "debt_closed": "Quel debito è chiuso: riaprilo prima.",
+    "debt_settled": "Quel debito è estinto: un rimborso si fermerebbe nel momento stesso in cui viene creato.",
+    "repayment_exists": "Quel debito ha già un rimborso ricorrente. Interrompi prima quello attuale.",
+    "rule_linked_elsewhere": "Quel pagamento sta già rimborsando un altro debito. Scollegalo prima da lì.",
+    "rule_ended": "Quel pagamento è già terminato: non pagherebbe mai nulla.",
+    "rule_has_pending": "Quel pagamento ha ancora rate in attesa di registrazione. Aprilo e sistemale prima.",
+    "not_found": "Questo elemento non esiste più. Ricarica e riprova.",
+    "parent_not_found": "Il budget principale non esiste più. Ricarica e riprova.",
+    "parent_is_self": "Un budget non può essere un sotto-budget di se stesso.",
+    "parent_is_sub_budget": "Un sotto-budget non può avere sotto-budget propri.",
+    "insufficient_balance": "È più del tuo saldo disponibile.",
+    "below_min_payout": "È al di sotto del pagamento minimo.",
+    "personal_account_restricted": "Non è disponibile su un account personale.",
+    "no_code": "Richiedi prima un codice.",
+    "cooldown": "Attendi un momento prima di richiedere un altro codice.",
+    "no_email": "Nel tuo account non c'è un indirizzo email.",
+    "unparseable": "Non è stato possibile capirlo. Prova a dirlo in un altro modo.",
+    "plan_limit": "Hai raggiunto il limite del tuo piano.",
+    "plan_limit_upgrade": "Hai raggiunto il limite del tuo piano. Passa a Premium per averne di più.",
+    "space_not_empty": "Sposta il denaro fuori da questo Spazio prima di chiuderlo o eliminarlo.",
+    "recurring_autosave_incomplete": "Questo risparmio automatico ha bisogno di un conto da cui prelevare e di uno Spazio in cui versare. Modificalo e scegli entrambi.",
+    "recurring_card_missing": "La carta usata per questo pagamento non esiste più. Modificalo e scegli un'altra carta.",
+    "recurring_card_frozen": "La carta usata per questo pagamento è bloccata. Sbloccala o scegli un'altra carta.",
+    "recurring_card_closed": "La carta usata per questo pagamento è chiusa. Modificalo e scegli un'altra carta.",
+    "recurring_failed": "Questo pagamento non è stato registrato. Verrà ritentato: se continua a non riuscire, contatta l'assistenza.",
+    "recurring_account_currency": "Questo pagamento è in {{currency}}, ma il suo conto è in {{account_currency}}. Modificalo e scegli un conto in {{currency}}.",
+    "recurring_currency_missing": "Questo pagamento non ha una valuta. Modificalo e salvalo di nuovo.",
+    "recurring_debt_unlinked": "Questo rimborso non è più collegato a un debito.",
+    "recurring_debt_missing": "Il debito che questo pagamento rimborsa non esiste più.",
+    "recurring_debt_inactive": "Il debito che questo pagamento rimborsa non è attivo, quindi non è stato pagato nulla.",
+    "autopay_not_recorded": "Non è stato possibile registrare il pagamento della carta. Pagalo manualmente.",
+    "autopay_interrupted": "Il pagamento della carta è stato interrotto prima di essere registrato. Controlla la carta e, se serve, paga manualmente.",
+    "rate_limited": "Troppe richieste di tassi di cambio. Riprova tra un minuto.",
+    "amount_whole_units": "Questa valuta non ha decimali: inserisci un importo intero.",
+    "autosave_rate_unavailable": "Non c'è ancora un cambio da {{from}} a {{to}} per la data di questo risparmio automatico. Verrà eseguito appena sarà disponibile.",
+    "client_update_required": "Aggiorna l'app per usare conti in un'altra valuta.",
+    "billing_cancel_failed": "Non è stato possibile annullare l'abbonamento di questa organizzazione, quindi non è stato eliminato nulla. Riprova tra qualche istante.",
+    "billing_owner_only": "Solo il proprietario dell'organizzazione può modificarne l'abbonamento.",
+    "billing_provider_failed": "Il fornitore dei pagamenti non è riuscito a completare la richiesta. Riprova tra qualche istante."
+  },
+  "adminFx": {
+    "title": "Tassi di cambio",
+    "runNow": "Esegui l'aggiornamento ora",
+    "ran": "Aggiornamento eseguito su {{pairs}} coppie; {{remaining}} ancora in corso.",
+    "runFailed": "Impossibile eseguire l'aggiornamento dei tassi di cambio.",
+    "loadFailed": "Impossibile caricare lo stato dei tassi di cambio.",
+    "never": "mai",
+    "neverRefreshed": "L'aggiornamento giornaliero dei tassi di cambio non è mai stato eseguito su questo database. Controlla la pianificazione fx-refresh del worker oppure eseguilo ora.",
+    "refreshStale": "L'aggiornamento giornaliero dei tassi di cambio è stato eseguito l'ultima volta {{when}} e sembra fermo. Lo storico meno recente si completa solo quando viene eseguito.",
+    "lastRefresh": "Ultimo aggiornamento giornaliero {{when}}: {{pairs}} coppie, {{incomplete}} non ancora complete.",
+    "colProvider": "Fornitore",
+    "colLastFetch": "Ultimo recupero",
+    "colLatestRate": "Tasso più recente",
+    "colCalls": "Chiamate OK / rifiutate / non riuscite",
+    "colLastError": "Ultimo errore",
+    "callsNote": "I conteggi delle chiamate riguardano questa istanza del server dal {{since}}; le date di recupero provengono dai tassi salvati.",
+    "pairsOk": "Tutte le {{n}} coppie di valute in uso hanno un tasso per ciascuno degli ultimi 10 giorni.",
+    "colPair": "Coppia",
+    "colMissing": "Giorni senza tasso (ultimi 10)",
+    "noExcluded": "Nessuno spazio di lavoro ha righe escluse dai report per mancanza di un tasso.",
+    "excluded": "Spazi di lavoro con righe escluse ({{n}})",
+    "colRows": "Righe escluse",
+    "registerSchedule": "Registra la pianificazione dei tassi di cambio",
+    "scheduleMissing": "La pianificazione {{name}} non è registrata: lo storico dei tassi di cambio più vecchio di un mese non verrà completato. Registrala con il pulsante qui sopra."
   }
 }

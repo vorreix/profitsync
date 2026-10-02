@@ -4,7 +4,9 @@ import { ArrowDownRight, ArrowUpRight, Check, ChevronsUpDown, Pencil, Plus, Rota
 import type { Budget, Client, SpendingBudget, WealthAccount } from "@/lib/types"
 import { budgetState, tightestBudget } from "@/lib/budget"
 import { budgetName } from "@/components/budget/budget-format"
-import { formatMoney } from "@/lib/wealth"
+import { formatApprox, formatMoney } from "@/lib/wealth"
+import { useApiQuery } from "@/hooks/use-api-query"
+import { accountCurrencyIn } from "@/lib/card-wizard"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -13,7 +15,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
-import { AccountSelector } from "@/components/AccountSelector"
+import { AccountSelector, type Allocation } from "@/components/AccountSelector"
+import { FxExcludedNotice } from "@/components/FxExcludedNotice"
 import { useDialogContainer } from "@/hooks/use-dialog-container"
 import type { TxForm } from "./tx-form-utils"
 
@@ -47,7 +50,7 @@ function ClientCombobox({ clients, value, onChange }: {
         align="start"
       >
         <Command>
-          <CommandInput placeholder={t("searchClients")} />
+          <CommandInput placeholder={t("searchClients")} className="text-base sm:text-sm" />
           <CommandList className="scrollbar-thin">
             <CommandEmpty>{t("noClientFound")}</CommandEmpty>
             <CommandGroup>
@@ -214,6 +217,20 @@ function CategoryCombobox({ categories, value, onChangeCategories, onChange }: {
 
 // ─── Transaction form fields ──────────────────────────────────────────────────
 
+/**
+ * Today's rate from the entry's currency into a budget's (MC-078): 1 when they
+ * match, null while it is unknown or there is none — the budget hint then stands
+ * down rather than adding ₹2,000 to a figure in euros.
+ */
+function useRateInto(from: string, to: string | null): number | null {
+  const cross = !!to && to !== from
+  const { data } = useApiQuery<{ rate: string }>(cross ? `/api/fx/rate?from=${from}&to=${to}` : null)
+  if (!to) return null
+  if (!cross) return 1
+  const rate = Number(data?.rate)
+  return Number.isFinite(rate) && rate > 0 ? rate : null
+}
+
 // Which form fields the AI just filled, and how sure it was. "high" gets a
 // brief highlight pulse; "medium" additionally shows an amber review dot on the
 // label. Cleared per-field by the parent when the user edits that field.
@@ -275,22 +292,41 @@ export function TxFormFields({
   const catType: "incoming" | "outgoing" = isRefund ? "outgoing" : f.type
   const cats = catType === "incoming" ? categories.incoming : categories.outgoing
   const txTotal = f.allocations.reduce((sum, a) => sum + (Number(a.amount) || 0), 0)
+  // txTotal is in the entry's currency (a split shares one: the first leg's
+  // amount/account decides). A budget is in its own, so the "after this" hint
+  // converts the entry at today's rate and says "≈" (MC-078) — €450 + ₹5,000
+  // is not "€4,950". With no rate, or a split across currencies (refused on
+  // save), there is no honest figure and the hint stands down. When the
+  // budget's spend left rows out (no exchange rate), what is left is an upper
+  // bound: the hint says "at most" and names the gap, never a plain "left".
+  const allocCurrency = (a: Allocation) => a.currency_code || accountCurrencyIn(accounts, a.account_id, currency) || currency
+  const entryCurrency = f.allocations[0] ? allocCurrency(f.allocations[0]) : currency
+  const mixed = f.allocations.some((a) => (Number(a.amount) || 0) > 0 && allocCurrency(a) !== entryCurrency)
+  const quoting = f.type === "outgoing" && txTotal > 0 && !mixed
+  const sb = quoting ? tightestBudget(spendingBudgets, f.category, f.date) : null
+  const budgetCur = budget?.currency ?? currency
+  const sbCur = sb?.currency ?? currency
+  const budgetRate = useRateInto(entryCurrency, quoting && budget && budget.amount > 0 ? budgetCur : null)
+  const sbRate = useRateInto(entryCurrency, sb ? sbCur : null)
+  // "≈ €881.60" for a converted figure, the plain figure otherwise.
+  const after = (n: number, cur: string) => (cur === entryCurrency ? formatMoney(n, cur) : formatApprox(n, cur))
   const budgetHint = (() => {
-    if (f.type !== "outgoing" || !budget || budget.amount <= 0 || txTotal <= 0) return null
-    const { remaining, state } = budgetState((budget.spent ?? 0) + txTotal, budget.amount)
+    if (!quoting || !budget || budget.amount <= 0 || budgetRate === null) return null
+    const { remaining, state } = budgetState((budget.spent ?? 0) + txTotal * budgetRate, budget.amount)
+    const excluded = budget.excluded_count ?? 0
     return remaining >= 0
-      ? { over: false, state, text: t("budget.remainingAfter", { ns: "translation", amount: formatMoney(remaining, currency) }) }
-      : { over: true, state, text: t("budget.overAfter", { ns: "translation", amount: formatMoney(-remaining, currency) }) }
+      ? { over: false, state, excluded, text: t(excluded > 0 ? "budget.remainingAfterAtMost" : "budget.remainingAfter", { ns: "translation", amount: after(remaining, budgetCur) }) }
+      : { over: true, state, excluded, text: t("budget.overAfter", { ns: "translation", amount: after(-remaining, budgetCur) }) }
   })()
   const spendingHint = (() => {
-    if (f.type !== "outgoing" || txTotal <= 0) return null
-    const sb = tightestBudget(spendingBudgets, f.category, f.date)
-    if (!sb) return null
-    const { remaining, state } = budgetState(sb.spent + txTotal, sb.amount)
+    if (!sb || sbRate === null) return null
+    const { remaining, state } = budgetState(sb.spent + txTotal * sbRate, sb.amount)
     const name = budgetName(t, sb)
+    // `spent` is the budget's own window, so is this count.
+    const excluded = sb.excluded_count ?? 0
     return remaining >= 0
-      ? { over: false, state, text: t("budgets.hint.after", { ns: "translation", name, amount: formatMoney(remaining, currency) }) }
-      : { over: true, state, text: t("budgets.hint.overAfter", { ns: "translation", name, amount: formatMoney(-remaining, currency) }) }
+      ? { over: false, state, excluded, text: t(excluded > 0 ? "budgets.hint.afterAtMost" : "budgets.hint.after", { ns: "translation", name, amount: after(remaining, sbCur) }) }
+      : { over: true, state, excluded, text: t("budgets.hint.overAfter", { ns: "translation", name, amount: after(-remaining, sbCur) }) }
   })()
 
   return (
@@ -354,11 +390,13 @@ export function TxFormFields({
           {spendingHint.text}
         </p>
       )}
+      {spendingHint && <FxExcludedNotice count={spendingHint.excluded} className="-mt-3" />}
       {budgetHint && (
         <p className={`-mt-1 text-xs ${budgetHint.over ? "text-red-600 dark:text-red-400" : budgetHint.state === "warn" ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"}`}>
           {budgetHint.text}
         </p>
       )}
+      {budgetHint && <FxExcludedNotice count={budgetHint.excluded} className="-mt-3" />}
       <div {...aiProps("description")}>
       <div className="space-y-1.5">
         <Label>{t("description")}{aiDot("description")}</Label>

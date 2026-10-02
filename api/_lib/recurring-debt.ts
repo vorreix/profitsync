@@ -27,7 +27,8 @@ import { db, dbBatch } from "../../src/lib/db/index.js"
 import { debtDetails, recurringRules, wealthAccounts } from "../../src/lib/db/schema.js"
 import { fromCents, toCents } from "../../src/lib/debt-math.js"
 import { linkRefusal, payoffCappedAmount, periodsPerYearForRule, type LinkRefusal, type LinkTargetDebt } from "../../src/lib/debt-recurring.js"
-import { debtScheduleMirror, directionOf, loadDebt, recordDebtPayment, toDebtLike } from "./debts.js"
+import { debtCurrencyOf, debtScheduleMirror, directionOf, isDebtAccountType, loadDebt, recordDebtPayment, toDebtLike } from "./debts.js"
+import type { RuleError } from "./recurring-materialize.js"
 import type { FrequencyUnit } from "../../src/lib/recurring.js"
 
 type RuleRow = typeof recurringRules.$inferSelect
@@ -44,27 +45,41 @@ export type DebtOccurrenceOutcome =
        */
       hold?: boolean
     }
-  | { ok: false; error: string }
+  | { ok: false; body: RuleError }
 
 /**
  * Post every due occurrence of one debt-repayment rule.
  *
  * Returns `ok: false` to mean "pause this rule where it stands": the caller
- * records the reason on the rule and does NOT advance its cursor, so the
- * occurrence fires again once whatever blocked it is fixed. That is the same
- * contract the archived-account and quota guards already use.
+ * records the reason (a coded refusal body, MC-077) on the rule and does NOT
+ * advance its cursor, so the occurrence fires again once whatever blocked it is
+ * fixed. That is the same contract the archived-account and quota guards
+ * already use.
  */
 export async function postDebtOccurrences(orgId: string, rule: RuleRow, due: string[]): Promise<DebtOccurrenceOutcome> {
-  if (!rule.debtAccountId) return { ok: false, error: "This repayment is not linked to a debt any more" }
-  if (!rule.wealthAccountId) return { ok: false, error: "Choose the account this repayment is paid from" }
+  if (!rule.debtAccountId) return { ok: false, body: { error: "This repayment is not linked to a debt any more", code: "recurring_debt_unlinked" } }
+  if (!rule.wealthAccountId) return { ok: false, body: { error: "Choose the account this repayment is paid from", code: "rule_has_no_account" } }
 
   let row = await loadDebt(orgId, rule.debtAccountId)
-  if (!row) return { ok: false, error: "The debt this repays no longer exists" }
-  if (row.account.archivedAt) return { ok: false, error: "This debt is closed — reopen it to keep paying" }
+  if (!row) return { ok: false, body: { error: "The debt this repays no longer exists", code: "recurring_debt_missing" } }
+  if (row.account.archivedAt) return { ok: false, body: { error: "This debt is closed — reopen it to keep paying", code: "debt_closed" } }
   // A debt the user paused, wrote off or marked repaid must not keep taking
   // money. Pausing the debt also deactivates its rules (api/_routes/debts/[id]),
   // so reaching this is belt and braces.
-  if (row.details.lifecycle !== "active") return { ok: false, error: "This debt is not active" }
+  if (row.details.lifecycle !== "active") return { ok: false, body: { error: "This debt is not active", code: "recurring_debt_inactive" } }
+
+  // The paying account, checked here so the pause names its reason in every
+  // language: recordDebtPayment refuses an archived or non-cash payer with an
+  // uncoded sentence, which only an English reader could be told (MC-077). Same
+  // codes the standard branch and the link routes use.
+  const [payer] = await db
+    .select({ type: wealthAccounts.type, archivedAt: wealthAccounts.archivedAt })
+    .from(wealthAccounts)
+    .where(and(eq(wealthAccounts.id, rule.wealthAccountId), eq(wealthAccounts.organizationId, orgId)))
+  if (!payer || payer.archivedAt) return { ok: false, body: { error: "Account is archived or missing — pick another account", code: "account_archived" } }
+  if (payer.type === "space" || isDebtAccountType(payer.type)) {
+    return { ok: false, body: { error: "Choose an active bank, cash or card account to pay from", code: "account_not_cash" } }
+  }
 
   // The rhythm ACTUALLY taking the money. The debt's own payment_frequency is a
   // mirror that can only name five rhythms, so a rule running every 10 days
@@ -98,7 +113,18 @@ export async function postDebtOccurrences(orgId: string, rule: RuleRow, due: str
       periodsPerYear: ppy,
       recurring: { ruleId: rule.id, dueDate },
     })
-    if (!result.ok) return { ok: false, error: result.error }
+    if (!result.ok) {
+      // The engine's own refusal, as it was sent. A payer in another currency
+      // names the debt's (apiErrors.currency_mismatch_debt); a plan limit keeps
+      // its body so it reads as one. An uncoded refusal stays uncoded: English
+      // keeps its specific sentence, every other language gets the reader's
+      // fallback — a blanket `recurring_failed` would take the sentence away
+      // from English and give nobody anything better.
+      const { ok: _ok, status: _status, quota, ...refusal } = result
+      const named = refusal.code === "currency_mismatch" ? { context: "debt", currency: debtCurrencyOf(row) } : {}
+      const plan = quota && typeof quota === "object" ? (quota as Record<string, unknown>) : null
+      return { ok: false, body: { ...plan, ...named, ...refusal } }
+    }
 
     // Somebody else is mid-batch on this occurrence. Stop where we are and keep
     // the cursor: the amount for the NEXT instalment is capped against a
@@ -108,7 +134,7 @@ export async function postDebtOccurrences(orgId: string, rule: RuleRow, due: str
     if (!result.skipped) created++
 
     const refreshed = await loadDebt(orgId, rule.debtAccountId)
-    if (!refreshed) return { ok: false, error: "The debt this repays no longer exists" }
+    if (!refreshed) return { ok: false, body: { error: "The debt this repays no longer exists", code: "recurring_debt_missing" } }
     row = refreshed
   }
 
@@ -142,6 +168,7 @@ const REFUSAL_MESSAGES: Record<LinkRefusal, string> = {
   rule_has_no_account: "Give this rule the account it is paid from first",
   account_archived: "That account is archived — point the rule at an active one first",
   account_not_cash: "A recurring repayment must come from a bank or cash account",
+  currency_mismatch: "That account is in a different currency from the debt — pay it from an account in the debt's currency",
   direction_mismatch: "This rule moves money the wrong way for that debt",
   debt_closed: "That debt is closed — reopen it first",
   debt_settled: "That debt is settled — a repayment would stop the moment it was made",
@@ -217,7 +244,7 @@ export async function linkRuleToDebt(
 
   const [account] = rule.wealthAccountId
     ? await db
-        .select({ type: wealthAccounts.type, archivedAt: wealthAccounts.archivedAt })
+        .select({ type: wealthAccounts.type, archivedAt: wealthAccounts.archivedAt, currencyCode: wealthAccounts.currencyCode })
         .from(wealthAccounts)
         .where(and(eq(wealthAccounts.id, rule.wealthAccountId), eq(wealthAccounts.organizationId, orgId)))
     : [undefined]
@@ -239,6 +266,7 @@ export async function linkRuleToDebt(
       accountId: rule.wealthAccountId,
       accountType: account?.type ?? null,
       accountArchived: !!account?.archivedAt,
+      accountCurrency: account?.currencyCode ?? null,
       debtAccountId: rule.debtAccountId,
       ended: !!rule.endDate && String(rule.endDate).slice(0, 10) < today,
       // The caller runs the catch-up first, so an ACTIVE rule still sitting on
@@ -251,6 +279,7 @@ export async function linkRuleToDebt(
       id: row.account.id,
       direction: directionOf(row.account.type),
       archived: !!row.account.archivedAt,
+      currency: debtCurrencyOf(row),
       lifecycle: row.details.lifecycle as LinkTargetDebt["lifecycle"],
       linkedRuleIds: siblings.map((s) => s.id),
     },
@@ -330,6 +359,7 @@ export function refusalForNew(
     accountId: string | null
     accountType: string | null
     accountArchived: boolean
+    accountCurrency?: string | null
     debtAccountId: string | null
     endDate?: string | null
     nextDueAt?: string | null
@@ -347,6 +377,7 @@ export function refusalForNew(
       accountId: rule.accountId,
       accountType: rule.accountType,
       accountArchived: rule.accountArchived,
+      accountCurrency: rule.accountCurrency,
       debtAccountId: rule.debtAccountId,
       ended: !!rule.endDate && rule.endDate < today,
       hasPending: rule.active === true && !!rule.nextDueAt && rule.nextDueAt <= today,
@@ -366,11 +397,11 @@ export const refusalStatus = (code: LinkRefusal): number =>
  * The account a rule pays from, as the eligibility rules need to see it.
  * Null id means the rule names no account at all, which is its own refusal.
  */
-export async function payerShape(orgId: string, accountId: string | null): Promise<{ type: string | null; archived: boolean }> {
-  if (!accountId) return { type: null, archived: false }
+export async function payerShape(orgId: string, accountId: string | null): Promise<{ type: string | null; archived: boolean; currency: string | null }> {
+  if (!accountId) return { type: null, archived: false, currency: null }
   const [a] = await db
-    .select({ type: wealthAccounts.type, archivedAt: wealthAccounts.archivedAt })
+    .select({ type: wealthAccounts.type, archivedAt: wealthAccounts.archivedAt, currencyCode: wealthAccounts.currencyCode })
     .from(wealthAccounts)
     .where(and(eq(wealthAccounts.id, accountId), eq(wealthAccounts.organizationId, orgId)))
-  return { type: a?.type ?? null, archived: !!a?.archivedAt }
+  return { type: a?.type ?? null, archived: !!a?.archivedAt, currency: a?.currencyCode ?? null }
 }

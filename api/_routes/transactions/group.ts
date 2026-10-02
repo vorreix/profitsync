@@ -1,21 +1,10 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { randomUUID } from "node:crypto"
-import { and, count, eq, isNull, sql } from "drizzle-orm"
-import { db, serialize } from "../../../src/lib/db/index.js"
-import { clients, transactions, wealthAccounts } from "../../../src/lib/db/schema.js"
-import { canWrite, ensureDefaultClient, isPersonalAccount, requireAuth } from "../../_lib/auth.js"
-import { getOrgPlan } from "../../_lib/quota.js"
+import { dbBatch, serialize } from "../../../src/lib/db/index.js"
+import type { transactions } from "../../../src/lib/db/schema.js"
+import { canWrite, requireAuth } from "../../_lib/auth.js"
 import { logAudit } from "../../_lib/audit.js"
-import { balanceDelta } from "../../../src/lib/wealth-ledger.js"
-import { cleanTransactionTags } from "../../../src/lib/transaction-tags.js"
-import { PREMIUM_TAGS_PER_TX } from "../../../src/lib/tags.js"
-import { amountExceedsLimit } from "../../../src/lib/money.js"
 import { notifyIfBudgetExceeded } from "../../_lib/notify-budget.js"
-import { refundShapeValid } from "../../../src/lib/tx-classify.js"
-import { USER_KINDS } from "../../_lib/tx-sql.js"
-import { attributeCard } from "../../_lib/cards.js"
-
-type AllocationInput = { wealth_account_id?: string; account_id?: string; card_id?: string | null; amount?: number | string }
+import { groupWriteWentStale, postGroupStatements, prepareGroup, type GroupBody } from "../../_lib/tx-group-write.js"
 
 /**
  * Atomic create of a "split" transaction: one logical transaction (same client /
@@ -25,6 +14,7 @@ type AllocationInput = { wealth_account_id?: string; account_id?: string; card_i
  * `group_id`, so the UI can collapse them into one row and break them back out in
  * the detail view. A single-allocation body is just a normal transaction
  * (group_id = NULL) — this endpoint is the one create path the client uses.
+ * Editing a split is PUT /api/transactions/group/:groupId (same validation).
  */
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ctx = await requireAuth(req, res)
@@ -34,155 +24,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" })
   if (!canWrite(role)) return res.status(403).json({ error: "Forbidden" })
 
-  const { client_id, type, description, category, tags, date, allocations, kind: rawKind } = req.body as {
-    client_id?: string
-    type?: string
-    kind?: string
-    description?: string
-    category?: string
-    tags?: unknown
-    date?: string
-    allocations?: AllocationInput[]
-  }
-  // Group-level metadata, like description/category: every leg carries it.
-  const cleanTags = cleanTransactionTags(tags)
+  const prepared = await prepareGroup(ctx, req.body as GroupBody)
+  if (!prepared.ok) return res.status(prepared.status).json(prepared.body)
+  const { group } = prepared
 
-  if (!type || !["incoming", "outgoing"].includes(type)) {
-    return res.status(400).json({ error: "type must be incoming or outgoing" })
-  }
-  // 'standard' (default) or 'refund' (money back for an earlier expense — nets
-  // against expense in reporting, never income). Transfers never come from here.
-  const kind = rawKind ?? "standard"
-  if (!(USER_KINDS as readonly string[]).includes(kind)) return res.status(400).json({ error: "kind must be standard or refund" })
-  if (!refundShapeValid(type, kind)) return res.status(400).json({ error: "A refund must be incoming" })
-  if (!Array.isArray(allocations) || allocations.length === 0) {
-    return res.status(400).json({ error: "allocations is required" })
-  }
-
-  const rawLegs = allocations
-    .map((a) => ({ accountId: a.wealth_account_id ?? a.account_id ?? "", cardId: a.card_id ?? null, amount: Number(a.amount) }))
-    .filter((a) => (a.accountId || a.cardId) && !isNaN(a.amount) && a.amount > 0)
-  if (rawLegs.length === 0) {
-    return res.status(400).json({ error: "At least one allocation with an account and a positive amount is required" })
-  }
-  if (rawLegs.some((leg) => amountExceedsLimit(leg.amount))) {
-    return res.status(400).json({ error: "Amount is too large" })
-  }
-
-  // Resolve which card paid each leg and therefore which account the money
-  // lands on (api/_lib/cards.ts attributeCard — one rule for every write path).
-  const legs: { accountId: string; cardId: string | null; amount: number }[] = []
-  for (const leg of rawLegs) {
-    const attributed = await attributeCard(orgId, { cardId: leg.cardId, wealthAccountId: leg.accountId || null })
-    if (!attributed.ok) return res.status(400).json({ error: attributed.error })
-    if (!attributed.accountId) return res.status(400).json({ error: "Select an active bank or cash account" })
-    legs.push({ accountId: attributed.accountId, cardId: attributed.cardId, amount: leg.amount })
-  }
-
-  // Validate every referenced account is an active, org-scoped account.
-  const orgAccounts = await db
-    .select()
-    .from(wealthAccounts)
-    .where(and(eq(wealthAccounts.organizationId, orgId), isNull(wealthAccounts.archivedAt)))
-  const byId = new Map(orgAccounts.map((a) => [a.id, a]))
-  for (const leg of legs) {
-    const account = byId.get(leg.accountId)
-    if (!account) return res.status(400).json({ error: "Select an active bank or cash account" })
-    // A Space is a savings bucket — money only ever TRANSFERS in/out of it.
-    if (account.type === "space") return res.status(400).json({ error: "You can't record a transaction on a Space — move money in or out with a transfer instead." })
-    // A debt's principal and interest have to be split, which only the debt's
-    // own payment route does — a raw transaction here would blur them.
-    if (account.type === "loan" || account.type === "receivable") return res.status(400).json({ error: "Record a payment from the debt's page instead — that keeps principal and interest apart." })
-  }
-
-  // Resolve the anchoring client (personal orgs use their hidden default client).
-  let clientId: string
-  if (isPersonalAccount(ctx)) {
-    clientId = await ensureDefaultClient(orgId, userId)
-  } else {
-    if (!client_id) return res.status(400).json({ error: "client_id is required" })
-    const [client] = await db
-      .select({ id: clients.id })
-      .from(clients)
-      .where(and(eq(clients.id, client_id), eq(clients.organizationId, orgId), isNull(clients.deletedAt)))
-    if (!client) return res.status(403).json({ error: "Forbidden" })
-    clientId = client_id
-  }
-
-  // Quota: the whole group must fit under the per-client transaction limit.
-  const { planKey, limits } = await getOrgPlan(orgId)
-  // Per-plan tag ceiling (free = 1, paid = 3). Every leg shares the group's tags,
-  // so one check on the deduped set covers the whole split.
-  if (cleanTags.length > limits.tagsPerTransaction) {
-    return res.status(402).json({
-      allowed: false,
-      reason:
-        planKey === "free"
-          ? `Free plan allows ${limits.tagsPerTransaction} tag${limits.tagsPerTransaction === 1 ? "" : "s"} per transaction. Upgrade to Premium for up to ${PREMIUM_TAGS_PER_TX}.`
-          : `This plan allows ${limits.tagsPerTransaction} tags per transaction.`,
-      limit: limits.tagsPerTransaction,
-      current: cleanTags.length,
-      upgradeHint: planKey === "free",
-    })
-  }
-  if (planKey === "free") {
-    const [{ current }] = await db
-      .select({ current: count() })
-      .from(transactions)
-      .where(and(eq(transactions.clientId, clientId), isNull(transactions.deletedAt)))
-    if (current + legs.length > limits.transactionsPerClient) {
-      return res.status(402).json({
-        allowed: false,
-        reason: `Free plan is limited to ${limits.transactionsPerClient} transactions per client. Upgrade to Premium.`,
-        limit: limits.transactionsPerClient,
-        current,
-        upgradeHint: true,
-      })
+  // The legs and every balance shift land together or not at all.
+  const { groupId, insert, shifts } = postGroupStatements(group, userId)
+  let created: (typeof transactions.$inferSelect)[]
+  try {
+    ;[created] = (await dbBatch([insert, ...shifts] as unknown as Parameters<typeof dbBatch>[0])) as unknown as [(typeof transactions.$inferSelect)[]]
+  } catch (err) {
+    // An account's currency changed after it was read: the deferred FK rolled
+    // the whole batch back — a stale screen, not a server error.
+    if (groupWriteWentStale(err)) {
+      return res.status(409).json({ error: "An account changed while this was being saved. Reload and try again.", code: "transaction_changed" })
     }
-  }
-
-  const today = new Date().toISOString().split("T")[0]
-  // Only a real multi-leg split gets a group_id; a single account stays NULL so
-  // the rest of the app treats it as an ordinary transaction.
-  const groupId = legs.length > 1 ? randomUUID() : null
-
-  const created = []
-  // Accumulate per-account balance shifts so two legs on one account collapse
-  // into a single UPDATE.
-  const shiftByAccount = new Map<string, number>()
-  for (const leg of legs) {
-    const [row] = await db
-      .insert(transactions)
-      .values({
-        clientId,
-        wealthAccountId: leg.accountId,
-        cardId: leg.cardId,
-        groupId,
-        kind,
-        type,
-        amount: String(leg.amount),
-        description: description ?? "",
-        category: category ?? "",
-        tags: cleanTags,
-        date: date ?? today,
-        // isSystem is server-only: user-created split legs are never system rows.
-        createdBy: userId,
-        updatedBy: userId,
-      })
-      .returning()
-    created.push(row)
-    shiftByAccount.set(leg.accountId, (shiftByAccount.get(leg.accountId) ?? 0) + balanceDelta(type, leg.amount))
-  }
-
-  for (const [accountId, shift] of shiftByAccount) {
-    await db
-      .update(wealthAccounts)
-      .set({
-        currentBalance: sql`${wealthAccounts.currentBalance}::numeric + ${shift}`,
-        updatedBy: userId,
-        updatedAt: new Date(),
-      })
-      .where(eq(wealthAccounts.id, accountId))
+    throw err
   }
 
   for (const row of created) {
@@ -191,7 +48,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   // A split is one logical expense spread over several accounts, so it can breach
   // a budget exactly like a single transaction. Evaluated once for the group.
-  if (type === "outgoing") void notifyIfBudgetExceeded(orgId, clientId, userId, { category: category ?? "", date }).catch(() => {})
+  if (group.type === "outgoing") void notifyIfBudgetExceeded(orgId, group.clientId, userId, { category: group.category, date: group.date }).catch(() => {})
 
   return res.status(201).json({
     group_id: groupId,

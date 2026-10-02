@@ -1,7 +1,7 @@
 import { clerkSetup, setupClerkTestingToken } from "@clerk/testing/playwright"
 import { createClerkClient } from "@clerk/backend"
 import { expect, test as setup, type Page } from "@playwright/test"
-import { E2E_EMAIL, E2E_PREFIX, expectAppShell } from "./helpers"
+import { E2E_EMAIL, E2E_PREFIX, MC_ORG_PREFIX, expectAppShell } from "./helpers"
 
 const AUTH_FILE = "e2e/.auth/user.json"
 const E2E_PASSWORD = process.env.E2E_CLERK_PASSWORD || "e2e-Profitsync!2026-secret"
@@ -86,10 +86,27 @@ setup("authenticate", async ({ page }) => {
   expect(signInResult.ok, signInResult.error ?? "sign-in failed").toBe(true)
   await page.goto("/dashboard")
 
+  // 3b. Throwaway workspaces a killed multi-currency run never deleted — before
+  //     onboarding, so nothing here can mistake one for the business workspace.
+  await sweepLeftoverMcOrgs(page)
+
   // 4. Complete first-run onboarding through the SAME API the wizard calls
   //    (deterministic — the multi-step UI is Clerk-independent product surface
   //    covered elsewhere). Business type unlocks clients/quotations.
   const businessOrgId = await completeOnboardingViaApi(page)
+
+  // 4a. Warm the dev server (after onboarding: before it, every app route
+  //     redirects to /onboarding). Vite optimises a lazily-loaded page's dependencies
+  //     the first time that page is requested and then RELOADS every open tab —
+  //     which, on a cold server, landed in the first spec's in-page fetch as
+  //     "Failed to fetch". Visiting the screens the specs use takes that reload
+  //     here, where nothing is in flight.
+  for (const path of ["/dashboard", "/wealth", "/transactions", "/recurring", "/debts", "/budgets", "/calendar", "/flow"]) {
+    await page.goto(path)
+    await expectAppShell(page)
+  }
+  await page.goto("/dashboard")
+  await expectAppShell(page)
 
   // 4b. Sweep leftovers from prior FAILED runs. When any smoke test fails, the
   //     serial group aborts and the trailing cleanup test never runs — so e2e
@@ -115,6 +132,23 @@ setup("authenticate", async ({ page }) => {
   await expectAppShell(page)
   await page.context().storageState({ path: AUTH_FILE })
 })
+
+async function sweepLeftoverMcOrgs(page: Page) {
+  await page.waitForFunction(() => !!(window as unknown as { Clerk?: { session?: unknown } }).Clerk?.session, null, { timeout: 30_000 })
+  const result = await page.evaluate(async (prefix) => {
+    const Clerk = (window as unknown as { Clerk: { session?: { getToken: () => Promise<string | null> } } }).Clerk
+    const headers = { Authorization: `Bearer ${await Clerk.session?.getToken()}` }
+    const orgs = (await (await fetch("/api/organizations", { headers })).json()) as { id: string; name: string }[]
+    const stale = orgs.filter((o) => o.name.startsWith(prefix))
+    for (const o of stale) {
+      const del = await fetch(`/api/organizations/${o.id}`, { method: "DELETE", headers })
+      if (del.status !== 204) return { ok: false, error: `delete ${o.id} → ${del.status}`, deleted: 0 }
+    }
+    return { ok: true, error: "", deleted: stale.length }
+  }, MC_ORG_PREFIX)
+  expect(result.ok, `e2e workspace sweep failed: ${result.error}`).toBe(true)
+  if (result.deleted > 0) console.log(`[e2e setup] deleted ${result.deleted} leftover ${MC_ORG_PREFIX} workspace(s)`)
+}
 
 async function sweepLeftoverE2eData(page: Page, orgId: string) {
   const result = await page.evaluate(

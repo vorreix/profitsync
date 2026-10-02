@@ -75,9 +75,7 @@ for (const f of files) {
 //
 // DELETE A RESERVATION THE DAY ITS BRANCH MERGES. It is a promise that those
 // numbers are spoken for, not a licence to skip numbering.
-const RESERVED = [
-  { from: 69, to: 74, owner: "feat/multi-currency (0069_multi_currency_foundation … 0074_fx_reporting_amount)" },
-]
+const RESERVED = []
 const reservedBy = (n) => RESERVED.find((r) => n >= r.from && n <= r.to)
 
 const numbers = [...byNumber.keys()].map(Number).sort((a, b) => a - b)

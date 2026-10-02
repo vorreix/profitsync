@@ -5,23 +5,31 @@ import { toast } from "sonner"
 import { apiErrorMessage, apiPatch, apiPost } from "@/lib/api"
 import type { WealthAccount } from "@/lib/types"
 import { useCurrency } from "@/lib/currency-context"
-import { currencySymbol } from "@/lib/wealth"
+import { accountCurrency } from "@/lib/wealth"
+import { getCurrencySymbol } from "@/lib/currencies"
 import { accountColorStyle, type AccountColorStyle } from "@/lib/account-color"
 import { SPACE_ICONS } from "@/components/wealth/space-icons"
 import { AccountAppearanceFields } from "@/components/wealth/AccountAppearanceFields"
+import { CurrencyCombobox } from "@/components/CurrencyCombobox"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { InputGroup, InputGroupAddon, InputGroupInput, InputGroupText } from "@/components/ui/input-group"
 import { Label } from "@/components/ui/label"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 
 const todayIso = () => new Date().toISOString().split("T")[0]
-type SpaceForm = { name: string; goal: string; date: string; icon: string; color: string; color_style: AccountColorStyle }
-const emptySpaceForm: SpaceForm = { name: "", goal: "", date: "", icon: "piggy", color: "", color_style: "subtle" }
+type SpaceForm = { name: string; goal: string; date: string; icon: string; color: string; color_style: AccountColorStyle; currency: string }
+const emptySpaceForm: SpaceForm = { name: "", goal: "", date: "", icon: "piggy", color: "", color_style: "subtle", currency: "" }
 
 /**
  * Create or edit a Space (name, savings icon, optional goal + target date).
  * `space=null` → create. Self-contained: POST/PATCH + toast; hands the saved row
  * back via onSaved. Shared by the Spaces list and the Space detail page.
+ *
+ * A new Space picks its currency (default: the workspace's) — before, every
+ * Space was silently created in the reporting currency, so saving up in another
+ * one was impossible (MC-072). It is fixed once created; the goal is typed in
+ * it, so its prefix follows the Space, never the workspace (MC-017).
  */
 export function SpaceFormModal({
   open, space, onClose, onSaved,
@@ -34,8 +42,8 @@ export function SpaceFormModal({
   const { t } = useTranslation("spaces")
   const { getToken } = useAuth()
   const { currency } = useCurrency()
-  const symbol = currencySymbol(currency)
   const [form, setForm] = useState<SpaceForm>(emptySpaceForm)
+  const spaceCurrency = space ? accountCurrency(space, currency) : form.currency || currency
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -49,9 +57,10 @@ export function SpaceFormModal({
           icon: space.icon || "piggy",
           color: space.color ?? "",
           color_style: accountColorStyle(space.color_style),
+          currency: accountCurrency(space, currency),
         }
-      : emptySpaceForm)
-  }, [open, space])
+      : { ...emptySpaceForm, currency })
+  }, [open, space, currency])
 
   async function handleSave() {
     if (!form.name.trim()) { toast.error(t("nameRequired")); return }
@@ -66,6 +75,8 @@ export function SpaceFormModal({
         icon: form.icon,
         color: form.color,
         color_style: form.color_style,
+        // Only on create: a Space's currency never changes afterwards.
+        ...(space ? {} : { currency_code: spaceCurrency }),
       }
       if (space) {
         const updated = await apiPatch<WealthAccount>(`/api/spaces/${space.id}`, token, body)
@@ -116,13 +127,22 @@ export function SpaceFormModal({
             onChange={(patch) => setForm((f) => ({ ...f, ...patch }))}
             account={{ id: space?.id, type: "space" }}
           />
+          {!space && (
+            <div className="space-y-1.5">
+              <Label>{t("currencyLabel")}</Label>
+              <CurrencyCombobox value={spaceCurrency} onValueChange={(c) => setForm((f) => ({ ...f, currency: c }))} disabled={saving} />
+              <p className="text-[11px] text-muted-foreground">{t("currencyHint")}</p>
+            </div>
+          )}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="space-goal">{t("goalLabel")}</Label>
-              <div className="relative">
-                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">{symbol}</span>
-                <Input id="space-goal" type="number" inputMode="decimal" min="0" step="0.01" className="pl-8" placeholder={t("goalOptional")} value={form.goal} onChange={(e) => setForm((f) => ({ ...f, goal: e.target.value }))} />
-              </div>
+              <InputGroup>
+                <InputGroupAddon>
+                  <InputGroupText>{getCurrencySymbol(spaceCurrency)}</InputGroupText>
+                </InputGroupAddon>
+                <InputGroupInput id="space-goal" type="number" inputMode="decimal" min="0" step="0.01" placeholder={t("goalOptional")} value={form.goal} onChange={(e) => setForm((f) => ({ ...f, goal: e.target.value }))} />
+              </InputGroup>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="space-date">{t("targetDateLabel")}</Label>
